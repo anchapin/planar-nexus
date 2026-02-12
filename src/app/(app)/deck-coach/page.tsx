@@ -115,7 +115,7 @@ export default function DeckCoachPage() {
       
       // 2. Validate the suggestion's integrity
       const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
-      const actualAddCount = cardsToAddFromApi.reduce((sum, c) => sum + c.quantity, 0);
+      const actualAddCount = cardsToAddFromApi.reduce((sum, c) => sum + c.count, 0);
       const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
 
       const errorMessages = [];

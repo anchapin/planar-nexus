@@ -71,6 +71,7 @@ export function example1_createGame() {
   console.log("Example 1: Creating a new game");
 
   // Create a 2-player game
+  // eslint-disable-next-line prefer-const -- state is returned, not reassigned
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
 
   console.log(`Game ID: ${state.gameId}`);

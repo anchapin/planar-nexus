@@ -77,7 +77,7 @@ export default function HostLobbyPage() {
 
     // Auto-select first valid deck if available
     const [savedDecks] = getStoredDecks();
-    const validDeck = savedDecks.find(deck => {
+    const validDeck = savedDecks.find((deck: SavedDeck) => {
       const validation = validateDeckForFormat(deck);
       return validation.isValid;
     });

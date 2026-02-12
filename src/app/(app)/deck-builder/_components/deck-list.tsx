@@ -1,6 +1,6 @@
 "use client";
 
-import { DeckCard } from "../page";
+import { DeckCard } from "@/app/actions";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -67,12 +67,12 @@ export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard }: Dec
             ) : (
                 categoryOrder.map(category => {
                     if (categorizedDeck[category]) {
-                        const categoryCount = categorizedDeck[category].reduce((sum, card) => sum + card.count, 0);
+                        const categoryCount = categorizedDeck[category].reduce((sum: number, card: DeckCard) => sum + card.count, 0);
                         return (
                             <div key={category}>
                                 <h4 className="font-semibold text-muted-foreground mb-2">{category} ({categoryCount})</h4>
                                 <ul className="space-y-1">
-                                    {categorizedDeck[category].sort((a, b) => a.name.localeCompare(b.name)).map(card => (
+                                    {categorizedDeck[category].sort((a: DeckCard, b: DeckCard) => a.name.localeCompare(b.name)).map(card => (
                                         <li key={card.id} className="group flex items-center justify-between text-sm p-1 rounded-md hover:bg-secondary">
                                             <span>{card.count}x {card.name}</span>
                                             <Button variant="ghost" size="icon" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => onRemoveCard(card.id)}>
