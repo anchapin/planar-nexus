@@ -23,10 +23,107 @@ export interface PublicGameInfo {
 
 const STORAGE_KEY = 'planar_nexus_public_lobbies';
 const REFRESH_INTERVAL = 10000; // 10 seconds
+const DEMO_DATA_KEY = 'planar_nexus_demo_data_added';
 
 class PublicLobbyBrowser {
   private listeners: Set<(games: PublicGameInfo[]) => void> = new Set();
   private refreshTimer: NodeJS.Timeout | null = null;
+
+  constructor() {
+    // Add demo games on first load if none exist
+    this.initializeDemoGames();
+  }
+
+  /**
+   * Initialize demo games for testing the browser UI
+   */
+  private initializeDemoGames(): void {
+    const demoAdded = localStorage.getItem(DEMO_DATA_KEY);
+    const existingGames = this.getAllStoredGames();
+
+    if (!demoAdded && existingGames.length === 0) {
+      const now = Date.now();
+      const demoGames: PublicGameInfo[] = [
+        {
+          id: `demo_${now}_1`,
+          gameCode: 'ABC123',
+          name: 'Casual Commander Night',
+          hostName: 'CommanderMaster',
+          format: 'commander',
+          maxPlayers: '4',
+          currentPlayers: 2,
+          status: 'waiting',
+          isPublic: true,
+          hasPassword: false,
+          allowSpectators: true,
+          createdAt: now - 5 * 60 * 1000, // 5 minutes ago
+        },
+        {
+          id: `demo_${now}_2`,
+          gameCode: 'XYZ789',
+          name: 'cEDH Practice',
+          hostName: 'SpikePlayer',
+          format: 'commander',
+          maxPlayers: '4',
+          currentPlayers: 3,
+          status: 'waiting',
+          isPublic: true,
+          hasPassword: true,
+          allowSpectators: false,
+          createdAt: now - 15 * 60 * 1000, // 15 minutes ago
+        },
+        {
+          id: `demo_${now}_3`,
+          gameCode: 'MOD456',
+          name: 'Modern Mayhem',
+          hostName: 'ModernFan',
+          format: 'modern',
+          maxPlayers: '2',
+          currentPlayers: 1,
+          status: 'waiting',
+          isPublic: true,
+          hasPassword: false,
+          allowSpectators: true,
+          createdAt: now - 2 * 60 * 1000, // 2 minutes ago
+        },
+        {
+          id: `demo_${now}_4`,
+          gameCode: 'STD789',
+          name: 'Standard Showdown',
+          hostName: 'NewPlayer123',
+          format: 'standard',
+          maxPlayers: '2',
+          currentPlayers: 1,
+          status: 'waiting',
+          isPublic: true,
+          hasPassword: false,
+          allowSpectators: false,
+          createdAt: now - 30 * 60 * 1000, // 30 minutes ago
+        },
+        {
+          id: `demo_${now}_5`,
+          gameCode: 'PIO234',
+          name: 'Pioneer Party',
+          hostName: 'PioneerPete',
+          format: 'pioneer',
+          maxPlayers: '4',
+          currentPlayers: 1,
+          status: 'waiting',
+          isPublic: true,
+          hasPassword: false,
+          allowSpectators: true,
+          createdAt: now - 8 * 60 * 1000, // 8 minutes ago
+        },
+      ];
+
+      demoGames.forEach(game => {
+        existingGames.push(game);
+      });
+
+      this.saveGames(existingGames);
+      localStorage.setItem(DEMO_DATA_KEY, 'true');
+    }
+  }
 
   /**
    * Get all public games from the registry
@@ -169,6 +266,25 @@ class PublicLobbyBrowser {
       this.saveGames(filtered);
       this.notifyListeners();
     }
+  }
+
+  /**
+   * Clear all demo data (useful for testing)
+   */
+  clearDemoData(): void {
+    localStorage.removeItem(DEMO_DATA_KEY);
+    const games = this.getAllStoredGames().filter(g => !g.id.startsWith('demo_'));
+    this.saveGames(games);
+    this.notifyListeners();
+  }
+
+  /**
+   * Reset all games (clear everything including demo data)
+   */
+  resetAllGames(): void {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(DEMO_DATA_KEY);
+    this.notifyListeners();
   }
 
   /**
