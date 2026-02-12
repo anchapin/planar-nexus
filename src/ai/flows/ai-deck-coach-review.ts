@@ -20,8 +20,11 @@ const DeckReviewInputSchema = z.object({
   format: z.string().describe('The Magic: The Gathering format for this deck (e.g., "Commander", "Standard", "Modern").'),
   retryContext: z.string().optional().describe("Context from a previous failed attempt, explaining the error to the AI so it can correct it.")
 });
+
+// This is the schema for what the flow accepts externally. It doesn't include the internal retryContext.
+const ExternalDeckReviewInputSchema = DeckReviewInputSchema.omit({ retryContext: true });
 // External input type does not include retryContext
-export type DeckReviewInput = z.infer<typeof DeckReviewInputSchema.omit<{ retryContext: true })>;
+export type DeckReviewInput = z.infer<typeof ExternalDeckReviewInputSchema>;
 
 
 const DeckReviewOutputSchema = z.object({
@@ -75,7 +78,7 @@ You previously generated a response that had an error. Please pay close attentio
 const deckReviewFlow = ai.defineFlow(
   {
     name: 'deckReviewFlow',
-    inputSchema: DeckReviewInputSchema.omit({ retryContext: true }),
+    inputSchema: ExternalDeckReviewInputSchema,
     outputSchema: DeckReviewOutputSchema,
   },
   async (input) => {
