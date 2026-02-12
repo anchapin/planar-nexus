@@ -47,6 +47,8 @@ import {
   phaseIn,
   addPowerModifier,
   addToughnessModifier,
+  setPowerModifier,
+  setToughnessModifier,
   clearSummoningSickness,
   hasCounter,
   getCounterCount,

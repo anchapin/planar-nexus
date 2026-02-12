@@ -407,7 +407,7 @@ export function isDoubleFaced(card: CardInstance): boolean {
     card.cardData.layout === "transform" ||
     card.cardData.layout === "modal_dfc" ||
     card.cardData.layout === "reversible_card" ||
-    (card.cardData.card_faces && card.cardData.card_faces.length > 1)
+    Boolean(card.cardData.card_faces && card.cardData.card_faces.length > 1)
   );
 }
 
