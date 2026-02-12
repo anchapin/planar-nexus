@@ -45,13 +45,14 @@ export async function reviewDeck(
 
 const deckReviewPrompt = ai.definePrompt({
   name: 'deckReviewPrompt',
+  model: 'googleai/gemini-pro',
   input: { schema: DeckReviewInputSchema },
   output: { schema: DeckReviewOutputSchema },
   prompt: `You are an expert Magic: The Gathering deck builder and coach. Your response will be validated for correctness by an automated tool. If your response fails validation, you will be asked to try again with specific feedback on your errors.
 
 {{#if retryContext}}
 **CRITICAL: YOUR PREVIOUS ATTEMPT FAILED VALIDATION. YOU MUST CORRECT THE FOLLOWING ERRORS AND TRY AGAIN:**
-{{{retryContext}}}
+- {{{retryContext}}}
 ---
 Do not repeat these mistakes. For example, if the feedback indicates a card is not legal, you MUST replace it with a different card that IS legal in the '{{{format}}}' format and serves a similar strategic purpose. If the feedback indicates the number of cards to add and remove do not match, you MUST correct the quantities to be equal.
 {{/if}}
@@ -151,24 +152,20 @@ const deckReviewFlow = ai.defineFlow(
       }
 
       if (validOptions.length > 0) {
-        // We have some good suggestions. Return them.
         return {
           ...output,
           deckOptions: validOptions,
         };
       }
 
-      // If we're here, ALL options were invalid.
       if (validationErrors.length > 0) {
         lastError = `Your suggestions had the following errors:\n- ${validationErrors.join('\n- ')}`;
       } else {
         lastError = 'You provided deck options, but none of them were valid for an unknown reason. Please try again, paying close attention to all validation rules.'
       }
       
-      // Loop will continue with the new `lastError`.
     }
 
-    // If we exit the loop, it means we failed after maxAttempts.
-    throw new Error(`The AI coach failed to generate valid deck suggestions after multiple attempts. The last error was: ${lastError}`);
+    throw new Error(`The AI coach failed to generate valid deck suggestions after ${maxAttempts} attempts. The last error was: ${lastError}`);
   }
 );
