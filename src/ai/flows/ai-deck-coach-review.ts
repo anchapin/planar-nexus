@@ -97,7 +97,7 @@ const deckReviewFlow = ai.defineFlow(
         retryContext: lastError || undefined,
       });
 
-      if (!output || !output.deckOptions || output.deckOptions.length < 1) {
+      if (!output || !Array.isArray(output.deckOptions) || output.deckOptions.length < 1) {
         lastError = 'Your response was invalid. Please adhere to the output schema and provide at least two deckOptions.';
         continue;
       }
@@ -105,32 +105,38 @@ const deckReviewFlow = ai.defineFlow(
       const validOptions = [];
       const validationErrors = [];
 
-      // Defensively filter the options array for any null/undefined entries from the AI.
-      const filteredDeckOptions = (output.deckOptions || []).filter(opt => opt);
+      const filteredDeckOptions = output.deckOptions.filter(opt => opt && typeof opt === 'object');
 
       for (const option of filteredDeckOptions) {
         let currentOptionIsValid = true;
         let currentOptionError = '';
 
-        // Defensively filter the card arrays for any null/undefined entries or malformed objects.
-        const sanitizedCardsToAdd = (option.cardsToAdd || []).filter(c => c && c.name && typeof c.quantity === 'number');
-        const sanitizedCardsToRemove = (option.cardsToRemove || []).filter(c => c && c.name && typeof c.quantity === 'number');
+        const cardIsValid = (c: any): c is { name: string; quantity: number } => {
+          if (!c || typeof c !== 'object') return false;
+          if (typeof c.name !== 'string' || c.name.trim() === '') return false;
+          if (typeof c.quantity !== 'number') return false;
+          return true;
+        };
         
-        if (sanitizedCardsToAdd.length !== (option.cardsToAdd || []).length) {
+        const cardsToAddRaw = Array.isArray(option.cardsToAdd) ? option.cardsToAdd : [];
+        const cardsToRemoveRaw = Array.isArray(option.cardsToRemove) ? option.cardsToRemove : [];
+
+        const sanitizedCardsToAdd = cardsToAddRaw.filter(cardIsValid);
+        const sanitizedCardsToRemove = cardsToRemoveRaw.filter(cardIsValid);
+        
+        if (sanitizedCardsToAdd.length !== cardsToAddRaw.length) {
           currentOptionIsValid = false;
-          currentOptionError = `For option "${option.title || 'Untitled'}", your 'cardsToAdd' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
+          currentOptionError = `For option "${option.title || 'Untitled'}", your 'cardsToAdd' list contained invalid entries. Each card must be an object with a non-empty 'name' (string) and a 'quantity' (number). Please correct the list.`;
         }
         
-        if (sanitizedCardsToRemove.length !== (option.cardsToRemove || []).length) {
+        if (sanitizedCardsToRemove.length !== cardsToRemoveRaw.length) {
           currentOptionIsValid = false;
-          currentOptionError += (currentOptionError ? ' ' : '') + `For option "${option.title || 'Untitled'}", your 'cardsToRemove' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
+          currentOptionError += (currentOptionError ? ' ' : '') + `For option "${option.title || 'Untitled'}", your 'cardsToRemove' list contained invalid entries. Each card must be an object with a non-empty 'name' (string) and a 'quantity' (number). Please correct the list.`;
         }
 
-        if (sanitizedCardsToAdd.length === 0 && sanitizedCardsToRemove.length === 0) {
-            if (currentOptionIsValid) { // Only flag this if it wasn't already invalid.
-              currentOptionIsValid = false;
-              currentOptionError = `For option "${option.title || 'Untitled'}", you provided no cards to add or remove. Every option must include at least one change.`;
-            }
+        if (currentOptionIsValid && sanitizedCardsToAdd.length === 0 && sanitizedCardsToRemove.length === 0) {
+            currentOptionIsValid = false;
+            currentOptionError = `For option "${option.title || 'Untitled'}", you provided no cards to add or remove. Every option must include at least one change.`;
         }
 
         if (currentOptionIsValid) {
