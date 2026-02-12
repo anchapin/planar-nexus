@@ -96,64 +96,80 @@ export async function validateCardLegality(
     return { found: [], notFound: [], illegal: [] };
   }
 
-  // Paranoid filter to ensure we don't process malformed data, even if the caller should have sanitized it.
-  const validCards = cards.filter(c => c && typeof c.name === 'string' && c.name.trim() !== '' && typeof c.quantity === 'number');
-  if (validCards.length === 0) {
-    return { found: [], notFound: cards.map(c => c?.name || 'Unknown Card'), illegal: [] };
+  // 1. Sanitize and aggregate input
+  const cardRequestMap = new Map<string, { originalName: string; quantity: number }>();
+  const malformedInputs: string[] = [];
+
+  for (const card of cards) {
+    if (!card || typeof card.name !== 'string' || card.name.trim() === '' || typeof card.quantity !== 'number' || card.quantity <= 0) {
+      malformedInputs.push(card?.name || 'Malformed Input');
+      continue;
+    }
+    const lowerCaseName = card.name.toLowerCase();
+    const existing = cardRequestMap.get(lowerCaseName);
+    if (existing) {
+      existing.quantity += card.quantity;
+    } else {
+      cardRequestMap.set(lowerCaseName, { originalName: card.name, quantity: card.quantity });
+    }
   }
 
-  const identifiersToFetch = validCards.map(c => ({ name: c.name }));
-  const counts = new Map(validCards.map(c => [c.name.toLowerCase(), c.quantity]));
+  if (cardRequestMap.size === 0) {
+    return { found: [], notFound: malformedInputs, illegal: [] };
+  }
+  
+  // 2. Fetch from Scryfall
+  const identifiersToFetch = Array.from(cardRequestMap.values()).map(c => ({ name: c.originalName }));
 
   try {
     const res = await fetch(`https://api.scryfall.com/cards/collection`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifiers: identifiersToFetch }),
-      next: { revalidate: 3600 * 24 }, // Cache for a day
+      next: { revalidate: 3600 * 24 },
     });
 
     if (!res.ok) {
       console.error(`Scryfall API error on collection fetch: ${res.status}`);
-      return { found: [], notFound: validCards.map(c => c.name), illegal: [] };
+      return { found: [], notFound: identifiersToFetch.map(c => c.name), illegal: [] };
     }
 
     const collection = await res.json();
     
+    // 3. Process response
     const found: DeckCard[] = [];
     const illegal: string[] = [];
-    const foundNames = new Set<string>();
+    const notFoundNames = new Set(cardRequestMap.keys());
 
     if (collection?.data && Array.isArray(collection.data)) {
-      for (const card of collection.data as ScryfallCard[]) {
-        // Super defensive check against malformed Scryfall responses.
-        if (!card || typeof card.name !== 'string' || !card.name) continue;
+      for (const scryfallCard of collection.data as ScryfallCard[]) {
+        // Super defensive check
+        if (!scryfallCard || typeof scryfallCard.name !== 'string' || !scryfallCard.name) {
+          continue;
+        }
 
-        const lowerCaseName = card.name.toLowerCase();
-        const count = counts.get(lowerCaseName);
-        
-        if (count === undefined) continue;
+        const lowerCaseName = scryfallCard.name.toLowerCase();
+        const requestDetails = cardRequestMap.get(lowerCaseName);
 
-        foundNames.add(lowerCaseName);
-        const isLegal = card.legalities?.[format] === 'legal';
-        if (isLegal) {
-          found.push({ ...card, count });
-        } else {
-          illegal.push(card.name);
+        if (requestDetails) {
+          notFoundNames.delete(lowerCaseName);
+          const isLegal = scryfallCard.legalities?.[format] === 'legal';
+          if (isLegal) {
+            found.push({ ...scryfallCard, count: requestDetails.quantity });
+          } else {
+            illegal.push(requestDetails.originalName);
+          }
         }
       }
     }
     
-    // Reliably determine notFound cards by comparing the input list with the found names.
-    const notFound = validCards
-        .filter(c => !foundNames.has(c.name.toLowerCase()))
-        .map(c => c.name);
+    const notFound = Array.from(notFoundNames).map(name => cardRequestMap.get(name)!.originalName);
     
-    return { found, notFound, illegal };
+    return { found, notFound: [...notFound, ...malformedInputs], illegal };
 
   } catch (error) {
     console.error('Failed to fetch or process from Scryfall API', error);
-    return { found: [], notFound: validCards.map(c => c.name), illegal: [] };
+    return { found: [], notFound: identifiersToFetch.map(c => c.name), illegal: [] };
   }
 }
 
@@ -167,33 +183,29 @@ export async function importDecklist(
   }
 
   const cardDetails: { name: string; quantity: number }[] = [];
-  const unprocessedLines: string[] = [];
-
+  
   for (const line of lines) {
-    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(\S.*)/);
+    // Improved regex to better handle various decklist formats
+    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
     if (match) {
       const name = match[2]?.trim();
       const count = parseInt(match[1] || '1', 10);
-      if (name) {
+      // Ensure name is not just tokens like "Sideboard"
+      if (name && !/^\/\//.test(name) && name.toLowerCase() !== 'sideboard') {
         cardDetails.push({ name, quantity: count });
-      } else {
-        unprocessedLines.push(line);
       }
-    } else {
-      unprocessedLines.push(line);
     }
   }
 
   if (cardDetails.length === 0) {
-    return { found: [], notFound: unprocessedLines, illegal: [] };
+    // If no parsable card lines were found, return all original lines as "not found"
+    return { found: [], notFound: lines, illegal: [] };
   }
   
+  // `validateCardLegality` is now the single source of truth for validation.
   const { found, notFound, illegal } = await validateCardLegality(cardDetails, format || 'commander');
 
-  // Combine notFound from validation with any lines that failed to parse initially.
-  const allNotFound = [...unprocessedLines, ...notFound];
-
-  // Aggregate quantities for found cards
+  // Aggregate found cards by their Scryfall ID to combine different prints of the same card.
   const aggregatedFound = Array.from(
       found.reduce((acc, card) => {
         const existing = acc.get(card.id);
@@ -206,5 +218,5 @@ export async function importDecklist(
       }, new Map<string, DeckCard>()).values()
   );
 
-  return { found: aggregatedFound, notFound: allNotFound, illegal };
+  return { found: aggregatedFound, notFound, illegal };
 }
