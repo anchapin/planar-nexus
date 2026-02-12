@@ -109,26 +109,23 @@ const deckReviewFlow = ai.defineFlow(
         let currentOptionIsValid = true;
         let currentOptionError = '';
 
-        let cardsToAddFromAI = option.cardsToAdd || [];
-        let cardsToRemoveFromAI = option.cardsToRemove || [];
+        const originalCardsToAdd = option.cardsToAdd || [];
+        const originalCardsToRemove = option.cardsToRemove || [];
 
         // Sanitize arrays from AI to prevent crashes on malformed data.
-        const sanitizedCardsToAdd = cardsToAddFromAI.filter(c => c && c.name && typeof c.quantity === 'number');
-        if (sanitizedCardsToAdd.length !== cardsToAddFromAI.length) {
+        const sanitizedCardsToAdd = originalCardsToAdd.filter(c => c && c.name && typeof c.quantity === 'number');
+        if (sanitizedCardsToAdd.length !== originalCardsToAdd.length) {
           currentOptionIsValid = false;
           currentOptionError = `For option "${option.title}", your 'cardsToAdd' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
         }
-        cardsToAddFromAI = sanitizedCardsToAdd;
 
-        const sanitizedCardsToRemove = cardsToRemoveFromAI.filter(c => c && c.name && typeof c.quantity === 'number');
-        if (sanitizedCardsToRemove.length !== cardsToRemoveFromAI.length) {
+        const sanitizedCardsToRemove = originalCardsToRemove.filter(c => c && c.name && typeof c.quantity === 'number');
+        if (sanitizedCardsToRemove.length !== originalCardsToRemove.length) {
           currentOptionIsValid = false;
           currentOptionError += (currentOptionError ? ' ' : '') + `For option "${option.title}", your 'cardsToRemove' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
         }
-        cardsToRemoveFromAI = sanitizedCardsToRemove;
 
-
-        if (cardsToAddFromAI.length === 0 && cardsToRemoveFromAI.length === 0) {
+        if (sanitizedCardsToAdd.length === 0 && sanitizedCardsToRemove.length === 0) {
             if (currentOptionIsValid) { // Only flag this if it wasn't already invalid.
               currentOptionIsValid = false;
               currentOptionError = `For option "${option.title}", you provided no cards to add or remove. Every option must include at least one change.`;
@@ -136,16 +133,16 @@ const deckReviewFlow = ai.defineFlow(
         }
 
         if (currentOptionIsValid) {
-            const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
-            const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
+            const intendedAddCount = sanitizedCardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
+            const intendedRemoveCount = sanitizedCardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
             if (intendedAddCount !== intendedRemoveCount) {
               currentOptionIsValid = false;
               currentOptionError = `For option "${option.title}", you suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}. These counts must be exactly equal.`;
             }
         }
 
-        if (currentOptionIsValid && cardsToAddFromAI.length > 0) {
-            const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
+        if (currentOptionIsValid && sanitizedCardsToAdd.length > 0) {
+            const decklistForImport = sanitizedCardsToAdd.map(c => `${c.quantity} ${c.name}`).join('\n');
             const importResult = await importDecklist(decklistForImport, input.format);
             
             const errors = [];
@@ -163,7 +160,11 @@ const deckReviewFlow = ai.defineFlow(
         }
 
         if (currentOptionIsValid) {
-          validOptions.push(option);
+          validOptions.push({
+            ...option,
+            cardsToAdd: sanitizedCardsToAdd,
+            cardsToRemove: sanitizedCardsToRemove,
+          });
         } else {
           validationErrors.push(currentOptionError);
         }
