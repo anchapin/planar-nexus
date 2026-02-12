@@ -31,7 +31,7 @@ const DeckReviewOutputSchema = z.object({
         suggestedCard: z.string().optional().describe("The card to be added or used as a replacement."),
         reason: z.string().describe("The justification for this specific card change within the context of the option's strategy."),
     })).describe("A list of specific card changes for this deck option.")
-  })).describe("Alternative versions of the deck, each with a specific strategic focus and a list of card changes.")
+  })).describe("Alternative versions of the deck, each with a specific strategic focus and a list of card changes.").default([])
 });
 export type DeckReviewOutput = z.infer<typeof DeckReviewOutputSchema>;
 
@@ -45,7 +45,7 @@ const deckReviewPrompt = ai.definePrompt({
   name: 'deckReviewPrompt',
   input: { schema: DeckReviewInputSchema },
   output: { schema: DeckReviewOutputSchema },
-  prompt: `You are an expert Magic: The Gathering deck builder and coach. Your task is to provide a strategic analysis of the provided decklist and then propose at least two distinct, improved versions.
+  prompt: `You are an expert Magic: The Gathering deck builder and coach. Your task is to provide a strategic analysis of the provided decklist and then propose distinct, improved versions.
 
 **Analysis & Deck Improvements**
 
@@ -62,15 +62,7 @@ Second, based on your analysis, propose at least two distinct \`deckOptions\`. E
 For each \`deckOption\`, you must provide:
 1.  A short, descriptive \`title\`.
 2.  A brief \`description\` explaining the strategic goal.
-3.  A list of \`changes\`. For each change, specify the \`action\`, the cards involved, and a clear \`reason\`.
-
-**JSON Output Rules:**
-- Your entire output MUST be a single JSON object that validates against the output schema.
-- For the \`changes\` array:
-  - If \`action\` is 'add', you MUST provide \`suggestedCard\`. \`cardToChange\` should be omitted.
-  - If \`action\` is 'remove', you MUST provide \`cardToChange\`. \`suggestedCard\` should be omitted.
-  - If \`action\` is 'replace', you MUST provide both \`cardToChange\` and \`suggestedCard\`.
-- To maintain deck size, try to balance additions and removals within each option, unless the format allows for flexibility.`,
+3.  A list of specific card \`changes\` with a clear \`reason\` for each. When suggesting changes, balance additions and removals to maintain deck size. Your entire output must be a valid JSON object.`,
 });
 
 const deckReviewFlow = ai.defineFlow(
