@@ -378,13 +378,13 @@ export function HandDisplayDemo() {
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">onCardSelect?: (cardIds: string[]) => void</code>
+                    <code className="bg-muted px-2 py-1 rounded">onCardSelect?: (cardIds: string[]) {'>'} void</code>
                     <p className="text-muted-foreground mt-1">
                       Callback when card selection changes (multi-select)
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">onCardClick?: (cardId: string) => void</code>
+                    <code className="bg-muted px-2 py-1 rounded">onCardClick?: (cardId: string) {'>'} void</code>
                     <p className="text-muted-foreground mt-1">
                       Callback when a card is clicked
                     </p>
