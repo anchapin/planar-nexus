@@ -21,9 +21,7 @@ const DeckReviewInputSchema = z.object({
   retryContext: z.string().optional().describe("Context from a previous failed attempt, explaining the error to the AI so it can correct it.")
 });
 
-// This is the schema for what the flow accepts externally. It doesn't include the internal retryContext.
 const ExternalDeckReviewInputSchema = DeckReviewInputSchema.omit({ retryContext: true });
-// External input type does not include retryContext
 export type DeckReviewInput = z.infer<typeof ExternalDeckReviewInputSchema>;
 
 
@@ -34,7 +32,7 @@ const DeckReviewOutputSchema = z.object({
     description: z.string().describe("A detailed explanation of this strategic option, including the core idea behind the changes."),
     cardsToAdd: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to add, with name and quantity."),
     cardsToRemove: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to remove, with name and quantity.")
-  })).min(2, "You must provide at least two deck options.").describe("At least two alternative versions of the deck, each with a specific strategic focus.")
+  })).describe("At least two alternative versions of the deck, each with a specific strategic focus.")
 });
 export type DeckReviewOutput = z.infer<typeof DeckReviewOutputSchema>;
 
@@ -101,31 +99,31 @@ const deckReviewFlow = ai.defineFlow(
         continue;
       }
       
-      if (!output.deckOptions || output.deckOptions.length < 2) {
-        lastError = 'You did not provide at least two valid deck options. Please generate two complete options.';
-        continue; // Retry
-      }
+      const validOptions = [];
+      const validationErrors = [];
 
-      let allOptionsValid = true;
       for (const option of output.deckOptions) {
+        let currentOptionIsValid = true;
+        let currentOptionError = '';
+
         const cardsToAddFromAI = option.cardsToAdd || [];
         const cardsToRemoveFromAI = option.cardsToRemove || [];
 
         if (cardsToAddFromAI.length === 0 && cardsToRemoveFromAI.length === 0) {
-            allOptionsValid = false;
-            lastError = `For option "${option.title}", you provided no cards to add or remove. Please provide changes.`;
-            break;
+            currentOptionIsValid = false;
+            currentOptionError = `For option "${option.title}", you provided no cards to add or remove. Please provide at least one change.`;
         }
 
-        const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
-        const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
-        if (intendedAddCount !== intendedRemoveCount) {
-          allOptionsValid = false;
-          lastError = `For option "${option.title}", you suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}. The counts must be equal to maintain deck size.`;
-          break;
+        if (currentOptionIsValid) {
+            const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
+            const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
+            if (intendedAddCount !== intendedRemoveCount) {
+              currentOptionIsValid = false;
+              currentOptionError = `For option "${option.title}", you suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}. The counts must be equal.`;
+            }
         }
 
-        if (cardsToAddFromAI.length > 0) {
+        if (currentOptionIsValid && cardsToAddFromAI.length > 0) {
             const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
             const importResult = await importDecklist(decklistForImport, input.format);
             
@@ -134,21 +132,40 @@ const deckReviewFlow = ai.defineFlow(
                 errors.push(`I could not find these cards: ${importResult.notFound.join(', ')}.`);
             }
             if (importResult.illegal.length > 0) {
-                errors.push(`These cards are not legal in the ${input.format} format: ${importResult.illegal.join(', ')}.`);
+                errors.push(`These cards are not legal in ${input.format}: ${importResult.illegal.join(', ')}.`);
             }
 
             if (errors.length > 0) {
-                allOptionsValid = false;
-                lastError = `For option "${option.title}", your card suggestions have errors: ${errors.join(' ')} Please suggest only valid, legal cards for the ${input.format} format.`;
-                break;
+                currentOptionIsValid = false;
+                currentOptionError = `For option "${option.title}", your card suggestions have errors: ${errors.join(' ')} Please suggest only valid, legal cards for the ${input.format} format.`;
             }
+        }
+
+        if (currentOptionIsValid) {
+          validOptions.push(option);
+        } else {
+          validationErrors.push(currentOptionError);
         }
       }
 
-      if (allOptionsValid) {
-        return output; // Success!
+      if (validOptions.length > 0) {
+        // We have some good suggestions. Return them, even if it's just one.
+        return {
+          ...output,
+          deckOptions: validOptions,
+        };
       }
-      // If not valid, the loop will continue with the new `lastError`.
+
+      // If we're here, ALL options were invalid (or no options were provided).
+      if (validationErrors.length > 0) {
+        lastError = `None of your deck suggestions were valid. Please fix these errors and try again: ${validationErrors.join(' | ')}`;
+      } else if (!output.deckOptions || output.deckOptions.length === 0) {
+        lastError = "You did not suggest any deck options. Please provide at least two distinct options as requested in the prompt."
+      } else {
+        lastError = 'You provided deck options, but none of them were valid for an unknown reason. Please try again, paying close attention to all instructions.'
+      }
+      
+      // Loop will continue with the new `lastError`.
     }
 
     // If we exit the loop, it means we failed after maxAttempts.
