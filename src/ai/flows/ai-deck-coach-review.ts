@@ -34,7 +34,7 @@ const DeckReviewOutputSchema = z.object({
     description: z.string().describe("A detailed explanation of this strategic option, including the core idea behind the changes."),
     cardsToAdd: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to add, with name and quantity."),
     cardsToRemove: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to remove, with name and quantity.")
-  })).describe("At least two alternative versions of the deck, each with a specific strategic focus.")
+  })).min(2, "You must provide at least two deck options.").describe("At least two alternative versions of the deck, each with a specific strategic focus.")
 });
 export type DeckReviewOutput = z.infer<typeof DeckReviewOutputSchema>;
 
@@ -57,9 +57,10 @@ const deckReviewPrompt = ai.definePrompt({
 {{{decklist}}}
 
 {{#if retryContext}}
-**IMPORTANT - PLEASE CORRECT YOUR PREVIOUS MISTAKE:**
-You previously generated a response that had an error. Please pay close attention to the following feedback and generate a new, valid response.
+**IMPORTANT - YOU MADE A MISTAKE, PLEASE CORRECT IT:**
+You previously generated a response that had an error. Please pay close attention to the following feedback and generate a new, valid response that corrects the mistake. Do not repeat the error.
 *Error Feedback:* {{{retryContext}}}
+For example, if the feedback indicates a card is not legal, you MUST replace it with a different card that IS legal in the '{{{format}}}' format and serves a similar strategic purpose. If the feedback indicates the number of cards to add and remove do not match, you MUST correct the quantities to be equal.
 {{/if}}
 
 **Your tasks:**
@@ -72,7 +73,8 @@ You previously generated a response that had an error. Please pay close attentio
     *   Provide a \`cardsToRemove\` array with the exact card names and quantities to remove from the original list.
     *   Ensure all card names are spelled correctly.
     *   **CRITICAL RULE 1: All cards in \`cardsToAdd\` MUST be legal in the '{{{format}}}' format. This is non-negotiable. Double-check legality. For example, 'Thalia, Guardian of Thraben' is NOT Standard legal.**
-    *   **CRITICAL RULE 2: The total quantity of cards in \`cardsToAdd\` MUST EXACTLY equal the total quantity of cards in \`cardsToRemove\` to maintain the deck's total card count.** For example, if you remove 3 cards, you must add exactly 3 cards. This is essential for the deck to remain valid.`,
+    *   **CRITICAL RULE 2: The total quantity of cards in \`cardsToAdd\` MUST EXACTLY equal the total quantity of cards in \`cardsToRemove\` to maintain the deck's total card count.** For example, if you remove 3 cards, you must add exactly 3 cards. This is essential for the deck to remain valid.
+    *   **CRITICAL RULE 3: Each \`deckOption\` MUST suggest at least one card to add or one card to remove. Do not provide options with no changes.**`,
 });
 
 const deckReviewFlow = ai.defineFlow(
@@ -94,7 +96,12 @@ const deckReviewFlow = ai.defineFlow(
         retryContext: lastError || undefined,
       });
 
-      if (!output || !output.deckOptions || output.deckOptions.length < 2) {
+      if (!output) {
+        lastError = 'You did not return a valid response. Please adhere to the output schema.';
+        continue;
+      }
+      
+      if (!output.deckOptions || output.deckOptions.length < 2) {
         lastError = 'You did not provide at least two valid deck options. Please generate two complete options.';
         continue; // Retry
       }
