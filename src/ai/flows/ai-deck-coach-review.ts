@@ -30,8 +30,8 @@ const DeckReviewOutputSchema = z.object({
   deckOptions: z.array(z.object({
     title: z.string().describe("A short, descriptive title for this deck version (e.g., 'Anti-Aggro Package', 'Control Counter')."),
     description: z.string().describe("A detailed explanation of this strategic option, including the core idea behind the changes."),
-    cardsToAdd: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to add, with name and quantity."),
-    cardsToRemove: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to remove, with name and quantity.")
+    cardsToAdd: z.array(z.object({ name: z.string(), quantity: z.number() })).optional().describe("A list of cards to add, with name and quantity."),
+    cardsToRemove: z.array(z.object({ name: z.string(), quantity: z.number() })).optional().describe("A list of cards to remove, with name and quantity.")
   })).describe("At least two alternative versions of the deck, each with a specific strategic focus.")
 });
 export type DeckReviewOutput = z.infer<typeof DeckReviewOutputSchema>;
@@ -109,12 +109,30 @@ const deckReviewFlow = ai.defineFlow(
         let currentOptionIsValid = true;
         let currentOptionError = '';
 
-        const cardsToAddFromAI = option.cardsToAdd || [];
-        const cardsToRemoveFromAI = option.cardsToRemove || [];
+        let cardsToAddFromAI = option.cardsToAdd || [];
+        let cardsToRemoveFromAI = option.cardsToRemove || [];
+
+        // Sanitize arrays from AI to prevent crashes on malformed data.
+        const sanitizedCardsToAdd = cardsToAddFromAI.filter(c => c && c.name && typeof c.quantity === 'number');
+        if (sanitizedCardsToAdd.length !== cardsToAddFromAI.length) {
+          currentOptionIsValid = false;
+          currentOptionError = `For option "${option.title}", your 'cardsToAdd' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
+        }
+        cardsToAddFromAI = sanitizedCardsToAdd;
+
+        const sanitizedCardsToRemove = cardsToRemoveFromAI.filter(c => c && c.name && typeof c.quantity === 'number');
+        if (sanitizedCardsToRemove.length !== cardsToRemoveFromAI.length) {
+          currentOptionIsValid = false;
+          currentOptionError += (currentOptionError ? ' ' : '') + `For option "${option.title}", your 'cardsToRemove' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
+        }
+        cardsToRemoveFromAI = sanitizedCardsToRemove;
+
 
         if (cardsToAddFromAI.length === 0 && cardsToRemoveFromAI.length === 0) {
-            currentOptionIsValid = false;
-            currentOptionError = `For option "${option.title}", you provided no cards to add or remove. Every option must include at least one change.`;
+            if (currentOptionIsValid) { // Only flag this if it wasn't already invalid.
+              currentOptionIsValid = false;
+              currentOptionError = `For option "${option.title}", you provided no cards to add or remove. Every option must include at least one change.`;
+            }
         }
 
         if (currentOptionIsValid) {
