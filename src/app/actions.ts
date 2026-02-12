@@ -97,21 +97,20 @@ export async function importDecklist(
     return { found: [], notFound: [], illegal: [] };
   }
 
-  // 1. Parse input
-  const cardRequests = new Map<string, { originalName: string; count: number }>();
+  // 1. Parse input to get identifiers and counts
+  const counts = new Map<string, number>(); // lowercase name -> count
+  const identifiersToFetch: { name: string }[] = [];
   const unprocessedLines: string[] = [];
+
   for (const line of lines) {
-    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
+    // This regex is safer and ensures the captured name is not empty.
+    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(\S.*)/);
     if (match) {
       const name = match[2]?.trim();
       const count = parseInt(match[1] || '1', 10);
       if (name) {
         const lowerCaseName = name.toLowerCase();
-        const existing = cardRequests.get(lowerCaseName);
-        cardRequests.set(lowerCaseName, {
-          originalName: name,
-          count: (existing?.count || 0) + count,
-        });
+        counts.set(lowerCaseName, (counts.get(lowerCaseName) || 0) + count);
       } else {
         unprocessedLines.push(line);
       }
@@ -120,11 +119,16 @@ export async function importDecklist(
     }
   }
 
-  const identifiersToFetch = Array.from(cardRequests.keys()).map(name => ({ name }));
+  for (const name of counts.keys()) {
+    // Scryfall fuzzy matches, so we send the original name casing if possible, but map by lowercase.
+    // We're just sending the lowercase keys for simplicity here.
+    identifiersToFetch.push({ name });
+  }
+
   if (identifiersToFetch.length === 0) {
     return { found: [], notFound: unprocessedLines, illegal: [] };
   }
-
+  
   // 2. Call Scryfall API
   try {
     const res = await fetch(`https://api.scryfall.com/cards/collection`, {
@@ -136,47 +140,51 @@ export async function importDecklist(
 
     if (!res.ok) {
       console.error(`Scryfall API error: ${res.status}`);
-      return { found: [], notFound: Array.from(cardRequests.values()).map(req => req.originalName), illegal: [] };
+      return { found: [], notFound: Array.from(counts.keys()), illegal: [] };
     }
 
     const collection = await res.json();
     
     // 3. Process the response robustly
-    const foundCards: DeckCard[] = [];
-    const illegalCards: string[] = [];
-    const notFoundCards: string[] = [];
+    const found: DeckCard[] = [];
+    const illegal: string[] = [];
 
-    const scryfallFoundMap = new Map<string, ScryfallCard>();
-    if (collection.data && Array.isArray(collection.data)) {
+    // Process found cards from collection.data
+    if (collection?.data && Array.isArray(collection.data)) {
         for (const card of collection.data) {
-            if (card && card.name) {
-                scryfallFoundMap.set(card.name.toLowerCase(), card);
+            // SUPER defensive check to prevent crashes from malformed API responses.
+            if (!card || typeof card.name !== 'string') continue;
+            
+            const lowerCaseName = card.name.toLowerCase();
+            const count = counts.get(lowerCaseName);
+            
+            // We only care about cards that match something we actually requested.
+            if (count === undefined) continue;
+
+            const isLegal = format ? card.legalities?.[format] === 'legal' : true;
+            if (isLegal) {
+                found.push({ ...card, count });
+            } else {
+                illegal.push(card.name);
             }
         }
     }
 
-    for (const [lowerCaseName, requestInfo] of cardRequests.entries()) {
-        const scryfallCard = scryfallFoundMap.get(lowerCaseName);
-        if (scryfallCard) {
-            const isLegal = format ? scryfallCard.legalities?.[format] === 'legal' : true;
-            if (isLegal) {
-                foundCards.push({ ...scryfallCard, count: requestInfo.count });
-            } else {
-                illegalCards.push(requestInfo.originalName);
-            }
-        } else {
-            notFoundCards.push(requestInfo.originalName);
+    // Process not found cards from collection.not_found
+    const notFound: string[] = [...unprocessedLines];
+    if (collection?.not_found && Array.isArray(collection.not_found)) {
+        for (const item of collection.not_found) {
+            // SUPER defensive check. The item should be an identifier object, e.g., { name: '...' }
+            if (!item || typeof item.name !== 'string') continue;
+            notFound.push(item.name);
         }
     }
     
-    return {
-      found: foundCards,
-      notFound: [...notFoundCards, ...unprocessedLines],
-      illegal: illegalCards,
-    };
+    return { found, notFound, illegal };
 
   } catch (error) {
     console.error('Failed to fetch from Scryfall API', error);
-    return { found: [], notFound: Array.from(cardRequests.values()).map(req => req.originalName), illegal: [] };
+    // On failure, assume all requested cards were not found.
+    return { found: [], notFound: Array.from(counts.keys()), illegal: [] };
   }
 }
