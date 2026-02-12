@@ -5,6 +5,7 @@
 
 import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus } from './multiplayer-types';
 import { generateGameCode, generateLobbyId, generatePlayerId } from './game-code-generator';
+import { publicLobbyBrowser } from './public-lobby-browser';
 
 /**
  * Client-side lobby manager for host game functionality
@@ -48,6 +49,25 @@ class LobbyManager {
     // Store in localStorage for persistence
     this.saveLobbyToStorage();
 
+    // Register public game if applicable
+    if (config.settings.isPublic) {
+      const hostPlayer = lobby.players.find(p => p.id === hostPlayerId);
+      publicLobbyBrowser.registerPublicGame({
+        id: lobby.id,
+        gameCode: lobby.gameCode,
+        name: lobby.name,
+        hostName: hostPlayer?.name || 'Host',
+        format: lobby.format,
+        maxPlayers: lobby.maxPlayers,
+        currentPlayers: lobby.players.length,
+        status: lobby.status === 'in-progress' ? 'in-progress' : 'waiting',
+        isPublic: config.settings.isPublic,
+        hasPassword: !!config.settings.password,
+        allowSpectators: config.settings.allowSpectators,
+        createdAt: lobby.createdAt,
+      });
+    }
+
     return lobby;
   }
 
@@ -84,6 +104,13 @@ class LobbyManager {
     this.currentLobby.players.push(newPlayer);
     this.saveLobbyToStorage();
 
+    // Update public game if applicable
+    if (this.currentLobby.settings.isPublic) {
+      publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
+        currentPlayers: this.currentLobby.players.length,
+      });
+    }
+
     return newPlayer;
   }
 
@@ -101,6 +128,14 @@ class LobbyManager {
 
     if (this.currentLobby.players.length < initialLength) {
       this.saveLobbyToStorage();
+
+      // Update public game if applicable
+      if (this.currentLobby.settings.isPublic) {
+        publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
+          currentPlayers: this.currentLobby.players.length,
+        });
+      }
+
       return true;
     }
 
@@ -148,6 +183,14 @@ class LobbyManager {
 
     this.currentLobby.status = status;
     this.saveLobbyToStorage();
+
+    // Update public game if applicable
+    if (this.currentLobby.settings.isPublic) {
+      publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
+        status: status === 'in-progress' ? 'in-progress' : 'waiting',
+      });
+    }
+
     return true;
   }
 
@@ -182,6 +225,11 @@ class LobbyManager {
    * Close and destroy the current lobby
    */
   closeLobby(): void {
+    // Unregister from public browser if applicable
+    if (this.currentLobby?.settings.isPublic) {
+      publicLobbyBrowser.unregisterPublicGame(this.currentLobby.id);
+    }
+
     this.currentLobby = null;
     this.hostPlayerId = null;
     localStorage.removeItem('planar_nexus_current_lobby');

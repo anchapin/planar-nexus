@@ -1,17 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Gamepad2, Users, Clock } from "lucide-react";
 import Link from "next/link";
-
-const mockGames = [
-    { id: '1', name: "Casual Commander", host: "PlayerOne", players: "3/4", status: "Waiting" },
-    { id: '2', name: "cEDH Practice", host: "SpikeMaster", players: "2/4", status: "Waiting" },
-    { id: '3', name: "Battlecruiser Fun", host: "Timmy", players: "4/4", status: "In Progress" },
-    { id: '4', name: "LFG Modern", host: "Newbie", players: "1/2", status: "Waiting" },
-];
 
 export default function MultiplayerPage() {
   return (
@@ -37,6 +29,20 @@ export default function MultiplayerPage() {
             </Card>
             <Card>
                 <CardHeader>
+                    <CardTitle>Browse Games</CardTitle>
+                    <CardDescription>Find and join public games waiting for players.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <Link href="/multiplayer/browse">
+                        <Button variant="outline" className="w-full">
+                            <Gamepad2 className="w-4 h-4 mr-2" />
+                            Browse Public Games
+                        </Button>
+                    </Link>
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
                     <CardTitle>Join with Code</CardTitle>
                     <CardDescription>Have an invite code? Join a private game directly.</CardDescription>
                 </CardHeader>
@@ -49,42 +55,75 @@ export default function MultiplayerPage() {
         <div className="lg:col-span-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>Game Browser</CardTitle>
-                    <CardDescription>Find and join public games.</CardDescription>
+                    <CardTitle>Getting Started</CardTitle>
+                    <CardDescription>Choose how you want to play</CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Host</TableHead>
-                                <TableHead>Players</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Action</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {mockGames.map(game => (
-                                <TableRow key={game.id}>
-                                    <TableCell className="font-medium">{game.name}</TableCell>
-                                    <TableCell>{game.host}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={game.players === "4/4" || game.players === "2/2" ? "secondary" : "default"}>{game.players}</Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant={game.status === 'In Progress' ? 'outline' : 'secondary'}>{game.status}</Badge>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <Button size="sm" disabled={game.status === 'In Progress'}>Join</Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                <CardContent className="space-y-6">
+                    <div className="grid gap-4 md:grid-cols-3">
+                        <div className="p-4 border rounded-lg bg-card">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Gamepad2 className="w-5 h-5 text-primary" />
+                                <h3 className="font-semibold">Host Game</h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Create your own lobby and invite friends with a shareable code.
+                            </p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-card">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Users className="w-5 h-5 text-primary" />
+                                <h3 className="font-semibold">Browse Games</h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Find public games looking for players and join instantly.
+                            </p>
+                        </div>
+                        <div className="p-4 border rounded-lg bg-card">
+                            <div className="flex items-center gap-2 mb-2">
+                                <Clock className="w-5 h-5 text-primary" />
+                                <h3 className="font-semibold">Join with Code</h3>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Enter a game code from a friend to join their private lobby.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="border-t pt-6">
+                        <h3 className="font-semibold mb-4">Quick Stats</h3>
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                                <div className="text-2xl font-bold">Prototype</div>
+                                <div className="text-xs text-muted-foreground">Current Status</div>
+                            </div>
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                                <div className="text-2xl font-bold">Local</div>
+                                <div className="text-xs text-muted-foreground">Game Discovery</div>
+                            </div>
+                            <div className="p-4 bg-muted/50 rounded-lg">
+                                <div className="text-2xl font-bold">Coming Soon</div>
+                                <div className="text-xs text-muted-foreground">P2P Networking</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-muted/50 p-4 rounded-lg">
+                        <h4 className="font-semibold mb-2">Supported Formats</h4>
+                        <div className="flex flex-wrap gap-2">
+                            <Badge variant="outline">Commander</Badge>
+                            <Badge variant="outline">Modern</Badge>
+                            <Badge variant="outline">Standard</Badge>
+                            <Badge variant="outline">Pioneer</Badge>
+                            <Badge variant="outline">Legacy</Badge>
+                            <Badge variant="outline">Vintage</Badge>
+                            <Badge variant="outline">Pauper</Badge>
+                        </div>
+                    </div>
                 </CardContent>
             </Card>
             <p className="text-xs text-muted-foreground mt-2 text-center">
                 Note: Multiplayer functionality is a prototype. Game connection logic (P2P via WebRTC) is not implemented.
+                Public games are stored locally in your browser for demonstration purposes.
             </p>
         </div>
       </main>
