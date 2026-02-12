@@ -97,10 +97,9 @@ export async function importDecklist(
     return { found: [], notFound: [], illegal: [] };
   }
 
-  // 1. Parse input into a map of lower-case name to original name and count
+  // 1. Parse input
   const cardRequests = new Map<string, { originalName: string; count: number }>();
   const unprocessedLines: string[] = [];
-
   for (const line of lines) {
     const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
     if (match) {
@@ -120,7 +119,7 @@ export async function importDecklist(
       unprocessedLines.push(line);
     }
   }
-  
+
   const identifiersToFetch = Array.from(cardRequests.keys()).map(name => ({ name }));
   if (identifiersToFetch.length === 0) {
     return { found: [], notFound: unprocessedLines, illegal: [] };
@@ -137,41 +136,39 @@ export async function importDecklist(
 
     if (!res.ok) {
       console.error(`Scryfall API error: ${res.status}`);
-      // If the API fails, assume all requested cards are not found
       return { found: [], notFound: Array.from(cardRequests.values()).map(req => req.originalName), illegal: [] };
     }
 
     const collection = await res.json();
-
-    // 3. Process the response
+    
+    // 3. Process the response robustly
     const foundCards: DeckCard[] = [];
     const illegalCards: string[] = [];
+    const notFoundCards: string[] = [];
 
-    // Process cards Scryfall found
-    for (const card of (collection.data || [])) {
-      if (!card || !card.name) continue; // Safety check
-
-      const lowerCaseName = card.name.toLowerCase();
-      const request = cardRequests.get(lowerCaseName);
-      if (!request) continue; // Should not happen if API is consistent
-
-      const isLegal = format ? card.legalities?.[format] === 'legal' : true;
-
-      if (isLegal) {
-        foundCards.push({ ...card, count: request.count });
-      } else {
-        illegalCards.push(card.name);
-      }
+    const scryfallFoundMap = new Map<string, ScryfallCard>();
+    if (collection.data && Array.isArray(collection.data)) {
+        for (const card of collection.data) {
+            if (card && card.name) {
+                scryfallFoundMap.set(card.name.toLowerCase(), card);
+            }
+        }
     }
 
-    // Process cards Scryfall did not find
-    const notFoundCards = (collection.not_found || []).map((identifier: { name: string }) => {
-        // Find the original casing of the name from our request map
-        if (!identifier || !identifier.name) return null;
-        const request = cardRequests.get(identifier.name.toLowerCase());
-        return request ? request.originalName : identifier.name;
-    }).filter((name): name is string => name !== null);
-
+    for (const [lowerCaseName, requestInfo] of cardRequests.entries()) {
+        const scryfallCard = scryfallFoundMap.get(lowerCaseName);
+        if (scryfallCard) {
+            const isLegal = format ? scryfallCard.legalities?.[format] === 'legal' : true;
+            if (isLegal) {
+                foundCards.push({ ...scryfallCard, count: requestInfo.count });
+            } else {
+                illegalCards.push(requestInfo.originalName);
+            }
+        } else {
+            notFoundCards.push(requestInfo.originalName);
+        }
+    }
+    
     return {
       found: foundCards,
       notFound: [...notFoundCards, ...unprocessedLines],
