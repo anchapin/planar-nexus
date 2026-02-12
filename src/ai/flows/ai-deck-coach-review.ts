@@ -27,14 +27,18 @@ const DeckReviewOutputSchema = z.object({
     description: z.string().describe("A detailed explanation of this strategic option, including the core idea behind the changes."),
     cardsToAdd: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to add, with name and quantity."),
     cardsToRemove: z.array(z.object({ name: z.string(), quantity: z.number() })).describe("A list of cards to remove, with name and quantity.")
-  })).describe("At least two alternative versions of the deck, each with a specific strategic focus.").default([])
+  })).describe("At least two alternative versions of the deck, each with a specific strategic focus.")
 });
 export type DeckReviewOutput = z.infer<typeof DeckReviewOutputSchema>;
 
 export async function reviewDeck(
   input: DeckReviewInput
 ): Promise<DeckReviewOutput> {
-  return deckReviewFlow(input);
+  const result = await deckReviewFlow(input);
+  if (!result.deckOptions) {
+    result.deckOptions = [];
+  }
+  return result;
 }
 
 const deckReviewPrompt = ai.definePrompt({
@@ -54,9 +58,10 @@ const deckReviewPrompt = ai.definePrompt({
 2.  **Propose \`deckOptions\`**: Create at least two distinct options for improving the deck. Each option should have a clear strategic focus (e.g., making it better against aggro, or giving it more tools against control). For each option:
     *   Provide a short, descriptive \`title\`.
     *   Provide a detailed \`description\` that explains the strategy behind the changes. DO NOT list the card changes in the description itself.
-    *   Provide a \`cardsToAdd\` array with the exact card names and quantities to add.
+    *   Provide a \`cardsToAdd\` array with the exact card names and quantities to add. **All cards added MUST be legal in the '{{{format}}}' format.**
     *   Provide a \`cardsToRemove\` array with the exact card names and quantities to remove from the original list.
-    *   Ensure the card names are spelled correctly. The number of cards added should generally equal the number of cards removed to maintain deck size.`,
+    *   Ensure all card names are spelled correctly.
+    *   **CRITICAL RULE: The total quantity of cards in \`cardsToAdd\` MUST EXACTLY equal the total quantity of cards in \`cardsToRemove\` to maintain the deck's total card count.** For example, if you remove 3 cards (e.g. one card with a quantity of 1, and another with a quantity of 2), you must add exactly 3 cards.`,
 });
 
 const deckReviewFlow = ai.defineFlow(
