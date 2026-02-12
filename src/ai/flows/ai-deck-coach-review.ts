@@ -47,7 +47,6 @@ const deckReviewPrompt = ai.definePrompt({
   name: 'deckReviewPrompt',
   input: { schema: DeckReviewInputSchema },
   output: { schema: DeckReviewOutputSchema },
-  model: 'googleai/gemini-1.5-pro-latest',
   prompt: `You are an expert Magic: The Gathering deck builder and coach. Your response will be validated for correctness by an automated tool. If your response fails validation, you will be asked to try again with specific feedback on your errors.
 
 {{#if retryContext}}
