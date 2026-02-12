@@ -105,30 +105,31 @@ const deckReviewFlow = ai.defineFlow(
       const validOptions = [];
       const validationErrors = [];
 
-      for (const option of output.deckOptions) {
+      // Defensively filter the options array for any null/undefined entries from the AI.
+      const filteredDeckOptions = (output.deckOptions || []).filter(opt => opt);
+
+      for (const option of filteredDeckOptions) {
         let currentOptionIsValid = true;
         let currentOptionError = '';
 
-        const originalCardsToAdd = option.cardsToAdd || [];
-        const originalCardsToRemove = option.cardsToRemove || [];
-
-        // Sanitize arrays from AI to prevent crashes on malformed data.
-        const sanitizedCardsToAdd = originalCardsToAdd.filter(c => c && c.name && typeof c.quantity === 'number');
-        if (sanitizedCardsToAdd.length !== originalCardsToAdd.length) {
+        // Defensively filter the card arrays for any null/undefined entries or malformed objects.
+        const sanitizedCardsToAdd = (option.cardsToAdd || []).filter(c => c && c.name && typeof c.quantity === 'number');
+        const sanitizedCardsToRemove = (option.cardsToRemove || []).filter(c => c && c.name && typeof c.quantity === 'number');
+        
+        if (sanitizedCardsToAdd.length !== (option.cardsToAdd || []).length) {
           currentOptionIsValid = false;
-          currentOptionError = `For option "${option.title}", your 'cardsToAdd' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
+          currentOptionError = `For option "${option.title || 'Untitled'}", your 'cardsToAdd' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
         }
-
-        const sanitizedCardsToRemove = originalCardsToRemove.filter(c => c && c.name && typeof c.quantity === 'number');
-        if (sanitizedCardsToRemove.length !== originalCardsToRemove.length) {
+        
+        if (sanitizedCardsToRemove.length !== (option.cardsToRemove || []).length) {
           currentOptionIsValid = false;
-          currentOptionError += (currentOptionError ? ' ' : '') + `For option "${option.title}", your 'cardsToRemove' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
+          currentOptionError += (currentOptionError ? ' ' : '') + `For option "${option.title || 'Untitled'}", your 'cardsToRemove' list contained invalid entries. Each card must be an object with a 'name' and a 'quantity'.`;
         }
 
         if (sanitizedCardsToAdd.length === 0 && sanitizedCardsToRemove.length === 0) {
             if (currentOptionIsValid) { // Only flag this if it wasn't already invalid.
               currentOptionIsValid = false;
-              currentOptionError = `For option "${option.title}", you provided no cards to add or remove. Every option must include at least one change.`;
+              currentOptionError = `For option "${option.title || 'Untitled'}", you provided no cards to add or remove. Every option must include at least one change.`;
             }
         }
 
@@ -137,7 +138,7 @@ const deckReviewFlow = ai.defineFlow(
             const intendedRemoveCount = sanitizedCardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
             if (intendedAddCount !== intendedRemoveCount) {
               currentOptionIsValid = false;
-              currentOptionError = `For option "${option.title}", you suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}. These counts must be exactly equal.`;
+              currentOptionError = `For option "${option.title || 'Untitled'}", you suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}. These counts must be exactly equal.`;
             }
         }
 
@@ -155,7 +156,7 @@ const deckReviewFlow = ai.defineFlow(
 
             if (errors.length > 0) {
                 currentOptionIsValid = false;
-                currentOptionError = `For option "${option.title}", your card suggestions had errors: ${errors.join(' ')} Please suggest only valid, legal cards for the ${input.format} format.`;
+                currentOptionError = `For option "${option.title || 'Untitled'}", your card suggestions had errors: ${errors.join(' ')} Please suggest only valid, legal cards for the ${input.format} format.`;
             }
         }
 
