@@ -1,8 +1,8 @@
 'use server';
 /**
- * @fileOverview An AI deck coach for Magic: The Gathering, specifically for Commander format.
+ * @fileOverview An AI deck coach for Magic: The Gathering.
  *
- * - reviewDeck - A function that reviews a Magic: The Gathering decklist.
+ * - reviewDeck - A function that reviews a Magic: The Gathering decklist for a given format.
  * - DeckReviewInput - The input type for the reviewDeck function.
  * - DeckReviewOutput - The return type for the reviewDeck function.
  */
@@ -14,8 +14,9 @@ const DeckReviewInputSchema = z.object({
   decklist: z
     .string()
     .describe(
-      'The full Magic: The Gathering decklist as a string, typically one card per line with quantity, and including the commander.'
+      'The full Magic: The Gathering decklist as a string, typically one card per line with quantity.'
     ),
+  format: z.string().describe('The Magic: The Gathering format for this deck (e.g., "Commander", "Standard", "Modern").')
 });
 export type DeckReviewInput = z.infer<typeof DeckReviewInputSchema>;
 
@@ -77,16 +78,19 @@ const deckReviewPrompt = ai.definePrompt({
   name: 'deckReviewPrompt',
   input: { schema: DeckReviewInputSchema },
   output: { schema: DeckReviewOutputSchema },
-  prompt: `You are an expert Magic: The Gathering deck builder and coach, specializing in the Commander format.
-Your task is to analyze the provided decklist, identify its strengths, weaknesses, and potential synergies, and then offer constructive suggestions for improvement.
+  prompt: `You are an expert Magic: The Gathering deck builder and coach.
+Your task is to analyze the provided decklist for the specified format, identify its strengths, weaknesses, and potential synergies, and then offer constructive suggestions for improvement.
 
-Consider the following aspects:
+Format: {{{format}}}
+
+Consider the following aspects based on the format:
 -   **Mana Curve and Base:** Is the mana curve appropriate for the deck's strategy? Is there enough mana generation (ramp)?
 -   **Win Conditions:** Are there clear ways for the deck to win? How resilient are they?
 -   **Card Quality & Synergies:** Do the cards work well together? Are there powerful interactions or combo potential?
--   **Weaknesses & Vulnerabilities:** What are the deck's choke points? Is it vulnerable to certain types of interaction (e.g., aggro, control, combo)? Does it lack essential elements like removal, card draw, or protection?
--   **Commander Identity:** Does the deck effectively utilize its commander's abilities and color identity?
--   **Card Count:** Ensure the deck has exactly 100 cards, including the commander (which counts as one of the 100).
+-   **Weaknesses & Vulnerabilities:** What are the deck's choke points? Is it vulnerable to certain types of interaction? Does it lack essential elements like removal, card draw, or protection?
+-   **Format Legality & Staples:** Are the cards legal in the specified format? Does the deck include format staples or is it missing key ones?
+-   **Sideboard (if applicable):** For formats with sideboards, evaluate its effectiveness against the expected meta.
+-   **Card Count & Rules:** Ensure the deck adheres to the minimum card count and card quantity rules for the format.
 
 Provide your analysis in a structured JSON format according to the output schema. Be concise and precise in your suggestions.
 

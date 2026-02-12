@@ -53,7 +53,7 @@ export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard }: Dec
             onChange={(e) => onDeckNameChange(e.target.value)}
         />
         <CardDescription>
-          {totalCards} / 100 cards
+          {totalCards} cards
         </CardDescription>
       </CardHeader>
       <Separator />

@@ -9,7 +9,7 @@ const mockGames = [
     { id: '1', name: "Casual Commander", host: "PlayerOne", players: "3/4", status: "Waiting" },
     { id: '2', name: "cEDH Practice", host: "SpikeMaster", players: "2/4", status: "Waiting" },
     { id: '3', name: "Battlecruiser Fun", host: "Timmy", players: "4/4", status: "In Progress" },
-    { id: '4', name: "LFG Commander", host: "Newbie", players: "1/4", status: "Waiting" },
+    { id: '4', name: "LFG Modern", host: "Newbie", players: "1/2", status: "Waiting" },
 ];
 
 export default function MultiplayerPage() {
@@ -18,7 +18,7 @@ export default function MultiplayerPage() {
       <header className="mb-6">
         <h1 className="font-headline text-3xl font-bold">Multiplayer</h1>
         <p className="text-muted-foreground mt-1">
-          Challenge others in 4-player Commander battles.
+          Challenge others in multiplayer battles.
         </p>
       </header>
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -67,7 +67,7 @@ export default function MultiplayerPage() {
                                     <TableCell className="font-medium">{game.name}</TableCell>
                                     <TableCell>{game.host}</TableCell>
                                     <TableCell>
-                                        <Badge variant={game.players === "4/4" ? "secondary" : "default"}>{game.players}</Badge>
+                                        <Badge variant={game.players === "4/4" || game.players === "2/2" ? "secondary" : "default"}>{game.players}</Badge>
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant={game.status === 'In Progress' ? 'outline' : 'secondary'}>{game.status}</Badge>

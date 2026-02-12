@@ -9,9 +9,12 @@ import { getDeckReview } from "@/app/actions";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import { Bot, Loader2 } from "lucide-react";
 import { ReviewDisplay } from "./_components/review-display";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 export default function DeckCoachPage() {
   const [decklist, setDecklist] = useState("");
+  const [format, setFormat] = useState("commander");
   const [review, setReview] = useState<DeckReviewOutput | null>(null);
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
@@ -28,7 +31,7 @@ export default function DeckCoachPage() {
 
     startTransition(async () => {
       try {
-        const result = await getDeckReview({ decklist });
+        const result = await getDeckReview({ decklist, format });
         setReview(result);
       } catch (error) {
         toast({
@@ -46,7 +49,7 @@ export default function DeckCoachPage() {
       <header className="mb-6">
         <h1 className="font-headline text-3xl font-bold">AI Deck Coach</h1>
         <p className="text-muted-foreground mt-1">
-          Paste your Commander decklist to get an expert analysis from our AI coach.
+          Paste your decklist to get an expert analysis from our AI coach.
         </p>
       </header>
       <main className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -55,6 +58,23 @@ export default function DeckCoachPage() {
             <CardTitle>Your Decklist</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="space-y-2 mb-4">
+              <Label htmlFor="format-select">Format</Label>
+              <Select value={format} onValueChange={setFormat} disabled={isPending}>
+                  <SelectTrigger id="format-select" className="capitalize">
+                      <SelectValue placeholder="Select format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      <SelectItem value="commander">Commander</SelectItem>
+                      <SelectItem value="standard">Standard</SelectItem>
+                      <SelectItem value="modern">Modern</SelectItem>
+                      <SelectItem value="pioneer">Pioneer</SelectItem>
+                      <SelectItem value="legacy">Legacy</SelectItem>
+                      <SelectItem value="vintage">Vintage</SelectItem>
+                      <SelectItem value="pauper">Pauper</SelectItem>
+                  </SelectContent>
+              </Select>
+            </div>
             <Textarea
               placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;..."
               className="h-96 font-mono text-sm"

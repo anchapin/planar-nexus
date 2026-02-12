@@ -6,36 +6,51 @@ import { ScryfallCard } from "@/app/actions";
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 
 export type DeckCard = ScryfallCard & {
   count: number;
 };
 
+const formatRules = {
+  commander: { maxCopies: 1, minCards: 100, maxCards: 100 },
+  standard: { maxCopies: 4, minCards: 60, maxCards: Infinity },
+  modern: { maxCopies: 4, minCards: 60, maxCards: Infinity },
+  pioneer: { maxCopies: 4, minCards: 60, maxCards: Infinity },
+  legacy: { maxCopies: 4, minCards: 60, maxCards: Infinity },
+  vintage: { maxCopies: 4, minCards: 60, maxCards: Infinity },
+  pauper: { maxCopies: 4, minCards: 60, maxCards: Infinity },
+};
+
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
-  const [deckName, setDeckName] = useState("My Commander Deck");
+  const [deckName, setDeckName] = useState("New Deck");
+  const [format, setFormat] = useState("commander");
   const { toast } = useToast();
 
   const addCardToDeck = (card: ScryfallCard) => {
+    const rules = formatRules[format as keyof typeof formatRules];
+
     setDeck((prevDeck) => {
       const existingCard = prevDeck.find((c) => c.id === card.id);
-      const isSingleton = !card.type_line?.includes("Basic Land");
+      const isBasicLand = card.type_line?.includes("Basic Land");
       
-      if (isSingleton && existingCard) {
+      if (!isBasicLand && existingCard && existingCard.count >= rules.maxCopies) {
         toast({
           variant: "destructive",
-          title: "Singleton Format",
-          description: `You can only have one copy of "${card.name}" in a Commander deck.`,
+          title: "Card Limit Reached",
+          description: `You can only have ${rules.maxCopies} cop${rules.maxCopies > 1 ? 'ies' : 'y'} of "${card.name}" in a ${format} deck.`,
         });
         return prevDeck;
       }
       
       const totalCards = prevDeck.reduce((sum, c) => sum + c.count, 0);
-      if (totalCards >= 100) {
+      if (rules.maxCards && totalCards >= rules.maxCards) {
         toast({
           variant: "destructive",
           title: "Deck Limit Reached",
-          description: "A Commander deck cannot have more than 100 cards.",
+          description: `A ${format} deck cannot have more than ${rules.maxCards} cards.`,
         });
         return prevDeck;
       }
@@ -106,7 +121,26 @@ export default function DeckBuilderPage() {
   return (
     <div className="flex h-full min-h-svh w-full flex-col p-4 md:p-6">
       <div className="flex items-center justify-between gap-4 mb-4">
-        <h1 className="font-headline text-3xl font-bold">Deck Builder</h1>
+        <div className="flex items-center gap-6">
+          <h1 className="font-headline text-3xl font-bold">Deck Builder</h1>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="format-select" className="text-muted-foreground">Format</Label>
+            <Select value={format} onValueChange={setFormat}>
+                <SelectTrigger id="format-select" className="w-40 capitalize">
+                    <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value="commander">Commander</SelectItem>
+                    <SelectItem value="standard">Standard</SelectItem>
+                    <SelectItem value="modern">Modern</SelectItem>
+                    <SelectItem value="pioneer">Pioneer</SelectItem>
+                    <SelectItem value="legacy">Legacy</SelectItem>
+                    <SelectItem value="vintage">Vintage</SelectItem>
+                    <SelectItem value="pauper">Pauper</SelectItem>
+                </SelectContent>
+            </Select>
+          </div>
+        </div>
         <ImportExportControls onImport={importDeck} onExport={exportDeck} onClear={clearDeck} />
       </div>
       <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6">
