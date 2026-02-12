@@ -12,16 +12,7 @@ import { Label } from "@/components/ui/label";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-const formatRules = {
-  commander: { maxCopies: 1, minCards: 100, maxCards: 100 },
-  standard: { maxCopies: 4, minCards: 60, maxCards: Infinity },
-  modern: { maxCopies: 4, minCards: 60, maxCards: Infinity },
-  pioneer: { maxCopies: 4, minCards: 60, maxCards: Infinity },
-  legacy: { maxCopies: 4, minCards: 60, maxCards: Infinity },
-  vintage: { maxCopies: 4, minCards: 60, maxCards: Infinity },
-  pauper: { maxCopies: 4, minCards: 60, maxCards: Infinity },
-};
+import { formatRules } from "@/lib/game-rules";
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
@@ -138,7 +129,7 @@ export default function DeckBuilderPage() {
     setActiveDeckId(null);
     startImportTransition(async () => {
         try {
-            const { found, notFound } = await importDecklist(decklist);
+            const { found, notFound, illegal } = await importDecklist(decklist, format);
             
             if (found.length > 0) {
                 setDeck(found);
@@ -159,6 +150,14 @@ export default function DeckBuilderPage() {
                     variant: "destructive",
                     title: "Some cards not found",
                     description: `The following cards could not be found: ${notFound.join(", ")}. They may be misspelled or not available.`,
+                });
+            }
+
+            if (illegal.length > 0) {
+                toast({
+                    variant: "destructive",
+                    title: "Illegal Cards Found",
+                    description: `The following cards are not legal in ${format}: ${illegal.join(", ")}.`,
                 });
             }
 

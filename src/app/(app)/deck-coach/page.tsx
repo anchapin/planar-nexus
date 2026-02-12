@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { DeckSelector } from "@/components/deck-selector";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { formatRules } from "@/lib/game-rules";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -44,7 +45,7 @@ export default function DeckCoachPage() {
         if (originalDeckCards) {
           initialCards = originalDeckCards;
         } else {
-            const { found, notFound } = await importDecklist(decklist);
+            const { found, notFound, illegal } = await importDecklist(decklist, format);
             if (notFound.length > 0) {
                  toast({
                     variant: "destructive",
@@ -52,6 +53,13 @@ export default function DeckCoachPage() {
                     description: `Could not process: ${notFound.join(", ")}. Please check spelling.`,
                 });
             }
+            if (illegal.length > 0) {
+                toast({
+                   variant: "destructive",
+                   title: "Illegal Cards Found",
+                   description: `Your deck contains cards not legal in ${format}: ${illegal.join(", ")}.`,
+               });
+           }
             if (found.length === 0) {
                 toast({
                     variant: "destructive",
@@ -110,13 +118,21 @@ export default function DeckCoachPage() {
       // Handle Additions
       if (option.cardsToAdd && option.cardsToAdd.length > 0) {
         const decklistForImport = option.cardsToAdd.map(c => `${c.quantity} ${c.name}`).join('\n');
-        const { found: cardsToAddFromApi, notFound } = await importDecklist(decklistForImport);
+        const { found: cardsToAddFromApi, notFound, illegal } = await importDecklist(decklistForImport, format);
 
         if (notFound.length > 0) {
           toast({
             variant: "destructive",
             title: "AI Suggestion Error",
             description: `The AI suggested cards that could not be found: ${notFound.join(", ")}`
+          });
+        }
+        
+        if (illegal.length > 0) {
+          toast({
+            variant: "destructive",
+            title: "AI Suggestion Error",
+            description: `The AI suggested illegal cards which were ignored: ${illegal.join(", ")}`
           });
         }
 
@@ -139,9 +155,20 @@ export default function DeckCoachPage() {
         createdAt: now,
         updatedAt: now,
       };
+      
+      const totalCards = newDeck.cards.reduce((sum, c) => sum + c.count, 0);
+      const rules = formatRules[format as keyof typeof formatRules];
+      let toastDescription = `"${newDeckName}" has been added to your collection.`;
+      
+      if (totalCards < rules.minCards || (rules.maxCards && totalCards > rules.maxCards)) {
+        toastDescription += `\nWarning: This deck has ${totalCards} cards and may not be legal for the ${format} format. Please review it in the Deck Builder.`
+      }
 
       setSavedDecks(prevDecks => [...prevDecks, newDeck]);
-      toast({ title: "New Deck Saved!", description: `"${newDeckName}" has been added to your collection.` });
+      toast({ 
+        title: "New Deck Saved!", 
+        description: <p className="whitespace-pre-wrap">{toastDescription}</p>
+      });
     } catch (error) {
       console.error("Failed to save new deck:", error);
       toast({ variant: "destructive", title: "Save Failed", description: "An error occurred while saving the new deck." });

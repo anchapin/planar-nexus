@@ -20,6 +20,7 @@ export interface ScryfallCard {
   oracle_text?: string;
   colors?: string[];
   color_identity: string[];
+  legalities?: { [format: string]: string };
 }
 
 export interface DeckCard extends ScryfallCard {
@@ -28,7 +29,7 @@ export interface DeckCard extends ScryfallCard {
 
 export interface SavedDeck {
   id: string;
-  name: string;
+  name:string;
   format: string;
   cards: DeckCard[];
   createdAt: string;
@@ -85,11 +86,12 @@ export async function generateOpponent(input: AIOpponentDeckGenerationInput) {
 }
 
 export async function importDecklist(
-  decklist: string
-): Promise<{ found: DeckCard[]; notFound: string[] }> {
+  decklist: string,
+  format?: string
+): Promise<{ found: DeckCard[]; notFound: string[], illegal: string[] }> {
   const lines = decklist.split('\n').filter((line) => line.trim() !== '');
   if (lines.length === 0) {
-    return { found: [], notFound: [] };
+    return { found: [], notFound: [], illegal: [] };
   }
 
   const cardRequests: { name: string; count: number }[] = lines.map((line) => {
@@ -108,7 +110,7 @@ export async function importDecklist(
   const identifiers = uniqueNames.map(name => ({name}));
 
   if (identifiers.length === 0) {
-    return { found: [], notFound: [] };
+    return { found: [], notFound: [], illegal: [] };
   }
   
   try {
@@ -127,7 +129,7 @@ export async function importDecklist(
       const errorData = await res.json();
       console.error("Scryfall error details:", errorData);
       const notFound = errorData?.details?.not_found?.map((item:any) => item.name) || uniqueNames;
-      return { found: [], notFound };
+      return { found: [], notFound, illegal: [] };
     }
 
     const result = await res.json();
@@ -136,19 +138,33 @@ export async function importDecklist(
     const nameToCountMap = new Map<string, number>();
     for (const req of cardRequests) {
       if (req.name) {
-        nameToCountMap.set(req.name, (nameToCountMap.get(req.name) || 0) + req.count);
+        const lowerCaseName = req.name.toLowerCase();
+        nameToCountMap.set(lowerCaseName, (nameToCountMap.get(lowerCaseName) || 0) + req.count);
       }
     }
-
-    const foundCards: DeckCard[] = result.data.map((card: ScryfallCard) => ({
-      ...card,
-      count: nameToCountMap.get(card.name) || 1,
-    }));
     
-    return { found: foundCards, notFound: notFoundNames };
+    const allFoundScryfallCards: ScryfallCard[] = result.data;
+
+    const legalCards: DeckCard[] = [];
+    const illegalCardNames: string[] = [];
+
+    allFoundScryfallCards.forEach((card: ScryfallCard) => {
+        const isLegal = format ? card.legalities?.[format] === 'legal' : true;
+        const count = nameToCountMap.get(card.name.toLowerCase());
+
+        if (count) {
+          if (isLegal) {
+            legalCards.push({ ...card, count });
+          } else {
+            illegalCardNames.push(card.name);
+          }
+        }
+    });
+    
+    return { found: legalCards, notFound: notFoundNames, illegal: illegalCardNames };
 
   } catch (error) {
     console.error('Failed to fetch from Scryfall API', error);
-    return { found: [], notFound: uniqueNames };
+    return { found: [], notFound: uniqueNames, illegal: [] };
   }
 }
