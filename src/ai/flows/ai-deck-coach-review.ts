@@ -58,10 +58,11 @@ const deckReviewPrompt = ai.definePrompt({
 2.  **Propose \`deckOptions\`**: Create at least two distinct options for improving the deck. Each option should have a clear strategic focus (e.g., making it better against aggro, or giving it more tools against control). For each option:
     *   Provide a short, descriptive \`title\`.
     *   Provide a detailed \`description\` that explains the strategy behind the changes. DO NOT list the card changes in the description itself.
-    *   Provide a \`cardsToAdd\` array with the exact card names and quantities to add. **All cards added MUST be legal in the '{{{format}}}' format.**
+    *   Provide a \`cardsToAdd\` array with the exact card names and quantities to add.
     *   Provide a \`cardsToRemove\` array with the exact card names and quantities to remove from the original list.
     *   Ensure all card names are spelled correctly.
-    *   **CRITICAL RULE: The total quantity of cards in \`cardsToAdd\` MUST EXACTLY equal the total quantity of cards in \`cardsToRemove\` to maintain the deck's total card count.** For example, if you remove 3 cards (e.g. one card with a quantity of 1, and another with a quantity of 2), you must add exactly 3 cards.`,
+    *   **CRITICAL RULE 1: All cards in \`cardsToAdd\` MUST be legal in the '{{{format}}}' format. This is non-negotiable. Double-check legality.**
+    *   **CRITICAL RULE 2: The total quantity of cards in \`cardsToAdd\` MUST EXACTLY equal the total quantity of cards in \`cardsToRemove\` to maintain the deck's total card count.** For example, if you remove 3 cards, you must add exactly 3 cards. This is essential for the deck to remain valid.`,
 });
 
 const deckReviewFlow = ai.defineFlow(

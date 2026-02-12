@@ -97,52 +97,70 @@ export default function DeckCoachPage() {
     if (!originalDeckCards) return;
 
     try {
-      // Deep copy to avoid mutation
+      // 1. Get cards to add and validate them
+      const cardsToAddFromAI = option.cardsToAdd || [];
+      const cardsToRemoveFromAI = option.cardsToRemove || [];
+      
+      let cardsToAddFromApi: DeckCard[] = [];
+      let notFound: string[] = [];
+      let illegal: string[] = [];
+
+      if (cardsToAddFromAI.length > 0) {
+        const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
+        const importResult = await importDecklist(decklistForImport, format);
+        cardsToAddFromApi = importResult.found;
+        notFound = importResult.notFound;
+        illegal = importResult.illegal;
+      }
+      
+      // 2. Validate the suggestion's integrity
+      const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
+      const actualAddCount = cardsToAddFromApi.reduce((sum, c) => sum + c.quantity, 0);
+      const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
+
+      const errorMessages = [];
+      if (notFound.length > 0) {
+        errorMessages.push(`Cards not found: ${notFound.join(", ")}.`);
+      }
+      if (illegal.length > 0) {
+        errorMessages.push(`Illegal cards suggested and ignored: ${illegal.join(", ")}.`);
+      }
+      if (intendedAddCount !== intendedRemoveCount) {
+        errorMessages.push(`The AI suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}, which would change the deck size.`);
+      } else if (intendedAddCount !== actualAddCount) {
+         errorMessages.push(`The AI's suggestions included invalid or illegal cards, which would result in an incorrect deck size.`);
+      }
+
+      if (errorMessages.length > 0) {
+        toast({
+          variant: "destructive",
+          title: "AI Suggestion Invalid",
+          description: `Could not save new deck. ${errorMessages.join(" ")}`,
+        });
+        return; // Abort saving
+      }
+
+      // 3. If valid, proceed with creating the new deck
       let newDeckList: DeckCard[] = JSON.parse(JSON.stringify(originalDeckCards));
 
       // Handle Removals
-      if (option.cardsToRemove) {
-        for (const toRemove of option.cardsToRemove) {
-          const cardIndex = newDeckList.findIndex(c => c.name.toLowerCase() === toRemove.name.toLowerCase());
-          if (cardIndex > -1) {
-            newDeckList[cardIndex].count -= toRemove.quantity;
-            if (newDeckList[cardIndex].count <= 0) {
-              newDeckList = newDeckList.filter((_, i) => i !== cardIndex);
-            }
-          } else {
-            console.warn(`Card to remove not found in deck: ${toRemove.name}`);
+      for (const toRemove of cardsToRemoveFromAI) {
+        const cardIndex = newDeckList.findIndex(c => c.name.toLowerCase() === toRemove.name.toLowerCase());
+        if (cardIndex > -1) {
+          newDeckList[cardIndex].count -= toRemove.quantity;
+          if (newDeckList[cardIndex].count <= 0) {
+            newDeckList = newDeckList.filter((_, i) => i !== cardIndex);
           }
         }
       }
 
       // Handle Additions
-      if (option.cardsToAdd && option.cardsToAdd.length > 0) {
-        const decklistForImport = option.cardsToAdd.map(c => `${c.quantity} ${c.name}`).join('\n');
-        const { found: cardsToAddFromApi, notFound, illegal } = await importDecklist(decklistForImport, format);
-
-        if (notFound.length > 0) {
-          toast({
-            variant: "destructive",
-            title: "AI Suggestion Error",
-            description: `The AI suggested cards that could not be found: ${notFound.join(", ")}`
-          });
-        }
-        
-        if (illegal.length > 0) {
-          toast({
-            variant: "destructive",
-            title: "AI Suggestion Error",
-            description: `The AI suggested illegal cards which were ignored: ${illegal.join(", ")}`
-          });
-        }
-
-        for (const card of cardsToAddFromApi) {
-          const cardIndex = newDeckList.findIndex(c => c.id === card.id);
-          if (cardIndex > -1) {
-            newDeckList[cardIndex].count += card.count;
-          } else {
-            newDeckList.push(card);
-          }
+      for (const card of cardsToAddFromApi) {
+        const cardIndex = newDeckList.findIndex(c => c.id === card.id);
+        if (cardIndex > -1) {
+          newDeckList[cardIndex].count += card.count;
+        } else {
+          newDeckList.push(card);
         }
       }
 
@@ -156,19 +174,12 @@ export default function DeckCoachPage() {
         updatedAt: now,
       };
       
-      const totalCards = newDeck.cards.reduce((sum, c) => sum + c.count, 0);
-      const rules = formatRules[format as keyof typeof formatRules];
-      let toastDescription = `"${newDeckName}" has been added to your collection.`;
-      
-      if (totalCards < rules.minCards || (rules.maxCards && totalCards > rules.maxCards)) {
-        toastDescription += `\nWarning: This deck has ${totalCards} cards and may not be legal for the ${format} format. Please review it in the Deck Builder.`
-      }
-
       setSavedDecks(prevDecks => [...prevDecks, newDeck]);
       toast({ 
         title: "New Deck Saved!", 
-        description: <p className="whitespace-pre-wrap">{toastDescription}</p>
+        description: `"${newDeckName}" has been added to your collection.`
       });
+
     } catch (error) {
       console.error("Failed to save new deck:", error);
       toast({ variant: "destructive", title: "Save Failed", description: "An error occurred while saving the new deck." });
