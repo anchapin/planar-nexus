@@ -149,14 +149,16 @@ export async function importDecklist(
       }
     }
     
-    // Defensively filter `data` array for null/undefined entries
-    const allFoundScryfallCards: ScryfallCard[] = (result.data || []).filter(Boolean);
+    // Defensively filter `data` array for null/undefined entries or objects without a name.
+    const allFoundScryfallCards: ScryfallCard[] = (result.data || []).filter(
+      (card: ScryfallCard | null): card is ScryfallCard => card !== null && typeof card.name === 'string'
+    );
 
     const legalCards: DeckCard[] = [];
     const illegalCardNames: string[] = [];
 
     allFoundScryfallCards.forEach((card: ScryfallCard) => {
-        // Since we filtered, card is guaranteed to be an object. Accessing .name is now safe.
+        // card and card.name are now guaranteed to exist due to the filter above.
         const isLegal = format ? card.legalities?.[format] === 'legal' : true;
         const count = nameToCountMap.get(card.name.toLowerCase());
 
