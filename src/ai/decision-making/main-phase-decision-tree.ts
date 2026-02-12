@@ -420,8 +420,8 @@ export class MainPhaseDecisionTree {
   ): { value: number; risk: number; reasoning: string } {
     let value = 0.5;
     const cmc = spell.cardData.cmc || 0;
-    const power = spell.cardData.power || 0;
-    const toughness = spell.cardData.toughness || 0;
+    const power = parseInt(spell.cardData.power || '0', 10);
+    const toughness = parseInt(spell.cardData.toughness || '0', 10);
 
     // Efficiency: power/toughness vs mana cost
     const stats = power + toughness;
@@ -932,7 +932,7 @@ export class MainPhaseDecisionTree {
     const result = this.emptyManaPool();
 
     // Look for mana cost in ability text (e.g., "{1}{W}, Tap:")
-    const costMatch = ability.match(/^([\{\}WUBRG0-9,\s]+)(?:,|$)/);
+    const costMatch = ability.match(/^([{}WUBRG0-9,\s]+)(?:,|$)/);
     if (costMatch) {
       return this.parseManaCost(costMatch[1]);
     }
@@ -1142,7 +1142,7 @@ export class MainPhaseDecisionTree {
             loyalty: 0, // Would need to track counters
           };
         }
-        return base;
+        return { ...base, type: 'artifact' as const }; // Default fallback
       });
 
       players[playerId] = {
