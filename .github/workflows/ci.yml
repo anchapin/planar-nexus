@@ -81,4 +81,3 @@ jobs:
           name: build-output
           path: .next
           retention-days: 7
-# CI monitoring active - Thu Feb 12 04:03:09 PM EST 2026
