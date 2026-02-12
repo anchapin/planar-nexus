@@ -31,7 +31,7 @@ const DeckReviewOutputSchema = z.object({
         suggestedCard: z.string().optional().describe("The card to be added or used as a replacement."),
         reason: z.string().describe("The justification for this specific card change within the context of the option's strategy."),
     })).describe("A list of specific card changes for this deck option.")
-  })).min(2).describe("At least two alternative versions of the deck, each with a specific strategic focus and a list of card changes.")
+  })).describe("Alternative versions of the deck, each with a specific strategic focus and a list of card changes.")
 });
 export type DeckReviewOutput = z.infer<typeof DeckReviewOutputSchema>;
 
