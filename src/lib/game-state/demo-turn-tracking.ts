@@ -31,9 +31,6 @@ function printHeader(title: string) {
   console.log("=".repeat(70));
 }
 
-function printSubHeader(title: string) {
-  console.log(`\n--- ${title} ---`);
-}
 
 function demoClockwiseTurnOrder() {
   printHeader("Demo 1: Clockwise Turn Order (4-Player Commander)");

@@ -7,7 +7,7 @@
  * - AIOpponentDeckGenerationOutput - The return type for the generateAIOpponentDeck function.
  */
 
-import {ai, googleAiPlugin} from '@/ai/genkit';
+import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 // Input Schema

@@ -8,7 +8,7 @@
  * - DeckReviewOutput - The return type for the reviewDeck function.
  */
 
-import { ai, googleAiPlugin } from '@/ai/genkit';
+import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { validateCardLegality } from '@/app/actions';
 

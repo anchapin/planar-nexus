@@ -5,7 +5,6 @@
  * including deck construction rules, ban/restricted lists, and validation.
  */
 
-import type { GameState } from "./game-state";
 
 /**
  * Format-specific deck construction rules

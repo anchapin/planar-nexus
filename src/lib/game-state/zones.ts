@@ -29,7 +29,7 @@ export function createZone(
     initialCards?: CardInstanceId[];
   } = {}
 ): Zone {
-  const zoneId = generateZoneId(playerId, zoneType);
+  const _zoneId = generateZoneId(playerId, zoneType);
 
   return {
     type: zoneType,
