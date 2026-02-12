@@ -157,7 +157,7 @@ function demoTurnDistance() {
 function demoTwoPlayerGame() {
   printHeader("Demo 6: Two-Player Game (Traditional)");
 
-  let state = createInitialGameState(["Alice", "Bob"], 20, false);
+  const state = createInitialGameState(["Alice", "Bob"], 20, false);
   let turn = state.turn;
 
   console.log("\nSimulating 6 turns (3 rounds):");

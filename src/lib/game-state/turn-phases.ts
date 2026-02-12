@@ -318,7 +318,7 @@ export function createTurnOrder(
   }
 
   switch (turnOrderType) {
-    case "random":
+    case "random": {
       // Shuffle players for random starting player
       const shuffled = [...playerIds];
       for (let i = shuffled.length - 1; i > 0; i--) {
@@ -326,6 +326,7 @@ export function createTurnOrder(
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
       }
       return shuffled;
+    }
 
     case "clockwise":
     case "custom":
