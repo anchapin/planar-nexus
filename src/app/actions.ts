@@ -21,15 +21,11 @@ export interface ScryfallCard {
     border_crop: string;
   };
   mana_cost?: string;
-  cmc?: number;
   type_line?: string;
   oracle_text?: string;
   colors?: string[];
   color_identity: string[];
   legalities?: { [format: string]: string };
-  // Power/toughness for creatures
-  power?: string;
-  toughness?: string;
   // Card faces for double-faced/transform cards
   card_faces?: Array<{
     name: string;
@@ -250,4 +246,3 @@ export async function importDecklist(
 
   return { found: aggregatedFound, notFound, illegal };
 }
-Merge 111: Ready to merge after CI fixes
