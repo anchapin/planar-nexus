@@ -270,19 +270,49 @@ export function getPower(card: CardInstance): number {
     return 0;
   }
 
-  // Parse power from oracle text
-  // This is a simplified version - real implementation would need to handle * power
-  const oracleText = card.cardData.oracle_text || "";
-  const powerMatch = oracleText.match(/Power\/Toughness:\s*(\d+)\/(\d+)/);
+  // For double-faced cards, get the power from the current face
+  const currentFace = getCurrentFaceData(card);
+  let basePower = 0;
 
-  if (powerMatch) {
-    const basePower = parseInt(powerMatch[1], 10);
-    return basePower + card.powerModifier;
+  if (currentFace.power) {
+    // Parse power from Scryfall data (handles *, numbers, etc.)
+    const powerStr = currentFace.power;
+    if (powerStr === "*") {
+      // For variable power, return just the modifier
+      // A full implementation would calculate based on game state
+      basePower = 0;
+    } else if (powerStr.includes("+")) {
+      // Handle power like "2+*"
+      const match = powerStr.match(/(\d+)\+/);
+      basePower = match ? parseInt(match[1], 10) : 0;
+    } else if (powerStr.includes("-")) {
+      // Handle power like "2-*"
+      const match = powerStr.match(/(\d+)-/);
+      basePower = match ? parseInt(match[1], 10) : 0;
+    } else {
+      // Simple numeric power
+      basePower = parseInt(powerStr, 10) || 0;
+    }
   }
 
-  // For cards with * power, we'd need more complex parsing
-  // For now, return the modifier
-  return card.powerModifier;
+  return basePower + card.powerModifier;
+}
+
+/**
+ * Get the current face data for a card (handles double-faced cards)
+ */
+function getCurrentFaceData(card: CardInstance): ScryfallCard {
+  if (card.cardData.card_faces && card.cardData.card_faces.length > 0) {
+    const faceIndex = Math.min(card.currentFaceIndex, card.cardData.card_faces.length - 1);
+    return {
+      ...card.cardData,
+      power: card.cardData.card_faces[faceIndex].power,
+      toughness: card.cardData.card_faces[faceIndex].toughness,
+      name: card.cardData.card_faces[faceIndex].name,
+      oracle_text: card.cardData.card_faces[faceIndex].oracle_text,
+    } as ScryfallCard;
+  }
+  return card.cardData;
 }
 
 /**
@@ -293,17 +323,31 @@ export function getToughness(card: CardInstance): number {
     return 0;
   }
 
-  // Parse toughness from oracle text
-  const oracleText = card.cardData.oracle_text || "";
-  const ptMatch = oracleText.match(/Power\/Toughness:\s*(\d+)\/(\d+)/);
+  // For double-faced cards, get the toughness from the current face
+  const currentFace = getCurrentFaceData(card);
+  let baseToughness = 0;
 
-  if (ptMatch) {
-    const baseToughness = parseInt(ptMatch[2], 10);
-    return baseToughness + card.toughnessModifier;
+  if (currentFace.toughness) {
+    // Parse toughness from Scryfall data (handles *, numbers, etc.)
+    const toughnessStr = currentFace.toughness;
+    if (toughnessStr === "*") {
+      // For variable toughness, return just the modifier
+      baseToughness = 0;
+    } else if (toughnessStr.includes("+")) {
+      // Handle toughness like "2+*"
+      const match = toughnessStr.match(/(\d+)\+/);
+      baseToughness = match ? parseInt(match[1], 10) : 0;
+    } else if (toughnessStr.includes("-")) {
+      // Handle toughness like "2-*"
+      const match = toughnessStr.match(/(\d+)-/);
+      baseToughness = match ? parseInt(match[1], 10) : 0;
+    } else {
+      // Simple numeric toughness
+      baseToughness = parseInt(toughnessStr, 10) || 0;
+    }
   }
 
-  // For cards with * toughness, we'd need more complex parsing
-  return card.toughnessModifier;
+  return baseToughness + card.toughnessModifier;
 }
 
 /**
@@ -353,4 +397,163 @@ export function canBlock(card: CardInstance): boolean {
 export function getManaValue(card: CardInstance): number {
   const cmc = (card.cardData as ScryfallCard & { cmc?: number }).cmc;
   return cmc ?? 0;
+}
+
+/**
+ * Check if a card is a double-faced card (transform, modal_dfc, etc.)
+ */
+export function isDoubleFaced(card: CardInstance): boolean {
+  return (
+    card.cardData.layout === "transform" ||
+    card.cardData.layout === "modal_dfc" ||
+    card.cardData.layout === "reversible_card" ||
+    Boolean(card.cardData.card_faces && card.cardData.card_faces.length > 1)
+  );
+}
+
+/**
+ * Transform a double-faced card to its other face
+ */
+export function transformCard(card: CardInstance): CardInstance {
+  if (!isDoubleFaced(card)) {
+    return card;
+  }
+
+  const faceCount = card.cardData.card_faces?.length || 2;
+  const nextFaceIndex = (card.currentFaceIndex + 1) % faceCount;
+
+  return {
+    ...card,
+    currentFaceIndex: nextFaceIndex,
+  };
+}
+
+/**
+ * Set a specific face on a double-faced card
+ */
+export function setCardFace(
+  card: CardInstance,
+  faceIndex: number
+): CardInstance {
+  if (!isDoubleFaced(card)) {
+    return card;
+  }
+
+  const faceCount = card.cardData.card_faces?.length || 2;
+  const validIndex = Math.max(0, Math.min(faceIndex, faceCount - 1));
+
+  return {
+    ...card,
+    currentFaceIndex: validIndex,
+  };
+}
+
+/**
+ * Get the current face name of a card
+ */
+export function getCurrentFaceName(card: CardInstance): string {
+  if (isDoubleFaced(card) && card.cardData.card_faces) {
+    const faceIndex = Math.min(
+      card.currentFaceIndex,
+      card.cardData.card_faces.length - 1
+    );
+    return card.cardData.card_faces[faceIndex].name || card.cardData.name;
+  }
+  return card.cardData.name;
+}
+
+/**
+ * Phase out a permanent
+ */
+export function phaseOut(card: CardInstance): CardInstance {
+  return { ...card, isPhasedOut: true };
+}
+
+/**
+ * Phase in a permanent
+ */
+export function phaseIn(card: CardInstance): CardInstance {
+  return { ...card, isPhasedOut: false };
+}
+
+/**
+ * Add power modifier to a card
+ */
+export function addPowerModifier(
+  card: CardInstance,
+  amount: number
+): CardInstance {
+  return { ...card, powerModifier: card.powerModifier + amount };
+}
+
+/**
+ * Add toughness modifier to a card
+ */
+export function addToughnessModifier(
+  card: CardInstance,
+  amount: number
+): CardInstance {
+  return { ...card, toughnessModifier: card.toughnessModifier + amount };
+}
+
+/**
+ * Set power modifier to a specific value
+ */
+export function setPowerModifier(
+  card: CardInstance,
+  value: number
+): CardInstance {
+  return { ...card, powerModifier: value };
+}
+
+/**
+ * Set toughness modifier to a specific value
+ */
+export function setToughnessModifier(
+  card: CardInstance,
+  value: number
+): CardInstance {
+  return { ...card, toughnessModifier: value };
+}
+
+/**
+ * Clear summoning sickness from a card
+ */
+export function clearSummoningSickness(card: CardInstance): CardInstance {
+  return { ...card, hasSummoningSickness: false };
+}
+
+/**
+ * Check if a card has a specific counter type
+ */
+export function hasCounter(
+  card: CardInstance,
+  counterType: string
+): boolean {
+  return card.counters.some((c) => c.type === counterType && c.count > 0);
+}
+
+/**
+ * Get the count of a specific counter type
+ */
+export function getCounterCount(
+  card: CardInstance,
+  counterType: string
+): number {
+  const counter = card.counters.find((c) => c.type === counterType);
+  return counter ? counter.count : 0;
+}
+
+/**
+ * Check if a card is attached to another card
+ */
+export function isAttached(card: CardInstance): boolean {
+  return card.attachedToId !== null;
+}
+
+/**
+ * Check if a card has any attachments
+ */
+export function hasAttachments(card: CardInstance): boolean {
+  return card.attachedCardIds.length > 0;
 }

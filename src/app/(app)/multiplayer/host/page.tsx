@@ -15,21 +15,27 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Copy, Check, Users, Settings, Play, X, Crown, Clock, Eye } from 'lucide-react';
+import { Copy, Check, Users, Settings, Play, X, Crown, Clock, Eye, Info } from 'lucide-react';
 import { useLobby } from '@/hooks/use-lobby';
 import { HostGameConfig, PlayerStatus } from '@/lib/multiplayer-types';
+import { FormatRulesDisplay } from '@/components/format-rules-display';
+import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
+import { useLocalStorage } from '@/hooks/use-local-storage';
+import { SavedDeck } from '@/app/actions';
 
 export default function HostLobbyPage() {
-  const { lobby, isHost, isLoading, error, createLobby, updatePlayerStatus, canStartGame, startGame, closeLobby, getGameCode } = useLobby();
+  const { lobby, isHost, isLoading, error, createLobby, updatePlayerStatus, updatePlayerDeck, canStartGame, startGame, closeLobby, getGameCode, validateDeckForFormat } = useLobby();
 
   // Form state
   const [gameName, setGameName] = useState('');
-  const [gameFormat, setGameFormat] = useState<'commander' | 'modern' | 'standard' | 'pioneer'>('commander');
+  const [gameFormat, setGameFormat] = useState<'commander' | 'modern' | 'standard' | 'pioneer' | 'legacy' | 'vintage' | 'pauper'>('commander');
   const [playerCount, setPlayerCount] = useState<'2' | '3' | '4'>('4');
   const [allowSpectators, setAllowSpectators] = useState(true);
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState(30);
   const [isPublic, setIsPublic] = useState(false);
+  const [selectedDeck, setSelectedDeck] = useState<SavedDeck | null>(null);
+  const [deckValidation, setDeckValidation] = useState<{ isValid: boolean; errors: string[] }>({ isValid: true, errors: [] });
 
   // UI state
   const [copied, setCopied] = useState(false);
@@ -68,6 +74,37 @@ export default function HostLobbyPage() {
     createLobby(config, hostName);
     setShowCreateForm(false);
     setShowSettings(false);
+
+    // Auto-select first valid deck if available
+    const [savedDecks] = getStoredDecks();
+    const validDeck = savedDecks.find((deck: SavedDeck) => {
+      const validation = validateDeckForFormat(deck);
+      return validation.isValid;
+    });
+    if (validDeck && lobby) {
+      handleDeckSelect(validDeck);
+    }
+  };
+
+  // Helper to get stored decks
+  const getStoredDecks = () => {
+    const stored = localStorage.getItem('saved-decks');
+    return stored ? JSON.parse(stored) : [];
+  };
+
+  // Handle deck selection with validation
+  const handleDeckSelect = (deck: SavedDeck, validation?: { isValid: boolean; errors: string[] }) => {
+    setSelectedDeck(deck);
+    const deckValidationResult = validation || validateDeckForFormat(deck);
+    setDeckValidation(deckValidationResult);
+
+    // Update player deck in lobby
+    if (lobby) {
+      const hostPlayer = lobby.players.find(p => p.id === lobby.hostId);
+      if (hostPlayer) {
+        updatePlayerDeck(lobby.hostId, deck.id, deck.name, deck);
+      }
+    }
   };
 
   const handleCopyCode = () => {
@@ -161,6 +198,9 @@ export default function HostLobbyPage() {
                     <SelectItem value="modern">Modern</SelectItem>
                     <SelectItem value="standard">Standard</SelectItem>
                     <SelectItem value="pioneer">Pioneer</SelectItem>
+                    <SelectItem value="legacy">Legacy</SelectItem>
+                    <SelectItem value="vintage">Vintage</SelectItem>
+                    <SelectItem value="pauper">Pauper</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -179,6 +219,9 @@ export default function HostLobbyPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Format Rules Display */}
+              <FormatRulesDisplay format={gameFormat} className="mt-4" />
 
               <Separator />
 
@@ -352,12 +395,36 @@ export default function HostLobbyPage() {
             </CardContent>
           </Card>
 
+          {/* Format Rules */}
+          <FormatRulesDisplay format={lobby.format} className="md:col-span-3" />
+
+          {/* Deck Selection for Host */}
+          <Card className="md:col-span-3">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="w-5 h-5" />
+                Deck Selection
+              </CardTitle>
+              <CardDescription>
+                Select a valid {formatDisplayNames[lobby.format]} deck to play
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DeckSelectorWithValidation
+                lobbyFormat={lobby.format}
+                onDeckSelect={handleDeckSelect}
+                selectedDeckId={selectedDeck?.id}
+                className="max-w-md"
+              />
+            </CardContent>
+          </Card>
+
           {/* Players List */}
           <Card className="md:col-span-2">
             <CardHeader>
               <CardTitle>Players in Lobby</CardTitle>
               <CardDescription>
-                All players must be ready before starting the game
+                All players must be ready and have valid decks before starting
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -381,6 +448,16 @@ export default function HostLobbyPage() {
                         {player.deckName && (
                           <div className="text-sm text-muted-foreground">
                             Deck: {player.deckName}
+                            {player.deckFormat && player.deckFormat !== lobby.format && (
+                              <span className="text-yellow-600 ml-2">
+                                ({player.deckFormat} deck)
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {player.deckValidationErrors && player.deckValidationErrors.length > 0 && (
+                          <div className="text-xs text-red-500 mt-1">
+                            {player.deckValidationErrors[0]}
                           </div>
                         )}
                       </div>
@@ -445,7 +522,9 @@ export default function HostLobbyPage() {
                 <p className="text-xs text-center text-muted-foreground mt-2">
                   {lobby.players.length < 2
                     ? 'Need at least 2 players to start'
-                    : 'All players must be ready to start'}
+                    : lobby.players.some(p => !p.deckId)
+                    ? 'All players must select a deck'
+                    : 'All players must have valid decks and be ready to start'}
                 </p>
               )}
             </CardContent>

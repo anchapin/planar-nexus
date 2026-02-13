@@ -39,6 +39,21 @@ import {
   hasLethalDamage,
   canAttack,
   canBlock,
+  isDoubleFaced,
+  transformCard,
+  setCardFace,
+  getCurrentFaceName,
+  phaseOut,
+  phaseIn,
+  addPowerModifier,
+  addToughnessModifier,
+  setPowerModifier,
+  setToughnessModifier,
+  clearSummoningSickness,
+  hasCounter,
+  getCounterCount,
+  isAttached,
+  hasAttachments,
 } from "./card-instance";
 import {
   createZone,
@@ -71,6 +86,7 @@ export function example1_createGame() {
   console.log("Example 1: Creating a new game");
 
   // Create a 2-player game
+  // eslint-disable-next-line prefer-const -- state is returned, not reassigned
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
 
   console.log(`Game ID: ${state.gameId}`);
@@ -140,8 +156,10 @@ export function example3_cardOperations() {
     name: "Test Creature",
     type_line: "Creature — Human Warrior",
     cmc: 3,
+    power: "3",
+    toughness: "3",
     color_identity: ["W"],
-    oracle_text: "First strike\nPower/Toughness: 3/3",
+    oracle_text: "First strike",
   } as ScryfallCard;
 
   // Create card instance
@@ -278,8 +296,9 @@ export function example7_tokens() {
     name: "Goblin Token",
     type_line: "Creature — Goblin",
     cmc: 0,
+    power: "1",
+    toughness: "1",
     color_identity: ["R"],
-    oracle_text: "Power/Toughness: 1/1",
   } as ScryfallCard;
 
   // Create token
@@ -368,6 +387,147 @@ export function example9_gameSimulation() {
 }
 
 /**
+ * Example 10: Double-faced cards
+ */
+export function example10_doubleFacedCards() {
+  console.log("\nExample 10: Double-faced card transformations");
+
+  // Create a double-faced card (e.g., Delver of Secrets)
+  const doubleFacedCard: ScryfallCard = {
+    id: "delver-of-secrets",
+    name: "Delver of Secrets",
+    type_line: "Creature — Human Wizard",
+    layout: "transform",
+    cmc: 1,
+    power: "1",
+    toughness: "1",
+    color_identity: ["U"],
+    card_faces: [
+      {
+        name: "Delver of Secrets",
+        type_line: "Creature — Human Wizard",
+        power: "1",
+        toughness: "1",
+      },
+      {
+        name: "Insectile Aberration",
+        type_line: "Creature — Human Insect",
+        power: "3",
+        toughness: "2",
+      },
+    ],
+  } as ScryfallCard;
+
+  let card = createCardInstance(doubleFacedCard, "player-1", "player-1");
+
+  console.log(`Initial face: ${getCurrentFaceName(card)}`);
+  console.log(`Power: ${getPower(card)}, Toughness: ${getToughness(card)}`);
+  console.log(`Is double-faced: ${isDoubleFaced(card)}`);
+
+  // Transform the card
+  card = transformCard(card);
+  console.log(`\nAfter transformation:`);
+  console.log(`Current face: ${getCurrentFaceName(card)}`);
+  console.log(`Power: ${getPower(card)}, Toughness: ${getToughness(card)}`);
+
+  // Transform back
+  card = transformCard(card);
+  console.log(`\nAfter transforming back:`);
+  console.log(`Current face: ${getCurrentFaceName(card)}`);
+  console.log(`Power: ${getPower(card)}, Toughness: ${getToughness(card)}`);
+
+  return card;
+}
+
+/**
+ * Example 11: Power and toughness modifiers
+ */
+export function example11_powerToughnessModifiers() {
+  console.log("\nExample 11: Power and toughness modifications");
+
+  const mockCard: ScryfallCard = {
+    id: "test-creature",
+    name: "Test Creature",
+    type_line: "Creature — Human Warrior",
+    cmc: 3,
+    power: "2",
+    toughness: "2",
+    color_identity: ["W"],
+  } as ScryfallCard;
+
+  let card = createCardInstance(mockCard, "player-1", "player-1");
+
+  console.log(`Initial: ${getPower(card)}/${getToughness(card)}`);
+
+  // Add +1/+1 counter (simulated via modifier for simplicity)
+  card = addPowerModifier(card, 1);
+  card = addToughnessModifier(card, 1);
+  console.log(`After +1/+1: ${getPower(card)}/${getToughness(card)}`);
+
+  // Add another +2/+2
+  card = addPowerModifier(card, 2);
+  card = addToughnessModifier(card, 2);
+  console.log(`After +2/+2: ${getPower(card)}/${getToughness(card)}`);
+
+  // Set specific values
+  card = setPowerModifier(card, 5);
+  card = setToughnessModifier(card, 5);
+  console.log(`Set to +5/+5: ${getPower(card)}/${getToughness(card)}`);
+
+  return card;
+}
+
+/**
+ * Example 12: Advanced card state
+ */
+export function example12_advancedCardState() {
+  console.log("\nExample 12: Advanced card state operations");
+
+  const mockCard: ScryfallCard = {
+    id: "advanced-creature",
+    name: "Advanced Creature",
+    type_line: "Creature — Human Warrior",
+    cmc: 3,
+    power: "3",
+    toughness: "3",
+    color_identity: ["W"],
+  } as ScryfallCard;
+
+  let card = createCardInstance(mockCard, "player-1", "player-1");
+
+  // Clear summoning sickness
+  card = clearSummoningSickness(card);
+  console.log(`Summoning sickness cleared: ${!card.hasSummoningSickness}`);
+
+  // Add various counters
+  card = addCounters(card, "+1/+1", 3);
+  card = addCounters(card, "charge", 2);
+  console.log(`+1/+1 counters: ${getCounterCount(card, "+1/+1")}`);
+  console.log(`Charge counters: ${getCounterCount(card, "charge")}`);
+  console.log(`Has +1/+1 counters: ${hasCounter(card, "+1/+1")}`);
+  console.log(`Has verse counters: ${hasCounter(card, "verse")}`);
+
+  // Phase out
+  card = phaseOut(card);
+  console.log(`Phased out: ${card.isPhasedOut}`);
+
+  // Phase in
+  card = phaseIn(card);
+  console.log(`Phased in: ${!card.isPhasedOut}`);
+
+  // Attach to another card
+  card = attachCard(card, "target-card-id");
+  console.log(`Is attached: ${isAttached(card)}`);
+  console.log(`Attached to: ${card.attachedToId}`);
+
+  // Detach
+  card = detachCard(card);
+  console.log(`After detach - Is attached: ${isAttached(card)}`);
+
+  return card;
+}
+
+/**
  * Run all examples
  */
 export function runAllExamples() {
@@ -384,6 +544,9 @@ export function runAllExamples() {
   example7_tokens();
   example8_priorityPassing();
   example9_gameSimulation();
+  example10_doubleFacedCards();
+  example11_powerToughnessModifiers();
+  example12_advancedCardState();
 
   console.log("\n" + "=".repeat(60));
   console.log("ALL EXAMPLES COMPLETE");
@@ -401,5 +564,8 @@ export default {
   example7_tokens,
   example8_priorityPassing,
   example9_gameSimulation,
+  example10_doubleFacedCards,
+  example11_powerToughnessModifiers,
+  example12_advancedCardState,
   runAllExamples,
 };

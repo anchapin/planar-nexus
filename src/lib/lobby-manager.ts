@@ -5,6 +5,9 @@
 
 import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus } from './multiplayer-types';
 import { generateGameCode, generateLobbyId, generatePlayerId } from './game-code-generator';
+import { publicLobbyBrowser } from './public-lobby-browser';
+import { validateDeckForLobby } from './format-validator';
+import type { SavedDeck } from '@/app/actions';
 
 /**
  * Client-side lobby manager for host game functionality
@@ -48,6 +51,25 @@ class LobbyManager {
     // Store in localStorage for persistence
     this.saveLobbyToStorage();
 
+    // Register public game if applicable
+    if (config.settings.isPublic) {
+      const hostPlayer = lobby.players.find(p => p.id === hostPlayerId);
+      publicLobbyBrowser.registerPublicGame({
+        id: lobby.id,
+        gameCode: lobby.gameCode,
+        name: lobby.name,
+        hostName: hostPlayer?.name || 'Host',
+        format: lobby.format,
+        maxPlayers: lobby.maxPlayers,
+        currentPlayers: lobby.players.length,
+        status: lobby.status === 'in-progress' ? 'in-progress' : 'waiting',
+        isPublic: config.settings.isPublic,
+        hasPassword: !!config.settings.password,
+        allowSpectators: config.settings.allowSpectators,
+        createdAt: lobby.createdAt,
+      });
+    }
+
     return lobby;
   }
 
@@ -84,6 +106,13 @@ class LobbyManager {
     this.currentLobby.players.push(newPlayer);
     this.saveLobbyToStorage();
 
+    // Update public game if applicable
+    if (this.currentLobby.settings.isPublic) {
+      publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
+        currentPlayers: this.currentLobby.players.length,
+      });
+    }
+
     return newPlayer;
   }
 
@@ -101,6 +130,14 @@ class LobbyManager {
 
     if (this.currentLobby.players.length < initialLength) {
       this.saveLobbyToStorage();
+
+      // Update public game if applicable
+      if (this.currentLobby.settings.isPublic) {
+        publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
+          currentPlayers: this.currentLobby.players.length,
+        });
+      }
+
       return true;
     }
 
@@ -124,20 +161,42 @@ class LobbyManager {
   }
 
   /**
-   * Update player deck selection
+   * Update player deck selection with format validation
    */
-  updatePlayerDeck(playerId: string, deckId: string, deckName: string): boolean {
-    if (!this.currentLobby) return false;
-
-    const player = this.currentLobby.players.find(p => p.id === playerId);
-    if (player) {
-      player.deckId = deckId;
-      player.deckName = deckName;
-      this.saveLobbyToStorage();
-      return true;
+  updatePlayerDeck(
+    playerId: string,
+    deckId: string,
+    deckName: string,
+    deck?: SavedDeck
+  ): { success: boolean; isValid: boolean; errors: string[] } {
+    if (!this.currentLobby) {
+      return { success: false, isValid: false, errors: ['Lobby not found'] };
     }
 
-    return false;
+    const player = this.currentLobby.players.find(p => p.id === playerId);
+    if (!player) {
+      return { success: false, isValid: false, errors: ['Player not found'] };
+    }
+
+    // Update deck info
+    player.deckId = deckId;
+    player.deckName = deckName;
+    player.deckFormat = deck?.format;
+
+    // Validate deck against lobby format
+    if (deck) {
+      const validation = validateDeckForLobby(deck, this.currentLobby.format);
+      player.deckValidationErrors = [...validation.errors, ...validation.warnings];
+      this.saveLobbyToStorage();
+      return {
+        success: true,
+        isValid: validation.isValid && validation.canPlay,
+        errors: player.deckValidationErrors,
+      };
+    }
+
+    this.saveLobbyToStorage();
+    return { success: true, isValid: true, errors: [] };
   }
 
   /**
@@ -148,6 +207,14 @@ class LobbyManager {
 
     this.currentLobby.status = status;
     this.saveLobbyToStorage();
+
+    // Update public game if applicable
+    if (this.currentLobby.settings.isPublic) {
+      publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
+        status: status === 'in-progress' ? 'in-progress' : 'waiting',
+      });
+    }
+
     return true;
   }
 
@@ -167,6 +234,7 @@ class LobbyManager {
 
   /**
    * Check if lobby can start
+   * Now includes format validation check
    */
   canStartGame(): boolean {
     if (!this.currentLobby) return false;
@@ -175,13 +243,28 @@ class LobbyManager {
     const hasEnoughPlayers = this.currentLobby.players.length >= 2;
     const allReady = this.allPlayersReady();
 
-    return hasEnoughPlayers && allReady;
+    // Check that all players have valid decks for the format
+    const allDecksValid = this.currentLobby.players.every(player => {
+      // Players must have a deck selected
+      if (!player.deckId) return false;
+
+      // Players must not have validation errors
+      const hasErrors = player.deckValidationErrors && player.deckValidationErrors.length > 0;
+      return !hasErrors;
+    });
+
+    return hasEnoughPlayers && allReady && allDecksValid;
   }
 
   /**
    * Close and destroy the current lobby
    */
   closeLobby(): void {
+    // Unregister from public browser if applicable
+    if (this.currentLobby?.settings.isPublic) {
+      publicLobbyBrowser.unregisterPublicGame(this.currentLobby.id);
+    }
+
     this.currentLobby = null;
     this.hostPlayerId = null;
     localStorage.removeItem('planar_nexus_current_lobby');

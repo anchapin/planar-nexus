@@ -13,6 +13,8 @@ export interface Player {
   status: PlayerStatus;
   deckId?: string;
   deckName?: string;
+  deckFormat?: string; // Format the deck was built for
+  deckValidationErrors?: string[]; // Validation errors for the selected deck
   joinedAt: number;
 }
 

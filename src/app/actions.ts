@@ -21,11 +21,36 @@ export interface ScryfallCard {
     border_crop: string;
   };
   mana_cost?: string;
+  cmc?: number;
   type_line?: string;
   oracle_text?: string;
   colors?: string[];
   color_identity: string[];
   legalities?: { [format: string]: string };
+  // Power/toughness for creatures
+  power?: string;
+  toughness?: string;
+  // Card faces for double-faced/transform cards
+  card_faces?: Array<{
+    name: string;
+    mana_cost?: string;
+    type_line?: string;
+    oracle_text?: string;
+    power?: string;
+    toughness?: string;
+    image_uris?: {
+      small: string;
+      normal: string;
+      large: string;
+      png: string;
+      art_crop: string;
+      border_crop: string;
+    };
+  }>;
+  // Layout type (normal, transform, modal_dfc, etc.)
+  layout?: string;
+  // Whether this is a double-faced card
+  faces?: number;
 }
 
 export interface DeckCard extends ScryfallCard {
