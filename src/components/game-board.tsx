@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
+import { HandDisplay } from "@/components/hand-display";
 import {
   Skull,
   Archive,
@@ -38,11 +39,13 @@ interface PlayerAreaProps {
   onCardClick?: (cardId: string, zone: ZoneType) => void;
   onZoneClick?: (zone: ZoneType, playerId: string) => void;
   orientation?: "horizontal" | "vertical";
+  isLocalPlayer?: boolean;
 }
 
-function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal" }: PlayerAreaProps) {
+function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false }: PlayerAreaProps) {
   const isBottom = position === "bottom";
   const isVertical = orientation === "vertical";
+  const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
 
   const zoneIcons: Record<ZoneType, React.ReactNode> = {
     battlefield: null,
@@ -228,15 +231,26 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
       ) : (
         // Horizontal layout (top/bottom players)
         <div className={`grid ${isBottom ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[auto_1fr_auto]"} gap-2 flex-1 min-h-0`}>
-          {/* Hand - only show for bottom player (you) or expandable for others */}
-          {isBottom && (
+          {/* Hand - use HandDisplay component for current player, simple zone for opponents */}
+          {isBottom ? (
+            <div className="bg-primary/5 border border-primary/20 rounded-md p-2">
+              <HandDisplay
+                cards={player.hand}
+                isCurrentPlayer={true}
+                onCardSelect={setSelectedHandCards}
+                onCardClick={(cardId) => onCardClick?.(cardId, "hand")}
+                selectedCardIds={selectedHandCards}
+                className="min-h-[140px]"
+              />
+            </div>
+          ) : (
             <ZoneDisplay
               zone="hand"
               title="Hand"
               count={player.hand.length}
               cards={player.hand}
               bgColor="bg-primary/10"
-              size="default"
+              size="small"
             />
           )}
 
@@ -315,6 +329,7 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
                 onCardClick={onCardClick}
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
+                isLocalPlayer={false}
               />
             </CardContent>
           </Card>
@@ -337,6 +352,7 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
                 onCardClick={onCardClick}
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
+                isLocalPlayer={true}
               />
             </CardContent>
           </Card>
@@ -363,6 +379,7 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
                 onCardClick={onCardClick}
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
+                isLocalPlayer={false}
               />
             </CardContent>
           </Card>
@@ -377,6 +394,7 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
                 onCardClick={onCardClick}
                 onZoneClick={onZoneClick}
                 orientation="vertical"
+                isLocalPlayer={false}
               />
             </CardContent>
           </Card>
@@ -406,6 +424,7 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
                 onCardClick={onCardClick}
                 onZoneClick={onZoneClick}
                 orientation="vertical"
+                isLocalPlayer={false}
               />
             </CardContent>
           </Card>
@@ -420,6 +439,7 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
                 onCardClick={onCardClick}
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
+                isLocalPlayer={true}
               />
             </CardContent>
           </Card>
