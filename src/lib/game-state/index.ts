@@ -39,3 +39,6 @@ export * from "./layer-system";
 
 // Export keyword actions (CR 701)
 export * from "./keyword-actions";
+
+// Export combat system (CR 506-510)
+export * from "./combat";
