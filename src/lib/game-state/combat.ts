@@ -288,6 +288,7 @@ export function declareBlockers(
     damageToDeal: number;
     blockerOrder: number;
     hasFirstStrike: boolean;
+    hasDoubleStrike: boolean;
   }>>();
 
   for (const [attackerId, blockerIds] of validBlockers) {
@@ -326,7 +327,8 @@ export function declareBlockers(
         attackerId,
         damageToDeal,
         blockerOrder: index,
-        hasFirstStrike: (blockerHasFirstStrike || blockerHasDoubleStrike) || false,
+        hasFirstStrike: blockerHasFirstStrike || false,
+        hasDoubleStrike: blockerHasDoubleStrike || false,
       };
     });
 

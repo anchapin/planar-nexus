@@ -10,11 +10,75 @@
 // Export all types
 export * from "./types";
 
-// Export card instance utilities
-export * from "./card-instance";
+// Export card instance utilities (excluding canAttack/canBlock - those come from combat.ts)
+export {
+  generateCardInstanceId,
+  createCardInstance,
+  createToken,
+  tapCard,
+  untapCard,
+  flipCard,
+  turnFaceDown,
+  turnFaceUp,
+  addCounters,
+  removeCounters,
+  markDamage,
+  resetDamage,
+  attachCard,
+  detachCard,
+  changeController,
+  isCreature,
+  isLand,
+  isPlaneswalker,
+  isArtifact,
+  isEnchantment,
+  isInstantOrSorcery,
+  isPermanent,
+  getPower,
+  getToughness,
+  hasLethalDamage,
+  getManaValue,
+  isDoubleFaced,
+  transformCard,
+  setCardFace,
+  getCurrentFaceName,
+  phaseOut,
+  phaseIn,
+  addPowerModifier,
+  addToughnessModifier,
+  setPowerModifier,
+  setToughnessModifier,
+  clearSummoningSickness,
+  hasCounter,
+  getCounterCount,
+  isAttached,
+  hasAttachments,
+} from "./card-instance";
 
 // Export zone management
-export * from "./zones";
+export {
+  createZone,
+  createPlayerZones,
+  createSharedZones,
+  addCardToZone,
+  removeCardFromZone,
+  moveCardBetweenZones,
+  getTopCard,
+  getBottomCard,
+  getTopCards,
+  shuffleZone,
+  countCards,
+  zoneContainsCard,
+  getCardPosition,
+  reorderCards,
+  revealZone,
+  hideZone,
+  setZoneVisibility,
+  canPlayerSeeZone,
+  drawCards,
+  millCards,
+  exileCards,
+} from "./zones";
 
 // Export turn phase management
 export * from "./turn-phases";
