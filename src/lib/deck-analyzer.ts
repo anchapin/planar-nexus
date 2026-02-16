@@ -412,7 +412,7 @@ function analyzeSynergies(cards: ScryfallCard[]): SynergyAnalysis {
   }
   
   // Draw/Discard synergies
-  if (cardNames.some(n => n.includes('wheel') || n.includes('notion') || n.includes('rhystic')))) {
+  if (cardNames.some(n => n.includes('wheel') || n.includes('notion') || n.includes('rhystic'))) {
     if (cardNames.some(n => n.includes('lobotomy') || n.includes('thought'))) {
       pairs.push({ cards: ['Wheel effects', 'Discard'], description: 'Wheel + discard synergies' });
     }

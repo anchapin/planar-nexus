@@ -284,14 +284,14 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
       case "G/R":
       case "W/G":
         // Hybrid mana - add to both colors
-        const colors = symbol.split("/");
-        for (const color of colors) {
-          switch (color) {
-            case "W": cost.white += 0.5; break;
-            case "U": cost.blue += 0.5; break;
-            case "B": cost.black += 0.5; break;
-            case "R": cost.red += 0.5; break;
-            case "G": cost.green += 0.5; break;
+        if (symbol.includes("/")) {
+          const colorParts = symbol.split("/");
+          for (const c of colorParts) {
+            if (c === "W") cost.white += 0.5;
+            else if (c === "U") cost.blue += 0.5;
+            else if (c === "B") cost.black += 0.5;
+            else if (c === "R") cost.red += 0.5;
+            else if (c === "G") cost.green += 0.5;
           }
         }
         break;
