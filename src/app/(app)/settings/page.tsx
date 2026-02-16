@@ -21,6 +21,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { AIProvider } from "@/ai/providers";
+import { SoundSettings } from "@/components/sound-settings";
 import {
   storeApiKey,
   getApiKey,
@@ -219,6 +220,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
+          <TabsTrigger value="sound">Sound</TabsTrigger>
         </TabsList>
         
         <TabsContent value="api-keys" className="space-y-6">
@@ -447,6 +449,20 @@ export default function SettingsPage() {
                   );
                 })}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="sound" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Sound Settings</CardTitle>
+              <CardDescription>
+                Configure game sounds and music volume
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SoundSettings />
             </CardContent>
           </Card>
         </TabsContent>
