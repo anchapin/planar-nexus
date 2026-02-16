@@ -121,3 +121,40 @@
     @apply top-4;
   }
 }
+
+/* Custom animations for spell effects */
+@keyframes slide-up {
+  0% {
+    transform: translate(-50%, 100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -50%);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-down {
+  0% {
+    transform: translate(-50%, -100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, 0%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 1s ease-in-out;
+}
+
+.animate-slide-down {
+  animation: slide-down 1s ease-in-out;
+}
