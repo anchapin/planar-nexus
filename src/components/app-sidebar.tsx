@@ -9,7 +9,7 @@ import {
   SidebarFooter,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { Bot, LayoutDashboard, Library, Swords, Users, Eye, Settings } from 'lucide-react';
+import { Bot, LayoutDashboard, Library, Swords, Users, Eye, Settings, Gem, BarChart3, Package } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -21,7 +21,10 @@ export function AppSidebar() {
   const menuItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/deck-builder', label: 'Deck Builder', icon: Library },
+    { href: '/collection', label: 'Collection', icon: Package },
+    { href: '/draft-assistant', label: 'Draft Assistant', icon: Gem },
     { href: '/deck-coach', label: 'AI Deck Coach', icon: Bot },
+    { href: '/game-analysis', label: 'Game Analysis', icon: BarChart3 },
     { href: '/single-player', label: 'Single Player', icon: Swords },
     { href: '/multiplayer', label: 'Multiplayer', icon: Users },
     { href: '/game-board', label: 'Game Board Demo', icon: Eye },

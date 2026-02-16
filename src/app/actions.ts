@@ -8,6 +8,8 @@ export interface ScryfallCard {
   id: string;
   oracle_id?: string;
   name: string;
+  set?: string;
+  collector_number?: string;
   cmc?: number;
   power?: string;
   toughness?: string;
