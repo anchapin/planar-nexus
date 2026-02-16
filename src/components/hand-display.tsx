@@ -85,6 +85,16 @@ function CardDisplay({
               ${isSelectable ? "cursor-pointer" : "cursor-default"}
               ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" : ""}
             `}
+            aria-label={`Card: ${card.card.name}${isSelected ? ", selected" : ""}`}
+            aria-pressed={isSelectable ? isSelected : undefined}
+            role={isSelectable ? "checkbox" : "img"}
+            tabIndex={isSelectable ? 0 : -1}
+            onKeyDown={(e) => {
+              if (isSelectable && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                onClick();
+              }
+            }}
           >
             {scryfallCard.image_uris?.normal ? (
               <Image
