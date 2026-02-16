@@ -19,7 +19,7 @@ import {
   ArrowRight,
   BarChart3,
   History,
-  Tie
+  Handshake
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -360,7 +360,7 @@ function SwissMatchCard({ match, onResultSelect }: SwissMatchCardProps) {
               className="flex-1"
               onClick={() => onResultSelect('draw')}
             >
-              <Tie className="w-3 h-3 mr-1" />
+              <Handshake className="w-3 h-3 mr-1" />
               Draw
             </Button>
             <Button 
@@ -613,67 +613,73 @@ export function useSwissTournament(): UseSwissTournamentReturn {
     setTournament((prev) => {
       if (!prev) return null;
 
-      const newRounds = prev.rounds.map((round) => ({
-        ...round,
-        matches: round.matches.map((match) => {
-          if (match.id !== matchId) return match;
+      // First, find the match and calculate points
+      const match = prev.rounds
+        .flatMap(r => r.matches)
+        .find(m => m.id === matchId);
+      
+      if (!match) return prev;
 
-          const player1 = prev.players.find(p => p.id === match.player1?.id);
-          const player2 = prev.players.find(p => p.id === match.player2?.id);
-          
-          let winner: SwissPlayer | undefined;
-          let player1Points = 0;
-          let player2Points = 0;
+      const player1 = prev.players.find(p => p.id === match.player1?.id);
+      const player2 = prev.players.find(p => p.id === match.player2?.id);
+      
+      let winner: SwissPlayer | undefined;
+      let player1Points = 0;
+      let player2Points = 0;
 
-          if (result === 'player1-win' && player1) {
-            winner = player1;
-            player1Points = 3;
-            player2Points = 0;
-          } else if (result === 'player2-win' && player2) {
-            winner = player2;
-            player1Points = 0;
-            player2Points = 3;
-          } else {
-            // Draw
-            player1Points = 1;
-            player2Points = 1;
-          }
+      if (result === 'player1-win' && player1) {
+        winner = player1;
+        player1Points = 3;
+        player2Points = 0;
+      } else if (result === 'player2-win' && player2) {
+        winner = player2;
+        player1Points = 0;
+        player2Points = 3;
+      } else {
+        // Draw
+        player1Points = 1;
+        player2Points = 1;
+      }
 
-          // Update player stats
-          const updatedPlayers = prev.players.map(p => {
-            if (p.id === player1?.id) {
-              return {
-                ...p,
-                points: p.points + player1Points,
-                wins: p.wins + (result === 'player1-win' ? 1 : 0),
-                losses: p.losses + (result === 'player2-win' ? 1 : 0),
-                draws: p.draws + (result === 'draw' ? 1 : 0),
+      // Update player stats
+      const updatedPlayers = prev.players.map(p => {
+        if (p.id === player1?.id) {
+          return {
+            ...p,
+            points: p.points + player1Points,
+            wins: p.wins + (result === 'player1-win' ? 1 : 0),
+            losses: p.losses + (result === 'player2-win' ? 1 : 0),
+            draws: p.draws + (result === 'draw' ? 1 : 0),
                 matchHistory: [...p.matchHistory, { 
                   round: prev.currentRound, 
-                  result: result === 'player1-win' ? 'win' : result === 'player2-win' ? 'loss' : 'draw',
+                  result: (result === 'player1-win' ? 'win' : result === 'player2-win' ? 'loss' : 'draw') as 'win' | 'loss' | 'draw',
                   opponentId: player2?.id || ''
                 }]
-              };
-            }
-            if (p.id === player2?.id) {
-              return {
-                ...p,
-                points: p.points + player2Points,
-                wins: p.wins + (result === 'player2-win' ? 1 : 0),
-                losses: p.losses + (result === 'player1-win' ? 1 : 0),
-                draws: p.draws + (result === 'draw' ? 1 : 0),
-                matchHistory: [...p.matchHistory, { 
-                  round: prev.currentRound, 
-                  result: result === 'player2-win' ? 'win' : result === 'player1-win' ? 'loss' : 'draw',
-                  opponentId: player1?.id || ''
-                }]
-              };
-            }
-            return p;
-          });
+          };
+        }
+        if (p.id === player2?.id) {
+          return {
+            ...p,
+            points: p.points + player2Points,
+            wins: p.wins + (result === 'player2-win' ? 1 : 0),
+            losses: p.losses + (result === 'player1-win' ? 1 : 0),
+            draws: p.draws + (result === 'draw' ? 1 : 0),
+            matchHistory: [...p.matchHistory, { 
+              round: prev.currentRound, 
+              result: (result === 'player2-win' ? 'win' : result === 'player1-win' ? 'loss' : 'draw') as 'win' | 'loss' | 'draw',
+              opponentId: player1?.id || ''
+            }]
+          };
+        }
+        return p;
+      });
 
+      const newRounds = prev.rounds.map((round) => ({
+        ...round,
+        matches: round.matches.map((m) => {
+          if (m.id !== matchId) return m;
           return { 
-            ...match, 
+            ...m, 
             winner, 
             status: result === 'draw' ? 'draw' as const : 'completed' as const,
             player1Points,
