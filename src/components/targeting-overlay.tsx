@@ -137,7 +137,11 @@ export function TargetingOverlay({
                       key={`${target.targetType}-${target.targetId}-${index}`}
                       variant="secondary"
                       className="cursor-pointer hover:bg-destructive/20"
-                      onClick={() => onTargetSelect(target.targetId, target.targetType)}
+                      onClick={() => {
+                        if (target.targetType === "card" || target.targetType === "player") {
+                          onTargetSelect(target.targetId, target.targetType);
+                        }
+                      }}
                     >
                       {target.targetType === "player" ? (
                         <User className="h-3 w-3 mr-1" />

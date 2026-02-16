@@ -29,7 +29,7 @@ const DOUBLE_CLICK_TIMEOUT = 400;
  * Hook for handling card interactions on the battlefield
  * Implements click-to-act interface (issue #25)
  */
-export function useCardInteractions(props?: UseCardInteractionsProps) {
+export function useCardInteractions(props: UseCardInteractionsProps = {}) {
   // Interaction state
   const [interactionContext, setInteractionContext] = useState<InteractionContext | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<CardInstanceId | null>(null);

@@ -214,7 +214,7 @@ export function AbilityMenu({
                 <Badge variant="outline" className="bg-green-500/10 text-green-500">{availableMana.green}G</Badge>
               )}
               {((availableMana.colorless || 0) + (availableMana.generic || 0)) > 0 && (
-                <Badge variant="outline">{availableMana.colorless + availableMana.generic}C</Badge>
+                <Badge variant="outline">{(availableMana.colorless || 0) + (availableMana.generic || 0)}C</Badge>
               )}
             </div>
           </div>
