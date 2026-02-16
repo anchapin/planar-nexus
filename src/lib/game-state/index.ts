@@ -130,3 +130,6 @@ export * from "./combat";
 
 // Export state-based actions (CR 704)
 export * from "./state-based-actions";
+
+// Export Oracle text parser (CR 112, 113, 608)
+export * from "./oracle-text-parser";
