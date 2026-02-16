@@ -167,7 +167,7 @@ export function RoundTimerWidget({
               {formatLongTime(status.roundTimeRemaining)}
             </span>
           </div>
-          <Progress value={roundProgress} className="h-2" indicatorClassName={getProgressColor()} />
+          <Progress value={roundProgress} className="h-2" />
         </div>
 
         {/* Turn Time (only shown during player's turn) */}
@@ -179,7 +179,7 @@ export function RoundTimerWidget({
                 {formatTime(status.turnTimeRemaining)}
               </span>
             </div>
-            <Progress value={turnProgress} className="h-2" indicatorClassName={getProgressColor()} />
+            <Progress value={turnProgress} className="h-2" />
           </div>
         )}
 
@@ -201,9 +201,9 @@ export function RoundTimerWidget({
 
         {/* Warning/Expired States */}
         {status.roundState === 'warning' && (
-          <Alert variant="warning" className="py-2">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>Less than {fullConfig.warningThresholdSeconds} seconds remaining!</AlertDescription>
+          <Alert className="py-2 bg-yellow-500/10 border-yellow-500/50">
+            <AlertTriangle className="h-4 w-4 text-yellow-500" />
+            <AlertDescription className="text-yellow-500">Less than {fullConfig.warningThresholdSeconds} seconds remaining!</AlertDescription>
           </Alert>
         )}
 

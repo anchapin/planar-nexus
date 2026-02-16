@@ -70,6 +70,8 @@ function CardDisplay({
     ) : null;
   });
 
+  const hasImage = scryfallCard.image_uris?.large || scryfallCard.image_uris?.normal;
+
   return (
     <TooltipProvider>
       <Tooltip>
@@ -97,10 +99,10 @@ function CardDisplay({
               }
             }}
           >
-            {scryfallCard.image_uris?.large || image_uris?.normal ? (
+            {hasImage ? (
               <Image
-                src={scryfallCard.image_uris.normal}
-                alt={scryfallCard.name}
+                src={ scryfallCard.image_uris?.normal || scryfallCard.image_uris?.large || ''}
+                alt={ scryfallCard.name}
                 fill
                 sizes="(max-width: 120px) 100vw, 120px"
                 className="rounded-lg object-cover shadow-md" loading="lazy"
@@ -108,7 +110,7 @@ function CardDisplay({
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 p-2 shadow-md">
                 <p className="text-center text-xs font-medium line-clamp-3">
-                  {scryfallCard.name}
+                  { scryfallCard.name}
                 </p>
                 {showManaCost && manaCost && (
                   <p className="mt-1 text-xs text-muted-foreground">{manaCost}</p>
@@ -124,7 +126,7 @@ function CardDisplay({
             )}
 
             {/* Mana cost overlay */}
-            {showManaCost && manaCost && scryfallCard.image_uris?.large || image_uris?.normal && (
+            {showManaCost && manaCost && hasImage && (
               <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5">
                 <span className="text-xs font-mono text-white">{manaCost}</span>
               </div>
@@ -140,7 +142,7 @@ function CardDisplay({
         </TooltipTrigger>
         <TooltipContent side="top" className="max-w-xs">
           <div className="space-y-1">
-            <p className="font-semibold">{scryfallCard.name}</p>
+            <p className="font-semibold">{ scryfallCard.name}</p>
             {typeLine && <p className="text-xs text-muted-foreground">{typeLine}</p>}
             {manaCost && <p className="text-xs">{manaCost}</p>}
           </div>

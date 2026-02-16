@@ -82,9 +82,9 @@ export function CardSearch({ onAddCard }: CardSearchProps) {
                 title={`Add ${card.name} to deck`}
                 aria-label={`Add ${card.name} to deck`}
               >
-                {card.image_uris?.large || image_uris?.normal ? (
+                {card.image_uris?.large || card.image_uris?.normal ? (
                   <Image
-                    src={card.image_uris.normal}
+                    src={card.image_uris?.normal || card.image_uris?.large || ''}
                     alt={card.name}
                     fill
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"

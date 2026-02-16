@@ -170,7 +170,6 @@ export function TurnTimer({
       <Progress
         value={progress}
         className="h-2"
-        indicatorClassName={getProgressColor()}
       />
 
       {/* Warning indicator */}
@@ -217,10 +216,6 @@ export function CompactTimer({
       <Progress
         value={progress}
         className="w-16 h-1.5"
-        indicatorClassName={cn(
-          timerState === 'warning' && 'bg-yellow-500',
-          timerState === 'expired' && 'bg-red-500'
-        )}
       />
       <span className={cn('text-xs font-mono min-w-[35px]', getColor())}>
         {Math.floor(timeRemaining / 60)}:{(

@@ -19,7 +19,7 @@ import {
   Target,
   Flame,
   Droplets,
-  Lightning,
+  Zap,
   Skull,
   Shield
 } from 'lucide-react';
