@@ -97,13 +97,13 @@ function CardDisplay({
               }
             }}
           >
-            {scryfallCard.image_uris?.normal ? (
+            {scryfallCard.image_uris?.large || image_uris?.normal ? (
               <Image
                 src={scryfallCard.image_uris.normal}
                 alt={scryfallCard.name}
                 fill
                 sizes="(max-width: 120px) 100vw, 120px"
-                className="rounded-lg object-cover shadow-md"
+                className="rounded-lg object-cover shadow-md" loading="lazy"
               />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 p-2 shadow-md">
@@ -124,7 +124,7 @@ function CardDisplay({
             )}
 
             {/* Mana cost overlay */}
-            {showManaCost && manaCost && scryfallCard.image_uris?.normal && (
+            {showManaCost && manaCost && scryfallCard.image_uris?.large || image_uris?.normal && (
               <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5">
                 <span className="text-xs font-mono text-white">{manaCost}</span>
               </div>
