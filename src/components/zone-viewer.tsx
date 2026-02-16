@@ -28,7 +28,8 @@ import {
   Search,
   Filter,
   SortAsc,
-  SortDesc
+  SortDesc,
+  User
 } from "lucide-react";
 import { ZoneType } from "@/types/game";
 import { cn } from "@/lib/utils";
@@ -63,8 +64,10 @@ interface ZoneViewerProps {
   stack?: StackItem[];
   /** Cards in sideboard */
   sideboard?: ZoneCard[];
+  /** Cards in companion zone */
+  companion?: ZoneCard[];
   /** Currently open tab */
-  defaultTab?: "graveyard" | "exile" | "command" | "stack" | "sideboard";
+  defaultTab?: "graveyard" | "exile" | "command" | "stack" | "sideboard" | "companion";
   /** Callback when a card is clicked */
   onCardClick?: (cardId: string) => void;
   /** Callback when the viewer is closed */
@@ -260,6 +263,7 @@ export function ZoneViewer({
   command = [],
   stack = [],
   sideboard = [],
+  companion = [],
   defaultTab = "graveyard",
   onCardClick,
   onClose,
@@ -286,8 +290,9 @@ export function ZoneViewer({
   const filteredExile = useMemo(() => filterCards(exile), [exile, filterCards]);
   const filteredCommand = useMemo(() => filterCards(command), [command, filterCards]);
   const filteredSideboard = useMemo(() => filterCards(sideboard), [sideboard, filterCards]);
+  const filteredCompanion = useMemo(() => filterCards(companion), [companion, filterCards]);
 
-  const totalCards = graveyard.length + exile.length + command.length + stack.length + sideboard.length;
+  const totalCards = graveyard.length + exile.length + command.length + stack.length + sideboard.length + companion.length;
 
   if (!isOpen) return null;
 
@@ -381,6 +386,15 @@ export function ZoneViewer({
                 </Badge>
               )}
             </TabsTrigger>
+            <TabsTrigger value="companion" className="flex items-center gap-1">
+              <User className="h-3 w-3" />
+              Companion
+              {companion.length > 0 && (
+                <Badge variant="secondary" className="ml-1 text-[10px]">
+                  {companion.length}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           {/* Tab content */}
@@ -463,6 +477,21 @@ export function ZoneViewer({
                 />
               )}
             </TabsContent>
+
+            <TabsContent value="companion" className="m-0">
+              {filteredCompanion.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <User className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No companion</p>
+                </div>
+              ) : (
+                <ZoneCardList 
+                  cards={filteredCompanion} 
+                  onCardClick={onCardClick}
+                  sortBy={sortBy}
+                />
+              )}
+            </TabsContent>
           </ScrollArea>
         </Tabs>
 
@@ -500,6 +529,7 @@ export function ZoneButton({
     battlefield: null,
     sideboard: <Library className="h-4 w-4" />,
     anticipate: null,
+    companion: <User className="h-4 w-4" />,
   };
 
   const labels: Record<ZoneType, string> = {
@@ -512,6 +542,7 @@ export function ZoneButton({
     battlefield: "Battlefield",
     sideboard: "Sideboard",
     anticipate: "Anticipate",
+    companion: "Companion",
   };
 
   const Icon = icons[zone];
