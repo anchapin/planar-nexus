@@ -1,6 +1,4 @@
 
-"use server";
-
 import { reviewDeck, DeckReviewInput } from "@/ai/flows/ai-deck-coach-review";
 import { generateAIOpponentDeck, AIOpponentDeckGenerationInput } from "@/ai/flows/ai-opponent-deck-generation";
 
