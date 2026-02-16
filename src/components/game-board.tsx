@@ -40,6 +40,17 @@ import {
 const VIRTUALIZATION_THRESHOLD = 20;
 const MAX_VISIBLE_BATTLEFIELD_CARDS = 14;
 
+// Zone icons mapping
+const ZONE_ICONS: Record<ZoneType, React.ReactNode> = {
+  battlefield: null,
+  hand: <Hand className="h-3 w-3" />,
+  graveyard: <Skull className="h-3 w-3" />,
+  exile: <Ban className="h-3 w-3" />,
+  library: <Library className="h-3 w-3" />,
+  command: <Crown className="h-3 w-3" />,
+  companion: <Crown className="h-3 w-3" />,
+};
+
 interface GameBoardProps {
   players: PlayerState[];
   playerCount: PlayerCount;
