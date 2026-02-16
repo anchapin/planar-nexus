@@ -39,3 +39,6 @@ export * from "./layer-system";
 
 // Export keyword actions (CR 701)
 export * from "./keyword-actions";
+
+// Export state-based actions (CR 704)
+export * from "./state-based-actions";
