@@ -78,13 +78,13 @@ function CardDisplay({
             onClick={onClick}
             disabled={!isSelectable}
             className={`
-              relative aspect-[5/7] w-full min-w-[80px] max-w-[120px] md:min-w-[100px] md:max-w-[140px]
+              relative aspect-[5/7] w-full min-w-[70px] max-w-[100px] sm:min-w-[80px] sm:max-w-[120px] md:min-w-[100px] md:max-w-[140px] lg:max-w-[160px]
               transform transition-all duration-200
               hover:scale-105 hover:-translate-y-1
               focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background
               ${isSelectable ? "cursor-pointer" : "cursor-default"}
               ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" : ""}
-              touch-manipulation min-h-[44px]
+              touch-manipulation min-h-[60px] sm:min-h-[80px] md:min-h-[100px]
             `}
             aria-label={`Card: ${card.card.name}${isSelected ? ", selected" : ""}`}
             aria-pressed={isSelectable ? isSelected : undefined}

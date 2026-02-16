@@ -30,13 +30,13 @@ export function AppSidebar() {
   return (
     <>
       <SidebarHeader className="border-b border-sidebar-border">
-        <div className="flex w-full items-center gap-2">
-          <Swords className="size-8 text-primary" />
-          <h1 className="font-headline text-xl font-bold text-foreground">
+          <div className="flex w-full items-center gap-2">
+          <Swords className="size-8 text-primary shrink-0" />
+          <h1 className="font-headline text-lg md:text-xl font-bold text-foreground truncate">
             Planar Nexus
           </h1>
           <div className="grow" />
-          <SidebarTrigger />
+          <SidebarTrigger className="md:hidden" />
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
@@ -58,16 +58,16 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarContent>
       <SidebarFooter className="mt-auto border-t border-sidebar-border p-2">
-        <div className="flex items-center gap-3">
-            <Avatar className="size-8">
+        <div className="flex items-center gap-2 md:gap-3">
+            <Avatar className="size-8 md:size-8 shrink-0">
                 <AvatarImage src="https://picsum.photos/seed/avatar/40/40" data-ai-hint="abstract avatar" />
                 <AvatarFallback>PN</AvatarFallback>
             </Avatar>
-            <div className="flex flex-col text-sm">
-                <span className="font-semibold text-foreground">Player One</span>
-                <span className="text-xs text-sidebar-foreground">#54321</span>
+            <div className="flex flex-col text-xs md:text-sm min-w-0">
+                <span className="font-semibold text-foreground truncate">Player One</span>
+                <span className="text-xs text-sidebar-foreground hidden md:block">#54321</span>
             </div>
-            <Button variant="ghost" size="icon" className="ml-auto size-7">
+            <Button variant="ghost" size="icon" className="ml-auto size-7 shrink-0">
                 <Users className="size-4" />
             </Button>
         </div>
