@@ -24,3 +24,6 @@ export * from "./game-state";
 
 // Export state hash verification for P2P
 export * from "./state-hash";
+
+// Export replay system
+export * from "./replay";
