@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useTransition } from "react";
@@ -8,26 +7,31 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getDeckReview, SavedDeck, DeckCard, importDecklist } from "@/app/actions";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
-import { Bot, Loader2 } from "lucide-react";
+import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
+import { Bot, Loader2, TrendingUp } from "lucide-react";
 import { ReviewDisplay } from "./_components/review-display";
+import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { DeckSelector } from "@/components/deck-selector";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { formatRules } from "@/lib/game-rules";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
 export default function DeckCoachPage() {
   const [decklist, setDecklist] = useState("");
   const [format, setFormat] = useState("commander");
+  const [focusArchetype, setFocusArchetype] = useState<string>("");
   const [review, setReview] = useState<DeckReviewOutput | null>(null);
+  const [metaAnalysis, setMetaAnalysis] = useState<MetaAnalysisOutput | null>(null);
   const [originalDeckCards, setOriginalDeckCards] = useState<DeckCard[] | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [analysisType, setAnalysisType] = useState<"review" | "meta">("review");
   const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
   const { toast } = useToast();
 
-  const handleReview = () => {
+  const handleAnalyzeDeck = (type: "review" | "meta") => {
     if (decklist.trim().length === 0) {
       toast({
         variant: "destructive",
@@ -40,6 +44,7 @@ export default function DeckCoachPage() {
     startTransition(async () => {
       try {
         setReview(null);
+        setMetaAnalysis(null);
         
         let initialCards: DeckCard[] = [];
         if (originalDeckCards) {
@@ -72,13 +77,22 @@ export default function DeckCoachPage() {
         }
         setOriginalDeckCards(initialCards);
 
-        const result = await getDeckReview({ decklist, format });
-        setReview(result);
+        if (type === "review") {
+          const result = await getDeckReview({ decklist, format });
+          setReview(result);
+        } else {
+          const result = await analyzeMetaAndSuggest({ 
+            decklist, 
+            format,
+            focusArchetype: focusArchetype || undefined 
+          });
+          setMetaAnalysis(result);
+        }
       } catch (error) {
         toast({
           variant: "destructive",
-          title: "Review Failed",
-          description: "Could not get a review from the AI coach. Please try again later.",
+          title: type === "review" ? "Review Failed" : "Meta Analysis Failed",
+          description: "Could not get analysis from the AI coach. Please try again later.",
         });
         console.error(error);
       }
@@ -97,7 +111,6 @@ export default function DeckCoachPage() {
     if (!originalDeckCards) return;
 
     try {
-      // 1. Get cards to add and validate them
       const cardsToAddFromAI = option.cardsToAdd || [];
       const cardsToRemoveFromAI = option.cardsToRemove || [];
       
@@ -113,7 +126,6 @@ export default function DeckCoachPage() {
         illegal = importResult.illegal;
       }
       
-      // 2. Validate the suggestion's integrity
       const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
       const actualAddCount = cardsToAddFromApi.reduce((sum, c) => sum + c.count, 0);
       const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
@@ -137,13 +149,11 @@ export default function DeckCoachPage() {
           title: "AI Suggestion Invalid",
           description: `Could not save new deck. ${errorMessages.join(" ")}`,
         });
-        return; // Abort saving
+        return;
       }
 
-      // 3. If valid, proceed with creating the new deck
       let newDeckList: DeckCard[] = JSON.parse(JSON.stringify(originalDeckCards));
 
-      // Handle Removals
       for (const toRemove of cardsToRemoveFromAI) {
         const cardIndex = newDeckList.findIndex(c => c.name.toLowerCase() === toRemove.name.toLowerCase());
         if (cardIndex > -1) {
@@ -154,7 +164,6 @@ export default function DeckCoachPage() {
         }
       }
 
-      // Handle Additions
       for (const card of cardsToAddFromApi) {
         const cardIndex = newDeckList.findIndex(c => c.id === card.id);
         if (cardIndex > -1) {
@@ -186,6 +195,16 @@ export default function DeckCoachPage() {
     }
   };
 
+  // Handle save for meta analysis suggestions
+  const handleSaveMetaDeck = async (cardsToAdd: { name: string; quantity: number }[], cardsToRemove: { name: string; quantity: number }[], newDeckName: string) => {
+    const option: DeckOption = {
+      title: newDeckName,
+      description: "Meta-optimized deck version",
+      cardsToAdd,
+      cardsToRemove,
+    };
+    await handleSaveNewDeck(option, newDeckName);
+  };
 
   return (
     <div className="flex-1 p-4 md:p-6">
@@ -195,6 +214,14 @@ export default function DeckCoachPage() {
           Paste your decklist to get an expert analysis from our AI coach.
         </p>
       </header>
+      
+      <Tabs value={analysisType} onValueChange={(v) => setAnalysisType(v as "review" | "meta")} className="mb-4">
+        <TabsList>
+          <TabsTrigger value="review">Deck Review</TabsTrigger>
+          <TabsTrigger value="meta">Meta Analysis</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      
       <main className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -232,24 +259,57 @@ export default function DeckCoachPage() {
                   </SelectContent>
               </Select>
             </div>
+            
+            {analysisType === "meta" && (
+              <div className="space-y-2 mb-4">
+                <Label htmlFor="archetype-select">Focus Archetype (Optional)</Label>
+                <Select 
+                  value={focusArchetype} 
+                  onValueChange={setFocusArchetype} 
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="archetype-select">
+                    <SelectValue placeholder="Any archetype" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Any archetype</SelectItem>
+                    <SelectItem value="control">Control</SelectItem>
+                    <SelectItem value="aggro">Aggro</SelectItem>
+                    <SelectItem value="midrange">Midrange</SelectItem>
+                    <SelectItem value="combo">Combo</SelectItem>
+                    <SelectItem value="tribal">Tribal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
             <Textarea
               placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;..."
               className="h-96 font-mono text-sm"
               value={decklist}
               onChange={(e) => {
                 setDecklist(e.target.value);
-                setOriginalDeckCards(null); // Clear if user edits list manually
+                setOriginalDeckCards(null);
               }}
               disabled={isPending}
             />
-            <Button onClick={handleReview} disabled={isPending} className="mt-4 w-full">
-              {isPending ? (
-                <Loader2 className="mr-2 animate-spin" />
-              ) : (
-                <Bot className="mr-2" />
-              )}
-              {isPending ? "Analyzing..." : "Review My Deck"}
-            </Button>
+            
+            <div className="flex gap-2 mt-4">
+              <Button 
+                onClick={() => handleAnalyzeDeck(analysisType)} 
+                disabled={isPending} 
+                className="flex-1"
+              >
+                {isPending ? (
+                  <Loader2 className="mr-2 animate-spin" />
+                ) : analysisType === "review" ? (
+                  <Bot className="mr-2" />
+                ) : (
+                  <TrendingUp className="mr-2" />
+                )}
+                {isPending ? "Analyzing..." : analysisType === "review" ? "Review My Deck" : "Analyze Meta"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
         
@@ -262,17 +322,25 @@ export default function DeckCoachPage() {
                     </div>
                 </Card>
             )}
-            {!isPending && review && originalDeckCards && (
+            {!isPending && review && originalDeckCards && analysisType === "review" && (
               <ReviewDisplay 
                 review={review} 
                 onSaveNewDeck={handleSaveNewDeck} 
               />
             )}
-            {!isPending && !review && (
+            {!isPending && metaAnalysis && analysisType === "meta" && (
+              <MetaAnalysisDisplay 
+                analysis={metaAnalysis}
+                format={format}
+                onSaveNewDeck={handleSaveMetaDeck}
+                originalDeckCards={originalDeckCards}
+              />
+            )}
+            {!isPending && !review && !metaAnalysis && (
                 <Card className="flex-1 flex items-center justify-center border-dashed">
                     <div className="text-center text-muted-foreground">
                         <Bot className="mx-auto h-12 w-12" />
-                        <p className="mt-4">Your deck review will appear here.</p>
+                        <p className="mt-4">Your deck analysis will appear here.</p>
                     </div>
                 </Card>
             )}
