@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useState, useTransition } from "react";
 import { GameBoard } from "@/components/game-board";
 import { GameChat, ChatMessage } from "@/components/game-chat";
 import { EmotePicker, EmoteFeed, EmoteMessage } from "@/components/emote-picker";
@@ -12,11 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
-import { Swords, Settings, Eye, MessageCircle, Smile } from "lucide-react";
+import { Swords, Settings, Eye, MessageCircle, Smile, Lightbulb, AlertTriangle, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGameChat } from "@/hooks/use-game-chat";
 import { useGameEmotes } from "@/hooks/use-game-emotes";
 import { cn } from "@/lib/utils";
+import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
 
 // Mock data generator for demonstration
 function generateMockPlayer(
@@ -113,6 +115,11 @@ export default function GameBoardPage() {
   const [players, setPlayers] = React.useState<PlayerState[]>([]);
   const [timerEnabled, setTimerEnabled] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(true);
+  const [aiAssistanceEnabled, setAiAssistanceEnabled] = React.useState(false);
+  const [isAnalyzing, startAnalysis] = useTransition();
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [aiManaAdvice, setAiManaAdvice] = useState<any>(null);
+  const [aiBoardEval, setAiBoardEval] = useState<any>(null);
   const { toast } = useToast();
 
   // Get current player info
@@ -231,6 +238,77 @@ export default function GameBoardPage() {
     if (targetPlayer) {
       addHeal(amount, targetPlayer.id);
     }
+  };
+
+  // Convert player state to game state format for AI analysis
+  const convertToGameState = () => {
+    const currentPlayer = players.find(p => p.id === currentPlayerId);
+    const opponent = players.find(p => p.id !== currentPlayerId);
+    
+    return {
+      players: players.map(p => ({
+        id: p.id,
+        name: p.name,
+        lifeTotal: p.lifeTotal,
+        poisonCounters: p.poisonCounters,
+        hand: p.hand.map(c => c.card.name),
+        battlefield: p.battlefield.map(c => c.card.name),
+        graveyard: p.graveyard.map(c => c.card.name),
+        library: p.library.length,
+        mana: { 
+          total: 3, // Mock value - would be calculated from actual game state
+          colored: { W: 1, U: 1, B: 0, R: 0, G: 1 },
+          colorless: 0
+        },
+        isCurrentTurn: p.isCurrentTurn,
+      })),
+      turn: currentTurnIndex + 1,
+      phase: "main",
+    };
+  };
+
+  // Handle AI assistance request
+  const handleAIAssistance = () => {
+    if (!currentPlayer) return;
+    
+    const gameState = convertToGameState();
+    
+    startAnalysis(async () => {
+      try {
+        // Get game state analysis
+        const analysis = await analyzeCurrentGameState({
+          gameState,
+          playerName: currentPlayerName,
+        });
+        setAiAnalysis(analysis);
+        
+        // Get mana advice
+        const mana = await getManaAdvice({
+          gameState,
+          playerName: currentPlayerName,
+        });
+        setAiManaAdvice(mana);
+        
+        // Get board evaluation
+        const boardEval = await evaluateBoardState({
+          gameState,
+          playerName: currentPlayerName,
+        });
+        setAiBoardEval(boardEval);
+        
+        toast({
+          title: "AI Analysis Complete",
+          description: "Your game has been analyzed for suggestions.",
+        });
+      } catch (error) {
+        console.error("AI analysis error:", error);
+        toast({
+          variant: "destructive",
+          title: "Analysis Failed",
+          description: "Could not get AI assistance. Please try again.",
+        });
+      }
+    });
   };
 
   return (
@@ -358,6 +436,38 @@ export default function GameBoardPage() {
 
           <Separator />
 
+          {/* AI Assistance Toggle */}
+          <div className="space-y-2">
+            <h2 className="font-semibold text-sm flex items-center gap-2">
+              <Lightbulb className="h-4 w-4" />
+              AI Assistance
+            </h2>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ai-toggle" className="text-xs">Enable AI Hints</Label>
+              <input
+                type="checkbox"
+                id="ai-toggle"
+                checked={aiAssistanceEnabled}
+                onChange={(e) => setAiAssistanceEnabled(e.target.checked)}
+                className="toggle"
+              />
+            </div>
+            <Button 
+              onClick={handleAIAssistance} 
+              disabled={isAnalyzing || !aiAssistanceEnabled}
+              variant="outline"
+              className="w-full"
+              size="sm"
+            >
+              {isAnalyzing ? "Analyzing..." : "Get AI Suggestions"}
+            </Button>
+            {aiAssistanceEnabled && (
+              <p className="text-xs text-muted-foreground">
+                Get real-time hints and play recommendations during your game.
+              </p>
+            )}
+          </div>
+
           {/* Emote Picker */}
           <div className="space-y-2">
             <h2 className="font-semibold text-sm flex items-center gap-2">
@@ -462,6 +572,101 @@ export default function GameBoardPage() {
         
         {/* Damage Indicators Overlay */}
         <DamageOverlay events={damageEvents} className="pointer-events-none" />
+        
+        {/* Floating AI Assistance Panel */}
+        {(aiAnalysis || aiManaAdvice || aiBoardEval) && aiAssistanceEnabled && (
+          <Card className="absolute top-4 left-4 w-72 max-h-[60vh] overflow-y-auto z-10 shadow-lg bg-card/95">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Lightbulb className="h-4 w-4 text-yellow-500" />
+                AI Suggestions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              {/* Board Evaluation */}
+              {aiBoardEval && (
+                <div className="p-2 rounded bg-muted">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-semibold">Win Chance:</span>
+                    <span className={cn(
+                      "font-bold",
+                      aiBoardEval.playerWinChance >= 60 ? "text-green-500" :
+                      aiBoardEval.playerWinChance >= 40 ? "text-yellow-500" : "text-red-500"
+                    )}>
+                      {aiBoardEval.playerWinChance}%
+                    </span>
+                  </div>
+                  <div className="text-muted-foreground">
+                    Board: {aiBoardEval.boardAdvantage?.replace('_', ' ')}
+                  </div>
+                </div>
+              )}
+              
+              {/* Suggested Plays */}
+              {aiAnalysis?.suggestedPlays && aiAnalysis.suggestedPlays.length > 0 && (
+                <div>
+                  <div className="font-semibold mb-1 flex items-center gap-1">
+                    <Zap className="h-3 w-3" /> Suggested Plays:
+                  </div>
+                  {aiAnalysis.suggestedPlays.slice(0, 3).map((play: any, idx: number) => (
+                    <div key={idx} className={cn(
+                      "p-2 rounded mb-1",
+                      play.priority === 'high' ? 'bg-green-50 border-l-2 border-green-500' :
+                      play.priority === 'medium' ? 'bg-yellow-50 border-l-2 border-yellow-500' :
+                      'bg-gray-50'
+                    )}>
+                      <div className="font-medium">{play.cardName}</div>
+                      <div className="text-muted-foreground text-[10px]">{play.reasoning}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Warnings */}
+              {aiAnalysis?.warnings && aiAnalysis.warnings.length > 0 && (
+                <div>
+                  <div className="font-semibold mb-1 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 text-amber-500" /> Warnings:
+                  </div>
+                  {aiAnalysis.warnings.slice(0, 2).map((warning: any, idx: number) => (
+                    <div key={idx} className={cn(
+                      "p-2 rounded mb-1 text-[10px]",
+                      warning.type === 'danger' ? 'bg-red-50 text-red-700' :
+                      'bg-amber-50 text-amber-700'
+                    )}>
+                      {warning.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Mana Advice */}
+              {aiManaAdvice?.suggestions && aiManaAdvice.suggestions.length > 0 && (
+                <div>
+                  <div className="font-semibold mb-1">Mana Usage:</div>
+                  {aiManaAdvice.suggestions.slice(0, 2).map((suggestion: any, idx: number) => (
+                    <div key={idx} className="p-2 rounded bg-blue-50 mb-1">
+                      <div className="font-medium">{suggestion.action}</div>
+                      <div className="text-muted-foreground text-[10px]">{suggestion.reasoning}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Strategic Advice */}
+              {aiAnalysis?.strategicAdvice && aiAnalysis.strategicAdvice.length > 0 && (
+                <div className="pt-2 border-t">
+                  <div className="font-semibold mb-1">Strategic Advice:</div>
+                  {aiAnalysis.strategicAdvice.slice(0, 2).map((advice: string, idx: number) => (
+                    <div key={idx} className="text-muted-foreground text-[10px] mb-1">
+                      • {advice}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
