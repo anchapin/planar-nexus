@@ -36,3 +36,6 @@ export * from "./replacement-effects";
 
 // Export layer system for continuous effects (CR 613)
 export * from "./layer-system";
+
+// Export keyword actions (CR 701)
+export * from "./keyword-actions";
