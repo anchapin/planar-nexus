@@ -4,21 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Offline - Planar Nexus</title>
+  <meta name="description" content="You are currently offline. Connect to the internet to continue playing Planar Nexus.">
   <style>
-    * {
+    *, *::before, *::after {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+    :root {
+      --background: 222 47% 8%;
+      --foreground: 210 40% 98%;
+      --primary: 239 84% 67%;
+      --primary-foreground: 0 0% 100%;
+    }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, hsl(222, 47%, 8%) 0%, hsl(222, 47%, 12%) 100%);
+      color: hsl(210, 40%, 98%);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 20px;
+      line-height: 1.6;
     }
     .container {
       text-align: center;
@@ -27,39 +35,99 @@
     .icon {
       font-size: 64px;
       margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
     }
     h1 {
       font-size: 28px;
       margin-bottom: 16px;
-      color: #e2e8f0;
+      color: hsl(210, 40%, 95%);
+      font-weight: 600;
     }
     p {
       font-size: 16px;
-      color: #94a3b8;
+      color: hsl(215, 20%, 65%);
       margin-bottom: 24px;
       line-height: 1.6;
     }
     .button {
       display: inline-block;
       padding: 12px 24px;
-      background: #4f46e5;
-      color: white;
+      background: hsl(239, 84%, 67%);
+      color: hsl(0, 0%, 100%);
       text-decoration: none;
       border-radius: 8px;
       font-weight: 500;
-      transition: background 0.2s;
+      transition: background 0.2s ease;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
     }
     .button:hover {
-      background: #4338ca;
+      background: hsl(239, 84%, 57%);
+    }
+    .button:focus {
+      outline: 2px solid hsl(239, 84%, 67%);
+      outline-offset: 2px;
+    }
+    .status {
+      margin-top: 24px;
+      padding: 12px;
+      background: hsl(215, 20%, 15%);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      margin-right: 8px;
+      animation: blink 1s ease-in-out infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    @media (prefers-color-scheme: light) {
+      body {
+        background: linear-gradient(135deg, hsl(210, 40%, 95%) 0%, hsl(210, 40%, 90%) 100%);
+        color: hsl(222, 47%, 8%);
+      }
+      h1 {
+        color: hsl(222, 47%, 8%);
+      }
+      p {
+        color: hsl(215, 20%, 35%);
+      }
+      .status {
+        background: hsl(215, 20%, 90%);
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="icon">📡</div>
+    <div class="icon" role="img" aria-label="Offline icon">📡</div>
     <h1>You're Offline</h1>
     <p>It looks like you've lost your internet connection. Some features may not be available until you're back online.</p>
-    <a href="/" class="button">Try Again</a>
+    <button class="button" onclick="window.location.reload()">
+      Try Again
+    </button>
+    <div class="status" role="status" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span>Waiting for connection...</span>
+    </div>
   </div>
+  <script>
+    // Auto-retry when back online
+    window.addEventListener('online', () => {
+      window.location.reload();
+    });
+  </script>
 </body>
 </html>

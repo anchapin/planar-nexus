@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
+  <rect width="192" height="192" fill="#1a1a2e" rx="24"/>
+  <g transform="translate(32, 32)">
+    <path d="M64 0 L128 32 L64 64 L0 32 Z" fill="#4f46e5"/>
+    <path d="M64 32 L128 64 L64 96 L0 64 Z" fill="#6366f1"/>
+    <path d="M64 64 L128 96 L64 128 L0 96 Z" fill="#818cf8"/>
+    <path d="M32 16 L96 48 L32 80 L-32 48 Z" fill="#4338ca" opacity="0.6"/>
+  </g>
+  <text x="96" y="170" font-family="sans-serif" font-size="24" font-weight="bold" fill="white" text-anchor="middle">PN</text>
+</svg>
