@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Gamepad2, Users, Clock } from "lucide-react";
 import Link from "next/link";
@@ -46,9 +45,13 @@ export default function MultiplayerPage() {
                     <CardTitle>Join with Code</CardTitle>
                     <CardDescription>Have an invite code? Join a private game directly.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex gap-2">
-                    <Input placeholder="Enter game code..." />
-                    <Button>Join</Button>
+                <CardContent className="space-y-4">
+                    <Link href="/multiplayer/join">
+                        <Button variant="outline" className="w-full">
+                            <Gamepad2 className="w-4 h-4 mr-2" />
+                            Join with Code
+                        </Button>
+                    </Link>
                 </CardContent>
             </Card>
         </div>

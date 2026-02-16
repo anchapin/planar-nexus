@@ -19,6 +19,10 @@ export interface PublicGameInfo {
   hasPassword: boolean;
   allowSpectators: boolean;
   createdAt: number;
+  settings?: {
+    timerEnabled?: boolean;
+    timerMinutes?: number;
+  };
 }
 
 const STORAGE_KEY = 'planar_nexus_public_lobbies';

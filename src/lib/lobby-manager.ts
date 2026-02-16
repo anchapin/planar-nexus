@@ -67,6 +67,10 @@ class LobbyManager {
         hasPassword: !!config.settings.password,
         allowSpectators: config.settings.allowSpectators,
         createdAt: lobby.createdAt,
+        settings: {
+          timerEnabled: config.settings.timerEnabled,
+          timerMinutes: config.settings.timerMinutes,
+        },
       });
     }
 
