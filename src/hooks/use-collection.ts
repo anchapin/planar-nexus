@@ -133,9 +133,10 @@ export function useCollection() {
         card: {
           id: `imported-${name.toLowerCase().replace(/\s+/g, '-')}`,
           name,
+          color_identity: [],
           set: '',
           collector_number: '',
-        } as ScryfallCard,
+        } as unknown as ScryfallCard,
         quantity,
         addedAt: new Date().toISOString(),
       });
