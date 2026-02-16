@@ -4,10 +4,10 @@
  * 
  * This module provides a unified interface for AI providers,
  * allowing easy switching between different AI backends.
+ * 
+ * Note: This module intentionally avoids importing genkit to support browser builds.
+ * The AI functionality should only be used server-side or with proper fallback handling.
  */
-
-import { genkit, type Genkit } from 'genkit';
-import { googleAI } from '@genkit-ai/google-genai';
 
 /**
  * Supported AI providers
@@ -69,62 +69,6 @@ let currentConfig: AIProviderConfig = {
 };
 
 /**
- * Current AI instance
- */
-let currentAI: Genkit | null = null;
-
-/**
- * Initialize the AI with a specific provider
- * This replaces the hardcoded Google AI initialization
- */
-export function initializeAIProvider(config?: Partial<AIProviderConfig>): Genkit {
-  const finalConfig = { ...currentConfig, ...config };
-  currentConfig = finalConfig;
-
-  // Initialize the appropriate plugin based on provider
-  switch (finalConfig.provider) {
-    case 'google':
-      currentAI = genkit({
-        plugins: [googleAI({ apiVersion: 'v1' })],
-      });
-      break;
-    case 'openai':
-      // OpenAI integration would be added here
-      // For now, fall back to Google AI
-      currentAI = genkit({
-        plugins: [googleAI({ apiVersion: 'v1' })],
-      });
-      console.warn('OpenAI provider not fully implemented, using Google AI as fallback');
-      break;
-    case 'anthropic':
-      // Anthropic integration would be added here
-      // For now, fall back to Google AI
-      currentAI = genkit({
-        plugins: [googleAI({ apiVersion: 'v1' })],
-      });
-      console.warn('Anthropic provider not fully implemented, using Google AI as fallback');
-      break;
-    default:
-      currentAI = genkit({
-        plugins: [googleAI({ apiVersion: 'v1' })],
-      });
-  }
-
-  return currentAI;
-}
-
-/**
- * Get the current AI instance
- * Falls back to Google AI if not initialized
- */
-export function getAI(): Genkit {
-  if (!currentAI) {
-    return initializeAIProvider();
-  }
-  return currentAI;
-}
-
-/**
  * Get the current provider configuration
  */
 export function getProviderConfig(): AIProviderConfig {
@@ -140,8 +84,6 @@ export function setProvider(provider: AIProvider, model?: string): void {
     model: model || DEFAULT_CONFIGS[provider]?.model,
     ...DEFAULT_CONFIGS[provider],
   };
-  // Re-initialize with new provider
-  initializeAIProvider(currentConfig);
 }
 
 /**
@@ -192,5 +134,23 @@ export function isValidProvider(provider: string): provider is AIProvider {
   return ['google', 'openai', 'anthropic', 'custom'].includes(provider);
 }
 
-// Re-export genkit for backward compatibility
-export { ai } from '@/ai/genkit';
+/**
+ * Get the AI instance - this should only be used in Server Components or with proper environment checks
+ * Throws an error if called in browser environment
+ */
+export function getAI(): never {
+  throw new Error(
+    'AI functionality is not available in the browser. ' +
+    'Use AI features only in Server Actions or API routes.'
+  );
+}
+
+/**
+ * Initialize the AI provider - for server-side use only
+ */
+export function initializeAIProvider(_config?: Partial<AIProviderConfig>): never {
+  throw new Error(
+    'AI provider initialization is not available in the browser. ' +
+    'Use AI features only in Server Actions or API routes.'
+  );
+}

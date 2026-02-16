@@ -10,11 +10,11 @@
  * - AIOpponentDeckGenerationOutput - The return type for the generateAIOpponentDeck function.
  */
 
-import { getAI, getModelString } from '@/ai/providers';
+import { ai } from '@/ai/genkit';
+import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
 
-// Get the AI instance using the provider-agnostic approach
-const ai = getAI();
+// Get the model string using the provider-agnostic approach
 const currentModel = getModelString();
 
 // Input Schema

@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview An AI deck coach for Magic: The Gathering.
@@ -11,7 +10,8 @@
  * - DeckReviewOutput - The return type for the reviewDeck function.
  */
 
-import { getAI, getModelString } from '@/ai/providers';
+import { ai } from '@/ai/genkit';
+import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
 import { validateCardLegality } from '@/app/actions';
 
@@ -47,9 +47,6 @@ export async function reviewDeck(
   return result;
 }
 
-// Get the AI instance using the provider-agnostic approach
-const ai = getAI();
-
 // Use provider-agnostic model string
 const currentModel = getModelString();
 
@@ -70,10 +67,10 @@ Do not repeat these mistakes. For example, if the feedback indicates a card is n
 **FORMAT: {{{format}}}**
 
 **DECKLIST TO REVIEW:**
-{{{decklist}}}
+{{{decklist}}KS:**
+1.  **Provide a \`reviewSummary}
 
-**YOUR TASKS:**
-1.  **Provide a \`reviewSummary\`**: Write a comprehensive analysis covering the deck's core strategy, its strengths and weaknesses, and how it fits into the current metagame for the specified format. Assume the provided decklist is legal for the format. Focus on strategic improvements, not rule violations.
+**YOUR TAS\`**: Write a comprehensive analysis covering the deck's core strategy, its strengths and weaknesses, and how it fits into the current metagame for the specified format. Assume the provided decklist is legal for the format. Focus on strategic improvements, not rule violations.
 
 2.  **Propose \`deckOptions\`**: Create at least two distinct options for improving the deck. Each option should have a clear strategic focus (e.g., making it better against aggro, or giving it more tools against control). For each option:
     *   Provide a short, descriptive \`title\`.
@@ -102,8 +99,7 @@ const deckReviewFlow = ai.defineFlow(
     while (attempts < maxAttempts) {
       attempts++;
       
-      // Get fresh AI instance and model for each attempt (allows runtime switching)
-      const aiInstance = getAI();
+      // Get fresh model string for each attempt (allows runtime switching)
       const model = getModelString();
       
       const { output } = await deckReviewPrompt({
