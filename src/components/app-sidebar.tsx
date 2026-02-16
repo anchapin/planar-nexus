@@ -9,7 +9,7 @@ import {
   SidebarFooter,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import { Bot, LayoutDashboard, Library, Swords, Users, Eye, Settings, Gem, BarChart3, Package } from 'lucide-react';
+import { Bot, LayoutDashboard, Library, Swords, Users, Eye, Settings, Gem, BarChart3, Package, MousePointer } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -28,6 +28,7 @@ export function AppSidebar() {
     { href: '/single-player', label: 'Single Player', icon: Swords },
     { href: '/multiplayer', label: 'Multiplayer', icon: Users },
     { href: '/game-board', label: 'Game Board Demo', icon: Eye },
+    { href: '/card-interactions-demo', label: 'Card Interactions', icon: MousePointer },
     { href: '/settings', label: 'Settings', icon: Settings },
   ];
 

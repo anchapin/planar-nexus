@@ -95,7 +95,7 @@ const QuickTipsInputSchema = z.object({
 
 // Output schema for quick tips
 const QuickTipsOutputSchema = z.object({
-  tips: z.array(z.string()).describe("Quick actionable tips based on the game")),
+  tips: z.array(z.string()).describe("Quick actionable tips based on the game"),
   focusAreas: z.array(z.string()).describe("Areas to focus on in future games"),
 });
 
