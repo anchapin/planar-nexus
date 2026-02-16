@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,10 @@ import {
   Crown
 } from "lucide-react";
 
+// Performance optimization constants
+const VIRTUALIZATION_THRESHOLD = 20;
+const MAX_VISIBLE_BATTLEFIELD_CARDS = 14;
+
 interface GameBoardProps {
   players: PlayerState[];
   playerCount: PlayerCount;
@@ -42,89 +47,121 @@ interface PlayerAreaProps {
   isLocalPlayer?: boolean;
 }
 
-function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false }: PlayerAreaProps) {
-  const isBottom = position === "bottom";
-  const isVertical = orientation === "vertical";
-  const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
+// Memoized ZoneDisplay component for performance optimization
+const ZoneDisplay = memo(function ZoneDisplay({
+  zone,
+  title,
+  count,
+  cards,
+  bgColor = "bg-muted/50",
+  size = "default",
+  onCardClick,
+  onZoneClick,
+  playerId
+}: {
+  zone: ZoneType;
+  title: string;
+  count: number;
+  cards: any[];
+  bgColor?: string;
+  size?: "small" | "default" | "large";
+  onCardClick?: (cardId: string, zone: ZoneType) => void;
+  onZoneClick?: (zone: ZoneType, playerId: string) => void;
+  playerId: string;
+}) {
+  const sizeClasses = {
+    small: "h-16 min-h-16",
+    default: "h-24 min-h-24",
+    large: "h-32 min-h-32"
+  };
 
-  const zoneIcons: Record<ZoneType, React.ReactNode> = {
+  const handleClick = useCallback(() => {
+    onZoneClick?.(zone, playerId);
+  }, [onZoneClick, zone, playerId]);
+
+  // Virtualize battlefield when there are many cards (performance optimization)
+  const displayCards = useMemo(() => {
+    if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
+      return cards.slice(0, MAX_VISIBLE_BATTLEFIELD_CARDS);
+    }
+    return zone === "battlefield" ? cards.slice(0, 7) : cards;
+  }, [zone, count, cards]);
+
+  const remainingCount = useMemo(() => {
+    if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
+      return count - MAX_VISIBLE_BATTLEFIELD_CARDS;
+    }
+    return 0;
+  }, [zone, count]);
+
+  const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(() => ({
     battlefield: null,
     hand: <Hand className="h-3 w-3" />,
     graveyard: <Skull className="h-3 w-3" />,
     exile: <Ban className="h-3 w-3" />,
     library: <Library className="h-3 w-3" />,
     command: <Crown className="h-3 w-3" />,
-  };
+  }), []);
 
-  const ZoneDisplay = ({
-    zone,
-    title,
-    count,
-    cards,
-    bgColor = "bg-muted/50",
-    size = "default"
-  }: {
-    zone: ZoneType;
-    title: string;
-    count: number;
-    cards: any[];
-    bgColor?: string;
-    size?: "small" | "default" | "large";
-  }) => {
-    const sizeClasses = {
-      small: "h-16 min-h-16",
-      default: "h-24 min-h-24",
-      large: "h-32 min-h-32"
-    };
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={handleClick}
+            className={`w-full ${sizeClasses[size]} ${bgColor} border border-border/50 rounded-md hover:border-primary/50 transition-colors group relative`}
+          >
+            {count > 0 && (
+              <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
+                {zone === "battlefield" && displayCards.map((card: any, idx: number) => (
+                  <div
+                    key={card.id || idx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCardClick?.(card.id, zone);
+                    }}
+                    className="w-10 h-14 bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 rounded hover:from-primary/40 hover:scale-105 transition-all cursor-pointer"
+                  />
+                ))}
+                {zone === "battlefield" && remainingCount > 0 && (
+                  <div className="absolute bottom-1 right-1 bg-primary/80 text-primary-foreground text-xs px-1.5 py-0.5 rounded">
+                    +{remainingCount} more
+                  </div>
+                )}
+                {zone !== "battlefield" && (
+                  <div className="flex items-center gap-1">
+                    {zoneIcons[zone]}
+                    <span className="text-sm font-medium">{count}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {count === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center opacity-30">
+                {zoneIcons[zone]}
+              </div>
+            )}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{title}: {count}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+});
 
-    const handleClick = () => {
-      onZoneClick?.(zone, player.id);
-    };
-
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={handleClick}
-              className={`w-full ${sizeClasses[size]} ${bgColor} border border-border/50 rounded-md hover:border-primary/50 transition-colors group relative`}
-            >
-              {count > 0 && (
-                <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
-                  {zone === "battlefield" && cards.slice(0, 7).map((card, idx) => (
-                    <div
-                      key={idx}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCardClick?.(card.id, zone);
-                      }}
-                      className="w-10 h-14 bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 rounded hover:from-primary/40 hover:scale-105 transition-all cursor-pointer"
-                    />
-                  ))}
-                  {zone !== "battlefield" && (
-                    <div className="flex items-center gap-1">
-                      {zoneIcons[zone]}
-                      <span className="text-sm font-medium">{count}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-              {count === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center opacity-30">
-                  {zoneIcons[zone]}
-                </div>
-              )}
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>{title}: {count}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    );
-  };
-
-  const PlayerInfo = () => (
+// Memoized PlayerInfo component for performance optimization
+const PlayerInfo = memo(function PlayerInfo({ 
+  player, 
+  isCurrentTurn,
+  isVertical 
+}: { 
+  player: PlayerState;
+  isCurrentTurn: boolean;
+  isVertical: boolean;
+}) {
+  return (
     <div className={`flex items-center gap-2 ${isVertical ? "flex-col" : ""}`}>
       <div className="flex items-center gap-2">
         {isCurrentTurn && (
@@ -172,14 +209,68 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
       </div>
     </div>
   );
+});
+
+function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false }: PlayerAreaProps) {
+  const isBottom = position === "bottom";
+  const isVertical = orientation === "vertical";
+  const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
+
+  // Memoize handlers to prevent unnecessary re-renders
+  const handleZoneClick = useCallback((zone: ZoneType) => {
+    onZoneClick?.(zone, player.id);
+  }, [onZoneClick, player.id]);
+
+  const handleCardClick = useCallback((cardId: string, zone: ZoneType) => {
+    onCardClick?.(cardId, zone);
+  }, [onCardClick]);
+
+  // Memoize zone icons
+  const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(() => ({
+    battlefield: null,
+    hand: <Hand className="h-3 w-3" />,
+    graveyard: <Skull className="h-3 w-3" />,
+    exile: <Ban className="h-3 w-3" />,
+    library: <Library className="h-3 w-3" />,
+    command: <Crown className="h-3 w-3" />,
+  }), []);
+
+  // Local ZoneDisplay wrapper for backward compatibility
+  const ZoneDisplayLocal = ({
+    zone,
+    title,
+    count,
+    cards,
+    bgColor = "bg-muted/50",
+    size = "default"
+  }: {
+    zone: ZoneType;
+    title: string;
+    count: number;
+    cards: any[];
+    bgColor?: string;
+    size?: "small" | "default" | "large";
+  }) => (
+    <ZoneDisplay
+      zone={zone}
+      title={title}
+      count={count}
+      cards={cards}
+      bgColor={bgColor}
+      size={size}
+      onCardClick={handleCardClick}
+      onZoneClick={handleZoneClick}
+      playerId={player.id}
+    />
+  );
 
   return (
     <div className={`flex flex-col gap-2 ${isVertical ? "h-full" : ""}`}>
-      <PlayerInfo />
+      <PlayerInfo player={player} isCurrentTurn={isCurrentTurn} isVertical={isVertical} />
 
       {/* Command Zone - always visible for Commander format */}
       {player.commandZone.length > 0 && (
-        <ZoneDisplay
+        <ZoneDisplayLocal
           zone="command"
           title="Command Zone"
           count={player.commandZone.length}
@@ -191,10 +282,9 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
 
       {/* Main layout based on orientation */}
       {isVertical ? (
-        // Vertical layout (left/right players in 4-player)
         <div className="grid grid-rows-2 gap-2 flex-1 min-h-0">
           <div className="flex flex-col gap-2">
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="library"
               title="Library"
               count={player.library.length}
@@ -202,7 +292,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               bgColor="bg-blue-500/10"
               size="small"
             />
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="graveyard"
               title="Graveyard"
               count={player.graveyard.length}
@@ -210,7 +300,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               bgColor="bg-stone-500/10"
               size="small"
             />
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="exile"
               title="Exile"
               count={player.exile.length}
@@ -219,7 +309,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               size="small"
             />
           </div>
-          <ZoneDisplay
+          <ZoneDisplayLocal
             zone="battlefield"
             title="Battlefield"
             count={player.battlefield.length}
@@ -229,9 +319,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           />
         </div>
       ) : (
-        // Horizontal layout (top/bottom players)
         <div className={`grid ${isBottom ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[auto_1fr_auto]"} gap-2 flex-1 min-h-0`}>
-          {/* Hand - use HandDisplay component for current player, simple zone for opponents */}
           {isBottom ? (
             <div className="bg-primary/5 border border-primary/20 rounded-md p-2">
               <HandDisplay
@@ -244,7 +332,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               />
             </div>
           ) : (
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="hand"
               title="Hand"
               count={player.hand.length}
@@ -254,9 +342,8 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
           )}
 
-          {/* Other zones row */}
           <div className="grid grid-cols-4 gap-2">
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="library"
               title="Library"
               count={player.library.length}
@@ -264,7 +351,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               bgColor="bg-blue-500/10"
               size="small"
             />
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="graveyard"
               title="Graveyard"
               count={player.graveyard.length}
@@ -272,7 +359,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               bgColor="bg-stone-500/10"
               size="small"
             />
-            <ZoneDisplay
+            <ZoneDisplayLocal
               zone="exile"
               title="Exile"
               count={player.exile.length}
@@ -281,7 +368,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
               size="small"
             />
             {!isBottom && (
-              <ZoneDisplay
+              <ZoneDisplayLocal
                 zone="hand"
                 title="Hand"
                 count={player.hand.length}
@@ -292,8 +379,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             )}
           </div>
 
-          {/* Battlefield */}
-          <ZoneDisplay
+          <ZoneDisplayLocal
             zone="battlefield"
             title="Battlefield"
             count={player.battlefield.length}
@@ -313,13 +399,11 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
   // Layout strategy based on player count
   const renderLayout = () => {
     if (playerCount === 2) {
-      // Top/bottom split for 2-player
       const topPlayer = players[0];
       const bottomPlayer = players[1];
 
       return (
         <div className="grid grid-rows-[1fr_auto_1fr] gap-4 h-full">
-          {/* Top player */}
           <Card className="border-border/50">
             <CardContent className="p-4 h-full">
               <PlayerArea
@@ -334,7 +418,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
             </CardContent>
           </Card>
 
-          {/* Stack/turn info in middle */}
           <div className="flex items-center justify-center">
             <Badge variant="outline" className="px-4 py-2 text-lg">
               <Swords className="h-4 w-4 mr-2" />
@@ -342,7 +425,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
             </Badge>
           </div>
 
-          {/* Bottom player (you) */}
           <Card className="border-2 border-primary/20">
             <CardContent className="p-4 h-full">
               <PlayerArea
@@ -361,7 +443,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
     }
 
     if (playerCount === 4) {
-      // 4-player Commander layout: top, left, right, bottom
       const topPlayer = players[0];
       const leftPlayer = players[1];
       const rightPlayer = players[2];
@@ -369,7 +450,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
 
       return (
         <div className="grid grid-cols-[200px_1fr_200px] grid-rows-[1fr_1fr] gap-2 h-full">
-          {/* Top player */}
           <Card className="col-start-2 col-span-1 border-border/50">
             <CardContent className="p-3 h-full">
               <PlayerArea
@@ -384,7 +464,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
             </CardContent>
           </Card>
 
-          {/* Left player */}
           <Card className="row-start-2 row-span-2 col-start-1 border-border/50">
             <CardContent className="p-3 h-full">
               <PlayerArea
@@ -399,7 +478,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
             </CardContent>
           </Card>
 
-          {/* Center battlefield/stack area */}
           <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-border/30 bg-muted/30">
             <CardContent className="p-4 h-full flex items-center justify-center">
               <div className="text-center space-y-2">
@@ -414,7 +492,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
             </CardContent>
           </Card>
 
-          {/* Right player */}
           <Card className="row-start-2 row-span-2 col-start-3 border-border/50">
             <CardContent className="p-3 h-full">
               <PlayerArea
@@ -429,7 +506,6 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
             </CardContent>
           </Card>
 
-          {/* Bottom player (you) */}
           <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-2 border-primary/20">
             <CardContent className="p-3 h-full">
               <PlayerArea
