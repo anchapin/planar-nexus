@@ -140,6 +140,7 @@ export function createInitialGameState(
     status: "not_started",
     winners: [],
     endReason: null,
+    format: "standard",
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
   };

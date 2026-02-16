@@ -414,6 +414,8 @@ export interface GameState {
   winners: PlayerId[];
   /** How the game ended */
   endReason: string | null;
+  /** Game format (e.g., "standard", "commander", "historic") */
+  format: string;
   /** Timestamp when game was created */
   createdAt: number;
   /** Timestamp when game was last modified */
