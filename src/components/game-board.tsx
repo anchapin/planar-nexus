@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
 import {
@@ -22,7 +30,10 @@ import {
   ChevronDown,
   ChevronUp,
   User,
-  Crown
+  Crown,
+  Flag,
+  Handshake,
+  X
 } from "lucide-react";
 
 // Performance optimization constants
@@ -35,6 +46,15 @@ interface GameBoardProps {
   currentTurnIndex: number;
   onCardClick?: (cardId: string, zone: ZoneType) => void;
   onZoneClick?: (zone: ZoneType, playerId: string) => void;
+  // Concede and draw callbacks
+  onConcede?: () => void;
+  onOfferDraw?: () => void;
+  onAcceptDraw?: () => void;
+  onDeclineDraw?: () => void;
+  // Game state for UI
+  hasActiveDrawOffer?: boolean;
+  hasPlayerOfferedDraw?: boolean;
+  isGameOver?: boolean;
 }
 
 interface PlayerAreaProps {
@@ -403,8 +423,24 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
   );
 }
 
-export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick, onZoneClick }: GameBoardProps) {
+export function GameBoard({ 
+  players, 
+  playerCount, 
+  currentTurnIndex, 
+  onCardClick, 
+  onZoneClick,
+  onConcede,
+  onOfferDraw,
+  onAcceptDraw,
+  onDeclineDraw,
+  hasActiveDrawOffer = false,
+  hasPlayerOfferedDraw = false,
+  isGameOver = false,
+}: GameBoardProps) {
   const currentPlayer = players[currentTurnIndex];
+  
+  // Dialog states
+  const [showConcedeDialog, setShowConcedeDialog] = React.useState(false);
 
   // Layout strategy based on player count
   const renderLayout = () => {
@@ -559,8 +595,112 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
       >
         Skip to game board
       </a>
-      
+
+      {/* Game Controls - Concede and Draw options */}
+      {!isGameOver && (
+        <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
+          {/* Draw offer notification */}
+          {hasActiveDrawOffer && (
+            <div className="bg-amber-500/90 text-amber-foreground px-4 py-2 rounded-md shadow-lg flex items-center gap-2">
+              <Handshake className="h-4 w-4" />
+              <span className="text-sm font-medium">Draw offer pending</span>
+              <div className="flex gap-1 ml-2">
+                <Button 
+                  size="sm" 
+                  variant="secondary"
+                  onClick={onAcceptDraw}
+                  className="h-7 px-2"
+                >
+                  Accept
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="ghost"
+                  onClick={onDeclineDraw}
+                  className="h-7 px-2"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Your draw offer is active */}
+          {hasPlayerOfferedDraw && !hasActiveDrawOffer && (
+            <div className="bg-blue-500/90 text-blue-foreground px-4 py-2 rounded-md shadow-lg flex items-center gap-2">
+              <Handshake className="h-4 w-4" />
+              <span className="text-sm font-medium">Draw offer sent</span>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowConcedeDialog(true)}
+                    disabled={!onConcede}
+                    className="bg-background/80"
+                  >
+                    <Flag className="h-4 w-4 mr-1" />
+                    Concede
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Concede the game</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onOfferDraw}
+                    disabled={!onOfferDraw || hasPlayerOfferedDraw}
+                    className="bg-background/80"
+                  >
+                    <Handshake className="h-4 w-4 mr-1" />
+                    Offer Draw
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Offer a draw to all players</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+      )}
+
       {renderLayout()}
+
+      {/* Concede Confirmation Dialog */}
+      <Dialog open={showConcedeDialog} onOpenChange={setShowConcedeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Concede Game?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to concede? You will lose the game immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConcedeDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => {
+                onConcede?.();
+                setShowConcedeDialog(false);
+              }}
+            >
+              Concede
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

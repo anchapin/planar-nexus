@@ -81,6 +81,8 @@ function createPlayer(
     hasActivatedManaAbility: false,
     additionalCombatPhase: false,
     additionalMainPhase: false,
+    hasOfferedDraw: false,
+    hasAcceptedDraw: false,
   };
 }
 
@@ -594,4 +596,140 @@ export function getPlayerGraveyard(state: GameState, playerId: PlayerId): Zone |
  */
 export function getPlayerExile(state: GameState, playerId: PlayerId): Zone | null {
   return state.zones.get(`${playerId}-exile`) || null;
+}
+
+/**
+ * Offer a draw
+ * @param state - Current game state
+ * @param playerId - ID of the player offering the draw
+ * @returns Updated game state
+ */
+export function offerDraw(state: GameState, playerId: PlayerId): GameState {
+  const player = state.players.get(playerId);
+
+  if (!player) {
+    throw new Error(`Player ${playerId} not found`);
+  }
+
+  if (state.status !== "in_progress") {
+    throw new Error("Cannot offer a draw when the game is not in progress");
+  }
+
+  const updatedPlayer = {
+    ...player,
+    hasOfferedDraw: true,
+  };
+
+  const updatedPlayers = new Map(state.players);
+  updatedPlayers.set(playerId, updatedPlayer);
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
+ * Accept a draw offer
+ * @param state - Current game state
+ * @param playerId - ID of the player accepting the draw
+ * @returns Updated game state (game ends in a draw)
+ */
+export function acceptDraw(state: GameState, playerId: PlayerId): GameState {
+  const player = state.players.get(playerId);
+
+  if (!player) {
+    throw new Error(`Player ${playerId} not found`);
+  }
+
+  // Check if there is an active draw offer from another player
+  const hasDrawOffer = Array.from(state.players.values()).some(
+    (p) => p.id !== playerId && p.hasOfferedDraw
+  );
+
+  if (!hasDrawOffer) {
+    throw new Error("No active draw offer to accept");
+  }
+
+  if (state.status !== "in_progress") {
+    throw new Error("Cannot accept a draw when the game is not in progress");
+  }
+
+  // Game ends in a draw
+  return {
+    ...state,
+    status: "completed",
+    winners: [],
+    endReason: "Players agreed to a draw",
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
+ * Decline a draw offer
+ * @param state - Current game state
+ * @param playerId - ID of the player declining the draw
+ * @returns Updated game state
+ */
+export function declineDraw(state: GameState, playerId: PlayerId): GameState {
+  const player = state.players.get(playerId);
+
+  if (!player) {
+    throw new Error(`Player ${playerId} not found`);
+  }
+
+  // Clear all draw offers when any player declines
+  const updatedPlayers = new Map(state.players);
+  updatedPlayers.forEach((p) => {
+    updatedPlayers.set(p.id, {
+      ...p,
+      hasOfferedDraw: false,
+      hasAcceptedDraw: false,
+    });
+  });
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
+ * Check if a draw can be offered
+ * @param state - Current game state
+ * @param playerId - ID of the player
+ * @returns true if the player can offer a draw
+ */
+export function canOfferDraw(state: GameState, playerId: PlayerId): boolean {
+  if (state.status !== "in_progress") return false;
+  
+  const player = state.players.get(playerId);
+  if (!player || player.hasLost) return false;
+  
+  // Can't offer draw if you already offered one
+  if (player.hasOfferedDraw) return false;
+  
+  return true;
+}
+
+/**
+ * Check if a draw can be accepted
+ * @param state - Current game state
+ * @param playerId - ID of the player
+ * @returns true if the player can accept a draw
+ */
+export function canAcceptDraw(state: GameState, playerId: PlayerId): boolean {
+  if (state.status !== "in_progress") return false;
+  
+  const player = state.players.get(playerId);
+  if (!player || player.hasLost) return false;
+  
+  // Check if there's an offer from another player
+  const hasOfferFromOthers = Array.from(state.players.values()).some(
+    (p) => p.id !== playerId && p.hasOfferedDraw
+  );
+  
+  return hasOfferFromOthers;
 }

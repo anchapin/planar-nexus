@@ -170,6 +170,12 @@ export interface Player {
   additionalCombatPhase: boolean;
   /** Whether player gets an additional main phase this turn */
   additionalMainPhase: boolean;
+
+  // Multiplayer game options
+  /** Whether this player has offered a draw */
+  hasOfferedDraw: boolean;
+  /** Whether this player has accepted a draw offer */
+  hasAcceptedDraw: boolean;
 }
 
 /**
