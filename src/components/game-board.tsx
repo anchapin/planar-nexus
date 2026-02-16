@@ -70,9 +70,9 @@ const ZoneDisplay = memo(function ZoneDisplay({
   playerId: string;
 }) {
   const sizeClasses = {
-    small: "h-16 min-h-16 md:h-14",
-    default: "h-24 min-h-24 md:h-20",
-    large: "h-32 min-h-32 md:h-28"
+    small: "h-16 min-h-16",
+    default: "h-24 min-h-24",
+    large: "h-32 min-h-32"
   };
 
   const handleClick = useCallback(() => {
@@ -109,7 +109,17 @@ const ZoneDisplay = memo(function ZoneDisplay({
         <TooltipTrigger asChild>
           <button
             onClick={handleClick}
-            className={`w-full ${sizeClasses[size]} ${bgColor} border border-border/50 rounded-md hover:border-primary/50 transition-colors group relative min-h-[44px] touch-manipulation`}
+            className={`w-full ${sizeClasses[size]} ${bgColor} border border-border/50 rounded-md hover:border-primary/50 transition-colors group relative`}
+            aria-label={`${title}: ${count} cards`}
+            aria-expanded={count > 0}
+            role="region"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleClick();
+              }
+            }}
           >
             {count > 0 && (
               <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
@@ -403,9 +413,9 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
       const bottomPlayer = players[1];
 
       return (
-        <div className="grid grid-rows-[1fr_auto_1fr] gap-2 md:gap-4 h-full">
+        <div className="grid grid-rows-[1fr_auto_1fr] gap-4 h-full">
           <Card className="border-border/50">
-            <CardContent className="p-2 md:p-4 h-full">
+            <CardContent className="p-4 h-full">
               <PlayerArea
                 player={topPlayer}
                 isCurrentTurn={currentTurnIndex === 0}
@@ -527,7 +537,29 @@ export function GameBoard({ players, playerCount, currentTurnIndex, onCardClick,
   };
 
   return (
-    <div className="w-full h-full p-4 bg-background">
+    <div 
+      className="w-full h-full p-4 bg-background"
+      role="application"
+      aria-label="Game Board"
+    >
+      {/* Screen reader announcements */}
+      <div 
+        role="status" 
+        aria-live="polite" 
+        aria-atomic="true" 
+        className="sr-only"
+      >
+        {currentPlayer && `It is ${currentPlayer.name}'s turn`}
+      </div>
+      
+      {/* Skip to main content link for keyboard users */}
+      <a 
+        href="#game-board-main" 
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md"
+      >
+        Skip to game board
+      </a>
+      
       {renderLayout()}
     </div>
   );
