@@ -109,7 +109,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
         <TooltipTrigger asChild>
           <button
             onClick={handleClick}
-            className={`w-full ${sizeClasses[size]} ${bgColor} border border-border/50 rounded-md hover:border-primary/50 transition-colors group relative`}
+            className={`w-full ${sizeClasses[size]} ${bgColor} border border-border/50 rounded-md hover:border-primary/50 transition-colors group relative min-h-[44px] touch-manipulation`}
             aria-label={`${title}: ${count} cards`}
             aria-expanded={count > 0}
             role="region"
