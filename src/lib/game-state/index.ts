@@ -33,3 +33,6 @@ export * from "./serialization";
 
 // Export replacement and prevention effects (CR 614)
 export * from "./replacement-effects";
+
+// Export layer system for continuous effects (CR 613)
+export * from "./layer-system";
