@@ -13,7 +13,160 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Plus, Trash2, Download, Upload, FolderPlus, Package } from "lucide-react";
+import { Search, Plus, Trash2, Download, Upload, FolderPlus, Package, GitCompare, ArrowRightLeft } from "lucide-react";
+
+/**
+ * Deck Comparison Tool Component
+ * Compares a deck list against the collection to find missing cards
+ */
+function DeckComparisonTool() {
+  const { compareDeckWithCollection } = useCollection();
+  const [deckText, setDeckText] = useState("");
+  const [comparisonResult, setComparisonResult] = useState<ReturnType<typeof compareDeckWithCollection> | null>(null);
+
+  const handleCompare = () => {
+    if (!deckText.trim()) return;
+
+    // Parse deck list (format: "4 Lightning Bolt" or "Lightning Bolt")
+    const lines = deckText.trim().split('\n');
+    const deckCards: { name: string; quantity: number }[] = [];
+    
+    for (const line of lines) {
+      const match = line.match(/^(\d+)?\s*[,;]?\s*(.+)$/);
+      if (match) {
+        const quantity = parseInt(match[1]) || 1;
+        const name = match[2].trim();
+        deckCards.push({ name, quantity });
+      }
+    }
+
+    const result = compareDeckWithCollection(deckCards);
+    setComparisonResult(result);
+  };
+
+  const missingCount = comparisonResult?.filter(c => c.status !== 'ok').length || 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <GitCompare className="h-4 w-4" />
+        <span className="font-medium text-sm">Deck vs Collection</span>
+      </div>
+      <Textarea
+        placeholder="Paste deck list here&#10;4 Lightning Bolt&#10;Counterspell"
+        value={deckText}
+        onChange={(e) => setDeckText(e.target.value)}
+        className="min-h-[100px] text-sm"
+      />
+      <Button onClick={handleCompare} variant="outline" size="sm" className="w-full">
+        Compare Deck
+      </Button>
+      
+      {comparisonResult && (
+        <div className="space-y-2">
+          <div className="text-sm">
+            {missingCount === 0 ? (
+              <span className="text-green-500">✓ Deck is fully covered by collection!</span>
+            ) : (
+              <span className="text-amber-500">⚠ {missingCount} cards missing or insufficient</span>
+            )}
+          </div>
+          <ScrollArea className="h-[150px]">
+            <div className="space-y-1">
+              {comparisonResult.map((card, i) => (
+                <div key={i} className={`flex items-center justify-between text-xs p-1 rounded ${
+                  card.status === 'ok' ? 'text-green-500' :
+                  card.status === 'missing' ? 'text-red-500 bg-red-50' :
+                  'text-amber-500 bg-amber-50'
+                }`}>
+                  <span className="truncate flex-1">{card.name}</span>
+                  <span className="ml-2">
+                    {card.collectionQuantity}/{card.deckQuantity}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Trade List Generator Component
+ * Generates a list of extra cards available for trading
+ */
+function TradeListGenerator() {
+  const { generateTradeList } = useCollection();
+  const [tradeList, setTradeList] = useState<ReturnType<typeof generateTradeList> | null>(null);
+
+  const handleGenerate = () => {
+    const list = generateTradeList();
+    setTradeList(list);
+  };
+
+  const handleExportTradeList = () => {
+    if (!tradeList) return;
+    const text = tradeList
+      .map(c => `${c.quantity} ${c.name} (${c.set || 'unknown'}) - ${c.condition}`)
+      .join('\n');
+    
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'trade-list.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <ArrowRightLeft className="h-4 w-4" />
+        <span className="font-medium text-sm">Trade List Generator</span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Cards with more than 4 copies (duplicates available for trade)
+      </p>
+      <Button onClick={handleGenerate} variant="outline" size="sm" className="w-full">
+        Generate Trade List
+      </Button>
+      
+      {tradeList && (
+        <div className="space-y-2">
+          <div className="text-sm">
+            {tradeList.length === 0 ? (
+              <span className="text-muted-foreground">No tradeable cards found</span>
+            ) : (
+              <span>{tradeList.length} cards available for trade</span>
+            )}
+          </div>
+          {tradeList.length > 0 && (
+            <>
+              <ScrollArea className="h-[100px]">
+                <div className="space-y-1">
+                  {tradeList.map((card, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="truncate">{card.quantity}x {card.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              <Button onClick={handleExportTradeList} size="sm" className="w-full">
+                <Download className="h-3 w-3 mr-1" />
+                Export Trade List
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CollectionPage() {
   const { toast } = useToast();
@@ -29,6 +182,9 @@ export default function CollectionPage() {
     renameCollection,
     importFromCSV,
     exportToCSV,
+    compareDeckWithCollection,
+    generateTradeList,
+    getCollectionStats,
   } = useCollection();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -317,16 +473,17 @@ export default function CollectionPage() {
             </CardContent>
           </Card>
 
-          {/* Import/Export */}
+          {/* Import/Export/Tools */}
           <Card>
             <CardHeader>
               <CardTitle>Import / Export</CardTitle>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="import">
-                <TabsList className="grid w-full grid-cols-2">
+                <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="import">Import</TabsTrigger>
                   <TabsTrigger value="export">Export</TabsTrigger>
+                  <TabsTrigger value="tools">Tools</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="import" className="space-y-4 mt-4">
@@ -350,6 +507,11 @@ export default function CollectionPage() {
                     <Download className="h-4 w-4 mr-2" />
                     Export Collection
                   </Button>
+                </TabsContent>
+
+                <TabsContent value="tools" className="space-y-4 mt-4">
+                  <DeckComparisonTool />
+                  <TradeListGenerator />
                 </TabsContent>
               </Tabs>
             </CardContent>

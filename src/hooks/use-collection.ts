@@ -167,6 +167,86 @@ export function useCollection() {
       .join('\n');
   };
 
+  /**
+   * Compare a deck list against the collection
+   * Returns cards that are missing or insufficient in quantity
+   */
+  const compareDeckWithCollection = (deckCards: { name: string; quantity: number }[]): {
+    name: string;
+    deckQuantity: number;
+    collectionQuantity: number;
+    missing: number;
+    status: 'ok' | 'insufficient' | 'missing';
+  }[] => {
+    const collectionMap = new Map<string, number>();
+    for (const card of activeCollection.cards) {
+      const current = collectionMap.get(card.card.name.toLowerCase()) || 0;
+      collectionMap.set(card.card.name.toLowerCase(), current + card.quantity);
+    }
+
+    return deckCards.map((deckCard) => {
+      const collectionQty = collectionMap.get(deckCard.name.toLowerCase()) || 0;
+      const missing = Math.max(0, deckCard.quantity - collectionQty);
+      
+      let status: 'ok' | 'insufficient' | 'missing' = 'ok';
+      if (collectionQty === 0) status = 'missing';
+      else if (collectionQty < deckCard.quantity) status = 'insufficient';
+
+      return {
+        name: deckCard.name,
+        deckQuantity: deckCard.quantity,
+        collectionQuantity: collectionQty,
+        missing,
+        status,
+      };
+    });
+  };
+
+  /**
+   * Generate a trade list - cards with quantity > 4 (playable duplicates)
+   */
+  const generateTradeList = () => {
+    return activeCollection.cards
+      .filter((c) => c.quantity > 4)
+      .map((c) => ({
+        name: c.card.name,
+        quantity: c.quantity - 4, // Keep 4 for playability
+        set: c.card.set,
+        condition: 'near mint', // Default condition
+      }));
+  };
+
+  /**
+   * Get collection value estimate (basic - counts cards only)
+   */
+  const getCollectionStats = () => {
+    const totalCards = activeCollection.cards.reduce((sum, c) => sum + c.quantity, 0);
+    const uniqueCards = activeCollection.cards.length;
+    const playableCards = activeCollection.cards.filter((c) => c.quantity >= 4).length;
+    const tradeableCards = activeCollection.cards.filter((c) => c.quantity > 4).length;
+    
+    // Count by color
+    const colorCounts: Record<string, number> = {};
+    for (const card of activeCollection.cards) {
+      const colors = card.card.colors || [];
+      if (colors.length === 0) {
+        colorCounts['colorless'] = (colorCounts['colorless'] || 0) + card.quantity;
+      } else {
+        for (const color of colors) {
+          colorCounts[color] = (colorCounts[color] || 0) + card.quantity;
+        }
+      }
+    }
+
+    return {
+      totalCards,
+      uniqueCards,
+      playableCards,
+      tradeableCards,
+      colorCounts,
+    };
+  };
+
   return {
     collections,
     activeCollection,
@@ -179,5 +259,8 @@ export function useCollection() {
     renameCollection,
     importFromCSV,
     exportToCSV,
+    compareDeckWithCollection,
+    generateTradeList,
+    getCollectionStats,
   };
 }
