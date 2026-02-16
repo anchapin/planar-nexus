@@ -233,6 +233,18 @@ class LobbyManager {
   }
 
   /**
+   * Check if all joined players are ready (even if lobby not full)
+   */
+  allJoinedPlayersReady(): boolean {
+    if (!this.currentLobby) return false;
+    if (this.currentLobby.players.length < 2) return false;
+
+    return this.currentLobby.players.every(
+      p => p.status === 'ready' || p.status === 'host'
+    );
+  }
+
+  /**
    * Check if lobby can start
    * Now includes format validation check
    */
@@ -254,6 +266,32 @@ class LobbyManager {
     });
 
     return hasEnoughPlayers && allReady && allDecksValid;
+  }
+
+  /**
+   * Check if host can force start (even if not all ready)
+   * Host can start with any number of ready players who have valid decks
+   */
+  canForceStart(): boolean {
+    if (!this.currentLobby) return false;
+
+    const hasEnoughPlayers = this.currentLobby.players.length >= 2;
+    
+    // At least some players must be ready
+    const hasReadyPlayers = this.currentLobby.players.some(
+      p => p.status === 'ready' || p.status === 'host'
+    );
+
+    // All ready players must have valid decks
+    const allReadyPlayersHaveDecks = this.currentLobby.players
+      .filter(p => p.status === 'ready' || p.status === 'host')
+      .every(player => {
+        if (!player.deckId) return false;
+        const hasErrors = player.deckValidationErrors && player.deckValidationErrors.length > 0;
+        return !hasErrors;
+      });
+
+    return hasEnoughPlayers && hasReadyPlayers && allReadyPlayersHaveDecks;
   }
 
   /**

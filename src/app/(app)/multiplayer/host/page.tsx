@@ -24,7 +24,7 @@ import { useLocalStorage } from '@/hooks/use-local-storage';
 import { SavedDeck } from '@/app/actions';
 
 export default function HostLobbyPage() {
-  const { lobby, isHost, isLoading, error, createLobby, updatePlayerStatus, updatePlayerDeck, canStartGame, startGame, closeLobby, getGameCode, validateDeckForFormat } = useLobby();
+  const { lobby, isHost, isLoading, error, createLobby, updatePlayerStatus, updatePlayerDeck, canStartGame, canForceStart, startGame, forceStartGame, closeLobby, getGameCode, validateDeckForFormat } = useLobby();
 
   // Form state
   const [gameName, setGameName] = useState('');
@@ -487,15 +487,29 @@ export default function HostLobbyPage() {
 
               <div className="flex gap-3">
                 {isHost ? (
-                  <Button
-                    onClick={handleStartGame}
-                    disabled={!canStartGame}
-                    className="flex-1"
-                    size="lg"
-                  >
-                    <Play className="w-4 h-4 mr-2" />
-                    Start Game
-                  </Button>
+                  <>
+                    <Button
+                      onClick={handleStartGame}
+                      disabled={!canStartGame}
+                      className="flex-1"
+                      size="lg"
+                    >
+                      <Play className="w-4 h-4 mr-2" />
+                      Start Game
+                    </Button>
+                    {canForceStart && !canStartGame && (
+                      <Button
+                        onClick={forceStartGame}
+                        variant="secondary"
+                        className="flex-1"
+                        size="lg"
+                        title="Force start with ready players only"
+                      >
+                        <Play className="w-4 h-4 mr-2" />
+                        Force Start
+                      </Button>
+                    )}
+                  </>
                 ) : (
                   <Button
                     onClick={handleReadyToggle}
@@ -518,13 +532,19 @@ export default function HostLobbyPage() {
                 )}
               </div>
 
-              {!canStartGame && (
+              {!canStartGame && !canForceStart && (
                 <p className="text-xs text-center text-muted-foreground mt-2">
                   {lobby.players.length < 2
                     ? 'Need at least 2 players to start'
                     : lobby.players.some(p => !p.deckId)
                     ? 'All players must select a deck'
                     : 'All players must have valid decks and be ready to start'}
+                </p>
+              )}
+
+              {canForceStart && !canStartGame && (
+                <p className="text-xs text-center text-amber-600 mt-2">
+                  Not all players are ready. Use "Force Start" to begin with ready players only.
                 </p>
               )}
             </CardContent>

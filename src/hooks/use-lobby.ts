@@ -21,7 +21,9 @@ export interface UseLobbyReturn {
   updatePlayerStatus: (playerId: string, status: PlayerStatus) => boolean;
   updatePlayerDeck: (playerId: string, deckId: string, deckName: string, deck?: any) => { success: boolean; isValid: boolean; errors: string[] };
   canStartGame: boolean;
+  canForceStart: boolean;
   startGame: () => boolean;
+  forceStartGame: () => boolean;
   closeLobby: () => void;
   getGameCode: () => string;
   validateDeckForFormat: (deck: any) => { isValid: boolean; errors: string[] };
@@ -91,6 +93,8 @@ export function useLobby(): UseLobbyReturn {
 
   const canStartGame = lobby ? lobbyManager.canStartGame() : false;
 
+  const canForceStart = lobby ? lobbyManager.canForceStart() : false;
+
   const startGame = useCallback(() => {
     if (!lobby || !canStartGame) return false;
 
@@ -102,6 +106,18 @@ export function useLobby(): UseLobbyReturn {
     }
     return false;
   }, [lobby, canStartGame]);
+
+  const forceStartGame = useCallback(() => {
+    if (!lobby || !canForceStart) return false;
+
+    const success = lobbyManager.updateLobbyStatus('in-progress');
+    if (success) {
+      setLobby(lobbyManager.getCurrentLobby());
+      // TODO: Navigate to game board
+      return true;
+    }
+    return false;
+  }, [lobby, canForceStart]);
 
   const closeLobby = useCallback(() => {
     lobbyManager.closeLobby();
@@ -134,7 +150,9 @@ export function useLobby(): UseLobbyReturn {
     updatePlayerStatus,
     updatePlayerDeck,
     canStartGame,
+    canForceStart,
     startGame,
+    forceStartGame,
     closeLobby,
     getGameCode,
     validateDeckForFormat,
