@@ -82,4 +82,42 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Accessibility: Focus styles */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Accessibility: Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* Accessibility: Screen reader only */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* Accessibility: Skip link */
+  .skip-link {
+    @apply absolute -top-10 left-4 z-50 bg-primary px-4 py-2 text-primary-foreground transition-all;
+  }
+  
+  .skip-link:focus {
+    @apply top-4;
+  }
 }

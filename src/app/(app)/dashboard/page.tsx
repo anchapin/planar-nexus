@@ -47,7 +47,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="relative h-64 w-full overflow-hidden rounded-lg md:rounded-xl">
+      <header className="relative h-64 w-full overflow-hidden rounded-lg md:rounded-xl" role="banner">
         {heroImage && (
           <Image
             src={heroImage.imageUrl}
@@ -68,12 +68,12 @@ export default function DashboardPage() {
           </p>
         </div>
       </header>
-      <main className="flex-1 p-4 md:p-6">
-        <section>
-          <h2 className="font-headline text-2xl font-bold">Get Started</h2>
-          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <main className="flex-1 p-4 md:p-6" role="main" aria-label="Dashboard">
+        <section aria-labelledby="get-started-heading">
+          <h2 id="get-started-heading" className="font-headline text-2xl font-bold">Get Started</h2>
+          <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4" role="list" aria-label="Features">
             {features.map((feature) => (
-              <Card key={feature.title} className="flex flex-col overflow-hidden transition-transform duration-200 hover:scale-[1.02] hover:shadow-lg">
+              <Card key={feature.title} className="flex flex-col overflow-hidden transition-transform duration-200 hover:scale-[1.02] hover:shadow-lg" role="listitem">
                 {feature.image && (
                    <div className="relative h-40 w-full">
                      <Image
@@ -87,7 +87,7 @@ export default function DashboardPage() {
                 )}
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 font-headline">
-                    <feature.icon className="size-6 text-primary" />
+                    <feature.icon className="size-6 text-primary" aria-hidden="true" />
                     {feature.title}
                   </CardTitle>
                 </CardHeader>
@@ -96,9 +96,9 @@ export default function DashboardPage() {
                 </CardContent>
                 <div className="p-6 pt-0">
                   <Button asChild className="w-full">
-                    <Link href={feature.link}>
+                    <Link href={feature.link} aria-label={`Go to ${feature.title}`}>
                       Go to {feature.title}
-                      <ArrowRight className="ml-2 size-4" />
+                      <ArrowRight className="ml-2 size-4" aria-hidden="true" />
                     </Link>
                   </Button>
                 </div>
