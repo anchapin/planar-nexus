@@ -30,3 +30,6 @@ export * from "./replay";
 
 // Export serialization for save/load
 export * from "./serialization";
+
+// Export replacement and prevention effects (CR 614)
+export * from "./replacement-effects";
