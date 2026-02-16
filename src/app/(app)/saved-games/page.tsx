@@ -21,7 +21,8 @@ import {
   RotateCcw,
   Download,
   Upload,
-  MoreVertical
+  MoreVertical,
+  Share2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +66,12 @@ import {
   formatSavedAt, 
   getStatusDisplay 
 } from "@/lib/saved-games";
+import { 
+  generateShareableURL, 
+  copyShareableLink,
+  exportReplayToFile,
+  canShareViaURL 
+} from "@/lib/replay-sharing";
 import { useToast } from "@/hooks/use-toast";
 
 const formatDisplayNames: Record<string, string> = {
@@ -183,6 +190,51 @@ export default function SavedGamesPage() {
     // Reset input
     if (fileInputRef) {
       fileInputRef.value = '';
+    }
+  }
+
+  async function handleShareReplay(game: SavedGame) {
+    if (!game.replayJson) {
+      toast({
+        variant: "destructive",
+        title: "No Replay",
+        description: "This game doesn't have replay data.",
+      });
+      return;
+    }
+
+    try {
+      const replay = JSON.parse(game.replayJson);
+      
+      // Check if replay can be shared via URL
+      if (canShareViaURL(replay)) {
+        const success = await copyShareableLink(replay);
+        if (success) {
+          toast({
+            title: "Link Copied",
+            description: "Replay link copied to clipboard!",
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Copy Failed",
+            description: "Failed to copy link to clipboard.",
+          });
+        }
+      } else {
+        // Fall back to file export
+        exportReplayToFile(replay, `${game.name.replace(/\s+/g, '-')}-replay.json`);
+        toast({
+          title: "Replay Exported",
+          description: "Replay file downloaded. It's too large for URL sharing.",
+        });
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Share Failed",
+        description: "Failed to generate replay share link.",
+      });
     }
   }
 
@@ -468,6 +520,12 @@ export default function SavedGamesPage() {
                                   <Download className="w-4 h-4 mr-2" />
                                   Export
                                 </DropdownMenuItem>
+                                {game.replayJson && (
+                                  <DropdownMenuItem onClick={() => handleShareReplay(game)}>
+                                    <Share2 className="w-4 h-4 mr-2" />
+                                    Share Replay
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem 
                                   onClick={() => setDeleteTarget(game)}
                                   className="text-destructive"
