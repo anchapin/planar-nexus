@@ -2,14 +2,21 @@
 
 import * as React from "react";
 import { GameBoard } from "@/components/game-board";
+import { GameChat, ChatMessage } from "@/components/game-chat";
+import { EmotePicker, EmoteFeed, EmoteMessage } from "@/components/emote-picker";
+import { TurnTimer } from "@/components/turn-timer";
+import { DamageOverlay, useDamageEvents, DamageType } from "@/components/damage-indicator";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
-import { Swords, Settings, Eye } from "lucide-react";
+import { Swords, Settings, Eye, MessageCircle, Smile } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useGameChat } from "@/hooks/use-game-chat";
+import { useGameEmotes } from "@/hooks/use-game-emotes";
+import { cn } from "@/lib/utils";
 
 // Mock data generator for demonstration
 function generateMockPlayer(
@@ -104,7 +111,36 @@ export default function GameBoardPage() {
   const [playerCount, setPlayerCount] = React.useState<PlayerCount>(2);
   const [currentTurnIndex, setCurrentTurnIndex] = React.useState(0);
   const [players, setPlayers] = React.useState<PlayerState[]>([]);
+  const [timerEnabled, setTimerEnabled] = React.useState(false);
+  const [chatOpen, setChatOpen] = React.useState(true);
   const { toast } = useToast();
+
+  // Get current player info
+  const currentPlayer = players.length > 0 ? players[players.length - 1] : null;
+  const currentPlayerId = currentPlayer?.id || "player-2";
+  const currentPlayerName = currentPlayer?.name || "You";
+
+  // Initialize chat
+  const { 
+    messages, 
+    sendMessage, 
+    addSystemMessage, 
+    clearMessages,
+    unreadCount,
+    markAsRead 
+  } = useGameChat({
+    currentPlayerId,
+    currentPlayerName,
+  });
+
+  // Initialize emotes
+  const { emotes, sendEmote, clearEmotes } = useGameEmotes({
+    currentPlayerId,
+    currentPlayerName,
+  });
+
+  // Initialize damage events
+  const { events: damageEvents, addDamage, addHeal, clearEvents: clearDamageEvents } = useDamageEvents();
 
   // Initialize players when player count changes
   React.useEffect(() => {
@@ -126,7 +162,16 @@ export default function GameBoardPage() {
 
     setPlayers(newPlayers);
     setCurrentTurnIndex(0);
-  }, [playerCount]);
+    clearMessages();
+    clearEmotes();
+  }, [playerCount, clearMessages, clearEmotes]);
+
+  // Handle chat open/close
+  React.useEffect(() => {
+    if (chatOpen) {
+      markAsRead();
+    }
+  }, [chatOpen, messages.length, markAsRead]);
 
   const handleCardClick = (cardId: string, zone: ZoneType) => {
     toast({
@@ -159,6 +204,7 @@ export default function GameBoardPage() {
   };
 
   const damagePlayer = (playerIndex: number, amount: number) => {
+    const targetPlayer = players[playerIndex];
     setPlayers((prev) =>
       prev.map((player, idx) =>
         idx === playerIndex
@@ -166,9 +212,14 @@ export default function GameBoardPage() {
           : player
       )
     );
+    // Show damage indicator
+    if (targetPlayer) {
+      addDamage(amount, 'combat', targetPlayer.id);
+    }
   };
 
   const healPlayer = (playerIndex: number, amount: number) => {
+    const targetPlayer = players[playerIndex];
     setPlayers((prev) =>
       prev.map((player, idx) =>
         idx === playerIndex
@@ -176,6 +227,10 @@ export default function GameBoardPage() {
           : player
       )
     );
+    // Show heal indicator
+    if (targetPlayer) {
+      addHeal(amount, targetPlayer.id);
+    }
   };
 
   return (
@@ -279,6 +334,46 @@ export default function GameBoardPage() {
             ))}
           </div>
 
+          {/* Timer Toggle */}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="timer-toggle" className="text-sm">Turn Timer</Label>
+            <input
+              type="checkbox"
+              id="timer-toggle"
+              checked={timerEnabled}
+              onChange={(e) => setTimerEnabled(e.target.checked)}
+              className="toggle"
+            />
+          </div>
+
+          {timerEnabled && (
+            <TurnTimer
+              totalSeconds={120}
+              autoStart={true}
+              isCurrentPlayer={true}
+              showControls={true}
+              className="w-full"
+            />
+          )}
+
+          <Separator />
+
+          {/* Emote Picker */}
+          <div className="space-y-2">
+            <h2 className="font-semibold text-sm flex items-center gap-2">
+              <Smile className="h-4 w-4" />
+              Emotes
+            </h2>
+            <EmotePicker
+              onSelectEmote={sendEmote}
+              disabled={!currentPlayer}
+              className="w-full"
+            />
+            {emotes.length > 0 && (
+              <EmoteFeed emotes={emotes} className="mt-2" />
+            )}
+          </div>
+
           <Separator />
 
           {/* Instructions */}
@@ -320,7 +415,7 @@ export default function GameBoardPage() {
       </div>
 
       {/* Game Board */}
-      <div className="flex-1 h-full">
+      <div className="flex-1 h-full relative">
         {players.length > 0 && (
           <GameBoard
             players={players}
@@ -330,6 +425,43 @@ export default function GameBoardPage() {
             onZoneClick={handleZoneClick}
           />
         )}
+        
+        {/* Floating Chat Panel */}
+        <div className="absolute bottom-4 right-4 w-80 z-10">
+          {chatOpen ? (
+            <GameChat
+              messages={messages}
+              currentPlayerId={currentPlayerId}
+              currentPlayerName={currentPlayerName}
+              onSendMessage={sendMessage}
+              className="shadow-lg"
+            />
+          ) : (
+            <Button
+              variant="outline"
+              size="icon"
+              className="relative bg-card/90"
+              onClick={() => setChatOpen(true)}
+            >
+              <MessageCircle className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+          )}
+        </div>
+        
+        {/* Floating Emote Feed */}
+        <div className="absolute top-4 right-4 z-10">
+          {emotes.length > 0 && (
+            <EmoteFeed emotes={emotes} className="bg-card/90 p-2 rounded-lg shadow-lg" />
+          )}
+        </div>
+        
+        {/* Damage Indicators Overlay */}
+        <DamageOverlay events={damageEvents} className="pointer-events-none" />
       </div>
     </div>
   );
