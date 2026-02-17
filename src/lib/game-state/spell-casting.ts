@@ -190,7 +190,7 @@ export function castSpell(
   }
   
   // Use the state with mana already spent
-  let currentState = spendResult.state;
+  const currentState = spendResult.state;
 
   // Create stack object
   const stackObject: StackObject = {

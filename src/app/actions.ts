@@ -51,7 +51,7 @@ export interface ScryfallCard {
 
 export interface DeckCard extends ScryfallCard {
   count: number;
-};
+}
 
 export interface SavedDeck {
   id: string;
