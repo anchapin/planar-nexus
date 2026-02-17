@@ -177,7 +177,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         }
       }
       // Equipment can only attach to creatures - if target is not a creature or not on battlefield, it's illegal
-      if (attachedToOnBattlefield && !isCreature(attachedTo)) {
+      if (attachedTo && attachedToOnBattlefield && !isCreature(attachedTo)) {
         if (!cardsToDestroy.includes(card.id)) {
           cardsToDestroy.push(card.id);
         }
