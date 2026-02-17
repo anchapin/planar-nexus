@@ -125,8 +125,8 @@ export default function HostLobbyPage() {
   const handleStartGame = () => {
     const success = startGame();
     if (success) {
-      // TODO: Navigate to game board when implemented
-      console.log('Starting game...');
+      // Navigate to game board
+      window.location.href = '/game-board';
     }
   };
 
@@ -552,7 +552,7 @@ export default function HostLobbyPage() {
         </div>
 
         <p className="text-xs text-muted-foreground mt-6 text-center">
-          Note: This is a prototype lobby. P2P networking (WebRTC) is not yet implemented.
+          Note: This lobby uses P2P networking (WebRTC) for multiplayer connections.
         </p>
       </div>
     );
