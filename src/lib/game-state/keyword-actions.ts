@@ -111,9 +111,9 @@ export function destroyCard(
     targetId: cardId,
   };
   
-  const replacementResult = replacementEffectManager.processEvent(replacementEvent);
+  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
   
-  if (replacementResult.modified && replacementResult.modifiedEvent?.type === 'exile') {
+  if (processedEvent.type === 'exile') {
     // Replacement effect changed destroy to exile
     return exileCard(state, cardId);
   }
@@ -276,8 +276,8 @@ export function drawCards(
       amount: 1,
     };
     
-    const replacementResult = replacementEffectManager.processEvent(replacementEvent);
-    const drawAmount = replacementResult.modifiedEvent?.amount ?? 1;
+    const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+    const drawAmount = processedEvent.amount;
     
     // Draw each card
     for (let j = 0; j < drawAmount; j++) {
@@ -798,8 +798,8 @@ export function dealDamageToCard(
     damageTypes: (isCombatDamage ? ['combat'] : ['noncombat']) as ('combat' | 'noncombat')[],
   };
   
-  const replacementResult = replacementEffectManager.processEvent(replacementEvent);
-  const actualDamage = replacementResult.modifiedEvent?.amount ?? damage;
+  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const actualDamage = processedEvent.amount;
 
   // Apply damage
   let updatedCard = {

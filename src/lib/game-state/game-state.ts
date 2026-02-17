@@ -478,13 +478,17 @@ function checkWinCondition(state: GameState): GameState {
   return state;
 }
 
+import { replacementEffectManager } from "./replacement-effects";
+
 /**
  * Apply damage to a player
  */
 export function dealDamageToPlayer(
   state: GameState,
   playerId: PlayerId,
-  damage: number
+  damage: number,
+  isCombatDamage: boolean = false,
+  sourceId?: CardInstanceId
 ): GameState {
   const player = state.players.get(playerId);
 
@@ -492,9 +496,28 @@ export function dealDamageToPlayer(
     throw new Error(`Player ${playerId} not found`);
   }
 
+  // Check for replacement/prevention effects
+  const replacementEvent = {
+    type: "damage" as const,
+    timestamp: Date.now(),
+    sourceId,
+    targetId: playerId,
+    amount: damage,
+    isCombatDamage,
+    damageTypes: (isCombatDamage ? ["combat"] : ["noncombat"]) as (
+      | "combat"
+      | "noncombat"
+    )[],
+  };
+
+  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const actualDamage = processedEvent.amount;
+
+  if (actualDamage <= 0) return state;
+
   const updatedPlayer = {
     ...player,
-    life: Math.max(0, player.life - damage),
+    life: Math.max(0, player.life - actualDamage),
   };
 
   const updatedPlayers = new Map(state.players);
@@ -513,7 +536,8 @@ export function dealDamageToPlayer(
 export function gainLife(
   state: GameState,
   playerId: PlayerId,
-  amount: number
+  amount: number,
+  sourceId?: CardInstanceId
 ): GameState {
   const player = state.players.get(playerId);
 
@@ -521,9 +545,23 @@ export function gainLife(
     throw new Error(`Player ${playerId} not found`);
   }
 
+  // Check for replacement effects (e.g., "If you would gain life, gain twice that much instead")
+  const replacementEvent = {
+    type: "life_gain" as const,
+    timestamp: Date.now(),
+    sourceId,
+    targetId: playerId,
+    amount: amount,
+  };
+
+  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const actualAmount = processedEvent.amount;
+
+  if (actualAmount <= 0) return state;
+
   const updatedPlayer = {
     ...player,
-    life: player.life + amount,
+    life: player.life + actualAmount,
   };
 
   const updatedPlayers = new Map(state.players);
