@@ -295,8 +295,13 @@ export class CombatDecisionTree {
    */
   private hasSummoningSickness(creature: Permanent): boolean {
     // In a real implementation, this would check when the creature entered
-    // For now, assume creatures without haste have summoning sickness
-    return !creature.keywords?.includes('haste');
+    // For now, creatures have summoning sickness only if explicitly marked
+    // or if they lack haste and have a summoningSickness flag
+    if ((creature as any).summoningSickness === true) {
+      return !creature.keywords?.includes('haste');
+    }
+    // By default, assume creatures can attack (they've been on battlefield)
+    return false;
   }
 
   /**
@@ -585,28 +590,36 @@ export class CombatDecisionTree {
     // Calculate value based on damage and trades
     let value = 0;
 
+    // Unblocked attack bonus - attacking without blockers is very valuable
+    if (blocks.length === 0) {
+      // Base value for unblocked attack (0.5-0.8 depending on power)
+      value = 0.5 + Math.min(0.3, power / 10);
+    }
+
     // Damage value (higher when opponent is low)
     const lifePercentage = opponent.life / 20;
     const damageValue = (damageDealt / 20) * (2 - lifePercentage);
     value += damageValue;
 
-    // Trade assessment
-    if (creatureDies && !blockerDies) {
-      // Bad trade - we lose our creature for nothing
-      value -= 0.5;
-      // Even worse for expensive creatures
-      value -= (creature.manaValue || 0) / 20;
-    } else if (creatureDies && blockerDies) {
-      // Even trade
-      value -= 0.1;
-      // Check mana value difference
-      const creatureValue = creature.manaValue || 0;
-      const blockerValue = blocks[0].blocker.manaValue || 0;
-      value += (blockerValue - creatureValue) / 20;
-    } else if (!creatureDies && blockerDies) {
-      // Good trade - we kill their creature
-      value += 0.3;
-      value += (blocks[0].blocker.manaValue || 0) / 20;
+    // Trade assessment (only when there are blockers)
+    if (blocks.length > 0) {
+      if (creatureDies && !blockerDies) {
+        // Bad trade - we lose our creature for nothing
+        value -= 0.5;
+        // Even worse for expensive creatures
+        value -= (creature.manaValue || 0) / 20;
+      } else if (creatureDies && blockerDies) {
+        // Even trade
+        value -= 0.1;
+        // Check mana value difference
+        const creatureValue = creature.manaValue || 0;
+        const blockerValue = blocks[0].blocker.manaValue || 0;
+        value += (blockerValue - creatureValue) / 20;
+      } else if (!creatureDies && blockerDies) {
+        // Good trade - we kill their creature
+        value += 0.3;
+        value += (blocks[0].blocker.manaValue || 0) / 20;
+      }
     }
 
     // Strategy modifiers
