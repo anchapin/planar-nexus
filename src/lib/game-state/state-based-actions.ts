@@ -111,6 +111,8 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     if (isCreature(card) && hasLethalDamage(card)) {
       if (!cardsToDestroy.includes(card.id)) {
         cardsToDestroy.push(card.id);
+        descriptions.push(`${card.cardData.name} is destroyed (lethal damage)`);
+        actionsPerformed = true;
       }
     }
 
@@ -141,8 +143,17 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     // SBA 704.5m: An Aura attached to an illegal object is put into its owner's graveyard
     if (isAura(card) && card.attachedToId) {
       const attachedTo = updatedState.cards.get(card.attachedToId);
-      // Check if the target still exists and is a valid enchantment target
-      if (!attachedTo) {
+      // Check if the target still exists and is on the battlefield
+      let attachedToOnBattlefield = false;
+      if (attachedTo) {
+        for (const [zoneKey, zone] of updatedState.zones) {
+          if (zoneKey.includes('battlefield') && zone.cardIds.includes(card.attachedToId!)) {
+            attachedToOnBattlefield = true;
+            break;
+          }
+        }
+      }
+      if (!attachedToOnBattlefield) {
         // Aura's target is gone - put aura in graveyard
         if (!cardsToDestroy.includes(card.id)) {
           cardsToDestroy.push(card.id);
@@ -155,8 +166,18 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     // SBA 704.5n: An Equipment or Fortification attached to a non-permanent is put in the graveyard
     if (isEquipment(card) && card.attachedToId) {
       const attachedTo = updatedState.cards.get(card.attachedToId);
-      // Equipment can only attach to creatures - if target is not a creature, it's illegal
-      if (attachedTo && !isCreature(attachedTo)) {
+      // Check if the attached object is on the battlefield
+      let attachedToOnBattlefield = false;
+      if (attachedTo) {
+        for (const [zoneKey, zone] of updatedState.zones) {
+          if (zoneKey.includes('battlefield') && zone.cardIds.includes(card.attachedToId!)) {
+            attachedToOnBattlefield = true;
+            break;
+          }
+        }
+      }
+      // Equipment can only attach to creatures - if target is not a creature or not on battlefield, it's illegal
+      if (attachedTo && attachedToOnBattlefield && !isCreature(attachedTo)) {
         if (!cardsToDestroy.includes(card.id)) {
           cardsToDestroy.push(card.id);
         }
@@ -259,10 +280,11 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
   const pwTypeGroups = new Map<string, CardInstanceId[]>();
   
   for (const pw of planeswalkers) {
-    // Extract planeswalker type from type line (e.g., "Jace" from "Legendary Planeswalker — Jace")
+    // Extract planeswalker type from type line (e.g., "Jace" from "Legendary Planeswalker - Jace")
     const typeLine = pw.cardData.type_line || '';
-    const pwType = typeLine.replace('Legendary Planeswalker — ', '').trim();
-    
+    // Handle both em dash and regular hyphen
+    const pwType = typeLine.replace(/Legendary Planeswalker [-—] /, '').trim();
+
     const existing = pwTypeGroups.get(pwType) || [];
     existing.push(pw.id);
     pwTypeGroups.set(pwType, existing);
@@ -284,8 +306,10 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
   }
 
   // Check win condition after all SBAs
-  if (actionsPerformed) {
-    updatedState = checkWinCondition(updatedState);
+  // Always check win condition in case players were already marked as lost
+  updatedState = checkWinCondition(updatedState);
+  if (updatedState.status === 'completed' && state.status !== 'completed') {
+    actionsPerformed = true;
   }
 
   return {
