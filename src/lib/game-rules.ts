@@ -7,6 +7,7 @@
 
 // Note: GameState type is defined in @/types/game
 // Import directly from '@/types/game' when needed
+// Also see @/lib/game-state/types.ts for full game state types
 
 /**
  * Format-specific deck construction rules
