@@ -204,73 +204,113 @@ interface PlayerInfoProps {
   player: PlayerState;
   isCurrentTurn: boolean;
   isVertical: boolean;
+  otherPlayers?: PlayerState[];
   onLifeAdjust?: (playerId: string, amount: number) => void;
   onPoisonAdjust?: (playerId: string, amount: number) => void;
+  onCommanderDamageAdjust?: (playerId: string, targetPlayerId: string, amount: number) => void;
   showControls?: boolean;
 }
 
 const PlayerInfo = memo(function PlayerInfo({
   player,
-  isCurrentTurn,
   isVertical,
+  otherPlayers = [],
   onLifeAdjust,
   onPoisonAdjust,
+  onCommanderDamageAdjust,
   showControls = false
 }: PlayerInfoProps) {
+  // Issue #24: Enhanced commander damage display - per opponent tracking
+  const commanderDamageEntries = React.useMemo(() => {
+    if (!player.commanderDamage) return [];
+    return Object.entries(player.commanderDamage);
+  }, [player.commanderDamage]);
+
+  // Get player names for commander damage targets
+  const getPlayerName = (playerId: string) => {
+    const targetPlayer = otherPlayers.find(p => p.id === playerId);
+    return targetPlayer?.name || 'Unknown';
+  };
+
+  // Check if any commander damage is fatal (21+ damage)
+  const hasFatalCommanderDamage = commanderDamageEntries.some(([, damage]) => damage >= 21);
+
   return (
     <div className={`flex items-center gap-2 ${isVertical ? "flex-col" : ""}`}>
       <div className="flex items-center gap-2">
-        {isCurrentTurn && (
-          <Badge variant="default" className="animate-pulse">
-            <Crown className="h-3 w-3 mr-1" />
-            Active
-          </Badge>
-        )}
         <div className="flex items-center gap-1 text-sm">
           <User className="h-4 w-4" />
           <span className="font-medium">{player.name}</span>
         </div>
       </div>
       <Separator orientation={isVertical ? "horizontal" : "vertical"} className="h-6" />
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap justify-center">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
               <div className="flex items-center gap-1 text-sm">
-                <Heart className="h-4 w-4 text-red-500" />
-                <span className="font-mono font-bold">{player.lifeTotal}</span>
+                <Heart className={`h-4 w-4 ${hasFatalCommanderDamage ? 'text-red-600 animate-pulse' : 'text-red-500'}`} />
+                <span className={`font-mono font-bold ${hasFatalCommanderDamage ? 'text-red-600' : ''}`}>
+                  {player.lifeTotal}
+                </span>
               </div>
             </TooltipTrigger>
             <TooltipContent>Life Total</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        {player.poisonCounters > 0 && (
+        
+        {player.poisonCounters >= 10 && (
+          <Badge variant="destructive" className="text-xs">
+            <PoisonIcon className="h-3 w-3 mr-1" />
+            {player.poisonCounters} Poison
+          </Badge>
+        )}
+        
+        {/* Issue #24: Commander damage per opponent display */}
+        {commanderDamageEntries.length > 0 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger>
-                <div className="flex items-center gap-1 text-sm">
-                  <PoisonIcon className="h-4 w-4 text-purple-500" />
-                  <span className="font-mono font-bold">{player.poisonCounters}</span>
+                <div className="flex items-center gap-1 flex-wrap justify-center">
+                  {commanderDamageEntries.map(([targetId, damage]) => (
+                    <Badge 
+                      key={targetId} 
+                      variant={damage >= 21 ? "destructive" : "outline"} 
+                      className="text-xs"
+                    >
+                      {getPlayerName(targetId)}: {damage}
+                    </Badge>
+                  ))}
                 </div>
               </TooltipTrigger>
-              <TooltipContent>Poison Counters</TooltipContent>
+              <TooltipContent>
+                <div className="text-xs">
+                  <p className="font-bold mb-1">Commander Damage</p>
+                  {commanderDamageEntries.map(([targetId, damage]) => (
+                    <p key={targetId}>
+                      {getPlayerName(targetId)}: {damage}/21
+                      {damage >= 21 && " (DEFEATED)"}
+                    </p>
+                  ))}
+                </div>
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-        )}
-        {player.commanderDamage && Object.keys(player.commanderDamage).length > 0 && (
-          <Badge variant="outline" className="text-xs">
-            CMDR: {Object.values(player.commanderDamage)[0]}
-          </Badge>
         )}
       </div>
     </div>
   );
 });
 
-function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false }: PlayerAreaProps) {
+function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false, allPlayers = [] }: PlayerAreaProps & { allPlayers?: PlayerState[] }) {
   const isBottom = position === "bottom";
   const isVertical = orientation === "vertical";
   const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
+
+  // Get other players for commander damage display (Issue #24)
+  const otherPlayers = React.useMemo(() => {
+    return allPlayers.filter(p => p.id !== player.id);
+  }, [allPlayers, player.id]);
 
   // Memoize handlers to prevent unnecessary re-renders
   const handleZoneClick = useCallback((zone: ZoneType) => {
@@ -490,6 +530,7 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={false}
+                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -511,6 +552,7 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={true}
+                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -536,6 +578,7 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={false}
+                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -550,6 +593,7 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="vertical"
                 isLocalPlayer={false}
+                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -578,6 +622,7 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="vertical"
                 isLocalPlayer={false}
+                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -592,6 +637,7 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={true}
+                allPlayers={players}
               />
             </CardContent>
           </Card>
