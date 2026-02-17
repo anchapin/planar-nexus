@@ -139,7 +139,7 @@ function getCardsForColors(colorIdentity: string[]): { creatures: string[]; spel
 
 // Generate deck based on archetype
 export function generateOpponentDeck(input: OpponentDeckGenerationInput): GeneratedDeck {
-  const { format, archetype = 'midrange', colorIdentity = ['W', 'U', 'B', 'R', 'G'].slice(0, Math.floor(Math.random() * 5) + 1), powerLevel = 'casual' } = input;
+  const { format, archetype = 'midrange', colorIdentity = ['W', 'U', 'B', 'R', 'G'].slice(0, Math.floor(Math.random() * 5) + 1) as ['W', 'U', 'B', 'R', 'G'][], powerLevel = 'casual' } = input;
   
   const config = ARCHETYPE_CONFIGS[archetype];
   const cards: Array<{ name: string; quantity: number }> = [];
