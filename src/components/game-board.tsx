@@ -193,15 +193,23 @@ const ZoneDisplay = memo(function ZoneDisplay({
 });
 
 // Memoized PlayerInfo component for performance optimization
-const PlayerInfo = memo(function PlayerInfo({ 
-  player, 
-  isCurrentTurn,
-  isVertical 
-}: { 
+interface PlayerInfoProps {
   player: PlayerState;
   isCurrentTurn: boolean;
   isVertical: boolean;
-}) {
+  onLifeAdjust?: (playerId: string, amount: number) => void;
+  onPoisonAdjust?: (playerId: string, amount: number) => void;
+  showControls?: boolean;
+}
+
+const PlayerInfo = memo(function PlayerInfo({
+  player,
+  isCurrentTurn,
+  isVertical,
+  onLifeAdjust,
+  onPoisonAdjust,
+  showControls = false
+}: PlayerInfoProps) {
   return (
     <div className={`flex items-center gap-2 ${isVertical ? "flex-col" : ""}`}>
       <div className="flex items-center gap-2">
