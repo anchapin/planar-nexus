@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import type { AIProvider } from "@/ai/providers";
 import { SoundSettings } from "@/components/sound-settings";
+import { AutoSaveSettings } from "@/components/auto-save-settings";
 import {
   getImageDirectory,
   setImageDirectory,
@@ -430,6 +431,7 @@ export default function SettingsPage() {
           <TabsTrigger value="card-images">Card Images</TabsTrigger>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="sound">Sound</TabsTrigger>
+          <TabsTrigger value="auto-save">Auto-Save</TabsTrigger>
         </TabsList>
         
         <TabsContent value="api-keys" className="space-y-6">
@@ -744,6 +746,20 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <SoundSettings />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="auto-save" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Auto-Save Settings</CardTitle>
+              <CardDescription>
+                Configure automatic game saving
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AutoSaveSettings />
             </CardContent>
           </Card>
         </TabsContent>
