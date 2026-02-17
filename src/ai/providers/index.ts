@@ -10,16 +10,25 @@
  */
 
 // Import types from separate file (to avoid circular dependencies)
-import { DEFAULT_CONFIGS, DEFAULT_MODELS, type AIProviderConfig, type AIProvider } from './types';
+import { DEFAULT_CONFIGS, DEFAULT_MODELS, type AIProviderConfig, type AIProvider, type SubscriptionTier, type SubscriptionPlan, type SubscriptionDetection } from './types';
 
 // Re-export types
 export { DEFAULT_CONFIGS, DEFAULT_MODELS };
-export type { AIProviderConfig, AIProvider };
+export type { 
+  AIProviderConfig, 
+  AIProvider, 
+  SubscriptionTier, 
+  SubscriptionPlan, 
+  SubscriptionDetection 
+};
 
 // Re-export Claude, OpenAI and Z.ai providers
 export * from './claude';
 export * from './openai';
 export * from './zaic';
+
+// Re-export subscription detection (Issue #52)
+export * from './subscription-detection';
 
 /**
  * Current active provider configuration

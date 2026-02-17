@@ -3,12 +3,41 @@
  * 
  * This file contains shared types for AI providers.
  * Extracted to a separate file to avoid circular dependencies.
+ * 
+ * Issue #52: Implement subscription plan linking
  */
 
 /**
  * Supported AI providers
  */
 export type AIProvider = 'google' | 'openai' | 'anthropic' | 'zaic' | 'custom';
+
+/**
+ * Subscription tier levels
+ */
+export type SubscriptionTier = 'free' | 'pro' | 'team' | 'enterprise';
+
+/**
+ * Detected subscription plan information
+ */
+export interface SubscriptionPlan {
+  provider: AIProvider;
+  tier: SubscriptionTier;
+  planName: string;
+  detectedAt: number;
+  benefits: string[];
+  rateLimitMultiplier: number;
+  maxTokensMultiplier: number;
+}
+
+/**
+ * Subscription detection result
+ */
+export interface SubscriptionDetection {
+  detected: boolean;
+  plans: SubscriptionPlan[];
+  primaryPlan?: SubscriptionPlan;
+}
 
 /**
  * Configuration options for AI providers
@@ -19,6 +48,7 @@ export interface AIProviderConfig {
   apiKey?: string;
   temperature?: number;
   maxOutputTokens?: number;
+  subscription?: SubscriptionPlan;
 }
 
 /**
