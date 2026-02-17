@@ -6,7 +6,7 @@
  * Z.ai is an AI provider that offers various language models.
  */
 
-import { AIProviderConfig, DEFAULT_MODELS } from './index';
+import { AIProviderConfig, DEFAULT_MODELS } from './types';
 
 /**
  * Z.ai provider configuration

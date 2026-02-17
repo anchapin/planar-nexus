@@ -7,7 +7,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { AIProviderConfig, DEFAULT_MODELS } from './index';
+import { AIProviderConfig, DEFAULT_MODELS } from './types';
 
 /**
  * Claude provider configuration

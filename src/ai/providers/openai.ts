@@ -7,7 +7,7 @@
  */
 
 import OpenAI from 'openai';
-import { AIProviderConfig, DEFAULT_MODELS } from './index';
+import { AIProviderConfig, DEFAULT_MODELS } from './types';
 
 /**
  * OpenAI provider configuration
