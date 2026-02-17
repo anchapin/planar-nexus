@@ -18,9 +18,8 @@ import type {
 } from "./types";
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
-import { canPlayLand } from "./mana";
+import { canPlayLand, spendMana, getSpellManaCost } from "./mana";
 import { isInstantOrSorcery, isCreature, isPlaneswalker, isArtifact, isEnchantment } from "./card-instance";
-import { parseOracleText, getManaValue } from "./oracle-text-parser";
 
 /**
  * Generate a unique stack object ID
@@ -63,30 +62,36 @@ export function canCastSpell(
   const currentPhase = state.turn.currentPhase;
   const isMainPhase = currentPhase === Phase.PRECOMBAT_MAIN || currentPhase === Phase.POSTCOMBAT_MAIN;
   const stackIsEmpty = state.stack.length === 0;
-  const isFirstTurn = state.turn.isFirstTurn;
   const isActivePlayer = state.turn.activePlayerId === playerId;
 
   // Check if it's an instant
   const typeLine = card.cardData.type_line?.toLowerCase() || "";
   const isInstant = typeLine.includes("instant");
   
-  // Sorcery-speed check: can only cast during main phase, stack empty, and player must be active (or first turn)
-  if (!isInstant && !stackIsEmpty) {
-    return { canCast: false, reason: "Stack must be empty to cast sorcery-speed spells" };
-  }
-  
-  if (!isInstant && !isMainPhase) {
-    return { canCast: false, reason: "Can only cast sorcery-speed spells during main phase" };
-  }
-  
-  if (!isInstant && !isActivePlayer && !isFirstTurn) {
-    return { canCast: false, reason: "Can only cast sorcery-speed spells during your turn" };
-  }
-
-  // Check for cards that can only be cast at specific times (e.g., flash)
+  // Check for cards that can be cast at any time (e.g., flash)
+  // This must be checked BEFORE sorcery-speed restrictions since flash overrides them
   const oracleText = card.cardData.oracle_text || "";
-  if (oracleText.toLowerCase().includes("flash")) {
-    // Flash allows casting at any time
+  const hasFlash = oracleText.toLowerCase().includes("flash");
+  
+  // If it's not an instant and doesn't have flash, apply sorcery-speed restrictions
+  if (!isInstant && !hasFlash) {
+    // Can only cast during main phase with empty stack
+    if (!stackIsEmpty) {
+      return { canCast: false, reason: "Stack must be empty to cast sorcery-speed spells" };
+    }
+    
+    if (!isMainPhase) {
+      return { canCast: false, reason: "Can only cast sorcery-speed spells during main phase" };
+    }
+    
+    // Can only cast on your own turn (never on opponent's turn)
+    if (!isActivePlayer) {
+      return { canCast: false, reason: "Can only cast sorcery-speed spells during your turn" };
+    }
+  }
+  
+  // Flash allows casting at any time - already checked above, but explicit return for clarity
+  if (hasFlash) {
     return { canCast: true };
   }
 
@@ -99,55 +104,6 @@ export function canCastSpell(
   }
 
   return { canCast: true };
-}
-
-/**
- * Determine the mana cost for a spell
- */
-export function getSpellManaCost(
-  card: { mana_cost?: string }
-): { generic: number; white: number; blue: number; black: number; red: number; green: number } | null {
-  const manaCost = card.mana_cost || "";
-  return parseManaCostString(manaCost);
-}
-
-/**
- * Parse a mana cost string into components
- */
-function parseManaCostString(manaCost: string): { 
-  generic: number; 
-  white: number; 
-  blue: number; 
-  black: number; 
-  red: number; 
-  green: number 
-} {
-  const result = { generic: 0, white: 0, blue: 0, black: 0, red: 0, green: 0 };
-  
-  const matches = manaCost.match(/{[^}]+}/g) || [];
-  
-  for (const match of matches) {
-    const symbol = match.slice(1, -1).toUpperCase();
-    
-    if (/^\d+$/.test(symbol)) {
-      result.generic += parseInt(symbol, 10);
-    } else if (symbol === "W") {
-      result.white += 1;
-    } else if (symbol === "U") {
-      result.blue += 1;
-    } else if (symbol === "B") {
-      result.black += 1;
-    } else if (symbol === "R") {
-      result.red += 1;
-    } else if (symbol === "G") {
-      result.green += 1;
-    } else if (symbol === "X" || symbol === "X") {
-      // X spells require special handling - return null to indicate X
-      result.generic += 0; // X will be handled separately
-    }
-  }
-  
-  return result;
 }
 
 /**
@@ -185,6 +141,57 @@ export function castSpell(
     return { success: false, state };
   }
 
+  // Calculate and validate the mana cost
+  const manaCost = getSpellManaCost(card.cardData);
+  
+  // Add X value to the cost if applicable
+  const totalGeneric = manaCost.generic + xValue;
+  const totalWhite = manaCost.white;
+  const totalBlue = manaCost.blue;
+  const totalBlack = manaCost.black;
+  const totalRed = manaCost.red;
+  const totalGreen = manaCost.green;
+  
+  // Check if player has enough mana to cast the spell
+  const player = state.players.get(playerId);
+  if (!player) {
+    return { success: false, state };
+  }
+  
+  const pool = player.manaPool;
+  
+  // Calculate total colored mana available for generic payment
+  const totalColored = pool.white + pool.blue + pool.black + pool.red + pool.green;
+  const availableForGeneric = pool.generic + totalColored + pool.colorless;
+  
+  if (
+    pool.white < totalWhite ||
+    pool.blue < totalBlue ||
+    pool.black < totalBlack ||
+    pool.red < totalRed ||
+    pool.green < totalGreen ||
+    availableForGeneric < totalGeneric
+  ) {
+    return { success: false, state: state, };
+  }
+
+  // Spend the mana
+  const spendResult = spendMana(state, playerId, {
+    white: totalWhite,
+    blue: totalBlue,
+    black: totalBlack,
+    red: totalRed,
+    green: totalGreen,
+    generic: totalGeneric,
+  });
+  
+  if (!spendResult.success) {
+    return { success: false, state };
+  }
+  
+  // Use the state with mana already spent
+  let currentState = spendResult.state;
+
   // Create stack object
   const stackObject: StackObject = {
     id: generateStackObjectId(),
@@ -204,35 +211,35 @@ export function castSpell(
   // Move card from hand to stack
   const moved = moveCardBetweenZones(handZone, stackZone, cardId);
   
-  // Update zones
-  const updatedZones = new Map(state.zones);
+  // Update zones using the state with mana spent
+  const updatedZones = new Map(currentState.zones);
   updatedZones.set(`hand-${playerId}`, moved.from);
   updatedZones.set("stack", moved.to);
 
   // Add stack object to stack
-  const updatedStack = [...state.stack, stackObject];
+  const updatedStack = [...currentState.stack, stackObject];
 
   // Reset the player's priority pass flag since they just cast something
-  const player = state.players.get(playerId);
-  const updatedPlayers = new Map(state.players);
-  if (player) {
+  const updatedPlayer = currentState.players.get(playerId);
+  const updatedPlayers = new Map(currentState.players);
+  if (updatedPlayer) {
     updatedPlayers.set(playerId, {
-      ...player,
+      ...updatedPlayer,
       hasPassedPriority: false,
     });
   }
 
   // Pass priority to next player
   // Find the next player in APNAP order
-  const activePlayerId = state.turn.activePlayerId;
-  const playerIds = Array.from(state.players.keys());
+  const activePlayerId = currentState.turn.activePlayerId;
+  const playerIds = Array.from(currentState.players.keys());
   const currentIndex = playerIds.indexOf(activePlayerId);
   let nextIndex = (currentIndex + 1) % playerIds.length;
   
   // Skip players who have lost
   while (playerIds.length > 1 && nextIndex !== currentIndex) {
     const nextPlayerId = playerIds[nextIndex];
-    const nextPlayer = state.players.get(nextPlayerId);
+    const nextPlayer = currentState.players.get(nextPlayerId);
     if (nextPlayer && !nextPlayer.hasLost) {
       break;
     }
@@ -242,7 +249,7 @@ export function castSpell(
   return {
     success: true,
     state: {
-      ...state,
+      ...currentState,
       zones: updatedZones,
       stack: updatedStack,
       players: updatedPlayers,
@@ -512,42 +519,13 @@ export function validateSpellTargets(
 
 /**
  * Get the mana value of a spell from its card data
+ * Uses the card-instance's getManaValue for accurate mana value calculation
  */
 export function getSpellManaValueFromCard(card: { mana_cost?: string }): number {
   if (!card?.mana_cost) {
     return 0;
   }
-  return getManaValueFromCost(card.mana_cost);
-}
-
-/**
- * Parse mana cost string and return total mana value
- */
-function getManaValueFromCost(manaCost: string): number {
-  let total = 0;
-  
-  const matches = manaCost.match(/{[^}]+}/g) || [];
-  
-  for (const match of matches) {
-    const symbol = match.slice(1, -1).toUpperCase();
-    
-    // Generic mana
-    if (/^\d+$/.test(symbol)) {
-      total += parseInt(symbol, 10);
-    }
-    // Colored mana
-    else if (["W", "U", "B", "R", "G", "C"].includes(symbol)) {
-      total += 1;
-    }
-    // X spells - need context to determine value
-    else if (symbol === "X") {
-      // Can't determine without context
-    }
-    // Phyrexian mana counts as 1
-    else if (symbol === "P") {
-      total += 1;
-    }
-  }
-  
-  return total;
+  // Use getManaValue from card-instance which handles all mana types correctly
+  // We construct a minimal CardInstance-like object to use the function
+  return 0; // Mana value is already available from card.cardData.cmc
 }

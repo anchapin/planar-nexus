@@ -102,13 +102,75 @@ export function spendMana(
     (mana.red ?? 0) +
     (mana.green ?? 0);
 
-  // Check if we can use colored mana to pay generic costs
-  // Generic mana can be paid with any color
+  // Check if we can use colored/colorless mana to pay generic costs
+  // Generic mana can be paid with any color or colorless
   const remainingGeneric = pool.generic;
   const remainingColored = totalColored - neededColored;
+  const remainingColorless = pool.colorless - (mana.colorless ?? 0);
   
-  if (remainingGeneric + remainingColored < (mana.generic ?? 0)) {
+  if (remainingGeneric + remainingColored + remainingColorless < (mana.generic ?? 0)) {
     return { success: false, state };
+  }
+
+  // Calculate how much generic we need to pay
+  let genericToPay = mana.generic ?? 0;
+  
+  // First use generic pool
+  const genericFromGeneric = Math.min(pool.generic, genericToPay);
+  genericToPay -= genericFromGeneric;
+  
+  // Then use colored mana (can pay for generic)
+  const extraColoredAvailable = totalColored - neededColored;
+  const genericFromColored = Math.min(extraColoredAvailable, genericToPay);
+  genericToPay -= genericFromColored;
+  
+  // Finally use colorless (can pay for generic)
+  const genericFromColorless = Math.min(pool.colorless - (mana.colorless ?? 0), genericToPay);
+  genericToPay -= genericFromColorless;
+  
+  // Now calculate actual deductions with proper prioritization
+  // Deduct colored first for colored requirements
+  let whiteToDeduct = mana.white ?? 0;
+  let blueToDeduct = mana.blue ?? 0;
+  let blackToDeduct = mana.black ?? 0;
+  let redToDeduct = mana.red ?? 0;
+  let greenToDeduct = mana.green ?? 0;
+  let colorlessToDeduct = mana.colorless ?? 0;
+  let genericToDeduct = mana.generic ?? 0;
+  
+  // If we used colored for generic, deduct from colored pools proportionally
+  if (genericFromColored > 0) {
+    // Deduct proportionally from available colored
+    const coloredAvailable = extraColoredAvailable;
+    if (coloredAvailable > 0) {
+      const ratio = genericFromColored / coloredAvailable;
+      // Deduct from whichever colors have excess
+      const excessWhite = Math.max(0, pool.white - (mana.white ?? 0));
+      const excessBlue = Math.max(0, pool.blue - (mana.blue ?? 0));
+      const excessBlack = Math.max(0, pool.black - (mana.black ?? 0));
+      const excessRed = Math.max(0, pool.red - (mana.red ?? 0));
+      const excessGreen = Math.max(0, pool.green - (mana.green ?? 0));
+      const totalExcess = excessWhite + excessBlue + excessBlack + excessRed + excessGreen;
+      
+      if (totalExcess > 0) {
+        const whiteDeduct = Math.floor((excessWhite / totalExcess) * genericFromColored);
+        const blueDeduct = Math.floor((excessBlue / totalExcess) * genericFromColored);
+        const blackDeduct = Math.floor((excessBlack / totalExcess) * genericFromColored);
+        const redDeduct = Math.floor((excessRed / totalExcess) * genericFromColored);
+        const greenDeduct = Math.floor((excessGreen / totalExcess) * genericFromColored);
+        
+        whiteToDeduct += whiteDeduct;
+        blueToDeduct += blueDeduct;
+        blackToDeduct += blackDeduct;
+        redToDeduct += redDeduct;
+        greenToDeduct += greenDeduct;
+      }
+    }
+  }
+  
+  // If we used colorless for generic, add to colorless deduction
+  if (genericFromColorless > 0) {
+    colorlessToDeduct += genericFromColorless;
   }
 
   // Spend the mana
@@ -116,13 +178,13 @@ export function spendMana(
   const updatedPlayer = {
     ...player,
     manaPool: {
-      colorless: pool.colorless - (mana.colorless ?? 0),
-      white: pool.white - (mana.white ?? 0),
-      blue: pool.blue - (mana.blue ?? 0),
-      black: pool.black - (mana.black ?? 0),
-      red: pool.red - (mana.red ?? 0),
-      green: pool.green - (mana.green ?? 0),
-      generic: pool.generic - (mana.generic ?? 0),
+      colorless: pool.colorless - colorlessToDeduct,
+      white: pool.white - whiteToDeduct,
+      blue: pool.blue - blueToDeduct,
+      black: pool.black - blackToDeduct,
+      red: pool.red - redToDeduct,
+      green: pool.green - greenToDeduct,
+      generic: pool.generic - genericFromGeneric,
     },
   };
   updatedPlayers.set(playerId, updatedPlayer);
@@ -404,6 +466,7 @@ export function resetLandPlays(state: GameState, playerId: PlayerId): GameState 
   return {
     ...state,
     players: updatedPlayers,
+    lastModifiedAt: Date.now(),
   };
 }
 
@@ -455,4 +518,64 @@ export function addLandPlay(
     ...state,
     players: updatedPlayers,
   };
+}
+
+/**
+ * Determine the mana cost for a spell
+ * Note: For X spells, the X cost is not included in the returned values
+ *       and must be handled separately via the variableValues parameter
+ */
+export function getSpellManaCost(
+  card: { mana_cost?: string }
+): { generic: number; white: number; blue: number; black: number; red: number; green: number; hasX: boolean } {
+  const manaCost = card.mana_cost || "";
+  const parsed = parseManaCostString(manaCost);
+  // Check if the cost contains X
+  const hasX = (manaCost.toUpperCase().match(/X/g) || []).length > 0;
+  return {
+    generic: parsed.generic,
+    white: parsed.white,
+    blue: parsed.blue,
+    black: parsed.black,
+    red: parsed.red,
+    green: parsed.green,
+    hasX,
+  };
+}
+
+/**
+ * Parse a mana cost string into components
+ */
+function parseManaCostString(manaCost: string): { 
+  generic: number; 
+  white: number; 
+  blue: number; 
+  black: number; 
+  red: number; 
+  green: number 
+} {
+  const result = { generic: 0, white: 0, blue: 0, black: 0, red: 0, green: 0 };
+  
+  const matches = manaCost.match(/{[^}]+}/g) || [];
+  
+  for (const match of matches) {
+    const symbol = match.slice(1, -1).toUpperCase();
+    
+    if (/^\d+$/.test(symbol)) {
+      result.generic += parseInt(symbol, 10);
+    } else if (symbol === "W") {
+      result.white += 1;
+    } else if (symbol === "U") {
+      result.blue += 1;
+    } else if (symbol === "B") {
+      result.black += 1;
+    } else if (symbol === "R") {
+      result.red += 1;
+    } else if (symbol === "G") {
+      result.green += 1;
+    }
+    // X is handled separately via variableValues - no action needed here
+  }
+  
+  return result;
 }
