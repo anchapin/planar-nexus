@@ -358,9 +358,10 @@ interface IssuePenaltyProps {
   judgeName: string;
   onIssuePenalty: (playerId: string, type: PenaltyType, reason: string) => void;
   disabled?: boolean;
+  className?: string;
 }
 
-export function IssuePenalty({ players, currentRound, judgeName, onIssuePenalty, disabled }: IssuePenaltyProps) {
+export function IssuePenalty({ players, currentRound, judgeName, onIssuePenalty, disabled, className }: IssuePenaltyProps) {
   const [selectedPlayer, setSelectedPlayer] = useState('');
   const [penaltyType, setPenaltyType] = useState<PenaltyType>('warning');
   const [reason, setReason] = useState('');

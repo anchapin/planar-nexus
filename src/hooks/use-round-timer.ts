@@ -104,9 +104,14 @@ export function useRoundTimer({
         }
         
         // Check for warning state
-        if (newTime <= config.warningThresholdSeconds && roundState !== 'warning') {
-          setRoundState('warning');
-          onWarningRef.current?.();
+        if (newTime <= config.warningThresholdSeconds) {
+          setRoundState((prev) => {
+            if (prev !== 'warning') {
+              onWarningRef.current?.();
+              return 'warning';
+            }
+            return prev;
+          });
         }
         
         return newTime;

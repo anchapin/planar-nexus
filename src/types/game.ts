@@ -10,7 +10,7 @@ export type GameFormat = "commander" | "standard" | "modern" | "pioneer" | "lega
 
 export type TurnPhase = "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end";
 
-export type ZoneType = "battlefield" | "hand" | "graveyard" | "exile" | "library" | "command" | "companion";
+export type ZoneType = "battlefield" | "hand" | "graveyard" | "exile" | "library" | "commandZone" | "companion" | "stack" | "sideboard" | "anticipate";
 
 export interface CardState {
   id: string;

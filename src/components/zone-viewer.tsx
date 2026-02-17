@@ -522,7 +522,7 @@ export function ZoneButton({
   const icons: Record<ZoneType, React.ReactNode> = {
     graveyard: <Skull className="h-4 w-4" />,
     exile: <Ban className="h-4 w-4" />,
-    command: <Crown className="h-4 w-4" />,
+    commandZone: <Crown className="h-4 w-4" />,
     stack: <Layers className="h-4 w-4" />,
     library: <Library className="h-4 w-4" />,
     hand: null,
@@ -535,7 +535,7 @@ export function ZoneButton({
   const labels: Record<ZoneType, string> = {
     graveyard: "Graveyard",
     exile: "Exile",
-    command: "Command",
+    commandZone: "Command",
     stack: "Stack",
     library: "Library",
     hand: "Hand",
