@@ -57,6 +57,7 @@ const PROVIDER_NAMES: Record<AIProvider, string> = {
   google: "Google AI (Gemini)",
   openai: "OpenAI",
   anthropic: "Anthropic (Claude)",
+  zaic: "Z.ai",
   custom: "Custom Provider",
 };
 
@@ -67,6 +68,7 @@ const PROVIDER_COLORS: Record<AIProvider, string> = {
   google: "bg-blue-500",
   openai: "bg-green-500",
   anthropic: "bg-purple-500",
+  zaic: "bg-orange-500",
   custom: "bg-gray-500",
 };
 
@@ -259,18 +261,21 @@ export default function SettingsPage() {
     google: "",
     openai: "",
     anthropic: "",
+    zaic: "",
     custom: "",
   });
   const [showKey, setShowKey] = useState<Record<AIProvider, boolean>>({
     google: false,
     openai: false,
     anthropic: false,
+    zaic: false,
     custom: false,
   });
   const [selectedModels, setSelectedModels] = useState<Record<AIProvider, string>>({
     google: "gemini-1.5-flash-latest",
     openai: "gpt-4o-mini",
     anthropic: "claude-3-haiku-20240307",
+    zaic: "default",
     custom: "gemini-1.5-flash-latest",
   });
   
@@ -280,12 +285,14 @@ export default function SettingsPage() {
     google: false,
     openai: false,
     anthropic: false,
+    zaic: false,
     custom: false,
   });
   const [validationResults, setValidationResults] = useState<Record<AIProvider, { valid: boolean; error?: string }>>({
     google: { valid: false },
     openai: { valid: false },
     anthropic: { valid: false },
+    zaic: { valid: false },
     custom: { valid: false },
   });
   
@@ -395,9 +402,9 @@ export default function SettingsPage() {
     }
     
     await clearAllApiKeys();
-    setKeys({ google: "", openai: "", anthropic: "", custom: "" });
+    setKeys({ google: "", openai: "", anthropic: "", zaic: "", custom: "" });
     setKeyStatus([]);
-    setValidationResults({ google: { valid: false }, openai: { valid: false }, anthropic: { valid: false }, custom: { valid: false } });
+    setValidationResults({ google: { valid: false }, openai: { valid: false }, anthropic: { valid: false }, zaic: { valid: false }, custom: { valid: false } });
     
     setSaveMessage({
       type: "success",
