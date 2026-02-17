@@ -21,7 +21,6 @@ import {
   GameState,
   Permanent,
   PlayerState,
-  ThreatAssessment,
 } from '../game-state-evaluator';
 
 /**
@@ -313,8 +312,6 @@ export class CombatDecisionTree {
     let expectedValue = 0;
     let riskLevel = 0;
 
-    const power = creature.power || 0;
-    const toughness = creature.toughness || 0;
     const hasEvasion = this.hasEvasion(creature);
 
     // Get potential blockers for each opponent

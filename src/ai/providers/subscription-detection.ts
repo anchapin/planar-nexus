@@ -420,7 +420,7 @@ export async function detectAllSubscriptions(): Promise<SubscriptionDetection> {
           plans.push(subscription);
         }
       }
-    } catch (error) {
+    } catch {
       // Provider may not have a key stored, skip
       console.debug(`No API key found for ${provider}`);
     }
