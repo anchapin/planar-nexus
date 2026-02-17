@@ -136,7 +136,6 @@ export function spendMana(
   let redToDeduct = mana.red ?? 0;
   let greenToDeduct = mana.green ?? 0;
   let colorlessToDeduct = mana.colorless ?? 0;
-  let genericToDeduct = mana.generic ?? 0;
   
   // If we used colored for generic, deduct from colored pools proportionally
   if (genericFromColored > 0) {

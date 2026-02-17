@@ -19,6 +19,8 @@ import type {
 import { Phase } from './types';
 import { moveCardBetweenZones } from './zones';
 import { parseOracleText, ParsedActivatedAbility, ParsedTriggeredAbility, AbilityType } from './oracle-text-parser';
+import { spendMana } from './mana';
+import { destroyCard, discardCards } from './keyword-actions';
 
 /**
  * Result of activating an ability
@@ -204,8 +206,6 @@ export function activateAbility(
 
   // Pay mana cost
   if (ability.costs.mana) {
-    // Import mana payment functionality
-    const { spendMana } = require('./mana');
     const manaCost = ability.costs.mana;
     const manaPayment = {
       generic: manaCost.generic,
@@ -253,7 +253,6 @@ export function activateAbility(
   // Handle sacrifice cost
   if (ability.costs.sacrifice) {
     // Move card to graveyard
-    const { destroyCard } = require('./keyword-actions');
     const result = destroyCard(currentState, cardId, true);
     if (result.success) {
       currentState = result.state;
@@ -262,7 +261,6 @@ export function activateAbility(
 
   // Handle discard cost
   if (ability.costs.discard) {
-    const { discardCards } = require('./keyword-actions');
     const result = discardCards(currentState, playerId, 1, false);
     if (result.success) {
       currentState = result.state;
