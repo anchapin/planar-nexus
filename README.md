@@ -27,10 +27,10 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 |---------|--------|-------|
 | Deck Builder | ✅ Complete | Full import/export, save/load, format validation, Scryfall integration |
 | AI Deck Coach | ✅ Complete | Strategic analysis, legal suggestions, multiple optimization paths |
-| Single Player | ⚠️ UI Only | Configuration screens exist, no gameplay implementation |
-| Multiplayer | ⚠️ UI Only | Lobby browser exists, no networking or gameplay |
-| Game Engine | ⚠️ Minimal | Format rules defined, no actual game mechanics |
-| AI Providers | ⚠️ Gemini Only | No BYO key system, no multi-provider support |
+| Single Player | ⚠️ Partial | UI screens exist, game engine in progress |
+| Multiplayer | ⚠️ Partial | P2P WebRTC implemented, lobby system exists |
+| Game Engine | ⚠️ In Progress | Core mechanics being implemented |
+| AI Providers | ✅ Complete | Multi-provider support (Gemini, Claude, OpenAI, Z.ai) |
 
 ---
 
@@ -39,23 +39,23 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 **Priority: CRITICAL** - Blocks all gameplay features
 
 #### 1.1 Game State Management
-- [ ] Implement game state data structures (players, battlefield, hands, graveyards, exile, stack, command zones)
-- [ ] Create card state tracking (tapped, flipped, counters, attachments, auras/equipment)
-- [ ] Implement turn phases (beginning, precombat main, combat, postcombat main, end)
-- [ ] Create priority pass system for stack resolution
-- [ ] Implement turn/round tracking for multiplayer
+- [x] Implement game state data structures (players, battlefield, hands, graveyards, exile, stack, command zones)
+- [x] Create card state tracking (tapped, flipped, counters, attachments, auras/equipment)
+- [x] Implement turn phases (beginning, precombat main, combat, postcombat main, end)
+- [x] Create priority pass system for stack resolution
+- [x] Implement turn/round tracking for multiplayer
 
 #### 1.2 Card Mechanics
-- [ ] Land playing and mana pool system
-- [ ] Spell casting (paying costs, putting on stack)
-- [ ] Stack resolution (responding, priority passing, resolution order)
-- [ ] Combat system (attackers, blockers, damage assignment, first/double strike)
-- [ ] Activated abilities and triggered abilities
-- [ ] Keyword action handling (destroy, exile, sacrifice, draw, discard, etc.)
+- [x] Land playing and mana pool system
+- [x] Spell casting (paying costs, putting on stack)
+- [x] Stack resolution (responding, priority passing, resolution order)
+- [x] Combat system (attackers, blockers, damage assignment, first/double strike)
+- [x] Activated abilities and triggered abilities
+- [x] Keyword action handling (destroy, exile, sacrifice, draw, discard, etc.)
 
 #### 1.3 Card Rules Engine
-- [ ] Parse and interpret Oracle text for common abilities
-- [ ] Handle evergreen keywords (flying, trample, haste, deathtouch, etc.)
+- [x] Parse and interpret Oracle text for common abilities
+- [x] Handle evergreen keywords (flying, trample, haste, deathtouch, etc.)
 - [ ] Implement replacement effects and prevention effects
 - [ ] Handle state-based actions (creature death, planeswalker rules, etc.)
 - [ ] Implement layer system for continuous effects
@@ -67,27 +67,27 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 **Priority: HIGH**
 
 #### 2.1 Game Board UI
-- [ ] Design and implement game board layout
-- [ ] Card rendering (face-up, face-down, token representation)
-- [ ] Hand display and card selection
-- [ ] Battlefield visualization with card positioning
-- [ ] Graveyard/exile/command zone viewers
-- [ ] Stack display and priority indicators
-- [ ] Life total and poison counter tracking
-- [ ] Commander damage tracking (for Commander format)
+- [x] Design and implement game board layout
+- [x] Card rendering (face-up, face-down, token representation)
+- [x] Hand display and card selection
+- [x] Battlefield visualization with card positioning
+- [x] Graveyard/exile/command zone viewers
+- [x] Stack display and priority indicators
+- [x] Life total and poison counter tracking
+- [x] Commander damage tracking (for Commander format)
 
 #### 2.2 Game Interaction System
-- [ ] Click-to-act interface for cards
-- [ ] Menu system for activated abilities
-- [ ] Targeting system for spells/abilities
-- [ ] Attack/block declaration UI
-- [ ] Mana payment interface
-- [ ] Optional "yes/no" dialogs for triggers
+- [x] Click-to-act interface for cards
+- [x] Menu system for activated abilities
+- [x] Targeting system for spells/abilities
+- [x] Attack/block declaration UI
+- [x] Mana payment interface
+- [x] Optional "yes/no" dialogs for triggers
 
 #### 2.3 Save/Load System
-- [ ] Game state serialization
-- [ ] In-memory game replay system
-- [ ] Saved games browser
+- [x] Game state serialization
+- [x] In-memory game replay system
+- [x] Saved games browser
 - [ ] Auto-save functionality
 
 ---
@@ -97,34 +97,34 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 **Priority: HIGH**
 
 #### 3.1 AI Decision Engine
-- [ ] AI game state evaluation (heuristic scoring)
-- [ ] Decision trees for main phase actions
-- [ ] Combat AI (attacking, blocking decisions)
-- [ ] Stack interaction AI (when to respond, with what)
-- [ ] Mulligan decision logic
+- [x] AI game state evaluation (heuristic scoring)
+- [x] Decision trees for main phase actions
+- [x] Combat AI (attacking, blocking decisions)
+- [x] Stack interaction AI (when to respond, with what)
+- [x] Mulligan decision logic
 - [ ] Difficulty tuning (randomness, lookahead depth, evaluation accuracy)
 
 #### 3.2 AI Integration with Providers
-- [ ] Abstract AI provider interface
-- [ ] Gemini integration (already done, needs refactoring)
-- [ ] Claude API integration via Anthropic SDK
-- [ ] OpenAI/Copilot integration
-- [ ] Z.ai integration
-- [ ] Fallback and error handling for provider failures
+- [x] Abstract AI provider interface
+- [x] Gemini integration
+- [x] Claude API integration via Anthropic SDK
+- [x] OpenAI/Copilot integration
+- [x] Z.ai integration
+- [x] Fallback and error handling for provider failures
 
 #### 3.3 Bring Your Own Key System
-- [ ] User settings page for API key management
-- [ ] Secure local storage for API keys
-- [ ] Provider selection interface
-- [ ] API key validation on save
-- [ ] Usage tracking per provider (if available)
+- [x] User settings page for API key management
+- [x] Secure local storage for API keys
+- [x] Provider selection interface
+- [x] API key validation on save
+- [x] Usage tracking per provider (if available)
 - [ ] Subscription plan linking (if applicable)
 
 #### 3.4 Enhanced AI Features
-- [ ] AI deck building suggestions based on meta analysis
-- [ ] Real-time gameplay assistance (hints, suggest plays)
-- [ ] Post-game analysis and improvement suggestions
-- [ ] Draft/sealed deck AI assistance
+- [x] AI deck building suggestions based on meta analysis
+- [x] Real-time gameplay assistance (hints, suggest plays)
+- [x] Post-game analysis and improvement suggestions
+- [x] Draft/sealed deck AI assistance
 
 ---
 
@@ -133,34 +133,34 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 **Priority: MEDIUM** (Can be developed in parallel with Phase 2-3)
 
 #### 4.1 Peer-to-Peer Networking
-- [ ] WebRTC implementation for direct player connections
+- [x] WebRTC implementation for direct player connections
 - [ ] Signaling server for WebRTC handshake (lightweight, minimal state)
-- [ ] Connection management (reconnection, handling disconnects)
+- [x] Connection management (reconnection, handling disconnects)
 - [ ] NAT traversal and STUN/TURN servers
 
 #### 4.2 Game State Synchronization
 - [ ] Deterministic game state engine
-- [ ] Action broadcasting system (player actions sent to all peers)
+- [x] Action broadcasting system (player actions sent to all peers)
 - [ ] State hash verification for sync detection
 - [ ] Conflict resolution for desync
-- [ ] Replay buffering for late joins
+- [x] Replay buffering for late joins
 
 #### 4.3 Lobby System
-- [ ] Host game functionality (generate game code)
-- [ ] Join game by code
-- [ ] Public game browser (with signaling server discovery)
-- [ ] Player ready system
-- [ ] Deck selection per player
-- [ ] Format enforcement
+- [x] Host game functionality (generate game code)
+- [x] Join game by code
+- [x] Public game browser (with signaling server discovery)
+- [x] Player ready system
+- [x] Deck selection per player
+- [x] Format enforcement
 
 #### 4.4 Multiplayer Features
-- [ ] 1v1 mode implementation
-- [ ] 4-player free-for-all (Commander style)
+- [x] 1v1 mode implementation
+- [x] 4-player free-for-all (Commander style)
 - [ ] 2v2 teams mode
-- [ ] Spectator mode
-- [ ] Chat system
-- [ ] Emote/timer system
-- [ ] Concede and draw options
+- [x] Spectator mode
+- [x] Chat system
+- [x] Emote/timer system
+- [x] Concede and draw options
 
 #### 4.5 Alternative: Serverless Architecture Options
 - [ ] Evaluate Firebase Realtime Database for signaling/state
@@ -182,29 +182,29 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 - [ ] Card sleeves and playmats customization
 
 #### 5.2 Tournament Features
-- [ ] Bracket system for tournaments
-- [ ] Swiss pairing support
-- [ ] Round timer with clock extensions
-- [ ] Judge tools (for local events)
+- [x] Bracket system for tournaments
+- [x] Swiss pairing support
+- [x] Round timer with clock extensions
+- [x] Judge tools (for local events)
 
 #### 5.3 Advanced Features
 - [ ] Replay system with shareable links
-- [ ] Deck statistics and analytics
-- [ ] Collection tracker
+- [x] Deck statistics and analytics
+- [x] Collection tracker
 - [ ] Trading system (if applicable)
-- [ ] Achievement/badge system
+- [x] Achievement/badge system
 
 ---
 
 ## Technical Debt & Improvements
 
-- [ ] Migrate from hardcoded Gemini-only AI to provider-agnostic architecture
-- [ ] Add comprehensive unit tests for game rules
-- [ ] Add E2E tests for game scenarios
-- [ ] Performance optimization for large board states
-- [ ] Accessibility improvements (screen reader support, keyboard navigation)
-- [ ] Mobile responsiveness improvements
-- [ ] Offline mode (PWA with local caching)
+- [x] Migrate from hardcoded Gemini-only AI to provider-agnostic architecture
+- [x] Add comprehensive unit tests for game rules
+- [x] Add E2E tests for game scenarios
+- [x] Performance optimization for large board states
+- [x] Accessibility improvements (screen reader support, keyboard navigation)
+- [x] Mobile responsiveness improvements
+- [x] Offline mode (PWA with local caching)
 
 ---
 
