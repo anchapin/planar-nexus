@@ -9,14 +9,15 @@
  * The AI functionality should only be used server-side or with proper fallback handling.
  */
 
-// Note: We don't re-export Claude and OpenAI providers here because they import
-// the actual SDKs which causes issues during SSR/prerendering.
-// Import directly from './claude' or './openai' when needed in server contexts.
+// Re-export Claude, OpenAI and Z.ai providers
+export * from './claude';
+export * from './openai';
+export * from './zaic';
 
 /**
  * Supported AI providers
  */
-export type AIProvider = 'google' | 'openai' | 'anthropic' | 'custom';
+export type AIProvider = 'google' | 'openai' | 'anthropic' | 'zaic' | 'custom';
 
 /**
  * Configuration options for AI providers
@@ -36,6 +37,7 @@ export const DEFAULT_MODELS: Record<string, string> = {
   google: 'gemini-1.5-flash-latest',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-haiku-20240307',
+  zaic: 'default',
 };
 
 /**
@@ -54,6 +56,11 @@ export const DEFAULT_CONFIGS: Record<AIProvider, Partial<AIProviderConfig>> = {
   },
   anthropic: {
     model: DEFAULT_MODELS.anthropic,
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+  },
+  zaic: {
+    model: DEFAULT_MODELS.zaic,
     temperature: 0.7,
     maxOutputTokens: 8192,
   },
@@ -94,7 +101,7 @@ export function setProvider(provider: AIProvider, model?: string): void {
  * Get available providers
  */
 export function getAvailableProviders(): AIProvider[] {
-  return ['google', 'openai', 'anthropic'];
+  return ['google', 'openai', 'anthropic', 'zaic'];
 }
 
 /**
@@ -120,6 +127,9 @@ export function getModelOptions(provider: AIProvider): string[] {
     case 'anthropic':
       // Lazy import to avoid bundling issues in browser
       return getClaudeModelOptionsStatic();
+    case 'zaic':
+      // Lazy import to avoid bundling issues in browser
+      return getZAIModelOptionsStatic();
     case 'custom':
       return [DEFAULT_MODELS.google];
     default:
@@ -164,6 +174,18 @@ function getClaudeModelOptionsStatic(): string[] {
 }
 
 /**
+ * Get Z.ai model options (statically defined to avoid require)
+ */
+function getZAIModelOptionsStatic(): string[] {
+  return [
+    'default',
+    'zaiclient-7b',
+    'zaiclient-14b',
+    'zaiclient-72b',
+  ];
+}
+
+/**
  * Create a standardized model string for prompts
  * This can be used in prompt templates to make them provider-agnostic
  */
@@ -175,7 +197,7 @@ export function getModelString(): string {
  * Validate provider configuration
  */
 export function isValidProvider(provider: string): provider is AIProvider {
-  return ['google', 'openai', 'anthropic', 'custom'].includes(provider);
+  return ['google', 'openai', 'anthropic', 'zaic', 'custom'].includes(provider);
 }
 
 /**

@@ -5,7 +5,8 @@
  * including deck construction rules, ban/restricted lists, and validation.
  */
 
-import type { GameState } from "./game-state";
+// Note: GameState type is defined in @/types/game
+// Import directly from '@/types/game' when needed
 
 /**
  * Format-specific deck construction rules

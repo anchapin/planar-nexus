@@ -189,7 +189,7 @@ export async function hasApiKey(provider: AIProvider): Promise<boolean> {
  * Get all providers with stored keys
  */
 export async function getProvidersWithKeys(): Promise<AIProvider[]> {
-  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'custom'];
+  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'zaic', 'custom'];
   const result: AIProvider[] = [];
   
   for (const provider of providers) {
@@ -212,6 +212,7 @@ async function getStatusStorage(): Promise<Record<AIProvider, ProviderKeyStatus>
     google: { provider: 'google', hasKey: false },
     openai: { provider: 'openai', hasKey: false },
     anthropic: { provider: 'anthropic', hasKey: false },
+    zaic: { provider: 'zaic', hasKey: false },
     custom: { provider: 'custom', hasKey: false },
   };
   
@@ -318,6 +319,25 @@ export async function validateApiKey(
       return { valid: true };
     }
     
+    // For Z.ai, test with a minimal request
+    if (provider === 'zaic') {
+      const response = await fetch(
+        'https://api.z-ai.com/v1/models',
+        {
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+        }
+      );
+      
+      if (!response.ok) {
+        const error = await response.text();
+        return { 
+          valid: false, 
+          error: error || 'Invalid API key' 
+        };
+      }
+      return { valid: true };
+    }
+    
     return { valid: false, error: 'Unknown provider' };
   } catch (error) {
     return { 
@@ -331,7 +351,7 @@ export async function validateApiKey(
  * Clear all stored API keys (for logout)
  */
 export async function clearAllApiKeys(): Promise<void> {
-  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'custom'];
+  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'zaic', 'custom'];
   
   for (const provider of providers) {
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}_${provider}`);
