@@ -56,3 +56,14 @@ export {
   runAllCombatValidationTests,
   combatValidationTests,
 } from './decision-making/__tests__/combat-ai.validation';
+
+// AI Difficulty Tuning
+export {
+  AIDifficultyManager,
+  aiDifficultyManager,
+  DIFFICULTY_CONFIGS,
+  getDifficultyConfig,
+  isValidDifficulty,
+  type AIDifficultyConfig,
+  type DifficultyLevel,
+} from './ai-difficulty';
