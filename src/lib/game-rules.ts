@@ -7,6 +7,7 @@
 
 // Note: GameState type is defined in @/types/game
 // Import directly from '@/types/game' when needed
+// Also see @/lib/game-state/types.ts for full game state types
 
 /**
  * Format-specific deck construction rules
@@ -174,40 +175,8 @@ export const banLists: Record<Format, string[]> = {
     "valakut, the molten pinnacle",
   ],
   pioneer: [
-    // Pioneer ban list - sample
-    "agent of treachery",
-    " brawl",
-    "cauldron familiar",
-    "chapter",
-    "collections",
-    "connive",
-    "convoke",
-    "decay",
-    "demonstrate",
-    "design",
-    "develop",
-    "devour",
-    "disguise",
-    "disturb",
-    "double strike",
-    "enchant",
-    "equip",
-    "escape",
-    "explore",
-    "fabricate",
-    "fear",
-    "fight",
-    "first strike",
-    "flash",
-    "flying",
-    "for-mind",
-    "fortell",
-    "ward",
-    "undergrowth",
-    "unearth",
-    "vanilla",
-    "ward",
-    "undergrowth",
+    // Pioneer ban list - sample (empty as Pioneer has no current bans)
+    // Note: This should be updated from official WotC sources in production
   ],
   legacy: [
     // Legacy has a relatively small ban list

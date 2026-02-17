@@ -5,6 +5,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus } from '@/lib/multiplayer-types';
 import { lobbyManager } from '@/lib/lobby-manager';
 import { formatGameCode } from '@/lib/game-code-generator';
@@ -30,6 +31,7 @@ export interface UseLobbyReturn {
 }
 
 export function useLobby(): UseLobbyReturn {
+  const router = useRouter();
   const [lobby, setLobby] = useState<GameLobby | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,11 +103,11 @@ export function useLobby(): UseLobbyReturn {
     const success = lobbyManager.updateLobbyStatus('in-progress');
     if (success) {
       setLobby(lobbyManager.getCurrentLobby());
-      // TODO: Navigate to game board
+      router.push('/game-board');
       return true;
     }
     return false;
-  }, [lobby, canStartGame]);
+  }, [lobby, canStartGame, router]);
 
   const forceStartGame = useCallback(() => {
     if (!lobby || !canForceStart) return false;
@@ -113,11 +115,11 @@ export function useLobby(): UseLobbyReturn {
     const success = lobbyManager.updateLobbyStatus('in-progress');
     if (success) {
       setLobby(lobbyManager.getCurrentLobby());
-      // TODO: Navigate to game board
+      router.push('/game-board');
       return true;
     }
     return false;
-  }, [lobby, canForceStart]);
+  }, [lobby, canForceStart, router]);
 
   const closeLobby = useCallback(() => {
     lobbyManager.closeLobby();
