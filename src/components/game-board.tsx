@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
+import { StackDisplay, PriorityInfo, StackItem } from "@/components/stack-display";
 import {
   Skull,
   Archive,
@@ -69,6 +70,10 @@ interface GameBoardProps {
   hasActiveDrawOffer?: boolean;
   hasPlayerOfferedDraw?: boolean;
   isGameOver?: boolean;
+  // Stack and priority (Issue #22)
+  stack?: StackItem[];
+  priorityPlayerId?: string;
+  onStackItemClick?: (itemId: string) => void;
 }
 
 interface PlayerAreaProps {
@@ -466,11 +471,25 @@ export function GameBoard({
   hasActiveDrawOffer = false,
   hasPlayerOfferedDraw = false,
   isGameOver = false,
+  // Stack and priority props (Issue #22)
+  stack = [],
+  priorityPlayerId,
+  onStackItemClick,
 }: GameBoardProps) {
   const currentPlayer = players[currentTurnIndex];
   
   // Dialog states
   const [showConcedeDialog, setShowConcedeDialog] = React.useState(false);
+  const [stackExpanded, setStackExpanded] = React.useState(false);
+
+  // Build priority info for StackDisplay
+  const priorityPlayers: PriorityInfo[] = React.useMemo(() => {
+    return players.map(player => ({
+      playerId: player.id,
+      playerName: player.name,
+      hasPriority: player.id === priorityPlayerId,
+    }));
+  }, [players, priorityPlayerId]);
 
   // Layout strategy based on player count
   const renderLayout = () => {
@@ -494,11 +513,23 @@ export function GameBoard({
             </CardContent>
           </Card>
 
-          <div className="flex items-center justify-center">
+          {/* Stack and turn info center area */}
+          <div className="flex flex-col items-center gap-2">
             <Badge variant="outline" className="px-4 py-2 text-lg">
               <Swords className="h-4 w-4 mr-2" />
-              Turn {currentPlayer?.name}
+              {currentPlayer?.name}'s Turn
             </Badge>
+            {/* Stack Display - Issue #22 */}
+            <div className="w-full max-w-md">
+              <StackDisplay
+                stack={stack}
+                players={priorityPlayers}
+                priorityPlayerId={priorityPlayerId}
+                expanded={stackExpanded}
+                onStackItemClick={onStackItemClick}
+                onToggleExpand={() => setStackExpanded(!stackExpanded)}
+              />
+            </div>
           </div>
 
           <Card className="border-2 border-primary/20">
@@ -555,15 +586,23 @@ export function GameBoard({
           </Card>
 
           <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-border/30 bg-muted/30">
-            <CardContent className="p-4 h-full flex items-center justify-center">
+            <CardContent className="p-4 h-full flex flex-col items-center justify-center gap-2">
               <div className="text-center space-y-2">
                 <Badge variant="outline" className="px-4 py-2 text-sm">
                   <Swords className="h-3 w-3 mr-2" />
                   {currentPlayer?.name}'s Turn
                 </Badge>
-                <div className="text-xs text-muted-foreground">
-                  Stack: 0 items
-                </div>
+              </div>
+              {/* Stack Display - Issue #22 */}
+              <div className="w-full max-w-[200px]">
+                <StackDisplay
+                  stack={stack}
+                  players={priorityPlayers}
+                  priorityPlayerId={priorityPlayerId}
+                  expanded={stackExpanded}
+                  onStackItemClick={onStackItemClick}
+                  onToggleExpand={() => setStackExpanded(!stackExpanded)}
+                />
               </div>
             </CardContent>
           </Card>
