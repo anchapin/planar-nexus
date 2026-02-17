@@ -9,6 +9,10 @@
  * The AI functionality should only be used server-side or with proper fallback handling.
  */
 
+// Re-export Claude and OpenAI providers
+export * from './claude';
+export * from './openai';
+
 /**
  * Supported AI providers
  */
@@ -97,25 +101,48 @@ export function getAvailableProviders(): AIProvider[] {
  * Get model options for a specific provider
  */
 export function getModelOptions(provider: AIProvider): string[] {
-  const models: Record<AIProvider, string[]> = {
-    google: [
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-flash-8b',
-      'gemini-1.5-pro-latest',
-      'gemini-2.0-flash-exp',
-    ],
-    openai: [
-      'gpt-4o-mini',
-      'gpt-4o',
-      'gpt-4-turbo',
-    ],
-    anthropic: [
-      'claude-3-haiku-20240307',
-      'claude-3-sonnet-20240229',
-      'claude-3-opus-20240229',
-    ],
-    custom: [DEFAULT_MODELS.google],
-  };
+  // Import dynamic model lists from provider modules
+  let models: Record<AIProvider, string[]>;
+  
+  try {
+    // Dynamic imports to avoid bundling issues
+    const { getOpenAIModelOptions } = require('./openai');
+    const { getClaudeModelOptions } = require('./claude');
+    
+    models = {
+      google: [
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash-8b',
+        'gemini-1.5-pro-latest',
+        'gemini-2.0-flash-exp',
+      ],
+      openai: getOpenAIModelOptions(),
+      anthropic: getClaudeModelOptions(),
+      custom: [DEFAULT_MODELS.google],
+    };
+  } catch {
+    // Fallback to static lists if dynamic import fails
+    models = {
+      google: [
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash-8b',
+        'gemini-1.5-pro-latest',
+        'gemini-2.0-flash-exp',
+      ],
+      openai: [
+        'gpt-4o-mini',
+        'gpt-4o',
+        'gpt-4-turbo',
+      ],
+      anthropic: [
+        'claude-3-haiku-20240307',
+        'claude-3-sonnet-20240229',
+        'claude-3-opus-20240229',
+      ],
+      custom: [DEFAULT_MODELS.google],
+    };
+  }
+  
   return models[provider] || [];
 }
 
