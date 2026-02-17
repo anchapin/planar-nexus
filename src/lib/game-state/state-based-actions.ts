@@ -66,17 +66,17 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
       actionsPerformed = true;
     }
 
-    // SBA 704.5b: A player with 10 or more poison counters loses the game
-    if (player.poisonCounters >= 10) {
+    // SBA 704.5b: A player with 20 or more poison counters loses the game
+    if (player.poisonCounters >= 20) {
       updatedState = {
         ...updatedState,
         players: new Map(updatedState.players).set(playerId, {
           ...player,
           hasLost: true,
-          lossReason: 'Accumulated 10 or more poison counters',
+          lossReason: 'Accumulated 20 or more poison counters',
         }),
       };
-      descriptions.push(`${player.name} loses the game (10+ poison counters)`);
+      descriptions.push(`${player.name} loses the game (20+ poison counters)`);
       actionsPerformed = true;
     }
 

@@ -405,12 +405,12 @@ export function checkStateBasedActions(state: GameState): GameState {
       hasChanges = true;
     }
 
-    // Check for 10 or more poison counters
-    if (player.poisonCounters >= 10) {
+    // Check for 20 or more poison counters
+    if (player.poisonCounters >= 20) {
       const updatedPlayer = {
         ...player,
         hasLost: true,
-        lossReason: "Accumulated 10 poison counters",
+        lossReason: "Accumulated 20 poison counters",
       };
       updatedState.players.set(playerId, updatedPlayer);
       hasChanges = true;
