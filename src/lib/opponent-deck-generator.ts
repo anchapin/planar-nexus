@@ -26,7 +26,7 @@ export interface GeneratedDeck {
 }
 
 // Common cards by role and color (minimal set for offline generation)
-const CARD_POOL: Record<string, Record<string, string[]>> = {
+const CARD_POOL: Record<string, string[]> = {
   // White aggro
   'W_creatures': ['Soul Warden', 'Champion of the Parish', 'Knight of the White Orchid', 'Adanto Vanguard', 'Benevolent Bodyguard'],
   'W_removal': ['Path to Exile', 'Swords to Plowshares', 'Justice Strike', 'Divine Offering'],

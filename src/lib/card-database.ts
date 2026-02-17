@@ -28,7 +28,7 @@ export interface CardDatabaseOptions {
 }
 
 // In-memory card database (will be populated on load)
-let cardDatabase: Map<string, MinimalCard> = new Map();
+const cardDatabase: Map<string, MinimalCard> = new Map();
 let isLoaded = false;
 
 // Load bundled card data

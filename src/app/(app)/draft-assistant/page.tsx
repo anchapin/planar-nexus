@@ -59,7 +59,7 @@ export default function DraftAssistantPage() {
     return lines.map(line => {
       // Try to extract basic info from line
       // Format: "Card Name" or "4 Lightning Bolt" or "Card Name (Red)"
-      const match = line.match(/^(\d+)?\s*([^(\[]+)/);
+      const match = line.match(/^(\d+)?\s*([^([]+)/);
       const name = match ? match[2].trim() : line.trim();
       
       // Extract color hints from parentheses like (W) or (Red)
