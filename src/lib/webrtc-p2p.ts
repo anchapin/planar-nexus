@@ -186,7 +186,7 @@ export class WebRTCConnection {
   private events: P2PEvents;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
-  private pingInterval: NodeJS.Timeout | null = null;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(options: P2PConnectionOptions) {
     this.localPlayerId = options.playerId;
@@ -298,9 +298,9 @@ export class WebRTCConnection {
   /**
    * Add an ICE candidate from the remote peer
    */
-  async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+  async addIceCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
+    if (!this.peerConnection || !candidate) {
+      return;
     }
 
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
@@ -366,12 +366,34 @@ export class WebRTCConnection {
       this.handleDisconnection();
     };
 
-    this.dataChannel.onerror = (error) => {
-      console.error('[WebRTC] Data channel error:', error);
-      this.events.onError(new Error('Data channel error'), '');
+    this.dataChannel.onerror = (event) => {
+      console.error('[WebRTC] Data channel error:', event);
+
+      let errorToReport: Error;
+
+      const underlyingError =
+        (event as ErrorEvent).error ??
+        (event as any)?.error;
+
+      if (underlyingError instanceof Error) {
+        errorToReport = underlyingError;
+      } else if (underlyingError !== undefined) {
+        // Preserve non-Error details as the cause where supported
+        errorToReport = new Error('Data channel error', { cause: underlyingError });
+      } else if (event instanceof Error) {
+        errorToReport = event;
+      } else {
+        errorToReport = new Error('Data channel error', { cause: event });
+      }
+
+      this.events.onError(errorToReport, '');
     };
 
     this.dataChannel.onmessage = (event) => {
+      if (typeof event.data !== 'string') {
+        console.warn('[WebRTC] Received non-string message, ignoring');
+        return;
+      }
       this.handleMessage(event.data);
     };
   }
