@@ -143,3 +143,4 @@ export * from "./spell-casting";
 export * from "./abilities"
 
 export * from "./evergreen-keywords"
+export * from './replacement-examples';
