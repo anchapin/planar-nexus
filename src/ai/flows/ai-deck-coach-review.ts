@@ -100,8 +100,7 @@ const deckReviewFlow = ai.defineFlow(
       attempts++;
       
       // Get fresh model string for each attempt (allows runtime switching)
-      const model = getModelString();
-      
+      // Model string is configured at prompt definition time
       const { output } = await deckReviewPrompt({
         ...input,
         retryContext: lastError || undefined,
@@ -129,8 +128,8 @@ const deckReviewFlow = ai.defineFlow(
             continue;
         }
         
-        const cardIsValid = (c: any): c is { name: string; quantity: number } => 
-          c && typeof c === 'object' && typeof c.name === 'string' && c.name.trim() !== '' && typeof c.quantity === 'number' && c.quantity > 0;
+        const cardIsValid = (c: unknown): c is { name: string; quantity: number } => 
+          c !== null && typeof c === 'object' && c !== undefined && 'name' in c && 'quantity' in c && typeof (c as { name: string }).name === 'string' && (c as { name: string }).name.trim() !== '' && typeof (c as { quantity: number }).quantity === 'number' && (c as { quantity: number }).quantity > 0;
 
         const sanitizedCardsToAdd = cardsToAddRaw.filter(cardIsValid);
         const sanitizedCardsToRemove = cardsToRemoveRaw.filter(cardIsValid);
