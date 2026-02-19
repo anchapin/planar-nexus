@@ -123,62 +123,70 @@ export class ConnectionFallbackManager {
    * Connect with automatic fallback
    */
   private async connectWithFallback(): Promise<ConnectionType> {
-    return new Promise(async (resolve, reject) => {
-      let resolved = false;
+    let resolved = false;
+    let rejectFn: ((error: Error) => void) | null = null;
+    let resolveFn: ((type: ConnectionType) => void) | null = null;
 
-      // Set up fallback timer
-      if (this.options.enableFallback && isWebSocketAvailable() && this.options.websocketUrl) {
-        this.fallbackTimer = setTimeout(async () => {
-          if (!resolved && this.state.activeConnection !== 'webrtc') {
-            console.log('[ConnectionFallback] WebRTC connection timeout, falling back to WebSocket');
-            try {
-              const connectionType = await this.connectWebSocket();
+    const connectionPromise = new Promise<ConnectionType>((resolve, reject) => {
+      resolveFn = resolve;
+      rejectFn = reject;
+    });
+
+    // Set up fallback timer
+    if (this.options.enableFallback && isWebSocketAvailable() && this.options.websocketUrl) {
+      this.fallbackTimer = setTimeout(() => {
+        if (!resolved && this.state.activeConnection !== 'webrtc') {
+          console.log('[ConnectionFallback] WebRTC connection timeout, falling back to WebSocket');
+          this.connectWebSocket()
+            .then((connectionType) => {
               resolved = true;
-              resolve(connectionType);
-            } catch (error) {
+              resolveFn?.(connectionType);
+            })
+            .catch((error) => {
               if (!resolved) {
-                reject(error);
+                rejectFn?.(error);
               }
-            }
-          }
-        }, this.options.fallbackTimeout);
-      }
+            });
+        }
+      }, this.options.fallbackTimeout);
+    }
 
-      // Try WebRTC connection
-      try {
-        const connectionType = await this.connectWebRTC();
+    // Try WebRTC connection
+    try {
+      const connectionType = await this.connectWebRTC();
+      if (this.fallbackTimer) {
+        clearTimeout(this.fallbackTimer);
+        this.fallbackTimer = null;
+      }
+      resolved = true;
+      resolveFn?.(connectionType);
+    } catch (error) {
+      console.error('[ConnectionFallback] WebRTC connection failed:', error);
+      this.state.lastError = error instanceof Error ? error.message : 'WebRTC connection failed';
+      
+      // If fallback timer hasn't triggered yet and WebSocket is available
+      if (!resolved && this.options.enableFallback && isWebSocketAvailable() && this.options.websocketUrl) {
+        // Clear the timer and try WebSocket immediately
         if (this.fallbackTimer) {
           clearTimeout(this.fallbackTimer);
           this.fallbackTimer = null;
         }
-        resolved = true;
-        resolve(connectionType);
-      } catch (error) {
-        console.error('[ConnectionFallback] WebRTC connection failed:', error);
-        this.state.lastError = error instanceof Error ? error.message : 'WebRTC connection failed';
         
-        // If fallback timer hasn't triggered yet and WebSocket is available
-        if (!resolved && this.options.enableFallback && isWebSocketAvailable() && this.options.websocketUrl) {
-          // Clear the timer and try WebSocket immediately
-          if (this.fallbackTimer) {
-            clearTimeout(this.fallbackTimer);
-            this.fallbackTimer = null;
+        try {
+          const connectionType = await this.connectWebSocket();
+          resolved = true;
+          resolveFn?.(connectionType);
+        } catch (_wsError) {
+          if (!resolved) {
+            rejectFn?.(new Error(`Both WebRTC and WebSocket failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
           }
-          
-          try {
-            const connectionType = await this.connectWebSocket();
-            resolved = true;
-            resolve(connectionType);
-          } catch (wsError) {
-            if (!resolved) {
-              reject(new Error(`Both WebRTC and WebSocket failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
-            }
-          }
-        } else if (!resolved && !this.options.enableFallback) {
-          reject(error);
         }
+      } else if (!resolved && !this.options.enableFallback) {
+        rejectFn?.(error as Error);
       }
-    });
+    }
+
+    return connectionPromise;
   }
 
   /**
@@ -186,7 +194,7 @@ export class ConnectionFallbackManager {
    */
   private async connectWebRTC(): Promise<ConnectionType> {
     const events: P2PEvents = {
-      onConnectionStateChange: (state, peerId) => {
+      onConnectionStateChange: (state, _peerId) => {
         this.state.webrtcState = state;
         this.notifyStateChange();
         
@@ -194,37 +202,37 @@ export class ConnectionFallbackManager {
           this.attemptFallback();
         }
       },
-      onMessage: (message, peerId) => {
-        this.options.events.onMessage(message, peerId);
+      onMessage: (message, _peerId) => {
+        this.options.events.onMessage(message, _peerId);
       },
-      onGameStateSync: (gameState, peerId) => {
+      onGameStateSync: (gameState, _peerId) => {
         this.options.events.onGameStateSync(gameState);
       },
-      onPlayerAction: (action, data, peerId) => {
+      onPlayerAction: (action, data, _peerId) => {
         this.options.events.onMessage({
           type: 'player-action',
-          senderId: peerId,
+          senderId: _peerId,
           timestamp: Date.now(),
           payload: { action, data },
-        }, peerId);
+        }, _peerId);
       },
-      onChat: (text, peerId) => {
+      onChat: (text, _peerId) => {
         this.options.events.onMessage({
           type: 'chat',
-          senderId: peerId,
+          senderId: _peerId,
           timestamp: Date.now(),
           payload: { text },
-        }, peerId);
+        }, _peerId);
       },
-      onEmote: (emote, peerId) => {
+      onEmote: (emote, _peerId) => {
         this.options.events.onMessage({
           type: 'emote',
-          senderId: peerId,
+          senderId: _peerId,
           timestamp: Date.now(),
           payload: { emote },
-        }, peerId);
+        }, _peerId);
       },
-      onError: (error, peerId) => {
+      onError: (error, _peerId) => {
         this.state.lastError = error.message;
         this.notifyStateChange();
         this.options.events.onError(error);

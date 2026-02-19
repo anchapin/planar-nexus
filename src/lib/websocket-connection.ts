@@ -6,7 +6,7 @@
  * when WebRTC P2P connections cannot be established.
  */
 
-import type { P2PMessage, P2PConnectionState } from './webrtc-p2p';
+import type { P2PMessage } from './webrtc-p2p';
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
 import type { GameState } from './game-state/types';
 
@@ -126,7 +126,7 @@ export class WebSocketConnection {
           this.handleDisconnection(event);
         };
 
-        this.socket.onerror = (error) => {
+        this.socket.onerror = (_error) => {
           clearTimeout(this.connectionTimer!);
           this.events.onError(new Error('WebSocket error'));
           reject(new Error('WebSocket connection failed'));
@@ -174,7 +174,7 @@ export class WebSocketConnection {
             this.roomId = response.payload.roomId;
             resolve(response.payload);
           }
-        } catch (error) {
+        } catch (_error) {
           // Ignore parse errors
         }
       };
@@ -225,7 +225,7 @@ export class WebSocketConnection {
             this.socket?.removeEventListener('message', handler);
             reject(new Error('Game not found'));
           }
-        } catch (error) {
+        } catch (_error) {
           // Ignore parse errors
         }
       };
