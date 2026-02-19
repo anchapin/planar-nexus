@@ -52,7 +52,7 @@ export function calculateTurnOrder(
  */
 export function determineStartingPlayer(
   playerCount: number,
-  format: string
+  _format: string
 ): number {
   // Random starting player for now
   // In competitive play, could use dice roll or winner of previous game

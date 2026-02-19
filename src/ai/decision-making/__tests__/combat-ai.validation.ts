@@ -9,11 +9,8 @@ import {
   CombatDecisionTree,
   generateAttackDecisions,
   generateBlockingDecisions,
-  type CombatPlan,
-  type AttackDecision,
-  type BlockDecision,
 } from '../combat-decision-tree';
-import { GameState, PlayerState, Permanent } from '../../game-state-evaluator';
+import { GameState, Permanent } from '../../game-state-evaluator';
 
 /**
  * Test helpers

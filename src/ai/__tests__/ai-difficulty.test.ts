@@ -1,4 +1,4 @@
-import { aiDifficultyManager, DIFFICULTY_CONFIGS, DifficultyLevel } from '../ai-difficulty';
+import { aiDifficultyManager } from '../ai-difficulty';
 
 describe('AIDifficultyManager', () => {
   test('should initialize with default difficulty (medium)', () => {

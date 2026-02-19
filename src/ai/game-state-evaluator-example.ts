@@ -9,8 +9,6 @@ import {
   GameState,
   GameStateEvaluator,
   PlayerState,
-  Permanent,
-  HandCard,
   TurnInfo,
   evaluateGameState,
   compareGameStates,

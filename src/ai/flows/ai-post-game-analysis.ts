@@ -31,13 +31,6 @@ interface GameOutcome {
   playerDecks: Record<string, string[]>;
 }
 
-interface GameReplay {
-  actions: GameAction[];
-  outcome: GameOutcome;
-  playerNames: string[];
-  format: string;
-}
-
 // Input schema for game analysis
 const GameAnalysisInputSchema = z.object({
   replay: z.record(z.any()).describe("The game replay data with actions and outcomes"),
