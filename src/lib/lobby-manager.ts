@@ -396,13 +396,21 @@ class LobbyManager {
       sharedLifeTotal: modeConfig.sharedLife ? modeConfig.startingLife : undefined,
     }));
 
-    this.currentLobby.teamSettings = {
-      ...DEFAULT_TEAM_SETTINGS,
-      sharedLife: modeConfig.sharedLife ?? true,
-      sharedBlockers: modeConfig.sharedBlockers ?? true,
-      teamChat: modeConfig.teamChat ?? true,
-      startingLifePerTeam: modeConfig.startingLife,
-    };
+    // Build team settings with proper defaults for team mode
+    const teamSettings: TeamSettings = { ...DEFAULT_TEAM_SETTINGS };
+    if (modeConfig.sharedLife !== undefined) {
+      teamSettings.sharedLife = modeConfig.sharedLife;
+    }
+    if (modeConfig.sharedBlockers !== undefined) {
+      teamSettings.sharedBlockers = modeConfig.sharedBlockers;
+    }
+    if (modeConfig.teamChat !== undefined) {
+      teamSettings.teamChat = modeConfig.teamChat;
+    }
+    if (modeConfig.startingLife !== undefined) {
+      teamSettings.startingLifePerTeam = modeConfig.startingLife;
+    }
+    this.currentLobby.teamSettings = teamSettings;
 
     this.saveLobbyToStorage();
   }
@@ -529,9 +537,13 @@ class LobbyManager {
   updateTeamSettings(settings: Partial<TeamSettings>): boolean {
     if (!this.currentLobby) return false;
 
+    // Merge with existing settings or use defaults
+    const currentSettings = this.currentLobby.teamSettings ?? DEFAULT_TEAM_SETTINGS;
     this.currentLobby.teamSettings = {
-      ...this.currentLobby.teamSettings,
-      ...settings,
+      sharedLife: settings.sharedLife ?? currentSettings.sharedLife,
+      sharedBlockers: settings.sharedBlockers ?? currentSettings.sharedBlockers,
+      teamChat: settings.teamChat ?? currentSettings.teamChat,
+      startingLifePerTeam: settings.startingLifePerTeam ?? currentSettings.startingLifePerTeam,
     };
 
     this.saveLobbyToStorage();
