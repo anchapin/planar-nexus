@@ -361,9 +361,9 @@ class TradeManager {
   /**
    * Get trade history for a player
    */
-  getTradeHistory(playerId: string): TradeHistoryEntry[] {
+  getTradeHistory(_playerId: string): TradeHistoryEntry[] {
     const history = this.getHistory();
-    return history.filter(h => {
+    return history.filter(_h => {
       // This is simplified - in real app would track which user is which
       return true;
     });
@@ -380,12 +380,12 @@ class TradeManager {
   /**
    * Add notes/chat to trade
    */
-  addTradeNotes(tradeId: string, partyId: string, notes: string): TradeOffer | null {
+  addTradeNotes(tradeId: string, _partyId: string, notes: string): TradeOffer | null {
     const offer = this.getTradeOffer(tradeId);
     if (!offer) return null;
 
     const existingNotes = offer.notes || '';
-    const partyName = offer.parties.find(p => p.id === partyId)?.name || 'Unknown';
+    const partyName = offer.parties.find(p => p.id === _partyId)?.name || 'Unknown';
     
     offer.notes = existingNotes + `\n${partyName}: ${notes}`;
     offer.updatedAt = Date.now();
