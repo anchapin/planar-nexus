@@ -999,8 +999,7 @@ export class CombatDecisionTree {
    * Parse a card's oracle text to understand its combat effect
    */
   private parseCombatTrick(card: HandCard): ParsedCombatTrick | null {
-    const nameLower = card.name.toLowerCase();
-    const oracleText = (card as any).oracleText || '';
+    const oracleText = (card as { oracleText?: string }).oracleText || '';
     const textLower = oracleText.toLowerCase();
     
     // Initialize parsed result
