@@ -144,8 +144,8 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 #### 4.2 Game State Synchronization
 - [x] Deterministic game state engine
 - [x] Action broadcasting system (player actions sent to all peers)
-- [ ] State hash verification for sync detection
-- [ ] Conflict resolution for desync
+- [x] State hash verification for sync detection
+- [x] Conflict resolution for desync
 - [x] Replay buffering for late joins
 
 #### 4.3 Lobby System
@@ -238,8 +238,6 @@ The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows
 
 Remaining work focuses on:
 - Damage indicators and floating combat text
-- State hash verification for multiplayer sync
-- Conflict resolution for multiplayer desync
 - Firebase Realtime Database evaluation
 - WebSocket fallback for non-P2P scenarios
 
