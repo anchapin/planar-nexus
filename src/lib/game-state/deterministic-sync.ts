@@ -15,6 +15,9 @@
 import type { GameState, GameAction, PlayerId, CardInstanceId } from "./types";
 import { computeStateHash, compareStateHashes, analyzeHashDiscrepancy, type HashComparisonResult, type HashDiscrepancy } from "./state-hash";
 
+// Re-export types needed by other modules
+export type { HashComparisonResult, HashDiscrepancy };
+
 /**
  * Sequence number for action ordering
  */
