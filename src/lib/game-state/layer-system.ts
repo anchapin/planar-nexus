@@ -103,7 +103,8 @@ export type ContinuousEffectType =
   | 'toughness_set'
   | 'toughness_modify'
   | 'power_toughness_switch'
-  | 'characteristic_defining';
+  | 'characteristic_defining'
+  | 'counter';
 
 /**
  * Characteristic-defining ability (CDA) - applies in Layer 7a
@@ -427,6 +428,16 @@ export class LayerSystem {
     // Layer 7b: P/T setting effects override base values
     let power = overrides.powerSet !== undefined ? overrides.powerSet : basePower;
     let toughness = overrides.toughnessSet !== undefined ? overrides.toughnessSet : baseToughness;
+
+    // Layer 7c: Effects from counters (CR 613.8c)
+    // +1/+1 and -1/-1 counters are applied in this sublayer
+    const plusOneCounters = card.counters.find(c => c.type === '+1/+1')?.count || 0;
+    const minusOneCounters = card.counters.find(c => c.type === '-1/-1')?.count || 0;
+    // Per CR 704.5q, +1/+1 and -1/-1 counters cancel each other out
+    // The net effect is applied in Layer 7c
+    const netCounterBonus = plusOneCounters - minusOneCounters;
+    power += netCounterBonus;
+    toughness += netCounterBonus;
 
     // Layer 7d: Switch power and toughness
     if (overrides.switched) {
@@ -1001,6 +1012,41 @@ export function createCharacteristicDefiningAbility(
         overrides.types = cda.types;
       }
 
+      return { ...card };
+    },
+  };
+}
+
+
+/**
+ * Create a counter effect (Layer 7c - CR 613.8c)
+ * Handles +1/+1 and -1/-1 counters that modify P/T
+ * Note: Counters are typically managed directly on CardInstance.counters,
+ * but this effect type is used for effects that interact with counters
+ */
+export function createCounterEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  counterType: '+1/+1' | '-1/-1' | string,
+  count: number,
+  description: string,
+  layerSystemInstance?: LayerSystem
+): ContinuousEffect {
+  return {
+    id: `counter-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    layer: Layer.POWER_TOUGHNESS,
+    sublayer: PowerToughnessSublayer.COUNTERS,
+    effectType: 'counter',
+    description,
+    timestamp: Date.now(),
+    priority: 0,
+    canApply: () => true,
+    apply: (card) => {
+      // Counter effects are handled by reading card.counters directly in calculateEffectivePT
+      // This effect type exists for completeness and for effects that specifically
+      // interact with counters (e.g., "double all +1/+1 counters")
       return { ...card };
     },
   };

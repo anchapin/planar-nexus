@@ -185,6 +185,27 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         actionsPerformed = true;
       }
     }
+
+    // SBA 704.5q: If a permanent has both +1/+1 and -1/-1 counters, remove N of each
+    // where N is the smaller of the two counts
+    const plusOneCounters = card.counters.find(c => c.type === '+1/+1');
+    const minusOneCounters = card.counters.find(c => c.type === '-1/-1');
+    if (plusOneCounters && minusOneCounters && plusOneCounters.count > 0 && minusOneCounters.count > 0) {
+      const removeCount = Math.min(plusOneCounters.count, minusOneCounters.count);
+      const updatedCard = { ...card };
+      updatedCard.counters = updatedCard.counters.map(c => {
+        if (c.type === '+1/+1') {
+          return { ...c, count: c.count - removeCount };
+        }
+        if (c.type === '-1/-1') {
+          return { ...c, count: c.count - removeCount };
+        }
+        return c;
+      }).filter(c => c.count > 0);
+      updatedState.cards.set(card.id, updatedCard);
+      descriptions.push(`${card.cardData.name}: Removed ${removeCount} +1/+1 and ${removeCount} -1/-1 counters`);
+      actionsPerformed = true;
+    }
   }
 
   // Destroy all marked cards

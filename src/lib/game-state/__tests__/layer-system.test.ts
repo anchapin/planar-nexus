@@ -25,6 +25,7 @@ import {
   createToughnessSetEffect,
   createPowerModifyEffect,
   createToughnessModifyEffect,
+  createCounterEffect,
   CharacteristicDefiningAbility,
   getLayerSystemInstance,
 } from '../layer-system';
@@ -561,6 +562,142 @@ describe('Layer System', () => {
         const characteristics = layerSystem.getEffectiveCharacteristics(creature);
         expect(characteristics.power).toBe(3); // Original power
         expect(characteristics.toughness).toBe(5);
+      });
+    });
+
+    describe('Layer 7c: Counter Effects', () => {
+      it('should apply +1/+1 counters in Layer 7c', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 3);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+        
+        // Add +1/+1 counters directly to the card
+        creature.counters = [{ type: '+1/+1', count: 2 }];
+
+        layerSystem.applyEffects(creature);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/3 + 2 +1/+1 counters = 5/5
+        expect(characteristics.power).toBe(5);
+        expect(characteristics.toughness).toBe(5);
+      });
+
+      it('should apply -1/-1 counters in Layer 7c', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 3);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+        
+        // Add -1/-1 counters directly to the card
+        creature.counters = [{ type: '-1/-1', count: 1 }];
+
+        layerSystem.applyEffects(creature);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/3 - 1 -1/-1 counter = 2/2
+        expect(characteristics.power).toBe(2);
+        expect(characteristics.toughness).toBe(2);
+      });
+
+      it('should handle both +1/+1 and -1/-1 counters (net effect)', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 3);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+        
+        // Add both types of counters
+        creature.counters = [
+          { type: '+1/+1', count: 3 },
+          { type: '-1/-1', count: 1 }
+        ];
+
+        layerSystem.applyEffects(creature);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/3 + 3 - 1 = 5/5 (net +2/+2)
+        expect(characteristics.power).toBe(5);
+        expect(characteristics.toughness).toBe(5);
+      });
+
+      it('should apply counters after P/T setting effects (Layer 7b before 7c)', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 3);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+        
+        // Set P/T to 1/1
+        const setEffect = createPowerToughnessSetEffect(
+          'source',
+          'player1',
+          1,
+          1,
+          'Set 1/1',
+          layerSystem
+        );
+        layerSystem.registerEffect(setEffect);
+        
+        // Add +2/+2 from counters
+        creature.counters = [{ type: '+1/+1', count: 2 }];
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Set to 1/1 (7b) + 2 +1/+1 counters (7c) = 3/3
+        expect(characteristics.power).toBe(3);
+        expect(characteristics.toughness).toBe(3);
+      });
+
+      it('should apply counters before P/T switching (Layer 7c before 7d)', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 5);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+        
+        // Add +2/+2 from counters
+        creature.counters = [{ type: '+1/+1', count: 2 }];
+        
+        // Switch P/T
+        const switchEffect = createPowerToughnessSwitchEffect(
+          'source',
+          'player1',
+          'Switch P/T',
+          layerSystem
+        );
+        layerSystem.registerEffect(switchEffect);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/5 + 2 counters = 5/7, then switch = 7/5
+        expect(characteristics.power).toBe(7);
+        expect(characteristics.toughness).toBe(5);
+      });
+
+      it('should handle counters with P/T modification effects (Layer 7c before 7e)', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 3);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+        
+        // Add +1/+1 from counters
+        creature.counters = [{ type: '+1/+1', count: 1 }];
+        
+        // +2/+2 modifier
+        const modifyEffect = createPowerToughnessModifyEffect(
+          'source',
+          'player1',
+          2,
+          2,
+          '+2/+2'
+        );
+        layerSystem.registerEffect(modifyEffect);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/3 + 1 counter (7c) + 2 modifier (7e) = 6/6
+        expect(characteristics.power).toBe(6);
+        expect(characteristics.toughness).toBe(6);
+      });
+
+      it('should create a counter effect', () => {
+        const creatureData = createMockCreature('Test Creature', 3, 3);
+        const creature = createCardInstance(creatureData, 'player1', 'player1');
+
+        const counterEffect = createCounterEffect(
+          creature.id,
+          'player1',
+          '+1/+1',
+          2,
+          'Add two +1/+1 counters'
+        );
+
+        expect(counterEffect.layer).toBe(Layer.POWER_TOUGHNESS);
+        expect(counterEffect.sublayer).toBe(PowerToughnessSublayer.COUNTERS);
+        expect(counterEffect.effectType).toBe('counter');
       });
     });
 

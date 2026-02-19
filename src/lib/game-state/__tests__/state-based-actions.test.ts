@@ -462,6 +462,149 @@ describe('State-Based Actions', () => {
     });
   });
 
+  describe('+1/+1 and -1/-1 Counter Cancellation (SBA 704.5q)', () => {
+    it('should remove equal number of +1/+1 and -1/-1 counters', () => {
+      let state = createInitialGameState(['Alice'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const creatureData = createMockCreature('Test Creature', 3, 3);
+      const creature = createCardInstance(creatureData, playerIds[0], playerIds[0]);
+
+      // Add both types of counters
+      creature.counters = [
+        { type: '+1/+1', count: 3 },
+        { type: '-1/-1', count: 2 }
+      ];
+
+      // Add creature to battlefield
+      const battlefieldKey = `${playerIds[0]}-battlefield`;
+      const battlefield = state.zones.get(battlefieldKey)!;
+      state.cards.set(creature.id, creature);
+      state = {
+        ...state,
+        zones: new Map(state.zones).set(battlefieldKey, {
+          ...battlefield,
+          cardIds: [...battlefield.cardIds, creature.id],
+        }),
+      };
+
+      const result = checkStateBasedActions(state);
+
+      const updatedCreature = result.state.cards.get(creature.id)!;
+      const plusOneCounters = updatedCreature.counters.find(c => c.type === '+1/+1');
+      const minusOneCounters = updatedCreature.counters.find(c => c.type === '-1/-1');
+
+      // Should remove 2 of each (the smaller count)
+      expect(plusOneCounters?.count).toBe(1);
+      expect(minusOneCounters).toBeUndefined();
+      expect(result.actionsPerformed).toBe(true);
+    });
+
+    it('should remove all counters when counts are equal', () => {
+      let state = createInitialGameState(['Alice'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const creatureData = createMockCreature('Test Creature', 3, 3);
+      const creature = createCardInstance(creatureData, playerIds[0], playerIds[0]);
+
+      // Add equal counters
+      creature.counters = [
+        { type: '+1/+1', count: 2 },
+        { type: '-1/-1', count: 2 }
+      ];
+
+      const battlefieldKey = `${playerIds[0]}-battlefield`;
+      const battlefield = state.zones.get(battlefieldKey)!;
+      state.cards.set(creature.id, creature);
+      state = {
+        ...state,
+        zones: new Map(state.zones).set(battlefieldKey, {
+          ...battlefield,
+          cardIds: [...battlefield.cardIds, creature.id],
+        }),
+      };
+
+      const result = checkStateBasedActions(state);
+
+      const updatedCreature = result.state.cards.get(creature.id)!;
+      // All counters should be removed
+      expect(updatedCreature.counters.length).toBe(0);
+    });
+
+    it('should not remove counters when only one type is present', () => {
+      let state = createInitialGameState(['Alice'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const creatureData = createMockCreature('Test Creature', 3, 3);
+      const creature = createCardInstance(creatureData, playerIds[0], playerIds[0]);
+
+      // Add only +1/+1 counters
+      creature.counters = [{ type: '+1/+1', count: 3 }];
+
+      const battlefieldKey = `${playerIds[0]}-battlefield`;
+      const battlefield = state.zones.get(battlefieldKey)!;
+      state.cards.set(creature.id, creature);
+      state = {
+        ...state,
+        zones: new Map(state.zones).set(battlefieldKey, {
+          ...battlefield,
+          cardIds: [...battlefield.cardIds, creature.id],
+        }),
+      };
+
+      const result = checkStateBasedActions(state);
+
+      const updatedCreature = result.state.cards.get(creature.id)!;
+      const plusOneCounters = updatedCreature.counters.find(c => c.type === '+1/+1');
+      // Counters should remain unchanged (no cancellation when only one type present)
+      expect(plusOneCounters?.count).toBe(3);
+      // Note: actionsPerformed might be true due to other SBAs being checked
+      // The important thing is that counters were not modified
+    });
+
+    it('should handle multiple counter types correctly', () => {
+      let state = createInitialGameState(['Alice'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const creatureData = createMockCreature('Test Creature', 3, 3);
+      const creature = createCardInstance(creatureData, playerIds[0], playerIds[0]);
+
+      // Add multiple counter types
+      creature.counters = [
+        { type: '+1/+1', count: 2 },
+        { type: '-1/-1', count: 1 },
+        { type: 'charge', count: 3 }
+      ];
+
+      const battlefieldKey = `${playerIds[0]}-battlefield`;
+      const battlefield = state.zones.get(battlefieldKey)!;
+      state.cards.set(creature.id, creature);
+      state = {
+        ...state,
+        zones: new Map(state.zones).set(battlefieldKey, {
+          ...battlefield,
+          cardIds: [...battlefield.cardIds, creature.id],
+        }),
+      };
+
+      const result = checkStateBasedActions(state);
+
+      const updatedCreature = result.state.cards.get(creature.id)!;
+      const plusOneCounters = updatedCreature.counters.find(c => c.type === '+1/+1');
+      const minusOneCounters = updatedCreature.counters.find(c => c.type === '-1/-1');
+      const chargeCounters = updatedCreature.counters.find(c => c.type === 'charge');
+
+      // Only +1/+1 and -1/-1 should be affected
+      expect(plusOneCounters?.count).toBe(1);
+      expect(minusOneCounters).toBeUndefined();
+      expect(chargeCounters?.count).toBe(3);
+    });
+  });
+
   describe('Legendary Rule (SBA 704.5j)', () => {
     it('should destroy duplicate legendary permanents with the same name', () => {
       let state = createInitialGameState(['Alice'], 20, false);
