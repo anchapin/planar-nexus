@@ -27,9 +27,9 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 |---------|--------|-------|
 | Deck Builder | ✅ Complete | Full import/export, save/load, format validation, Scryfall integration |
 | AI Deck Coach | ✅ Complete | Strategic analysis, legal suggestions, multiple optimization paths |
-| Single Player | ⚠️ Partial | UI screens exist, game engine in progress |
+| Single Player | ⚠️ Partial | UI screens exist, game engine mostly complete |
 | Multiplayer | ⚠️ Partial | P2P WebRTC implemented, lobby system exists |
-| Game Engine | ⚠️ In Progress | Core mechanics being implemented |
+| Game Engine | ✅ Complete | Core mechanics implemented (state, combat, layers, SBAs, replacement effects) |
 | AI Providers | ✅ Complete | Multi-provider support (Gemini, Claude, OpenAI, Z.ai) |
 
 ---
@@ -56,9 +56,9 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 #### 1.3 Card Rules Engine
 - [x] Parse and interpret Oracle text for common abilities
 - [x] Handle evergreen keywords (flying, trample, haste, deathtouch, etc.)
-- [ ] Implement replacement effects and prevention effects
-- [ ] Handle state-based actions (creature death, planeswalker rules, etc.)
-- [ ] Implement layer system for continuous effects
+- [x] Implement replacement effects and prevention effects
+- [x] Handle state-based actions (creature death, planeswalker rules, etc.)
+- [x] Implement layer system for continuous effects
 
 ---
 
@@ -88,7 +88,7 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 - [x] Game state serialization
 - [x] In-memory game replay system
 - [x] Saved games browser
-- [ ] Auto-save functionality
+- [x] Auto-save functionality
 
 ---
 
@@ -102,7 +102,7 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 - [x] Combat AI (attacking, blocking decisions)
 - [x] Stack interaction AI (when to respond, with what)
 - [x] Mulligan decision logic
-- [ ] Difficulty tuning (randomness, lookahead depth, evaluation accuracy)
+- [x] Difficulty tuning (randomness, lookahead depth, evaluation accuracy)
 
 #### 3.2 AI Integration with Providers
 - [x] Abstract AI provider interface
@@ -222,7 +222,18 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 
 ## Development Notes
 
-The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows. The deck builder and AI coach features are production-ready. The main gap is the complete absence of a game rules engine, which is foundational for both single-player and multiplayer gameplay.
+The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows. The deck builder, AI coach, and game engine features are production-ready. The game engine includes comprehensive implementations of:
+- Game state management with full zone tracking
+- Combat system with first/double strike, trample, deathtouch
+- Layer system for continuous effects (CR 613)
+- State-based actions (CR 704)
+- Replacement and prevention effects (CR 614-616)
+- AI difficulty tuning with multiple levels
+
+Remaining work focuses on:
+- Visual polish (animations, sound effects)
+- Multiplayer synchronization improvements
+- 2v2 teams mode
 
 **Estimated Effort:**
 - Phase 1 (Game Engine): 60-80% of total effort
