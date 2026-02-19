@@ -47,6 +47,8 @@ export interface ScryfallCard {
   layout?: string;
   // Whether this is a double-faced card
   faces?: number;
+  // Loyalty for planeswalkers
+  loyalty?: string;
 }
 
 export interface DeckCard extends ScryfallCard {

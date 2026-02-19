@@ -20,7 +20,7 @@ import {
 import { dealDamageToCard, destroyCard } from './keyword-actions';
 import { replacementEffectManager } from './replacement-effects';
 import { checkStateBasedActions } from './state-based-actions';
-import { dealCommanderDamage } from './commander-damage';
+import { dealCommanderDamage, isCommander } from './commander-damage';
 
 /**
  * Result of a combat action
