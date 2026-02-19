@@ -107,7 +107,7 @@ describe('auto-save-config', () => {
     it('should handle undefined window gracefully', () => {
       // Temporarily remove window
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error - Testing behavior when window is undefined
       delete global.window;
       
       const config = getAutoSaveConfig();
@@ -145,7 +145,7 @@ describe('auto-save-config', () => {
 
     it('should handle undefined window gracefully', () => {
       const originalWindow = global.window;
-      // @ts-ignore
+      // @ts-expect-error - Testing behavior when window is undefined
       delete global.window;
       
       // Should not throw
