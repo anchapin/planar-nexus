@@ -111,6 +111,9 @@ export { checkStateBasedActions, canDraw, drawWithSBAChecking } from "./state-ba
 // Export state hash verification for P2P
 export * from "./state-hash";
 
+// Export deterministic game state synchronization (Issue #287)
+export * from "./deterministic-sync";
+
 // Export replay system
 export * from "./replay";
 

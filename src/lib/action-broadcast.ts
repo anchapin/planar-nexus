@@ -1,11 +1,33 @@
 /**
  * Action Broadcasting System
+ * Issue #287: Enhanced for deterministic game state synchronization
  * 
  * Handles serialization, broadcast, and acknowledgment of game actions
  * across multiplayer peers. This is the foundation for real-time multiplayer.
+ * 
+ * Enhanced features:
+ * - Deterministic action ordering with sequence numbers
+ * - State hash verification for sync detection
+ * - Conflict resolution integration
+ * - Improved acknowledgment handling
  */
 
 import { z } from 'zod';
+import type { 
+  DeterministicAction, 
+  SequenceNumber, 
+  PeerId,
+  GameSyncMessage,
+  SyncMessageType,
+} from './game-state/deterministic-sync';
+import {
+  createActionMessage,
+  createAckMessage,
+  createSyncRequestMessage,
+  serializeSyncMessage,
+  deserializeSyncMessage,
+  DEFAULT_SYNC_CONFIG,
+} from './game-state/deterministic-sync';
 
 // Action types for the game
 export type ActionType = 
