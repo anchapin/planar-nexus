@@ -24,6 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import type { AIProvider } from "@/ai/providers";
 import { SoundSettings } from "@/components/sound-settings";
 import { AutoSaveSettings } from "@/components/auto-save-settings";
+import { SubscriptionPlanDisplay } from "@/components/subscription-plan-display";
 import {
   getImageDirectory,
   setImageDirectory,
@@ -427,6 +428,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="api-keys" className="space-y-6">
         <TabsList>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
+          <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
           <TabsTrigger value="card-images">Card Images</TabsTrigger>
           <TabsTrigger value="usage">Usage</TabsTrigger>
@@ -590,6 +592,10 @@ export default function SettingsPage() {
               </Button>
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        <TabsContent value="subscriptions" className="space-y-6">
+          <SubscriptionPlanDisplay />
         </TabsContent>
         
         <TabsContent value="providers" className="space-y-6">
