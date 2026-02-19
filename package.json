@@ -14,7 +14,7 @@
     "build": "NODE_ENV=production next build",
     "build:tauri": "tauri build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 1000",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
