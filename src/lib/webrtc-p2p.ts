@@ -1,6 +1,7 @@
 /**
  * WebRTC P2P Connection Manager
  * Issue #57: Phase 4.1: Implement WebRTC for peer-to-peer connections
+ * Issue #286: Add NAT traversal and STUN/TURN server support
  * 
  * This module provides WebRTC support for direct player-to-player connections,
  * enabling multiplayer games without a central server.
@@ -8,9 +9,17 @@
 
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
 import type { GameState } from './game-state/types';
+import {
+  ICEConfigurationManager,
+  ICEConnectionMonitor,
+  ICECandidateFilter,
+  type ICEConfigOptions,
+  getGlobalICEManager,
+} from './ice-config';
 
 /**
  * WebRTC configuration with STUN/TURN servers
+ * @deprecated Use ICEConfigurationManager instead
  */
 export const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   iceServers: [
@@ -168,6 +177,12 @@ export interface P2PConnectionOptions {
   rtcConfig?: RTCConfiguration;
   gameCode?: string;
   events?: Partial<P2PEvents>;
+  /** ICE configuration options for NAT traversal */
+  iceConfig?: ICEConfigOptions;
+  /** Enable ICE connection monitoring */
+  enableICEMonitoring?: boolean;
+  /** Fallback to relay on connection failure */
+  fallbackToRelay?: boolean;
 }
 
 /**
@@ -187,13 +202,37 @@ export class WebRTCConnection {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private iceManager: ICEConfigurationManager;
+  private iceMonitor: ICEConnectionMonitor | null = null;
+  private iceCandidateFilter: ICECandidateFilter;
+  private enableICEMonitoring: boolean;
+  private fallbackToRelay: boolean;
+  private pendingCandidates: RTCIceCandidateInit[] = [];
 
   constructor(options: P2PConnectionOptions) {
     this.localPlayerId = options.playerId;
     this.localPlayerName = options.playerName;
     this.isHost = options.isHost;
     this.gameCode = options.gameCode;
-    this.rtcConfig = options.rtcConfig || DEFAULT_RTC_CONFIG;
+    this.enableICEMonitoring = options.enableICEMonitoring ?? true;
+    this.fallbackToRelay = options.fallbackToRelay ?? true;
+    
+    // Initialize ICE configuration
+    if (options.iceConfig) {
+      this.iceManager = new ICEConfigurationManager(options.iceConfig);
+    } else {
+      this.iceManager = getGlobalICEManager();
+    }
+    
+    // Use provided rtcConfig or get from ICE manager
+    this.rtcConfig = options.rtcConfig || this.iceManager.getRTCConfiguration();
+    
+    // Initialize candidate filter
+    this.iceCandidateFilter = new ICECandidateFilter({
+      allowIPv6: options.iceConfig?.enableIPv6 ?? true,
+      allowLoopback: false,
+      allowLinkLocal: false,
+    });
     
     // Set default event handlers
     const defaultEvents: P2PEvents = {
@@ -222,10 +261,14 @@ export class WebRTCConnection {
       
       this.peerConnection = new RTCPeerConnection(this.rtcConfig);
       
-      // Set up ICE candidate handling
+      // Set up ICE candidate handling with filtering
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
-          this.handleICECandidate(event.candidate);
+          // Filter candidate based on configuration
+          const filteredCandidate = this.iceCandidateFilter.filter(event.candidate);
+          if (filteredCandidate) {
+            this.handleICECandidate(filteredCandidate);
+          }
         }
       };
       
@@ -239,16 +282,103 @@ export class WebRTCConnection {
         this.handleICEConnectionStateChange();
       };
       
+      // Set up ICE monitoring if enabled
+      if (this.enableICEMonitoring) {
+        this.iceMonitor = new ICEConnectionMonitor({
+          onStateChange: (state) => {
+            console.log('[WebRTC] ICE monitor state:', state);
+          },
+          onFailed: () => {
+            this.handleICEFailure();
+          },
+          onConnected: () => {
+            console.log('[WebRTC] ICE connection established');
+          },
+          onDisconnected: () => {
+            console.log('[WebRTC] ICE connection lost, attempting recovery');
+          },
+          failureTimeoutMs: 30000,
+        });
+        this.iceMonitor.attach(this.peerConnection);
+      }
+      
       // If host, create data channel for receiving
       if (this.isHost) {
         this.setupDataChannel();
       }
       
       console.log('[WebRTC] Initialized as', this.isHost ? 'host' : 'client');
+      console.log('[WebRTC] ICE servers configured:', this.rtcConfig.iceServers?.length || 0);
     } catch (error) {
       console.error('[WebRTC] Failed to initialize:', error);
       this.updateConnectionState('failed');
       throw error;
+    }
+  }
+  
+  /**
+   * Handle ICE connection failure with optional fallback
+   */
+  private handleICEFailure(): void {
+    console.log('[WebRTC] ICE connection failed');
+    
+    // If fallback to relay is enabled and TURN servers are available
+    if (this.fallbackToRelay && this.iceManager.hasTurnServers()) {
+      console.log('[WebRTC] Attempting fallback to TURN relay');
+      this.attemptRelayFallback();
+    } else {
+      this.handleConnectionFailure();
+    }
+  }
+  
+  /**
+   * Attempt to reconnect using TURN relay only
+   */
+  private async attemptRelayFallback(): Promise<void> {
+    try {
+      // Close current connection
+      if (this.peerConnection) {
+        this.peerConnection.close();
+      }
+      
+      // Create new configuration with relay-only mode
+      const relayConfig = this.iceManager.getRTCConfiguration();
+      relayConfig.iceTransportPolicy = 'relay';
+      
+      console.log('[WebRTC] Creating new connection with relay-only mode');
+      
+      // Create new peer connection with relay config
+      this.peerConnection = new RTCPeerConnection(relayConfig);
+      
+      // Re-attach event handlers
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          this.handleICECandidate(event.candidate);
+        }
+      };
+      
+      this.peerConnection.onconnectionstatechange = () => {
+        this.handleConnectionStateChange();
+      };
+      
+      this.peerConnection.oniceconnectionstatechange = () => {
+        this.handleICEConnectionStateChange();
+      };
+      
+      if (this.iceMonitor && this.peerConnection) {
+        this.iceMonitor.attach(this.peerConnection);
+      }
+      
+      if (this.isHost) {
+        this.setupDataChannel();
+      }
+      
+      // Notify that reconnection is being attempted
+      this.updateConnectionState('reconnecting');
+      
+    } catch (error) {
+      console.error('[WebRTC] Relay fallback failed:', error);
+      this.handleConnectionFailure();
     }
   }
 
@@ -754,6 +884,12 @@ export class WebRTCConnection {
   close(): void {
     this.stopPingInterval();
     
+    // Clean up ICE monitor
+    if (this.iceMonitor) {
+      this.iceMonitor.detach();
+      this.iceMonitor = null;
+    }
+    
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
@@ -765,9 +901,47 @@ export class WebRTCConnection {
     }
     
     this.peers.clear();
+    this.pendingCandidates = [];
     this.updateConnectionState('disconnected');
     
     console.log('[WebRTC] Connection closed');
+  }
+  
+  /**
+   * Get ICE connection statistics
+   */
+  async getICEStats(): Promise<RTCStatsReport | null> {
+    if (!this.peerConnection) {
+      return null;
+    }
+    
+    try {
+      return await this.peerConnection.getStats();
+    } catch (error) {
+      console.error('[WebRTC] Failed to get stats:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Get the current ICE connection state
+   */
+  getICEConnectionState(): RTCIceConnectionState | null {
+    return this.peerConnection?.iceConnectionState || null;
+  }
+  
+  /**
+   * Get the ICE configuration manager
+   */
+  getICEManager(): ICEConfigurationManager {
+    return this.iceManager;
+  }
+  
+  /**
+   * Check if TURN servers are configured
+   */
+  hasTurnServers(): boolean {
+    return this.iceManager.hasTurnServers();
   }
 }
 
