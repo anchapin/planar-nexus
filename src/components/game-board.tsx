@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { PlayerState, PlayerCount, ZoneType, TeamState, TeamId } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
+import { DamageOverlay, useDamageEvents, DamageEvent, DamageType } from "@/components/damage-indicator";
 import {
   Skull,
   Archive,
@@ -77,6 +78,9 @@ interface GameBoardProps {
     sharedBlockers: boolean;
     teamChat: boolean;
   };
+  // Damage indicator props
+  damageEvents?: DamageEvent[];
+  onDamageEventComplete?: (id: string) => void;
 }
 
 interface PlayerAreaProps {
@@ -514,11 +518,18 @@ export function GameBoard({
   hasActiveDrawOffer = false,
   hasPlayerOfferedDraw = false,
   isGameOver = false,
+  damageEvents = [],
+  onDamageEventComplete,
 }: GameBoardProps) {
   const currentPlayer = players[currentTurnIndex];
   
   // Dialog states
   const [showConcedeDialog, setShowConcedeDialog] = React.useState(false);
+
+  // Internal damage events state if not provided externally
+  const internalDamageEvents = useDamageEvents({ maxEvents: 15 });
+  const activeDamageEvents = damageEvents.length > 0 ? damageEvents : internalDamageEvents.events;
+  const handleDamageEventComplete = onDamageEventComplete || internalDamageEvents.clearEvents;
 
   // Layout strategy based on player count
   const renderLayout = () => {
@@ -759,6 +770,12 @@ export function GameBoard({
       )}
 
       {renderLayout()}
+
+      {/* Damage Indicators Overlay */}
+      <DamageOverlay 
+        events={activeDamageEvents} 
+        onEventComplete={handleDamageEventComplete} 
+      />
 
       {/* Concede Confirmation Dialog */}
       <Dialog open={showConcedeDialog} onOpenChange={setShowConcedeDialog}>
