@@ -6,7 +6,6 @@
 
 import { savedGamesManager, createSavedGame } from '../saved-games';
 import { createInitialGameState } from '../game-state/game-state';
-import { createDeck } from '../deck-builder';
 
 // Mock localStorage
 const mockLocalStorage = (() => {
