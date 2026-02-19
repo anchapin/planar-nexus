@@ -27,10 +27,13 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 |---------|--------|-------|
 | Deck Builder | ✅ Complete | Full import/export, save/load, format validation, Scryfall integration |
 | AI Deck Coach | ✅ Complete | Strategic analysis, legal suggestions, multiple optimization paths |
-| Single Player | ⚠️ Partial | UI screens exist, game engine mostly complete |
-| Multiplayer | ⚠️ Partial | P2P WebRTC implemented, lobby system exists |
+| Single Player | ✅ Complete | UI screens exist, game engine fully complete |
+| Multiplayer | ✅ Complete | P2P WebRTC, lobby system, 1v1, 4-player Commander, 2v2 teams |
 | Game Engine | ✅ Complete | Core mechanics implemented (state, combat, layers, SBAs, replacement effects) |
-| AI Providers | ✅ Complete | Multi-provider support (Gemini, Claude, OpenAI, Z.ai) |
+| AI Providers | ✅ Complete | Multi-provider support (Gemini, Claude, OpenAI, Z.ai) with subscription linking |
+| Visual Effects | ✅ Complete | Card art, attack/block animations, spell effects, sound system, card sleeves |
+| Social Features | ✅ Complete | Friends list, match history, trading system, replay sharing |
+| Tournament | ✅ Complete | Bracket system, Swiss pairing, round timer, judge tools |
 
 ---
 
@@ -118,7 +121,7 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 - [x] Provider selection interface
 - [x] API key validation on save
 - [x] Usage tracking per provider (if available)
-- [ ] Subscription plan linking (if applicable)
+- [x] Subscription plan linking (if applicable)
 
 #### 3.4 Enhanced AI Features
 - [x] AI deck building suggestions based on meta analysis
@@ -134,12 +137,12 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 
 #### 4.1 Peer-to-Peer Networking
 - [x] WebRTC implementation for direct player connections
-- [ ] Signaling server for WebRTC handshake (lightweight, minimal state)
+- [x] Signaling server for WebRTC handshake (lightweight, minimal state)
 - [x] Connection management (reconnection, handling disconnects)
-- [ ] NAT traversal and STUN/TURN servers
+- [x] NAT traversal and STUN/TURN servers
 
 #### 4.2 Game State Synchronization
-- [ ] Deterministic game state engine
+- [x] Deterministic game state engine
 - [x] Action broadcasting system (player actions sent to all peers)
 - [ ] State hash verification for sync detection
 - [ ] Conflict resolution for desync
@@ -156,7 +159,7 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 #### 4.4 Multiplayer Features
 - [x] 1v1 mode implementation
 - [x] 4-player free-for-all (Commander style)
-- [ ] 2v2 teams mode
+- [x] 2v2 teams mode
 - [x] Spectator mode
 - [x] Chat system
 - [x] Emote/timer system
@@ -174,12 +177,12 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 **Priority: LOW**
 
 #### 5.1 Visual Effects
-- [ ] Card art display and high-res rendering
-- [ ] Attack/block animations
-- [ ] Spell casting effects
+- [x] Card art display and high-res rendering
+- [x] Attack/block animations
+- [x] Spell casting effects
 - [ ] Damage indicators and floating combat text
-- [ ] Sound effects and music
-- [ ] Card sleeves and playmats customization
+- [x] Sound effects and music
+- [x] Card sleeves and playmats customization
 
 #### 5.2 Tournament Features
 - [x] Bracket system for tournaments
@@ -188,10 +191,10 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 - [x] Judge tools (for local events)
 
 #### 5.3 Advanced Features
-- [ ] Replay system with shareable links
+- [x] Replay system with shareable links
 - [x] Deck statistics and analytics
 - [x] Collection tracker
-- [ ] Trading system (if applicable)
+- [x] Trading system (if applicable)
 - [x] Achievement/badge system
 
 ---
@@ -229,11 +232,16 @@ The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows
 - State-based actions (CR 704)
 - Replacement and prevention effects (CR 614-616)
 - AI difficulty tuning with multiple levels
+- Full multiplayer support with P2P WebRTC
+- Visual effects including animations, sounds, and card art
+- Social features including friends, trading, and replays
 
 Remaining work focuses on:
-- Visual polish (animations, sound effects)
-- Multiplayer synchronization improvements
-- 2v2 teams mode
+- Damage indicators and floating combat text
+- State hash verification for multiplayer sync
+- Conflict resolution for multiplayer desync
+- Firebase Realtime Database evaluation
+- WebSocket fallback for non-P2P scenarios
 
 **Estimated Effort:**
 - Phase 1 (Game Engine): 60-80% of total effort
