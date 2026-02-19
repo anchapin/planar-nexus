@@ -169,9 +169,9 @@ export function ReplayViewer({
 
   // Copy link to clipboard
   const handleCopyLink = useCallback(async () => {
-    if (!shareUrl) return;
+    if (!shareUrl || !replay) return;
     
-    const success = await copyShareableLink(replay!);
+    const success = await copyShareableLink(replay);
     if (success) {
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
@@ -213,6 +213,9 @@ export function ReplayViewer({
     );
   }
 
+  // Destructure replay to ensure TypeScript knows it's not null in JSX
+  const currentReplay = replay;
+
   return (
     <div className={cn('flex flex-col gap-4 p-4 bg-card border rounded-lg', className)}>
       {/* Header */}
@@ -220,7 +223,7 @@ export function ReplayViewer({
         <div>
           <h3 className="font-semibold text-lg">Game Replay</h3>
           <p className="text-sm text-muted-foreground">
-            {replay.metadata.format} • {replay.metadata.playerNames.join(' vs ')}
+            {currentReplay.metadata.format} • {currentReplay.metadata.playerNames.join(' vs ')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -362,9 +365,9 @@ export function ReplayViewer({
           Turn {currentAction?.resultingState?.turn?.turnNumber || 1}
         </div>
         <div>
-          {replay.metadata.winners ? (
+          {currentReplay.metadata.winners ? (
             <span className="text-green-500">
-              Winner: {replay.metadata.winners.join(', ')}
+              Winner: {currentReplay.metadata.winners.join(', ')}
             </span>
           ) : (
             'In progress'
@@ -372,9 +375,9 @@ export function ReplayViewer({
         </div>
         <div>
           {formatDuration(
-            replay.metadata.gameEndDate 
-              ? replay.metadata.gameEndDate - replay.metadata.gameStartDate
-              : Date.now() - replay.metadata.gameStartDate
+            currentReplay.metadata.gameEndDate 
+              ? currentReplay.metadata.gameEndDate - currentReplay.metadata.gameStartDate
+              : Date.now() - currentReplay.metadata.gameStartDate
           )}
         </div>
       </div>
@@ -390,7 +393,7 @@ export function ReplayViewer({
       {/* Action list */}
       {showActionList && (
         <div className="max-h-60 overflow-y-auto border rounded p-2">
-          {replay.actions.map((action, index) => (
+          {currentReplay.actions.map((action, index) => (
             <button
               key={action.sequenceNumber}
               onClick={() => jumpToPosition(index)}
@@ -441,7 +444,7 @@ export function ReplayViewer({
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  URL length: {getEstimatedURLLength(replay)} characters
+                  URL length: {getEstimatedURLLength(currentReplay)} characters
                 </p>
               </div>
             ) : (
@@ -486,7 +489,9 @@ export function ReplayList({ replays, onSelect, onDelete, className }: ReplayLis
     setImporting(true);
     try {
       const replay = await importReplayFromFile(file);
-      onSelect(replay);
+      if (replay) {
+        onSelect(replay);
+      }
     } catch (error) {
       console.error('Failed to import replay:', error);
     } finally {
