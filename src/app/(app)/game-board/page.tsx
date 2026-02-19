@@ -29,7 +29,8 @@ interface SuggestedPlay {
 
 interface Warning {
   message: string;
-  type: 'danger' | 'warning';
+  type: 'danger' | 'warning' | 'caution' | 'info';
+  relatedCards?: string[];
 }
 
 interface ManaSuggestion {
@@ -650,10 +651,10 @@ export default function GameBoardPage() {
                     <span className="font-semibold">Win Chance:</span>
                     <span className={cn(
                       "font-bold",
-                      aiBoardEval.playerWinChance >= 60 ? "text-green-500" :
-                      aiBoardEval.playerWinChance >= 40 ? "text-yellow-500" : "text-red-500"
+                      (aiBoardEval.playerWinChance ?? 0) >= 60 ? "text-green-500" :
+                      (aiBoardEval.playerWinChance ?? 0) >= 40 ? "text-yellow-500" : "text-red-500"
                     )}>
-                      {aiBoardEval.playerWinChance}%
+                      {aiBoardEval.playerWinChance ?? 0}%
                     </span>
                   </div>
                   <div className="text-muted-foreground">
