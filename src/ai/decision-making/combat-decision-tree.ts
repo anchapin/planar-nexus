@@ -297,7 +297,7 @@ export class CombatDecisionTree {
     // In a real implementation, this would check when the creature entered
     // For now, creatures have summoning sickness only if explicitly marked
     // or if they lack haste and have a summoningSickness flag
-    if ((creature as any).summoningSickness === true) {
+    if ('summoningSickness' in creature && creature.summoningSickness === true) {
       return !creature.keywords?.includes('haste');
     }
     // By default, assume creatures can attack (they've been on battlefield)
@@ -312,7 +312,7 @@ export class CombatDecisionTree {
     opponents: PlayerState[]
   ): 'aggressive' | 'moderate' | 'defensive' {
     const minOpponentLife = Math.min(...opponents.map((o) => o.life));
-    const lifeTotal = aiPlayer.life;
+    const _lifeTotal = aiPlayer.life;
     const creatureCount = aiPlayer.battlefield.filter(
       (p) => p.type === 'creature'
     ).length;
@@ -323,7 +323,7 @@ export class CombatDecisionTree {
       ) / opponents.length;
 
     // Low life: play defensively
-    if (lifeTotal <= this.config.lifeThreshold) {
+    if (_lifeTotal <= this.config.lifeThreshold) {
       return 'defensive';
     }
 
@@ -851,7 +851,7 @@ export class CombatDecisionTree {
     }
 
     // For each multi-block, optimize damage order
-    for (const [attackerId, blockerList] of blocksByAttacker) {
+    for (const [_attackerId, blockerList] of blocksByAttacker) {
       if (blockerList.length <= 1) continue;
 
       // Sort by "worst first" - put creatures that will die anyway first
@@ -883,7 +883,7 @@ export class CombatDecisionTree {
     attacker: Permanent,
     attackerDies: boolean,
     blockerDies: boolean,
-    value: number
+    _value: number
   ): string {
     if (attackerDies && !blockerDies) {
       return `${blocker.name} kills ${attacker.name} and survives`;
@@ -938,7 +938,6 @@ export class CombatDecisionTree {
    */
   private isCombatTrickCard(card: HandCard): boolean {
     const typeLower = card.type.toLowerCase();
-    const nameLower = card.name.toLowerCase();
     
     // Instant-speed combat tricks
     const combatTypes = ['instant'];
@@ -951,6 +950,7 @@ export class CombatDecisionTree {
     const isCombatType = combatTypes.some(t => typeLower.includes(t));
     
     // Check name for common pump/trick patterns
+    const nameLower = card.name.toLowerCase();
     const isCombatName = combatKeywords.some(k => nameLower.includes(k)) ||
       nameLower.includes('strike') ||
       nameLower.includes('bolt') ||
