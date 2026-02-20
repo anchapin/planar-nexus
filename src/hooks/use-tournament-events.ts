@@ -6,13 +6,12 @@
  * Issue #256: Implement tournament event system
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   TournamentEvent,
   EventFormat,
   EventType,
   EventHistory,
-  Registration,
   EventStandings,
   createTournamentEvent,
   registerPlayer,
@@ -61,7 +60,7 @@ export interface UseTournamentEventsReturn {
 
 const MAX_ACTIVE_EVENTS = 50;
 
-export function useTournamentEvents(playerId: PlayerId, playerName: string): UseTournamentEventsReturn {
+export function useTournamentEvents(playerId: PlayerId, _playerName: string): UseTournamentEventsReturn {
   // Active events
   const [activeEvents, setActiveEvents] = useLocalStorage<TournamentEvent[]>(
     TOURNAMENT_STORAGE_KEYS.ACTIVE_EVENTS,

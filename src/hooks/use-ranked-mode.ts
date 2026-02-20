@@ -10,11 +10,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   PlayerRating,
-  Rank,
   MatchResult,
   Season,
   LeaderboardEntry,
-  RankTier,
   createPlayerRating,
   processMatchResult,
   ratingToRank,
@@ -23,7 +21,6 @@ import {
   getSeasonDaysRemaining,
   getRankDisplayName,
   getRankColor,
-  getWinRate,
   getPlayerRank,
   RANKED_STORAGE_KEYS,
 } from '@/lib/ranked-mode';
@@ -182,7 +179,7 @@ export function useRankedMode(playerId: PlayerId, playerName: string): UseRanked
   }, [playerRating, matchHistory, setPlayerRating, setMatchHistory]);
   
   // Start ranked match (placeholder for matchmaking)
-  const startRankedMatch = useCallback((opponentRating: number) => {
+  const startRankedMatch = useCallback((_opponentRating: number) => {
     // In production, this would trigger matchmaking
     // For now, just return - the match result will be recorded separately
   }, []);

@@ -199,7 +199,6 @@ export function useGameSounds(options: UseGameSoundsOptions = {}): UseGameSounds
 
     const volume = (options.volume ?? 1) * currentMasterVolume * currentSfxVolume;
     const attack = config.attack ?? 0.01;
-    const decay = config.decay ?? config.duration * 0.8;
 
     // Create oscillator for the sound
     const oscillator = ctx.createOscillator();

@@ -7,7 +7,6 @@ import {
   ClickHandlerResult,
   TargetingState,
   SelectedTarget,
-  CardAbility,
 } from "@/types/card-interactions";
 import { CardInstanceId, PlayerId } from "@/lib/game-state/types";
 
@@ -22,7 +21,6 @@ interface UseCardInteractionsProps {
   onTargetCancel?: () => void;
 }
 
-const CLICK_TIMEOUT = 300;
 const DOUBLE_CLICK_TIMEOUT = 400;
 
 /**

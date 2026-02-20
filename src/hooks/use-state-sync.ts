@@ -11,17 +11,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { GameState } from '@/lib/game-state/types';
 import {
   computeStateHash,
-  compareStateHashes,
   createStateHashVerifier,
   StateHashVerifier,
-  type HashComparisonResult,
-  type HashVerificationEvent,
 } from '@/lib/game-state/state-hash';
 import {
   createDeterministicEngine,
   DeterministicGameStateEngine,
   type PeerId,
-  type SequenceNumber,
   type SyncVerificationResult,
   type ConflictResolution,
   type GameSyncMessage,

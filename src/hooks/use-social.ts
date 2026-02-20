@@ -6,7 +6,7 @@
  * Issue #255: Add social features - friends list and match history
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo } from 'react';
 import {
   Friend,
   FriendRequest,
@@ -19,8 +19,6 @@ import {
   updateProfileWithResult,
   getWinRateFromHistory,
   getRecentResults,
-  getResultsByFormat,
-  getOverallWinRate,
   SOCIAL_STORAGE_KEYS,
 } from '@/lib/social';
 import { useLocalStorage } from './use-local-storage';
@@ -141,7 +139,7 @@ export function useSocial(playerId: PlayerId, playerName: string): UseSocialRetu
   }, [setFriends]);
   
   // Send friend request
-  const sendFriendRequest = useCallback((toPlayerId: PlayerId, toDisplayName: string) => {
+  const sendFriendRequest = useCallback((toPlayerId: PlayerId, _toDisplayName: string) => {
     const request = createFriendRequest(playerId, playerName, toPlayerId);
     setFriendRequests(prev => [...prev, request]);
   }, [playerId, playerName, setFriendRequests]);

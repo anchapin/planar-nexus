@@ -10,11 +10,9 @@ import {
   tradeManager,
   type TradeOffer,
   type TradeCardItem,
-  type TradeStatus,
   type TradeNotification,
   calculateTradeFairness,
 } from '@/lib/trading';
-import type { ScryfallCard } from '@/app/actions';
 
 /**
  * Hook state
