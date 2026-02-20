@@ -190,19 +190,23 @@ describe("Game Rules - validateDeckFormat", () => {
     });
 
     it("should accept a valid commander deck with 100 cards", () => {
-      const deck = [
-        { name: "Ghired, Shell of the Ghireds", count: 1, color_identity: ["R", "W"] },
+      // Create a valid commander deck with 100 singleton cards
+      const deck: { name: string; count: number; color_identity?: string[] }[] = [
+        { name: "Ghired, Shell of the Ghireds", count: 1, color_identity: ["R", "W", "G"] },
         { name: "Forest", count: 35 },
         { name: "Mountain", count: 35 },
         { name: "Sol Ring", count: 1, color_identity: [] },
-        { name: "Lightning Bolt", count: 4, color_identity: ["R"] },
-        { name: "Swords to Plowshares", count: 4, color_identity: ["W"] },
-        { name: "Cultivate", count: 4, color_identity: ["G"] },
-        { name: "其他红色/白色卡", count: 16, color_identity: ["R", "W"] },
+        { name: "Lightning Bolt", count: 1, color_identity: ["R"] },
+        { name: "Swords to Plowshares", count: 1, color_identity: ["W"] },
+        { name: "Cultivate", count: 1, color_identity: ["G"] },
       ];
+      // Add 25 more unique cards to reach 100
+      for (let i = 1; i <= 25; i++) {
+        deck.push({ name: `Unique Card ${i}`, count: 1, color_identity: ["R", "W", "G"] });
+      }
       const result = validateDeckFormat(deck, "commander", {
         name: "Ghired, Shell of the Ghireds",
-        color_identity: ["R", "W"],
+        color_identity: ["R", "W", "G"],
       });
 
       expect(result.isValid).toBe(true);
@@ -243,7 +247,8 @@ describe("Game Rules - validateDeckFormat", () => {
     it("should allow colorless cards", () => {
       const deck = [
         { name: "Sol Ring", count: 1, color_identity: [] },
-        { name: "Star Compass", count: 4, color_identity: [] },
+        { name: "Star Compass", count: 1, color_identity: [] },
+        { name: "Forest", count: 98 }, // Fill to 100 cards
       ];
       const result = validateDeckFormat(deck, "commander", {
         name: "Ghired, Shell of the Ghireds",
@@ -293,7 +298,10 @@ describe("Game Rules - validateDeckFormat", () => {
     });
 
     it("should allow exactly 4 copies of a card", () => {
-      const deck = [{ name: "Lightning Bolt", count: 4 }];
+      const deck = [
+        { name: "Lightning Bolt", count: 4 },
+        { name: "Forest", count: 56 }, // Fill to 60 cards
+      ];
       const result = validateDeckFormat(deck, "standard");
 
       expect(result.isValid).toBe(true);
@@ -316,6 +324,7 @@ describe("Game Rules - validateDeckFormat", () => {
     it("should allow exactly 1 copy of a restricted card", () => {
       const deck = [
         { name: "Black Lotus", count: 1 },
+        { name: "Forest", count: 59 }, // Fill to 60 cards
       ];
       const result = validateDeckFormat(deck, "vintage");
 
@@ -404,21 +413,25 @@ describe("Game Rules - validateSideboard", () => {
 
 describe("Game Rules - isDeckLegal", () => {
   it("should return true for a legal commander deck", () => {
-    const deck = [
-      { name: "Ghired, Shell of the Ghireds", count: 1, color_identity: ["R", "W"] },
+    // Create a valid commander deck with 100 singleton cards
+    const deck: { name: string; count: number; color_identity?: string[] }[] = [
+      { name: "Ghired, Shell of the Ghireds", count: 1, color_identity: ["R", "W", "G"] },
       { name: "Forest", count: 35 },
       { name: "Mountain", count: 35 },
-      { name: "Lightning Bolt", count: 4, color_identity: ["R"] },
-      { name: "Swords to Plowshares", count: 4, color_identity: ["W"] },
-      { name: "Glassdust Hulk", count: 1, color_identity: ["R", "W"] },
-      { name: ".other R/W cards", count: 20, color_identity: ["R", "W"] },
+      { name: "Lightning Bolt", count: 1, color_identity: ["R"] },
+      { name: "Swords to Plowshares", count: 1, color_identity: ["W"] },
+      { name: "Cultivate", count: 1, color_identity: ["G"] },
     ];
+    // Add 26 more unique cards to reach 100
+    for (let i = 1; i <= 26; i++) {
+      deck.push({ name: `Unique Card ${i}`, count: 1, color_identity: ["R", "W", "G"] });
+    }
     const result = isDeckLegal(
       deck,
       "commander",
       {
         name: "Ghired, Shell of the Ghireds",
-        color_identity: ["R", "W"],
+        color_identity: ["R", "W", "G"],
       }
     );
 
