@@ -371,9 +371,16 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     // Check if attacker is blocked
     if (!assignedBlockers || assignedBlockers.length === 0) {
       // Unblocked - damage goes to defender
+      // Check for double strike - deals damage twice
+      const attackerHasDoubleStrike = attackerCard.cardData.keywords?.includes('Double Strike') ||
+        attackerCard.cardData.oracle_text?.toLowerCase().includes('double strike');
+      
+      const damageMultiplier = attackerHasDoubleStrike ? 2 : 1;
+      const totalDamage = attackerPower * damageMultiplier;
+
       if (attacker.isAttackingPlaneswalker) {
         // Damage to planeswalker would need planeswalker damage handling
-        damageEvents.push(`${attackerCard.cardData.name} deals ${attackerPower} to planeswalker`);
+        damageEvents.push(`${attackerCard.cardData.name} deals ${totalDamage} to planeswalker`);
       } else {
         // Damage to player
         const defender = updatedState.players.get(attacker.defenderId as PlayerId);
@@ -390,7 +397,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             ...updatedState,
             players: new Map(updatedState.players).set(attacker.defenderId as PlayerId, {
               ...defender,
-              life: Math.max(0, defender.life - attackerPower),
+              life: Math.max(0, defender.life - totalDamage),
             }),
           };
 
@@ -429,12 +436,19 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         }
       }
     } else {
-      // Blocked - damage is assigned to blockers
+      // Blocked - damage is assigned to blockers and blockers deal damage back
       let remainingDamage = attackerPower;
 
       // Sort blockers by order
       const sortedBlockers = [...assignedBlockers].sort((a, b) => a.blockerOrder - b.blockerOrder);
 
+      // First, handle first strike damage if applicable
+      const attackerHasFirstStrike = attackerCard.cardData.keywords?.includes('First Strike') ||
+        attackerCard.cardData.oracle_text?.toLowerCase().includes('first strike');
+      const attackerHasDoubleStrike = attackerCard.cardData.keywords?.includes('Double Strike') ||
+        attackerCard.cardData.oracle_text?.toLowerCase().includes('double strike');
+
+      // Deal damage from attacker to blockers
       for (const blocker of sortedBlockers) {
         if (remainingDamage <= 0) break;
 
@@ -495,6 +509,36 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           damageEvents.push(`${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`);
         }
       }
+
+      // Now deal damage from blockers to attacker
+      // In normal combat, blockers deal damage simultaneously with attackers
+      // But if attacker has first strike, blockers only deal damage if they survived the first strike step
+      for (const blocker of sortedBlockers) {
+        const blockerCard = updatedState.cards.get(blocker.cardId);
+        if (!blockerCard) continue;
+
+        // If attacker has first strike (but not double strike), check if blocker died in first strike step
+        // Blockers with lethal damage from first strike don't deal damage back
+        if (attackerHasFirstStrike && !attackerHasDoubleStrike) {
+          if (blockerCard.damage >= getToughness(blockerCard)) {
+            continue;
+          }
+        }
+
+        const blockerPower = getPower(blockerCard);
+        if (blockerPower <= 0) continue;
+
+        // Apply damage from blocker to attacker
+        const damageResult = dealDamageToCard(
+          updatedState,
+          attacker.cardId,
+          blockerPower,
+          true,
+          blocker.cardId
+        );
+        updatedState = damageResult.state;
+        damageEvents.push(`${blockerCard.cardData.name} deals ${blockerPower} to ${attackerCard.cardData.name}`);
+      }
     }
   }
 
@@ -529,6 +573,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
 
 /**
  * Get all available attackers for a player
+ * Returns creatures that could attack if a defender were specified
  */
 export function getAvailableAttackers(
   state: GameState,
@@ -540,8 +585,28 @@ export function getAvailableAttackers(
   if (!battlefield) return [];
 
   return battlefield.cardIds.filter((cardId) => {
-    const { canAttack: can } = canAttack(state, cardId);
-    return can;
+    const card = state.cards.get(cardId);
+    
+    if (!card) return false;
+    
+    // Must be a creature
+    if (!isCreature(card)) return false;
+    
+    // Must not be tapped (unless has vigilance)
+    if (card.isTapped) {
+      const hasVigilance = card.cardData.keywords?.includes('Vigilance') ||
+        card.cardData.oracle_text?.toLowerCase().includes('vigilance');
+      if (!hasVigilance) return false;
+    }
+    
+    // Must not have summoning sickness (unless haste)
+    if (card.hasSummoningSickness) {
+      const hasHaste = card.cardData.keywords?.includes('Haste') ||
+        card.cardData.oracle_text?.toLowerCase().includes('haste');
+      if (!hasHaste) return false;
+    }
+    
+    return true;
   });
 }
 

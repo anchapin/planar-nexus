@@ -491,7 +491,7 @@ describe('Combat System - Damage Resolution', () => {
     it('should deal damage between attacker and blocker', () => {
       const { state, aliceId, bobId } = setupGameWithCreatures(
         [{ name: 'Attacker', power: 3, toughness: 3 }],
-        [{ name: 'Blocker', power: 2, toughness: 2 }]
+        [{ name: 'Blocker', power: 3, toughness: 3 }]
       );
 
       const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
@@ -516,6 +516,8 @@ describe('Combat System - Damage Resolution', () => {
       expect(result.success).toBe(true);
 
       // Both creatures should have lethal damage and be in graveyard
+      // Attacker (3/3) deals 3 damage to Blocker (3/3) - lethal
+      // Blocker (3/3) deals 3 damage to Attacker (3/3) - lethal
       const aliceGraveyard = result.state.zones.get(`${aliceId}-graveyard`)!;
       const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
       
@@ -741,13 +743,14 @@ describe('Combat System - Edge Cases', () => {
   });
 
   it('should handle no attackers declared', () => {
-    const { state } = setupGameWithCreatures([], []);
+    const { state, bobId } = setupGameWithCreatures([], []);
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
 
+    // Empty attacker array is allowed - it means no attack is declared
     const result = declareAttackers(state, []);
-    expect(result.success).toBe(false);
-    expect(result.errors).toContain('No valid attackers declared');
+    expect(result.success).toBe(true);
+    expect(result.state.combat.attackers).toHaveLength(0);
   });
 
   it('should handle no blockers declared', () => {
