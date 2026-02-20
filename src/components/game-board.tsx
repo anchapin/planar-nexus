@@ -5,7 +5,6 @@ import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
@@ -16,20 +15,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PlayerState, PlayerCount, ZoneType, TeamState, TeamId } from "@/types/game";
+import { PlayerState, PlayerCount, ZoneType, TeamState } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
-import { DamageOverlay, useDamageEvents, DamageEvent, DamageType } from "@/components/damage-indicator";
+import { DamageOverlay, useDamageEvents, DamageEvent } from "@/components/damage-indicator";
 import {
   Skull,
-  Archive,
   Ban,
   Library,
   Hand,
   Swords,
   Heart,
   Skull as PoisonIcon,
-  ChevronDown,
-  ChevronUp,
   User,
   Crown,
   Flag,
@@ -40,20 +36,6 @@ import {
 // Performance optimization constants
 const VIRTUALIZATION_THRESHOLD = 20;
 const MAX_VISIBLE_BATTLEFIELD_CARDS = 14;
-
-// Zone icons mapping
-const ZONE_ICONS: Record<ZoneType, React.ReactNode> = {
-  battlefield: null,
-  hand: <Hand className="h-3 w-3" />,
-  graveyard: <Skull className="h-3 w-3" />,
-  exile: <Ban className="h-3 w-3" />,
-  library: <Library className="h-3 w-3" />,
-  commandZone: <Crown className="h-3 w-3" />,
-  companion: <Crown className="h-3 w-3" />,
-  stack: null,
-  sideboard: null,
-  anticipate: null,
-};
 
 interface GameBoardProps {
   players: PlayerState[];
@@ -93,6 +75,12 @@ interface PlayerAreaProps {
   isLocalPlayer?: boolean;
 }
 
+// Card type for zone display
+interface ZoneCard {
+  id: string;
+  [key: string]: unknown;
+}
+
 // Memoized ZoneDisplay component for performance optimization
 const ZoneDisplay = memo(function ZoneDisplay({
   zone,
@@ -108,7 +96,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
   zone: ZoneType;
   title: string;
   count: number;
-  cards: any[];
+  cards: ZoneCard[];
   bgColor?: string;
   size?: "small" | "default" | "large";
   onCardClick?: (cardId: string, zone: ZoneType) => void;
@@ -173,7 +161,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
           >
             {count > 0 && (
               <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
-                {zone === "battlefield" && displayCards.map((card: any, idx: number) => (
+                {zone === "battlefield" && displayCards.map((card: ZoneCard, idx: number) => (
                   <div
                     key={card.id || idx}
                     onClick={(e) => {
@@ -217,20 +205,12 @@ interface PlayerInfoProps {
   isCurrentTurn: boolean;
   isVertical: boolean;
   otherPlayers?: PlayerState[];
-  onLifeAdjust?: (playerId: string, amount: number) => void;
-  onPoisonAdjust?: (playerId: string, amount: number) => void;
-  onCommanderDamageAdjust?: (playerId: string, targetPlayerId: string, amount: number) => void;
-  showControls?: boolean;
 }
 
 const PlayerInfo = memo(function PlayerInfo({
   player,
   isVertical,
   otherPlayers = [],
-  onLifeAdjust,
-  onPoisonAdjust,
-  onCommanderDamageAdjust,
-  showControls = false
 }: PlayerInfoProps) {
   // Issue #24: Enhanced commander damage display - per opponent tracking
   const commanderDamageEntries = React.useMemo(() => {
@@ -314,15 +294,10 @@ const PlayerInfo = memo(function PlayerInfo({
   );
 });
 
-function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false, allPlayers = [] }: PlayerAreaProps & { allPlayers?: PlayerState[] }) {
+function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", allPlayers = [] }: PlayerAreaProps & { allPlayers?: PlayerState[] }) {
   const isBottom = position === "bottom";
   const isVertical = orientation === "vertical";
   const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
-
-  // Get other players for commander damage display (Issue #24)
-  const otherPlayers = React.useMemo(() => {
-    return allPlayers.filter(p => p.id !== player.id);
-  }, [allPlayers, player.id]);
 
   // Memoize handlers to prevent unnecessary re-renders
   const handleZoneClick = useCallback((zone: ZoneType) => {
@@ -332,20 +307,6 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
   const handleCardClick = useCallback((cardId: string, zone: ZoneType) => {
     onCardClick?.(cardId, zone);
   }, [onCardClick]);
-
-  // Memoize zone icons
-  const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(() => ({
-    battlefield: null,
-    hand: <Hand className="h-3 w-3" />,
-    graveyard: <Skull className="h-3 w-3" />,
-    exile: <Ban className="h-3 w-3" />,
-    library: <Library className="h-3 w-3" />,
-    commandZone: <Crown className="h-3 w-3" />,
-    companion: <Crown className="h-3 w-3" />,
-    stack: null,
-    sideboard: null,
-    anticipate: null,
-  }), []);
 
   // Local ZoneDisplay wrapper for backward compatibility
   const ZoneDisplayLocal = ({
@@ -359,7 +320,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
     zone: ZoneType;
     title: string;
     count: number;
-    cards: any[];
+    cards: ZoneCard[];
     bgColor?: string;
     size?: "small" | "default" | "large";
   }) => (
@@ -378,7 +339,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
 
   return (
     <div className={`flex flex-col gap-2 ${isVertical ? "h-full" : ""}`}>
-      <PlayerInfo player={player} isCurrentTurn={isCurrentTurn} isVertical={isVertical} />
+      <PlayerInfo player={player} isCurrentTurn={isCurrentTurn} isVertical={isVertical} otherPlayers={allPlayers.filter(p => p.id !== player.id)} />
 
       {/* Command Zone - always visible for Commander format */}
       {player.commandZone.length > 0 && (

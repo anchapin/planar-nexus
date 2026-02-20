@@ -4,9 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  BarChart3, 
   TrendingUp, 
   TrendingDown, 
   Minus,
@@ -16,10 +14,8 @@ import {
   Upload,
   Trash2,
   Calendar,
-  Target,
   Flame,
   Droplets,
-  Zap,
   Skull,
   Shield
 } from 'lucide-react';
@@ -70,11 +66,6 @@ function calculateWinRate(wins: number, total: number): number {
   return Math.round((wins / total) * 100);
 }
 
-// Calculate average
-function calculateAverage(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((a, b) => a + b, 0) / values.length;
-}
 
 // Deck statistics display component
 interface DeckStatisticsCardProps {
@@ -448,11 +439,6 @@ export function useDeckStatistics({ storageKey = 'deck-statistics' }: UseDeckSta
     }
   }, [storageKey]);
 
-  // Save to localStorage when changed
-  const saveStats = useCallback((newStats: DeckStatistics[]) => {
-    setStatistics(newStats);
-    localStorage.setItem(storageKey, JSON.stringify(newStats));
-  }, [storageKey]);
 
   const recordGame = useCallback((
     deckId: string, 

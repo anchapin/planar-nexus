@@ -9,7 +9,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Hand,
   SortAsc,
-  SortDesc,
   Layers,
   X
 } from "lucide-react";

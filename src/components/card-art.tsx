@@ -18,8 +18,6 @@ import { resolveCardImageWithFallback, getCardBackImage } from '@/lib/card-image
  */
 
 export interface CardArtProps {
-  /** Card ID for unique identification */
-  cardId: string;
   /** Card name for display and alt text */
   cardName: string;
   /** Scryfall image URI (preferred) */
@@ -173,7 +171,6 @@ const CardBack = memo(function CardBack({
 
 // Main CardArt component
 export const CardArt = memo(function CardArt({
-  cardId,
   cardName,
   imageUri,
   scryfallCard,
@@ -238,7 +235,7 @@ export const CardArt = memo(function CardArt({
     
     // Try local image resolution
     if (scryfallCard) {
-      return resolveCardImageWithFallback(scryfallCard as any, undefined, config.scryfallSize as any);
+      return resolveCardImageWithFallback(scryfallCard, undefined, config.scryfallSize);
     }
     
     return null;
@@ -415,13 +412,21 @@ export const CardArt = memo(function CardArt({
   );
 });
 
+// Scryfall card type for gallery
+interface ScryfallCardData {
+  id: string;
+  set?: string;
+  collector_number?: string;
+  name: string;
+}
+
 // Card Art Gallery for displaying multiple cards
 export interface CardArtGalleryProps {
   cards: Array<{
     id: string;
     name: string;
     imageUri?: string;
-    scryfallCard?: any;
+    scryfallCard?: ScryfallCardData;
   }>;
   size?: 'thumbnail' | 'small' | 'normal';
   enableZoom?: boolean;
@@ -449,7 +454,6 @@ export const CardArtGallery = memo(function CardArtGallery({
       {cards.map((card) => (
         <CardArt
           key={card.id}
-          cardId={card.id}
           cardName={card.name}
           imageUri={card.imageUri}
           scryfallCard={card.scryfallCard}
