@@ -462,7 +462,7 @@ export function validateDeckFormat(
   // Check individual card counts
   const cardCounts = new Map<string, { count: number; isBasic: boolean }>();
 
-  deckCards.forEach(({ name, count, color_identity }) => {
+  deckCards.forEach(({ name, count }) => {
     const normalizedName = name.toLowerCase().trim();
     const isBasic = isBasicLand(name);
 
@@ -502,8 +502,6 @@ export function validateDeckFormat(
 
   // Pauper-specific validation (all cards must be common)
   if (format === "pauper") {
-    const uncommonCards: string[] = [];
-
     deckCards.forEach(({ name, type_line }) => {
       // Skip basic lands
       if (isBasicLand(name)) return;
@@ -607,7 +605,7 @@ export function getCommanderDamageThreshold(format: Format): number | null {
 /**
  * Get mulligan rules for a format
  */
-export function getMulliganRules(format: Format) {
+export function getMulliganRules() {
   return {
     type: "london",
     minHandSize: 0,
@@ -617,7 +615,7 @@ export function getMulliganRules(format: Format) {
 /**
  * Get maximum hand size for a format
  */
-export function getMaxHandSize(format: Format): number {
+export function getMaxHandSize(): number {
   return 7;
 }
 

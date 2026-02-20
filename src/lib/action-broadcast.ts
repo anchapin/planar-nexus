@@ -13,19 +13,6 @@
  */
 
 import { z } from 'zod';
-import type { 
-  PeerId,
-  GameSyncMessage,
-  SyncMessageType,
-} from './game-state/deterministic-sync';
-import {
-  createActionMessage,
-  createAckMessage,
-  createSyncRequestMessage,
-  serializeSyncMessage,
-  deserializeSyncMessage,
-  DEFAULT_SYNC_CONFIG,
-} from './game-state/deterministic-sync';
 
 // Action types for the game
 export type ActionType = 

@@ -96,9 +96,9 @@ describe('saved-games auto-save', () => {
       const gameState = createInitialGameState(['Player 1', 'Player 2']);
       
       // Create 3 auto-saves
-      const save1 = savedGamesManager.autoSave(gameState, null);
-      const save2 = savedGamesManager.autoSave(gameState, null);
-      const save3 = savedGamesManager.autoSave(gameState, null);
+      savedGamesManager.autoSave(gameState, null);
+      savedGamesManager.autoSave(gameState, null);
+      savedGamesManager.autoSave(gameState, null);
       
       // Should have 3 saves with different slots
       const autoSaves = savedGamesManager.getAutoSaves();
