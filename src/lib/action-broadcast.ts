@@ -14,7 +14,6 @@
 
 import { z } from 'zod';
 import type { 
-  DeterministicAction, 
   SequenceNumber, 
   PeerId,
   GameSyncMessage,
