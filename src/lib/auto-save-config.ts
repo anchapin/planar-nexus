@@ -68,7 +68,7 @@ const STORAGE_KEY = 'planar_nexus_auto_save_config';
  * Get auto-save configuration from localStorage
  */
 export function getAutoSaveConfig(): AutoSaveConfig {
-  if (typeof window === 'undefined') {
+  if (typeof localStorage === 'undefined') {
     return DEFAULT_AUTO_SAVE_CONFIG;
   }
 
@@ -93,7 +93,7 @@ export function getAutoSaveConfig(): AutoSaveConfig {
  * Save auto-save configuration to localStorage
  */
 export function setAutoSaveConfig(config: Partial<AutoSaveConfig>): void {
-  if (typeof window === 'undefined') {
+  if (typeof localStorage === 'undefined') {
     return;
   }
 
@@ -130,7 +130,7 @@ export function toggleTrigger(trigger: AutoSaveTrigger): void {
  * Reset auto-save configuration to defaults
  */
 export function resetAutoSaveConfig(): void {
-  if (typeof window !== 'undefined') {
+  if (typeof localStorage !== 'undefined') {
     localStorage.removeItem(STORAGE_KEY);
   }
 }
