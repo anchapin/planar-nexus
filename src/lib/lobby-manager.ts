@@ -3,11 +3,11 @@
  * Handles local lobby state for hosting games before connecting to signaling server
  */
 
-import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, GameMode, Team, TeamId, TeamSettings } from './multiplayer-types';
+import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, Team, TeamId, TeamSettings } from './multiplayer-types';
 import { generateGameCode, generateLobbyId, generatePlayerId } from './game-code-generator';
 import { publicLobbyBrowser } from './public-lobby-browser';
 import { validateDeckForLobby } from './format-validator';
-import { getGameModeForPlayerCount, getGameModeConfig, GAME_MODES } from './game-mode';
+import { getGameModeForPlayerCount, getGameModeConfig } from './game-mode';
 import type { SavedDeck } from '@/app/actions';
 
 // Default team configurations
@@ -292,7 +292,6 @@ class LobbyManager {
   canStartGame(): boolean {
     if (!this.currentLobby) return false;
 
-    const maxPlayers = parseInt(this.currentLobby.maxPlayers);
     const hasEnoughPlayers = this.currentLobby.players.length >= 2;
     const allReady = this.allPlayersReady();
 
@@ -601,10 +600,9 @@ class LobbyManager {
   /**
    * Check if a team has lost (all players eliminated)
    */
-  isTeamEliminated(teamId: TeamId): boolean {
+  isTeamEliminated(_teamId: TeamId): boolean {
     if (!this.currentLobby) return false;
 
-    const teamPlayers = this.getTeamPlayers(teamId);
     // This would need to be connected to actual game state
     // For now, return false as placeholder
     return false;

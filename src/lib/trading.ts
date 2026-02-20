@@ -380,12 +380,12 @@ class TradeManager {
   /**
    * Add notes/chat to trade
    */
-  addTradeNotes(tradeId: string, _partyId: string, notes: string): TradeOffer | null {
+  addTradeNotes(tradeId: string, partyId: string, notes: string): TradeOffer | null {
     const offer = this.getTradeOffer(tradeId);
     if (!offer) return null;
 
     const existingNotes = offer.notes || '';
-    const partyName = offer.parties.find(p => p.id === _partyId)?.name || 'Unknown';
+    const partyName = offer.parties.find(p => p.id === partyId)?.name || 'Unknown';
     
     offer.notes = existingNotes + `\n${partyName}: ${notes}`;
     offer.updatedAt = Date.now();

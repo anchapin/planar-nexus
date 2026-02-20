@@ -71,27 +71,6 @@ interface MinifiedGameState {
   er?: string;
 }
 
-/**
- * Helper type for extracting player info for minification
- */
-interface PlayerForMinify {
-  id: string;
-  name: string;
-  life: number;
-  hand?: unknown[];
-}
-
-/**
- * Helper type for extracting zone info for minification
- */
-interface ZonesForMinify {
-  battlefield?: unknown[];
-  graveyard?: unknown[];
-  library?: unknown[];
-  hand?: unknown[];
-  stack?: unknown[];
-  exile?: unknown[];
-}
 const MAX_URL_LENGTH = 8000; // Safe limit for most browsers
 
 /**
@@ -287,7 +266,7 @@ function minifyGameState(state: GameState): MinifiedGameState {
   const playerHandSizes = new Map<string, number>();
   
   // Count cards in each player's hand zone
-  state.zones.forEach((zone, key) => {
+  state.zones.forEach((zone) => {
     if (zone.type === 'hand' && zone.playerId) {
       playerHandSizes.set(zone.playerId, zone.cardIds.length);
     }

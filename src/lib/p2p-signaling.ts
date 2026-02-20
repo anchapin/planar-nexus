@@ -201,8 +201,6 @@ export class P2PSignalingService {
    * @param message - The message to send
    */
   broadcast(message: P2PMessage): void {
-    const messageStr = JSON.stringify(message);
-    
     this.connections.forEach((conn, peerId) => {
       if (conn.open) {
         conn.send(message);

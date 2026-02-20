@@ -324,9 +324,6 @@ export function processMatchResult(
   const lpChange = calculateLPChange(result, rating.rank);
   const newLP = Math.max(0, rating.rank.lp + lpChange);
   
-  // Check for promotion
-  const wasPromoted = getTierIndex(newRank.tier) > getTierIndex(rating.rank.tier);
-  
   // Update streak
   const newStreak = result === 'win' 
     ? rating.currentStreak + 1 

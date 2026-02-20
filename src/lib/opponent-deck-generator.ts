@@ -5,7 +5,7 @@
  * Works entirely offline without API calls.
  */
 
-import type { DeckCard, ScryfallCard } from '@/app/actions';
+// No imports needed - this module generates deck data offline
 
 // Deck archetype definitions
 export type DeckArchetype = 'aggro' | 'control' | 'midrange' | 'combo' | 'ramp' | 'prison';
@@ -169,7 +169,6 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
   }
   
   // Add creatures based on curve
-  const curve = config.curve;
   const creatureCount = Math.floor((60 - landCount - rockCount) * 0.4);
   const selectedCreatures = getRandomItems(creatures, Math.ceil(creatureCount * 0.7));
   
