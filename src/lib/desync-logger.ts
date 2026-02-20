@@ -6,7 +6,6 @@
 import type { 
   HashDiscrepancy, 
   ConflictResolution, 
-  DeterministicAction,
   PeerId,
   SequenceNumber,
 } from './game-state/deterministic-sync';
