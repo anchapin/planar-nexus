@@ -139,9 +139,16 @@ class SavedGamesManager {
     replay: Replay | null,
     slot: number = 0
   ): SavedGame {
+    // First, delete any existing auto-save in this slot
+    const existingAutoSaves = this.getAutoSaves();
+    const existingInSlot = existingAutoSaves.find(g => g.autoSaveSlot === slot);
+    if (existingInSlot) {
+      this.deleteGame(existingInSlot.id);
+    }
+
     const now = Date.now();
     const autoSave: SavedGame = {
-      id: `${AUTO_SAVE_PREFIX}${now}`,
+      id: `${AUTO_SAVE_PREFIX}${slot}_${now}`,
       name: `Auto-Save ${slot + 1}`,
       format: 'unknown', // Would be stored in gameState
       playerNames: Array.from(gameState.players.values()).map(p => p.name),
