@@ -485,18 +485,7 @@ describe("Game Rules - Helper functions", () => {
 
   describe("getMaxHandSize", () => {
     it("should return 7 for all formats", () => {
-      const formats: Format[] = [
-        "commander",
-        "standard",
-        "modern",
-        "pioneer",
-        "legacy",
-        "vintage",
-        "pauper",
-      ];
-      formats.forEach((format) => {
-        expect(getMaxHandSize(format)).toBe(7);
-      });
+      expect(getMaxHandSize()).toBe(7);
     });
   });
 
