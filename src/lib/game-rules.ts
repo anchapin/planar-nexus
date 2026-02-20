@@ -478,17 +478,17 @@ export function validateDeckFormat(
     // Skip basic lands for copy limits
     if (isBasic) return;
 
-    // Check ban list
-    if (bannedCards.has(cardName)) {
-      errors.push(`${cardName} is banned in ${format}`);
-      return;
-    }
-
-    // Vintage restricted list check
+    // Vintage restricted list check - these cards are allowed with 1 copy
     if (format === "vintage" && vintageRestrictedList.has(cardName)) {
       if (count > 1) {
         errors.push(`${cardName} is restricted in Vintage - maximum 1 copy allowed`);
       }
+      return;
+    }
+
+    // Check ban list (not applicable for Vintage since those are restricted cards)
+    if (bannedCards.has(cardName)) {
+      errors.push(`${cardName} is banned in ${format}`);
       return;
     }
 
