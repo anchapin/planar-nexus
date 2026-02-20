@@ -11,7 +11,7 @@
  * - Command zone state management
  */
 
-import type { GameState, PlayerId, CardInstanceId, CardInstance } from './types';
+import type { GameState, PlayerId, CardInstanceId, CardInstance, Player } from './types';
 
 /**
  * Commander damage tracking state
@@ -271,25 +271,13 @@ export function getCommanderDamage(
  * Get total commander damage to a player from all commanders
  */
 export function getTotalCommanderDamage(
-  state: GameState,
-  targetPlayerId: PlayerId
+  _state: GameState,
+  _targetPlayerId: PlayerId
 ): number {
-  const total = 0;
-  
-  for (const [playerId, player] of state.players) {
-    if (playerId === targetPlayerId) continue;
-    
-    for (const [commanderId, damage] of player.commanderDamage) {
-      // This is the damage this player's commanders have dealt to targetPlayerId
-      // We need to track it the other way - let's fix this
-    }
-  }
-  
-  // Actually, commander damage is tracked from the attacker's perspective
-  // So we need to sum up damage dealt BY all opponents TO targetPlayerId
-  // This requires a different data structure, but for now let's do a simpler approach
-  
-  return total;
+  // Commander damage is tracked from the attacker's perspective
+  // A full implementation would track damage per opponent per commander
+  // Currently returning 0 as placeholder
+  return 0;
 }
 
 /**
@@ -340,7 +328,7 @@ function checkCommanderWinCondition(
  * Reset commander damage (for new game)
  */
 export function resetCommanderDamage(state: GameState): GameState {
-  const updatedPlayers = new Map<PlayerId, any>();
+  const updatedPlayers = new Map<PlayerId, Player>();
   
   for (const [playerId, player] of state.players) {
     // Reset all commander damage to 0

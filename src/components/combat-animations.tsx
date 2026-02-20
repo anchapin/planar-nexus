@@ -520,7 +520,7 @@ interface CombatCardProps {
 }
 
 export function CombatCard({
-  cardId,
+  cardId: _cardId,
   cardName,
   power = 0,
   toughness = 0,

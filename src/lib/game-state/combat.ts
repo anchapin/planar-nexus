@@ -6,19 +6,15 @@
 
 import type {
   GameState,
-  CardInstance,
   CardInstanceId,
   PlayerId,
 } from './types';
 import {
-  createCardInstance,
   isCreature,
   getPower,
   getToughness,
-  hasLethalDamage,
 } from './card-instance';
-import { dealDamageToCard, destroyCard } from './keyword-actions';
-import { replacementEffectManager } from './replacement-effects';
+import { dealDamageToCard } from './keyword-actions';
 import { checkStateBasedActions } from './state-based-actions';
 import { dealCommanderDamage, isCommander } from './commander-damage';
 
@@ -264,7 +260,6 @@ export function declareBlockers(
   }
 
   // Check each blocker's assignment
-  const allBlockerIds: CardInstanceId[] = [];
   for (const [attackerId, blockerIds] of blockerAssignments) {
     const validBlockerIds: CardInstanceId[] = [];
     
@@ -272,7 +267,6 @@ export function declareBlockers(
       const { canBlock: can, reason } = canBlock(state, blockerId, attackerId);
       if (can) {
         validBlockerIds.push(blockerId);
-        allBlockerIds.push(blockerId);
       } else {
         errors.push(`${state.cards.get(blockerId)?.cardData.name || blockerId}: ${reason}`);
       }
@@ -294,17 +288,6 @@ export function declareBlockers(
   }>>();
 
   for (const [attackerId, blockerIds] of validBlockers) {
-    const attacker = state.cards.get(attackerId);
-    const attackerPower = attacker ? getPower(attacker) : 0;
-    const attackerHasFirstStrike = attacker ? (
-      attacker.cardData.keywords?.includes('First Strike') ||
-      attacker.cardData.oracle_text?.toLowerCase().includes('first strike')
-    ) : false;
-    const attackerHasDoubleStrike = attacker ? (
-      attacker.cardData.keywords?.includes('Double Strike') ||
-      attacker.cardData.oracle_text?.toLowerCase().includes('double strike')
-    ) : false;
-
     const blockerObjects: import('./types').Blocker[] = blockerIds.map((blockerId, index) => {
       const blocker = state.cards.get(blockerId);
       const blockerPower = blocker ? getPower(blocker) : 0;

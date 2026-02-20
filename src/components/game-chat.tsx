@@ -34,7 +34,7 @@ interface GameChatProps {
 export function GameChat({
   messages,
   currentPlayerId,
-  currentPlayerName,
+  currentPlayerName: _currentPlayerName,
   onSendMessage,
   className,
   isTeamMode = false,
@@ -69,11 +69,6 @@ export function GameChat({
     }
     setInputValue('');
     inputRef.current?.focus();
-  };
-
-  // Toggle between team chat and all chat
-  const toggleChatMode = () => {
-    setIsTeamChatActive(!isTeamChatActive);
   };
 
   // Filter messages based on chat mode

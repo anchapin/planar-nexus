@@ -5,19 +5,15 @@
  * and can serve as the basis for unit tests.
  */
 
-import type { CardInstance, PlayerId, Zone } from "./types";
 import {
   createInitialGameState,
   loadDeckForPlayer,
   startGame,
-  drawCard,
   passPriority,
   dealDamageToPlayer,
   gainLife,
-  concede,
   getPlayerLibrary,
   getPlayerHand,
-  getPlayerBattlefield,
 } from "./game-state";
 import {
   createCardInstance,
@@ -26,22 +22,15 @@ import {
   untapCard,
   addCounters,
   markDamage,
-  resetDamage,
   attachCard,
   detachCard,
-  changeController,
   isCreature,
-  isLand,
-  isPlaneswalker,
   isPermanent,
   getPower,
   getToughness,
-  hasLethalDamage,
   canAttack,
-  canBlock,
   isDoubleFaced,
   transformCard,
-  setCardFace,
   getCurrentFaceName,
   phaseOut,
   phaseIn,
@@ -53,27 +42,19 @@ import {
   hasCounter,
   getCounterCount,
   isAttached,
-  hasAttachments,
 } from "./card-instance";
 import {
   createZone,
-  createPlayerZones,
-  addCardToZone,
-  removeCardFromZone,
   moveCardBetweenZones,
   getTopCard,
   shuffleZone,
   countCards,
-  drawCards,
-  millCards,
-  exileCards,
 } from "./zones";
 import {
   createTurn,
   advancePhase,
   isMainPhase,
   isCombatPhase,
-  canCastSorcerySpeedSpells,
   getPhaseName,
   getPhaseShortName,
 } from "./turn-phases";

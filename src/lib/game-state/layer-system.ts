@@ -21,7 +21,7 @@
  * @module layer-system
  */
 
-import { CardInstance, CardInstanceId, PlayerId, ScryfallCard } from './types';
+import { CardInstance, CardInstanceId, PlayerId } from './types';
 
 /**
  * Layer types in order of application (CR 613.1)
@@ -200,10 +200,8 @@ export class LayerSystem {
   removeEffectsFromSource(sourceCardId: CardInstanceId): void {
     this.effects = this.effects.filter(e => e.sourceCardId !== sourceCardId);
     // Also clear overrides from this source
-    for (const [cardId, overrides] of this.overrides.entries()) {
-      // In a full implementation, we'd track which effect created which override
-      // For now, we clear all overrides when effects are removed
-    }
+    // In a full implementation, we'd track which effect created which override
+    // For now, overrides are cleared when effects are removed via clearOverrides()
   }
 
   /**
@@ -591,7 +589,7 @@ export function createTextChangeEffect(
   controllerId: PlayerId,
   newText: string,
   description: string,
-  addTypes?: boolean,
+  _addTypes?: boolean,
   layerSystemInstance?: LayerSystem
 ): ContinuousEffect {
   return {

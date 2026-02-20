@@ -284,7 +284,6 @@ export function activateAbility(
 
   // Move card to stack (for abilities that go on stack)
   const battlefieldZone = currentState.zones.get(`battlefield-${playerId}`);
-  const handZone = currentState.zones.get(`hand-${playerId}`);
   
   let cardMovedState = currentState;
   if (battlefieldZone && battlefieldZone.cardIds.includes(cardId)) {

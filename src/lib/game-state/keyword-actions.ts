@@ -25,13 +25,7 @@ import type {
 } from './types';
 import {
   createToken,
-  isCreature,
-  isPermanent,
-  isEnchantment,
-  isArtifact,
-  isPlaneswalker,
   getToughness,
-  hasLethalDamage,
   addCounters,
   removeCounters,
   hasCounter,

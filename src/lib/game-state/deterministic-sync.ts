@@ -12,8 +12,8 @@
  * - Action broadcasting system improvements
  */
 
-import type { GameState, GameAction, PlayerId, CardInstanceId } from "./types";
-import { computeStateHash, compareStateHashes, analyzeHashDiscrepancy, type HashComparisonResult, type HashDiscrepancy } from "./state-hash";
+import type { GameState, GameAction } from "./types";
+import { computeStateHash, analyzeHashDiscrepancy, type HashComparisonResult, type HashDiscrepancy } from "./state-hash";
 
 // Re-export types needed by other modules
 export type { HashComparisonResult, HashDiscrepancy };
@@ -232,7 +232,7 @@ export class DeterministicGameStateEngine {
    */
   applyRemoteAction(
     deterministicAction: DeterministicAction,
-    resultingState: GameState
+    _resultingState: GameState
   ): void {
     // Update sequence number
     if (deterministicAction.sequenceNumber > this.currentSequence) {
