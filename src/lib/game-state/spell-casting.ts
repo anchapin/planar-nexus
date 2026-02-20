@@ -46,7 +46,7 @@ export function canCastSpell(
   }
 
   // Verify the card is in player's hand
-  const handZone = state.zones.get(`hand-${playerId}`);
+  const handZone = state.zones.get(`${playerId}-hand`);
   if (!handZone || !handZone.cardIds.includes(cardId)) {
     return { canCast: false, reason: "Card not in hand" };
   }
@@ -129,7 +129,7 @@ export function castSpell(
   }
 
   // Verify the card is in player's hand
-  const handZone = state.zones.get(`hand-${playerId}`);
+  const handZone = state.zones.get(`${playerId}-hand`);
   if (!handZone || !handZone.cardIds.includes(cardId)) {
     return { success: false, state };
   }
@@ -212,7 +212,7 @@ export function castSpell(
   
   // Update zones using the state with mana spent
   const updatedZones = new Map(currentState.zones);
-  updatedZones.set(`hand-${playerId}`, moved.from);
+  updatedZones.set(`${playerId}-hand`, moved.from);
   updatedZones.set("stack", moved.to);
 
   // Add stack object to stack
@@ -287,10 +287,10 @@ export function resolveTopOfStack(
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
         // Instants and sorceries go to graveyard
-        destinationZone = `graveyard-${card.controllerId}`;
+        destinationZone = `${card.controllerId}-graveyard`;
       } else {
         // Permanents go to battlefield
-        destinationZone = `battlefield-${card.controllerId}`;
+        destinationZone = `${card.controllerId}-battlefield`;
       }
 
       const stackZone = state.zones.get("stack");
