@@ -42,7 +42,7 @@ import {
 /**
  * Icon mapping for achievements
  */
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   Play,
   Gamepad2,
   Trophy,
