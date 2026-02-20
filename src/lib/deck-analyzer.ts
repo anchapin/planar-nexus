@@ -70,14 +70,14 @@ export interface DeckSuggestion {
   description: string;
 }
 
-// Card classification helpers
-const CREATURE_KEYWORDS = ['creature', 'token'];
-const SPELL_KEYWORDS = ['instant', 'sorcery'];
-const ARTIFACT_KEYWORDS = ['artifact'];
-const ENCHANTMENT_KEYWORDS = ['enchantment'];
-const PLANESWALKER_KEYWORDS = ['planeswalker'];
+// Card classification helpers (reserved for future use)
+// const CREATURE_KEYWORDS = ['creature', 'token'];
+// const SPELL_KEYWORDS = ['instant', 'sorcery'];
+// const ARTIFACT_KEYWORDS = ['artifact'];
+// const ENCHANTMENT_KEYWORDS = ['enchantment'];
+// const PLANESWALKER_KEYWORDS = ['planeswalker'];
 
-export function analyzeDeck(cards: DeckCard[], format: string = 'commander'): DeckAnalysis {
+export function analyzeDeck(cards: DeckCard[], _format: string = 'commander'): DeckAnalysis {
   const allCards = flattenDeck(cards);
   
   const manaCurve = analyzeManaCurve(allCards);

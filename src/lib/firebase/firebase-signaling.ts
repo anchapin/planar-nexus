@@ -18,7 +18,7 @@ import {
   DataSnapshot,
 } from 'firebase/database';
 import { firebaseService, isFirebaseAvailable } from './firebase-config';
-import type { P2PMessage, P2PConnectionState } from '../webrtc-p2p';
+import type { P2PConnectionState } from '../webrtc-p2p';
 
 /**
  * Firebase signaling session info

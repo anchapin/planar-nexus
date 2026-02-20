@@ -220,7 +220,6 @@ export class FirebaseGameStateService {
     if (!this.gameId) return;
 
     const db = firebaseService.getDatabaseInstance()!;
-    const gameRef = ref(db, `games/sessions/${this.gameId}`);
 
     // Listen for game state updates
     const gameStateRef = ref(db, `games/sessions/${this.gameId}/gameState`);
