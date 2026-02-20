@@ -71,8 +71,6 @@ export interface DeckSuggestion {
 }
 
 // Card classification helpers
-const RAMP_KEYWORDS = ['ramp', 'mana', 'rock', 'dork', 'cultivate', 'kodama', 'farseek', 'farseek', 'sol ring', 'arcane signet', 'darksteel ingot'];
-const REMOVAL_KEYWORDS = ['destroy', 'exile', 'damage', 'fight', 'kill', 'remove', 'counter', 'destroy target', 'exile target'];
 const CREATURE_KEYWORDS = ['creature', 'token'];
 const SPELL_KEYWORDS = ['instant', 'sorcery'];
 const ARTIFACT_KEYWORDS = ['artifact'];
@@ -183,7 +181,6 @@ function analyzeManaCurve(cards: ScryfallCard[]): ManaCurveAnalysis {
 
 function analyzeColors(cards: ScryfallCard[]): ColorDistribution {
   const colors: { [color: string]: number } = { W: 0, U: 0, B: 0, R: 0, G: 0, Colorless: 0 };
-  const colorNames: Record<string, string> = { W: 'White', U: 'Blue', B: 'Black', R: 'Red', G: 'Green', Colorless: 'Colorless' };
   
   for (const card of cards) {
     if (!card.colors || card.colors.length === 0) {
