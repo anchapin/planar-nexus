@@ -8,10 +8,9 @@ import {
   copyShareableLink, 
   exportReplayToFile,
   importReplayFromFile,
-  canShareViaURL,
   getEstimatedURLLength
 } from '@/lib/replay-sharing';
-import type { Replay, ReplayAction, ReplayMetadata } from '@/lib/game-state/replay';
+import type { Replay } from '@/lib/game-state/replay';
 
 /**
  * Replay Viewer Component
@@ -28,11 +27,14 @@ import type { Replay, ReplayAction, ReplayMetadata } from '@/lib/game-state/repl
 // Playback speed options
 const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2, 4] as const;
 
+// Game state type for replay viewer - use the actual GameState type
+import type { GameState as ReplayGameState } from '@/lib/game-state/types';
+
 // Replay viewer props
 export interface ReplayViewerProps {
   replay: Replay | null;
   onPositionChange?: (position: number) => void;
-  onStateChange?: (state: any) => void;
+  onStateChange?: (state: ReplayGameState) => void;
   className?: string;
 }
 
@@ -654,7 +656,7 @@ export function useReplayFromURL() {
         } else {
           setError('Failed to decode replay from URL');
         }
-      } catch (err) {
+      } catch {
         setError('Invalid replay data in URL');
       }
     }

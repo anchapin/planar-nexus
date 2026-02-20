@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { memo, useMemo, useState, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -22,13 +21,7 @@ import {
   Crown, 
   Layers,
   Eye,
-  ChevronDown,
-  ChevronUp,
-  X,
   Search,
-  Filter,
-  SortAsc,
-  SortDesc,
   User
 } from "lucide-react";
 import { ZoneType } from "@/types/game";
@@ -108,12 +101,10 @@ const ZoneCardList = memo(function ZoneCardList({
   cards,
   onCardClick,
   sortBy = "name",
-  showCount = true,
 }: {
   cards: ZoneCard[];
   onCardClick?: (cardId: string) => void;
   sortBy?: SortOption;
-  showCount?: boolean;
 }) {
   const sortedCards = useMemo(() => {
     const sorted = [...cards];
@@ -194,18 +185,9 @@ const ZoneCardList = memo(function ZoneCardList({
  */
 const StackItemDisplay = memo(function StackItemDisplay({
   item,
-  onCardClick,
 }: {
   item: StackItem;
-  onCardClick?: (cardId: string) => void;
 }) {
-  const colorMap: Record<string, string> = {
-    W: "bg-white/20",
-    U: "bg-blue-500/20",
-    B: "bg-black/20",
-    R: "bg-red-500/20",
-    G: "bg-green-500/20",
-  };
 
   return (
     <div className="flex flex-col p-3 rounded-md border border-border bg-muted/30">
@@ -291,8 +273,6 @@ export function ZoneViewer({
   const filteredCommand = useMemo(() => filterCards(command), [command, filterCards]);
   const filteredSideboard = useMemo(() => filterCards(sideboard), [sideboard, filterCards]);
   const filteredCompanion = useMemo(() => filterCards(companion), [companion, filterCards]);
-
-  const totalCards = graveyard.length + exile.length + command.length + stack.length + sideboard.length + companion.length;
 
   if (!isOpen) return null;
 
@@ -456,7 +436,6 @@ export function ZoneViewer({
                     <StackItemDisplay 
                       key={item.id} 
                       item={item}
-                      onCardClick={onCardClick}
                     />
                   ))}
                 </div>

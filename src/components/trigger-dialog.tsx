@@ -24,10 +24,7 @@ import {
   Info,
   Zap,
   Clock,
-  Repeat,
   ArrowUpDown,
-  Save,
-  RotateCcw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -106,7 +103,6 @@ export function TriggerDialog({
   onTriggerOrder,
   onSavePreference,
   savedPreferences = [],
-  availableMana = {},
 }: TriggerDialogProps) {
   // State for trigger choices
   const [triggerChoices, setTriggerChoices] = React.useState<Map<string, "yes" | "no">>(new Map());

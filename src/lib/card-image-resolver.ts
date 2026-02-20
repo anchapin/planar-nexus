@@ -8,7 +8,16 @@
  * Users must provide their own card images organized by set/collector_number.
  */
 
-import { ScryfallCard } from '@/app/actions';
+import type { ScryfallCard } from '@/app/actions';
+
+// Partial ScryfallCard for image resolution (only required fields)
+type CardForImageResolution = {
+  id: string;
+  set?: string;
+  collector_number?: string;
+  name?: string;
+  color_identity?: string[];
+};
 
 // Storage key for user's image directory
 const IMAGE_DIRECTORY_KEY = 'planar-nexus-image-directory';
@@ -51,13 +60,13 @@ export function isCustomImagesEnabled(): boolean {
 /**
  * Resolve a card's image path from local directory
  * 
- * @param card - The ScryfallCard to resolve image for
+ * @param card - The card to resolve image for (partial ScryfallCard)
  * @param imageDir - Optional override for image directory
  * @param size - Image size to request ('small', 'normal', 'large')
  * @returns The resolved image URL or null if not found
  */
 export function resolveCardImage(
-  card: ScryfallCard, 
+  card: CardForImageResolution, 
   imageDir?: string | null,
   _size: 'small' | 'normal' | 'large' = 'normal'
 ): string | null {
@@ -102,13 +111,13 @@ export function getCardBackImage(): string {
 /**
  * Resolve card image with fallback to card back
  * 
- * @param card - The ScryfallCard to resolve image for
+ * @param card - The card to resolve image for (partial ScryfallCard)
  * @param imageDir - Optional override for image directory
  * @param size - Image size to request
  * @returns The resolved image URL or card back as fallback
  */
 export function resolveCardImageWithFallback(
-  card: ScryfallCard,
+  card: CardForImageResolution,
   imageDir?: string | null,
   size: 'small' | 'normal' | 'large' = 'normal'
 ): string {

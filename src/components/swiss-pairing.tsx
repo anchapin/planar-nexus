@@ -1,20 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Trophy, 
-  Users, 
   Crown, 
-  ChevronRight, 
   Check, 
-  X,
-  RefreshCw,
   Shuffle,
   ArrowRight,
   BarChart3,
@@ -398,7 +393,7 @@ export function SwissStandings({ players, className }: SwissStandingsProps) {
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          {standings.map(({ player, tiebreakers }, index) => (
+          {standings.map(({ player }, index) => (
             <div
               key={player.id}
               className={cn(
