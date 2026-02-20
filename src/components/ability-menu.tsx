@@ -20,10 +20,8 @@ import {
   Check,
   X,
   Zap,
-  Shield,
   Crosshair,
   Info,
-  ArrowRight,
 } from "lucide-react";
 
 interface AbilityMenuProps {

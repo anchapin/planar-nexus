@@ -1117,7 +1117,7 @@ export class StackInteractionAI {
    */
   private evaluateOrderingValue(
     ordering: AvailableResponse[],
-    _context: StackContext
+    _context: StackContext | undefined
   ): number {
     let totalValue = 0;
     let position = 0;

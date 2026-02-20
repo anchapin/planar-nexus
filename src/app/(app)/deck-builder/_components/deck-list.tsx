@@ -1,11 +1,11 @@
 "use client";
 
 import { DeckCard } from "@/app/actions";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { MinusCircle, Trash2 } from "lucide-react";
+import { MinusCircle } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useMemo } from "react";
 
