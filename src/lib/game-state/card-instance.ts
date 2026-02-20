@@ -5,7 +5,6 @@
 import type {
   CardInstanceId,
   CardInstance,
-  Counter,
   PlayerId,
 } from "./types";
 import type { ScryfallCard } from "@/app/actions";

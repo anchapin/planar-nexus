@@ -28,7 +28,6 @@ import {
   Users,
   ArrowRight,
   CheckCircle2,
-  XCircle,
   Clock,
   Info,
 } from 'lucide-react';
@@ -73,7 +72,7 @@ export function ConflictResolutionDialog({
   onOpenChange,
   discrepancies,
   suggestedResolution,
-  localPlayerName,
+  localPlayerName: _localPlayerName,
   remotePlayerName,
   isResolving,
   onResolve,

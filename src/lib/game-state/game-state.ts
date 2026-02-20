@@ -7,19 +7,16 @@ import type {
   CardInstance,
   GameState,
   PlayerId,
-  StackObjectId,
-  GameAction,
   Zone,
   Player,
 } from "./types";
 import type { ScryfallCard } from "@/app/actions";
 import {
   createCardInstance,
-  generateCardInstanceId,
   isCreature,
   hasLethalDamage,
 } from "./card-instance";
-import { createPlayerZones, createSharedZones, createZone } from "./zones";
+import { createPlayerZones, createSharedZones } from "./zones";
 import { createTurn, advancePhase, startNextTurn } from "./turn-phases";
 
 /**
@@ -37,19 +34,12 @@ function generateGameId(): string {
 }
 
 /**
- * Generate a unique stack object ID
- */
-function generateStackObjectId(): StackObjectId {
-  return `stack-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-/**
  * Create a new player
  */
 function createPlayer(
   name: string,
   startingLife: number = 20,
-  isCommander: boolean = false
+  _isCommander: boolean = false
 ): Player {
   const playerId = generatePlayerId();
 
@@ -427,7 +417,7 @@ export function checkStateBasedActions(state: GameState): GameState {
   });
 
   // Check creatures with lethal damage
-  updatedState.cards.forEach((card, cardId) => {
+  updatedState.cards.forEach((card) => {
     if (!isCreature(card)) {
       return;
     }

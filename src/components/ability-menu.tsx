@@ -129,7 +129,7 @@ export function AbilityMenu({
   // Handle ability selection
   const handleAbilitySelect = (index: number) => {
     const ability = abilities[index];
-    const { canActivate, reason } = getAbilityDisplayInfo(ability);
+    const { canActivate } = getAbilityDisplayInfo(ability);
 
     if (!canActivate) {
       // Can't activate - show why

@@ -7,7 +7,7 @@
  * Issue #13: Phase 1.3: Handle evergreen keywords
  */
 
-import type { CardInstance, GameState, PlayerId, CardInstanceId } from './types';
+import type { CardInstance, PlayerId } from './types';
 
 /**
  * Check if a card has a specific keyword
@@ -200,7 +200,7 @@ export function canAttackThisTurn(card: CardInstance): boolean {
 /**
  * Check if a creature can block the turn it enters
  */
-export function canBlockThisTurn(card: CardInstance): boolean {
+export function canBlockThisTurn(_card: CardInstance): boolean {
   // Creatures can block even with summoning sickness
   return true;
 }
