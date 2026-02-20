@@ -5,7 +5,7 @@
  * between peers in a multiplayer game.
  */
 
-import type { GameState, PlayerId, CardInstanceId } from './types';
+import type { GameState, PlayerId } from './types';
 
 /**
  * Compute a deterministic hash of the game state

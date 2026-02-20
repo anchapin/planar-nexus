@@ -510,11 +510,14 @@ export function activateLoyaltyAbility(
   // Pass priority after activating loyalty ability
   const playerIds = Array.from(currentState.players.keys());
   const currentIndex = playerIds.indexOf(playerId);
-  const nextIndex = (currentIndex + 1) % playerIds.length;
+  const nextPlayerId = playerIds[(currentIndex + 1) % playerIds.length];
 
   return {
     success: true,
-    state: currentState,
+    state: {
+      ...currentState,
+      priorityPlayerId: nextPlayerId,
+    },
     description: effectDescription,
   };
 }

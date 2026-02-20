@@ -561,7 +561,7 @@ function deserializeStackObject(data: SerializedStackObject): StackObject {
 /**
  * Deserialize a turn
  */
-function deserializeTurn(data: SerializedTurn, Phase: { [key: string]: string }): Turn {
+function deserializeTurn(data: SerializedTurn, _Phase: { [key: string]: string }): Turn {
   return {
     activePlayerId: data.activePlayerId,
     currentPhase: data.currentPhase as Turn['currentPhase'],

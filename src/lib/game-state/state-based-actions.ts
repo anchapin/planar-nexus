@@ -15,12 +15,11 @@ import type {
 import {
   isCreature,
   isPlaneswalker,
-  isEnchantment,
   getToughness,
   hasLethalDamage,
 } from './card-instance';
-import { destroyCard, exileCard, moveCardToZone } from './keyword-actions';
-import { isCommander, DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from './commander-damage';
+import { destroyCard, exileCard } from './keyword-actions';
+import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from './commander-damage';
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
@@ -279,7 +278,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     nameGroups.set(name, existing);
   }
 
-  for (const [name, cardIds] of nameGroups) {
+  for (const [_name, cardIds] of nameGroups) {
     if (cardIds.length > 1) {
       // Keep the first one, destroy the rest
       for (let i = 1; i < cardIds.length; i++) {
@@ -308,7 +307,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     worldNameGroups.set(name, existing);
   }
 
-  for (const [name, cards] of worldNameGroups) {
+  for (const [_name, cards] of worldNameGroups) {
     if (cards.length > 1) {
       // Sort by timestamp and keep the newest
       cards.sort((a, b) => b.timestamp - a.timestamp);
@@ -350,7 +349,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     pwTypeGroups.set(pwType, existing);
   }
 
-  for (const [pwType, cardIds] of pwTypeGroups) {
+  for (const [_pwType, cardIds] of pwTypeGroups) {
     if (cardIds.length > 1) {
       // Keep the first one, destroy the rest
       for (let i = 1; i < cardIds.length; i++) {

@@ -22,7 +22,6 @@ import {
   createDrawReplacementEffect,
   createDestroyReplacementEffect,
   createAsThoughEffect,
-  AsThoughType,
 } from './replacement-effects';
 import { CardInstanceId, PlayerId, GameState } from './types';
 
@@ -48,7 +47,7 @@ export function registerFurnaceOfRath(sourceCardId: CardInstanceId, controllerId
  * "Prevent all combat damage that would be dealt this turn."
  */
 export function registerFog(sourceCardId: CardInstanceId, controllerId: PlayerId): void {
-  const { ability, shield } = createPreventionShield(
+  const { ability } = createPreventionShield(
     sourceCardId,
     controllerId,
     '*', // All targets - would need special handling
@@ -67,7 +66,7 @@ export function registerFog(sourceCardId: CardInstanceId, controllerId: PlayerId
  * "Prevent all damage that would be dealt this turn."
  */
 export function registerHolyDay(sourceCardId: CardInstanceId, controllerId: PlayerId): void {
-  const { ability, shield } = createPreventionShield(
+  const { ability } = createPreventionShield(
     sourceCardId,
     controllerId,
     '*',
@@ -137,7 +136,7 @@ export function registerLeoninAbunas(sourceCardId: CardInstanceId, controllerId:
     controllerId,
     'target_anything',
     'Leonin Abunas: Artifacts can\'t be targeted by opponents',
-    (state, playerId) => {
+    (_state, _playerId) => {
       // This would check if the target is an artifact controlled by the effect's controller
       // and if the source is controlled by an opponent
       return true; // Simplified
@@ -211,14 +210,14 @@ export function registerPariah(
 export function registerShinyImpetus(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  targetCreatureId: CardInstanceId
+  _targetCreatureId: CardInstanceId
 ): void {
   const effect = createAsThoughEffect(
     sourceCardId,
     controllerId,
     'attack_haste',
     'Shiny Impetus: Creature can attack as though it had haste',
-    (state, playerId) => {
+    (_state, _playerId) => {
       // Would check if the creature is the target
       return true;
     },

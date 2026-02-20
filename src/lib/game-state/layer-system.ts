@@ -590,7 +590,7 @@ export function createTextChangeEffect(
   newText: string,
   description: string,
   _addTypes?: boolean,
-  layerSystemInstance?: LayerSystem
+  _layerSystemInstance?: LayerSystem
 ): ContinuousEffect {
   return {
     id: `text-${sourceCardId}-${Date.now()}`,
@@ -603,7 +603,7 @@ export function createTextChangeEffect(
     priority: 0,
     canApply: () => true,
     apply: (card) => {
-      const ls = layerSystemInstance || getLayerSystemInstance();
+      const ls = _layerSystemInstance || getLayerSystemInstance();
       const overrides = ls.getOverrides(card.id);
       overrides.text = newText;
       return { ...card };
@@ -1034,10 +1034,10 @@ export function createCharacteristicDefiningAbility(
 export function createCounterEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  counterType: '+1/+1' | '-1/-1' | string,
-  count: number,
+  _counterType: '+1/+1' | '-1/-1' | string,
+  _count: number,
   description: string,
-  layerSystemInstance?: LayerSystem
+  _layerSystemInstance?: LayerSystem
 ): ContinuousEffect {
   return {
     id: `counter-${sourceCardId}-${Date.now()}`,

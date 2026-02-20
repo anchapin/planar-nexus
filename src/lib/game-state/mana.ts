@@ -141,7 +141,6 @@ export function spendMana(
     // Deduct proportionally from available colored
     const coloredAvailable = extraColoredAvailable;
     if (coloredAvailable > 0) {
-      const ratio = genericFromColored / coloredAvailable;
       // Deduct from whichever colors have excess
       const excessWhite = Math.max(0, pool.white - (mana.white ?? 0));
       const excessBlue = Math.max(0, pool.blue - (mana.blue ?? 0));

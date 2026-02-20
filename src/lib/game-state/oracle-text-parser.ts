@@ -510,7 +510,7 @@ export function extractKeywords(oracleText: string, typeLine: string): ParsedKey
  * 
  * Activated abilities follow the format: [cost]: [effect]
  */
-export function parseActivatedAbilities(oracleText: string, typeLine: string): ParsedActivatedAbility[] {
+export function parseActivatedAbilities(oracleText: string, _typeLine: string): ParsedActivatedAbility[] {
   const abilities: ParsedActivatedAbility[] = [];
   
   // Split by periods to find ability sentences

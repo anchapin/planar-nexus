@@ -520,8 +520,7 @@ export function validateSpellTargets(
  * Get the mana value of a spell from its card data
  * Uses the card-instance's getManaValue for accurate mana value calculation
  */
-export function getSpellManaValueFromCard(_card: { mana_cost?: string }): number {
+export function getSpellManaValueFromCard(card: { mana_cost?: string; cmc?: number }): number {
   // Mana value is already available from card.cardData.cmc
-  // This function is kept for API compatibility
-  return 0;
+  return card.cmc ?? 0;
 }
