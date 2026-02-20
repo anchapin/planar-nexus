@@ -308,13 +308,13 @@ export class CombatDecisionTree {
    * Determine overall combat strategy based on game state
    */
   private determineCombatStrategy(
-    _aiPlayer: PlayerState,
+    aiPlayer: PlayerState,
     opponents: PlayerState[]
   ): 'aggressive' | 'moderate' | 'defensive' {
     const minOpponentLife = Math.min(...opponents.map((o) => o.life));
-    const _lifeTotal = aiPlayer.life;
+    const lifeTotal = aiPlayer.life;
     const creatureCount = aiPlayer.battlefield.filter(
-      (p) => p.type === 'creature'
+      (p: Permanent) => p.type === 'creature'
     ).length;
     const avgOpponentCreatures =
       opponents.reduce(
@@ -323,7 +323,7 @@ export class CombatDecisionTree {
       ) / opponents.length;
 
     // Low life: play defensively
-    if (_lifeTotal <= this.config.lifeThreshold) {
+    if (lifeTotal <= this.config.lifeThreshold) {
       return 'defensive';
     }
 
@@ -912,13 +912,13 @@ export class CombatDecisionTree {
    * Now implemented with access to card data
    */
   private evaluateCombatTricks(
-    _aiPlayer: PlayerState,
+    aiPlayer: PlayerState,
     attacks: AttackDecision[]
   ): CombatTrick[] {
     const tricks: CombatTrick[] = [];
 
     // Get combat-relevant cards from hand
-    const combatCards = aiPlayer.hand.filter(card => 
+    const combatCards = aiPlayer.hand.filter((card: HandCard) => 
       this.isCombatTrickCard(card)
     );
 
@@ -967,7 +967,7 @@ export class CombatDecisionTree {
   private analyzeCombatTrick(
     card: HandCard,
     attacks: AttackDecision[],
-    _aiPlayer: PlayerState
+    aiPlayer: PlayerState
   ): CombatTrick | null {
     // Parse the card to understand its effect
     const parsed = this.parseCombatTrick(card);
