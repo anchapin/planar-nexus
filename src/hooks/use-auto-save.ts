@@ -86,7 +86,7 @@ export interface UseAutoSaveReturn {
  * Auto-save hook for game states
  */
 export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn {
-  const { onSaveStart, onSaveComplete, onSaveError, gameId: _gameId } = options;
+  const { onSaveStart, onSaveComplete, onSaveError } = options;
   const { toast } = useToast();
   
   const [status, setStatus] = useState<AutoSaveStatus>('idle');

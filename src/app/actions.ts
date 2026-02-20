@@ -93,7 +93,7 @@ export async function searchScryfall(query: string): Promise<ScryfallCard[]> {
   }
 }
 
-export async function searchCards(query: string, format: string = "commander"): Promise<ScryfallCard[]> {
+export async function searchCards(query: string, _format: string = "commander"): Promise<ScryfallCard[]> {
   return searchScryfall(query);
 }
 
