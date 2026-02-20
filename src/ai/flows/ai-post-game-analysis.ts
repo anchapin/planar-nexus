@@ -14,22 +14,8 @@ import { ai } from '@/ai/genkit';
 import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
 
-// Types for game replay data
-interface GameAction {
-  turn: number;
-  player: string;
-  action: string;
-  card?: string;
-  target?: string;
-  result?: string;
-}
-
-interface GameOutcome {
-  winner: string;
-  finalScore?: string;
-  turns: number;
-  playerDecks: Record<string, string[]>;
-}
+// Types for game replay data (used for type documentation)
+// These interfaces describe the expected structure of replay data
 
 // Input schema for game analysis
 const GameAnalysisInputSchema = z.object({

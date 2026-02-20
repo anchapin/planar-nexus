@@ -14,7 +14,7 @@
  * - ResourceManager: Manages holding vs. using mana
  */
 
-import { GameState, PlayerState, evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
+import { GameState, evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
 
 /**
  * Represents a spell or ability on the stack
@@ -226,7 +226,6 @@ export class StackInteractionAI {
   private gameState: GameState;
   private playerId: string;
   private weights: ResponseWeights;
-  private gameStateEvaluator: any;
 
   constructor(
     gameState: GameState,
@@ -243,7 +242,6 @@ export class StackInteractionAI {
    * Main decision point: Should I respond to this stack action?
    */
   evaluateResponse(context: StackContext): ResponseDecision {
-    const player = this.gameState.players[this.playerId];
     const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
 
     // Evaluate the threat level of the current action
@@ -355,8 +353,6 @@ export class StackInteractionAI {
     context: StackContext,
     possibleResponses: AvailableResponse[]
   ): StackOrderDecision {
-    const player = this.gameState.players[this.playerId];
-
     // Filter responses we can actually afford
     const affordableResponses = possibleResponses.filter((response) =>
       this.canAffordResponse(response, context)
@@ -447,11 +443,9 @@ export class StackInteractionAI {
    * Resource management: hold mana vs use now
    */
   manageResources(context: StackContext): ResourceDecision {
-    const player = this.gameState.players[this.playerId];
     const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
 
     // Calculate total mana available
-    const totalMana = Object.values(context.availableMana).reduce((sum, val) => sum + val, 0);
 
     // Check what instant-speed effects we have available
     const instantSpeedResponses = context.availableResponses.filter(
@@ -890,9 +884,9 @@ export class StackInteractionAI {
    * Check if we should hold priority
    */
   private shouldHoldPriority(
-    response: AvailableResponse,
+    _response: AvailableResponse,
     context: StackContext,
-    currentEvaluation: DetailedEvaluation
+    _currentEvaluation: DetailedEvaluation
   ): boolean {
     // Hold priority if we might want to add more to the stack
     const hasOtherResponses = context.availableResponses.length > 1;
@@ -949,7 +943,7 @@ export class StackInteractionAI {
   /**
    * Find a permanent by ID
    */
-  private findPermanent(permanentId: string): any {
+  private findPermanent(permanentId: string): { id: string; controller: string; type: string; power?: number; keywords?: string[] } | null {
     for (const player of Object.values(this.gameState.players)) {
       const permanent = player.battlefield.find((p) => p.id === permanentId);
       if (permanent) return permanent;
@@ -960,7 +954,7 @@ export class StackInteractionAI {
   /**
    * Get permanent importance (0-1)
    */
-  private getPermanentImportance(permanent: any): number {
+  private getPermanentImportance(permanent: { type: string; power?: number; keywords?: string[] }): number {
     let importance = 0.5;
 
     if (permanent.type === 'planeswalker') importance += 0.3;
@@ -1123,7 +1117,7 @@ export class StackInteractionAI {
    */
   private evaluateOrderingValue(
     ordering: AvailableResponse[],
-    context: StackContext
+    _context: StackContext
   ): number {
     let totalValue = 0;
     let position = 0;
@@ -1142,7 +1136,7 @@ export class StackInteractionAI {
    */
   private shouldHoldForEndStep(
     context: StackContext,
-    currentEvaluation: DetailedEvaluation
+    _currentEvaluation: DetailedEvaluation
   ): boolean {
     // Hold for end step if we have good instant-speed effects
     const goodInstants = context.availableResponses.filter(
@@ -1157,7 +1151,7 @@ export class StackInteractionAI {
    */
   private shouldHoldForOpponentTurn(
     context: StackContext,
-    currentEvaluation: DetailedEvaluation
+    _currentEvaluation: DetailedEvaluation
   ): boolean {
     // Always hold some interaction for opponent's turn if we can
     const hasInteraction = context.availableResponses.some(
@@ -1187,7 +1181,7 @@ export class StackInteractionAI {
    */
   private findBestInstantResponse(
     instants: AvailableResponse[],
-    context: StackContext
+    _context: StackContext
   ): AvailableResponse | null {
     if (instants.length === 0) return null;
 

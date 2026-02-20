@@ -15,7 +15,7 @@
 import { ai } from '@/ai/genkit';
 import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
-import { validateCardLegality, importDecklist } from '@/app/actions';
+import { importDecklist } from '@/app/actions';
 
 const MetaAnalysisInputSchema = z.object({
   decklist: z
@@ -142,8 +142,7 @@ const metaAnalysisFlow = ai.defineFlow(
       attempts++;
       
       // Get fresh model string for each attempt (allows runtime switching)
-      const model = getModelString();
-      
+      // Note: model string is configured at prompt definition time
       const { output } = await metaAnalysisPrompt({
         ...input,
         retryContext: lastError || undefined,
@@ -177,7 +176,7 @@ const metaAnalysisFlow = ai.defineFlow(
         const cardsToRemove = output.cardSuggestions.cardsToRemove || [];
 
         // Validate card suggestion structure
-        const validCardSuggestion = (c: any): boolean => 
+        const validCardSuggestion = (c: { name?: string; quantity?: number; reason?: string }): boolean => 
           c && typeof c === 'object' && 
           typeof c.name === 'string' && c.name.trim() !== '' && 
           typeof c.quantity === 'number' && c.quantity > 0 &&
@@ -219,7 +218,7 @@ const metaAnalysisFlow = ai.defineFlow(
         if (!Array.isArray(output.sideboardSuggestions)) {
           validationErrors.push('sideboardSuggestions must be an array.');
         } else {
-          const validSideboard = output.sideboardSuggestions.filter((c: any) => 
+          const validSideboard = output.sideboardSuggestions.filter((c: { name?: string; quantity?: number; reason?: string }) => 
             c && typeof c === 'object' && 
             typeof c.name === 'string' && c.name.trim() !== '' && 
             typeof c.quantity === 'number' && c.quantity > 0 &&
