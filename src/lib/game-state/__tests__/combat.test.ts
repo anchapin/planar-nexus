@@ -779,7 +779,7 @@ describe('Combat System - Edge Cases', () => {
 describe('Combat System - Utility Functions', () => {
   describe('getAvailableAttackers', () => {
     it('should return all creatures that can attack', () => {
-      const { state, aliceId, bobId } = setupGameWithCreatures(
+      const { state, aliceId } = setupGameWithCreatures(
         [
           { name: 'Can Attack', power: 2, toughness: 2 },
           { name: 'Tapped', power: 2, toughness: 2 },

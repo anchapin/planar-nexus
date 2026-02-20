@@ -55,29 +55,6 @@ function createMockCreature(
   } as ScryfallCard;
 }
 
-// Helper function to create a mock artifact creature
-function createMockArtifactCreature(
-  name: string,
-  power: number,
-  toughness: number
-): ScryfallCard {
-  return {
-    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
-    name,
-    type_line: 'Artifact Creature — Construct',
-    power: power.toString(),
-    toughness: toughness.toString(),
-    keywords: [],
-    oracle_text: '',
-    mana_cost: '{4}',
-    cmc: 4,
-    colors: [],
-    color_identity: [],
-    card_faces: undefined,
-    layout: 'normal',
-  } as ScryfallCard;
-}
-
 describe('Layer System', () => {
   let layerSystem: LayerSystem;
 
@@ -92,7 +69,7 @@ describe('Layer System', () => {
   describe('Layer Ordering', () => {
     it('should apply effects in correct layer order', () => {
       const creatureData = createMockCreature('Test Creature', 3, 3);
-      const creature = createCardInstance(creatureData, 'player1', 'player1');
+      const _creature = createCardInstance(creatureData, 'player1', 'player1');
 
       // Register effects in reverse order to test sorting
       const ptEffect = createPowerToughnessModifyEffect(
@@ -155,7 +132,7 @@ describe('Layer System', () => {
 
     it('should apply Layer 7 effects in correct sublayer order', () => {
       const creatureData = createMockCreature('Test Creature', 3, 3);
-      const creature = createCardInstance(creatureData, 'player1', 'player1');
+      const _creature = createCardInstance(creatureData, 'player1', 'player1');
 
       // Register effects in reverse sublayer order
       const modifyEffect = createPowerToughnessModifyEffect(
@@ -205,7 +182,7 @@ describe('Layer System', () => {
   describe('Timestamp Ordering', () => {
     it('should apply effects with earlier timestamp first within same layer', () => {
       const creatureData = createMockCreature('Test Creature', 3, 3);
-      const creature = createCardInstance(creatureData, 'player1', 'player1');
+      const _creature = createCardInstance(creatureData, 'player1', 'player1');
 
       // Create effects with different timestamps
       const earlierEffect = createPowerToughnessModifyEffect(
@@ -517,7 +494,7 @@ describe('Layer System', () => {
         );
 
         layerSystem.registerEffect(setEffect);
-        const result = layerSystem.applyEffects(creature);
+        layerSystem.applyEffects(creature);
 
         const characteristics = layerSystem.getEffectiveCharacteristics(creature);
         expect(characteristics.power).toBe(0);
@@ -855,7 +832,7 @@ describe('Layer System', () => {
   describe('Dependency Handling', () => {
     it('should respect effect dependencies', () => {
       const creatureData = createMockCreature('Test Creature', 3, 3);
-      const creature = createCardInstance(creatureData, 'player1', 'player1');
+      const _creature = createCardInstance(creatureData, 'player1', 'player1');
 
       const effectA = createPowerToughnessModifyEffect(
         'sourceA',
@@ -896,7 +873,7 @@ describe('Layer System', () => {
   describe('Effect Removal', () => {
     it('should remove effects from a source', () => {
       const creatureData = createMockCreature('Test Creature', 3, 3);
-      const creature = createCardInstance(creatureData, 'player1', 'player1');
+      const _creature = createCardInstance(creatureData, 'player1', 'player1');
 
       const effect1 = createPowerToughnessModifyEffect(
         'source1',

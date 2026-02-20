@@ -12,24 +12,14 @@ import {
 } from '../state-based-actions';
 import {
   createInitialGameState,
-  loadDeckForPlayer,
   startGame,
-  drawCard,
   dealDamageToPlayer,
-  gainLife,
 } from '../game-state';
 import {
   createCardInstance,
-  markDamage,
-  addCounters,
-  removeCounters,
-  isCreature,
-  isPlaneswalker,
-  getToughness,
-  hasLethalDamage,
   initializePlaneswalkerLoyalty,
 } from '../card-instance';
-import { dealDamageToCard, destroyCard, exileCard } from '../keyword-actions';
+import { dealDamageToCard } from '../keyword-actions';
 import type { ScryfallCard } from '@/app/actions';
 
 // Helper function to create a mock creature card
