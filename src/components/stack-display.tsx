@@ -4,7 +4,6 @@ import * as React from "react";
 import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Layers,
@@ -194,7 +193,7 @@ const StackItemDisplay = memo(function StackItemDisplay({
 export const StackDisplay = memo(function StackDisplay({
   stack,
   players,
-  priorityPlayerId,
+  priorityPlayerId: _priorityPlayerId,
   expanded = false,
   onStackItemClick,
   onToggleExpand,
