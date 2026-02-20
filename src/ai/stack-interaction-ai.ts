@@ -780,6 +780,12 @@ export class StackInteractionAI {
     if (factors.hasBackup) confidence += 0.1;
     if (factors.winConditionDisruption > 0.5) confidence += 0.1;
 
+    // High confidence for lethal threats - preventing game loss is critical
+    if (factors.lifeImpact > 0.5) confidence += 0.3;
+
+    // Extra confidence for high threat level (which includes targeting us with low life)
+    if (factors.threatLevel > 0.5) confidence += 0.15;
+
     return Math.min(1, confidence);
   }
 
@@ -1000,12 +1006,32 @@ export class StackInteractionAI {
   private calculateCounterspellLifeImpact(context: StackContext): number {
     const action = context.currentAction;
     const lowerName = action.name.toLowerCase();
+    const player = this.gameState.players[this.playerId];
 
-    // Preventing damage to ourselves
-    if (action.targets?.some((t) => t.playerId === this.playerId)) {
-      if (lowerName.includes('damage') || lowerName.includes('destroy')) {
-        return 0.5;
+    // Check if this action targets us
+    const targetsUs = action.targets?.some((t) => t.playerId === this.playerId);
+    
+    if (!targetsUs) {
+      return 0;
+    }
+
+    // Preventing damage to ourselves - check for common damage spell patterns
+    const isDamageSpell = 
+      lowerName.includes('damage') || 
+      lowerName.includes('destroy') ||
+      lowerName.includes('bolt') ||
+      lowerName.includes('shock') ||
+      lowerName.includes('strike') ||
+      lowerName.includes('blast') ||
+      lowerName.includes('burn') ||
+      action.colors?.includes('red'); // Red spells often deal damage
+
+    if (isDamageSpell) {
+      // Higher impact if we're at low life (lethal threat)
+      if (player && player.life <= 5) {
+        return 1.0; // Lethal threat
       }
+      return 0.5;
     }
 
     return 0;
@@ -1153,12 +1179,14 @@ export class StackInteractionAI {
     context: StackContext,
     _currentEvaluation: DetailedEvaluation
   ): boolean {
-    // Always hold some interaction for opponent's turn if we can
+    // Hold interaction for opponent's turn when it's our turn
+    // (after we pass, it becomes opponent's turn)
     const hasInteraction = context.availableResponses.some(
       (r) => r.type === 'instant' || r.type === 'flash'
     );
 
-    return hasInteraction && !context.isMyTurn;
+    // Hold for opponent's turn when it's currently our turn and we have opponents remaining
+    return hasInteraction && context.isMyTurn && context.opponentsRemaining.length > 0;
   }
 
   /**
