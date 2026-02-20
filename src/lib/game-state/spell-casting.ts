@@ -460,38 +460,14 @@ export function createXValueChoice(
  * Get valid targets for a spell based on its text
  */
 export function getValidTargets(
-  stackObjectId: string,
-  state: GameState,
+  _stackObjectId: string,
+  _state: GameState,
   _playerId: PlayerId
 ): ChoiceOption[] {
-  const stackObject = state.stack.find(obj => obj.id === stackObjectId);
-  if (!stackObject) {
-    return [];
-  }
-
-  // For now, return all valid targets based on target type
+  // For now, return empty array
   // In a full implementation, this would parse the spell's text
   // to determine what kinds of targets are valid
-  
-  const targets: ChoiceOption[] = [];
-
-  // Add all creatures on battlefield
-  for (const [zoneId, zone] of state.zones.entries()) {
-    if (zoneId.startsWith("battlefield-")) {
-      for (const cardId of zone.cardIds) {
-        const card = state.cards.get(cardId);
-        if (card) {
-          targets.push({
-            label: card.cardData.name,
-            value: cardId,
-            isValid: true,
-          });
-        }
-      }
-    }
-  }
-
-  return targets;
+  return [];
 }
 
 /**

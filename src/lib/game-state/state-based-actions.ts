@@ -278,7 +278,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     nameGroups.set(name, existing);
   }
 
-  for (const [_name, cardIds] of nameGroups) {
+  for (const cardIds of nameGroups.values()) {
     if (cardIds.length > 1) {
       // Keep the first one, destroy the rest
       for (let i = 1; i < cardIds.length; i++) {
@@ -307,7 +307,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     worldNameGroups.set(name, existing);
   }
 
-  for (const [_name, cards] of worldNameGroups) {
+  for (const cards of worldNameGroups.values()) {
     if (cards.length > 1) {
       // Sort by timestamp and keep the newest
       cards.sort((a, b) => b.timestamp - a.timestamp);
@@ -349,7 +349,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     pwTypeGroups.set(pwType, existing);
   }
 
-  for (const [_pwType, cardIds] of pwTypeGroups) {
+  for (const cardIds of pwTypeGroups.values()) {
     if (cardIds.length > 1) {
       // Keep the first one, destroy the rest
       for (let i = 1; i < cardIds.length; i++) {

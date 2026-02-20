@@ -702,18 +702,6 @@ function parseEffect(effectString: string): { effectType: string; targets: Parse
 export function parseTriggeredAbilities(oracleText: string): ParsedTriggeredAbility[] {
   const abilities: ParsedTriggeredAbility[] = [];
   
-  // Common triggered ability patterns
-  const triggerPatterns = [
-    // "When X..."
-    { pattern: /\bwhen\s+([^,]+),?\s*(.+)/gi, triggerEvent: "entersBattlefield" },
-    // "Whenever X..."
-    { pattern: /\bwhenever\s+([^,]+),?\s*(.+)/gi, triggerEvent: "entersBattlefield" },
-    // "At the beginning of..."
-    { pattern: /\bat\s+the\s+beginning\s+of\s+([^,]+),?\s*(.+)/gi, triggerEvent: "phaseEnds" },
-    // "At the end of..."
-    { pattern: /\bat\s+the\s+end\s+of\s+([^,]+),?\s*(.+)/gi, triggerEvent: "phaseEnds" },
-  ];
-  
   // Split by periods and newlines
   const sentences = oracleText.split(/\.\s*/);
   

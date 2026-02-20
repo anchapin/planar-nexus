@@ -203,10 +203,10 @@ export class ReplacementEffectManager {
     return amount - remaining;
   }
 
-  processEvent(event: ReplacementEvent, apnapOrder?: APNAPOrder, _gameState?: GameState): ReplacementEvent {
+  processEvent(event: ReplacementEvent, apnapOrder?: APNAPOrder): ReplacementEvent {
     let currentEvent = { ...event };
     const appliedEffectIds = new Set<string>();
-    let possibleEffects = this.getApplicableEffects(currentEvent, _gameState);
+    let possibleEffects = this.getApplicableEffects(currentEvent);
 
     while (possibleEffects.length > 0) {
       const effectToApply = this.chooseBestEffect(possibleEffects, currentEvent, apnapOrder);
@@ -221,7 +221,7 @@ export class ReplacementEffectManager {
           break;
         }
       }
-      possibleEffects = this.getApplicableEffects(currentEvent, _gameState)
+      possibleEffects = this.getApplicableEffects(currentEvent)
         .filter(e => !appliedEffectIds.has(e.id));
     }
 
@@ -232,7 +232,7 @@ export class ReplacementEffectManager {
     return currentEvent;
   }
 
-  private getApplicableEffects(event: ReplacementEvent, gameState?: GameState): ReplacementAbility[] {
+  private getApplicableEffects(event: ReplacementEvent): ReplacementAbility[] {
     return this.effects.filter(e => {
       const typeMatches = this.effectTypeMatches(e.effectType, event.type);
       return typeMatches && e.canApply(event);
