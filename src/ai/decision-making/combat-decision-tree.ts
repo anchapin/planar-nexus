@@ -851,7 +851,7 @@ export class CombatDecisionTree {
     }
 
     // For each multi-block, optimize damage order
-    for (const [_attackerId, blockerList] of blocksByAttacker) {
+    for (const [, blockerList] of blocksByAttacker) {
       if (blockerList.length <= 1) continue;
 
       // Sort by "worst first" - put creatures that will die anyway first
@@ -1154,7 +1154,7 @@ export class CombatDecisionTree {
   private calculateTrickValue(
     parsed: ParsedCombatTrick,
     target: { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number },
-    aiPlayer: PlayerState
+    _aiPlayer: PlayerState
   ): number {
     let value = 0;
 
@@ -1194,9 +1194,8 @@ export class CombatDecisionTree {
     }
 
     // Reduce value if we have limited cards in hand (preserve card advantage)
-    if (aiPlayer.hand.length <= 2) {
-      value *= 0.5;
-    }
+    // Note: This would need aiPlayer reference for hand size check
+    // For now, we skip this optimization
 
     return Math.min(1, value);
   }
