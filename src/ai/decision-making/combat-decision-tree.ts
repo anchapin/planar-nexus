@@ -308,7 +308,7 @@ export class CombatDecisionTree {
    * Determine overall combat strategy based on game state
    */
   private determineCombatStrategy(
-    aiPlayer: PlayerState,
+    _aiPlayer: PlayerState,
     opponents: PlayerState[]
   ): 'aggressive' | 'moderate' | 'defensive' {
     const minOpponentLife = Math.min(...opponents.map((o) => o.life));
@@ -912,7 +912,7 @@ export class CombatDecisionTree {
    * Now implemented with access to card data
    */
   private evaluateCombatTricks(
-    aiPlayer: PlayerState,
+    _aiPlayer: PlayerState,
     attacks: AttackDecision[]
   ): CombatTrick[] {
     const tricks: CombatTrick[] = [];
@@ -967,7 +967,7 @@ export class CombatDecisionTree {
   private analyzeCombatTrick(
     card: HandCard,
     attacks: AttackDecision[],
-    aiPlayer: PlayerState
+    _aiPlayer: PlayerState
   ): CombatTrick | null {
     // Parse the card to understand its effect
     const parsed = this.parseCombatTrick(card);
@@ -1084,7 +1084,7 @@ export class CombatDecisionTree {
   private findTrickTargets(
     parsed: ParsedCombatTrick,
     attacks: AttackDecision[],
-    aiPlayer: PlayerState
+    _aiPlayer: PlayerState
   ): { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number } | null {
     // For destroy/exile effects, find valuable targets
     if (parsed.destroyTarget || parsed.exileTarget) {
@@ -1154,7 +1154,7 @@ export class CombatDecisionTree {
   private calculateTrickValue(
     parsed: ParsedCombatTrick,
     target: { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number },
-    _aiPlayer: PlayerState
+    __aiPlayer: PlayerState
   ): number {
     let value = 0;
 

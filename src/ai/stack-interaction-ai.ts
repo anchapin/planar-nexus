@@ -1016,7 +1016,7 @@ export class StackInteractionAI {
    */
   private calculateWinConditionDisruption(
     context: StackContext,
-    currentEvaluation: DetailedEvaluation
+    _currentEvaluation: DetailedEvaluation
   ): number {
     const action = context.currentAction;
 
@@ -1062,7 +1062,7 @@ export class StackInteractionAI {
   /**
    * Check if opponent likely has a counterspell
    */
-  private likelyOpponentCounterspell(context: StackContext): boolean {
+  private likelyOpponentCounterspell(_context: StackContext): boolean {
     const opponents = Object.values(this.gameState.players).filter(
       (p) => p.id !== this.playerId
     );
