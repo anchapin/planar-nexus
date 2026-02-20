@@ -9,7 +9,6 @@ import {
   checkStateBasedActions,
   canDraw,
   drawWithSBAChecking,
-  type StateBasedActionResult,
 } from '../state-based-actions';
 import {
   createInitialGameState,

@@ -23,7 +23,6 @@ import {
 import {
   createInitialGameState,
   startGame,
-  loadDeckForPlayer,
 } from '../game-state';
 import { createCardInstance } from '../card-instance';
 import { Phase } from '../types';
@@ -811,7 +810,7 @@ describe('Combat System - Utility Functions', () => {
 
   describe('getAvailableBlockers', () => {
     it('should return all creatures that can block', () => {
-      const { state, aliceId, bobId } = setupGameWithCreatures(
+      const { state, bobId } = setupGameWithCreatures(
         [],
         [
           { name: 'Can Block', power: 2, toughness: 2 },

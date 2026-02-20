@@ -9,7 +9,6 @@ import {
   LayerSystem,
   Layer,
   PowerToughnessSublayer,
-  ContinuousEffect,
   createCopyEffect,
   createControlChangeEffect,
   createTextChangeEffect,
@@ -26,7 +25,6 @@ import {
   createPowerModifyEffect,
   createToughnessModifyEffect,
   createCounterEffect,
-  CharacteristicDefiningAbility,
   getLayerSystemInstance,
 } from '../layer-system';
 import { createCardInstance } from '../card-instance';
