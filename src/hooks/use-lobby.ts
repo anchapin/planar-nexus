@@ -6,11 +6,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, TeamId, Team, TeamSettings } from '@/lib/multiplayer-types';
+import { GameLobby, Player, HostGameConfig, PlayerStatus, TeamId, Team, TeamSettings } from '@/lib/multiplayer-types';
 import { lobbyManager } from '@/lib/lobby-manager';
 import { formatGameCode } from '@/lib/game-code-generator';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import { getGameModeConfig } from '@/lib/game-mode';
+import type { SavedDeck } from '@/app/actions';
 
 export interface UseLobbyReturn {
   lobby: GameLobby | null;
@@ -21,14 +22,14 @@ export interface UseLobbyReturn {
   addPlayer: (playerName: string) => Player | null;
   removePlayer: (playerId: string) => boolean;
   updatePlayerStatus: (playerId: string, status: PlayerStatus) => boolean;
-  updatePlayerDeck: (playerId: string, deckId: string, deckName: string, deck?: any) => { success: boolean; isValid: boolean; errors: string[] };
+  updatePlayerDeck: (playerId: string, deckId: string, deckName: string, deck?: SavedDeck) => { success: boolean; isValid: boolean; errors: string[] };
   canStartGame: boolean;
   canForceStart: boolean;
   startGame: () => boolean;
   forceStartGame: () => boolean;
   closeLobby: () => void;
   getGameCode: () => string;
-  validateDeckForFormat: (deck: any) => { isValid: boolean; errors: string[] };
+  validateDeckForFormat: (deck: SavedDeck) => { isValid: boolean; errors: string[] };
   // Team management
   isTeamMode: boolean;
   assignPlayerToTeam: (playerId: string, teamId: TeamId) => boolean;
@@ -96,7 +97,7 @@ export function useLobby(): UseLobbyReturn {
     return success;
   }, []);
 
-  const updatePlayerDeck = useCallback((playerId: string, deckId: string, deckName: string, deck?: any) => {
+  const updatePlayerDeck = useCallback((playerId: string, deckId: string, deckName: string, deck?: SavedDeck) => {
     const result = lobbyManager.updatePlayerDeck(playerId, deckId, deckName, deck);
     if (result.success) {
       setLobby(lobbyManager.getCurrentLobby());
@@ -142,7 +143,7 @@ export function useLobby(): UseLobbyReturn {
     return lobby ? formatGameCode(lobby.gameCode) : '';
   }, [lobby]);
 
-  const validateDeckForFormat = useCallback((deck: any) => {
+  const validateDeckForFormat = useCallback((deck: SavedDeck) => {
     if (!lobby) return { isValid: false, errors: ['No lobby found'] };
 
     const validation = validateDeckForLobby(deck, lobby.format);

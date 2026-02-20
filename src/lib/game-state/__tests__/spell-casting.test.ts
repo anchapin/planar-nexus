@@ -25,7 +25,7 @@ import {
   createInitialGameState,
   startGame,
 } from '../game-state';
-import { createCardInstance, addCounters } from '../card-instance';
+import { createCardInstance } from '../card-instance';
 import { Phase } from '../types';
 import { addMana } from '../mana';
 import type { ScryfallCard } from '@/app/actions';
@@ -170,7 +170,20 @@ describe('Spell Casting - Timing Restrictions', () => {
       state.turn.currentPhase = Phase.PRECOMBAT_MAIN;
       state.turn.activePlayerId = aliceId;
       state.priorityPlayerId = aliceId;
-      state.stack = [{ id: 'other-spell', type: 'spell' }] as any;
+      state.stack = [{ 
+        id: 'other-spell', 
+        type: 'spell',
+        sourceCardId: null,
+        controllerId: aliceId,
+        name: 'Other Spell',
+        text: '',
+        manaCost: null,
+        targets: [],
+        chosenModes: [],
+        variableValues: new Map(),
+        isCountered: false,
+        timestamp: Date.now(),
+      }] as StackObject[];
 
       const result = canCastSpell(state, aliceId, cardId);
       expect(result.canCast).toBe(false);
@@ -196,7 +209,20 @@ describe('Spell Casting - Timing Restrictions', () => {
       state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
       state.turn.activePlayerId = aliceId;
       state.priorityPlayerId = aliceId;
-      state.stack = [{ id: 'other-spell', type: 'spell' }] as any;
+      state.stack = [{ 
+        id: 'other-spell', 
+        type: 'spell',
+        sourceCardId: null,
+        controllerId: aliceId,
+        name: 'Other Spell',
+        text: '',
+        manaCost: null,
+        targets: [],
+        chosenModes: [],
+        variableValues: new Map(),
+        isCountered: false,
+        timestamp: Date.now(),
+      }] as StackObject[];
 
       const result = canCastSpell(state, aliceId, cardId);
       expect(result.canCast).toBe(true);
