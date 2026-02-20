@@ -60,7 +60,7 @@ function Calendar({
         IconRight: ({ className }: { className?: string }) => (
           <ChevronRight className={cn("h-4 w-4", className)} />
         ),
-      } as any}
+      }}
       {...props}
     />
   )
