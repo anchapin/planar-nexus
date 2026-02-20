@@ -13,6 +13,84 @@
 import type { Replay } from './game-state/replay';
 
 const REPLAY_PARAM = 'replay';
+
+/**
+ * Minified replay structure for URL encoding
+ */
+interface MinifiedReplay {
+  i: string;
+  m: {
+    f: string;
+    p: string[];
+    s: number;
+    c: boolean;
+    w?: string[];
+    sd?: string;
+    ed?: string;
+    er?: string;
+  };
+  a: MinifiedAction[];
+  cp: number;
+  ta: number;
+  ca: string;
+  lma: string;
+}
+
+interface MinifiedAction {
+  s: number;
+  t: string;
+  pid: string;
+  d?: Record<string, unknown>;
+  rs: MinifiedGameState;
+  desc: string;
+  ra: string;
+}
+
+interface MinifiedGameState {
+  t: {
+    tn?: number;
+    cp?: string;
+    ap?: string;
+    pp?: string;
+  };
+  p: Array<{
+    id: string;
+    n: string;
+    l: number;
+    h: number;
+  }>;
+  z: {
+    bf: number;
+    g: number;
+    l: number;
+  };
+  s?: string;
+  w?: string[];
+  er?: string;
+}
+
+interface GameStateForMinify {
+  turn?: {
+    turnNumber?: number;
+    currentPhase?: string;
+    activePlayerId?: string;
+    priorityPlayerId?: string;
+  };
+  players?: Map<string, {
+    id: string;
+    name: string;
+    life: number;
+    hand?: unknown[];
+  }>;
+  zones?: {
+    battlefield?: unknown[];
+    graveyard?: unknown[];
+    library?: unknown[];
+  };
+  status?: string;
+  winners?: string[];
+  endReason?: string;
+}
 const MAX_URL_LENGTH = 8000; // Safe limit for most browsers
 
 /**
@@ -171,7 +249,7 @@ export async function importReplayFromURL(replayId: string, serverURL: string): 
 /**
  * Minify replay data to reduce size for URL encoding
  */
-function minifyReplay(replay: Replay): object {
+function minifyReplay(replay: Replay): MinifiedReplay {
   return {
     i: replay.id,
     m: {
@@ -203,7 +281,7 @@ function minifyReplay(replay: Replay): object {
 /**
  * Minimize game state to reduce size
  */
-function minifyGameState(state: any): object {
+function minifyGameState(state: GameStateForMinify): MinifiedGameState {
   return {
     t: {
       tn: state.turn?.turnNumber,
@@ -211,7 +289,7 @@ function minifyGameState(state: any): object {
       ap: state.turn?.activePlayerId,
       pp: state.turn?.priorityPlayerId,
     },
-    p: Array.from(state.players?.values() || []).map((player: any) => ({
+    p: Array.from(state.players?.values() || []).map((player) => ({
       id: player.id,
       n: player.name,
       l: player.life,
@@ -231,8 +309,8 @@ function minifyGameState(state: any): object {
 /**
  * Expand minified replay back to full format
  */
-function expandReplay(minified: any): Replay {
-  const actions = minified.a.map((action: any) => ({
+function expandReplay(minified: MinifiedReplay): Replay {
+  const actions = minified.a.map((action: MinifiedAction) => ({
     sequenceNumber: action.s,
     action: {
       type: action.t,
@@ -268,7 +346,7 @@ function expandReplay(minified: any): Replay {
 /**
  * Expand minimized game state back to full format
  */
-function expandGameState(minified: any): any {
+function expandGameState(minified: MinifiedGameState): GameStateForMinify {
   return {
     turn: {
       turnNumber: minified.t?.tn || 1,
@@ -276,7 +354,7 @@ function expandGameState(minified: any): any {
       activePlayerId: minified.t?.ap,
       priorityPlayerId: minified.t?.pp,
     },
-    players: new Map(minified.p?.map((p: any) => [p.id, {
+    players: new Map(minified.p?.map((p) => [p.id, {
       id: p.id,
       name: p.n,
       life: p.l,

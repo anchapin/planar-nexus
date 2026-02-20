@@ -503,7 +503,7 @@ export class WebRTCConnection {
 
       const underlyingError =
         (event as ErrorEvent).error ??
-        (event as any)?.error;
+        (event as { error?: Error })?.error;
 
       if (underlyingError instanceof Error) {
         errorToReport = underlyingError;
