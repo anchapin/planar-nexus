@@ -276,7 +276,7 @@ export function TradeDialog({
           <div className="flex-1 overflow-hidden flex flex-col">
             {/* Status bar */}
             <div className="flex items-center justify-between mb-4">
-              <Badge variant={getStatusBadge(currentTrade.status) as any}>
+              <Badge variant={getStatusBadge(currentTrade.status) as "secondary" | "default" | "destructive" | "outline" | null}>
                 {currentTrade.status.charAt(0).toUpperCase() + currentTrade.status.slice(1)}
               </Badge>
               {fairness && (
