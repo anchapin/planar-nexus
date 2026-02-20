@@ -15,8 +15,8 @@ import {
   createDrawReplacementEffect,
   createDestroyReplacementEffect,
   createAsThoughEffect,
-  AsThoughType,
 } from '../replacement-effects';
+import type { GameState } from '../types';
 
 describe('ReplacementEffectManager - APNAP Ordering', () => {
   beforeEach(() => {
@@ -205,7 +205,7 @@ describe('ReplacementEffectManager - As Though Effects', () => {
   });
 
   test('should register and check as though effects', () => {
-    const mockGameState = { players: new Map() };
+    const mockGameState = { players: new Map() } as GameState;
     
     const flashEffect = createAsThoughEffect(
       'veiled-source',
@@ -216,13 +216,13 @@ describe('ReplacementEffectManager - As Though Effects', () => {
 
     replacementEffectManager.registerAsThoughEffect(flashEffect);
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState as any)).toBe(true);
-    expect(replacementEffectManager.checkAsThoughEffect('player2', 'cast_flash', mockGameState as any)).toBe(false);
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'attack_haste', mockGameState as any)).toBe(false);
+    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState)).toBe(true);
+    expect(replacementEffectManager.checkAsThoughEffect('player2', 'cast_flash', mockGameState)).toBe(false);
+    expect(replacementEffectManager.checkAsThoughEffect('player1', 'attack_haste', mockGameState)).toBe(false);
   });
 
   test('should handle conditional as though effects', () => {
-    const mockGameState = { players: new Map() };
+    const mockGameState = { players: new Map() } as GameState;
     
     // Effect that only applies when player has 10+ life
     const conditionalEffect = createAsThoughEffect(
@@ -230,7 +230,7 @@ describe('ReplacementEffectManager - As Though Effects', () => {
       'player1',
       'attack_haste',
       'Creatures can attack as though they had haste if you have 10+ life',
-      (state, playerId) => {
+      (_state, _playerId) => {
         // Simplified condition check
         return true;
       }
@@ -238,11 +238,11 @@ describe('ReplacementEffectManager - As Though Effects', () => {
 
     replacementEffectManager.registerAsThoughEffect(conditionalEffect);
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'attack_haste', mockGameState as any)).toBe(true);
+    expect(replacementEffectManager.checkAsThoughEffect('player1', 'attack_haste', mockGameState)).toBe(true);
   });
 
   test('should get all as though effects for a player', () => {
-    const mockGameState = { players: new Map() };
+    const mockGameState = { players: new Map() } as GameState;
     
     replacementEffectManager.registerAsThoughEffect(
       createAsThoughEffect('source1', 'player1', 'cast_flash', 'Flash effect')
@@ -254,28 +254,28 @@ describe('ReplacementEffectManager - As Though Effects', () => {
       createAsThoughEffect('source3', 'player2', 'block_flying', 'Flying block effect')
     );
 
-    const p1Effects = replacementEffectManager.getAsThoughEffects('player1', mockGameState as any);
+    const p1Effects = replacementEffectManager.getAsThoughEffects('player1', mockGameState);
     expect(p1Effects).toHaveLength(2);
     expect(p1Effects.map(e => e.asThoughType)).toContain('cast_flash');
     expect(p1Effects.map(e => e.asThoughType)).toContain('attack_haste');
 
-    const p2Effects = replacementEffectManager.getAsThoughEffects('player2', mockGameState as any);
+    const p2Effects = replacementEffectManager.getAsThoughEffects('player2', mockGameState);
     expect(p2Effects).toHaveLength(1);
     expect(p2Effects[0].asThoughType).toBe('block_flying');
   });
 
   test('should remove as though effects when source leaves battlefield', () => {
-    const mockGameState = { players: new Map() };
+    const mockGameState = { players: new Map() } as GameState;
     
     replacementEffectManager.registerAsThoughEffect(
       createAsThoughEffect('temporary-source', 'player1', 'cast_flash', 'Temporary flash')
     );
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState as any)).toBe(true);
+    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState)).toBe(true);
 
     replacementEffectManager.removeEffectsFromSource('temporary-source');
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState as any)).toBe(false);
+    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState)).toBe(false);
   });
 });
 

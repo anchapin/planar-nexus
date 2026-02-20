@@ -34,7 +34,7 @@ import {
 import { createCardInstance } from '../card-instance';
 import { Phase } from '../types';
 import type { ScryfallCard } from '@/app/actions';
-import type { ManaPool } from '../types';
+import type { ManaPool, StackObject } from '../types';
 
 // Helper function to create a mock land card
 function createMockLand(name: string): ScryfallCard {
@@ -339,7 +339,20 @@ describe('Land Playing', () => {
       
       state.turn.currentPhase = Phase.PRECOMBAT_MAIN;
       state.priorityPlayerId = playerId;
-      state.stack = [{ id: 'test-spell', type: 'spell' }] as any;
+      state.stack = [{ 
+        id: 'test-spell', 
+        type: 'spell',
+        sourceCardId: null,
+        controllerId: playerId,
+        name: 'Test Spell',
+        text: '',
+        manaCost: null,
+        targets: [],
+        chosenModes: [],
+        variableValues: new Map(),
+        isCountered: false,
+        timestamp: Date.now(),
+      }] as StackObject[];
       
       expect(canPlayLand(state, playerId)).toBe(false);
     });
