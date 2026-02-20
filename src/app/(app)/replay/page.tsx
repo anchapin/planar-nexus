@@ -1,9 +1,17 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState } from 'react';
 import { getReplayFromCurrentURL } from '@/lib/replay-sharing';
-import { replaySystem, type Replay } from '@/lib/game-state/replay';
+import { type Replay } from '@/lib/game-state/replay';
 import Link from 'next/link';
+
+// Type for player state in replay
+interface ReplayPlayerState {
+  id: string;
+  name: string;
+  life: number;
+  hand?: unknown[];
+}
 
 /**
  * Replay Viewer Page
@@ -166,7 +174,7 @@ export default function ReplayPage() {
           {/* Game state summary */}
           {currentAction?.resultingState && (
             <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-              {Array.from(currentAction.resultingState.players?.values() || []).map((player: any) => (
+              {Array.from(currentAction.resultingState.players?.values() || []).map((player: ReplayPlayerState) => (
                 <div key={player.id} className="bg-slate-700 p-3 rounded">
                   <div className="font-bold">{player.name}</div>
                   <div className="text-slate-400">
