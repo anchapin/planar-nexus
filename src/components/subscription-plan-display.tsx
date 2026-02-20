@@ -13,7 +13,6 @@ import { Check, X, Loader2, Crown, Users, Building, Sparkles, RefreshCw } from "
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import type { AIProvider, SubscriptionPlan, SubscriptionTier } from "@/ai/providers/types";
@@ -331,7 +330,6 @@ interface SubscriptionPlanDisplayProps {
 export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDisplayProps) {
   const [isDetectingAll, setIsDetectingAll] = useState(false);
   const [detection, setDetection] = useState<SubscriptionDetection | null>(null);
-  const [detectedPlans, setDetectedPlans] = useState<Map<AIProvider, SubscriptionPlan | null>>(new Map());
 
   const providers: AIProvider[] = ["google", "openai", "anthropic", "zaic"];
 
@@ -345,16 +343,6 @@ export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDispl
       setIsDetectingAll(false);
     }
   }
-
-  function handleSubscriptionDetected(provider: AIProvider, plan: SubscriptionPlan | null) {
-    setDetectedPlans(prev => {
-      const next = new Map(prev);
-      next.set(provider, plan);
-      return next;
-    });
-  }
-
-  const totalDetected = Array.from(detectedPlans.values()).filter(Boolean).length;
 
   return (
     <div className="space-y-6">
@@ -398,7 +386,6 @@ export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDispl
           <SubscriptionPlanCard
             key={provider}
             provider={provider}
-            onSubscriptionDetected={(plan) => handleSubscriptionDetected(provider, plan)}
           />
         ))}
       </div>

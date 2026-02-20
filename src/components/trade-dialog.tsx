@@ -111,7 +111,7 @@ export function TradeDialog({
   onOpenChange,
   trading,
   myCollection = [],
-  otherCollection = [],
+  otherCollection: _otherCollection = [],
   recipientId,
   recipientName,
 }: TradeDialogProps) {
