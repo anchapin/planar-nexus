@@ -175,7 +175,19 @@ export function useGameSounds(options: UseGameSoundsOptions = {}): UseGameSounds
     return () => {
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
-      stopBackgroundMusic();
+      // Stop any playing music on unmount
+      if (musicIntervalRef.current) {
+        clearInterval(musicIntervalRef.current);
+        musicIntervalRef.current = null;
+      }
+      musicOscillatorsRef.current.forEach(osc => {
+        try {
+          osc.stop();
+        } catch {
+          // Already stopped
+        }
+      });
+      musicOscillatorsRef.current = [];
     };
   }, []);
 
@@ -219,6 +231,24 @@ export function useGameSounds(options: UseGameSoundsOptions = {}): UseGameSounds
     oscillator.start(ctx.currentTime);
     oscillator.stop(ctx.currentTime + config.duration);
   }, [isEnabled, currentMasterVolume, currentSfxVolume, getAudioContext]);
+
+  const stopBackgroundMusic = useCallback(() => {
+    if (musicIntervalRef.current) {
+      clearInterval(musicIntervalRef.current);
+      musicIntervalRef.current = null;
+    }
+
+    musicOscillatorsRef.current.forEach(osc => {
+      try {
+        osc.stop();
+      } catch {
+        // Already stopped
+      }
+    });
+    musicOscillatorsRef.current = [];
+
+    setIsMusicPlaying(false);
+  }, []);
 
   const playBackgroundMusic = useCallback(() => {
     if (!isEnabled || isMusicPlaying) return;
@@ -279,25 +309,7 @@ export function useGameSounds(options: UseGameSoundsOptions = {}): UseGameSounds
 
     playChord();
     musicIntervalRef.current = setInterval(playChord, 2000);
-  }, [isEnabled, isMusicPlaying, currentMasterVolume, currentMusicVolume, getAudioContext]);
-
-  const stopBackgroundMusic = useCallback(() => {
-    if (musicIntervalRef.current) {
-      clearInterval(musicIntervalRef.current);
-      musicIntervalRef.current = null;
-    }
-
-    musicOscillatorsRef.current.forEach(osc => {
-      try {
-        osc.stop();
-      } catch {
-        // Already stopped
-      }
-    });
-    musicOscillatorsRef.current = [];
-
-    setIsMusicPlaying(false);
-  }, []);
+  }, [isEnabled, isMusicPlaying, currentMasterVolume, currentMusicVolume, getAudioContext, stopBackgroundMusic]);
 
   const setEnabled = useCallback((enabled: boolean) => {
     setIsEnabled(enabled);

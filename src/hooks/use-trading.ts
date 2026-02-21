@@ -100,31 +100,6 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
 
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load trades on mount and set up refresh interval
-  useEffect(() => {
-    refreshTrades();
-
-    if (refreshInterval > 0) {
-      refreshIntervalRef.current = setInterval(refreshTrades, refreshInterval);
-    }
-
-    // Subscribe to trade notifications
-    const unsubscribe = tradeManager.subscribe((notification) => {
-      setState((prev) => ({
-        ...prev,
-        notifications: [...prev.notifications, notification],
-      }));
-      refreshTrades();
-    });
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-      unsubscribe();
-    };
-  }, [playerId, refreshInterval, refreshTrades]);
-
   /**
    * Refresh trades from storage
    */
@@ -155,6 +130,31 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         isLoading: false,
       }));
     }
+  }, [playerId]);
+
+  // Load trades on mount and set up refresh interval
+  useEffect(() => {
+    refreshTrades();
+
+    if (refreshInterval > 0) {
+      refreshIntervalRef.current = setInterval(refreshTrades, refreshInterval);
+    }
+
+    // Subscribe to trade notifications
+    const unsubscribe = tradeManager.subscribe((notification) => {
+      setState((prev) => ({
+        ...prev,
+        notifications: [...prev.notifications, notification],
+      }));
+      refreshTrades();
+    });
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+      }
+      unsubscribe();
+    };
   }, [playerId, refreshInterval, refreshTrades]);
 
   /**
@@ -201,7 +201,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Add cards to want list
@@ -224,7 +224,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Remove card from offer
@@ -247,7 +247,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Remove card from want list
@@ -274,7 +274,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Submit trade offer
@@ -296,7 +296,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Accept trade
@@ -322,7 +322,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Reject trade
@@ -336,7 +336,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       pendingTrades: prev.pendingTrades.filter((t) => t.id !== tradeId),
       tradeHistory: updatedTrade ? [...prev.tradeHistory, updatedTrade] : prev.tradeHistory,
     }));
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Counter offer
@@ -351,7 +351,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         t.id === updatedTrade?.id ? updatedTrade : t
       ),
     }));
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Cancel trade
@@ -365,7 +365,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       pendingTrades: prev.pendingTrades.filter((t) => t.id !== tradeId),
       tradeHistory: updatedTrade ? [...prev.tradeHistory, updatedTrade] : prev.tradeHistory,
     }));
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Select a trade to view/edit
@@ -412,7 +412,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       trade.parties[myIndex].offeredCards,
       trade.parties[otherIndex].offeredCards
     );
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   /**
    * Add notes to trade
@@ -435,7 +435,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId, refreshInterval, refreshTrades]);
+  }, [playerId]);
 
   return {
     ...state,

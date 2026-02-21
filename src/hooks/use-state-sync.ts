@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { GameState } from '@/lib/game-state/types';
 import {
   computeStateHash,
@@ -129,7 +129,8 @@ export interface UseStateSyncReturn {
  * Hook for managing state synchronization in multiplayer games
  */
 export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyncReturn {
-  const fullConfig = { ...DEFAULT_STATE_SYNC_CONFIG, ...config };
+  // Memoize config to prevent unnecessary re-renders
+  const fullConfig = useMemo(() => ({ ...DEFAULT_STATE_SYNC_CONFIG, ...config }), [config]);
   
   // Refs for engine instances
   const engineRef = useRef<DeterministicGameStateEngine | null>(null);

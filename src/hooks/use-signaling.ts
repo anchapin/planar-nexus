@@ -105,14 +105,8 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
     return () => {
       clientRef.current?.destroy();
     };
-  }, [options]);
-
-  // Auto-create session if requested
-  useEffect(() => {
-    if (options.autoCreateSession && options.playerId && options.playerName && clientRef.current) {
-      createSession(options.playerId, options.playerName);
-    }
-  }, [options.autoCreateSession, options.playerId, options.playerName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * Create a new session as host
@@ -131,7 +125,14 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
       setError(err instanceof Error ? err : new Error(String(err)));
       setState('failed');
     }
-  }, [options]);
+  }, []);
+
+  // Auto-create session if requested
+  useEffect(() => {
+    if (options.autoCreateSession && options.playerId && options.playerName && clientRef.current) {
+      createSession(options.playerId, options.playerName);
+    }
+  }, [options.autoCreateSession, options.playerId, options.playerName, createSession]);
 
   /**
    * Join an existing session
@@ -150,7 +151,7 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
       setError(err instanceof Error ? err : new Error(String(err)));
       setState('failed');
     }
-  }, [options]);
+  }, []);
 
   /**
    * Get the WebRTC offer (for client)
@@ -184,7 +185,7 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
   const sendOffer = useCallback(async (offer: RTCSessionDescriptionInit) => {
     if (!clientRef.current) return;
     await clientRef.current.sendOffer(offer);
-  }, [options]);
+  }, []);
 
   /**
    * Send answer (client)
@@ -192,7 +193,7 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
   const sendAnswer = useCallback(async (answer: RTCSessionDescriptionInit) => {
     if (!clientRef.current) return;
     await clientRef.current.sendAnswer(answer);
-  }, [options]);
+  }, []);
 
   /**
    * Send ICE candidate
@@ -200,7 +201,7 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
   const sendIceCandidate = useCallback(async (candidate: RTCIceCandidateInit) => {
     if (!clientRef.current) return;
     await clientRef.current.sendIceCandidate(candidate);
-  }, [options]);
+  }, []);
 
   /**
    * Close the session
@@ -210,7 +211,7 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
     await clientRef.current.closeSession();
     setSession(null);
     setState('idle');
-  }, [options]);
+  }, []);
 
   return {
     state,

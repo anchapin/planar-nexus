@@ -47,6 +47,68 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
   const lastClickCardId = useRef<CardInstanceId | null>(null);
 
   /**
+   * Handle target selection
+   */
+  const handleTargetSelection = useCallback(
+    (targetId: string, targetType: "card" | "player"): ClickHandlerResult => {
+      if (!targetingState.isActive) {
+        return {
+          action: "select_for_targeting",
+          message: "Not in targeting mode",
+        };
+      }
+
+      // Check if we can add more targets
+      if (targetingState.selectedTargets.length >= targetingState.maxTargets) {
+        return {
+          action: "select_for_targeting",
+          message: `Maximum ${targetingState.maxTargets} targets allowed`,
+        };
+      }
+
+      // Check if already selected
+      const alreadySelected = targetingState.selectedTargets.some(
+        (t) => t.targetId === targetId
+      );
+      if (alreadySelected) {
+        // Deselect
+        const newTargets = targetingState.selectedTargets.filter(
+          (t) => t.targetId !== targetId
+        );
+        setTargetingState({
+          ...targetingState,
+          selectedTargets: newTargets,
+        });
+        return {
+          action: "select_for_targeting",
+          message: "Target deselected",
+        };
+      }
+
+      // Add target
+      const newTarget: SelectedTarget = {
+        targetId,
+        targetType,
+        playerId: targetType === "player" ? (targetId as PlayerId) : undefined,
+      };
+      const newTargets = [...targetingState.selectedTargets, newTarget];
+
+      setTargetingState({
+        ...targetingState,
+        selectedTargets: newTargets,
+      });
+
+      props.onTargetSelect?.(targetId, targetType);
+
+      return {
+        action: "select_for_targeting",
+        message: `Target selected (${newTargets.length}/${targetingState.maxTargets})`,
+      };
+    },
+    [targetingState, props]
+  );
+
+  /**
    * Handle single click on a card
    * - Select card for targeting if targeting is active
    * - Show card inspection otherwise
@@ -68,7 +130,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
         message: "Card selected for inspection",
       };
     },
-    [targetingState.isActive, props]
+    [targetingState.isActive, props, handleTargetSelection]
   );
 
   /**
@@ -168,68 +230,6 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
       });
     },
     []
-  );
-
-  /**
-   * Handle target selection
-   */
-  const handleTargetSelection = useCallback(
-    (targetId: string, targetType: "card" | "player"): ClickHandlerResult => {
-      if (!targetingState.isActive) {
-        return {
-          action: "select_for_targeting",
-          message: "Not in targeting mode",
-        };
-      }
-
-      // Check if we can add more targets
-      if (targetingState.selectedTargets.length >= targetingState.maxTargets) {
-        return {
-          action: "select_for_targeting",
-          message: `Maximum ${targetingState.maxTargets} targets allowed`,
-        };
-      }
-
-      // Check if already selected
-      const alreadySelected = targetingState.selectedTargets.some(
-        (t) => t.targetId === targetId
-      );
-      if (alreadySelected) {
-        // Deselect
-        const newTargets = targetingState.selectedTargets.filter(
-          (t) => t.targetId !== targetId
-        );
-        setTargetingState({
-          ...targetingState,
-          selectedTargets: newTargets,
-        });
-        return {
-          action: "select_for_targeting",
-          message: "Target deselected",
-        };
-      }
-
-      // Add target
-      const newTarget: SelectedTarget = {
-        targetId,
-        targetType,
-        playerId: targetType === "player" ? (targetId as PlayerId) : undefined,
-      };
-      const newTargets = [...targetingState.selectedTargets, newTarget];
-
-      setTargetingState({
-        ...targetingState,
-        selectedTargets: newTargets,
-      });
-
-      props.onTargetSelect?.(targetId, targetType);
-
-      return {
-        action: "select_for_targeting",
-        message: `Target selected (${newTargets.length}/${targetingState.maxTargets})`,
-      };
-    },
-    [targetingState, props]
   );
 
   /**
