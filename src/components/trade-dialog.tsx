@@ -131,7 +131,7 @@ export function TradeDialog({
   // Get my party index
   const myIndex = useMemo(() => {
     if (!currentTrade) return -1;
-    return currentTrade.parties.findIndex((p) => p.id === trading.currentTrade?.parties[0].id);
+    return currentTrade.parties.findIndex((p) => p.id === currentTrade.parties[0].id);
   }, [currentTrade]);
 
   // Get other party index
