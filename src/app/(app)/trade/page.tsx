@@ -60,7 +60,7 @@ export default function TradePage() {
     });
     
     return () => unsubscribe();
-  }, []);
+  }, [toast]);
 
   const loadTrades = () => {
     const allTrades = tradeManager.getTradesForPlayer(playerId);
