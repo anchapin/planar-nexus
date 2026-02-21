@@ -346,11 +346,8 @@ export function useGameSounds(options: UseGameSoundsOptions = {}): UseGameSounds
 }
 
 // Singleton hook for global sound access
-let globalSounds: UseGameSoundsReturn | null = null;
-
+// Note: This is a convenience wrapper. For true global state across components,
+// consider using a React Context provider instead.
 export function useGlobalSounds(): UseGameSoundsReturn {
-  if (!globalSounds) {
-    globalSounds = useGameSounds();
-  }
-  return globalSounds;
+  return useGameSounds();
 }

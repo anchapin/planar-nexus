@@ -1,24 +1,18 @@
 // @ts-check
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-  recommendedConfig: js.configs.recommended,
-});
+import tseslint from "typescript-eslint";
+import reactPlugin from "eslint-plugin-react";
+import reactHooksPlugin from "eslint-plugin-react-hooks";
 
 const eslintConfig = [
-  ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended"),
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    ignores: ["next-env.d.ts"],
-  },
-  {
-    files: ["**/*.ts", "**/*.tsx"],
+    files: ["**/*.{js,mjs,cjs,jsx,ts,tsx}"],
+    plugins: {
+      react: reactPlugin,
+      "react-hooks": reactHooksPlugin,
+    },
     languageOptions: {
       parserOptions: {
         ecmaVersion: 2020,
@@ -32,12 +26,17 @@ const eslintConfig = [
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
     },
     settings: {
       react: {
         version: "detect",
       },
     },
+  },
+  {
+    ignores: ["next-env.d.ts", ".next/**", "node_modules/**"],
   },
 ];
 
