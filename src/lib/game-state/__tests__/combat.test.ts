@@ -743,7 +743,7 @@ describe('Combat System - Edge Cases', () => {
   });
 
   it('should handle no attackers declared', () => {
-    const { state, bobId } = setupGameWithCreatures([], []);
+    const { state } = setupGameWithCreatures([], []);
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
 
