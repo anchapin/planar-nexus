@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Eye, EyeOff, Trash2, Check, X, Loader2, Save, RefreshCw, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,11 +83,7 @@ function UsageTrackingTab() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>("30");
   const [isExporting, setIsExporting] = useState(false);
 
-  useEffect(() => {
-    loadStats();
-  }, [selectedPeriod]);
-
-  function loadStats() {
+  const loadStats = useCallback(() => {
     const allStats = getAllUsageStats();
     setStats(allStats);
     const usageSummary = getUsageSummary(parseInt(selectedPeriod));
@@ -96,7 +92,11 @@ function UsageTrackingTab() {
       totalTokens: usageSummary.totalTokens,
       totalCost: usageSummary.totalCost,
     });
-  }
+  }, [selectedPeriod]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   function handleExport() {
     setIsExporting(true);
