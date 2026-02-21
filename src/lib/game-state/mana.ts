@@ -132,33 +132,33 @@ export function spendMana(
   
   // Finally use colored mana for remaining generic (any color can pay generic)
   // Use colored mana in order: white, blue, black, red, green
-  const useColoredForGeneric = (amount: number, available: number): { used: number; remaining: number } => {
+  const applyColoredToGeneric = (amount: number, available: number): { used: number; remaining: number } => {
     const used = Math.min(available, amount);
     return { used, remaining: available - used };
   };
   
   if (genericToPay > 0 && whiteRemaining > 0) {
-    const result = useColoredForGeneric(genericToPay, whiteRemaining);
+    const result = applyColoredToGeneric(genericToPay, whiteRemaining);
     whiteRemaining = result.remaining;
     genericToPay -= result.used;
   }
   if (genericToPay > 0 && blueRemaining > 0) {
-    const result = useColoredForGeneric(genericToPay, blueRemaining);
+    const result = applyColoredToGeneric(genericToPay, blueRemaining);
     blueRemaining = result.remaining;
     genericToPay -= result.used;
   }
   if (genericToPay > 0 && blackRemaining > 0) {
-    const result = useColoredForGeneric(genericToPay, blackRemaining);
+    const result = applyColoredToGeneric(genericToPay, blackRemaining);
     blackRemaining = result.remaining;
     genericToPay -= result.used;
   }
   if (genericToPay > 0 && redRemaining > 0) {
-    const result = useColoredForGeneric(genericToPay, redRemaining);
+    const result = applyColoredToGeneric(genericToPay, redRemaining);
     redRemaining = result.remaining;
     genericToPay -= result.used;
   }
   if (genericToPay > 0 && greenRemaining > 0) {
-    const result = useColoredForGeneric(genericToPay, greenRemaining);
+    const result = applyColoredToGeneric(genericToPay, greenRemaining);
     greenRemaining = result.remaining;
     genericToPay -= result.used;
   }
