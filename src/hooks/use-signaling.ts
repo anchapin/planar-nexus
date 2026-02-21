@@ -108,13 +108,6 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-create session if requested
-  useEffect(() => {
-    if (options.autoCreateSession && options.playerId && options.playerName && clientRef.current) {
-      createSession(options.playerId, options.playerName);
-    }
-  }, [options.autoCreateSession, options.playerId, options.playerName, createSession]);
-
   /**
    * Create a new session as host
    */
@@ -133,6 +126,13 @@ export function useSignaling(options: UseSignalingOptions = {}): UseSignalingRet
       setState('failed');
     }
   }, []);
+
+  // Auto-create session if requested
+  useEffect(() => {
+    if (options.autoCreateSession && options.playerId && options.playerName && clientRef.current) {
+      createSession(options.playerId, options.playerName);
+    }
+  }, [options.autoCreateSession, options.playerId, options.playerName, createSession]);
 
   /**
    * Join an existing session
