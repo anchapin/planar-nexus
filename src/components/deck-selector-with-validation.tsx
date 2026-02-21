@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDeck } from "@/app/actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -56,7 +56,7 @@ export function DeckSelectorWithValidation({
     return !result.isValid;
   });
 
-  const handleSelect = (deckId: string) => {
+  const handleSelect = useCallback((deckId: string) => {
     const selectedDeck = savedDecks.find((d) => d.id === deckId);
     if (selectedDeck) {
       setCurrentDeckId(deckId);
@@ -70,14 +70,14 @@ export function DeckSelectorWithValidation({
         errors: [...deckValidation.errors, ...deckValidation.warnings],
       });
     }
-  };
+  }, [savedDecks, lobbyFormat, onDeckSelect]);
 
   // Auto-select first valid deck if none selected
   useEffect(() => {
     if (!currentDeckId && validDecks.length > 0) {
       handleSelect(validDecks[0].id);
     }
-  }, []);
+  }, [currentDeckId, validDecks, handleSelect]);
 
   return (
     <div className={className}>
