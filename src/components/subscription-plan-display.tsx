@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Check, X, Loader2, Crown, Users, Building, Sparkles, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,11 +104,7 @@ function SubscriptionPlanCard({ provider, onSubscriptionDetected }: Subscription
     totalCost: number;
   } | null>(null);
 
-  useEffect(() => {
-    checkKeyAndSubscription();
-  }, [provider]);
-
-  async function checkKeyAndSubscription() {
+  const checkKeyAndSubscription = useCallback(async () => {
     const keyExists = await hasApiKey(provider);
     setHasKey(keyExists);
     
@@ -121,7 +117,11 @@ function SubscriptionPlanCard({ provider, onSubscriptionDetected }: Subscription
         totalCost: stats.totalCost,
       });
     }
-  }
+  }, [provider]);
+
+  useEffect(() => {
+    checkKeyAndSubscription();
+  }, [checkKeyAndSubscription]);
 
   async function handleDetectSubscription() {
     setIsLoading(true);

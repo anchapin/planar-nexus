@@ -123,7 +123,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       }
       unsubscribe();
     };
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Refresh trades from storage
@@ -155,7 +155,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         isLoading: false,
       }));
     }
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Create a new trade offer
@@ -201,7 +201,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Add cards to want list
@@ -224,7 +224,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Remove card from offer
@@ -247,7 +247,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Remove card from want list
@@ -274,7 +274,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Submit trade offer
@@ -296,7 +296,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Accept trade
@@ -322,7 +322,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Reject trade
@@ -336,7 +336,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       pendingTrades: prev.pendingTrades.filter((t) => t.id !== tradeId),
       tradeHistory: updatedTrade ? [...prev.tradeHistory, updatedTrade] : prev.tradeHistory,
     }));
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Counter offer
@@ -351,7 +351,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         t.id === updatedTrade?.id ? updatedTrade : t
       ),
     }));
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Cancel trade
@@ -365,7 +365,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       pendingTrades: prev.pendingTrades.filter((t) => t.id !== tradeId),
       tradeHistory: updatedTrade ? [...prev.tradeHistory, updatedTrade] : prev.tradeHistory,
     }));
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Select a trade to view/edit
@@ -412,7 +412,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
       trade.parties[myIndex].offeredCards,
       trade.parties[otherIndex].offeredCards
     );
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   /**
    * Add notes to trade
@@ -435,7 +435,7 @@ export function useTrading(options: UseTradingOptions): UseTradingReturn {
         ),
       };
     });
-  }, [playerId]);
+  }, [playerId, refreshInterval, refreshTrades]);
 
   return {
     ...state,
