@@ -38,6 +38,13 @@ export default function BrowseGamesPage() {
   const [formatFilter, setFormatFilter] = useState<GameFormat | 'all'>('all');
   const [playerCountFilter, setPlayerCountFilter] = useState<PlayerCount | 'all'>('all');
 
+  const loadGames = useCallback(() => {
+    const allGames = publicLobbyBrowser.getPublicGames();
+    setGames(allGames);
+    setLastRefresh(new Date());
+    setIsLoading(false);
+  }, []);
+
   // Load games on mount
   useEffect(() => {
     loadGames();
@@ -50,7 +57,7 @@ export default function BrowseGamesPage() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [loadGames]);
 
   // Apply filters whenever games or filter criteria change
   useEffect(() => {
@@ -73,13 +80,6 @@ export default function BrowseGamesPage() {
 
     setFilteredGames(filtered);
   }, [games, searchQuery, formatFilter, playerCountFilter]);
-
-  const loadGames = useCallback(() => {
-    const allGames = publicLobbyBrowser.getPublicGames();
-    setGames(allGames);
-    setLastRefresh(new Date());
-    setIsLoading(false);
-  }, []);
 
   const handleRefresh = () => {
     publicLobbyBrowser.cleanupOldGames();
