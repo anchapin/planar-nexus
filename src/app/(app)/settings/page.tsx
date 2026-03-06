@@ -9,7 +9,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Eye, EyeOff, Trash2, Check, X, Loader2, Save, RefreshCw, Download } from "lucide-react";
+import { Eye, EyeOff, Trash2, Check, X, Loader2, Save, RefreshCw, Download, Database, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,6 +21,8 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { useServiceWorkerCache } from "@/lib/use-service-worker-cache";
+import { useNetworkStatus } from "@/lib/use-network-status";
 import type { AIProvider } from "@/ai/providers";
 import { SoundSettings } from "@/components/sound-settings";
 import { AutoSaveSettings } from "@/components/auto-save-settings";
@@ -73,6 +75,173 @@ const PROVIDER_COLORS: Record<AIProvider, string> = {
   zaic: "bg-orange-500",
   custom: "bg-gray-500",
 };
+
+/**
+ * Cache Management Tab Component
+ */
+function CacheManagementTab() {
+  const { cacheInfo, isLoading, error, clearCache, refreshCacheInfo, getCacheSize } = useServiceWorkerCache();
+  const { isOnline, effectiveType, downlink, rtt } = useNetworkStatus();
+
+  const handleClearCache = async () => {
+    if (confirm("Are you sure you want to clear all caches? This will remove all cached content and require re-downloading.")) {
+      await clearCache();
+    }
+  };
+
+  const totalSize = getCacheSize();
+  const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+
+  return (
+    <>
+      {/* Network Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Network Status</CardTitle>
+          <CardDescription>Your current connection status</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${isOnline ? "bg-green-500" : "bg-red-500"}`} />
+                <span className="font-medium">{isOnline ? "Online" : "Offline"}</span>
+              </div>
+              {effectiveType && (
+                <Badge variant="outline">{effectiveType}</Badge>
+              )}
+            </div>
+
+            {effectiveType && (
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-muted-foreground">Downlink</div>
+                  <div className="font-medium">{downlink} Mbps</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground">Latency</div>
+                  <div className="font-medium">{rtt} ms</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cache Overview */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Cache Overview</CardTitle>
+              <CardDescription>Storage used by offline content</CardDescription>
+            </div>
+            <Button variant="outline" size="icon" onClick={refreshCacheInfo} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : cacheInfo ? (
+            <>
+              {/* Total size */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Total Storage Used</span>
+                  <span className="text-sm text-muted-foreground">{totalSizeMB} MB</span>
+                </div>
+                <Progress value={(totalSize / (50 * 1024 * 1024)) * 100} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-1">Maximum: 50 MB</p>
+              </div>
+
+              {/* Cache breakdown */}
+              <div className="space-y-3">
+                {Object.entries(cacheInfo.caches).map(([name, data]) => {
+                  const displayName = name
+                    .replace('planar-nexus-', '')
+                    .replace('-v3', '')
+                    .split('-')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+
+                  const icon = name.includes('card') ? <Database className="h-4 w-4" /> : <HardDrive className="h-4 w-4" />;
+
+                  return (
+                    <div key={name} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <div className="text-muted-foreground">{icon}</div>
+                        <div>
+                          <div className="font-medium text-sm">{displayName}</div>
+                          <div className="text-xs text-muted-foreground">{data.entries} items</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium text-sm">{data.sizeMB} MB</div>
+                        <div className="text-xs text-muted-foreground">{(data.size / 1024).toFixed(0)} KB</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No cache information available
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Cache Actions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cache Actions</CardTitle>
+          <CardDescription>Manage your offline content</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <Button
+              variant="outline"
+              onClick={refreshCacheInfo}
+              disabled={isLoading}
+              className="w-full"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              Refresh Cache Info
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleClearCache}
+              disabled={isLoading || !cacheInfo}
+              className="w-full"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear All Caches
+            </Button>
+          </div>
+          <Alert className="mt-4">
+            <AlertTitle>Cache Information</AlertTitle>
+            <AlertDescription>
+              Caching content allows Planar Nexus to work offline. Clearing caches will require
+              re-downloading content when online. Maximum cache size is 50 MB.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
 
 /**
  * Usage Tracking Tab Component
@@ -425,11 +594,12 @@ export default function SettingsPage() {
       </div>
       
       <Tabs defaultValue="api-keys" className="space-y-6">
-        <TabsList>
+        <TabsList className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-1">
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
           <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
           <TabsTrigger value="card-images">Card Images</TabsTrigger>
+          <TabsTrigger value="cache">Cache</TabsTrigger>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="sound">Sound</TabsTrigger>
           <TabsTrigger value="auto-save">Auto-Save</TabsTrigger>
@@ -737,6 +907,10 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
         
+        <TabsContent value="cache" className="space-y-6">
+          <CacheManagementTab />
+        </TabsContent>
+
         <TabsContent value="usage" className="space-y-6">
           <UsageTrackingTab />
         </TabsContent>

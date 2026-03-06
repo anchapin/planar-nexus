@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Offline - Planar Nexus</title>
-  <meta name="description" content="You are currently offline. Connect to the internet to continue playing Planar Nexus.">
+  <meta name="description" content="You are currently offline. Cached content is still available. Connect to the internet to access all features.">
   <style>
     *, *::before, *::after {
       margin: 0;
@@ -16,6 +16,12 @@
       --foreground: 210 40% 98%;
       --primary: 239 84% 67%;
       --primary-foreground: 0 0% 100%;
+      --muted: 215 20% 15%;
+      --muted-foreground: 215 20% 65%;
+      --border: 215 20% 20%;
+      --success: 142 76% 36%;
+      --warning: 38 92% 50%;
+      --error: 0 84% 60%;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -30,7 +36,8 @@
     }
     .container {
       text-align: center;
-      max-width: 400px;
+      max-width: 500px;
+      width: 100%;
     }
     .icon {
       font-size: 64px;
@@ -47,64 +54,163 @@
       color: hsl(210, 40%, 95%);
       font-weight: 600;
     }
-    p {
+    .subtitle {
       font-size: 16px;
       color: hsl(215, 20%, 65%);
-      margin-bottom: 24px;
+      margin-bottom: 32px;
       line-height: 1.6;
     }
+    .features {
+      background: hsl(215, 20%, 12%);
+      border: 1px solid hsl(215, 20%, 20%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .features-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: hsl(210, 40%, 98%);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid hsl(215, 20%, 15%);
+    }
+    .feature:last-child {
+      border-bottom: none;
+    }
+    .feature-icon {
+      width: 24px;
+      height: 24px;
+      margin-right: 12px;
+      flex-shrink: 0;
+    }
+    .feature-icon.available {
+      color: hsl(var(--success));
+    }
+    .feature-icon.unavailable {
+      color: hsl(var(--error));
+    }
+    .feature-icon.partial {
+      color: hsl(var(--warning));
+    }
+    .feature-text {
+      font-size: 14px;
+      color: hsl(215, 20%, 65%);
+    }
+    .feature-text strong {
+      color: hsl(210, 40%, 98%);
+    }
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
     .button {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       padding: 12px 24px;
       background: hsl(239, 84%, 67%);
       color: hsl(0, 0%, 100%);
       text-decoration: none;
       border-radius: 8px;
       font-weight: 500;
-      transition: background 0.2s ease;
+      transition: all 0.2s ease;
       border: none;
       cursor: pointer;
       font-size: 16px;
+      width: 100%;
     }
     .button:hover {
       background: hsl(239, 84%, 57%);
+      transform: translateY(-1px);
     }
     .button:focus {
       outline: 2px solid hsl(239, 84%, 67%);
       outline-offset: 2px;
     }
-    .status {
-      margin-top: 24px;
-      padding: 12px;
+    .button:active {
+      transform: translateY(0);
+    }
+    .button.secondary {
       background: hsl(215, 20%, 15%);
+      border: 1px solid hsl(215, 20%, 20%);
+    }
+    .button.secondary:hover {
+      background: hsl(215, 20%, 20%);
+    }
+    .status {
+      padding: 12px 16px;
+      background: hsl(215, 20%, 12%);
+      border: 1px solid hsl(215, 20%, 20%);
       border-radius: 8px;
       font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
     .status-dot {
-      display: inline-block;
       width: 8px;
       height: 8px;
       border-radius: 50%;
       background: #ef4444;
-      margin-right: 8px;
       animation: blink 1s ease-in-out infinite;
     }
     @keyframes blink {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.3; }
     }
+    .status-dot.online {
+      background: hsl(var(--success));
+      animation: none;
+    }
+    @media (min-width: 640px) {
+      .buttons {
+        flex-direction: row;
+      }
+      .button {
+        width: auto;
+      }
+    }
     @media (prefers-color-scheme: light) {
       body {
         background: linear-gradient(135deg, hsl(210, 40%, 95%) 0%, hsl(210, 40%, 90%) 100%);
         color: hsl(222, 47%, 8%);
       }
-      h1 {
+      .features {
+        background: hsl(210, 40%, 98%);
+        border-color: hsl(215, 20%, 85%);
+      }
+      .features-title {
         color: hsl(222, 47%, 8%);
       }
-      p {
-        color: hsl(215, 20%, 35%);
+      .feature {
+        border-color: hsl(215, 20%, 90%);
+      }
+      .feature-text {
+        color: hsl(215, 20%, 40%);
+      }
+      .feature-text strong {
+        color: hsl(222, 47%, 8%);
       }
       .status {
+        background: hsl(210, 40%, 98%);
+        border-color: hsl(215, 20%, 85%);
+      }
+      .button.secondary {
+        background: hsl(210, 40%, 98%);
+        border-color: hsl(215, 20%, 85%);
+      }
+      .button.secondary:hover {
         background: hsl(215, 20%, 90%);
       }
     }
@@ -114,20 +220,103 @@
   <div class="container">
     <div class="icon" role="img" aria-label="Offline icon">📡</div>
     <h1>You're Offline</h1>
-    <p>It looks like you've lost your internet connection. Some features may not be available until you're back online.</p>
-    <button class="button" onclick="window.location.reload()">
-      Try Again
-    </button>
+    <p class="subtitle">Some features may not be available until you're back online. Cached content is still accessible.</p>
+
+    <div class="features" role="list" aria-label="Available features">
+      <div class="features-title">Available Features</div>
+      <div class="feature" role="listitem">
+        <div class="feature-icon available">✓</div>
+        <div class="feature-text"><strong>Card Database:</strong> Browse cached cards</div>
+      </div>
+      <div class="feature" role="listitem">
+        <div class="feature-icon available">✓</div>
+        <div class="feature-text"><strong>Deck Builder:</strong> Edit saved decks</div>
+      </div>
+      <div class="feature" role="listitem">
+        <div class="feature-icon available">✓</div>
+        <div class="feature-text"><strong>Saved Games:</strong> View game history</div>
+      </div>
+      <div class="feature" role="listitem">
+        <div class="feature-icon partial">◐</div>
+        <div class="feature-text"><strong>Card Search:</strong> Limited to cached cards</div>
+      </div>
+      <div class="feature" role="listitem">
+        <div class="feature-icon unavailable">✗</div>
+        <div class="feature-text"><strong>Multiplayer:</strong> Requires internet</div>
+      </div>
+      <div class="feature" role="listitem">
+        <div class="feature-icon unavailable">✗</div>
+        <div class="feature-text"><strong>AI Features:</strong> Requires internet</div>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="button" onclick="window.location.reload()">
+        Try Again
+      </button>
+      <button class="button secondary" onclick="navigateToDashboard()">
+        Go to Dashboard
+      </button>
+    </div>
+
     <div class="status" role="status" aria-live="polite">
-      <span class="status-dot" aria-hidden="true"></span>
-      <span>Waiting for connection...</span>
+      <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+      <span id="statusText">Offline mode active</span>
     </div>
   </div>
+
   <script>
-    // Auto-retry when back online
-    window.addEventListener('online', () => {
-      window.location.reload();
-    });
+    // Navigate to dashboard
+    function navigateToDashboard() {
+      window.location.href = '/dashboard';
+    }
+
+    // Update status when online/offline
+    function updateOnlineStatus() {
+      const statusDot = document.getElementById('statusDot');
+      const statusText = document.getElementById('statusText');
+
+      if (navigator.onLine) {
+        statusDot.classList.add('online');
+        statusText.textContent = 'Connection restored - reloading...';
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        statusDot.classList.remove('online');
+        statusText.textContent = 'Offline mode active';
+      }
+    }
+
+    // Listen for online/offline events
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+
+    // Check initial status
+    if (navigator.onLine) {
+      updateOnlineStatus();
+    }
+
+    // Periodically check connection
+    setInterval(() => {
+      if (navigator.onLine) {
+        // Try to fetch a small resource to verify actual connectivity
+        fetch('/manifest.json', {
+          method: 'HEAD',
+          cache: 'no-cache'
+        })
+        .then(() => {
+          if (!document.getElementById('statusDot').classList.contains('online')) {
+            updateOnlineStatus();
+          }
+        })
+        .catch(() => {
+          // Still offline despite navigator.onLine
+          document.getElementById('statusDot').classList.remove('online');
+          document.getElementById('statusText').textContent = 'Checking connection...';
+        });
+      }
+    }, 5000);
   </script>
 </body>
 </html>
