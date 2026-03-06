@@ -2,7 +2,7 @@
  * Game State Management Module
  *
  * This module provides comprehensive data structures and utilities for managing
- * the complete state of a Magic: The Gathering game.
+ * the complete state of a tabletop card game.
  *
  * @module game-state
  */
@@ -148,3 +148,6 @@ export * from "./abilities"
 
 export * from "./evergreen-keywords"
 export * from './replacement-examples';
+
+// Export terminology translation layer (Issue #442)
+export * from "./terminology-translation";

@@ -1,10 +1,15 @@
 /**
  * Evergreen Keywords System
- * 
- * Implements all Magic: The Gathering evergreen keywords.
+ *
+ * Implements all evergreen keywords for the game engine.
  * Reference: CR 702 - Keyword Abilities
- * 
+ *
  * Issue #13: Phase 1.3: Handle evergreen keywords
+ * Issue #442: Unit 8 - Terminology Translation Layer
+ *
+ * Note: Internal function names and comments may reference MTG terminology
+ * for compatibility with card data. All user-facing text should use generic
+ * terminology via the translation layer.
  */
 
 import type { CardInstance, PlayerId } from './types';
@@ -176,7 +181,7 @@ export function hasVigilance(card: CardInstance): boolean {
 }
 
 /**
- * Check if a creature taps when attacking (vigilance)
+ * Check if a creature activates when attacking (vigilance)
  */
 export function tapsWhenAttacking(card: CardInstance): boolean {
   return !hasVigilance(card);
@@ -201,7 +206,7 @@ export function canAttackThisTurn(card: CardInstance): boolean {
  * Check if a creature can block the turn it enters
  */
 export function canBlockThisTurn(_card: CardInstance): boolean {
-  // Creatures can block even with summoning sickness
+  // Creatures can block even with deployment restriction
   return true;
 }
 
@@ -313,13 +318,13 @@ export function getEffectiveToughness(card: CardInstance): number {
   let toughness = getToughnessValue(card);
   toughness += card.toughnessModifier || 0;
   
-  // Apply -1/-1 counters
+  // Apply -1/-1 markers
   const minusCounters = card.counters?.find(c => c.type === '-1/-1');
   if (minusCounters) {
     toughness -= minusCounters.count;
   }
-  
-  // Apply +1/+1 counters
+
+  // Apply +1/+1 markers
   const plusCounters = card.counters?.find(c => c.type === '+1/+1');
   if (plusCounters) {
     toughness += plusCounters.count;
@@ -405,10 +410,12 @@ export function isCombatCreature(card: CardInstance): boolean {
 
 /**
  * Get a description of all keyword abilities on a card
+ * Note: This returns MTG terminology for compatibility. For user-facing
+ * display, apply translation layer to the descriptions.
  */
 export function getKeywordDescriptions(card: CardInstance): string[] {
   const descriptions: string[] = [];
-  
+
   if (hasFlying(card)) descriptions.push('Flying');
   if (hasFirstStrike(card)) descriptions.push('First Strike');
   if (hasDoubleStrike(card)) descriptions.push('Double Strike');
@@ -428,6 +435,6 @@ export function getKeywordDescriptions(card: CardInstance): string[] {
   if (hasReach(card)) descriptions.push('Reach');
   if (hasTrample(card)) descriptions.push('Trample');
   if (hasVigilance(card)) descriptions.push('Vigilance');
-  
+
   return descriptions;
 }
