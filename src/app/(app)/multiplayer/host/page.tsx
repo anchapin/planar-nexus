@@ -15,13 +15,16 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Copy, Check, Users, Play, X, Crown, Clock, Eye, Info } from 'lucide-react';
+import { Copy, Check, Users, Play, X, Crown, Clock, Eye, Info, RefreshCw } from 'lucide-react';
 import { useLobby } from '@/hooks/use-lobby';
 import { HostGameConfig, PlayerStatus } from '@/lib/multiplayer-types';
 import { FormatRulesDisplay } from '@/components/format-rules-display';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
 import { TeamAssignment } from '@/components/team-assignment';
+import { ConnectionQRCode } from '@/components/connection-qr-code';
 import { SavedDeck } from '@/app/actions';
+import { createP2PConnection } from '@/lib/webrtc-p2p';
+import type { ConnectionData } from '@/lib/client-signaling';
 
 export default function HostLobbyPage() {
   const { 
@@ -61,6 +64,8 @@ export default function HostLobbyPage() {
   // UI state
   const [copied, setCopied] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(true);
+  const [connectionData, setConnectionData] = useState<ConnectionData | null>(null);
+  const [isGeneratingConnection, setIsGeneratingConnection] = useState(false);
 
   const gameCode = getGameCode();
 
@@ -94,6 +99,9 @@ export default function HostLobbyPage() {
     createLobby(config, hostName);
     setShowCreateForm(false);
 
+    // Initialize P2P connection for host
+    initializeHostConnection();
+
     // Auto-select first valid deck if available
     const [savedDecks] = getStoredDecks();
     const validDeck = savedDecks.find((deck: SavedDeck) => {
@@ -103,6 +111,45 @@ export default function HostLobbyPage() {
     if (validDeck && lobby) {
       handleDeckSelect(validDeck);
     }
+  };
+
+  // Initialize host P2P connection
+  const initializeHostConnection = async () => {
+    setIsGeneratingConnection(true);
+    try {
+      // Create P2P connection
+      const p2pConnection = createP2PConnection({
+        playerId: `host-${Date.now()}`,
+        playerName: localStorage.getItem('planar_nexus_player_name') || 'Host',
+        isHost: true,
+        events: {
+          onConnectionStateChange: (state) => {
+            console.log('[Host] P2P connection state:', state);
+          },
+          onError: (error) => {
+            console.error('[Host] P2P connection error:', error);
+          },
+        },
+      });
+
+      // Initialize WebRTC
+      await p2pConnection.initialize();
+
+      // Create offer and get connection data
+      const offerData = await p2pConnection.createOfferData();
+      setConnectionData(offerData);
+
+      console.log('[Host] P2P connection initialized');
+    } catch (error) {
+      console.error('[Host] Failed to initialize P2P connection:', error);
+    } finally {
+      setIsGeneratingConnection(false);
+    }
+  };
+
+  // Handle refresh of connection data
+  const handleRefreshConnection = async () => {
+    await initializeHostConnection();
   };
 
   // Helper to get stored decks
@@ -341,41 +388,26 @@ export default function HostLobbyPage() {
         </header>
 
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Game Code Card */}
+          {/* Connection QR Code Card */}
           <Card className="md:col-span-1">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5" />
                 Invite Players
               </CardTitle>
-              <CardDescription>Share this code with your friends
+              <CardDescription>
+                Share this QR code or connection string with your opponent
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="text-center">
-                <div className="text-4xl font-mono font-bold tracking-wider mb-2">
-                  {gameCode}
-                </div>
-                <Button
-                  onClick={handleCopyCode}
-                  variant={copied ? "default" : "outline"}
-                  className="w-full"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-4 h-4 mr-2" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy Code
-                    </>
-                  )}
-                </Button>
-              </div>
+            <CardContent>
+              <ConnectionQRCode
+                connectionData={connectionData}
+                isLoading={isGeneratingConnection}
+                onRefresh={handleRefreshConnection}
+                isHost={true}
+              />
 
-              <Separator />
+              <Separator className="my-4" />
 
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -407,7 +439,7 @@ export default function HostLobbyPage() {
               </div>
 
               {playerSlots > 0 && (
-                <Alert>
+                <Alert className="mt-4">
                   <AlertDescription className="text-center">
                     Waiting for {playerSlots} more player{playerSlots > 1 ? 's' : ''}...
                   </AlertDescription>

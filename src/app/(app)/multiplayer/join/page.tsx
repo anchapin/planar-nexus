@@ -17,15 +17,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
+import { ConnectionQRCode } from '@/components/connection-qr-code';
 import { GameFormat } from '@/lib/multiplayer-types';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import type { SavedDeck } from '@/app/actions';
+import { createP2PConnection } from '@/lib/webrtc-p2p';
+import { decodeConnectionData, isValidConnectionDataString } from '@/lib/client-signaling';
+import type { ConnectionData } from '@/lib/client-signaling';
 
 interface JoinState {
   step: 'code' | 'name' | 'lobby';
   gameCode: string;
   playerName: string;
   game: PublicGameInfo | null;
+  connectionData: ConnectionData | null;
 }
 
 function JoinGameContent() {
@@ -40,6 +45,7 @@ function JoinGameContent() {
     gameCode: initialCode,
     playerName: '',
     game: null,
+    connectionData: null,
   });
   
   const [playerNameInput, setPlayerNameInput] = useState('');
@@ -87,6 +93,72 @@ function JoinGameContent() {
       setJoinState(prev => ({ ...prev, playerName: playerNameInput.trim() }));
       // Auto-join the player to the lobby
       joinGame();
+    }
+  };
+
+  // Handle connection data from QR code or manual entry
+  const handleConnectionDataEntry = async (dataString: string) => {
+    try {
+      // Validate connection data
+      if (!isValidConnectionDataString(dataString)) {
+        setError('Invalid connection data. Please check and try again.');
+        return;
+      }
+
+      // Decode connection data
+      const connectionData = decodeConnectionData(dataString);
+
+      // Validate that it's an offer (host data)
+      if (connectionData.type !== 'offer') {
+        setError('Expected connection offer from host. Please scan the host QR code.');
+        return;
+      }
+
+      // Store connection data
+      setJoinState(prev => ({ ...prev, connectionData }));
+      setError(null);
+
+      // Initialize P2P connection as client
+      initializeClientConnection(connectionData);
+
+    } catch (err) {
+      console.error('Failed to process connection data:', err);
+      setError('Failed to process connection data. Please try again.');
+    }
+  };
+
+  // Initialize client P2P connection
+  const initializeClientConnection = async (hostConnectionData: ConnectionData) => {
+    try {
+      // Create P2P connection as client
+      const p2pConnection = createP2PConnection({
+        playerId: `client-${Date.now()}`,
+        playerName: playerNameInput.trim(),
+        isHost: false,
+        remoteConnectionData: hostConnectionData,
+        events: {
+          onConnectionStateChange: (state) => {
+            console.log('[Client] P2P connection state:', state);
+            if (state === 'connected') {
+              // Connection successful, proceed to lobby
+              setJoinState(prev => ({ ...prev, step: 'lobby' }));
+            }
+          },
+          onError: (error) => {
+            console.error('[Client] P2P connection error:', error);
+            setError('Failed to connect to host. Please try again.');
+          },
+        },
+      });
+
+      // Initialize WebRTC
+      await p2pConnection.initialize();
+
+      console.log('[Client] P2P connection initialized');
+
+    } catch (error) {
+      console.error('[Client] Failed to initialize P2P connection:', error);
+      setError('Failed to establish connection. Please try again.');
     }
   };
 

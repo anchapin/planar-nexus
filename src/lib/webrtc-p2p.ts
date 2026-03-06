@@ -2,9 +2,10 @@
  * WebRTC P2P Connection Manager
  * Issue #57: Phase 4.1: Implement WebRTC for peer-to-peer connections
  * Issue #286: Add NAT traversal and STUN/TURN server support
- * 
+ * Issue #444: Implement QR code/manual connection handshake for P2P multiplayer
+ *
  * This module provides WebRTC support for direct player-to-player connections,
- * enabling multiplayer games without a central server.
+ * enabling multiplayer games without a central server using client-side signaling.
  */
 
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
@@ -16,6 +17,13 @@ import {
   type ICEConfigOptions,
   getGlobalICEManager,
 } from './ice-config';
+import {
+  ClientSignalingService,
+  createHostSignaling,
+  createClientSignaling,
+  type ConnectionData,
+  type ClientSignalingCallbacks,
+} from './client-signaling';
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -183,6 +191,8 @@ export interface P2PConnectionOptions {
   enableICEMonitoring?: boolean;
   /** Fallback to relay on connection failure */
   fallbackToRelay?: boolean;
+  /** Connection data received from remote peer (for non-host) */
+  remoteConnectionData?: ConnectionData;
 }
 
 /**
@@ -208,6 +218,7 @@ export class WebRTCConnection {
   private enableICEMonitoring: boolean;
   private fallbackToRelay: boolean;
   private pendingCandidates: RTCIceCandidateInit[] = [];
+  private clientSignaling: ClientSignalingService | null = null;
 
   constructor(options: P2PConnectionOptions) {
     this.localPlayerId = options.playerId;
@@ -216,24 +227,24 @@ export class WebRTCConnection {
     this.gameCode = options.gameCode;
     this.enableICEMonitoring = options.enableICEMonitoring ?? true;
     this.fallbackToRelay = options.fallbackToRelay ?? true;
-    
+
     // Initialize ICE configuration
     if (options.iceConfig) {
       this.iceManager = new ICEConfigurationManager(options.iceConfig);
     } else {
       this.iceManager = getGlobalICEManager();
     }
-    
+
     // Use provided rtcConfig or get from ICE manager
     this.rtcConfig = options.rtcConfig || this.iceManager.getRTCConfiguration();
-    
+
     // Initialize candidate filter
     this.iceCandidateFilter = new ICECandidateFilter({
       allowIPv6: options.iceConfig?.enableIPv6 ?? true,
       allowLoopback: false,
       allowLinkLocal: false,
     });
-    
+
     // Set default event handlers
     const defaultEvents: P2PEvents = {
       onConnectionStateChange: () => {},
@@ -246,10 +257,62 @@ export class WebRTCConnection {
       onPeerConnected: () => {},
       onPeerDisconnected: () => {},
     };
-    
-    this.events = options.events 
+
+    this.events = options.events
       ? { ...defaultEvents, ...options.events }
       : defaultEvents;
+
+    // Initialize client-side signaling service
+    this.initializeClientSignaling(options.remoteConnectionData);
+  }
+
+  /**
+   * Handle signaling data received from remote peer
+   */
+  private async handleSignalingDataReceived(data: ConnectionData): Promise<void> {
+    try {
+      if (!this.clientSignaling || !this.peerConnection) {
+        throw new Error('Connection not initialized');
+      }
+
+      if (data.type === 'offer' && !this.isHost) {
+        // Client received offer from host
+        const sdp = this.clientSignaling.getSDPFromData(data);
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+        console.log('[WebRTC] Received offer from host');
+
+        // Add any ICE candidates
+        data.iceCandidates.forEach(async (candidate) => {
+          await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        // Create and send answer
+        const answer = await this.createAnswer();
+        const answerData = await this.clientSignaling.createAnswerData(answer);
+        this.updateConnectionState('connecting');
+      } else if (data.type === 'answer' && this.isHost) {
+        // Host received answer from client
+        const sdp = this.clientSignaling.getSDPFromData(data);
+        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+        console.log('[WebRTC] Received answer from client');
+
+        // Add any ICE candidates
+        data.iceCandidates.forEach(async (candidate) => {
+          await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+
+        // Add our pending ICE candidates
+        this.pendingCandidates.forEach(async (candidate) => {
+          await this.peerConnection!.addIceCandidate(new RTCIceCandidate(candidate));
+        });
+        this.pendingCandidates = [];
+
+        console.log('[WebRTC] Signaling handshake complete');
+      }
+    } catch (error) {
+      console.error('[WebRTC] Failed to handle signaling data:', error);
+      this.handleConnectionFailure();
+    }
   }
 
   /**
@@ -392,9 +455,43 @@ export class WebRTCConnection {
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    
+
     console.log('[WebRTC] Created offer');
+
+    // Wait for ICE gathering to complete
+    await new Promise<void>((resolve) => {
+      if (this.peerConnection!.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        const checkInterval = setInterval(() => {
+          if (this.peerConnection!.iceGatheringState === 'complete') {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+      }
+    });
+
     return offer;
+  }
+
+  /**
+   * Create offer data for QR code or manual sharing (host only)
+   */
+  async createOfferData(): Promise<ConnectionData> {
+    if (!this.clientSignaling) {
+      throw new Error('Signaling not initialized');
+    }
+
+    if (!this.isHost) {
+      throw new Error('Only host can create offer data');
+    }
+
+    const offer = await this.createOffer();
+    const offerData = await this.clientSignaling.createOfferData(offer);
+
+    console.log('[WebRTC] Created offer data for sharing');
+    return offerData;
   }
 
   /**
@@ -426,6 +523,24 @@ export class WebRTCConnection {
   }
 
   /**
+   * Get connection data for sharing (QR code or manual entry)
+   */
+  getConnectionData(): ConnectionData | null {
+    return this.clientSignaling?.getLocalConnectionData() || null;
+  }
+
+  /**
+   * Process connection data from remote peer (from QR code or manual entry)
+   */
+  async processConnectionData(data: ConnectionData): Promise<void> {
+    if (!this.clientSignaling) {
+      throw new Error('Signaling not initialized');
+    }
+
+    this.clientSignaling.processConnectionData(data);
+  }
+
+  /**
    * Add an ICE candidate from the remote peer
    */
   async addIceCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
@@ -441,9 +556,25 @@ export class WebRTCConnection {
    * Handle ICE candidate (send to remote peer via signaling)
    */
   private handleICECandidate(candidate: RTCIceCandidate): void {
-    // In a full implementation, this would send the candidate via a signaling server
-    // or via an alternative channel (like QR code or manual paste)
-    console.log('[WebRTC] ICE candidate:', candidate.candidate);
+    // Store ICE candidate for client-side signaling
+    if (this.clientSignaling) {
+      this.clientSignaling.addIceCandidate({
+        candidate: candidate.candidate,
+        sdpMid: candidate.sdpMid,
+        sdpMLineIndex: candidate.sdpMLineIndex,
+        usernameFragment: candidate.usernameFragment,
+      });
+
+      console.log('[WebRTC] ICE candidate stored:', candidate.candidate);
+    } else {
+      // Keep track of candidates if signaling not ready
+      this.pendingCandidates.push({
+        candidate: candidate.candidate,
+        sdpMid: candidate.sdpMid,
+        sdpMLineIndex: candidate.sdpMLineIndex,
+        usernameFragment: candidate.usernameFragment,
+      });
+    }
   }
 
   /**
@@ -883,27 +1014,33 @@ export class WebRTCConnection {
    */
   close(): void {
     this.stopPingInterval();
-    
+
     // Clean up ICE monitor
     if (this.iceMonitor) {
       this.iceMonitor.detach();
       this.iceMonitor = null;
     }
-    
+
+    // Clean up client signaling
+    if (this.clientSignaling) {
+      this.clientSignaling.destroy();
+      this.clientSignaling = null;
+    }
+
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
     }
-    
+
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
     }
-    
+
     this.peers.clear();
     this.pendingCandidates = [];
     this.updateConnectionState('disconnected');
-    
+
     console.log('[WebRTC] Connection closed');
   }
   
