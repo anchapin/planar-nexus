@@ -36,6 +36,7 @@ import {
 // Performance optimization constants
 const VIRTUALIZATION_THRESHOLD = 20;
 const MAX_VISIBLE_BATTLEFIELD_CARDS = 14;
+const MAX_VISIBLE_GAME_BOARD_CARDS = 14;
 
 interface GameBoardProps {
   players: PlayerState[];
@@ -110,17 +111,17 @@ const ZoneDisplay = memo(function ZoneDisplay({
     onZoneClick?.(zone, playerId);
   }, [onZoneClick, zone, playerId]);
 
-  // Virtualize battlefield when there are many cards (performance optimization)
+  // Virtualize game board when there are many cards (performance optimization)
   const displayCards = useMemo(() => {
     if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
-      return cards.slice(0, MAX_VISIBLE_BATTLEFIELD_CARDS);
+      return cards.slice(0, MAX_VISIBLE_GAME_BOARD_CARDS);
     }
     return zone === "battlefield" ? cards.slice(0, 7) : cards;
   }, [zone, count, cards]);
 
   const remainingCount = useMemo(() => {
     if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
-      return count - MAX_VISIBLE_BATTLEFIELD_CARDS;
+      return count - MAX_VISIBLE_GAME_BOARD_CARDS;
     }
     return 0;
   }, [zone, count]);
@@ -342,7 +343,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
       {player.commandZone.length > 0 && (
         <ZoneDisplayLocal
           zone="commandZone"
-          title="Command Zone"
+          title="Leader Zone"
           count={player.commandZone.length}
           cards={player.commandZone}
           bgColor="bg-yellow-500/10"
@@ -356,7 +357,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           <div className="flex flex-col gap-2">
             <ZoneDisplayLocal
               zone="library"
-              title="Library"
+              title="Draw Pile"
               count={player.library.length}
               cards={player.library}
               bgColor="bg-blue-500/10"
@@ -364,7 +365,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="graveyard"
-              title="Graveyard"
+              title="Discard Pile"
               count={player.graveyard.length}
               cards={player.graveyard}
               bgColor="bg-stone-500/10"
@@ -372,7 +373,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="exile"
-              title="Exile"
+              title="Banish Zone"
               count={player.exile.length}
               cards={player.exile}
               bgColor="bg-sky-500/10"
@@ -381,7 +382,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           </div>
           <ZoneDisplayLocal
             zone="battlefield"
-            title="Battlefield"
+            title="Game Board"
             count={player.battlefield.length}
             cards={player.battlefield}
             bgColor="bg-green-500/10"
@@ -415,7 +416,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           <div className="grid grid-cols-4 gap-2">
             <ZoneDisplayLocal
               zone="library"
-              title="Library"
+              title="Draw Pile"
               count={player.library.length}
               cards={player.library}
               bgColor="bg-blue-500/10"
@@ -423,7 +424,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="graveyard"
-              title="Graveyard"
+              title="Discard Pile"
               count={player.graveyard.length}
               cards={player.graveyard}
               bgColor="bg-stone-500/10"
@@ -431,7 +432,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="exile"
-              title="Exile"
+              title="Banish Zone"
               count={player.exile.length}
               cards={player.exile}
               bgColor="bg-sky-500/10"
@@ -451,7 +452,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
 
           <ZoneDisplayLocal
             zone="battlefield"
-            title="Battlefield"
+            title="Game Board"
             count={player.battlefield.length}
             cards={player.battlefield}
             bgColor="bg-green-500/10"
@@ -583,7 +584,7 @@ export function GameBoard({
                   {currentPlayer?.name}'s Turn
                 </Badge>
                 <div className="text-xs text-muted-foreground">
-                  Stack: 0 items
+                  Spell Chain: 0 items
                 </div>
               </div>
             </CardContent>

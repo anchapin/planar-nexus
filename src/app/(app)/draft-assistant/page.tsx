@@ -334,7 +334,7 @@ export default function DraftAssistantPage() {
             <CardHeader>
               <CardTitle>Pool Analysis</CardTitle>
               <CardDescription>
-                Analyze your card pool for color distribution, mana curve, and power cards.
+                Analyze your card pool for color distribution, energy curve, and power cards.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">

@@ -63,9 +63,9 @@ export default function DeckBuilderPage() {
 
     handleDeckChange((prevDeck) => {
       const existingCard = prevDeck.find((c) => c.id === card.id);
-      const isBasicLand = card.type_line?.includes("Basic Land");
+      const isBasicResource = card.type_line?.includes("Basic Resource");
       
-      if (!isBasicLand && existingCard && existingCard.count >= rules.maxCopies) {
+      if (!isBasicResource && existingCard && existingCard.count >= rules.maxCopies) {
         toast({
           variant: "destructive",
           title: "Card Limit Reached",
