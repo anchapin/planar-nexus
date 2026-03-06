@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { getDeckReview, SavedDeck, DeckCard, importDecklist } from "@/app/actions";
+import { getDeckReview, type SavedDeck, type DeckCard } from "@/app/actions";
+import { importDecklistClient } from "@/lib/client-card-operations";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
 import { Bot, Loader2, TrendingUp } from "lucide-react";
@@ -50,7 +51,7 @@ export default function DeckCoachPage() {
         if (originalDeckCards) {
           initialCards = originalDeckCards;
         } else {
-            const { found, notFound, illegal } = await importDecklist(decklist, format);
+            const { found, notFound, illegal } = await importDecklistClient(decklist, format);
             if (notFound.length > 0) {
                  toast({
                     variant: "destructive",
@@ -120,7 +121,7 @@ export default function DeckCoachPage() {
 
       if (cardsToAddFromAI.length > 0) {
         const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
-        const importResult = await importDecklist(decklistForImport, format);
+        const importResult = await importDecklistClient(decklistForImport, format);
         cardsToAddFromApi = importResult.found;
         notFound = importResult.notFound;
         illegal = importResult.illegal;

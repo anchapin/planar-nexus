@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition, useCallback, useEffect } from "react";
-import { searchCards, ScryfallCard } from "@/app/actions";
-import { initializeCardDatabase, getDatabaseStatus } from "@/lib/card-database";
+import type { ScryfallCard } from "@/app/actions";
+import { initializeCardDatabase, getDatabaseStatus, searchCardsOffline } from "@/lib/card-database";
 import { Input } from "@/components/ui/input";
 import { Search, Database, Loader2 } from "lucide-react";
 import Image from "next/image";
@@ -48,8 +48,14 @@ export function CardSearch({ onAddCard }: CardSearchProps) {
       return;
     }
     startTransition(async () => {
-      const searchResults = await searchCards(searchQuery);
-      setResults(searchResults);
+      // Use the current format from the parent component
+      // Since we don't have access to format prop, we'll default to commander
+      const searchResults = await searchCardsOffline(searchQuery, {
+        maxCards: 50,
+        format: 'commander',
+        includeImages: true,
+      });
+      setResults(searchResults as ScryfallCard[]);
     });
   }, []);
 

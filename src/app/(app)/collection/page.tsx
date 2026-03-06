@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useCollection } from "@/hooks/use-collection";
-import { ScryfallCard, searchCards } from "@/app/actions";
+import type { ScryfallCard } from "@/app/actions";
+import { searchCardsOffline } from "@/lib/card-database";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -195,8 +196,12 @@ export default function CollectionPage() {
 
     setIsSearching(true);
     try {
-      const results = await searchCards(searchQuery, "commander");
-      setSearchResults(results.slice(0, 20)); // Limit to 20 results
+      const results = await searchCardsOffline(searchQuery, {
+        maxCards: 20,
+        format: "commander",
+        includeImages: true,
+      });
+      setSearchResults(results as ScryfallCard[]);
     } catch (error) {
       console.error(error);
       toast({
