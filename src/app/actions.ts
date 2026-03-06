@@ -1,6 +1,20 @@
 
 import { reviewDeck, DeckReviewInput } from "@/ai/flows/ai-deck-coach-review";
 import { generateAIOpponentDeck, AIOpponentDeckGenerationInput } from "@/ai/flows/ai-opponent-deck-generation";
+import {
+  GenericCard,
+  GenericDeckCard,
+  GenericSavedDeck,
+  genericCardToMinimalCard,
+  minimalCardToGenericCard,
+  GenericCardType,
+  GenericColor,
+  AbilityKeyword
+} from "@/lib/card-database";
+
+// ============================================================================
+// SCRYFALL CARD TYPES (Legacy - maintained for backward compatibility)
+// ============================================================================
 
 export interface ScryfallCard {
   id: string;
@@ -62,6 +76,199 @@ export interface SavedDeck {
   cards: DeckCard[];
   createdAt: string;
   updatedAt: string;
+}
+
+// ============================================================================
+// UNIFIED CARD TYPES (Unit 2: Original Card Data Schema)
+// ============================================================================
+
+/**
+ * Unified card type that can represent either Scryfall cards or generic cards
+ */
+export type UnifiedCard = ScryfallCard | GenericCard;
+
+/**
+ * Unified deck card type
+ */
+export type UnifiedDeckCard =
+  | (ScryfallCard & { quantity: number })
+  | (GenericCard & { quantity: number });
+
+/**
+ * Unified saved deck type
+ */
+export type UnifiedSavedDeck =
+  | Omit<SavedDeck, 'cards'> & { cards: Array<DeckCard> }
+  | Omit<GenericSavedDeck, 'cards'> & { cards: Array<GenericDeckCard> };
+
+// ============================================================================
+// TYPE GUARDS
+// ============================================================================
+
+/**
+ * Check if a card is a GenericCard
+ */
+export function isGenericCard(card: UnifiedCard): card is GenericCard {
+  return 'type' in card && typeof card.type === 'string';
+}
+
+/**
+ * Check if a card is a ScryfallCard
+ */
+export function isScryfallCard(card: UnifiedCard): card is ScryfallCard {
+  return 'type_line' in card && typeof card.type_line === 'string';
+}
+
+// ============================================================================
+// CONVERSION FUNCTIONS
+// ============================================================================
+
+/**
+ * Convert a ScryfallCard to GenericCard
+ * This enables using Scryfall data with the generic card system
+ */
+export function scryfallToGenericCard(scryfallCard: ScryfallCard): GenericCard {
+
+  // Parse type_line to determine card type
+  const typeLine = (scryfallCard.type_line || '').toLowerCase();
+  let type: GenericCardType;
+  const subtypes: string[] = [];
+
+  if (typeLine.includes('creature')) {
+    type = GenericCardType.CREATURE;
+    const match = scryfallCard.type_line?.match(/Creature\s*—?\s*(.+)/);
+    if (match) {
+      subtypes.push(...match[1].trim().split(' ').filter(s => s));
+    }
+  } else if (typeLine.includes('instant')) {
+    type = GenericCardType.INSTANT;
+  } else if (typeLine.includes('sorcery')) {
+    type = GenericCardType.SORCERY;
+  } else if (typeLine.includes('artifact')) {
+    type = GenericCardType.ARTIFACT;
+  } else if (typeLine.includes('enchantment')) {
+    type = GenericCardType.ENCHANTMENT;
+  } else if (typeLine.includes('land')) {
+    type = GenericCardType.LAND;
+  } else if (typeLine.includes('planeswalker')) {
+    type = GenericCardType.PLANESWALKER;
+  } else {
+    type = GenericCardType.ARTIFACT;
+  }
+
+  // Map colors
+  const colors = (scryfallCard.colors || []).map(c => c.toUpperCase() as GenericColor);
+  const colorIdentity = (scryfallCard.color_identity || []).map(c => c.toUpperCase() as GenericColor);
+
+  // Parse keywords
+  const keywords: AbilityKeyword[] = [];
+  const keywordPatterns: { keyword: AbilityKeyword; pattern: RegExp }[] = [
+    { keyword: AbilityKeyword.FIRST_STRIKE, pattern: /first strike/i },
+    { keyword: AbilityKeyword.DOUBLE_STRIKE, pattern: /double strike/i },
+    { keyword: AbilityKeyword.DEATHTOUCH, pattern: /deathtouch/i },
+    { keyword: AbilityKeyword.HEXPROOF, pattern: /hexproof/i },
+    { keyword: AbilityKeyword.LIFELINK, pattern: /lifelink/i },
+    { keyword: AbilityKeyword.FLYING, pattern: /flying/i },
+    { keyword: AbilityKeyword.TRAMPLE, pattern: /trample/i },
+    { keyword: AbilityKeyword.HASTE, pattern: /haste/i },
+    { keyword: AbilityKeyword.VIGILANCE, pattern: /vigilance/i },
+    { keyword: AbilityKeyword.REACH, pattern: /reach/i },
+    { keyword: AbilityKeyword.MENACE, pattern: /menace/i },
+    { keyword: AbilityKeyword.INDESTRUCTIBLE, pattern: /indestructible/i },
+    { keyword: AbilityKeyword.PROTECTION, pattern: /protection from/i },
+    { keyword: AbilityKeyword.SCRY, pattern: /scry/i },
+  ];
+
+  const text = scryfallCard.oracle_text || '';
+  for (const { keyword, pattern } of keywordPatterns) {
+    if (pattern.test(text)) {
+      keywords.push(keyword);
+    }
+  }
+
+  // Parse power/toughness for creatures
+  let power: number | undefined;
+  let toughness: number | undefined;
+  if (type === GenericCardType.CREATURE) {
+    power = scryfallCard.power ? parseInt(scryfallCard.power, 10) : undefined;
+    toughness = scryfallCard.toughness ? parseInt(scryfallCard.toughness, 10) : undefined;
+  }
+
+  // Map legalities
+  const legalities = {
+    commander: (scryfallCard.legalities?.commander || 'legal') as "legal" | "banned" | "restricted",
+    standard: (scryfallCard.legalities?.standard || 'legal') as "legal" | "banned" | "restricted",
+    modern: (scryfallCard.legalities?.modern || 'legal') as "legal" | "banned" | "restricted",
+    pioneer: (scryfallCard.legalities?.pioneer || 'legal') as "legal" | "banned" | "restricted",
+    legacy: (scryfallCard.legalities?.legacy || 'legal') as "legal" | "banned" | "restricted",
+    vintage: (scryfallCard.legalities?.vintage || 'legal') as "legal" | "banned" | "restricted",
+    pauper: (scryfallCard.legalities?.pauper || 'legal') as "legal" | "banned" | "restricted"
+  };
+
+  const genericCard: GenericCard = {
+    id: scryfallCard.id,
+    name: scryfallCard.name,
+    type: type,
+    subtypes,
+    manaCost: scryfallCard.mana_cost || '',
+    cmc: scryfallCard.cmc || 0,
+    colors,
+    colorIdentity,
+    text: scryfallCard.oracle_text || '',
+    keywords,
+    power,
+    toughness,
+    loyalty: scryfallCard.loyalty ? parseInt(scryfallCard.loyalty, 10) : undefined,
+    legalities,
+    imageUris: scryfallCard.image_uris ? {
+      small: scryfallCard.image_uris.small,
+      normal: scryfallCard.image_uris.normal,
+      large: scryfallCard.image_uris.large
+    } : undefined
+  };
+
+  return genericCard;
+}
+
+/**
+ * Convert a GenericCard to ScryfallCard format
+ * Useful for backward compatibility with existing code
+ */
+export function genericToScryfallCard(genericCard: GenericCard): ScryfallCard {
+  // Construct type_line from type and subtypes
+  const type_line = genericCard.type +
+    (genericCard.subtypes.length > 0 ? ` — ${genericCard.subtypes.join(' ')}` : '');
+
+  return {
+    id: genericCard.id,
+    name: genericCard.name,
+    cmc: genericCard.cmc,
+    type_line,
+    oracle_text: genericCard.text,
+    colors: genericCard.colors,
+    color_identity: genericCard.colorIdentity,
+    mana_cost: genericCard.manaCost,
+    power: genericCard.power?.toString(),
+    toughness: genericCard.toughness?.toString(),
+    loyalty: genericCard.loyalty?.toString(),
+    legalities: {
+      commander: genericCard.legalities.commander,
+      standard: genericCard.legalities.standard,
+      modern: genericCard.legalities.modern,
+      pioneer: genericCard.legalities.pioneer,
+      legacy: genericCard.legalities.legacy,
+      vintage: genericCard.legalities.vintage,
+      pauper: genericCard.legalities.pauper
+    },
+    image_uris: genericCard.imageUris ? {
+      small: genericCard.imageUris.small,
+      normal: genericCard.imageUris.normal,
+      large: genericCard.imageUris.large,
+      png: genericCard.imageUris.large,
+      art_crop: genericCard.imageUris.large,
+      border_crop: genericCard.imageUris.normal
+    } : undefined
+  };
 }
 
 
