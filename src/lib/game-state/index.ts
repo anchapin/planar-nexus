@@ -1,14 +1,25 @@
 /**
  * Game State Management Module
  *
- * This module provides comprehensive data structures and utilities for managing
- * the complete state of a Magic: The Gathering game.
+ * This module provides a generic card game framework that can support
+ * different game systems while maintaining backward compatibility with
+ * existing Magic: The Gathering implementations.
  *
  * @module game-state
  */
 
-// Export all types
+// Export all types (including generic framework types)
 export * from "./types";
+
+// Export generic framework utilities
+export {
+  manaPoolToResourcePool,
+  resourcePoolToManaPool,
+  playerToMTGPlayer,
+  mtgPlayerToPlayer,
+  gameStateToMTGGameState,
+  mtgGameStateToGameState,
+} from "./types";
 
 // Export card instance utilities (excluding canAttack/canBlock)
 export {

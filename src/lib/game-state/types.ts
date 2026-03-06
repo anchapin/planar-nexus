@@ -1,12 +1,27 @@
 /**
  * Core type definitions for the Planar Nexus game state engine.
- * These types represent the complete state of a Magic: The Gathering game.
+ * These types represent a generic card game framework that can support
+ * different game systems while maintaining backward compatibility with
+ * existing Magic: The Gathering implementations.
+ *
+ * The framework uses generic terminology that maps to game-specific terms:
+ * - "Legendary Leader" → Commander (MTG), Hero/Avatar (other systems)
+ * - "Resources" → Mana (MTG), Energy/Focus (other systems)
+ * - "Sources" → Lands (MTG), Nodes/Generators (other systems)
+ * - "Leader Zone" → Command Zone (MTG)
  */
 
 import { ScryfallCard } from "@/app/actions";
 
 // Re-export ScryfallCard for use in other game-state modules
 export type { ScryfallCard } from "@/app/actions";
+
+/**
+ * Game system type identifier
+ * Different game systems can implement their own rules while using
+ * the same core framework
+ */
+export type GameSystemType = "generic" | "magic" | "custom";
 
 /**
  * Unique identifier for a card instance in the game
@@ -94,18 +109,36 @@ export interface Counter {
 }
 
 /**
- * A zone where cards can exist
+ * Generic zone types that can map to game-specific zones
+ *
+ * Generic → MTG mappings:
+ * - deck → library
+ * - play → battlefield
+ * - discard → graveyard
+ * - removed → exile
+ * - leader → command (for commander/legendary leader)
  */
 export type ZoneType =
-  | "library"
-  | "hand"
-  | "battlefield"
-  | "graveyard"
-  | "exile"
-  | "stack"
-  | "command"
-  | "sideboard"
-  | "anticipate";
+  | "deck"           // Generic: Draw pile (MTG: library)
+  | "hand"           // Generic: Cards in hand
+  | "play"           // Generic: Active play area (MTG: battlefield)
+  | "discard"        // Generic: Discard pile (MTG: graveyard)
+  | "removed"        // Generic: Removed from game (MTG: exile)
+  | "stack"          // Generic: Active effects/stack
+  | "leader"         // Generic: Leader zone (MTG: command zone)
+  | "sideboard"      // Generic: Optional extra cards
+  | "anticipate";    // Generic: Looked-at but not drawn
+
+/**
+ * MTG-specific zone type aliases for backward compatibility
+ * These map to the generic zone types
+ */
+export type MTGZoneType =
+  | "library"      // Maps to "deck"
+  | "battlefield"  // Maps to "play"
+  | "graveyard"    // Maps to "discard"
+  | "exile"        // Maps to "removed"
+  | "command";     // Maps to "leader"
 
 /**
  * A specific location containing cards
@@ -124,65 +157,19 @@ export interface Zone {
 }
 
 /**
- * A player in the game
+ * Generic player resource pool
+ * Can represent mana (MTG), energy (other systems), or any game-specific resource
  */
-export interface Player {
-  /** Unique player identifier */
-  id: PlayerId;
-  /** Display name */
-  name: string;
-  /** Current life total */
-  life: number;
-  /** Current poison counters */
-  poisonCounters: number;
-  /** Commander damage dealt by each commander */
-  commanderDamage: Map<PlayerId, number>;
-  /** Maximum hand size */
-  maxHandSize: number;
-  /** Current hand size (for effects that modify it) */
-  currentHandSizeModifier: number;
-  /** Whether player has lost the game */
-  hasLost: boolean;
-  /** Reason for loss (if any) */
-  lossReason: string | null;
-
-  // Lands played this turn
-  /** Number of lands played this turn */
-  landsPlayedThisTurn: number;
-  /** Maximum lands that can be played this turn */
-  maxLandsPerTurn: number;
-
-  // Mana pool
-  /** Available mana in each color */
-  manaPool: ManaPool;
-
-  // Commander-specific
-  /** Whether this player is in the command zone (for commander format) */
-  isInCommandZone: boolean;
-  /** Experience counters (for commander) */
-  experienceCounters: number;
-  /** Player has cast their commander from command zone */
-  commanderCastCount: number;
-
-  // State tracking
-  /** Priority pass tracking - whether player has passed priority this phase */
-  hasPassedPriority: boolean;
-  /** Whether player has activated a mana ability this stack item */
-  hasActivatedManaAbility: boolean;
-  /** Whether player gets an additional combat phase this turn */
-  additionalCombatPhase: boolean;
-  /** Whether player gets an additional main phase this turn */
-  additionalMainPhase: boolean;
-
-  // Multiplayer game options
-  /** Whether this player has offered a draw */
-  hasOfferedDraw: boolean;
-  /** Whether this player has accepted a draw offer */
-  hasAcceptedDraw: boolean;
+export interface ResourcePool {
+  /** Generic resources that can be used flexibly */
+  generic: number;
+  /** System-specific resources (can be color-coded, typed, etc.) */
+  specific: Map<string, number>;
 }
 
 /**
- * Mana pool tracking
+ * MTG-specific mana pool type for backward compatibility
+ * Maps to the generic ResourcePool
  */
 export interface ManaPool {
   /** Colorless mana */
@@ -200,6 +187,198 @@ export interface ManaPool {
   /** Generic mana that can be paid with any color */
   generic: number;
 }
+
+/**
+ * Convert MTG ManaPool to generic ResourcePool
+ */
+export function manaPoolToResourcePool(manaPool: ManaPool): ResourcePool {
+  return {
+    generic: manaPool.generic + manaPool.colorless,
+    specific: new Map([
+      ["white", manaPool.white],
+      ["blue", manaPool.blue],
+      ["black", manaPool.black],
+      ["red", manaPool.red],
+      ["green", manaPool.green],
+    ]),
+  };
+}
+
+/**
+ * Convert generic ResourcePool to MTG ManaPool
+ */
+export function resourcePoolToManaPool(resourcePool: ResourcePool): ManaPool {
+  return {
+    colorless: resourcePool.generic,
+    white: resourcePool.specific.get("white") || 0,
+    blue: resourcePool.specific.get("blue") || 0,
+    black: resourcePool.specific.get("black") || 0,
+    red: resourcePool.specific.get("red") || 0,
+    green: resourcePool.specific.get("green") || 0,
+    generic: 0, // Already incorporated into colorless
+  };
+}
+
+/**
+ * Generic player statistics that can vary by game system
+ */
+export interface PlayerStats {
+  /** Primary health/points */
+  health: number;
+  /** Secondary counters (poison, corruption, etc.) */
+  secondaryCounters: Map<string, number>;
+  /** Damage taken from leader/hero attacks */
+  leaderDamage: Map<PlayerId, number>;
+  /** Experience or progression counters */
+  experienceCounters: number;
+}
+
+/**
+ * A player in the game (generic framework)
+ */
+export interface Player {
+  /** Unique player identifier */
+  id: PlayerId;
+  /** Display name */
+  name: string;
+  /** Game system being used */
+  gameSystem: GameSystemType;
+  /** Player statistics (health, counters, etc.) */
+  stats: PlayerStats;
+  /** Maximum hand size */
+  maxHandSize: number;
+  /** Current hand size modifier */
+  currentHandSizeModifier: number;
+  /** Whether player has lost the game */
+  hasLost: boolean;
+  /** Reason for loss (if any) */
+  lossReason: string | null;
+
+  // Resource source management (generic for lands, nodes, generators)
+  /** Number of sources played this turn */
+  sourcesPlayedThisTurn: number;
+  /** Maximum sources that can be played this turn */
+  maxSourcesPerTurn: number;
+
+  // Resource pool (generic for mana, energy, etc.)
+  /** Available resources */
+  resourcePool: ResourcePool;
+
+  // Leader/hero specific (generic for commander format)
+  /** Whether this player is in the leader zone */
+  isInLeaderZone: boolean;
+  /** Number of times leader has been cast/activated */
+  leaderCastCount: number;
+
+  // State tracking
+  /** Priority pass tracking - whether player has passed priority this phase */
+  hasPassedPriority: boolean;
+  /** Whether player has activated a resource ability this stack item */
+  hasActivatedResourceAbility: boolean;
+  /** Whether player gets an additional combat phase this turn */
+  additionalCombatPhase: boolean;
+  /** Whether player gets an additional main phase this turn */
+  additionalMainPhase: boolean;
+
+  // Multiplayer game options
+  /** Whether this player has offered a draw */
+  hasOfferedDraw: boolean;
+  /** Whether this player has accepted a draw offer */
+  hasAcceptedDraw: boolean;
+}
+
+/**
+ * MTG-specific Player interface for backward compatibility
+ * Uses MTG terminology while internally using generic framework
+ */
+export interface MTGPlayer extends Omit<Player, 'stats' | 'resourcePool' | 'isInLeaderZone' | 'leaderCastCount' | 'sourcesPlayedThisTurn' | 'maxSourcesPerTurn' | 'hasActivatedResourceAbility'> {
+  /** Current life total (MTG-specific) */
+  life: number;
+  /** Current poison counters (MTG-specific) */
+  poisonCounters: number;
+  /** Commander damage dealt by each commander (MTG-specific) */
+  commanderDamage: Map<PlayerId, number>;
+  /** Number of lands played this turn (MTG-specific) */
+  landsPlayedThisTurn: number;
+  /** Maximum lands that can be played this turn (MTG-specific) */
+  maxLandsPerTurn: number;
+  /** Available mana in each color (MTG-specific) */
+  manaPool: ManaPool;
+  /** Whether this player is in the command zone (MTG-specific) */
+  isInCommandZone: boolean;
+  /** Experience counters (MTG-specific) */
+  experienceCounters: number;
+  /** Player has cast their commander from command zone (MTG-specific) */
+  commanderCastCount: number;
+  /** Whether player has activated a mana ability this stack item (MTG-specific) */
+  hasActivatedManaAbility: boolean;
+}
+
+/**
+ * Convert generic Player to MTG Player for backward compatibility
+ */
+export function playerToMTGPlayer(player: Player): MTGPlayer {
+  return {
+    id: player.id,
+    name: player.name,
+    gameSystem: "magic",
+    life: player.stats.health,
+    poisonCounters: player.stats.secondaryCounters.get("poison") || 0,
+    commanderDamage: player.stats.leaderDamage,
+    maxHandSize: player.maxHandSize,
+    currentHandSizeModifier: player.currentHandSizeModifier,
+    hasLost: player.hasLost,
+    lossReason: player.lossReason,
+    landsPlayedThisTurn: player.sourcesPlayedThisTurn,
+    maxLandsPerTurn: player.maxSourcesPerTurn,
+    manaPool: resourcePoolToManaPool(player.resourcePool),
+    isInCommandZone: player.isInLeaderZone,
+    experienceCounters: player.stats.experienceCounters,
+    commanderCastCount: player.leaderCastCount,
+    hasPassedPriority: player.hasPassedPriority,
+    hasActivatedManaAbility: player.hasActivatedResourceAbility,
+    additionalCombatPhase: player.additionalCombatPhase,
+    additionalMainPhase: player.additionalMainPhase,
+    hasOfferedDraw: player.hasOfferedDraw,
+    hasAcceptedDraw: player.hasAcceptedDraw,
+  };
+}
+
+/**
+ * Convert MTG Player to generic Player
+ */
+export function mtgPlayerToPlayer(mtgPlayer: MTGPlayer): Player {
+  const secondaryCounters = new Map<string, number>();
+  secondaryCounters.set("poison", mtgPlayer.poisonCounters);
+
+  return {
+    id: mtgPlayer.id,
+    name: mtgPlayer.name,
+    gameSystem: "magic",
+    stats: {
+      health: mtgPlayer.life,
+      secondaryCounters,
+      leaderDamage: mtgPlayer.commanderDamage,
+      experienceCounters: mtgPlayer.experienceCounters,
+    },
+    maxHandSize: mtgPlayer.maxHandSize,
+    currentHandSizeModifier: mtgPlayer.currentHandSizeModifier,
+    hasLost: mtgPlayer.hasLost,
+    lossReason: mtgPlayer.lossReason,
+    sourcesPlayedThisTurn: mtgPlayer.landsPlayedThisTurn,
+    maxSourcesPerTurn: mtgPlayer.maxLandsPerTurn,
+    resourcePool: manaPoolToResourcePool(mtgPlayer.manaPool),
+    isInLeaderZone: mtgPlayer.isInCommandZone,
+    leaderCastCount: mtgPlayer.commanderCastCount,
+    hasPassedPriority: mtgPlayer.hasPassedPriority,
+    hasActivatedResourceAbility: mtgPlayer.hasActivatedManaAbility,
+    additionalCombatPhase: mtgPlayer.additionalCombatPhase,
+    additionalMainPhase: mtgPlayer.additionalMainPhase,
+    hasOfferedDraw: mtgPlayer.hasOfferedDraw,
+    hasAcceptedDraw: mtgPlayer.hasAcceptedDraw,
+  };
+}
+
 
 /**
  * A turn phase or step
@@ -388,11 +567,40 @@ export interface ChoiceOption {
 }
 
 /**
- * The complete game state
+ * Generic game format configuration
+ */
+export interface GameFormat {
+  /** Format identifier */
+  name: string;
+  /** Game system type */
+  gameSystem: GameSystemType;
+  /** Maximum copies of each card (except basics/sources) */
+  maxCopies: number;
+  /** Minimum deck size */
+  minDeckSize: number;
+  /** Maximum deck size (or Infinity for no limit) */
+  maxDeckSize: number;
+  /** Starting health/points */
+  startingHealth: number;
+  /** Leader/hero damage threshold (if applicable) */
+  leaderDamageThreshold: number | null;
+  /** Uses sideboard/extra cards */
+  usesSideboard: boolean;
+  /** Sideboard size */
+  sideboardSize: number;
+}
+
+/**
+ * Generic game state interface
+ * Supports different game systems through configurable formats
  */
 export interface GameState {
   /** Unique game identifier */
   gameId: string;
+  /** Game system type being used */
+  gameSystem: GameSystemType;
+  /** Game format configuration */
+  format: GameFormat;
   /** All players in the game */
   players: Map<PlayerId, Player>;
   /** All card instances */
@@ -417,12 +625,83 @@ export interface GameState {
   winners: PlayerId[];
   /** How the game ended */
   endReason: string | null;
-  /** Game format (e.g., "standard", "commander", "historic") */
-  format: string;
   /** Timestamp when game was created */
   createdAt: number;
   /** Timestamp when game was last modified */
   lastModifiedAt: number;
+}
+
+/**
+ * MTG-specific game state for backward compatibility
+ * Maintains MTG format string while using generic framework internally
+ */
+export interface MTGGameState extends Omit<GameState, 'format' | 'gameSystem'> {
+  /** Game format (e.g., "standard", "commander", "historic") */
+  format: string;
+}
+
+/**
+ * Convert generic GameState to MTG GameState
+ */
+export function gameStateToMTGGameState(state: GameState): MTGGameState {
+  return {
+    ...state,
+    format: state.format.name,
+  };
+}
+
+/**
+ * Convert MTG GameState to generic GameState
+ */
+export function mtgGameStateToGameState(mtgState: MTGGameState): GameState {
+  return {
+    ...mtgState,
+    gameSystem: "magic",
+    format: getMTGFormatConfig(mtgState.format),
+  };
+}
+
+/**
+ * Get MTG format configuration from format name
+ */
+function getMTGFormatConfig(formatName: string): GameFormat {
+  const formatConfigs: Record<string, GameFormat> = {
+    standard: {
+      name: "standard",
+      gameSystem: "magic",
+      maxCopies: 4,
+      minDeckSize: 60,
+      maxDeckSize: Infinity,
+      startingHealth: 20,
+      leaderDamageThreshold: null,
+      usesSideboard: true,
+      sideboardSize: 15,
+    },
+    modern: {
+      name: "modern",
+      gameSystem: "magic",
+      maxCopies: 4,
+      minDeckSize: 60,
+      maxDeckSize: Infinity,
+      startingHealth: 20,
+      leaderDamageThreshold: null,
+      usesSideboard: true,
+      sideboardSize: 15,
+    },
+    commander: {
+      name: "commander",
+      gameSystem: "magic",
+      maxCopies: 1,
+      minDeckSize: 100,
+      maxDeckSize: 100,
+      startingHealth: 40,
+      leaderDamageThreshold: 21,
+      usesSideboard: false,
+      sideboardSize: 0,
+    },
+  };
+
+  return formatConfigs[formatName] || formatConfigs.standard;
 }
 
 /**
