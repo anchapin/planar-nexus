@@ -1,9 +1,13 @@
 /**
  * Mana System
- * 
+ *
  * This module implements the mana system for Magic: The Gathering,
  * including mana pool management, land playing, and mana abilities.
- * 
+ *
+ * Note: This is now part of the generic card game framework.
+ * The generic equivalent of "mana" is "resources", and "lands" are "sources".
+ * For generic framework usage, see MTGResourcePoolAdapter in mtg-adapter.ts.
+ *
  * Reference: CR 106 - Mana, CR 305 - Lands
  */
 

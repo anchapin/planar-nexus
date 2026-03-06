@@ -2,13 +2,24 @@
  * Game State Management Module
  *
  * This module provides comprehensive data structures and utilities for managing
- * the complete state of a Magic: The Gathering game.
+ * the state of card games. It now uses a generic framework that supports multiple
+ * game systems (MTG, Hearthstone, etc.) with MTG-specific terminology mapped to
+ * generic equivalents:
+ *
+ * Terminology Mapping:
+ * - "Commander" → "Legendary Leader"
+ * - "mana" → "resources"
+ * - "lands" → "sources"
+ * - "command zone" → "leader zone"
  *
  * @module game-state
  */
 
-// Export all types
+// Export all types (including generic types and MTG-specific types)
 export * from "./types";
+
+// Export MTG adapter for working with MTG-specific data
+export * from "./mtg-adapter";
 
 // Export card instance utilities (excluding canAttack/canBlock)
 export {

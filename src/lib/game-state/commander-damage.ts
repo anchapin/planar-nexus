@@ -1,9 +1,14 @@
 /**
  * Commander Damage Tracking System
- * 
+ *
  * Implements commander damage tracking as defined in MTG Commander rules.
  * Reference: CR 903 - Commander
- * 
+ *
+ * This module now uses the generic card game framework terminology:
+ * - "Commander" → "Legendary Leader"
+ * - "Commander Damage" → "Leader Damage"
+ * - "Command Zone" → "Leader Zone"
+ *
  * Features:
  * - Track commander damage from each commander to each opponent
  * - 21+ damage from a single commander = loss condition
@@ -12,6 +17,7 @@
  */
 
 import type { GameState, PlayerId, CardInstanceId, CardInstance, Player } from './types';
+import { MTG_CONFIG, MTGCardTypeUtils } from './mtg-adapter';
 
 /**
  * Commander damage tracking state
