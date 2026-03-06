@@ -1,8 +1,9 @@
 /**
  * @fileOverview Achievement and badge system for player milestones
- * 
+ *
  * Issue #96: Phase 5.3: Implement achievement and badge system
- * 
+ * Unit 16: Local Storage Migration - Updated to use IndexedDB
+ *
  * Provides:
  * - Achievement definitions
  * - Achievement tracking
@@ -12,6 +13,7 @@
  */
 
 import type { GameState } from './game-state/types';
+import { indexedDBStorage } from './indexeddb-storage';
 
 /**
  * Achievement rarity tiers
@@ -333,27 +335,46 @@ export const RARITY_POINTS: Record<AchievementRarity, number> = {
 };
 
 /**
- * Achievement manager class
+ * Achievement manager class with IndexedDB support
  */
 class AchievementManager {
   private storageKey = 'planar_nexus_achievements';
   private listeners: Set<(notification: AchievementNotification) => void> = new Set();
 
   /**
+   * Initialize storage
+   */
+  private async initialize(): Promise<void> {
+    await indexedDBStorage.initialize();
+  }
+
+  /**
    * Get player achievements
    */
-  getPlayerAchievements(playerId: string): PlayerAchievements {
+  async getPlayerAchievements(playerId: string): Promise<PlayerAchievements> {
     if (typeof window === 'undefined') {
       return this.createEmptyAchievements(playerId);
     }
 
-    const stored = localStorage.getItem(`${this.storageKey}_${playerId}`);
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-        return this.createEmptyAchievements(playerId);
+    try {
+      await this.initialize();
+      const achievements = await indexedDBStorage.get<PlayerAchievements>('achievements', playerId);
+
+      if (achievements) {
+        return achievements;
       }
+    } catch (error) {
+      console.error('Failed to get achievements from IndexedDB:', error);
+    }
+
+    // Fallback to localStorage
+    try {
+      const stored = localStorage.getItem(`${this.storageKey}_${playerId}`);
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch {
+      return this.createEmptyAchievements(playerId);
     }
 
     return this.createEmptyAchievements(playerId);
@@ -378,12 +399,23 @@ class AchievementManager {
   /**
    * Save player achievements
    */
-  private saveAchievements(achievements: PlayerAchievements): void {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(
-      `${this.storageKey}_${achievements.playerId}`,
-      JSON.stringify(achievements)
-    );
+  private async saveAchievements(achievements: PlayerAchievements): Promise<void> {
+    try {
+      await this.initialize();
+      await indexedDBStorage.set('achievements', {
+        id: achievements.playerId,
+        ...achievements,
+      });
+    } catch (error) {
+      console.error('Failed to save achievements to IndexedDB:', error);
+
+      // Fallback to localStorage
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(
+        `${this.storageKey}_${achievements.playerId}`,
+        JSON.stringify(achievements)
+      );
+    }
   }
 
   /**
@@ -410,40 +442,40 @@ class AchievementManager {
   /**
    * Get achievement progress
    */
-  getAchievementProgress(playerId: string, achievementId: string): AchievementProgress | null {
-    const playerData = this.getPlayerAchievements(playerId);
+  async getAchievementProgress(playerId: string, achievementId: string): Promise<AchievementProgress | null> {
+    const playerData = await this.getPlayerAchievements(playerId);
     return playerData.achievements.find(a => a.achievementId === achievementId) || null;
   }
 
   /**
    * Check and update achievements after a game
    */
-  checkGameAchievements(
+  async checkGameAchievements(
     playerId: string,
     gameState: GameState,
     won: boolean
-  ): AchievementNotification[] {
+  ): Promise<AchievementNotification[]> {
     const notifications: AchievementNotification[] = [];
-    const playerData = this.getPlayerAchievements(playerId);
+    const playerData = await this.getPlayerAchievements(playerId);
     const player = gameState.players.get(playerId);
 
     if (!player) return notifications;
 
     // Calculate games played
-    const gamesPlayed = this.getStat(playerId, 'games_played') + 1;
-    this.setStat(playerId, 'games_played', gamesPlayed);
+    const gamesPlayed = (await this.getStat(playerId, 'games_played')) + 1;
+    await this.setStat(playerId, 'games_played', gamesPlayed);
 
     // Calculate wins
-    let wins = this.getStat(playerId, 'wins');
+    let wins = await this.getStat(playerId, 'wins');
     if (won) {
       wins++;
-      this.setStat(playerId, 'wins', wins);
+      await this.setStat(playerId, 'wins', wins);
     }
 
     // Calculate format-specific games
     const format = gameState.format || 'unknown';
-    const formatGames = this.getStat(playerId, `format_${format}`) + 1;
-    this.setStat(playerId, `format_${format}`, formatGames);
+    const formatGames = (await this.getStat(playerId, `format_${format}`)) + 1;
+    await this.setStat(playerId, `format_${format}`, formatGames);
 
     // Check each achievement
     for (const achievement of ACHIEVEMENTS) {
@@ -502,7 +534,7 @@ class AchievementManager {
     }
 
     playerData.lastUpdated = Date.now();
-    this.saveAchievements(playerData);
+    await this.saveAchievements(playerData);
 
     // Notify listeners
     notifications.forEach(notification => {
@@ -515,9 +547,9 @@ class AchievementManager {
   /**
    * Update collection achievements
    */
-  checkCollectionAchievements(playerId: string, collectionSize: number): AchievementNotification[] {
+  async checkCollectionAchievements(playerId: string, collectionSize: number): Promise<AchievementNotification[]> {
     const notifications: AchievementNotification[] = [];
-    const playerData = this.getPlayerAchievements(playerId);
+    const playerData = await this.getPlayerAchievements(playerId);
 
     for (const achievement of ACHIEVEMENTS) {
       if (achievement.requirement.type !== 'cards_collected') continue;
@@ -542,7 +574,7 @@ class AchievementManager {
     }
 
     playerData.lastUpdated = Date.now();
-    this.saveAchievements(playerData);
+    await this.saveAchievements(playerData);
 
     notifications.forEach(notification => {
       this.listeners.forEach(listener => listener(notification));
@@ -554,7 +586,16 @@ class AchievementManager {
   /**
    * Get achievement stats
    */
-  private getStat(playerId: string, stat: string): number {
+  private async getStat(playerId: string, stat: string): Promise<number> {
+    try {
+      await this.initialize();
+      const stats = await indexedDBStorage.get<Record<string, number>>('preferences', `stats_${playerId}`);
+      return stats?.[stat] || 0;
+    } catch (error) {
+      console.error('Failed to get stat from IndexedDB:', error);
+    }
+
+    // Fallback to localStorage
     if (typeof window === 'undefined') return 0;
     const stats = JSON.parse(localStorage.getItem(`planar_nexus_stats_${playerId}`) || '{}');
     return stats[stat] || 0;
@@ -563,7 +604,20 @@ class AchievementManager {
   /**
    * Set achievement stats
    */
-  private setStat(playerId: string, stat: string, value: number): void {
+  private async setStat(playerId: string, stat: string, value: number): Promise<void> {
+    try {
+      await this.initialize();
+      const stats = await indexedDBStorage.get<Record<string, number>>('preferences', `stats_${playerId}`) || {};
+      stats[stat] = value;
+      await indexedDBStorage.set('preferences', {
+        id: `stats_${playerId}`,
+        ...stats,
+      });
+    } catch (error) {
+      console.error('Failed to set stat in IndexedDB:', error);
+    }
+
+    // Fallback to localStorage
     if (typeof window === 'undefined') return;
     const stats = JSON.parse(localStorage.getItem(`planar_nexus_stats_${playerId}`) || '{}');
     stats[stat] = value;
@@ -573,8 +627,8 @@ class AchievementManager {
   /**
    * Get unlocked achievements
    */
-  getUnlockedAchievements(playerId: string): Achievement[] {
-    const playerData = this.getPlayerAchievements(playerId);
+  async getUnlockedAchievements(playerId: string): Promise<Achievement[]> {
+    const playerData = await this.getPlayerAchievements(playerId);
     return playerData.achievements
       .filter(p => p.unlocked)
       .map(p => this.getAchievement(p.achievementId))
@@ -584,11 +638,11 @@ class AchievementManager {
   /**
    * Get achievement progress for display
    */
-  getAchievementDisplayProgress(playerId: string): Array<{
+  async getAchievementDisplayProgress(playerId: string): Promise<Array<{
     achievement: Achievement;
     progress: AchievementProgress;
-  }> {
-    const playerData = this.getPlayerAchievements(playerId);
+  }>> {
+    const playerData = await this.getPlayerAchievements(playerId);
     return ACHIEVEMENTS.map(achievement => {
       const progress = playerData.achievements.find(
         a => a.achievementId === achievement.id
@@ -612,7 +666,16 @@ class AchievementManager {
   /**
    * Reset achievements (for testing)
    */
-  resetAchievements(playerId: string): void {
+  async resetAchievements(playerId: string): Promise<void> {
+    try {
+      await this.initialize();
+      await indexedDBStorage.delete('achievements', playerId);
+      await indexedDBStorage.delete('preferences', `stats_${playerId}`);
+    } catch (error) {
+      console.error('Failed to reset achievements in IndexedDB:', error);
+    }
+
+    // Fallback to localStorage
     if (typeof window === 'undefined') return;
     localStorage.removeItem(`${this.storageKey}_${playerId}`);
     localStorage.removeItem(`planar_nexus_stats_${playerId}`);
