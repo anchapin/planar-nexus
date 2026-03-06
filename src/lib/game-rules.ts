@@ -1,8 +1,8 @@
 /**
- * Game rules and format definitions for Planar Nexus
+ * Generic format rules system for Planar Nexus
  *
- * This module defines the rules for Magic: The Gathering formats,
- * including deck construction rules, ban/restricted lists, and validation.
+ * This module defines a configurable game mode system with custom rulesets.
+ * Formats are generic game modes that can be customized without code changes.
  */
 
 // Note: GameState type is defined in @/types/game
@@ -10,10 +10,36 @@
 // Also see @/lib/game-state/types.ts for full game state types
 
 /**
- * Format-specific deck construction rules
+ * Generic deck construction rule types
  */
-export const formatRules = {
-  commander: {
+export interface DeckConstructionRules {
+  maxCopies: number;
+  minCards: number;
+  maxCards: number;
+  startingLife: number;
+  commanderDamage: number | null;
+  usesSideboard: boolean;
+  sideboardSize: number;
+}
+
+/**
+ * Game mode configuration interface
+ */
+export interface GameModeConfig {
+  id: string;
+  name: string;
+  description: string;
+  deckRules: DeckConstructionRules;
+  rules: string[];
+  banList?: string[];
+  restrictedList?: string[];
+}
+
+/**
+ * Default deck construction rules for different game mode categories
+ */
+export const DEFAULT_RULES = {
+  singleCommander: {
     maxCopies: 1,
     minCards: 100,
     maxCards: 100,
@@ -22,7 +48,7 @@ export const formatRules = {
     usesSideboard: false,
     sideboardSize: 0,
   },
-  standard: {
+  constructed: {
     maxCopies: 4,
     minCards: 60,
     maxCards: Infinity,
@@ -31,320 +57,337 @@ export const formatRules = {
     usesSideboard: true,
     sideboardSize: 15,
   },
-  modern: {
+  limited: {
     maxCopies: 4,
-    minCards: 60,
+    minCards: 40,
     maxCards: Infinity,
     startingLife: 20,
     commanderDamage: null,
-    usesSideboard: true,
-    sideboardSize: 15,
-  },
-  pioneer: {
-    maxCopies: 4,
-    minCards: 60,
-    maxCards: Infinity,
-    startingLife: 20,
-    commanderDamage: null,
-    usesSideboard: true,
-    sideboardSize: 15,
-  },
-  legacy: {
-    maxCopies: 4,
-    minCards: 60,
-    maxCards: Infinity,
-    startingLife: 20,
-    commanderDamage: null,
-    usesSideboard: true,
-    sideboardSize: 15,
-  },
-  vintage: {
-    maxCopies: 4, // Except for restricted cards
-    minCards: 60,
-    maxCards: Infinity,
-    startingLife: 20,
-    commanderDamage: null,
-    usesSideboard: true,
-    sideboardSize: 15,
-  },
-  pauper: {
-    maxCopies: 4,
-    minCards: 60,
-    maxCards: Infinity,
-    startingLife: 20,
-    commanderDamage: null,
-    usesSideboard: true,
-    sideboardSize: 15,
+    usesSideboard: false,
+    sideboardSize: 0,
   },
 };
 
-export type Format = keyof typeof formatRules;
-
 /**
- * Ban lists for each format (card names in lowercase)
- * Note: These are sample lists - in production, these should be fetched from Scryfall
+ * Predefined game modes
+ * These can be extended or customized without code changes
  */
-export const banLists: Record<Format, string[]> = {
-  commander: [
-    // Commander has a relatively small ban list
-    "ancestral recall",
-    "balance",
-    "biorhythm",
-    "black lotus",
-    "channel",
-    "chaos orb",
-    "coalition victory",
-    "contract from below",
-    "darkpact",
-    "demonic attorney",
-    "dream halls",
-    "emrakul, the aeons torn",
-    "entropy",
-    "faithless looting",
-    "fastbond",
-    "flash",
-    "fractured powerstone",
-    "goblin recruiter",
-    "griselbrand",
-    "humility",
-    "karakas",
-    "kinnan, bonder prodigy",
-    "leovold, emissary of trest",
-    "limited resources",
-    "mana crypt",
-    "mana vault",
-    "mox emerald",
-    "mox jet",
-    "mox pearl",
-    "mox ruby",
-    "mox sapphire",
-    "mystic remora",
-    "nadir kraken",
-    "najal, the storm generator",
-    "nas_met, megrim master",
-    "oxizea, storm of the sea",
-    "painter's servant",
-    "panharmonicon",
-    "primeval titan",
-    "prophet of kruphix",
-    "recurring nightmare",
-    "rofelza, vizier of the ancients",
-    "rofellos, llanowar emissary",
-    "sunder",
-    "sylvan primordial",
-    "time walk",
-    "timetwister",
-    "tolarian academy",
-    "trade secrets",
-    "upheaval",
-    "yawgmoth's bargain",
-    "yawgmoth's will",
-  ],
-  standard: [
-    // Standard ban list changes frequently - this is a sample
-    // In production, fetch from Scryfall API
-  ],
-  modern: [
-    // Modern ban list - sample
-    "ancient tomb",
-    "bazaar of baghdad",
-    "blazing shoal",
-    "chrome mox",
-    "cloudpost",
-    "depths",
-    "dig through time",
-    "dread return",
-    "eye of ugin",
-    "glimpse of nature",
-    "golgari grave-troll",
-    "green sun's zenith",
-    "hypergenesis",
-    "jace, the mind sculptor",
-    "mental misstep",
-    "mox opal",
-    "mystic remora",
-    "ancestral vision",
-    "ponder",
-    "preordain",
-    "rite of flame",
-    "seething song",
-    "stoneforge mystic",
-    "sword of the meek",
-    "treasure cruise",
-    "umezawa's jitte",
-    "valakut, the molten pinnacle",
-  ],
-  pioneer: [
-    // Pioneer ban list - sample (empty as Pioneer has no current bans)
-    // Note: This should be updated from official WotC sources in production
-  ],
-  legacy: [
-    // Legacy has a relatively small ban list
-    "ancestral recall",
-    "balance",
-    "black lotus",
-    "channel",
-    "channeler",
-    "demonic tutor",
-    "dream halls",
-    "earthcraft",
-    "flash",
-    "frantic search",
-    "goblin recruiter",
-    "griselbrand",
-    "hermit druid",
-    "illusionist's bracers",
-    "memory jar",
-    "mox emerald",
-    "mox jet",
-    "mox pearl",
-    "mox ruby",
-    "mox sapphire",
-    "mystic remora",
-    "narset of the ancient way",
-    "necropotence",
-    "past in flames",
-    "sensei's divining top",
-    "skullclamp",
-    "sol ring",
-    "strip mine",
-    "time walk",
-    "timetwister",
-    "tolarian academy",
-    "treasure cruise",
-    "triangle of war",
-    "underworld breach",
-    "vampiric tutor",
-    "wheel of fortune",
-    "windfall",
-    "winter orb",
-    "yawgmoth's bargain",
-    "yawgmoth's will",
-  ],
-  vintage: [
-    // Vintage has restricted cards instead of bans
-    // These are limited to 1 copy
-    "ancestral recall",
-    "ancestral vision",
-    "balance",
-    "black lotus",
-    "brainstorm",
-    "channel",
-    "chromatic mox",
-    "contract from below",
-    "demonic tutor",
-    "dig through time",
-    "gush",
-    "imperial seal",
-    "jeweled lotus",
-    "library of alexandria",
-    "lion's eye diamond",
-    "lotus petal",
-    "mana crypt",
-    "mana vault",
-    "memory jar",
-    "mox emerald",
-    "mox jet",
-    "mox pearl",
-    "mox ruby",
-    "mox sapphire",
-    "mystic remora",
-    "mystic tutor",
-    "necropotence",
-    "orcish lumberjack",
-    "ponder",
-    "preordain",
-    "sol ring",
-    "time walk",
-    "timetwister",
-    "tinker",
-    "tolarian academy",
-    "treasure cruise",
-    "trinisphere",
-    "vampiric tutor",
-    "vampiric tutor",
-    "vault",
-    "windfall",
-    "yawgmoth's bargain",
-    "yawgmoth's will",
-  ],
-  pauper: [
-    // Pauper ban list
-    "cloudpost",
-    "crucible of worlds",
-    "empty the warrens",
-    "flash",
-    "frantic search",
-    "grapeshot",
-    "invigorate",
-    "ponder",
-    "preordain",
-    "storm",
-    "treasure cruise",
-  ],
+export const gameModes: Record<string, GameModeConfig> = {
+  "legendary-commander": {
+    id: "legendary-commander",
+    name: "Legendary Commander",
+    description: "Single-commander format with 100-card decks and 40 starting life",
+    deckRules: DEFAULT_RULES.singleCommander,
+    rules: [
+      "100 cards exactly (including legendary)",
+      "Maximum 1 copy of each card (except basic lands)",
+      "1 Legendary card in the command zone",
+      "Legendary's color identity determines deck colors",
+      "40 starting life",
+      "21 legendary damage eliminates a player",
+    ],
+    banList: [
+      "ancestral recall",
+      "balance",
+      "biorhythm",
+      "black lotus",
+      "channel",
+      "chaos orb",
+      "coalition victory",
+      "contract from below",
+      "darkpact",
+      "demonic attorney",
+      "dream halls",
+      "emrakul, the aeons torn",
+      "entropy",
+      "faithless looting",
+      "fastbond",
+      "flash",
+      "fractured powerstone",
+      "goblin recruiter",
+      "griselbrand",
+      "humility",
+      "karakas",
+      "kinnan, bonder prodigy",
+      "leovold, emissary of trest",
+      "limited resources",
+      "mana crypt",
+      "mana vault",
+      "mox emerald",
+      "mox jet",
+      "mox pearl",
+      "mox ruby",
+      "mox sapphire",
+      "mystic remora",
+      "nadir kraken",
+      "najal, the storm generator",
+      "nas_met, megrim master",
+      "oxizea, storm of the sea",
+      "painter's servant",
+      "panharmonicon",
+      "primeval titan",
+      "prophet of kruphix",
+      "recurring nightmare",
+      "rofelza, vizier of the ancients",
+      "rofellos, llanowar emissary",
+      "sunder",
+      "sylvan primordial",
+      "time walk",
+      "timetwister",
+      "tolarian academy",
+      "trade secrets",
+      "upheaval",
+      "yawgmoth's bargain",
+      "yawgmoth's will",
+    ],
+  },
+  "constructed-core": {
+    id: "constructed-core",
+    name: "Constructed Core",
+    description: "Standard constructed format with current card pool",
+    deckRules: DEFAULT_RULES.constructed,
+    rules: [
+      "Minimum 60 cards",
+      "Maximum 4 copies of each card (except basic lands)",
+      "15 card sideboard (optional)",
+      "20 starting life",
+      "Uses current Core card pool",
+    ],
+    banList: [],
+  },
+  "constructed-legacy": {
+    id: "constructed-legacy",
+    name: "Constructed Legacy",
+    description: "Extended constructed format with expanded card pool",
+    deckRules: DEFAULT_RULES.constructed,
+    rules: [
+      "Minimum 60 cards",
+      "Maximum 4 copies of each card (except basic lands)",
+      "15 card sideboard (optional)",
+      "20 starting life",
+      "Cards from Legacy expansion onward",
+    ],
+    banList: [
+      "ancestral recall",
+      "balance",
+      "black lotus",
+      "channel",
+      "channeler",
+      "demonic tutor",
+      "dream halls",
+      "earthcraft",
+      "flash",
+      "frantic search",
+      "goblin recruiter",
+      "griselbrand",
+      "hermit druid",
+      "illusionist's bracers",
+      "memory jar",
+      "mox emerald",
+      "mox jet",
+      "mox pearl",
+      "mox ruby",
+      "mox sapphire",
+      "mystic remora",
+      "narset of the ancient way",
+      "necropotence",
+      "past in flames",
+      "sensei's divining top",
+      "skullclamp",
+      "sol ring",
+      "strip mine",
+      "time walk",
+      "timetwister",
+      "tolarian academy",
+      "treasure cruise",
+      "triangle of war",
+      "underworld breach",
+      "vampiric tutor",
+      "wheel of fortune",
+      "windfall",
+      "winter orb",
+      "yawgmoth's bargain",
+      "yawgmoth's will",
+    ],
+  },
+  "constructed-vintage": {
+    id: "constructed-vintage",
+    name: "Constructed Vintage",
+    description: "Constructed format with all cards and restricted list",
+    deckRules: { ...DEFAULT_RULES.constructed, maxCopies: 4 },
+    rules: [
+      "Minimum 60 cards",
+      "Maximum 4 copies of each card (except basic lands)",
+      "Restricted cards limited to 1 copy",
+      "15 card sideboard (optional)",
+      "20 starting life",
+      "All cards are legal, with some restrictions",
+    ],
+    restrictedList: [
+      "ancestral recall",
+      "ancestral vision",
+      "balance",
+      "black lotus",
+      "brainstorm",
+      "channel",
+      "chromatic mox",
+      "contract from below",
+      "demonic tutor",
+      "dig through time",
+      "gush",
+      "imperial seal",
+      "jeweled lotus",
+      "library of alexandria",
+      "lion's eye diamond",
+      "lotus petal",
+      "mana crypt",
+      "mana vault",
+      "memory jar",
+      "mox emerald",
+      "mox jet",
+      "mox pearl",
+      "mox ruby",
+      "mox sapphire",
+      "mystic remora",
+      "mystic tutor",
+      "necropotence",
+      "orcish lumberjack",
+      "ponder",
+      "preordain",
+      "sol ring",
+      "time walk",
+      "timetwister",
+      "tinker",
+      "tolarian academy",
+      "treasure cruise",
+      "trinisphere",
+      "vampiric tutor",
+      "vault",
+      "windfall",
+      "yawgmoth's bargain",
+      "yawgmoth's will",
+    ],
+  },
+  "constructed-extended": {
+    id: "constructed-extended",
+    name: "Constructed Extended",
+    description: "Constructed format with modern expansion sets",
+    deckRules: DEFAULT_RULES.constructed,
+    rules: [
+      "Minimum 60 cards",
+      "Maximum 4 copies of each card (except basic lands)",
+      "15 card sideboard (optional)",
+      "20 starting life",
+      "Cards from Eighth Edition onward",
+    ],
+    banList: [
+      "ancient tomb",
+      "bazaar of baghdad",
+      "blazing shoal",
+      "chrome mox",
+      "cloudpost",
+      "depths",
+      "dig through time",
+      "dread return",
+      "eye of ugin",
+      "glimpse of nature",
+      "golgari grave-troll",
+      "green sun's zenith",
+      "hypergenesis",
+      "jace, the mind sculptor",
+      "mental misstep",
+      "mox opal",
+      "mystic remora",
+      "ancestral vision",
+      "ponder",
+      "preordain",
+      "rite of flame",
+      "seething song",
+      "stoneforge mystic",
+      "sword of the meek",
+      "treasure cruise",
+      "umezawa's jitte",
+      "valakut, the molten pinnacle",
+    ],
+  },
+  "constructed-restricted": {
+    id: "constructed-restricted",
+    name: "Constructed Restricted",
+    description: "Constructed format limited to common cards only",
+    deckRules: DEFAULT_RULES.constructed,
+    rules: [
+      "Minimum 60 cards",
+      "Maximum 4 copies of each card (except basic lands)",
+      "15 card sideboard (optional)",
+      "20 starting life",
+      "Only common cards allowed",
+    ],
+    banList: [
+      "cloudpost",
+      "crucible of worlds",
+      "empty the warrens",
+      "flash",
+      "frantic search",
+      "grapeshot",
+      "invigorate",
+      "ponder",
+      "preordain",
+      "storm",
+      "treasure cruise",
+    ],
+  },
+  "constructed-pioneer": {
+    id: "constructed-pioneer",
+    name: "Constructed Pioneer",
+    description: "Constructed format with recent expansion sets",
+    deckRules: DEFAULT_RULES.constructed,
+    rules: [
+      "Minimum 60 cards",
+      "Maximum 4 copies of each card (except basic lands)",
+      "15 card sideboard (optional)",
+      "20 starting life",
+      "Cards from Return to Ravnica onward (2012+)",
+    ],
+    banList: [],
+  },
 };
 
 /**
- * Restricted list for Vintage (cards limited to 1 copy)
+ * Legacy type aliases for backward compatibility
+ * Maps old format names to new game mode IDs
  */
-export const vintageRestrictedList: Set<string> = new Set(banLists.vintage);
+export type Format = keyof typeof gameModes;
 
 /**
- * Format-specific rules for display
+ * Legacy format rules for backward compatibility
  */
-export const formatRuleDescriptions: Record<Format, string[]> = {
-  commander: [
-    "100 cards exactly (including commander)",
-    "Maximum 1 copy of each card (except basic lands)",
-    "1 Commander card in the command zone",
-    "Commander's color identity determines deck colors",
-    "40 starting life",
-    "21 commander damage eliminates a player",
-  ],
-  standard: [
-    "Minimum 60 cards",
-    "Maximum 4 copies of each card (except basic lands)",
-    "15 card sideboard (optional)",
-    "20 starting life",
-    "Uses current Standard-legal card pool",
-  ],
-  modern: [
-    "Minimum 60 cards",
-    "Maximum 4 copies of each card (except basic lands)",
-    "15 card sideboard (optional)",
-    "20 starting life",
-    "Cards from Eighth Edition onward, plus all core sets",
-  ],
-  pioneer: [
-    "Minimum 60 cards",
-    "Maximum 4 copies of each card (except basic lands)",
-    "15 card sideboard (optional)",
-    "20 starting life",
-    "Cards from Return to Ravnica onward (2012+)",
-  ],
-  legacy: [
-    "Minimum 60 cards",
-    "Maximum 4 copies of each card (except basic lands)",
-    "15 card sideboard (optional)",
-    "20 starting life",
-    "Almost all Magic cards are legal",
-  ],
-  vintage: [
-    "Minimum 60 cards",
-    "Maximum 4 copies of each card (except basic lands)",
-    "Restricted cards limited to 1 copy",
-    "15 card sideboard (optional)",
-    "20 starting life",
-    "All Magic cards are legal, with some restrictions",
-  ],
-  pauper: [
-    "Minimum 60 cards",
-    "Maximum 4 copies of each card (except basic lands)",
-    "15 card sideboard (optional)",
-    "20 starting life",
-    "Only common cards allowed",
-  ],
-};
+export const formatRules: Record<Format, DeckConstructionRules> = Object.fromEntries(
+  Object.entries(gameModes).map(([id, config]) => [id, config.deckRules])
+) as Record<Format, DeckConstructionRules>;
+
+/**
+ * Legacy ban lists for backward compatibility
+ */
+export const banLists: Record<Format, string[]> = Object.fromEntries(
+  Object.entries(gameModes).map(([id, config]) => [
+    id,
+    config.banList || [],
+  ])
+) as Record<Format, string[]>;
+
+/**
+ * Legacy restricted list for Vintage (now mapped to constructed-vintage)
+ */
+export const vintageRestrictedList: Set<string> = new Set(
+  gameModes["constructed-vintage"].restrictedList || []
+);
+
+/**
+ * Legacy format rule descriptions for backward compatibility
+ */
+export const formatRuleDescriptions: Record<Format, string[]> = Object.fromEntries(
+  Object.entries(gameModes).map(([id, config]) => [id, config.rules])
+) as Record<Format, string[]>;
 
 /**
  * Basic land names (excluded from copy limits)
@@ -360,7 +403,7 @@ const basicLandNames = [
   "snow-covered mountain",
   "snow-covered plains",
   "snow-covered swamp",
-  "wastes", // Colorless basic land
+  "wastes",
 ];
 
 /**
@@ -392,17 +435,19 @@ export interface FormatValidationResult extends ValidationResult {
 }
 
 /**
- * Validate a decklist for a specific format with comprehensive checks
+ * Validate a decklist for a specific game mode with comprehensive checks
  */
 export function validateDeckFormat(
   deckCards: { name: string; count: number; color_identity?: string[]; type_line?: string }[],
   format: Format,
   commander?: { name: string; color_identity: string[] }
 ): FormatValidationResult {
-  const rules = formatRules[format];
+  const gameMode = gameModes[format];
+  const rules = gameMode.deckRules;
   const errors: string[] = [];
   const warnings: string[] = [];
-  const bannedCards = new Set(banLists[format].map((c) => c.toLowerCase()));
+  const bannedCards = new Set((gameMode.banList || []).map((c) => c.toLowerCase()));
+  const restrictedCards = new Set((gameMode.restrictedList || []).map((c) => c.toLowerCase()));
 
   // Check total card count
   const totalCards = deckCards.reduce((sum, card) => sum + card.count, 0);
@@ -419,17 +464,17 @@ export function validateDeckFormat(
     );
   }
 
-  // Format-specific validation
-  if (format === "commander") {
+  // Legendary Commander format validation
+  if (format === "legendary-commander") {
     // Commander must have exactly 100 cards
     if (totalCards !== 100) {
-      errors.push(`Commander decks must have exactly 100 cards (has ${totalCards})`);
+      errors.push(`Legendary Commander decks must have exactly 100 cards (has ${totalCards})`);
     }
 
     // Check for commander presence
     const hasCommander = !!commander;
     if (!hasCommander) {
-      warnings.push("No commander specified - ensure deck follows color identity rules");
+      warnings.push("No legendary specified - ensure deck follows color identity rules");
     }
 
     // Check color identity if commander is present
@@ -453,7 +498,7 @@ export function validateDeckFormat(
 
       if (invalidCards.length > 0) {
         errors.push(
-          `Color identity violation: ${invalidCards.slice(0, 5).join(", ")}${invalidCards.length > 5 ? "..." : ""} not in commander's colors`
+          `Color identity violation: ${invalidCards.slice(0, 5).join(", ")}${invalidCards.length > 5 ? "..." : ""} not in legendary's colors`
         );
       }
     }
@@ -473,44 +518,44 @@ export function validateDeckFormat(
     });
   });
 
-  // Validate copy limits and ban/restricted lists
+  // Validate copy limits, ban lists, and restricted lists
   cardCounts.forEach(({ count, isBasic }, cardName) => {
     // Skip basic lands for copy limits
     if (isBasic) return;
 
-    // Vintage restricted list check - these cards are allowed with 1 copy
-    if (format === "vintage" && vintageRestrictedList.has(cardName)) {
+    // Check restricted list - these cards are allowed with 1 copy
+    if (restrictedCards.has(cardName)) {
       if (count > 1) {
-        errors.push(`${cardName} is restricted in Vintage - maximum 1 copy allowed`);
+        errors.push(`${cardName} is restricted in ${gameMode.name} - maximum 1 copy allowed`);
       }
       return;
     }
 
-    // Check ban list (not applicable for Vintage since those are restricted cards)
+    // Check ban list
     if (bannedCards.has(cardName)) {
-      errors.push(`${cardName} is banned in ${format}`);
+      errors.push(`${cardName} is banned in ${gameMode.name}`);
       return;
     }
 
     // Check copy limits
     if (count > rules.maxCopies) {
       errors.push(
-        `${cardName} has ${count} copies, maximum is ${rules.maxCopies} in ${format}`
+        `${cardName} has ${count} copies, maximum is ${rules.maxCopies} in ${gameMode.name}`
       );
     }
   });
 
-  // Pauper-specific validation (all cards must be common)
-  if (format === "pauper") {
+  // Restricted format validation (all cards must be common)
+  if (format === "constructed-restricted") {
     deckCards.forEach(({ name, type_line }) => {
       // Skip basic lands
       if (isBasicLand(name)) return;
 
-      // Note: In production, this would check the actual rarity from Scryfall
+      // Note: In production, this would check the actual rarity from card data
       // For now, we'll add a warning that this needs to be verified
       if (type_line && !type_line.toLowerCase().includes("basic")) {
         // Can't verify rarity without full card data, so add a warning
-        warnings.push(`Rarity verification needed for ${name} (Pauper requires commons only)`);
+        warnings.push(`Rarity verification needed for ${name} (Restricted format requires commons only)`);
       }
     });
   }
@@ -522,7 +567,7 @@ export function validateDeckFormat(
     format,
     deckSize: totalCards,
     requiredSize: rules.minCards,
-    hasCommander: format === "commander" ? !!commander : false,
+    hasCommander: format === "legendary-commander" ? !!commander : false,
     colorIdentity: commander?.color_identity,
   };
 }
@@ -537,13 +582,16 @@ export function validateSideboard(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Commander doesn't use sideboards
-  if (format === "commander") {
-    errors.push("Commander format does not use sideboards");
+  const gameMode = gameModes[format];
+  const rules = gameMode.deckRules;
+
+  // Legendary Commander doesn't use sideboards
+  if (!rules.usesSideboard) {
+    errors.push(`${gameMode.name} format does not use sideboards`);
     return { isValid: false, errors, warnings };
   }
 
-  const sideboardSize = getSideboardSize(format);
+  const sideboardSize = rules.sideboardSize;
   const totalCards = sideboardCards.reduce((sum, card) => sum + card.count, 0);
 
   if (totalCards > sideboardSize) {
@@ -592,14 +640,14 @@ export function isDeckLegal(
  * Get starting life total for a format
  */
 export function getStartingLife(format: Format): number {
-  return formatRules[format].startingLife;
+  return gameModes[format].deckRules.startingLife;
 }
 
 /**
  * Get commander damage threshold for formats that use it
  */
 export function getCommanderDamageThreshold(format: Format): number | null {
-  return formatRules[format].commanderDamage;
+  return gameModes[format].deckRules.commanderDamage;
 }
 
 /**
@@ -623,35 +671,77 @@ export function getMaxHandSize(): number {
  * Check if a format uses sideboards
  */
 export function formatUsesSideboard(format: Format): boolean {
-  return formatRules[format].usesSideboard;
+  return gameModes[format].deckRules.usesSideboard;
 }
 
 /**
  * Get sideboard size for a format
  */
 export function getSideboardSize(format: Format): number {
-  return formatRules[format].sideboardSize;
+  return gameModes[format].deckRules.sideboardSize;
 }
 
 /**
  * Get format rules as human-readable descriptions
  */
 export function getFormatRulesDescription(format: Format): string[] {
-  return formatRuleDescriptions[format];
+  return gameModes[format].rules;
 }
 
 /**
  * Get format display name
  */
 export function getFormatDisplayName(format: Format): string {
-  const names: Record<Format, string> = {
-    commander: "Commander",
-    standard: "Standard",
-    modern: "Modern",
-    pioneer: "Pioneer",
-    legacy: "Legacy",
-    vintage: "Vintage",
-    pauper: "Pauper",
+  return gameModes[format].name;
+}
+
+/**
+ * Get game mode configuration by ID
+ */
+export function getGameMode(id: string): GameModeConfig | undefined {
+  return gameModes[id];
+}
+
+/**
+ * Get all available game modes
+ */
+export function getAllGameModes(): GameModeConfig[] {
+  return Object.values(gameModes);
+}
+
+/**
+ * Create a custom game mode
+ * This allows users to define new formats without code changes
+ */
+export function createGameMode(config: Omit<GameModeConfig, "id">): GameModeConfig {
+  const id = config.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  return {
+    ...config,
+    id,
   };
-  return names[format];
+}
+
+/**
+ * Register a custom game mode
+ * This allows adding new formats at runtime
+ */
+export function registerGameMode(config: GameModeConfig): void {
+  (gameModes as Record<string, GameModeConfig>)[config.id] = config;
+}
+
+/**
+ * Get game mode by name (case-insensitive)
+ */
+export function findGameModeByName(name: string): GameModeConfig | undefined {
+  const normalizedName = name.toLowerCase();
+  return Object.values(gameModes).find(
+    (mode) => mode.name.toLowerCase() === normalizedName
+  );
+}
+
+/**
+ * Get game mode description
+ */
+export function getGameModeDescription(format: Format): string {
+  return gameModes[format].description;
 }
