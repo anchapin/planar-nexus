@@ -2,34 +2,41 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { resolveCardImageWithFallback, getCardBackImage } from '@/lib/card-image-resolver';
+import {
+  getOrGenerateArtwork,
+  clearArtworkCache,
+  getArtworkCacheStats,
+  isArtworkCacheReady,
+  type ProceduralArtworkConfig,
+} from '@/lib/artwork-cache';
 
 /**
  * Card Art Display Component
- * 
+ *
  * Issue #288: Feature: Add card art display and high-res rendering
- * 
+ * Issue #438: Unit 4: Original Artwork Generation System
+ *
  * Provides:
- * - High-resolution card art display from Scryfall or local images
+ * - Procedurally generated SVG-based artwork (legal-safe)
+ * - Fallback to local images (user-provided)
+ * - Fallback to Scryfall images (legacy)
  * - Lazy loading for performance optimization
- * - Fallback for missing images
  * - Multiple size variants
  * - Zoom/pan functionality for detailed view
+ * - Caching for generated artwork
  */
 
 export interface CardArtProps {
   /** Card name for display and alt text */
   cardName: string;
-  /** Scryfall image URI (preferred) */
+  /** Scryfall image URI (legacy fallback) */
   imageUri?: string;
-  /** Scryfall card object for local image resolution */
-  scryfallCard?: {
-    id: string;
-    set?: string;
-    collector_number?: string;
-    name: string;
-    color_identity?: string[];
-  };
+  /** Card type line for artwork generation */
+  typeLine?: string;
+  /** Color identity for artwork generation */
+  colors?: string[];
+  /** Converted mana cost for artwork complexity */
+  cmc?: number;
   /** Image size variant */
   size?: 'thumbnail' | 'small' | 'normal' | 'large' | 'full';
   /** Enable lazy loading */
@@ -48,6 +55,18 @@ export interface CardArtProps {
   showSkeleton?: boolean;
   /** High DPI support */
   highDpi?: boolean;
+  /** Use procedural artwork generation */
+  useProceduralArt?: boolean;
+  /** Variant number for procedural artwork (for multiple versions) */
+  proceduralVariant?: number;
+  /** Scryfall card object for legacy image resolution */
+  scryfallCard?: {
+    id: string;
+    set?: string;
+    collector_number?: string;
+    name: string;
+    color_identity?: string[];
+  };
 }
 
 // Size configurations with dimensions and quality
@@ -64,7 +83,7 @@ let lazyLoadObserver: IntersectionObserver | null = null;
 
 function getLazyLoadObserver() {
   if (typeof window === 'undefined') return null;
-  
+
   if (!lazyLoadObserver) {
     lazyLoadObserver = new IntersectionObserver(
       (entries) => {
@@ -83,15 +102,15 @@ function getLazyLoadObserver() {
 }
 
 // Loading skeleton component
-const CardSkeleton = memo(function CardSkeleton({ 
-  size, 
-  className 
-}: { 
+const CardSkeleton = memo(function CardSkeleton({
+  size,
+  className
+}: {
   size: keyof typeof SIZE_CONFIG;
   className?: string;
 }) {
   const config = SIZE_CONFIG[size];
-  
+
   return (
     <div
       className={cn(
@@ -110,17 +129,17 @@ const CardSkeleton = memo(function CardSkeleton({
 });
 
 // Error fallback component
-const CardError = memo(function CardError({ 
-  cardName, 
-  size, 
-  className 
-}: { 
+const CardError = memo(function CardError({
+  cardName,
+  size,
+  className
+}: {
   cardName: string;
   size: keyof typeof SIZE_CONFIG;
   className?: string;
 }) {
   const config = SIZE_CONFIG[size];
-  
+
   return (
     <div
       className={cn(
@@ -141,15 +160,15 @@ const CardError = memo(function CardError({
 });
 
 // Card back component
-const CardBack = memo(function CardBack({ 
-  size, 
-  className 
-}: { 
+const CardBack = memo(function CardBack({
+  size,
+  className
+}: {
   size: keyof typeof SIZE_CONFIG;
   className?: string;
 }) {
   const config = SIZE_CONFIG[size];
-  
+
   return (
     <div
       className={cn(
@@ -161,11 +180,19 @@ const CardBack = memo(function CardBack({
       role="img"
       aria-label="Card back"
     >
-      <img 
-        src={getCardBackImage()} 
-        alt="Card back" 
-        className="w-full h-full object-contain rounded-lg"
-      />
+      <svg width={config.width} height={config.height} viewBox="0 0 480 680">
+        <defs>
+          <linearGradient id="cardBackGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style={{ stopColor: '#3A3A3C', stopOpacity: 1 }} />
+            <stop offset="100%" style={{ stopColor: '#636366', stopOpacity: 1 }} />
+          </linearGradient>
+        </defs>
+        <rect width="480" height="680" fill="url(#cardBackGradient)" rx="20" />
+        <rect x="20" y="20" width="440" height="640" fill="none" stroke="#8E8E93" strokeWidth="4" rx="15" />
+        <circle cx="240" cy="340" r="100" fill="none" stroke="#AEAEB2" strokeWidth="3" />
+        <circle cx="240" cy="340" r="80" fill="none" stroke="#C7C7CC" strokeWidth="2" />
+        <circle cx="240" cy="340" r="60" fill="none" stroke="#8E8E93" strokeWidth="1" />
+      </svg>
     </div>
   );
 });
@@ -174,6 +201,9 @@ const CardBack = memo(function CardBack({
 export const CardArt = memo(function CardArt({
   cardName,
   imageUri,
+  typeLine,
+  colors,
+  cmc = 0,
   scryfallCard,
   size = 'normal',
   lazy = true,
@@ -184,33 +214,44 @@ export const CardArt = memo(function CardArt({
   onHover,
   showSkeleton = true,
   highDpi = true,
+  useProceduralArt = true,
+  proceduralVariant = 0,
 }: CardArtProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isVisible, setIsVisible] = useState(!lazy);
   const [isZoomed, setIsZoomed] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  
+  const [proceduralImageUrl, setProceduralImageUrl] = useState<string | null>(null);
+  const [isCacheReady, setIsCacheReady] = useState(false);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const config = SIZE_CONFIG[size];
-  
+
+  // Initialize artwork cache
+  useEffect(() => {
+    if (useProceduralArt) {
+      isArtworkCacheReady().then(setIsCacheReady);
+    }
+  }, [useProceduralArt]);
+
   // Setup lazy loading observer
   useEffect(() => {
     if (!lazy || isVisible) return;
-    
+
     const observer = getLazyLoadObserver();
     const element = containerRef.current;
-    
+
     if (observer && element) {
       observer.observe(element);
-      
+
       // Check if already visible
       const checkVisibility = () => {
         if (element.dataset.visible === 'true') {
           setIsVisible(true);
         }
       };
-      
+
       const interval = setInterval(checkVisibility, 100);
       return () => {
         observer.unobserve(element);
@@ -218,11 +259,54 @@ export const CardArt = memo(function CardArt({
       };
     }
   }, [lazy, isVisible]);
-  
-  // Build image URL
-  const imageUrl = useMemo(() => {
-    if (showBack) return null;
-    
+
+  // Generate procedural artwork
+  useEffect(() => {
+    if (useProceduralArt && isVisible && isCacheReady && !showBack) {
+      const generateArtwork = async () => {
+        try {
+          const artConfig: ProceduralArtworkConfig = {
+            cardName,
+            typeLine: typeLine || scryfallCard?.type_line || 'Unknown',
+            colors: colors || scryfallCard?.color_identity || [],
+            cmc,
+            width: config.width,
+            height: config.height,
+            variant: proceduralVariant,
+          };
+
+          const dataUri = await getOrGenerateArtwork(artConfig);
+          setProceduralImageUrl(dataUri);
+          setIsLoading(false);
+          setHasError(false);
+        } catch (error) {
+          console.error('Failed to generate procedural artwork:', error);
+          setIsLoading(false);
+          setHasError(true);
+        }
+      };
+
+      generateArtwork();
+    }
+  }, [
+    useProceduralArt,
+    isVisible,
+    isCacheReady,
+    showBack,
+    cardName,
+    typeLine,
+    colors,
+    cmc,
+    scryfallCard,
+    config.width,
+    config.height,
+    proceduralVariant,
+  ]);
+
+  // Build image URL (legacy fallback)
+  const legacyImageUrl = useMemo(() => {
+    if (showBack || useProceduralArt) return null;
+
     // If we have a direct Scryfall URI, use it
     if (imageUri) {
       // Scryfall provides different sizes via URL parameters
@@ -233,74 +317,68 @@ export const CardArt = memo(function CardArt({
       }
       return imageUri;
     }
-    
-    // Try local image resolution
-    if (scryfallCard) {
-      return resolveCardImageWithFallback(scryfallCard, undefined, config.scryfallSize);
-    }
-    
+
     return null;
-  }, [imageUri, scryfallCard, showBack, config.scryfallSize]);
-  
+  }, [imageUri, showBack, useProceduralArt, config.scryfallSize]);
+
+  // Determine final image URL
+  const finalImageUrl = proceduralImageUrl || legacyImageUrl;
+
   // Handle image load
   const handleLoad = useCallback(() => {
     setIsLoading(false);
     setHasError(false);
   }, []);
-  
+
   // Handle image error
   const handleError = useCallback(() => {
-    setIsLoading(false);
-    setHasError(true);
-  }, []);
-  
+    // If procedural artwork fails, try legacy
+    if (useProceduralArt && proceduralImageUrl && !legacyImageUrl) {
+      setIsLoading(false);
+      setHasError(true);
+    } else {
+      setIsLoading(false);
+      setHasError(true);
+    }
+  }, [useProceduralArt, proceduralImageUrl, legacyImageUrl]);
+
   // Handle zoom toggle
   const handleZoomToggle = useCallback(() => {
     if (enableZoom) {
       setIsZoomed(prev => !prev);
     }
   }, [enableZoom]);
-  
+
   // Handle hover
   const handleMouseEnter = useCallback(() => {
     setIsHovering(true);
     onHover?.(true);
   }, [onHover]);
-  
+
   const handleMouseLeave = useCallback(() => {
     setIsHovering(false);
     onHover?.(false);
   }, [onHover]);
-  
+
   // Show card back if requested
   if (showBack) {
     return <CardBack size={size} className={className} />;
   }
-  
-  // Show skeleton while loading (if enabled)
+
+  // Show skeleton while loading
   if (showSkeleton && isLoading && isVisible) {
     return (
       <div ref={containerRef} className={cn('relative', className)}>
         <CardSkeleton size={size} />
-        {imageUrl && (
-          <img
-            src={imageUrl}
-            alt={cardName}
-            className="absolute inset-0 opacity-0"
-            onLoad={handleLoad}
-            onError={handleError}
-            loading={lazy ? 'lazy' : 'eager'}
-          />
-        )}
       </div>
     );
   }
-  
+
   // Show error state
-  if (hasError || !imageUrl) {
+  if (hasError || !finalImageUrl) {
     return <CardError cardName={cardName} size={size} className={className} />;
   }
-  
+
   // Not yet visible (lazy loading)
   if (!isVisible) {
     return (
@@ -309,7 +387,7 @@ export const CardArt = memo(function CardArt({
       </div>
     );
   }
-  
+
   return (
     <>
       <div
@@ -329,7 +407,7 @@ export const CardArt = memo(function CardArt({
         aria-label={cardName}
       >
         <img
-          src={imageUrl}
+          src={finalImageUrl}
           alt={cardName}
           className={cn(
             'w-full h-full object-contain transition-transform duration-200',
@@ -338,9 +416,9 @@ export const CardArt = memo(function CardArt({
           onLoad={handleLoad}
           onError={handleError}
           loading={lazy ? 'lazy' : 'eager'}
-          srcSet={highDpi ? `${imageUrl} 1x, ${imageUrl} 2x` : undefined}
+          srcSet={highDpi && !finalImageUrl.startsWith('data:') ? `${finalImageUrl} 1x, ${finalImageUrl} 2x` : undefined}
         />
-        
+
         {/* Zoom button */}
         {enableZoom && (
           <button
@@ -375,7 +453,7 @@ export const CardArt = memo(function CardArt({
           </button>
         )}
       </div>
-      
+
       {/* Zoomed modal */}
       {isZoomed && enableZoom && (
         <div
@@ -383,7 +461,7 @@ export const CardArt = memo(function CardArt({
           onClick={handleZoomToggle}
         >
           <img
-            src={imageUrl}
+            src={finalImageUrl}
             alt={cardName}
             className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg shadow-2xl"
           />
@@ -419,6 +497,8 @@ interface ScryfallCardData {
   set?: string;
   collector_number?: string;
   name: string;
+  type_line?: string;
+  color_identity?: string[];
 }
 
 // Card Art Gallery for displaying multiple cards
@@ -427,10 +507,14 @@ export interface CardArtGalleryProps {
     id: string;
     name: string;
     imageUri?: string;
+    typeLine?: string;
+    colors?: string[];
+    cmc?: number;
     scryfallCard?: ScryfallCardData;
   }>;
   size?: 'thumbnail' | 'small' | 'normal';
   enableZoom?: boolean;
+  useProceduralArt?: boolean;
   className?: string;
   onCardClick?: (cardId: string) => void;
 }
@@ -439,6 +523,7 @@ export const CardArtGallery = memo(function CardArtGallery({
   cards,
   size = 'small',
   enableZoom = true,
+  useProceduralArt = true,
   className,
   onCardClick,
 }: CardArtGalleryProps) {
@@ -457,10 +542,14 @@ export const CardArtGallery = memo(function CardArtGallery({
           key={card.id}
           cardName={card.name}
           imageUri={card.imageUri}
+          typeLine={card.typeLine || card.scryfallCard?.type_line}
+          colors={card.colors || card.scryfallCard?.color_identity}
+          cmc={card.cmc}
           scryfallCard={card.scryfallCard}
           size={size}
           lazy
           enableZoom={enableZoom}
+          useProceduralArt={useProceduralArt}
           onClick={() => onCardClick?.(card.id)}
         />
       ))}
@@ -471,7 +560,7 @@ export const CardArtGallery = memo(function CardArtGallery({
 // Hook for preloading card images
 export function useCardImagePreloader() {
   const [preloadedImages, setPreloadedImages] = useState<Set<string>>(new Set());
-  
+
   const preloadImages = useCallback((urls: string[]) => {
     urls.forEach((url) => {
       if (!preloadedImages.has(url)) {
@@ -483,8 +572,15 @@ export function useCardImagePreloader() {
       }
     });
   }, [preloadedImages]);
-  
+
   return { preloadedImages, preloadImages };
 }
+
+// Export cache utilities for external use
+export const artworkCache = {
+  clear: clearArtworkCache,
+  getStats: getArtworkCacheStats,
+  isReady: isArtworkCacheReady,
+};
 
 export default CardArt;
