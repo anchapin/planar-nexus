@@ -113,7 +113,7 @@ describe('IndexedDB Storage', () => {
 
       await storage.set('test-decks', updatedData);
 
-      const retrieved = await storage.get('test-decks', 'test-1');
+      const retrieved = await storage.get('test-decks', 'test-1') as any;
       expect(retrieved?.name).toBe('Updated Name');
     });
 
@@ -299,7 +299,7 @@ describe('IndexedDB Storage', () => {
 
       await storage.importStore('test-decks', importData);
 
-      const allDecks = await storage.getAll('test-decks');
+      const allDecks = await storage.getAll('test-decks') as any[];
       expect(allDecks).toHaveLength(1);
       expect(allDecks[0].name).toBe('Imported Deck');
     });
@@ -369,7 +369,7 @@ describe('IndexedDB Storage', () => {
       // Import the backup
       await backupStorage.importBackup(backup);
 
-      const allDecks = await backupStorage.getAll('decks');
+      const allDecks = await backupStorage.getAll('decks') as any[];
       expect(allDecks).toHaveLength(1);
       expect(allDecks[0].name).toBe('Backup Deck');
 

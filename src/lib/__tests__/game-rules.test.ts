@@ -25,6 +25,7 @@ import {
   findGameModeByName,
   getGameMode,
   getGameModeDescription,
+  DEFAULT_RULES,
   type Format,
 } from "../game-rules";
 
