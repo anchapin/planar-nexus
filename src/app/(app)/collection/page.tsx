@@ -199,7 +199,6 @@ export default function CollectionPage() {
     try {
       const results = await searchCardsOffline(searchQuery, {
         maxCards: 20,
-        format: "commander" as Format,
         includeImages: true,
       });
       setSearchResults(results as ScryfallCard[]);
