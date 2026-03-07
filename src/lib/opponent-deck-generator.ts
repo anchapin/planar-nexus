@@ -54,7 +54,7 @@ export type StrategicTheme =
   | 'trample'       // Trample threats
   | 'haste'         // Haste creatures
   | 'flash'         // Flash creatures
-  | 'toolbox'       // Silver bullet creatures;
+  | 'toolbox';      // Silver bullet creatures
 
 export interface OpponentDeckGenerationInput {
   format: Format;
