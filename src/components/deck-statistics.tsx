@@ -46,7 +46,7 @@ export interface DeckStatistics {
   records: DeckRecord[];
   lastPlayed?: number;
   colorDistribution: Record<string, number>;
-  manaCurve: Record<number, number>;
+  manaCurve: Record<number, number>; // Also known as "energy curve" in generic terminology
 }
 
 // Color types for card analysis
@@ -55,9 +55,9 @@ export type CardColor = 'white' | 'blue' | 'black' | 'red' | 'green' | 'colorles
 export interface CardAnalysis {
   totalCards: number;
   colorDistribution: Record<string, number>;
-  manaCurve: Record<number, number>;
+  manaCurve: Record<number, number>; // Also known as "energy curve" in generic terminology
   typeDistribution: Record<string, number>;
-  averageManaValue: number;
+  averageManaValue: number; // Also known as "average energy value"
 }
 
 // Calculate win rate percentage
@@ -162,7 +162,7 @@ export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Activity className="w-5 h-5" />
-          Mana Curve
+          Energy Curve
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -476,7 +476,7 @@ export function useDeckStatistics({ storageKey = 'deck-statistics' }: UseDeckSta
           averageGameDuration: 0,
           records: [],
           colorDistribution: {},
-          manaCurve: {}
+          manaCurve: {} // Also known as "energy curve" in generic terminology
         };
       }
 

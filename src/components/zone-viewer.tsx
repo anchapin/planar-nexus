@@ -47,13 +47,13 @@ interface ZoneCard {
  * Props for the ZoneViewer component
  */
 interface ZoneViewerProps {
-  /** Cards in the graveyard */
+  /** Cards in the discard pile (graveyard) */
   graveyard?: ZoneCard[];
-  /** Cards in exile */
+  /** Cards in banish zone (exile) */
   exile?: ZoneCard[];
-  /** Cards in the command zone */
+  /** Cards in the leader zone (command zone) */
   command?: ZoneCard[];
-  /** Cards on the stack */
+  /** Cards on the spell chain (stack) */
   stack?: StackItem[];
   /** Cards in sideboard */
   sideboard?: ZoneCard[];
@@ -323,7 +323,7 @@ export function ZoneViewer({
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="graveyard" className="flex items-center gap-1">
               <Skull className="h-3 w-3" />
-              Graveyard
+              Discard Pile
               {graveyard.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {graveyard.length}
@@ -332,7 +332,7 @@ export function ZoneViewer({
             </TabsTrigger>
             <TabsTrigger value="exile" className="flex items-center gap-1">
               <Ban className="h-3 w-3" />
-              Exile
+              Banish Zone
               {exile.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {exile.length}
@@ -341,7 +341,7 @@ export function ZoneViewer({
             </TabsTrigger>
             <TabsTrigger value="command" className="flex items-center gap-1">
               <Crown className="h-3 w-3" />
-              Command
+              Leader Zone
               {command.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {command.length}
@@ -350,7 +350,7 @@ export function ZoneViewer({
             </TabsTrigger>
             <TabsTrigger value="stack" className="flex items-center gap-1">
               <Layers className="h-3 w-3" />
-              Stack
+              Spell Chain
               {stack.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {stack.length}
@@ -383,7 +383,7 @@ export function ZoneViewer({
               {filteredGraveyard.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Skull className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Graveyard is empty</p>
+                  <p>Discard Pile is empty</p>
                 </div>
               ) : (
                 <ZoneCardList 
@@ -398,7 +398,7 @@ export function ZoneViewer({
               {filteredExile.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Ban className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Exile zone is empty</p>
+                  <p>Banish Zone is empty</p>
                 </div>
               ) : (
                 <ZoneCardList 
@@ -413,7 +413,7 @@ export function ZoneViewer({
               {filteredCommand.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Crown className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Command zone is empty</p>
+                  <p>Leader Zone is empty</p>
                 </div>
               ) : (
                 <ZoneCardList 
@@ -427,8 +427,8 @@ export function ZoneViewer({
             <TabsContent value="stack" className="m-0">
               {stack.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Stack is empty</p>
+                  <Layers className="h-8 w-8 mx-auto mb-auto mb-2 opacity-50" />
+                  <p>Spell Chain is empty</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -512,13 +512,13 @@ export function ZoneButton({
   };
 
   const labels: Record<ZoneType, string> = {
-    graveyard: "Graveyard",
-    exile: "Exile",
-    commandZone: "Command",
-    stack: "Stack",
-    library: "Library",
+    graveyard: "Discard Pile",
+    exile: "Banish Zone",
+    commandZone: "Leader Zone",
+    stack: "Spell Chain",
+    library: "Draw Pile",
     hand: "Hand",
-    battlefield: "Battlefield",
+    battlefield: "Game Board",
     sideboard: "Sideboard",
     anticipate: "Anticipate",
     companion: "Companion",

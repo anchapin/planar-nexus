@@ -1,17 +1,21 @@
 /**
  * @fileOverview Saved games management system
- * 
+ *
  * Issue #33: Phase 2.3: Add saved games browser
- * 
+ * Unit 16: Local Storage Migration - Updated to use IndexedDB
+ *
  * Provides:
- * - Save game to localStorage
+ * - Save game to IndexedDB
  * - Load saved games list
  * - Delete saved games
  * - Game metadata management
+ * - Export/import functionality
+ * - Backward compatibility with localStorage
  */
 
 import type { GameState } from './game-state/types';
 import type { Replay } from './game-state/replay';
+import { indexedDBStorage, StoredGame } from './indexeddb-storage';
 
 export interface SavedGame {
   /** Unique identifier */
@@ -49,84 +53,152 @@ const AUTO_SAVE_PREFIX = 'planar_nexus_auto_save_';
 const MAX_AUTO_SAVE_SLOTS = 3;
 
 /**
- * Saved games manager
+ * Saved games manager with IndexedDB support
  */
 class SavedGamesManager {
+  private initialized: boolean = false;
+
+  /**
+   * Initialize storage
+   */
+  private async initialize(): Promise<void> {
+    if (!this.initialized) {
+      await indexedDBStorage.initialize();
+      this.initialized = true;
+    }
+  }
+
+  /**
+   * Convert SavedGame to StoredGame for IndexedDB
+   */
+  private toStoredGame(game: SavedGame): StoredGame {
+    return {
+      ...game,
+      metadata: {},
+    };
+  }
+
+  /**
+   * Convert StoredGame to SavedGame from IndexedDB
+   */
+  private fromStoredGame(stored: StoredGame): SavedGame {
+    const { metadata, ...game } = stored;
+    return game;
+  }
+
   /**
    * Get all saved games
    */
-  getAllSavedGames(): SavedGame[] {
+  async getAllSavedGames(): Promise<SavedGame[]> {
     if (typeof window === 'undefined') return [];
-    
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return [];
 
     try {
-      const games: SavedGame[] = JSON.parse(stored);
-      // Sort by save date, newest first
-      return games.sort((a, b) => b.savedAt - a.savedAt);
-    } catch (e) {
-      console.error('Failed to parse saved games:', e);
-      return [];
+      await this.initialize();
+      const storedGames = await indexedDBStorage.getAll<StoredGame>('saved-games');
+      return storedGames.map(this.fromStoredGame);
+    } catch (error) {
+      console.error('Failed to get saved games from IndexedDB:', error);
+
+      // Fallback to localStorage
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (!stored) return [];
+
+        const games: SavedGame[] = JSON.parse(stored);
+        return games.sort((a, b) => b.savedAt - a.savedAt);
+      } catch (e) {
+        console.error('Failed to parse saved games from localStorage:', e);
+        return [];
+      }
     }
   }
 
   /**
    * Get saved game by ID
    */
-  getSavedGame(id: string): SavedGame | null {
-    const games = this.getAllSavedGames();
-    return games.find(g => g.id === id) || null;
+  async getSavedGame(id: string): Promise<SavedGame | null> {
+    try {
+      await this.initialize();
+      const storedGame = await indexedDBStorage.get<StoredGame>('saved-games', id);
+      return storedGame ? this.fromStoredGame(storedGame) : null;
+    } catch (error) {
+      console.error('Failed to get saved game from IndexedDB:', error);
+
+      // Fallback to localStorage
+      const games = await this.getAllSavedGames();
+      return games.find(g => g.id === id) || null;
+    }
   }
 
   /**
    * Save a game
    */
-  saveGame(game: SavedGame): SavedGame {
-    const games = this.getAllSavedGames();
-    
-    // Check if game with same ID exists
-    const existingIndex = games.findIndex(g => g.id === game.id);
-    
-    if (existingIndex >= 0) {
-      // Update existing
-      games[existingIndex] = game;
-    } else {
-      // Add new
-      games.push(game);
-    }
+  async saveGame(game: SavedGame): Promise<SavedGame> {
+    try {
+      await this.initialize();
+      const storedGame = this.toStoredGame(game);
+      await indexedDBStorage.set('saved-games', storedGame);
+      return game;
+    } catch (error) {
+      console.error('Failed to save game to IndexedDB:', error);
 
-    this.saveGamesToStorage(games);
-    return game;
+      // Fallback to localStorage
+      const games = await this.getAllSavedGames();
+
+      // Check if game with same ID exists
+      const existingIndex = games.findIndex(g => g.id === game.id);
+
+      if (existingIndex >= 0) {
+        // Update existing
+        games[existingIndex] = game;
+      } else {
+        // Add new
+        games.push(game);
+      }
+
+      this.saveGamesToLocalStorage(games);
+      return game;
+    }
   }
 
   /**
    * Delete a saved game
    */
-  deleteGame(id: string): boolean {
-    const games = this.getAllSavedGames();
-    const filteredGames = games.filter(g => g.id !== id);
-    
-    if (filteredGames.length === games.length) {
-      return false; // No game was deleted
-    }
+  async deleteGame(id: string): Promise<boolean> {
+    try {
+      await this.initialize();
+      await indexedDBStorage.delete('saved-games', id);
+      return true;
+    } catch (error) {
+      console.error('Failed to delete game from IndexedDB:', error);
 
-    this.saveGamesToStorage(filteredGames);
-    return true;
+      // Fallback to localStorage
+      const games = await this.getAllSavedGames();
+      const filteredGames = games.filter(g => g.id !== id);
+
+      if (filteredGames.length === games.length) {
+        return false; // No game was deleted
+      }
+
+      this.saveGamesToLocalStorage(filteredGames);
+      return true;
+    }
   }
 
   /**
    * Get only manual saves (not auto-saves)
    */
-  getManualSaves(): SavedGame[] {
-    return this.getAllSavedGames().filter(g => !g.isAutoSave);
+  async getManualSaves(): Promise<SavedGame[]> {
+    const games = await this.getAllSavedGames();
+    return games.filter(g => !g.isAutoSave);
   }
 
   /**
    * Get only auto-saves
    */
-  getAutoSaves(): SavedGame[] {
-    return this.getAllSavedGames()
+  async getAutoSaves(): Promise<SavedGame[]> {
+    const games = await this.getAllSavedGames();
+    return games
       .filter(g => g.isAutoSave)
       .sort((a, b) => (a.autoSaveSlot || 0) - (b.autoSaveSlot || 0));
   }
@@ -134,16 +206,16 @@ class SavedGamesManager {
   /**
    * Save game state to auto-save slot
    */
-  saveToAutoSave(
+  async saveToAutoSave(
     gameState: GameState,
     replay: Replay | null,
     slot: number = 0
-  ): SavedGame {
+  ): Promise<SavedGame> {
     // First, delete any existing auto-save in this slot
-    const existingAutoSaves = this.getAutoSaves();
+    const existingAutoSaves = await this.getAutoSaves();
     const existingInSlot = existingAutoSaves.find(g => g.autoSaveSlot === slot);
     if (existingInSlot) {
-      this.deleteGame(existingInSlot.id);
+      await this.deleteGame(existingInSlot.id);
     }
 
     const now = Date.now();
@@ -170,9 +242,9 @@ class SavedGamesManager {
   /**
    * Perform auto-save with slot rotation
    */
-  autoSave(gameState: GameState, replay: Replay | null): SavedGame {
-    const autoSaves = this.getAutoSaves();
-    
+  async autoSave(gameState: GameState, replay: Replay | null): Promise<SavedGame> {
+    const autoSaves = await this.getAutoSaves();
+
     // Find oldest slot or use slot 0
     let targetSlot = 0;
     if (autoSaves.length >= MAX_AUTO_SAVE_SLOTS) {
@@ -195,11 +267,12 @@ class SavedGamesManager {
   /**
    * Search saved games by name or player
    */
-  searchGames(query: string): SavedGame[] {
+  async searchGames(query: string): Promise<SavedGame[]> {
     if (!query.trim()) return this.getAllSavedGames();
-    
+
     const lowerQuery = query.toLowerCase();
-    return this.getAllSavedGames().filter(
+    const games = await this.getAllSavedGames();
+    return games.filter(
       game =>
         game.name.toLowerCase().includes(lowerQuery) ||
         game.playerNames.some(name => name.toLowerCase().includes(lowerQuery))
@@ -209,22 +282,24 @@ class SavedGamesManager {
   /**
    * Filter saved games by status
    */
-  filterByStatus(status: SavedGame['status']): SavedGame[] {
-    return this.getAllSavedGames().filter(g => g.status === status);
+  async filterByStatus(status: SavedGame['status']): Promise<SavedGame[]> {
+    const games = await this.getAllSavedGames();
+    return games.filter(g => g.status === status);
   }
 
   /**
    * Filter saved games by format
    */
-  filterByFormat(format: string): SavedGame[] {
-    return this.getAllSavedGames().filter(g => g.format === format);
+  async filterByFormat(format: string): Promise<SavedGame[]> {
+    const games = await this.getAllSavedGames();
+    return games.filter(g => g.format === format);
   }
 
   /**
    * Load game state from saved game
    */
-  loadGameState(id: string): GameState | null {
-    const game = this.getSavedGame(id);
+  async loadGameState(id: string): Promise<GameState | null> {
+    const game = await this.getSavedGame(id);
     if (!game) return null;
 
     try {
@@ -238,8 +313,8 @@ class SavedGamesManager {
   /**
    * Load replay from saved game
    */
-  loadReplay(id: string): Replay | null {
-    const game = this.getSavedGame(id);
+  async loadReplay(id: string): Promise<Replay | null> {
+    const game = await this.getSavedGame(id);
     if (!game?.replayJson) return null;
 
     try {
@@ -253,17 +328,30 @@ class SavedGamesManager {
   /**
    * Clear all saved games
    */
-  clearAll(): void {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEY);
+  async clearAll(): Promise<void> {
+    try {
+      await this.initialize();
+      await indexedDBStorage.clear('saved-games');
+
+      // Also clear localStorage for backward compatibility
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (error) {
+      console.error('Failed to clear saved games:', error);
+
+      // Fallback to localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY);
+      }
     }
   }
 
   /**
    * Export saved game to JSON file
    */
-  exportGame(id: string): void {
-    const game = this.getSavedGame(id);
+  async exportGame(id: string): Promise<void> {
+    const game = await this.getSavedGame(id);
     if (!game) return;
 
     const blob = new Blob([JSON.stringify(game, null, 2)], { type: 'application/json' });
@@ -284,11 +372,11 @@ class SavedGamesManager {
     try {
       const text = await file.text();
       const game = JSON.parse(text) as SavedGame;
-      
+
       // Generate new ID to avoid conflicts
       game.id = `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       game.savedAt = Date.now();
-      
+
       return this.saveGame(game);
     } catch (e) {
       console.error('Failed to import game:', e);
@@ -297,9 +385,9 @@ class SavedGamesManager {
   }
 
   /**
-   * Save games to localStorage
+   * Save games to localStorage (fallback)
    */
-  private saveGamesToStorage(games: SavedGame[]): void {
+  private saveGamesToLocalStorage(games: SavedGame[]): void {
     if (typeof window === 'undefined') return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
   }
@@ -311,12 +399,12 @@ export const savedGamesManager = new SavedGamesManager();
 /**
  * Helper to create a SavedGame from game state
  */
-export function createSavedGame(
+export async function createSavedGame(
   name: string,
   format: string,
   gameState: GameState,
   replay?: Replay | null
-): SavedGame {
+): Promise<SavedGame> {
   return {
     id: `save-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name,
@@ -341,16 +429,16 @@ export function formatSavedAt(timestamp: number): string {
   const date = new Date(timestamp);
   const now = new Date();
   const diff = now.getTime() - date.getTime();
-  
+
   const minutes = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  
+
   if (minutes < 1) return 'Just now';
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  
+
   return date.toLocaleDateString();
 }
 
@@ -364,5 +452,28 @@ export function getStatusDisplay(status: SavedGame['status']): string {
     case 'paused': return 'Paused';
     case 'completed': return 'Completed';
     default: return status;
+  }
+}
+
+/**
+ * Get count of saved games
+ */
+export async function getSavedGamesCount(): Promise<number> {
+  try {
+    await indexedDBStorage.initialize();
+    return await indexedDBStorage.count('saved-games');
+  } catch (error) {
+    console.error('Failed to get saved games count:', error);
+
+    // Fallback to localStorage
+    if (typeof window === 'undefined') return 0;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return 0;
+    try {
+      const games = JSON.parse(stored);
+      return Array.isArray(games) ? games.length : 0;
+    } catch {
+      return 0;
+    }
   }
 }
