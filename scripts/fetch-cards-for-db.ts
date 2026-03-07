@@ -73,7 +73,7 @@ async function fetchAllCards(format: string, limit: number): Promise<ScryfallCar
     console.log(`Fetching cards... (${allCards.length} fetched so far)`);
 
     try {
-      const response = await fetch(nextPage!);
+      const response = await fetch(nextPage!) as Response;
       if (!response.ok) {
         if (response.status === 404) {
           console.log('No more cards found.');
@@ -82,7 +82,7 @@ async function fetchAllCards(format: string, limit: number): Promise<ScryfallCar
         throw new Error(`Scryfall API error: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
 
       if (data.data && Array.isArray(data.data)) {
         const cardsToAdd = data.data.slice(0, limit - allCards.length);

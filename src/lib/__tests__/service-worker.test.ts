@@ -81,16 +81,16 @@ describe('Service Worker Caching', () => {
     it('should use cache-first for static assets', () => {
       const styleRequest = new Request('https://example.com/styles.css', {
         destination: 'style',
-      });
+      } as any);
       const scriptRequest = new Request('https://example.com/script.js', {
         destination: 'script',
-      });
+      } as any);
       const imageRequest = new Request('https://example.com/image.png', {
         destination: 'image',
-      });
+      } as any);
       const fontRequest = new Request('https://example.com/font.woff2', {
         destination: 'font',
-      });
+      } as any);
 
       // Test cache-first strategy for static assets
       const staticAssets = [styleRequest, scriptRequest, imageRequest, fontRequest];
@@ -132,11 +132,11 @@ describe('Service Worker Caching', () => {
 
       // Mock response for keys()
       (caches.keys as jest.Mock).mockResolvedValue([
-        { name: 'planar-nexus-v1' },
-        { name: 'planar-nexus-static-v1' },
-        { name: 'planar-nexus-static-v2' },
-        { name: 'planar-nexus-dynamic-v2' },
-      ]);
+        { name: 'planar-nexus-v1' } as any,
+        { name: 'planar-nexus-static-v1' } as any,
+        { name: 'planar-nexus-static-v2' } as any,
+        { name: 'planar-nexus-dynamic-v2' } as any,
+      ] as any);
 
       const cacheNames = await caches.keys();
       const oldCaches = cacheNames.filter((cache: any) =>

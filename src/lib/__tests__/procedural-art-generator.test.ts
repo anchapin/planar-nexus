@@ -4,7 +4,7 @@
  * Run tests with: npm test
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 import {
   generateArtwork,
   svgToDataUrl,

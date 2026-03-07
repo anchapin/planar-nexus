@@ -13,20 +13,25 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 
 // Mock browser APIs for integration testing
+interface NetworkListener {
+  event: string;
+  callback: () => void;
+}
+
 const mockNetworkStatus = {
   online: true,
-  listeners: [],
+  listeners: [] as NetworkListener[],
 };
 
 global.navigator = {
   ...global.navigator,
   onLine: true,
-  addEventListener: jest.fn((event, callback) => {
+  addEventListener: jest.fn((event, callback: () => void) => {
     if (event === 'online' || event === 'offline') {
       mockNetworkStatus.listeners.push({ event, callback });
     }
   }),
-  removeEventListener: jest.fn((event, callback) => {
+  removeEventListener: jest.fn((event, callback: () => void) => {
     const index = mockNetworkStatus.listeners.findIndex(
       listener => listener.event === event && listener.callback === callback
     );
@@ -38,7 +43,7 @@ global.navigator = {
 
 // Mock fetch for network simulation
 let networkAvailable = true;
-global.fetch = jest.fn().mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
+(global.fetch as jest.Mock) = jest.fn().mockImplementation(((url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   if (!networkAvailable) {
     throw new Error('Network error');
   }
@@ -165,7 +170,7 @@ describe('Offline Functionality Integration', () => {
 
       expect(oldCache).toContain('planar-nexus');
       expect(newCache).toContain('planar-nexus');
-      expect(newCache !== oldCache).toBe(true);
+      expect((newCache as string) !== (oldCache as string)).toBe(true);
     });
   });
 
@@ -532,7 +537,7 @@ describe('Integration Scenarios', () => {
       const oldVersion = 'v1';
       const newVersion = 'v2';
 
-      expect(oldVersion !== newVersion).toBe(true);
+      expect((oldVersion as string) !== (newVersion as string)).toBe(true);
 
       // User should see update prompt
       const updateAvailable = true;

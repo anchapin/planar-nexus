@@ -289,7 +289,7 @@ function generateSymbol(
       />
       <circle
         cx="${centerX}" cy="${centerY}" r="${size/6}"
-        fill="${bgColor || '#ffffff'}" opacity="0.8"
+        fill="${color || '#ffffff'}" opacity="0.8"
       />
     `;
   } else {
