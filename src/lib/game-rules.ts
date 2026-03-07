@@ -390,6 +390,27 @@ export const formatRuleDescriptions: Record<Format, string[]> = Object.fromEntri
 ) as Record<Format, string[]>;
 
 /**
+ * Legacy format name mappings for backward compatibility
+ * Maps old format names (commander, modern, etc.) to new game mode IDs
+ */
+export const FORMAT_NAME_MAPPINGS: Record<string, string> = {
+  'commander': 'legendary-commander',
+  'modern': 'constructed-legacy',
+  'standard': 'constructed-core',
+  'pioneer': 'constructed-pioneer',
+  'legacy': 'constructed-legacy',
+  'vintage': 'constructed-vintage',
+  'pauper': 'constructed-restricted',
+};
+
+/**
+ * Get game mode ID from legacy format name
+ */
+export function getGameModeIdFromFormatName(formatName: string): string {
+  return FORMAT_NAME_MAPPINGS[formatName.toLowerCase()] || formatName.toLowerCase();
+}
+
+/**
  * Basic land names (excluded from copy limits)
  */
 const basicLandNames = [
@@ -442,7 +463,22 @@ export function validateDeckFormat(
   format: Format,
   commander?: { name: string; color_identity: string[] }
 ): FormatValidationResult {
-  const gameMode = gameModes[format];
+  // Map legacy format name to game mode ID
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+
+  if (!gameMode) {
+    return {
+      isValid: false,
+      errors: [`Unknown format: ${format}`],
+      warnings: [],
+      format,
+      deckSize: 0,
+      requiredSize: 0,
+      hasCommander: false,
+    };
+  }
+
   const rules = gameMode.deckRules;
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -582,7 +618,17 @@ export function validateSideboard(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const gameMode = gameModes[format];
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+
+  if (!gameMode) {
+    return {
+      isValid: false,
+      errors: [`Unknown format: ${format}`],
+      warnings: [],
+    };
+  }
+
   const rules = gameMode.deckRules;
 
   // Legendary Commander doesn't use sideboards
@@ -640,14 +686,18 @@ export function isDeckLegal(
  * Get starting life total for a format
  */
 export function getStartingLife(format: Format): number {
-  return gameModes[format].deckRules.startingLife;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.deckRules.startingLife : 20;
 }
 
 /**
  * Get commander damage threshold for formats that use it
  */
 export function getCommanderDamageThreshold(format: Format): number | null {
-  return gameModes[format].deckRules.commanderDamage;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.deckRules.commanderDamage : null;
 }
 
 /**
@@ -671,28 +721,36 @@ export function getMaxHandSize(): number {
  * Check if a format uses sideboards
  */
 export function formatUsesSideboard(format: Format): boolean {
-  return gameModes[format].deckRules.usesSideboard;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.deckRules.usesSideboard : false;
 }
 
 /**
  * Get sideboard size for a format
  */
 export function getSideboardSize(format: Format): number {
-  return gameModes[format].deckRules.sideboardSize;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.deckRules.sideboardSize : 0;
 }
 
 /**
  * Get format rules as human-readable descriptions
  */
 export function getFormatRulesDescription(format: Format): string[] {
-  return gameModes[format].rules;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.rules : [];
 }
 
 /**
  * Get format display name
  */
 export function getFormatDisplayName(format: Format): string {
-  return gameModes[format].name;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.name : format;
 }
 
 /**
@@ -743,5 +801,7 @@ export function findGameModeByName(name: string): GameModeConfig | undefined {
  * Get game mode description
  */
 export function getGameModeDescription(format: Format): string {
-  return gameModes[format].description;
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+  return gameMode ? gameMode.description : '';
 }
