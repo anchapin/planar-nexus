@@ -20,6 +20,7 @@ import {
   Crosshair,
   Info,
 } from "lucide-react";
+import { translateToGeneric } from "@/lib/game-state";
 
 // Demo card data
 const DEMO_CARD = {
@@ -94,7 +95,7 @@ export default function CardInteractionsDemoPage() {
       console.log("Inspecting card:", cardId);
     },
     onCardTap: (cardId) => {
-      console.log("Tapping/untapping card:", cardId);
+      console.log("Activating/deactivating card:", cardId);
     },
     onAbilityActivate: (cardId, abilityIndex) => {
       console.log("Activating ability:", cardId, abilityIndex);
@@ -209,7 +210,7 @@ export default function CardInteractionsDemoPage() {
                       </div>
                       <ul className="text-sm text-muted-foreground space-y-1">
                         <li>• <strong>Single click</strong> on card to select/inspect</li>
-                        <li>• <strong>Double click</strong> on card to tap/untap</li>
+                        <li>• <strong>Double click</strong> on card to activate/deactivate</li>
                         <li>• <strong>Right click</strong> on card for context menu</li>
                         <li>• Click <strong>"Open Ability Menu"</strong> to see ability menu</li>
                         <li>• Click <strong>"Start Targeting"</strong> to test targeting mode</li>
@@ -241,8 +242,10 @@ export default function CardInteractionsDemoPage() {
                           <div className="text-xs font-bold text-center border-b border-amber-400 pb-1">
                             {DEMO_CARD.name}
                           </div>
-                          <div className="flex-1 flex items-center justify-center">
-                            <Shield className="h-16 w-16 text-amber-400/50" />
+                          <div className="flex-1 flex items-center justify-center p-1">
+                            <div className="text-[9px] text-center leading-tight whitespace-pre-line">
+                              {translateToGeneric(DEMO_CARD.oracleText)}
+                            </div>
                           </div>
                           <div className="text-xs text-center border-t border-amber-400 pt-1">
                             {DEMO_CARD.power}/{DEMO_CARD.toughness}
@@ -404,7 +407,7 @@ export default function CardInteractionsDemoPage() {
                     <strong>Features:</strong>
                     <ul className="list-disc list-inside text-muted-foreground">
                       <li>Single click for card inspection</li>
-                      <li>Double-click to tap/untap</li>
+                      <li>Double-click to activate/deactivate</li>
                       <li>Right-click context menu</li>
                       <li>Select card for targeting</li>
                       <li>Visual selection indicators</li>
