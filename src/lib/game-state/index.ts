@@ -151,3 +151,6 @@ export * from './replacement-examples';
 
 // Export terminology translation layer (Issue #442)
 export * from "./terminology-translation";
+
+// Export game system adapter (Issue #435)
+export * from "./game-system-adapter";
