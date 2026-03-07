@@ -89,11 +89,16 @@ export default function SavedGamesPage() {
     loadGames();
   }, []);
 
-  function loadGames() {
+  async function loadGames() {
     setIsLoading(true);
-    const allGames = savedGamesManager.getAllSavedGames();
-    setGames(allGames);
-    setIsLoading(false);
+    try {
+      const allGames = await savedGamesManager.getAllSavedGames();
+      setGames(allGames);
+    } catch (error) {
+      console.error('Failed to load saved games:', error);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   // Get filtered games
@@ -132,23 +137,41 @@ export default function SavedGamesPage() {
     router.push('/single-player');
   }
 
-  function handleDeleteGame(game: SavedGame) {
-    const success = savedGamesManager.deleteGame(game.id);
-    if (success) {
+  async function handleDeleteGame(game: SavedGame) {
+    try {
+      const success = await savedGamesManager.deleteGame(game.id);
+      if (success) {
+        toast({
+          title: "Game Deleted",
+          description: `"${game.name}" has been deleted.`,
+        });
+        loadGames();
+      }
+    } catch (error) {
+      console.error('Failed to delete game:', error);
       toast({
-        title: "Game Deleted",
-        description: `"${game.name}" has been deleted.`,
+        title: "Error",
+        description: "Failed to delete game.",
+        variant: "destructive",
       });
-      loadGames();
     }
   }
 
-  function handleExportGame(game: SavedGame) {
-    savedGamesManager.exportGame(game.id);
-    toast({
-      title: "Game Exported",
-      description: `"${game.name}" has been exported.`,
-    });
+  async function handleExportGame(game: SavedGame) {
+    try {
+      await savedGamesManager.exportGame(game.id);
+      toast({
+        title: "Game Exported",
+        description: `"${game.name}" has been exported.`,
+      });
+    } catch (error) {
+      console.error('Failed to export game:', error);
+      toast({
+        title: "Error",
+        description: "Failed to export game.",
+        variant: "destructive",
+      });
+    }
   }
 
   function handleImportGame(event: React.ChangeEvent<HTMLInputElement>) {
