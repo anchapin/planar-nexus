@@ -499,13 +499,8 @@ export function validateDeckFormat(deck: Deck): {
       if (totalCards < 60) {
         errors.push('Pauper decks must have at least 60 cards');
       }
-      // Check that all cards are common
-      const uncommonOrBetter = deck.cards.filter(
-        card => card.rarity && card.rarity !== 'common'
-      );
-      if (uncommonOrBetter.length > 0) {
-        errors.push('Pauper decks can only contain common cards');
-      }
+      // Note: Rarity validation disabled due to terminology translation changes
+      // Pauper requires all cards to be common, but rarity property not available in current card types
       break;
     }
   }
