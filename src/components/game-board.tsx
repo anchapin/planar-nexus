@@ -35,7 +35,6 @@ import {
 
 // Performance optimization constants
 const VIRTUALIZATION_THRESHOLD = 20;
-const MAX_VISIBLE_BATTLEFIELD_CARDS = 14;
 const MAX_VISIBLE_GAME_BOARD_CARDS = 14;
 
 interface GameBoardProps {
