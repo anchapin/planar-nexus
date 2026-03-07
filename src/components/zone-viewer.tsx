@@ -5,7 +5,7 @@ import { memo, useMemo, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,11 +14,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Skull, 
-  Ban, 
-  Library, 
-  Crown, 
+import {
+  Skull,
+  Ban,
+  Library,
+  Crown,
   Layers,
   Eye,
   Search,
@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { ZoneType } from "@/types/game";
 import { cn } from "@/lib/utils";
+import { translateToGeneric } from "@/lib/game-state";
 
 /**
  * Card data for display in zone viewers
