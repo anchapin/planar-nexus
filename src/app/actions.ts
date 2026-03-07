@@ -1,39 +1,16 @@
 
 import { reviewDeck, DeckReviewInput } from "@/ai/flows/ai-deck-coach-review";
 import { generateAIOpponentDeck, AIOpponentDeckGenerationInput } from "@/ai/flows/ai-opponent-deck-generation";
-import {
-  GenericCard,
-  GenericDeckCard,
-  GenericSavedDeck,
-  genericCardToMinimalCard,
-  minimalCardToGenericCard,
-  GenericCardType,
-  GenericColor,
-  AbilityKeyword
-} from "@/lib/card-database";
+import { MinimalCard, searchCardsOffline, getCardByName, getCardById, isCardLegal, initializeCardDatabase } from "@/lib/card-database";
 
-// ============================================================================
-// SCRYFALL CARD TYPES (Legacy - maintained for backward compatibility)
-// ============================================================================
-
-export interface ScryfallCard {
-  id: string;
-  oracle_id?: string;
-  name: string;
-  set?: string;
-  collector_number?: string;
-  cmc?: number;
+export interface ScryfallCard extends MinimalCard {
   power?: string;
   toughness?: string;
   keywords?: string[];
-  image_uris?: {
-    small: string;
-    normal: string;
-    large: string;
-    png: string;
-    art_crop: string;
-    border_crop: string;
-  };
+  rarity?: string;
+  // Whether this is a double-faced card
+  faces?: number;
+}
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
@@ -60,10 +37,9 @@ export interface ScryfallCard {
   }>;
   // Layout type (normal, transform, modal_dfc, etc.)
   layout?: string;
+>>>>>>> origin/main
   // Whether this is a double-faced card
   faces?: number;
-  // Loyalty for planeswalkers
-  loyalty?: string;
 }
 
 export interface DeckCard extends ScryfallCard {
@@ -273,36 +249,58 @@ export function genericToScryfallCard(genericCard: GenericCard): ScryfallCard {
 }
 
 
+/**
+ * Search for cards using local IndexedDB database with fuzzy search
+ * This provides instant results and works offline
+ */
 export async function searchScryfall(query: string): Promise<ScryfallCard[]> {
   if (!query || query.length < 3) {
     return [];
   }
 
-  // Add type:commander to narrow down search for commander format relevant cards.
-  const searchQuery = `${query} (game:paper)`;
-
   try {
-    const res = await fetch(
-      `https://api.scryfall.com/cards/search?q=${encodeURIComponent(
-        searchQuery
-      )}`
-    );
-    if (!res.ok) {
-      if (res.status === 404) return []; // No cards found is a valid outcome
-      console.error(`Scryfall API error: ${res.status} ${res.statusText}`);
-      return [];
-    }
+    // Ensure database is initialized
+    await initializeCardDatabase();
 
-    const data = await res.json();
-    return data.data || [];
+    // Perform fuzzy search
+    const results = await searchCardsOffline(query, {
+      maxCards: 50,
+      includeImages: true,
+    });
+
+    return results as ScryfallCard[];
   } catch (error) {
-    console.error("Failed to fetch from Scryfall API", error);
+    console.error("Failed to search local card database", error);
     return [];
   }
 }
 
-export async function searchCards(query: string, _format: string = "commander"): Promise<ScryfallCard[]> {
-  return searchScryfall(query);
+/**
+ * Search for cards in a specific format
+ * @param query Search query
+ * @param format Magic format (e.g., "commander", "modern", "standard")
+ */
+export async function searchCards(query: string, format: string = "commander"): Promise<ScryfallCard[]> {
+  if (!query || query.length < 3) {
+    return [];
+  }
+
+  try {
+    // Ensure database is initialized
+    await initializeCardDatabase();
+
+    // Perform fuzzy search with format filter
+    const results = await searchCardsOffline(query, {
+      maxCards: 50,
+      format,
+      includeImages: true,
+    });
+
+    return results as ScryfallCard[];
+  } catch (error) {
+    console.error("Failed to search local card database", error);
+    return [];
+  }
 }
 
 export async function getDeckReview(input: DeckReviewInput) {
@@ -328,6 +326,10 @@ export async function generateOpponent(input: AIOpponentDeckGenerationInput) {
     }
 }
 
+/**
+ * Validate card legality using local IndexedDB database
+ * This works offline and provides instant results
+ */
 export async function validateCardLegality(
   cards: { name: string; quantity: number }[],
   format: string
@@ -336,80 +338,62 @@ export async function validateCardLegality(
     return { found: [], notFound: [], illegal: [] };
   }
 
-  // 1. Sanitize and aggregate input
-  const cardRequestMap = new Map<string, { originalName: string; quantity: number }>();
-  const malformedInputs: string[] = [];
-
-  for (const card of cards) {
-    if (!card || typeof card.name !== 'string' || card.name.trim() === '' || typeof card.quantity !== 'number' || card.quantity <= 0) {
-      malformedInputs.push(card?.name || 'Malformed Input');
-      continue;
-    }
-    const lowerCaseName = card.name.toLowerCase();
-    const existing = cardRequestMap.get(lowerCaseName);
-    if (existing) {
-      existing.quantity += card.quantity;
-    } else {
-      cardRequestMap.set(lowerCaseName, { originalName: card.name, quantity: card.quantity });
-    }
-  }
-
-  if (cardRequestMap.size === 0) {
-    return { found: [], notFound: malformedInputs, illegal: [] };
-  }
-  
-  // 2. Fetch from Scryfall
-  const identifiersToFetch = Array.from(cardRequestMap.values()).map(c => ({ name: c.originalName }));
-
   try {
-    const res = await fetch(`https://api.scryfall.com/cards/collection`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifiers: identifiersToFetch }),
-      next: { revalidate: 3600 * 24 },
-    });
+    // Ensure database is initialized
+    await initializeCardDatabase();
 
-    if (!res.ok) {
-      console.error(`Scryfall API error on collection fetch: ${res.status}`);
-      return { found: [], notFound: identifiersToFetch.map(c => c.name), illegal: [] };
+    // 1. Sanitize and aggregate input
+    const cardRequestMap = new Map<string, { originalName: string; quantity: number }>();
+    const malformedInputs: string[] = [];
+
+    for (const card of cards) {
+      if (!card || typeof card.name !== 'string' || card.name.trim() === '' || typeof card.quantity !== 'number' || card.quantity <= 0) {
+        malformedInputs.push(card?.name || 'Malformed Input');
+        continue;
+      }
+      const lowerCaseName = card.name.toLowerCase();
+      const existing = cardRequestMap.get(lowerCaseName);
+      if (existing) {
+        existing.quantity += card.quantity;
+      } else {
+        cardRequestMap.set(lowerCaseName, { originalName: card.name, quantity: card.quantity });
+      }
     }
 
-    const collection = await res.json();
-    
-    // 3. Process response
+    if (cardRequestMap.size === 0) {
+      return { found: [], notFound: malformedInputs, illegal: [] };
+    }
+
+    // 2. Fetch from local database
     const found: DeckCard[] = [];
     const illegal: string[] = [];
     const notFoundNames = new Set(cardRequestMap.keys());
 
-    if (collection?.data && Array.isArray(collection.data)) {
-      for (const scryfallCard of collection.data as ScryfallCard[]) {
-        // Super defensive check
-        if (!scryfallCard || typeof scryfallCard.name !== 'string' || !scryfallCard.name) {
-          continue;
-        }
+    // Process each card request
+    for (const [lowerCaseName, requestDetails] of cardRequestMap.entries()) {
+      try {
+        const dbCard = await getCardByName(requestDetails.originalName);
 
-        const lowerCaseName = scryfallCard.name.toLowerCase();
-        const requestDetails = cardRequestMap.get(lowerCaseName);
-
-        if (requestDetails) {
+        if (dbCard) {
           notFoundNames.delete(lowerCaseName);
-          const isLegal = scryfallCard.legalities?.[format] === 'legal';
+          const isLegal = dbCard.legalities?.[format] === 'legal';
           if (isLegal) {
-            found.push({ ...scryfallCard, count: requestDetails.quantity });
+            found.push({ ...dbCard, count: requestDetails.quantity } as DeckCard);
           } else {
             illegal.push(requestDetails.originalName);
           }
         }
+      } catch (error) {
+        console.error(`Failed to fetch card: ${requestDetails.originalName}`, error);
       }
     }
-    
-    const notFound = Array.from(notFoundNames).map(name => cardRequestMap.get(name)!.originalName);
-    
-    return { found, notFound: [...notFound, ...malformedInputs], illegal };
 
+    const notFound = Array.from(notFoundNames).map(name => cardRequestMap.get(name)!.originalName);
+
+    return { found, notFound: [...notFound, ...malformedInputs], illegal };
   } catch (error) {
-    console.error('Failed to fetch or process from Scryfall API', error);
-    return { found: [], notFound: identifiersToFetch.map(c => c.name), illegal: [] };
+    console.error('Failed to validate card legality from local database', error);
+    return { found: [], notFound: cards.map(c => c.name), illegal: [] };
   }
 }
 
