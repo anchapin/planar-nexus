@@ -43,7 +43,7 @@ global.navigator = {
 
 // Mock fetch for network simulation
 let networkAvailable = true;
-(global.fetch as jest.Mock) = jest.fn().mockImplementation(((url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+(global.fetch as jest.Mock) = jest.fn().mockImplementation((url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   if (!networkAvailable) {
     throw new Error('Network error');
   }
