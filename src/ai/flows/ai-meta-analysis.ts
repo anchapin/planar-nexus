@@ -1,117 +1,217 @@
 'use server';
 /**
- * @fileOverview Heuristic meta analysis for deck optimization.
+ * @fileOverview Heuristic-powered meta analysis for deck optimization.
  *
- * Issue #440: Unit 6 - Server Action Elimination - AI Deck Coach
+ * Issue #440: Replace AI provider calls with heuristic metagame analysis.
  *
- * This module provides offline metagame analysis using rule-based heuristics
- * instead of AI provider calls. Works entirely client-side for offline support.
+ * This module provides heuristic-based deck optimization based on current
+ * Magic: The Gathering metagame analysis using format-specific data.
  *
  * - analyzeMetaAndSuggest - Analyzes the metagame and provides deck improvement suggestions.
- * - MetaAnalysisInput - The input type for the analyzeMetaAndSuggest function.
- * - MetaAnalysisOutput - The return type for the analyzeMetaAndSuggest function.
+ * - MetaAnalysisInput - The input type for analyzeMetaAndSuggest function.
+ * - MetaAnalysisOutput - The return type for analyzeMetaAndSuggest function.
  */
 
-import { z } from 'genkit';
-import { importDecklist } from '@/app/actions';
-import { heuristicMetaAnalysis, type MetaAnalysisOutput as HeuristicMetaAnalysisOutput } from '@/lib/heuristic-meta-analysis';
+import { analyzeMetaHeuristic } from '@/lib/heuristic-meta-analysis';
+import { importDecklist } from '@/lib/server-card-operations';
+import { type Format } from '@/lib/game-rules';
 
-const MetaAnalysisInputSchema = z.object({
-  decklist: z
-    .string()
-    .describe(
-      'The full Magic: The Gathering decklist as a string, typically one card per line with quantity.'
-    ),
-  format: z.string().describe('The Magic: The Gathering format (e.g., "Commander", "Standard", "Modern").'),
-  focusArchetype: z.string().optional().describe('Optional specific archetype to focus on (e.g., "control", "aggro", "midrange", "combo").'),
-});
+export interface MetaAnalysisInput {
+  decklist: string;
+  format: string;
+  focusArchetype?: string;
+}
 
-export type MetaAnalysisInput = z.infer<typeof MetaAnalysisInputSchema>;
+// Extended interface for heuristic analysis
+interface HeuristicCard {
+  name: string;
+  count: number;
+  id: string;
+  cmc: number;
+  colors: string[];
+  legalities: Record<string, string>;
+  type_line: string;
+  mana_cost: string;
+  color_identity: string[];
+}
 
-const CardSuggestionSchema = z.object({
-  name: z.string().describe('The exact name of card.'),
-  quantity: z.number().describe('How many copies to add/remove.'),
-  reason: z.string().describe('Why this card is suggested - its role in the meta.'),
-});
+/**
+ * Represents a card suggestion with name and quantity
+ */
+export interface CardSuggestion {
+  name: string;
+  quantity: number;
+  reason: string;
+}
 
-const MatchupRecommendationSchema = z.object({
-  archetype: z.string().describe('The opposing deck archetype.'),
-  recommendation: z.string().describe('How to adjust the deck against this matchup.'),
-  sideboardNotes: z.string().optional().describe('Sideboard suggestions for this matchup.'),
-});
+/**
+ * Represents a matchup recommendation
+ */
+export interface MatchupRecommendation {
+  archetype: string;
+  recommendation: string;
+  sideboardNotes?: string;
+}
 
-const MetaAnalysisOutputSchema = z.object({
-  metaOverview: z.string().describe("An overview of current metagame for specified format, including tier decks and trends."),
-  deckStrengths: z.array(z.string()).describe("The deck's strengths in current meta."),
-  deckWeaknesses: z.array(z.string()).describe("The deck's weaknesses in current meta."),
-  matchupAnalysis: z.array(MatchupRecommendationSchema).describe("Analysis of key matchups in meta and how to improve them."),
-  cardSuggestions: z.object({
-    cardsToAdd: z.array(CardSuggestionSchema).describe("Cards to add to improve the deck against the meta."),
-    cardsToRemove: z.array(CardSuggestionSchema).describe("Cards to remove that are underperforming in the current meta."),
-  }).describe("Specific card suggestions with reasoning based on meta analysis."),
-  sideboardSuggestions: z.array(CardSuggestionSchema).optional().describe("Suggested sideboard cards for the current meta."),
-  strategicAdvice: z.string().describe("Strategic advice for playing the deck in the current meta."),
-});
-export type MetaAnalysisOutput = z.infer<typeof MetaAnalysisOutputSchema>;
+/**
+ * Meta analysis output
+ */
+export interface MetaAnalysisOutput {
+  metaOverview: string;
+  deckStrengths: string[];
+  deckWeaknesses: string[];
+  matchupAnalysis: MatchupRecommendation[];
+  cardSuggestions: {
+    cardsToAdd: CardSuggestion[];
+    cardsToRemove: CardSuggestion[];
+  };
+  sideboardSuggestions?: CardSuggestion[];
+  strategicAdvice: string;
+}
+
+/**
+ * Convert heuristic meta analysis output to the expected format
+ */
+function convertHeuristicOutput(
+  heuristicResult: ReturnType<typeof analyzeMetaHeuristic>,
+  format: string
+): MetaAnalysisOutput {
+  // Extract deck strengths and weaknesses from the analysis
+  const deckStrengths: string[] = [];
+  const deckWeaknesses: string[] = [];
+
+  // Analyze the heuristic recommendations to infer strengths/weaknesses
+  heuristicResult.recommendations.forEach(rec => {
+    if (rec.description.includes("naturally strong")) {
+      deckStrengths.push(`Strong against ${rec.matchup.against}`);
+    } else if (rec.description.includes("struggles against")) {
+      deckWeaknesses.push(`Weak against ${rec.matchup.against}`);
+    }
+  });
+
+  // Add format-specific strengths/weaknesses
+  if (format === 'commander') {
+    deckStrengths.push("Access to powerful Commanders and effects");
+    deckWeaknesses.push("Slower game pace may struggle against fast combo");
+  } else if (format === 'modern') {
+    deckStrengths.push("Access to powerful modern cards");
+    deckWeaknesses.push("Must prepare for diverse meta");
+  }
+
+  // Convert heuristic recommendations to matchup analysis
+  const matchupAnalysis: MatchupRecommendation[] = heuristicResult.recommendations.map(rec => ({
+    archetype: rec.matchup.against,
+    recommendation: rec.description,
+    sideboardNotes: rec.matchup.strategy,
+  }));
+
+  // Convert card suggestions with reasons
+  const allCardsToAdd = heuristicResult.recommendations.flatMap(rec => rec.cardsToAdd || []);
+  const allCardsToRemove = heuristicResult.recommendations.flatMap(rec => rec.cardsToRemove || []);
+
+  const cardSuggestions: {
+    cardsToAdd: CardSuggestion[];
+    cardsToRemove: CardSuggestion[];
+  } = {
+    cardsToAdd: allCardsToAdd.map(card => ({
+      name: card.name,
+      quantity: card.quantity,
+      reason: `Improves performance against metagame archetypes based on heuristic analysis`,
+    })),
+    cardsToRemove: allCardsToRemove.map(card => ({
+      name: card.name,
+      quantity: card.quantity,
+      reason: `Underperforming in current metagame according to heuristic analysis`,
+    })),
+  };
+
+  // Generate strategic advice
+  const strategicAdvice = `Based on the ${format} metagame, focus on ${heuristicResult.currentMeta} ` +
+    `${heuristicResult.archetypes.slice(0, 3).map(a => a.name).join(', ')} are the dominant archetypes. ` +
+    `Prepare your deck with appropriate answers and strategies for these common matchups. ` +
+    `The heuristic analysis suggests optimizing for ${heuristicResult.recommendations.map(r => r.title).join(' and ')}.`;
+
+  return {
+    metaOverview: heuristicResult.currentMeta,
+    deckStrengths,
+    deckWeaknesses,
+    matchupAnalysis,
+    cardSuggestions,
+    sideboardSuggestions: cardSuggestions.cardsToAdd.slice(0, 5), // Limit sideboard suggestions
+    strategicAdvice,
+  };
+}
 
 export async function analyzeMetaAndSuggest(
   input: MetaAnalysisInput
 ): Promise<MetaAnalysisOutput> {
-  const result = await metaAnalysisFlow(input);
-  return result;
-}
+  // Parse the decklist to get card data
+  const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
+  const cards: HeuristicCard[] = [];
 
-const metaAnalysisFlow = async (
-  input: MetaAnalysisInput
-): Promise<MetaAnalysisOutput> => {
-  // Get heuristic meta analysis
-  const heuristicResult = await heuristicMetaAnalysis(
+  // Simple parser
+  for (const line of lines) {
+    const match = line.match(/^(\d+)\s+(.+)$/);
+    if (match) {
+      const [, quantity, name] = match;
+      cards.push({
+        name: name.trim(),
+        count: parseInt(quantity, 10),
+        // Add placeholder properties to satisfy DeckCard type
+        id: crypto.randomUUID(),
+        cmc: 0,
+        colors: [],
+        legalities: {},
+        type_line: 'Unknown',
+        mana_cost: '{0}',
+        color_identity: [],
+      });
+    }
+  }
+
+  // Use heuristic analysis instead of AI
+  const heuristicResult = analyzeMetaHeuristic(
     input.decklist,
     input.format,
+    cards,
     input.focusArchetype
   );
 
-  // Validate card suggestions
-  const validationErrors: string[] = [];
+  // Validate card suggestions for legality
+  const validatedOutput = convertHeuristicOutput(heuristicResult, input.format);
 
-  // Validate cardsToAdd
-  if (heuristicResult.cardSuggestions.cardsToAdd.length > 0) {
-    const decklistForImport = heuristicResult.cardSuggestions.cardsToAdd
+  // Validate cards to add for legality
+  if (validatedOutput.cardSuggestions.cardsToAdd.length > 0) {
+    const cardNamesToValidate = validatedOutput.cardSuggestions.cardsToAdd
       .map(c => `${c.quantity} ${c.name}`)
       .join('\n');
-    const importResult = await importDecklist(decklistForImport, input.format);
 
-    if (importResult.notFound.length > 0) {
-      validationErrors.push(`These cards could not be found: ${importResult.notFound.join(', ')}.`);
-    }
-    if (importResult.illegal.length > 0) {
-      validationErrors.push(`These cards are not legal in ${input.format}: ${importResult.illegal.join(', ')}.`);
-    }
-  }
+    const importResult = await importDecklist(cardNamesToValidate, input.format);
 
-  // Validate cardsToRemove
-  if (heuristicResult.cardSuggestions.cardsToRemove.length > 0) {
-    const decklistForImport = heuristicResult.cardSuggestions.cardsToRemove
-      .map(c => `${c.quantity} ${c.name}`)
-      .join('\n');
-    const importResult = await importDecklist(decklistForImport, input.format);
-
-    if (importResult.notFound.length > 0) {
-      validationErrors.push(`These cards could not be found: ${importResult.notFound.join(', ')}.`);
+    if (importResult.notFound.length > 0 || importResult.illegal.length > 0) {
+      // Remove illegal or not found cards
+      validatedOutput.cardSuggestions.cardsToAdd = validatedOutput.cardSuggestions.cardsToAdd.filter(
+        c => !importResult.notFound.includes(c.name) && !importResult.illegal.includes(c.name)
+      );
     }
   }
 
-  if (validationErrors.length > 0) {
-    throw new Error(`The heuristic meta analysis failed validation. Errors: ${validationErrors.join('\n')}`);
+  // Ensure equal counts in card suggestions
+  const addCount = validatedOutput.cardSuggestions.cardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
+  const removeCount = validatedOutput.cardSuggestions.cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
+
+  if (addCount !== removeCount) {
+    // Adjust removals to match additions
+    while (validatedOutput.cardSuggestions.cardsToRemove.reduce((sum, c) => sum + c.quantity, 0) > addCount) {
+      const last = validatedOutput.cardSuggestions.cardsToRemove.pop();
+      if (last) {
+        last.quantity = Math.max(0, last.quantity - 1);
+        if (last.quantity > 0) {
+          validatedOutput.cardSuggestions.cardsToRemove.push(last);
+        }
+      }
+    }
   }
 
-  return {
-    metaOverview: heuristicResult.metaOverview,
-    deckStrengths: heuristicResult.deckStrengths,
-    deckWeaknesses: heuristicResult.deckWeaknesses,
-    matchupAnalysis: heuristicResult.matchupAnalysis,
-    cardSuggestions: heuristicResult.cardSuggestions,
-    sideboardSuggestions: heuristicResult.sideboardSuggestions,
-    strategicAdvice: heuristicResult.strategicAdvice,
-  };
-};
+  return validatedOutput;
+}
