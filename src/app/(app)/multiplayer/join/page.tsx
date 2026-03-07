@@ -17,15 +17,20 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
+import { ConnectionQRCode } from '@/components/connection-qr-code';
 import { GameFormat } from '@/lib/multiplayer-types';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import type { SavedDeck } from '@/app/actions';
+import { createP2PConnection } from '@/lib/webrtc-p2p';
+import { decodeConnectionData, isValidConnectionDataString } from '@/lib/client-signaling';
+import type { ConnectionData } from '@/lib/client-signaling';
 
 interface JoinState {
   step: 'code' | 'name' | 'lobby';
   gameCode: string;
   playerName: string;
   game: PublicGameInfo | null;
+  connectionData: ConnectionData | null;
 }
 
 function JoinGameContent() {
@@ -40,6 +45,7 @@ function JoinGameContent() {
     gameCode: initialCode,
     playerName: '',
     game: null,
+    connectionData: null,
   });
   
   const [playerNameInput, setPlayerNameInput] = useState('');
@@ -87,6 +93,72 @@ function JoinGameContent() {
       setJoinState(prev => ({ ...prev, playerName: playerNameInput.trim() }));
       // Auto-join the player to the lobby
       joinGame();
+    }
+  };
+
+  // Handle connection data from QR code or manual entry
+  const handleConnectionDataEntry = async (dataString: string) => {
+    try {
+      // Validate connection data
+      if (!isValidConnectionDataString(dataString)) {
+        setError('Invalid connection data. Please check and try again.');
+        return;
+      }
+
+      // Decode connection data
+      const connectionData = decodeConnectionData(dataString);
+
+      // Validate that it's an offer (host data)
+      if (connectionData.type !== 'offer') {
+        setError('Expected connection offer from host. Please scan the host QR code.');
+        return;
+      }
+
+      // Store connection data
+      setJoinState(prev => ({ ...prev, connectionData }));
+      setError(null);
+
+      // Initialize P2P connection as client
+      initializeClientConnection(connectionData);
+
+    } catch (err) {
+      console.error('Failed to process connection data:', err);
+      setError('Failed to process connection data. Please try again.');
+    }
+  };
+
+  // Initialize client P2P connection
+  const initializeClientConnection = async (hostConnectionData: ConnectionData) => {
+    try {
+      // Create P2P connection as client
+      const p2pConnection = createP2PConnection({
+        playerId: `client-${Date.now()}`,
+        playerName: playerNameInput.trim(),
+        isHost: false,
+        remoteConnectionData: hostConnectionData,
+        events: {
+          onConnectionStateChange: (state) => {
+            console.log('[Client] P2P connection state:', state);
+            if (state === 'connected') {
+              // Connection successful, proceed to lobby
+              setJoinState(prev => ({ ...prev, step: 'lobby' }));
+            }
+          },
+          onError: (error) => {
+            console.error('[Client] P2P connection error:', error);
+            setError('Failed to connect to host. Please try again.');
+          },
+        },
+      });
+
+      // Initialize WebRTC
+      await p2pConnection.initialize();
+
+      console.log('[Client] P2P connection initialized');
+
+    } catch (error) {
+      console.error('[Client] Failed to initialize P2P connection:', error);
+      setError('Failed to establish connection. Please try again.');
     }
   };
 
@@ -146,7 +218,7 @@ function JoinGameContent() {
     router.push('/multiplayer');
   };
 
-  // Step 1: Enter game code
+  // Step 1: Connect to game (QR code or manual entry)
   if (joinState.step === 'code') {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
@@ -154,43 +226,37 @@ function JoinGameContent() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Join a Game</CardTitle>
-            <CardDescription>Enter the game code to join a lobby</CardDescription>
+            <CardDescription>
+              Scan the QR code or enter the connection string from the host
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCodeSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="game-code">Game Code</Label>
-                <Input
-                  id="game-code"
-                  placeholder="e.g., ABC123"
-                  value={joinState.gameCode}
-                  onChange={(e) => setJoinState(prev => ({ ...prev, gameCode: e.target.value.toUpperCase() }))}
-                  className="text-center text-2xl font-mono tracking-widest"
-                  maxLength={6}
-                />
-              </div>
-              
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              <Button type="submit" className="w-full" disabled={joinState.gameCode.length < 6}>
-                Continue
-              </Button>
-            </form>
+            <ConnectionQRCode
+              connectionData={null}
+              isHost={false}
+              onManualEntry={handleConnectionDataEntry}
+            />
+
+            {error && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <p className="text-xs text-muted-foreground mt-4 text-center">
+              Ask your opponent to share their QR code or connection string to connect.
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Step 2: Enter player name
+  // Step 2: Enter player name (after connection established)
   if (joinState.step === 'name') {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
@@ -198,12 +264,12 @@ function JoinGameContent() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
+
         <Card>
           <CardHeader>
-            <CardTitle>Join "{joinState.game?.name}"</CardTitle>
+            <CardTitle>Connected!</CardTitle>
             <CardDescription>
-              Game Format: {joinState.game ? formatDisplayNames[joinState.game.format] : 'Unknown'}
+              Enter your name to join the lobby
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -218,26 +284,9 @@ function JoinGameContent() {
                   maxLength={20}
                 />
               </div>
-              
-              <div className="p-3 bg-muted rounded-lg space-y-1">
-                <div className="flex items-center gap-2 text-sm">
-                  <Users className="w-4 h-4" />
-                  <span>{joinState.game?.currentPlayers || 0} / {joinState.game?.maxPlayers} players</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Crown className="w-4 h-4" />
-                  <span>Host: {joinState.game?.hostName}</span>
-                </div>
-                {joinState.game?.allowSpectators && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Eye className="w-4 h-4" />
-                    <span>Spectators allowed</span>
-                  </div>
-                )}
-              </div>
-              
+
               <Button type="submit" className="w-full" disabled={!playerNameInput.trim()}>
-                Join Game
+                Join Lobby
               </Button>
             </form>
           </CardContent>
