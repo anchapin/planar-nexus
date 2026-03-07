@@ -95,7 +95,35 @@ When adding card-related functionality, ensure types align with Scryfall's API r
 
 Magic: The Gathering rules are defined in `/src/lib/game-rules.ts`. This includes format definitions, deck construction rules, and legality checks. When modifying game behavior, update this file accordingly.
 
-Note: The `game-rules.ts` file imports a `GameState` type from a non-existent `./game-state` file. This should be resolved if implementing game state management.
+## Local Storage Architecture
+
+Planar Nexus uses a local-first architecture with no cloud dependencies:
+
+### User Management (`/src/lib/local-user.ts`)
+- User authentication with localStorage
+- User preferences management
+- Session persistence
+- Sign in/sign out functionality
+
+### Game State Storage (`/src/lib/local-game-storage.ts`)
+- IndexedDB for game state persistence
+- Game session management
+- Game code mapping
+- Version-controlled state updates
+- Host/client role management
+
+### Multiplayer (`/src/lib/webrtc-p2p.ts`)
+- Pure WebRTC for P2P connections
+- PeerJS for signaling
+- No central server required
+- Direct player-to-player connections
+
+All data is stored locally, enabling:
+- 100% offline functionality
+- Zero cloud costs
+- Privacy-focused (all data local)
+- Faster local operations
+- Simplified deployment
 
 ## AI Development
 
@@ -106,7 +134,12 @@ The Genkit dev UI provides tools for testing AI flows:
 
 ## Deployment
 
-The project is configured for Firebase App Hosting via `apphosting.yaml`. No additional build configuration is required beyond the standard Next.js build process.
+The project can be deployed as a static site or PWA:
+- Static hosting: Netlify, Vercel, GitHub Pages
+- PWA: Service worker for offline capability
+- Local-only: No external dependencies required
+
+The `apphosting.yaml` file is deprecated (legacy Firebase configuration).
 
 ## Common Patterns
 
