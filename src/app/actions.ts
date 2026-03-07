@@ -1,6 +1,6 @@
 
-import { reviewDeck, DeckReviewInput } from "@/ai/flows/ai-deck-coach-review";
-import { generateAIOpponentDeck, AIOpponentDeckGenerationInput } from "@/ai/flows/ai-opponent-deck-generation";
+import { reviewDeck, DeckReviewInput } from "@/ai/flows/heuristic-deck-coach-review";
+import { generateAIOpponentDeck, AIOpponentDeckGenerationInput } from "@/ai/flows/heuristic-opponent-deck-generation";
 import { MinimalCard, searchCardsOffline, getCardByName, getCardById, isCardLegal, initializeCardDatabase } from "@/lib/card-database";
 
 export interface ScryfallCard extends MinimalCard {
