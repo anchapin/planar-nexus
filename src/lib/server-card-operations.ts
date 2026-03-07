@@ -13,10 +13,7 @@ import { type Format } from '@/lib/game-rules';
 import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
 
 // Type definitions for card operations (server-side compatibility)
-export type ScryfallCard = MinimalCard;
-
-// Server-side DeckCard type with count property
-export interface DeckCard extends ScryfallCard {
+export interface ServerDeckCard extends MinimalCard {
   count: number;
 }
 
@@ -48,7 +45,7 @@ async function initializeServerCardOperations(): Promise<void> {
 export async function validateCardLegality(
   cards: { name: string; quantity: number }[],
   format: Format
-): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
+): Promise<{ found: ServerDeckCard[]; notFound: string[]; illegal: string[] }> {
   await initializeServerCardOperations();
 
   if (!cards || cards.length === 0) {
@@ -62,7 +59,7 @@ export async function validateCardLegality(
   }
 
   // Find cards in embedded data
-  const found: DeckCard[] = [];
+  const found: ServerDeckCard[] = [];
   const illegal: string[] = [];
   const notFoundNames = new Set<string>();
 
@@ -72,7 +69,7 @@ export async function validateCardLegality(
     if (cardInDb) {
       const isLegal = cardInDb.legalities?.[format] === 'legal';
       if (isLegal) {
-        found.push({ ...cardInDb, count: requestDetails.quantity } as DeckCard);
+        found.push({ ...cardInDb, count: requestDetails.quantity } as ServerDeckCard);
       } else {
         illegal.push(requestDetails.originalName);
       }
@@ -92,7 +89,7 @@ export async function validateCardLegality(
 export async function importDecklist(
   decklist: string,
   format?: Format
-): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
+): Promise<{ found: ServerDeckCard[]; notFound: string[]; illegal: string[] }> {
   const lines = decklist.split('\n').filter(line => line.trim() !== '');
   if (lines.length === 0) {
     return { found: [], notFound: [], illegal: [] };
@@ -127,7 +124,7 @@ export async function importDecklist(
         acc.set(card.id, { ...card });
       }
       return acc;
-    }, new Map<string, DeckCard>()).values()
+    }, new Map<string, ServerDeckCard>()).values()
   );
 
   return { found: aggregatedFound, notFound, illegal };
