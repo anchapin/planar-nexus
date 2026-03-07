@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getDeckReview, type SavedDeck, type DeckCard } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
+import { type Format } from "@/lib/game-rules";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
 import { Bot, Loader2, TrendingUp } from "lucide-react";
@@ -22,7 +23,7 @@ type DeckOption = DeckReviewOutput["deckOptions"][0];
 
 export default function DeckCoachPage() {
   const [decklist, setDecklist] = useState("");
-  const [format, setFormat] = useState("commander");
+  const [format, setFormat] = useState<Format>("commander");
   const [focusArchetype, setFocusArchetype] = useState<string>("");
   const [review, setReview] = useState<DeckReviewOutput | null>(null);
   const [metaAnalysis, setMetaAnalysis] = useState<MetaAnalysisOutput | null>(null);
@@ -245,7 +246,7 @@ export default function DeckCoachPage() {
             </div>
             <div className="space-y-2 mb-4">
               <Label htmlFor="format-select">Format</Label>
-              <Select value={format} onValueChange={setFormat} disabled={isPending}>
+              <Select value={format} onValueChange={(value) => setFormat(value as Format)} disabled={isPending}>
                   <SelectTrigger id="format-select" className="capitalize">
                       <SelectValue placeholder="Select format" />
                   </SelectTrigger>

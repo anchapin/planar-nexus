@@ -5,6 +5,7 @@ import { useState, useTransition, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
+import { type Format } from "@/lib/game-rules";
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
@@ -18,7 +19,7 @@ import { formatRules } from "@/lib/game-rules";
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
   const [deckName, setDeckName] = useState("New Deck");
-  const [format, setFormat] = useState("commander");
+  const [format, setFormat] = useState<Format>("commander");
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
   const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
@@ -54,7 +55,7 @@ export default function DeckBuilderPage() {
     setIsDeckSaved(false);
   };
 
-  const handleFormatChange = (newFormat: string) => {
+  const handleFormatChange = (newFormat: Format) => {
     setFormat(newFormat);
     setIsDeckSaved(false);
   }
