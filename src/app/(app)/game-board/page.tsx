@@ -3,55 +3,22 @@
 import * as React from "react";
 import { useState, useTransition } from "react";
 import { GameBoard } from "@/components/game-board";
-import { GameChat } from "@/components/game-chat";
-import { EmotePicker, EmoteFeed } from "@/components/emote-picker";
+import { GameChat, ChatMessage } from "@/components/game-chat";
+import { EmotePicker, EmoteFeed, EmoteMessage } from "@/components/emote-picker";
 import { TurnTimer } from "@/components/turn-timer";
-import { DamageOverlay, useDamageEvents } from "@/components/damage-indicator";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DamageOverlay, useDamageEvents, DamageType } from "@/components/damage-indicator";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
-import { Swords, Eye, MessageCircle, Smile, Lightbulb, AlertTriangle, Zap } from "lucide-react";
+import { Swords, Settings, Eye, MessageCircle, Smile, Lightbulb, AlertTriangle, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGameChat } from "@/hooks/use-game-chat";
 import { useGameEmotes } from "@/hooks/use-game-emotes";
 import { cn } from "@/lib/utils";
 import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
-
-// Type definitions for AI analysis results
-interface SuggestedPlay {
-  cardName: string;
-  reasoning: string;
-  priority: 'high' | 'medium' | 'low';
-}
-
-interface Warning {
-  message: string;
-  type: 'danger' | 'warning' | 'caution' | 'info';
-  relatedCards?: string[];
-}
-
-interface ManaSuggestion {
-  action: string;
-  reasoning: string;
-}
-
-interface AIAnalysis {
-  suggestedPlays?: SuggestedPlay[];
-  warnings?: Warning[];
-  strategicAdvice?: string[];
-}
-
-interface AIManaAdvice {
-  suggestions?: ManaSuggestion[];
-}
-
-interface AIBoardEval {
-  playerWinChance?: number;
-  boardAdvantage?: string;
-}
 
 // Mock data generator for demonstration
 function generateMockPlayer(
@@ -77,10 +44,6 @@ function generateMockPlayer(
         id: `card-${i}`,
         name: `Card ${i + 1}`,
         color_identity: [],
-        cmc: 0,
-        type_line: 'Card',
-        colors: [],
-        legalities: {},
       },
       zone: "hand" as ZoneType,
       playerId: id,
@@ -91,10 +54,6 @@ function generateMockPlayer(
         id: `card-${i}`,
         name: `Creature ${i + 1}`,
         color_identity: [],
-        cmc: 0,
-        type_line: 'Creature',
-        colors: [],
-        legalities: {},
       },
       zone: "battlefield" as ZoneType,
       playerId: id,
@@ -106,10 +65,6 @@ function generateMockPlayer(
         id: `card-${i}`,
         name: `Card ${i + 1}`,
         color_identity: [],
-        cmc: 0,
-        type_line: 'Card',
-        colors: [],
-        legalities: {},
       },
       zone: "graveyard" as ZoneType,
       playerId: id,
@@ -120,10 +75,6 @@ function generateMockPlayer(
         id: `card-${i}`,
         name: `Card ${i + 1}`,
         color_identity: [],
-        cmc: 0,
-        type_line: 'Card',
-        colors: [],
-        legalities: {},
       },
       zone: "exile" as ZoneType,
       playerId: id,
@@ -134,10 +85,6 @@ function generateMockPlayer(
         id: `card-${i}`,
         name: `Card ${i + 1}`,
         color_identity: [],
-        cmc: 0,
-        type_line: 'Card',
-        colors: [],
-        legalities: {},
       },
       zone: "library" as ZoneType,
       playerId: id,
@@ -151,12 +98,8 @@ function generateMockPlayer(
               id: `commander-0`,
               name: "Commander",
               color_identity: [],
-              cmc: 0,
-              type_line: 'Creature',
-              colors: [],
-              legalities: {},
             },
-            zone: "commandZone" as ZoneType,
+            zone: "command" as ZoneType,
             playerId: id,
           },
         ]
@@ -174,9 +117,9 @@ export default function GameBoardPage() {
   const [chatOpen, setChatOpen] = React.useState(true);
   const [aiAssistanceEnabled, setAiAssistanceEnabled] = React.useState(false);
   const [isAnalyzing, startAnalysis] = useTransition();
-  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
-  const [aiManaAdvice, setAiManaAdvice] = useState<AIManaAdvice | null>(null);
-  const [aiBoardEval, setAiBoardEval] = useState<AIBoardEval | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [aiManaAdvice, setAiManaAdvice] = useState<any>(null);
+  const [aiBoardEval, setAiBoardEval] = useState<any>(null);
   const { toast } = useToast();
 
   // Get current player info
@@ -188,6 +131,7 @@ export default function GameBoardPage() {
   const { 
     messages, 
     sendMessage, 
+    addSystemMessage, 
     clearMessages,
     unreadCount,
     markAsRead 
@@ -203,7 +147,7 @@ export default function GameBoardPage() {
   });
 
   // Initialize damage events
-  const { events: damageEvents, addDamage, addHeal } = useDamageEvents();
+  const { events: damageEvents, addDamage, addHeal, clearEvents: clearDamageEvents } = useDamageEvents();
 
   // Initialize players when player count changes
   React.useEffect(() => {
@@ -245,35 +189,7 @@ export default function GameBoardPage() {
 
   const handleZoneClick = (zone: ZoneType, playerId: string) => {
     const player = players.find((p) => p.id === playerId);
-    let zoneData: unknown[] = [];
-    
-    // Map ZoneType to PlayerState properties
-    switch (zone) {
-      case "commandZone":
-        zoneData = player?.commandZone || [];
-        break;
-      case "battlefield":
-        zoneData = player?.battlefield || [];
-        break;
-      case "hand":
-        zoneData = player?.hand || [];
-        break;
-      case "graveyard":
-        zoneData = player?.graveyard || [];
-        break;
-      case "exile":
-        zoneData = player?.exile || [];
-        break;
-      case "library":
-        zoneData = player?.library || [];
-        break;
-      case "stack":
-      case "sideboard":
-      case "anticipate":
-        // These zones don't exist in PlayerState yet
-        zoneData = [];
-        break;
-    }
+    const zoneData = player?.[zone === "command" ? "commandZone" : zone];
 
     toast({
       title: `${zone.charAt(0).toUpperCase() + zone.slice(1)} Zone`,
@@ -326,6 +242,9 @@ export default function GameBoardPage() {
 
   // Convert player state to game state format for AI analysis
   const convertToGameState = () => {
+    const currentPlayer = players.find(p => p.id === currentPlayerId);
+    const opponent = players.find(p => p.id !== currentPlayerId);
+    
     return {
       players: players.map(p => ({
         id: p.id,
@@ -671,10 +590,10 @@ export default function GameBoardPage() {
                     <span className="font-semibold">Win Chance:</span>
                     <span className={cn(
                       "font-bold",
-                      (aiBoardEval.playerWinChance ?? 0) >= 60 ? "text-green-500" :
-                      (aiBoardEval.playerWinChance ?? 0) >= 40 ? "text-yellow-500" : "text-red-500"
+                      aiBoardEval.playerWinChance >= 60 ? "text-green-500" :
+                      aiBoardEval.playerWinChance >= 40 ? "text-yellow-500" : "text-red-500"
                     )}>
-                      {aiBoardEval.playerWinChance ?? 0}%
+                      {aiBoardEval.playerWinChance}%
                     </span>
                   </div>
                   <div className="text-muted-foreground">
@@ -689,7 +608,7 @@ export default function GameBoardPage() {
                   <div className="font-semibold mb-1 flex items-center gap-1">
                     <Zap className="h-3 w-3" /> Suggested Plays:
                   </div>
-                  {aiAnalysis.suggestedPlays.slice(0, 3).map((play, idx) => (
+                  {aiAnalysis.suggestedPlays.slice(0, 3).map((play: any, idx: number) => (
                     <div key={idx} className={cn(
                       "p-2 rounded mb-1",
                       play.priority === 'high' ? 'bg-green-50 border-l-2 border-green-500' :
@@ -709,7 +628,7 @@ export default function GameBoardPage() {
                   <div className="font-semibold mb-1 flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3 text-amber-500" /> Warnings:
                   </div>
-                  {aiAnalysis.warnings.slice(0, 2).map((warning, idx) => (
+                  {aiAnalysis.warnings.slice(0, 2).map((warning: any, idx: number) => (
                     <div key={idx} className={cn(
                       "p-2 rounded mb-1 text-[10px]",
                       warning.type === 'danger' ? 'bg-red-50 text-red-700' :
@@ -725,7 +644,7 @@ export default function GameBoardPage() {
               {aiManaAdvice?.suggestions && aiManaAdvice.suggestions.length > 0 && (
                 <div>
                   <div className="font-semibold mb-1">Mana Usage:</div>
-                  {aiManaAdvice.suggestions.slice(0, 2).map((suggestion, idx) => (
+                  {aiManaAdvice.suggestions.slice(0, 2).map((suggestion: any, idx: number) => (
                     <div key={idx} className="p-2 rounded bg-blue-50 mb-1">
                       <div className="font-medium">{suggestion.action}</div>
                       <div className="text-muted-foreground text-[10px]">{suggestion.reasoning}</div>

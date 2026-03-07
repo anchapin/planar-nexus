@@ -9,26 +9,56 @@
  * The AI functionality should only be used server-side or with proper fallback handling.
  */
 
-// Import types from separate file (to avoid circular dependencies)
-import { DEFAULT_CONFIGS, DEFAULT_MODELS, type AIProviderConfig, type AIProvider, type SubscriptionTier, type SubscriptionPlan, type SubscriptionDetection } from './types';
+/**
+ * Supported AI providers
+ */
+export type AIProvider = 'google' | 'openai' | 'anthropic' | 'custom';
 
-// Re-export types
-export { DEFAULT_CONFIGS, DEFAULT_MODELS };
-export type { 
-  AIProviderConfig, 
-  AIProvider, 
-  SubscriptionTier, 
-  SubscriptionPlan, 
-  SubscriptionDetection 
+/**
+ * Configuration options for AI providers
+ */
+export interface AIProviderConfig {
+  provider: AIProvider;
+  model?: string;
+  apiKey?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}
+
+/**
+ * Default model configurations
+ */
+export const DEFAULT_MODELS: Record<string, string> = {
+  google: 'gemini-1.5-flash-latest',
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-haiku-20240307',
 };
 
-// Re-export Claude, OpenAI and Z.ai providers
-export * from './claude';
-export * from './openai';
-export * from './zaic';
-
-// Re-export subscription detection (Issue #52)
-export * from './subscription-detection';
+/**
+ * Default configurations for each provider
+ */
+export const DEFAULT_CONFIGS: Record<AIProvider, Partial<AIProviderConfig>> = {
+  google: {
+    model: DEFAULT_MODELS.google,
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+  },
+  openai: {
+    model: DEFAULT_MODELS.openai,
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+  },
+  anthropic: {
+    model: DEFAULT_MODELS.anthropic,
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+  },
+  custom: {
+    model: DEFAULT_MODELS.google,
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+  },
+};
 
 /**
  * Current active provider configuration
@@ -60,88 +90,33 @@ export function setProvider(provider: AIProvider, model?: string): void {
  * Get available providers
  */
 export function getAvailableProviders(): AIProvider[] {
-  return ['google', 'openai', 'anthropic', 'zaic'];
+  return ['google', 'openai', 'anthropic'];
 }
-
-/**
- * Google model options (static list)
- */
-const GOOGLE_MODELS = [
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash-8b',
-  'gemini-1.5-pro-latest',
-  'gemini-2.0-flash-exp',
-];
 
 /**
  * Get model options for a specific provider
  */
 export function getModelOptions(provider: AIProvider): string[] {
-  switch (provider) {
-    case 'google':
-      return GOOGLE_MODELS;
-    case 'openai':
-      // Lazy import to avoid bundling issues in browser
-      return getOpenAIModelOptionsStatic();
-    case 'anthropic':
-      // Lazy import to avoid bundling issues in browser
-      return getClaudeModelOptionsStatic();
-    case 'zaic':
-      // Lazy import to avoid bundling issues in browser
-      return getZAIModelOptionsStatic();
-    case 'custom':
-      return [DEFAULT_MODELS.google];
-    default:
-      return [];
-  }
-}
-
-/**
- * Get OpenAI model options (statically defined to avoid require)
- */
-function getOpenAIModelOptionsStatic(): string[] {
-  return [
-    'gpt-4o',
-    'gpt-4o-2024-05-13',
-    'gpt-4o-2024-08-06',
-    'gpt-4o-mini',
-    'gpt-4o-mini-2024-07-18',
-    'gpt-4-turbo',
-    'gpt-4-turbo-2024-04-09',
-    'gpt-4',
-    'gpt-4-0613',
-    'gpt-4-32k',
-    'gpt-4-32k-0613',
-    'gpt-3.5-turbo',
-    'gpt-3.5-turbo-0125',
-    'gpt-3.5-turbo-1106',
-  ];
-}
-
-/**
- * Get Claude model options (statically defined to avoid require)
- */
-function getClaudeModelOptionsStatic(): string[] {
-  return [
-    'claude-3-haiku-20240307',
-    'claude-3-5-haiku-20241022',
-    'claude-3-sonnet-20240229',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-opus-20240229',
-    'claude-3-5-opus-20241022',
-  ];
-}
-
-/**
- * Get Z.ai model options (statically defined to avoid require)
- */
-function getZAIModelOptionsStatic(): string[] {
-  return [
-    'default',
-    'zaiclient-7b',
-    'zaiclient-14b',
-    'zaiclient-72b',
-  ];
+  const models: Record<AIProvider, string[]> = {
+    google: [
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash-8b',
+      'gemini-1.5-pro-latest',
+      'gemini-2.0-flash-exp',
+    ],
+    openai: [
+      'gpt-4o-mini',
+      'gpt-4o',
+      'gpt-4-turbo',
+    ],
+    anthropic: [
+      'claude-3-haiku-20240307',
+      'claude-3-sonnet-20240229',
+      'claude-3-opus-20240229',
+    ],
+    custom: [DEFAULT_MODELS.google],
+  };
+  return models[provider] || [];
 }
 
 /**
@@ -156,7 +131,7 @@ export function getModelString(): string {
  * Validate provider configuration
  */
 export function isValidProvider(provider: string): provider is AIProvider {
-  return ['google', 'openai', 'anthropic', 'zaic', 'custom'].includes(provider);
+  return ['google', 'openai', 'anthropic', 'custom'].includes(provider);
 }
 
 /**

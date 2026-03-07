@@ -513,7 +513,7 @@ function deserializeCardInstance(data: SerializedCardInstance): CardInstance {
     toughnessModifier: data.toughnessModifier,
     powerModifier: data.powerModifier,
     attachedToId: data.attachedToId,
-    attachedCardIds: Array.from(data.attachedCardIds),
+    attachedCardIds: new Set(data.attachedCardIds),
     enteredBattlefieldTimestamp: data.enteredBattlefieldTimestamp,
     attachedTimestamp: data.attachedTimestamp,
     isToken: data.isToken,
@@ -551,7 +551,7 @@ function deserializeStackObject(data: SerializedStackObject): StackObject {
       targetId: t.targetId,
       isValid: t.isValid,
     })),
-    chosenModes: Array.from(data.chosenModes),
+    chosenModes: new Set(data.chosenModes),
     variableValues: new Map(data.variableValues),
     isCountered: data.isCountered,
     timestamp: data.timestamp,
@@ -561,7 +561,7 @@ function deserializeStackObject(data: SerializedStackObject): StackObject {
 /**
  * Deserialize a turn
  */
-function deserializeTurn(data: SerializedTurn, _Phase: { [key: string]: string }): Turn {
+function deserializeTurn(data: SerializedTurn, Phase: { [key: string]: string }): Turn {
   return {
     activePlayerId: data.activePlayerId,
     currentPhase: data.currentPhase as Turn['currentPhase'],

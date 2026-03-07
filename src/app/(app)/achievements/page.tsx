@@ -5,6 +5,7 @@ import {
   Trophy, 
   Star, 
   Lock, 
+  Unlock,
   Play,
   Shield,
   Boxes,
@@ -34,6 +35,7 @@ import {
   achievementManager, 
   type Achievement, 
   type AchievementCategory,
+  type AchievementRarity,
   ACHIEVEMENTS,
   RARITY_COLORS,
   getTotalPossiblePoints 
@@ -42,7 +44,7 @@ import {
 /**
  * Icon mapping for achievements
  */
-const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
+const ICON_MAP: Record<string, React.ComponentType<any>> = {
   Play,
   Gamepad2,
   Trophy,
@@ -78,9 +80,11 @@ function getIconComponent(iconName: string) {
 function AchievementCard({ 
   achievement, 
   progress,
+  showDetails = false 
 }: { 
   achievement: Achievement; 
   progress?: { currentProgress: number; unlocked: boolean; unlockedAt?: number };
+  showDetails?: boolean;
 }) {
   const Icon = getIconComponent(achievement.icon);
   const isUnlocked = progress?.unlocked || false;
@@ -164,17 +168,12 @@ export default function AchievementsPage() {
     achievement: Achievement;
     progress: { currentProgress: number; unlocked: boolean; unlockedAt?: number };
   }>>([]);
-  const [category] = useState<AchievementCategory | 'all'>('all');
+  const [category, setCategory] = useState<AchievementCategory | 'all'>('all');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['games', 'wins']));
 
   useEffect(() => {
-    let isMounted = true;
-    achievementManager.getAchievementDisplayProgress(playerId).then(displayProgress => {
-      if (isMounted) {
-        setAchievements(displayProgress);
-      }
-    });
-    return () => { isMounted = false; };
+    const displayProgress = achievementManager.getAchievementDisplayProgress(playerId);
+    setAchievements(displayProgress);
   }, [playerId]);
 
   const filteredAchievements = category === 'all' 

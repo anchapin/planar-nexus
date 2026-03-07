@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Search, Users, Lock, Eye, Gamepad2, Crown } from 'lucide-react';
+import { RefreshCw, Search, Users, Clock, Lock, Eye, Gamepad2, Crown } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { GameFormat, PlayerCount } from '@/lib/multiplayer-types';
 
@@ -38,13 +38,6 @@ export default function BrowseGamesPage() {
   const [formatFilter, setFormatFilter] = useState<GameFormat | 'all'>('all');
   const [playerCountFilter, setPlayerCountFilter] = useState<PlayerCount | 'all'>('all');
 
-  const loadGames = useCallback(() => {
-    const allGames = publicLobbyBrowser.getPublicGames();
-    setGames(allGames);
-    setLastRefresh(new Date());
-    setIsLoading(false);
-  }, []);
-
   // Load games on mount
   useEffect(() => {
     loadGames();
@@ -57,7 +50,7 @@ export default function BrowseGamesPage() {
     });
 
     return () => unsubscribe();
-  }, [loadGames]);
+  }, []);
 
   // Apply filters whenever games or filter criteria change
   useEffect(() => {
@@ -80,6 +73,13 @@ export default function BrowseGamesPage() {
 
     setFilteredGames(filtered);
   }, [games, searchQuery, formatFilter, playerCountFilter]);
+
+  const loadGames = useCallback(() => {
+    const allGames = publicLobbyBrowser.getPublicGames();
+    setGames(allGames);
+    setLastRefresh(new Date());
+    setIsLoading(false);
+  }, []);
 
   const handleRefresh = () => {
     publicLobbyBrowser.cleanupOldGames();
@@ -171,7 +171,7 @@ export default function BrowseGamesPage() {
             {/* Format Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Format</label>
-              <Select value={formatFilter} onValueChange={(value: GameFormat | 'all') => setFormatFilter(value)}>
+              <Select value={formatFilter} onValueChange={(value: any) => setFormatFilter(value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -194,7 +194,7 @@ export default function BrowseGamesPage() {
                 <Users className="w-4 h-4" />
                 Players
               </label>
-              <Select value={playerCountFilter} onValueChange={(value: PlayerCount | 'all') => setPlayerCountFilter(value)}>
+              <Select value={playerCountFilter} onValueChange={(value: any) => setPlayerCountFilter(value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

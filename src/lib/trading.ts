@@ -202,7 +202,7 @@ class TradeManager {
   /**
    * Send/submit the trade offer
    */
-  submitTradeOffer(tradeId: string, _partyId: string): TradeOffer | null {
+  submitTradeOffer(tradeId: string, partyId: string): TradeOffer | null {
     const offer = this.getTradeOffer(tradeId);
     if (!offer) return null;
 
@@ -298,7 +298,7 @@ class TradeManager {
   /**
    * Make a counter-offer
    */
-  counterOffer(tradeId: string, _partyId: string): TradeOffer | null {
+  counterOffer(tradeId: string, partyId: string): TradeOffer | null {
     const offer = this.getTradeOffer(tradeId);
     if (!offer) return null;
 
@@ -363,9 +363,10 @@ class TradeManager {
    */
   getTradeHistory(playerId: string): TradeHistoryEntry[] {
     const history = this.getHistory();
-    // This is simplified - in real app would filter by playerId
-    void playerId; // Acknowledge parameter for future use
-    return history;
+    return history.filter(h => {
+      // This is simplified - in real app would track which user is which
+      return true;
+    });
   }
 
   /**

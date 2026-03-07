@@ -3,9 +3,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
-import { importDecklistClient } from "@/lib/client-card-operations";
-import { type Format } from "@/lib/game-rules";
+import { ScryfallCard, DeckCard, importDecklist, SavedDeck } from "@/app/actions";
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
@@ -19,7 +17,7 @@ import { formatRules } from "@/lib/game-rules";
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
   const [deckName, setDeckName] = useState("New Deck");
-  const [format, setFormat] = useState<Format>("commander");
+  const [format, setFormat] = useState("commander");
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
   const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
@@ -55,7 +53,7 @@ export default function DeckBuilderPage() {
     setIsDeckSaved(false);
   };
 
-  const handleFormatChange = (newFormat: Format) => {
+  const handleFormatChange = (newFormat: string) => {
     setFormat(newFormat);
     setIsDeckSaved(false);
   }
@@ -65,9 +63,9 @@ export default function DeckBuilderPage() {
 
     handleDeckChange((prevDeck) => {
       const existingCard = prevDeck.find((c) => c.id === card.id);
-      const isBasicResource = card.type_line?.includes("Basic Resource");
+      const isBasicLand = card.type_line?.includes("Basic Land");
       
-      if (!isBasicResource && existingCard && existingCard.count >= rules.maxCopies) {
+      if (!isBasicLand && existingCard && existingCard.count >= rules.maxCopies) {
         toast({
           variant: "destructive",
           title: "Card Limit Reached",
@@ -131,7 +129,7 @@ export default function DeckBuilderPage() {
     setActiveDeckId(null);
     startImportTransition(async () => {
         try {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, format);
+            const { found, notFound, illegal } = await importDecklist(decklist, format);
             
             if (found.length > 0) {
                 setDeck(found);

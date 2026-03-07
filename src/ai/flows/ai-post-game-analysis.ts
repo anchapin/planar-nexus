@@ -14,12 +14,33 @@ import { ai } from '@/ai/genkit';
 import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
 
-// Types for game replay data (used for type documentation)
-// These interfaces describe the expected structure of replay data
+// Types for game replay data
+interface GameAction {
+  turn: number;
+  player: string;
+  action: string;
+  card?: string;
+  target?: string;
+  result?: string;
+}
+
+interface GameOutcome {
+  winner: string;
+  finalScore?: string;
+  turns: number;
+  playerDecks: Record<string, string[]>;
+}
+
+interface GameReplay {
+  actions: GameAction[];
+  outcome: GameOutcome;
+  playerNames: string[];
+  format: string;
+}
 
 // Input schema for game analysis
 const GameAnalysisInputSchema = z.object({
-  replay: z.record(z.unknown()).describe("The game replay data with actions and outcomes"),
+  replay: z.record(z.any()).describe("The game replay data with actions and outcomes"),
   playerName: z.string().describe("The player to analyze (get advice for)"),
 });
 
@@ -50,7 +71,7 @@ const GameAnalysisOutputSchema = z.object({
 
 // Input schema for key moments identification
 const KeyMomentsInputSchema = z.object({
-  replay: z.record(z.unknown()).describe("The game replay data"),
+  replay: z.record(z.any()).describe("The game replay data"),
   playerName: z.string().describe("The player to focus on"),
 });
 
@@ -68,7 +89,7 @@ const KeyMomentsOutputSchema = z.object({
 
 // Input schema for quick tips
 const QuickTipsInputSchema = z.object({
-  replay: z.record(z.unknown()).describe("The game replay data"),
+  replay: z.record(z.any()).describe("The game replay data"),
   playerName: z.string().describe("The player to get tips for"),
 });
 

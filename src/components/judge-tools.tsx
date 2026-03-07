@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
@@ -22,6 +23,8 @@ import {
   Minus,
   Check,
   X,
+  Ban,
+  Info,
   Pause,
   Play,
   Zap
@@ -355,10 +358,9 @@ interface IssuePenaltyProps {
   judgeName: string;
   onIssuePenalty: (playerId: string, type: PenaltyType, reason: string) => void;
   disabled?: boolean;
-  className?: string;
 }
 
-export function IssuePenalty({ players, currentRound, judgeName: _judgeName, onIssuePenalty, disabled, className }: IssuePenaltyProps) {
+export function IssuePenalty({ players, currentRound, judgeName, onIssuePenalty, disabled }: IssuePenaltyProps) {
   const [selectedPlayer, setSelectedPlayer] = useState('');
   const [penaltyType, setPenaltyType] = useState<PenaltyType>('warning');
   const [reason, setReason] = useState('');

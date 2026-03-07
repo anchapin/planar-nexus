@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { 
+  RoundTimerState, 
   RoundTimerConfig, 
   RoundTimerStatus,
   useRoundTimer,
@@ -60,6 +61,7 @@ export function RoundTimerWidget({
     useExtension,
     requestExtension,
     canUseExtension,
+    addTime,
   } = useRoundTimer({
     config: fullConfig,
     isPlayerTurn,
@@ -260,11 +262,13 @@ export function RoundTimerWidget({
 // Compact version for tournament mode
 interface CompactRoundTimerProps {
   status: RoundTimerStatus;
+  config: RoundTimerConfig;
   className?: string;
 }
 
 export function CompactRoundTimer({ 
   status, 
+  config,
   className 
 }: CompactRoundTimerProps) {
   const getStateColor = () => {

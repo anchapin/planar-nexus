@@ -1,8 +1,7 @@
 /**
  * AI Usage Tracking Module
  * Issue #51: Phase 3.3: Add usage tracking per provider
- * Unit 16: Local Storage Migration - Updated to use IndexedDB
- *
+ * 
  * This module tracks API usage per provider including:
  * - Token usage
  * - Cost estimation
@@ -11,7 +10,6 @@
  */
 
 import type { AIProvider } from '@/ai/providers';
-import { indexedDBStorage } from './indexeddb-storage';
 
 /**
  * Usage tracking data structure
@@ -92,13 +90,6 @@ const PRICING: Record<string, { input: number; output: number }> = {
 const USAGE_STORAGE_KEY = 'planar_nexus_ai_usage';
 
 /**
- * Initialize storage
- */
-async function initializeStorage(): Promise<void> {
-  await indexedDBStorage.initialize();
-}
-
-/**
  * Get pricing for a specific model
  */
 function getModelPricing(model: string): { input: number; output: number } {
@@ -125,49 +116,25 @@ function getDateString(date: Date = new Date()): string {
 /**
  * Get all usage records from storage
  */
-async function getUsageRecords(): Promise<UsageRecord[]> {
+function getUsageRecords(): UsageRecord[] {
   if (typeof window === 'undefined') return [];
-
+  
+  const stored = localStorage.getItem(USAGE_STORAGE_KEY);
+  if (!stored) return [];
+  
   try {
-    await initializeStorage();
-    const records = await indexedDBStorage.getAll<UsageRecord>('usage-tracking');
-    return records;
-  } catch (error) {
-    console.error('Failed to get usage records from IndexedDB:', error);
-
-    // Fallback to localStorage
-    const stored = localStorage.getItem(USAGE_STORAGE_KEY);
-    if (!stored) return [];
-
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return [];
-    }
+    return JSON.parse(stored);
+  } catch {
+    return [];
   }
 }
 
 /**
  * Save usage records to storage
  */
-async function saveUsageRecords(records: UsageRecord[]): Promise<void> {
-  try {
-    await initializeStorage();
-
-    // Add IDs to records for IndexedDB
-    const recordsWithIds = records.map(record => ({
-      ...record,
-      id: `usage_${record.timestamp}_${Math.random().toString(36).substr(2, 9)}`,
-    }));
-
-    await indexedDBStorage.setAll('usage-tracking', recordsWithIds);
-  } catch (error) {
-    console.error('Failed to save usage records to IndexedDB:', error);
-
-    // Fallback to localStorage
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(records));
-  }
+function saveUsageRecords(records: UsageRecord[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(records));
 }
 
 /**
@@ -180,8 +147,8 @@ export async function trackUsage(
   model?: string,
   feature?: string
 ): Promise<void> {
-  const records = await getUsageRecords();
-
+  const records = getUsageRecords();
+  
   const record: UsageRecord = {
     provider,
     timestamp: Date.now(),
@@ -192,21 +159,21 @@ export async function trackUsage(
     model,
     feature,
   };
-
+  
   records.push(record);
-
+  
   // Keep only last 90 days of data to prevent storage bloat
   const ninetyDaysAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
   const filteredRecords = records.filter(r => r.timestamp > ninetyDaysAgo);
-
-  await saveUsageRecords(filteredRecords);
+  
+  saveUsageRecords(filteredRecords);
 }
 
 /**
  * Get usage statistics for a specific provider
  */
-export async function getProviderUsageStats(provider: AIProvider): Promise<ProviderUsageStats> {
-  const records = (await getUsageRecords()).filter(r => r.provider === provider);
+export function getProviderUsageStats(provider: AIProvider): ProviderUsageStats {
+  const records = getUsageRecords().filter(r => r.provider === provider);
   
   if (records.length === 0) {
     return {
@@ -265,39 +232,33 @@ export async function getProviderUsageStats(provider: AIProvider): Promise<Provi
 /**
  * Get usage statistics for all providers
  */
-export async function getAllUsageStats(): Promise<ProviderUsageStats[]> {
+export function getAllUsageStats(): ProviderUsageStats[] {
   const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'custom'];
-  const stats: ProviderUsageStats[] = [];
-
-  for (const provider of providers) {
-    stats.push(await getProviderUsageStats(provider));
-  }
-
-  return stats;
+  return providers.map(provider => getProviderUsageStats(provider));
 }
 
 /**
  * Get overall usage summary
  */
-export async function getUsageSummary(days: number = 30): Promise<UsageSummary> {
-  const providers = await getAllUsageStats();
-
+export function getUsageSummary(days: number = 30): UsageSummary {
+  const providers = getAllUsageStats();
+  
   const periodStart = Date.now() - (days * 24 * 60 * 60 * 1000);
   const periodEnd = Date.now();
-
+  
   let totalRequests = 0;
   let totalTokens = 0;
   let totalCost = 0;
-
+  
   for (const stats of providers) {
     totalRequests += stats.totalRequests;
     totalTokens += stats.totalTokens;
     totalCost += stats.totalCost;
   }
-
+  
   // Filter to only providers with usage
   const activeProviders = providers.filter(p => p.totalRequests > 0);
-
+  
   return {
     totalRequests,
     totalTokens,
@@ -311,12 +272,12 @@ export async function getUsageSummary(days: number = 30): Promise<UsageSummary> 
 /**
  * Get usage for a specific time period
  */
-export async function getUsageForPeriod(
+export function getUsageForPeriod(
   provider: AIProvider,
   startDate: number,
   endDate: number
-): Promise<UsageRecord[]> {
-  const records = await getUsageRecords();
+): UsageRecord[] {
+  const records = getUsageRecords();
   return records.filter(
     r => r.provider === provider && r.timestamp >= startDate && r.timestamp <= endDate
   );
@@ -325,17 +286,17 @@ export async function getUsageForPeriod(
 /**
  * Reset usage tracking for a provider
  */
-export async function resetProviderUsage(provider: AIProvider): Promise<void> {
-  const records = await getUsageRecords();
+export function resetProviderUsage(provider: AIProvider): void {
+  const records = getUsageRecords();
   const filteredRecords = records.filter(r => r.provider !== provider);
-  await saveUsageRecords(filteredRecords);
+  saveUsageRecords(filteredRecords);
 }
 
 /**
  * Reset all usage tracking
  */
-export async function resetAllUsage(): Promise<void> {
-  await saveUsageRecords([]);
+export function resetAllUsage(): void {
+  saveUsageRecords([]);
 }
 
 /**

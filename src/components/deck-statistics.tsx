@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
+  BarChart3, 
   TrendingUp, 
   TrendingDown, 
   Minus,
@@ -14,8 +16,10 @@ import {
   Upload,
   Trash2,
   Calendar,
+  Target,
   Flame,
   Droplets,
+  Zap,
   Skull,
   Shield
 } from 'lucide-react';
@@ -46,7 +50,7 @@ export interface DeckStatistics {
   records: DeckRecord[];
   lastPlayed?: number;
   colorDistribution: Record<string, number>;
-  manaCurve: Record<number, number>; // Also known as "energy curve" in generic terminology
+  manaCurve: Record<number, number>;
 }
 
 // Color types for card analysis
@@ -55,9 +59,9 @@ export type CardColor = 'white' | 'blue' | 'black' | 'red' | 'green' | 'colorles
 export interface CardAnalysis {
   totalCards: number;
   colorDistribution: Record<string, number>;
-  manaCurve: Record<number, number>; // Also known as "energy curve" in generic terminology
+  manaCurve: Record<number, number>;
   typeDistribution: Record<string, number>;
-  averageManaValue: number; // Also known as "average energy value"
+  averageManaValue: number;
 }
 
 // Calculate win rate percentage
@@ -66,6 +70,11 @@ function calculateWinRate(wins: number, total: number): number {
   return Math.round((wins / total) * 100);
 }
 
+// Calculate average
+function calculateAverage(values: number[]): number {
+  if (values.length === 0) return 0;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
 
 // Deck statistics display component
 interface DeckStatisticsCardProps {
@@ -162,7 +171,7 @@ export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Activity className="w-5 h-5" />
-          Energy Curve
+          Mana Curve
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -439,6 +448,11 @@ export function useDeckStatistics({ storageKey = 'deck-statistics' }: UseDeckSta
     }
   }, [storageKey]);
 
+  // Save to localStorage when changed
+  const saveStats = useCallback((newStats: DeckStatistics[]) => {
+    setStatistics(newStats);
+    localStorage.setItem(storageKey, JSON.stringify(newStats));
+  }, [storageKey]);
 
   const recordGame = useCallback((
     deckId: string, 
@@ -476,7 +490,7 @@ export function useDeckStatistics({ storageKey = 'deck-statistics' }: UseDeckSta
           averageGameDuration: 0,
           records: [],
           colorDistribution: {},
-          manaCurve: {} // Also known as "energy curve" in generic terminology
+          manaCurve: {}
         };
       }
 

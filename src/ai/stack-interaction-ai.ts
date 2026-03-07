@@ -14,7 +14,7 @@
  * - ResourceManager: Manages holding vs. using mana
  */
 
-import { GameState, evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
+import { GameState, PlayerState, evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
 
 /**
  * Represents a spell or ability on the stack
@@ -226,6 +226,7 @@ export class StackInteractionAI {
   private gameState: GameState;
   private playerId: string;
   private weights: ResponseWeights;
+  private gameStateEvaluator: any;
 
   constructor(
     gameState: GameState,
@@ -242,6 +243,7 @@ export class StackInteractionAI {
    * Main decision point: Should I respond to this stack action?
    */
   evaluateResponse(context: StackContext): ResponseDecision {
+    const player = this.gameState.players[this.playerId];
     const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
 
     // Evaluate the threat level of the current action
@@ -353,6 +355,8 @@ export class StackInteractionAI {
     context: StackContext,
     possibleResponses: AvailableResponse[]
   ): StackOrderDecision {
+    const player = this.gameState.players[this.playerId];
+
     // Filter responses we can actually afford
     const affordableResponses = possibleResponses.filter((response) =>
       this.canAffordResponse(response, context)
@@ -443,9 +447,11 @@ export class StackInteractionAI {
    * Resource management: hold mana vs use now
    */
   manageResources(context: StackContext): ResourceDecision {
+    const player = this.gameState.players[this.playerId];
     const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
 
     // Calculate total mana available
+    const totalMana = Object.values(context.availableMana).reduce((sum, val) => sum + val, 0);
 
     // Check what instant-speed effects we have available
     const instantSpeedResponses = context.availableResponses.filter(
@@ -780,12 +786,6 @@ export class StackInteractionAI {
     if (factors.hasBackup) confidence += 0.1;
     if (factors.winConditionDisruption > 0.5) confidence += 0.1;
 
-    // High confidence for lethal threats - preventing game loss is critical
-    if (factors.lifeImpact > 0.5) confidence += 0.3;
-
-    // Extra confidence for high threat level (which includes targeting us with low life)
-    if (factors.threatLevel > 0.5) confidence += 0.15;
-
     return Math.min(1, confidence);
   }
 
@@ -890,9 +890,9 @@ export class StackInteractionAI {
    * Check if we should hold priority
    */
   private shouldHoldPriority(
-    _response: AvailableResponse,
+    response: AvailableResponse,
     context: StackContext,
-    _currentEvaluation: DetailedEvaluation
+    currentEvaluation: DetailedEvaluation
   ): boolean {
     // Hold priority if we might want to add more to the stack
     const hasOtherResponses = context.availableResponses.length > 1;
@@ -949,7 +949,7 @@ export class StackInteractionAI {
   /**
    * Find a permanent by ID
    */
-  private findPermanent(permanentId: string): { id: string; controller: string; type: string; power?: number; keywords?: string[] } | null {
+  private findPermanent(permanentId: string): any {
     for (const player of Object.values(this.gameState.players)) {
       const permanent = player.battlefield.find((p) => p.id === permanentId);
       if (permanent) return permanent;
@@ -960,7 +960,7 @@ export class StackInteractionAI {
   /**
    * Get permanent importance (0-1)
    */
-  private getPermanentImportance(permanent: { type: string; power?: number; keywords?: string[] }): number {
+  private getPermanentImportance(permanent: any): number {
     let importance = 0.5;
 
     if (permanent.type === 'planeswalker') importance += 0.3;
@@ -1006,32 +1006,12 @@ export class StackInteractionAI {
   private calculateCounterspellLifeImpact(context: StackContext): number {
     const action = context.currentAction;
     const lowerName = action.name.toLowerCase();
-    const player = this.gameState.players[this.playerId];
 
-    // Check if this action targets us
-    const targetsUs = action.targets?.some((t) => t.playerId === this.playerId);
-    
-    if (!targetsUs) {
-      return 0;
-    }
-
-    // Preventing damage to ourselves - check for common damage spell patterns
-    const isDamageSpell = 
-      lowerName.includes('damage') || 
-      lowerName.includes('destroy') ||
-      lowerName.includes('bolt') ||
-      lowerName.includes('shock') ||
-      lowerName.includes('strike') ||
-      lowerName.includes('blast') ||
-      lowerName.includes('burn') ||
-      action.colors?.includes('red'); // Red spells often deal damage
-
-    if (isDamageSpell) {
-      // Higher impact if we're at low life (lethal threat)
-      if (player && player.life <= 5) {
-        return 1.0; // Lethal threat
+    // Preventing damage to ourselves
+    if (action.targets?.some((t) => t.playerId === this.playerId)) {
+      if (lowerName.includes('damage') || lowerName.includes('destroy')) {
+        return 0.5;
       }
-      return 0.5;
     }
 
     return 0;
@@ -1042,7 +1022,7 @@ export class StackInteractionAI {
    */
   private calculateWinConditionDisruption(
     context: StackContext,
-    _currentEvaluation: DetailedEvaluation
+    currentEvaluation: DetailedEvaluation
   ): number {
     const action = context.currentAction;
 
@@ -1088,7 +1068,7 @@ export class StackInteractionAI {
   /**
    * Check if opponent likely has a counterspell
    */
-  private likelyOpponentCounterspell(_context: StackContext): boolean {
+  private likelyOpponentCounterspell(context: StackContext): boolean {
     const opponents = Object.values(this.gameState.players).filter(
       (p) => p.id !== this.playerId
     );
@@ -1143,7 +1123,7 @@ export class StackInteractionAI {
    */
   private evaluateOrderingValue(
     ordering: AvailableResponse[],
-    _context: StackContext | undefined
+    context: StackContext
   ): number {
     let totalValue = 0;
     let position = 0;
@@ -1162,7 +1142,7 @@ export class StackInteractionAI {
    */
   private shouldHoldForEndStep(
     context: StackContext,
-    _currentEvaluation: DetailedEvaluation
+    currentEvaluation: DetailedEvaluation
   ): boolean {
     // Hold for end step if we have good instant-speed effects
     const goodInstants = context.availableResponses.filter(
@@ -1177,16 +1157,14 @@ export class StackInteractionAI {
    */
   private shouldHoldForOpponentTurn(
     context: StackContext,
-    _currentEvaluation: DetailedEvaluation
+    currentEvaluation: DetailedEvaluation
   ): boolean {
-    // Hold interaction for opponent's turn when it's our turn
-    // (after we pass, it becomes opponent's turn)
+    // Always hold some interaction for opponent's turn if we can
     const hasInteraction = context.availableResponses.some(
       (r) => r.type === 'instant' || r.type === 'flash'
     );
 
-    // Hold for opponent's turn when it's currently our turn and we have opponents remaining
-    return hasInteraction && context.isMyTurn && context.opponentsRemaining.length > 0;
+    return hasInteraction && !context.isMyTurn;
   }
 
   /**
@@ -1209,7 +1187,7 @@ export class StackInteractionAI {
    */
   private findBestInstantResponse(
     instants: AvailableResponse[],
-    _context: StackContext
+    context: StackContext
   ): AvailableResponse | null {
     if (instants.length === 0) return null;
 

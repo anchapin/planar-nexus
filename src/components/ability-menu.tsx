@@ -20,8 +20,10 @@ import {
   Check,
   X,
   Zap,
+  Shield,
   Crosshair,
   Info,
+  ArrowRight,
 } from "lucide-react";
 
 interface AbilityMenuProps {
@@ -129,7 +131,7 @@ export function AbilityMenu({
   // Handle ability selection
   const handleAbilitySelect = (index: number) => {
     const ability = abilities[index];
-    const { canActivate } = getAbilityDisplayInfo(ability);
+    const { canActivate, reason } = getAbilityDisplayInfo(ability);
 
     if (!canActivate) {
       // Can't activate - show why

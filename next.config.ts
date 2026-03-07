@@ -1,14 +1,14 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  // Note: Removed 'output: export' because Server Actions are not compatible
-  // with static exports. The app uses a custom service worker (public/sw.js)
-  // for PWA/offline functionality instead.
-  // Using default Next.js output mode (dynamic) to support Server Actions.
-  
-  // Configure image optimization
+  /* config options here */
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   images: {
-    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
@@ -28,34 +28,8 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
-      {
-        protocol: 'https',
-        hostname: 'cards.scryfall.io',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'img.scryfall.com',
-        port: '',
-        pathname: '/**',
-      },
     ],
   },
-  
-  // Ensure trailing slashes for static hosting
-  trailingSlash: true,
-  
-  // TypeScript and ESLint settings
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  
-  // Set base path for deployment
-  basePath: '',
 };
 
 export default nextConfig;

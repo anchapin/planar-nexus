@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import type { Format } from "@/lib/game-rules";
-import { getFormatDisplayName } from "@/lib/game-rules";
 import { getFormatRulesSummary } from "@/lib/format-validator";
 import type { ValidationResult } from "@/lib/game-rules";
 
@@ -60,7 +59,7 @@ export function DeckValidationResult({
   format,
   className,
 }: DeckValidationResultProps) {
-  const formatName = getFormatDisplayName(format);
+  const formatName = format.charAt(0).toUpperCase() + format.slice(1);
 
   if (result.isValid && result.warnings.length === 0) {
     return (
@@ -118,16 +117,16 @@ interface FormatInfoBadgeProps {
 }
 
 export function FormatInfoBadge({ format, className }: FormatInfoBadgeProps) {
-  const formatName = getFormatDisplayName(format);
+  const formatName = format.charAt(0).toUpperCase() + format.slice(1);
 
   const formatColors: Record<Format, string> = {
-    "legendary-commander": "bg-purple-100 text-purple-800 hover:bg-purple-200",
-    "constructed-core": "bg-green-100 text-green-800 hover:bg-green-200",
-    "constructed-extended": "bg-blue-100 text-blue-800 hover:bg-blue-200",
-    "constructed-pioneer": "bg-orange-100 text-orange-800 hover:bg-orange-200",
-    "constructed-legacy": "bg-red-100 text-red-800 hover:bg-red-200",
-    "constructed-vintage": "bg-yellow-100 text-yellow-800 hover:bg-yellow-200",
-    "constructed-restricted": "bg-gray-100 text-gray-800 hover:bg-gray-200",
+    commander: "bg-purple-100 text-purple-800 hover:bg-purple-200",
+    standard: "bg-green-100 text-green-800 hover:bg-green-200",
+    modern: "bg-blue-100 text-blue-800 hover:bg-blue-200",
+    pioneer: "bg-orange-100 text-orange-800 hover:bg-orange-200",
+    legacy: "bg-red-100 text-red-800 hover:bg-red-200",
+    vintage: "bg-yellow-100 text-yellow-800 hover:bg-yellow-200",
+    pauper: "bg-gray-100 text-gray-800 hover:bg-gray-200",
   };
 
   return (

@@ -9,6 +9,8 @@
 import {
   CombatDecisionTree,
   CombatPlan,
+  AttackDecision,
+  BlockDecision,
   generateAttackDecisions,
   generateBlockingDecisions,
   type CombatAIConfig,

@@ -11,11 +11,17 @@ import {
   StackAction,
   StackContext,
   AvailableResponse,
+  ResponseDecision,
+  ResponseEffect,
+  evaluateStackResponse,
+  decideCounterspell,
   manageResponseResources,
 } from './stack-interaction-ai';
 import {
   GameState,
   PlayerState,
+  Permanent,
+  HandCard,
 } from './game-state-evaluator';
 
 /**

@@ -1,171 +1,183 @@
 /**
  * Replacement and Prevention Effects System
  * 
- * Implements MTG rules for replacement and prevention effects as described in CR 614-616.
- * - Replacement effects (CR 614.1): Modify how an event happens ("If X would happen, instead Y")
- * - Prevention effects (CR 614.2): Prevent damage, life loss, etc. from happening
- * - "As though" effects (CR 609): Allow players to ignore restrictions or follow different rules
- * 
- * Key Rules:
- * - CR 614.5: Some effects replace damage with life loss or other outcomes
- * - CR 614.7: If an event is replaced, it never happens
- * - CR 614.9: Some effects say "instead" - these are replacement effects
- * - CR 614.10: Some effects say "prevent" - these are prevention effects
- * - CR 616: Multiple replacement/prevention effects use APNAP ordering
- * 
- * @module replacement-effects
+ * Implements MTG rules for replacement and prevention effects as described in CR 614.
+ * - Replacement effects (CR 614.1): Modify how an event happens
+ * - Prevention effects (CR 614.2): Prevent damage, etc. from happening
  */
 
-import { CardInstanceId, PlayerId, GameState } from './types';
+import { CardInstance, Player, GameState, ZoneType, CardInstanceId, PlayerId } from './types';
 
 /**
  * Types of replacement/prevention effects
  */
 export type ReplacementEffectType = 
-  | 'damage_replacement'        // Replace damage with something else
-  | 'damage_prevention'         // Prevent damage
-  | 'life_gain_replacement'     // Modify life gain (e.g., double it)
-  | 'life_loss_replacement'     // Modify life loss
-  | 'draw_replacement'          // Replace card draw
-  | 'counter_movement'          // Replace counter placement
-  | 'token_creation'            // Modify token creation
-  | 'destroy_replacement'       // Replace destruction (e.g., regenerate)
-  | 'exile_replacement'         // Replace exile
-  | 'counters'                  // Add/remove counters
-  | 'as_though'                 // "As though" effects
-  | 'sacrifice_replacement';    // Replace sacrifice
+  | 'damage_replacement'
+  | 'damage_prevention'
+  | 'life_gain_replacement'
+  | 'life_loss_replacement'
+  | 'draw_replacement'
+  | 'counter_movement'
+  | 'token_creation'
+  | 'destroy_replacement'
+  | 'exile_replacement'
+  | 'counters';
 
 /**
  * A replacement or prevention ability
  */
 export interface ReplacementAbility {
+  /** Unique identifier for this ability */
   id: string;
+  /** ID of the card/source that has this ability */
   sourceCardId: CardInstanceId;
+  /** ID of the controller of the source */
   controllerId: PlayerId;
+  /** Type of effect */
   effectType: ReplacementEffectType;
+  /** Text description for debugging */
   description: string;
+  /** The replacement function - returns modified event or null if cannot apply */
   apply: (event: ReplacementEvent) => ReplacementResult;
+  /** Can this effect apply to the given event */
   canApply: (event: ReplacementEvent) => boolean;
+  /** Layer for ordering (614.1a) - lower = applies earlier */
   layer: number;
+  /** Sublayer for ordering within layer */
   sublayer?: string;
+  /** Duration of prevention effect (for prevention shields) */
   duration?: 'until_end_of_turn' | 'until_end_of_next_turn' | 'permanent';
+  /** Amount this can prevent (for prevention effects) */
   preventionAmount?: number;
-  timestamp: number;
-  isSelfReplacement?: boolean;
-  isInstead?: boolean;
+  /** Has this prevention effect been used this turn */
+  usedThisTurn?: number;
 }
 
 /**
- * "As though" effect - allows a player to ignore restrictions or follow different rules
- * CR 609: "As Though"
+ * Events that can be replaced or prevented
  */
-export interface AsThoughEffect {
-  id: string;
-  sourceCardId: CardInstanceId;
-  controllerId: PlayerId;
-  asThoughType: AsThoughType;
-  description: string;
-  condition?: (state: GameState, playerId: PlayerId) => boolean;
-  duration?: 'until_end_of_turn' | 'permanent';
-  timestamp: number;
-}
-
-export type AsThoughType =
-  | 'cast_flash'
-  | 'attack_haste'
-  | 'block_flying'
-  | 'play_land_anytime'
-  | 'spend_mana_any_color'
-  | 'target_anything'
-  | 'range_infinite'
-  | 'card_type_change';
-
 export type ReplacementEventType = 
-  | 'damage' | 'life_gain' | 'life_loss' | 'draw_card'
-  | 'move_to_graveyard' | 'exile' | 'destroy' | 'create_token'
-  | 'add_counter' | 'remove_counter' | 'sacrifice' | 'tap' | 'untap';
+  | 'damage'
+  | 'life_gain'
+  | 'life_loss'
+  | 'draw_card'
+  | 'move_to_graveyard'
+  | 'exile'
+  | 'destroy'
+  | 'create_token'
+  | 'add_counter'
+  | 'remove_counter';
 
+/**
+ * Generic replacement event structure
+ */
 export interface ReplacementEvent {
   type: ReplacementEventType;
+  /** Timestamp for ordering */
   timestamp: number;
+  /** The source of the event (e.g., attacking creature) */
   sourceId?: CardInstanceId;
+  /** The target of the event */
   targetId?: CardInstanceId | PlayerId;
+  /** Amount (damage, life, etc.) */
   amount: number;
+  /** Whether damage is combat damage */
   isCombatDamage?: boolean;
+  /** Damage types */
   damageTypes?: ('combat' | 'noncombat' | 'damage' | 'lethal')[];
+  /** Whether this is from a source with lifelink */
   hasLifelink?: boolean;
+  /** Whether this is from a source with deathtouch */
   hasDeathtouch?: boolean;
-  context?: Record<string, unknown>;
 }
 
+/**
+ * Result of applying a replacement effect
+ */
 export interface ReplacementResult {
+  /** Whether the event was modified */
   modified: boolean;
+  /** The modified event (if modified) */
   modifiedEvent?: ReplacementEvent;
+  /** Description of what happened */
   description: string;
+  /** Prevention shields remaining (for prevention effects) */
+  preventionShields?: PreventionShield[];
+  /** Whether to apply a different effect instead */
   instead?: boolean;
-  skipEvent?: boolean;
 }
 
+/**
+ * Prevention shield - tracks remaining prevention
+ */
 export interface PreventionShield {
+  /** ID of the shield source */
   sourceId: CardInstanceId;
+  /** How much damage this shield can prevent */
   amount: number;
+  /** What types of damage this applies to */
   damageTypes?: string[];
+  /** When the shield expires */
   expiresAt?: number;
-  controllerId: PlayerId;
 }
 
-export interface APNAPOrder {
-  activePlayerId: PlayerId;
-  playerOrder: PlayerId[];
-}
-
+/**
+ * Manages all replacement and prevention effects in the game
+ */
 export class ReplacementEffectManager {
   private effects: ReplacementAbility[] = [];
-  private asThoughEffects: AsThoughEffect[] = [];
   private preventionShields: Map<string, PreventionShield[]> = new Map();
-  private currentTurn: number = 0;
 
-  setCurrentTurn(turn: number): void { this.currentTurn = turn; }
-
+  /**
+   * Register a new replacement or prevention ability
+   */
   registerEffect(effect: ReplacementAbility): void {
     this.effects.push(effect);
-    this.sortEffects();
+    // Sort by layer for consistent ordering
+    this.effects.sort((a, b) => a.layer - b.layer);
   }
 
-  registerAsThoughEffect(effect: AsThoughEffect): void {
-    this.asThoughEffects.push(effect);
-  }
-
+  /**
+   * Remove effects from a specific source (when card leaves battlefield)
+   */
   removeEffectsFromSource(sourceCardId: CardInstanceId): void {
     this.effects = this.effects.filter(e => e.sourceCardId !== sourceCardId);
-    this.asThoughEffects = this.asThoughEffects.filter(e => e.sourceCardId !== sourceCardId);
+  }
+
+  /**
+   * Reset prevention effects that expire
+   */
+  resetExpiredEffects(gameState: GameState): void {
+    const now = Date.now();
+    // Remove expired prevention shields
     for (const [key, shields] of this.preventionShields.entries()) {
-      const validShields = shields.filter(s => s.sourceId !== sourceCardId);
+      const validShields = shields.filter(s => !s.expiresAt || s.expiresAt > now);
       if (validShields.length === 0) {
         this.preventionShields.delete(key);
       } else {
         this.preventionShields.set(key, validShields);
       }
     }
-  }
-
-  resetExpiredEffects(currentTime: number, turnNumber: number): void {
-    this.currentTurn = turnNumber;
-    for (const [key, shields] of this.preventionShields.entries()) {
-      const validShields = shields.filter(s => !s.expiresAt || s.expiresAt > currentTime);
-      if (validShields.length === 0) {
-        this.preventionShields.delete(key);
-      } else {
-        this.preventionShields.set(key, validShields);
+    
+    // Reset per-turn usage for prevention effects
+    for (const effect of this.effects) {
+      if (effect.effectType === 'damage_prevention' && effect.usedThisTurn !== undefined) {
+        // Effects that can only be used once per turn reset here
+        // (e.g., "prevent the next 1 damage")
       }
     }
-    this.asThoughEffects = this.asThoughEffects.filter(e => e.duration !== 'until_end_of_turn');
   }
 
+  /**
+   * Get active prevention shields for a target
+   */
   getPreventionShields(targetId: string | PlayerId): PreventionShield[] {
     return this.preventionShields.get(String(targetId)) || [];
   }
 
+  /**
+   * Add a prevention shield
+   */
   addPreventionShield(targetId: string | PlayerId, shield: PreventionShield): void {
     const key = String(targetId);
     const existing = this.preventionShields.get(key) || [];
@@ -173,6 +185,9 @@ export class ReplacementEffectManager {
     this.preventionShields.set(key, existing);
   }
 
+  /**
+   * Use part of a prevention shield
+   */
   usePreventionShield(targetId: string | PlayerId, amount: number): number {
     const key = String(targetId);
     const shields = this.preventionShields.get(key);
@@ -183,234 +198,267 @@ export class ReplacementEffectManager {
 
     for (const shield of shields) {
       if (remaining <= 0) {
-        validShields.push({ ...shield });
+        validShields.push(shield);
         continue;
       }
+      
       if (shield.amount >= remaining) {
-        const newShield = { ...shield, amount: shield.amount - remaining };
+        shield.amount -= remaining;
         remaining = 0;
-        if (newShield.amount > 0) validShields.push(newShield);
+        if (shield.amount > 0) {
+          validShields.push(shield);
+        }
       } else {
         remaining -= shield.amount;
+        // Shield fully used, don't add to valid
       }
     }
 
-    if (validShields.length === 0) {
-      this.preventionShields.delete(key);
-    } else {
-      this.preventionShields.set(key, validShields);
-    }
+    this.preventionShields.set(key, validShields);
     return amount - remaining;
   }
 
-  processEvent(event: ReplacementEvent, apnapOrder?: APNAPOrder): ReplacementEvent {
-    let currentEvent = { ...event };
-    const appliedEffectIds = new Set<string>();
-    let possibleEffects = this.getApplicableEffects(currentEvent);
+  /**
+   * Process an event through all applicable replacement/prevention effects
+   * Applies them in the correct order (CR 614.3)
+   */
+  processEvent(event: ReplacementEvent): ReplacementResult {
+    let currentEvent = event;
+    let lastDescription = '';
 
-    while (possibleEffects.length > 0) {
-      const effectToApply = this.chooseBestEffect(possibleEffects, currentEvent, apnapOrder);
-      if (!effectToApply) break;
-
-      const result = effectToApply.apply(currentEvent);
-      if (result.modified && result.modifiedEvent) {
-        currentEvent = { ...result.modifiedEvent };
-        appliedEffectIds.add(effectToApply.id);
-        if (result.skipEvent) {
-          currentEvent.amount = 0;
-          break;
-        }
-      }
-      possibleEffects = this.getApplicableEffects(currentEvent)
-        .filter(e => !appliedEffectIds.has(e.id));
-    }
-
-    if (currentEvent.type === 'damage' && currentEvent.amount > 0 && currentEvent.targetId) {
-      const prevented = this.usePreventionShield(currentEvent.targetId, currentEvent.amount);
-      if (prevented > 0) currentEvent.amount -= prevented;
-    }
-    return currentEvent;
-  }
-
-  private getApplicableEffects(event: ReplacementEvent): ReplacementAbility[] {
-    return this.effects.filter(e => {
+    // Filter effects that can apply to this event type
+    const applicableEffects = this.effects.filter(e => {
+      // Check if effect type matches
       const typeMatches = this.effectTypeMatches(e.effectType, event.type);
       return typeMatches && e.canApply(event);
     });
-  }
 
-  private chooseBestEffect(effects: ReplacementAbility[], event: ReplacementEvent, apnapOrder?: APNAPOrder): ReplacementAbility | null {
-    if (effects.length === 0) return null;
-    const sorted = [...effects].sort((a, b) => {
-      if (a.isSelfReplacement && !b.isSelfReplacement) return -1;
-      if (!a.isSelfReplacement && b.isSelfReplacement) return 1;
-      if (apnapOrder && event.targetId) {
-        const aIndex = apnapOrder.playerOrder.indexOf(a.controllerId);
-        const bIndex = apnapOrder.playerOrder.indexOf(b.controllerId);
-        if (aIndex !== -1 && bIndex !== -1 && aIndex !== bIndex) return aIndex - bIndex;
+    for (const effect of applicableEffects) {
+      const result = effect.apply(currentEvent);
+      if (result.modified) {
+        if (result.modifiedEvent) {
+          currentEvent = result.modifiedEvent;
+        }
+        lastDescription = result.description;
+        
+        // If "instead" applies, stop processing other replacement effects
+        if (result.instead) {
+          break;
+        }
       }
-      if (a.layer !== b.layer) return a.layer - b.layer;
-      return a.timestamp - b.timestamp;
-    });
-    return sorted[0];
+    }
+
+    return {
+      modified: currentEvent.amount !== event.amount || currentEvent !== event,
+      modifiedEvent: currentEvent,
+      description: lastDescription,
+    };
   }
 
+  /**
+   * Check if effect type matches event type
+   */
   private effectTypeMatches(effectType: ReplacementEffectType, eventType: ReplacementEventType): boolean {
     const mapping: Record<ReplacementEventType, ReplacementEffectType[]> = {
       'damage': ['damage_replacement', 'damage_prevention'],
       'life_gain': ['life_gain_replacement'],
       'life_loss': ['life_loss_replacement'],
       'draw_card': ['draw_replacement'],
-      'move_to_graveyard': ['destroy_replacement'],
-      'exile': ['exile_replacement'],
+      'move_to_graveyard': ['destroy_replacement', 'counter_movement'],
+      'exile': ['exile_replacement', 'counter_movement'],
       'destroy': ['destroy_replacement'],
       'create_token': ['token_creation'],
-      'add_counter': ['counter_movement', 'counters'],
+      'add_counter': ['counters'],
       'remove_counter': ['counters'],
-      'sacrifice': ['sacrifice_replacement'],
-      'tap': [], 'untap': [],
     };
-    return mapping[eventType]?.includes(effectType) || false;
+    
+    return mapping[eventType]?.includes(effectType) ?? false;
   }
 
-  checkAsThoughEffect(playerId: PlayerId, asThoughType: AsThoughType, gameState: GameState): boolean {
-    return this.asThoughEffects.some(effect =>
-      effect.controllerId === playerId &&
-      effect.asThoughType === asThoughType &&
-      (!effect.condition || effect.condition(gameState, playerId))
-    );
+  /**
+   * Get all registered effects
+   */
+  getEffects(): ReplacementAbility[] {
+    return [...this.effects];
   }
 
-  getAsThoughEffects(playerId: PlayerId, gameState: GameState): AsThoughEffect[] {
-    return this.asThoughEffects.filter(effect =>
-      effect.controllerId === playerId &&
-      (!effect.condition || effect.condition(gameState, playerId))
-    );
-  }
-
-  private sortEffects(): void {
-    this.effects.sort((a, b) => {
-      if (a.isSelfReplacement && !b.isSelfReplacement) return -1;
-      if (!a.isSelfReplacement && b.isSelfReplacement) return 1;
-      if (a.layer !== b.layer) return a.layer - b.layer;
-      return a.timestamp - b.timestamp;
-    });
-  }
-
-  createAPNAPOrder(activePlayerId: PlayerId, allPlayerIds: PlayerId[]): APNAPOrder {
-    const activeIndex = allPlayerIds.indexOf(activePlayerId);
-    if (activeIndex === -1) return { activePlayerId, playerOrder: allPlayerIds };
-    const playerOrder = [activePlayerId, ...allPlayerIds.slice(activeIndex + 1), ...allPlayerIds.slice(0, activeIndex)];
-    return { activePlayerId, playerOrder };
-  }
-
-  reset(): void {
+  /**
+   * Clear all effects (for new game)
+   */
+  clear(): void {
     this.effects = [];
-    this.asThoughEffects = [];
     this.preventionShields.clear();
-    this.currentTurn = 0;
   }
 }
 
-// Factory Functions
+// ============================================================
+// Common Replacement Effect Factories
+// ============================================================
 
-export function createPreventionShield(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, targetId: string | PlayerId,
-  amount: number, description: string, duration?: 'until_end_of_turn' | 'until_end_of_next_turn' | 'permanent',
-  damageTypes?: string[]
-): { ability: ReplacementAbility; shield: PreventionShield } {
-  const timestamp = Date.now();
-  const ability: ReplacementAbility = {
-    id: `prevent-${sourceCardId}-${timestamp}`, sourceCardId, controllerId,
-    effectType: 'damage_prevention', description, layer: 1, timestamp, duration, preventionAmount: amount,
-    canApply: (e) => e.type === 'damage' && e.targetId === targetId &&
-      (!damageTypes || !e.damageTypes || e.damageTypes.some(t => damageTypes.includes(t))),
-    apply: () => ({ modified: false, description: 'Prevention shield will apply' }),
-  };
-  const shield: PreventionShield = {
-    sourceId: sourceCardId, amount, damageTypes, controllerId,
-    expiresAt: duration === 'until_end_of_turn' ? timestamp + 300000 : undefined,
-  };
-  return { ability, shield };
-}
-
-export function createDamageReplacementEffect(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, description: string,
-  replacementFn: (amount: number, event: ReplacementEvent) => number,
-  layer: number = 5, isSelfReplacement: boolean = false
+/**
+ * Create a damage prevention effect (e.g., "If damage would be dealt to you, prevent it")
+ */
+export function createDamagePreventionEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  amount: number,
+  description: string,
+  duration?: 'until_end_of_turn' | 'until_end_of_next_turn' | 'permanent'
 ): ReplacementAbility {
   return {
-    id: `dmg-replace-${sourceCardId}-${Date.now()}`, sourceCardId, controllerId,
-    effectType: 'damage_replacement', description, layer, timestamp: Date.now(),
-    isSelfReplacement, isInstead: true,
-    canApply: (e) => e.type === 'damage',
-    apply: (e) => ({ modified: true, modifiedEvent: { ...e, amount: replacementFn(e.amount, e) }, description, instead: true }),
-  };
-}
+    id: `prevention-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    effectType: 'damage_prevention',
+    description,
+    layer: 0,
+    preventionAmount: amount,
+    duration,
+    canApply: (event) => event.type === 'damage' && event.targetId === controllerId,
+    apply: (event) => {
+      // Check for existing prevention shields first
+      const shields = replacementEffectManager.getPreventionShields(String(controllerId));
+      if (shields.length > 0) {
+        const prevented = replacementEffectManager.usePreventionShield(controllerId, event.amount);
+        return {
+          modified: true,
+          modifiedEvent: { ...event, amount: event.amount - prevented },
+          description: `Prevented ${prevented} damage`,
+        };
+      }
 
-export function createLifeGainReplacementEffect(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, description: string,
-  replacementFn: (amount: number, event: ReplacementEvent) => number,
-  targetFilter?: (targetId: PlayerId | CardInstanceId | undefined) => boolean
-): ReplacementAbility {
-  return {
-    id: `life-replace-${sourceCardId}-${Date.now()}`, sourceCardId, controllerId,
-    effectType: 'life_gain_replacement', description, layer: 5, timestamp: Date.now(), isInstead: true,
-    canApply: (e) => e.type === 'life_gain' && (!targetFilter || targetFilter(e.targetId)),
-    apply: (e) => ({ modified: true, modifiedEvent: { ...e, amount: replacementFn(e.amount, e) }, description, instead: true }),
-  };
-}
+      // Apply fresh prevention
+      const toPrevent = Math.min(event.amount, amount);
+      const remaining = event.amount - toPrevent;
+      
+      // Create a prevention shield if duration is set
+      if (duration && remaining > 0) {
+        const expiresAt = duration === 'permanent' 
+          ? undefined 
+          : Date.now() + (duration === 'until_end_of_turn' ? 24 * 60 * 60 * 1000 : 2 * 24 * 60 * 60 * 1000);
+        
+        replacementEffectManager.addPreventionShield(controllerId, {
+          sourceId: sourceCardId,
+          amount: remaining,
+          expiresAt,
+        });
+      }
 
-export function createLifeLossReplacementEffect(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, description: string,
-  replacementFn: (amount: number, event: ReplacementEvent) => number,
-  targetFilter?: (targetId: PlayerId | CardInstanceId | undefined) => boolean
-): ReplacementAbility {
-  return {
-    id: `loss-replace-${sourceCardId}-${Date.now()}`, sourceCardId, controllerId,
-    effectType: 'life_loss_replacement', description, layer: 5, timestamp: Date.now(), isInstead: true,
-    canApply: (e) => e.type === 'life_loss' && (!targetFilter || targetFilter(e.targetId)),
-    apply: (e) => ({ modified: true, modifiedEvent: { ...e, amount: replacementFn(e.amount, e) }, description, instead: true }),
-  };
-}
-
-export function createDrawReplacementEffect(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, description: string,
-  replacementFn: (amount: number, event: ReplacementEvent) => number
-): ReplacementAbility {
-  return {
-    id: `draw-replace-${sourceCardId}-${Date.now()}`, sourceCardId, controllerId,
-    effectType: 'draw_replacement', description, layer: 5, timestamp: Date.now(), isInstead: true,
-    canApply: (e) => e.type === 'draw_card',
-    apply: (e) => ({ modified: true, modifiedEvent: { ...e, amount: replacementFn(e.amount, e) }, description, instead: true }),
-  };
-}
-
-export function createDestroyReplacementEffect(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, description: string,
-  replacementFn: (event: ReplacementEvent) => ReplacementEvent | null,
-  targetFilter?: (targetId: PlayerId | CardInstanceId | undefined) => boolean
-): ReplacementAbility {
-  return {
-    id: `destroy-replace-${sourceCardId}-${Date.now()}`, sourceCardId, controllerId,
-    effectType: 'destroy_replacement', description, layer: 3, timestamp: Date.now(), isInstead: true,
-    canApply: (e) => (e.type === 'destroy' || e.type === 'move_to_graveyard') && (!targetFilter || targetFilter(e.targetId)),
-    apply: (e) => {
-      const modified = replacementFn(e);
-      return modified ? { modified: true, modifiedEvent: modified, description, instead: true } : { modified: false, description: 'Cannot apply' };
+      return {
+        modified: toPrevent > 0,
+        modifiedEvent: { ...event, amount: remaining },
+        description: `Prevented ${toPrevent} damage`,
+      };
     },
   };
 }
 
-export function createAsThoughEffect(
-  sourceCardId: CardInstanceId, controllerId: PlayerId, asThoughType: AsThoughType,
-  description: string, condition?: (state: GameState, playerId: PlayerId) => boolean,
-  duration?: 'until_end_of_turn' | 'permanent'
-): AsThoughEffect {
+/**
+ * Create a damage redirection effect (e.g., "If a source would deal damage to you, it deals that damage to target creature instead")
+ */
+export function createDamageRedirectionEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  redirectToId: CardInstanceId | PlayerId,
+  description: string
+): ReplacementAbility {
   return {
-    id: `as-though-${sourceCardId}-${Date.now()}`, sourceCardId, controllerId,
-    asThoughType, description, condition, duration, timestamp: Date.now(),
+    id: `redirect-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    effectType: 'damage_replacement',
+    description,
+    layer: 0,
+    canApply: (event) => event.type === 'damage' && event.targetId === controllerId,
+    apply: (event) => ({
+      modified: true,
+      modifiedEvent: { ...event, targetId: redirectToId },
+      description,
+      instead: true,
+    }),
   };
 }
+
+/**
+ * Create a life gain replacement effect (e.g., "If you would gain life, you get that much +1 instead")
+ */
+export function createLifeGainReplacementEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  modifier: number,
+  description: string
+): ReplacementAbility {
+  return {
+    id: `life-gain-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    effectType: 'life_gain_replacement',
+    description,
+    layer: 0,
+    canApply: (event) => event.type === 'life_gain',
+    apply: (event) => ({
+      modified: true,
+      modifiedEvent: { ...event, amount: event.amount + modifier },
+      description,
+      instead: true,
+    }),
+  };
+}
+
+/**
+ * Create a destroy replacement effect (e.g., "If a creature would be destroyed, exile it instead")
+ */
+export function createDestroyReplacementEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  replacementAction: 'exile' | 'tap' | 'shuffle_into_library',
+  description: string
+): ReplacementAbility {
+  return {
+    id: `destroy-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    effectType: 'destroy_replacement',
+    description,
+    layer: 0,
+    canApply: (event) => event.type === 'destroy',
+    apply: (event) => ({
+      modified: true,
+      modifiedEvent: { ...event, type: replacementAction === 'exile' ? 'exile' : 'move_to_graveyard' },
+      description,
+      instead: true,
+    }),
+  };
+}
+
+/**
+ * Create a replacement effect for drawing cards (e.g., "If you would draw a card, draw two instead")
+ */
+export function createDrawReplacementEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  multiplier: number,
+  description: string
+): ReplacementAbility {
+  return {
+    id: `draw-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    effectType: 'draw_replacement',
+    description,
+    layer: 0,
+    canApply: (event) => event.type === 'draw_card',
+    apply: (event) => ({
+      modified: true,
+      modifiedEvent: { ...event, amount: event.amount * multiplier },
+      description,
+      instead: true,
+    }),
+  };
+}
+
+// ============================================================
+// Global instance for use throughout the game
+// ============================================================
 
 export const replacementEffectManager = new ReplacementEffectManager();

@@ -327,7 +327,7 @@ export function useTargetingHelpers() {
     (
       cardTypes: string[],
       validTypes: string[],
-      _canTargetSelf: boolean = false
+      canTargetSelf: boolean = false
     ): { isValid: boolean; reason?: string } => {
       if (validTypes.length === 0) {
         return { isValid: true };

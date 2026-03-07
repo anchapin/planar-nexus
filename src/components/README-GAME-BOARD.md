@@ -12,13 +12,13 @@ The Game Board component is the visual foundation for gameplay in Planar Nexus. 
 - **Automatic orientation**: Player areas adjust orientation (horizontal/vertical) based on position
 
 ### 2. Zone Display
-All Planar Nexus game zones are displayed:
-- **Game Board** (battlefield): Large central area showing unit/resource cards
+All Magic: The Gathering game zones are displayed:
+- **Battlefield**: Large central area showing creature/land cards
 - **Hand**: Player's current hand (face-down for opponents)
-- **Discard Pile** (graveyard): Cards that have been put into the discard pile
-- **Banish Zone** (exile): Banished cards
-- **Draw Pile** (library): Player's deck (face-down)
-- **Leader Zone** (command zone): Leader/planechase cards (for Commander format)
+- **Graveyard**: Cards that have been put into the graveyard
+- **Exile**: Exiled cards
+- **Library**: Player's deck (face-down)
+- **Command Zone**: Commander/planechase cards (for Commander format)
 
 ### 3. Player Information
 - Life total with heart icon
@@ -35,13 +35,13 @@ All Planar Nexus game zones are displayed:
 
 ### 5. Visual Design
 - Color-coded zones for easy identification:
-  - Game Board (battlefield): Green tint
-  - Draw Pile (library): Blue tint
-  - Discard Pile (graveyard): Stone/brown tint
-  - Banish Zone (exile): Sky blue tint
+  - Battlefield: Green tint
+  - Library: Blue tint
+  - Graveyard: Stone/brown tint
+  - Exile: Sky blue tint
   - Hand: Primary color tint
-  - Leader Zone (command zone): Yellow/gold tint
-- Card placeholders on game board showing unit positions
+  - Command Zone: Yellow/gold tint
+- Card placeholders on battlefield showing creature positions
 - Tapped/untapped visual indicators
 - Border highlighting for current player (bottom position)
 

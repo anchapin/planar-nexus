@@ -1,16 +1,9 @@
 /**
  * Core type definitions for the Planar Nexus game state engine.
- * These types represent the complete state of a tabletop card game.
- *
- * Note: Internal type names may reference MTG terminology for backward compatibility
- * and implementation clarity. All user-facing text should use generic terminology
- * via the translation layer (see terminology-translation.ts).
+ * These types represent the complete state of a Magic: The Gathering game.
  */
 
 import { ScryfallCard } from "@/app/actions";
-
-// Re-export ScryfallCard for use in other game-state modules
-export type { ScryfallCard } from "@/app/actions";
 
 /**
  * Unique identifier for a card instance in the game
@@ -47,7 +40,7 @@ export interface CardInstance {
   ownerId: PlayerId;
 
   // State flags
-  /** Whether the permanent is activated (internally tracked as "tapped" for compatibility) */
+  /** Whether the permanent is tapped */
   isTapped: boolean;
   /** Whether the permanent is flipped (flip cards) */
   isFlipped: boolean;
@@ -55,11 +48,11 @@ export interface CardInstance {
   isTurnedFaceUp: boolean;
   /** Whether the permanent is phased out */
   isPhasedOut: boolean;
-  /** Whether the permanent has deployment restriction (internally tracked as "summoning sickness") */
+  /** Whether the permanent has summoning sickness */
   hasSummoningSickness: boolean;
 
   // Counters and modifications
-  /** Markers on this card (p1p1, +1/+1, charge, etc.) */
+  /** Counters on this card (p1p1, +1/+1, charge, etc.) */
   counters: Counter[];
   /** Damage marked on this creature (0 for non-creatures) */
   damage: number;
@@ -75,7 +68,7 @@ export interface CardInstance {
   attachedCardIds: CardInstanceId[];
 
   // Timestamps for ordering
-  /** When this permanent entered the play area (for timestamp ordering) */
+  /** When this permanent entered the battlefield (for timestamp ordering) */
   enteredBattlefieldTimestamp: number;
   /** When this card became attached to its current attachment */
   attachedTimestamp: number | null;
@@ -88,20 +81,17 @@ export interface CardInstance {
 }
 
 /**
- * A marker on a card (internally referred to as "counter" for compatibility)
+ * A counter on a card
  */
 export interface Counter {
-  /** Type of marker (e.g., "+1/+1", "charge", "feit", "verse", "time", "blood") */
+  /** Type of counter (e.g., "+1/+1", "charge", "feit", "verse", "time", "blood") */
   type: string;
-  /** Number of markers of this type */
+  /** Number of counters of this type */
   count: number;
 }
 
 /**
  * A zone where cards can exist
- *
- * Note: Zone type names use MTG terminology internally for backward compatibility.
- * Use translateZone() from terminology-translation.ts for user-facing display.
  */
 export type ZoneType =
   | "library"
@@ -159,7 +149,7 @@ export interface Player {
   /** Maximum lands that can be played this turn */
   maxLandsPerTurn: number;
 
-  // Mana pool (internally tracked, displayed as "energy" to users)
+  // Mana pool
   /** Available mana in each color */
   manaPool: ManaPool;
 
@@ -189,7 +179,7 @@ export interface Player {
 }
 
 /**
- * Mana pool tracking (internally referred to as "mana", displayed as "energy")
+ * Mana pool tracking
  */
 export interface ManaPool {
   /** Colorless mana */
@@ -210,14 +200,11 @@ export interface ManaPool {
 
 /**
  * A turn phase or step
- *
- * Note: Phase names use MTG terminology internally. Use translatePhase() from
- * terminology-translation.ts for user-facing display.
  */
 export enum Phase {
-  /** Untap step (displayed as "Reactivation") */
+  /** Untap step */
   UNTAP = "untap",
-  /** Upkeep step (displayed as "Maintenance") */
+  /** Upkeep step */
   UPKEEP = "upkeep",
   /** Draw step */
   DRAW = "draw",
@@ -262,9 +249,7 @@ export interface Turn {
 }
 
 /**
- * An object on the stack (card effect or ability)
- *
- * Note: Type includes "spell" internally for compatibility, displayed as "card effect"
+ * An object on the stack (spell or ability)
  */
 export interface StackObject {
   /** Unique identifier */
@@ -327,7 +312,7 @@ export interface Attacker {
   cardId: CardInstanceId;
   /** ID of player or planeswalker being attacked */
   defenderId: PlayerId | CardInstanceId;
-  /** Whether this creature is attacking a planeswalker (displayed as "champion") */
+  /** Whether this creature is attacking a planeswalker */
   isAttackingPlaneswalker: boolean;
   /** Damage that will be dealt */
   damageToDeal: number;
@@ -453,9 +438,6 @@ export interface GameAction {
 
 /**
  * Types of game actions
- *
- * Note: Action type names use MTG terminology internally. Use translateAction() from
- * terminology-translation.ts for user-facing display.
  */
 export type ActionType =
   | "cast_spell"

@@ -17,7 +17,7 @@ import { z } from 'genkit';
 
 // Input schema for game state analysis
 const GameStateAnalysisInputSchema = z.object({
-  gameState: z.record(z.unknown()).describe("Current game state including hand, board, mana, etc."),
+  gameState: z.record(z.any()).describe("Current game state including hand, board, mana, etc."),
   playerName: z.string().describe("The player to provide assistance for"),
 });
 
@@ -51,7 +51,7 @@ const GameStateAnalysisOutputSchema = z.object({
 
 // Input schema for specific play analysis
 const PlayAnalysisInputSchema = z.object({
-  gameState: z.record(z.unknown()).describe("Current game state"),
+  gameState: z.record(z.any()).describe("Current game state"),
   playerName: z.string().describe("The player"),
   cardName: z.string().describe("Card being considered"),
   target: z.string().optional().describe("Intended target (if any)"),
@@ -72,7 +72,7 @@ const PlayAnalysisOutputSchema = z.object({
 
 // Input schema for mana advice
 const ManaAdviceInputSchema = z.object({
-  gameState: z.record(z.unknown()).describe("Current game state"),
+  gameState: z.record(z.any()).describe("Current game state"),
   playerName: z.string().describe("The player"),
 });
 
@@ -96,7 +96,7 @@ const ManaAdviceOutputSchema = z.object({
 
 // Input schema for board evaluation
 const BoardEvaluationInputSchema = z.object({
-  gameState: z.record(z.unknown()).describe("Current game state"),
+  gameState: z.record(z.any()).describe("Current game state"),
   playerName: z.string().describe("The player to evaluate for"),
 });
 

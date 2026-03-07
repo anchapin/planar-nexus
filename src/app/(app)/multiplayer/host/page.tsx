@@ -15,38 +15,16 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Copy, Check, Users, Play, X, Crown, Clock, Eye, Info } from 'lucide-react';
+import { Copy, Check, Users, Settings, Play, X, Crown, Clock, Eye, Info } from 'lucide-react';
 import { useLobby } from '@/hooks/use-lobby';
 import { HostGameConfig, PlayerStatus } from '@/lib/multiplayer-types';
 import { FormatRulesDisplay } from '@/components/format-rules-display';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
-import { TeamAssignment } from '@/components/team-assignment';
+import { useLocalStorage } from '@/hooks/use-local-storage';
 import { SavedDeck } from '@/app/actions';
 
 export default function HostLobbyPage() {
-  const { 
-    lobby, 
-    isHost, 
-    isLoading, 
-    error, 
-    createLobby, 
-    updatePlayerStatus, 
-    updatePlayerDeck, 
-    canStartGame, 
-    canForceStart, 
-    startGame, 
-    forceStartGame, 
-    closeLobby, 
-    getGameCode, 
-    validateDeckForFormat,
-    // Team management
-    isTeamMode,
-    assignPlayerToTeam,
-    autoAssignTeams,
-    areTeamsValid,
-    updateTeamSettings,
-    updateTeamName,
-  } = useLobby();
+  const { lobby, isHost, isLoading, error, createLobby, updatePlayerStatus, updatePlayerDeck, canStartGame, canForceStart, startGame, forceStartGame, closeLobby, getGameCode, validateDeckForFormat } = useLobby();
 
   // Form state
   const [gameName, setGameName] = useState('');
@@ -57,9 +35,11 @@ export default function HostLobbyPage() {
   const [timerMinutes, setTimerMinutes] = useState(30);
   const [isPublic, setIsPublic] = useState(false);
   const [selectedDeck, setSelectedDeck] = useState<SavedDeck | null>(null);
+  const [deckValidation, setDeckValidation] = useState<{ isValid: boolean; errors: string[] }>({ isValid: true, errors: [] });
 
   // UI state
   const [copied, setCopied] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(true);
 
   const gameCode = getGameCode();
@@ -93,6 +73,7 @@ export default function HostLobbyPage() {
 
     createLobby(config, hostName);
     setShowCreateForm(false);
+    setShowSettings(false);
 
     // Auto-select first valid deck if available
     const [savedDecks] = getStoredDecks();
@@ -114,10 +95,8 @@ export default function HostLobbyPage() {
   // Handle deck selection with validation
   const handleDeckSelect = (deck: SavedDeck, validation?: { isValid: boolean; errors: string[] }) => {
     setSelectedDeck(deck);
-    // Validation is handled by the deck selector component
-    if (!validation) {
-      validateDeckForFormat(deck);
-    }
+    const deckValidationResult = validation || validateDeckForFormat(deck);
+    setDeckValidation(deckValidationResult);
 
     // Update player deck in lobby
     if (lobby) {
@@ -146,8 +125,8 @@ export default function HostLobbyPage() {
   const handleStartGame = () => {
     const success = startGame();
     if (success) {
-      // Navigate to game board
-      window.location.href = '/game-board';
+      // TODO: Navigate to game board when implemented
+      console.log('Starting game...');
     }
   };
 
@@ -210,7 +189,7 @@ export default function HostLobbyPage() {
               {/* Game Format */}
               <div className="space-y-2">
                 <Label htmlFor="format">Format *</Label>
-                <Select value={gameFormat} onValueChange={(value: typeof gameFormat) => setGameFormat(value)}>
+                <Select value={gameFormat} onValueChange={(value: any) => setGameFormat(value)}>
                   <SelectTrigger id="format">
                     <SelectValue />
                   </SelectTrigger>
@@ -229,7 +208,7 @@ export default function HostLobbyPage() {
               {/* Player Count */}
               <div className="space-y-2">
                 <Label htmlFor="players">Max Players</Label>
-                <Select value={playerCount} onValueChange={(value: typeof playerCount) => setPlayerCount(value)}>
+                <Select value={playerCount} onValueChange={(value: any) => setPlayerCount(value)}>
                   <SelectTrigger id="players">
                     <SelectValue />
                   </SelectTrigger>
@@ -419,23 +398,6 @@ export default function HostLobbyPage() {
           {/* Format Rules */}
           <FormatRulesDisplay format={lobby.format} className="md:col-span-3" />
 
-          {/* Team Assignment for 2v2 mode */}
-          {isTeamMode && lobby.teams && (
-            <div className="md:col-span-3">
-              <TeamAssignment
-                teams={lobby.teams}
-                players={lobby.players}
-                teamSettings={lobby.teamSettings}
-                onAssignPlayer={assignPlayerToTeam}
-                onAutoAssign={autoAssignTeams}
-                onUpdateTeamName={updateTeamName}
-                onUpdateTeamSettings={updateTeamSettings}
-                areTeamsValid={areTeamsValid}
-                isHost={isHost}
-              />
-            </div>
-          )}
-
           {/* Deck Selection for Host */}
           <Card className="md:col-span-3">
             <CardHeader>
@@ -590,7 +552,7 @@ export default function HostLobbyPage() {
         </div>
 
         <p className="text-xs text-muted-foreground mt-6 text-center">
-          Note: This lobby uses P2P networking (WebRTC) for multiplayer connections.
+          Note: This is a prototype lobby. P2P networking (WebRTC) is not yet implemented.
         </p>
       </div>
     );

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Send, MessageCircle, X, Minimize2, Maximize2, Users } from 'lucide-react';
+import { Send, MessageCircle, X, Minimize2, Maximize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface ChatMessage {
@@ -14,8 +14,6 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   isSystem?: boolean;
-  isTeamChat?: boolean;
-  teamId?: string;
 }
 
 interface GameChatProps {
@@ -24,28 +22,18 @@ interface GameChatProps {
   currentPlayerName: string;
   onSendMessage: (content: string) => void;
   className?: string;
-  // Team chat props
-  isTeamMode?: boolean;
-  teamChatEnabled?: boolean;
-  currentPlayerTeamId?: string;
-  onSendTeamMessage?: (content: string) => void;
 }
 
 export function GameChat({
   messages,
   currentPlayerId,
-  currentPlayerName: _currentPlayerName,
+  currentPlayerName,
   onSendMessage,
   className,
-  isTeamMode = false,
-  teamChatEnabled = true,
-  currentPlayerTeamId,
-  onSendTeamMessage,
 }: GameChatProps) {
   const [inputValue, setInputValue] = useState('');
   const [isOpen, setIsOpen] = useState(true);
   const [isMinimized, setIsMinimized] = useState(false);
-  const [isTeamChatActive, setIsTeamChatActive] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -61,20 +49,10 @@ export function GameChat({
     const content = inputValue.trim();
     if (!content) return;
 
-    // Send to team chat if active and available
-    if (isTeamChatActive && isTeamMode && teamChatEnabled && onSendTeamMessage) {
-      onSendTeamMessage(content);
-    } else {
-      onSendMessage(content);
-    }
+    onSendMessage(content);
     setInputValue('');
     inputRef.current?.focus();
   };
-
-  // Filter messages based on chat mode
-  const filteredMessages = isTeamMode && isTeamChatActive
-    ? messages.filter(m => m.isTeamChat && m.teamId === currentPlayerTeamId)
-    : messages;
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -153,41 +131,15 @@ export function GameChat({
       {/* Chat content */}
       {isOpen && !isMinimized && (
         <>
-          {/* Team chat toggle for team mode */}
-          {isTeamMode && teamChatEnabled && (
-            <div className="px-3 pt-2">
-              <div className="flex gap-1">
-                <Button
-                  variant={!isTeamChatActive ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setIsTeamChatActive(false)}
-                  className="flex-1 h-7 text-xs"
-                >
-                  <MessageCircle className="w-3 h-3 mr-1" />
-                  All
-                </Button>
-                <Button
-                  variant={isTeamChatActive ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setIsTeamChatActive(true)}
-                  className="flex-1 h-7 text-xs"
-                >
-                  <Users className="w-3 h-3 mr-1" />
-                  Team
-                </Button>
-              </div>
-            </div>
-          )}
-
           {/* Messages */}
           <ScrollArea className="flex-1 px-3 py-2">
             <div ref={scrollRef} className="space-y-3">
-              {filteredMessages.length === 0 ? (
+              {messages.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">
-                  {isTeamChatActive ? 'No team messages yet.' : 'No messages yet. Say hello!'}
+                  No messages yet. Say hello!
                 </p>
               ) : (
-                filteredMessages.map((message) => {
+                messages.map((message) => {
                   const isOwnMessage = message.playerId === currentPlayerId;
                   const isSystemMessage = message.isSystem;
 

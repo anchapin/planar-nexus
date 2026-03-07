@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
-import { LandingFooter } from '@/components/landing-footer';
 
 export const metadata: Metadata = {
   title: 'Planar Nexus',
@@ -51,7 +50,6 @@ export default function RootLayout({
       <body className="font-body antialiased" suppressHydrationWarning>
         <ServiceWorkerRegistration />
         {children}
-        <LandingFooter />
         <Toaster />
       </body>
     </html>

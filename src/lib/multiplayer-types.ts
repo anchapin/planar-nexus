@@ -8,23 +8,6 @@ export type LobbyStatus = 'waiting' | 'ready' | 'in-progress';
 export type PlayerStatus = 'not-ready' | 'ready' | 'host';
 export type GameMode = '1v1' | '2v2' | 'ffa' | 'commander-1v1' | 'commander-ffa';
 
-// Team-related types for 2v2 mode
-export type TeamId = 'team-a' | 'team-b';
-
-export interface Team {
-  id: TeamId;
-  name: string;
-  color: string; // CSS color for visual distinction
-  playerIds: string[];
-  // Shared life total for Two-Headed Giant variant
-  sharedLifeTotal?: number;
-}
-
-export interface TeamAssignment {
-  playerId: string;
-  teamId: TeamId;
-}
-
 export interface Player {
   id: string;
   name: string;
@@ -34,8 +17,6 @@ export interface Player {
   deckFormat?: string; // Format the deck was built for
   deckValidationErrors?: string[]; // Validation errors for the selected deck
   joinedAt: number;
-  // Team assignment for 2v2 mode
-  teamId?: TeamId;
 }
 
 export interface GameLobby {
@@ -50,17 +31,6 @@ export interface GameLobby {
   createdAt: number;
   settings: LobbySettings;
   gameMode: GameMode;
-  // Teams for 2v2 mode
-  teams?: Team[];
-  // 2v2 specific settings
-  teamSettings?: TeamSettings;
-}
-
-export interface TeamSettings {
-  sharedLife: boolean; // Two-Headed Giant variant (shared life total)
-  sharedBlockers: boolean; // Teammates can block together
-  teamChat: boolean; // Private chat between teammates
-  startingLifePerTeam: number; // Default 30 for Two-Headed Giant
 }
 
 export interface LobbySettings {

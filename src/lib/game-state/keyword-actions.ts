@@ -21,11 +21,16 @@ import type {
   CardInstanceId,
   PlayerId,
   Zone,
-  ScryfallCard,
 } from './types';
 import {
   createToken,
+  isCreature,
+  isPermanent,
+  isEnchantment,
+  isArtifact,
+  isPlaneswalker,
   getToughness,
+  hasLethalDamage,
   addCounters,
   removeCounters,
   hasCounter,
@@ -101,14 +106,13 @@ export function destroyCard(
   // Check for replacement effects (e.g., "If a creature would be destroyed, exile it instead")
   const replacementEvent = {
     type: 'destroy' as const,
-    amount: 0,
     timestamp: Date.now(),
     targetId: cardId,
   };
   
-  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const replacementResult = replacementEffectManager.processEvent(replacementEvent);
   
-  if (processedEvent.type === 'exile') {
+  if (replacementResult.modified && replacementResult.modifiedEvent?.type === 'exile') {
     // Replacement effect changed destroy to exile
     return exileCard(state, cardId);
   }
@@ -271,8 +275,8 @@ export function drawCards(
       amount: 1,
     };
     
-    const processedEvent = replacementEffectManager.processEvent(replacementEvent);
-    const drawAmount = processedEvent.amount;
+    const replacementResult = replacementEffectManager.processEvent(replacementEvent);
+    const drawAmount = replacementResult.modifiedEvent?.amount ?? 1;
     
     // Draw each card
     for (let j = 0; j < drawAmount; j++) {
@@ -434,7 +438,7 @@ export function discardCards(
  */
 export function createTokenCard(
   state: GameState,
-  tokenData: ScryfallCard,
+  tokenData: any, // ScryfallCard for token
   controllerId: PlayerId,
   ownerId: PlayerId,
   count: number = 1
@@ -790,11 +794,11 @@ export function dealDamageToCard(
     targetId: cardId,
     amount: damage,
     isCombatDamage,
-    damageTypes: (isCombatDamage ? ['combat'] : ['noncombat']) as ('combat' | 'noncombat')[],
+    damageTypes: isCombatDamage ? ['combat'] : ['noncombat'],
   };
-
-  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
-  const actualDamage = processedEvent.amount;
+  
+  const replacementResult = replacementEffectManager.processEvent(replacementEvent);
+  const actualDamage = replacementResult.modifiedEvent?.amount ?? damage;
 
   // Apply damage
   let updatedCard = {
@@ -802,24 +806,18 @@ export function dealDamageToCard(
     damage: card.damage + actualDamage,
   };
 
-  // Check for deathtouch on the source - lethal damage is 1 or more
-  // CR 702.2b: Any nonzero amount of combat damage assigned by a source with deathtouch is considered lethal damage
-  if (sourceId) {
-    const sourceCard = state.cards.get(sourceId);
-    if (sourceCard) {
-      const sourceOracleText = sourceCard.cardData.oracle_text?.toLowerCase() || '';
-      const sourceKeywords = sourceCard.cardData.keywords || [];
-      const sourceHasDeathtouch = sourceKeywords.includes('Deathtouch') || sourceOracleText.includes('deathtouch');
-
-      if (sourceHasDeathtouch && actualDamage > 0) {
-        // With deathtouch, any amount of damage is lethal
-        const lethalDamage = getToughness(card);
-        updatedCard = {
-          ...updatedCard,
-          damage: Math.max(updatedCard.damage, lethalDamage),
-        };
-      }
-    }
+  // Check for deathtouch - lethal damage is 1 or more
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || '';
+  const keywords = card.cardData.keywords || [];
+  const hasDeathtouch = keywords.includes('Deathtouch') || oracleText.includes('deathtouch');
+  
+  if (hasDeathtouch && actualDamage > 0) {
+    // With deathtouch, any amount of damage is lethal
+    const lethalDamage = getToughness(card);
+    updatedCard = {
+      ...updatedCard,
+      damage: Math.max(updatedCard.damage, lethalDamage),
+    };
   }
 
   const updatedCards = new Map(state.cards);

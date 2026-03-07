@@ -169,6 +169,10 @@ export function useDamageEvents({ maxEvents = 10 }: UseDamageEventsOptions = {})
     setEvents([]);
   }, []);
 
+  const handleEventComplete = useCallback((id: string) => {
+    setEvents((prev) => prev.filter((e) => e.id !== id));
+  }, []);
+
   return {
     events,
     addDamage,

@@ -1,15 +1,20 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Trophy, 
+  Users, 
   Crown, 
+  ChevronRight, 
   Check, 
+  X,
+  RefreshCw,
   Shuffle,
   ArrowRight
 } from 'lucide-react';
@@ -60,6 +65,8 @@ function generateBracket(players: TournamentPlayer[]): TournamentRound[] {
   const rounds = Math.ceil(Math.log2(playerCount));
   const bracketSize = Math.pow(2, rounds);
   
+  // Create byes if needed
+  const byes = bracketSize - playerCount;
   const seededPlayers = [...players].sort((a, b) => (a.seed || 999) - (b.seed || 999));
   
   // Generate first round matches
@@ -116,7 +123,7 @@ interface TournamentBracketProps {
 export function TournamentBracket({ tournament, onMatchComplete, className }: TournamentBracketProps) {
   return (
     <div className={cn('space-y-8 overflow-x-auto', className)}>
-      {tournament.rounds.map((round) => (
+      {tournament.rounds.map((round, roundIndex) => (
         <div key={round.roundNumber} className="flex flex-col items-center">
           <h3 className="text-sm font-semibold mb-4 text-muted-foreground">
             {round.roundNumber === tournament.rounds.length
@@ -126,7 +133,7 @@ export function TournamentBracket({ tournament, onMatchComplete, className }: To
               : `Round ${round.roundNumber}`}
           </h3>
           <div className="flex flex-col gap-4">
-            {round.matches.map((match) => (
+            {round.matches.map((match, matchIndex) => (
               <MatchCard
                 key={match.id}
                 match={match}
@@ -434,6 +441,7 @@ export function useTournament(): UseTournamentReturn {
           if (nextRound <= prev.rounds.length) {
             const matchIndex = round.matches.indexOf(match);
             const nextRoundMatchIndex = Math.floor(matchIndex / 2);
+            const nextRoundMatch = prev.rounds[nextRound - 1].matches[nextRoundMatchIndex];
             
             const isFirstPlayer = matchIndex % 2 === 0;
             

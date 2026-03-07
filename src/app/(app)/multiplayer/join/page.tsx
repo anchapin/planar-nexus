@@ -17,7 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
-import { GameFormat } from '@/lib/multiplayer-types';
+import { GameFormat, PlayerCount } from '@/lib/multiplayer-types';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import type { SavedDeck } from '@/app/actions';
 
@@ -46,6 +46,7 @@ function JoinGameContent() {
   const [selectedDeck, setSelectedDeck] = useState<SavedDeck | null>(null);
   const [deckValidation, setDeckValidation] = useState<{ isValid: boolean; errors: string[] }>({ isValid: true, errors: [] });
   const [error, setError] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
   const [joinedPlayer, setJoinedPlayer] = useState<{ id: string; name: string; deckId?: string; deckName?: string } | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -93,6 +94,8 @@ function JoinGameContent() {
   const joinGame = () => {
     if (!joinState.game) return;
     
+    setIsJoining(true);
+    
     // Simulate joining - in a real app this would connect to server
     const playerId = `player-${Date.now()}`;
     const newPlayer = {
@@ -110,6 +113,7 @@ function JoinGameContent() {
     
     setJoinedPlayer(newPlayer);
     setJoinState(prev => ({ ...prev, step: 'lobby' }));
+    setIsJoining(false);
   };
 
   const handleDeckSelect = (deck: SavedDeck) => {

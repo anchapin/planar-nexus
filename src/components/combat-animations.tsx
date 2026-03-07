@@ -1,42 +1,18 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
-/**
- * Combat Animation System
- * 
- * Issue #289: Feature: Add attack/block animations
- * 
- * Provides:
- * - Attack declaration animations with visual trails
- * - Block declaration animations with shield effects
- * - Combat damage animations with impact effects
- * - Smooth transitions between combat phases
- * - Support for first strike and double strike
- */
-
 // Combat action types
-export type CombatActionType = 
-  | 'attack' 
-  | 'block' 
-  | 'damage' 
-  | 'lifelink' 
-  | 'trample'
-  | 'first-strike'
-  | 'double-strike'
-  | 'deathtouch'
-  | 'remove-from-combat';
+export type CombatActionType = 'attack' | 'block' | 'damage' | 'lifelink' | 'trample';
 
 export interface CombatAction {
   id: string;
   type: CombatActionType;
   sourceId: string;
   sourceName: string;
-  sourcePosition?: { x: number; y: number };
   targetId?: string;
   targetName?: string;
-  targetPosition?: { x: number; y: number };
   amount?: number;
   timestamp: number;
 }
@@ -53,77 +29,54 @@ interface CombatAnimationsProps {
   className?: string;
 }
 
-// Animation phase types
-type AnimationPhase = 'idle' | 'windup' | 'strike' | 'impact' | 'recoil' | 'fadeout';
-
-// Attack animation with visual trail effect
-export function AttackAnimation({ action, onComplete, className }: CombatAnimationProps) {
-  const [phase, setPhase] = useState<AnimationPhase>('idle');
-  const [trailPositions, setTrailPositions] = useState<{ x: number; y: number }[]>([]);
-  const animationRef = useRef<number | undefined>(undefined);
+// Attack animation component
+export function CombatAnimation({ action, onComplete, className }: CombatAnimationProps) {
+  const [phase, setPhase] = useState<'idle' | 'attack' | 'impact' | 'recoil' | 'complete'>('idle');
+  const [position, setPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    // Windup phase - prepare to attack
-    const windupTimer = setTimeout(() => setPhase('windup'), 50);
+    // Start attack animation
+    const attackTimer = setTimeout(() => setPhase('attack'), 50);
     
-    // Strike phase - move towards target
-    const strikeTimer = setTimeout(() => {
-      setPhase('strike');
-      // Create trail effect
-      const trailInterval = setInterval(() => {
-        setTrailPositions(prev => prev.slice(-5));
-      }, 50);
-      animationRef.current = trailInterval as unknown as number;
-    }, 200);
-    
-    // Impact phase - hit target
+    // Impact phase
     const impactTimer = setTimeout(() => {
       setPhase('impact');
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
+      if (action.type === 'damage' && action.amount) {
+        setPosition({ x: 0, y: 0 });
       }
     }, 400);
     
-    // Recoil phase - pull back
-    const recoilTimer = setTimeout(() => setPhase('recoil'), 600);
-    
-    // Fadeout phase - disappear
-    const fadeoutTimer = setTimeout(() => setPhase('fadeout'), 800);
+    // Recoil phase
+    const recoilTimer = setTimeout(() => {
+      setPhase('recoil');
+    }, 600);
     
     // Complete
     const completeTimer = setTimeout(() => {
+      setPhase('complete');
       onComplete?.(action.id);
-    }, 1000);
+    }, 900);
 
     return () => {
-      clearTimeout(windupTimer);
-      clearTimeout(strikeTimer);
+      clearTimeout(attackTimer);
       clearTimeout(impactTimer);
       clearTimeout(recoilTimer);
-      clearTimeout(fadeoutTimer);
       clearTimeout(completeTimer);
-      if (animationRef.current) {
-        clearInterval(animationRef.current);
-      }
     };
-  }, [action.id, onComplete]);
+  }, [action.id, action.amount, action.type, onComplete]);
 
   const getAnimationStyle = () => {
-    const baseStyle = { opacity: 1 };
-    
     switch (phase) {
-      case 'windup':
-        return { ...baseStyle, transform: 'translateX(-30px) scale(1.1)', filter: 'brightness(1.2)' };
-      case 'strike':
-        return { ...baseStyle, transform: 'translateX(80px) scale(1.2)', filter: 'brightness(1.5)' };
+      case 'attack':
+        return { transform: 'translateX(50px)', opacity: 1 };
       case 'impact':
-        return { ...baseStyle, transform: 'translateX(60px) scale(1.3)', filter: 'brightness(2)' };
+        return { transform: 'translateX(30px)', opacity: 1 };
       case 'recoil':
-        return { ...baseStyle, transform: 'translateX(20px) scale(1.1)', filter: 'brightness(1)' };
-      case 'fadeout':
-        return { opacity: 0, transform: 'translateX(0) scale(1)', filter: 'brightness(1)' };
+        return { transform: 'translateX(-10px)', opacity: 1 };
+      case 'complete':
+        return { transform: 'translateX(0)', opacity: 0 };
       default:
-        return { ...baseStyle, transform: 'translateX(0) scale(1)' };
+        return { transform: 'translateX(0)', opacity: 1 };
     }
   };
 
@@ -131,279 +84,49 @@ export function AttackAnimation({ action, onComplete, className }: CombatAnimati
     switch (action.type) {
       case 'attack':
         return '⚔️';
-      case 'first-strike':
-        return '⚡';
-      case 'double-strike':
-        return '⚡⚡';
+      case 'block':
+        return '🛡️';
+      case 'damage':
+        return '💥';
+      case 'lifelink':
+        return '💚';
+      case 'trample':
+        return '👊';
       default:
         return '⚔️';
     }
   };
 
-  if (phase === 'idle') return null;
+  if (phase === 'complete') return null;
 
   return (
     <div
       className={cn(
-        'absolute left-1/4 top-1/2 -translate-y-1/2 pointer-events-none select-none z-50',
+        'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none select-none',
+        'flex flex-col items-center justify-center',
         className
       )}
+      style={{
+        ...getAnimationStyle(),
+        transition: 'all 0.3s ease-out',
+      }}
     >
-      {/* Trail effect */}
-      {phase === 'strike' && trailPositions.map((pos, idx) => (
-        <div
-          key={idx}
-          className="absolute w-8 h-8 bg-red-500/30 rounded-full blur-sm"
-          style={{ 
-            left: pos.x, 
-            top: pos.y,
-            opacity: 0.5 - (idx * 0.1)
-          }}
-        />
-      ))}
-      
-      {/* Main attack indicator */}
-      <div
-        className={cn(
-          'flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-500',
-          'border-2 border-red-400 rounded-lg px-4 py-2 shadow-lg shadow-red-500/50',
-          'transition-all duration-150 ease-out'
+      {/* Attacker indicator */}
+      <div className="flex items-center gap-2 bg-card border rounded-lg px-3 py-2 shadow-lg">
+        <span className="text-xl">{getIcon()}</span>
+        <span className="font-medium text-sm">{action.sourceName}</span>
+        {action.amount && action.type === 'damage' && (
+          <span className="font-bold text-red-500 text-lg">-{action.amount}</span>
         )}
-        style={getAnimationStyle()}
-      >
-        <span className="text-2xl animate-pulse">{getIcon()}</span>
-        <div className="flex flex-col">
-          <span className="font-bold text-white text-sm">{action.sourceName}</span>
-          <span className="text-red-200 text-xs">attacking!</span>
-        </div>
-      </div>
-      
-      {/* Impact particles */}
-      {phase === 'impact' && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-2 h-2 bg-yellow-400 rounded-full animate-ping"
-              style={{
-                transform: `rotate(${i * 45}deg) translateX(20px)`,
-                animationDelay: `${i * 25}ms`,
-                animationDuration: '300ms',
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Block animation with shield effect
-export function BlockAnimation({ action, onComplete, className }: CombatAnimationProps) {
-  const [phase, setPhase] = useState<'idle' | 'raise' | 'block' | 'hold' | 'lower' | 'complete'>('idle');
-
-  useEffect(() => {
-    const raiseTimer = setTimeout(() => setPhase('raise'), 50);
-    const blockTimer = setTimeout(() => setPhase('block'), 200);
-    const holdTimer = setTimeout(() => setPhase('hold'), 400);
-    const lowerTimer = setTimeout(() => setPhase('lower'), 800);
-    const completeTimer = setTimeout(() => {
-      setPhase('complete');
-      onComplete?.(action.id);
-    }, 1000);
-
-    return () => {
-      clearTimeout(raiseTimer);
-      clearTimeout(blockTimer);
-      clearTimeout(holdTimer);
-      clearTimeout(lowerTimer);
-      clearTimeout(completeTimer);
-    };
-  }, [action.id, onComplete]);
-
-  const getAnimationStyle = () => {
-    switch (phase) {
-      case 'raise':
-        return { transform: 'scale(0.8) translateY(20px)', opacity: 0.7 };
-      case 'block':
-        return { transform: 'scale(1.2) translateY(0)', opacity: 1 };
-      case 'hold':
-        return { transform: 'scale(1.1) translateY(0)', opacity: 1 };
-      case 'lower':
-        return { transform: 'scale(0.9) translateY(10px)', opacity: 0.5 };
-      default:
-        return { transform: 'scale(1)', opacity: 1 };
-    }
-  };
-
-  if (phase === 'idle' || phase === 'complete') return null;
-
-  return (
-    <div
-      className={cn(
-        'absolute right-1/4 top-1/2 -translate-y-1/2 pointer-events-none select-none z-50',
-        className
-      )}
-    >
-      {/* Shield glow effect */}
-      <div
-        className={cn(
-          'absolute inset-0 bg-blue-500/30 rounded-full blur-xl',
-          phase === 'block' && 'animate-pulse'
+        {action.amount && action.type === 'lifelink' && (
+          <span className="font-bold text-green-500 text-lg">+{action.amount}</span>
         )}
-        style={{ transform: 'scale(2)' }}
-      />
-      
-      {/* Main block indicator */}
-      <div
-        className={cn(
-          'flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500',
-          'border-2 border-blue-400 rounded-lg px-4 py-2 shadow-lg shadow-blue-500/50',
-          'transition-all duration-200 ease-out'
-        )}
-        style={getAnimationStyle()}
-      >
-        <span className="text-2xl">🛡️</span>
-        <div className="flex flex-col">
-          <span className="font-bold text-white text-sm">{action.sourceName}</span>
-          <span className="text-blue-200 text-xs">blocking</span>
-        </div>
-      </div>
-      
-      {/* Shield particles */}
-      {phase === 'block' && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-3 h-1 bg-blue-300 rounded-full"
-              style={{
-                transform: `rotate(${60 + i * 30}deg) translateX(15px)`,
-                opacity: 0.8,
-                animation: 'ping 500ms ease-out',
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Damage animation with floating combat text
-export function DamageAnimation({ action, onComplete, className }: CombatAnimationProps) {
-  const [phase, setPhase] = useState<'idle' | 'appear' | 'float' | 'fade' | 'complete'>('idle');
-  const [displayAmount, setDisplayAmount] = useState(0);
-
-  useEffect(() => {
-    if (action.amount) {
-      // Animate the damage number counting up
-      const steps = 10;
-      const increment = action.amount / steps;
-      let current = 0;
-      
-      const countInterval = setInterval(() => {
-        current += increment;
-        setDisplayAmount(Math.min(Math.round(current), action.amount || 0));
-      }, 30);
-      
-      const appearTimer = setTimeout(() => setPhase('appear'), 50);
-      const floatTimer = setTimeout(() => setPhase('float'), 300);
-      const fadeTimer = setTimeout(() => setPhase('fade'), 1200);
-      const completeTimer = setTimeout(() => {
-        setPhase('complete');
-        clearInterval(countInterval);
-        onComplete?.(action.id);
-      }, 1500);
-
-      return () => {
-        clearInterval(countInterval);
-        clearTimeout(appearTimer);
-        clearTimeout(floatTimer);
-        clearTimeout(fadeTimer);
-        clearTimeout(completeTimer);
-      };
-    }
-  }, [action.id, action.amount, onComplete]);
-
-  const getDamageColor = () => {
-    switch (action.type) {
-      case 'lifelink':
-        return 'text-green-400';
-      case 'deathtouch':
-        return 'text-purple-400';
-      case 'trample':
-        return 'text-orange-400';
-      default:
-        return 'text-red-400';
-    }
-  };
-
-  if (phase === 'idle' || phase === 'complete') return null;
-
-  return (
-    <div
-      className={cn(
-        'absolute left-1/2 top-1/3 -translate-x-1/2 pointer-events-none select-none z-50',
-        className
-      )}
-    >
-      {/* Damage number */}
-      <div
-        className={cn(
-          'flex flex-col items-center transition-all duration-300',
-          phase === 'appear' && 'animate-bounce',
-          phase === 'float' && '-translate-y-8',
-          phase === 'fade' && 'opacity-0 -translate-y-16'
-        )}
-      >
-        <span
-          className={cn(
-            'text-5xl font-bold drop-shadow-lg',
-            getDamageColor(),
-            'animate-pulse'
-          )}
-          style={{
-            textShadow: '0 0 10px currentColor, 0 0 20px currentColor',
-          }}
-        >
-          -{displayAmount}
-        </span>
-        
         {action.targetName && (
-          <span className="text-sm text-muted-foreground mt-1">
-            {action.targetName}
-          </span>
+          <span className="text-muted-foreground text-sm">→ {action.targetName}</span>
         )}
       </div>
-      
-      {/* Impact effect */}
-      {phase === 'appear' && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-          <div className="w-16 h-16 bg-red-500/50 rounded-full animate-ping" />
-        </div>
-      )}
     </div>
   );
-}
-
-// Main combat animation component that routes to specific animation types
-export function CombatAnimation({ action, onComplete, className }: CombatAnimationProps) {
-  switch (action.type) {
-    case 'attack':
-    case 'first-strike':
-    case 'double-strike':
-      return <AttackAnimation action={action} onComplete={onComplete} className={className} />;
-    case 'block':
-      return <BlockAnimation action={action} onComplete={onComplete} className={className} />;
-    case 'damage':
-    case 'lifelink':
-    case 'trample':
-    case 'deathtouch':
-      return <DamageAnimation action={action} onComplete={onComplete} className={className} />;
-    default:
-      return null;
-  }
 }
 
 // Overlay for combat animations
@@ -432,60 +155,72 @@ interface UseCombatActionsOptions {
 
 interface UseCombatActionsReturn {
   actions: CombatAction[];
-  triggerAttack: (sourceId: string, sourceName: string, targetId?: string, targetName?: string, isFirstStrike?: boolean) => void;
-  triggerBlock: (sourceId: string, sourceName: string, attackerId?: string) => void;
-  triggerDamage: (sourceId: string, sourceName: string, amount: number, targetId?: string, targetName?: string, type?: CombatActionType) => void;
+  triggerAttack: (sourceId: string, sourceName: string, targetId?: string, targetName?: string) => void;
+  triggerBlock: (sourceId: string, sourceName: string) => void;
+  triggerDamage: (sourceId: string, sourceName: string, amount: number, targetId?: string, targetName?: string) => void;
   triggerLifelink: (sourceId: string, sourceName: string, amount: number) => void;
-  triggerTrample: (sourceId: string, sourceName: string, amount: number, targetId?: string, targetName?: string) => void;
-  triggerDeathtouch: (sourceId: string, sourceName: string, targetId?: string, targetName?: string) => void;
   clearActions: () => void;
 }
 
 export function useCombatActions({ maxActions = 5 }: UseCombatActionsOptions = {}): UseCombatActionsReturn {
   const [actions, setActions] = useState<CombatAction[]>([]);
 
-  const addAction = useCallback((type: CombatActionType, sourceId: string, sourceName: string, options?: {
-    targetId?: string;
-    targetName?: string;
-    amount?: number;
-  }) => {
+  const triggerAttack = useCallback((sourceId: string, sourceName: string, targetId?: string, targetName?: string) => {
     const newAction: CombatAction = {
       id: `combat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      type,
+      type: 'attack',
       sourceId,
       sourceName,
-      ...options,
+      targetId,
+      targetName,
       timestamp: Date.now(),
     };
     setActions((prev) => [...prev, newAction].slice(-maxActions));
   }, [maxActions]);
 
-  const triggerAttack = useCallback((sourceId: string, sourceName: string, targetId?: string, targetName?: string, isFirstStrike = false) => {
-    addAction(isFirstStrike ? 'first-strike' : 'attack', sourceId, sourceName, { targetId, targetName });
-  }, [addAction]);
+  const triggerBlock = useCallback((sourceId: string, sourceName: string) => {
+    const newAction: CombatAction = {
+      id: `combat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: 'block',
+      sourceId,
+      sourceName,
+      timestamp: Date.now(),
+    };
+    setActions((prev) => [...prev, newAction].slice(-maxActions));
+  }, [maxActions]);
 
-  const triggerBlock = useCallback((sourceId: string, sourceName: string, attackerId?: string) => {
-    addAction('block', sourceId, sourceName, { targetId: attackerId });
-  }, [addAction]);
-
-  const triggerDamage = useCallback((sourceId: string, sourceName: string, amount: number, targetId?: string, targetName?: string, type: CombatActionType = 'damage') => {
-    addAction(type, sourceId, sourceName, { targetId, targetName, amount });
-  }, [addAction]);
+  const triggerDamage = useCallback((sourceId: string, sourceName: string, amount: number, targetId?: string, targetName?: string) => {
+    const newAction: CombatAction = {
+      id: `combat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: 'damage',
+      sourceId,
+      sourceName,
+      targetId,
+      targetName,
+      amount,
+      timestamp: Date.now(),
+    };
+    setActions((prev) => [...prev, newAction].slice(-maxActions));
+  }, [maxActions]);
 
   const triggerLifelink = useCallback((sourceId: string, sourceName: string, amount: number) => {
-    addAction('lifelink', sourceId, sourceName, { amount });
-  }, [addAction]);
-
-  const triggerTrample = useCallback((sourceId: string, sourceName: string, amount: number, targetId?: string, targetName?: string) => {
-    addAction('trample', sourceId, sourceName, { targetId, targetName, amount });
-  }, [addAction]);
-
-  const triggerDeathtouch = useCallback((sourceId: string, sourceName: string, targetId?: string, targetName?: string) => {
-    addAction('deathtouch', sourceId, sourceName, { targetId, targetName });
-  }, [addAction]);
+    const newAction: CombatAction = {
+      id: `combat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: 'lifelink',
+      sourceId,
+      sourceName,
+      amount,
+      timestamp: Date.now(),
+    };
+    setActions((prev) => [...prev, newAction].slice(-maxActions));
+  }, [maxActions]);
 
   const clearActions = useCallback(() => {
     setActions([]);
+  }, []);
+
+  const handleActionComplete = useCallback((id: string) => {
+    setActions((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
   return {
@@ -494,8 +229,6 @@ export function useCombatActions({ maxActions = 5 }: UseCombatActionsOptions = {
     triggerBlock,
     triggerDamage,
     triggerLifelink,
-    triggerTrample,
-    triggerDeathtouch,
     clearActions,
   };
 }
@@ -508,36 +241,25 @@ interface CombatCardProps {
   toughness?: number;
   isAttacking?: boolean;
   isBlocking?: boolean;
-  blockedBy?: string[];
   hasDealtDamage?: boolean;
   isTapped?: boolean;
-  hasFirstStrike?: boolean;
-  hasDoubleStrike?: boolean;
-  hasDeathtouch?: boolean;
-  hasTrample?: boolean;
   onTap?: () => void;
   className?: string;
 }
 
 export function CombatCard({
-  cardId: _cardId,
+  cardId,
   cardName,
   power = 0,
   toughness = 0,
   isAttacking = false,
   isBlocking = false,
-  blockedBy = [],
   hasDealtDamage = false,
   isTapped = false,
-  hasFirstStrike = false,
-  hasDoubleStrike = false,
-  hasDeathtouch = false,
-  hasTrample = false,
   onTap,
   className,
 }: CombatCardProps) {
   const [isAnimating, setIsAnimating] = useState(false);
-  const [showImpact, setShowImpact] = useState(false);
 
   useEffect(() => {
     if (isAttacking || isBlocking) {
@@ -547,32 +269,16 @@ export function CombatCard({
     }
   }, [isAttacking, isBlocking]);
 
-  useEffect(() => {
-    if (hasDealtDamage) {
-      setShowImpact(true);
-      const timer = setTimeout(() => setShowImpact(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [hasDealtDamage]);
-
-  const getBorderColor = () => {
-    if (isAttacking && isBlocking) return 'border-purple-500 shadow-purple-500/30';
-    if (isAttacking) return 'border-red-500 shadow-red-500/30';
-    if (isBlocking) return 'border-blue-500 shadow-blue-500/30';
-    return 'border-border';
-  };
-
   return (
     <div
       className={cn(
         'relative w-16 h-24 bg-gradient-to-br from-primary/20 to-primary/5 border-2 rounded-lg',
-        'flex flex-col items-center justify-between p-1 cursor-pointer transition-all duration-200',
+        'flex flex-col items-center justify-between p-1 cursor-pointer transition-all',
         isTapped && 'rotate-90',
-        getBorderColor(),
-        (isAttacking || isBlocking) && 'shadow-lg',
+        isAttacking && 'border-red-500 shadow-lg shadow-red-500/30 animate-pulse',
+        isBlocking && 'border-blue-500 shadow-lg shadow-blue-500/30',
         hasDealtDamage && 'opacity-60',
         isAnimating && 'animate-bounce',
-        showImpact && 'animate-pulse scale-110',
         className
       )}
       onClick={onTap}
@@ -592,56 +298,33 @@ export function CombatCard({
         <span className="text-xs font-bold">{toughness}</span>
       </div>
       
-      {/* Ability indicators */}
-      <div className="absolute bottom-0.5 left-0.5 flex gap-0.5">
-        {hasFirstStrike && <span className="text-[8px]" title="First Strike">⚡</span>}
-        {hasDoubleStrike && <span className="text-[8px]" title="Double Strike">⚡⚡</span>}
-        {hasDeathtouch && <span className="text-[8px]" title="Deathtouch">💀</span>}
-        {hasTrample && <span className="text-[8px]" title="Trample">🐘</span>}
-      </div>
-      
-      {/* Attack indicator */}
+      {/* Attack/Block indicators */}
       {isAttacking && (
-        <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs shadow-lg animate-pulse">
+        <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs">
           ⚔️
         </div>
       )}
-      
-      {/* Block indicator */}
       {isBlocking && (
-        <div className="absolute -top-2 -left-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs shadow-lg">
+        <div className="absolute -top-2 -right-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs">
           🛡️
-        </div>
-      )}
-      
-      {/* Blocked by indicator */}
-      {blockedBy.length > 0 && (
-        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-orange-500 text-white text-[8px] px-1 rounded">
-          Blocked by {blockedBy.length}
         </div>
       )}
     </div>
   );
 }
 
-// Combat phase indicator with animations
+// Combat phase indicator
 interface CombatPhaseIndicatorProps {
-  phase: 'declare-attackers' | 'declare-blockers' | 'first-strike' | 'combat-damage' | 'end';
+  phase: 'declare-attackers' | 'declare-blockers' | 'combat-damage' | 'end';
   className?: string;
 }
 
 export function CombatPhaseIndicator({ phase, className }: CombatPhaseIndicatorProps) {
   const [isVisible, setIsVisible] = useState(true);
-  const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
-    setIsAnimating(true);
-    const animTimer = setTimeout(() => setIsAnimating(false), 500);
     const timer = setTimeout(() => setIsVisible(false), 2000);
-    return () => {
-      clearTimeout(animTimer);
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [phase]);
 
   if (!isVisible) return null;
@@ -649,173 +332,28 @@ export function CombatPhaseIndicator({ phase, className }: CombatPhaseIndicatorP
   const getPhaseText = () => {
     switch (phase) {
       case 'declare-attackers':
-        return { icon: '⚔️', text: 'Declare Attackers', color: 'from-red-600 to-red-500' };
+        return '⚔️ Declare Attackers';
       case 'declare-blockers':
-        return { icon: '🛡️', text: 'Declare Blockers', color: 'from-blue-600 to-blue-500' };
-      case 'first-strike':
-        return { icon: '⚡', text: 'First Strike Damage', color: 'from-yellow-600 to-yellow-500' };
+        return '🛡️ Declare Blockers';
       case 'combat-damage':
-        return { icon: '💥', text: 'Combat Damage', color: 'from-orange-600 to-orange-500' };
+        return '💥 Combat Damage';
       case 'end':
-        return { icon: '✅', text: 'End of Combat', color: 'from-green-600 to-green-500' };
+        return '✅ End of Combat';
       default:
-        return { icon: '', text: '', color: '' };
+        return '';
     }
   };
-
-  const { icon, text, color } = getPhaseText();
 
   return (
     <div
       className={cn(
-        'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50',
-        'pointer-events-none',
+        'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+        'bg-card/90 border border-border rounded-lg px-4 py-2 shadow-lg',
+        'animate-fade-in-out pointer-events-none',
         className
       )}
     >
-      <div
-        className={cn(
-          'bg-gradient-to-r border-2 border-white/30 rounded-lg px-6 py-3 shadow-2xl',
-          'flex items-center gap-3',
-          color,
-          isAnimating && 'animate-bounce'
-        )}
-        style={{
-          animation: isAnimating ? 'bounce 0.5s ease-out' : undefined,
-        }}
-      >
-        <span className="text-3xl">{icon}</span>
-        <span className="font-bold text-white text-lg">{text}</span>
-      </div>
-      
-      {/* Background flash effect */}
-      {isAnimating && (
-        <div className="absolute inset-0 -z-10 bg-white/20 rounded-lg animate-ping" />
-      )}
+      <span className="font-semibold text-lg">{getPhaseText()}</span>
     </div>
   );
 }
-
-// Combat declaration UI component
-interface CombatDeclarationProps {
-  attackers: Array<{ id: string; name: string; power: number }>;
-  blockers: Array<{ id: string; name: string; power: number; toughness: number }>;
-  onDeclareAttacker: (cardId: string) => void;
-  onDeclareBlocker: (cardId: string, attackerId: string) => void;
-  onConfirmAttackers?: () => void;
-  onConfirmBlockers?: () => void;
-  phase: 'declare-attackers' | 'declare-blockers';
-  className?: string;
-}
-
-export function CombatDeclaration({
-  attackers,
-  blockers,
-  onDeclareAttacker,
-  onDeclareBlocker,
-  onConfirmAttackers,
-  onConfirmBlockers,
-  phase,
-  className,
-}: CombatDeclarationProps) {
-  const [selectedAttacker, setSelectedAttacker] = useState<string | null>(null);
-
-  return (
-    <div className={cn('p-4 bg-card border rounded-lg', className)}>
-      <h3 className="font-semibold mb-3">
-        {phase === 'declare-attackers' ? '⚔️ Declare Attackers' : '🛡️ Declare Blockers'}
-      </h3>
-      
-      {phase === 'declare-attackers' && (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Click creatures to declare as attackers:</p>
-          <div className="flex flex-wrap gap-2">
-            {attackers.map((attacker) => (
-              <button
-                key={attacker.id}
-                onClick={() => onDeclareAttacker(attacker.id)}
-                className={cn(
-                  'px-3 py-2 rounded border transition-all',
-                  'hover:border-red-500 hover:bg-red-500/10'
-                )}
-              >
-                <span className="font-medium">{attacker.name}</span>
-                <span className="text-xs text-muted-foreground ml-2">
-                  {attacker.power}/{attacker.power}
-                </span>
-              </button>
-            ))}
-          </div>
-          {onConfirmAttackers && (
-            <button
-              onClick={onConfirmAttackers}
-              className="mt-3 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-            >
-              Confirm Attackers
-            </button>
-          )}
-        </div>
-      )}
-      
-      {phase === 'declare-blockers' && (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Select an attacker, then click a creature to block:</p>
-          
-          {/* Attackers to block */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {attackers.map((attacker) => (
-              <button
-                key={attacker.id}
-                onClick={() => setSelectedAttacker(attacker.id)}
-                className={cn(
-                  'px-3 py-2 rounded border transition-all',
-                  selectedAttacker === attacker.id
-                    ? 'border-red-500 bg-red-500/20'
-                    : 'hover:border-red-500/50'
-                )}
-              >
-                <span className="font-medium">{attacker.name}</span>
-                <span className="text-xs text-muted-foreground ml-2">
-                  {attacker.power}/?
-                </span>
-              </button>
-            ))}
-          </div>
-          
-          {/* Available blockers */}
-          <div className="flex flex-wrap gap-2">
-            {blockers.map((blocker) => (
-              <button
-                key={blocker.id}
-                onClick={() => selectedAttacker && onDeclareBlocker(blocker.id, selectedAttacker)}
-                disabled={!selectedAttacker}
-                className={cn(
-                  'px-3 py-2 rounded border transition-all',
-                  selectedAttacker
-                    ? 'hover:border-blue-500 hover:bg-blue-500/10'
-                    : 'opacity-50 cursor-not-allowed'
-                )}
-              >
-                <span className="font-medium">{blocker.name}</span>
-                <span className="text-xs text-muted-foreground ml-2">
-                  {blocker.power}/{blocker.toughness}
-                </span>
-              </button>
-            ))}
-          </div>
-          
-          {onConfirmBlockers && (
-            <button
-              onClick={onConfirmBlockers}
-              className="mt-3 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Confirm Blockers
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default CombatAnimations;

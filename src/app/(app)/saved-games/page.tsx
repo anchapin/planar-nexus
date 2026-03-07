@@ -17,6 +17,7 @@ import {
   Filter, 
   Clock, 
   Users, 
+  Trophy, 
   RotateCcw,
   Download,
   Upload,
@@ -42,6 +43,16 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   DropdownMenu,
@@ -56,6 +67,7 @@ import {
   getStatusDisplay 
 } from "@/lib/saved-games";
 import { 
+  generateShareableURL, 
   copyShareableLink,
   exportReplayToFile,
   canShareViaURL 
@@ -78,9 +90,11 @@ export default function SavedGamesPage() {
   const { toast } = useToast();
   
   const [games, setGames] = useState<SavedGame[]>([]);
+  const [filteredGames, setFilteredGames] = useState<SavedGame[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [formatFilter, setFormatFilter] = useState<string>("all");
+  const [deleteTarget, setDeleteTarget] = useState<SavedGame | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
 
@@ -89,28 +103,13 @@ export default function SavedGamesPage() {
     loadGames();
   }, []);
 
-  async function loadGames() {
-    setIsLoading(true);
-    try {
-      const allGames = await savedGamesManager.getAllSavedGames();
-      setGames(allGames);
-    } catch (error) {
-      console.error('Failed to load saved games:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  // Get filtered games
-  const getFilteredGames = (gameList: SavedGame[]) => {
-    let filtered = gameList;
+  // Apply filters when games or filter criteria change
+  useEffect(() => {
+    let filtered = games;
 
     // Apply search
     if (searchQuery.trim()) {
-      filtered = filtered.filter(g => 
-        g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.playerNames.some(p => p.toLowerCase().includes(searchQuery.toLowerCase()))
-      );
+      filtered = savedGamesManager.searchGames(searchQuery);
     }
 
     // Apply status filter
@@ -123,8 +122,16 @@ export default function SavedGamesPage() {
       filtered = filtered.filter(g => g.format === formatFilter);
     }
 
-    return filtered;
-  };
+    setFilteredGames(filtered);
+  }, [games, searchQuery, statusFilter, formatFilter]);
+
+  function loadGames() {
+    setIsLoading(true);
+    const allGames = savedGamesManager.getAllSavedGames();
+    setGames(allGames);
+    setFilteredGames(allGames);
+    setIsLoading(false);
+  }
 
   function handleLoadGame(game: SavedGame) {
     // Store the game ID to load in session storage
@@ -137,41 +144,27 @@ export default function SavedGamesPage() {
     router.push('/single-player');
   }
 
-  async function handleDeleteGame(game: SavedGame) {
-    try {
-      const success = await savedGamesManager.deleteGame(game.id);
-      if (success) {
-        toast({
-          title: "Game Deleted",
-          description: `"${game.name}" has been deleted.`,
-        });
-        loadGames();
-      }
-    } catch (error) {
-      console.error('Failed to delete game:', error);
+  function handleDeleteGame() {
+    if (!deleteTarget) return;
+    
+    const success = savedGamesManager.deleteGame(deleteTarget.id);
+    if (success) {
       toast({
-        title: "Error",
-        description: "Failed to delete game.",
-        variant: "destructive",
+        title: "Game Deleted",
+        description: `"${deleteTarget.name}" has been deleted.`,
       });
+      loadGames();
     }
+    
+    setDeleteTarget(null);
   }
 
-  async function handleExportGame(game: SavedGame) {
-    try {
-      await savedGamesManager.exportGame(game.id);
-      toast({
-        title: "Game Exported",
-        description: `"${game.name}" has been exported.`,
-      });
-    } catch (error) {
-      console.error('Failed to export game:', error);
-      toast({
-        title: "Error",
-        description: "Failed to export game.",
-        variant: "destructive",
-      });
-    }
+  function handleExportGame(game: SavedGame) {
+    savedGamesManager.exportGame(game.id);
+    toast({
+      title: "Game Exported",
+      description: `"${game.name}" has been exported.`,
+    });
   }
 
   function handleImportGame(event: React.ChangeEvent<HTMLInputElement>) {
@@ -236,7 +229,7 @@ export default function SavedGamesPage() {
           description: "Replay file downloaded. It's too large for URL sharing.",
         });
       }
-    } catch {
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Share Failed",
@@ -313,8 +306,6 @@ export default function SavedGamesPage() {
   );
 
   function renderGameList(gameList: SavedGame[]) {
-    const filteredGames = getFilteredGames(gameList);
-    
     return (
       <>
         {/* Filters */}
@@ -409,12 +400,12 @@ export default function SavedGamesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center justify-between">
-              <span>Games ({filteredGames.length})</span>
+              <span>Games ({gameList.length})</span>
             </CardTitle>
             <CardDescription>
-              {filteredGames.length === 0
+              {gameList.length === 0
                 ? "No saved games found."
-                : `${filteredGames.length} game${filteredGames.length !== 1 ? 's' : ''}`
+                : `${gameList.length} game${gameList.length !== 1 ? 's' : ''}`
               }
             </CardDescription>
           </CardHeader>
@@ -424,7 +415,7 @@ export default function SavedGamesPage() {
                 <RotateCcw className="w-8 h-8 mx-auto mb-4 animate-spin" />
                 <p>Loading games...</p>
               </div>
-            ) : filteredGames.length === 0 ? (
+            ) : gameList.length === 0 ? (
               <div className="text-center py-12">
                 <Save className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-semibold mb-2">No Games Found</h3>
@@ -463,7 +454,7 @@ export default function SavedGamesPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredGames.map((game) => (
+                    {gameList.map((game) => (
                       <TableRow key={game.id}>
                         <TableCell>
                           <div className="font-medium">{game.name}</div>
@@ -536,7 +527,7 @@ export default function SavedGamesPage() {
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem 
-                                  onClick={() => handleDeleteGame(game)}
+                                  onClick={() => setDeleteTarget(game)}
                                   className="text-destructive"
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />

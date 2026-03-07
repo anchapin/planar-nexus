@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Trash2, Check, X, Loader2, Save, RefreshCw, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,15 +23,6 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import type { AIProvider } from "@/ai/providers";
 import { SoundSettings } from "@/components/sound-settings";
-import { AutoSaveSettings } from "@/components/auto-save-settings";
-import { SubscriptionPlanDisplay } from "@/components/subscription-plan-display";
-import {
-  getImageDirectory,
-  setImageDirectory,
-  clearImageDirectory,
-  isCustomImagesEnabled,
-  validateImageDirectory,
-} from "@/lib/card-image-resolver";
 import {
   storeApiKey,
   getApiKey,
@@ -59,7 +50,6 @@ const PROVIDER_NAMES: Record<AIProvider, string> = {
   google: "Google AI (Gemini)",
   openai: "OpenAI",
   anthropic: "Anthropic (Claude)",
-  zaic: "Z.ai",
   custom: "Custom Provider",
 };
 
@@ -70,7 +60,6 @@ const PROVIDER_COLORS: Record<AIProvider, string> = {
   google: "bg-blue-500",
   openai: "bg-green-500",
   anthropic: "bg-purple-500",
-  zaic: "bg-orange-500",
   custom: "bg-gray-500",
 };
 
@@ -83,24 +72,20 @@ function UsageTrackingTab() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>("30");
   const [isExporting, setIsExporting] = useState(false);
 
-  const loadStats = useCallback(async () => {
-    try {
-      const allStats = await getAllUsageStats();
-      setStats(allStats);
-      const usageSummary = await getUsageSummary(parseInt(selectedPeriod));
-      setSummary({
-        totalRequests: usageSummary.totalRequests,
-        totalTokens: usageSummary.totalTokens,
-        totalCost: usageSummary.totalCost,
-      });
-    } catch (error) {
-      console.error('Failed to load usage stats:', error);
-    }
-  }, [selectedPeriod]);
-
   useEffect(() => {
     loadStats();
-  }, [loadStats]);
+  }, [selectedPeriod]);
+
+  function loadStats() {
+    const allStats = getAllUsageStats();
+    setStats(allStats);
+    const usageSummary = getUsageSummary(parseInt(selectedPeriod));
+    setSummary({
+      totalRequests: usageSummary.totalRequests,
+      totalTokens: usageSummary.totalTokens,
+      totalCost: usageSummary.totalCost,
+    });
+  }
 
   function handleExport() {
     setIsExporting(true);
@@ -267,21 +252,18 @@ export default function SettingsPage() {
     google: "",
     openai: "",
     anthropic: "",
-    zaic: "",
     custom: "",
   });
   const [showKey, setShowKey] = useState<Record<AIProvider, boolean>>({
     google: false,
     openai: false,
     anthropic: false,
-    zaic: false,
     custom: false,
   });
   const [selectedModels, setSelectedModels] = useState<Record<AIProvider, string>>({
     google: "gemini-1.5-flash-latest",
     openai: "gpt-4o-mini",
     anthropic: "claude-3-haiku-20240307",
-    zaic: "default",
     custom: "gemini-1.5-flash-latest",
   });
   
@@ -291,18 +273,17 @@ export default function SettingsPage() {
     google: false,
     openai: false,
     anthropic: false,
-    zaic: false,
     custom: false,
   });
   const [validationResults, setValidationResults] = useState<Record<AIProvider, { valid: boolean; error?: string }>>({
     google: { valid: false },
     openai: { valid: false },
     anthropic: { valid: false },
-    zaic: { valid: false },
     custom: { valid: false },
   });
   
   // State for saving
+  const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   
   // State for provider selection
@@ -407,9 +388,9 @@ export default function SettingsPage() {
     }
     
     await clearAllApiKeys();
-    setKeys({ google: "", openai: "", anthropic: "", zaic: "", custom: "" });
+    setKeys({ google: "", openai: "", anthropic: "", custom: "" });
     setKeyStatus([]);
-    setValidationResults({ google: { valid: false }, openai: { valid: false }, anthropic: { valid: false }, zaic: { valid: false }, custom: { valid: false } });
+    setValidationResults({ google: { valid: false }, openai: { valid: false }, anthropic: { valid: false }, custom: { valid: false } });
     
     setSaveMessage({
       type: "success",
@@ -431,12 +412,9 @@ export default function SettingsPage() {
       <Tabs defaultValue="api-keys" className="space-y-6">
         <TabsList>
           <TabsTrigger value="api-keys">API Keys</TabsTrigger>
-          <TabsTrigger value="subscriptions">Subscriptions</TabsTrigger>
           <TabsTrigger value="providers">Providers</TabsTrigger>
-          <TabsTrigger value="card-images">Card Images</TabsTrigger>
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="sound">Sound</TabsTrigger>
-          <TabsTrigger value="auto-save">Auto-Save</TabsTrigger>
         </TabsList>
         
         <TabsContent value="api-keys" className="space-y-6">
@@ -597,10 +575,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
         
-        <TabsContent value="subscriptions" className="space-y-6">
-          <SubscriptionPlanDisplay />
-        </TabsContent>
-        
         <TabsContent value="providers" className="space-y-6">
           <Card>
             <CardHeader>
@@ -673,74 +647,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
         
-        <TabsContent value="card-images" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Card Images</CardTitle>
-              <CardDescription>
-                Configure your own card images to avoid legal issues with WotC
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Alert>
-                <AlertTitle>Bring Your Own Images</AlertTitle>
-                <AlertDescription>
-                  Planar Nexus follows the Cockatrice/XMage model - you must provide your own card images.
-                  This protects the project from legal issues. Card data (names, text, rules) is still fetched from Scryfall.
-                </AlertDescription>
-              </Alert>
-              
-              <div className="space-y-2">
-                <Label htmlFor="image-dir">Image Directory Path</Label>
-                <Input
-                  id="image-dir"
-                  placeholder="e.g., C:/MTGImages or /path/to/images"
-                  defaultValue={getImageDirectory() || ''}
-                  onBlur={(e) => {
-                    const path = e.target.value;
-                    if (path) {
-                      const validation = validateImageDirectory(path);
-                      if (validation.valid) {
-                        setImageDirectory(path);
-                      }
-                    }
-                  }}
-                />
-                <p className="text-sm text-muted-foreground">
-                  Enter the path to your card images folder. Images should be organized as: {'{dir}/{set}/{number}.jpg'}
-                </p>
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="enable-images">Enable Custom Images</Label>
-                </div>
-                <Switch
-                  id="enable-images"
-                  checked={isCustomImagesEnabled()}
-                  onCheckedChange={(checked) => {
-                    if (!checked) {
-                      clearImageDirectory();
-                    }
-                  }}
-                />
-              </div>
-              
-              <Separator />
-              
-              <div>
-                <h4 className="font-medium mb-2">How to get card images</h4>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li>Download card images from <a href="https://scryfall.com/docs/bulk-data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Scryfall Bulk Data</a></li>
-                  <li>Organize images by set (e.g., m21/, eld/, etc.)</li>
-                  <li>Name files by collector number (e.g., 242.jpg)</li>
-                  <li>Enter the folder path above</li>
-                </ol>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
         <TabsContent value="usage" className="space-y-6">
           <UsageTrackingTab />
         </TabsContent>
@@ -755,20 +661,6 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <SoundSettings />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="auto-save" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Auto-Save Settings</CardTitle>
-              <CardDescription>
-                Configure automatic game saving
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AutoSaveSettings />
             </CardContent>
           </Card>
         </TabsContent>

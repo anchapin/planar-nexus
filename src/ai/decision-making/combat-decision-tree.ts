@@ -21,52 +21,8 @@ import {
   GameState,
   Permanent,
   PlayerState,
-  HandCard,
+  ThreatAssessment,
 } from '../game-state-evaluator';
-
-/**
- * Card data interface for combat tricks
- * Extends the basic HandCard with combat-relevant information
- */
-export interface CombatCardData {
-  cardId: string;
-  name: string;
-  manaValue: number;
-  type: string;
-  colors?: string[];
-  oracleText?: string;
-  keywords?: string[];
-  power?: number;
-  toughness?: number;
-}
-
-/**
- * Combat trick types
- */
-export type CombatTrickType = 
-  | 'pump' 
-  | 'combat_damage' 
-  | 'destroy' 
-  | 'exile' 
-  | 'damage_redirect'
-  | 'toughness_boost'
-  | 'power_boost'
-  | 'indestructible'
-  | 'lifelink'
-  | 'trample';
-
-/**
- * Parsed combat trick information
- */
-export interface ParsedCombatTrick {
-  type: CombatTrickType;
-  powerBoost: number;
-  toughnessBoost: number;
-  grantsKeyword: string[];
-  damagePrevention: number;
-  destroyTarget: boolean;
-  exileTarget: boolean;
-}
 
 /**
  * Represents an attack decision for a creature
@@ -295,13 +251,8 @@ export class CombatDecisionTree {
    */
   private hasSummoningSickness(creature: Permanent): boolean {
     // In a real implementation, this would check when the creature entered
-    // For now, creatures have summoning sickness only if explicitly marked
-    // or if they lack haste and have a summoningSickness flag
-    if ('summoningSickness' in creature && creature.summoningSickness === true) {
-      return !creature.keywords?.includes('haste');
-    }
-    // By default, assume creatures can attack (they've been on battlefield)
-    return false;
+    // For now, assume creatures without haste have summoning sickness
+    return !creature.keywords?.includes('haste');
   }
 
   /**
@@ -314,7 +265,7 @@ export class CombatDecisionTree {
     const minOpponentLife = Math.min(...opponents.map((o) => o.life));
     const lifeTotal = aiPlayer.life;
     const creatureCount = aiPlayer.battlefield.filter(
-      (p: Permanent) => p.type === 'creature'
+      (p) => p.type === 'creature'
     ).length;
     const avgOpponentCreatures =
       opponents.reduce(
@@ -362,6 +313,8 @@ export class CombatDecisionTree {
     let expectedValue = 0;
     let riskLevel = 0;
 
+    const power = creature.power || 0;
+    const toughness = creature.toughness || 0;
     const hasEvasion = this.hasEvasion(creature);
 
     // Get potential blockers for each opponent
@@ -590,36 +543,28 @@ export class CombatDecisionTree {
     // Calculate value based on damage and trades
     let value = 0;
 
-    // Unblocked attack bonus - attacking without blockers is very valuable
-    if (blocks.length === 0) {
-      // Base value for unblocked attack (0.5-0.8 depending on power)
-      value = 0.5 + Math.min(0.3, power / 10);
-    }
-
     // Damage value (higher when opponent is low)
     const lifePercentage = opponent.life / 20;
     const damageValue = (damageDealt / 20) * (2 - lifePercentage);
     value += damageValue;
 
-    // Trade assessment (only when there are blockers)
-    if (blocks.length > 0) {
-      if (creatureDies && !blockerDies) {
-        // Bad trade - we lose our creature for nothing
-        value -= 0.5;
-        // Even worse for expensive creatures
-        value -= (creature.manaValue || 0) / 20;
-      } else if (creatureDies && blockerDies) {
-        // Even trade
-        value -= 0.1;
-        // Check mana value difference
-        const creatureValue = creature.manaValue || 0;
-        const blockerValue = blocks[0].blocker.manaValue || 0;
-        value += (blockerValue - creatureValue) / 20;
-      } else if (!creatureDies && blockerDies) {
-        // Good trade - we kill their creature
-        value += 0.3;
-        value += (blocks[0].blocker.manaValue || 0) / 20;
-      }
+    // Trade assessment
+    if (creatureDies && !blockerDies) {
+      // Bad trade - we lose our creature for nothing
+      value -= 0.5;
+      // Even worse for expensive creatures
+      value -= (creature.manaValue || 0) / 20;
+    } else if (creatureDies && blockerDies) {
+      // Even trade
+      value -= 0.1;
+      // Check mana value difference
+      const creatureValue = creature.manaValue || 0;
+      const blockerValue = blocks[0].blocker.manaValue || 0;
+      value += (blockerValue - creatureValue) / 20;
+    } else if (!creatureDies && blockerDies) {
+      // Good trade - we kill their creature
+      value += 0.3;
+      value += (blocks[0].blocker.manaValue || 0) / 20;
     }
 
     // Strategy modifiers
@@ -851,7 +796,7 @@ export class CombatDecisionTree {
     }
 
     // For each multi-block, optimize damage order
-    for (const [, blockerList] of blocksByAttacker) {
+    for (const [attackerId, blockerList] of blocksByAttacker) {
       if (blockerList.length <= 1) continue;
 
       // Sort by "worst first" - put creatures that will die anyway first
@@ -883,7 +828,7 @@ export class CombatDecisionTree {
     attacker: Permanent,
     attackerDies: boolean,
     blockerDies: boolean,
-    _value: number
+    value: number
   ): string {
     if (attackerDies && !blockerDies) {
       return `${blocker.name} kills ${attacker.name} and survives`;
@@ -909,7 +854,6 @@ export class CombatDecisionTree {
 
   /**
    * Evaluate combat tricks (pump spells, etc.)
-   * Now implemented with access to card data
    */
   private evaluateCombatTricks(
     aiPlayer: PlayerState,
@@ -917,340 +861,11 @@ export class CombatDecisionTree {
   ): CombatTrick[] {
     const tricks: CombatTrick[] = [];
 
-    // Get combat-relevant cards from hand
-    const combatCards = aiPlayer.hand.filter((card: HandCard) => 
-      this.isCombatTrickCard(card)
-    );
-
-    // Evaluate each combat card for potential use
-    for (const card of combatCards) {
-      const trickAnalysis = this.analyzeCombatTrick(card, attacks, aiPlayer);
-      if (trickAnalysis) {
-        tricks.push(trickAnalysis);
-      }
-    }
+    // This would analyze hand for pump spells, combat tricks
+    // For now, return empty array
+    // TODO: Implement when we have access to card data
 
     return tricks;
-  }
-
-  /**
-   * Check if a card is a combat trick
-   */
-  private isCombatTrickCard(card: HandCard): boolean {
-    const typeLower = card.type.toLowerCase();
-    
-    // Instant-speed combat tricks
-    const combatTypes = ['instant'];
-    const combatKeywords = [
-      'pump', 'fight', 'damage', 'destroy', 'exile', 
-      'gain', 'trample', 'flying', 'lifelink', 'deathtouch'
-    ];
-    
-    // Check type
-    const isCombatType = combatTypes.some(t => typeLower.includes(t));
-    
-    // Check name for common pump/trick patterns
-    const nameLower = card.name.toLowerCase();
-    const isCombatName = combatKeywords.some(k => nameLower.includes(k)) ||
-      nameLower.includes('strike') ||
-      nameLower.includes('bolt') ||
-      nameLower.includes('slash') ||
-      nameLower.includes('pierce') ||
-      nameLower.includes('blast');
-    
-    return isCombatType || isCombatName;
-  }
-
-  /**
-   * Analyze a card as a potential combat trick
-   */
-  private analyzeCombatTrick(
-    card: HandCard,
-    attacks: AttackDecision[],
-    aiPlayer: PlayerState
-  ): CombatTrick | null {
-    // Parse the card to understand its effect
-    const parsed = this.parseCombatTrick(card);
-    
-    if (!parsed) return null;
-
-    // Find best targets for this trick
-    const targetAnalysis = this.findTrickTargets(parsed, attacks, aiPlayer);
-    
-    if (!targetAnalysis) return null;
-
-    // Calculate expected value
-    const expectedValue = this.calculateTrickValue(parsed, targetAnalysis, aiPlayer);
-    
-    // Determine best timing
-    const timing = this.determineTrickTiming(parsed, attacks);
-    
-    return {
-      cardId: card.cardId,
-      name: card.name,
-      timing,
-      targetId: targetAnalysis.targetId,
-      expectedValue,
-      reasoning: this.generateTrickReasoning(card.name, parsed, targetAnalysis),
-    };
-  }
-
-  /**
-   * Parse a card's oracle text to understand its combat effect
-   */
-  private parseCombatTrick(card: HandCard): ParsedCombatTrick | null {
-    const oracleText = (card as { oracleText?: string }).oracleText || '';
-    const textLower = oracleText.toLowerCase();
-    
-    // Initialize parsed result
-    const parsed: ParsedCombatTrick = {
-      type: 'pump',
-      powerBoost: 0,
-      toughnessBoost: 0,
-      grantsKeyword: [],
-      damagePrevention: 0,
-      destroyTarget: false,
-      exileTarget: false,
-    };
-
-    // Check for pump effects
-    const pumpMatch = textLower.match(/(\+(\d+)\/(\d+))/);
-    if (pumpMatch) {
-      parsed.powerBoost = parseInt(pumpMatch[2]);
-      parsed.toughnessBoost = parseInt(pumpMatch[3]);
-    }
-
-    // Check for power-only boost
-    const powerMatch = textLower.match(/\+(\d+)\/0/);
-    if (powerMatch) {
-      parsed.powerBoost = parseInt(powerMatch[1]);
-    }
-
-    // Check for toughness-only boost
-    const toughnessMatch = textLower.match(/\+0\/(\d+)/);
-    if (toughnessMatch) {
-      parsed.toughnessBoost = parseInt(toughnessMatch[1]);
-    }
-
-    // Check for keywords
-    if (textLower.includes('trample')) parsed.grantsKeyword.push('trample');
-    if (textLower.includes('flying')) parsed.grantsKeyword.push('flying');
-    if (textLower.includes('lifelink')) parsed.grantsKeyword.push('lifelink');
-    if (textLower.includes('deathtouch')) parsed.grantsKeyword.push('deathtouch');
-    if (textLower.includes('first strike')) parsed.grantsKeyword.push('first strike');
-    if (textLower.includes('double strike')) parsed.grantsKeyword.push('double strike');
-    if (textLower.includes('indestructible')) parsed.grantsKeyword.push('indestructible');
-
-    // Check for damage/destroy effects
-    const damageMatch = textLower.match(/deals (\d+) damage/);
-    if (damageMatch && !textLower.includes('prevent')) {
-      parsed.type = 'combat_damage';
-      parsed.powerBoost = parseInt(damageMatch[1]); // Use as effective power boost
-    }
-
-    if (textLower.includes('destroy') && textLower.includes('creature')) {
-      parsed.destroyTarget = true;
-      parsed.type = 'destroy';
-    }
-
-    if (textLower.includes('exile') && textLower.includes('creature')) {
-      parsed.exileTarget = true;
-      parsed.type = 'exile';
-    }
-
-    // Check for prevention
-    const preventMatch = textLower.match(/prevent (\d+) damage/);
-    if (preventMatch) {
-      parsed.damagePrevention = parseInt(preventMatch[1]);
-      parsed.type = 'toughness_boost';
-    }
-
-    // If no effect found, return null
-    if (parsed.powerBoost === 0 && 
-        parsed.toughnessBoost === 0 && 
-        parsed.grantsKeyword.length === 0 &&
-        !parsed.destroyTarget &&
-        !parsed.exileTarget &&
-        parsed.damagePrevention === 0) {
-      return null;
-    }
-
-    return parsed;
-  }
-
-  /**
-   * Find the best target for a combat trick
-   */
-  private findTrickTargets(
-    parsed: ParsedCombatTrick,
-    attacks: AttackDecision[],
-    _aiPlayer: PlayerState
-  ): { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number } | null {
-    // For destroy/exile effects, find valuable targets
-    if (parsed.destroyTarget || parsed.exileTarget) {
-      const opponentCreatures = this.getOpponents()
-        .flatMap(opp => opp.battlefield.filter(p => p.type === 'creature'));
-      
-      if (opponentCreatures.length === 0) return null;
-
-      // Find most valuable creature to destroy
-      const bestTarget = opponentCreatures.reduce((best, creature) => {
-        const value = (creature.manaValue || 0) + (creature.power || 0) * 0.5;
-        const bestValue = best ? ((best.manaValue || 0) + (best.power || 0) * 0.5) : 0;
-        return value > bestValue ? creature : best;
-      }, null as Permanent | null);
-
-      if (!bestTarget) return null;
-
-      return {
-        targetId: bestTarget.id,
-        targetType: 'blocker',
-        value: (bestTarget.manaValue || 0) + (bestTarget.power || 0),
-      };
-    }
-
-    // For pump effects, find best attacker to boost
-    if (attacks.length > 0) {
-      // Prioritize attackers that would die without boost
-      const vulnerableAttackers = attacks.filter(attack => {
-        const creature = this.findCreatureById(attack.creatureId);
-        if (!creature) return false;
-        
-        // Check if creature would die in combat without boost
-        return attack.riskLevel > 0.5;
-      });
-
-      if (vulnerableAttackers.length > 0) {
-        // Boost the most valuable vulnerable attacker
-        const best = vulnerableAttackers.reduce((best, attack) => {
-          return attack.expectedValue > best.expectedValue ? attack : best;
-        }, attacks[0]);
-
-        return {
-          targetId: best.creatureId,
-          targetType: 'attacker',
-          value: best.expectedValue,
-        };
-      }
-
-      // Otherwise, boost the best attacker
-      const bestAttack = attacks.reduce((best, attack) => {
-        return attack.expectedValue > best.expectedValue ? attack : best;
-      }, attacks[0]);
-
-      return {
-        targetId: bestAttack.creatureId,
-        targetType: 'attacker',
-        value: bestAttack.expectedValue,
-      };
-    }
-
-    return null;
-  }
-
-  /**
-   * Calculate the expected value of using a combat trick
-   */
-  private calculateTrickValue(
-    parsed: ParsedCombatTrick,
-    target: { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number },
-    __aiPlayer: PlayerState
-  ): number {
-    let value = 0;
-
-    // Value from saving/killing creatures
-    if (parsed.destroyTarget || parsed.exileTarget) {
-      // High value for removing threats
-      value += 0.6;
-    }
-
-    // Value from pump effects
-    if (parsed.powerBoost > 0 || parsed.toughnessBoost > 0) {
-      // Check if this saves a creature from death
-      const targetCreature = this.findCreatureById(target.targetId);
-      if (targetCreature) {
-        const wouldDieWithout = (targetCreature.power || 0) < (targetCreature.toughness || 0);
-        const wouldLiveWith = (targetCreature.power || 0) + parsed.powerBoost >= 
-                             (targetCreature.toughness || 0) + parsed.toughnessBoost;
-        
-        if (wouldDieWithout && wouldLiveWith) {
-          value += 0.5; // Saved our creature
-        } else if (!wouldDieWithout) {
-          value += 0.3; // Made our creature better
-        }
-      }
-    }
-
-    // Value from keyword grants
-    if (parsed.grantsKeyword.includes('lifelink')) {
-      // Lifelink is very valuable
-      value += 0.2;
-    }
-    if (parsed.grantsKeyword.includes('trample')) {
-      value += 0.15;
-    }
-    if (parsed.grantsKeyword.includes('indestructible')) {
-      value += 0.4;
-    }
-
-    // Reduce value if we have limited cards in hand (preserve card advantage)
-    // Note: This would need aiPlayer reference for hand size check
-    // For now, we skip this optimization
-
-    return Math.min(1, value);
-  }
-
-  /**
-   * Determine the best timing for a combat trick
-   */
-  private determineTrickTiming(
-    parsed: ParsedCombatTrick,
-    attacks: AttackDecision[]
-  ): 'before_attackers' | 'before_blockers' | 'after_blockers' | 'damage' {
-    // Destroy/exile effects: wait until blockers to see what needs killing
-    if (parsed.destroyTarget || parsed.exileTarget) {
-      return 'before_blockers';
-    }
-
-    // Pump effects: either before attackers (to force through) 
-    // or after blockers (to save)
-    if (attacks.length > 0 && parsed.powerBoost > parsed.toughnessBoost) {
-      // Offensive pump: use before attackers to force damage through
-      return 'before_attackers';
-    }
-
-    // Defensive pump: use after blockers to save creatures
-    return 'after_blockers';
-  }
-
-  /**
-   * Generate reasoning for using a combat trick
-   */
-  private generateTrickReasoning(
-    cardName: string,
-    parsed: ParsedCombatTrick,
-    target: { targetId: string; targetType: string; value: number }
-  ): string {
-    const targetCreature = this.findCreatureById(target.targetId);
-    const targetName = targetCreature?.name || 'target';
-
-    if (parsed.destroyTarget) {
-      return `Use ${cardName} to destroy ${targetName} (high value target)`;
-    }
-    if (parsed.exileTarget) {
-      return `Use ${cardName} to exile ${targetName} (bypass indestructible)`;
-    }
-    if (parsed.powerBoost > 0 || parsed.toughnessBoost > 0) {
-      const boosts = [];
-      if (parsed.powerBoost > 0) boosts.push(`+${parsed.powerBoost} power`);
-      if (parsed.toughnessBoost > 0) boosts.push(`+${parsed.toughnessBoost} toughness`);
-      return `Use ${cardName} to give ${targetName} ${boosts.join('/')}`;
-    }
-    if (parsed.grantsKeyword.length > 0) {
-      return `Use ${cardName} to give ${targetName} ${parsed.grantsKeyword.join(', ')}`;
-    }
-
-    return `Use ${cardName} during combat`;
   }
 
   /**

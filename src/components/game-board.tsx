@@ -5,6 +5,7 @@ import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
@@ -15,17 +16,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PlayerState, PlayerCount, ZoneType, TeamState, CardState } from "@/types/game";
+import { PlayerState, PlayerCount, ZoneType } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
-import { DamageOverlay, useDamageEvents, DamageEvent } from "@/components/damage-indicator";
 import {
   Skull,
+  Archive,
   Ban,
   Library,
   Hand,
   Swords,
   Heart,
   Skull as PoisonIcon,
+  ChevronDown,
+  ChevronUp,
   User,
   Crown,
   Flag,
@@ -35,7 +38,18 @@ import {
 
 // Performance optimization constants
 const VIRTUALIZATION_THRESHOLD = 20;
-const MAX_VISIBLE_GAME_BOARD_CARDS = 14;
+const MAX_VISIBLE_BATTLEFIELD_CARDS = 14;
+
+// Zone icons mapping
+const ZONE_ICONS: Record<ZoneType, React.ReactNode> = {
+  battlefield: null,
+  hand: <Hand className="h-3 w-3" />,
+  graveyard: <Skull className="h-3 w-3" />,
+  exile: <Ban className="h-3 w-3" />,
+  library: <Library className="h-3 w-3" />,
+  command: <Crown className="h-3 w-3" />,
+  companion: <Crown className="h-3 w-3" />,
+};
 
 interface GameBoardProps {
   players: PlayerState[];
@@ -52,17 +66,6 @@ interface GameBoardProps {
   hasActiveDrawOffer?: boolean;
   hasPlayerOfferedDraw?: boolean;
   isGameOver?: boolean;
-  // Team mode props
-  isTeamMode?: boolean;
-  teams?: TeamState[];
-  teamSettings?: {
-    sharedLife: boolean;
-    sharedBlockers: boolean;
-    teamChat: boolean;
-  };
-  // Damage indicator props
-  damageEvents?: DamageEvent[];
-  onDamageEventComplete?: (id: string) => void;
 }
 
 interface PlayerAreaProps {
@@ -74,9 +77,6 @@ interface PlayerAreaProps {
   orientation?: "horizontal" | "vertical";
   isLocalPlayer?: boolean;
 }
-
-// Card type for zone display - use CardState from game types
-type ZoneCard = CardState;
 
 // Memoized ZoneDisplay component for performance optimization
 const ZoneDisplay = memo(function ZoneDisplay({
@@ -93,7 +93,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
   zone: ZoneType;
   title: string;
   count: number;
-  cards: ZoneCard[];
+  cards: any[];
   bgColor?: string;
   size?: "small" | "default" | "large";
   onCardClick?: (cardId: string, zone: ZoneType) => void;
@@ -110,17 +110,17 @@ const ZoneDisplay = memo(function ZoneDisplay({
     onZoneClick?.(zone, playerId);
   }, [onZoneClick, zone, playerId]);
 
-  // Virtualize game board when there are many cards (performance optimization)
+  // Virtualize battlefield when there are many cards (performance optimization)
   const displayCards = useMemo(() => {
     if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
-      return cards.slice(0, MAX_VISIBLE_GAME_BOARD_CARDS);
+      return cards.slice(0, MAX_VISIBLE_BATTLEFIELD_CARDS);
     }
     return zone === "battlefield" ? cards.slice(0, 7) : cards;
   }, [zone, count, cards]);
 
   const remainingCount = useMemo(() => {
     if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
-      return count - MAX_VISIBLE_GAME_BOARD_CARDS;
+      return count - MAX_VISIBLE_BATTLEFIELD_CARDS;
     }
     return 0;
   }, [zone, count]);
@@ -131,11 +131,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
     graveyard: <Skull className="h-3 w-3" />,
     exile: <Ban className="h-3 w-3" />,
     library: <Library className="h-3 w-3" />,
-    commandZone: <Crown className="h-3 w-3" />,
-    companion: <Crown className="h-3 w-3" />,
-    stack: null,
-    sideboard: null,
-    anticipate: null,
+    command: <Crown className="h-3 w-3" />,
   }), []);
 
   return (
@@ -158,7 +154,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
           >
             {count > 0 && (
               <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
-                {zone === "battlefield" && displayCards.map((card: ZoneCard, idx: number) => (
+                {zone === "battlefield" && displayCards.map((card: any, idx: number) => (
                   <div
                     key={card.id || idx}
                     onClick={(e) => {
@@ -197,101 +193,66 @@ const ZoneDisplay = memo(function ZoneDisplay({
 });
 
 // Memoized PlayerInfo component for performance optimization
-interface PlayerInfoProps {
+const PlayerInfo = memo(function PlayerInfo({ 
+  player, 
+  isCurrentTurn,
+  isVertical 
+}: { 
   player: PlayerState;
   isCurrentTurn: boolean;
   isVertical: boolean;
-  otherPlayers?: PlayerState[];
-}
-
-const PlayerInfo = memo(function PlayerInfo({
-  player,
-  isVertical,
-  otherPlayers = [],
-}: PlayerInfoProps) {
-  // Issue #24: Enhanced commander damage display - per opponent tracking
-  const commanderDamageEntries = React.useMemo(() => {
-    if (!player.commanderDamage) return [];
-    return Object.entries(player.commanderDamage);
-  }, [player.commanderDamage]);
-
-  // Get player names for commander damage targets
-  const getPlayerName = (playerId: string) => {
-    const targetPlayer = otherPlayers.find(p => p.id === playerId);
-    return targetPlayer?.name || 'Unknown';
-  };
-
-  // Check if any commander damage is fatal (21+ damage)
-  const hasFatalCommanderDamage = commanderDamageEntries.some(([, damage]) => damage >= 21);
-
+}) {
   return (
     <div className={`flex items-center gap-2 ${isVertical ? "flex-col" : ""}`}>
       <div className="flex items-center gap-2">
+        {isCurrentTurn && (
+          <Badge variant="default" className="animate-pulse">
+            <Crown className="h-3 w-3 mr-1" />
+            Active
+          </Badge>
+        )}
         <div className="flex items-center gap-1 text-sm">
           <User className="h-4 w-4" />
           <span className="font-medium">{player.name}</span>
         </div>
       </div>
       <Separator orientation={isVertical ? "horizontal" : "vertical"} className="h-6" />
-      <div className="flex items-center gap-3 flex-wrap justify-center">
+      <div className="flex items-center gap-3">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
               <div className="flex items-center gap-1 text-sm">
-                <Heart className={`h-4 w-4 ${hasFatalCommanderDamage ? 'text-red-600 animate-pulse' : 'text-red-500'}`} />
-                <span className={`font-mono font-bold ${hasFatalCommanderDamage ? 'text-red-600' : ''}`}>
-                  {player.lifeTotal}
-                </span>
+                <Heart className="h-4 w-4 text-red-500" />
+                <span className="font-mono font-bold">{player.lifeTotal}</span>
               </div>
             </TooltipTrigger>
             <TooltipContent>Life Total</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        
-        {player.poisonCounters >= 10 && (
-          <Badge variant="destructive" className="text-xs">
-            <PoisonIcon className="h-3 w-3 mr-1" />
-            {player.poisonCounters} Poison
-          </Badge>
-        )}
-        
-        {/* Issue #24: Commander damage per opponent display */}
-        {commanderDamageEntries.length > 0 && (
+        {player.poisonCounters > 0 && (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger>
-                <div className="flex items-center gap-1 flex-wrap justify-center">
-                  {commanderDamageEntries.map(([targetId, damage]) => (
-                    <Badge 
-                      key={targetId} 
-                      variant={damage >= 21 ? "destructive" : "outline"} 
-                      className="text-xs"
-                    >
-                      {getPlayerName(targetId)}: {damage}
-                    </Badge>
-                  ))}
+                <div className="flex items-center gap-1 text-sm">
+                  <PoisonIcon className="h-4 w-4 text-purple-500" />
+                  <span className="font-mono font-bold">{player.poisonCounters}</span>
                 </div>
               </TooltipTrigger>
-              <TooltipContent>
-                <div className="text-xs">
-                  <p className="font-bold mb-1">Commander Damage</p>
-                  {commanderDamageEntries.map(([targetId, damage]) => (
-                    <p key={targetId}>
-                      {getPlayerName(targetId)}: {damage}/21
-                      {damage >= 21 && " (DEFEATED)"}
-                    </p>
-                  ))}
-                </div>
-              </TooltipContent>
+              <TooltipContent>Poison Counters</TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        )}
+        {player.commanderDamage && Object.keys(player.commanderDamage).length > 0 && (
+          <Badge variant="outline" className="text-xs">
+            CMDR: {Object.values(player.commanderDamage)[0]}
+          </Badge>
         )}
       </div>
     </div>
   );
 });
 
-function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", allPlayers = [] }: PlayerAreaProps & { allPlayers?: PlayerState[] }) {
+function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", isLocalPlayer = false }: PlayerAreaProps) {
   const isBottom = position === "bottom";
   const isVertical = orientation === "vertical";
   const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
@@ -305,6 +266,16 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
     onCardClick?.(cardId, zone);
   }, [onCardClick]);
 
+  // Memoize zone icons
+  const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(() => ({
+    battlefield: null,
+    hand: <Hand className="h-3 w-3" />,
+    graveyard: <Skull className="h-3 w-3" />,
+    exile: <Ban className="h-3 w-3" />,
+    library: <Library className="h-3 w-3" />,
+    command: <Crown className="h-3 w-3" />,
+  }), []);
+
   // Local ZoneDisplay wrapper for backward compatibility
   const ZoneDisplayLocal = ({
     zone,
@@ -317,7 +288,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
     zone: ZoneType;
     title: string;
     count: number;
-    cards: ZoneCard[];
+    cards: any[];
     bgColor?: string;
     size?: "small" | "default" | "large";
   }) => (
@@ -336,13 +307,13 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
 
   return (
     <div className={`flex flex-col gap-2 ${isVertical ? "h-full" : ""}`}>
-      <PlayerInfo player={player} isCurrentTurn={isCurrentTurn} isVertical={isVertical} otherPlayers={allPlayers.filter(p => p.id !== player.id)} />
+      <PlayerInfo player={player} isCurrentTurn={isCurrentTurn} isVertical={isVertical} />
 
       {/* Command Zone - always visible for Commander format */}
       {player.commandZone.length > 0 && (
         <ZoneDisplayLocal
-          zone="commandZone"
-          title="Leader Zone"
+          zone="command"
+          title="Command Zone"
           count={player.commandZone.length}
           cards={player.commandZone}
           bgColor="bg-yellow-500/10"
@@ -356,7 +327,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           <div className="flex flex-col gap-2">
             <ZoneDisplayLocal
               zone="library"
-              title="Draw Pile"
+              title="Library"
               count={player.library.length}
               cards={player.library}
               bgColor="bg-blue-500/10"
@@ -364,7 +335,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="graveyard"
-              title="Discard Pile"
+              title="Graveyard"
               count={player.graveyard.length}
               cards={player.graveyard}
               bgColor="bg-stone-500/10"
@@ -372,7 +343,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="exile"
-              title="Banish Zone"
+              title="Exile"
               count={player.exile.length}
               cards={player.exile}
               bgColor="bg-sky-500/10"
@@ -381,7 +352,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           </div>
           <ZoneDisplayLocal
             zone="battlefield"
-            title="Game Board"
+            title="Battlefield"
             count={player.battlefield.length}
             cards={player.battlefield}
             bgColor="bg-green-500/10"
@@ -415,7 +386,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           <div className="grid grid-cols-4 gap-2">
             <ZoneDisplayLocal
               zone="library"
-              title="Draw Pile"
+              title="Library"
               count={player.library.length}
               cards={player.library}
               bgColor="bg-blue-500/10"
@@ -423,7 +394,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="graveyard"
-              title="Discard Pile"
+              title="Graveyard"
               count={player.graveyard.length}
               cards={player.graveyard}
               bgColor="bg-stone-500/10"
@@ -431,7 +402,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             />
             <ZoneDisplayLocal
               zone="exile"
-              title="Banish Zone"
+              title="Exile"
               count={player.exile.length}
               cards={player.exile}
               bgColor="bg-sky-500/10"
@@ -451,7 +422,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
 
           <ZoneDisplayLocal
             zone="battlefield"
-            title="Game Board"
+            title="Battlefield"
             count={player.battlefield.length}
             cards={player.battlefield}
             bgColor="bg-green-500/10"
@@ -476,18 +447,11 @@ export function GameBoard({
   hasActiveDrawOffer = false,
   hasPlayerOfferedDraw = false,
   isGameOver = false,
-  damageEvents = [],
-  onDamageEventComplete,
 }: GameBoardProps) {
   const currentPlayer = players[currentTurnIndex];
   
   // Dialog states
   const [showConcedeDialog, setShowConcedeDialog] = React.useState(false);
-
-  // Internal damage events state if not provided externally
-  const internalDamageEvents = useDamageEvents({ maxEvents: 15 });
-  const activeDamageEvents = damageEvents.length > 0 ? damageEvents : internalDamageEvents.events;
-  const handleDamageEventComplete = onDamageEventComplete || internalDamageEvents.clearEvents;
 
   // Layout strategy based on player count
   const renderLayout = () => {
@@ -507,7 +471,6 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={false}
-                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -529,7 +492,6 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={true}
-                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -555,7 +517,6 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={false}
-                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -570,7 +531,6 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="vertical"
                 isLocalPlayer={false}
-                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -583,7 +543,7 @@ export function GameBoard({
                   {currentPlayer?.name}'s Turn
                 </Badge>
                 <div className="text-xs text-muted-foreground">
-                  Spell Chain: 0 items
+                  Stack: 0 items
                 </div>
               </div>
             </CardContent>
@@ -599,7 +559,6 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="vertical"
                 isLocalPlayer={false}
-                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -614,7 +573,6 @@ export function GameBoard({
                 onZoneClick={onZoneClick}
                 orientation="horizontal"
                 isLocalPlayer={true}
-                allPlayers={players}
               />
             </CardContent>
           </Card>
@@ -728,12 +686,6 @@ export function GameBoard({
       )}
 
       {renderLayout()}
-
-      {/* Damage Indicators Overlay */}
-      <DamageOverlay 
-        events={activeDamageEvents} 
-        onEventComplete={handleDamageEventComplete} 
-      />
 
       {/* Concede Confirmation Dialog */}
       <Dialog open={showConcedeDialog} onOpenChange={setShowConcedeDialog}>

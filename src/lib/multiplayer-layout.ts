@@ -109,21 +109,12 @@ export function isAdjacentPosition(
       bottom: ['top-left', 'top-right'],
       'top-left': ['bottom', 'top-right'],
       'top-right': ['bottom', 'top-left'],
-      top: [],
-      left: [],
-      right: [],
-      'bottom-left': [],
-      'bottom-right': [],
     },
     4: {
       bottom: ['left', 'right'],
       left: ['bottom', 'top'],
       top: ['left', 'right'],
       right: ['top', 'bottom'],
-      'top-left': [],
-      'top-right': [],
-      'bottom-left': [],
-      'bottom-right': [],
     },
   };
   

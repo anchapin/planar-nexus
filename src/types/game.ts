@@ -10,21 +10,7 @@ export type GameFormat = "commander" | "standard" | "modern" | "pioneer" | "lega
 
 export type TurnPhase = "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end";
 
-export type ZoneType = "battlefield" | "hand" | "graveyard" | "exile" | "library" | "commandZone" | "companion" | "stack" | "sideboard" | "anticipate";
-
-// Team-related types for 2v2 mode
-export type TeamId = 'team-a' | 'team-b';
-
-export interface TeamState {
-  id: TeamId;
-  name: string;
-  color: string;
-  playerIds: string[];
-  // Shared life total for Two-Headed Giant variant
-  sharedLifeTotal?: number;
-  // Track if team has been eliminated
-  isEliminated?: boolean;
-}
+export type ZoneType = "battlefield" | "hand" | "graveyard" | "exile" | "library" | "command" | "companion";
 
 export interface CardState {
   id: string;
@@ -58,8 +44,6 @@ export interface PlayerState {
   // Player metadata
   isCurrentTurn: boolean;
   hasPriority: boolean;
-  // Team assignment for 2v2 mode
-  teamId?: TeamId;
 }
 
 export interface GameState {
@@ -71,13 +55,4 @@ export interface GameState {
   currentPhase: TurnPhase;
   turnNumber: number;
   stack: CardState[];
-  // Team mode fields
-  isTeamMode?: boolean;
-  teams?: TeamState[];
-  // Team settings
-  teamSettings?: {
-    sharedLife: boolean;
-    sharedBlockers: boolean;
-    teamChat: boolean;
-  };
 }

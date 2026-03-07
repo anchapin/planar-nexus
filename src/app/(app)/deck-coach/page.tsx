@@ -5,9 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { getDeckReview, type SavedDeck, type DeckCard } from "@/app/actions";
-import { importDecklistClient } from "@/lib/client-card-operations";
-import { type Format } from "@/lib/game-rules";
+import { getDeckReview, SavedDeck, DeckCard, importDecklist } from "@/app/actions";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
 import { Bot, Loader2, TrendingUp } from "lucide-react";
@@ -23,14 +21,14 @@ type DeckOption = DeckReviewOutput["deckOptions"][0];
 
 export default function DeckCoachPage() {
   const [decklist, setDecklist] = useState("");
-  const [format, setFormat] = useState<Format>("commander");
+  const [format, setFormat] = useState("commander");
   const [focusArchetype, setFocusArchetype] = useState<string>("");
   const [review, setReview] = useState<DeckReviewOutput | null>(null);
   const [metaAnalysis, setMetaAnalysis] = useState<MetaAnalysisOutput | null>(null);
   const [originalDeckCards, setOriginalDeckCards] = useState<DeckCard[] | null>(null);
   const [isPending, startTransition] = useTransition();
   const [analysisType, setAnalysisType] = useState<"review" | "meta">("review");
-  const [, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
+  const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
   const { toast } = useToast();
 
   const handleAnalyzeDeck = (type: "review" | "meta") => {
@@ -52,7 +50,7 @@ export default function DeckCoachPage() {
         if (originalDeckCards) {
           initialCards = originalDeckCards;
         } else {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, format);
+            const { found, notFound, illegal } = await importDecklist(decklist, format);
             if (notFound.length > 0) {
                  toast({
                     variant: "destructive",
@@ -122,7 +120,7 @@ export default function DeckCoachPage() {
 
       if (cardsToAddFromAI.length > 0) {
         const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
-        const importResult = await importDecklistClient(decklistForImport, format);
+        const importResult = await importDecklist(decklistForImport, format);
         cardsToAddFromApi = importResult.found;
         notFound = importResult.notFound;
         illegal = importResult.illegal;
@@ -246,7 +244,7 @@ export default function DeckCoachPage() {
             </div>
             <div className="space-y-2 mb-4">
               <Label htmlFor="format-select">Format</Label>
-              <Select value={format} onValueChange={(value) => setFormat(value as Format)} disabled={isPending}>
+              <Select value={format} onValueChange={setFormat} disabled={isPending}>
                   <SelectTrigger id="format-select" className="capitalize">
                       <SelectValue placeholder="Select format" />
                   </SelectTrigger>

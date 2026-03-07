@@ -10,7 +10,7 @@ The `HandDisplay` component provides an interactive, feature-rich interface for 
 - **Card Visualization**: Displays full card images from Scryfall
 - **Multi-Select**: Click to select/deselect multiple cards
 - **Visual Feedback**: Selected cards show ring indicator and scale effect
-- **Energy Cost Overlay**: Shows energy cost on card images (also known as mana cost)
+- **Mana Cost Overlay**: Shows mana cost on card images
 - **Color Indicators**: Color badges for card colors
 - **Hover Effects**: Scale and lift animations
 - **Tooltips**: Detailed card information on hover
@@ -22,7 +22,7 @@ The `HandDisplay` component provides an interactive, feature-rich interface for 
 
 ### Sorting & Organization
 - **Sort by Name**: Alphabetical order
-- **Sort by Energy Cost**: Low to high energy value (CMC)
+- **Sort by Mana Cost**: Low to high CMC
 - **Sort by Type**: Card type line
 - **Sort by Color**: WUBRG order
 - **Display Modes**:
@@ -53,7 +53,7 @@ interface HandDisplayProps {
 ### Types
 
 ```typescript
-export type HandSortOption = "name" | "energyCost" | "type" | "color";
+export type HandSortOption = "name" | "manaCost" | "type" | "color";
 export type HandDisplayMode = "overlapping" | "spread";
 ```
 
@@ -145,7 +145,7 @@ Potential improvements for future iterations:
 4. **Keyboard Shortcuts**: Ctrl+A to select all, Escape to clear
 5. **Card Inspection**: Modal view for detailed card info
 6. **Tap Indicators**: Show tapped/untapped state for cards with abilities
-7. **Hint System**: Suggest cards based on available energy
+7. **Hint System**: Suggest cards based on available mana
 8. **Animated Transitions**: Smooth card draw/discard animations
 
 ## Testing

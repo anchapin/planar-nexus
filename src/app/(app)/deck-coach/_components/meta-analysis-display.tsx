@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, TrendingUp, TrendingDown, Shield, Swords, Target, Lightbulb } from "lucide-react";
-import { DeckCard } from "@/app/actions";
+import { DeckCard, importDecklist } from "@/app/actions";
 
 interface MetaAnalysisDisplayProps {
   analysis: MetaAnalysisOutput;
@@ -19,7 +19,7 @@ interface MetaAnalysisDisplayProps {
   originalDeckCards?: DeckCard[] | null;
 }
 
-export function MetaAnalysisDisplay({ analysis, onSaveNewDeck, originalDeckCards: _originalDeckCards }: MetaAnalysisDisplayProps) {
+export function MetaAnalysisDisplay({ analysis, format, onSaveNewDeck, originalDeckCards }: MetaAnalysisDisplayProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedCardsToAdd, setSelectedCardsToAdd] = useState<{ name: string; quantity: number }[]>([]);
   const [selectedCardsToRemove, setSelectedCardsToRemove] = useState<{ name: string; quantity: number }[]>([]);

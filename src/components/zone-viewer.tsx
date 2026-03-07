@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { memo, useMemo, useState, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
+import { 
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,19 +15,24 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Skull,
-  Ban,
-  Library,
-  Crown,
+import { 
+  Skull, 
+  Ban, 
+  Library, 
+  Crown, 
   Layers,
   Eye,
+  ChevronDown,
+  ChevronUp,
+  X,
   Search,
+  Filter,
+  SortAsc,
+  SortDesc,
   User
 } from "lucide-react";
 import { ZoneType } from "@/types/game";
 import { cn } from "@/lib/utils";
-import { translateToGeneric } from "@/lib/game-state";
 
 /**
  * Card data for display in zone viewers
@@ -48,13 +54,13 @@ interface ZoneCard {
  * Props for the ZoneViewer component
  */
 interface ZoneViewerProps {
-  /** Cards in the discard pile (graveyard) */
+  /** Cards in the graveyard */
   graveyard?: ZoneCard[];
-  /** Cards in banish zone (exile) */
+  /** Cards in exile */
   exile?: ZoneCard[];
-  /** Cards in the leader zone (command zone) */
+  /** Cards in the command zone */
   command?: ZoneCard[];
-  /** Cards on the spell chain (stack) */
+  /** Cards on the stack */
   stack?: StackItem[];
   /** Cards in sideboard */
   sideboard?: ZoneCard[];
@@ -102,10 +108,12 @@ const ZoneCardList = memo(function ZoneCardList({
   cards,
   onCardClick,
   sortBy = "name",
+  showCount = true,
 }: {
   cards: ZoneCard[];
   onCardClick?: (cardId: string) => void;
   sortBy?: SortOption;
+  showCount?: boolean;
 }) {
   const sortedCards = useMemo(() => {
     const sorted = [...cards];
@@ -146,7 +154,7 @@ const ZoneCardList = memo(function ZoneCardList({
                 <div 
                   key={color} 
                   className={cn("w-full", colorMap[color] || "bg-gray-400")}
-                  style={{ height: `${100 / (card.colors?.length ?? 1)}%` }}
+                  style={{ height: `${100 / card.colors.length}%` }}
                 />
               ))}
             </div>
@@ -186,9 +194,18 @@ const ZoneCardList = memo(function ZoneCardList({
  */
 const StackItemDisplay = memo(function StackItemDisplay({
   item,
+  onCardClick,
 }: {
   item: StackItem;
+  onCardClick?: (cardId: string) => void;
 }) {
+  const colorMap: Record<string, string> = {
+    W: "bg-white/20",
+    U: "bg-blue-500/20",
+    B: "bg-black/20",
+    R: "bg-red-500/20",
+    G: "bg-green-500/20",
+  };
 
   return (
     <div className="flex flex-col p-3 rounded-md border border-border bg-muted/30">
@@ -275,6 +292,8 @@ export function ZoneViewer({
   const filteredSideboard = useMemo(() => filterCards(sideboard), [sideboard, filterCards]);
   const filteredCompanion = useMemo(() => filterCards(companion), [companion, filterCards]);
 
+  const totalCards = graveyard.length + exile.length + command.length + stack.length + sideboard.length + companion.length;
+
   if (!isOpen) return null;
 
   return (
@@ -324,7 +343,7 @@ export function ZoneViewer({
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="graveyard" className="flex items-center gap-1">
               <Skull className="h-3 w-3" />
-              Discard Pile
+              Graveyard
               {graveyard.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {graveyard.length}
@@ -333,7 +352,7 @@ export function ZoneViewer({
             </TabsTrigger>
             <TabsTrigger value="exile" className="flex items-center gap-1">
               <Ban className="h-3 w-3" />
-              Banish Zone
+              Exile
               {exile.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {exile.length}
@@ -342,7 +361,7 @@ export function ZoneViewer({
             </TabsTrigger>
             <TabsTrigger value="command" className="flex items-center gap-1">
               <Crown className="h-3 w-3" />
-              Leader Zone
+              Command
               {command.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {command.length}
@@ -351,7 +370,7 @@ export function ZoneViewer({
             </TabsTrigger>
             <TabsTrigger value="stack" className="flex items-center gap-1">
               <Layers className="h-3 w-3" />
-              Spell Chain
+              Stack
               {stack.length > 0 && (
                 <Badge variant="secondary" className="ml-1 text-[10px]">
                   {stack.length}
@@ -384,7 +403,7 @@ export function ZoneViewer({
               {filteredGraveyard.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Skull className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Discard Pile is empty</p>
+                  <p>Graveyard is empty</p>
                 </div>
               ) : (
                 <ZoneCardList 
@@ -399,7 +418,7 @@ export function ZoneViewer({
               {filteredExile.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Ban className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Banish Zone is empty</p>
+                  <p>Exile zone is empty</p>
                 </div>
               ) : (
                 <ZoneCardList 
@@ -414,7 +433,7 @@ export function ZoneViewer({
               {filteredCommand.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Crown className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Leader Zone is empty</p>
+                  <p>Command zone is empty</p>
                 </div>
               ) : (
                 <ZoneCardList 
@@ -428,8 +447,8 @@ export function ZoneViewer({
             <TabsContent value="stack" className="m-0">
               {stack.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <Layers className="h-8 w-8 mx-auto mb-auto mb-2 opacity-50" />
-                  <p>Spell Chain is empty</p>
+                  <Layers className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Stack is empty</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -437,6 +456,7 @@ export function ZoneViewer({
                     <StackItemDisplay 
                       key={item.id} 
                       item={item}
+                      onCardClick={onCardClick}
                     />
                   ))}
                 </div>
@@ -502,7 +522,7 @@ export function ZoneButton({
   const icons: Record<ZoneType, React.ReactNode> = {
     graveyard: <Skull className="h-4 w-4" />,
     exile: <Ban className="h-4 w-4" />,
-    commandZone: <Crown className="h-4 w-4" />,
+    command: <Crown className="h-4 w-4" />,
     stack: <Layers className="h-4 w-4" />,
     library: <Library className="h-4 w-4" />,
     hand: null,
@@ -513,13 +533,13 @@ export function ZoneButton({
   };
 
   const labels: Record<ZoneType, string> = {
-    graveyard: "Discard Pile",
-    exile: "Banish Zone",
-    commandZone: "Leader Zone",
-    stack: "Spell Chain",
-    library: "Draw Pile",
+    graveyard: "Graveyard",
+    exile: "Exile",
+    command: "Command",
+    stack: "Stack",
+    library: "Library",
     hand: "Hand",
-    battlefield: "Game Board",
+    battlefield: "Battlefield",
     sideboard: "Sideboard",
     anticipate: "Anticipate",
     companion: "Companion",

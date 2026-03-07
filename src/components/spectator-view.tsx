@@ -161,7 +161,13 @@ export function SpectatorBanner({
   );
 }
 
-// Join as spectator form
+// Join as spectator button/modal
+interface JoinSpectatorProps {
+  gameId: string;
+  onJoin: (name: string, isHidden: boolean) => void;
+  className?: string;
+}
+
 export function JoinSpectatorForm({ onJoin, className }: { onJoin: (name: string, isHidden: boolean) => void; className?: string }) {
   const [name, setName] = useState('');
   const [isHidden, setIsHidden] = useState(false);

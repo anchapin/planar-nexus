@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { useCollection } from '@/hooks/use-collection';
 import { tradeManager, type TradeOffer, type TradeCardItem, type TradeHistoryEntry, calculateTradeFairness } from '@/lib/trading';
-import type { ScryfallCard } from '@/app/actions';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -17,31 +17,38 @@ import { Separator } from '@/components/ui/separator';
 import { 
   ArrowLeftRight, 
   Plus, 
+  Trash2, 
   Check, 
   X, 
+  MessageSquare,
   History,
+  Search,
   Scale,
   Users,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  AlertCircle
 } from 'lucide-react';
 
 export default function TradePage() {
   const { toast } = useToast();
-  const { activeCollection } = useCollection();
+  const { collections, activeCollection } = useCollection();
   
   // State
   const [activeTab, setActiveTab] = useState('active');
   const [trades, setTrades] = useState<TradeOffer[]>([]);
   const [history, setHistory] = useState<TradeHistoryEntry[]>([]);
   const [showNewTradeDialog, setShowNewTradeDialog] = useState(false);
+  const [showTradeDetailDialog, setShowTradeDetailDialog] = useState(false);
+  const [selectedTrade, setSelectedTrade] = useState<TradeOffer | null>(null);
   
   // New trade form
   const [recipientName, setRecipientName] = useState('');
   const [offeredCards, setOfferedCards] = useState<TradeCardItem[]>([]);
   const [wantedCards, setWantedCards] = useState<TradeCardItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [tradeNotes, setTradeNotes] = useState('');
   
   const playerId = 'local-player'; // In real app, would get from auth
   const playerName = 'You';
@@ -60,7 +67,7 @@ export default function TradePage() {
     });
     
     return () => unsubscribe();
-  }, [toast]);
+  }, []);
 
   const loadTrades = () => {
     const allTrades = tradeManager.getTradesForPlayer(playerId);
@@ -129,7 +136,7 @@ export default function TradePage() {
   };
 
   // Add card to offered
-  const handleAddOfferedCard = (card: ScryfallCard, quantity: number = 1) => {
+  const handleAddOfferedCard = (card: any, quantity: number = 1) => {
     const existing = offeredCards.find(c => c.card.id === card.id);
     if (existing) {
       setOfferedCards(offeredCards.map(c => 
@@ -143,7 +150,7 @@ export default function TradePage() {
   };
 
   // Add card to wanted
-  const handleAddWantedCard = (card: ScryfallCard, quantity: number = 1) => {
+  const handleAddWantedCard = (card: any, quantity: number = 1) => {
     const existing = wantedCards.find(c => c.card.id === card.id);
     if (existing) {
       setWantedCards(wantedCards.map(c => 
@@ -193,6 +200,18 @@ export default function TradePage() {
     toast({
       title: 'Trade Cancelled',
       description: 'The trade has been cancelled.',
+    });
+  };
+
+  // Add notes to trade
+  const handleAddNotes = () => {
+    if (!selectedTrade || !tradeNotes.trim()) return;
+    tradeManager.addTradeNotes(selectedTrade.id, playerId, tradeNotes);
+    setSelectedTrade(tradeManager.getTradeOffer(selectedTrade.id));
+    setTradeNotes('');
+    toast({
+      title: 'Note Added',
+      description: 'Your note has been added to the trade.',
     });
   };
 

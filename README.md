@@ -1,7 +1,5 @@
 # Planar Nexus
 
-**Disclaimer**: Planar Nexus is not affiliated with, endorsed by, or connected to Wizards of the Coast, Magic: The Gathering, or any of their affiliates. All Magic: The Gathering content is trademarked and copyrighted by Wizards of the Coast. This project is provided for educational and entertainment purposes only.
-
 A digital Magic: The Gathering tabletop experience with deck building, AI coaching, and multiplayer functionality.
 
 ## Project Overview
@@ -19,107 +17,6 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 
 ---
 
-## Development Commands
-
-```bash
-# Install dependencies
-npm install
-
-# Development server (runs on port 9002 with Turbopack)
-npm run dev
-
-# AI development environment (Genkit dev UI)
-npm run genkit:dev
-
-# AI development with hot-reload (restarts on file changes)
-npm run genkit:watch
-
-# Build for production
-NODE_ENV=production npm run build
-
-# Build Tauri desktop application
-npm run build:tauri
-
-# Start production server
-npm start
-
-# Lint code
-npm run lint
-
-# Type check
-npm run typecheck
-
-# Run tests
-npm run test
-npm run test:watch
-npm run test:coverage
-
-# Run E2E tests
-npm run test:e2e
-```
-
----
-
-## Deployment
-
-Planar Nexus supports deployment to web, desktop, and mobile platforms.
-
-### Web Deployment
-
-The web application can be deployed to any static hosting service (Vercel, Netlify, GitHub Pages, etc.).
-
-```bash
-# Build for production
-NODE_ENV=production npm run build
-
-# Deploy to Vercel (recommended)
-npm install -g vercel
-vercel
-
-# Or deploy to Netlify
-npm install -g netlify-cli
-netlify deploy --prod
-```
-
-### Desktop Deployment
-
-Desktop applications are built using Tauri for Windows, macOS, and Linux.
-
-```bash
-# Build desktop installers for all platforms
-npm run build:tauri
-
-# Windows: src-tauri/target/release/bundle/nsis/*.exe
-# macOS: src-tauri/target/release/bundle/macos/*.dmg
-# Linux: src-tauri/target/release/bundle/appimage/*.AppImage
-```
-
-### Mobile Deployment
-
-Mobile apps are built using Tauri Mobile for iOS and Android.
-
-```bash
-# Build iOS app
-npm run build:tauri -- --target aarch64-apple-ios --bundles ios
-
-# Build Android app
-npm run build:tauri -- --target aarch64-linux-android --bundles apk,aab
-```
-
-### CI/CD
-
-Automated builds are configured via GitHub Actions:
-
-- **CI Pipeline**: Runs on every push (lint, typecheck, build)
-- **Desktop Builds**: Triggered on release or manual dispatch
-- **Mobile Builds**: Triggered on release or manual dispatch
-
-See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for detailed deployment instructions.
-
-See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed build instructions.
-
----
-
 ## Roadmap
 
 ### Current Status (v0.1)
@@ -128,13 +25,10 @@ See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed bu
 |---------|--------|-------|
 | Deck Builder | ✅ Complete | Full import/export, save/load, format validation, Scryfall integration |
 | AI Deck Coach | ✅ Complete | Strategic analysis, legal suggestions, multiple optimization paths |
-| Single Player | ✅ Complete | UI screens exist, game engine fully complete |
-| Multiplayer | ✅ Complete | P2P WebRTC, lobby system, 1v1, 4-player Commander, 2v2 teams |
-| Game Engine | ✅ Complete | Core mechanics implemented (state, combat, layers, SBAs, replacement effects) |
-| AI Providers | ✅ Complete | Multi-provider support (Gemini, Claude, OpenAI, Z.ai) with subscription linking |
-| Visual Effects | ✅ Complete | Card art, attack/block animations, spell effects, sound system, card sleeves |
-| Social Features | ✅ Complete | Friends list, match history, trading system, replay sharing |
-| Tournament | ✅ Complete | Bracket system, Swiss pairing, round timer, judge tools |
+| Single Player | ⚠️ UI Only | Configuration screens exist, no gameplay implementation |
+| Multiplayer | ⚠️ UI Only | Lobby browser exists, no networking or gameplay |
+| Game Engine | ⚠️ Minimal | Format rules defined, no actual game mechanics |
+| AI Providers | ⚠️ Gemini Only | No BYO key system, no multi-provider support |
 
 ---
 
@@ -143,26 +37,26 @@ See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed bu
 **Priority: CRITICAL** - Blocks all gameplay features
 
 #### 1.1 Game State Management
-- [x] Implement game state data structures (players, battlefield, hands, graveyards, exile, stack, command zones)
-- [x] Create card state tracking (tapped, flipped, counters, attachments, auras/equipment)
-- [x] Implement turn phases (beginning, precombat main, combat, postcombat main, end)
-- [x] Create priority pass system for stack resolution
-- [x] Implement turn/round tracking for multiplayer
+- [ ] Implement game state data structures (players, battlefield, hands, graveyards, exile, stack, command zones)
+- [ ] Create card state tracking (tapped, flipped, counters, attachments, auras/equipment)
+- [ ] Implement turn phases (beginning, precombat main, combat, postcombat main, end)
+- [ ] Create priority pass system for stack resolution
+- [ ] Implement turn/round tracking for multiplayer
 
 #### 1.2 Card Mechanics
-- [x] Land playing and mana pool system
-- [x] Spell casting (paying costs, putting on stack)
-- [x] Stack resolution (responding, priority passing, resolution order)
-- [x] Combat system (attackers, blockers, damage assignment, first/double strike)
-- [x] Activated abilities and triggered abilities
-- [x] Keyword action handling (destroy, exile, sacrifice, draw, discard, etc.)
+- [ ] Land playing and mana pool system
+- [ ] Spell casting (paying costs, putting on stack)
+- [ ] Stack resolution (responding, priority passing, resolution order)
+- [ ] Combat system (attackers, blockers, damage assignment, first/double strike)
+- [ ] Activated abilities and triggered abilities
+- [ ] Keyword action handling (destroy, exile, sacrifice, draw, discard, etc.)
 
 #### 1.3 Card Rules Engine
-- [x] Parse and interpret Oracle text for common abilities
-- [x] Handle evergreen keywords (flying, trample, haste, deathtouch, etc.)
-- [x] Implement replacement effects and prevention effects
-- [x] Handle state-based actions (creature death, planeswalker rules, etc.)
-- [x] Implement layer system for continuous effects
+- [ ] Parse and interpret Oracle text for common abilities
+- [ ] Handle evergreen keywords (flying, trample, haste, deathtouch, etc.)
+- [ ] Implement replacement effects and prevention effects
+- [ ] Handle state-based actions (creature death, planeswalker rules, etc.)
+- [ ] Implement layer system for continuous effects
 
 ---
 
@@ -171,28 +65,28 @@ See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed bu
 **Priority: HIGH**
 
 #### 2.1 Game Board UI
-- [x] Design and implement game board layout
-- [x] Card rendering (face-up, face-down, token representation)
-- [x] Hand display and card selection
-- [x] Battlefield visualization with card positioning
-- [x] Graveyard/exile/command zone viewers
-- [x] Stack display and priority indicators
-- [x] Life total and poison counter tracking
-- [x] Commander damage tracking (for Commander format)
+- [ ] Design and implement game board layout
+- [ ] Card rendering (face-up, face-down, token representation)
+- [ ] Hand display and card selection
+- [ ] Battlefield visualization with card positioning
+- [ ] Graveyard/exile/command zone viewers
+- [ ] Stack display and priority indicators
+- [ ] Life total and poison counter tracking
+- [ ] Commander damage tracking (for Commander format)
 
 #### 2.2 Game Interaction System
-- [x] Click-to-act interface for cards
-- [x] Menu system for activated abilities
-- [x] Targeting system for spells/abilities
-- [x] Attack/block declaration UI
-- [x] Mana payment interface
-- [x] Optional "yes/no" dialogs for triggers
+- [ ] Click-to-act interface for cards
+- [ ] Menu system for activated abilities
+- [ ] Targeting system for spells/abilities
+- [ ] Attack/block declaration UI
+- [ ] Mana payment interface
+- [ ] Optional "yes/no" dialogs for triggers
 
 #### 2.3 Save/Load System
-- [x] Game state serialization
-- [x] In-memory game replay system
-- [x] Saved games browser
-- [x] Auto-save functionality
+- [ ] Game state serialization
+- [ ] In-memory game replay system
+- [ ] Saved games browser
+- [ ] Auto-save functionality
 
 ---
 
@@ -201,34 +95,34 @@ See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed bu
 **Priority: HIGH**
 
 #### 3.1 AI Decision Engine
-- [x] AI game state evaluation (heuristic scoring)
-- [x] Decision trees for main phase actions
-- [x] Combat AI (attacking, blocking decisions)
-- [x] Stack interaction AI (when to respond, with what)
-- [x] Mulligan decision logic
-- [x] Difficulty tuning (randomness, lookahead depth, evaluation accuracy)
+- [ ] AI game state evaluation (heuristic scoring)
+- [ ] Decision trees for main phase actions
+- [ ] Combat AI (attacking, blocking decisions)
+- [ ] Stack interaction AI (when to respond, with what)
+- [ ] Mulligan decision logic
+- [ ] Difficulty tuning (randomness, lookahead depth, evaluation accuracy)
 
 #### 3.2 AI Integration with Providers
-- [x] Abstract AI provider interface
-- [x] Gemini integration
-- [x] Claude API integration via Anthropic SDK
-- [x] OpenAI/Copilot integration
-- [x] Z.ai integration
-- [x] Fallback and error handling for provider failures
+- [ ] Abstract AI provider interface
+- [ ] Gemini integration (already done, needs refactoring)
+- [ ] Claude API integration via Anthropic SDK
+- [ ] OpenAI/Copilot integration
+- [ ] Z.ai integration
+- [ ] Fallback and error handling for provider failures
 
 #### 3.3 Bring Your Own Key System
-- [x] User settings page for API key management
-- [x] Secure local storage for API keys
-- [x] Provider selection interface
-- [x] API key validation on save
-- [x] Usage tracking per provider (if available)
-- [x] Subscription plan linking (if applicable)
+- [ ] User settings page for API key management
+- [ ] Secure local storage for API keys
+- [ ] Provider selection interface
+- [ ] API key validation on save
+- [ ] Usage tracking per provider (if available)
+- [ ] Subscription plan linking (if applicable)
 
 #### 3.4 Enhanced AI Features
-- [x] AI deck building suggestions based on meta analysis
-- [x] Real-time gameplay assistance (hints, suggest plays)
-- [x] Post-game analysis and improvement suggestions
-- [x] Draft/sealed deck AI assistance
+- [ ] AI deck building suggestions based on meta analysis
+- [ ] Real-time gameplay assistance (hints, suggest plays)
+- [ ] Post-game analysis and improvement suggestions
+- [ ] Draft/sealed deck AI assistance
 
 ---
 
@@ -237,39 +131,39 @@ See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed bu
 **Priority: MEDIUM** (Can be developed in parallel with Phase 2-3)
 
 #### 4.1 Peer-to-Peer Networking
-- [x] WebRTC implementation for direct player connections
-- [x] Signaling server for WebRTC handshake (lightweight, minimal state)
-- [x] Connection management (reconnection, handling disconnects)
-- [x] NAT traversal and STUN/TURN servers
+- [ ] WebRTC implementation for direct player connections
+- [ ] Signaling server for WebRTC handshake (lightweight, minimal state)
+- [ ] Connection management (reconnection, handling disconnects)
+- [ ] NAT traversal and STUN/TURN servers
 
 #### 4.2 Game State Synchronization
-- [x] Deterministic game state engine
-- [x] Action broadcasting system (player actions sent to all peers)
-- [x] State hash verification for sync detection
-- [x] Conflict resolution for desync
-- [x] Replay buffering for late joins
+- [ ] Deterministic game state engine
+- [ ] Action broadcasting system (player actions sent to all peers)
+- [ ] State hash verification for sync detection
+- [ ] Conflict resolution for desync
+- [ ] Replay buffering for late joins
 
 #### 4.3 Lobby System
-- [x] Host game functionality (generate game code)
-- [x] Join game by code
-- [x] Public game browser (with signaling server discovery)
-- [x] Player ready system
-- [x] Deck selection per player
-- [x] Format enforcement
+- [ ] Host game functionality (generate game code)
+- [ ] Join game by code
+- [ ] Public game browser (with signaling server discovery)
+- [ ] Player ready system
+- [ ] Deck selection per player
+- [ ] Format enforcement
 
 #### 4.4 Multiplayer Features
-- [x] 1v1 mode implementation
-- [x] 4-player free-for-all (Commander style)
-- [x] 2v2 teams mode
-- [x] Spectator mode
-- [x] Chat system
-- [x] Emote/timer system
-- [x] Concede and draw options
+- [ ] 1v1 mode implementation
+- [ ] 4-player free-for-all (Commander style)
+- [ ] 2v2 teams mode
+- [ ] Spectator mode
+- [ ] Chat system
+- [ ] Emote/timer system
+- [ ] Concede and draw options
 
 #### 4.5 Alternative: Serverless Architecture Options
-- [x] Evaluate Firebase Realtime Database for signaling/state
-- [x] Consider WebSocket fallback for non-P2P scenarios
-- [x] Hybrid approach: P2P gameplay with lightweight signaling
+- [ ] Evaluate Firebase Realtime Database for signaling/state
+- [ ] Consider WebSocket fallback for non-P2P scenarios
+- [ ] Hybrid approach: P2P gameplay with lightweight signaling
 
 ---
 
@@ -278,66 +172,43 @@ See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed bu
 **Priority: LOW**
 
 #### 5.1 Visual Effects
-- [x] Card art display and high-res rendering
-- [x] Attack/block animations
-- [x] Spell casting effects
-- [x] Damage indicators and floating combat text
-- [x] Sound effects and music
-- [x] Card sleeves and playmats customization
+- [ ] Card art display and high-res rendering
+- [ ] Attack/block animations
+- [ ] Spell casting effects
+- [ ] Damage indicators and floating combat text
+- [ ] Sound effects and music
+- [ ] Card sleeves and playmats customization
 
 #### 5.2 Tournament Features
-- [x] Bracket system for tournaments
-- [x] Swiss pairing support
-- [x] Round timer with clock extensions
-- [x] Judge tools (for local events)
+- [ ] Bracket system for tournaments
+- [ ] Swiss pairing support
+- [ ] Round timer with clock extensions
+- [ ] Judge tools (for local events)
 
 #### 5.3 Advanced Features
-- [x] Replay system with shareable links
-- [x] Deck statistics and analytics
-- [x] Collection tracker
-- [x] Trading system (if applicable)
-- [x] Achievement/badge system
+- [ ] Replay system with shareable links
+- [ ] Deck statistics and analytics
+- [ ] Collection tracker
+- [ ] Trading system (if applicable)
+- [ ] Achievement/badge system
 
 ---
 
 ## Technical Debt & Improvements
 
-- [x] Migrate from hardcoded Gemini-only AI to provider-agnostic architecture
-- [x] Add comprehensive unit tests for game rules
-- [x] Add E2E tests for game scenarios
-- [x] Performance optimization for large board states
-- [x] Accessibility improvements (screen reader support, keyboard navigation)
-- [x] Mobile responsiveness improvements
-- [x] Offline mode (PWA with local caching)
-
----
-
----
-
-## Legal Notices
-
-**Trademark Notice**: Magic: The Gathering, Magic, MTG, and all related characters and elements are trademarks of Wizards of the Coast, LLC.
-
-**Copyright Notice**: All card images, text, and game rules are property of Wizards of the Coast. This project uses the Scryfall API for card data but does not host any copyrighted materials.
-
-**No Affiliation**: This project is not affiliated with, endorsed by, or connected to Wizards of the Coast. It is an independent, non-commercial project created for educational and entertainment purposes.
+- [ ] Migrate from hardcoded Gemini-only AI to provider-agnostic architecture
+- [ ] Add comprehensive unit tests for game rules
+- [ ] Add E2E tests for game scenarios
+- [ ] Performance optimization for large board states
+- [ ] Accessibility improvements (screen reader support, keyboard navigation)
+- [ ] Mobile responsiveness improvements
+- [ ] Offline mode (PWA with local caching)
 
 ---
 
 ## Development Notes
 
-The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows. The deck builder, AI coach, and game engine features are production-ready. The game engine includes comprehensive implementations of:
-- Game state management with full zone tracking
-- Combat system with first/double strike, trample, deathtouch
-- Layer system for continuous effects (CR 613)
-- State-based actions (CR 704)
-- Replacement and prevention effects (CR 614-616)
-- AI difficulty tuning with multiple levels
-- Full multiplayer support with P2P WebRTC
-- Visual effects including animations, sounds, and card art
-- Social features including friends, trading, and replays
-
-All planned features have been implemented. The project is feature-complete for v0.1.
+The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows. The deck builder and AI coach features are production-ready. The main gap is the complete absence of a game rules engine, which is foundational for both single-player and multiplayer gameplay.
 
 **Estimated Effort:**
 - Phase 1 (Game Engine): 60-80% of total effort

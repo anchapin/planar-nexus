@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Hand,
   SortAsc,
+  SortDesc,
   Layers,
   X
 } from "lucide-react";
@@ -96,9 +97,9 @@ function CardDisplay({
               }
             }}
           >
-            {scryfallCard.image_uris?.large || scryfallCard.image_uris?.normal ? (
+            {scryfallCard.image_uris?.large || image_uris?.normal ? (
               <Image
-                src={scryfallCard.image_uris?.normal || ''}
+                src={scryfallCard.image_uris.normal}
                 alt={scryfallCard.name}
                 fill
                 sizes="(max-width: 120px) 100vw, 120px"
@@ -123,7 +124,7 @@ function CardDisplay({
             )}
 
             {/* Mana cost overlay */}
-            {showManaCost && manaCost && scryfallCard.image_uris?.large || scryfallCard.image_uris?.normal && (
+            {showManaCost && manaCost && scryfallCard.image_uris?.large || image_uris?.normal && (
               <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5">
                 <span className="text-xs font-mono text-white">{manaCost}</span>
               </div>
