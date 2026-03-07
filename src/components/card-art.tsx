@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { resolveCardImageWithFallback, getCardBackImage } from '@/lib/card-image-resolver';
+import { useAutoStyledArtwork } from '@/hooks/use-procedural-artwork';
 
 /**
  * Card Art Display Component
@@ -29,6 +30,9 @@ export interface CardArtProps {
     collector_number?: string;
     name: string;
     color_identity?: string[];
+    type_line?: string;
+    cmc?: number;
+    colors?: string[];
   };
   /** Image size variant */
   size?: 'thumbnail' | 'small' | 'normal' | 'large' | 'full';
@@ -48,6 +52,8 @@ export interface CardArtProps {
   showSkeleton?: boolean;
   /** High DPI support */
   highDpi?: boolean;
+  /** Use procedural artwork instead of images */
+  useProcedural?: boolean;
 }
 
 // Size configurations with dimensions and quality
@@ -184,15 +190,27 @@ export const CardArt = memo(function CardArt({
   onHover,
   showSkeleton = true,
   highDpi = true,
+  useProcedural = false,
 }: CardArtProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
   const [isVisible, setIsVisible] = useState(!lazy);
   const [isZoomed, setIsZoomed] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
   const config = SIZE_CONFIG[size];
+
+  // Get procedural artwork if enabled
+  const { artworkUrl: proceduralUrl } = useAutoStyledArtwork({
+    cardName,
+    cardId: scryfallCard?.id || cardName,
+    colors: scryfallCard?.color_identity || scryfallCard?.colors || [],
+    typeLine: scryfallCard?.type_line || '',
+    cmc: scryfallCard?.cmc || 0,
+    width: config.width,
+    height: config.height,
+  });
   
   // Setup lazy loading observer
   useEffect(() => {
@@ -222,7 +240,12 @@ export const CardArt = memo(function CardArt({
   // Build image URL
   const imageUrl = useMemo(() => {
     if (showBack) return null;
-    
+
+    // Use procedural artwork if enabled
+    if (useProcedural) {
+      return proceduralUrl;
+    }
+
     // If we have a direct Scryfall URI, use it
     if (imageUri) {
       // Scryfall provides different sizes via URL parameters
@@ -233,14 +256,14 @@ export const CardArt = memo(function CardArt({
       }
       return imageUri;
     }
-    
+
     // Try local image resolution
     if (scryfallCard) {
       return resolveCardImageWithFallback(scryfallCard, undefined, config.scryfallSize);
     }
-    
+
     return null;
-  }, [imageUri, scryfallCard, showBack, config.scryfallSize]);
+  }, [imageUri, scryfallCard, showBack, config.scryfallSize, useProcedural, proceduralUrl]);
   
   // Handle image load
   const handleLoad = useCallback(() => {
