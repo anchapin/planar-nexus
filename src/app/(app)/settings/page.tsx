@@ -83,15 +83,19 @@ function UsageTrackingTab() {
   const [selectedPeriod, setSelectedPeriod] = useState<string>("30");
   const [isExporting, setIsExporting] = useState(false);
 
-  const loadStats = useCallback(() => {
-    const allStats = getAllUsageStats();
-    setStats(allStats);
-    const usageSummary = getUsageSummary(parseInt(selectedPeriod));
-    setSummary({
-      totalRequests: usageSummary.totalRequests,
-      totalTokens: usageSummary.totalTokens,
-      totalCost: usageSummary.totalCost,
-    });
+  const loadStats = useCallback(async () => {
+    try {
+      const allStats = await getAllUsageStats();
+      setStats(allStats);
+      const usageSummary = await getUsageSummary(parseInt(selectedPeriod));
+      setSummary({
+        totalRequests: usageSummary.totalRequests,
+        totalTokens: usageSummary.totalTokens,
+        totalCost: usageSummary.totalCost,
+      });
+    } catch (error) {
+      console.error('Failed to load usage stats:', error);
+    }
   }, [selectedPeriod]);
 
   useEffect(() => {
