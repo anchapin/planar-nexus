@@ -17,7 +17,7 @@ export default function DashboardPage() {
   const features = [
     {
       title: 'Deck Builder',
-      description: 'Craft and fine-tune your Commander decks with a powerful editor and vast card library.',
+      description: 'Craft and fine-tune your decks with a powerful editor and vast card library.',
       icon: Library,
       link: '/deck-builder',
       image: promoImages['deck-builder'],
@@ -38,7 +38,7 @@ export default function DashboardPage() {
     },
     {
       title: 'Multiplayer',
-      description: 'Challenge your friends to a 4-player Commander game. The ultimate battle of wits awaits.',
+      description: 'Challenge your friends to a 4-player game. The ultimate battle of wits awaits.',
       icon: Users,
       link: '/multiplayer',
       image: promoImages['multiplayer'],
@@ -64,7 +64,7 @@ export default function DashboardPage() {
             Welcome to Planar Nexus
           </h1>
           <p className="mt-2 max-w-2xl text-lg text-muted-foreground">
-            Your command center for epic Magic: The Gathering battles.
+            Your command center for epic Planar Nexus battles.
           </p>
         </div>
       </header>
