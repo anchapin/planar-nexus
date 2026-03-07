@@ -5,7 +5,7 @@ import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
+import { 
   Layers,
   Zap,
   Shield,
@@ -14,7 +14,6 @@ import {
   ChevronUp,
   AlertCircle
 } from "lucide-react";
-import { translateToGeneric } from "@/lib/game-state";
 
 /**
  * Stack item representing a spell or ability on the stack
@@ -180,7 +179,7 @@ const StackItemDisplay = memo(function StackItemDisplay({
         {item.oracleText && (
           <TooltipContent className="max-w-xs">
             <p className="font-medium">{item.name}</p>
-            <p className="text-sm mt-1 whitespace-pre-line">{translateToGeneric(item.oracleText)}</p>
+            <p className="text-sm mt-1">{item.oracleText}</p>
           </TooltipContent>
         )}
       </Tooltip>

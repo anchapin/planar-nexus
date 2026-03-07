@@ -9,16 +9,8 @@
   "scripts": {
     "dev": "next dev --turbopack -p 9002",
     "dev:tauri": "tauri dev",
-    "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
-    "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "NODE_ENV=production next build",
     "build:tauri": "tauri build",
-    "build:windows": "tauri build --target x86_64-pc-windows-msvc",
-    "build:macos": "tauri build --target universal-apple-darwin",
-    "build:linux": "tauri build --target x86_64-unknown-linux-gnu",
-    "build:ios": "tauri build --target aarch64-apple-ios --bundles ios",
-    "build:android": "tauri build --target aarch64-linux-android --bundles apk",
-    "build:all": "npm run build && npm run build:tauri",
     "start": "next start",
     "lint": "eslint src --max-warnings 1000",
     "typecheck": "tsc --noEmit",
@@ -56,10 +48,8 @@
     "dotenv": "^17.3.1",
     "embla-carousel-react": "^8.6.0",
     "fuse.js": "^7.1.0",
-    "genkit": "^1.28.0",
     "lucide-react": "^0.575.0",
     "next": "15.5.12",
-    "openai": "^6.22.0",
     "patch-package": "^8.0.0",
     "peerjs": "^1.5.5",
     "qrcode": "^1.5.4",
@@ -89,7 +79,6 @@
     "eslint-config-next": "^16.1.6",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
-    "genkit-cli": "^1.28.0",
     "jest": "^30.0.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
@@ -113,9 +102,6 @@
     },
     "test-exclude": {
       "minimatch": "^10.2.1",
-      "glob": "^11.0.0"
-    },
-    "@genkit-ai/tools-common": {
       "glob": "^11.0.0"
     },
     "@jest/reporters": {

@@ -5,17 +5,9 @@
  * They use embedded card data and do not require IndexedDB.
  */
 
-import {
-  type MinimalCard,
-  type GenericCard,
-  isGenericCard,
-  isMinimalCard,
-  getCardByName,
-  initializeCardDatabase
-} from './card-database';
-
-// Local type for database card (union of GenericCard and MinimalCard)
-type DatabaseCard = GenericCard | MinimalCard;
+import Fuse from 'fuse.js';
+import type { MinimalCard } from './card-database';
+import { ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS } from './card-database';
 import { type Format } from '@/lib/game-rules';
 import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
 
@@ -27,12 +19,21 @@ export interface DeckCard extends ScryfallCard {
   count: number;
 }
 
+// In-memory cache for fuzzy search
+let fuseInstance: Fuse<MinimalCard> | null = null;
+let isInitialized = false;
+
 /**
  * Initialize server-side card operations with embedded data
  */
 async function initializeServerCardOperations(): Promise<void> {
+  if (isInitialized) {
+    return;
+  }
+
   try {
-    await initializeCardDatabase();
+    fuseInstance = new Fuse(ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS);
+    isInitialized = true;
   } catch (error) {
     console.error('Failed to initialize server-side card operations:', error);
     throw error;
@@ -65,21 +66,10 @@ export async function validateCardLegality(
   const notFoundNames = new Set<string>();
 
   for (const [lowerCaseName, requestDetails] of cardMap.entries()) {
-    const cardInDb = getCardByName(requestDetails.originalName);
+    const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
 
     if (cardInDb) {
-      // Check card legality based on format
-      let isLegal = false;
-      if (isGenericCard(cardInDb)) {
-        // Generic cards have specific legalities object
-        const legalities = cardInDb.legalities as Record<string, 'legal' | 'banned' | 'restricted'>;
-        isLegal = legalities[format] === 'legal';
-      } else if (isMinimalCard(cardInDb)) {
-        // Minimal cards also have legalities
-        const legalities = cardInDb.legalities as Record<string, 'legal' | 'banned' | 'restricted'>;
-        isLegal = legalities[format] === 'legal';
-      }
-
+      const isLegal = cardInDb.legalities?.[format] === 'legal';
       if (isLegal) {
         found.push({ ...cardInDb, count: requestDetails.quantity } as DeckCard);
       } else {

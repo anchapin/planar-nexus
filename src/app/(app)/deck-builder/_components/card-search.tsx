@@ -53,6 +53,7 @@ export function CardSearch({ onAddCard }: CardSearchProps) {
       // Since we don't have access to format prop, we'll default to commander
       const searchResults = await searchCardsOffline(searchQuery, {
         maxCards: 50,
+        format: 'commander' as Format,
         includeImages: true,
       });
       setResults(searchResults as ScryfallCard[]);
