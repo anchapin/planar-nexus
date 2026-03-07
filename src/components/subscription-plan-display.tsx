@@ -110,12 +110,16 @@ function SubscriptionPlanCard({ provider, onSubscriptionDetected }: Subscription
     
     if (keyExists) {
       // Load usage stats
-      const stats = getProviderUsageStats(provider);
-      setUsageStats({
-        totalRequests: stats.totalRequests,
-        totalTokens: stats.totalTokens,
-        totalCost: stats.totalCost,
-      });
+      try {
+        const stats = await getProviderUsageStats(provider);
+        setUsageStats({
+          totalRequests: stats.totalRequests,
+          totalTokens: stats.totalTokens,
+          totalCost: stats.totalCost,
+        });
+      } catch (error) {
+        console.error('Failed to load provider usage stats:', error);
+      }
     }
   }, [provider]);
 

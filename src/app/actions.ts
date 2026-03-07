@@ -39,6 +39,7 @@ export interface ScryfallCard {
   oracle_text?: string;
   colors?: string[];
   color_identity: string[];
+  rarity?: string;
   legalities?: { [format: string]: string };
   // Card faces for double-faced/transform cards
   card_faces?: Array<{
