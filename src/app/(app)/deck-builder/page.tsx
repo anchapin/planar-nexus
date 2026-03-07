@@ -3,7 +3,8 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { ScryfallCard, DeckCard, importDecklist, SavedDeck } from "@/app/actions";
+import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
+import { importDecklistClient } from "@/lib/client-card-operations";
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
@@ -129,7 +130,7 @@ export default function DeckBuilderPage() {
     setActiveDeckId(null);
     startImportTransition(async () => {
         try {
-            const { found, notFound, illegal } = await importDecklist(decklist, format);
+            const { found, notFound, illegal } = await importDecklistClient(decklist, format);
             
             if (found.length > 0) {
                 setDeck(found);
