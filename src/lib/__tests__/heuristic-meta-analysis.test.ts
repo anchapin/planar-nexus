@@ -19,9 +19,9 @@ describe('heuristic-meta-analysis', () => {
       expect(result).toHaveProperty('currentMeta');
       expect(result).toHaveProperty('archetypes');
       expect(result).toHaveProperty('recommendations');
-      expect(result.currentMeta).toBeInstanceOf(String);
-      expect(result.archetypes).toBeInstanceOf(Array);
-      expect(result.recommendations).toBeInstanceOf(Array);
+      expect(typeof result.currentMeta).toBe('string');
+      expect(Array.isArray(result.archetypes)).toBe(true);
+      expect(Array.isArray(result.recommendations)).toBe(true);
     });
 
     it('should provide metagame overview', () => {
@@ -79,8 +79,8 @@ describe('heuristic-meta-analysis', () => {
       result.recommendations.forEach(rec => {
         expect(rec.matchup).toHaveProperty('against');
         expect(rec.matchup).toHaveProperty('strategy');
-        expect(rec.matchup.against).toBeInstanceOf(String);
-        expect(rec.matchup.strategy).toBeInstanceOf(String);
+        expect(typeof rec.matchup.against).toBe('string');
+        expect(typeof rec.matchup.strategy).toBe('string');
       });
     });
 
