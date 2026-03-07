@@ -54,7 +54,7 @@ export function getArtworkWithFallback(
     large: 'large',
   };
 
-  return card.image_uris[sizeMap[size]] || getProceduralArtworkUrl(card, size);
+  return card.image_uris[sizeMap[size] as keyof typeof card.image_uris] || getProceduralArtworkUrl(card, size);
 }
 
 /**

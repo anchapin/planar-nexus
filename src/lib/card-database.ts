@@ -19,6 +19,7 @@ export interface MinimalCard {
   oracle_text?: string;
   colors: string[];
   color_identity: string[];
+  rarity?: string;
   legalities: Record<string, string>;
   image_uris?: {
     small: string;
@@ -75,7 +76,7 @@ let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
 // Essential commander cards for initial population
-const ESSENTIAL_CARDS: MinimalCard[] = [
+export const ESSENTIAL_CARDS: MinimalCard[] = [
   {
     id: 'card-001',
     name: 'Sol Ring',
@@ -346,7 +347,7 @@ export async function initializeCardDatabase(): Promise<void> {
  * Initialize Fuse.js for fuzzy search
  */
 function initializeFuzzySearch(cards: MinimalCard[]): void {
-  const fuseOptions: Fuse.IFuseOptions<MinimalCard> = {
+  const fuseOptions: any = {
     keys: [
       { name: 'name', weight: 0.7 },
       { name: 'type_line', weight: 0.2 },
@@ -386,8 +387,9 @@ async function populateDatabase(cards: MinimalCard[]): Promise<void> {
 async function getCardCount(): Promise<number> {
   if (!db) throw new Error('Database not initialized');
 
+  const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const countRequest = store.count();
 
@@ -402,8 +404,9 @@ async function getCardCount(): Promise<number> {
 async function getAllCardsFromDB(): Promise<MinimalCard[]> {
   if (!db) throw new Error('Database not initialized');
 
+  const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.getAll();
 
@@ -451,8 +454,9 @@ export async function getCardByName(name: string): Promise<MinimalCard | undefin
 
   if (!db) return undefined;
 
+  const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const index = store.index(INDEX_NAME);
     const request = index.getAll(name.toLowerCase());
@@ -479,8 +483,9 @@ export async function getCardById(id: string): Promise<MinimalCard | undefined> 
 
   if (!db) return undefined;
 
+  const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(id);
 
@@ -611,8 +616,9 @@ export async function clearDatabase(): Promise<void> {
 
   if (!db) throw new Error('Database not initialized');
 
+  const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const transaction = database.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
     const request = store.clear();
 

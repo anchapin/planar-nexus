@@ -98,7 +98,9 @@ export async function example2_loadDecksAndStart() {
     name: `Mock Card ${i}`,
     type_line: i < 24 ? "Creature — Human Warrior" : "Land",
     cmc: i < 24 ? Math.floor(Math.random() * 5) + 1 : 0,
+    colors: i < 24 ? ["W"] : [],
     color_identity: i < 24 ? ["W"] : [],
+    legalities: { standard: "legal", commander: "legal" },
   })) as ScryfallCard[];
 
   // Load decks
@@ -342,7 +344,9 @@ export function example9_gameSimulation() {
     name: `Card ${i}`,
     type_line: i < 24 ? "Creature" : "Land",
     cmc: i < 24 ? Math.floor(Math.random() * 5) + 1 : 0,
+    colors: i < 24 ? ["W"] : [],
     color_identity: [],
+    legalities: { standard: "legal", commander: "legal" },
   })) as ScryfallCard[];
 
   state = loadDeckForPlayer(state, player1Id, mockDeck);

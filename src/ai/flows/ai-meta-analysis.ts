@@ -15,7 +15,7 @@
 import { ai } from '@/ai/genkit';
 import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
-import { importDecklist } from '@/app/actions';
+import { importDecklist } from '@/lib/server-card-operations';
 
 const MetaAnalysisInputSchema = z.object({
   decklist: z

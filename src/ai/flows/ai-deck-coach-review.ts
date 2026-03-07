@@ -13,7 +13,7 @@
 import { ai } from '@/ai/genkit';
 import { getModelString } from '@/ai/providers';
 import { z } from 'genkit';
-import { validateCardLegality } from '@/app/actions';
+import { validateCardLegality } from '@/lib/server-card-operations';
 
 const DeckReviewInputSchema = z.object({
   decklist: z

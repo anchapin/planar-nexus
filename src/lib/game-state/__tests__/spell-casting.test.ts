@@ -43,6 +43,7 @@ function createMockInstant(name: string, manaCost: string = '{1}{U}'): ScryfallC
     cmc: 2,
     colors: ['U'],
     color_identity: ['U'],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;
@@ -60,6 +61,7 @@ function createMockSorcery(name: string, manaCost: string = '{2}{R}'): ScryfallC
     cmc: 3,
     colors: ['R'],
     color_identity: ['R'],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;
@@ -367,6 +369,7 @@ describe('Spell Casting - Casting Process', () => {
         cmc: 1,
         colors: ['R'],
         color_identity: ['R'],
+        legalities: { standard: 'legal', commander: 'legal' },
         card_faces: undefined,
         layout: 'normal',
       } as ScryfallCard;

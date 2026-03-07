@@ -42,6 +42,7 @@ function createMockCreature(
     cmc: 2,
     colors: ['R'],
     color_identity: ['R'],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;
@@ -64,6 +65,7 @@ function createMockPlaneswalker(
     cmc: 4,
     colors: ['U'],
     color_identity: ['U'],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;
@@ -81,6 +83,7 @@ function createMockAura(name: string): ScryfallCard {
     cmc: 2,
     colors: ['W'],
     color_identity: ['W'],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;
@@ -98,6 +101,7 @@ function createMockEquipment(name: string): ScryfallCard {
     cmc: 2,
     colors: [],
     color_identity: [],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;

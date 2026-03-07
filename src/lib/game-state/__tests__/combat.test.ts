@@ -48,6 +48,7 @@ function createMockCreature(
     cmc: 2,
     colors: ['R'],
     color_identity: ['R'],
+    legalities: { standard: 'legal', commander: 'legal' },
     card_faces: undefined,
     layout: 'normal',
   } as ScryfallCard;
@@ -196,6 +197,7 @@ describe('Combat System - Attacker Declaration', () => {
         mana_cost: '',
         cmc: 0,
         colors: [],
+        legalities: { standard: 'legal', commander: 'legal' },
         color_identity: [],
         card_faces: undefined,
         layout: 'normal',

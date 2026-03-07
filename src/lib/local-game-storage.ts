@@ -450,8 +450,9 @@ class LocalGameStorageManager {
   private async storeGameCode(gameCode: string, gameId: string): Promise<void> {
     if (!db) throw new Error('Database not initialized');
 
+    const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([GAME_CODES_STORE_NAME], 'readwrite');
+      const transaction = database.transaction([GAME_CODES_STORE_NAME], 'readwrite');
       const store = transaction.objectStore(GAME_CODES_STORE_NAME);
       const request = store.put({ gameCode, gameId });
 
@@ -466,8 +467,9 @@ class LocalGameStorageManager {
   private async lookupGameCode(gameCode: string): Promise<string | null> {
     if (!db) throw new Error('Database not initialized');
 
+    const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([GAME_CODES_STORE_NAME], 'readonly');
+      const transaction = database.transaction([GAME_CODES_STORE_NAME], 'readonly');
       const store = transaction.objectStore(GAME_CODES_STORE_NAME);
       const request = store.get(gameCode);
 
@@ -485,8 +487,9 @@ class LocalGameStorageManager {
   private async storeGameSession(session: LocalGameSession): Promise<void> {
     if (!db) throw new Error('Database not initialized');
 
+    const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([GAMES_STORE_NAME], 'readwrite');
+      const transaction = database.transaction([GAMES_STORE_NAME], 'readwrite');
       const store = transaction.objectStore(GAMES_STORE_NAME);
       const request = store.put(session);
 
@@ -501,8 +504,9 @@ class LocalGameStorageManager {
   private async getGameSessionById(gameId: string): Promise<LocalGameSession | null> {
     if (!db) throw new Error('Database not initialized');
 
+    const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([GAMES_STORE_NAME], 'readonly');
+      const transaction = database.transaction([GAMES_STORE_NAME], 'readonly');
       const store = transaction.objectStore(GAMES_STORE_NAME);
       const request = store.get(gameId);
 
@@ -519,8 +523,9 @@ class LocalGameStorageManager {
   private async removePlayerFromSession(gameId: string): Promise<void> {
     if (!db) throw new Error('Database not initialized');
 
+    const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction([GAMES_STORE_NAME], 'readwrite');
+      const transaction = database.transaction([GAMES_STORE_NAME], 'readwrite');
       const store = transaction.objectStore(GAMES_STORE_NAME);
       const request = store.get(gameId);
 
