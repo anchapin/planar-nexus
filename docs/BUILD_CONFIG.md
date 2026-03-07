@@ -27,13 +27,43 @@ npm run tauri build -- --target aarch64-apple-darwin
 
 ### Linux
 - **Installers**: AppImage (.AppImage), DEB (.deb), RPM (.rpm)
-- **Signing**: Optional
-- **Requirements**: Ubuntu 22.04+, Rust toolchain
+- **Signing**: Optional (GPG for RPM)
+- **Requirements**: Ubuntu 20.04+, Rust toolchain, WebKitGTK
+- **Documentation**: See `docs/LINUX_BUILD_GUIDE.md` for detailed instructions
 
 ```bash
-# Build locally
+# Build all formats
+npm run build:tauri
+
+# Build specific target
 npm run tauri build -- --target x86_64-unknown-linux-gnu
+
+# Install dependencies (Ubuntu/Debian)
+sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+# Install dependencies (Fedora/RHEL)
+sudo dnf install -y webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel
 ```
+
+#### Package Details
+
+**AppImage:**
+- Self-contained, works on most distributions
+- Size: ~70-100 MB (includes media framework)
+- No installation required
+- Usage: `chmod +x *.AppImage && ./planar-nexus.AppImage`
+
+**DEB:**
+- Native Debian/Ubuntu integration
+- Dependencies: `libwebkit2gtk-4.1-0`, `libgtk-3-0`
+- Size: ~60-80 MB
+- Usage: `sudo dpkg -i *.deb`
+
+**RPM:**
+- Native Fedora/RHEL integration
+- Dependencies: `webkit2gtk4.1`, `gtk3`
+- Size: ~60-80 MB
+- Usage: `sudo dnf install *.rpm`
 
 ## Mobile Builds (Tauri)
 

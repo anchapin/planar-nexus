@@ -33,13 +33,16 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.png"
     ],
     "category": "Game",
     "shortDescription": "A digital Magic: The Gathering tabletop experience",
     "longDescription": "Planar Nexus is a digital Magic: The Gathering tabletop experience built with Next.js, featuring deck building, AI coaching, and multiplayer functionality.",
     "copyright": "Copyright 2024 Planar Nexus",
     "publisher": "Planar Nexus",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
     "windows": {
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
@@ -65,14 +68,24 @@
     },
     "linux": {
       "appimage": {
-        "bundleMediaFramework": true
+        "bundleMediaFramework": true,
+        "files": {}
       },
       "deb": {
-        "depends": [],
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ],
         "files": {}
       },
       "rpm": {
-        "depends": []
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3"
+        ],
+        "epoch": 0,
+        "release": "1",
+        "files": {}
       }
     },
     "ios": {
