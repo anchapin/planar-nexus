@@ -1,12 +1,39 @@
 /**
  * Claude AI Provider
  * Issue #43: Integrate Claude API via Anthropic SDK
- * 
+ *
  * This module provides Claude (Anthropic) AI integration for the Planar Nexus application.
  * It supports Haiku, Sonnet, and Opus models.
+ *
+ * Note: The @anthropic-ai/sdk dependency was removed in Issue #446.
+ * This file is retained for backward compatibility but is no longer functional.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+// Stub types for Anthropic SDK (dependency removed)
+interface Anthropic {
+  messages: {
+    create: (config: any) => Promise<any>;
+    stream: (config: any) => any;
+  };
+}
+
+interface AnthropicMessage {
+  content: Array<{ type: string; text?: string }>;
+}
+
+interface AnthropicConstructor {
+  new (config: any): Anthropic;
+}
+
+// Stub Anthropic class
+const Anthropic = class implements Anthropic {
+  constructor(config: any) {}
+  messages = {
+    create: async (config: any) => ({ content: [] }),
+    stream: async (config: any) => ({ async *[Symbol.asyncIterator]() {} })
+  };
+} as AnthropicConstructor;
+
 import { AIProviderConfig, DEFAULT_MODELS } from './types';
 
 /**
@@ -54,11 +81,11 @@ export function createClaudeClient(config: ClaudeProviderConfig): Anthropic {
  */
 export interface ClaudeMessageRequest {
   model: string;
-  messages: Anthropic.MessageParam[];
+  messages: any[];
   maxTokens?: number;
   temperature?: number;
   system?: string;
-  tools?: Anthropic.Tool[];
+  tools?: any[];
 }
 
 /**
@@ -70,7 +97,7 @@ export interface ClaudeMessageRequest {
 export async function sendClaudeMessage(
   config: ClaudeProviderConfig,
   request: Omit<ClaudeMessageRequest, 'model'>
-): Promise<Anthropic.Message> {
+): Promise<any> {
   const client = createClaudeClient(config);
   
   const response = await client.messages.create({
@@ -90,9 +117,9 @@ export async function sendClaudeMessage(
  * @param response - Claude's message response
  * @returns Text content from the response
  */
-export function claudeResponseToText(response: Anthropic.Message): string {
+export function claudeResponseToText(response: any): string {
   const textContent = response.content.find(
-    (block) => block.type === 'text'
+    (block: { type: string }) => block.type === 'text'
   );
   
   if (textContent && textContent.type === 'text') {
@@ -167,7 +194,7 @@ export function validateClaudeApiKey(apiKey: string): boolean {
 export async function* sendClaudeMessageStream(
   config: ClaudeProviderConfig,
   request: Omit<ClaudeMessageRequest, 'model'>
-): AsyncGenerator<Anthropic.MessageStreamEvent> {
+): AsyncGenerator<any> {
   const client = createClaudeClient(config);
   
   const stream = await client.messages.stream({
