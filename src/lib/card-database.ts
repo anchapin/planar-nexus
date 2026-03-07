@@ -6,8 +6,24 @@
  */
 
 import Fuse from 'fuse.js';
+import type { IFuseOptions } from 'fuse.js';
 
 // Minimal card data for offline use (subset of Scryfall data)
+
+/**
+ * Shared Fuse.js search options for fuzzy card search
+ */
+export const FUSE_SEARCH_OPTIONS: IFuseOptions<MinimalCard> = {
+  keys: [
+    { name: 'name', weight: 0.7 },
+    { name: 'type_line', weight: 0.2 },
+    { name: 'oracle_text', weight: 0.1 },
+  ],
+  threshold: 0.3, // Lower = more strict matching
+  distance: 100,
+  minMatchCharLength: 2,
+  includeScore: true,
+};
 export interface MinimalCard {
   id: string;
   oracle_id?: string;
@@ -347,19 +363,7 @@ export async function initializeCardDatabase(): Promise<void> {
  * Initialize Fuse.js for fuzzy search
  */
 function initializeFuzzySearch(cards: MinimalCard[]): void {
-  const fuseOptions: any = {
-    keys: [
-      { name: 'name', weight: 0.7 },
-      { name: 'type_line', weight: 0.2 },
-      { name: 'oracle_text', weight: 0.1 },
-    ],
-    threshold: 0.3, // Lower = more strict matching
-    distance: 100,
-    minMatchCharLength: 2,
-    includeScore: true,
-  };
-
-  fuseInstance = new Fuse(cards, fuseOptions);
+  fuseInstance = new Fuse(cards, FUSE_SEARCH_OPTIONS);
 }
 
 /**

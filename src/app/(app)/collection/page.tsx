@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection } from "@/hooks/use-collection";
 import type { ScryfallCard } from "@/app/actions";
 import { searchCardsOffline } from "@/lib/card-database";
+import { type Format } from "@/lib/game-rules";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -198,7 +199,7 @@ export default function CollectionPage() {
     try {
       const results = await searchCardsOffline(searchQuery, {
         maxCards: 20,
-        format: "commander",
+        format: "commander" as Format,
         includeImages: true,
       });
       setSearchResults(results as ScryfallCard[]);

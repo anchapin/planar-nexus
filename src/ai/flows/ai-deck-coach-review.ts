@@ -12,6 +12,7 @@
 
 import { reviewDeckHeuristic } from '@/lib/heuristic-deck-coach';
 import { validateCardLegality } from '@/lib/server-card-operations';
+import { type Format } from '@/lib/game-rules';
 
 // Input types for deck review function
 export interface DeckReviewInput {

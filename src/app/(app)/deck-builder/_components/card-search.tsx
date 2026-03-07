@@ -3,6 +3,7 @@
 import { useState, useTransition, useCallback, useEffect } from "react";
 import type { ScryfallCard } from "@/app/actions";
 import { initializeCardDatabase, getDatabaseStatus, searchCardsOffline } from "@/lib/card-database";
+import { type Format } from "@/lib/game-rules";
 import { Input } from "@/components/ui/input";
 import { Search, Database, Loader2 } from "lucide-react";
 import Image from "next/image";
@@ -52,7 +53,7 @@ export function CardSearch({ onAddCard }: CardSearchProps) {
       // Since we don't have access to format prop, we'll default to commander
       const searchResults = await searchCardsOffline(searchQuery, {
         maxCards: 50,
-        format: 'commander',
+        format: 'commander' as Format,
         includeImages: true,
       });
       setResults(searchResults as ScryfallCard[]);

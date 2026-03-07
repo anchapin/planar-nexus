@@ -8,12 +8,14 @@
 
 import type { ScryfallCard, DeckCard } from '@/app/actions';
 import { initializeCardDatabase, searchCardsOffline, getCardByName } from '@/lib/card-database';
+import { type Format } from '@/lib/game-rules';
+import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
 
 /**
  * Search for cards using local IndexedDB database with fuzzy search
  * This provides instant results and works offline
  */
-export async function searchCardsClient(query: string, format?: string): Promise<ScryfallCard[]> {
+export async function searchCardsClient(query: string, format?: Format): Promise<ScryfallCard[]> {
   if (!query || query.length < 3) {
     return [];
   }
@@ -58,7 +60,7 @@ export async function fetchCardByNameClient(name: string): Promise<ScryfallCard 
  */
 export async function validateCardLegalityClient(
   cards: { name: string; quantity: number }[],
-  format: string
+  format: Format
 ): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
   if (!cards || cards.length === 0) {
     return { found: [], notFound: [], illegal: [] };
@@ -68,53 +70,56 @@ export async function validateCardLegalityClient(
     // Ensure database is initialized
     await initializeCardDatabase();
 
-    // 1. Sanitize and aggregate input
-    const cardRequestMap = new Map<string, { originalName: string; quantity: number }>();
-    const malformedInputs: string[] = [];
+    const { cardMap, malformedInputs } = sanitizeCardInput(cards);
 
-    for (const card of cards) {
-      if (!card || typeof card.name !== 'string' || card.name.trim() === '' || typeof card.quantity !== 'number' || card.quantity <= 0) {
-        malformedInputs.push(card?.name || 'Malformed Input');
-        continue;
-      }
-      const lowerCaseName = card.name.toLowerCase();
-      const existing = cardRequestMap.get(lowerCaseName);
-      if (existing) {
-        existing.quantity += card.quantity;
-      } else {
-        cardRequestMap.set(lowerCaseName, { originalName: card.name, quantity: card.quantity });
-      }
-    }
-
-    if (cardRequestMap.size === 0) {
+    if (cardMap.size === 0) {
       return { found: [], notFound: malformedInputs, illegal: [] };
     }
 
-    // 2. Fetch from local database
-    const found: DeckCard[] = [];
-    const illegal: string[] = [];
-    const notFoundNames = new Set(cardRequestMap.keys());
-
-    // Process each card request
-    for (const [lowerCaseName, requestDetails] of cardRequestMap.entries()) {
+    // Fetch from local database - use Promise.all for parallel processing
+    const cardLookupPromises = Array.from(cardMap.entries()).map(async ([lowerCaseName, requestDetails]) => {
       try {
         const dbCard = await getCardByName(requestDetails.originalName);
 
         if (dbCard) {
-          notFoundNames.delete(lowerCaseName);
           const isLegal = dbCard.legalities?.[format] === 'legal';
-          if (isLegal) {
-            found.push({ ...dbCard, count: requestDetails.quantity } as DeckCard);
-          } else {
-            illegal.push(requestDetails.originalName);
-          }
+          return {
+            card: dbCard,
+            quantity: requestDetails.quantity,
+            originalName: requestDetails.originalName,
+            isLegal,
+            lowerCaseName,
+          };
         }
+
+        return null;
       } catch (error) {
         console.error(`Failed to fetch card: ${requestDetails.originalName}`, error);
+        return null;
+      }
+    });
+
+    const lookupResults = await Promise.all(cardLookupPromises);
+
+    const found: DeckCard[] = [];
+    const illegal: string[] = [];
+    const notFoundNames = new Set<string>(cardMap.keys());
+
+    for (const result of lookupResults) {
+      if (!result) continue;
+
+      const { card, quantity, originalName, isLegal, lowerCaseName } = result;
+
+      notFoundNames.delete(lowerCaseName);
+
+      if (isLegal) {
+        found.push({ ...card, count: quantity } as DeckCard);
+      } else {
+        illegal.push(originalName);
       }
     }
 
-    const notFound = Array.from(notFoundNames).map(name => cardRequestMap.get(name)!.originalName);
+    const notFound = Array.from(notFoundNames).map(name => cardMap.get(name)!.originalName);
 
     return { found, notFound: [...notFound, ...malformedInputs], illegal };
   } catch (error) {
@@ -128,7 +133,7 @@ export async function validateCardLegalityClient(
  */
 export async function importDecklistClient(
   decklist: string,
-  format?: string
+  format?: Format
 ): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
   const lines = decklist.split('\n').filter(line => line.trim() !== '');
   if (lines.length === 0) {
@@ -138,12 +143,10 @@ export async function importDecklistClient(
   const cardDetails: { name: string; quantity: number }[] = [];
 
   for (const line of lines) {
-    // Improved regex to better handle various decklist formats
     const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
     if (match) {
       const name = match[2]?.trim();
       const count = parseInt(match[1] || '1', 10);
-      // Ensure name is not just tokens like "Sideboard"
       if (name && !/^\/\//.test(name) && name.toLowerCase() !== 'sideboard') {
         cardDetails.push({ name, quantity: count });
       }
@@ -151,24 +154,10 @@ export async function importDecklistClient(
   }
 
   if (cardDetails.length === 0) {
-    // If no parsable card lines were found, return all original lines as "not found"
     return { found: [], notFound: lines, illegal: [] };
   }
 
   const { found, notFound, illegal } = await validateCardLegalityClient(cardDetails, format || 'commander');
 
-  // Aggregate found cards by their Scryfall ID to combine different prints of the same card.
-  const aggregatedFound = Array.from(
-    found.reduce((acc, card) => {
-      const existing = acc.get(card.id);
-      if (existing) {
-        existing.count += card.count;
-      } else {
-        acc.set(card.id, { ...card });
-      }
-      return acc;
-    }, new Map<string, DeckCard>()).values()
-  );
-
-  return { found: aggregatedFound, notFound, illegal };
+  return { found: aggregateCardsById(found), notFound, illegal };
 }

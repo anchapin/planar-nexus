@@ -14,6 +14,7 @@
 
 import { analyzeMetaHeuristic } from '@/lib/heuristic-meta-analysis';
 import { importDecklist } from '@/lib/server-card-operations';
+import { type Format } from '@/lib/game-rules';
 
 export interface MetaAnalysisInput {
   decklist: string;

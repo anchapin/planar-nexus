@@ -2,6 +2,7 @@
 import { reviewDeck, DeckReviewInput } from "@/ai/flows/ai-deck-coach-review";
 import { generateAIOpponentDeck, AIOpponentDeckGenerationInput } from "@/ai/flows/ai-opponent-deck-generation";
 import { MinimalCard } from "@/lib/card-database";
+import { type Format } from "@/lib/game-rules";
 
 export interface ScryfallCard extends MinimalCard {
   power?: string;
@@ -18,7 +19,7 @@ export interface DeckCard extends ScryfallCard {
 export interface SavedDeck {
   id: string;
   name:string;
-  format: string;
+  format: Format;
   cards: DeckCard[];
   createdAt: string;
   updatedAt: string;

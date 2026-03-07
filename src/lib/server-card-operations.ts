@@ -7,8 +7,10 @@
 
 import Fuse from 'fuse.js';
 import type { MinimalCard } from './card-database';
-import { ESSENTIAL_CARDS } from './card-database';
+import { ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS } from './card-database';
 import type { DeckCard } from '@/app/actions';
+import { type Format } from '@/lib/game-rules';
+import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
 
 // Type definitions for card operations (server-side compatibility)
 export type ScryfallCard = MinimalCard;
@@ -17,7 +19,7 @@ export interface DeckCard extends ScryfallCard {
 }
 
 // In-memory cache for fuzzy search
-let fuseInstance: any | null = null;
+let fuseInstance: Fuse<MinimalCard> | null = null;
 let isInitialized = false;
 interface MinimalCard {
   id: string;
@@ -70,20 +72,7 @@ async function initializeServerCardOperations(): Promise<void> {
   }
 
   try {
-    // Initialize Fuse.js with embedded card data
-    const fuseOptions: any = {
-      keys: [
-        { name: 'name', weight: 0.7 },
-        { name: 'type_line', weight: 0.2 },
-        { name: 'oracle_text', weight: 0.1 },
-      ],
-      threshold: 0.3,
-      distance: 100,
-      minMatchCharLength: 2,
-      includeScore: true,
-    };
-
-    fuseInstance = new Fuse(ESSENTIAL_CARDS, fuseOptions);
+    fuseInstance = new Fuse(ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS);
     isInitialized = true;
   } catch (error) {
     console.error('Failed to initialize server-side card operations:', error);
@@ -97,7 +86,7 @@ async function initializeServerCardOperations(): Promise<void> {
  */
 export async function validateCardLegality(
   cards: { name: string; quantity: number }[],
-  format: string
+  format: Format
 ): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
   await initializeServerCardOperations();
 
@@ -105,35 +94,19 @@ export async function validateCardLegality(
     return { found: [], notFound: [], illegal: [] };
   }
 
-  const found: DeckCard[] = [];
-  const illegal: string[] = [];
-  const notFoundNames = new Set<string>();
+  const { cardMap, malformedInputs } = sanitizeCardInput(cards);
 
-  // Create a map of normalized card names to original names
-  const cardRequestMap = new Map<string, { originalName: string; quantity: number }>();
-  const malformedInputs: string[] = [];
-
-  for (const card of cards) {
-    if (!card || typeof card.name !== 'string' || card.name.trim() === '' || typeof card.quantity !== 'number' || card.quantity <= 0) {
-      malformedInputs.push(card?.name || 'Malformed Input');
-      continue;
-    }
-    const lowerCaseName = card.name.toLowerCase();
-    const existing = cardRequestMap.get(lowerCaseName);
-    if (existing) {
-      existing.quantity += card.quantity;
-    } else {
-      cardRequestMap.set(lowerCaseName, { originalName: card.name, quantity: card.quantity });
-    }
-  }
-
-  if (cardRequestMap.size === 0) {
+  if (cardMap.size === 0) {
     return { found: [], notFound: malformedInputs, illegal: [] };
   }
 
   // Find cards in embedded data
-  for (const [lowerCaseName, requestDetails] of Array.from(cardRequestMap.entries())) {
-    const cardInDb = ESSENTIAL_CARDS.find((c: MinimalCard) => c.name.toLowerCase() === lowerCaseName);
+  const found: DeckCard[] = [];
+  const illegal: string[] = [];
+  const notFoundNames = new Set<string>();
+
+  for (const [lowerCaseName, requestDetails] of cardMap.entries()) {
+    const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
 
     if (cardInDb) {
       const isLegal = cardInDb.legalities?.[format] === 'legal';
@@ -157,7 +130,7 @@ export async function validateCardLegality(
  */
 export async function importDecklist(
   decklist: string,
-  format?: string
+  format?: Format
 ): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
   const lines = decklist.split('\n').filter(line => line.trim() !== '');
   if (lines.length === 0) {
@@ -167,12 +140,10 @@ export async function importDecklist(
   const cardDetails: { name: string; quantity: number }[] = [];
 
   for (const line of lines) {
-    // Improved regex to better handle various decklist formats
     const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
     if (match) {
       const name = match[2]?.trim();
       const count = parseInt(match[1] || '1', 10);
-      // Ensure name is not just tokens like "Sideboard"
       if (name && !/^\/\//.test(name) && name.toLowerCase() !== 'sideboard') {
         cardDetails.push({ name, quantity: count });
       }
@@ -180,7 +151,6 @@ export async function importDecklist(
   }
 
   if (cardDetails.length === 0) {
-    // If no parsable card lines were found, return all original lines as "not found"
     return { found: [], notFound: lines, illegal: [] };
   }
 
