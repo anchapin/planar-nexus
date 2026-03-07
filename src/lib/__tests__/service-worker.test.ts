@@ -131,7 +131,7 @@ describe('Service Worker Caching', () => {
       await caches.open('planar-nexus-static-v1');
 
       // Mock response for keys()
-      (caches.keys as jest.Mock).mockResolvedValue([
+      ((caches.keys as jest.Mock).mockResolvedValue as any)([
         { name: 'planar-nexus-v1' } as any,
         { name: 'planar-nexus-static-v1' } as any,
         { name: 'planar-nexus-static-v2' } as any,
