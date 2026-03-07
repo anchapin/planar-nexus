@@ -76,11 +76,30 @@ class DeckStorageManager {
    * Convert Deck to StoredDeck for IndexedDB
    */
   private toStoredDeck(deck: Deck): StoredDeck {
+    const storedCards: any[] = deck.cards.map((card: any) => ({
+      card: {
+        id: card.id,
+        name: card.name,
+        cmc: card.cmc || 0,
+        colors: card.colors || [],
+        color_identity: card.color_identity,
+        type_line: card.type_line,
+        image_uris: card.image_uris ? {
+          normal: card.image_uris.normal,
+          large: card.image_uris.large,
+        } : undefined,
+        oracle_text: card.oracle_text,
+        mana_cost: card.mana_cost,
+        keywords: card.keywords,
+      },
+      count: card.quantity,
+    }));
+
     return {
       id: deck.id,
       name: deck.name,
       format: deck.format,
-      cards: deck.cards,
+      cards: storedCards as any,
       createdAt: deck.createdAt,
       updatedAt: deck.updatedAt,
       metadata: deck.metadata || {},
@@ -95,7 +114,18 @@ class DeckStorageManager {
       id: stored.id,
       name: stored.name,
       format: stored.format,
-      cards: stored.cards,
+      cards: stored.cards.map(storedCard => ({
+        ...storedCard.card,
+        image_uris: storedCard.card.image_uris ? {
+          small: storedCard.card.image_uris.normal || '',
+          normal: storedCard.card.image_uris.normal || '',
+          large: storedCard.card.image_uris.large || '',
+          png: storedCard.card.image_uris.large || '',
+          art_crop: storedCard.card.image_uris.large || '',
+          border_crop: storedCard.card.image_uris.large || '',
+        } : undefined,
+        quantity: storedCard.count,
+      })) as any,
       createdAt: stored.createdAt,
       updatedAt: stored.updatedAt,
       metadata: stored.metadata,
@@ -465,7 +495,7 @@ export function validateDeckFormat(deck: Deck): {
         errors.push(`${deck.format} decks must have at least 60 cards`);
       }
       break;
-    case 'pauper':
+    case 'pauper': {
       if (totalCards < 60) {
         errors.push('Pauper decks must have at least 60 cards');
       }
@@ -477,6 +507,7 @@ export function validateDeckFormat(deck: Deck): {
         errors.push('Pauper decks can only contain common cards');
       }
       break;
+    }
   }
 
   return {

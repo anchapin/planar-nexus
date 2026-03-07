@@ -120,27 +120,45 @@ export function AutoSaveSettings() {
   };
 
   // Update auto-save count
-  const updateAutoSaveCount = () => {
-    const autoSaves = savedGamesManager.getAutoSaves();
-    setAutoSaveCount(autoSaves.length);
+  const updateAutoSaveCount = async () => {
+    try {
+      const autoSaves = await savedGamesManager.getAutoSaves();
+      setAutoSaveCount(autoSaves.length);
+    } catch (error) {
+      console.error('Failed to update auto-save count:', error);
+    }
   };
 
   // Clear all auto-saves
-  const handleClearAutoSaves = () => {
-    const autoSaves = savedGamesManager.getAutoSaves();
-    let deleted = 0;
-    
-    for (const save of autoSaves) {
-      if (savedGamesManager.deleteGame(save.id)) {
-        deleted++;
+  const handleClearAutoSaves = async () => {
+    try {
+      const autoSaves = await savedGamesManager.getAutoSaves();
+      let deleted = 0;
+
+      for (const save of autoSaves) {
+        try {
+          const result = await savedGamesManager.deleteGame(save.id);
+          if (result) {
+            deleted++;
+          }
+        } catch (error) {
+          console.error(`Failed to delete auto-save ${save.id}:`, error);
+        }
       }
+
+      updateAutoSaveCount();
+      toast({
+        title: 'Auto-Saves Cleared',
+        description: `Deleted ${deleted} auto-save${deleted !== 1 ? 's' : ''}.`,
+      });
+    } catch (error) {
+      console.error('Failed to clear auto-saves:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to clear auto-saves.',
+        variant: 'destructive',
+      });
     }
-    
-    updateAutoSaveCount();
-    toast({
-      title: 'Auto-Saves Cleared',
-      description: `Deleted ${deleted} auto-save${deleted !== 1 ? 's' : ''}.`,
-    });
   };
 
   // Reset to defaults

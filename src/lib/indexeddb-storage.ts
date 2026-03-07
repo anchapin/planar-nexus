@@ -136,6 +136,7 @@ export interface StoredGame {
  * Usage record for AI tracking
  */
 export interface UsageRecord {
+  id: string;
   provider: string;
   timestamp: number;
   tokensUsed: number;
@@ -150,6 +151,7 @@ export interface UsageRecord {
  * Player achievements data
  */
 export interface PlayerAchievements {
+  id: string;
   playerId: string;
   achievements: Array<{
     achievementId: string;
@@ -413,7 +415,7 @@ export class IndexedDBStorage {
   async queryByIndex<T>(
     storeName: string,
     indexName: string,
-    value: unknown,
+    value: IDBValidKey | IDBKeyRange,
     count?: number
   ): Promise<T[]> {
     await this.ensureInitialized();
@@ -467,11 +469,11 @@ export class IndexedDBStorage {
       decks,
       savedGames,
       preferences: preferences.reduce((acc, pref) => {
-        if (pref.id) {
-          acc[pref.id] = pref;
+        if (pref && typeof pref === 'object' && 'id' in pref && pref.id) {
+          acc[pref.id as string] = pref as { id: string } & Record<string, unknown>;
         }
         return acc;
-      }, {} as Record<string, unknown>),
+      }, {} as Record<string, { id: string } & Record<string, unknown>>),
       usageTracking,
       achievements,
       checksum: '',
