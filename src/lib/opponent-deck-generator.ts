@@ -15,9 +15,6 @@
 import { formatRules, Format } from './game-rules';
 import type { MinimalCard } from './card-database';
 
-// Re-export Format type for test imports
-export type { Format };
-
 // Difficulty levels that map to deck quality
 export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'expert';
 
@@ -57,10 +54,7 @@ export type StrategicTheme =
   | 'trample'       // Trample threats
   | 'haste'         // Haste creatures
   | 'flash'         // Flash creatures
-  | 'aristocrats'    // Sacrifice synergies
-  | 'tempo'         // Disruptive control
-  | 'toolbox'       // Silver bullet creatures
-  | 'toolbox'       // Silver bullet creatures;
+  | 'toolbox';      // Silver bullet creatures
 
 export interface OpponentDeckGenerationInput {
   format: Format;
@@ -538,16 +532,6 @@ const THEME_MODIFIERS: Record<StrategicTheme, ThemeCardPool> = {
     additionalSpells: ['Fabricate', 'Birthing Pod', 'Chord of Calling'],
     keyCards: ['Eternal Witness', 'Chord of Calling'],
   },
-  aristocrats: {
-    additionalCreatures: ['Blood Artist', 'Zulaport Cutthroat', 'Carrion Feeder'],
-    additionalSpells: ['Viscera Seer', 'Altar\'s Reap', 'Butcher Ghoul'],
-    keyCards: ['Blood Artist', 'Zulaport Cutthroat'],
-  },
-  tempo: {
-    additionalCreatures: ['Delver of Secrets', 'Spellstutter Sprite', 'Noble Hierarch'],
-    additionalSpells: ['Daze', 'Force of Will', 'Cryptic Command'],
-    keyCards: ['Delver of Secrets', 'Force of Will'],
-  },
 };
 
 // Helper to get random items from array with weighting
@@ -966,8 +950,6 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
     haste: 'Haste',
     flash: 'Flash',
     toolbox: 'Toolbox',
-    aristocrats: 'Aristocrats',
-    tempo: 'Tempo',
   };
 
   const deckName = `${colors} ${archetypeNames[archetype]} - ${themeNames[finalTheme]}`;
