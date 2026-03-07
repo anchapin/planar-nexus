@@ -15,7 +15,7 @@ import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
  * Search for cards using local IndexedDB database with fuzzy search
  * This provides instant results and works offline
  */
-export async function searchCardsClient(query: string, format?: Format): Promise<ScryfallCard[]> {
+export async function searchCardsClient(query: string): Promise<ScryfallCard[]> {
   if (!query || query.length < 3) {
     return [];
   }
@@ -27,7 +27,6 @@ export async function searchCardsClient(query: string, format?: Format): Promise
     // Perform fuzzy search
     const results = await searchCardsOffline(query, {
       maxCards: 50,
-      format: format || 'commander',
       includeImages: true,
     });
 
@@ -82,7 +81,7 @@ export async function validateCardLegalityClient(
         const dbCard = await getCardByName(requestDetails.originalName);
 
         if (dbCard) {
-          const isLegal = dbCard.legalities?.[format] === 'legal';
+          const isLegal = dbCard.legalities?.[format as keyof typeof dbCard.legalities] === 'legal';
           return {
             card: dbCard,
             quantity: requestDetails.quantity,

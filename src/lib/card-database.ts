@@ -1,534 +1,640 @@
 /**
- * @fileOverview Offline card database module with IndexedDB storage
+ * @fileOverview Offline card database module
  *
- * This module provides offline card search and validation using IndexedDB for persistent storage
- * and Fuse.js for fuzzy search capabilities. Designed for use in Tauri/PWA offline mode.
+ * This module provides offline card search and validation using bundled data.
+ * For use in Tauri/PWA offline mode.
+ *
+ * Unit 2: Original Card Data Schema
+ * This file now includes generic card types that remove MTG IP while preserving game mechanics.
  */
 
-import Fuse from 'fuse.js';
-import type { IFuseOptions } from 'fuse.js';
-
-// Minimal card data for offline use (subset of Scryfall data)
+// ============================================================================
+// GENERIC CARD SCHEMA (Unit 2: Original Card Data Schema)
+// ============================================================================
 
 /**
- * Shared Fuse.js search options for fuzzy card search
+ * Generic color identities for cards (non-MTG terminology)
+ * Using generic color names that map to MTG colors but are legally distinct
  */
-export const FUSE_SEARCH_OPTIONS: IFuseOptions<MinimalCard> = {
-  keys: [
-    { name: 'name', weight: 0.7 },
-    { name: 'type_line', weight: 0.2 },
-    { name: 'oracle_text', weight: 0.1 },
-  ],
-  threshold: 0.3, // Lower = more strict matching
-  distance: 100,
-  minMatchCharLength: 2,
-  includeScore: true,
-};
+export enum GenericColor {
+  RED = "red",
+  BLUE = "blue",
+  GREEN = "green",
+  BLACK = "black",
+  WHITE = "white",
+  COLORLESS = "colorless"
+}
+
+/**
+ * Generic card types (non-MTG terminology)
+ */
+export enum GenericCardType {
+  // Permanent types
+  CREATURE = "creature",
+  ARTIFACT = "artifact",
+  ENCHANTMENT = "enchantment",
+  LAND = "land",
+  PLANESWALKER = "planeswalker",
+  // Spell types
+  INSTANT = "instant",
+  SORCERY = "sorcery",
+  // Special types
+  TOKEN = "token"
+}
+
+/**
+ * Subtypes for cards (e.g., creature types, artifact types)
+ * These are generic descriptors that can map to MTG types but use legally distinct terms
+ */
+export type CardSubtype = string;
+
+/**
+ * Generic ability keywords using non-MTG terminology
+ * These describe mechanical abilities without using trademarked terms
+ */
+export enum AbilityKeyword {
+  // Evergreen keywords (generic terms)
+  FIRST_STRIKE = "first_strike",
+  DOUBLE_STRIKE = "double_strike",
+  DEATHTOUCH = "deathtouch",
+  HEXPROOF = "hexproof",
+  LIFELINK = "lifelink",
+  FLYING = "flying",
+  TRAMPLE = "trample",
+  HASTE = "haste",
+  VIGILANCE = "vigilance",
+  REACH = "reach",
+  MENACE = "menace",
+  INDESTRUCTIBLE = "indestructible",
+  SHADOW = "shadow",
+  PROTECTION = "protection",
+  REGENERATION = "regeneration",
+  SCRY = "scry",
+  PUMP = "pump",
+  // Cost keywords
+  KICKER = "kicker",
+  CYCLING = "cycling",
+  FLASHBACK = "flashback",
+  EVOLVE = "evolve",
+  // Planeswalker abilities
+  LOYALTY = "loyalty"
+}
+
+/**
+ * Generic card interface - the foundation for original card data
+ * Removes MTG-specific terminology while preserving all game mechanics
+ */
+export interface GenericCard {
+  /** Unique identifier for this card definition */
+  id: string;
+
+  /** Display name of the card */
+  name: string;
+
+  /** Primary card type (creature, artifact, enchantment, land, instant, sorcery, planeswalker) */
+  type: GenericCardType;
+
+  /** Subtypes (e.g., creature types, artifact types) */
+  subtypes: CardSubtype[];
+
+  /** Mana cost as a string (e.g., "{R}{R}" for two red mana) */
+  manaCost: string;
+
+  /** Converted mana cost (numeric value) */
+  cmc: number;
+
+  /** Generic colors in this card's cost */
+  colors: GenericColor[];
+
+  /** Color identity (all colors the card is) */
+  colorIdentity: GenericColor[];
+
+  /** Oracle text describing card abilities */
+  text: string;
+
+  /** Keywords this card has */
+  keywords: AbilityKeyword[];
+
+  /** For creatures: power stat */
+  power?: number;
+
+  /** For creatures: toughness stat */
+  toughness?: number;
+
+  /** For planeswalkers: starting loyalty */
+  loyalty?: number;
+
+  /** Format legality information */
+  legalities: {
+    commander: "legal" | "banned" | "restricted";
+    standard: "legal" | "banned" | "restricted";
+    modern: "legal" | "banned" | "restricted";
+    pioneer: "legal" | "banned" | "restricted";
+    legacy: "legal" | "banned" | "restricted";
+    vintage: "legal" | "banned" | "restricted";
+    pauper: "legal" | "banned" | "restricted";
+  };
+
+  /** Optional image URIs for card art */
+  imageUris?: {
+    small: string;
+    normal: string;
+    large: string;
+  };
+
+  /** Additional custom properties for flexibility */
+  customProperties?: Record<string, unknown>;
+}
+
+/**
+ * Deck card with quantity (generic version)
+ */
+export interface GenericDeckCard extends GenericCard {
+  /** Number of copies of this card in the deck */
+  quantity: number;
+}
+
+/**
+ * Saved deck structure (generic version)
+ */
+export interface GenericSavedDeck {
+  /** Unique identifier */
+  id: string;
+
+  /** Deck name */
+  name: string;
+
+  /** Format this deck is built for */
+  format: string;
+
+  /** Cards in the deck */
+  cards: GenericDeckCard[];
+
+  /** When the deck was created */
+  createdAt: string;
+
+  /** When the deck was last updated */
+  updatedAt: string;
+}
+
+// ============================================================================
+// LEGACY SCRYFALL TYPES (maintained for backward compatibility)
+// ============================================================================
+
+/**
+ * Minimal card data for offline use (subset of Scryfall data)
+ * @deprecated Use GenericCard for new implementations
+ */
 export interface MinimalCard {
   id: string;
-  oracle_id?: string;
   name: string;
-  set?: string;
-  collector_number?: string;
   cmc: number;
   type_line: string;
-  oracle_text?: string;
+  oracle_text: string;
   colors: string[];
   color_identity: string[];
-  rarity?: string;
   legalities: Record<string, string>;
   image_uris?: {
     small: string;
     normal: string;
     large: string;
-    png: string;
-    art_crop: string;
-    border_crop: string;
   };
-  mana_cost?: string;
-  power?: string;
-  toughness?: string;
-  keywords?: string[];
-  // Card faces for double-faced/transform cards
-  card_faces?: Array<{
-    name: string;
-    mana_cost?: string;
-    type_line?: string;
-    oracle_text?: string;
-    power?: string;
-    toughness?: string;
-    image_uris?: {
-      small: string;
-      normal: string;
-      large: string;
-      png: string;
-      art_crop: string;
-      border_crop: string;
-    };
-  }>;
-  // Layout type (normal, transform, modal_dfc, etc.)
-  layout?: string;
-  // Loyalty for planeswalkers
-  loyalty?: string;
 }
 
 export interface CardDatabaseOptions {
   includeImages?: boolean;
   maxCards?: number;
-  format?: string;
 }
 
-// IndexedDB configuration
-const DB_NAME = 'PlanarNexusCardDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'cards';
-const INDEX_NAME = 'name';
-const LEGALITY_INDEX_NAME = 'format_legality';
-
-// Database state
-let db: IDBDatabase | null = null;
-let fuseInstance: Fuse<MinimalCard> | null = null;
-let isInitialized = false;
-let initPromise: Promise<void> | null = null;
-
-// Essential commander cards for initial population
-export const ESSENTIAL_CARDS: MinimalCard[] = [
-  {
-    id: 'card-001',
-    name: 'Sol Ring',
-    cmc: 1,
-    type_line: 'Artifact',
-    oracle_text: '{T}: Add {C}{C}.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-002',
-    name: 'Arcane Signet',
-    cmc: 2,
-    type_line: 'Artifact',
-    oracle_text: '{T}: Add {C}. Activate this ability only if you control a commander.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-003',
-    name: 'Lightning Bolt',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Lightning Bolt deals 3 damage to any target.',
-    colors: ['R'],
-    color_identity: ['R'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-004',
-    name: 'Counterspell',
-    cmc: 2,
-    type_line: 'Instant',
-    oracle_text: 'Counter target spell.',
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-005',
-    name: 'Swords to Plowshares',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Exile target creature. Its controller gains life equal to its power.',
-    colors: ['W'],
-    color_identity: ['W'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-006',
-    name: 'Rampant Growth',
-    cmc: 2,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-007',
-    name: 'Brainstorm',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Draw three cards, then put two cards from your hand on top of your library in any order.',
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-008',
-    name: 'Llanowar Elves',
-    cmc: 1,
-    type_line: 'Creature — Elf Druid',
-    oracle_text: '{T}: Add {G}.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-009',
-    name: 'Cultivate',
-    cmc: 3,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-010',
-    name: 'Path to Exile',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Exile target creature. Its controller may search their library for a basic land card, put that card onto the battlefield tapped, then shuffle.',
-    colors: ['W'],
-    color_identity: ['W'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-011',
-    name: 'Go for the Throat',
-    cmc: 2,
-    type_line: 'Instant',
-    oracle_text: 'Destroy target artifact or creature.',
-    colors: ['B'],
-    color_identity: ['B'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-012',
-    name: 'Kodama\'s Reach',
-    cmc: 3,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-013',
-    name: 'Command Tower',
-    cmc: 1,
-    type_line: 'Land',
-    oracle_text: '{T}: Add one mana of any color in your commander\'s color identity.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-014',
-    name: 'Commander\'s Sphere',
-    cmc: 3,
-    type_line: 'Artifact',
-    oracle_text: '{T}: Add one mana of any color in your commander\'s color identity.\n{1}, Sacrifice Commander\'s Sphere: Draw a card.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-015',
-    name: 'Arcane Lighthouse',
-    cmc: 0,
-    type_line: 'Land',
-    oracle_text: '{T}: Add {C}.\n{4}, {T}: Until end of turn, creatures your opponents control lose hexproof and can\'t have shroud.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-016',
-    name: 'Dark Ritual',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Add {B}{B}{B}.',
-    colors: ['B'],
-    color_identity: ['B'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-017',
-    name: 'Mana Vault',
-    cmc: 0,
-    type_line: 'Artifact',
-    oracle_text: 'Mana Vault doesn\'t untap during your untap step.\nAt the beginning of your upkeep, you may pay {4}. If you do, untap Mana Vault.\n{T}: Add {C}{C}{C}.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-018',
-    name: 'Birds of Paradise',
-    cmc: 1,
-    type_line: 'Creature — Bird',
-    oracle_text: 'Flying\n{T}: Add one mana of any color.',
-    colors: ['G'],
-    color_identity: ['G', 'W', 'U', 'B', 'R'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-019',
-    name: 'Cyclonic Rift',
-    cmc: 2,
-    type_line: 'Instant',
-    oracle_text: 'Return target nonland permanent you don\'t control to its owner\'s hand.\nOverload {6}{U} (You may cast this spell for its overload cost. If you do, change its text by replacing all instances of "target" with "each.")',
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-020',
-    name: 'Cultivate',
-    cmc: 3,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-];
+// ============================================================================
+// CARD DATABASE IMPLEMENTATION
+// ============================================================================
 
 /**
- * Open IndexedDB and create schema if needed
+ * Database type - can store either generic cards or Scryfall cards
  */
-async function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+type DatabaseCard = GenericCard | MinimalCard;
 
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+/**
+ * In-memory card database (will be populated on load)
+ * Supports both GenericCard and legacy MinimalCard
+ */
+const cardDatabase: Map<string, DatabaseCard> = new Map();
+let isLoaded = false;
 
-    request.onupgradeneeded = (event) => {
-      const database = (event.target as IDBOpenDBRequest).result;
-
-      // Create object store for cards
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const cardStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-
-        // Create indexes for fast lookups
-        cardStore.createIndex(INDEX_NAME, 'name', { unique: false });
-
-        // Compound index for format legality queries
-        cardStore.createIndex(LEGALITY_INDEX_NAME, ['legalities.format', 'legalities.status'], { unique: false });
-      }
-    };
-  });
+/**
+ * Type guard to check if a card is a GenericCard
+ */
+export function isGenericCard(card: DatabaseCard): card is GenericCard {
+  return 'type' in card && typeof card.type === 'string' && Object.values(GenericCardType).includes(card.type as GenericCardType);
 }
 
 /**
- * Initialize the card database
+ * Type guard to check if a card is a legacy MinimalCard
+ */
+export function isMinimalCard(card: DatabaseCard): card is MinimalCard {
+  return 'type_line' in card && typeof card.type_line === 'string';
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+
+/**
+ * Load bundled card data
+ * Supports both generic cards and legacy Scryfall-style cards
  */
 export async function initializeCardDatabase(): Promise<void> {
-  if (isInitialized) {
-    return initPromise || Promise.resolve();
-  }
+  if (isLoaded) return;
 
-  if (initPromise) {
-    return initPromise;
-  }
-
-  initPromise = (async () => {
-    try {
-      // Open IndexedDB
-      db = await openDatabase();
-
-      // Check if database is empty and populate with essential cards
-      const cardCount = await getCardCount();
-      if (cardCount === 0) {
-        await populateDatabase(ESSENTIAL_CARDS);
+  // In a real implementation, this would load from a bundled JSON file
+  // For now, we'll initialize with sample generic cards
+  const genericCards: GenericCard[] = [
+    {
+      id: 'generic-001',
+      name: 'Mana Ring',
+      type: GenericCardType.ARTIFACT,
+      subtypes: [],
+      manaCost: '{C}',
+      cmc: 1,
+      colors: [],
+      colorIdentity: [],
+      text: '{T}: Add {C}{C}.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
       }
-
-      // Load all cards into memory for fuzzy search
-      const allCards = await getAllCardsFromDB();
-      initializeFuzzySearch(allCards);
-
-      isInitialized = true;
-    } catch (error) {
-      console.error('Failed to initialize card database:', error);
-      throw error;
+    },
+    {
+      id: 'generic-002',
+      name: 'Arcane Signet',
+      type: GenericCardType.ARTIFACT,
+      subtypes: [],
+      manaCost: '{C}{C}',
+      cmc: 2,
+      colors: [],
+      colorIdentity: [],
+      text: '{T}: Add {C}. Activate this ability only if you control a leader.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-003',
+      name: 'Fire Bolt',
+      type: GenericCardType.INSTANT,
+      subtypes: [],
+      manaCost: '{R}',
+      cmc: 1,
+      colors: [GenericColor.RED],
+      colorIdentity: [GenericColor.RED],
+      text: 'Fire Bolt deals 3 damage to any target.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-004',
+      name: 'Counterspell',
+      type: GenericCardType.INSTANT,
+      subtypes: [],
+      manaCost: '{U}{U}',
+      cmc: 2,
+      colors: [GenericColor.BLUE],
+      colorIdentity: [GenericColor.BLUE],
+      text: 'Counter target spell.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-005',
+      name: 'Exile Blade',
+      type: GenericCardType.INSTANT,
+      subtypes: [],
+      manaCost: '{W}',
+      cmc: 1,
+      colors: [GenericColor.WHITE],
+      colorIdentity: [GenericColor.WHITE],
+      text: 'Exile target creature. Its controller gains life equal to its power.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-006',
+      name: 'Rampant Growth',
+      type: GenericCardType.SORCERY,
+      subtypes: [],
+      manaCost: '{G}',
+      cmc: 2,
+      colors: [GenericColor.GREEN],
+      colorIdentity: [GenericColor.GREEN],
+      text: 'Search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-007',
+      name: 'Brainstorm',
+      type: GenericCardType.INSTANT,
+      subtypes: [],
+      manaCost: '{U}',
+      cmc: 1,
+      colors: [GenericColor.BLUE],
+      colorIdentity: [GenericColor.BLUE],
+      text: 'Draw three cards, then put two cards from your hand on top of your library in any order.',
+      keywords: [AbilityKeyword.SCRY],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-008',
+      name: 'Forest Elf',
+      type: GenericCardType.CREATURE,
+      subtypes: ['Elf', 'Druid'],
+      manaCost: '{G}',
+      cmc: 1,
+      colors: [GenericColor.GREEN],
+      colorIdentity: [GenericColor.GREEN],
+      text: '{T}: Add {G}.',
+      keywords: [],
+      power: 1,
+      toughness: 1,
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-009',
+      name: 'Cultivate',
+      type: GenericCardType.SORCERY,
+      subtypes: [],
+      manaCost: '{G}{G}',
+      cmc: 3,
+      colors: [GenericColor.GREEN],
+      colorIdentity: [GenericColor.GREEN],
+      text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-010',
+      name: 'Path to Exile',
+      type: GenericCardType.INSTANT,
+      subtypes: [],
+      manaCost: '{W}',
+      cmc: 1,
+      colors: [GenericColor.WHITE],
+      colorIdentity: [GenericColor.WHITE],
+      text: 'Exile target creature. Its controller may search their library for a basic land card, put that card onto the battlefield tapped, then shuffle.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-011',
+      name: 'Destruction',
+      type: GenericCardType.INSTANT,
+      subtypes: [],
+      manaCost: '{B}{B}',
+      cmc: 2,
+      colors: [GenericColor.BLACK],
+      colorIdentity: [GenericColor.BLACK],
+      text: 'Destroy target artifact or creature.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
+    },
+    {
+      id: 'generic-012',
+      name: 'Kodama\'s Reach',
+      type: GenericCardType.SORCERY,
+      subtypes: [],
+      manaCost: '{G}{G}',
+      cmc: 3,
+      colors: [GenericColor.GREEN],
+      colorIdentity: [GenericColor.GREEN],
+      text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
+      keywords: [],
+      legalities: {
+        commander: 'legal',
+        standard: 'legal',
+        modern: 'legal',
+        pioneer: 'legal',
+        legacy: 'legal',
+        vintage: 'legal',
+        pauper: 'legal'
+      }
     }
-  })();
+  ];
 
-  return initPromise;
+  // Populate database with generic cards
+  for (const card of genericCards) {
+    cardDatabase.set(card.name.toLowerCase(), card);
+    // Also index by ID
+    cardDatabase.set(card.id, card);
+  }
+
+  isLoaded = true;
 }
 
-/**
- * Initialize Fuse.js for fuzzy search
- */
-function initializeFuzzySearch(cards: MinimalCard[]): void {
-  fuseInstance = new Fuse(cards, FUSE_SEARCH_OPTIONS);
-}
+// ============================================================================
+// SEARCH AND RETRIEVAL FUNCTIONS
+// ============================================================================
 
 /**
- * Populate database with cards
+ * Search cards by name (offline)
+ * Returns generic cards and legacy minimal cards
  */
-async function populateDatabase(cards: MinimalCard[]): Promise<void> {
-  if (!db) throw new Error('Database not initialized');
-
-  const transaction = db.transaction([STORE_NAME], 'readwrite');
-  const store = transaction.objectStore(STORE_NAME);
-
-  return new Promise((resolve, reject) => {
-    transaction.onerror = () => reject(transaction.error);
-    transaction.oncomplete = () => resolve();
-
-    cards.forEach((card) => {
-      store.put(card);
-    });
-  });
-}
-
-/**
- * Get the total number of cards in the database
- */
-async function getCardCount(): Promise<number> {
-  if (!db) throw new Error('Database not initialized');
-
-  const database = db;
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const countRequest = store.count();
-
-    countRequest.onsuccess = () => resolve(countRequest.result);
-    countRequest.onerror = () => reject(countRequest.error);
-  });
-}
-
-/**
- * Get all cards from database
- */
-async function getAllCardsFromDB(): Promise<MinimalCard[]> {
-  if (!db) throw new Error('Database not initialized');
-
-  const database = db;
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-/**
- * Search cards using fuzzy search (instant, no network required)
- */
-export async function searchCardsOffline(
-  query: string,
-  options?: CardDatabaseOptions
-): Promise<MinimalCard[]> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
+export function searchCardsOffline(query: string, options?: CardDatabaseOptions): DatabaseCard[] {
+  if (!isLoaded) {
+    console.warn('Card database not initialized. Call initializeCardDatabase() first.');
+    return [];
   }
 
   if (!query || query.length < 2) return [];
-  if (!fuseInstance) return [];
 
-  const maxCards = options?.maxCards ?? 20;
+  const normalizedQuery = query.toLowerCase();
+  const results: DatabaseCard[] = [];
 
-  // Perform fuzzy search
-  const results = fuseInstance.search(query, { limit: maxCards });
-
-  // Filter by format if specified
-  let cards = results.map((result) => result.item);
-
-  if (options?.format) {
-    cards = cards.filter((card) => card.legalities[options.format!] === 'legal');
+  for (const [, card] of cardDatabase) {
+    const cardName = isGenericCard(card) ? card.name : card.name;
+    if (cardName.toLowerCase().includes(normalizedQuery)) {
+      results.push(card);
+    }
   }
 
-  return cards.slice(0, maxCards);
+  // Sort by name match quality
+  results.sort((a, b) => {
+    const aName = isGenericCard(a) ? a.name : a.name;
+    const bName = isGenericCard(b) ? b.name : b.name;
+    const aExact = aName.toLowerCase().startsWith(normalizedQuery);
+    const bExact = bName.toLowerCase().startsWith(normalizedQuery);
+    if (aExact && !bExact) return -1;
+    if (!aExact && bExact) return 1;
+    return aName.localeCompare(bName);
+  });
+
+  const maxCards = options?.maxCards ?? 20;
+  return results.slice(0, maxCards);
 }
 
 /**
  * Get card by exact name
+ * Returns generic cards and legacy minimal cards
  */
-export async function getCardByName(name: string): Promise<MinimalCard | undefined> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
-  }
-
-  if (!db) return undefined;
-
-  const database = db;
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const index = store.index(INDEX_NAME);
-    const request = index.getAll(name.toLowerCase());
-
-    request.onsuccess = () => {
-      const cards = request.result || [];
-      // Find exact match (case-insensitive)
-      const exactMatch = cards.find((card) =>
-        card.name.toLowerCase() === name.toLowerCase()
-      );
-      resolve(exactMatch);
-    };
-    request.onerror = () => reject(request.error);
-  });
+export function getCardByName(name: string): DatabaseCard | undefined {
+  if (!isLoaded) return undefined;
+  return cardDatabase.get(name.toLowerCase());
 }
 
 /**
  * Get card by ID
+ * Returns generic cards and legacy minimal cards
  */
-export async function getCardById(id: string): Promise<MinimalCard | undefined> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
-  }
-
-  if (!db) return undefined;
-
-  const database = db;
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(id);
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+export function getCardById(id: string): DatabaseCard | undefined {
+  if (!isLoaded) return undefined;
+  return cardDatabase.get(id);
 }
 
 /**
- * Check if a card is legal in a format
+ * Get only generic cards (filters out legacy minimal cards)
  */
-export async function isCardLegal(cardName: string, format: string): Promise<boolean> {
-  const card = await getCardByName(cardName);
-  if (!card || !card.legalities) return false;
-  return card.legalities[format] === 'legal';
+export function getGenericCards(): GenericCard[] {
+  if (!isLoaded) return [];
+  return Array.from(cardDatabase.values()).filter(isGenericCard);
+}
+
+/**
+ * Get only legacy minimal cards (filters out generic cards)
+ */
+export function getLegacyCards(): MinimalCard[] {
+  if (!isLoaded) return [];
+  return Array.from(cardDatabase.values()).filter(isMinimalCard);
+}
+
+// ============================================================================
+// VALIDATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Check if a card is legal in a format
+ * Works with both generic cards and legacy minimal cards
+ */
+export function isCardLegal(cardName: string, format: string): boolean {
+  const card = getCardByName(cardName);
+  if (!card) return false;
+
+  if (isGenericCard(card)) {
+    return card.legalities[format as keyof typeof card.legalities] === 'legal';
+  } else if (isMinimalCard(card)) {
+    return card.legalities[format] === 'legal';
+  }
+
+  return false;
 }
 
 /**
  * Validate deck against format
+ * Works with both generic cards and legacy minimal cards
  */
-export async function validateDeckOffline(
+export function validateDeckOffline(
   cards: Array<{ name: string; quantity: number }>,
   format: string
-): Promise<{ valid: boolean; illegalCards: string[]; issues: string[] }> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
+): { valid: boolean; illegalCards: string[]; issues: string[] } {
+  if (!isLoaded) {
+    return { valid: false, illegalCards: [], issues: ['Card database not initialized'] };
   }
 
   const illegalCards: string[] = [];
   const issues: string[] = [];
 
   for (const card of cards) {
-    const dbCard = await getCardByName(card.name);
+    const dbCard = getCardByName(card.name);
     if (!dbCard) {
       issues.push(`Card not found: ${card.name}`);
       continue;
     }
 
-    if (dbCard.legalities[format] !== 'legal') {
+    if (!isCardLegal(card.name, format)) {
       illegalCards.push(card.name);
     }
   }
@@ -540,107 +646,192 @@ export async function validateDeckOffline(
   };
 }
 
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+
 /**
  * Get database status
  */
-export async function getDatabaseStatus(): Promise<{ loaded: boolean; cardCount: number }> {
-  if (!isInitialized) {
-    return { loaded: false, cardCount: 0 };
-  }
+export function getDatabaseStatus(): { loaded: boolean; cardCount: number; genericCards: number; legacyCards: number } {
+  const allCards = Array.from(cardDatabase.values());
+  const genericCount = allCards.filter(isGenericCard).length;
+  const legacyCount = allCards.filter(isMinimalCard).length;
 
-  const cardCount = await getCardCount();
   return {
-    loaded: true,
-    cardCount,
+    loaded: isLoaded,
+    cardCount: cardDatabase.size,
+    genericCards: genericCount,
+    legacyCards: legacyCount
   };
 }
 
 /**
- * Add a card to the database (for bulk importing)
+ * Export all cards (both generic and legacy)
  */
-export async function addCard(card: MinimalCard): Promise<void> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
+export function getAllCards(): DatabaseCard[] {
+  return Array.from(cardDatabase.values());
+}
+
+// ============================================================================
+// MIGRATION/CONVERSION FUNCTIONS
+// ============================================================================
+
+/**
+ * Convert a legacy MinimalCard to a GenericCard
+ * This helps migrate from MTG-specific data to generic cards
+ */
+export function minimalCardToGenericCard(minimalCard: MinimalCard): GenericCard {
+  // Parse type_line to determine card type
+  const typeLine = minimalCard.type_line.toLowerCase();
+  let type: GenericCardType;
+  const subtypes: CardSubtype[] = [];
+
+  if (typeLine.includes('creature')) {
+    type = GenericCardType.CREATURE;
+    const match = minimalCard.type_line.match(/Creature\s*—?\s*(.+)/);
+    if (match) {
+      subtypes.push(...match[1].trim().split(' ').filter(s => s));
+    }
+  } else if (typeLine.includes('instant')) {
+    type = GenericCardType.INSTANT;
+  } else if (typeLine.includes('sorcery')) {
+    type = GenericCardType.SORCERY;
+  } else if (typeLine.includes('artifact')) {
+    type = GenericCardType.ARTIFACT;
+  } else if (typeLine.includes('enchantment')) {
+    type = GenericCardType.ENCHANTMENT;
+  } else if (typeLine.includes('land')) {
+    type = GenericCardType.LAND;
+  } else if (typeLine.includes('planeswalker')) {
+    type = GenericCardType.PLANESWALKER;
+  } else {
+    type = GenericCardType.ARTIFACT; // Default
   }
 
-  if (!db) throw new Error('Database not initialized');
+  // Map colors to GenericColor enum
+  const colorMap: Record<string, GenericColor> = {
+    'R': GenericColor.RED,
+    'U': GenericColor.BLUE,
+    'G': GenericColor.GREEN,
+    'B': GenericColor.BLACK,
+    'W': GenericColor.WHITE,
+    'C': GenericColor.COLORLESS
+  };
 
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(card);
+  const colors = minimalCard.colors.map(c => colorMap[c] || GenericColor.COLORLESS);
+  const colorIdentity = minimalCard.color_identity.map(c => colorMap[c] || GenericColor.COLORLESS);
 
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+  // Determine keywords from oracle text
+  const keywords: AbilityKeyword[] = [];
+  const keywordPatterns: { keyword: AbilityKeyword; pattern: RegExp }[] = [
+    { keyword: AbilityKeyword.FIRST_STRIKE, pattern: /first strike/i },
+    { keyword: AbilityKeyword.DOUBLE_STRIKE, pattern: /double strike/i },
+    { keyword: AbilityKeyword.DEATHTOUCH, pattern: /deathtouch/i },
+    { keyword: AbilityKeyword.HEXPROOF, pattern: /hexproof/i },
+    { keyword: AbilityKeyword.LIFELINK, pattern: /lifelink/i },
+    { keyword: AbilityKeyword.FLYING, pattern: /flying/i },
+    { keyword: AbilityKeyword.TRAMPLE, pattern: /trample/i },
+    { keyword: AbilityKeyword.HASTE, pattern: /haste/i },
+    { keyword: AbilityKeyword.VIGILANCE, pattern: /vigilance/i },
+    { keyword: AbilityKeyword.REACH, pattern: /reach/i },
+    { keyword: AbilityKeyword.MENACE, pattern: /menace/i },
+    { keyword: AbilityKeyword.INDESTRUCTIBLE, pattern: /indestructible/i },
+    { keyword: AbilityKeyword.PROTECTION, pattern: /protection from/i },
+    { keyword: AbilityKeyword.SCRY, pattern: /scry/i },
+  ];
 
-    // Reinitialize fuzzy search after adding a card
-    transaction.oncomplete = async () => {
-      const allCards = await getAllCardsFromDB();
-      initializeFuzzySearch(allCards);
-      resolve();
-    };
-  });
+  const text = minimalCard.oracle_text || '';
+  for (const { keyword, pattern } of keywordPatterns) {
+    if (pattern.test(text)) {
+      keywords.push(keyword);
+    }
+  }
+
+  // Parse power/toughness for creatures
+  let power: number | undefined;
+  let toughness: number | undefined;
+  if (type === GenericCardType.CREATURE && minimalCard.oracle_text) {
+    // Look for P/T in oracle text (usually shown as "X/Y")
+    const ptMatch = minimalCard.oracle_text.match(/(\d+)\/(\d+)/);
+    if (ptMatch) {
+      power = parseInt(ptMatch[1], 10);
+      toughness = parseInt(ptMatch[2], 10);
+    }
+  }
+
+  // Map legalities
+  const legalities = {
+    commander: (minimalCard.legalities?.commander || 'legal') as "legal" | "banned" | "restricted",
+    standard: (minimalCard.legalities?.standard || 'legal') as "legal" | "banned" | "restricted",
+    modern: (minimalCard.legalities?.modern || 'legal') as "legal" | "banned" | "restricted",
+    pioneer: (minimalCard.legalities?.pioneer || 'legal') as "legal" | "banned" | "restricted",
+    legacy: (minimalCard.legalities?.legacy || 'legal') as "legal" | "banned" | "restricted",
+    vintage: (minimalCard.legalities?.vintage || 'legal') as "legal" | "banned" | "restricted",
+    pauper: (minimalCard.legalities?.pauper || 'legal') as "legal" | "banned" | "restricted"
+  };
+
+  return {
+    id: minimalCard.id,
+    name: minimalCard.name,
+    type: type as GenericCardType,
+    subtypes,
+    manaCost: '', // Would need to parse from Scryfall data
+    cmc: minimalCard.cmc,
+    colors,
+    colorIdentity,
+    text: minimalCard.oracle_text || '',
+    keywords,
+    power,
+    toughness,
+    legalities,
+    imageUris: minimalCard.image_uris ? {
+      small: minimalCard.image_uris.small,
+      normal: minimalCard.image_uris.normal,
+      large: minimalCard.image_uris.large
+    } : undefined
+  };
 }
 
 /**
- * Add multiple cards to the database (for bulk importing)
+ * Convert a GenericCard to legacy MinimalCard format
+ * Useful for backward compatibility
  */
-export async function addCards(cards: MinimalCard[]): Promise<void> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
-  }
+export function genericCardToMinimalCard(genericCard: GenericCard): MinimalCard {
+  // Construct type_line from type and subtypes
+  const type_line = genericCard.type +
+    (genericCard.subtypes.length > 0 ? ` — ${genericCard.subtypes.join(' ')}` : '');
 
-  if (!db) throw new Error('Database not initialized');
+  // Map GenericColor enum back to Scryfall color letters
+  const colorMap: Record<GenericColor, string> = {
+    [GenericColor.RED]: 'R',
+    [GenericColor.BLUE]: 'U',
+    [GenericColor.GREEN]: 'G',
+    [GenericColor.BLACK]: 'B',
+    [GenericColor.WHITE]: 'W',
+    [GenericColor.COLORLESS]: 'C'
+  };
 
-  const transaction = db.transaction([STORE_NAME], 'readwrite');
-  const store = transaction.objectStore(STORE_NAME);
+  const colors = genericCard.colors.map(c => colorMap[c]);
+  const color_identity = genericCard.colorIdentity.map(c => colorMap[c]);
 
-  return new Promise((resolve, reject) => {
-    transaction.onerror = () => reject(transaction.error);
-    transaction.oncomplete = async () => {
-      // Reinitialize fuzzy search after adding cards
-      const allCards = await getAllCardsFromDB();
-      initializeFuzzySearch(allCards);
-      resolve();
-    };
-
-    cards.forEach((card) => {
-      store.put(card);
-    });
-  });
-}
-
-/**
- * Clear all cards from the database
- */
-export async function clearDatabase(): Promise<void> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
-  }
-
-  if (!db) throw new Error('Database not initialized');
-
-  const database = db;
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.clear();
-
-    request.onsuccess = () => {
-      fuseInstance = null;
-      resolve();
-    };
-    request.onerror = () => reject(request.error);
-  });
-}
-
-/**
- * Export all cards from the database
- */
-export async function getAllCards(): Promise<MinimalCard[]> {
-  if (!isInitialized) {
-    await initializeCardDatabase();
-  }
-
-  return getAllCardsFromDB();
+  return {
+    id: genericCard.id,
+    name: genericCard.name,
+    cmc: genericCard.cmc,
+    type_line,
+    oracle_text: genericCard.text,
+    colors,
+    color_identity,
+    legalities: {
+      commander: genericCard.legalities.commander,
+      standard: genericCard.legalities.standard,
+      modern: genericCard.legalities.modern,
+      pioneer: genericCard.legalities.pioneer,
+      legacy: genericCard.legalities.legacy,
+      vintage: genericCard.legalities.vintage,
+      pauper: genericCard.legalities.pauper
+    },
+    image_uris: genericCard.imageUris
+  };
 }

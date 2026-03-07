@@ -19,6 +19,107 @@ To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for deve
 
 ---
 
+## Development Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Development server (runs on port 9002 with Turbopack)
+npm run dev
+
+# AI development environment (Genkit dev UI)
+npm run genkit:dev
+
+# AI development with hot-reload (restarts on file changes)
+npm run genkit:watch
+
+# Build for production
+NODE_ENV=production npm run build
+
+# Build Tauri desktop application
+npm run build:tauri
+
+# Start production server
+npm start
+
+# Lint code
+npm run lint
+
+# Type check
+npm run typecheck
+
+# Run tests
+npm run test
+npm run test:watch
+npm run test:coverage
+
+# Run E2E tests
+npm run test:e2e
+```
+
+---
+
+## Deployment
+
+Planar Nexus supports deployment to web, desktop, and mobile platforms.
+
+### Web Deployment
+
+The web application can be deployed to any static hosting service (Vercel, Netlify, GitHub Pages, etc.).
+
+```bash
+# Build for production
+NODE_ENV=production npm run build
+
+# Deploy to Vercel (recommended)
+npm install -g vercel
+vercel
+
+# Or deploy to Netlify
+npm install -g netlify-cli
+netlify deploy --prod
+```
+
+### Desktop Deployment
+
+Desktop applications are built using Tauri for Windows, macOS, and Linux.
+
+```bash
+# Build desktop installers for all platforms
+npm run build:tauri
+
+# Windows: src-tauri/target/release/bundle/nsis/*.exe
+# macOS: src-tauri/target/release/bundle/macos/*.dmg
+# Linux: src-tauri/target/release/bundle/appimage/*.AppImage
+```
+
+### Mobile Deployment
+
+Mobile apps are built using Tauri Mobile for iOS and Android.
+
+```bash
+# Build iOS app
+npm run build:tauri -- --target aarch64-apple-ios --bundles ios
+
+# Build Android app
+npm run build:tauri -- --target aarch64-linux-android --bundles apk,aab
+```
+
+### CI/CD
+
+Automated builds are configured via GitHub Actions:
+
+- **CI Pipeline**: Runs on every push (lint, typecheck, build)
+- **Desktop Builds**: Triggered on release or manual dispatch
+- **Mobile Builds**: Triggered on release or manual dispatch
+
+See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for detailed deployment instructions.
+
+See [Installer Building Guide](docs/INSTALLER_BUILDING_GUIDE.md) for detailed build instructions.
+
+---
+
 ## Roadmap
 
 ### Current Status (v0.1)
