@@ -128,15 +128,19 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
   /**
    * Clean up old auto-saves
    */
-  const cleanupAutoSaves = useCallback(() => {
+  const cleanupAutoSaves = useCallback(async () => {
     if (!config.autoCleanup) return;
 
     try {
-      const autoSaves = savedGamesManager.getAutoSaves();
+      const autoSaves = await savedGamesManager.getAutoSaves();
       const savesToDelete = autoSaves.slice(config.maxAutoSaves);
-      
+
       for (const save of savesToDelete) {
-        savedGamesManager.deleteGame(save.id);
+        try {
+          await savedGamesManager.deleteGame(save.id);
+        } catch (error) {
+          console.error(`Failed to delete auto-save ${save.id}:`, error);
+        }
       }
 
       if (savesToDelete.length > 0) {
@@ -191,10 +195,10 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
 
       try {
         // Perform the save
-        const savedGame = savedGamesManager.autoSave(gameState, replay);
-        
+        const savedGame = await savedGamesManager.autoSave(gameState, replay);
+
         // Clean up old saves
-        cleanupAutoSaves();
+        await cleanupAutoSaves();
 
         const result: AutoSaveResult = {
           success: true,

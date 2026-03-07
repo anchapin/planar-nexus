@@ -168,8 +168,13 @@ export default function AchievementsPage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['games', 'wins']));
 
   useEffect(() => {
-    const displayProgress = achievementManager.getAchievementDisplayProgress(playerId);
-    setAchievements(displayProgress);
+    let isMounted = true;
+    achievementManager.getAchievementDisplayProgress(playerId).then(displayProgress => {
+      if (isMounted) {
+        setAchievements(displayProgress);
+      }
+    });
+    return () => { isMounted = false; };
   }, [playerId]);
 
   const filteredAchievements = category === 'all' 
