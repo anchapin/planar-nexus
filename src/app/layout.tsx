@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
+import { OfflineIndicator } from '@/components/offline-indicator';
 import { LandingFooter } from '@/components/landing-footer';
 
 export const metadata: Metadata = {
@@ -50,6 +51,7 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
         <ServiceWorkerRegistration />
+        <OfflineIndicator />
         {children}
         <LandingFooter />
         <Toaster />
