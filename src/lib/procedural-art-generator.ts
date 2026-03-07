@@ -138,7 +138,7 @@ function generateShapes(
     const y = random() * height;
 
     switch (style) {
-      case 'fantasy':
+      case 'fantasy': {
         // Organic, flowing shapes
         const r1 = 20 + random() * 60;
         const r2 = 20 + random() * 60;
@@ -150,8 +150,9 @@ function generateShapes(
           />
         `;
         break;
+      }
 
-      case 'sci-fi':
+      case 'sci-fi': {
         // Geometric, angular shapes
         const size = 30 + random() * 70;
         const rotation = random() * 360;
@@ -163,8 +164,9 @@ function generateShapes(
           />
         `;
         break;
+      }
 
-      case 'abstract':
+      case 'abstract': {
         // Random lines and curves
         const pathLength = 50 + random() * 100;
         shapes += `
@@ -178,8 +180,9 @@ function generateShapes(
           />
         `;
         break;
+      }
 
-      case 'geometric':
+      case 'geometric': {
         // Perfect shapes with rotation
         const sides = 3 + Math.floor(random() * 5);
         const radius = 30 + random() * 60;
@@ -195,6 +198,7 @@ function generateShapes(
           />
         `;
         break;
+      }
     }
   }
 

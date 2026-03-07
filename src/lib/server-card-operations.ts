@@ -10,7 +10,7 @@ import type { MinimalCard } from './card-database';
 import { ESSENTIAL_CARDS } from './card-database';
 
 // Type definitions for card operations (server-side compatibility)
-export interface ScryfallCard extends MinimalCard {}
+export type ScryfallCard = MinimalCard;
 export interface DeckCard extends ScryfallCard {
   count: number;
 }
