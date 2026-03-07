@@ -2,7 +2,7 @@
  * Tests for heuristic deck coach
  */
 
-import { describe, it, expect } from 'vitest';
+// Jest provides describe, it, expect globally
 import { heuristicDeckReview } from '@/lib/heuristic-deck-coach';
 
 describe('heuristicDeckReview', () => {

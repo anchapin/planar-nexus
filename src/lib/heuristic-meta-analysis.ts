@@ -628,8 +628,8 @@ function generateCardSuggestions(
   const formatSuggestions = CARD_SUGGESTIONS_BY_FORMAT[format] || CARD_SUGGESTIONS_BY_FORMAT['commander'];
   const archetypeSuggestions = formatSuggestions[archetype] || formatSuggestions['midrange'];
 
-  const cardsToAdd: Array<{ name: string; quantity: number; reason: string }> = [];
-  const cardsToRemove: Array<{ name: string; quantity: number; reason: string }> = [];
+  let cardsToAdd: Array<{ name: string; quantity: number; reason: string }> = [];
+  let cardsToRemove: Array<{ name: string; quantity: number; reason: string }> = [];
 
   // Add archetype-specific cards
   for (const suggestion of archetypeSuggestions.slice(0, 4)) {
@@ -650,26 +650,56 @@ function generateCardSuggestions(
     });
   }
 
-  // Balance add/remove counts
+  // Balance add/remove counts using a one-to-one swap approach
   const addCount = cardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
   const removeCount = cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
 
-  if (addCount > removeCount) {
-    const diff = addCount - removeCount;
-    const additionalRemovals = cards.slice(0, diff);
-    for (const card of additionalRemovals) {
-      cardsToRemove.push({
-        name: card.name,
-        quantity: 1,
-        reason: 'Making room for meta improvements',
-      });
+  // Use a simpler balanced approach: ensure we have equal total quantities
+  const balanceCount = Math.min(addCount, removeCount);
+
+  // Trim if we have too many adds or removes
+  if (addCount > balanceCount) {
+    let currentAddCount = 0;
+    const balancedCardsToAdd: typeof cardsToAdd = [];
+    for (const card of cardsToAdd) {
+      if (currentAddCount + card.quantity <= balanceCount) {
+        balancedCardsToAdd.push(card);
+        currentAddCount += card.quantity;
+      } else {
+        const remaining = balanceCount - currentAddCount;
+        if (remaining > 0) {
+          balancedCardsToAdd.push({
+            ...card,
+            quantity: remaining,
+          });
+          currentAddCount = balanceCount;
+        }
+        break;
+      }
     }
-  } else if (removeCount > addCount) {
-    const diff = removeCount - addCount;
-    for (let i = 0; i < diff; i++) {
-      const extraCard = archetypeSuggestions[i % archetypeSuggestions.length];
-      cardsToAdd.push(extraCard);
+    cardsToAdd = balancedCardsToAdd;
+  }
+
+  if (removeCount > balanceCount) {
+    let currentRemoveCount = 0;
+    const balancedCardsToRemove: typeof cardsToRemove = [];
+    for (const card of cardsToRemove) {
+      if (currentRemoveCount + card.quantity <= balanceCount) {
+        balancedCardsToRemove.push(card);
+        currentRemoveCount += card.quantity;
+      } else {
+        const remaining = balanceCount - currentRemoveCount;
+        if (remaining > 0) {
+          balancedCardsToRemove.push({
+            ...card,
+            quantity: remaining,
+          });
+          currentRemoveCount = balanceCount;
+        }
+        break;
+      }
     }
+    cardsToRemove = balancedCardsToRemove;
   }
 
   return { cardsToAdd, cardsToRemove };
@@ -726,7 +756,7 @@ function generateStrategicAdvice(archetype: string, format: string, meta: Format
   adviceParts.push('1. Play to Your Strengths:');
   const archetypeAdvice: Record<string, string> = {
     control: 'Use your counterspells and removal to control the game. Establish card advantage before deploying your win conditions.',
-    aggro: 'Apply early pressure and don't overcommit to board wipes. Use burn spells for reach.',
+    aggro: "Apply early pressure and don't overcommit to board wipes. Use burn spells for reach.",
     midrange: 'Trade efficiently and generate value over time. Use your removal to control the board while developing threats.',
     combo: 'Protect your combo pieces and have backup plans. Use disruption to prevent opponent interaction.',
     ramp: 'Accelerate your mana and deploy powerful threats early. Use removal to survive until your game plan takes over.',
@@ -751,7 +781,7 @@ function generateStrategicAdvice(archetype: string, format: string, meta: Format
   } else {
     adviceParts.push(`Competitive ${format} requires a well-constructed sideboard. `);
     adviceParts.push('Identify your worst matchups and dedicate sideboard slots to them. ');
-    adviceParts.push('Test extensively to understand your deck's role in the meta.');
+    adviceParts.push("Test extensively to understand your deck's role in the meta.");
   }
 
   return adviceParts.join('\n');

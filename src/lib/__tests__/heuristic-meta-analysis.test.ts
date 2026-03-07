@@ -2,7 +2,7 @@
  * Tests for heuristic meta analysis
  */
 
-import { describe, it, expect } from 'vitest';
+// Jest provides describe, it, expect globally
 import { heuristicMetaAnalysis } from '@/lib/heuristic-meta-analysis';
 
 describe('heuristicMetaAnalysis', () => {
