@@ -8,6 +8,7 @@
 import Fuse from 'fuse.js';
 import type { MinimalCard } from './card-database';
 import { ESSENTIAL_CARDS } from './card-database';
+import type { DeckCard } from '@/app/actions';
 
 // Type definitions for card operations (server-side compatibility)
 export type ScryfallCard = MinimalCard;
@@ -60,7 +61,6 @@ interface MinimalCard {
   }>;
 }
 
->>>>>>> 5b27027 (Update AI flows to use server-side card operations)
 /**
  * Initialize server-side card operations with embedded data
  */
@@ -71,11 +71,7 @@ async function initializeServerCardOperations(): Promise<void> {
 
   try {
     // Initialize Fuse.js with embedded card data
-<<<<<<< HEAD
     const fuseOptions: any = {
-=======
-    const fuseOptions: Fuse.IFuseOptions<MinimalCard> = {
->>>>>>> 5b27027 (Update AI flows to use server-side card operations)
       keys: [
         { name: 'name', weight: 0.7 },
         { name: 'type_line', weight: 0.2 },
@@ -136,13 +132,8 @@ export async function validateCardLegality(
   }
 
   // Find cards in embedded data
-<<<<<<< HEAD
   for (const [lowerCaseName, requestDetails] of Array.from(cardRequestMap.entries())) {
     const cardInDb = ESSENTIAL_CARDS.find((c: MinimalCard) => c.name.toLowerCase() === lowerCaseName);
-=======
-  for (const [lowerCaseName, requestDetails] of cardRequestMap.entries()) {
-    const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
->>>>>>> 5b27027 (Update AI flows to use server-side card operations)
 
     if (cardInDb) {
       const isLegal = cardInDb.legalities?.[format] === 'legal';
@@ -195,7 +186,7 @@ export async function importDecklist(
 
   const { found, notFound, illegal } = await validateCardLegality(cardDetails, format || 'commander');
 
-  // Aggregate found cards by their ID to combine different prints of the same card
+  // Aggregate found cards by their ID to combine different prints of same card
   const aggregatedFound = Array.from(
     found.reduce((acc, card) => {
       const existing = acc.get(card.id);
@@ -209,8 +200,4 @@ export async function importDecklist(
   );
 
   return { found: aggregatedFound, notFound, illegal };
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 5b27027 (Update AI flows to use server-side card operations)
