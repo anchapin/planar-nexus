@@ -18,7 +18,49 @@ export interface DeckCard extends ScryfallCard {
 // In-memory cache for fuzzy search
 let fuseInstance: any | null = null;
 let isInitialized = false;
+interface MinimalCard {
+  id: string;
+  oracle_id?: string;
+  name: string;
+  set?: string;
+  collector_number?: string;
+  cmc: number;
+  type_line: string;
+  oracle_text?: string;
+  colors: string[];
+  color_identity: string[];
+  legalities: Record<string, string>;
+  image_uris?: {
+    small: string;
+    normal: string;
+    large: string;
+    png: string;
+    art_crop: string;
+    border_crop: string;
+  };
+  mana_cost?: string;
+  power?: string;
+  toughness?: string;
+  keywords?: string[];
+  card_faces?: Array<{
+    name: string;
+    mana_cost?: string;
+    type_line?: string;
+    oracle_text?: string;
+    power?: string;
+    toughness?: string;
+    image_uris?: {
+      small: string;
+      normal: string;
+      large: string;
+      png: string;
+      art_crop: string;
+      border_crop: string;
+    };
+  }>;
+}
 
+>>>>>>> 5b27027 (Update AI flows to use server-side card operations)
 /**
  * Initialize server-side card operations with embedded data
  */
@@ -29,7 +71,11 @@ async function initializeServerCardOperations(): Promise<void> {
 
   try {
     // Initialize Fuse.js with embedded card data
+<<<<<<< HEAD
     const fuseOptions: any = {
+=======
+    const fuseOptions: Fuse.IFuseOptions<MinimalCard> = {
+>>>>>>> 5b27027 (Update AI flows to use server-side card operations)
       keys: [
         { name: 'name', weight: 0.7 },
         { name: 'type_line', weight: 0.2 },
@@ -90,8 +136,13 @@ export async function validateCardLegality(
   }
 
   // Find cards in embedded data
+<<<<<<< HEAD
   for (const [lowerCaseName, requestDetails] of Array.from(cardRequestMap.entries())) {
     const cardInDb = ESSENTIAL_CARDS.find((c: MinimalCard) => c.name.toLowerCase() === lowerCaseName);
+=======
+  for (const [lowerCaseName, requestDetails] of cardRequestMap.entries()) {
+    const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
+>>>>>>> 5b27027 (Update AI flows to use server-side card operations)
 
     if (cardInDb) {
       const isLegal = cardInDb.legalities?.[format] === 'legal';
@@ -158,4 +209,8 @@ export async function importDecklist(
   );
 
   return { found: aggregatedFound, notFound, illegal };
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 5b27027 (Update AI flows to use server-side card operations)
