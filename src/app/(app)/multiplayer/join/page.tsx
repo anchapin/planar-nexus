@@ -218,7 +218,7 @@ function JoinGameContent() {
     router.push('/multiplayer');
   };
 
-  // Step 1: Enter game code
+  // Step 1: Connect to game (QR code or manual entry)
   if (joinState.step === 'code') {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
@@ -226,43 +226,37 @@ function JoinGameContent() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Join a Game</CardTitle>
-            <CardDescription>Enter the game code to join a lobby</CardDescription>
+            <CardDescription>
+              Scan the QR code or enter the connection string from the host
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleCodeSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="game-code">Game Code</Label>
-                <Input
-                  id="game-code"
-                  placeholder="e.g., ABC123"
-                  value={joinState.gameCode}
-                  onChange={(e) => setJoinState(prev => ({ ...prev, gameCode: e.target.value.toUpperCase() }))}
-                  className="text-center text-2xl font-mono tracking-widest"
-                  maxLength={6}
-                />
-              </div>
-              
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              <Button type="submit" className="w-full" disabled={joinState.gameCode.length < 6}>
-                Continue
-              </Button>
-            </form>
+            <ConnectionQRCode
+              connectionData={null}
+              isHost={false}
+              onManualEntry={handleConnectionDataEntry}
+            />
+
+            {error && (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <p className="text-xs text-muted-foreground mt-4 text-center">
+              Ask your opponent to share their QR code or connection string to connect.
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Step 2: Enter player name
+  // Step 2: Enter player name (after connection established)
   if (joinState.step === 'name') {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
@@ -270,12 +264,12 @@ function JoinGameContent() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
+
         <Card>
           <CardHeader>
-            <CardTitle>Join "{joinState.game?.name}"</CardTitle>
+            <CardTitle>Connected!</CardTitle>
             <CardDescription>
-              Game Format: {joinState.game ? formatDisplayNames[joinState.game.format] : 'Unknown'}
+              Enter your name to join the lobby
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -290,26 +284,9 @@ function JoinGameContent() {
                   maxLength={20}
                 />
               </div>
-              
-              <div className="p-3 bg-muted rounded-lg space-y-1">
-                <div className="flex items-center gap-2 text-sm">
-                  <Users className="w-4 h-4" />
-                  <span>{joinState.game?.currentPlayers || 0} / {joinState.game?.maxPlayers} players</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Crown className="w-4 h-4" />
-                  <span>Host: {joinState.game?.hostName}</span>
-                </div>
-                {joinState.game?.allowSpectators && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Eye className="w-4 h-4" />
-                    <span>Spectators allowed</span>
-                  </div>
-                )}
-              </div>
-              
+
               <Button type="submit" className="w-full" disabled={!playerNameInput.trim()}>
-                Join Game
+                Join Lobby
               </Button>
             </form>
           </CardContent>

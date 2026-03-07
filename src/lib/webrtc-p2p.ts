@@ -261,9 +261,33 @@ export class WebRTCConnection {
     this.events = options.events
       ? { ...defaultEvents, ...options.events }
       : defaultEvents;
+  }
 
-    // Initialize client-side signaling service
-    this.initializeClientSignaling(options.remoteConnectionData);
+  /**
+   * Initialize client-side signaling service
+   */
+  private initializeClientSignaling(remoteConnectionData?: ConnectionData): void {
+    const signalingCallbacks: ClientSignalingCallbacks = {
+      onConnectionStateChange: (state) => {
+        console.log('[WebRTC] Signaling state changed:', state);
+      },
+      onConnectionDataReceived: (data) => {
+        this.handleSignalingDataReceived(data);
+      },
+      onError: (error) => {
+        console.error('[WebRTC] Signaling error:', error);
+        this.events.onError(error, '');
+      },
+    };
+
+    this.clientSignaling = this.isHost
+      ? createHostSignaling(signalingCallbacks)
+      : createClientSignaling(signalingCallbacks);
+
+    // If client and remote data provided, process it
+    if (!this.isHost && remoteConnectionData) {
+      this.clientSignaling.processConnectionData(remoteConnectionData);
+    }
   }
 
   /**
@@ -473,6 +497,36 @@ export class WebRTCConnection {
     });
 
     return offer;
+  }
+
+  /**
+   * Create an answer for the client to send to the host
+   */
+  async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    if (!this.peerConnection) {
+      throw new Error('Peer connection not initialized');
+    }
+
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
+
+    console.log('[WebRTC] Created answer');
+
+    // Wait for ICE gathering to complete
+    await new Promise<void>((resolve) => {
+      if (this.peerConnection!.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        const checkInterval = setInterval(() => {
+          if (this.peerConnection!.iceGatheringState === 'complete') {
+            clearInterval(checkInterval);
+            resolve();
+          }
+        }, 100);
+      }
+    });
+
+    return answer;
   }
 
   /**
