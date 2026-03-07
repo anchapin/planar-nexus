@@ -51,7 +51,6 @@ import {
   formatTokens,
   type ProviderUsageStats,
 } from "@/lib/usage-tracking";
-import { StorageBackupManager } from "@/components/storage-backup-manager";
 
 /**
  * Provider display names
@@ -438,7 +437,6 @@ export default function SettingsPage() {
           <TabsTrigger value="usage">Usage</TabsTrigger>
           <TabsTrigger value="sound">Sound</TabsTrigger>
           <TabsTrigger value="auto-save">Auto-Save</TabsTrigger>
-          <TabsTrigger value="storage">Storage</TabsTrigger>
         </TabsList>
         
         <TabsContent value="api-keys" className="space-y-6">
@@ -773,10 +771,6 @@ export default function SettingsPage() {
               <AutoSaveSettings />
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="storage" className="space-y-6">
-          <StorageBackupManager />
         </TabsContent>
       </Tabs>
     </div>

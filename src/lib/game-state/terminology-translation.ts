@@ -6,16 +6,11 @@
  * while maintaining the core gameplay mechanics.
  *
  * Issue #442: Unit 8 - Terminology Translation Layer
- * Issue #435: Unit 1 - Generic Card Game Framework Core
  */
 
 /**
  * Mapping of MTG terms to generic equivalents
  * Used for UI display and user-facing text
- *
- * This mapping includes:
- * - Core MTG terminology (Issue #442)
- * - Game system abstractions (Issue #435)
  */
 export const TERMINOLOGY_MAPPING: Record<string, string> = {
   // Card states and actions
@@ -45,30 +40,15 @@ export const TERMINOLOGY_MAPPING: Record<string, string> = {
   // Card types (generic equivalents)
   'planeswalker': 'champion',
   'planeswalkers': 'champions',
-  'land': 'source',
-  'lands': 'sources',
 
   // Game phases (kept internally, mapped for display)
   'untap step': 'reactivation step',
   'upkeep': 'maintenance',
   'upkeep step': 'maintenance step',
 
-  // Game systems (Issue #435)
-  'mana': 'resource',
-  'mana pool': 'resource pool',
-  'mana cost': 'resource cost',
-  'mana value': 'resource value',
-  'commander': 'legendary leader',
-  'commander damage': 'legendary leader damage',
-  'commander zone': 'reserve zone',
-
-  // Resource system abstractions
-  'add mana': 'add resource',
-  'spend mana': 'spend resource',
-  'pay mana': 'pay resource',
-  'mana ability': 'resource ability',
-  'colorless mana': 'generic resource',
-  'colored mana': 'specific resource',
+  // Mana and resources
+  'mana pool': 'energy pool',
+  'mana': 'energy',
 };
 
 /**
@@ -213,7 +193,7 @@ export function translateAction(actionType: string): string {
     'pass_priority': 'Pass priority',
     'declare_attackers': 'Declare attackers',
     'declare_blockers': 'Declare blockers',
-    'play_land': 'Play source',
+    'play_land': 'Play land',
     'draw_card': 'Draw card',
     'discard_card': 'Discard card',
     'tap_card': 'Activate card',
@@ -228,8 +208,8 @@ export function translateAction(actionType: string): string {
     'gain_life': 'Gain life',
     'lose_life': 'Lose life',
     'deal_damage': 'Deal damage',
-    'pay_mana': 'Pay resource',
-    'add_mana': 'Add resource',
+    'pay_mana': 'Pay energy',
+    'add_mana': 'Add energy',
     'mulligan': 'Mulligan',
     'concede': 'Concede',
     'undo': 'Undo',
@@ -320,90 +300,4 @@ export function isMTGTerm(term: string): boolean {
  */
 export function getAllMTGTerms(): string[] {
   return Object.keys(TERMINOLOGY_MAPPING);
-}
-
-/**
- * Translates a resource type to its generic equivalent
- *
- * @param resourceType - Internal resource type (e.g., 'mana', 'colorless mana')
- * @returns Generic resource type for display
- */
-export function translateResourceType(resourceType: string): string {
-  const resourceMap: Record<string, string> = {
-    'colorless': 'generic',
-    'white': 'white',
-    'blue': 'blue',
-    'black': 'black',
-    'red': 'red',
-    'green': 'green',
-    'generic': 'generic',
-    'colorless mana': 'generic resource',
-    'white mana': 'white resource',
-    'blue mana': 'blue resource',
-    'black mana': 'black resource',
-    'red mana': 'red resource',
-    'green mana': 'green resource',
-    'generic mana': 'generic resource',
-    'mana': 'resource',
-    'mana pool': 'resource pool',
-    'mana cost': 'resource cost',
-    'mana value': 'resource value',
-  };
-
-  return resourceMap[resourceType.toLowerCase()] || resourceType;
-}
-
-/**
- * Translates a card type to its generic equivalent
- *
- * @param cardType - Internal card type (e.g., 'land', 'planeswalker')
- * @returns Generic card type for display
- */
-export function translateCardType(cardType: string): string {
-  const cardTypeMap: Record<string, string> = {
-    'land': 'source',
-    'lands': 'sources',
-    'planeswalker': 'champion',
-    'planeswalkers': 'champions',
-    'commander': 'legendary leader',
-    'commanders': 'legendary leaders',
-  };
-
-  return cardTypeMap[cardType.toLowerCase()] || cardType;
-}
-
-/**
- * Translates a win condition to its generic equivalent
- *
- * @param winCondition - Internal win condition description
- * @returns Generic win condition description
- */
-export function translateWinCondition(winCondition: string): string {
-  return translateToGeneric(winCondition);
-}
-
-/**
- * Translates game system terminology for UI display
- * This is a high-level function that translates all MTG terminology in a text
- *
- * @param text - Text containing MTG terminology
- * @param context - Optional context for more accurate translation (e.g., 'resource', 'card', 'combat')
- * @returns Text with generic terminology
- */
-export function translateGameSystemText(text: string, context?: 'resource' | 'card' | 'combat' | 'general'): string {
-  let translated = translateToGeneric(text);
-
-  // Context-specific translations
-  if (context === 'resource') {
-    translated = translated.replace(/mana cost/gi, 'resource cost');
-    translated = translated.replace(/mana pool/gi, 'resource pool');
-    translated = translated.replace(/mana value/gi, 'resource value');
-  } else if (context === 'card') {
-    translated = translated.replace(/play a land/gi, 'play a source');
-    translated = translated.replace(/lands you control/gi, 'sources you control');
-  } else if (context === 'combat') {
-    translated = translated.replace(/commander damage/gi, 'legendary leader damage');
-  }
-
-  return translated;
 }

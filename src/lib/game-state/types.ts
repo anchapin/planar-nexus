@@ -2,28 +2,9 @@
  * Core type definitions for the Planar Nexus game state engine.
  * These types represent the complete state of a tabletop card game.
  *
- * ISSUE #435: Generic Card Game Framework Core
- * ============================================
- * This module provides a generic abstraction layer for card game state management.
- * While internal implementation may use MTG-like terminology for backward compatibility
- * and clarity, all user-facing text should use generic terminology via the
- * translation layer (see terminology-translation.ts).
- *
- * Generic Terminology Mapping:
- * - Commander → Legendary Leader
- * - Mana → Resource
- * - Lands → Sources
- * - Mana Pool → Resource Pool
- * - Mana Cost → Resource Cost
- * - Planeswalker → Champion
- * - Summoning Sickness → Deployment Restriction
- * - Tap/Untap → Activate/Deactivate
- *
- * Design Principles:
- * 1. Internal types use MTG-like terminology for familiarity and backward compatibility
- * 2. All user-facing text uses generic terminology via translation layer
- * 3. Framework supports different game systems through abstraction layer
- * 4. Core mechanics are game-agnostic (zones, phases, actions, etc.)
+ * Note: Internal type names may reference MTG terminology for backward compatibility
+ * and implementation clarity. All user-facing text should use generic terminology
+ * via the translation layer (see terminology-translation.ts).
  */
 
 import { ScryfallCard } from "@/app/actions";
@@ -45,60 +26,6 @@ export type PlayerId = string;
  * Unique identifier for an ability or effect on the stack
  */
 export type StackObjectId = string;
-
-/**
- * Generic resource pool interface
- * This abstraction allows different game systems to define their own resource systems
- * while maintaining compatibility with the core game state management.
- *
- * For MTG-like games: mana pool (colorless, white, blue, black, red, green, generic)
- * For other systems: could be action points, energy, stamina, etc.
- */
-export interface ResourcePool {
-  /** Type of resource system (e.g., 'mana', 'energy', 'action-points') */
-  type: string;
-  /** Total resources available */
-  total: number;
-  /** Resource breakdown by category/type */
-  resources: Map<string, number>;
-  /** Maximum resources allowed */
-  maximum: number;
-}
-
-/**
- * Generic resource cost interface
- * Abstracts the cost system for different game systems
- */
-export interface ResourceCost {
-  /** Type of resource required */
-  resourceType: string;
-  /** Amount required */
-  amount: number;
-  /** Specific requirements (e.g., colors for mana) */
-  requirements: Map<string, number>;
-}
-
-/**
- * Legendary leader interface
- * Generic abstraction for commander-style game modes
- * Supports different implementations of leader-based formats
- */
-export interface LegendaryLeader {
-  /** Unique identifier for this leader */
-  id: CardInstanceId;
-  /** Leader name */
-  name: string;
-  /** Player who owns this leader */
-  ownerId: PlayerId;
-  /** Color/identity requirements */
-  identity: string[];
-  /** Damage dealt by this leader to each opponent */
-  damageDealt: Map<PlayerId, number>;
-  /** Cast count (for commander format) */
-  castCount: number;
-  /** Whether this leader is in the reserve zone */
-  isInReserveZone: boolean;
-}
 
 /**
  * Represents a single physical card in play
@@ -205,10 +132,6 @@ export interface Zone {
 
 /**
  * A player in the game
- *
- * ISSUE #435: Generic Card Game Framework Core
- * This interface represents a generic player that can participate in different game systems.
- * Some fields are specific to certain game modes (e.g., commander/leader damage).
  */
 export interface Player {
   /** Unique player identifier */
@@ -219,15 +142,8 @@ export interface Player {
   life: number;
   /** Current poison counters */
   poisonCounters: number;
-
-  /**
-   * Legendary leader damage tracking
-   * Maps attacker ID to damage dealt
-   * Displayed as: "Legendary Leader Damage" (via translation layer)
-   * Internal: "Commander Damage" (for backward compatibility)
-   */
+  /** Commander damage dealt by each commander */
   commanderDamage: Map<PlayerId, number>;
-
   /** Maximum hand size */
   maxHandSize: number;
   /** Current hand size (for effects that modify it) */
@@ -237,48 +153,28 @@ export interface Player {
   /** Reason for loss (if any) */
   lossReason: string | null;
 
-  // Resource sources played this turn
-  /**
-   * Number of resource sources played this turn
-   * Displayed as: "Sources Played"
-   * Internal: "Lands Played" (for backward compatibility)
-   */
+  // Lands played this turn
+  /** Number of lands played this turn */
   landsPlayedThisTurn: number;
-  /**
-   * Maximum resource sources that can be played this turn
-   * Displayed as: "Max Sources Per Turn"
-   * Internal: "Max Lands Per Turn" (for backward compatibility)
-   */
+  /** Maximum lands that can be played this turn */
   maxLandsPerTurn: number;
 
-  // Resource pool
-  /**
-   * Available resources for this player
-   * Displayed as: "Resource Pool" (via translation layer)
-   * Internal: "Mana Pool" (for backward compatibility)
-   */
+  // Mana pool (internally tracked, displayed as "energy" to users)
+  /** Available mana in each color */
   manaPool: ManaPool;
 
-  // Legendary leader format-specific
-  /**
-   * Whether this player's leader is in the reserve zone
-   * Displayed as: "In Reserve Zone"
-   * Internal: "In Command Zone" (for backward compatibility)
-   */
+  // Commander-specific
+  /** Whether this player is in the command zone (for commander format) */
   isInCommandZone: boolean;
-  /** Experience counters (for legendary leader format) */
+  /** Experience counters (for commander) */
   experienceCounters: number;
-  /**
-   * Number of times this player has cast their leader from reserve zone
-   * Displayed as: "Leader Cast Count"
-   * Internal: "Commander Cast Count" (for backward compatibility)
-   */
+  /** Player has cast their commander from command zone */
   commanderCastCount: number;
 
   // State tracking
   /** Priority pass tracking - whether player has passed priority this phase */
   hasPassedPriority: boolean;
-  /** Whether player has activated a resource ability this stack item */
+  /** Whether player has activated a mana ability this stack item */
   hasActivatedManaAbility: boolean;
   /** Whether player gets an additional combat phase this turn */
   additionalCombatPhase: boolean;
@@ -293,13 +189,7 @@ export interface Player {
 }
 
 /**
- * Mana pool tracking (internally referred to as "mana", displayed as "resource")
- *
- * This is a specific implementation of the ResourcePool interface for MTG-like games.
- * In the generic framework, this represents one possible resource system implementation.
- *
- * Display terminology: "Resource" (via translation layer)
- * Internal terminology: "Mana" (for backward compatibility)
+ * Mana pool tracking (internally referred to as "mana", displayed as "energy")
  */
 export interface ManaPool {
   /** Colorless mana */
@@ -321,25 +211,8 @@ export interface ManaPool {
 /**
  * A turn phase or step
  *
- * ISSUE #435: Generic Card Game Framework Core
- * This enum defines the standard turn structure for a card game.
- * While internally named with MTG terminology, these phases represent
- * a generic turn structure that can be adapted for different game systems.
- *
- * Display translations (via terminology-translation.ts):
- * - untap → Reactivation
- * - upkeep → Maintenance
- * - draw → Draw
- * - precombat_main → Pre-Combat Main
- * - begin_combat → Begin Combat
- * - declare_attackers → Declare Attackers
- * - declare_blockers → Declare Blockers
- * - combat_damage_first_strike → First Strike Damage
- * - combat_damage → Combat Damage
- * - end_combat → End Combat
- * - postcombat_main → Post-Combat Main
- * - end → End
- * - cleanup → Cleanup
+ * Note: Phase names use MTG terminology internally. Use translatePhase() from
+ * terminology-translation.ts for user-facing display.
  */
 export enum Phase {
   /** Untap step (displayed as "Reactivation") */
@@ -391,15 +264,7 @@ export interface Turn {
 /**
  * An object on the stack (card effect or ability)
  *
- * ISSUE #435: Generic Card Game Framework Core
- * This interface represents objects on the action stack, which is a generic concept
- * for resolving card effects and abilities in a defined order.
- *
- * Display translations (via terminology-translation.ts):
- * - spell → card effect
- * - mana cost → resource cost
- *
- * Internal type names use MTG terminology for backward compatibility.
+ * Note: Type includes "spell" internally for compatibility, displayed as "card effect"
  */
 export interface StackObject {
   /** Unique identifier */
@@ -414,11 +279,7 @@ export interface StackObject {
   name: string;
   /** Oracle text of this spell/ability */
   text: string;
-  /**
-   * Resource cost for this effect
-   * Displayed as: "Resource Cost" (via translation layer)
-   * Internal: "Mana Cost" (for backward compatibility)
-   */
+  /** Mana cost (for spells) */
   manaCost: string | null;
   /** Target(s) of this spell/ability */
   targets: Target[];
@@ -540,20 +401,6 @@ export interface ChoiceOption {
 
 /**
  * The complete game state
- *
- * ISSUE #435: Generic Card Game Framework Core
- * This interface represents the complete state of a card game.
- * It is designed to be generic and extensible to support different game systems.
- *
- * Format Examples (internal names, displayed via translation):
- * - "legendary-commander" → "Legendary Commander" (leader-based format)
- * - "constructed-core" → "Constructed Core" (standard format)
- * - "constructed-legacy" → "Constructed Legacy" (expanded format)
- *
- * Display translations for format-specific terms:
- * - commander → legendary leader
- * - mana → resource
- * - lands → sources
  */
 export interface GameState {
   /** Unique game identifier */
@@ -582,10 +429,7 @@ export interface GameState {
   winners: PlayerId[];
   /** How the game ended */
   endReason: string | null;
-  /**
-   * Game format identifier
-   * Displayed via getFormatDisplayName() from game-rules.ts
-   */
+  /** Game format (e.g., "standard", "commander", "historic") */
   format: string;
   /** Timestamp when game was created */
   createdAt: number;
@@ -610,22 +454,8 @@ export interface GameAction {
 /**
  * Types of game actions
  *
- * ISSUE #435: Generic Card Game Framework Core
- * This enum defines the standard actions that can be performed in a card game.
- * While internally named with MTG terminology, these actions represent
- * generic game mechanics that can be adapted for different game systems.
- *
- * Display translations (via terminology-translation.ts):
- * - cast_spell → Play card effect
- * - activate_ability → Activate ability
- * - play_land → Play source
- * - tap_card → Activate card
- * - untap_card → Deactivate card
- * - exile_card → Send to void
- * - pay_mana → Pay resource
- * - add_mana → Add resource
- *
- * Internal type names use MTG terminology for backward compatibility.
+ * Note: Action type names use MTG terminology internally. Use translateAction() from
+ * terminology-translation.ts for user-facing display.
  */
 export type ActionType =
   | "cast_spell"

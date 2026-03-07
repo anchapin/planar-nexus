@@ -71,6 +71,7 @@ export function StorageBackupManager() {
     exportData,
     importData,
     clearAllData,
+    loadStorageQuota,
     reset,
     isProcessing,
     isComplete,

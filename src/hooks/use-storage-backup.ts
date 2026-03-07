@@ -91,8 +91,7 @@ export function useStorageBackup() {
       setIsInitialized(true);
       loadStorageQuota();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadStorageQuota]);
+  }, []);
 
   /**
    * Load current storage quota information

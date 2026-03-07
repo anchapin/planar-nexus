@@ -18,43 +18,36 @@ import { useToast } from "@/hooks/use-toast";
 import { useGameChat } from "@/hooks/use-game-chat";
 import { useGameEmotes } from "@/hooks/use-game-emotes";
 import { cn } from "@/lib/utils";
-// @ts-ignore - Demo code: AI flow imports for UI demonstration only
 import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
 
 // Type definitions for AI analysis results
-// @ts-ignore - Demo code using simplified types for UI demonstration
 interface SuggestedPlay {
   cardName: string;
   reasoning: string;
   priority: 'high' | 'medium' | 'low';
 }
 
-// @ts-ignore - Demo code using simplified types for UI demonstration
 interface Warning {
   message: string;
   type: 'danger' | 'warning' | 'caution' | 'info';
   relatedCards?: string[];
 }
 
-// @ts-ignore - Demo code using simplified types for UI demonstration
 interface ManaSuggestion {
   action: string;
   reasoning: string;
 }
 
-// @ts-ignore - Demo code using simplified types for UI demonstration
 interface AIAnalysis {
   suggestedPlays?: SuggestedPlay[];
   warnings?: Warning[];
   strategicAdvice?: string[];
 }
 
-// @ts-ignore - Demo code using simplified types for UI demonstration
 interface AIManaAdvice {
   suggestions?: ManaSuggestion[];
 }
 
-// @ts-ignore - Demo code using simplified types for UI demonstration
 interface AIBoardEval {
   playerWinChance?: number;
   boardAdvantage?: string;
@@ -358,35 +351,32 @@ export default function GameBoardPage() {
   // Handle AI assistance request
   const handleAIAssistance = () => {
     if (!currentPlayer) return;
-
+    
     const gameState = convertToGameState();
-
+    
     startAnalysis(async () => {
       try {
-        // @ts-ignore - Demo code: AI flow return type mismatch is acceptable for UI demonstration
         // Get game state analysis
         const analysis = await analyzeCurrentGameState({
           gameState,
           playerName: currentPlayerName,
         });
         setAiAnalysis(analysis);
-
-        // @ts-ignore - Demo code: AI flow return type mismatch is acceptable for UI demonstration
+        
         // Get mana advice
         const mana = await getManaAdvice({
           gameState,
           playerName: currentPlayerName,
         });
         setAiManaAdvice(mana);
-
-        // @ts-ignore - Demo code: AI flow return type mismatch is acceptable for UI demonstration
+        
         // Get board evaluation
         const boardEval = await evaluateBoardState({
           gameState,
           playerName: currentPlayerName,
         });
         setAiBoardEval(boardEval);
-
+        
         toast({
           title: "AI Analysis Complete",
           description: "Your game has been analyzed for suggestions.",
