@@ -6,54 +6,13 @@
  */
 
 import Fuse from 'fuse.js';
-import type { ScryfallCard, DeckCard } from '@/app/actions';
+import type { MinimalCard } from './card-database';
 import { ESSENTIAL_CARDS } from './card-database';
+import type { DeckCard } from '@/app/actions';
 
 // In-memory cache for fuzzy search
-let fuseInstance: Fuse<MinimalCard> | null = null;
+let fuseInstance: any | null = null;
 let isInitialized = false;
-
-interface MinimalCard {
-  id: string;
-  oracle_id?: string;
-  name: string;
-  set?: string;
-  collector_number?: string;
-  cmc: number;
-  type_line: string;
-  oracle_text?: string;
-  colors: string[];
-  color_identity: string[];
-  legalities: Record<string, string>;
-  image_uris?: {
-    small: string;
-    normal: string;
-    large: string;
-    png: string;
-    art_crop: string;
-    border_crop: string;
-  };
-  mana_cost?: string;
-  power?: string;
-  toughness?: string;
-  keywords?: string[];
-  card_faces?: Array<{
-    name: string;
-    mana_cost?: string;
-    type_line?: string;
-    oracle_text?: string;
-    power?: string;
-    toughness?: string;
-    image_uris?: {
-      small: string;
-      normal: string;
-      large: string;
-      png: string;
-      art_crop: string;
-      border_crop: string;
-    };
-  }>;
-}
 
 /**
  * Initialize server-side card operations with embedded data
@@ -65,7 +24,7 @@ async function initializeServerCardOperations(): Promise<void> {
 
   try {
     // Initialize Fuse.js with embedded card data
-    const fuseOptions: Fuse.IFuseOptions<MinimalCard> = {
+    const fuseOptions: any = {
       keys: [
         { name: 'name', weight: 0.7 },
         { name: 'type_line', weight: 0.2 },
@@ -126,7 +85,7 @@ export async function validateCardLegality(
   }
 
   // Find cards in embedded data
-  for (const [lowerCaseName, requestDetails] of cardRequestMap.entries()) {
+  for (const [lowerCaseName, requestDetails] of Array.from(cardRequestMap.entries())) {
     const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
 
     if (cardInDb) {

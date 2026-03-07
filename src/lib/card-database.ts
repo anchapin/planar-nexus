@@ -75,7 +75,7 @@ let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
 // Essential commander cards for initial population
-const ESSENTIAL_CARDS: MinimalCard[] = [
+export const ESSENTIAL_CARDS: MinimalCard[] = [
   {
     id: 'card-001',
     name: 'Sol Ring',
@@ -346,7 +346,7 @@ export async function initializeCardDatabase(): Promise<void> {
  * Initialize Fuse.js for fuzzy search
  */
 function initializeFuzzySearch(cards: MinimalCard[]): void {
-  const fuseOptions: Fuse.IFuseOptions<MinimalCard> = {
+  const fuseOptions: any = {
     keys: [
       { name: 'name', weight: 0.7 },
       { name: 'type_line', weight: 0.2 },
