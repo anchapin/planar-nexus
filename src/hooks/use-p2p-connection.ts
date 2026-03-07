@@ -16,7 +16,7 @@ import {
   type SignalingRole,
 } from '@/lib/p2p-game-connection';
 import type { LocalSignalingState } from '@/lib/local-signaling-client';
-import type { RTCSessionDescriptionInit, RTCIceCandidateInit } from 'react-native-webrtc';
+import type { RTCSessionDescriptionInit, RTCIceCandidateInit } from '@/lib/webrtc-types';
 
 export interface UseP2PConnectionOptions {
   playerId: string;
@@ -100,12 +100,13 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
       connectionRef.current = connection;
 
       // Initialize as host
-      const offer = await connection.initializeAsHost();
+      await connection.initializeAsHost();
 
       // Get initial signaling state
-      setSignalingState(connection.getSignalingState());
+      const signalingState = connection.getSignalingState();
+      setSignalingState(signalingState);
 
-      return offer;
+      return signalingState.localOffer || ({} as RTCSessionDescriptionInit);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to initialize host';
       setError(errorMessage);
@@ -156,12 +157,13 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
         connectionRef.current = connection;
 
         // Initialize as joiner
-        const answer = await connection.initializeAsJoiner(offer);
+        await connection.initializeAsJoiner(offer);
 
         // Get initial signaling state
-        setSignalingState(connection.getSignalingState());
+        const signalingState = connection.getSignalingState();
+        setSignalingState(signalingState);
 
-        return answer;
+        return signalingState.localAnswer || ({} as RTCSessionDescriptionInit);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Failed to initialize joiner';
         setError(errorMessage);

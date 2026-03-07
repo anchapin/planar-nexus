@@ -7,7 +7,7 @@
  * via QR code, copy-paste, or other out-of-band methods.
  */
 
-import type { RTCSessionDescriptionInit, RTCIceCandidateInit } from 'react-native-webrtc';
+import type { RTCSessionDescriptionInit, RTCIceCandidateInit } from '@/lib/webrtc-types';
 
 /**
  * Connection phase in the signaling process

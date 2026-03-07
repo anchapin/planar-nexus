@@ -60,8 +60,8 @@ console.log('✓ Validating core functionality...\n');
 // Import and test LocalSignalingClient
 try {
   // Mock RTC types for validation
-  global.RTCSessionDescriptionInit = Object;
-  global.RTCIceCandidateInit = Object;
+  (global as any).RTCSessionDescriptionInit = Object;
+  (global as any).RTCIceCandidateInit = Object;
 
   // Test game code generation
   const gameCode1 = generateTestGameCode(6);

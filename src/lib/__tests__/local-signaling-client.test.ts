@@ -212,7 +212,7 @@ describe('QR Code Serialization', () => {
 
   it('should return null for corrupt base64', () => {
     const corrupt = deserializeFromQRCode('!!@#$%^&*()');
-    expect(invalid).toBeNull();
+    expect(corrupt).toBeNull();
   });
 
   it('should detect data too large for QR code', () => {
@@ -313,6 +313,6 @@ describe('Connection String Parsing', () => {
 
   it('should return null for malformed JSON', () => {
     const malformed = LocalSignalingClient.parseConnectionString('{ invalid json }');
-    expect(invalid).toBeNull();
+    expect(malformed).toBeNull();
   });
 });

@@ -52,6 +52,11 @@ export type P2PConnectionState =
   | 'failed';
 
 /**
+ * Re-export SignalingRole for convenience
+ */
+export type { SignalingRole };
+
+/**
  * Game message types
  */
 export type GameMessageType =
