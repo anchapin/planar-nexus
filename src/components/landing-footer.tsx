@@ -5,18 +5,18 @@ export function LandingFooter() {
         <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
           <div className="flex flex-col items-center md:items-start gap-1">
             <p className="font-medium text-foreground">Planar Nexus</p>
-            <p>Not affiliated with Wizards of the Coast</p>
+            <p>A generic card game platform</p>
           </div>
           
           <div className="flex flex-col items-center md:items-end gap-1">
-            <p>Magic: The Gathering is a trademark of Wizards of the Coast</p>
-            <a 
-              href="https://company.wizards.com/en/legal" 
-              target="_blank" 
+            <p>Planar Nexus is a generic card game platform</p>
+            <a
+              href="https://company.wizards.com/en/legal"
+              target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
             >
-              WotC Legal Policy
+              Legal Notice
             </a>
           </div>
         </div>
