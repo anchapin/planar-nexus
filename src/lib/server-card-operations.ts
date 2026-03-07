@@ -8,12 +8,13 @@
 import Fuse from 'fuse.js';
 import type { MinimalCard } from './card-database';
 import { ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS } from './card-database';
-import type { DeckCard } from '@/app/actions';
 import { type Format } from '@/lib/game-rules';
 import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
 
 // Type definitions for card operations (server-side compatibility)
 export type ScryfallCard = MinimalCard;
+
+// Server-side DeckCard type with count property
 export interface DeckCard extends ScryfallCard {
   count: number;
 }
@@ -21,47 +22,6 @@ export interface DeckCard extends ScryfallCard {
 // In-memory cache for fuzzy search
 let fuseInstance: Fuse<MinimalCard> | null = null;
 let isInitialized = false;
-interface MinimalCard {
-  id: string;
-  oracle_id?: string;
-  name: string;
-  set?: string;
-  collector_number?: string;
-  cmc: number;
-  type_line: string;
-  oracle_text?: string;
-  colors: string[];
-  color_identity: string[];
-  legalities: Record<string, string>;
-  image_uris?: {
-    small: string;
-    normal: string;
-    large: string;
-    png: string;
-    art_crop: string;
-    border_crop: string;
-  };
-  mana_cost?: string;
-  power?: string;
-  toughness?: string;
-  keywords?: string[];
-  card_faces?: Array<{
-    name: string;
-    mana_cost?: string;
-    type_line?: string;
-    oracle_text?: string;
-    power?: string;
-    toughness?: string;
-    image_uris?: {
-      small: string;
-      normal: string;
-      large: string;
-      png: string;
-      art_crop: string;
-      border_crop: string;
-    };
-  }>;
-}
 
 /**
  * Initialize server-side card operations with embedded data
