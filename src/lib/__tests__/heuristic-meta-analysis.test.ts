@@ -1,155 +1,82 @@
 /**
- * @fileOverview Tests for heuristic meta analysis module
+ * Tests for heuristic meta analysis
  */
 
-import { describe, it, expect } from '@jest/globals';
-import { analyzeMetaHeuristic } from '../heuristic-meta-analysis';
+// Jest provides describe, it, expect globally
+import { heuristicMetaAnalysis } from '@/lib/heuristic-meta-analysis';
 
-describe('heuristic-meta-analysis', () => {
-  const sampleDeck = [
-    { name: 'Sol Ring', count: 1, id: '1', cmc: 1, colors: [], legalities: {}, type_line: 'Artifact', mana_cost: '{1}', color_identity: [] },
-    { name: 'Counterspell', count: 4, id: '2', cmc: 2, colors: ['U'], legalities: {}, type_line: 'Instant', mana_cost: '{U}{U}', color_identity: ['U'] },
-    { name: 'Thoughtseize', count: 2, id: '3', cmc: 1, colors: ['B'], legalities: {}, type_line: 'Sorcery', mana_cost: '{B}', color_identity: ['B'] },
-  ];
+describe('heuristicMetaAnalysis', () => {
+  it('should generate meta analysis for a simple deck', async () => {
+    const decklist = `1 Sol Ring
+1 Arcane Signet
+1 Counterspell
+1 Lightning Bolt
+1 Swords to Plowshares`;
 
-  describe('analyzeMetaHeuristic', () => {
-    it('should return a valid MetaAnalysisOutput structure', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring\n4 Counterspell', 'commander', sampleDeck);
+    const analysis = await heuristicMetaAnalysis(decklist, 'commander');
 
-      expect(result).toHaveProperty('currentMeta');
-      expect(result).toHaveProperty('archetypes');
-      expect(result).toHaveProperty('recommendations');
-      expect(typeof result.currentMeta).toBe('string');
-      expect(Array.isArray(result.archetypes)).toBe(true);
-      expect(Array.isArray(result.recommendations)).toBe(true);
-    });
+    expect(analysis).toBeDefined();
+    expect(analysis.metaOverview).toBeDefined();
+    expect(analysis.deckStrengths).toBeDefined();
+    expect(analysis.deckWeaknesses).toBeDefined();
+    expect(analysis.matchupAnalysis).toBeDefined();
+    expect(analysis.cardSuggestions).toBeDefined();
+    expect(analysis.strategicAdvice).toBeDefined();
+  });
 
-    it('should provide metagame overview', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
+  it('should generate meta overview with tier decks', async () => {
+    const decklist = `1 Sol Ring
+1 Arcane Signet
+1 Counterspell`;
 
-      expect(result.currentMeta).toBeDefined();
-      expect(result.currentMeta.length).toBeGreaterThan(0);
-    });
+    const analysis = await heuristicMetaAnalysis(decklist, 'commander');
 
-    it('should provide format-specific metagame data', () => {
-      const commanderResult = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
-      expect(commanderResult.archetypes.length).toBeGreaterThan(0);
+    expect(analysis.metaOverview).toContain('Tier 1');
+    expect(analysis.metaOverview).toContain('commander');
+  });
 
-      const modernResult = analyzeMetaHeuristic('1 Sol Ring', 'modern', sampleDeck);
-      expect(modernResult.archetypes.length).toBeGreaterThan(0);
+  it('should generate matchup analysis', async () => {
+    const decklist = `1 Sol Ring
+1 Arcane Signet`;
 
-      const standardResult = analyzeMetaHeuristic('1 Sol Ring', 'standard', sampleDeck);
-      expect(standardResult.archetypes.length).toBeGreaterThan(0);
-    });
+    const analysis = await heuristicMetaAnalysis(decklist, 'commander');
 
-    it('should generate recommendations', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
+    expect(analysis.matchupAnalysis.length).toBeGreaterThan(0);
+    const firstMatchup = analysis.matchupAnalysis[0];
+    expect(firstMatchup.archetype).toBeDefined();
+    expect(firstMatchup.recommendation).toBeDefined();
+  });
 
-      expect(result.recommendations.length).toBeGreaterThan(0);
-      result.recommendations.forEach(rec => {
-        expect(rec).toHaveProperty('title');
-        expect(rec).toHaveProperty('description');
-        expect(rec).toHaveProperty('cardsToAdd');
-        expect(rec).toHaveProperty('cardsToRemove');
-        expect(rec).toHaveProperty('matchup');
-      });
-    });
+  it('should generate card suggestions with balanced counts', async () => {
+    const decklist = `1 Sol Ring
+1 Arcane Signet
+1 Counterspell`;
 
-    it('should handle focus archetype parameter', () => {
-      const controlResult = analyzeMetaHeuristic('1 Sol Ring', 'modern', sampleDeck, 'control');
-      expect(controlResult.recommendations.length).toBeGreaterThan(0);
+    const analysis = await heuristicMetaAnalysis(decklist, 'commander');
 
-      const aggroResult = analyzeMetaHeuristic('1 Sol Ring', 'modern', sampleDeck, 'aggro');
-      expect(aggroResult.recommendations.length).toBeGreaterThan(0);
-    });
+    const addCount = analysis.cardSuggestions.cardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
+    const removeCount = analysis.cardSuggestions.cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
 
-    it('should detect deck archetype correctly', () => {
-      const controlDeck = [
-        { name: 'Counterspell', count: 4, id: '1', cmc: 2, colors: ['U'], legalities: {}, type_line: 'Instant', mana_cost: '{U}{U}', color_identity: ['U'] },
-        { name: 'Brainstorm', count: 4, id: '2', cmc: 1, colors: ['U'], legalities: {}, type_line: 'Instant', mana_cost: '{U}', color_identity: ['U'] },
-      ];
-      const result = analyzeMetaHeuristic('4 Counterspell', 'legacy', controlDeck);
+    expect(addCount).toBe(removeCount);
+  });
 
-      expect(result.recommendations.length).toBeGreaterThan(0);
-    });
+  it('should not include sideboard suggestions for commander', async () => {
+    const decklist = `1 Sol Ring
+1 Arcane Signet`;
 
-    it('should provide matchup strategies', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
+    const analysis = await heuristicMetaAnalysis(decklist, 'commander');
 
-      result.recommendations.forEach(rec => {
-        expect(rec.matchup).toHaveProperty('against');
-        expect(rec.matchup).toHaveProperty('strategy');
-        expect(typeof rec.matchup.against).toBe('string');
-        expect(typeof rec.matchup.strategy).toBe('string');
-      });
-    });
+    expect(analysis.sideboardSuggestions).toBeUndefined();
+  });
 
-    it('should suggest card additions and removals', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
+  it('should include sideboard suggestions for non-commander formats', async () => {
+    const decklist = `1 Sol Ring
+1 Arcane Signet
+1 Counterspell`;
 
-      result.recommendations.forEach(rec => {
-        const hasAdditions = rec.cardsToAdd && rec.cardsToAdd.length > 0;
-        const hasRemovals = rec.cardsToRemove && rec.cardsToRemove.length > 0;
+    const analysis = await heuristicMetaAnalysis(decklist, 'modern');
 
-        expect(hasAdditions || hasRemovals).toBe(true);
-
-        if (hasAdditions) {
-          rec.cardsToAdd.forEach(card => {
-            expect(card).toHaveProperty('name');
-            expect(card).toHaveProperty('quantity');
-            expect(typeof card.name).toBe('string');
-            expect(typeof card.quantity).toBe('number');
-          });
-        }
-
-        if (hasRemovals) {
-          rec.cardsToRemove.forEach(card => {
-            expect(card).toHaveProperty('name');
-            expect(card).toHaveProperty('quantity');
-            expect(typeof card.name).toBe('string');
-            expect(typeof card.quantity).toBe('number');
-          });
-        }
-      });
-    });
-
-    it('should handle empty deck gracefully', () => {
-      const result = analyzeMetaHeuristic('', 'commander', []);
-
-      expect(result).toBeDefined();
-      expect(result.currentMeta).toBeDefined();
-      expect(result.archetypes).toBeDefined();
-      expect(result.recommendations).toBeDefined();
-    });
-
-    it('should provide archetypes with required properties', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
-
-      result.archetypes.forEach(archetype => {
-        expect(archetype).toHaveProperty('name');
-        expect(archetype).toHaveProperty('prevalence');
-        expect(archetype).toHaveProperty('playstyle');
-        expect(archetype).toHaveProperty('keyCards');
-        expect(archetype).toHaveProperty('weaknesses');
-      });
-    });
-
-    it('should include key cards in archetypes', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
-
-      result.archetypes.forEach(archetype => {
-        expect(archetype.keyCards).toBeInstanceOf(Array);
-        expect(archetype.keyCards.length).toBeGreaterThan(0);
-      });
-    });
-
-    it('should include weaknesses in archetypes', () => {
-      const result = analyzeMetaHeuristic('1 Sol Ring', 'commander', sampleDeck);
-
-      result.archetypes.forEach(archetype => {
-        expect(archetype.weaknesses).toBeInstanceOf(Array);
-        expect(archetype.weaknesses.length).toBeGreaterThan(0);
-      });
-    });
+    expect(analysis.sideboardSuggestions).toBeDefined();
+    expect(analysis.sideboardSuggestions?.length).toBeGreaterThan(0);
   });
 });
