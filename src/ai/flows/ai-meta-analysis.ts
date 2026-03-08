@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview Heuristic-powered meta analysis for deck optimization.
  *

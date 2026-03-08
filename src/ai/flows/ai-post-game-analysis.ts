@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview Heuristic-powered post-game analysis system.
  *

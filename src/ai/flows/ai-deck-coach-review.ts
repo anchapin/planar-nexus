@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview A heuristic deck coach for Magic: The Gathering.
  *
