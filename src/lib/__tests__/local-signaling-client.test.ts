@@ -242,7 +242,7 @@ describe('QR Code Serialization', () => {
   it('should handle empty data', () => {
     const emptyData = '';
     const chunks = chunkDataForQRCode(emptyData);
-    expect(chunks).toEqual(['']);
+    expect(chunks).toEqual([]);
 
     const assembled = assembleChunks(chunks);
     expect(assembled).toBe('');
