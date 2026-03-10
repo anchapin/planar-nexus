@@ -1,3 +1,4 @@
+'use server';
 /**
  * @fileOverview Heuristic-powered real-time gameplay assistance
  *

@@ -1,3 +1,4 @@
+'use server';
 /**
  * @fileOverview Heuristic-powered draft and sealed deck assistant
  *
