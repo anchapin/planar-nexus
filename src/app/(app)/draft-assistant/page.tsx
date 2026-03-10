@@ -30,8 +30,8 @@ interface SealedBuild {
 interface PoolAnalysis {
   colorBreakdown: Record<string, number>;
   curveBreakdown: Record<number, number>;
-  recommendedColors: { first: string; second?: string; reasoning: string };
-  archetypeSuggestions: Array<{ name: string; suitability: number; keyCards: string[] }>;
+  recommendedColors: { primary: string; secondary?: string; reasoning: string };
+  archetypeSuggestions: Array<{ name: string; score: number; cards: string[] }>;
   powerCards: Array<{ name: string; rating: number; reason: string }>;
 }
 
