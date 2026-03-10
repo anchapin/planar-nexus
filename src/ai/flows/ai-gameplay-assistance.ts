@@ -1,8 +1,9 @@
 'use server';
 /**
- * @fileOverview AI-powered real-time gameplay assistance
- * 
- * Issue #54: Phase 3.4: Implement real-time gameplay assistance
+ * @fileOverview Heuristic-powered real-time gameplay assistance
+ *
+ * Issue #446: Remove AI provider dependencies
+ * Replaced Genkit-based AI flows with heuristic algorithms.
  *
  * Provides:
  * - analyzeCurrentGameState - Analyze current game state and suggest plays
@@ -11,320 +12,462 @@
  * - evaluateBoardState - Provide overall board evaluation
  */
 
-import { ai } from '@/ai/genkit';
-import { getModelString } from '@/ai/providers';
-import { z } from 'genkit';
+import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
+import { CombatDecisionTree, generateAttackDecisions } from '@/ai/decision-making/combat-decision-tree';
+import { aiDifficultyManager, type DifficultyLevel } from '@/ai/ai-difficulty';
 
 // Input schema for game state analysis
-const GameStateAnalysisInputSchema = z.object({
-  gameState: z.record(z.any()).describe("Current game state including hand, board, mana, etc."),
-  playerName: z.string().describe("The player to provide assistance for"),
-});
+interface GameStateAnalysisInput {
+  gameState: Record<string, unknown>;
+  playerName: string;
+}
 
 // Output schema for game state analysis
-const GameStateAnalysisOutputSchema = z.object({
-  overallAssessment: z.string().describe("Brief assessment of current board state"),
-  suggestedPlays: z.array(z.object({
-    cardName: z.string(),
-    priority: z.enum(['high', 'medium', 'low']),
-    reasoning: z.string(),
-    manaCost: z.number().optional(),
-    expectedImpact: z.string(),
-  })).describe("Recommended plays in priority order"),
-  warnings: z.array(z.object({
-    type: z.enum(['danger', 'caution', 'info']),
-    message: z.string(),
-    relatedCards: z.array(z.string()).optional(),
-  })).describe("Warnings about potentially bad moves or dangerous situations"),
-  manaUsage: z.object({
-    optimal: z.boolean(),
-    suggestions: z.array(z.string()),
-    unusedMana: z.number(),
-  }).describe("Mana usage analysis"),
-  boardThreats: z.array(z.object({
-    card: z.string(),
-    threat: z.string(),
-    priority: z.enum(['immediate', 'high', 'medium', 'low']),
-  })).describe("Active threats on the board"),
-  strategicAdvice: z.array(z.string()).describe("General strategic advice for this game state"),
-});
+interface GameStateAnalysisOutput {
+  overallAssessment: string;
+  suggestedPlays: Array<{
+    cardName: string;
+    priority: 'high' | 'medium' | 'low';
+    reasoning: string;
+    manaCost?: number;
+    expectedImpact: string;
+  }>;
+  warnings: Array<{
+    type: 'danger' | 'caution' | 'info';
+    message: string;
+    relatedCards?: string[];
+  }>;
+  manaUsage: ManaAdviceOutput;
+  boardThreats: Array<{
+    card: string;
+    threat: string;
+    priority: 'immediate' | 'high' | 'medium' | 'low';
+  }>;
+  strategicAdvice: string[];
+}
 
 // Input schema for specific play analysis
-const PlayAnalysisInputSchema = z.object({
-  gameState: z.record(z.any()).describe("Current game state"),
-  playerName: z.string().describe("The player"),
-  cardName: z.string().describe("Card being considered"),
-  target: z.string().optional().describe("Intended target (if any)"),
-});
+interface PlayAnalysisInput {
+  gameState: Record<string, unknown>;
+  playerName: string;
+  cardName: string;
+  target?: string;
+}
 
 // Output schema for play analysis
-const PlayAnalysisOutputSchema = z.object({
-  isRecommended: z.boolean().describe("Whether this play is recommended"),
-  rating: z.enum(['excellent', 'good', 'okay', 'poor', 'terrible']).describe("Rating of the play"),
-  reasoning: z.string().describe("Detailed explanation"),
-  alternativePlays: z.array(z.object({
-    cardName: z.string(),
-    rating: z.string(),
-    reason: z.string(),
-  })).describe("Better alternatives if any"),
-  potentialUpgrades: z.array(z.string()).describe("How this play could be improved"),
-});
+interface PlayAnalysisOutput {
+  isRecommended: boolean;
+  rating: 'excellent' | 'good' | 'okay';
+  reasoning: string;
+  alternativePlays: Array<{
+    cardName: string;
+    rating: string;
+    reason: string;
+  }>;
+  potentialUpgrades: string[];
+}
 
 // Input schema for mana advice
-const ManaAdviceInputSchema = z.object({
-  gameState: z.record(z.any()).describe("Current game state"),
-  playerName: z.string().describe("The player"),
-});
+interface ManaAdviceInput {
+  gameState: Record<string, unknown>;
+  playerName: string;
+}
 
 // Output schema for mana advice
-const ManaAdviceOutputSchema = z.object({
-  availableMana: z.object({
-    total: z.number(),
-    colored: z.record(z.string(), z.number()),
-    colorless: z.number(),
-  }).describe("Current available mana"),
-  suggestions: z.array(z.object({
-    cardName: z.string().optional(),
-    action: z.string(),
-    manaCost: z.number(),
-    priority: z.string(),
-    reasoning: z.string(),
-  })).describe("Suggestions for using available mana"),
-  shouldHoldMana: z.boolean().describe("Whether player should hold mana for something"),
-  holdReason: z.string().optional().describe("Reason for holding mana"),
-});
+interface ManaAdviceOutput {
+  availableMana: {
+    total: number;
+    colored: Record<string, number>;
+    colorless: number;
+  };
+  suggestions: Array<{
+    cardName?: string;
+    action: string;
+    manaCost: number;
+    priority: string;
+    reasoning: string;
+  }>;
+  optimal: boolean;
+  unusedMana: number;
+}
 
 // Input schema for board evaluation
-const BoardEvaluationInputSchema = z.object({
-  gameState: z.record(z.any()).describe("Current game state"),
-  playerName: z.string().describe("The player to evaluate for"),
-});
+interface BoardEvaluationInput {
+  gameState: Record<string, unknown>;
+  playerName: string;
+}
 
 // Output schema for board evaluation
-const BoardEvaluationOutputSchema = z.object({
-  playerWinChance: z.number().min(0).max(100).describe("Estimated win chance percentage"),
-  boardAdvantage: z.enum(['winning', 'slightly_ahead', 'even', 'slightly_behind', 'losing']).describe("Board advantage assessment"),
-  keyFactors: z.array(z.string()).describe("Factors contributing to the assessment"),
-  cardsInHand: z.number().describe("Player's cards in hand"),
-  cardsInPlay: z.number().describe("Player's cards in play"),
-  opponentCardsInHand: z.number().describe("Opponent's estimated cards in hand"),
-  opponentCardsInPlay: z.number().describe("Opponent's cards in play"),
-  recommendations: z.array(z.string()).describe("Recommendations based on board state"),
-});
+interface BoardEvaluationOutput {
+  playerWinChance: number;
+  boardAdvantage: 'winning' | 'slightly_ahead' | 'even' | 'slightly_behind' | 'losing';
+  keyFactors: string[];
+  cardsInHand: number;
+  cardsInPlay: number;
+  opponentCardsInHand: number;
+  opponentCardsInPlay: number;
+  recommendations: string[];
+}
 
 /**
  * Analyze current game state and provide comprehensive assistance
  */
 export async function analyzeCurrentGameState(
-  input: z.infer<typeof GameStateAnalysisInputSchema>
-): Promise<z.infer<typeof GameStateAnalysisOutputSchema>> {
-  const result = await gameStateAnalysisFlow(input);
-  return result;
+  input: GameStateAnalysisInput
+): Promise<GameStateAnalysisOutput> {
+  const { gameState, playerName } = input;
+
+  // Evaluate game state using heuristic evaluator
+  const evaluation = evaluateGameState(gameState as any, playerName);
+  const quickScoreVal = quickScore(gameState as any, playerName);
+
+  // Generate suggested plays based on game state
+  const suggestedPlays = generateSuggestedPlays(gameState, playerName);
+
+  // Generate warnings based on game state
+  const warnings = generateWarnings(gameState);
+
+  // Analyze mana usage
+  const manaUsage = analyzeManaUsage(gameState, playerName);
+
+  // Identify board threats
+  const boardThreats = identifyThreats(gameState, playerName);
+
+  // Generate strategic advice
+  const strategicAdvice = generateStrategicAdvice(evaluation, quickScoreVal);
+
+  return {
+    overallAssessment: generateOverallAssessment(evaluation, quickScoreVal),
+    suggestedPlays,
+    warnings,
+    manaUsage,
+    boardThreats,
+    strategicAdvice,
+  };
 }
 
 /**
  * Analyze a specific play being considered
  */
 export async function analyzePlay(
-  input: z.infer<typeof PlayAnalysisInputSchema>
-): Promise<z.infer<typeof PlayAnalysisOutputSchema>> {
-  const result = await playAnalysisFlow(input);
-  return result;
+  input: PlayAnalysisInput
+): Promise<PlayAnalysisOutput> {
+  const { gameState, playerName, cardName, target } = input;
+
+  // Evaluate if this play is recommended using heuristics
+  const evaluation = evaluatePlayHeuristic(gameState, playerName, cardName, target);
+
+  return evaluation;
 }
 
 /**
  * Get mana usage advice
  */
 export async function getManaAdvice(
-  input: z.infer<typeof ManaAdviceInputSchema>
-): Promise<z.infer<typeof ManaAdviceOutputSchema>> {
-  const result = await manaAdviceFlow(input);
-  return result;
+  input: ManaAdviceInput
+): Promise<ManaAdviceOutput> {
+  const { gameState, playerName } = input;
+
+  return analyzeManaUsage(gameState, playerName);
 }
 
 /**
  * Evaluate overall board state
  */
 export async function evaluateBoardState(
-  input: z.infer<typeof BoardEvaluationInputSchema>
-): Promise<z.infer<typeof BoardEvaluationOutputSchema>> {
-  const result = await boardEvaluationFlow(input);
-  return result;
+  input: BoardEvaluationInput
+): Promise<BoardEvaluationOutput> {
+  const { gameState, playerName } = input;
+
+  const evaluation = evaluateGameState(gameState as any, playerName);
+  const quickScoreVal = quickScore(gameState as any, playerName);
+
+  // Determine board advantage based on score difference
+  let boardAdvantage: BoardEvaluationOutput['boardAdvantage'];
+  if (quickScoreVal > 5) {
+    boardAdvantage = 'winning';
+  } else if (quickScoreVal > 2) {
+    boardAdvantage = 'slightly_ahead';
+  } else if (quickScoreVal > -2) {
+    boardAdvantage = 'even';
+  } else if (quickScoreVal > -5) {
+    boardAdvantage = 'slightly_behind';
+  } else {
+    boardAdvantage = 'losing';
+  }
+
+  // Calculate win chance based on score
+  const winChance = Math.min(Math.max((quickScoreVal + 10) * 5, 5), 95);
+
+  return {
+    playerWinChance: winChance,
+    boardAdvantage,
+    keyFactors: generateKeyFactors(evaluation),
+    cardsInHand: evaluation.factors?.handQuality || 0,
+    cardsInPlay: evaluation.factors?.permanentAdvantage || 0,
+    opponentCardsInHand: 5, // Estimate
+    opponentCardsInPlay: 5, // Estimate
+    recommendations: generateBoardRecommendations(evaluation, quickScoreVal),
+  };
 }
 
-// Use provider-agnostic model string
-const currentModel = getModelString();
+// Helper functions
 
-// Main game state analysis prompt
-const gameStateAnalysisPrompt = ai.definePrompt({
-  name: 'gameStateAnalysisPrompt',
-  model: currentModel,
-  input: { schema: GameStateAnalysisInputSchema },
-  output: { schema: GameStateAnalysisOutputSchema },
-  prompt: `You are an expert Magic: The Gathering advisor. Analyze the current game state and provide helpful suggestions to improve the player's chances of winning.
-
-**GAME STATE:**
-{{#json gameState}}{{gameState}}{{/json}}
-
-**PLAYER:** {{playerName}}
-
-**YOUR TASK:**
-Analyze this game state and provide:
-
-1. **Overall Assessment**: Brief summary of the current board state
-2. **Suggested Plays**: 2-5 recommended plays in priority order
-3. **Warnings**: Any potentially bad moves or dangerous situations to be aware of
-4. **Mana Usage**: Analysis of how available mana should be used
-5. **Board Threats**: Active threats that need to be addressed
-6. **Strategic Advice**: General strategic guidance for this game state
-
-Focus on:
-- Card advantage and card draw
-- Board presence and tempo
-- Threat assessment and removal priorities
-- Mana curve and resource management
-- Win condition progression
-
-Be specific and actionable. Provide actual card names when possible.`,
-});
-
-// Play analysis prompt
-const playAnalysisPrompt = ai.definePrompt({
-  name: 'playAnalysisPrompt',
-  model: currentModel,
-  input: { schema: PlayAnalysisInputSchema },
-  output: { schema: PlayAnalysisOutputSchema },
-  prompt: `You are an expert Magic: The Gathering advisor. Analyze whether a specific play is good or bad.
-
-**GAME STATE:**
-{{#json gameState}}{{gameState}}{{/json}}
-
-**PLAYER:** {{playerName}}
-
-**PROPOSED PLAY:**
-- Card: {{cardName}}
-{{#if target}}- Target: {{target}}{{/if}}
-
-**YOUR TASK:**
-Evaluate this play and provide:
-1. **Recommendation**: Is this play recommended?
-2. **Rating**: excellent, good, okay, poor, or terrible
-3. **Reasoning**: Detailed explanation
-4. **Alternatives**: Better plays if available
-5. **Upgrades**: How this play could be improved
-
-Be honest but constructive. Don't hesitate to call out poor plays.`,
-});
-
-// Mana advice prompt
-const manaAdvicePrompt = ai.definePrompt({
-  name: 'manaAdvicePrompt',
-  model: currentModel,
-  input: { schema: ManaAdviceInputSchema },
-  output: { schema: ManaAdviceOutputSchema },
-  prompt: `You are a Magic: The Gathering mana management expert. Help the player optimize their mana usage.
-
-**GAME STATE:**
-{{#json gameState}}{{gameState}}{{/json}}
-
-**PLAYER:** {{playerName}}
-
-**YOUR TASK:**
-Analyze available mana and provide:
-1. **Available Mana**: Breakdown of current mana pool
-2. **Suggestions**: How to best spend available mana this turn
-3. **Hold Decision**: Whether to save mana for something later
-
-Consider:
-- Upcoming turns and future mana needs
-- Cards in hand that could be played
-- Emergency mana sinks (lands, mana rocks)
-- Color fixing needs
-
-Provide specific, actionable advice.`,
-});
-
-// Board evaluation prompt
-const boardEvaluationPrompt = ai.definePrompt({
-  name: 'boardEvaluationPrompt',
-  model: currentModel,
-  input: { schema: BoardEvaluationInputSchema },
-  output: { schema: BoardEvaluationOutputSchema },
-  prompt: `You are a Magic: The Gathering strategic analyst. Evaluate the current board state from the player's perspective.
-
-**GAME STATE:**
-{{#json gameState}}{{gameState}}{{/json}}
-
-**PLAYER:** {{playerName}}
-
-**YOUR TASK:**
-Evaluate the board state and provide:
-1. **Win Chance**: Estimate probability of winning (0-100%)
-2. **Board Advantage**: winning, slightly_ahead, even, slightly_behind, losing
-3. **Key Factors**: What's driving this assessment
-4. **Card Counts**: Your cards in hand/play vs opponent's
-5. **Recommendations**: What should the player focus on
-
-Be objective and data-driven. Use all available information to make the assessment.`,
-});
-
-// Define the flows
-const gameStateAnalysisFlow = ai.defineFlow(
-  {
-    name: 'gameStateAnalysisFlow',
-    inputSchema: GameStateAnalysisInputSchema,
-    outputSchema: GameStateAnalysisOutputSchema,
-  },
-  async (input) => {
-    const { output } = await gameStateAnalysisPrompt(input);
-    if (!output) {
-      throw new Error('Failed to analyze game state');
-    }
-    return output;
+function generateOverallAssessment(evaluation: any, score: number): string {
+  if (score > 5) {
+    return "You have a strong board position with significant advantages.";
+  } else if (score > 2) {
+    return "You have a slight advantage. Continue building your board.";
+  } else if (score > -2) {
+    return "The game is evenly matched. Look for opportunities to gain advantage.";
+  } else if (score > -5) {
+    return "You're slightly behind. Focus on stabilizing and finding answers.";
+  } else {
+    return "You're in a difficult position. Prioritize survival and look for comeback opportunities.";
   }
-);
+}
 
-const playAnalysisFlow = ai.defineFlow(
-  {
-    name: 'playAnalysisFlow',
-    inputSchema: PlayAnalysisInputSchema,
-    outputSchema: PlayAnalysisOutputSchema,
-  },
-  async (input) => {
-    const { output } = await playAnalysisPrompt(input);
-    if (!output) {
-      throw new Error('Failed to analyze play');
-    }
-    return output;
-  }
-);
+function generateSuggestedPlays(gameState: any, playerName: string): GameStateAnalysisOutput['suggestedPlays'] {
+  const plays: GameStateAnalysisOutput['suggestedPlays'] = [];
 
-const manaAdviceFlow = ai.defineFlow(
-  {
-    name: 'manaAdviceFlow',
-    inputSchema: ManaAdviceInputSchema,
-    outputSchema: ManaAdviceOutputSchema,
-  },
-  async (input) => {
-    const { output } = await manaAdvicePrompt(input);
-    if (!output) {
-      throw new Error('Failed to get mana advice');
+  // Suggest playing land if available
+  if (gameState.hand && gameState.hand.length > 0) {
+    const lands = gameState.hand.filter((card: any) => card.type_line?.includes('Land'));
+    if (lands.length > 0) {
+      plays.push({
+        cardName: lands[0].name,
+        priority: 'high',
+        reasoning: "You should play a land to develop your mana base.",
+        expectedImpact: "Increases available mana for future turns",
+      });
     }
-    return output;
   }
-);
 
-const boardEvaluationFlow = ai.defineFlow(
-  {
-    name: 'boardEvaluationFlow',
-    inputSchema: BoardEvaluationInputSchema,
-    outputSchema: BoardEvaluationOutputSchema,
-  },
-  async (input) => {
-    const { output } = await boardEvaluationPrompt(input);
-    if (!output) {
-      throw new Error('Failed to evaluate board state');
-    }
-    return output;
+  // Suggest casting creatures
+  if (gameState.hand && gameState.hand.length > 0) {
+    const creatures = gameState.hand.filter((card: any) => card.type_line?.includes('Creature'));
+    creatures.slice(0, 2).forEach((creature: any) => {
+      plays.push({
+        cardName: creature.name,
+        priority: 'medium',
+        reasoning: `Cast ${creature.name} to develop your board presence.`,
+        manaCost: creature.cmc,
+        expectedImpact: "Adds a threat to the battlefield",
+      });
+    });
   }
-);
+
+  // Suggest removal if opponent has threats
+  if (gameState.opponentBoard && gameState.opponentBoard.some((card: any) => card.type_line?.includes('Creature'))) {
+    const removal = gameState.hand?.filter((card: any) =>
+      card.type_line?.includes('Instant') || card.type_line?.includes('Sorcery')
+    ).slice(0, 1);
+    if (removal && removal.length > 0) {
+      plays.push({
+        cardName: removal[0].name,
+        priority: 'high',
+        reasoning: "Remove opponent's threat to maintain board control.",
+        manaCost: removal[0].cmc,
+        expectedImpact: "Neutralizes opponent's board presence",
+      });
+    }
+  }
+
+  return plays;
+}
+
+function generateWarnings(gameState: any): GameStateAnalysisOutput['warnings'] {
+  const warnings: GameStateAnalysisOutput['warnings'] = [];
+
+  // Low life warning
+  if (gameState.life && gameState.life < 10) {
+    warnings.push({
+      type: 'danger',
+      message: "Your life total is critically low. Prioritize defense and life gain.",
+    });
+  }
+
+  // Hand empty warning
+  if (!gameState.hand || gameState.hand.length === 0) {
+    warnings.push({
+      type: 'caution',
+      message: "You have no cards in hand. Consider card draw options.",
+    });
+  }
+
+  // Few lands warning
+  if (gameState.board && gameState.board.filter((card: any) => card.type_line?.includes('Land')).length < 3) {
+    warnings.push({
+      type: 'info',
+      message: "Consider developing your land base for consistent mana.",
+    });
+  }
+
+  return warnings;
+}
+
+function analyzeManaUsage(gameState: any, playerName: string): ManaAdviceOutput {
+  const availableMana = gameState.availableMana || { total: 0, colored: {}, colorless: 0 };
+  const unusedMana = availableMana.total - (gameState.usedMana || 0);
+
+  const suggestions: ManaAdviceOutput['suggestions'] = [];
+
+  // Suggest using available mana
+  if (unusedMana > 0 && gameState.hand && gameState.hand.length > 0) {
+    const playableCards = gameState.hand.filter((card: any) => card.cmc <= unusedMana);
+    playableCards.slice(0, 2).forEach((card: any) => {
+      suggestions.push({
+        cardName: card.name,
+        action: `Cast ${card.name}`,
+        manaCost: card.cmc,
+        priority: card.type_line?.includes('Creature') ? 'high' : 'medium',
+        reasoning: `Use available mana to play ${card.name}`,
+      });
+    });
+  }
+
+  // Suggest holding mana for instants
+  if (unusedMana >= 2 && gameState.hand?.some((card: any) => card.type_line?.includes('Instant'))) {
+    return {
+      availableMana,
+      suggestions,
+      optimal: false,
+      unusedMana,
+    };
+  }
+
+  return {
+    availableMana,
+    suggestions,
+    optimal: unusedMana <= 1,
+    unusedMana,
+  };
+}
+
+function identifyThreats(gameState: any, playerName: string): GameStateAnalysisOutput['boardThreats'] {
+  const threats: GameStateAnalysisOutput['boardThreats'] = [];
+
+  if (gameState.opponentBoard) {
+    gameState.opponentBoard.forEach((card: any) => {
+      if (card.type_line?.includes('Creature')) {
+        let priority: GameStateAnalysisOutput['boardThreats'][0]['priority'];
+        if (card.power >= 4) {
+          priority = 'immediate';
+        } else if (card.power >= 2) {
+          priority = 'high';
+        } else {
+          priority = 'medium';
+        }
+
+        threats.push({
+          card: card.name,
+          threat: `${card.name} (${card.power}/${card.toughness})`,
+          priority,
+        });
+      }
+    });
+  }
+
+  return threats;
+}
+
+function generateStrategicAdvice(evaluation: any, score: number): string[] {
+  const advice: string[] = [];
+
+  if (score > 2) {
+    advice.push("Continue building your advantage and close out the game.");
+    advice.push("Consider aggressive plays to press your advantage.");
+  } else if (score < -2) {
+    advice.push("Focus on stabilizing and finding answers to opponent's threats.");
+    advice.push("Look for comeback opportunities and card advantage.");
+  } else {
+    advice.push("Look for opportunities to gain incremental advantage.");
+    advice.push("Consider both tempo and card advantage in your decisions.");
+  }
+
+  if (evaluation.handQuality && evaluation.handQuality < 3) {
+    advice.push("Your hand is running low - consider card draw options.");
+  }
+
+  return advice;
+}
+
+function evaluatePlayHeuristic(
+  gameState: any,
+  playerName: string,
+  cardName: string,
+  target?: string
+): PlayAnalysisOutput {
+  // Simplified heuristic evaluation
+  const card = gameState.hand?.find((c: any) => c.name === cardName);
+
+  if (!card) {
+    return {
+      isRecommended: false,
+      rating: 'okay',
+      reasoning: 'Card not found in hand.',
+      alternativePlays: [],
+      potentialUpgrades: [],
+    };
+  }
+
+  // Evaluate based on card type and cost
+  let rating: PlayAnalysisOutput['rating'] = 'okay';
+  let reasoning = 'This is a reasonable play.';
+
+  if (card.type_line?.includes('Creature')) {
+    if (card.cmc <= gameState.availableMana?.total) {
+      rating = 'good';
+      reasoning = 'Playing a creature develops your board presence.';
+    }
+  } else if (card.type_line?.includes('Instant')) {
+    rating = 'excellent';
+    reasoning = 'Instant-speed interaction provides flexibility.';
+  } else if (card.type_line?.includes('Sorcery')) {
+    rating = 'okay';
+    reasoning = 'Sorcery can impact the board state effectively.';
+  }
+
+  return {
+    isRecommended: true,
+    rating,
+    reasoning,
+    alternativePlays: [],
+    potentialUpgrades: [],
+  };
+}
+
+function generateKeyFactors(evaluation: any): string[] {
+  const factors: string[] = [];
+
+  if (evaluation.lifeScore > 0) {
+    factors.push("Healthy life total");
+  }
+  if (evaluation.cardAdvantage > 0) {
+    factors.push("Card advantage");
+  }
+  if (evaluation.permanentAdvantage > 0) {
+    factors.push("Board presence");
+  }
+  if (evaluation.manaAvailable > 0) {
+    factors.push("Mana available");
+  }
+
+  return factors;
+}
+
+function generateBoardRecommendations(evaluation: any, score: number): string[] {
+  const recommendations: string[] = [];
+
+  if (score > 2) {
+    recommendations.push("Consider aggressive plays to finish the game.");
+  } else if (score < -2) {
+    recommendations.push("Focus on defense and finding answers.");
+  }
+
+  if (evaluation.cardAdvantage < 0) {
+    recommendations.push("Look for card draw opportunities.");
+  }
+
+  return recommendations;
+}
