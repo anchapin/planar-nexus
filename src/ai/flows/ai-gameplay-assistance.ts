@@ -37,11 +37,7 @@ interface GameStateAnalysisOutput {
     message: string;
     relatedCards?: string[];
   }>;
-  manaUsage: {
-    optimal: boolean;
-    suggestions: string[];
-    unusedMana: number;
-  };
+  manaUsage: ManaAdviceOutput;
   boardThreats: Array<{
     card: string;
     threat: string;
@@ -61,7 +57,7 @@ interface PlayAnalysisInput {
 // Output schema for play analysis
 interface PlayAnalysisOutput {
   isRecommended: boolean;
-  rating: 'excellent' | 'good' | 'okay' | 'poor' | 'terrible';
+  rating: 'excellent' | 'good' | 'okay';
   reasoning: string;
   alternativePlays: Array<{
     cardName: string;
@@ -91,8 +87,8 @@ interface ManaAdviceOutput {
     priority: string;
     reasoning: string;
   }>;
-  shouldHoldMana: boolean;
-  holdReason?: string;
+  optimal: boolean;
+  unusedMana: number;
 }
 
 // Input schema for board evaluation
@@ -122,8 +118,8 @@ export async function analyzeCurrentGameState(
   const { gameState, playerName } = input;
 
   // Evaluate game state using heuristic evaluator
-  const evaluation = evaluateGameState(gameState as any);
-  const quickScoreVal = quickScore(gameState as any);
+  const evaluation = evaluateGameState(gameState as any, playerName);
+  const quickScoreVal = quickScore(gameState as any, playerName);
 
   // Generate suggested plays based on game state
   const suggestedPlays = generateSuggestedPlays(gameState, playerName);
@@ -183,8 +179,8 @@ export async function evaluateBoardState(
 ): Promise<BoardEvaluationOutput> {
   const { gameState, playerName } = input;
 
-  const evaluation = evaluateGameState(gameState as any);
-  const quickScoreVal = quickScore(gameState as any);
+  const evaluation = evaluateGameState(gameState as any, playerName);
+  const quickScoreVal = quickScore(gameState as any, playerName);
 
   // Determine board advantage based on score difference
   let boardAdvantage: BoardEvaluationOutput['boardAdvantage'];
@@ -207,8 +203,8 @@ export async function evaluateBoardState(
     playerWinChance: winChance,
     boardAdvantage,
     keyFactors: generateKeyFactors(evaluation),
-    cardsInHand: evaluation.handQuality || 0,
-    cardsInPlay: evaluation.permanentAdvantage || 0,
+    cardsInHand: evaluation.factors?.handQuality || 0,
+    cardsInPlay: evaluation.factors?.permanentAdvantage || 0,
     opponentCardsInHand: 5, // Estimate
     opponentCardsInPlay: 5, // Estimate
     recommendations: generateBoardRecommendations(evaluation, quickScoreVal),
@@ -335,15 +331,15 @@ function analyzeManaUsage(gameState: any, playerName: string): ManaAdviceOutput 
     return {
       availableMana,
       suggestions,
-      shouldHoldMana: true,
-      holdReason: "Hold mana for instant-speed interaction or removal.",
+      optimal: false,
+      unusedMana,
     };
   }
 
   return {
     availableMana,
     suggestions,
-    shouldHoldMana: false,
+    optimal: unusedMana <= 1,
     unusedMana,
   };
 }
@@ -408,7 +404,7 @@ function evaluatePlayHeuristic(
   if (!card) {
     return {
       isRecommended: false,
-      rating: 'poor',
+      rating: 'okay',
       reasoning: 'Card not found in hand.',
       alternativePlays: [],
       potentialUpgrades: [],
@@ -433,7 +429,7 @@ function evaluatePlayHeuristic(
   }
 
   return {
-    isRecommended: rating !== 'poor' && rating !== 'terrible',
+    isRecommended: true,
     rating,
     reasoning,
     alternativePlays: [],

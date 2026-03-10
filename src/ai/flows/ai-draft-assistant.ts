@@ -101,14 +101,14 @@ interface PoolAnalysisOutput {
   colorBreakdown: Record<string, number>;
   curveBreakdown: Record<number, number>;
   recommendedColors: {
-    first: string;
-    second?: string;
+    primary: string;
+    secondary?: string;
     reasoning: string;
   };
   archetypeSuggestions: Array<{
     name: string;
-    suitability: number;
-    keyCards: string[];
+    score: number;
+    cards: string[];
   }>;
   powerCards: Array<{
     name: string;
