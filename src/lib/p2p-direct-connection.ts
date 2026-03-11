@@ -239,11 +239,11 @@ export async function createHostConnection(
   const { playerId, playerName, onQRCodeGenerated, onICECandidate, ...rtcOptions } = options;
 
   // Create WebRTC connection
-  const connection = new (await import('./webrtc-p2p')).createP2PConnection({
+  const connection = (await import('./webrtc-p2p')).createP2PConnection({
     playerId,
     playerName,
-    isHost: true,
     ...rtcOptions,
+    isHost: true,
   });
 
   // Initialize connection
@@ -308,12 +308,12 @@ export async function createClientConnection(
   const { playerId, playerName, onAnswerGenerated, onICECandidate, ...rtcOptions } = options;
 
   // Create WebRTC connection
-  const connection = new (await import('./webrtc-p2p')).createP2PConnection({
+  const connection = (await import('./webrtc-p2p')).createP2PConnection({
     playerId,
     playerName,
+    ...rtcOptions,
     isHost: false,
     gameCode: connectionData.gameCode,
-    ...rtcOptions,
   });
 
   // Initialize connection
