@@ -104,11 +104,12 @@ export interface OpenAIChatResponse {
  * @param request - Chat request
  * @returns OpenAI's chat completion response
  */
-export function sendOpenAIChat(
+export async function sendOpenAIChat(
   config: OpenAIProviderConfig,
   request: Omit<OpenAIChatRequest, 'model'>
 ): Promise<OpenAIChatResponse> {
   // Use server-side proxy (security best practice)
+  // This ensures API keys are NOT exposed on the client
   return sendOpenAIChatViaProxy(config, request);
 }
 
@@ -243,7 +244,7 @@ export function formatOpenAIMessages(
   messages: Array<{ role: 'user' | 'assistant' | 'system' | 'tool'; content: string; name?: string }>
 ): OpenAIMessage[] {
   return messages.map(msg => ({
-    role: msg.role as 'user' | 'assistant' | 'system',
+    role: (msg.role === 'tool' ? 'assistant' : msg.role) as 'user' | 'assistant' | 'system',
     content: msg.content,
   }));
 }
