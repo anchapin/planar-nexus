@@ -23,6 +23,8 @@ import {
   PlayerState,
   HandCard,
 } from '../game-state-evaluator';
+import { callAIProxy } from '@/lib/ai-proxy-client';
+import { AIProvider } from '../providers/types';
 
 /**
  * Card data interface for combat tricks
@@ -246,6 +248,44 @@ export class CombatDecisionTree {
       totalExpectedValue: this.calculateTotalExpectedValue(attackDecisions),
       combatTricks,
     };
+  }
+
+  /**
+   * Generate attack decisions using AI via proxy
+   */
+  async generateAttackPlanAI(
+    provider: AIProvider = 'zaic', 
+    model?: string
+  ): Promise<CombatPlan> {
+    try {
+      const response = await callAIProxy<CombatPlan>({
+        provider,
+        endpoint: 'chat/completions',
+        model: model || 'default',
+        body: {
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are a Magic: The Gathering AI. Generate an attack plan for the current game state.' 
+            },
+            { 
+              role: 'user', 
+              content: JSON.stringify({ gameState: this.gameState, aiPlayerId: this.aiPlayerId, config: this.config }) 
+            }
+          ],
+          response_format: { type: 'json_object' }
+        }
+      });
+
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      return this.generateAttackPlan();
+    } catch (error) {
+      console.error('AI attack plan generation failed:', error);
+      return this.generateAttackPlan();
+    }
   }
 
   /**
