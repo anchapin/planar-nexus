@@ -88,21 +88,12 @@ export interface ZAIChatResponse {
  * Create a Z.ai client configuration
  * @param config - Configuration for the Z.ai provider
  * @returns Configuration object for making API requests
- * @deprecated Server-side proxy is now the default. Direct API calls are discouraged.
+ * @deprecated Use server-side proxy instead.
  */
 export function createZAIClient(config: ZAIProviderConfig): ZAIProviderConfig {
-  const apiKey = config.apiKey || process.env.ZAI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(
-      'Z.ai API key is required. Set ZAI_API_KEY environment variable or pass it in config.'
-    );
-  }
-
   return {
     ...config,
-    apiKey,
-    baseURL: config.baseURL || process.env.ZAI_BASE_URL || DEFAULT_ZAI_CONFIG.baseURL,
+    baseURL: config.baseURL || DEFAULT_ZAI_CONFIG.baseURL,
     model: config.model || DEFAULT_ZAI_CONFIG.model,
     maxTokens: config.maxTokens || DEFAULT_ZAI_CONFIG.maxTokens,
     temperature: config.temperature || DEFAULT_ZAI_CONFIG.temperature,
@@ -115,17 +106,12 @@ export function createZAIClient(config: ZAIProviderConfig): ZAIProviderConfig {
  * @param request - Chat request
  * @returns Z.ai chat completion response
  */
-export async function sendZAIChat(
+export function sendZAIChat(
   config: ZAIProviderConfig,
   request: Omit<ZAIChatRequest, 'model'>
 ): Promise<ZAIChatResponse> {
-  // Use server-side proxy by default (security best practice)
-  if (config.useProxy !== false) {
-    return sendZAIChatViaProxy(config, request);
-  }
-
-  // Fallback to direct API call (deprecated, for backward compatibility)
-  return sendZAIChatDirect(config, request);
+  // Use server-side proxy (security best practice)
+  return sendZAIChatViaProxy(config, request);
 }
 
 /**
@@ -165,47 +151,6 @@ async function sendZAIChatViaProxy(
   }
 }
 
-/**
- * Send a chat completion request to Z.ai directly (deprecated)
- * @param config - Provider configuration
- * @param request - Chat request
- * @returns Z.ai chat completion response
- * @deprecated Use server-side proxy instead
- */
-async function sendZAIChatDirect(
-  config: ZAIProviderConfig,
-  request: Omit<ZAIChatRequest, 'model'>
-): Promise<ZAIChatResponse> {
-  console.warn(
-    'Direct Z.ai API calls are deprecated. Please use server-side proxy (useProxy: true).'
-  );
-
-  const client = createZAIClient(config);
-
-  const response = await fetch(`${client.baseURL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${client.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: client.model,
-      max_tokens: client.maxTokens || request.max_tokens,
-      temperature: client.temperature || request.temperature,
-      messages: request.messages,
-      top_p: request.top_p,
-      stream: false,
-      stop: request.stop,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Z.ai API error: ${response.status} - ${error}`);
-  }
-
-  return response.json();
-}
 
 /**
  * Send a streaming chat completion request to Z.ai
@@ -349,19 +294,19 @@ export function formatZAIMessages(
 }
 
 /**
- * Check if Z.ai is configured and available
+ * Check if Z.ai is available (via proxy)
  */
 export function isZAIAvailable(): boolean {
-  return !!process.env.ZAI_API_KEY;
+  // Availability is determined server-side
+  return true;
 }
 
 /**
  * Get Z.ai provider status
  */
 export function getZAIProviderStatus(): { available: boolean; configured: boolean } {
-  const hasApiKey = !!process.env.ZAI_API_KEY;
   return {
-    available: hasApiKey,
-    configured: hasApiKey,
+    available: true,
+    configured: true,
   };
 }
