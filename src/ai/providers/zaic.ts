@@ -154,83 +154,28 @@ async function sendZAIChatViaProxy(
 
 /**
  * Send a streaming chat completion request to Z.ai
- * Note: Streaming is not yet supported through the proxy
+ * 
  * @param config - Provider configuration
  * @param request - Chat request
  * @returns Async iterable for streaming response
- * @deprecated Streaming not yet supported with proxy. Use sendZAIChat instead.
+ * 
+ * @deprecated SECURITY RISK: This function makes direct API calls exposing API keys.
+ * Use sendZAIChat() instead which routes through the server-side proxy.
+ * 
+ * TODO: Implement server-side streaming proxy to restore this functionality securely.
+ * See: https://github.com/anchapin/planar-nexus/issues/578
  */
-export async function* sendZAIChatStream(
+export async function sendZAIChatStream(
   config: ZAIProviderConfig,
   request: Omit<ZAIChatRequest, 'model'>
-): AsyncGenerator<string> {
-  // Streaming not yet supported through proxy
-  // Fall back to direct API call with warning
-  console.warn(
-    'Streaming Z.ai calls bypass the proxy. Consider using non-streaming sendZAIChat for better security.'
+): Promise<AsyncGenerator<string>> {
+  // SECURITY WARNING: This function is deprecated and should not be used.
+  // It exposes API keys in client-side code, which is a critical security vulnerability.
+  throw new Error(
+    'sendZAIChatStream is deprecated due to critical security vulnerability (API key exposure). ' +
+    'Use sendZAIChat() instead for secure proxy-based calls. ' +
+    'Server-side streaming support is planned. See issue #578.'
   );
-
-  const client = createZAIClient(config);
-
-  const response = await fetch(`${client.baseURL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${client.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: client.model,
-      max_tokens: client.maxTokens || request.max_tokens,
-      temperature: config.temperature || request.temperature,
-      messages: request.messages,
-      top_p: request.top_p,
-      stream: true,
-      stop: request.stop,
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Z.ai API error: ${response.status} - ${error}`);
-  }
-
-  if (!response.body) {
-    throw new Error('Z.ai API response has no body');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-      const data = trimmed.slice(6);
-      if (data === '[DONE]') {
-        return;
-      }
-
-      try {
-        const parsed = JSON.parse(data);
-        const content = parsed.choices?.[0]?.delta?.content;
-        if (content) {
-          yield content;
-        }
-      } catch {
-        // Skip invalid JSON
-      }
-    }
-  }
 }
 
 /**

@@ -28,6 +28,14 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "warn",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // Prevent direct API calls with Authorization headers in client code (security)
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector: "CallExpression[callee.name='fetch']",
+          message: "Use safeFetch or AI proxy client instead of direct fetch calls",
+        },
+      ],
     },
     settings: {
       react: {
