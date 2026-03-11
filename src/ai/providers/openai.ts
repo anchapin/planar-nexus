@@ -41,19 +41,11 @@ export const DEFAULT_OPENAI_CONFIG: Partial<OpenAIProviderConfig> = {
  * Create an OpenAI client instance
  * @param config - Configuration for the OpenAI provider
  * @returns OpenAI client instance
- * @deprecated Server-side proxy is now the default. Direct API calls are discouraged.
+ * @deprecated Use server-side proxy instead.
  */
 export function createOpenAIClient(config: OpenAIProviderConfig): Record<string, unknown> {
-  const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(
-      'OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it in config.'
-    );
-  }
-
   // OpenAI client creation stub - package not installed
-  return { apiKey, organization: config.organization };
+  return { organization: config.organization };
 }
 
 /**
@@ -112,17 +104,12 @@ export interface OpenAIChatResponse {
  * @param request - Chat request
  * @returns OpenAI's chat completion response
  */
-export async function sendOpenAIChat(
+export function sendOpenAIChat(
   config: OpenAIProviderConfig,
   request: Omit<OpenAIChatRequest, 'model'>
 ): Promise<OpenAIChatResponse> {
-  // Use server-side proxy by default (security best practice)
-  if (config.useProxy !== false) {
-    return sendOpenAIChatViaProxy(config, request);
-  }
-
-  // Fallback to direct API call (deprecated, for backward compatibility)
-  return sendOpenAIChatDirect(config, request);
+  // Use server-side proxy (security best practice)
+  return sendOpenAIChatViaProxy(config, request);
 }
 
 /**
@@ -163,41 +150,6 @@ async function sendOpenAIChatViaProxy(
   }
 }
 
-/**
- * Send a chat completion request to OpenAI directly (deprecated)
- * @param config - Provider configuration
- * @param request - Chat request
- * @returns OpenAI's chat completion response
- * @deprecated Use server-side proxy instead
- */
-async function sendOpenAIChatDirect(
-  config: OpenAIProviderConfig,
-  request: Omit<OpenAIChatRequest, 'model'>
-): Promise<OpenAIChatResponse> {
-  console.warn(
-    'Direct OpenAI API calls are deprecated. Please use server-side proxy (useProxy: true).'
-  );
-
-  const client = createOpenAIClient(config) as {
-    chat: {
-      completions: {
-        create: (params: Record<string, unknown>) => Promise<OpenAIChatResponse>;
-      };
-    };
-  };
-
-  const response = await client.chat.completions.create({
-    model: config.model || DEFAULT_MODELS.openai,
-    max_tokens: config.maxTokens || request.maxTokens || 8192,
-    temperature: config.temperature || request.temperature || 0.7,
-    messages: request.messages,
-    tools: request.tools,
-    tool_choice: request.toolChoice,
-    response_format: request.responseFormat,
-  });
-
-  return response as OpenAIChatResponse;
-}
 
 /**
  * Convert OpenAI response to text

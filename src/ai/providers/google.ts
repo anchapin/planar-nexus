@@ -121,21 +121,12 @@ export interface GoogleAIChatResponse {
  * Create a Google AI client configuration
  * @param config - Configuration for the Google AI provider
  * @returns Configuration object for making API requests
- * @deprecated Server-side proxy is now the default. Direct API calls are discouraged.
+ * @deprecated Use server-side proxy instead.
  */
 export function createGoogleAIClient(config: GoogleAIProviderConfig): GoogleAIProviderConfig {
-  const apiKey = config.apiKey || process.env.GOOGLE_AI_API_KEY;
-
-  if (!apiKey) {
-    throw new Error(
-      'Google AI API key is required. Set GOOGLE_AI_API_KEY environment variable or pass it in config.'
-    );
-  }
-
   return {
     ...config,
-    apiKey,
-    baseURL: config.baseURL || process.env.NEXT_PUBLIC_GOOGLE_API_URL || DEFAULT_GOOGLE_AI_CONFIG.baseURL,
+    baseURL: config.baseURL || DEFAULT_GOOGLE_AI_CONFIG.baseURL,
     model: config.model || DEFAULT_GOOGLE_AI_CONFIG.model,
     maxOutputTokens: config.maxOutputTokens || DEFAULT_GOOGLE_AI_CONFIG.maxOutputTokens,
     temperature: config.temperature || DEFAULT_GOOGLE_AI_CONFIG.temperature,
@@ -148,17 +139,12 @@ export function createGoogleAIClient(config: GoogleAIProviderConfig): GoogleAIPr
  * @param request - Chat request
  * @returns Google AI chat completion response
  */
-export async function sendGoogleAIChat(
+export function sendGoogleAIChat(
   config: GoogleAIProviderConfig,
   request: Omit<GoogleAIChatRequest, 'model'>
 ): Promise<GoogleAIChatResponse> {
-  // Use server-side proxy by default (security best practice)
-  if (config.useProxy !== false) {
-    return sendGoogleAIChatViaProxy(config, request);
-  }
-
-  // Fallback to direct API call (deprecated, for backward compatibility)
-  return sendGoogleAIChatDirect(config, request);
+  // Use server-side proxy (security best practice)
+  return sendGoogleAIChatViaProxy(config, request);
 }
 
 /**
@@ -203,55 +189,6 @@ async function sendGoogleAIChatViaProxy(
   }
 }
 
-/**
- * Send a chat completion request to Google AI directly (deprecated)
- * @param config - Provider configuration
- * @param request - Chat request
- * @returns Google AI chat completion response
- * @deprecated Use server-side proxy instead
- */
-async function sendGoogleAIChatDirect(
-  config: GoogleAIProviderConfig,
-  request: Omit<GoogleAIChatRequest, 'model'>
-): Promise<GoogleAIChatResponse> {
-  console.warn(
-    'Direct Google AI API calls are deprecated. Please use server-side proxy (useProxy: true).'
-  );
-
-  const client = createGoogleAIClient(config);
-  const apiKey = client.apiKey;
-  const model = config.model || DEFAULT_GOOGLE_AI_CONFIG.model;
-
-  const url = `${client.baseURL}/models/${model}:generateContent?key=${apiKey}`;
-
-  const requestBody: GoogleAIChatRequest = {
-    contents: request.contents,
-    generationConfig: {
-      maxOutputTokens: config.maxOutputTokens || request.generationConfig?.maxOutputTokens,
-      temperature: config.temperature || request.generationConfig?.temperature,
-      topP: config.topP || request.generationConfig?.topP,
-      topK: config.topK || request.generationConfig?.topK,
-      stopSequences: request.generationConfig?.stopSequences,
-    },
-    safetySettings: request.safetySettings,
-    systemInstruction: request.systemInstruction,
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(requestBody),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Google AI API error: ${response.status} - ${error}`);
-  }
-
-  return response.json();
-}
 
 /**
  * Convert standard messages to Google AI format
@@ -359,19 +296,19 @@ export function validateGoogleAIApiKey(apiKey: string): boolean {
 }
 
 /**
- * Check if Google AI is configured and available
+ * Check if Google AI is available (via proxy)
  */
 export function isGoogleAIAvailable(): boolean {
-  return !!process.env.GOOGLE_AI_API_KEY;
+  // Availability is determined server-side
+  return true;
 }
 
 /**
  * Get Google AI provider status
  */
 export function getGoogleAIProviderStatus(): { available: boolean; configured: boolean } {
-  const hasApiKey = !!process.env.GOOGLE_AI_API_KEY;
   return {
-    available: hasApiKey,
-    configured: hasApiKey,
+    available: true,
+    configured: true,
   };
 }
