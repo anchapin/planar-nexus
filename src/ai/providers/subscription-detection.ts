@@ -506,7 +506,11 @@ export async function validateSubscription(
         );
 
         // Check subscription status from response
-        const subscription = response.data?.[0]?.owned_by;
+        // Note: response.data is an array, access first element safely
+        const modelsData = response.data;
+        const subscription = Array.isArray(modelsData) && modelsData.length > 0
+          ? modelsData[0]?.owned_by
+          : undefined;
 
         // Pro/Team detection based on organization
         if (subscription?.includes('org-')) {
