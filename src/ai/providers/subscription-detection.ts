@@ -12,12 +12,14 @@
  * - Z.ai subscription (Z.ai)
  */
 
-import type { 
-  AIProvider, 
-  SubscriptionPlan, 
-  SubscriptionDetection, 
-  SubscriptionTier 
+import type {
+  AIProvider,
+  SubscriptionPlan,
+  SubscriptionDetection,
+  SubscriptionTier
 } from './types';
+import { safeFetch, FullResponse, ApiError } from '@/lib/fetch-utils';
+import { API_ENDPOINTS } from '@/lib/env';
 
 // Re-export SubscriptionDetection type for consumers
 export type { SubscriptionDetection } from './types';
@@ -453,17 +455,19 @@ export async function validateSubscription(
     switch (provider) {
       case 'anthropic': {
         // Make a minimal API call to validate key and check subscription
-        const response = await fetch('https://api.anthropic.com/v1/models', {
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-          },
-        });
-        
-        if (!response.ok) {
-          return { valid: false, error: 'Invalid API key' };
-        }
-        
+        const response = await safeFetch<unknown>(
+          `${API_ENDPOINTS.ANTHROPIC}/models`,
+          {
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            timeoutMs: 10000,
+            errorMessage: 'Anthropic subscription validation failed',
+            fullResponse: true,
+          }
+        ) as FullResponse<unknown>;
+
         // Check rate limit headers for subscription tier indication
         const rateLimit = response.headers.get('x-ratelimit-limit');
         if (rateLimit) {
@@ -480,7 +484,7 @@ export async function validateSubscription(
             }
           }
         }
-        
+
         // Default to Pro for valid keys
         const pro = SUBSCRIPTION_PLANS.anthropic.find(p => p.tier === 'pro');
         if (pro) {
@@ -488,22 +492,22 @@ export async function validateSubscription(
         }
         return { valid: true };
       }
-      
+
       case 'openai': {
-        const response = await fetch('https://api.openai.com/v1/models', {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-          },
-        });
-        
-        if (!response.ok) {
-          return { valid: false, error: 'Invalid API key' };
-        }
-        
+        const response = await safeFetch<{ data?: Array<{ owned_by?: string }> }>(
+          `${API_ENDPOINTS.OPENAI}/models`,
+          {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            timeoutMs: 10000,
+            errorMessage: 'OpenAI subscription validation failed',
+          }
+        );
+
         // Check subscription status from response
-        const data = await response.json();
-        const subscription = data.data?.[0]?.owned_by;
-        
+        const subscription = response.data?.[0]?.owned_by;
+
         // Pro/Team detection based on organization
         if (subscription?.includes('org-')) {
           const team = SUBSCRIPTION_PLANS.openai.find(p => p.tier === 'team');
@@ -511,55 +515,61 @@ export async function validateSubscription(
             return { valid: true, subscription: { ...team, detectedAt: Date.now() } };
           }
         }
-        
+
         const pro = SUBSCRIPTION_PLANS.openai.find(p => p.tier === 'pro');
         if (pro) {
           return { valid: true, subscription: { ...pro, detectedAt: Date.now() } };
         }
         return { valid: true };
       }
-      
+
       case 'google': {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`
+        await safeFetch(
+          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`,
+          {
+            timeoutMs: 10000,
+            errorMessage: 'Google AI subscription validation failed',
+          }
         );
-        
-        if (!response.ok) {
-          return { valid: false, error: 'Invalid API key' };
-        }
-        
+
         const pro = SUBSCRIPTION_PLANS.google.find(p => p.tier === 'pro');
         if (pro) {
           return { valid: true, subscription: { ...pro, detectedAt: Date.now() } };
         }
         return { valid: true };
       }
-      
+
       case 'zaic': {
-        const response = await fetch('https://api.z-ai.com/v1/models', {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-          },
-        });
-        
-        if (!response.ok) {
-          return { valid: false, error: 'Invalid API key' };
-        }
-        
+        await safeFetch(
+          `${API_ENDPOINTS.ZAI}/models`,
+          {
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            timeoutMs: 10000,
+            errorMessage: 'Z.ai subscription validation failed',
+          }
+        );
+
         const pro = SUBSCRIPTION_PLANS.zaic.find(p => p.tier === 'pro');
         if (pro) {
           return { valid: true, subscription: { ...pro, detectedAt: Date.now() } };
         }
         return { valid: true };
       }
-      
+
       default:
         return { valid: false, error: 'Unknown provider' };
     }
   } catch (error) {
+    const errorMessage = error instanceof ApiError
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : 'Network error';
     return {
       valid: false,
-      error: error instanceof Error ? error.message : 'Network error',
+      error: errorMessage,
     };
   }
 }

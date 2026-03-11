@@ -12,8 +12,6 @@
  */
 
 import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
-import { CombatDecisionTree, generateAttackDecisions } from '@/ai/decision-making/combat-decision-tree';
-import { aiDifficultyManager, type DifficultyLevel } from '@/ai/ai-difficulty';
 
 // Input schema for game state analysis
 interface GameStateAnalysisInput {

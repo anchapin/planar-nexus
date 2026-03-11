@@ -7,6 +7,8 @@
  */
 
 import type { AIProvider } from '@/ai/providers';
+import { safeFetch, ApiError } from './fetch-utils';
+import { API_ENDPOINTS } from './env';
 
 /**
  * Storage key prefix for API keys
@@ -257,92 +259,75 @@ export async function getAllKeyStatus(): Promise<ProviderKeyStatus[]> {
  * Validate an API key by making a test request
  */
 export async function validateApiKey(
-  provider: AIProvider, 
+  provider: AIProvider,
   apiKey: string
 ): Promise<{ valid: boolean; error?: string }> {
   try {
     // For Google AI, test with a minimal request
     if (provider === 'google') {
-      const response = await fetch(
+      await safeFetch(
         `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`,
-        { method: 'GET' }
-      );
-      
-      if (!response.ok) {
-        const error = await response.json();
-        return { 
-          valid: false, 
-          error: error.error?.message || 'Invalid API key' 
-        };
-      }
-      return { valid: true };
-    }
-    
-    // For OpenAI, test with a models list request
-    if (provider === 'openai') {
-      const response = await fetch(
-        'https://api.openai.com/v1/models',
-        {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
+        { 
+          method: 'GET',
+          timeoutMs: 10000,
+          errorMessage: 'Google AI API validation failed'
         }
       );
-      
-      if (!response.ok) {
-        const error = await response.json();
-        return { 
-          valid: false, 
-          error: error.error?.message || 'Invalid API key' 
-        };
-      }
       return { valid: true };
     }
-    
+
+    // For OpenAI, test with a models list request
+    if (provider === 'openai') {
+      await safeFetch(
+        `${API_ENDPOINTS.OPENAI}/models`,
+        {
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          timeoutMs: 10000,
+          errorMessage: 'OpenAI API validation failed'
+        }
+      );
+      return { valid: true };
+    }
+
     // For Anthropic, test with a models list request
     if (provider === 'anthropic') {
-      const response = await fetch(
-        'https://api.anthropic.com/v1/models',
+      await safeFetch(
+        `${API_ENDPOINTS.ANTHROPIC}/models`,
         {
-          headers: { 
+          headers: {
             'x-api-key': apiKey,
             'anthropic-version': '2023-06-01'
           },
+          timeoutMs: 10000,
+          errorMessage: 'Anthropic API validation failed'
         }
       );
-      
-      if (!response.ok) {
-        const error = await response.json();
-        return { 
-          valid: false, 
-          error: error.error?.message || 'Invalid API key' 
-        };
-      }
       return { valid: true };
     }
-    
+
     // For Z.ai, test with a minimal request
     if (provider === 'zaic') {
-      const response = await fetch(
-        'https://api.z-ai.com/v1/models',
+      await safeFetch(
+        `${API_ENDPOINTS.ZAI}/models`,
         {
           headers: { 'Authorization': `Bearer ${apiKey}` },
+          timeoutMs: 10000,
+          errorMessage: 'Z.ai API validation failed'
         }
       );
-      
-      if (!response.ok) {
-        const error = await response.text();
-        return { 
-          valid: false, 
-          error: error || 'Invalid API key' 
-        };
-      }
       return { valid: true };
     }
-    
+
     return { valid: false, error: 'Unknown provider' };
   } catch (error) {
-    return { 
-      valid: false, 
-      error: error instanceof Error ? error.message : 'Network error' 
+    const errorMessage = error instanceof ApiError 
+      ? error.message 
+      : error instanceof Error 
+        ? error.message 
+        : 'Network error';
+    return {
+      valid: false,
+      error: errorMessage
     };
   }
 }
