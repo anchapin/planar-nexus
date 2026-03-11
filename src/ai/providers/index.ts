@@ -14,12 +14,12 @@ import { DEFAULT_CONFIGS, DEFAULT_MODELS, type AIProviderConfig, type AIProvider
 
 // Re-export types
 export { DEFAULT_CONFIGS, DEFAULT_MODELS };
-export type { 
-  AIProviderConfig, 
-  AIProvider, 
-  SubscriptionTier, 
-  SubscriptionPlan, 
-  SubscriptionDetection 
+export type {
+  AIProviderConfig,
+  AIProvider,
+  SubscriptionTier,
+  SubscriptionPlan,
+  SubscriptionDetection
 };
 
 // Re-export OpenAI and Z.ai providers
@@ -111,20 +111,6 @@ function getOpenAIModelOptionsStatic(): string[] {
     'gpt-3.5-turbo',
     'gpt-3.5-turbo-0125',
     'gpt-3.5-turbo-1106',
-  ];
-}
-
-/**
- * Get Claude model options (statically defined to avoid require)
- */
-function getClaudeModelOptionsStatic(): string[] {
-  return [
-    'claude-3-haiku-20240307',
-    'claude-3-5-haiku-20241022',
-    'claude-3-sonnet-20240229',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-opus-20240229',
-    'claude-3-5-opus-20241022',
   ];
 }
 

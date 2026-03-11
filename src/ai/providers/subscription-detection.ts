@@ -1,12 +1,11 @@
 /**
  * Subscription Plan Detection Module
  * Issue #52: Implement subscription plan linking
- * 
+ *
  * This module provides functionality to detect and manage
  * AI subscription plans from various providers.
- * 
+ *
  * Supported subscriptions:
- * - Claude Pro/Claude Team (Anthropic)
  * - Copilot Pro (GitHub/Microsoft)
  * - Gemini Advanced (Google)
  * - Z.ai subscription (Z.ai)
@@ -165,7 +164,6 @@ const SUBSCRIPTION_PLANS: Record<AIProvider, SubscriptionPlan[]> = {
  * Storage key for subscription detection results
  */
 const STORAGE_KEY = 'planar_nexus_subscription_detection';
-
 
 /**
  * Detect OpenAI subscription via API key patterns
@@ -342,12 +340,12 @@ export function clearSubscriptionDetection(): void {
  */
 export async function detectAllSubscriptions(): Promise<SubscriptionDetection> {
   const plans: SubscriptionPlan[] = [];
-  
+
   // Import dynamically to avoid circular dependencies
   const { getApiKey } = await import('@/lib/api-key-storage');
-  
+
   const providers: AIProvider[] = ['openai', 'google', 'zaic'];
-  
+
   for (const provider of providers) {
     try {
       const apiKey = await getApiKey(provider);
