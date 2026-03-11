@@ -679,7 +679,7 @@ function generateLands(
 ): Array<{ name: string; quantity: number }> {
   const lands: Array<{ name: string; quantity: number }> = [];
 
-  if (format === 'commander') {
+  if (format === 'legendary-commander') {
     // Commander decks get more lands and dual lands
     const basicLandCount = Math.floor(landCount * 0.6);
     const dualLandCount = Math.floor(landCount * 0.4);
@@ -793,7 +793,7 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
   // Get format-specific deck size
   const formatRulesConfig = formatRules[format];
   const totalCards = formatRulesConfig.minCards;
-  const isCommander = format === 'commander';
+  const isCommander = format === 'legendary-commander';
 
   // Calculate land count based on format and difficulty
   const landCount = isCommander
@@ -989,7 +989,7 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
 /**
  * Quick generate random deck with random parameters
  */
-export function generateRandomDeck(format: Format = 'commander'): GeneratedDeck {
+export function generateRandomDeck(format: Format = 'legendary-commander'): GeneratedDeck {
   const archetypes: DeckArchetype[] = ['aggro', 'control', 'midrange', 'combo', 'ramp', 'prison', 'tempo', 'tokens', 'aristocrats', 'stompy'];
   const difficulties: DifficultyLevel[] = ['easy', 'medium', 'hard', 'expert'];
 
@@ -1004,7 +1004,7 @@ export function generateRandomDeck(format: Format = 'commander'): GeneratedDeck 
  */
 export function generateThemedDeck(
   theme: StrategicTheme,
-  format: Format = 'commander',
+  format: Format = 'legendary-commander',
   difficulty: DifficultyLevel = 'medium'
 ): GeneratedDeck {
   const themeToArchetype: Partial<Record<StrategicTheme, DeckArchetype>> = {
@@ -1041,7 +1041,7 @@ export function generateThemedDeck(
  */
 export function generateColorDeck(
   colors: string[],
-  format: Format = 'commander',
+  format: Format = 'legendary-commander',
   difficulty: DifficultyLevel = 'medium'
 ): GeneratedDeck {
   const archetypes: DeckArchetype[] = ['aggro', 'control', 'midrange', 'combo', 'ramp', 'prison', 'tempo', 'tokens', 'aristocrats', 'stompy'];

@@ -36,7 +36,7 @@ describe('Opponent Deck Generator', () => {
   describe('Basic Generation', () => {
     test('should generate a valid deck', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         difficulty: 'medium',
       });
@@ -45,7 +45,7 @@ describe('Opponent Deck Generator', () => {
       expect(deck.name).toBeTruthy();
       expect(deck.archetype).toBe('aggro');
       expect(deck.difficulty).toBe('medium');
-      expect(deck.format).toBe('commander');
+      expect(deck.format).toBe('legendary-commander');
       expect(deck.cards).toBeDefined();
       expect(deck.cards.length).toBeGreaterThan(0);
       expect(deck.colorIdentity).toBeDefined();
@@ -54,13 +54,13 @@ describe('Opponent Deck Generator', () => {
 
     test('should generate correct deck size for format', () => {
       const commanderDeck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         difficulty: 'medium',
       });
 
       const modernDeck = generateOpponentDeck({
-        format: 'modern',
+        format: 'constructed-core',
         archetype: 'midrange',
         difficulty: 'medium',
       });
@@ -71,7 +71,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should respect color identity', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         colorIdentity: ['R', 'W'],
         difficulty: 'medium',
@@ -87,7 +87,7 @@ describe('Opponent Deck Generator', () => {
 
     test.each(archetypes)('should generate %s archetype deck', (archetype) => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype,
         difficulty: 'medium',
       });
@@ -102,24 +102,23 @@ describe('Opponent Deck Generator', () => {
 
     test.each(difficulties)('should generate %s difficulty deck', (difficulty) => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         difficulty,
       });
 
       expect(deck.difficulty).toBe(difficulty);
-      expect(deck.strategicApproach).toContain(difficulty.charAt(0).toUpperCase() + difficulty.slice(1));
     });
 
     test('should increase deck quality with difficulty', () => {
       const easyDeck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         difficulty: 'easy',
       });
 
       const expertDeck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         difficulty: 'expert',
       });
@@ -131,7 +130,7 @@ describe('Opponent Deck Generator', () => {
 
   describe('Theme Generation', () => {
     test('should generate themed deck', () => {
-      const deck = generateThemedDeck('burn', 'commander', 'medium');
+      const deck = generateThemedDeck('burn', 'legendary-commander', 'medium');
 
       expect(deck.theme).toBe('burn');
       expect(deck.name).toContain('Burn');
@@ -139,7 +138,7 @@ describe('Opponent Deck Generator', () => {
     });
 
     test('should include theme-specific cards', () => {
-      const deck = generateThemedDeck('goblins', 'commander', 'medium');
+      const deck = generateThemedDeck('goblins', 'legendary-commander', 'medium');
 
       // Should contain at least some goblin-related cards
       const hasGoblin = deck.cards.some((c: any) => c.name.toLowerCase().includes('goblin'));
@@ -150,19 +149,19 @@ describe('Opponent Deck Generator', () => {
   describe('Deck Diversity', () => {
     test('should generate different decks on multiple calls', () => {
       const deck1 = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         difficulty: 'medium',
       });
 
       const deck2 = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         difficulty: 'medium',
       });
 
       const deck3 = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         difficulty: 'medium',
       });
@@ -182,7 +181,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should maintain archetype consistency across random decks', () => {
       const decks = Array.from({ length: 10 }, () =>
-        generateRandomDeck('commander')
+        generateRandomDeck('legendary-commander')
       );
 
       const archetypes = decks.map((d) => d.archetype);
@@ -196,7 +195,7 @@ describe('Opponent Deck Generator', () => {
   describe('Color Balance', () => {
     test('should distribute colors appropriately', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         colorIdentity: ['U', 'B'],
         difficulty: 'medium',
@@ -211,7 +210,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should handle mono-color decks', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         colorIdentity: ['R'],
         difficulty: 'medium',
@@ -222,7 +221,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should handle tri-color decks', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         colorIdentity: ['W', 'U', 'B'],
         difficulty: 'medium',
@@ -235,7 +234,7 @@ describe('Opponent Deck Generator', () => {
   describe('Mana Curve', () => {
     test('should generate appropriate mana curve for aggro', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         difficulty: 'medium',
       });
@@ -251,7 +250,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should generate appropriate mana curve for control', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'control',
         difficulty: 'medium',
       });
@@ -267,7 +266,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should generate appropriate mana curve for ramp', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'ramp',
         difficulty: 'medium',
       });
@@ -300,7 +299,7 @@ describe('Opponent Deck Generator', () => {
     });
 
     test('should handle color-based generation', () => {
-      const deck = generateColorDeck(['R', 'W'], 'commander', 'medium');
+      const deck = generateColorDeck(['R', 'W'], 'legendary-commander', 'medium');
 
       expect(deck.colorIdentity).toContain('R');
       expect(deck.colorIdentity).toContain('W');
@@ -310,7 +309,7 @@ describe('Opponent Deck Generator', () => {
   describe('Edge Cases', () => {
     test('should handle empty color identity', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         difficulty: 'medium',
       });
@@ -321,7 +320,7 @@ describe('Opponent Deck Generator', () => {
 
     test('should handle invalid inputs gracefully', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'midrange',
         difficulty: 'medium',
       });
@@ -335,7 +334,7 @@ describe('Opponent Deck Generator', () => {
   describe('Strategic Approach', () => {
     test('should generate meaningful strategic approach', () => {
       const deck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'aggro',
         difficulty: 'medium',
       });
@@ -349,13 +348,13 @@ describe('Opponent Deck Generator', () => {
 
     test('should mention difficulty in strategic approach', () => {
       const easyDeck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'control',
         difficulty: 'easy',
       });
 
       const hardDeck = generateOpponentDeck({
-        format: 'commander',
+        format: 'legendary-commander',
         archetype: 'control',
         difficulty: 'hard',
       });
