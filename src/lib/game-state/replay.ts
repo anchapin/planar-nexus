@@ -441,7 +441,8 @@ export function createGameAction(
  * Generate human-readable description for an action
  */
 export function describeAction(action: GameAction, playerName: string): string {
-  const { type, data } = action;
+  const { type, data: actionData } = action;
+  const data = actionData as any;
 
   switch (type) {
     case 'cast_spell':

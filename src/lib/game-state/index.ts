@@ -45,8 +45,15 @@ import {
 
 // Export everything from game-state modules
 export * from "./types";
-export * from "./card-instance";
-export * from "./zones";
+export {
+  isLand,
+  isCreature,
+  isArtifact,
+  isEnchantment,
+  isPlaneswalker,
+  isPermanent,
+} from "./card-instance";
+export { moveCardBetweenZones, createZone, createPlayerZones, createSharedZones } from "./zones";
 export * from "./turn-phases";
 export * from "./game-state";
 export * from "./state-hash";
@@ -55,7 +62,12 @@ export * from "./replay";
 export * from "./serialization";
 export * from "./replacement-effects";
 export * from "./layer-system";
-export * from "./keyword-actions";
+export {
+  destroyCard as destroyPermanentAction,
+  sacrificeCard as sacrificePermanentAction,
+  exileCard as exilePermanentAction,
+  discardCards as discardCardsAction,
+} from "./keyword-actions";
 export * from "./combat";
 export * from "./state-based-actions";
 export * from "./oracle-text-parser";

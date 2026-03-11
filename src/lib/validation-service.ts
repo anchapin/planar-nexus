@@ -37,7 +37,7 @@ export class ValidationService {
     }
 
     // Check phase (must be precombat_main or postcombat_main)
-    if (gameState.turn.phase !== 'precombat_main' && gameState.turn.phase !== 'postcombat_main') {
+    if (gameState.turn.currentPhase !== 'precombat_main' && gameState.turn.currentPhase !== 'postcombat_main') {
       return { isValid: false, message: "Lands can only be played during main phases.", reason: "Lands can only be played during main phases." };
     }
 
@@ -107,7 +107,7 @@ export class ValidationService {
       if (gameState.turn.activePlayerId !== playerId) {
         return { isValid: false, message: "You can only cast this during your turn.", reason: "Not your turn." };
       }
-      if (gameState.turn.phase !== 'precombat_main' && gameState.turn.phase !== 'postcombat_main') {
+      if (gameState.turn.currentPhase !== 'precombat_main' && gameState.turn.currentPhase !== 'postcombat_main') {
         return { isValid: false, message: "You can only cast this during a main phase.", reason: "Not a main phase." };
       }
       if (gameState.stack.length > 0) {
@@ -141,5 +141,16 @@ export class ValidationService {
     }).length;
 
     return (manaPoolTotal + untappedLands) >= cmc;
+  }
+
+  /**
+   * Validates if a player can pass priority.
+   * Rule: A player can pass priority if they have it.
+   */
+  static canPassPriority(gameState: GameState, playerId: string): ValidationResult {
+    if (gameState.priorityPlayerId !== playerId) {
+      return { isValid: false, message: "You do not have priority.", reason: "You do not have priority." };
+    }
+    return { isValid: true };
   }
 }

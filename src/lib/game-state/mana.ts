@@ -266,33 +266,33 @@ export function playLand(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId
-): { success: boolean; state: GameState } {
+): { success: boolean; state: GameState; error?: string } {
   // Check if player can play a land
   if (!canPlayLand(state, playerId)) {
-    return { success: false, state };
+    return { success: false, state, error: "You cannot play any more lands this turn." };
   }
 
   // Verify the card is in player's hand
   const handZone = state.zones.get(`${playerId}-hand`);
   if (!handZone || !handZone.cardIds.includes(cardId)) {
-    return { success: false, state };
+    return { success: false, state, error: "Card not in hand." };
   }
 
   // Get the card to verify it's a land
   const card = state.cards.get(cardId);
   if (!card) {
-    return { success: false, state };
+    return { success: false, state, error: "Card not found." };
   }
 
   const typeLine = card.cardData.type_line?.toLowerCase() || "";
   if (!typeLine.includes("land")) {
-    return { success: false, state };
+    return { success: false, state, error: "Card is not a land." };
   }
 
   // Get the battlefield zone
   const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
   if (!battlefieldZone) {
-    return { success: false, state };
+    return { success: false, state, error: "Battlefield zone not found." };
   }
 
   // Move the land from hand to battlefield
@@ -306,7 +306,7 @@ export function playLand(
   // Increment lands played this turn
   const player = state.players.get(playerId);
   if (!player) {
-    return { success: false, state };
+    return { success: false, state, error: "Player not found." };
   }
 
   const updatedPlayers = new Map(state.players);
@@ -335,15 +335,15 @@ export function activateManaAbility(
   playerId: PlayerId,
   cardId: CardInstanceId,
   _abilityIndex: number
-): GameState {
+): { success: boolean; state: GameState } {
   const card = state.cards.get(cardId);
   if (!card) {
-    return state;
+    return { success: false, state };
   }
 
   // Check if player has priority
   if (state.priorityPlayerId !== playerId) {
-    return state;
+    return { success: false, state };
   }
 
   // Mark that this player has activated a mana ability
@@ -362,9 +362,12 @@ export function activateManaAbility(
   // The actual mana addition would be handled by parsing the card's ability
   // and determining what mana it produces
   return {
-    ...state,
-    players: updatedPlayers,
-    lastModifiedAt: Date.now(),
+    success: true,
+    state: {
+      ...state,
+      players: updatedPlayers,
+      lastModifiedAt: Date.now(),
+    },
   };
 }
 
