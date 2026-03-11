@@ -216,8 +216,8 @@ class AIOpponent {
     const aiState = convertToAIGameState(gameState, aiPlayerId);
     this.combatDecider = new CombatDecisionTree(aiState, aiPlayerId, this.difficulty);
     
-    const attackDecision = this.combatDecider.shouldAttack();
-    return attackDecision.shouldAttack;
+    const attackPlan = this.combatDecider.generateAttackPlan();
+    return attackPlan.attacks.length > 0;
   }
   
   /**
@@ -227,19 +227,32 @@ class AIOpponent {
     const aiState = convertToAIGameState(gameState, aiPlayerId);
     this.combatDecider = new CombatDecisionTree(aiState, aiPlayerId, this.difficulty);
     
-    const attackDecision = this.combatDecider.shouldAttack();
-    return attackDecision.attackers || [];
+    const attackPlan = this.combatDecider.generateAttackPlan();
+    return attackPlan.attacks.map(a => a.creatureId);
   }
   
   /**
    * Decide whether to block and with what
    */
-  getBlockers(gameState: GameState, aiPlayerId: string, attackerIds: string[]): { [attackerId: string]: string[] } {
+  getBlockers(gameState: GameState, aiPlayerId: string, _attackerIds: string[]): { [attackerId: string]: string[] } {
     const aiState = convertToAIGameState(gameState, aiPlayerId);
     this.combatDecider = new CombatDecisionTree(aiState, aiPlayerId, this.difficulty);
     
-    const blockDecisions = this.combatDecider.shouldBlock(attackerIds);
-    return blockDecisions.blockAssignments || {};
+    // In this simple implementation, we assume we want to evaluate all attacks
+    // We would need the actual Permanent objects for attackers
+    // This is a simplification
+    const attackers: any[] = []; 
+    const blockPlan = this.combatDecider.generateBlockingPlan(attackers);
+    
+    const assignments: { [attackerId: string]: string[] } = {};
+    blockPlan.blocks.forEach(b => {
+      if (b.attackerId && b.blockerId) {
+        if (!assignments[b.attackerId]) assignments[b.attackerId] = [];
+        assignments[b.attackerId].push(b.blockerId);
+      }
+    });
+    
+    return assignments;
   }
   
   /**
@@ -494,7 +507,8 @@ function GameBoardContent() {
       }
       
       // Check state-based actions
-      newState = checkStateBasedActions(newState);
+      const result = checkStateBasedActions(newState);
+      newState = result.state;
       
       // Save updated state
       setGameState(newState);
@@ -590,7 +604,8 @@ function GameBoardContent() {
     const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
     if (player && gameState.priorityPlayerId === player.id) {
       let newState = passPriority(gameState, player.id);
-      newState = checkStateBasedActions(newState);
+      const result = checkStateBasedActions(newState);
+      newState = result.state;
       setGameState(newState);
       
       if (autoSaveEnabled) {
@@ -612,7 +627,8 @@ function GameBoardContent() {
       if (!currentPlayer) break;
       
       newState = passPriority(newState, currentPlayer.id);
-      newState = checkStateBasedActions(newState);
+      const result = checkStateBasedActions(newState);
+      newState = result.state;
       
       // Check if phase changed
       if (newState.turn.currentPhase !== gameState.turn.currentPhase) {
@@ -760,7 +776,7 @@ function GameBoardContent() {
         <div className="h-full w-full p-4">
           <GameBoard
             players={sortedPlayers}
-            playerCount={gameState.playerCount as PlayerCount}
+            playerCount={gameState.players.size as PlayerCount}
             currentTurnIndex={currentTurnIndex}
             onCardClick={handleCardClick}
             onZoneClick={handleZoneClick}

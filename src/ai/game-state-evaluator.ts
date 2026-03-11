@@ -253,7 +253,7 @@ export class GameStateEvaluator {
   constructor(
     gameState: GameState,
     evaluatingPlayerId: string,
-    difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+    difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
   ) {
     this.gameState = gameState;
     this.evaluatingPlayerId = evaluatingPlayerId;

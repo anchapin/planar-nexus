@@ -156,7 +156,7 @@ export interface CombatAIConfig {
  * Default configurations for different difficulty levels
  */
 export const DefaultCombatConfigs: Record<
-  'easy' | 'medium' | 'hard',
+  'easy' | 'medium' | 'hard' | 'expert',
   CombatAIConfig
 > = {
   easy: {
@@ -180,6 +180,13 @@ export const DefaultCombatConfigs: Record<
     cardAdvantageWeight: 1.5,
     useCombatTricks: true,
   },
+  expert: {
+    aggression: 0.85,
+    riskTolerance: 0.85,
+    lifeThreshold: 5,
+    cardAdvantageWeight: 2.0,
+    useCombatTricks: true,
+  },
 };
 
 /**
@@ -193,7 +200,7 @@ export class CombatDecisionTree {
   constructor(
     gameState: GameState,
     aiPlayerId: string,
-    difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+    difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
   ) {
     this.gameState = gameState;
     this.aiPlayerId = aiPlayerId;
@@ -1285,7 +1292,7 @@ export class CombatDecisionTree {
 export function generateAttackDecisions(
   gameState: GameState,
   aiPlayerId: string,
-  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
 ): CombatPlan {
   const ai = new CombatDecisionTree(gameState, aiPlayerId, difficulty);
   return ai.generateAttackPlan();
@@ -1298,7 +1305,7 @@ export function generateBlockingDecisions(
   gameState: GameState,
   aiPlayerId: string,
   attackers: Permanent[],
-  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
 ): CombatPlan {
   const ai = new CombatDecisionTree(gameState, aiPlayerId, difficulty);
   return ai.generateBlockingPlan(attackers);
