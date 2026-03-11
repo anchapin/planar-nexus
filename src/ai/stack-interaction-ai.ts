@@ -15,6 +15,8 @@
  */
 
 import { GameState, evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
+import { callAIProxy } from '@/lib/ai-proxy-client';
+import { AIProvider } from './providers/types';
 
 /**
  * Represents a spell or ability on the stack
@@ -311,6 +313,46 @@ export class StackInteractionAI {
       confidence: bestResponse.evaluation.confidence,
       expectedValue: bestResponse.evaluation.expectedValue,
     };
+  }
+
+  /**
+   * Evaluate response using AI via proxy
+   */
+  async evaluateResponseAI(
+    context: StackContext, 
+    provider: AIProvider = 'zaic', 
+    model?: string
+  ): Promise<ResponseDecision> {
+    try {
+      const response = await callAIProxy<ResponseDecision>({
+        provider,
+        endpoint: 'chat/completions',
+        model: model || 'default',
+        body: {
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are a Magic: The Gathering AI. Determine if you should respond to the current stack action.' 
+            },
+            { 
+              role: 'user', 
+              content: JSON.stringify({ gameState: this.gameState, context, playerId: this.playerId }) 
+            }
+          ],
+          response_format: { type: 'json_object' }
+        }
+      });
+
+      if (response.success && response.data) {
+        return response.data;
+      }
+      
+      // Fallback to heuristic if AI fails
+      return this.evaluateResponse(context);
+    } catch (error) {
+      console.error('AI response evaluation failed, falling back to heuristic:', error);
+      return this.evaluateResponse(context);
+    }
   }
 
   /**

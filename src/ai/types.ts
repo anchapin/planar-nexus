@@ -13,7 +13,8 @@ export interface Card {
   colors?: string[];
   power?: number;
   toughness?: number;
-  [key: string]: unknown;
+  oracle_text?: string;
+  mana_cost?: string;
 }
 
 /** Game state representation */
@@ -23,13 +24,10 @@ export interface GameState {
   opponentBoard?: Card[];
   life?: number;
   opponentLife?: number;
-  availableMana?: {
-    total: number;
-    colored: Record<string, number>;
-    colorless: number;
-  };
+  availableMana?: ManaBreakdown;
   usedMana?: number;
-  [key: string]: unknown;
+  phase?: string;
+  turnNumber?: number;
 }
 
 /** Evaluation result from game state evaluator */
@@ -66,7 +64,7 @@ export interface DraftCard {
   colors?: string[];
   cmc?: number;
   type?: string;
-  [key: string]: unknown;
+  rarity?: string;
 }
 
 /** Turn data for post-game analysis */
@@ -81,17 +79,15 @@ export interface TurnData {
     type: string;
     description: string;
   }>;
-  [key: string]: unknown;
 }
 
 /** Extended turn data for game analysis with additional metrics */
 export interface GameAnalysisTurn extends TurnData {
   lifeChanges?: Record<string, number>;
-  missedOpportunities?: Record<string, unknown[]>;
+  missedOpportunities?: Record<string, Threat[]>;
   suboptimalPlays?: Record<string, string[]>;
   cardAdvantage?: Record<string, number>;
   manaCost?: number;
-  [key: string]: unknown;
 }
 
 /** Game replay data */
@@ -102,7 +98,6 @@ export interface GameReplay {
   format?: string;
   playerLife?: number;
   opponentLife?: number;
-  [key: string]: unknown;
 }
 
 /** Creature type for board analysis */
@@ -247,29 +242,34 @@ export interface AIProviderConfig {
   apiKey?: string;
   model?: string;
   baseUrl?: string;
-  [key: string]: unknown;
 }
 
 /** AI response structure */
 export interface AIResponse {
-  content?: string;
+  id?: string;
+  object?: string;
+  created?: number;
+  model?: string;
   choices?: Array<{
+    index?: number;
     message?: {
-      content?: string;
       role?: string;
+      content?: string;
     };
+    finish_reason?: string;
   }>;
   usage?: {
-    promptTokens: number;
-    completionTokens: number;
-    totalTokens: number;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
   };
-  [key: string]: unknown;
 }
 
 /** Stream chunk structure */
 export interface StreamChunk {
   content?: string;
   done?: boolean;
-  [key: string]: unknown;
 }

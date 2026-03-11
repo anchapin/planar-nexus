@@ -1,9 +1,10 @@
 /**
  * Secure API Key Storage Module
  * Issue #48: Implement secure local storage for API keys
+ * Issue #522: Deprecated - Use server-side proxy instead of local storage
  * 
- * This module provides secure storage for AI provider API keys
- * using the Web Crypto API for encryption.
+ * This module is maintained for backward compatibility but all new 
+ * code should use the server-side proxy (see ai-proxy-client.ts).
  */
 
 import type { AIProvider } from '@/ai/providers';
@@ -256,11 +257,13 @@ export async function getAllKeyStatus(): Promise<ProviderKeyStatus[]> {
 
 /**
  * Validate an API key by making a test request
+ * @deprecated Use server-side proxy validation instead
  */
 export async function validateApiKey(
   provider: AIProvider,
   apiKey: string
 ): Promise<{ valid: boolean; error?: string }> {
+  console.warn(`Direct API key validation for ${provider} is deprecated. Use proxy instead.`);
   try {
     // For Google AI, test with a minimal request
     if (provider === 'google') {

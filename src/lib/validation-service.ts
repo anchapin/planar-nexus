@@ -1,5 +1,5 @@
 import { GameState, CardState, PlayerState } from '@/types/game';
-import { GameModeConfig } from '@/lib/game-rules';
+import { GameModeConfig, getGameMode } from '@/lib/game-rules';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -9,11 +9,16 @@ export interface ValidationResult {
 export class ValidationService {
   /**
    * Validates if a player can play a land.
-   * Rule: One land per turn, and only during main phases when the player has priority and the stack is empty.
+   * Rule: One land per turn (unless modified by game mode), 
+   * and only during main phases when the player has priority and the stack is empty.
    */
-  static canPlayLand(gameState: GameState, playerId: string, cardId: string): ValidationResult {
+  static canPlayLand(gameState: GameState, playerId: string, cardId: string, modeId?: string): ValidationResult {
     const player = gameState.players.find(p => p.id === playerId);
     if (!player) return { isValid: false, message: "Player not found." };
+
+    // Get game mode config for rule modifications
+    const modeConfig = modeId ? getGameMode(modeId) : undefined;
+    const maxLandsPerTurn = (modeConfig as any)?.maxLandsPerTurn || 1;
 
     // Check if it's the player's turn
     if (!player.isCurrentTurn) {
@@ -42,9 +47,14 @@ export class ValidationService {
     const isLand = card.card.type_line.toLowerCase().includes('land');
     if (!isLand) return { isValid: false, message: "Card is not a land." };
 
-    // Check "One land per turn" rule
-    if (player.landsPlayedThisTurn && player.landsPlayedThisTurn >= 1) {
-      return { isValid: false, message: "You have already played a land this turn." };
+    // Check lands per turn rule
+    if (player.landsPlayedThisTurn >= maxLandsPerTurn) {
+      return { 
+        isValid: false, 
+        message: maxLandsPerTurn > 1 
+          ? `You have already played your limit of ${maxLandsPerTurn} lands this turn.`
+          : "You have already played a land this turn." 
+      };
     }
 
     return { isValid: true };
@@ -66,11 +76,7 @@ export class ValidationService {
     const card = player.hand.find(c => c.id === cardId);
     if (!card) return { isValid: false, message: "Card not in hand." };
 
-    // Check mana costs (Simplified: assume we have a way to check available mana)
-    // In a full implementation, we'd calculate available mana from tapped lands/artifacts
-    // and compare it to card.card.cmc or specific mana requirements.
-    
-    // For now, we'll provide a placeholder for mana validation
+    // Check mana costs
     const hasEnoughMana = this.checkManaCost(gameState, player, card);
     if (!hasEnoughMana) {
       return { isValid: false, message: "Not enough mana to cast this spell." };
@@ -95,9 +101,21 @@ export class ValidationService {
     return { isValid: true };
   }
 
-  private static checkManaCost(_gameState: GameState, _player: PlayerState, _card: CardState): boolean {
-    // Placeholder for complex mana validation
-    // In reality, this would check the player's mana pool or untapped permanents
-    return true; 
+  /**
+   * Checks if player has enough mana to cast the card.
+   * Considers untapped lands and other mana sources.
+   */
+  private static checkManaCost(_gameState: GameState, player: PlayerState, card: CardState): boolean {
+    const cmc = card.card.cmc || 0;
+    
+    // Simple mana validation: count untapped lands and permanents
+    const untappedSources = player.battlefield.filter(c => 
+      !c.tapped && (
+        c.card.type_line.toLowerCase().includes('land') ||
+        c.card.oracle_text?.toLowerCase().includes('add {')
+      )
+    ).length;
+
+    return untappedSources >= cmc;
   }
 }

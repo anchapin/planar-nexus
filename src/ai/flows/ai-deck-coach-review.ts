@@ -12,6 +12,7 @@
 import { reviewDeckHeuristic } from '@/lib/heuristic-deck-coach';
 import { validateCardLegality } from '@/lib/server-card-operations';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
+import { callAIProxy } from '@/lib/ai-proxy-client';
 
 // Input types for deck review function
 export interface DeckReviewInput {
@@ -44,7 +45,8 @@ export interface DeckReviewOutput {
 }
 
 export async function reviewDeck(
-  input: DeckReviewInput
+  input: DeckReviewInput,
+  useAI: boolean = false
 ): Promise<DeckReviewOutput> {
   // Enforce rate limiting
   const userId = `deck-review-${input.format}`;
@@ -59,7 +61,37 @@ export async function reviewDeck(
     throw error;
   }
 
-  // Queue the request for processing
+  // Use AI if requested
+  if (useAI) {
+    try {
+      const response = await callAIProxy<DeckReviewOutput>({
+        provider: 'openai',
+        endpoint: 'chat/completions',
+        model: 'gpt-4o-mini',
+        body: {
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements.' 
+            },
+            { 
+              role: 'user', 
+              content: `Format: ${input.format}\n\nDecklist:\n${input.decklist}` 
+            }
+          ],
+          response_format: { type: 'json_object' }
+        }
+      });
+
+      if (response.success && response.data) {
+        return response.data;
+      }
+    } catch (error) {
+      console.error('AI deck review failed, falling back to heuristic:', error);
+    }
+  }
+
+  // Queue the request for processing (heuristic)
   return aiRequestQueue.add(async () => {
     // Parse the decklist to get card data
     const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
