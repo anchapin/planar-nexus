@@ -1,17 +1,17 @@
 /**
  * Spell Casting System
- * 
+ *
  * This module implements the spell casting system for Magic: The Gathering,
  * including cost validation, stack management, and timing restrictions.
- * 
+ *
  * Reference: CR 601 - Casting Spells
  */
 
-import type { 
-  GameState, 
-  PlayerId, 
-  CardInstanceId, 
-  StackObject, 
+import type {
+  GameState,
+  PlayerId,
+  CardInstanceId,
+  StackObject,
   Target,
   WaitingChoice,
   ChoiceOption
@@ -19,6 +19,7 @@ import type {
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
 import { spendMana, getSpellManaCost } from "./mana";
+import { ValidationService } from "./validation-service";
 
 /**
  * Generate a unique stack object ID
@@ -107,6 +108,7 @@ export function canCastSpell(
 
 /**
  * Cast a spell from hand and put it on the stack
+ * Validates priority, mana costs, and timing rules before casting
  */
 export function castSpell(
   state: GameState,
@@ -116,10 +118,18 @@ export function castSpell(
   chosenModes: string[] = [],
   xValue: number = 0
 ): { success: boolean; state: GameState; error?: string } {
-  // Check if player can cast this spell
-  const canCastResult = canCastSpell(state, playerId, cardId);
-  if (!canCastResult.canCast) {
-    return { success: false, state, error: canCastResult.reason || "You cannot cast this spell right now." };
+  // Create a game action for validation
+  const action = {
+    type: "cast_spell" as const,
+    playerId,
+    timestamp: Date.now(),
+    data: { cardId, targets, chosenModes, xValue },
+  };
+
+  // Validate the action before executing
+  const validationResult = ValidationService.validateAction(state, action);
+  if (!validationResult.isValid) {
+    return { success: false, state, error: validationResult.message || validationResult.reason };
   }
 
   // Get the card
@@ -142,7 +152,7 @@ export function castSpell(
 
   // Calculate and validate the mana cost
   const manaCost = getSpellManaCost(card.cardData);
-  
+
   // Add X value to the cost if applicable
   const totalGeneric = manaCost.generic + xValue;
   const totalWhite = manaCost.white;
@@ -150,19 +160,19 @@ export function castSpell(
   const totalBlack = manaCost.black;
   const totalRed = manaCost.red;
   const totalGreen = manaCost.green;
-  
+
   // Check if player has enough mana to cast the spell
   const player = state.players.get(playerId);
   if (!player) {
     return { success: false, state, error: "Player not found." };
   }
-  
+
   const pool = player.manaPool;
-  
+
   // Calculate total colored mana available for generic payment
   const totalColored = pool.white + pool.blue + pool.black + pool.red + pool.green;
   const availableForGeneric = pool.generic + totalColored + pool.colorless;
-  
+
   if (
     pool.white < totalWhite ||
     pool.blue < totalBlue ||

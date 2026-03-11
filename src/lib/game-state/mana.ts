@@ -1,15 +1,16 @@
 /**
  * Mana System
- * 
+ *
  * This module implements the mana system for Magic: The Gathering,
  * including mana pool management, land playing, and mana abilities.
- * 
+ *
  * Reference: CR 106 - Mana, CR 305 - Lands
  */
 
 import type { GameState, PlayerId, CardInstanceId, ManaPool } from "./types";
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
+import { ValidationService } from "./validation-service";
 
 /**
  * Create an empty mana pool
@@ -261,15 +262,32 @@ export function canPlayLand(state: GameState, playerId: PlayerId): boolean {
 
 /**
  * Play a land card from hand
+ * Enforces the "One land per turn" rule and other timing restrictions
  */
 export function playLand(
   state: GameState,
   playerId: PlayerId,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
+  modeId?: string
 ): { success: boolean; state: GameState; error?: string } {
-  // Check if player can play a land
-  if (!canPlayLand(state, playerId)) {
-    return { success: false, state, error: "You cannot play any more lands this turn." };
+  // Create a game action for validation
+  const action = {
+    type: "play_land" as const,
+    playerId,
+    timestamp: Date.now(),
+    data: { cardId },
+  };
+
+  // Validate the action before executing
+  const validationResult = ValidationService.validateAction(state, action, modeId);
+  if (!validationResult.isValid) {
+    return { success: false, state, error: validationResult.message || validationResult.reason };
+  }
+
+  // Get the battlefield zone
+  const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
+  if (!battlefieldZone) {
+    return { success: false, state, error: "Battlefield zone not found." };
   }
 
   // Verify the card is in player's hand
@@ -284,20 +302,9 @@ export function playLand(
     return { success: false, state, error: "Card not found." };
   }
 
-  const typeLine = card.cardData.type_line?.toLowerCase() || "";
-  if (!typeLine.includes("land")) {
-    return { success: false, state, error: "Card is not a land." };
-  }
-
-  // Get the battlefield zone
-  const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
-  if (!battlefieldZone) {
-    return { success: false, state, error: "Battlefield zone not found." };
-  }
-
   // Move the land from hand to battlefield
   const moved = moveCardBetweenZones(handZone, battlefieldZone, cardId);
-  
+
   // Update zones
   const updatedZones = new Map(state.zones);
   updatedZones.set(`${playerId}-hand`, moved.from);
