@@ -78,10 +78,6 @@ const PRICING: Record<string, { input: number; output: number }> = {
   'gpt-4o-mini': { input: 0.15, output: 0.60 },
   'gpt-4o': { input: 2.50, output: 10.00 },
   'gpt-4-turbo': { input: 10.00, output: 30.00 },
-  // Anthropic
-  'claude-3-haiku-20240307': { input: 0.25, output: 1.25 },
-  'claude-3-sonnet-20240229': { input: 3.00, output: 15.00 },
-  'claude-3-opus-20240229': { input: 15.00, output: 75.00 },
   // Default fallback
   'default': { input: 1.00, output: 4.00 },
 };
@@ -266,7 +262,7 @@ export async function getProviderUsageStats(provider: AIProvider): Promise<Provi
  * Get usage statistics for all providers
  */
 export async function getAllUsageStats(): Promise<ProviderUsageStats[]> {
-  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'custom'];
+  const providers: AIProvider[] = ['google', 'openai', 'zaic', 'custom'];
   const stats: ProviderUsageStats[] = [];
 
   for (const provider of providers) {

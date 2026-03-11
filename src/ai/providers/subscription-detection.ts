@@ -1,12 +1,11 @@
 /**
  * Subscription Plan Detection Module
  * Issue #52: Implement subscription plan linking
- * 
+ *
  * This module provides functionality to detect and manage
  * AI subscription plans from various providers.
- * 
+ *
  * Supported subscriptions:
- * - Claude Pro/Claude Team (Anthropic)
  * - Copilot Pro (GitHub/Microsoft)
  * - Gemini Advanced (Google)
  * - Z.ai subscription (Z.ai)
@@ -28,52 +27,6 @@ export type { SubscriptionDetection } from './types';
  * Subscription plan definitions for each provider
  */
 const SUBSCRIPTION_PLANS: Record<AIProvider, SubscriptionPlan[]> = {
-  anthropic: [
-    {
-      provider: 'anthropic',
-      tier: 'pro',
-      planName: 'Claude Pro',
-      detectedAt: 0,
-      benefits: [
-        'Higher rate limits',
-        'Priority access to new models',
-        'Extended context windows',
-        'Early access to beta features',
-      ],
-      rateLimitMultiplier: 5,
-      maxTokensMultiplier: 2,
-    },
-    {
-      provider: 'anthropic',
-      tier: 'team',
-      planName: 'Claude Team',
-      detectedAt: 0,
-      benefits: [
-        'All Pro benefits',
-        'Team workspace',
-        'Higher usage limits',
-        'Admin controls',
-        'Usage analytics',
-      ],
-      rateLimitMultiplier: 10,
-      maxTokensMultiplier: 4,
-    },
-    {
-      provider: 'anthropic',
-      tier: 'enterprise',
-      planName: 'Claude Enterprise',
-      detectedAt: 0,
-      benefits: [
-        'All Team benefits',
-        'Unlimited requests',
-        'Custom integrations',
-        'Dedicated support',
-        'SLA guarantees',
-      ],
-      rateLimitMultiplier: 100,
-      maxTokensMultiplier: 10,
-    },
-  ],
   openai: [
     {
       provider: 'openai',
@@ -213,27 +166,6 @@ const SUBSCRIPTION_PLANS: Record<AIProvider, SubscriptionPlan[]> = {
 const STORAGE_KEY = 'planar_nexus_subscription_detection';
 
 /**
- * Detect Claude subscription via API key metadata
- * This is a best-effort detection based on API key patterns
- */
-function detectAnthropicSubscription(apiKey: string): SubscriptionPlan | null {
-  // Anthropic API keys starting with 'sk-ant-' followed by specific patterns
-  // may indicate subscription level. This is heuristic-based.
-  if (apiKey.startsWith('sk-ant-')) {
-    // Return Pro tier as default for valid keys
-    const plans = SUBSCRIPTION_PLANS.anthropic;
-    const proPlan = plans.find(p => p.tier === 'pro');
-    if (proPlan) {
-      return {
-        ...proPlan,
-        detectedAt: Date.now(),
-      };
-    }
-  }
-  return null;
-}
-
-/**
  * Detect OpenAI subscription via API key patterns
  */
 function detectOpenAISubscription(apiKey: string): SubscriptionPlan | null {
@@ -295,8 +227,6 @@ function detectZAISubscription(apiKey: string): SubscriptionPlan | null {
  */
 export function detectSubscription(provider: AIProvider, apiKey: string): SubscriptionPlan | null {
   switch (provider) {
-    case 'anthropic':
-      return detectAnthropicSubscription(apiKey);
     case 'openai':
       return detectOpenAISubscription(apiKey);
     case 'google':
@@ -410,12 +340,12 @@ export function clearSubscriptionDetection(): void {
  */
 export async function detectAllSubscriptions(): Promise<SubscriptionDetection> {
   const plans: SubscriptionPlan[] = [];
-  
+
   // Import dynamically to avoid circular dependencies
   const { getApiKey } = await import('@/lib/api-key-storage');
-  
-  const providers: AIProvider[] = ['anthropic', 'openai', 'google', 'zaic'];
-  
+
+  const providers: AIProvider[] = ['openai', 'google', 'zaic'];
+
   for (const provider of providers) {
     try {
       const apiKey = await getApiKey(provider);
@@ -453,46 +383,6 @@ export async function validateSubscription(
 ): Promise<{ valid: boolean; subscription?: SubscriptionPlan; error?: string }> {
   try {
     switch (provider) {
-      case 'anthropic': {
-        // Make a minimal API call to validate key and check subscription
-        const response = await safeFetch<unknown>(
-          `${API_ENDPOINTS.ANTHROPIC}/models`,
-          {
-            headers: {
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
-            timeoutMs: 10000,
-            errorMessage: 'Anthropic subscription validation failed',
-            fullResponse: true,
-          }
-        ) as FullResponse<unknown>;
-
-        // Check rate limit headers for subscription tier indication
-        const rateLimit = response.headers.get('x-ratelimit-limit');
-        if (rateLimit) {
-          const limit = parseInt(rateLimit, 10);
-          if (limit >= 100) {
-            const enterprise = SUBSCRIPTION_PLANS.anthropic.find(p => p.tier === 'enterprise');
-            if (enterprise) {
-              return { valid: true, subscription: { ...enterprise, detectedAt: Date.now() } };
-            }
-          } else if (limit >= 50) {
-            const team = SUBSCRIPTION_PLANS.anthropic.find(p => p.tier === 'team');
-            if (team) {
-              return { valid: true, subscription: { ...team, detectedAt: Date.now() } };
-            }
-          }
-        }
-
-        // Default to Pro for valid keys
-        const pro = SUBSCRIPTION_PLANS.anthropic.find(p => p.tier === 'pro');
-        if (pro) {
-          return { valid: true, subscription: { ...pro, detectedAt: Date.now() } };
-        }
-        return { valid: true };
-      }
-
       case 'openai': {
         const response = await safeFetch<{ data?: Array<{ owned_by?: string }> }>(
           `${API_ENDPOINTS.OPENAI}/models`,

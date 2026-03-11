@@ -14,16 +14,15 @@ import { DEFAULT_CONFIGS, DEFAULT_MODELS, type AIProviderConfig, type AIProvider
 
 // Re-export types
 export { DEFAULT_CONFIGS, DEFAULT_MODELS };
-export type { 
-  AIProviderConfig, 
-  AIProvider, 
-  SubscriptionTier, 
-  SubscriptionPlan, 
-  SubscriptionDetection 
+export type {
+  AIProviderConfig,
+  AIProvider,
+  SubscriptionTier,
+  SubscriptionPlan,
+  SubscriptionDetection
 };
 
-// Re-export Claude, OpenAI and Z.ai providers
-export * from './claude';
+// Re-export OpenAI and Z.ai providers
 // export * from './openai';
 export * from './zaic';
 
@@ -60,7 +59,7 @@ export function setProvider(provider: AIProvider, model?: string): void {
  * Get available providers
  */
 export function getAvailableProviders(): AIProvider[] {
-  return ['google', 'anthropic', 'zaic'];
+  return ['google', 'zaic'];
 }
 
 /**
@@ -83,9 +82,6 @@ export function getModelOptions(provider: AIProvider): string[] {
     case 'openai':
       // Lazy import to avoid bundling issues in browser
       return getOpenAIModelOptionsStatic();
-    case 'anthropic':
-      // Lazy import to avoid bundling issues in browser
-      return getClaudeModelOptionsStatic();
     case 'zaic':
       // Lazy import to avoid bundling issues in browser
       return getZAIModelOptionsStatic();
@@ -119,20 +115,6 @@ function getOpenAIModelOptionsStatic(): string[] {
 }
 
 /**
- * Get Claude model options (statically defined to avoid require)
- */
-function getClaudeModelOptionsStatic(): string[] {
-  return [
-    'claude-3-haiku-20240307',
-    'claude-3-5-haiku-20241022',
-    'claude-3-sonnet-20240229',
-    'claude-3-5-sonnet-20241022',
-    'claude-3-opus-20240229',
-    'claude-3-5-opus-20241022',
-  ];
-}
-
-/**
  * Get Z.ai model options (statically defined to avoid require)
  */
 function getZAIModelOptionsStatic(): string[] {
@@ -156,7 +138,7 @@ export function getModelString(): string {
  * Validate provider configuration
  */
 export function isValidProvider(provider: string): provider is AIProvider {
-  return ['google', 'openai', 'anthropic', 'zaic', 'custom'].includes(provider);
+  return ['google', 'openai', 'zaic', 'custom'].includes(provider);
 }
 
 /**
