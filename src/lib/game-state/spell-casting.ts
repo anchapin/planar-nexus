@@ -1,17 +1,17 @@
 /**
  * Spell Casting System
- * 
+ *
  * This module implements the spell casting system for Magic: The Gathering,
  * including cost validation, stack management, and timing restrictions.
- * 
+ *
  * Reference: CR 601 - Casting Spells
  */
 
-import type { 
-  GameState, 
-  PlayerId, 
-  CardInstanceId, 
-  StackObject, 
+import type {
+  GameState,
+  PlayerId,
+  CardInstanceId,
+  StackObject,
   Target,
   WaitingChoice,
   ChoiceOption
@@ -19,6 +19,7 @@ import type {
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
 import { spendMana, getSpellManaCost } from "./mana";
+import { ValidationService } from "./validation-service";
 
 /**
  * Generate a unique stack object ID
@@ -117,9 +118,6 @@ export function castSpell(
   chosenModes: string[] = [],
   xValue: number = 0
 ): { success: boolean; state: GameState; error?: string } {
-  // Import validation service inline to avoid circular dependency
-  const { ValidationService } = require("./validation-service");
-  
   // Create a game action for validation
   const action = {
     type: "cast_spell" as const,
@@ -127,7 +125,7 @@ export function castSpell(
     timestamp: Date.now(),
     data: { cardId, targets, chosenModes, xValue },
   };
-  
+
   // Validate the action before executing
   const validationResult = ValidationService.validateAction(state, action);
   if (!validationResult.isValid) {
