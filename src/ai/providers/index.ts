@@ -22,8 +22,7 @@ export type {
   SubscriptionDetection 
 };
 
-// Re-export Claude, OpenAI and Z.ai providers
-export * from './claude';
+// Re-export OpenAI and Z.ai providers
 // export * from './openai';
 export * from './zaic';
 
@@ -60,7 +59,7 @@ export function setProvider(provider: AIProvider, model?: string): void {
  * Get available providers
  */
 export function getAvailableProviders(): AIProvider[] {
-  return ['google', 'anthropic', 'zaic'];
+  return ['google', 'zaic'];
 }
 
 /**
@@ -83,9 +82,6 @@ export function getModelOptions(provider: AIProvider): string[] {
     case 'openai':
       // Lazy import to avoid bundling issues in browser
       return getOpenAIModelOptionsStatic();
-    case 'anthropic':
-      // Lazy import to avoid bundling issues in browser
-      return getClaudeModelOptionsStatic();
     case 'zaic':
       // Lazy import to avoid bundling issues in browser
       return getZAIModelOptionsStatic();
@@ -156,7 +152,7 @@ export function getModelString(): string {
  * Validate provider configuration
  */
 export function isValidProvider(provider: string): provider is AIProvider {
-  return ['google', 'openai', 'anthropic', 'zaic', 'custom'].includes(provider);
+  return ['google', 'openai', 'zaic', 'custom'].includes(provider);
 }
 
 /**
