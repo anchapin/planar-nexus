@@ -1,8 +1,9 @@
 /**
- * @fileOverview Server-side card operations
+ * @fileOverview Card operations using embedded data
  *
- * These functions work in Node.js server environment for AI flows.
- * They use embedded card data and do not require IndexedDB.
+ * These functions work with embedded card data for AI flows.
+ * They use embedded card data and work in both server and client environments.
+ * Originally designed for server-side but now compatible with client-side execution.
  */
 
 import Fuse from 'fuse.js';

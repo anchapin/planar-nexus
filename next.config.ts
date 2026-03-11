@@ -1,11 +1,10 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  // Note: Removed 'output: export' because Server Actions are not compatible
-  // with static exports. The app uses a custom service worker (public/sw.js)
-  // for PWA/offline functionality instead.
-  // Using default Next.js output mode (dynamic) to support Server Actions.
-  
+  // Static export for client-side only deployment
+  // Now that all Server Actions have been removed, we can use static export
+  output: 'export',
+
   // Configure image optimization
   images: {
     unoptimized: true,
@@ -42,10 +41,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  
+
   // Ensure trailing slashes for static hosting
   trailingSlash: true,
-  
+
   // TypeScript and ESLint settings
   typescript: {
     ignoreBuildErrors: true,
@@ -53,7 +52,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  
+
   // Set base path for deployment
   basePath: '',
 };

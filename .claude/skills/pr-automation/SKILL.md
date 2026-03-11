@@ -2,7 +2,7 @@
 name: pr-automation
 description: Automated PR review, fixing, CI monitoring, and merging with hybrid batch/individual strategy
 disable-model-invocation: false
-argument-hint: [--max-parallel N] [--dry-run] [--interactive] [--pr-filter LABEL] [--ci-timeout DURATION] [--confirm-merges] [--no-auto-merge] [--require-approval]
+argument-hint: "[--max-parallel N] [--dry-run] [--interactive] [--pr-filter LABEL] [--ci-timeout DURATION] [--confirm-merges] [--no-auto-merge] [--require-approval]"
 allowed-tools: Bash(gh *), Bash(git *), Skill(simplify), Task, TaskCreate, TaskUpdate, TaskList, TaskGet, Read, Write, Edit, Glob, Grep
 ---
 

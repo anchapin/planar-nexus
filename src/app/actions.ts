@@ -26,7 +26,7 @@ export interface SavedDeck {
 }
 
 /**
- * Server action for AI deck review
+ * Client-side function for AI deck review
  */
 export async function getDeckReview(input: DeckReviewInput) {
   try {
@@ -42,7 +42,7 @@ export async function getDeckReview(input: DeckReviewInput) {
 }
 
 /**
- * Server action for AI opponent generation
+ * Client-side function for AI opponent generation
  */
 export async function generateOpponent(input: AIOpponentDeckGenerationInput) {
     try {

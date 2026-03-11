@@ -2,7 +2,7 @@
 name: parallel-issues
 description: Analyzes open GitHub issues, prioritizes them by roadmap impact, determines parallel workability with git worktrees, and creates a plan to work on multiple issues simultaneously using sub-agents. Use when planning parallel development work.
 disable-model-invocation: true
-argument-hint: [--max-parallel N] [--phase N] [--priority P]
+argument-hint: "[--max-parallel N] [--phase N] [--priority P]"
 allowed-tools: Bash(gh *), Bash(git *), Bash(python3 *), Task, TaskCreate, TaskUpdate, TaskList, TaskGet, Read, Write, Edit, Glob, Grep
 ---
 

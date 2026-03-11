@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview Opponent deck generation using enhanced heuristic algorithms
  *
