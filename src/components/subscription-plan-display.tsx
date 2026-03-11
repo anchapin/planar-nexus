@@ -35,7 +35,6 @@ import { getProviderUsageStats, formatTokens, formatCost } from "@/lib/usage-tra
 const PROVIDER_NAMES: Record<AIProvider, string> = {
   google: "Google AI (Gemini)",
   openai: "OpenAI",
-  anthropic: "Anthropic (Claude)",
   zaic: "Z.ai",
   custom: "Custom Provider",
 };
@@ -66,7 +65,6 @@ const TIER_COLORS: Record<SubscriptionTier, string> = {
 const BASE_RATE_LIMITS: Record<AIProvider, number> = {
   google: 15,
   openai: 3,
-  anthropic: 5,
   zaic: 10,
   custom: 10,
 };
@@ -77,7 +75,6 @@ const BASE_RATE_LIMITS: Record<AIProvider, number> = {
 const BASE_MAX_TOKENS: Record<AIProvider, number> = {
   google: 8192,
   openai: 4096,
-  anthropic: 4096,
   zaic: 8192,
   custom: 8192,
 };
@@ -335,7 +332,7 @@ export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDispl
   const [isDetectingAll, setIsDetectingAll] = useState(false);
   const [detection, setDetection] = useState<SubscriptionDetection | null>(null);
 
-  const providers: AIProvider[] = ["google", "openai", "anthropic", "zaic"];
+  const providers: AIProvider[] = ["google", "openai", "zaic"];
 
   async function handleDetectAll() {
     setIsDetectingAll(true);
