@@ -823,9 +823,9 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
     }
   }
 
-  // Add creatures based on archetype and mana curve
+  // Calculate mana curve based on archetype and difficulty
   const manaCurve = calculateManaCurve(archetype, difficulty);
-  let creaturesAdded = 0;
+  let totalAdded = cards.reduce((sum, card) => sum + card.quantity, 0);
 
   for (let cmc = 0; cmc <= 7; cmc++) {
     if (manaCurve[cmc] > 0) {
@@ -844,28 +844,29 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
       );
 
       const allCreatures = [...cmcCreatures, ...themeCreatures];
-      const selectedCreatures = getRandomItems(allCreatures, Math.min(manaCurve[cmc], creatureSlots - creaturesAdded));
+      const selectedCreatures = getRandomItems(allCreatures, manaCurve[cmc]);
 
       for (const creature of selectedCreatures) {
         const quantity = isCommander ? 1 : Math.min(4, Math.floor(Math.random() * 3) + 1);
-        if (!cards.find(c => c.name === creature) && creaturesAdded < creatureSlots) {
-          cards.push({ name: creature, quantity });
-          creaturesAdded += quantity;
+        if (!cards.find(c => c.name === creature) && totalAdded < totalCards) {
+          const actualQuantity = Math.min(quantity, totalCards - totalAdded);
+          cards.push({ name: creature, quantity: actualQuantity });
+          totalAdded += actualQuantity;
         }
       }
     }
   }
 
   // Add spells based on archetype
-  let spellsAdded = 0;
   const spellCategories = [...archetypeConfig.spellCategories];
 
   // Add theme-specific spells
   for (const themeSpell of themeModifier.additionalSpells) {
-    if (spellsAdded < spellSlots && !cards.find(c => c.name === themeSpell)) {
+    if (totalAdded < totalCards && !cards.find(c => c.name === themeSpell)) {
       const quantity = isCommander ? 1 : Math.min(4, Math.floor(Math.random() * 3) + 1);
-      cards.push({ name: themeSpell, quantity });
-      spellsAdded += quantity;
+      const actualQuantity = Math.min(quantity, totalCards - totalAdded);
+      cards.push({ name: themeSpell, quantity: actualQuantity });
+      totalAdded += actualQuantity;
     }
   }
 
@@ -873,15 +874,16 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
   const archetypeSpells = getCardsForColors(
     finalColorIdentity,
     spellCategories,
-    spellSlots - spellsAdded,
+    Math.max(0, totalCards - totalAdded),
     difficulty
   );
 
   for (const spell of archetypeSpells) {
-    if (spellsAdded < spellSlots && !cards.find(c => c.name === spell)) {
+    if (totalAdded < totalCards && !cards.find(c => c.name === spell)) {
       const quantity = isCommander ? 1 : Math.min(4, Math.floor(Math.random() * 3) + 1);
-      cards.push({ name: spell, quantity });
-      spellsAdded += quantity;
+      const actualQuantity = Math.min(quantity, totalCards - totalAdded);
+      cards.push({ name: spell, quantity: actualQuantity });
+      totalAdded += actualQuantity;
     }
   }
 
@@ -910,16 +912,36 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
   }
 
   // Fill remaining slots with generic good cards if needed
-  const currentTotal = cards.reduce((sum, card) => sum + card.quantity, 0);
+  let currentTotal = cards.reduce((sum, card) => sum + card.quantity, 0);
   if (currentTotal < totalCards) {
     const fillerCards = ['Brainstorm', 'Ponder', 'Counterspell', 'Lightning Bolt', 'Swords to Plowshares'];
-    const needed = totalCards - currentTotal;
-
+    
     for (const filler of fillerCards) {
-      if (!cards.find(c => c.name === filler) && cards.reduce((sum, card) => sum + card.quantity, 0) < totalCards) {
-        cards.push({ name: filler, quantity: 1 });
+      if (currentTotal >= totalCards) break;
+      if (!cards.find(c => c.name === filler)) {
+        const quantity = isCommander ? 1 : Math.min(4, totalCards - currentTotal);
+        cards.push({ name: filler, quantity });
+        currentTotal += quantity;
       }
     }
+  }
+
+  // If still not enough, add basic lands as temporary filler to reach exact count
+  if (currentTotal < totalCards) {
+    const fillerLands = ['Wastes', 'Reliquary Tower', 'Command Tower'];
+    for (const land of fillerLands) {
+      if (currentTotal >= totalCards) break;
+      if (!cards.find(c => c.name === land)) {
+        const quantity = isCommander ? 1 : Math.min(4, totalCards - currentTotal);
+        cards.push({ name: land, quantity });
+        currentTotal += quantity;
+      }
+    }
+  }
+
+  // If STILL not enough (extremely rare), just add "Filler Card"
+  if (currentTotal < totalCards) {
+    cards.push({ name: "Unknown Spell", quantity: totalCards - currentTotal });
   }
 
   // Generate deck name
@@ -973,13 +995,27 @@ export function generateOpponentDeck(input: OpponentDeckGenerationInput): Genera
   const deckName = `${colors} ${archetypeNames[archetype]} - ${themeNames[finalTheme]}`;
   const strategicApproach = generateStrategicApproach(archetype, finalTheme, difficulty);
 
+  // Ensure exact card count
+  const finalCards = [];
+  let finalTotal = 0;
+  for (const card of cards) {
+    if (finalTotal + card.quantity <= totalCards) {
+      finalCards.push(card);
+      finalTotal += card.quantity;
+    } else if (finalTotal < totalCards) {
+      finalCards.push({ ...card, quantity: totalCards - finalTotal });
+      finalTotal = totalCards;
+      break;
+    }
+  }
+
   return {
     name: deckName,
     archetype,
     theme: finalTheme,
     description: archetypeConfig.description,
     strategicApproach,
-    cards: cards.slice(0, totalCards),
+    cards: finalCards,
     colorIdentity: finalColorIdentity,
     difficulty,
     format,
