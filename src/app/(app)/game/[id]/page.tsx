@@ -40,6 +40,14 @@ import {
   declareAttackers,
   declareBlockers,
   resolveCombatDamage,
+  gainLife,
+  dealDamageToPlayer,
+  offerDraw,
+  acceptDraw,
+  declineDraw,
+  emptyManaPool,
+  canCastSpell,
+  canPlayLand,
   type GameState,
   type Player,
   type CardInstance,
@@ -382,6 +390,8 @@ function GameBoardContent() {
     cardId?: string;
     abilityIndex?: number;
     attackerId?: string; // For blocking
+    spellRequiresTarget?: boolean;
+    targetCount?: number; // Number of targets needed
   } | null>(null);
 
   // Combat state
@@ -658,34 +668,91 @@ function GameBoardContent() {
     }
   }, [gameState?.status, gameState?.winners, toast]);
   
-  // Handle card click
+  // Handle card click - Main interaction handler for all card clicks
   const handleCardClick = useCallback((cardId: string, zone: string) => {
     if (!gameState) return;
-    
+
     const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
     if (!player) return;
-    
-    // If we're waiting for a target
-    if (pendingAction?.type === 'target' || pendingAction?.type === 'cast' || pendingAction?.type === 'activate') {
-      // Logic for selecting a target would go here
-      // For now, let's just complete the action
-      setPendingAction(null);
-      return;
-    }
-    
+
     const card = gameState.cards.get(cardId);
     if (!card) return;
-    
-    // Only allow actions if it's our priority (or it's a mana ability we can activate)
+
     const hasPriority = gameState.priorityPlayerId === player.id;
-    
-    if (zone === 'hand' && hasPriority) {
+
+    // ==========================================
+    // TARGETING MODE: Handle spell/ability targets
+    // ==========================================
+    if (pendingAction?.type === 'target' || pendingAction?.type === 'cast' || pendingAction?.type === 'activate') {
+      // Check if this card is a valid target
+      const isOpponent = card.controllerId !== player.id;
+      const isCreatureOnBattlefield = zone === 'battlefield' && isCreature(card);
+      
+      // For now, allow targeting any creature or player
+      // In a full implementation, this would check spell requirements
+      if (zone === 'battlefield' && isCreatureOnBattlefield) {
+        // Target selected - complete the action
+        if (pendingAction.type === 'cast') {
+          // Cast spell with target
+          const validation = ValidationService.canCastSpell(gameState, player.id, pendingAction.cardId!);
+          if (validation.isValid) {
+            try {
+              // Note: Full targeting would require parsing spell text
+              // For now, cast without explicit targets (works for non-targeted spells)
+              const result = castSpell(gameState, player.id, pendingAction.cardId!);
+              if (result.success) {
+                setGameState(checkStateBasedActions(result.state).state);
+                toast({
+                  title: "Spell cast",
+                  description: `Cast ${card.cardData.name}`,
+                });
+              } else {
+                toast({
+                  title: "Error casting spell",
+                  description: result.error || "Not enough mana or invalid targets.",
+                  variant: "destructive"
+                });
+              }
+            } catch (error: any) {
+              toast({
+                title: "Error casting spell",
+                description: error.message || "An unexpected error occurred.",
+                variant: "destructive"
+              });
+            }
+          }
+        }
+        setPendingAction(null);
+        return;
+      }
+      
+      // Clicking the same card again cancels targeting
+      if (pendingAction.cardId === cardId) {
+        setPendingAction(null);
+        toast({
+          title: "Targeting cancelled",
+          description: "Action cancelled.",
+        });
+      }
+      return;
+    }
+
+    // ==========================================
+    // HAND ZONE: Play lands or cast spells
+    // ==========================================
+    if (zone === 'hand' && card.controllerId === player.id && hasPriority) {
       if (isLand(card)) {
+        // Play land
         const validation = ValidationService.canPlayLand(gameState, player.id, cardId);
         if (validation.isValid) {
           const result = playLand(gameState, player.id, cardId);
           if (result.success) {
-            setGameState(checkStateBasedActions(result.state).state);
+            const newState = checkStateBasedActions(result.state).state;
+            setGameState(newState);
+            toast({
+              title: "Land played",
+              description: `Played ${card.cardData.name}`,
+            });
           } else {
             toast({
               title: "Cannot play land",
@@ -701,26 +768,51 @@ function GameBoardContent() {
           });
         }
       } else {
-        // Try to cast spell
+        // Cast spell - check if it requires targets
         const validation = ValidationService.canCastSpell(gameState, player.id, cardId);
         if (validation.isValid) {
-          try {
-            const result = castSpell(gameState, player.id, cardId);
-            if (result.success) {
-              setGameState(checkStateBasedActions(result.state).state);
-            } else {
+          // Check if spell has targets (simplified check)
+          const oracleText = card.cardData.oracle_text?.toLowerCase() || '';
+          const typeLine = card.cardData.type_line?.toLowerCase() || '';
+          const hasTarget = oracleText.includes('target') || typeLine.includes('aura');
+          
+          if (hasTarget && !isCreature(card)) {
+            // Enter targeting mode for spells with targets
+            setPendingAction({
+              type: 'cast',
+              cardId,
+              spellRequiresTarget: true,
+              targetCount: 1,
+            });
+            toast({
+              title: "Select target",
+              description: `Choose a target for ${card.cardData.name}`,
+            });
+          } else {
+            // Cast spell without targeting
+            try {
+              const result = castSpell(gameState, player.id, cardId);
+              if (result.success) {
+                const newState = checkStateBasedActions(result.state).state;
+                setGameState(newState);
+                toast({
+                  title: "Spell cast",
+                  description: `Cast ${card.cardData.name}`,
+                });
+              } else {
+                toast({
+                  title: "Error casting spell",
+                  description: result.error || "Not enough mana or invalid targets.",
+                  variant: "destructive"
+                });
+              }
+            } catch (error: any) {
               toast({
                 title: "Error casting spell",
-                description: result.error || "Not enough mana or invalid targets.",
+                description: error.message || "An unexpected error occurred.",
                 variant: "destructive"
               });
             }
-          } catch (error: any) {
-            toast({
-              title: "Error casting spell",
-              description: error.message || "An unexpected error occurred.",
-              variant: "destructive"
-            });
           }
         } else {
           toast({
@@ -730,26 +822,43 @@ function GameBoardContent() {
           });
         }
       }
-    } else if (zone === 'battlefield') {
-      // Handle combat declarations
+      return;
+    }
+
+    // ==========================================
+    // BATTLEFIELD ZONE: Combat, abilities, tap/untap
+    // ==========================================
+    if (zone === 'battlefield') {
+      // ----- COMBAT: Declare attackers -----
       if (gameState.turn.currentPhase === 'declare_attackers' && hasPriority) {
         if (isCreature(card) && card.controllerId === player.id) {
           const alreadyAttacking = declaredAttackers.find(a => a.cardId === cardId);
           if (alreadyAttacking) {
+            // Remove from attackers
             setDeclaredAttackers(prev => prev.filter(a => a.cardId !== cardId));
+            toast({
+              title: "Attacker removed",
+              description: `${card.cardData.name} is no longer attacking.`,
+            });
           } else {
+            // Add to attackers
             const opponentId = Array.from(gameState.players.values()).find(p => p.id !== player.id)?.id;
             if (opponentId) {
               setDeclaredAttackers(prev => [...prev, { cardId, defenderId: opponentId }]);
+              toast({
+                title: "Attacker declared",
+                description: `${card.cardData.name} is attacking.`,
+              });
             }
           }
           return;
         }
       }
 
+      // ----- COMBAT: Declare blockers -----
       if (gameState.turn.currentPhase === 'declare_blockers' && hasPriority) {
         if (isCreature(card) && card.controllerId === player.id) {
-          // If already in blocking mode, select this as blocker
+          // Clicked own creature - use as blocker if in blocking mode
           if (pendingAction?.type === 'block' && pendingAction.attackerId) {
             const attackerId = pendingAction.attackerId;
             setDeclaredBlockers(prev => {
@@ -760,61 +869,190 @@ function GameBoardContent() {
               }
               return next;
             });
+            toast({
+              title: "Blocker declared",
+              description: `${card.cardData.name} is blocking.`,
+            });
             setPendingAction(null);
-          } else {
-            // Enter blocking mode for an attacker (this creature is NOT the attacker)
-            // Actually, we click the attacker first, then the blocker.
-            // Wait, UI usually works: click blocker, then click attacker to block.
-            // Let's do: click attacker (from opponent) to select it, then click our creature to block it.
           }
           return;
         } else if (isCreature(card) && card.controllerId !== player.id) {
-          // Clicked opponent's creature - is it attacking?
+          // Clicked opponent's attacking creature - enter blocking mode
           if (gameState.combat.attackers.some(a => a.cardId === cardId)) {
             setPendingAction({ type: 'block', attackerId: cardId });
             toast({
-              title: "Blocking",
-              description: "Select a creature to block with",
+              title: "Select blocker",
+              description: "Choose a creature to block with",
+            });
+          } else {
+            toast({
+              title: "Not attacking",
+              description: "This creature is not attacking.",
+              variant: "destructive"
             });
           }
           return;
         }
       }
 
-      // Activate abilities or tap/untap
-      if (hasPriority) {
-        if (isLand(card)) {
+      // ----- ACTIVATION: Tap lands for mana -----
+      if (hasPriority && card.controllerId === player.id) {
+        if (isLand(card) && !card.isTapped) {
+          // Try to activate mana ability first
           try {
             const result = activateManaAbility(gameState, player.id, cardId, 0);
             if (result.success) {
-              setGameState(result.state);
-            } else {
-              // Fallback to manual tap
-              const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
-              if (result.success) setGameState(result.state);
+              // Mana ability activated - for basic lands, also tap the card
+              const tapResult = tapCard(result.state, cardId);
+              if (tapResult.success) {
+                const newState = checkStateBasedActions(tapResult.state).state;
+                setGameState(newState);
+                toast({
+                  title: "Mana ability activated",
+                  description: `Tapped ${card.cardData.name} for mana`,
+                });
+              }
+              return;
             }
           } catch (e) {
-            const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
-            if (result.success) setGameState(result.state);
+            // Fall through to manual tap
           }
-        } else {
-          const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
-          if (result.success) setGameState(result.state);
+        }
+        
+        // Default: Toggle tap/untap
+        const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
+        if (result.success) {
+          const newState = checkStateBasedActions(result.state).state;
+          setGameState(newState);
+          toast({
+            title: card.isTapped ? "Untapped" : "Tapped",
+            description: `${card.cardData.name} ${card.isTapped ? 'untapped' : 'tapped'}.`,
+          });
         }
       }
     }
-  }, [gameState, playerName, pendingAction, toast]);
+  }, [gameState, playerName, pendingAction, declaredAttackers, toast]);
   
-  // Handle zone click
-  const handleZoneClick = useCallback((zone: string, playerId: string) => {
+  // Handle zone click - For targeting zones or zone-specific actions
+  const handleZoneClick = useCallback((zone: string, zonePlayerId: string) => {
     if (!gameState) return;
-    
-    // If we're waiting for a zone target
-    if (pendingAction) {
-      console.log(`Targeting zone ${zone} of player ${playerId}`);
-      setPendingAction(null);
+
+    const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
+    if (!player) return;
+
+    const hasPriority = gameState.priorityPlayerId === player.id;
+
+    // ==========================================
+    // TARGETING MODE: Target a player (via their zone)
+    // ==========================================
+    if (pendingAction?.type === 'target' || pendingAction?.type === 'cast' || pendingAction?.type === 'activate') {
+      // Targeting a player by clicking their zone
+      const targetPlayer = gameState.players.get(zonePlayerId);
+      if (targetPlayer) {
+        if (pendingAction.type === 'cast') {
+          // Cast spell targeting player
+          const validation = ValidationService.canCastSpell(gameState, player.id, pendingAction.cardId!);
+          if (validation.isValid) {
+            try {
+              const result = castSpell(gameState, player.id, pendingAction.cardId!);
+              if (result.success) {
+                const newState = checkStateBasedActions(result.state).state;
+                setGameState(newState);
+                toast({
+                  title: "Spell cast",
+                  description: `Cast ${gameState.cards.get(pendingAction.cardId!)?.cardData.name || 'spell'} targeting ${targetPlayer.name}`,
+                });
+              } else {
+                toast({
+                  title: "Error casting spell",
+                  description: result.error || "Not enough mana or invalid targets.",
+                  variant: "destructive"
+                });
+              }
+            } catch (error: any) {
+              toast({
+                title: "Error casting spell",
+                description: error.message || "An unexpected error occurred.",
+                variant: "destructive"
+              });
+            }
+          }
+        }
+        setPendingAction(null);
+        return;
+      }
     }
-  }, [gameState, pendingAction]);
+
+    // ==========================================
+    // LIBRARY: Draw card (for self-play debugging)
+    // ==========================================
+    if (zone === 'library' && zonePlayerId === player.id && hasPriority && mode === 'self-play') {
+      const library = gameState.zones.get(`${player.id}-library`);
+      if (library && library.cardIds.length > 0) {
+        const newState = drawCard(gameState, player.id);
+        setGameState(checkStateBasedActions(newState).state);
+        toast({
+          title: "Card drawn",
+          description: "Drew a card from library",
+        });
+      } else {
+        toast({
+          title: "Empty library",
+          description: "Your library has no cards.",
+          variant: "destructive"
+        });
+      }
+      return;
+    }
+
+    // ==========================================
+    // GRAVEYARD: View graveyard (information only)
+    // ==========================================
+    if (zone === 'graveyard') {
+      const graveyardZone = gameState.zones.get(`${zonePlayerId}-graveyard`);
+      if (graveyardZone) {
+        const cardCount = graveyardZone.cardIds.length;
+        toast({
+          title: "Graveyard",
+          description: `${gameState.players.get(zonePlayerId)?.name}'s graveyard has ${cardCount} cards.`,
+        });
+      }
+      return;
+    }
+
+    // ==========================================
+    // EXILE: View exile (information only)
+    // ==========================================
+    if (zone === 'exile') {
+      const exileZone = gameState.zones.get(`${zonePlayerId}-exile`);
+      if (exileZone) {
+        const cardCount = exileZone.cardIds.length;
+        toast({
+          title: "Exile",
+          description: `${gameState.players.get(zonePlayerId)?.name}'s exile zone has ${cardCount} cards.`,
+        });
+      }
+      return;
+    }
+
+    // ==========================================
+    // HAND: View hand info (own hand shows count, opponent shows unknown)
+    // ==========================================
+    if (zone === 'hand') {
+      const handZone = gameState.zones.get(`${zonePlayerId}-hand`);
+      if (handZone) {
+        const cardCount = handZone.cardIds.length;
+        const isOwnHand = zonePlayerId === player.id;
+        toast({
+          title: isOwnHand ? "Your Hand" : "Opponent's Hand",
+          description: isOwnHand 
+            ? `You have ${cardCount} cards in hand.`
+            : `Opponent has ${cardCount} cards in hand.`,
+        });
+      }
+      return;
+    }
+  }, [gameState, playerName, pendingAction, mode, toast]);
   
   // Handle concede
   const handleConcede = useCallback(async () => {
@@ -840,33 +1078,64 @@ function GameBoardContent() {
     }
   }, [gameState, playerName, router, toast]);
   
-  // Handle draw offer
-  const handleOfferDraw = useCallback(() => {
+  // Handle draw offer - Use engine function
+  const handleOfferDraw = useCallback(async () => {
+    if (!gameState) return;
+    
+    const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
+    if (!player) return;
+    
+    const newState = offerDraw(gameState, player.id);
+    setGameState(newState);
+    await saveActiveGame(newState);
+    
     toast({
       title: 'Draw Offered',
       description: 'Draw offer sent to opponent.',
     });
-  }, [toast]);
-  
-  const handleAcceptDraw = useCallback(() => {
+  }, [gameState, playerName, toast]);
+
+  const handleAcceptDraw = useCallback(async () => {
+    if (!gameState) return;
+    
+    const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
+    if (!player) return;
+    
+    const newState = acceptDraw(gameState, player.id);
+    setGameState(newState);
+    await saveActiveGame(newState);
+    
     toast({
       title: 'Draw Accepted',
       description: 'The game ended in a draw.',
     });
-    router.push('/single-player');
-  }, [router, toast]);
-  
-  const handleDeclineDraw = useCallback(() => {
+    
+    // Navigate back after a delay
+    setTimeout(() => {
+      router.push('/single-player');
+    }, 2000);
+  }, [gameState, playerName, router, toast]);
+
+  const handleDeclineDraw = useCallback(async () => {
+    if (!gameState) return;
+    
+    const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
+    if (!player) return;
+    
+    const newState = declineDraw(gameState, player.id);
+    setGameState(newState);
+    await saveActiveGame(newState);
+    
     toast({
       title: 'Draw Declined',
       description: 'The game continues.',
     });
-  }, [toast]);
+  }, [gameState, playerName, toast]);
   
-  // Handle pass priority (for self-play)
+  // Handle pass priority - Core priority loop implementation
   const handlePassPriority = useCallback(async () => {
     if (!gameState) return;
-    
+
     const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
     if (!player) return;
 
@@ -881,18 +1150,46 @@ function GameBoardContent() {
     }
 
     let newState = passPriority(gameState, player.id);
-    
-    // If we're passing in declare_attackers or declare_blockers, apply declarations
+
+    // If we're passing in declare_attackers, apply declarations
     if (gameState.turn.currentPhase === 'declare_attackers') {
-      const result = declareAttackers(gameState, declaredAttackers);
-      if (result.success) {
-        newState = passPriority(result.state, player.id);
+      if (declaredAttackers.length > 0) {
+        const result = declareAttackers(gameState, declaredAttackers);
+        if (result.success) {
+          newState = passPriority(result.state, player.id);
+          toast({
+            title: "Attackers declared",
+            description: `${declaredAttackers.length} creature(s) attacking.`,
+          });
+        } else {
+          toast({
+            title: "Attack declaration failed",
+            description: result.errors?.join(', ') || "Could not declare attackers.",
+            variant: "destructive"
+          });
+        }
         setDeclaredAttackers([]);
       }
-    } else if (gameState.turn.currentPhase === 'declare_blockers') {
-      const result = declareBlockers(gameState, declaredBlockers);
-      if (result.success) {
-        newState = passPriority(result.state, player.id);
+    }
+    
+    // If we're passing in declare_blockers, apply declarations
+    if (gameState.turn.currentPhase === 'declare_blockers') {
+      if (declaredBlockers.size > 0) {
+        const result = declareBlockers(gameState, declaredBlockers);
+        if (result.success) {
+          newState = passPriority(result.state, player.id);
+          const totalBlockers = Array.from(declaredBlockers.values()).flat().length;
+          toast({
+            title: "Blockers declared",
+            description: `${totalBlockers} creature(s) blocking.`,
+          });
+        } else {
+          toast({
+            title: "Block declaration failed",
+            description: result.errors?.join(', ') || "Could not declare blockers.",
+            variant: "destructive"
+          });
+        }
         setDeclaredBlockers(new Map());
       }
     }
@@ -909,14 +1206,26 @@ function GameBoardContent() {
       }
     }
 
-    const result = checkStateBasedActions(newState);
-    newState = result.state;
-    setGameState(newState);
+    // Check state-based actions
+    const sbaResult = checkStateBasedActions(newState);
+    newState = sbaResult.state;
     
+    // Show SBA descriptions
+    if (sbaResult.descriptions.length > 0) {
+      sbaResult.descriptions.forEach(desc => {
+        toast({
+          title: 'State Action',
+          description: desc,
+        });
+      });
+    }
+    
+    setGameState(newState);
+
     if (autoSaveEnabled) {
       await saveActiveGame(newState);
     }
-  }, [gameState, playerName, autoSaveEnabled, toast]);
+  }, [gameState, playerName, declaredAttackers, declaredBlockers, autoSaveEnabled, toast]);
   
   // Handle advance phase (for self-play debugging)
   const handleAdvancePhase = useCallback(async () => {
