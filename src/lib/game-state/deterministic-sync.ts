@@ -69,6 +69,10 @@ export interface PeerSyncState {
   lastSyncCheck: number;
   /** Number of consecutive desyncs */
   consecutiveDesyncs: number;
+  /** Handshake status */
+  handshakeStatus: 'pending' | 'completed' | 'failed';
+  /** Last known state checksum */
+  stateChecksum: string;
 }
 
 /**
@@ -255,7 +259,51 @@ export class DeterministicGameStateEngine {
       isInSync: true,
       lastSyncCheck: Date.now(),
       consecutiveDesyncs: 0,
+      handshakeStatus: 'pending',
+      stateChecksum: '',
     });
+  }
+
+  /**
+   * Initiate handshake with a peer
+   */
+  initiateHandshake(peerId: PeerId, currentState: GameState): { type: string; payload: any } {
+    const peerState = this.peerStates.get(peerId);
+    if (peerState) {
+      peerState.handshakeStatus = 'pending';
+    }
+
+    return {
+      type: 'handshake-init',
+      payload: {
+        peerId: this.localPeerId,
+        sequenceNumber: this.currentSequence,
+        stateHash: computeStateHash(currentState),
+        timestamp: Date.now(),
+      }
+    };
+  }
+
+  /**
+   * Handle an incoming handshake response
+   */
+  handleHandshakeResponse(peerId: PeerId, payload: any, currentState: GameState): boolean {
+    const peerState = this.peerStates.get(peerId);
+    if (!peerState) return false;
+
+    const localHash = computeStateHash(currentState);
+    const remoteHash = payload.stateHash;
+
+    if (localHash === remoteHash) {
+      peerState.handshakeStatus = 'completed';
+      peerState.isInSync = true;
+      peerState.stateChecksum = remoteHash;
+      return true;
+    } else {
+      peerState.handshakeStatus = 'failed';
+      peerState.isInSync = false;
+      return false;
+    }
   }
 
   /**

@@ -74,6 +74,15 @@ export function SyncStatusIndicator({
 
   // Determine sync state
   const getSyncState = () => {
+    if (status.status === 'reconnecting') {
+      return {
+        icon: RefreshCw,
+        color: 'text-blue-500 animate-spin',
+        bgColor: 'bg-blue-500/10',
+        label: 'Reconnecting...',
+        badge: 'secondary',
+      };
+    }
     if (desyncAlert?.hasDesync) {
       return {
         icon: AlertTriangle,
