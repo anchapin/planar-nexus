@@ -361,9 +361,9 @@ export default function DraftAssistantPage() {
                   <Alert>
                     <AlertTitle>Recommended Colors</AlertTitle>
                     <AlertDescription>
-                      {analysisResult.recommendedColors.first}
-                      {analysisResult.recommendedColors.second && 
-                        `/${analysisResult.recommendedColors.second}`}
+                      {analysisResult.recommendedColors.primary}
+                      {analysisResult.recommendedColors.secondary && 
+                        `/${analysisResult.recommendedColors.secondary}`}
                       {" - "}{analysisResult.recommendedColors.reasoning}
                     </AlertDescription>
                   </Alert>

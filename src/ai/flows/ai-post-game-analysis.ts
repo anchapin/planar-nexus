@@ -137,7 +137,7 @@ function analyzeGameHeuristic(input: GameAnalysisInput): GameAnalysisOutput {
 function identifyKeyMomentsHeuristic(input: KeyMomentsInput): KeyMomentsOutput {
   const { replay, playerName } = input;
 
-  const moments = identifyKeyMomentsInReplay(replay, playerName).map(moment => ({
+  const moments: KeyMomentsOutput['moments'] = identifyKeyMomentsInReplay(replay, playerName).map(moment => ({
     turn: moment.turn,
     description: moment.description,
     type: moment.impact === 'positive' ? 'great_play' :

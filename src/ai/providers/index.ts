@@ -24,7 +24,7 @@ export type {
 
 // Re-export Claude, OpenAI and Z.ai providers
 export * from './claude';
-export * from './openai';
+// export * from './openai';
 export * from './zaic';
 
 // Re-export subscription detection (Issue #52)
@@ -60,7 +60,7 @@ export function setProvider(provider: AIProvider, model?: string): void {
  * Get available providers
  */
 export function getAvailableProviders(): AIProvider[] {
-  return ['google', 'openai', 'anthropic', 'zaic'];
+  return ['google', 'anthropic', 'zaic'];
 }
 
 /**
