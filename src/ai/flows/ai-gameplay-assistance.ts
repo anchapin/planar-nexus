@@ -11,13 +11,13 @@
  * - evaluateBoardState - Provide overall board evaluation
  */
 
-import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
+import { evaluateGameState, quickScore, GameState as EvaluatorGameState } from '@/ai/game-state-evaluator';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
-import type { GameState, Card, GameEvaluation, ManaBreakdown } from '@/ai/types';
+import type { Card, GameEvaluation, ManaBreakdown } from '@/ai/types';
 
 // Input schema for game state analysis
 interface GameStateAnalysisInput {
-  gameState: Record<string, unknown>;
+  gameState: EvaluatorGameState;
   playerName: string;
 }
 
@@ -47,7 +47,7 @@ interface GameStateAnalysisOutput {
 
 // Input schema for specific play analysis
 interface PlayAnalysisInput {
-  gameState: Record<string, unknown>;
+  gameState: EvaluatorGameState;
   playerName: string;
   cardName: string;
   target?: string;
@@ -68,7 +68,7 @@ interface PlayAnalysisOutput {
 
 // Input schema for mana advice
 interface ManaAdviceInput {
-  gameState: Record<string, unknown>;
+  gameState: EvaluatorGameState;
   playerName: string;
 }
 
@@ -92,7 +92,7 @@ interface ManaAdviceOutput {
 
 // Input schema for board evaluation
 interface BoardEvaluationInput {
-  gameState: Record<string, unknown>;
+  gameState: EvaluatorGameState;
   playerName: string;
 }
 
@@ -131,8 +131,8 @@ export async function analyzeCurrentGameState(
   // Queue the request for processing
   return aiRequestQueue.add(async () => {
     // Evaluate game state using heuristic evaluator
-    const evaluation = evaluateGameState(gameState as any, playerName);
-    const quickScoreVal = quickScore(gameState as any, playerName);
+    const evaluation = evaluateGameState(gameState, playerName);
+    const quickScoreVal = quickScore(gameState, playerName);
 
     // Generate suggested plays based on game state
     const suggestedPlays = generateSuggestedPlays(gameState, playerName);
@@ -193,8 +193,8 @@ export async function evaluateBoardState(
 ): Promise<BoardEvaluationOutput> {
   const { gameState, playerName } = input;
 
-  const evaluation = evaluateGameState(gameState as any, playerName);
-  const quickScoreVal = quickScore(gameState as any, playerName);
+  const evaluation = evaluateGameState(gameState, playerName);
+  const quickScoreVal = quickScore(gameState, playerName);
 
   // Determine board advantage based on score difference
   let boardAdvantage: BoardEvaluationOutput['boardAdvantage'];

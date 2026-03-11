@@ -12,21 +12,19 @@
  * - archetypeDetection - Identifies potential archetypes in the pool
  */
 
+interface DraftCard {
+  name: string;
+  colors?: string[];
+  cmc?: number;
+  type?: string;
+  [key: string]: unknown;
+}
+
 // Input schema for draft pick recommendation
 interface DraftPickInput {
-  pool: Array<{
-    name: string;
-    colors?: string[];
-    cmc?: number;
-    type?: string;
-  }>;
+  pool: DraftCard[];
   pickNumber: number;
-  packCards: Array<{
-    name: string;
-    colors?: string[];
-    cmc?: number;
-    type?: string;
-  }>;
+  packCards: DraftCard[];
   format: string;
 }
 
@@ -47,12 +45,7 @@ interface DraftPickOutput {
 
 // Input schema for sealed deck building
 interface SealedBuildInput {
-  pool: Array<{
-    name: string;
-    colors?: string[];
-    cmc?: number;
-    type?: string;
-  }>;
+  pool: DraftCard[];
   format: string;
 }
 
@@ -86,12 +79,7 @@ interface SealedBuildOutput {
 
 // Input for color/archetype analysis
 interface PoolAnalysisInput {
-  pool: Array<{
-    name: string;
-    colors?: string[];
-    cmc?: number;
-    type?: string;
-  }>;
+  pool: DraftCard[];
   format: string;
 }
 
@@ -358,31 +346,31 @@ function analyzeDeckCurve(deck: SealedBuildOutput['suggestedDeck']): SealedBuild
 }
 
 function detectArchetypes(
-  pool: any,
+  pool: DraftCard[],
   _format: string
 ): SealedBuildOutput['archetypes'] {
   // Simple archetype detection based on card types
   const archetypes: SealedBuildOutput['archetypes'] = [];
 
-  const creatureCount = pool.filter((c: any) => c.type?.includes('Creature')).length;
+  const creatureCount = pool.filter((c: DraftCard) => c.type?.includes('Creature')).length;
   if (creatureCount > 15) {
     archetypes.push({
       name: 'Aggro',
       score: creatureCount,
-      cards: pool.filter((c: any) => c.type?.includes('Creature')).map((c: any) => c.name).slice(0, 5),
+      cards: pool.filter((c: DraftCard) => c.type?.includes('Creature')).map((c: DraftCard) => c.name).slice(0, 5),
     });
   }
 
-  const spellCount = pool.filter((c: any) =>
+  const spellCount = pool.filter((c: DraftCard) =>
     c.type?.includes('Instant') || c.type?.includes('Sorcery')
   ).length;
   if (spellCount > 10) {
     archetypes.push({
       name: 'Control',
       score: spellCount,
-      cards: pool.filter((c: any) =>
+      cards: pool.filter((c: DraftCard) =>
         c.type?.includes('Instant') || c.type?.includes('Sorcery')
-      ).map((c: any) => c.name).slice(0, 5),
+      ).map((c: DraftCard) => c.name).slice(0, 5),
     });
   }
 
@@ -428,13 +416,13 @@ function analyzePoolCurve(pool: PoolAnalysisInput['pool']): Record<number, numbe
   return curve;
 }
 
-function identifySynergies(card: any, pool: DraftPickInput['pool']): string[] {
+function identifySynergies(card: DraftCard, pool: DraftPickInput['pool']): string[] {
   const synergies: string[] = [];
 
   if (!card.colors) return synergies;
 
   pool.forEach(poolCard => {
-    if (poolCard.colors) {
+    if (poolCard.colors && card.colors) {
       const sharedColors = card.colors.filter((c: string) =>
         poolCard.colors!.includes(c)
       );
@@ -447,7 +435,7 @@ function identifySynergies(card: any, pool: DraftPickInput['pool']): string[] {
   return synergies.slice(0, 3);
 }
 
-function analyzeColorAlignment(card: any, pool: DraftPickInput['pool']): { primary?: string; secondary?: string } {
+function analyzeColorAlignment(card: DraftCard, pool: DraftPickInput['pool']): { primary?: string; secondary?: string } {
   const alignment: { primary?: string; secondary?: string } = {};
 
   if (!card.colors || card.colors.length === 0) return alignment;
