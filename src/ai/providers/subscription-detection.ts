@@ -17,7 +17,7 @@ import type {
   SubscriptionDetection,
   SubscriptionTier
 } from './types';
-import { safeFetch, ApiError } from '@/lib/fetch-utils';
+import { safeFetch, FullResponse, ApiError } from '@/lib/fetch-utils';
 import { API_ENDPOINTS } from '@/lib/env';
 
 // Re-export SubscriptionDetection type for consumers
@@ -360,56 +360,27 @@ export async function detectAllSubscriptions(): Promise<SubscriptionDetection> {
       console.debug(`No API key found for ${provider}`);
     }
   }
-
+  
   const detection: SubscriptionDetection = {
     detected: plans.length > 0,
     plans,
     primaryPlan: plans[0],
   };
-
+  
   // Save detection result
   saveSubscriptionDetection(detection);
-
+  
   return detection;
 }
 
 /**
  * Validate subscription status by making a test API call
  * This provides more accurate subscription detection
- * Updated to use server-side proxy (Issue #522)
  */
 export async function validateSubscription(
   provider: AIProvider,
   apiKey: string
 ): Promise<{ valid: boolean; subscription?: SubscriptionPlan; error?: string }> {
-  // Try server-side proxy validation first (Issue #522)
-  try {
-    const { validateProviderKey } = await import('@/lib/ai-proxy-client');
-    const proxyValidation = await validateProviderKey(provider);
-
-    if (proxyValidation.success && proxyValidation.valid) {
-      // Server-side key is valid, return subscription info
-      const plans = SUBSCRIPTION_PLANS[provider];
-      const proPlan = plans?.find(p => p.tier === 'pro');
-      if (proPlan) {
-        return { valid: true, subscription: { ...proPlan, detectedAt: Date.now() } };
-      }
-      return { valid: true };
-    }
-
-    // Proxy validation failed, but we can still try client-side validation
-    if (proxyValidation.errorCode !== 'PROVIDER_NOT_CONFIGURED') {
-      return {
-        valid: false,
-        error: proxyValidation.error || 'Proxy validation failed',
-      };
-    }
-  } catch (error) {
-    console.debug('Proxy validation not available, falling back to client-side:', error);
-    // Fall through to client-side validation
-  }
-
-  // Fallback to client-side validation (deprecated)
   try {
     switch (provider) {
       case 'openai': {
@@ -448,7 +419,7 @@ export async function validateSubscription(
 
       case 'google': {
         await safeFetch(
-          `${API_ENDPOINTS.GOOGLE}/models?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`,
           {
             timeoutMs: 10000,
             errorMessage: 'Google AI subscription validation failed',
