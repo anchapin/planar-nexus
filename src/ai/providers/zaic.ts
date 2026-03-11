@@ -1,13 +1,17 @@
 /**
  * Z.ai Provider
  * Issue #45: Integrate Z.ai provider
- * 
+ * Issue #522: Implement server-side API key validation and proxy for AI calls
+ *
  * This module provides Z.ai integration for the Planar Nexus application.
  * Z.ai is an AI provider that offers various language models.
+ *
+ * Updated to use server-side proxy for all API calls (Issue #522).
  */
 
 import { AIProviderConfig } from './types';
 import { API_ENDPOINTS } from '@/lib/env';
+import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
 
 /**
  * Z.ai provider configuration
@@ -19,6 +23,8 @@ export interface ZAIProviderConfig extends AIProviderConfig {
   baseURL?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Use server-side proxy (default: true for security) */
+  useProxy?: boolean;
 }
 
 /**
@@ -30,6 +36,7 @@ export const DEFAULT_ZAI_CONFIG: Partial<ZAIProviderConfig> = {
   maxTokens: 8192,
   temperature: 0.7,
   baseURL: API_ENDPOINTS.ZAI,
+  useProxy: true, // Default to proxy for security
 };
 
 /**
@@ -81,10 +88,11 @@ export interface ZAIChatResponse {
  * Create a Z.ai client configuration
  * @param config - Configuration for the Z.ai provider
  * @returns Configuration object for making API requests
+ * @deprecated Server-side proxy is now the default. Direct API calls are discouraged.
  */
 export function createZAIClient(config: ZAIProviderConfig): ZAIProviderConfig {
   const apiKey = config.apiKey || process.env.ZAI_API_KEY;
-  
+
   if (!apiKey) {
     throw new Error(
       'Z.ai API key is required. Set ZAI_API_KEY environment variable or pass it in config.'
@@ -102,7 +110,7 @@ export function createZAIClient(config: ZAIProviderConfig): ZAIProviderConfig {
 }
 
 /**
- * Send a chat completion request to Z.ai
+ * Send a chat completion request to Z.ai via server-side proxy
  * @param config - Provider configuration
  * @param request - Chat request
  * @returns Z.ai chat completion response
@@ -111,8 +119,69 @@ export async function sendZAIChat(
   config: ZAIProviderConfig,
   request: Omit<ZAIChatRequest, 'model'>
 ): Promise<ZAIChatResponse> {
+  // Use server-side proxy by default (security best practice)
+  if (config.useProxy !== false) {
+    return sendZAIChatViaProxy(config, request);
+  }
+
+  // Fallback to direct API call (deprecated, for backward compatibility)
+  return sendZAIChatDirect(config, request);
+}
+
+/**
+ * Send a chat completion request to Z.ai via server-side proxy
+ */
+async function sendZAIChatViaProxy(
+  config: ZAIProviderConfig,
+  request: Omit<ZAIChatRequest, 'model'>
+): Promise<ZAIChatResponse> {
+  try {
+    const proxyResponse = await callAIProxy<ZAIChatResponse>({
+      provider: 'zaic',
+      endpoint: 'chat/completions',
+      model: config.model || DEFAULT_ZAI_CONFIG.model,
+      body: {
+        messages: request.messages,
+        max_tokens: config.maxTokens || request.max_tokens,
+        temperature: config.temperature || request.temperature,
+        top_p: request.top_p,
+        stop: request.stop,
+      },
+    });
+
+    if (!proxyResponse.success) {
+      const errorMessage = getProxyErrorMessage(proxyResponse, 'zaic');
+      throw new Error(`Z.ai Proxy error: ${errorMessage}`);
+    }
+
+    if (!proxyResponse.data) {
+      throw new Error('Z.ai Proxy returned no data');
+    }
+
+    return proxyResponse.data;
+  } catch (error) {
+    console.error('Z.ai proxy request failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Send a chat completion request to Z.ai directly (deprecated)
+ * @param config - Provider configuration
+ * @param request - Chat request
+ * @returns Z.ai chat completion response
+ * @deprecated Use server-side proxy instead
+ */
+async function sendZAIChatDirect(
+  config: ZAIProviderConfig,
+  request: Omit<ZAIChatRequest, 'model'>
+): Promise<ZAIChatResponse> {
+  console.warn(
+    'Direct Z.ai API calls are deprecated. Please use server-side proxy (useProxy: true).'
+  );
+
   const client = createZAIClient(config);
-  
+
   const response = await fetch(`${client.baseURL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -140,16 +209,24 @@ export async function sendZAIChat(
 
 /**
  * Send a streaming chat completion request to Z.ai
+ * Note: Streaming is not yet supported through the proxy
  * @param config - Provider configuration
  * @param request - Chat request
  * @returns Async iterable for streaming response
+ * @deprecated Streaming not yet supported with proxy. Use sendZAIChat instead.
  */
 export async function* sendZAIChatStream(
   config: ZAIProviderConfig,
   request: Omit<ZAIChatRequest, 'model'>
 ): AsyncGenerator<string> {
+  // Streaming not yet supported through proxy
+  // Fall back to direct API call with warning
+  console.warn(
+    'Streaming Z.ai calls bypass the proxy. Consider using non-streaming sendZAIChat for better security.'
+  );
+
   const client = createZAIClient(config);
-  
+
   const response = await fetch(`${client.baseURL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -159,7 +236,7 @@ export async function* sendZAIChatStream(
     body: JSON.stringify({
       model: client.model,
       max_tokens: client.maxTokens || request.max_tokens,
-      temperature: client.temperature || request.temperature,
+      temperature: config.temperature || request.temperature,
       messages: request.messages,
       top_p: request.top_p,
       stream: true,
@@ -182,22 +259,22 @@ export async function* sendZAIChatStream(
 
   while (true) {
     const { done, value } = await reader.read();
-    
+
     if (done) break;
-    
+
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
-    
+
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || !trimmed.startsWith('data: ')) continue;
-      
+
       const data = trimmed.slice(6);
       if (data === '[DONE]') {
         return;
       }
-      
+
       try {
         const parsed = JSON.parse(data);
         const content = parsed.choices?.[0]?.delta?.content;

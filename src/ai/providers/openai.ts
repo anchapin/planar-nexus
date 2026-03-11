@@ -1,14 +1,18 @@
 /**
  * OpenAI Provider
  * Issue #44: Integrate OpenAI/Copilot
+ * Issue #522: Implement server-side API key validation and proxy for AI calls
  *
  * This module provides OpenAI integration for the Planar Nexus application.
  * It supports GPT models including GPT-4o, GPT-4 Turbo, and more.
+ *
+ * Updated to use server-side proxy for all API calls (Issue #522).
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type OpenAIClient = any;
-import { AIProviderConfig, DEFAULT_MODELS } from './types';
+import type { AIProviderConfig, AIResponse, StreamChunk } from '@/ai/types';
+import { DEFAULT_MODELS } from './types';
+import { API_ENDPOINTS } from '@/lib/env';
+import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
 
 /**
  * OpenAI provider configuration
@@ -20,6 +24,8 @@ export interface OpenAIProviderConfig extends AIProviderConfig {
   organization?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Use server-side proxy (default: true for security) */
+  useProxy?: boolean;
 }
 
 /**
@@ -29,15 +35,16 @@ export const DEFAULT_OPENAI_CONFIG: Partial<OpenAIProviderConfig> = {
   model: DEFAULT_MODELS.openai,
   maxTokens: 8192,
   temperature: 0.7,
+  useProxy: true, // Default to proxy for security
 };
 
 /**
  * Create an OpenAI client instance
  * @param config - Configuration for the OpenAI provider
  * @returns OpenAI client instance
+ * @deprecated Server-side proxy is now the default. Direct API calls are discouraged.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function createOpenAIClient(config: OpenAIProviderConfig): any {
+export function createOpenAIClient(config: OpenAIProviderConfig): Record<string, unknown> {
   const apiKey = config.apiKey || process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -53,31 +60,132 @@ export function createOpenAIClient(config: OpenAIProviderConfig): any {
 /**
  * OpenAI chat completion request
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface OpenAIMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface OpenAITool {
+  type: string;
+  function?: {
+    name: string;
+    description?: string;
+    parameters: Record<string, unknown>;
+  };
+}
+
 export interface OpenAIChatRequest {
   model: string;
-  messages: any[];
+  messages: OpenAIMessage[];
   maxTokens?: number;
   temperature?: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tools?: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  toolChoice?: any;
+  tools?: OpenAITool[];
+  toolChoice?: string | Record<string, unknown>;
   responseFormat?: { type: 'json_object' } | { type: 'text' };
 }
 
 /**
- * Send a chat completion request to OpenAI
+ * OpenAI chat completion response
+ */
+export interface OpenAIChatResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: {
+    index: number;
+    message: {
+      role: string;
+      content: string;
+    };
+    finish_reason: string;
+  }[];
+  usage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/**
+ * Send a chat completion request to OpenAI via server-side proxy
  * @param config - Provider configuration
  * @param request - Chat request
  * @returns OpenAI's chat completion response
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function sendOpenAIChat(
   config: OpenAIProviderConfig,
   request: Omit<OpenAIChatRequest, 'model'>
-): Promise<any> {
-  const client = createOpenAIClient(config);
+): Promise<OpenAIChatResponse> {
+  // Use server-side proxy by default (security best practice)
+  if (config.useProxy !== false) {
+    return sendOpenAIChatViaProxy(config, request);
+  }
+
+  // Fallback to direct API call (deprecated, for backward compatibility)
+  return sendOpenAIChatDirect(config, request);
+}
+
+/**
+ * Send a chat completion request to OpenAI via server-side proxy
+ */
+async function sendOpenAIChatViaProxy(
+  config: OpenAIProviderConfig,
+  request: Omit<OpenAIChatRequest, 'model'>
+): Promise<OpenAIChatResponse> {
+  try {
+    const proxyResponse = await callAIProxy<OpenAIChatResponse>({
+      provider: 'openai',
+      endpoint: 'chat/completions',
+      model: config.model || DEFAULT_MODELS.openai,
+      body: {
+        messages: request.messages,
+        max_tokens: config.maxTokens || request.maxTokens || 8192,
+        temperature: config.temperature || request.temperature || 0.7,
+        tools: request.tools,
+        tool_choice: request.toolChoice,
+        response_format: request.responseFormat,
+      },
+    });
+
+    if (!proxyResponse.success) {
+      const errorMessage = getProxyErrorMessage(proxyResponse, 'openai');
+      throw new Error(`OpenAI Proxy error: ${errorMessage}`);
+    }
+
+    if (!proxyResponse.data) {
+      throw new Error('OpenAI Proxy returned no data');
+    }
+
+    return proxyResponse.data;
+  } catch (error) {
+    console.error('OpenAI proxy request failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Send a chat completion request to OpenAI directly (deprecated)
+ * @param config - Provider configuration
+ * @param request - Chat request
+ * @returns OpenAI's chat completion response
+ * @deprecated Use server-side proxy instead
+ */
+async function sendOpenAIChatDirect(
+  config: OpenAIProviderConfig,
+  request: Omit<OpenAIChatRequest, 'model'>
+): Promise<OpenAIChatResponse> {
+  console.warn(
+    'Direct OpenAI API calls are deprecated. Please use server-side proxy (useProxy: true).'
+  );
+
+  const client = createOpenAIClient(config) as {
+    chat: {
+      completions: {
+        create: (params: Record<string, unknown>) => Promise<OpenAIChatResponse>;
+      };
+    };
+  };
 
   const response = await client.chat.completions.create({
     model: config.model || DEFAULT_MODELS.openai,
@@ -89,36 +197,7 @@ export async function sendOpenAIChat(
     response_format: request.responseFormat,
   });
 
-  return response;
-}
-
-/**
- * Send a streaming chat completion request to OpenAI
- * @param config - Provider configuration
- * @param request - Chat request
- * @returns Async iterable for streaming response
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function* sendOpenAIChatStream(
-  config: OpenAIProviderConfig,
-  request: Omit<OpenAIChatRequest, 'model'>
-): AsyncGenerator<any> {
-  const client = createOpenAIClient(config);
-
-  const stream = await client.chat.completions.create({
-    model: config.model || DEFAULT_MODELS.openai,
-    max_tokens: config.maxTokens || request.maxTokens || 8192,
-    temperature: config.temperature || request.temperature || 0.7,
-    messages: request.messages,
-    tools: request.tools,
-    tool_choice: request.toolChoice,
-    response_format: request.responseFormat,
-    stream: true,
-  });
-
-  for await (const chunk of stream) {
-    yield chunk;
-  }
+  return response as OpenAIChatResponse;
 }
 
 /**
@@ -126,8 +205,7 @@ export async function* sendOpenAIChatStream(
  * @param response - OpenAI's chat completion response
  * @returns Text content from the response
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function openAIResponseToText(response: any): string {
+export function openAIResponseToText(response: AIResponse): string {
   const message = response.choices?.[0]?.message;
 
   if (message?.content) {
@@ -210,11 +288,13 @@ export function validateOpenAIApiKey(apiKey: string): boolean {
  * @param messages - OpenAI messages
  * @returns Formatted messages for prompts
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function formatOpenAIMessages(
   messages: Array<{ role: 'user' | 'assistant' | 'system' | 'tool'; content: string; name?: string }>
-): any[] {
-  return messages as any[];
+): OpenAIMessage[] {
+  return messages.map(msg => ({
+    role: msg.role as 'user' | 'assistant' | 'system',
+    content: msg.content,
+  }));
 }
 
 /**
