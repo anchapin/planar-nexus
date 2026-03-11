@@ -7,6 +7,7 @@
  */
 
 import { AIProviderConfig } from './types';
+import { API_ENDPOINTS } from '@/lib/env';
 
 /**
  * Z.ai provider configuration
@@ -28,7 +29,7 @@ export const DEFAULT_ZAI_CONFIG: Partial<ZAIProviderConfig> = {
   model: 'default',
   maxTokens: 8192,
   temperature: 0.7,
-  baseURL: 'https://api.z-ai.com/v1',
+  baseURL: API_ENDPOINTS.ZAI,
 };
 
 /**

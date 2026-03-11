@@ -19,6 +19,7 @@ import type {
   SubscriptionTier
 } from './types';
 import { safeFetch, FullResponse, ApiError } from '@/lib/fetch-utils';
+import { API_ENDPOINTS } from '@/lib/env';
 
 // Re-export SubscriptionDetection type for consumers
 export type { SubscriptionDetection } from './types';
@@ -455,7 +456,7 @@ export async function validateSubscription(
       case 'anthropic': {
         // Make a minimal API call to validate key and check subscription
         const response = await safeFetch<unknown>(
-          'https://api.anthropic.com/v1/models',
+          `${API_ENDPOINTS.ANTHROPIC}/models`,
           {
             headers: {
               'x-api-key': apiKey,
@@ -494,7 +495,7 @@ export async function validateSubscription(
 
       case 'openai': {
         const response = await safeFetch<{ data?: Array<{ owned_by?: string }> }>(
-          'https://api.openai.com/v1/models',
+          `${API_ENDPOINTS.OPENAI}/models`,
           {
             headers: {
               'Authorization': `Bearer ${apiKey}`,
@@ -540,7 +541,7 @@ export async function validateSubscription(
 
       case 'zaic': {
         await safeFetch(
-          'https://api.z-ai.com/v1/models',
+          `${API_ENDPOINTS.ZAI}/models`,
           {
             headers: {
               'Authorization': `Bearer ${apiKey}`,

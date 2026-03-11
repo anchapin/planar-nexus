@@ -8,6 +8,7 @@
 
 import type { AIProvider } from '@/ai/providers';
 import { safeFetch, ApiError } from './fetch-utils';
+import { API_ENDPOINTS } from './env';
 
 /**
  * Storage key prefix for API keys
@@ -278,7 +279,7 @@ export async function validateApiKey(
     // For OpenAI, test with a models list request
     if (provider === 'openai') {
       await safeFetch(
-        'https://api.openai.com/v1/models',
+        `${API_ENDPOINTS.OPENAI}/models`,
         {
           headers: { 'Authorization': `Bearer ${apiKey}` },
           timeoutMs: 10000,
@@ -291,7 +292,7 @@ export async function validateApiKey(
     // For Anthropic, test with a models list request
     if (provider === 'anthropic') {
       await safeFetch(
-        'https://api.anthropic.com/v1/models',
+        `${API_ENDPOINTS.ANTHROPIC}/models`,
         {
           headers: {
             'x-api-key': apiKey,
@@ -307,7 +308,7 @@ export async function validateApiKey(
     // For Z.ai, test with a minimal request
     if (provider === 'zaic') {
       await safeFetch(
-        'https://api.z-ai.com/v1/models',
+        `${API_ENDPOINTS.ZAI}/models`,
         {
           headers: { 'Authorization': `Bearer ${apiKey}` },
           timeoutMs: 10000,
