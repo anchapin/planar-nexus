@@ -75,6 +75,33 @@ export interface AIProviderConfig {
 }
 
 /**
+ * Common request parameters for AI calls
+ */
+export interface AIRequestOptions {
+  messages: Array<{ role: string; content: string }>;
+  temperature?: number;
+  maxTokens?: number;
+  responseFormat?: { type: 'json_object' } | { type: 'text' };
+  tools?: Array<{
+    type: string;
+    function: {
+      name: string;
+      description?: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
+}
+
+/**
+ * Result of an AI evaluation
+ */
+export interface AIEvaluationResult {
+  score: number;
+  reasoning: string;
+  recommendations: string[];
+}
+
+/**
  * Default model configurations
  */
 export const DEFAULT_MODELS: Record<string, string> = {

@@ -448,8 +448,20 @@ export interface GameAction {
   /** Timestamp when action was performed */
   timestamp: number;
   /** Action-specific data */
-  data: Record<string, unknown>;
+  data: ActionData;
 }
+
+/**
+ * Union of possible action-specific data structures
+ */
+export type ActionData =
+  | { cardId: CardInstanceId; targetId?: string | PlayerId } // cast_spell, play_land, activate_ability
+  | { attackers: Array<{ cardId: CardInstanceId; defenderId: PlayerId | CardInstanceId }> } // declare_attackers
+  | { blockers: Array<{ cardId: CardInstanceId; attackerId: CardInstanceId }> } // declare_blockers
+  | { amount: number; targetId: string | PlayerId; sourceId?: CardInstanceId } // deal_damage, gain_life
+  | { counterType: string; amount: number; cardId: CardInstanceId } // add_counter, remove_counter
+  | { choiceValue: string | number | boolean } // for making a choice
+  | Record<string, unknown>;
 
 /**
  * Types of game actions
