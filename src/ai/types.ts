@@ -88,6 +88,7 @@ export interface TurnData {
 export interface GameAnalysisTurn extends TurnData {
   lifeChanges?: Record<string, number>;
   missedOpportunities?: Record<string, unknown[]>;
+  suboptimalPlays?: Record<string, string[]>;
   cardAdvantage?: Record<string, number>;
   manaCost?: number;
   [key: string]: unknown;
@@ -99,6 +100,8 @@ export interface GameReplay {
   players?: string[];
   winner?: string;
   format?: string;
+  playerLife?: number;
+  opponentLife?: number;
   [key: string]: unknown;
 }
 
