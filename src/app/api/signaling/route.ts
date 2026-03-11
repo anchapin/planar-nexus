@@ -21,6 +21,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force static rendering for static export compatibility
+// This route will return an error when accessed in static mode
+export const dynamic = 'force-static';
+
 /**
  * In-memory session storage
  * In production, this would be replaced with Redis or similar
