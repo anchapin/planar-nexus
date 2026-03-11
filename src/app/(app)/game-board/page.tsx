@@ -71,6 +71,9 @@ function generateMockPlayer(
     name,
     lifeTotal,
     poisonCounters: 0,
+    isCurrentTurn: false,
+    hasPriority: false,
+    landsPlayedThisTurn: 0,
     hand: Array.from({ length: handCount }, (_, i) => ({
       id: `${id}-hand-${i}`,
       card: {
@@ -161,8 +164,6 @@ function generateMockPlayer(
           },
         ]
       : [],
-    isCurrentTurn: false,
-    hasPriority: false,
   };
 }
 
@@ -326,25 +327,40 @@ export default function GameBoardPage() {
 
   // Convert player state to game state format for AI analysis
   const convertToGameState = () => {
-    return {
-      players: players.map(p => ({
+    const playersMap: { [id: string]: any } = {};
+    players.forEach(p => {
+      playersMap[p.id] = {
         id: p.id,
         name: p.name,
-        lifeTotal: p.lifeTotal,
+        life: p.lifeTotal,
         poisonCounters: p.poisonCounters,
-        hand: p.hand.map(c => c.card.name),
-        battlefield: p.battlefield.map(c => c.card.name),
-        graveyard: p.graveyard.map(c => c.card.name),
-        library: p.library.length,
-        mana: { 
-          total: 3, // Mock value - would be calculated from actual game state
-          colored: { W: 1, U: 1, B: 0, R: 0, G: 1 },
-          colorless: 0
-        },
-        isCurrentTurn: p.isCurrentTurn,
-      })),
-      turn: currentTurnIndex + 1,
-      phase: "main",
+        hand: p.hand.map(c => ({
+          cardId: c.id,
+          name: c.card.name,
+          type: c.card.type_line,
+          manaValue: c.card.cmc,
+        })),
+        battlefield: p.battlefield.map(c => ({
+          id: c.id,
+          cardId: c.card.id,
+          name: c.card.name,
+          type: 'creature', // Simplified
+          controller: p.id,
+          manaValue: c.card.cmc,
+        })),
+        manaPool: { colorless: 1, white: 1, blue: 1, black: 0, red: 0, green: 0, generic: 0 },
+      };
+    });
+
+    return {
+      players: playersMap,
+      turnInfo: {
+        currentTurn: 1, // Mock value
+        currentPlayer: players[currentTurnIndex]?.id || "player-1",
+        phase: "precombat_main" as const,
+        priority: players[currentTurnIndex]?.id || "player-1",
+      },
+      stack: [],
     };
   };
 
