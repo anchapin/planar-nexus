@@ -13,8 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { RefreshCw, Search, Users, Lock, Eye, Gamepad2, Crown } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RefreshCw, Search, Users, Lock, Eye, Gamepad2, Crown, AlertCircle } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { GameFormat, PlayerCount } from '@/lib/multiplayer-types';
 
@@ -33,16 +34,26 @@ export default function BrowseGamesPage() {
   const [games, setGames] = useState<PublicGameInfo[]>([]);
   const [filteredGames, setFilteredGames] = useState<PublicGameInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
   const [searchQuery, setSearchQuery] = useState('');
   const [formatFilter, setFormatFilter] = useState<GameFormat | 'all'>('all');
   const [playerCountFilter, setPlayerCountFilter] = useState<PlayerCount | 'all'>('all');
 
   const loadGames = useCallback(() => {
-    const allGames = publicLobbyBrowser.getPublicGames();
-    setGames(allGames);
-    setLastRefresh(new Date());
-    setIsLoading(false);
+    try {
+      const allGames = publicLobbyBrowser.getPublicGames();
+      setGames(allGames);
+      setLastRefresh(new Date());
+      setError(null);
+    } catch (err) {
+      setError('Failed to load games. Please try again.');
+      console.error('Failed to load games:', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   }, []);
 
   // Load games on mount
@@ -82,6 +93,8 @@ export default function BrowseGamesPage() {
   }, [games, searchQuery, formatFilter, playerCountFilter]);
 
   const handleRefresh = () => {
+    setIsRefreshing(true);
+    setError(null);
     publicLobbyBrowser.cleanupOldGames();
     loadGames();
   };
@@ -138,15 +151,27 @@ export default function BrowseGamesPage() {
             variant="outline"
             size="sm"
             className="gap-2"
+            disabled={isRefreshing}
           >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
         </div>
         <p className="text-xs text-muted-foreground mt-2">
           Last updated: {lastRefresh.toLocaleTimeString()}
         </p>
       </header>
+
+      {/* Error Alert */}
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Filters */}
       <Card className="mb-6">
@@ -254,9 +279,32 @@ export default function BrowseGamesPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <RefreshCw className="w-8 h-8 mx-auto mb-4 animate-spin" />
-              <p>Loading games...</p>
+            <div className="space-y-4">
+              {/* Skeleton header row */}
+              <div className="flex gap-4 text-sm text-muted-foreground border-b pb-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-16 ml-auto" />
+              </div>
+              {/* Skeleton game rows */}
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex gap-4 items-center py-3 border-b">
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-5 w-16" />
+                  <Skeleton className="h-5 w-12" />
+                  <Skeleton className="h-5 w-16" />
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-8 w-16" />
+                </div>
+              ))}
             </div>
           ) : filteredGames.length === 0 ? (
             <div className="text-center py-12">
