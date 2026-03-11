@@ -11,13 +11,13 @@
  * - evaluateBoardState - Provide overall board evaluation
  */
 
-import { evaluateGameState, quickScore, GameState as EvaluatorGameState } from '@/ai/game-state-evaluator';
+import { evaluateGameState, quickScore, GameState } from '@/ai/game-state-evaluator';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
 import type { Card, GameEvaluation, ManaBreakdown } from '@/ai/types';
 
 // Input schema for game state analysis
 interface GameStateAnalysisInput {
-  gameState: EvaluatorGameState;
+  gameState: GameState;
   playerName: string;
 }
 
@@ -47,7 +47,7 @@ interface GameStateAnalysisOutput {
 
 // Input schema for specific play analysis
 interface PlayAnalysisInput {
-  gameState: EvaluatorGameState;
+  gameState: GameState;
   playerName: string;
   cardName: string;
   target?: string;
@@ -68,7 +68,7 @@ interface PlayAnalysisOutput {
 
 // Input schema for mana advice
 interface ManaAdviceInput {
-  gameState: EvaluatorGameState;
+  gameState: GameState;
   playerName: string;
 }
 
@@ -92,7 +92,7 @@ interface ManaAdviceOutput {
 
 // Input schema for board evaluation
 interface BoardEvaluationInput {
-  gameState: EvaluatorGameState;
+  gameState: GameState;
   playerName: string;
 }
 
@@ -138,7 +138,7 @@ export async function analyzeCurrentGameState(
     const suggestedPlays = generateSuggestedPlays(gameState, playerName);
 
     // Generate warnings based on game state
-    const warnings = generateWarnings(gameState);
+    const warnings = generateWarnings(gameState, playerName);
 
     // Analyze mana usage
     const manaUsage = analyzeManaUsage(gameState, playerName);
@@ -244,10 +244,15 @@ function generateOverallAssessment(evaluation: GameEvaluation, score: number): s
 
 function generateSuggestedPlays(gameState: GameState, playerName: string): GameStateAnalysisOutput['suggestedPlays'] {
   const plays: GameStateAnalysisOutput['suggestedPlays'] = [];
+  const player = gameState.players[playerName];
+  const opponentId = Object.keys(gameState.players).find(id => id !== playerName);
+  const opponent = opponentId ? gameState.players[opponentId] : null;
+
+  if (!player) return plays;
 
   // Suggest playing land if available
-  if (gameState.hand && gameState.hand.length > 0) {
-    const lands = gameState.hand.filter((card: Card) => card.type_line?.includes('Land'));
+  if (player.hand && player.hand.length > 0) {
+    const lands = player.hand.filter((card: any) => card.type?.includes('Land'));
     if (lands.length > 0) {
       plays.push({
         cardName: lands[0].name,
@@ -259,30 +264,30 @@ function generateSuggestedPlays(gameState: GameState, playerName: string): GameS
   }
 
   // Suggest casting creatures
-  if (gameState.hand && gameState.hand.length > 0) {
-    const creatures = gameState.hand.filter((card: Card) => card.type_line?.includes('Creature'));
-    creatures.slice(0, 2).forEach((creature: Card) => {
+  if (player.hand && player.hand.length > 0) {
+    const creatures = player.hand.filter((card: any) => card.type?.includes('Creature'));
+    creatures.slice(0, 2).forEach((creature: any) => {
       plays.push({
         cardName: creature.name,
         priority: 'medium',
         reasoning: `Cast ${creature.name} to develop your board presence.`,
-        manaCost: creature.cmc,
+        manaCost: creature.manaValue,
         expectedImpact: "Adds a threat to the battlefield",
       });
     });
   }
 
   // Suggest removal if opponent has threats
-  if (gameState.opponentBoard && gameState.opponentBoard.some((card: Card) => card.type_line?.includes('Creature'))) {
-    const removal = gameState.hand?.filter((card: Card) =>
-      card.type_line?.includes('Instant') || card.type_line?.includes('Sorcery')
+  if (opponent && opponent.battlefield && opponent.battlefield.some((p: any) => p.type === 'creature')) {
+    const removal = player.hand?.filter((card: any) =>
+      card.type?.includes('Instant') || card.type?.includes('Sorcery')
     ).slice(0, 1);
     if (removal && removal.length > 0) {
       plays.push({
         cardName: removal[0].name,
         priority: 'high',
         reasoning: "Remove opponent's threat to maintain board control.",
-        manaCost: removal[0].cmc,
+        manaCost: removal[0].manaValue,
         expectedImpact: "Neutralizes opponent's board presence",
       });
     }
@@ -291,11 +296,13 @@ function generateSuggestedPlays(gameState: GameState, playerName: string): GameS
   return plays;
 }
 
-function generateWarnings(gameState: GameState): GameStateAnalysisOutput['warnings'] {
+function generateWarnings(gameState: GameState, playerName: string): GameStateAnalysisOutput['warnings'] {
   const warnings: GameStateAnalysisOutput['warnings'] = [];
+  const player = gameState.players[playerName];
+  if (!player) return warnings;
 
   // Low life warning
-  if (gameState.life && gameState.life < 10) {
+  if (player.life < 10) {
     warnings.push({
       type: 'danger',
       message: "Your life total is critically low. Prioritize defense and life gain.",
@@ -303,7 +310,7 @@ function generateWarnings(gameState: GameState): GameStateAnalysisOutput['warnin
   }
 
   // Hand empty warning
-  if (!gameState.hand || gameState.hand.length === 0) {
+  if (!player.hand || player.hand.length === 0) {
     warnings.push({
       type: 'caution',
       message: "You have no cards in hand. Consider card draw options.",
@@ -311,7 +318,7 @@ function generateWarnings(gameState: GameState): GameStateAnalysisOutput['warnin
   }
 
   // Few lands warning
-  if (gameState.board && gameState.board.filter((card: Card) => card.type_line?.includes('Land')).length < 3) {
+  if (player.battlefield && player.battlefield.filter((p: any) => p.type === 'land').length < 3) {
     warnings.push({
       type: 'info',
       message: "Consider developing your land base for consistent mana.",
@@ -322,27 +329,34 @@ function generateWarnings(gameState: GameState): GameStateAnalysisOutput['warnin
 }
 
 function analyzeManaUsage(gameState: GameState, playerName: string): ManaAdviceOutput {
-  const availableMana = (gameState.availableMana || { total: 0, colored: {}, colorless: 0 }) as ManaBreakdown;
-  const unusedMana = availableMana.total - (gameState.usedMana || 0);
+  const player = gameState.players[playerName];
+  const manaPool = player?.manaPool || {};
+  const totalMana = Object.values(manaPool).reduce((a, b) => a + b, 0);
+  const availableMana = {
+    total: totalMana,
+    colored: manaPool,
+    colorless: manaPool['colorless'] || 0
+  };
+  const unusedMana = totalMana; // Simplified
 
   const suggestions: ManaAdviceOutput['suggestions'] = [];
 
   // Suggest using available mana
-  if (unusedMana > 0 && gameState.hand && gameState.hand.length > 0) {
-    const playableCards = gameState.hand.filter((card: Card) => (card.cmc ?? 0) <= unusedMana);
-    playableCards.slice(0, 2).forEach((card: Card) => {
+  if (unusedMana > 0 && player?.hand && player.hand.length > 0) {
+    const playableCards = player.hand.filter((card: any) => card.manaValue <= unusedMana);
+    playableCards.slice(0, 2).forEach((card: any) => {
       suggestions.push({
         cardName: card.name,
         action: `Cast ${card.name}`,
-        manaCost: card.cmc ?? 0,
-        priority: card.type_line?.includes('Creature') ? 'high' : 'medium',
+        manaCost: card.manaValue,
+        priority: card.type?.includes('Creature') ? 'high' : 'medium',
         reasoning: `Use available mana to play ${card.name}`,
       });
     });
   }
 
   // Suggest holding mana for instants
-  if (unusedMana >= 2 && gameState.hand?.some((card: Card) => card.type_line?.includes('Instant'))) {
+  if (unusedMana >= 2 && player?.hand?.some((card: any) => card.type?.includes('Instant'))) {
     return {
       availableMana,
       suggestions,
@@ -361,22 +375,24 @@ function analyzeManaUsage(gameState: GameState, playerName: string): ManaAdviceO
 
 function identifyThreats(gameState: GameState, playerName: string): GameStateAnalysisOutput['boardThreats'] {
   const threats: GameStateAnalysisOutput['boardThreats'] = [];
+  const opponentId = Object.keys(gameState.players).find(id => id !== playerName);
+  const opponent = opponentId ? gameState.players[opponentId] : null;
 
-  if (gameState.opponentBoard) {
-    gameState.opponentBoard.forEach((card: Card) => {
-      if (card.type_line?.includes('Creature')) {
+  if (opponent && opponent.battlefield) {
+    opponent.battlefield.forEach((p: any) => {
+      if (p.type === 'creature') {
         let priority: GameStateAnalysisOutput['boardThreats'][0]['priority'];
-        if ((card.power ?? 0) >= 4) {
+        if ((p.power ?? 0) >= 4) {
           priority = 'immediate';
-        } else if ((card.power ?? 0) >= 2) {
+        } else if ((p.power ?? 0) >= 2) {
           priority = 'high';
         } else {
           priority = 'medium';
         }
 
         threats.push({
-          card: card.name,
-          threat: `${card.name} (${card.power ?? 0}/${card.toughness ?? 0})`,
+          card: p.name,
+          threat: `${p.name} (${p.power ?? 0}/${p.toughness ?? 0})`,
           priority,
         });
       }
@@ -415,7 +431,9 @@ function evaluatePlayHeuristic(
   target?: string
 ): PlayAnalysisOutput {
   // Simplified heuristic evaluation
-  const card = gameState.hand?.find((c: Card) => c.name === cardName);
+  const player = gameState.players[playerName];
+  const card = player?.hand?.find((c: any) => c.name === cardName);
+  const totalMana = Object.values(player?.manaPool || {}).reduce((a, b) => a + b, 0);
 
   if (!card) {
     return {
@@ -431,15 +449,15 @@ function evaluatePlayHeuristic(
   let rating: PlayAnalysisOutput['rating'] = 'okay';
   let reasoning = 'This is a reasonable play.';
 
-  if (card.type_line?.includes('Creature')) {
-    if ((card.cmc ?? 0) <= (gameState.availableMana?.total ?? 0)) {
+  if (card.type?.includes('Creature')) {
+    if (card.manaValue <= totalMana) {
       rating = 'good';
       reasoning = 'Playing a creature develops your board presence.';
     }
-  } else if (card.type_line?.includes('Instant')) {
+  } else if (card.type?.includes('Instant')) {
     rating = 'excellent';
     reasoning = 'Instant-speed interaction provides flexibility.';
-  } else if (card.type_line?.includes('Sorcery')) {
+  } else if (card.type?.includes('Sorcery')) {
     rating = 'okay';
     reasoning = 'Sorcery can impact the board state effectively.';
   }

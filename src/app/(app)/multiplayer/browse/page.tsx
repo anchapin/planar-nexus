@@ -277,7 +277,15 @@ export default function BrowseGamesPage() {
             }
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="relative">
+          {isRefreshing && (
+            <div className="absolute inset-0 bg-background/50 backdrop-blur-[1px] flex items-center justify-center z-10 transition-all duration-300">
+              <div className="flex flex-col items-center gap-2">
+                <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm font-medium animate-pulse">Refreshing lobbies...</p>
+              </div>
+            </div>
+          )}
           {isLoading ? (
             <div className="space-y-4">
               {/* Skeleton header row */}
