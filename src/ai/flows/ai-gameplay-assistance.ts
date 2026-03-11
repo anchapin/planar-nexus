@@ -2,6 +2,7 @@
  * @fileOverview Heuristic-powered real-time gameplay assistance
  *
  * Issue #446: Remove AI provider dependencies
+ * Issue #565: Enforce strict typing in AI flows and state transitions
  * Replaced Genkit-based AI flows with heuristic algorithms.
  *
  * Provides:
@@ -14,6 +15,152 @@
 import { evaluateGameState, quickScore, GameState } from '@/ai/game-state-evaluator';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
 import type { Card, GameEvaluation, ManaBreakdown } from '@/ai/types';
+import type { PlayerState as EvaluatorPlayerState, Permanent } from '@/ai/game-state-evaluator';
+
+/**
+ * Type guard to check if a card is a Land
+ */
+function isLandCard(card: unknown): card is Card & { type: string } {
+  return (
+    typeof card === 'object' &&
+    card !== null &&
+    'type' in card &&
+    typeof (card as Record<string, unknown>).type === 'string' &&
+    String((card as Record<string, unknown>).type).includes('Land')
+  );
+}
+
+/**
+ * Type guard to check if a card is a Creature
+ */
+function isCreatureCard(card: unknown): card is Card & { type: string } {
+  return (
+    typeof card === 'object' &&
+    card !== null &&
+    'type' in card &&
+    typeof (card as Record<string, unknown>).type === 'string' &&
+    String((card as Record<string, unknown>).type).includes('Creature')
+  );
+}
+
+/**
+ * Type guard to check if a card is an Instant or Sorcery
+ */
+function isInstantOrSorceryCard(card: unknown): card is Card & { type: string } {
+  return (
+    typeof card === 'object' &&
+    card !== null &&
+    'type' in card &&
+    typeof (card as Record<string, unknown>).type === 'string' &&
+    (String((card as Record<string, unknown>).type).includes('Instant') ||
+      String((card as Record<string, unknown>).type).includes('Sorcery'))
+  );
+}
+
+/**
+ * Type guard to check if a permanent is a creature
+ */
+function isCreaturePermanent(permanent: unknown): permanent is Permanent & { type: 'creature' } {
+  return (
+    typeof permanent === 'object' &&
+    permanent !== null &&
+    'type' in permanent &&
+    (permanent as Record<string, unknown>).type === 'creature'
+  );
+}
+
+/**
+ * Type guard to check if a permanent is a land
+ */
+function isLandPermanent(permanent: unknown): permanent is Permanent & { type: 'land' } {
+  return (
+    typeof permanent === 'object' &&
+    permanent !== null &&
+    'type' in permanent &&
+    (permanent as Record<string, unknown>).type === 'land'
+  );
+}
+
+/**
+ * Helper type for card with mana value
+ */
+interface CardWithManaValue extends Card {
+  manaValue?: number;
+  mana_cost?: string;
+}
+
+/**
+ * Helper function to filter lands from hand using type guards
+ */
+function filterLandsFromHand(hand: Card[] | undefined): Card[] {
+  if (!hand || !Array.isArray(hand)) return [];
+  return hand.filter(isLandCard);
+}
+
+/**
+ * Helper function to filter creatures from hand using type guards
+ */
+function filterCreaturesFromHand(hand: Card[] | undefined): Card[] {
+  if (!hand || !Array.isArray(hand)) return [];
+  return hand.filter(isCreatureCard);
+}
+
+/**
+ * Helper function to filter instants/sorceries from hand using type guards
+ */
+function filterInstantOrSorceryFromHand(hand: Card[] | undefined): Card[] {
+  if (!hand || !Array.isArray(hand)) return [];
+  return hand.filter(isInstantOrSorceryCard);
+}
+
+/**
+ * Helper function to check if player has creature threats on battlefield
+ */
+function hasCreatureThreats(battlefield: Permanent[] | undefined): boolean {
+  if (!battlefield || !Array.isArray(battlefield)) return false;
+  return battlefield.some(isCreaturePermanent);
+}
+
+/**
+ * Helper function to count lands on battlefield
+ */
+function countLandsOnBattlefield(battlefield: Permanent[] | undefined): number {
+  if (!battlefield || !Array.isArray(battlefield)) return 0;
+  return battlefield.filter(isLandPermanent).length;
+}
+
+/**
+ * Helper function to filter playable cards by mana value (using cmc)
+ */
+function filterPlayableCardsByMana(hand: Card[] | undefined, maxMana: number): CardWithManaValue[] {
+  if (!hand || !Array.isArray(hand)) return [];
+  return hand.filter(
+    (card): card is CardWithManaValue => {
+      const cardUnknown = card as unknown as Record<string, unknown>;
+      const manaValue = cardUnknown.manaValue as number | undefined;
+      const cmc = card.cmc;
+      const value = manaValue ?? cmc ?? 0;
+      return typeof value === 'number' && value <= maxMana;
+    }
+  );
+}
+
+/**
+ * Helper function to check if hand has instant cards
+ */
+function hasInstantInHand(hand: Card[] | undefined): boolean {
+  if (!hand || !Array.isArray(hand)) return false;
+  return hand.some(isInstantOrSorceryCard);
+}
+
+/**
+ * Helper function to find a card by name in hand
+ */
+function findCardInHandByName(hand: Card[] | undefined, cardName: string): CardWithManaValue | undefined {
+  if (!hand || !Array.isArray(hand)) return undefined;
+  const found = hand.find((card) => typeof card === 'object' && card !== null && 'name' in card && card.name === cardName);
+  return found as CardWithManaValue | undefined;
+}
 
 // Input schema for game state analysis
 interface GameStateAnalysisInput {
@@ -252,7 +399,7 @@ function generateSuggestedPlays(gameState: GameState, playerName: string): GameS
 
   // Suggest playing land if available
   if (player.hand && player.hand.length > 0) {
-    const lands = player.hand.filter((card: any) => card.type?.includes('Land'));
+    const lands = filterLandsFromHand(player.hand);
     if (lands.length > 0) {
       plays.push({
         cardName: lands[0].name,
@@ -265,29 +412,32 @@ function generateSuggestedPlays(gameState: GameState, playerName: string): GameS
 
   // Suggest casting creatures
   if (player.hand && player.hand.length > 0) {
-    const creatures = player.hand.filter((card: any) => card.type?.includes('Creature'));
-    creatures.slice(0, 2).forEach((creature: any) => {
+    const creatures = filterCreaturesFromHand(player.hand);
+    creatures.slice(0, 2).forEach((creature) => {
+      const creatureUnknown = creature as unknown as Record<string, unknown>;
+      const manaValue = creatureUnknown.manaValue as number | undefined;
       plays.push({
         cardName: creature.name,
         priority: 'medium',
         reasoning: `Cast ${creature.name} to develop your board presence.`,
-        manaCost: creature.manaValue,
+        manaCost: manaValue ?? creature.cmc ?? 0,
         expectedImpact: "Adds a threat to the battlefield",
       });
     });
   }
 
   // Suggest removal if opponent has threats
-  if (opponent && opponent.battlefield && opponent.battlefield.some((p: any) => p.type === 'creature')) {
-    const removal = player.hand?.filter((card: any) =>
-      card.type?.includes('Instant') || card.type?.includes('Sorcery')
-    ).slice(0, 1);
+  if (opponent && opponent.battlefield && hasCreatureThreats(opponent.battlefield)) {
+    const removal = filterInstantOrSorceryFromHand(player.hand).slice(0, 1);
     if (removal && removal.length > 0) {
+      const removalCard = removal[0];
+      const removalUnknown = removalCard as unknown as Record<string, unknown>;
+      const manaValue = removalUnknown.manaValue as number | undefined;
       plays.push({
-        cardName: removal[0].name,
+        cardName: removalCard.name,
         priority: 'high',
         reasoning: "Remove opponent's threat to maintain board control.",
-        manaCost: removal[0].manaValue,
+        manaCost: manaValue ?? removalCard.cmc ?? 0,
         expectedImpact: "Neutralizes opponent's board presence",
       });
     }
@@ -318,7 +468,7 @@ function generateWarnings(gameState: GameState, playerName: string): GameStateAn
   }
 
   // Few lands warning
-  if (player.battlefield && player.battlefield.filter((p: any) => p.type === 'land').length < 3) {
+  if (countLandsOnBattlefield(player.battlefield) < 3) {
     warnings.push({
       type: 'info',
       message: "Consider developing your land base for consistent mana.",
@@ -343,20 +493,21 @@ function analyzeManaUsage(gameState: GameState, playerName: string): ManaAdviceO
 
   // Suggest using available mana
   if (unusedMana > 0 && player?.hand && player.hand.length > 0) {
-    const playableCards = player.hand.filter((card: any) => card.manaValue <= unusedMana);
-    playableCards.slice(0, 2).forEach((card: any) => {
+    const playableCards = filterPlayableCardsByMana(player.hand, unusedMana);
+    playableCards.slice(0, 2).forEach((card) => {
+      const manaValue = card.manaValue ?? 0;
       suggestions.push({
         cardName: card.name,
         action: `Cast ${card.name}`,
-        manaCost: card.manaValue,
-        priority: card.type?.includes('Creature') ? 'high' : 'medium',
+        manaCost: manaValue,
+        priority: isCreatureCard(card) ? 'high' : 'medium',
         reasoning: `Use available mana to play ${card.name}`,
       });
     });
   }
 
   // Suggest holding mana for instants
-  if (unusedMana >= 2 && player?.hand?.some((card: any) => card.type?.includes('Instant'))) {
+  if (unusedMana >= 2 && hasInstantInHand(player?.hand)) {
     return {
       availableMana,
       suggestions,
@@ -379,8 +530,8 @@ function identifyThreats(gameState: GameState, playerName: string): GameStateAna
   const opponent = opponentId ? gameState.players[opponentId] : null;
 
   if (opponent && opponent.battlefield) {
-    opponent.battlefield.forEach((p: any) => {
-      if (p.type === 'creature') {
+    opponent.battlefield.forEach((p) => {
+      if (isCreaturePermanent(p)) {
         let priority: GameStateAnalysisOutput['boardThreats'][0]['priority'];
         if ((p.power ?? 0) >= 4) {
           priority = 'immediate';
@@ -432,7 +583,7 @@ function evaluatePlayHeuristic(
 ): PlayAnalysisOutput {
   // Simplified heuristic evaluation
   const player = gameState.players[playerName];
-  const card = player?.hand?.find((c: any) => c.name === cardName);
+  const card = findCardInHandByName(player?.hand, cardName);
   const totalMana = Object.values(player?.manaPool || {}).reduce((a, b) => a + b, 0);
 
   if (!card) {
@@ -445,21 +596,26 @@ function evaluatePlayHeuristic(
     };
   }
 
+  // Get card mana value safely
+  const cardUnknown = card as unknown as Record<string, unknown>;
+  const manaValue = cardUnknown.manaValue as number | undefined;
+  const cardManaValue = manaValue ?? card.cmc ?? 0;
+
   // Evaluate based on card type and cost
   let rating: PlayAnalysisOutput['rating'] = 'okay';
   let reasoning = 'This is a reasonable play.';
 
-  if (card.type?.includes('Creature')) {
-    if (card.manaValue <= totalMana) {
+  if (isCreatureCard(card)) {
+    if (cardManaValue <= totalMana) {
       rating = 'good';
       reasoning = 'Playing a creature develops your board presence.';
     }
-  } else if (card.type?.includes('Instant')) {
+  } else if (isInstantOrSorceryCard(card)) {
     rating = 'excellent';
     reasoning = 'Instant-speed interaction provides flexibility.';
-  } else if (card.type?.includes('Sorcery')) {
+  } else {
     rating = 'okay';
-    reasoning = 'Sorcery can impact the board state effectively.';
+    reasoning = 'This card can impact the board state effectively.';
   }
 
   return {

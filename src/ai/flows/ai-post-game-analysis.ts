@@ -2,6 +2,7 @@
  * @fileOverview Heuristic-powered post-game analysis system.
  *
  * Issue #446: Remove AI provider dependencies
+ * Issue #565: Enforce strict typing in AI flows and state transitions
  * Replaced Genkit-based AI flows with heuristic algorithms.
  *
  * Provides:
@@ -74,6 +75,55 @@ interface QuickTipsInput {
 interface QuickTipsOutput {
   tips: string[];
   focusAreas: string[];
+}
+
+/**
+ * Type guard to check if a value is a valid GameAnalysisTurn
+ */
+function isGameAnalysisTurn(turn: unknown): turn is GameAnalysisTurn {
+  return (
+    typeof turn === 'object' &&
+    turn !== null &&
+    'turnNumber' in turn &&
+    typeof (turn as Record<string, unknown>).turnNumber === 'number'
+  );
+}
+
+/**
+ * Type guard to check if a value is a valid GameReplay
+ */
+function isGameReplay(replay: unknown): replay is GameReplay {
+  return (
+    typeof replay === 'object' &&
+    replay !== null &&
+    'turns' in replay &&
+    Array.isArray((replay as Record<string, unknown>).turns)
+  );
+}
+
+/**
+ * Safely extract player life from replay
+ */
+function getPlayerLife(replay: GameReplay, playerName: string): number {
+  const playerLife = replay.playerLife;
+  return typeof playerLife === 'number' ? playerLife : 20;
+}
+
+/**
+ * Safely extract opponent life from replay
+ */
+function getOpponentLife(replay: GameReplay): number {
+  const opponentLife = replay.opponentLife;
+  return typeof opponentLife === 'number' ? opponentLife : 20;
+}
+
+/**
+ * Safely extract turns from replay
+ */
+function getTurns(replay: GameReplay): GameAnalysisTurn[] {
+  const turns = replay.turns;
+  if (!Array.isArray(turns)) return [];
+  return turns.filter(isGameAnalysisTurn);
 }
 
 /**
@@ -167,11 +217,11 @@ function generateQuickTipsHeuristic(input: QuickTipsInput): QuickTipsOutput {
 
 function generateGameSummary(replay: GameReplay, playerName: string): string {
   // Simplified game summary generation
-  const turns = replay.turns as GameAnalysisTurn[] || [];
+  const turns = getTurns(replay);
   const totalTurns = turns.length;
 
-  const playerLife = replay.playerLife as number || 20;
-  const opponentLife = replay.opponentLife as number || 20;
+  const playerLife = getPlayerLife(replay, playerName);
+  const opponentLife = getOpponentLife(replay);
 
   let summary = `Game lasted ${totalTurns} turns. `;
 
@@ -193,13 +243,13 @@ function identifyKeyMomentsInReplay(
   playerName: string
 ): GameAnalysisOutput['keyMoments'] {
   const moments: GameAnalysisOutput['keyMoments'] = [];
-  const turns = replay.turns as GameAnalysisTurn[] || [];
+  const turns = getTurns(replay);
 
   turns.forEach((turn, index) => {
     // Look for significant life changes
     if (turn.lifeChanges) {
-      const playerLifeChange = (turn.lifeChanges[playerName] as number) || 0;
-      if (Math.abs(playerLifeChange) >= 5) {
+      const playerLifeChange = turn.lifeChanges[playerName];
+      if (typeof playerLifeChange === 'number' && Math.abs(playerLifeChange) >= 5) {
         moments.push({
           turn: index + 1,
           description: `Significant life change: ${playerLifeChange > 0 ? '+' : ''}${playerLifeChange}`,
@@ -211,8 +261,8 @@ function identifyKeyMomentsInReplay(
 
     // Look for card advantage shifts
     if (turn.cardAdvantage) {
-      const playerCardAdvantage = turn.cardAdvantage[playerName] as number || 0;
-      if (Math.abs(playerCardAdvantage) >= 2) {
+      const playerCardAdvantage = turn.cardAdvantage[playerName];
+      if (typeof playerCardAdvantage === 'number' && Math.abs(playerCardAdvantage) >= 2) {
         moments.push({
           turn: index + 1,
           description: `Card advantage shift: ${playerCardAdvantage > 0 ? '+' : ''}${playerCardAdvantage}`,
@@ -232,33 +282,44 @@ function identifyMistakes(
   playerName: string
 ): GameAnalysisOutput['mistakes'] {
   const mistakes: GameAnalysisOutput['mistakes'] = [];
-  const turns = replay.turns as GameAnalysisTurn[] || [];
+  const turns = getTurns(replay);
 
   turns.forEach((turn, index) => {
     // Identify missed opportunities
     if (turn.missedOpportunities && turn.missedOpportunities[playerName]) {
       const missed = turn.missedOpportunities[playerName];
-      missed.forEach((opportunity, i) => {
-        mistakes.push({
-          turn: index + 1,
-          description: opportunity.card + ": " + opportunity.threat,
-          severity: 'minor',
-          suggestion: "Consider all available options before making decisions",
+      if (Array.isArray(missed)) {
+        missed.forEach((opportunity) => {
+          if (opportunity && typeof opportunity === 'object' && 'card' in opportunity && 'threat' in opportunity) {
+            const opp = opportunity as unknown as Record<string, unknown>;
+            const cardName = String(opp.card || 'Unknown');
+            const threatDesc = String(opp.threat || 'Unknown threat');
+            mistakes.push({
+              turn: index + 1,
+              description: `${cardName}: ${threatDesc}`,
+              severity: 'minor',
+              suggestion: "Consider all available options before making decisions",
+            });
+          }
         });
-      });
+      }
     }
 
     // Identify suboptimal plays
     if (turn.suboptimalPlays && turn.suboptimalPlays[playerName]) {
-      const suboptimal = turn.suboptimalPlays[playerName] as string[];
-      suboptimal.forEach((play, i) => {
-        mistakes.push({
-          turn: index + 1,
-          description: play,
-          severity: 'major',
-          suggestion: "Evaluate all cards in hand and board state before acting",
+      const suboptimal = turn.suboptimalPlays[playerName];
+      if (Array.isArray(suboptimal)) {
+        suboptimal.forEach((play) => {
+          if (typeof play === 'string') {
+            mistakes.push({
+              turn: index + 1,
+              description: play,
+              severity: 'major',
+              suggestion: "Evaluate all cards in hand and board state before acting",
+            });
+          }
         });
-      });
+      }
     }
   });
 
@@ -271,16 +332,19 @@ function identifyStrengths(
 ): string[] {
   const strengths: string[] = [];
 
-  const playerLife = replay.playerLife as number || 20;
-  const opponentLife = replay.opponentLife as number || 20;
+  const playerLife = getPlayerLife(replay, playerName);
+  const opponentLife = getOpponentLife(replay);
 
   if (playerLife > opponentLife) {
     strengths.push("Maintained healthy life total throughout the game");
   }
 
-  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const turns = getTurns(replay);
   const playerCardAdvantage = turns.reduce((sum: number, turn: GameAnalysisTurn) => {
-    return sum + (turn.cardAdvantage?.[playerName] || 0);
+    if (turn.cardAdvantage && typeof turn.cardAdvantage[playerName] === 'number') {
+      return sum + turn.cardAdvantage[playerName];
+    }
+    return sum;
   }, 0);
 
   if (playerCardAdvantage > 0) {
@@ -298,16 +362,18 @@ function identifyImprovementAreas(
 ): string[] {
   const areas: string[] = [];
 
-  const playerLife = replay.playerLife as number || 20;
-  const opponentLife = replay.opponentLife as number || 20;
+  const playerLife = getPlayerLife(replay, playerName);
 
   if (playerLife < 15) {
     areas.push("Improve defensive strategies to preserve life total");
   }
 
-  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const turns = getTurns(replay);
   const missedOpportunities = turns.reduce((count: number, turn: GameAnalysisTurn) => {
-    return count + (turn.missedOpportunities?.[playerName]?.length || 0);
+    if (turn.missedOpportunities && Array.isArray(turn.missedOpportunities[playerName])) {
+      return count + turn.missedOpportunities[playerName].length;
+    }
+    return count;
   }, 0);
 
   if (missedOpportunities > 3) {
@@ -326,8 +392,7 @@ function generateDeckSuggestions(
 ): GameAnalysisOutput['deckSuggestions'] {
   const suggestions: GameAnalysisOutput['deckSuggestions'] = [];
 
-  const playerLife = replay.playerLife as number || 20;
-  const opponentLife = replay.opponentLife as number || 20;
+  const playerLife = getPlayerLife(replay, playerName);
 
   if (playerLife < 15) {
     suggestions.push({
@@ -336,9 +401,12 @@ function generateDeckSuggestions(
     });
   }
 
-  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const turns = getTurns(replay);
   const averageManaCost = turns.reduce((sum: number, turn: GameAnalysisTurn) => {
-    return sum + (turn.manaCost || 0);
+    if (typeof turn.manaCost === 'number') {
+      return sum + turn.manaCost;
+    }
+    return sum;
   }, 0) / (turns.length || 1);
 
   if (averageManaCost > 3.5) {
@@ -360,8 +428,8 @@ function calculateOverallRating(
   replay: GameReplay,
   playerName: string
 ): number {
-  const playerLife = replay.playerLife as number || 20;
-  const opponentLife = replay.opponentLife as number || 20;
+  const playerLife = getPlayerLife(replay, playerName);
+  const opponentLife = getOpponentLife(replay);
 
   let rating = 5; // Base rating
 
@@ -370,9 +438,12 @@ function calculateOverallRating(
   rating += lifeDiff * 0.2;
 
   // Adjust based on card advantage
-  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const turns = getTurns(replay);
   const playerCardAdvantage = turns.reduce((sum: number, turn: GameAnalysisTurn) => {
-    return sum + (turn.cardAdvantage?.[playerName] || 0);
+    if (turn.cardAdvantage && typeof turn.cardAdvantage[playerName] === 'number') {
+      return sum + turn.cardAdvantage[playerName];
+    }
+    return sum;
   }, 0);
   rating += playerCardAdvantage * 0.5;
 
@@ -392,7 +463,7 @@ function generateTips(
   tips.push("Don't be afraid to take risks when the payoff is high");
   tips.push("Learn from your mistakes and analyze why a play didn't work out");
 
-  const playerLife = replay.playerLife as number || 20;
+  const playerLife = getPlayerLife(replay, playerName);
   if (playerLife < 15) {
     tips.push("Prioritize survival over aggression when life is low");
   }

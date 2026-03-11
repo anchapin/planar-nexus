@@ -581,3 +581,141 @@ export function isAttached(card: CardInstance): boolean {
 export function hasAttachments(card: CardInstance): boolean {
   return card.attachedCardIds.length > 0;
 }
+
+// ============================================================================
+// Type Guards for Runtime Type Checking (Issue #565)
+// ============================================================================
+
+/**
+ * Type guard to check if a value is a valid CardInstance
+ */
+export function isCardInstance(value: unknown): value is CardInstance {
+  if (typeof value !== 'object' || value === null) return false;
+  const card = value as Record<string, unknown>;
+  return (
+    typeof card.id === 'string' &&
+    typeof card.oracleId === 'string' &&
+    typeof card.cardData === 'object' &&
+    card.cardData !== null &&
+    typeof card.currentFaceIndex === 'number' &&
+    typeof card.isFaceDown === 'boolean' &&
+    typeof card.controllerId === 'string' &&
+    typeof card.ownerId === 'string' &&
+    typeof card.isTapped === 'boolean' &&
+    Array.isArray(card.counters) &&
+    typeof card.damage === 'number' &&
+    typeof card.toughnessModifier === 'number' &&
+    typeof card.powerModifier === 'number' &&
+    (card.attachedToId === null || typeof card.attachedToId === 'string') &&
+    Array.isArray(card.attachedCardIds) &&
+    typeof card.enteredBattlefieldTimestamp === 'number' &&
+    (card.attachedTimestamp === null || typeof card.attachedTimestamp === 'number') &&
+    typeof card.isToken === 'boolean'
+  );
+}
+
+/**
+ * Type guard to check if a value is a valid Counter
+ */
+export function isCounter(value: unknown): value is { type: string; count: number } {
+  if (typeof value !== 'object' || value === null) return false;
+  const counter = value as Record<string, unknown>;
+  return (
+    typeof counter.type === 'string' &&
+    typeof counter.count === 'number'
+  );
+}
+
+/**
+ * Type guard to check if a value is a valid PlayerId
+ */
+export function isPlayerId(value: unknown): value is PlayerId {
+  return typeof value === 'string';
+}
+
+/**
+ * Type guard to check if a value is a valid CardInstanceId
+ */
+export function isCardInstanceId(value: unknown): value is CardInstanceId {
+  return typeof value === 'string';
+}
+
+/**
+ * Type guard to check if a card is a creature type-safe wrapper
+ */
+export function assertIsCreature(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+  if (!isCreature(card)) {
+    throw new Error(`Expected creature card, got: ${card.cardData.type_line || 'unknown'}`);
+  }
+}
+
+/**
+ * Type guard to check if a card is a land type-safe wrapper
+ */
+export function assertIsLand(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+  if (!isLand(card)) {
+    throw new Error(`Expected land card, got: ${card.cardData.type_line || 'unknown'}`);
+  }
+}
+
+/**
+ * Type guard to check if a card is a planeswalker type-safe wrapper
+ */
+export function assertIsPlaneswalker(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+  if (!isPlaneswalker(card)) {
+    throw new Error(`Expected planeswalker card, got: ${card.cardData.type_line || 'unknown'}`);
+  }
+}
+
+/**
+ * Type guard to check if a card is an instant or sorcery type-safe wrapper
+ */
+export function assertIsInstantOrSorcery(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+  if (!isInstantOrSorcery(card)) {
+    throw new Error(`Expected instant or sorcery card, got: ${card.cardData.type_line || 'unknown'}`);
+  }
+}
+
+/**
+ * Type guard to check if a card is a permanent type-safe wrapper
+ */
+export function assertIsPermanent(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+  if (!isPermanent(card)) {
+    throw new Error(`Expected permanent card, got: ${card.cardData.type_line || 'unknown'}`);
+  }
+}
+
+/**
+ * Safely get creature power with type checking
+ */
+export function tryGetPower(card: CardInstance): number | null {
+  if (!isCreature(card)) {
+    return null;
+  }
+  return getPower(card);
+}
+
+/**
+ * Safely get creature toughness with type checking
+ */
+export function tryGetToughness(card: CardInstance): number | null {
+  if (!isCreature(card)) {
+    return null;
+  }
+  return getToughness(card);
+}
+
+/**
+ * Safely get planeswalker loyalty with type checking
+ */
+export function tryGetLoyalty(card: CardInstance): number | null {
+  if (!isPlaneswalker(card)) {
+    return null;
+  }
+  const loyaltyStr = card.cardData.loyalty;
+  if (!loyaltyStr) {
+    return null;
+  }
+  const loyalty = parseInt(loyaltyStr, 10);
+  return isNaN(loyalty) ? null : loyalty;
+}
