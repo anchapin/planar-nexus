@@ -357,6 +357,13 @@ function GameBoardContent() {
   const [isAIThinking, setIsAIThinking] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
   
+  // State for actions requiring targeting
+  const [pendingAction, setPendingAction] = useState<{
+    type: 'cast' | 'activate' | 'target';
+    cardId: string;
+    abilityIndex?: number;
+  } | null>(null);
+  
   const aiOpponentRef = useRef<AIOpponent | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -540,15 +547,85 @@ function GameBoardContent() {
   
   // Handle card click
   const handleCardClick = useCallback((cardId: string, zone: string) => {
-    console.log('Card clicked:', cardId, 'in zone:', zone);
-    // TODO: Implement card interaction logic
-  }, []);
+    if (!gameState) return;
+    
+    const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
+    if (!player) return;
+    
+    // If we're waiting for a target
+    if (pendingAction?.type === 'target' || pendingAction?.type === 'cast' || pendingAction?.type === 'activate') {
+      // Logic for selecting a target would go here
+      // For now, let's just complete the action
+      setPendingAction(null);
+      return;
+    }
+    
+    const card = gameState.cards.get(cardId);
+    if (!card) return;
+    
+    // Only allow actions if it's our priority (or it's a mana ability we can activate)
+    const hasPriority = gameState.priorityPlayerId === player.id;
+    
+    if (zone === 'hand' && hasPriority) {
+      if (isLand(card)) {
+        if (canPlayLand(gameState, player.id)) {
+          let newState = playLand(gameState, player.id, cardId);
+          const result = checkStateBasedActions(newState);
+          setGameState(result.state);
+        } else {
+          toast({
+            title: "Cannot play land",
+            description: "You've already played your land for the turn.",
+            variant: "destructive"
+          });
+        }
+      } else {
+        // Try to cast spell
+        try {
+          let newState = castSpell(gameState, player.id, cardId);
+          const result = checkStateBasedActions(newState);
+          setGameState(result.state);
+        } catch (error: any) {
+          toast({
+            title: "Cannot cast spell",
+            description: error.message || "You may not have enough mana.",
+            variant: "destructive"
+          });
+        }
+      }
+    } else if (zone === 'battlefield') {
+      // Activate abilities or tap/untap
+      if (hasPriority) {
+        // Simple tap/untap for now if no specific ability is selected
+        // In a real UI, this would show an ability menu
+        if (isLand(card)) {
+          // Auto-activate mana ability for lands
+          try {
+            let newState = activateManaAbility(gameState, player.id, cardId, "{T}: Add mana");
+            setGameState(newState);
+          } catch (e) {
+            // If not a mana ability, just tap/untap
+            const newState = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
+            setGameState(newState);
+          }
+        } else {
+          const newState = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
+          setGameState(newState);
+        }
+      }
+    }
+  }, [gameState, playerName, pendingAction, toast]);
   
   // Handle zone click
   const handleZoneClick = useCallback((zone: string, playerId: string) => {
-    console.log('Zone clicked:', zone, 'for player:', playerId);
-    // TODO: Implement zone interaction logic
-  }, []);
+    if (!gameState) return;
+    
+    // If we're waiting for a zone target
+    if (pendingAction) {
+      console.log(`Targeting zone ${zone} of player ${playerId}`);
+      setPendingAction(null);
+    }
+  }, [gameState, pendingAction]);
   
   // Handle concede
   const handleConcede = useCallback(async () => {
@@ -604,6 +681,12 @@ function GameBoardContent() {
     const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
     if (player && gameState.priorityPlayerId === player.id) {
       let newState = passPriority(gameState, player.id);
+      
+      // Auto-resolve stack if everyone passed
+      if (newState.stack.length === 0 && newState.priorityPlayerId === gameState.priorityPlayerId) {
+        // This means a phase change occurred or the stack is empty and priority stayed with active player
+      }
+      
       const result = checkStateBasedActions(newState);
       newState = result.state;
       setGameState(newState);
@@ -611,6 +694,9 @@ function GameBoardContent() {
       if (autoSaveEnabled) {
         await saveActiveGame(newState);
       }
+      
+      // If it's now the AI's turn or priority, handle it
+      // (This will be caught by the AI effect hook)
     }
   }, [gameState, playerName, autoSaveEnabled]);
   
