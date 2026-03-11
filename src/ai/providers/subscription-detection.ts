@@ -17,7 +17,7 @@ import type {
   SubscriptionDetection,
   SubscriptionTier
 } from './types';
-import { safeFetch, FullResponse, ApiError } from '@/lib/fetch-utils';
+import { safeFetch, ApiError } from '@/lib/fetch-utils';
 import { API_ENDPOINTS } from '@/lib/env';
 
 // Re-export SubscriptionDetection type for consumers
@@ -448,7 +448,7 @@ export async function validateSubscription(
 
       case 'google': {
         await safeFetch(
-          `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`,
+          `${API_ENDPOINTS.GOOGLE}/models?key=${apiKey}`,
           {
             timeoutMs: 10000,
             errorMessage: 'Google AI subscription validation failed',

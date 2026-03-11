@@ -3,7 +3,7 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   // Static export for client-side only deployment
   // Now that all Server Actions have been removed, we can use static export
-  output: 'export',
+  // output: 'export',
 
   // Configure image optimization
   images: {

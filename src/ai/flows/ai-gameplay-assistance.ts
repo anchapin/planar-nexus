@@ -12,8 +12,8 @@
  */
 
 import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
-import { enforceRateLimit, debounceAsync, aiRequestQueue, getRateLimitStatus, RateLimitError } from '@/lib/rate-limiter';
-import type { GameState, Card, GameEvaluation, Threat, PlaySuggestion, Warning, ManaSuggestion, ManaBreakdown, AlternativePlay } from '@/ai/types';
+import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
+import type { GameState, Card, GameEvaluation, ManaBreakdown } from '@/ai/types';
 
 // Input schema for game state analysis
 interface GameStateAnalysisInput {

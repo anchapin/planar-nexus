@@ -9,9 +9,8 @@
  * Updated to use server-side proxy for all API calls (Issue #522).
  */
 
-import type { AIProviderConfig, AIResponse, StreamChunk } from '@/ai/types';
+import type { AIProviderConfig, AIResponse } from '@/ai/types';
 import { DEFAULT_MODELS } from './types';
-import { API_ENDPOINTS } from '@/lib/env';
 import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
 
 /**

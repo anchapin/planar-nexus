@@ -8,6 +8,17 @@ A comprehensive gap analysis was performed on the Planar Nexus codebase, identif
 
 | # | Title | Priority | Effort | URL |
 |---|-------|----------|--------|-----|
+| 541 | Connect Single-Player UI to Game Engine for Playable Gameplay | Critical | Medium | https://github.com/anchapin/planar-nexus/issues/541 |
+| 542 | Fix Jest Dependency Conflicts and Restore CI Pipeline | Critical | Medium | https://github.com/anchapin/planar-nexus/issues/542 |
+| 543 | Full Integration of Server-Side AI Proxy across All AI Flows | High | Medium | https://github.com/anchapin/planar-nexus/issues/543 |
+| 544 | Implement Server/Engine-Side Action Validation | High | Medium | https://github.com/anchapin/planar-nexus/issues/544 |
+| 545 | Robust Loading States and Peer Sync for Multiplayer | Medium | Small | https://github.com/anchapin/planar-nexus/issues/545 |
+| 546 | Enforce Strict Typing in AI Flows and State Transitions | Medium | Medium | https://github.com/anchapin/planar-nexus/issues/546 |
+
+## Previously Proposed/Referenced Issues
+
+| # | Title | Priority | Effort | URL |
+|---|-------|----------|--------|-----|
 | 515 | Fix test coverage failures due to dependency conflicts | Critical | Medium | https://github.com/anchapin/planar-nexus/issues/515 |
 | 516 | Add proper TypeScript types to AI flows (remove `any` types) | Critical | Medium | https://github.com/anchapin/planar-nexus/issues/516 |
 | 517 | Fix or remove non-functional Claude AI provider | High | Small | https://github.com/anchapin/planar-nexus/issues/517 |

@@ -6,11 +6,10 @@
  * Originally designed for server-side but now compatible with client-side execution.
  */
 
-import Fuse from 'fuse.js';
 import type { MinimalCard } from './card-database';
-import { ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS } from './card-database';
+import { ESSENTIAL_CARDS } from './card-database';
 import { type Format } from '@/lib/game-rules';
-import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
+import { sanitizeCardInput } from './decklist-utils';
 
 // Type definitions for card operations (server-side compatibility)
 export interface ServerDeckCard extends MinimalCard {
@@ -18,7 +17,6 @@ export interface ServerDeckCard extends MinimalCard {
 }
 
 // In-memory cache for fuzzy search
-let fuseInstance: Fuse<MinimalCard> | null = null;
 let isInitialized = false;
 
 /**
@@ -30,7 +28,6 @@ async function initializeServerCardOperations(): Promise<void> {
   }
 
   try {
-    fuseInstance = new Fuse(ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS);
     isInitialized = true;
   } catch (error) {
     console.error('Failed to initialize server-side card operations:', error);

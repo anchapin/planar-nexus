@@ -122,7 +122,7 @@ interface PoolAnalysisOutput {
 export async function getDraftPickRecommendation(
   input: DraftPickInput
 ): Promise<DraftPickOutput> {
-  const { pool, pickNumber: _pickNumber, packCards, format: _format } = input;
+  const { pool, packCards } = input;
 
   // Analyze pack cards and pick the best one using heuristics
   const pickAnalysis = analyzePackForPick(packCards, pool);

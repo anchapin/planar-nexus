@@ -90,7 +90,7 @@ export function calculateCost(
   outputTokens: number,
   model: string
 ): number {
-  const pricing = SERVER_PRICING[model] || SERVER_PRICING['default'];
+  const pricing = SERVER_PRICING[model] || SERVER_PRICING['default'] || { input: 1.0, output: 4.0 };
   const inputCost = (inputTokens / 1_000_000) * pricing.input;
   const outputCost = (outputTokens / 1_000_000) * pricing.output;
   return inputCost + outputCost;

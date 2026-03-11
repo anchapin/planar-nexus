@@ -63,7 +63,7 @@ interface AIProxyResponse {
  * Provider endpoint mappings
  */
 const PROVIDER_ENDPOINTS: Record<AIProvider, string> = {
-  google: 'https://generativelanguage.googleapis.com/v1',
+  google: API_ENDPOINTS.GOOGLE,
   openai: API_ENDPOINTS.OPENAI,
   zaic: API_ENDPOINTS.ZAI,
   custom: process.env.CUSTOM_AI_BASE_URL || '',
