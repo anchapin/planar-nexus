@@ -7,147 +7,64 @@
  * @module game-state
  */
 
-// Export all types
-export * from "./types";
-
-// Export card instance utilities (excluding canAttack/canBlock)
-export {
-  generateCardInstanceId,
-  createCardInstance,
-  createToken,
-  initializePlaneswalkerLoyalty,
-  tapCard,
-  untapCard,
-  flipCard,
-  turnFaceDown,
-  turnFaceUp,
-  addCounters,
-  removeCounters,
-  markDamage,
-  resetDamage,
-  attachCard,
-  detachCard,
-  changeController,
-  isCreature,
-  isLand,
-  isPlaneswalker,
-  isArtifact,
-  isEnchantment,
-  isInstantOrSorcery,
-  isPermanent,
-  getPower,
-  getToughness,
-  hasLethalDamage,
-  getManaValue,
-  isDoubleFaced,
-  transformCard,
-  setCardFace,
-  getCurrentFaceName,
-  phaseOut,
-  phaseIn,
-  addPowerModifier,
-  addToughnessModifier,
-  setPowerModifier,
-  setToughnessModifier,
-  clearSummoningSickness,
-  hasCounter,
-  getCounterCount,
-  isAttached,
-  hasAttachments,
-} from "./card-instance";
-
-// Export zone management
-export {
-  createZone,
-  createPlayerZones,
-  createSharedZones,
-  addCardToZone,
-  removeCardFromZone,
-  moveCardBetweenZones,
-  getTopCard,
-  getBottomCard,
-  getTopCards,
-  shuffleZone,
-  countCards,
-  zoneContainsCard,
-  getCardPosition,
-  reorderCards,
-  revealZone,
-  hideZone,
-  setZoneVisibility,
-  canPlayerSeeZone,
-  millCards,
-  exileCards,
-} from "./zones";
-
-// Export turn phase management
-export * from "./turn-phases";
-
-// Export main game state class and functions (excluding checkStateBasedActions)
-export {
+import {
+  tapCardAction as tapCard,
+  untapCardAction as untapCard,
+  type KeywordActionResult
+} from './keyword-actions';
+import {
+  type GameState,
+  type PlayerId,
+  type Player,
+  type CardInstance,
+  type Phase,
+} from './types';
+import {
   createInitialGameState,
   loadDeckForPlayer,
   startGame,
   drawCard,
   passPriority,
-  dealDamageToPlayer,
-  gainLife,
   concede,
-  getPlayerLibrary,
-  getPlayerHand,
-  getPlayerBattlefield,
-  getPlayerGraveyard,
-  getPlayerExile,
-  offerDraw,
-  acceptDraw,
-  declineDraw,
-  canOfferDraw,
-  canAcceptDraw,
-} from "./game-state";
+} from './game-state';
+import { checkStateBasedActions, canDraw, drawWithSBAChecking } from "./state-based-actions";
+import {
+  serializeGameState,
+  deserializeGameState,
+} from "./serialization";
+import {
+  playLand,
+  activateManaAbility,
+} from "./mana";
+import {
+  castSpell,
+} from "./spell-casting";
+import {
+  isLand,
+} from "./card-instance";
 
-// Re-export checkStateBasedActions from state-based-actions to avoid conflict
-export { checkStateBasedActions, canDraw, drawWithSBAChecking } from "./state-based-actions";
-
-// Export state hash verification for P2P
+// Export everything from game-state modules
+export * from "./types";
+export * from "./card-instance";
+export * from "./zones";
+export * from "./turn-phases";
+export * from "./game-state";
 export * from "./state-hash";
-
-// Export deterministic game state synchronization (Issue #287)
 export * from "./deterministic-sync";
-
-// Export replay system
 export * from "./replay";
-
-// Export serialization for save/load
 export * from "./serialization";
-
-// Export replacement and prevention effects (CR 614)
 export * from "./replacement-effects";
-
-// Export layer system for continuous effects (CR 613)
 export * from "./layer-system";
-
-// Export keyword actions (CR 701)
 export * from "./keyword-actions";
-
-// Export combat system (CR 506-510)
 export * from "./combat";
-
-// Export state-based actions (CR 704)
 export * from "./state-based-actions";
-
-// Export Oracle text parser (CR 112, 113, 608)
 export * from "./oracle-text-parser";
-
-// Export mana system (CR 106 - Mana, CR 305 - Lands)
 export * from "./mana";
-
-// Export spell casting system (CR 601 - Casting Spells)
 export * from "./spell-casting";
-
 export * from "./abilities"
-
 export * from "./evergreen-keywords"
 export * from './replacement-examples';
-
-// Export terminology translation layer (Issue #442)
 export * from "./terminology-translation";
+
+// Local exports for common functions with consistent naming
+export { tapCard, untapCard, checkStateBasedActions };

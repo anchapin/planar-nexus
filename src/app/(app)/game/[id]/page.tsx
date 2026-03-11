@@ -30,16 +30,19 @@ import {
   concede,
   serializeGameState,
   deserializeGameState,
-  ValidationService,
   playLand,
   castSpell,
   activateManaAbility,
   isLand,
+  tapCard,
+  untapCard,
   type GameState,
   type Player,
   type CardInstance,
   type Phase,
 } from '@/lib/game-state';
+
+import { ValidationService } from '@/lib/validation-service';
 
 // AI imports
 import { GameStateEvaluator, type GameState as AIGameState } from '@/ai/game-state-evaluator';
@@ -582,13 +585,22 @@ function GameBoardContent() {
     
     if (zone === 'hand' && hasPriority) {
       if (isLand(card)) {
-        const result = playLand(gameState, player.id, cardId);
-        if (result.success) {
-          setGameState(checkStateBasedActions(result.state).state);
+        const validation = ValidationService.canPlayLand(gameState, player.id, cardId);
+        if (validation.isValid) {
+          const result = playLand(gameState, player.id, cardId);
+          if (result.success) {
+            setGameState(checkStateBasedActions(result.state).state);
+          } else {
+            toast({
+              title: "Cannot play land",
+              description: result.error || "Action not allowed.",
+              variant: "destructive"
+            });
+          }
         } else {
           toast({
             title: "Cannot play land",
-            description: "Action not allowed or already played a land this turn.",
+            description: validation.message || "Action not allowed.",
             variant: "destructive"
           });
         }
@@ -603,7 +615,7 @@ function GameBoardContent() {
             } else {
               toast({
                 title: "Error casting spell",
-                description: "Not enough mana or invalid targets.",
+                description: result.error || "Not enough mana or invalid targets.",
                 variant: "destructive"
               });
             }
@@ -617,7 +629,7 @@ function GameBoardContent() {
         } else {
           toast({
             title: "Cannot cast spell",
-            description: validation.reason || "Action not allowed.",
+            description: validation.message || "Action not allowed.",
             variant: "destructive"
           });
         }
@@ -625,24 +637,23 @@ function GameBoardContent() {
     } else if (zone === 'battlefield') {
       // Activate abilities or tap/untap
       if (hasPriority) {
-        // Simple tap/untap for now if no specific ability is selected
-        // In a real UI, this would show an ability menu
         if (isLand(card)) {
-          // Auto-activate mana ability for lands
-          // In this simple implementation, we just call activateManaAbility with index 0
           try {
-            const newState = activateManaAbility(gameState, player.id, cardId, 0);
-            setGameState(newState);
+            const result = activateManaAbility(gameState, player.id, cardId, 0);
+            if (result.success) {
+              setGameState(result.state);
+            } else {
+              // Fallback to manual tap
+              const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
+              if (result.success) setGameState(result.state);
+            }
           } catch (e) {
-            // Fallback to manual tap if something fails
-            const newState = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
-            setGameState(newState);
+            const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
+            if (result.success) setGameState(result.state);
           }
         } else {
-          // Combat logic would handle creature clicks during Declare Attackers
-          // But for now, just allow manual tapping
-          const newState = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
-          setGameState(newState);
+          const result = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
+          if (result.success) setGameState(result.state);
         }
       }
     }
