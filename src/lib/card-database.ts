@@ -37,6 +37,7 @@ export interface MinimalCard {
   color_identity: string[];
   rarity?: string;
   legalities: Record<string, string>;
+  name_lower?: string; // For case-insensitive indexing
   image_uris?: {
     small: string;
     normal: string;
@@ -308,16 +309,17 @@ async function openDatabase(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const database = (event.target as IDBOpenDBRequest).result;
 
-      // Create object store for cards
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const cardStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+    // Create object store for cards
+    if (!database.objectStoreNames.contains(STORE_NAME)) {
+      const cardStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
 
-        // Create indexes for fast lookups
-        cardStore.createIndex(INDEX_NAME, 'name', { unique: false });
+      // Create indexes for fast lookups
+      cardStore.createIndex(INDEX_NAME, 'name', { unique: false });
+      cardStore.createIndex('name_lower', 'name_lower', { unique: false });
 
-        // Compound index for format legality queries
-        cardStore.createIndex(LEGALITY_INDEX_NAME, ['legalities.format', 'legalities.status'], { unique: false });
-      }
+      // Compound index for format legality queries
+      cardStore.createIndex(LEGALITY_INDEX_NAME, ['legalities.format', 'legalities.status'], { unique: false });
+    }
     };
   });
 }
@@ -380,7 +382,10 @@ async function populateDatabase(cards: MinimalCard[]): Promise<void> {
     transaction.oncomplete = () => resolve();
 
     cards.forEach((card) => {
-      store.put(card);
+      store.put({
+        ...card,
+        name_lower: card.name.toLowerCase(),
+      });
     });
   });
 }
@@ -462,7 +467,15 @@ export async function getCardByName(name: string): Promise<MinimalCard | undefin
   return new Promise((resolve, reject) => {
     const transaction = database.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
-    const index = store.index(INDEX_NAME);
+    
+    // Try name_lower index first if it exists, otherwise use name index
+    let index;
+    try {
+      index = store.index('name_lower');
+    } catch {
+      index = store.index(INDEX_NAME);
+    }
+    
     const request = index.getAll(name.toLowerCase());
 
     request.onsuccess = () => {
@@ -568,7 +581,10 @@ export async function addCard(card: MinimalCard): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = db!.transaction([STORE_NAME], 'readwrite');
     const store = transaction.objectStore(STORE_NAME);
-    const request = store.put(card);
+    const request = store.put({
+      ...card,
+      name_lower: card.name.toLowerCase(),
+    });
 
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
@@ -605,7 +621,10 @@ export async function addCards(cards: MinimalCard[]): Promise<void> {
     };
 
     cards.forEach((card) => {
-      store.put(card);
+      store.put({
+        ...card,
+        name_lower: card.name.toLowerCase(),
+      });
     });
   });
 }

@@ -10,12 +10,14 @@ import {
   getUserPreferences,
   updateUserPreferences,
   getUserPreference,
+  clearLocalUserManager,
 } from '../local-user';
 
 describe('Local User Management', () => {
   beforeEach(() => {
-    // Clear localStorage before each test
+    // Clear localStorage and reset manager before each test
     localStorage.clear();
+    clearLocalUserManager();
   });
 
   afterEach(() => {
@@ -36,8 +38,14 @@ describe('Local User Management', () => {
       expect(user.preferences).toEqual({});
     });
 
-    it('should update existing user when signing in again', () => {
+    it('should update existing user when signing in again', async () => {
       const user1 = signIn('Player One');
+      
+      // Force user1's lastLoginAt to be in the past to ensure comparison works
+      user1.lastLoginAt -= 1000;
+      localStorage.setItem('planar_nexus_user', JSON.stringify(user1));
+      clearLocalUserManager();
+      
       const user2 = signIn('Player Two');
 
       expect(user1.id).toBe(user2.id);
@@ -49,7 +57,7 @@ describe('Local User Management', () => {
       const user1 = signIn('Persistent Player');
 
       // Simulate reload by clearing in-memory user
-      (global as any).clearLocalUser();
+      clearLocalUserManager();
 
       const user2 = getCurrentUser();
 

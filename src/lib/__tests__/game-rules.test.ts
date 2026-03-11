@@ -351,15 +351,15 @@ describe("Game Rules - validateDeckFormat", () => {
       expect(result.errors).toContain("black lotus is banned in Legendary Commander");
     });
 
-    it("should reject banned cards in constructed-legacy", () => {
+    it("should reject banned cards in constructed-extended", () => {
       const deck = [
         { name: "Jace, the Mind Sculptor", count: 1 },
       ];
-      const result = validateDeckFormat(deck, "constructed-legacy");
+      const result = validateDeckFormat(deck, "constructed-extended");
 
       expect(result.isValid).toBe(false);
       expect(result.errors).toContain(
-        "jace, the mind sculptor is banned in Constructed Legacy"
+        "jace, the mind sculptor is banned in Constructed Extended"
       );
     });
 
