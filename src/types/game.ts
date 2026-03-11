@@ -58,6 +58,7 @@ export interface PlayerState {
   // Player metadata
   isCurrentTurn: boolean;
   hasPriority: boolean;
+  landsPlayedThisTurn: number;
   // Team assignment for 2v2 mode
   teamId?: TeamId;
 }
