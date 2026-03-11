@@ -223,3 +223,10 @@ export function updateUserPreferences(preferences: Record<string, unknown>): voi
 export function getUserPreference<T = unknown>(key: string, defaultValue?: T): T | undefined {
   return localUserManager.getPreference<T>(key, defaultValue);
 }
+
+/**
+ * Clear the local user manager instance (for testing only)
+ */
+export function clearLocalUserManager(): void {
+  (localUserManager as any).currentUser = null;
+}

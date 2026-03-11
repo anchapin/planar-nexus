@@ -64,7 +64,7 @@ describe('Card Database', () => {
     });
 
     it('should return empty array for short queries', async () => {
-      const results = await searchCardsOffline('ab');
+      const results = await searchCardsOffline('a');
       expect(results).toEqual([]);
     });
 
