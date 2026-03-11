@@ -10,8 +10,6 @@
  * - generateImprovementTips - Provides actionable improvement advice
  */
 
-import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
-
 // Types for game replay data (used for type documentation)
 // These interfaces describe the expected structure of replay data
 

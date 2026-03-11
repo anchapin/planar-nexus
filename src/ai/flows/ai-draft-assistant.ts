@@ -122,7 +122,7 @@ interface PoolAnalysisOutput {
 export async function getDraftPickRecommendation(
   input: DraftPickInput
 ): Promise<DraftPickOutput> {
-  const { pool, pickNumber, packCards, format } = input;
+  const { pool, pickNumber: _pickNumber, packCards, format: _format } = input;
 
   // Analyze pack cards and pick the best one using heuristics
   const pickAnalysis = analyzePackForPick(packCards, pool);
@@ -359,7 +359,7 @@ function analyzeDeckCurve(deck: SealedBuildOutput['suggestedDeck']): SealedBuild
 
 function detectArchetypes(
   pool: any,
-  format: string
+  _format: string
 ): SealedBuildOutput['archetypes'] {
   // Simple archetype detection based on card types
   const archetypes: SealedBuildOutput['archetypes'] = [];
