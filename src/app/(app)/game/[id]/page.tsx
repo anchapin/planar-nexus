@@ -30,6 +30,11 @@ import {
   concede,
   serializeGameState,
   deserializeGameState,
+  ValidationService,
+  playLand,
+  castSpell,
+  activateManaAbility,
+  isLand,
   type GameState,
   type Player,
   type CardInstance,
@@ -464,28 +469,33 @@ function GameBoardContent() {
     };
   }, [autoSaveEnabled, gameState, gameId]);
   
-  // Execute AI turn when it's AI's turn
+  // Execute AI action when it has priority
   useEffect(() => {
-    if (!gameState || mode !== 'ai' || !aiOpponentRef.current) return;
+    if (!gameState || mode !== 'ai') return;
+    if (gameState.status !== 'in_progress' || isAIThinking) return;
     
     const aiPlayer = Array.from(gameState.players.values()).find(
       p => p.name.includes('AI')
     );
     
-    if (!aiPlayer || gameState.turn.activePlayerId !== aiPlayer.id) return;
-    if (gameState.status !== 'in_progress') return;
+    if (!aiPlayer || gameState.priorityPlayerId !== aiPlayer.id) return;
     
     const executeAITurn = async () => {
       setIsAIThinking(true);
       
       // Simulate thinking time based on difficulty
       const config = getDifficultyConfig(difficulty);
-      const thinkTime = 500 + (config.lookaheadDepth * 300);
+      const thinkTime = 800 + (config.lookaheadDepth * 400);
       
       await new Promise(resolve => setTimeout(resolve, thinkTime));
       
-      // Get AI decision
-      const decision = aiOpponentRef.current!.makeDecision(gameState, aiPlayer.id);
+      // Get AI decision (fallback if ref not initialized)
+      let decision;
+      if (aiOpponentRef.current) {
+        decision = aiOpponentRef.current.makeDecision(gameState, aiPlayer.id);
+      } else {
+        decision = { action: 'pass' };
+      }
       
       // Execute the decision
       let newState = { ...gameState };
@@ -494,7 +504,7 @@ function GameBoardContent() {
         case 'pass':
           newState = passPriority(newState, aiPlayer.id);
           toast({
-            title: 'AI Turn',
+            title: 'AI Action',
             description: 'AI opponent passed priority',
           });
           break;
@@ -502,9 +512,11 @@ function GameBoardContent() {
         case 'attack':
           // Combat logic would go here
           toast({
-            title: 'AI Turn',
+            title: 'AI Action',
             description: 'AI is attacking!',
           });
+          // For now, AI just passes if combat isn't fully implemented
+          newState = passPriority(newState, aiPlayer.id);
           break;
           
         default:
@@ -519,13 +531,15 @@ function GameBoardContent() {
       
       // Save updated state
       setGameState(newState);
-      await saveActiveGame(newState);
+      if (autoSaveEnabled) {
+        await saveActiveGame(newState);
+      }
       
       setIsAIThinking(false);
     };
     
     executeAITurn();
-  }, [gameState?.turn.activePlayerId, gameState?.turn.turnNumber, mode, difficulty, toast]);
+  }, [gameState?.priorityPlayerId, mode, difficulty, toast, isAIThinking, autoSaveEnabled]);
   
   // Check for game end
   useEffect(() => {
@@ -568,27 +582,42 @@ function GameBoardContent() {
     
     if (zone === 'hand' && hasPriority) {
       if (isLand(card)) {
-        if (canPlayLand(gameState, player.id)) {
-          let newState = playLand(gameState, player.id, cardId);
-          const result = checkStateBasedActions(newState);
-          setGameState(result.state);
+        const result = playLand(gameState, player.id, cardId);
+        if (result.success) {
+          setGameState(checkStateBasedActions(result.state).state);
         } else {
           toast({
             title: "Cannot play land",
-            description: "You've already played your land for the turn.",
+            description: "Action not allowed or already played a land this turn.",
             variant: "destructive"
           });
         }
       } else {
         // Try to cast spell
-        try {
-          let newState = castSpell(gameState, player.id, cardId);
-          const result = checkStateBasedActions(newState);
-          setGameState(result.state);
-        } catch (error: any) {
+        const validation = ValidationService.canCastSpell(gameState, player.id, cardId);
+        if (validation.isValid) {
+          try {
+            const result = castSpell(gameState, player.id, cardId);
+            if (result.success) {
+              setGameState(checkStateBasedActions(result.state).state);
+            } else {
+              toast({
+                title: "Error casting spell",
+                description: "Not enough mana or invalid targets.",
+                variant: "destructive"
+              });
+            }
+          } catch (error: any) {
+            toast({
+              title: "Error casting spell",
+              description: error.message || "An unexpected error occurred.",
+              variant: "destructive"
+            });
+          }
+        } else {
           toast({
             title: "Cannot cast spell",
-            description: error.message || "You may not have enough mana.",
+            description: validation.reason || "Action not allowed.",
             variant: "destructive"
           });
         }
@@ -600,15 +629,18 @@ function GameBoardContent() {
         // In a real UI, this would show an ability menu
         if (isLand(card)) {
           // Auto-activate mana ability for lands
+          // In this simple implementation, we just call activateManaAbility with index 0
           try {
-            let newState = activateManaAbility(gameState, player.id, cardId, "{T}: Add mana");
+            const newState = activateManaAbility(gameState, player.id, cardId, 0);
             setGameState(newState);
           } catch (e) {
-            // If not a mana ability, just tap/untap
+            // Fallback to manual tap if something fails
             const newState = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
             setGameState(newState);
           }
         } else {
+          // Combat logic would handle creature clicks during Declare Attackers
+          // But for now, just allow manual tapping
           const newState = card.isTapped ? untapCard(gameState, cardId) : tapCard(gameState, cardId);
           setGameState(newState);
         }
@@ -679,26 +711,27 @@ function GameBoardContent() {
     if (!gameState) return;
     
     const player = Array.from(gameState.players.values()).find(p => p.name === playerName);
-    if (player && gameState.priorityPlayerId === player.id) {
-      let newState = passPriority(gameState, player.id);
-      
-      // Auto-resolve stack if everyone passed
-      if (newState.stack.length === 0 && newState.priorityPlayerId === gameState.priorityPlayerId) {
-        // This means a phase change occurred or the stack is empty and priority stayed with active player
-      }
-      
-      const result = checkStateBasedActions(newState);
-      newState = result.state;
-      setGameState(newState);
-      
-      if (autoSaveEnabled) {
-        await saveActiveGame(newState);
-      }
-      
-      // If it's now the AI's turn or priority, handle it
-      // (This will be caught by the AI effect hook)
+    if (!player) return;
+
+    const validation = ValidationService.canPassPriority(gameState, player.id);
+    if (!validation.isValid) {
+      toast({
+        title: "Cannot pass priority",
+        description: validation.reason || "Action not allowed.",
+        variant: "destructive"
+      });
+      return;
     }
-  }, [gameState, playerName, autoSaveEnabled]);
+
+    let newState = passPriority(gameState, player.id);
+    const result = checkStateBasedActions(newState);
+    newState = result.state;
+    setGameState(newState);
+    
+    if (autoSaveEnabled) {
+      await saveActiveGame(newState);
+    }
+  }, [gameState, playerName, autoSaveEnabled, toast]);
   
   // Handle advance phase (for self-play debugging)
   const handleAdvancePhase = useCallback(async () => {
@@ -870,6 +903,8 @@ function GameBoardContent() {
             onOfferDraw={handleOfferDraw}
             onAcceptDraw={handleAcceptDraw}
             onDeclineDraw={handleDeclineDraw}
+            priorityPlayerId={gameState.priorityPlayerId || undefined}
+            activePlayerId={gameState.turn.activePlayerId}
           />
         </div>
       </main>
