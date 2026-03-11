@@ -1,6 +1,8 @@
 /**
- * Unit tests for card database module
- * Issue #436: Unit 2 - Original Card Data Schema
+ * Tests for the card database module
+ *
+ * Note: These tests require a browser environment with IndexedDB support.
+ * They can be run using Jest with jsdom or in a real browser.
  */
 
 import {
@@ -8,581 +10,309 @@ import {
   searchCardsOffline,
   getCardByName,
   getCardById,
-  getGenericCards,
-  getLegacyCards,
   isCardLegal,
   validateDeckOffline,
   getDatabaseStatus,
+  addCard,
+  addCards,
+  clearDatabase,
   getAllCards,
-  isGenericCard,
-  isMinimalCard,
-  minimalCardToGenericCard,
-  genericCardToMinimalCard,
-  GenericCard,
-  GenericCardType,
-  GenericColor,
-  AbilityKeyword,
-  MinimalCard
-} from "../card-database";
+  MinimalCard,
+} from '../card-database';
 
-describe("Card Database - Initialization", () => {
-  beforeEach(async () => {
-    // Ensure database is initialized before each test
+describe('Card Database', () => {
+  beforeAll(async () => {
+    // Initialize database for all tests
     await initializeCardDatabase();
   });
 
-  it("should initialize successfully", async () => {
-    const status = getDatabaseStatus();
-    expect(status.loaded).toBe(true);
-    expect(status.cardCount).toBeGreaterThan(0);
+  afterAll(async () => {
+    // Clean up database after tests
+    await clearDatabase();
   });
 
-  it("should have generic cards loaded", async () => {
-    const genericCards = getGenericCards();
-    expect(genericCards.length).toBeGreaterThan(0);
-
-    genericCards.forEach(card => {
-      expect(isGenericCard(card)).toBe(true);
-      expect(card.type).toBeDefined();
-      expect(card.name).toBeDefined();
-      expect(card.manaCost).toBeDefined();
-      expect(card.legalities).toBeDefined();
+  describe('Initialization', () => {
+    it('should initialize the database', async () => {
+      const status = await getDatabaseStatus();
+      expect(status.loaded).toBe(true);
+      expect(status.cardCount).toBeGreaterThan(0);
     });
   });
 
-  it("should report correct card counts", () => {
-    const status = getDatabaseStatus();
-    expect(status.genericCards).toBeGreaterThan(0);
-    expect(status.legacyCards).toBe(0); // Should be 0 in new implementation
-  });
-});
-
-describe("Card Database - Search", () => {
-  beforeEach(async () => {
-    await initializeCardDatabase();
-  });
-
-  it("should find cards by partial name match", () => {
-    const results = searchCardsOffline("mana");
-    expect(results.length).toBeGreaterThan(0);
-    expect(results.some(card => card.name.toLowerCase().includes("mana"))).toBe(true);
-  });
-
-  it("should find exact card matches", () => {
-    const results = searchCardsOffline("Mana Ring");
-    expect(results.length).toBeGreaterThan(0);
-    expect(results[0].name).toBe("Mana Ring");
-  });
-
-  it("should return empty array for queries shorter than 2 characters", () => {
-    const results = searchCardsOffline("M");
-    expect(results).toEqual([]);
-  });
-
-  it("should return empty array for empty query", () => {
-    const results = searchCardsOffline("");
-    expect(results).toEqual([]);
-  });
-
-  it("should respect max cards option", () => {
-    const results = searchCardsOffline("", { maxCards: 5 });
-    expect(results.length).toBeLessThanOrEqual(5);
-  });
-
-  it("should prioritize exact matches over partial matches", () => {
-    const results = searchCardsOffline("Fire Bolt");
-    expect(results[0].name).toBe("Fire Bolt");
-  });
-});
-
-describe("Card Database - Retrieval", () => {
-  beforeEach(async () => {
-    await initializeCardDatabase();
-  });
-
-  it("should get card by exact name", () => {
-    const card = getCardByName("Mana Ring");
-    expect(card).toBeDefined();
-    if (card) {
-      expect(card.name).toBe("Mana Ring");
-    }
-  });
-
-  it("should get card by ID", () => {
-    const card = getCardById("generic-001");
-    expect(card).toBeDefined();
-    if (card) {
-      expect(card.name).toBe("Mana Ring");
-    }
-  });
-
-  it("should return undefined for non-existent card name", () => {
-    const card = getCardByName("NonExistentCard");
-    expect(card).toBeUndefined();
-  });
-
-  it("should return undefined for non-existent card ID", () => {
-    const card = getCardById("does-not-exist");
-    expect(card).toBeUndefined();
-  });
-
-  it("should be case insensitive for name lookup", () => {
-    const card1 = getCardByName("mana ring");
-    const card2 = getCardByName("MANA RING");
-    const card3 = getCardByName("Mana Ring");
-
-    expect(card1).toEqual(card2);
-    expect(card2).toEqual(card3);
-  });
-});
-
-describe("Card Database - Type Guards", () => {
-  beforeEach(async () => {
-    await initializeCardDatabase();
-  });
-
-  it("should correctly identify generic cards", () => {
-    const card = getCardByName("Mana Ring");
-    expect(card).toBeDefined();
-    if (card) {
-      expect(isGenericCard(card)).toBe(true);
-      expect(isMinimalCard(card)).toBe(false);
-    }
-  });
-
-  it("should correctly identify legacy minimal cards", () => {
-    const legacyCard: MinimalCard = {
-      id: 'legacy-001',
-      name: 'Legacy Card',
-      cmc: 2,
-      type_line: 'Instant',
-      oracle_text: 'Test text',
-      colors: [],
-      color_identity: [],
-      legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' }
-    };
-
-    expect(isGenericCard(legacyCard)).toBe(false);
-    expect(isMinimalCard(legacyCard)).toBe(true);
-  });
-});
-
-describe("Card Database - Legality Validation", () => {
-  beforeEach(async () => {
-    await initializeCardDatabase();
-  });
-
-  it("should return true for legal cards in a format", () => {
-    const isLegal = isCardLegal("Mana Ring", "commander");
-    expect(isLegal).toBe(true);
-  });
-
-  it("should return false for non-existent cards", () => {
-    const isLegal = isCardLegal("NonExistentCard", "commander");
-    expect(isLegal).toBe(false);
-  });
-
-  it("should check legality for different formats", () => {
-    const formats = ["commander", "standard", "modern", "legacy", "vintage", "pauper"];
-    formats.forEach(format => {
-      const isLegal = isCardLegal("Mana Ring", format);
-      expect(typeof isLegal).toBe("boolean");
+  describe('Search Functionality', () => {
+    it('should search for cards by name', async () => {
+      const results = await searchCardsOffline('Sol Ring');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].name).toBe('Sol Ring');
     });
-  });
-});
 
-describe("Card Database - Deck Validation", () => {
-  beforeEach(async () => {
-    await initializeCardDatabase();
-  });
+    it('should perform fuzzy search', async () => {
+      const results = await searchCardsOffline('sol rn');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].name.toLowerCase()).toContain('sol');
+    });
 
-  it("should validate a valid deck", () => {
-    const deck = [
-      { name: "Mana Ring", quantity: 1 },
-      { name: "Fire Bolt", quantity: 4 },
-    ];
+    it('should respect maxCards limit', async () => {
+      const results = await searchCardsOffline('land', { maxCards: 5 });
+      expect(results.length).toBeLessThanOrEqual(5);
+    });
 
-    const result = validateDeckOffline(deck, "commander");
-    expect(result.valid).toBe(true);
-    expect(result.illegalCards).toHaveLength(0);
-    expect(result.issues).toHaveLength(0);
-  });
+    it('should filter by format', async () => {
+      const results = await searchCardsOffline('Sol Ring', { format: 'commander' });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].legalities.commander).toBe('legal');
+    });
 
-  it("should reject deck with non-existent cards", () => {
-    const deck = [
-      { name: "NonExistentCard", quantity: 1 },
-    ];
+    it('should return empty array for short queries', async () => {
+      const results = await searchCardsOffline('ab');
+      expect(results).toEqual([]);
+    });
 
-    const result = validateDeckOffline(deck, "commander");
-    expect(result.valid).toBe(false);
-    expect(result.issues.length).toBeGreaterThan(0);
-    expect(result.issues[0]).toContain("Card not found");
-  });
-
-  it("should reject deck when database is not initialized", () => {
-    // This test is covered by the validation function returning issues
-    // The actual reset functionality would require mocking the database module
-    // which is beyond the scope of this test suite
-    const deck = [
-      { name: "Mana Ring", quantity: 1 },
-    ];
-
-    // If database were not initialized, this would return issues
-    // Since we initialize in beforeEach, this just validates the deck works
-    const result = validateDeckOffline(deck, "commander");
-    expect(result.valid).toBe(true);
-  });
-
-  it("should handle mixed valid and invalid cards", () => {
-    const deck = [
-      { name: "Mana Ring", quantity: 1 },
-      { name: "NonExistentCard", quantity: 1 },
-      { name: "Fire Bolt", quantity: 4 },
-    ];
-
-    const result = validateDeckOffline(deck, "commander");
-    expect(result.valid).toBe(false);
-    expect(result.issues).toContain("Card not found: NonExistentCard");
-  });
-});
-
-describe("Card Database - Conversion Functions", () => {
-  it("should convert legacy minimal card to generic card", () => {
-    const legacyCard: MinimalCard = {
-      id: 'legacy-001',
-      name: 'Test Creature',
-      cmc: 3,
-      type_line: 'Creature — Elf Druid',
-      oracle_text: '{T}: Add {G}.',
-      colors: ['G'],
-      color_identity: ['G'],
-      legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' }
-    };
-
-    const genericCard = minimalCardToGenericCard(legacyCard);
-
-    expect(genericCard.id).toBe(legacyCard.id);
-    expect(genericCard.name).toBe(legacyCard.name);
-    expect(genericCard.type).toBe(GenericCardType.CREATURE);
-    expect(genericCard.subtypes).toContain('Elf');
-    expect(genericCard.subtypes).toContain('Druid');
-    expect(genericCard.colors).toContain(GenericColor.GREEN);
-    expect(genericCard.colorIdentity).toContain(GenericColor.GREEN);
-    expect(genericCard.text).toBe(legacyCard.oracle_text);
-  });
-
-  it("should convert generic card to legacy minimal card", () => {
-    const genericCard: GenericCard = {
-      id: 'generic-001',
-      name: 'Test Card',
-      type: GenericCardType.INSTANT,
-      subtypes: [],
-      manaCost: '{R}',
-      cmc: 1,
-      colors: [GenericColor.RED],
-      colorIdentity: [GenericColor.RED],
-      text: 'Deal 2 damage to any target.',
-      keywords: [],
-      legalities: {
-        commander: 'legal',
-        standard: 'legal',
-        modern: 'legal',
-        pioneer: 'legal',
-        legacy: 'legal',
-        vintage: 'legal',
-        pauper: 'legal'
-      }
-    };
-
-    const minimalCard = genericCardToMinimalCard(genericCard);
-
-    expect(minimalCard.id).toBe(genericCard.id);
-    expect(minimalCard.name).toBe(genericCard.name);
-    expect(minimalCard.type_line).toBe(GenericCardType.INSTANT);
-    expect(minimalCard.oracle_text).toBe(genericCard.text);
-    expect(minimalCard.colors).toContain('R');
-    expect(minimalCard.color_identity).toContain('R');
-  });
-
-  it("should preserve legalities during conversion", () => {
-    const legacyCard: MinimalCard = {
-      id: 'legacy-001',
-      name: 'Banned Card',
-      cmc: 1,
-      type_line: 'Instant',
-      oracle_text: 'Test text',
-      colors: [],
-      color_identity: [],
-      legalities: { commander: 'banned', modern: 'legal', legacy: 'legal', vintage: 'legal' }
-    };
-
-    const genericCard = minimalCardToGenericCard(legacyCard);
-
-    expect(genericCard.legalities.commander).toBe('banned');
-    expect(genericCard.legalities.modern).toBe('legal');
-  });
-});
-
-describe("Generic Card Schema - Types", () => {
-  it("should have all required card types", () => {
-    const expectedTypes = [
-      GenericCardType.CREATURE,
-      GenericCardType.ARTIFACT,
-      GenericCardType.ENCHANTMENT,
-      GenericCardType.LAND,
-      GenericCardType.INSTANT,
-      GenericCardType.SORCERY,
-      GenericCardType.PLANESWALKER,
-      GenericCardType.TOKEN
-    ];
-
-    expectedTypes.forEach(type => {
-      expect(type).toBeDefined();
-      expect(typeof type).toBe('string');
+    it('should handle empty query', async () => {
+      const results = await searchCardsOffline('');
+      expect(results).toEqual([]);
     });
   });
 
-  it("should have all required colors", () => {
-    const expectedColors = [
-      GenericColor.RED,
-      GenericColor.BLUE,
-      GenericColor.GREEN,
-      GenericColor.BLACK,
-      GenericColor.WHITE,
-      GenericColor.COLORLESS
-    ];
+  describe('Card Retrieval', () => {
+    it('should get card by exact name', async () => {
+      const card = await getCardByName('Sol Ring');
+      expect(card).toBeDefined();
+      expect(card?.name).toBe('Sol Ring');
+    });
 
-    expectedColors.forEach(color => {
-      expect(color).toBeDefined();
-      expect(typeof color).toBe('string');
+    it('should get card by ID', async () => {
+      // First find the card by name to get its ID
+      const cardByName = await getCardByName('Sol Ring');
+      expect(cardByName).toBeDefined();
+
+      const card = await getCardById(cardByName!.id);
+      expect(card).toBeDefined();
+      expect(card?.name).toBe('Sol Ring');
+    });
+
+    it('should return undefined for non-existent card', async () => {
+      const card = await getCardByName('NonExistentCard');
+      expect(card).toBeUndefined();
+    });
+
+    it('should be case-insensitive for name search', async () => {
+      const card1 = await getCardByName('sol ring');
+      const card2 = await getCardByName('SOL RING');
+      const card3 = await getCardByName('Sol Ring');
+
+      expect(card1?.id).toBe(card2?.id);
+      expect(card2?.id).toBe(card3?.id);
     });
   });
 
-  it("should have all required ability keywords", () => {
-    const expectedKeywords = [
-      AbilityKeyword.FIRST_STRIKE,
-      AbilityKeyword.DOUBLE_STRIKE,
-      AbilityKeyword.DEATHTOUCH,
-      AbilityKeyword.HEXPROOF,
-      AbilityKeyword.LIFELINK,
-      AbilityKeyword.FLYING,
-      AbilityKeyword.TRAMPLE,
-      AbilityKeyword.HASTE,
-      AbilityKeyword.VIGILANCE,
-      AbilityKeyword.REACH,
-      AbilityKeyword.MENACE,
-      AbilityKeyword.INDESTRUCTIBLE
-    ];
-
-    expectedKeywords.forEach(keyword => {
-      expect(keyword).toBeDefined();
-      expect(typeof keyword).toBe('string');
+  describe('Legality Checking', () => {
+    it('should check if card is legal in format', async () => {
+      const isLegal = await isCardLegal('Sol Ring', 'commander');
+      expect(isLegal).toBe(true);
     });
-  });
-});
 
-describe("Generic Card Schema - Validation", () => {
-  it("should require all mandatory fields", () => {
-    const requiredFields: (keyof GenericCard)[] = [
-      'id',
-      'name',
-      'type',
-      'subtypes',
-      'manaCost',
-      'cmc',
-      'colors',
-      'colorIdentity',
-      'text',
-      'keywords',
-      'legalities'
-    ];
-
-    const card: GenericCard = {
-      id: 'test-001',
-      name: 'Test Card',
-      type: GenericCardType.ARTIFACT,
-      subtypes: [],
-      manaCost: '{C}',
-      cmc: 1,
-      colors: [],
-      colorIdentity: [],
-      text: 'Test ability.',
-      keywords: [],
-      legalities: {
-        commander: 'legal',
-        standard: 'legal',
-        modern: 'legal',
-        pioneer: 'legal',
-        legacy: 'legal',
-        vintage: 'legal',
-        pauper: 'legal'
-      }
-    };
-
-    requiredFields.forEach(field => {
-      expect(card[field]).toBeDefined();
+    it('should return false for illegal card', async () => {
+      // Note: Sol Ring is legal in most formats, so this test depends on having
+      // a card that's not legal in a specific format
+      const isLegal = await isCardLegal('Sol Ring', 'pauper');
+      // Sol Ring is not legal in Pauper
+      expect(isLegal).toBe(false);
     });
   });
 
-  it("should support creatures with power and toughness", () => {
-    const card: GenericCard = {
-      id: 'test-002',
-      name: 'Test Creature',
-      type: GenericCardType.CREATURE,
-      subtypes: ['Test'],
-      manaCost: '{G}',
-      cmc: 1,
-      colors: [GenericColor.GREEN],
-      colorIdentity: [GenericColor.GREEN],
-      text: 'Test ability.',
-      keywords: [],
-      power: 2,
-      toughness: 2,
-      legalities: {
-        commander: 'legal',
-        standard: 'legal',
-        modern: 'legal',
-        pioneer: 'legal',
-        legacy: 'legal',
-        vintage: 'legal',
-        pauper: 'legal'
-      }
-    };
+  describe('Deck Validation', () => {
+    it('should validate legal deck', async () => {
+      const validation = await validateDeckOffline(
+        [
+          { name: 'Sol Ring', quantity: 1 },
+          { name: 'Lightning Bolt', quantity: 4 },
+        ],
+        'commander'
+      );
+      expect(validation.valid).toBe(true);
+      expect(validation.illegalCards).toEqual([]);
+      expect(validation.issues).toEqual([]);
+    });
 
-    expect(card.power).toBe(2);
-    expect(card.toughness).toBe(2);
+    it('should detect illegal cards', async () => {
+      const validation = await validateDeckOffline(
+        [
+          { name: 'Sol Ring', quantity: 1 },
+          // Add a card that's not legal in the format
+          { name: 'Ancestral Recall', quantity: 1 },
+        ],
+        'pauper'
+      );
+      expect(validation.valid).toBe(false);
+      expect(validation.illegalCards.length).toBeGreaterThan(0);
+    });
+
+    it('should detect missing cards', async () => {
+      const validation = await validateDeckOffline(
+        [
+          { name: 'Sol Ring', quantity: 1 },
+          { name: 'NonExistentCard', quantity: 1 },
+        ],
+        'commander'
+      );
+      expect(validation.valid).toBe(false);
+      expect(validation.issues.length).toBeGreaterThan(0);
+      expect(validation.issues[0]).toContain('Card not found');
+    });
   });
 
-  it("should support planeswalkers with loyalty", () => {
-    const card: GenericCard = {
-      id: 'test-003',
-      name: 'Test Planeswalker',
-      type: GenericCardType.PLANESWALKER,
-      subtypes: ['Test'],
-      manaCost: '{2}{U}',
-      cmc: 3,
-      colors: [GenericColor.BLUE],
-      colorIdentity: [GenericColor.BLUE],
-      text: '+1: Draw a card.',
-      keywords: [AbilityKeyword.LOYALTY],
-      loyalty: 3,
-      legalities: {
-        commander: 'legal',
-        standard: 'legal',
-        modern: 'legal',
-        pioneer: 'legal',
-        legacy: 'legal',
-        vintage: 'legal',
-        pauper: 'legal'
-      }
-    };
+  describe('Card Management', () => {
+    beforeEach(async () => {
+      // Clear database before each test
+      await clearDatabase();
+    });
 
-    expect(card.loyalty).toBe(3);
-    expect(card.keywords).toContain(AbilityKeyword.LOYALTY);
+    it('should add a single card', async () => {
+      const testCard: MinimalCard = {
+        id: 'test-card-1',
+        name: 'Test Card',
+        cmc: 1,
+        type_line: 'Creature',
+        oracle_text: 'Test text',
+        colors: ['R'],
+        color_identity: ['R'],
+        legalities: { commander: 'legal', modern: 'legal' },
+      };
+
+      await addCard(testCard);
+      const status = await getDatabaseStatus();
+      expect(status.cardCount).toBe(1);
+    });
+
+    it('should add multiple cards', async () => {
+      const cards: MinimalCard[] = [
+        {
+          id: 'test-card-1',
+          name: 'Test Card 1',
+          cmc: 1,
+          type_line: 'Creature',
+          oracle_text: 'Test text',
+          colors: ['R'],
+          color_identity: ['R'],
+          legalities: { commander: 'legal', modern: 'legal' },
+        },
+        {
+          id: 'test-card-2',
+          name: 'Test Card 2',
+          cmc: 2,
+          type_line: 'Sorcery',
+          oracle_text: 'Test text',
+          colors: ['U'],
+          color_identity: ['U'],
+          legalities: { commander: 'legal', modern: 'legal' },
+        },
+      ];
+
+      await addCards(cards);
+      const status = await getDatabaseStatus();
+      expect(status.cardCount).toBe(2);
+    });
+
+    it('should update existing card', async () => {
+      const card: MinimalCard = {
+        id: 'test-card-1',
+        name: 'Test Card',
+        cmc: 1,
+        type_line: 'Creature',
+        oracle_text: 'Original text',
+        colors: ['R'],
+        color_identity: ['R'],
+        legalities: { commander: 'legal', modern: 'legal' },
+      };
+
+      await addCard(card);
+
+      const updatedCard: MinimalCard = {
+        ...card,
+        oracle_text: 'Updated text',
+      };
+
+      await addCard(updatedCard);
+
+      const retrieved = await getCardById('test-card-1');
+      expect(retrieved?.oracle_text).toBe('Updated text');
+    });
+
+    it('should clear all cards', async () => {
+      const cards: MinimalCard[] = [
+        {
+          id: 'test-card-1',
+          name: 'Test Card 1',
+          cmc: 1,
+          type_line: 'Creature',
+          oracle_text: 'Test text',
+          colors: ['R'],
+          color_identity: ['R'],
+          legalities: { commander: 'legal', modern: 'legal' },
+        },
+        {
+          id: 'test-card-2',
+          name: 'Test Card 2',
+          cmc: 2,
+          type_line: 'Sorcery',
+          oracle_text: 'Test text',
+          colors: ['U'],
+          color_identity: ['U'],
+          legalities: { commander: 'legal', modern: 'legal' },
+        },
+      ];
+
+      await addCards(cards);
+      let status = await getDatabaseStatus();
+      expect(status.cardCount).toBe(2);
+
+      await clearDatabase();
+      status = await getDatabaseStatus();
+      expect(status.cardCount).toBe(0);
+    });
+
+    it('should get all cards', async () => {
+      const cards: MinimalCard[] = [
+        {
+          id: 'test-card-1',
+          name: 'Test Card 1',
+          cmc: 1,
+          type_line: 'Creature',
+          oracle_text: 'Test text',
+          colors: ['R'],
+          color_identity: ['R'],
+          legalities: { commander: 'legal', modern: 'legal' },
+        },
+        {
+          id: 'test-card-2',
+          name: 'Test Card 2',
+          cmc: 2,
+          type_line: 'Sorcery',
+          oracle_text: 'Test text',
+          colors: ['U'],
+          color_identity: ['U'],
+          legalities: { commander: 'legal', modern: 'legal' },
+        },
+      ];
+
+      await addCards(cards);
+      const allCards = await getAllCards();
+      expect(allCards.length).toBe(2);
+    });
   });
 
-  it("should support multiple keywords", () => {
-    const card: GenericCard = {
-      id: 'test-004',
-      name: 'Test Creature',
-      type: GenericCardType.CREATURE,
-      subtypes: ['Test'],
-      manaCost: '{2}{W}',
-      cmc: 3,
-      colors: [GenericColor.WHITE],
-      colorIdentity: [GenericColor.WHITE],
-      text: 'Flying, first strike, vigilance',
-      keywords: [AbilityKeyword.FLYING, AbilityKeyword.FIRST_STRIKE, AbilityKeyword.VIGILANCE],
-      power: 3,
-      toughness: 3,
-      legalities: {
-        commander: 'legal',
-        standard: 'legal',
-        modern: 'legal',
-        pioneer: 'legal',
-        legacy: 'legal',
-        vintage: 'legal',
-        pauper: 'legal'
-      }
-    };
+  describe('Error Handling', () => {
+    it('should handle invalid card data gracefully', async () => {
+      // This test ensures the database doesn't crash on invalid data
+      const result = await searchCardsOffline('InvalidCardThatDoesNotExist');
+      expect(Array.isArray(result)).toBe(true);
+    });
 
-    expect(card.keywords).toHaveLength(3);
-    expect(card.keywords).toContain(AbilityKeyword.FLYING);
-    expect(card.keywords).toContain(AbilityKeyword.FIRST_STRIKE);
-    expect(card.keywords).toContain(AbilityKeyword.VIGILANCE);
-  });
-
-  it("should support custom properties", () => {
-    const card: GenericCard = {
-      id: 'test-005',
-      name: 'Test Card',
-      type: GenericCardType.ARTIFACT,
-      subtypes: [],
-      manaCost: '{C}',
-      cmc: 1,
-      colors: [],
-      colorIdentity: [],
-      text: 'Test ability.',
-      keywords: [],
-      legalities: {
-        commander: 'legal',
-        standard: 'legal',
-        modern: 'legal',
-        pioneer: 'legal',
-        legacy: 'legal',
-        vintage: 'legal',
-        pauper: 'legal'
-      },
-      customProperties: {
-        rarity: 'common',
-        set: 'Test Set',
-        artist: 'Test Artist'
-      }
-    };
-
-    expect(card.customProperties).toBeDefined();
-    expect(card.customProperties?.rarity).toBe('common');
-  });
-});
-
-describe("Card Database - Integration", () => {
-  beforeEach(async () => {
-    await initializeCardDatabase();
-  });
-
-  it("should support searching and retrieving in sequence", () => {
-    const searchResults = searchCardsOffline("Fire");
-    expect(searchResults.length).toBeGreaterThan(0);
-
-    const firstResult = searchResults[0];
-    const retrievedCard = getCardById(firstResult.id);
-    expect(retrievedCard).toEqual(firstResult);
-  });
-
-  it("should handle all operations with generic cards", () => {
-    const card = getCardByName("Forest Elf");
-    expect(card).toBeDefined();
-    if (card) {
-      expect(isGenericCard(card)).toBe(true);
-      expect(isCardLegal(card.name, "commander")).toBe(true);
-
-      const searchResults = searchCardsOffline("Elf");
-      expect(searchResults.some(c => c.name === "Forest Elf")).toBe(true);
-    }
-  });
-
-  it("should maintain data integrity across conversions", () => {
-    const card = getCardByName("Mana Ring");
-    expect(card).toBeDefined();
-
-    if (card && isGenericCard(card)) {
-      // Convert to minimal and back
-      const minimal = genericCardToMinimalCard(card);
-      const convertedBack = minimalCardToGenericCard(minimal);
-
-      expect(convertedBack.name).toBe(card.name);
-      expect(convertedBack.type).toBe(card.type);
-      expect(convertedBack.text).toBe(card.text);
-    }
+    it('should handle empty database', async () => {
+      await clearDatabase();
+      const result = await searchCardsOffline('Sol Ring');
+      expect(result).toEqual([]);
+    });
   });
 });

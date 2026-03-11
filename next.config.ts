@@ -1,14 +1,13 @@
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Static export for client-side only deployment
+  // Now that all Server Actions have been removed, we can use static export
+  output: 'export',
+
+  // Configure image optimization
   images: {
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
@@ -28,8 +27,34 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'cards.scryfall.io',
+        port: '',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.scryfall.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
+
+  // Ensure trailing slashes for static hosting
+  trailingSlash: true,
+
+  // TypeScript and ESLint settings
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
+  // Set base path for deployment
+  basePath: '',
 };
 
 export default nextConfig;

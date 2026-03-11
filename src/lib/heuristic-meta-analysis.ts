@@ -1,8 +1,8 @@
 /**
- * @fileOverview Heuristic meta analysis for deck optimization
+ * @fileOverview Heuristic metagame analysis for Magic: The Gathering
  *
  * This module provides offline metagame analysis using rule-based heuristics
- * and predefined format information instead of AI API calls.
+ * and format-specific data instead of AI API calls.
  * Works entirely client-side for offline support.
  */
 
@@ -10,779 +10,598 @@ import type { DeckCard } from '@/app/actions';
 
 // Output types matching the original AI meta analysis
 export interface MetaAnalysisOutput {
-  metaOverview: string;
-  deckStrengths: string[];
-  deckWeaknesses: string[];
-  matchupAnalysis: Array<{
-    archetype: string;
-    recommendation: string;
-    sideboardNotes?: string;
-  }>;
-  cardSuggestions: {
-    cardsToAdd: Array<{ name: string; quantity: number; reason: string }>;
-    cardsToRemove: Array<{ name: string; quantity: number; reason: string }>;
-  };
-  sideboardSuggestions?: Array<{ name: string; quantity: number; reason: string }>;
-  strategicAdvice: string;
-}
-
-// Format metagame data
-interface FormatMeta {
-  tierDecks: string[];
-  dominantStrategies: string[];
-  trends: string[];
-  matchups: Array<{
-    archetype: string;
-    description: string;
+  currentMeta: string;
+  archetypes: Array<{
+    name: string;
+    prevalence: string;
+    playstyle: string;
+    keyCards: string[];
     weaknesses: string[];
   }>;
+  recommendations: Array<{
+    title: string;
+    description: string;
+    cardsToAdd: Array<{ name: string; quantity: number }>;
+    cardsToRemove: Array<{ name: string; quantity: number }>;
+    matchup: {
+      against: string;
+      strategy: string;
+    };
+  }>;
 }
 
-const FORMAT_META_DATA: Record<string, FormatMeta> = {
-  commander: {
-    tierDecks: [
-      "Tier 1: Commander staples and optimized builds",
-      "Tier 2: Focused tribal and strategy decks",
-      "Tier 3: Casual and preconstructed-style decks",
-    ],
-    dominantStrategies: [
-      "Token generation and board swarming",
-      "Control through counterspells and board wipes",
-      "Combo wins with infinite loops or massive damage",
-      "Midrange value through planeswalkers and recursive threats",
-    ],
-    trends: [
-      "Increased focus on card advantage engines",
-      "More efficient removal spells becoming standard",
-      "Mana acceleration as a priority for all decks",
-      "Flexibility in sideboard options becoming valued",
-    ],
-    matchups: [
-      {
-        archetype: "Control",
-        description: "Decks focused on counterspells, removal, and card advantage",
-        weaknesses: ["Aggressive decks that apply early pressure", "Threats that generate multiple cards per spell"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast creature-based decks that aim to win quickly",
-        weaknesses: ["Board wipes and mass removal", "Lifegain and defensive creatures"],
-      },
-      {
-        archetype: "Midrange",
-        description: "Decks with efficient threats backed by removal and value",
-        weaknesses: ["Faster aggro decks", "Control decks that out-value them"],
-      },
-      {
-        archetype: "Combo",
-        description: "Decks that assemble specific card combinations for wins",
-        weaknesses: ["Disruption and counterspells", "Graveyard hate for graveyard-based combos"],
-      },
-      {
-        archetype: "Ramp",
-        description: "Decks that accelerate mana for powerful threats",
-        weaknesses: ["Early aggression", "Land destruction and mana denial"],
-      },
-      {
-        archetype: "Tribal",
-        description: "Decks focused on synergies within a creature type",
-        weaknesses: ["Board wipes", "Spot removal for key tribal pieces"],
-      },
-    ],
+// Format-specific metagame data
+const FORMAT_META: Record<string, Array<{
+  name: string;
+  prevalence: string;
+  playstyle: string;
+  keyCards: string[];
+  weaknesses: string[];
+}>> = {
+  commander: [
+    {
+      name: "Control",
+      prevalence: "High",
+      playstyle: "Slow the game and control the board with removal and counterspells",
+      keyCards: ["Counterspell", "Force of Will", "Cyclonic Rift", "Teferi's Protection", "Mana Drain"],
+      weaknesses: ["Fast aggro", "Asymmetrical disruption", "Graveyard hate"],
+    },
+    {
+      name: "Voltron",
+      prevalence: "Medium",
+      playstyle: "Equip the commander and attack quickly",
+      keyCards: ["Swiftfoot Boots", "Whispersilk Cloak", "Hero's Blade", "Sword of the Animist", "Colossus Hammer"],
+      weaknesses: ["Creature removal", "Mass removal", "Tuck effects"],
+    },
+    {
+      name: "Storm Combo",
+      prevalence: "Medium",
+      playstyle: "Generate massive mana and storm count to win",
+      keyCards: ["Ad Nauseam", "Tendrils of Agony", "Mind's Desire", "Past in Flames", "Mana Crypt"],
+      weaknesses: ["Counterspells", "Graveyard hate", "Rule of Law effects"],
+    },
+    {
+      name: "Stax",
+      prevalence: "Medium",
+      playstyle: "Tax and restrict opponents' resources",
+      keyCards: ["Static Orb", "Stasis", "Armageddon", "Winter Orb", "Torpor Orb"],
+      weaknesses: ["Mana dorks", "Counterspells", "Artifact hate"],
+    },
+    {
+      name: "Midrange Value",
+      prevalence: "High",
+      playstyle: "Play efficient threats and generate card advantage",
+      keyCards: ["Rishkar's Expertise", "Eternal Witness", "Birthing Pod", "Meren of Clan Nel Toth", "Greenwarden of Murasa"],
+      weaknesses: ["Counterspells", "Combo decks", "Mass removal"],
+    },
+    {
+      name: "Tokens",
+      prevalence: "Medium",
+      playstyle: "Create armies of creature tokens",
+      keyCards: ["Anointed Procession", "Parallel Lives", "Intangible Virtue", "Secure the Wastes", "Avenger of Zendikar"],
+      weaknesses: ["Mass removal", "Flying", "Creature protection"],
+    },
+  ],
+  modern: [
+    {
+      name: "Rakdos Scam",
+      prevalence: "High",
+      playstyle: "Cast huge threats early using Grief and Fury",
+      keyCards: ["Grief", "Fury", "Pitch Spice", "Undying Evil", "Street Wraith"],
+      weaknesses: ["Graveyard hate", "Counterspells", "Direct removal"],
+    },
+    {
+      name: "Burn",
+      prevalence: "Medium",
+      playstyle: "Deal 20 damage as fast as possible",
+      keyCards: ["Lightning Bolt", "Boros Charm", "Goblin Guide", "Eidolon of the Great Revel", "Monastery Swiftspear"],
+      weaknesses: ["Lifegain", "Counterspells", "Aggressive creatures"],
+    },
+    {
+      name: "Hammer Time",
+      prevalence: "High",
+      playstyle: "Equip Colossus Hammer and attack quickly",
+      keyCards: ["Colossus Hammer", "Sigarda's Aid", "Urchin", "Emry, Lurker of the Loch", "Urza's Saga"],
+      weaknesses: ["Artifact hate", "Flying", "Mass removal"],
+    },
+    {
+      name: "Izzet Tempo",
+      prevalence: "Medium",
+      playstyle: "Play efficient threats and counter spells",
+      keyCards: ["Dragon's Rage Channeler", "Expressive Iteration", "Counterspell", "Lightning Bolt", "Galvanic Iteration"],
+      weaknesses: ["Graveyard hate", "Fast aggro", "Counterspells"],
+    },
+    {
+      name: "Amulet Titan",
+      prevalence: "Low",
+      playstyle: "Primeval Titan with Amulet of Vigor",
+      keyCards: ["Primeval Titan", "Amulet of Vigor", "Summer Bloom", "Sakura-Tribe Scout", "Azusa, Lost but Seeking"],
+      weaknesses: ["Land destruction", "Counterspells", "Graveyard hate"],
+    },
+    {
+      name: "Tron",
+      prevalence: "Medium",
+      playstyle: "Tron lands for big mana threats",
+      keyCards: ["Karn Liberated", "Ugin, the Spirit Dragon", "Wurmcoil Engine", "Pyroclasm", "Oblivion Stone"],
+      weaknesses: ["Land destruction", "Aggro", "Counterspells"],
+    },
+  ],
+  standard: [
+    {
+      name: "Rakdos Midrange",
+      prevalence: "High",
+      playstyle: "Discard and destroy with efficient threats",
+      keyCards: ["Thoughtseize", "Sheoldred, the Apocalypse", "Abrade", "Chandra, Torch of Defiance", "Fable of the Mirror-Breaker"],
+      weaknesses: ["Counterspells", "Graveyard hate", "Flying"],
+    },
+    {
+      name: "Esper Legends",
+      prevalence: "Medium",
+      playstyle: "Play legendary permanents for value",
+      keyCards: ["Kaito, Bane of Nightmares", "The Wandering Emperor", "Kaito Shizuki", "Lands", "Legends"],
+      weaknesses: ["Legend rule", "Artifact hate", "Counterspells"],
+    },
+    {
+      name: "Azorius Control",
+      prevalence: "High",
+      playstyle: "Control the board and win with planeswalkers",
+      keyCards: ["Teferi, Time Raveler", "Narset of the Ancient Way", "Absorb", "Deputy of Detention", "Settle the Wreckage"],
+      weaknesses: ["Hexproof", "Combo", "Aggro"],
+    },
+    {
+      name: "Mono-Red Aggro",
+      prevalence: "Medium",
+      playstyle: "Fast red creatures with burn",
+      keyCards: ["Phoenix", "Ritual of Soot", "Kumano Faces Kakkazan", "Reinforced Ronin", "Bonecrusher Giant"],
+      weaknesses: ["Lifegain", "Mass removal", "Counterspells"],
+    },
+    {
+      name: "Bant Midrange",
+      prevalence: "Medium",
+      playstyle: "Green-white value with blue interaction",
+      keyCards: ["Raffine, Scheming Seer", "Sheoldred's Edict", "March of Wretched Sorrow", "Lands", "Value engines"],
+      weaknesses: ["Aggro", "Combo", "Graveyard hate"],
+    },
+    {
+      name: "Gruul Aggro",
+      prevalence: "Medium",
+      playstyle: "Fast green-red creatures",
+      keyCards: ["Questing Beast", "Domri, Anarch of Bolas", "Cinder Glade", "Wrenn and Six", "Blast Zone"],
+      weaknesses: ["Counterspells", "Flying", "Mass removal"],
+    },
+  ],
+  pioneer: [
+    {
+      name: "Mono-White Aggro",
+      prevalence: "High",
+      playstyle: "Fast white creatures with pump spells",
+      keyCards: ["Kor Blademaster", "Gideon's Company", "Valiant Veteran", "Selfless Savior", "Mantle of the Ancients"],
+      weaknesses: ["Mass removal", "Flying", "Counterspells"],
+    },
+    {
+      name: "Azorius Control",
+      prevalence: "Medium",
+      playstyle: "Control the board with counterspells and removal",
+      keyCards: ["Control Magic", "Teferi, Time Raveler", "Memory Deluge", "Deputy of Detention", "Absorb"],
+      weaknesses: ["Hexproof", "Combo", "Fast aggro"],
+    },
+    {
+      name: "Rakdos Midrange",
+      prevalence: "High",
+      playstyle: "Discard and destroy with efficient threats",
+      keyCards: ["Sheoldred, the Apocalypse", "Thoughtseize", "Abrade", "Chandra, Torch of Defiance", "Fatal Push"],
+      weaknesses: ["Counterspells", "Graveyard hate", "Flying"],
+    },
+    {
+      name: "Niv-Mizzet Paradox",
+      prevalence: "Medium",
+      playstyle: "Niv-Mizzet Reborn with Paradox Engine",
+      keyCards: ["Niv-Mizzet Reborn", "Paradox Engine", "Wilderness Reclamation", "Karn, the Great Creator", "Ugin, the Spirit Dragon"],
+      weaknesses: ["Artifact hate", "Counterspells", "Graveyard hate"],
+    },
+    {
+      name: "Abzan Midrange",
+      prevalence: "Medium",
+      playstyle: "Green-white-black value",
+      keyCards: ["Vraska, Golgari Queen", "Vraska's Contempt", "Wildgrowth Walker", "Questing Beast", "Knight of the Ebon Legion"],
+      weaknesses: ["Aggro", "Combo", "Graveyard hate"],
+    },
+  ],
+  legacy: [
+    {
+      name: "Sultai Control",
+      prevalence: "High",
+      playstyle: "Brainstorm and Ponder with value engines",
+      keyCards: ["Brainstorm", "Ponder", "Force of Will", "Uro, Titan of Nature's Wrath", "Veil of Summer"],
+      weaknesses: ["Aggro", "Combo", "Graveyard hate"],
+    },
+    {
+      name: "Delver",
+      prevalence: "Medium",
+      playstyle: "Delver of Secrets with efficient blue spells",
+      keyCards: ["Delver of Secrets", "Brainstorm", "Ponder", "Force of Will", "Lightning Bolt"],
+      weaknesses: ["Mass removal", "Graveyard hate", "Counterspells"],
+    },
+    {
+      name: "Storm",
+      prevalence: "Medium",
+      playstyle: "Generate massive storm count",
+      keyCards: ["Brainstorm", "Ponder", "Lion's Eye Diamond", "Tendrils of Agony", "Past in Flames"],
+      weaknesses: ["Counterspells", "Graveyard hate", "Rule of Law effects"],
+    },
+    {
+      name: "Reanimator",
+      prevalence: "Medium",
+      playstyle: "Reanimate big creatures quickly",
+      keyCards: ["Entomb", "Animate Dead", "Griselbrand", "Ashen Rider", "Tidespout Tyrant"],
+      weaknesses: ["Graveyard hate", "Counterspells", "Exile effects"],
+    },
+    {
+      name: "Elves",
+      prevalence: "Medium",
+      playstyle: "Elf tribal with massive board presence",
+      keyCards: ["Elves of Deep Shadow", "Heritage Druid", "Elvish Archdruid", "Craterhoof Behemoth", "Wirewood Symbiote"],
+      weaknesses: ["Mass removal", "Graveyard hate", "Counterspells"],
+    },
+  ],
+  vintage: [
+    {
+      name: "Paradoxical Outcome",
+      prevalence: "High",
+      playstyle: "Paradoxical Outcome with artifacts",
+      keyCards: ["Paradoxical Outcome", "Moxen", "Black Lotus", "Ancestral Recall", "Time Walk"],
+      weaknesses: ["Artifact hate", "Graveyard hate", "Force of Will"],
+    },
+    {
+      name: "Grixis Control",
+      prevalence: "Medium",
+      playstyle: "Powerful control with free counters",
+      keyCards: ["Force of Will", "Mental Misstep", "Dack Fayden", "Snapcaster Mage", "Vampiric Tutor"],
+      weaknesses: ["Aggro", "Combo", "Graveyard hate"],
+    },
+    {
+      name: "Bant Mentor",
+      prevalence: "Medium",
+      playstyle: "Monastery Mentor with power",
+      keyCards: ["Monastery Mentor", "Moxen", "Ancestral Recall", "Time Walk", "Preordain"],
+      weaknesses: ["Artifact hate", "Graveyard hate", "Counterspells"],
+    },
+    {
+      name: "Shops",
+      prevalence: "Medium",
+      playstyle: "Workshop artifacts with taxes",
+      keyCards: ["Workshop", "Trinisphere", "Sphere of Resistance", "Chalice of the Void", "Metalworker"],
+      weaknesses: ["By Force", "Null Rod", "Shatterstorm", "Counterspells"],
+    },
+  ],
+  pauper: [
+    {
+      name: "Mono-Blue Faeries",
+      prevalence: "High",
+      playstyle: "Blue fliers with counterspells",
+      keyCards: ["Counterspell", "Spellstutter Sprite", "Ninja of the Deep Hours", "Brainstorm", "Preordain"],
+      weaknesses: ["Aggro", "Graveyard hate", "Mass removal"],
+    },
+    {
+      name: "Burn",
+      prevalence: "Medium",
+      playstyle: "Burn spells for fast wins",
+      keyCards: ["Lightning Bolt", "Chain Lightning", "Flame Slash", "Gitaxian Probe", "Goblin Guide"],
+      weaknesses: ["Lifegain", "Counterspells", "Aggressive creatures"],
+    },
+    {
+      name: "Mono-White Heroic",
+      prevalence: "Medium",
+      playstyle: "Heroic creatures with pump spells",
+      keyCards: ["Monastery Swiftspear", "Grapeshot", "Temur Battle Rage", "Assault Strobe", "Mutagenic Growth"],
+      weaknesses: ["Mass removal", "Counterspells", "Flying"],
+    },
+    {
+      name: "Tron",
+      prevalence: "Low",
+      playstyle: "Tron lands for big mana",
+      keyCards: ["Urza's Tower", "Urza's Mine", "Urza's Power Plant", "Rolling Thunder", "Ulamog's Crusher"],
+      weaknesses: ["Land destruction", "Aggro", "Counterspells"],
+    },
+    {
+      name: "Affinity",
+      prevalence: "Medium",
+      playstyle: "Affinity artifacts for fast wins",
+      keyCards: ["Myr Enforcer", "Frogmite", "Atog", "Flint", "Galvanic Blast"],
+      weaknesses: ["Artifact hate", "Counterspells", "Flying"],
+    },
+  ],
+};
+
+// Generic metagame for formats without specific data
+const GENERIC_META: Array<{
+  name: string;
+  prevalence: string;
+  playstyle: string;
+  keyCards: string[];
+  weaknesses: string[];
+}> = [
+  {
+    name: "Control",
+    prevalence: "Medium",
+    playstyle: "Control the board with removal and counterspells",
+    keyCards: ["Counterspell", "Removal", "Card Draw", "Finisher"],
+    weaknesses: ["Aggro", "Combo", "Graveyard hate"],
   },
-  standard: {
-    tierDecks: [
-      "Tier 1: Top competitive decks with consistent win rates",
-      "Tier 2: Viable tournament contenders",
-      "Tier 3: Budget and casual-friendly options",
-    ],
-    dominantStrategies: [
-      "Midrange value with efficient threats",
-      "Control with counterspells and removal",
-      "Aggro with fast creature pressure",
-      "Combo builds with win conditions",
-    ],
-    trends: [
-      "Increasing focus on card advantage",
-      "More versatile removal spells",
-      "Mana consistency through fixers",
-      "Sideboard flexibility for varied matchups",
-    ],
-    matchups: [
-      {
-        archetype: "Control",
-        description: "Decks with counterspells, removal, and card advantage",
-        weaknesses: ["Aggro with early pressure", "Threats that generate multiple cards"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast creature decks aiming for quick wins",
-        weaknesses: ["Board wipes", "Lifegain effects"],
-      },
-      {
-        archetype: "Midrange",
-        description: "Efficient threats with removal and value",
-        weaknesses: ["Faster aggro", "Control that out-values"],
-      },
-    ],
+  {
+    name: "Aggro",
+    prevalence: "High",
+    playstyle: "Fast creatures and burn spells",
+    keyCards: ["Cheap Creatures", "Burn", "Haste", "Pump"],
+    weaknesses: ["Mass removal", "Lifegain", "Counterspells"],
   },
-  modern: {
-    tierDecks: [
-      "Tier 1: Established meta decks with proven performance",
-      "Tier 2: Competitive but less popular options",
-      "Tier 3: Niche and budget strategies",
-    ],
-    dominantStrategies: [
-      "Linear combo decks",
-      "Aggro with fast threats",
-      "Midrange with value",
-      "Control with answers",
-    ],
-    trends: [
-      "Powerful combo decks",
-      "Efficient removal suites",
-      "Mana acceleration",
-      "Graveyard strategies",
-    ],
-    matchups: [
-      {
-        archetype: "Linear Combo",
-        description: "Decks that win through specific card combinations",
-        weaknesses: ["Graveyard hate", "Counterspells and disruption"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast creature-based strategies",
-        weaknesses: ["Board wipes", "Life gain"],
-      },
-      {
-        archetype: "Midrange",
-        description: "Value-based decks with removal",
-        weaknesses: ["Faster aggro", "Control decks"],
-      },
-    ],
+  {
+    name: "Midrange",
+    prevalence: "Medium",
+    playstyle: "Efficient threats with value engines",
+    keyCards: ["Value Creatures", "Removal", "Card Draw", "Finisher"],
+    weaknesses: ["Combo", "Aggro", "Counterspells"],
   },
-  pioneer: {
-    tierDecks: [
-      "Tier 1: Top competitive strategies",
-      "Tier 2: Viable tournament contenders",
-      "Tier 3: Emerging and budget options",
-    ],
-    dominantStrategies: [
-      "Midrange value",
-      "Aggro pressure",
-      "Control with answers",
-      "Combo builds",
-    ],
-    trends: [
-      "Card advantage focus",
-      "Removal efficiency",
-      "Mana fixing",
-      "Sideboard strategy",
-    ],
-    matchups: [
-      {
-        archetype: "Midrange",
-        description: "Value-based creature decks",
-        weaknesses: ["Faster aggro", "Control"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast creature decks",
-        weaknesses: ["Board wipes", "Life gain"],
-      },
-      {
-        archetype: "Control",
-        description: "Answer-focused decks",
-        weaknesses: ["Early pressure", "Multiple threats"],
-      },
-    ],
+  {
+    name: "Combo",
+    prevalence: "Low",
+    playstyle: "Assemble combo pieces for instant win",
+    keyCards: ["Combo Pieces", "Card Draw", "Protection", "Tutors"],
+    weaknesses: ["Counterspells", "Graveyard hate", "Rule of Law"],
   },
-  legacy: {
-    tierDecks: [
-      "Tier 1: Top-tier competitive decks",
-      "Tier 2: Viable tournament options",
-      "Tier 3: Budget and niche strategies",
-    ],
-    dominantStrategies: [
-      "Efficient combos",
-      "Powerful aggro",
-      "Control with answers",
-      "Midrange value",
-    ],
-    trends: [
-      "Fast combo decks",
-      "Powerful removal",
-      "Mana acceleration",
-      "Free spells",
-    ],
-    matchups: [
-      {
-        archetype: "Combo",
-        description: "Fast win condition decks",
-        weaknesses: ["Graveyard hate", "Counterspells"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast creature pressure",
-        weaknesses: ["Board wipes", "Life gain"],
-      },
-      {
-        archetype: "Control",
-        description: "Answer-focused decks",
-        weaknesses: ["Early pressure", "Multiple threats"],
-      },
-    ],
+];
+
+// Archetype matchups
+const MATCHUP_GUIDE: Record<string, {
+  strength: string[];
+  weakness: string[];
+  strategy: string;
+}> = {
+  Control: {
+    strength: ["Combo", "Midrange", "Slow decks"],
+    weakness: ["Aggro", "Asymmetrical disruption", "Hexproof"],
+    strategy: "Play slowly and protect your threats. Use countermagic strategically on key spells. Draw cards to find answers.",
   },
-  vintage: {
-    tierDecks: [
-      "Tier 1: Top-tier competitive strategies",
-      "Tier 2: Viable tournament options",
-      "Tier 3: Budget and niche builds",
-    ],
-    dominantStrategies: [
-      "Powerful combos",
-      "Aggro with power",
-      "Control with power",
-      "Midrange with value",
-    ],
-    trends: [
-      "Power card interactions",
-      "Fast combos",
-      "Efficient answers",
-      "Mana acceleration",
-    ],
-    matchups: [
-      {
-        archetype: "Combo",
-        description: "Fast combo with power",
-        weaknesses: ["Disruption", "Counterspells"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast aggro with power",
-        weaknesses: ["Board wipes", "Life gain"],
-      },
-      {
-        archetype: "Control",
-        description: "Answer-based with power",
-        weaknesses: ["Early pressure", "Multiple threats"],
-      },
-    ],
+  Aggro: {
+    strength: ["Combo", "Control", "Slow decks"],
+    weakness: ["Midrange", "Mass removal", "Lifegain"],
+    strategy: "Apply pressure early and often. Don't overextend into mass removal. Save burn for reach.",
   },
-  pauper: {
-    tierDecks: [
-      "Tier 1: Top-tier pauper strategies",
-      "Tier 2: Viable tournament options",
-      "Tier 3: Budget builds",
-    ],
-    dominantStrategies: [
-      "Pauper-specific combos",
-      "Aggro with commons",
-      "Control with commons",
-      "Midrange value",
-    ],
-    trends: [
-      "Common-only synergies",
-      "Efficient commons",
-      "Mana fixing",
-      "Sideboard options",
-    ],
-    matchups: [
-      {
-        archetype: "Combo",
-        description: "Common-based combos",
-        weaknesses: ["Graveyard hate", "Disruption"],
-      },
-      {
-        archetype: "Aggro",
-        description: "Fast common creatures",
-        weaknesses: ["Board wipes", "Life gain"],
-      },
-      {
-        archetype: "Control",
-        description: "Common-based control",
-        weaknesses: ["Early pressure", "Multiple threats"],
-      },
-    ],
+  Midrange: {
+    strength: ["Aggro", "Control", "Combo"],
+    weakness: ["Fast combo", "Graveyard hate", "Flying"],
+    strategy: "Play value creatures and generate card advantage. Use removal efficiently. Be patient.",
+  },
+  Combo: {
+    strength: ["Control", "Slow decks", "Unprepared opponents"],
+    weakness: ["Aggro", "Counterspells", "Graveyard hate", "Rule of Law"],
+    strategy: "Find combo pieces quickly with card draw and tutors. Protect combo with countermagic. Have backup plans.",
+  },
+  Ramp: {
+    strength: ["Midrange", "Control", "Slow decks"],
+    weakness: ["Aggro", "Combo", "Land destruction"],
+    strategy: "Ramp early and play big threats. Use card draw to find bombs. Protect ramp with countermagic.",
+  },
+  Tribal: {
+    strength: ["Midrange", "Unprepared opponents"],
+    weakness: ["Mass removal", "Control", "Flying"],
+    strategy: "Apply pressure with tribal synergies. Use lords and buffs to overwhelm. Have backup threats.",
   },
 };
 
-// Card suggestions by format and archetype
-const CARD_SUGGESTIONS_BY_FORMAT: Record<string, Record<string, Array<{ name: string; quantity: number; reason: string }>>> = {
-  commander: {
-    control: [
-      { name: "Swords to Plowshares", quantity: 2, reason: "Best removal in Commander" },
-      { name: "Cyclonic Rift", quantity: 1, reason: "Versatile board wipe" },
-      { name: "Mystical Tutor", quantity: 1, reason: "Find key answers" },
-      { name: "Counterbalance", quantity: 1, reason: "Control the top of library" },
-    ],
-    aggro: [
-      { name: "Lightning Bolt", quantity: 2, reason: "Removal and reach" },
-      { name: "Swiftspear", quantity: 2, reason: "Fast threat with prowess" },
-      { name: "Goblin Guide", quantity: 2, reason: "Aggressive early threat" },
-    ],
-    midrange: [
-      { name: "Abrade", quantity: 2, reason: "Versatile removal" },
-      { name: "Thoughtseize", quantity: 2, reason: "Disruption and information" },
-      { name: "Kroxa, Titan of Death's Hunger", quantity: 1, reason: "Value creature" },
-    ],
-  },
-  standard: {
-    control: [
-      { name: "Abrade", quantity: 2, reason: "Versatile removal" },
-      { name: "Cunning Dismissal", quantity: 2, reason: "Counter spell" },
-      { name: "Memory Deluge", quantity: 2, reason: "Card advantage" },
-    ],
-    aggro: [
-      { name: "Play with Fire", quantity: 2, reason: "Removal and reach" },
-      { name: "Goblin Guide", quantity: 2, reason: "Fast threat" },
-    ],
-    midrange: [
-      { name: "Abrade", quantity: 2, reason: "Removal" },
-      { name: "Thoughtseize", quantity: 2, reason: "Disruption" },
-    ],
-  },
-  modern: {
-    control: [
-      { name: "Path to Exile", quantity: 2, reason: "Best removal in Modern" },
-      { name: "Mana Leak", quantity: 2, reason: "Counterspell" },
-      { name: "Cryptic Command", quantity: 1, reason: "Versatile answer" },
-    ],
-    aggro: [
-      { name: "Lightning Bolt", quantity: 2, reason: "Efficient removal" },
-      { name: "Goblin Guide", quantity: 2, reason: "Fast threat" },
-    ],
-    midrange: [
-      { name: "Abrade", quantity: 2, reason: "Removal" },
-      { name: "Thoughtseize", quantity: 2, reason: "Disruption" },
-    ],
-  },
-  pioneer: {
-    control: [
-      { name: "Thought Erasure", quantity: 2, reason: "Disruption" },
-      { name: "Absorb", quantity: 2, reason: "Counterspell with life gain" },
-    ],
-    aggro: [
-      { name: "Lightning Strike", quantity: 2, reason: "Removal" },
-      { name: "Goblin Guide", quantity: 2, reason: "Fast threat" },
-    ],
-    midrange: [
-      { name: "Abrade", quantity: 2, reason: "Removal" },
-      { name: "Thoughtseize", quantity: 2, reason: "Disruption" },
-    ],
-  },
-  legacy: {
-    control: [
-      { name: "Force of Will", quantity: 1, reason: "Free counter spell" },
-      { name: " Swords to Plowshares", quantity: 2, reason: "Best removal" },
-    ],
-    aggro: [
-      { name: "Lightning Bolt", quantity: 2, reason: "Efficient removal" },
-      { name: "Goblin Guide", quantity: 2, reason: "Fast threat" },
-    ],
-    midrange: [
-      { name: "Thoughtseize", quantity: 2, reason: "Disruption" },
-      { name: "Abrade", quantity: 2, reason: "Removal" },
-    ],
-  },
-  vintage: {
-    control: [
-      { name: "Force of Will", quantity: 1, reason: "Free counter" },
-      { name: "Mental Misstep", quantity: 2, reason: "Counter low-cost spells" },
-    ],
-    aggro: [
-      { name: "Lightning Bolt", quantity: 2, reason: "Efficient removal" },
-      { name: "Goblin Guide", quantity: 2, reason: "Fast threat" },
-    ],
-    midrange: [
-      { name: "Thoughtseize", quantity: 2, reason: "Disruption" },
-      { name: "Abrade", quantity: 2, reason: "Removal" },
-    ],
-  },
-  pauper: {
-    control: [
-      { name: "Counterspell", quantity: 2, reason: "Best counter in Pauper" },
-      { name: "Galvanic Blast", quantity: 2, reason: "Removal" },
-    ],
-    aggro: [
-      { name: "Lightning Bolt", quantity: 2, reason: "Efficient removal" },
-      { name: "Goblin Guide", quantity: 2, reason: "Fast threat" },
-    ],
-    midrange: [
-      { name: "Abrade", quantity: 2, reason: "Removal" },
-      { name: "Duress", quantity: 2, reason: "Disruption" },
-    ],
-  },
-};
+// Analyze deck to detect archetype
+function detectDeckArchetype(deck: DeckCard[]): string {
+  const deckText = deck.map(card => card.name.toLowerCase()).join(' ');
 
-/**
- * Analyze metagame and provide deck suggestions using heuristics
- */
-export async function heuristicMetaAnalysis(
-  decklist: string,
-  format: string,
-  focusArchetype?: string
-): Promise<MetaAnalysisOutput> {
-  // Parse decklist to get cards
-  const lines = decklist.split('\n').filter(line => line.trim() !== '');
-  const cards: DeckCard[] = [];
-
-  for (const line of lines) {
-    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
-    if (match) {
-      const name = match[2]?.trim();
-      const count = parseInt(match[1] || '1', 10);
-      if (name && !/^\/\//.test(name) && name.toLowerCase() !== 'sideboard') {
-        cards.push({
-          id: `temp-${name}-${count}`,
-          name,
-          count,
-          type_line: 'Unknown',
-          cmc: 0,
-          colors: [],
-        } as DeckCard);
-      }
-    }
-  }
-
-  // Detect deck archetype
-  const archetype = focusArchetype || detectArchetype(cards);
-
-  // Get format meta data
-  const meta = FORMAT_META_DATA[format] || FORMAT_META_DATA['commander'];
-
-  // Generate analysis
-  const metaOverview = generateMetaOverview(format, meta);
-  const deckStrengths = generateDeckStrengths(cards, archetype, meta);
-  const deckWeaknesses = generateDeckWeaknesses(cards, archetype, meta);
-  const matchupAnalysis = generateMatchupAnalysis(archetype, meta);
-  const cardSuggestions = generateCardSuggestions(cards, format, archetype);
-  const sideboardSuggestions = generateSideboardSuggestions(format, archetype);
-  const strategicAdvice = generateStrategicAdvice(archetype, format, meta);
-
-  return {
-    metaOverview,
-    deckStrengths,
-    deckWeaknesses,
-    matchupAnalysis,
-    cardSuggestions,
-    sideboardSuggestions,
-    strategicAdvice,
-  };
-}
-
-/**
- * Detect deck archetype
- */
-function detectArchetype(cards: DeckCard[]): string {
-  const cardText = cards.map(c => c.name.toLowerCase()).join(' ');
-
-  const archetypeScores: Record<string, number> = {
-    control: (cardText.match(/control|counter|draw|wrath|instant|sorcery/gi) || []).length,
-    aggro: (cardText.match(/aggro|attack|haste|damage|fast|creature/gi) || []).length,
-    midrange: (cardText.match(/value|efficient|threat|mid|versatile/gi) || []).length,
-    combo: (cardText.match(/combo|infinite|loop|assemble|win condition/gi) || []).length,
-    ramp: (cardText.match(/ramp|mana|land|big|growth|search/gi) || []).length,
-    tribal: (cardText.match(/tribal|zombie|elf|goblin|vampire|human|wizard/gi) || []).length,
+  const keywordScores: Record<string, number> = {
+    control: 0,
+    aggro: 0,
+    midrange: 0,
+    combo: 0,
+    ramp: 0,
+    tribal: 0,
   };
 
-  return Object.entries(archetypeScores).sort((a, b) => b[1] - a[1])[0][0];
-}
+  const controlKeywords = ['counter', 'draw', 'wrath', 'sweep', 'control', 'instant', 'sorcery', 'bounce', 'removal'];
+  const aggroKeywords = ['attack', 'haste', 'battlefield', 'damage', 'fast', 'aggressive', 'burn', 'pump', 'warrior', 'knight'];
+  const midrangeKeywords = ['value', 'efficient', 'threat', 'mid', 'versatile', 'removal', 'draw', 'advantage'];
+  const comboKeywords = ['combo', 'infinite', 'loop', 'assemble', 'win condition', 'pieces', 'laboratory', 'engine'];
+  const rampKeywords = ['mana', 'ramp', 'land', 'forest', 'island', 'swamp', 'mountain', 'plains', 'creatures', 'mana value', 'x'];
+  const tribalKeywords = ['tribe', 'lord', 'goblin', 'elf', 'vampire', 'warrior', 'human', 'knight', 'soldier'];
 
-/**
- * Generate metagame overview
- */
-function generateMetaOverview(format: string, meta: FormatMeta): string {
-  return `Current ${format} Metagame Overview:
-
-Top Tier Decks:
-${meta.tierDecks.map(d => `- ${d}`).join('\n')}
-
-Dominant Strategies:
-${meta.dominantStrategies.map(s => `- ${s}`).join('\n')}
-
-Current Trends:
-${meta.trends.map(t => `- ${t}`).join('\n')}
-
-The metagame is diverse, with players adapting to counter popular strategies. Flexibility and sideboard preparation are key to success.`;
-}
-
-/**
- * Generate deck strengths
- */
-function generateDeckStrengths(cards: DeckCard[], archetype: string, meta: FormatMeta): string[] {
-  const strengths: string[] = [];
-
-  const cardCount = cards.reduce((sum, c) => sum + c.count, 0);
-  const avgCMC = cards.reduce((sum, c) => sum + ((c.cmc || 0) * c.count), 0) / cardCount;
-
-  if (avgCMC < 3) {
-    strengths.push(`Strong early game with average CMC of ${avgCMC.toFixed(1)}`);
-  } else if (avgCMC > 4) {
-    strengths.push(`Powerful late game with average CMC of ${avgCMC.toFixed(1)}`);
-  }
-
-  const creatureCount = cards.filter(c => c.type_line?.toLowerCase().includes('creature')).reduce((sum, c) => sum + c.count, 0);
-  if (creatureCount > cardCount * 0.3) {
-    strengths.push(`Strong board presence with ${creatureCount} creatures`);
-  }
-
-  const removalCount = cards.filter(c => {
-    const text = c.oracle_text?.toLowerCase() || '';
-    return text.includes('destroy') || text.includes('exile') || text.includes('counter');
-  }).reduce((sum, c) => sum + c.count, 0);
-
-  if (removalCount > 5) {
-    strengths.push(`Good removal suite with ${removalCount} answers`);
-  }
-
-  // Archetype-specific strengths
-  const archetypeStrengths: Record<string, string[]> = {
-    control: ["Strong card advantage potential", "Excellent answer suite"],
-    aggro: ["Fast starts", "High pressure potential"],
-    midrange: ["Good value generation", "Flexible game plan"],
-    combo: ["Fast win condition", "Clear path to victory"],
-    ramp: ["Powerful late game", "Consistent mana acceleration"],
-    tribal: ["Strong synergy potential", "Built-in tribal bonuses"],
-  };
-
-  strengths.push(...(archetypeStrengths[archetype] || []));
-
-  return strengths;
-}
-
-/**
- * Generate deck weaknesses
- */
-function generateDeckWeaknesses(cards: DeckCard[], archetype: string, meta: FormatMeta): string[] {
-  const weaknesses: string[] = [];
-
-  const cardCount = cards.reduce((sum, c) => sum + c.count, 0);
-  const avgCMC = cards.reduce((sum, c) => sum + ((c.cmc || 0) * c.count), 0) / cardCount;
-
-  if (avgCMC > 4) {
-    weaknesses.push(`Slow mana curve with average CMC of ${avgCMC.toFixed(1)}`);
-  } else if (avgCMC < 2 && cardCount < 100) {
-    weaknesses.push(`May lack late game power`);
-  }
-
-  const creatureCount = cards.filter(c => c.type_line?.toLowerCase().includes('creature')).reduce((sum, c) => sum + c.count, 0);
-  if (creatureCount < cardCount * 0.2) {
-    weaknesses.push(`Limited board presence with ${creatureCount} creatures`);
-  }
-
-  const removalCount = cards.filter(c => {
-    const text = c.oracle_text?.toLowerCase() || '';
-    return text.includes('destroy') || text.includes('exile') || text.includes('counter');
-  }).reduce((sum, c) => sum + c.count, 0);
-
-  if (removalCount < 5) {
-    weaknesses.push(`Limited answers to threats with ${removalCount} removal spells`);
-  }
-
-  // Archetype-specific weaknesses based on meta
-  const archetypeWeaknesses = meta.matchups.filter(m => {
-    return m.archetype.toLowerCase() === archetype.toLowerCase();
+  controlKeywords.forEach(kw => {
+    const matches = (deckText.match(new RegExp(kw, 'g')) || []).length;
+    keywordScores.control += matches;
   });
 
-  if (archetypeWeaknesses.length > 0) {
-    for (const matchup of archetypeWeaknesses) {
-      for (const weakness of matchup.weaknesses) {
-        weaknesses.push(`Weak to ${weakness}`);
-      }
+  aggroKeywords.forEach(kw => {
+    const matches = (deckText.match(new RegExp(kw, 'g')) || []).length;
+    keywordScores.aggro += matches;
+  });
+
+  midrangeKeywords.forEach(kw => {
+    const matches = (deckText.match(new RegExp(kw, 'g')) || []).length;
+    keywordScores.midrange += matches;
+  });
+
+  comboKeywords.forEach(kw => {
+    const matches = (deckText.match(new RegExp(kw, 'g')) || []).length;
+    keywordScores.combo += matches;
+  });
+
+  rampKeywords.forEach(kw => {
+    const matches = (deckText.match(new RegExp(kw, 'g')) || []).length;
+    keywordScores.ramp += matches;
+  });
+
+  tribalKeywords.forEach(kw => {
+    const matches = (deckText.match(new RegExp(kw, 'g')) || []).length;
+    keywordScores.tribal += matches;
+  });
+
+  // Card type bonuses
+  const totalCards = deck.reduce((sum, card) => sum + card.count, 0);
+  const creatureCards = deck.filter(c => c.type_line?.includes('Creature')).reduce((sum, c) => sum + c.count, 0);
+  const instantCards = deck.filter(c => c.type_line?.includes('Instant')).reduce((sum, c) => sum + c.count, 0);
+  const creatureRatio = creatureCards / totalCards;
+  const instantRatio = instantCards / totalCards;
+
+  if (creatureRatio > 0.4) {
+    keywordScores.aggro += 5;
+    keywordScores.tribal += 3;
+  }
+  if (instantRatio > 0.15) {
+    keywordScores.control += 5;
+  }
+
+  // Find highest scoring archetype
+  const sortedArchetypes = Object.entries(keywordScores)
+    .sort(([, a], [, b]) => b - a);
+
+  return sortedArchetypes[0]?.[0] || 'midrange';
+}
+
+// Generate recommendations based on metagame
+function generateMetaRecommendations(
+  deckArchetype: string,
+  deck: DeckCard[],
+  format: string,
+  focusArchetype?: string
+): MetaAnalysisOutput['recommendations'] {
+  const recommendations: MetaAnalysisOutput['recommendations'] = [];
+  const formatMeta = FORMAT_META[format] || GENERIC_META;
+
+  // If focus archetype specified, prioritize those matchups
+  let targetArchetypes = formatMeta;
+  if (focusArchetype) {
+    targetArchetypes = formatMeta.filter(archetype =>
+      archetype.name.toLowerCase().includes(focusArchetype.toLowerCase())
+    );
+
+    if (targetArchetypes.length === 0) {
+      targetArchetypes = formatMeta;
     }
   }
 
-  return weaknesses;
-}
+  // Generate matchup-specific recommendations
+  targetArchetypes.slice(0, 3).forEach(targetArchetype => {
+    if (targetArchetype.name.toLowerCase() === deckArchetype.toLowerCase()) {
+      return; // Skip mirror matchups
+    }
 
-/**
- * Generate matchup analysis
- */
-function generateMatchupAnalysis(archetype: string, meta: FormatMeta): Array<{
-  archetype: string;
-  recommendation: string;
-  sideboardNotes?: string;
-}> {
-  return meta.matchups.map(matchup => ({
-    archetype: matchup.archetype,
-    recommendation: `Against ${matchup.archetype} decks, focus on ${matchup.weaknesses.join(' and ')}. Your ${archetype} strategy can be strong if you play to your strengths and address their weaknesses.`,
-    sideboardNotes: archetype !== matchup.archetype
-      ? `Consider adding cards that ${matchup.weaknesses.join(', ')} for this matchup.`
-      : undefined,
-  }));
-}
+    const matchup = MATCHUP_GUIDE[deckArchetype] || MATCHUP_GUIDE['Midrange'];
+    const isStrongAgainst = matchup.strength.includes(targetArchetype.name);
 
-/**
- * Generate card suggestions
- */
-function generateCardSuggestions(
-  cards: DeckCard[],
-  format: string,
-  archetype: string
-): {
-  cardsToAdd: Array<{ name: string; quantity: number; reason: string }>;
-  cardsToRemove: Array<{ name: string; quantity: number; reason: string }>;
-} {
-  const formatSuggestions = CARD_SUGGESTIONS_BY_FORMAT[format] || CARD_SUGGESTIONS_BY_FORMAT['commander'];
-  const archetypeSuggestions = formatSuggestions[archetype] || formatSuggestions['midrange'];
+    const cardsToAdd: Array<{ name: string; quantity: number }> = [];
+    const cardsToRemove: Array<{ name: string; quantity: number }> = [];
 
-  let cardsToAdd: Array<{ name: string; quantity: number; reason: string }> = [];
-  let cardsToRemove: Array<{ name: string; quantity: number; reason: string }> = [];
+    if (isStrongAgainst) {
+      // Enhance strengths
+      cardsToAdd.push(
+        { name: matchup.strength[0], quantity: 2 },
+        { name: formatMeta[0]?.keyCards[0] || "Generic Answer", quantity: 2 }
+      );
+    } else {
+      // Address weaknesses
+      targetArchetype.weaknesses.slice(0, 2).forEach(weakness => {
+        if (weakness === "Aggro") {
+          cardsToAdd.push({ name: "Mass Removal", quantity: 2 });
+          cardsToAdd.push({ name: "Lifegain", quantity: 2 });
+        } else if (weakness === "Control") {
+          cardsToAdd.push({ name: "Uncounterable Threat", quantity: 2 });
+          cardsToAdd.push({ name: "Hand Disruption", quantity: 2 });
+        } else if (weakness === "Combo") {
+          cardsToAdd.push({ name: "Graveyard Hate", quantity: 2 });
+          cardsToAdd.push({ name: "Rule of Law", quantity: 1 });
+        } else if (weakness === "Graveyard hate") {
+          cardsToAdd.push({ name: "Graveyard Protection", quantity: 2 });
+        } else if (weakness === "Mass removal") {
+          cardsToAdd.push({ name: "Hexproof", quantity: 2 });
+          cardsToAdd.push({ name: "Indestructible", quantity: 2 });
+        }
+      });
 
-  // Add archetype-specific cards
-  for (const suggestion of archetypeSuggestions.slice(0, 4)) {
-    cardsToAdd.push(suggestion);
-  }
+      // Remove cards weak against this archetype
+      if (targetArchetype.weaknesses.includes("Flying")) {
+        const nonFlying = deck
+          .filter(c => c.type_line?.includes('Creature') && c.count > 0)
+          .slice(0, 2)
+          .map(c => ({ name: c.name, quantity: Math.min(c.count, 1) }));
+        cardsToRemove.push(...nonFlying);
+      }
+    }
 
-  // Remove weak cards
-  const weakCardPatterns = ['vanilla', 'weak', 'inefficient'];
-  const weakCards = cards.filter(c =>
-    weakCardPatterns.some(pattern => c.name.toLowerCase().includes(pattern))
-  ).slice(0, cardsToAdd.length);
+    // Format-specific additions
+    if (format === 'commander') {
+      cardsToAdd.push({ name: "Command Tower", quantity: 1 });
+      cardsToAdd.push({ name: "Sol Ring", quantity: 1 });
+    } else if (format === 'modern' || format === 'legacy') {
+      cardsToAdd.push({ name: "Thoughtseize", quantity: 2 });
+    } else if (format === 'standard') {
+      cardsToAdd.push({ name: "Value Engine", quantity: 2 });
+    }
 
-  for (const card of weakCards) {
-    cardsToRemove.push({
-      name: card.name,
-      quantity: 1,
-      reason: 'Underperforming in current meta',
+    recommendations.push({
+      title: `Improve ${targetArchetype.name} Matchup`,
+      description: isStrongAgainst
+        ? `Your ${deckArchetype} deck is naturally strong against ${targetArchetype.name}. Enhance this advantage.`
+        : `Your ${deckArchetype} deck struggles against ${targetArchetype.name}. Address these weaknesses.`,
+      cardsToAdd: cardsToAdd.slice(0, 5),
+      cardsToRemove: cardsToRemove.slice(0, 3),
+      matchup: {
+        against: targetArchetype.name,
+        strategy: matchup.strategy,
+      },
     });
-  }
+  });
 
-  // Balance add/remove counts using a one-to-one swap approach
-  const addCount = cardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
-  const removeCount = cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
+  return recommendations.slice(0, 3);
+}
 
-  // Use a simpler balanced approach: ensure we have equal total quantities
-  const balanceCount = Math.min(addCount, removeCount);
+// Generate metagame summary
+function generateMetaSummary(format: string): string {
+  const formatMeta = FORMAT_META[format] || GENERIC_META;
 
-  // Trim if we have too many adds or removes
-  if (addCount > balanceCount) {
-    let currentAddCount = 0;
-    const balancedCardsToAdd: typeof cardsToAdd = [];
-    for (const card of cardsToAdd) {
-      if (currentAddCount + card.quantity <= balanceCount) {
-        balancedCardsToAdd.push(card);
-        currentAddCount += card.quantity;
-      } else {
-        const remaining = balanceCount - currentAddCount;
-        if (remaining > 0) {
-          balancedCardsToAdd.push({
-            ...card,
-            quantity: remaining,
-          });
-          currentAddCount = balanceCount;
-        }
-        break;
-      }
-    }
-    cardsToAdd = balancedCardsToAdd;
-  }
+  const topArchetype = formatMeta[0];
+  const mostCommon = formatMeta
+    .filter(a => a.prevalence === "High")
+    .map(a => a.name)
+    .join(", ");
 
-  if (removeCount > balanceCount) {
-    let currentRemoveCount = 0;
-    const balancedCardsToRemove: typeof cardsToRemove = [];
-    for (const card of cardsToRemove) {
-      if (currentRemoveCount + card.quantity <= balanceCount) {
-        balancedCardsToRemove.push(card);
-        currentRemoveCount += card.quantity;
-      } else {
-        const remaining = balanceCount - currentRemoveCount;
-        if (remaining > 0) {
-          balancedCardsToRemove.push({
-            ...card,
-            quantity: remaining,
-          });
-          currentRemoveCount = balanceCount;
-        }
-        break;
-      }
-    }
-    cardsToRemove = balancedCardsToRemove;
-  }
-
-  return { cardsToAdd, cardsToRemove };
+  return `The ${format} metagame is currently dominated by ${topArchetype?.name || "various strategies"}. ` +
+    `The most prevalent archetypes are: ${mostCommon || topArchetype?.name || "Control, Aggro, Midrange, and Combo"}. ` +
+    `${topArchetype?.playstyle || "Meta decks focus on efficient threats and powerful interactions."} ` +
+    `To succeed, prepare your deck with the right answers and strategies for these common archetypes.`;
 }
 
 /**
- * Generate sideboard suggestions
+ * Main function to analyze the metagame and generate recommendations
+ *
+ * @param decklist - The deck list as text (e.g., "1 Sol Ring\n2 Lightning Bolt...")
+ * @param format - The format (e.g., "commander", "modern", "standard")
+ * @param cards - Parsed card data for the deck
+ * @param focusArchetype - Optional archetype to focus recommendations on
+ * @returns Metagame analysis with archetypes, recommendations, and matchup information
  */
-function generateSideboardSuggestions(
+export function analyzeMetaHeuristic(
+  decklist: string,
   format: string,
-  archetype: string
-): Array<{ name: string; quantity: number; reason: string }> | undefined {
-  if (format === 'commander') {
-    return undefined; // Commander doesn't use sideboards
-  }
+  cards: DeckCard[],
+  focusArchetype?: string
+): MetaAnalysisOutput {
+  const deckArchetype = detectDeckArchetype(cards);
+  const currentMeta = generateMetaSummary(format);
+  const archetypes = FORMAT_META[format] || GENERIC_META;
+  const recommendations = generateMetaRecommendations(
+    deckArchetype,
+    cards,
+    format,
+    focusArchetype
+  );
 
-  const sideboardCards: Array<{ name: string; quantity: number; reason: string }> = [
-    { name: "Disenchant", quantity: 2, reason: "Answer to artifacts and enchantments" },
-    { name: "Negate", quantity: 2, reason: "Counter non-creature spells" },
-    { name: "Grafdigger's Cage", quantity: 1, reason: "Graveyard hate" },
-  ];
-
-  // Add archetype-specific sideboard cards
-  const archetypeSideboard: Record<string, Array<{ name: string; quantity: number; reason: string }>> = {
-    control: [
-      { name: "Surgical Extraction", quantity: 2, reason: "Graveyard hate" },
-    ],
-    aggro: [
-      { name: "Tormod's Crypt", quantity: 1, reason: "Graveyard hate" },
-    ],
-    midrange: [
-      { name: "Rest in Peace", quantity: 1, reason: "Graveyard hate" },
-    ],
+  return {
+    currentMeta,
+    archetypes,
+    recommendations,
   };
-
-  if (archetypeSideboard[archetype]) {
-    sideboardCards.push(...archetypeSideboard[archetype]);
-  }
-
-  return sideboardCards;
-}
-
-/**
- * Generate strategic advice
- */
-function generateStrategicAdvice(archetype: string, format: string, meta: FormatMeta): string {
-  const adviceParts: string[] = [];
-
-  adviceParts.push(`As a ${archetype} deck in ${format}, focus on leveraging your archetype's strengths while addressing its weaknesses. `);
-
-  adviceParts.push(`Based on the current metagame, here are key strategic considerations:\n`);
-
-  // General advice
-  adviceParts.push('1. Play to Your Strengths:');
-  const archetypeAdvice: Record<string, string> = {
-    control: 'Use your counterspells and removal to control the game. Establish card advantage before deploying your win conditions.',
-    aggro: "Apply early pressure and don't overcommit to board wipes. Use burn spells for reach.",
-    midrange: 'Trade efficiently and generate value over time. Use your removal to control the board while developing threats.',
-    combo: 'Protect your combo pieces and have backup plans. Use disruption to prevent opponent interaction.',
-    ramp: 'Accelerate your mana and deploy powerful threats early. Use removal to survive until your game plan takes over.',
-    tribal: 'Focus on tribal synergies and protect your key creatures. Use tribal lords to maximize value.',
-  };
-  adviceParts.push(archetypeAdvice[archetype]);
-  adviceParts.push('');
-
-  // Meta advice
-  adviceParts.push('2. Meta Adaptation:');
-  adviceParts.push(`The current meta features ${meta.dominantStrategies.length} dominant strategies. `);
-  adviceParts.push(`Prepare for tier decks: ${meta.tierDecks[0]} and ${meta.tierDecks[1]}. `);
-  adviceParts.push('Sideboard appropriately for difficult matchups.');
-  adviceParts.push('');
-
-  // Format advice
-  adviceParts.push('3. Format-Specific Considerations:');
-  if (format === 'commander') {
-    adviceParts.push('Commander games are multiplayer, so politics and resource management are key. ');
-    adviceParts.push('Consider when to use removal and when to hold it for more threatening targets. ');
-    adviceParts.push('Build your deck to be consistent and powerful over long games.');
-  } else {
-    adviceParts.push(`Competitive ${format} requires a well-constructed sideboard. `);
-    adviceParts.push('Identify your worst matchups and dedicate sideboard slots to them. ');
-    adviceParts.push("Test extensively to understand your deck's role in the meta.");
-  }
-
-  return adviceParts.join('\n');
 }

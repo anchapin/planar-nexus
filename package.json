@@ -7,13 +7,16 @@
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "NODE_ENV=production next build",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "tauri:build:debug": "tauri build --debug",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dev:tauri": "tauri dev",
+    "build:tauri": "tauri build",
+    "build:tauri:debug": "tauri build --debug",
+    "build:mac": "tauri build --target universal-apple-darwin",
+    "build:mac:dmg": "tauri build --target universal-apple-darwin --bundles dmg",
+    "build:mac:app": "tauri build --target universal-apple-darwin --bundles app"
   },
   "dependencies": {
     "@genkit-ai/google-genai": "^1.28.0",
@@ -45,9 +48,10 @@
     "dotenv": "^16.5.0",
     "embla-carousel-react": "^8.6.0",
     "firebase": "^11.9.1",
+    "fuse.js": "^7.1.0",
     "genkit": "^1.28.0",
-    "lucide-react": "^0.475.0",
-    "next": "15.5.9",
+    "lucide-react": "^0.575.0",
+    "next": "15.5.12",
     "patch-package": "^8.0.0",
     "react": "^19.2.1",
     "react-day-picker": "^9.11.3",
@@ -72,9 +76,41 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "genkit-cli": "^1.28.0",
+    "jest": "^30.0.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5",
     "typescript-eslint": "^8.55.0"
+  },
+  "overrides": {
+    "minimatch": "^10.2.1",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^10.2.1"
+    },
+    "eslint-plugin-import": {
+      "minimatch": "^10.2.1"
+    },
+    "eslint-plugin-jsx-a11y": {
+      "minimatch": "^10.2.1"
+    },
+    "eslint-plugin-react": {
+      "minimatch": "^10.2.1"
+    },
+    "test-exclude": {
+      "minimatch": "^10.2.1",
+      "glob": "^11.0.0"
+    },
+    "@jest/reporters": {
+      "glob": "^11.0.0"
+    },
+    "jest-config": {
+      "glob": "^11.0.0"
+    },
+    "jest-runtime": {
+      "glob": "^11.0.0"
+    },
+    "rimraf": {
+      "glob": "^11.0.0"
+    }
   }
 }

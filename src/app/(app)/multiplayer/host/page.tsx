@@ -22,6 +22,12 @@ import { FormatRulesDisplay } from '@/components/format-rules-display';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
 import { useLocalStorage } from '@/hooks/use-local-storage';
 import { SavedDeck } from '@/app/actions';
+import {
+  createHostConnection,
+  type ConnectionData,
+  type DirectConnectionState,
+} from '@/lib/p2p-direct-connection';
+import { QRCodeDisplay } from '@/components/qr-code-display';
 
 export default function HostLobbyPage() {
   const { lobby, isHost, isLoading, error, createLobby, updatePlayerStatus, updatePlayerDeck, canStartGame, canForceStart, startGame, forceStartGame, closeLobby, getGameCode, validateDeckForFormat } = useLobby();
@@ -41,6 +47,9 @@ export default function HostLobbyPage() {
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(true);
+  const [p2pConnectionData, setP2pConnectionData] = useState<ConnectionData | null>(null);
+  const [p2pConnectionState, setP2pConnectionState] = useState<DirectConnectionState>('idle');
+  const [showP2pSetup, setShowP2pSetup] = useState(false);
 
   const gameCode = getGameCode();
 
@@ -84,6 +93,42 @@ export default function HostLobbyPage() {
     if (validDeck && lobby) {
       handleDeckSelect(validDeck);
     }
+
+    // Setup P2P connection for direct peer-to-peer
+    setupP2PConnection(hostName);
+  };
+
+  // Setup P2P connection with QR code
+  const setupP2PConnection = async (hostName: string) => {
+    try {
+      const playerId = localStorage.getItem('planar_nexus_player_id') || `host-${Date.now()}`;
+
+      await createHostConnection({
+        playerId,
+        playerName: hostName,
+        isHost: true,
+        gameCode: getGameCode(),
+        onQRCodeGenerated: (qrDataUrl, connectionData) => {
+          setP2pConnectionData(connectionData);
+          setP2pConnectionState('waiting-for-answer');
+          setShowP2pSetup(true);
+        },
+        onICECandidate: (candidate) => {
+          console.log('[P2P Host] ICE candidate generated:', candidate);
+        },
+      });
+    } catch (error) {
+      console.error('[P2P Host] Failed to setup connection:', error);
+    }
+  };
+
+  // Refresh P2P connection
+  const refreshP2PConnection = async () => {
+    const hostName = localStorage.getItem('planar_nexus_player_name') || 'Host Player';
+    setShowP2pSetup(false);
+    setP2pConnectionData(null);
+    setP2pConnectionState('idle');
+    await setupP2PConnection(hostName);
   };
 
   // Helper to get stored decks
@@ -394,6 +439,39 @@ export default function HostLobbyPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* P2P Connection Setup */}
+          {showP2pSetup && p2pConnectionData && (
+            <div className="md:col-span-3">
+              <QRCodeDisplay
+                gameCode={p2pConnectionData.gameCode}
+                gameName={lobby.name}
+                onCopy={() => {
+                  const connectionString = JSON.stringify(p2pConnectionData);
+                  navigator.clipboard.writeText(connectionString);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+              />
+              <div className="mt-4 flex gap-3">
+                <Button onClick={refreshP2PConnection} variant="outline" className="flex-1">
+                  Generate New Connection Code
+                </Button>
+                <Button onClick={() => setShowP2pSetup(false)} variant="ghost">
+                  Hide
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Show P2P Setup Button */}
+          {!showP2pSetup && (
+            <div className="md:col-span-3">
+              <Button onClick={() => setShowP2pSetup(true)} variant="outline" className="w-full">
+                Show P2P Connection Code
+              </Button>
+            </div>
+          )}
 
           {/* Format Rules */}
           <FormatRulesDisplay format={lobby.format} className="md:col-span-3" />

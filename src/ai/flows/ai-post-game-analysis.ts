@@ -1,8 +1,8 @@
-'use server';
 /**
- * @fileOverview AI-powered post-game analysis system.
- * 
- * Issue #55: Phase 3.4: Create post-game analysis system
+ * @fileOverview Heuristic-powered post-game analysis system.
+ *
+ * Issue #446: Remove AI provider dependencies
+ * Replaced Genkit-based AI flows with heuristic algorithms.
  *
  * Provides:
  * - analyzeGame - Analyzes a completed game and provides improvement suggestions
@@ -10,102 +10,79 @@
  * - generateImprovementTips - Provides actionable improvement advice
  */
 
-import { ai } from '@/ai/genkit';
-import { getModelString } from '@/ai/providers';
-import { z } from 'genkit';
+import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
 
-// Types for game replay data
-interface GameAction {
-  turn: number;
-  player: string;
-  action: string;
-  card?: string;
-  target?: string;
-  result?: string;
-}
-
-interface GameOutcome {
-  winner: string;
-  finalScore?: string;
-  turns: number;
-  playerDecks: Record<string, string[]>;
-}
-
-interface GameReplay {
-  actions: GameAction[];
-  outcome: GameOutcome;
-  playerNames: string[];
-  format: string;
-}
+// Types for game replay data (used for type documentation)
+// These interfaces describe the expected structure of replay data
 
 // Input schema for game analysis
-const GameAnalysisInputSchema = z.object({
-  replay: z.record(z.any()).describe("The game replay data with actions and outcomes"),
-  playerName: z.string().describe("The player to analyze (get advice for)"),
-});
+interface GameAnalysisInput {
+  replay: Record<string, unknown>;
+  playerName: string;
+}
 
 // Output schema for game analysis
-const GameAnalysisOutputSchema = z.object({
-  gameSummary: z.string().describe("A brief summary of how the game played out"),
-  keyMoments: z.array(z.object({
-    turn: z.number(),
-    description: z.string(),
-    impact: z.enum(['positive', 'negative', 'neutral']),
-    alternativeAction: z.string().optional(),
-  })).describe("Key turning points in the game"),
-  mistakes: z.array(z.object({
-    turn: z.number(),
-    description: z.string(),
-    severity: z.enum(['major', 'minor', 'minor']),
-    suggestion: z.string(),
-  })).describe("Identified mistakes or sub-optimal plays"),
-  strengths: z.array(z.string()).describe("Things the player did well"),
-  improvementAreas: z.array(z.string()).describe("Areas to focus on for improvement"),
-  deckSuggestions: z.array(z.object({
-    card: z.string(),
-    reason: z.string(),
-  })).describe("Specific card suggestions based on the game"),
-  overallRating: z.number().min(1).max(10).describe("Overall performance rating for the game"),
-  tips: z.array(z.string()).describe("Actionable tips for future games"),
-});
+interface GameAnalysisOutput {
+  gameSummary: string;
+  keyMoments: Array<{
+    turn: number;
+    description: string;
+    impact: 'positive' | 'negative' | 'neutral';
+    alternativeAction?: string;
+  }>;
+  mistakes: Array<{
+    turn: number;
+    description: string;
+    severity: 'major' | 'minor';
+    suggestion: string;
+  }>;
+  strengths: string[];
+  improvementAreas: string[];
+  deckSuggestions: Array<{
+    card: string;
+    reason: string;
+  }>;
+  overallRating: number;
+  tips: string[];
+}
 
 // Input schema for key moments identification
-const KeyMomentsInputSchema = z.object({
-  replay: z.record(z.any()).describe("The game replay data"),
-  playerName: z.string().describe("The player to focus on"),
-});
+interface KeyMomentsInput {
+  replay: Record<string, unknown>;
+  playerName: string;
+}
 
 // Output schema for key moments
-const KeyMomentsOutputSchema = z.object({
-  moments: z.array(z.object({
-    turn: z.number(),
-    description: z.string(),
-    type: z.enum(['game_change', 'mistake', 'great_play', 'missed_opportunity']),
-    whatHappened: z.string(),
-    couldHaveHappened: z.string().optional(),
-  })),
-  summary: z.string(),
-});
+interface KeyMomentsOutput {
+  moments: Array<{
+    turn: number;
+    description: string;
+    type: 'game_change' | 'mistake' | 'great_play' | 'missed_opportunity';
+    whatHappened: string;
+    couldHaveHappened?: string;
+  }>;
+  summary: string;
+}
 
 // Input schema for quick tips
-const QuickTipsInputSchema = z.object({
-  replay: z.record(z.any()).describe("The game replay data"),
-  playerName: z.string().describe("The player to get tips for"),
-});
+interface QuickTipsInput {
+  replay: Record<string, unknown>;
+  playerName: string;
+}
 
 // Output schema for quick tips
-const QuickTipsOutputSchema = z.object({
-  tips: z.array(z.string()).describe("Quick actionable tips based on the game"),
-  focusAreas: z.array(z.string()).describe("Areas to focus on in future games"),
-});
+interface QuickTipsOutput {
+  tips: string[];
+  focusAreas: string[];
+}
 
 /**
  * Analyzes a completed game and provides comprehensive feedback.
  */
 export async function analyzeGame(
-  input: z.infer<typeof GameAnalysisInputSchema>
-): Promise<z.infer<typeof GameAnalysisOutputSchema>> {
-  const result = await gameAnalysisFlow(input);
+  input: GameAnalysisInput
+): Promise<GameAnalysisOutput> {
+  const result = analyzeGameHeuristic(input);
   return result;
 }
 
@@ -113,9 +90,9 @@ export async function analyzeGame(
  * Identifies key moments in a game that determined the outcome.
  */
 export async function identifyKeyMoments(
-  input: z.infer<typeof KeyMomentsInputSchema>
-): Promise<z.infer<typeof KeyMomentsOutputSchema>> {
-  const result = await keyMomentsFlow(input);
+  input: KeyMomentsInput
+): Promise<KeyMomentsOutput> {
+  const result = identifyKeyMomentsHeuristic(input);
   return result;
 }
 
@@ -123,135 +100,302 @@ export async function identifyKeyMoments(
  * Generates quick actionable tips from a game.
  */
 export async function generateQuickTips(
-  input: z.infer<typeof QuickTipsInputSchema>
-): Promise<z.infer<typeof QuickTipsOutputSchema>> {
-  const result = await quickTipsFlow(input);
+  input: QuickTipsInput
+): Promise<QuickTipsOutput> {
+  const result = generateQuickTipsHeuristic(input);
   return result;
 }
 
-// Use provider-agnostic model string
-const currentModel = getModelString();
+// Helper functions
 
-// Main game analysis prompt
-const gameAnalysisPrompt = ai.definePrompt({
-  name: 'gameAnalysisPrompt',
-  model: currentModel,
-  input: { schema: GameAnalysisInputSchema },
-  output: { schema: GameAnalysisOutputSchema },
-  prompt: `You are an expert Magic: The Gathering analyst and coach. Your task is to analyze a completed game and provide constructive feedback to help the player improve.
+function analyzeGameHeuristic(input: GameAnalysisInput): GameAnalysisOutput {
+  const { replay, playerName } = input;
 
-**GAME DATA:**
-{{#json replays}}{{replay}}{{/json}}
+  // Analyze replay data (simplified heuristic analysis)
+  const gameSummary = generateGameSummary(replay, playerName);
+  const keyMoments = identifyKeyMomentsInReplay(replay, playerName);
+  const mistakes = identifyMistakes(replay, playerName);
+  const strengths = identifyStrengths(replay, playerName);
+  const improvementAreas = identifyImprovementAreas(replay, playerName);
+  const deckSuggestions = generateDeckSuggestions(replay, playerName);
+  const overallRating = calculateOverallRating(replay, playerName);
+  const tips = generateTips(replay, playerName);
 
-**PLAYER TO ANALYZE:** {{playerName}}
+  return {
+    gameSummary,
+    keyMoments,
+    mistakes,
+    strengths,
+    improvementAreas,
+    deckSuggestions,
+    overallRating,
+    tips,
+  };
+}
 
-**YOUR TASK:**
-Analyze this game from the perspective of {{playerName}} and provide:
+function identifyKeyMomentsHeuristic(input: KeyMomentsInput): KeyMomentsOutput {
+  const { replay, playerName } = input;
 
-1. **Game Summary**: Brief overview of how the game played out
-2. **Key Moments**: Identify 3-5 turning points in the game
-3. **Mistakes**: Point out any plays that were sub-optimal (be constructive)
-4. **Strengths**: Acknowledge what the player did well
-5. **Improvement Areas**: General areas to focus on
-6. **Deck Suggestions**: Any specific cards that could help their strategy
-7. **Overall Rating**: Score from 1-10
-8. **Tips**: 3-5 actionable tips for future games
+  const moments: KeyMomentsOutput['moments'] = identifyKeyMomentsInReplay(replay, playerName).map(moment => ({
+    turn: moment.turn,
+    description: moment.description,
+    type: moment.impact === 'positive' ? 'great_play' :
+           moment.impact === 'negative' ? 'mistake' : 'missed_opportunity',
+    whatHappened: moment.description,
+    couldHaveHappened: moment.alternativeAction,
+  }));
 
-Consider:
-- Mana curve and resource management
-- Card advantage and card draw
-- Threat assessment and prioritization
-- Tempo vs card advantage decisions
-- Sideboarding (if applicable)
-- Political plays (in multiplayer)
+  const summary = `Identified ${moments.length} key moments in the game.`;
 
-Be specific and constructive. Focus on actionable advice rather than generic feedback.`,
-});
+  return {
+    moments,
+    summary,
+  };
+}
 
-// Key moments identification prompt
-const keyMomentsPrompt = ai.definePrompt({
-  name: 'keyMomentsPrompt',
-  model: currentModel,
-  input: { schema: KeyMomentsInputSchema },
-  output: { schema: KeyMomentsOutputSchema },
-  prompt: `You are a Magic: The Gathering analyst. Identify the key moments in this game that determined the outcome.
+function generateQuickTipsHeuristic(input: QuickTipsInput): QuickTipsOutput {
+  const { replay, playerName } = input;
 
-**GAME DATA:**
-{{#json replay}}{{replay}}{{/json}}
+  const tips = generateTips(replay, playerName);
+  const focusAreas = identifyImprovementAreas(replay, playerName);
 
-**FOCUS PLAYER:** {{playerName}}
+  return {
+    tips,
+    focusAreas,
+  };
+}
 
-Identify:
-- Game-changing plays
-- Major mistakes
-- Great strategic decisions
-- Missed opportunities
+function generateGameSummary(replay: Record<string, unknown>, playerName: string): string {
+  // Simplified game summary generation
+  const turns = replay.turns as any[] || [];
+  const totalTurns = turns.length;
 
-For each moment, explain what happened and what could have happened differently (if applicable).
+  const playerLife = replay.playerLife as number || 20;
+  const opponentLife = replay.opponentLife as number || 20;
 
-Respond with a JSON object matching the output schema.`,
-});
+  let summary = `Game lasted ${totalTurns} turns. `;
 
-// Quick tips prompt
-const quickTipsPrompt = ai.definePrompt({
-  name: 'quickTipsPrompt',
-  model: currentModel,
-  input: { schema: QuickTipsInputSchema },
-  output: { schema: QuickTipsOutputSchema },
-  prompt: `You are a Magic: The Gathering coach. Give quick, actionable tips based on this game.
-
-**GAME DATA:**
-{{#json replay}}{{replay}}{{/json}}
-
-**PLAYER:** {{playerName}}
-
-Provide 3-5 quick tips that are specific to this game. Focus on the most important things to improve.
-
-Respond with a JSON object matching the output schema.`,
-});
-
-// Define the flows
-const gameAnalysisFlow = ai.defineFlow(
-  {
-    name: 'gameAnalysisFlow',
-    inputSchema: GameAnalysisInputSchema,
-    outputSchema: GameAnalysisOutputSchema,
-  },
-  async (input) => {
-    const { output } = await gameAnalysisPrompt(input);
-    if (!output) {
-      throw new Error('Failed to generate game analysis');
-    }
-    return output;
+  if (playerLife > opponentLife) {
+    summary += `${playerName} won with ${playerLife} life vs opponent's ${opponentLife} life. `;
+    summary += "Strong board presence and card advantage contributed to victory.";
+  } else if (playerLife < opponentLife) {
+    summary += `${playerName} lost with ${playerLife} life vs opponent's ${opponentLife} life. `;
+    summary += "Opponent gained advantage through tempo and pressure.";
+  } else {
+    summary += "Game ended in a draw.";
   }
-);
 
-const keyMomentsFlow = ai.defineFlow(
-  {
-    name: 'keyMomentsFlow',
-    inputSchema: KeyMomentsInputSchema,
-    outputSchema: KeyMomentsOutputSchema,
-  },
-  async (input) => {
-    const { output } = await keyMomentsPrompt(input);
-    if (!output) {
-      throw new Error('Failed to identify key moments');
-    }
-    return output;
-  }
-);
+  return summary;
+}
 
-const quickTipsFlow = ai.defineFlow(
-  {
-    name: 'quickTipsFlow',
-    inputSchema: QuickTipsInputSchema,
-    outputSchema: QuickTipsOutputSchema,
-  },
-  async (input) => {
-    const { output } = await quickTipsPrompt(input);
-    if (!output) {
-      throw new Error('Failed to generate quick tips');
+function identifyKeyMomentsInReplay(
+  replay: Record<string, unknown>,
+  playerName: string
+): GameAnalysisOutput['keyMoments'] {
+  const moments: GameAnalysisOutput['keyMoments'] = [];
+  const turns = replay.turns as any[] || [];
+
+  turns.forEach((turn, index) => {
+    // Look for significant life changes
+    if (turn.lifeChanges) {
+      const playerLifeChange = (turn.lifeChanges[playerName] as number) || 0;
+      if (Math.abs(playerLifeChange) >= 5) {
+        moments.push({
+          turn: index + 1,
+          description: `Significant life change: ${playerLifeChange > 0 ? '+' : ''}${playerLifeChange}`,
+          impact: playerLifeChange > 0 ? 'positive' : 'negative',
+          alternativeAction: "Consider preventative measures in similar situations",
+        });
+      }
     }
-    return output;
+
+    // Look for card advantage shifts
+    if (turn.cardAdvantage) {
+      const playerCardAdvantage = turn.cardAdvantage[playerName] as number || 0;
+      if (Math.abs(playerCardAdvantage) >= 2) {
+        moments.push({
+          turn: index + 1,
+          description: `Card advantage shift: ${playerCardAdvantage > 0 ? '+' : ''}${playerCardAdvantage}`,
+          impact: playerCardAdvantage > 0 ? 'positive' : 'negative',
+          alternativeAction: "Focus on card draw and selection",
+        });
+      }
+    }
+  });
+
+  // Limit to top 5 moments
+  return moments.slice(0, 5);
+}
+
+function identifyMistakes(
+  replay: Record<string, unknown>,
+  playerName: string
+): GameAnalysisOutput['mistakes'] {
+  const mistakes: GameAnalysisOutput['mistakes'] = [];
+  const turns = replay.turns as any[] || [];
+
+  turns.forEach((turn, index) => {
+    // Identify missed opportunities
+    if (turn.missedOpportunities && turn.missedOpportunities[playerName]) {
+      const missed = turn.missedOpportunities[playerName] as string[];
+      missed.forEach((opportunity, i) => {
+        mistakes.push({
+          turn: index + 1,
+          description: opportunity,
+          severity: 'minor',
+          suggestion: "Consider all available options before making decisions",
+        });
+      });
+    }
+
+    // Identify suboptimal plays
+    if (turn.suboptimalPlays && turn.suboptimalPlays[playerName]) {
+      const suboptimal = turn.suboptimalPlays[playerName] as string[];
+      suboptimal.forEach((play, i) => {
+        mistakes.push({
+          turn: index + 1,
+          description: play,
+          severity: 'major',
+          suggestion: "Evaluate all cards in hand and board state before acting",
+        });
+      });
+    }
+  });
+
+  return mistakes.slice(0, 5);
+}
+
+function identifyStrengths(
+  replay: Record<string, unknown>,
+  playerName: string
+): string[] {
+  const strengths: string[] = [];
+
+  const playerLife = replay.playerLife as number || 20;
+  const opponentLife = replay.opponentLife as number || 20;
+
+  if (playerLife > opponentLife) {
+    strengths.push("Maintained healthy life total throughout the game");
   }
-);
+
+  const turns = replay.turns as any[] || [];
+  const playerCardAdvantage = turns.reduce((sum: number, turn: any) => {
+    return sum + (turn.cardAdvantage?.[playerName] || 0);
+  }, 0);
+
+  if (playerCardAdvantage > 0) {
+    strengths.push("Generated card advantage through effective play");
+  }
+
+  strengths.push("Good mana management and development");
+
+  return strengths;
+}
+
+function identifyImprovementAreas(
+  replay: Record<string, unknown>,
+  playerName: string
+): string[] {
+  const areas: string[] = [];
+
+  const playerLife = replay.playerLife as number || 20;
+  const opponentLife = replay.opponentLife as number || 20;
+
+  if (playerLife < 15) {
+    areas.push("Improve defensive strategies to preserve life total");
+  }
+
+  const turns = replay.turns as any[] || [];
+  const missedOpportunities = turns.reduce((count: number, turn: any) => {
+    return count + (turn.missedOpportunities?.[playerName]?.length || 0);
+  }, 0);
+
+  if (missedOpportunities > 3) {
+    areas.push("Consider all available options more carefully before making decisions");
+  }
+
+  areas.push("Work on timing of spells and abilities");
+  areas.push("Develop better understanding of opponent's deck");
+
+  return areas;
+}
+
+function generateDeckSuggestions(
+  replay: Record<string, unknown>,
+  playerName: string
+): GameAnalysisOutput['deckSuggestions'] {
+  const suggestions: GameAnalysisOutput['deckSuggestions'] = [];
+
+  const playerLife = replay.playerLife as number || 20;
+  const opponentLife = replay.opponentLife as number || 20;
+
+  if (playerLife < 15) {
+    suggestions.push({
+      card: "Life gain cards (e.g., lifelink creatures, healing spells)",
+      reason: "To improve sustainability and survive longer games",
+    });
+  }
+
+  const turns = replay.turns as any[] || [];
+  const averageManaCost = turns.reduce((sum: number, turn: any) => {
+    return sum + (turn.manaCost || 0);
+  }, 0) / turns.length;
+
+  if (averageManaCost > 3.5) {
+    suggestions.push({
+      card: "Lower-cost cards (2-3 CMC)",
+      reason: "To improve curve and early-game consistency",
+    });
+  }
+
+  suggestions.push({
+    card: "Card draw options",
+    reason: "To maintain card advantage throughout the game",
+  });
+
+  return suggestions.slice(0, 3);
+}
+
+function calculateOverallRating(
+  replay: Record<string, unknown>,
+  playerName: string
+): number {
+  const playerLife = replay.playerLife as number || 20;
+  const opponentLife = replay.opponentLife as number || 20;
+
+  let rating = 5; // Base rating
+
+  // Adjust based on life difference
+  const lifeDiff = playerLife - opponentLife;
+  rating += lifeDiff * 0.2;
+
+  // Adjust based on card advantage
+  const turns = replay.turns as any[] || [];
+  const playerCardAdvantage = turns.reduce((sum: number, turn: any) => {
+    return sum + (turn.cardAdvantage?.[playerName] || 0);
+  }, 0);
+  rating += playerCardAdvantage * 0.5;
+
+  // Ensure rating is between 1 and 10
+  return Math.min(Math.max(rating, 1), 10);
+}
+
+function generateTips(
+  replay: Record<string, unknown>,
+  playerName: string
+): string[] {
+  const tips: string[] = [];
+
+  tips.push("Always consider all cards in your hand before making a decision");
+  tips.push("Pay attention to opponent's mana and possible responses");
+  tips.push("Plan your turns ahead - think about what you want to accomplish");
+  tips.push("Don't be afraid to take risks when the payoff is high");
+  tips.push("Learn from your mistakes and analyze why a play didn't work out");
+
+  const playerLife = replay.playerLife as number || 20;
+  if (playerLife < 15) {
+    tips.push("Prioritize survival over aggression when life is low");
+  }
+
+  return tips;
+}

@@ -1,4 +1,3 @@
-'use server';
 /**
  * @fileOverview A Genkit flow for generating an AI opponent's deck and strategic approach based on a chosen theme and difficulty.
  * 

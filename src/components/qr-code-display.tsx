@@ -13,31 +13,39 @@ import QRCode from 'qrcode';
  * Issue #185: Used for sharing game codes in P2P multiplayer
  */
 interface QRCodeDisplayProps {
+  qrCode?: string;
   gameCode: string;
   gameName?: string;
   onCopy?: () => void;
   size?: number;
+  connectionInfo?: {
+    hostName: string;
+    timestamp: number;
+  };
 }
 
-export function QRCodeDisplay({ 
-  gameCode, 
+export function QRCodeDisplay({
+  qrCode,
+  gameCode,
   gameName = 'Planar Nexus Game',
   onCopy,
-  size = 200 
+  size = 200,
+  connectionInfo
 }: QRCodeDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Generate QR code when game code changes
+  // Generate QR code when game code changes (if qrCode not provided)
   useEffect(() => {
+    if (qrCode) return; // Use pre-generated QR code if provided
     if (!canvasRef.current || !gameCode) return;
 
     const generateQR = async () => {
       try {
         // Create a URL that the app can handle
         const url = `planar-nexus://join?code=${encodeURIComponent(gameCode)}`;
-        
+
         await QRCode.toCanvas(canvasRef.current, url, {
           width: size,
           margin: 2,
@@ -47,7 +55,7 @@ export function QRCodeDisplay({
           },
           errorCorrectionLevel: 'M',
         });
-        
+
         setError(null);
       } catch (err) {
         console.error('Error generating QR code:', err);
@@ -56,7 +64,7 @@ export function QRCodeDisplay({
     };
 
     generateQR();
-  }, [gameCode, size]);
+  }, [gameCode, size, qrCode]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(gameCode);
@@ -75,15 +83,22 @@ export function QRCodeDisplay({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* QR Code Canvas */}
+        {/* QR Code Canvas or Image */}
         <div className="flex justify-center">
           {error ? (
             <div className="w-[200px] h-[200px] flex items-center justify-center bg-muted rounded-lg">
               <QrCode className="w-12 h-12 text-muted-foreground" />
             </div>
+          ) : qrCode ? (
+            <img
+              src={qrCode}
+              alt="QR Code"
+              className="rounded-lg border-2 border-border"
+              style={{ width: size, height: size }}
+            />
           ) : (
-            <canvas 
-              ref={canvasRef} 
+            <canvas
+              ref={canvasRef}
               className="rounded-lg border-2 border-border"
             />
           )}

@@ -1,38 +1,37 @@
 /**
- * @fileOverview Server-side card operations
+ * @fileOverview Card operations using embedded data
  *
- * These functions work in Node.js server environment for AI flows.
- * They use embedded card data and do not require IndexedDB.
+ * These functions work with embedded card data for AI flows.
+ * They use embedded card data and work in both server and client environments.
+ * Originally designed for server-side but now compatible with client-side execution.
  */
 
-import {
-  type MinimalCard,
-  type GenericCard,
-  isGenericCard,
-  isMinimalCard,
-  getCardByName,
-  initializeCardDatabase
-} from './card-database';
-
-// Local type for database card (union of GenericCard and MinimalCard)
-type DatabaseCard = GenericCard | MinimalCard;
+import Fuse from 'fuse.js';
+import type { MinimalCard } from './card-database';
+import { ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS } from './card-database';
 import { type Format } from '@/lib/game-rules';
 import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
 
 // Type definitions for card operations (server-side compatibility)
-export type ScryfallCard = MinimalCard;
-
-// Server-side DeckCard type with count property
-export interface DeckCard extends ScryfallCard {
+export interface ServerDeckCard extends MinimalCard {
   count: number;
 }
+
+// In-memory cache for fuzzy search
+let fuseInstance: Fuse<MinimalCard> | null = null;
+let isInitialized = false;
 
 /**
  * Initialize server-side card operations with embedded data
  */
 async function initializeServerCardOperations(): Promise<void> {
+  if (isInitialized) {
+    return;
+  }
+
   try {
-    await initializeCardDatabase();
+    fuseInstance = new Fuse(ESSENTIAL_CARDS, FUSE_SEARCH_OPTIONS);
+    isInitialized = true;
   } catch (error) {
     console.error('Failed to initialize server-side card operations:', error);
     throw error;
@@ -46,7 +45,7 @@ async function initializeServerCardOperations(): Promise<void> {
 export async function validateCardLegality(
   cards: { name: string; quantity: number }[],
   format: Format
-): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
+): Promise<{ found: ServerDeckCard[]; notFound: string[]; illegal: string[] }> {
   await initializeServerCardOperations();
 
   if (!cards || cards.length === 0) {
@@ -60,28 +59,17 @@ export async function validateCardLegality(
   }
 
   // Find cards in embedded data
-  const found: DeckCard[] = [];
+  const found: ServerDeckCard[] = [];
   const illegal: string[] = [];
   const notFoundNames = new Set<string>();
 
   for (const [lowerCaseName, requestDetails] of cardMap.entries()) {
-    const cardInDb = getCardByName(requestDetails.originalName);
+    const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
 
     if (cardInDb) {
-      // Check card legality based on format
-      let isLegal = false;
-      if (isGenericCard(cardInDb)) {
-        // Generic cards have specific legalities object
-        const legalities = cardInDb.legalities as Record<string, 'legal' | 'banned' | 'restricted'>;
-        isLegal = legalities[format] === 'legal';
-      } else if (isMinimalCard(cardInDb)) {
-        // Minimal cards also have legalities
-        const legalities = cardInDb.legalities as Record<string, 'legal' | 'banned' | 'restricted'>;
-        isLegal = legalities[format] === 'legal';
-      }
-
+      const isLegal = cardInDb.legalities?.[format] === 'legal';
       if (isLegal) {
-        found.push({ ...cardInDb, count: requestDetails.quantity } as DeckCard);
+        found.push({ ...cardInDb, count: requestDetails.quantity } as ServerDeckCard);
       } else {
         illegal.push(requestDetails.originalName);
       }
@@ -101,7 +89,7 @@ export async function validateCardLegality(
 export async function importDecklist(
   decklist: string,
   format?: Format
-): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
+): Promise<{ found: ServerDeckCard[]; notFound: string[]; illegal: string[] }> {
   const lines = decklist.split('\n').filter(line => line.trim() !== '');
   if (lines.length === 0) {
     return { found: [], notFound: [], illegal: [] };
@@ -136,7 +124,7 @@ export async function importDecklist(
         acc.set(card.id, { ...card });
       }
       return acc;
-    }, new Map<string, DeckCard>()).values()
+    }, new Map<string, ServerDeckCard>()).values()
   );
 
   return { found: aggregatedFound, notFound, illegal };
