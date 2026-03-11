@@ -237,11 +237,11 @@ function identifyMistakes(
   turns.forEach((turn, index) => {
     // Identify missed opportunities
     if (turn.missedOpportunities && turn.missedOpportunities[playerName]) {
-      const missed = turn.missedOpportunities[playerName] as string[];
+      const missed = turn.missedOpportunities[playerName];
       missed.forEach((opportunity, i) => {
         mistakes.push({
           turn: index + 1,
-          description: opportunity,
+          description: opportunity.card + ": " + opportunity.threat,
           severity: 'minor',
           suggestion: "Consider all available options before making decisions",
         });
@@ -381,7 +381,7 @@ function calculateOverallRating(
 }
 
 function generateTips(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): string[] {
   const tips: string[] = [];
