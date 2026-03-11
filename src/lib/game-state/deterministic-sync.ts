@@ -412,6 +412,12 @@ export class DeterministicGameStateEngine {
       return this.authoritativeResolution(localState, remoteState, remotePeerId, conflictSeq);
     }
 
+    // NEW: Resolve simultaneous actions with tie-breaking
+    const simultaneousActions = this.findSimultaneousActions(conflictSeq);
+    if (simultaneousActions.length > 1) {
+      return this.resolveSimultaneousConflict(simultaneousActions, localState, remoteState);
+    }
+
     // Check if rollback is possible
     const snapshot = this.findSnapshotBefore(conflictSeq);
     if (snapshot) {
@@ -427,6 +433,39 @@ export class DeterministicGameStateEngine {
 
     // Fall back to authoritative resolution
     return this.authoritativeResolution(localState, remoteState, remotePeerId, conflictSeq);
+  }
+
+  /**
+   * Find actions with the same sequence number
+   */
+  private findSimultaneousActions(seq: SequenceNumber): DeterministicAction[] {
+    return this.actionHistory.filter(a => a.sequenceNumber === seq);
+  }
+
+  /**
+   * Resolve simultaneous actions using tie-breaking
+   */
+  private resolveSimultaneousConflict(
+    actions: DeterministicAction[],
+    _localState: GameState,
+    _remoteState: GameState
+  ): ConflictResolution {
+    // Tie-breaking: lower timestamp wins, then lower peer ID string
+    const sortedActions = [...actions].sort((a, b) => {
+      if (a.timestamp !== b.timestamp) {
+        return a.timestamp - b.timestamp;
+      }
+      return a.initiatorId.localeCompare(b.initiatorId);
+    });
+
+    const winner = sortedActions[0];
+
+    return {
+      resolved: true,
+      strategy: "authoritative",
+      resolutionActions: [winner],
+      conflictDescription: `Resolved simultaneous action conflict at seq ${winner.sequenceNumber}. Winner: ${winner.initiatorId}`,
+    };
   }
 
   /**
@@ -568,7 +607,9 @@ export type SyncMessageType =
   | "sync-response"
   | "state-hash"
   | "desync-alert"
-  | "conflict-resolution";
+  | "conflict-resolution"
+  | "handshake-init"
+  | "handshake-response";
 
 /**
  * Base synchronization message
@@ -650,7 +691,34 @@ export type GameSyncMessage =
   | SyncResponseMessage
   | StateHashMessage
   | DesyncAlertMessage
-  | ConflictResolutionMessage;
+  | ConflictResolutionMessage
+  | HandshakeInitMessage
+  | HandshakeResponseMessage;
+
+/**
+ * Handshake initialization message
+ */
+export interface HandshakeInitMessage extends SyncMessage {
+  type: "handshake-init";
+  payload: {
+    peerId: PeerId;
+    initialSequence: SequenceNumber;
+    stateHash: string;
+  };
+}
+
+/**
+ * Handshake response message
+ */
+export interface HandshakeResponseMessage extends SyncMessage {
+  type: "handshake-response";
+  payload: {
+    peerId: PeerId;
+    acknowledgedSequence: SequenceNumber;
+    stateHash: string;
+    status: 'completed' | 'failed';
+  };
+}
 
 /**
  * Serialize a sync message for transmission

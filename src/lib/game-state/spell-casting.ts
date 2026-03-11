@@ -115,29 +115,29 @@ export function castSpell(
   targets: Target[] = [],
   chosenModes: string[] = [],
   xValue: number = 0
-): { success: boolean; state: GameState } {
+): { success: boolean; state: GameState; error?: string } {
   // Check if player can cast this spell
   const canCastResult = canCastSpell(state, playerId, cardId);
   if (!canCastResult.canCast) {
-    return { success: false, state };
+    return { success: false, state, error: canCastResult.reason || "You cannot cast this spell right now." };
   }
 
   // Get the card
   const card = state.cards.get(cardId);
   if (!card) {
-    return { success: false, state };
+    return { success: false, state, error: "Card not found." };
   }
 
   // Verify the card is in player's hand
   const handZone = state.zones.get(`${playerId}-hand`);
   if (!handZone || !handZone.cardIds.includes(cardId)) {
-    return { success: false, state };
+    return { success: false, state, error: "Card not in hand." };
   }
 
   // Get the stack zone
   const stackZone = state.zones.get("stack");
   if (!stackZone) {
-    return { success: false, state };
+    return { success: false, state, error: "Stack zone not found." };
   }
 
   // Calculate and validate the mana cost
@@ -154,7 +154,7 @@ export function castSpell(
   // Check if player has enough mana to cast the spell
   const player = state.players.get(playerId);
   if (!player) {
-    return { success: false, state };
+    return { success: false, state, error: "Player not found." };
   }
   
   const pool = player.manaPool;
@@ -171,7 +171,7 @@ export function castSpell(
     pool.green < totalGreen ||
     availableForGeneric < totalGeneric
   ) {
-    return { success: false, state: state, };
+    return { success: false, state: state, error: "Not enough energy (mana) available." };
   }
 
   // Spend the mana
@@ -185,7 +185,7 @@ export function castSpell(
   });
   
   if (!spendResult.success) {
-    return { success: false, state };
+    return { success: false, state, error: "Failed to spend energy (mana)." };
   }
   
   // Use the state with mana already spent
