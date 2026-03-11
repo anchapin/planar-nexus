@@ -17,9 +17,15 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
+import { ConnectionDataEntry } from '@/components/connection-data-entry';
 import { GameFormat } from '@/lib/multiplayer-types';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import type { SavedDeck } from '@/app/actions';
+import {
+  createClientConnection,
+  type ConnectionData,
+  type DirectConnectionState,
+} from '@/lib/p2p-direct-connection';
 
 interface JoinState {
   step: 'code' | 'name' | 'lobby';
@@ -48,6 +54,8 @@ function JoinGameContent() {
   const [error, setError] = useState<string | null>(null);
   const [joinedPlayer, setJoinedPlayer] = useState<{ id: string; name: string; deckId?: string; deckName?: string } | null>(null);
   const [ready, setReady] = useState(false);
+  const [showP2pEntry, setShowP2pEntry] = useState(false);
+  const [p2pConnectionState, setP2pConnectionState] = useState<DirectConnectionState>('idle');
 
   // Format display names
   const formatDisplayNames: Record<GameFormat, string> = {
@@ -92,24 +100,52 @@ function JoinGameContent() {
 
   const joinGame = () => {
     if (!joinState.game) return;
-    
-    // Simulate joining - in a real app this would connect to server
-    const playerId = `player-${Date.now()}`;
-    const newPlayer = {
-      id: playerId,
-      name: joinState.playerName,
-      deckId: selectedDeck?.id,
-      deckName: selectedDeck?.name,
-    };
-    
-    // Store in localStorage to simulate joined state
-    localStorage.setItem('planar_nexus_joined_game', JSON.stringify({
-      gameCode: joinState.gameCode,
-      player: newPlayer,
-    }));
-    
-    setJoinedPlayer(newPlayer);
-    setJoinState(prev => ({ ...prev, step: 'lobby' }));
+
+    // Show P2P connection entry
+    setShowP2pEntry(true);
+  };
+
+  // Handle P2P connection
+  const handleP2PConnect = async (connectionData: ConnectionData) => {
+    try {
+      const playerId = localStorage.getItem('planar_nexus_player_id') || `player-${Date.now()}`;
+
+      setP2pConnectionState('exchanging-ice');
+
+      await createClientConnection(connectionData, {
+        playerId,
+        playerName: joinState.playerName,
+        isHost: false,
+        onAnswerGenerated: (answer) => {
+          console.log('[P2P Client] Answer generated:', answer);
+        },
+        onICECandidate: (candidate) => {
+          console.log('[P2P Client] ICE candidate generated:', candidate);
+        },
+      });
+
+      setP2pConnectionState('connected');
+
+      // Simulate joining - in a real app this would connect to server
+      const newPlayer = {
+        id: playerId,
+        name: joinState.playerName,
+        deckId: selectedDeck?.id,
+        deckName: selectedDeck?.name,
+      };
+
+      // Store in localStorage to simulate joined state
+      localStorage.setItem('planar_nexus_joined_game', JSON.stringify({
+        gameCode: connectionData.gameCode,
+        player: newPlayer,
+      }));
+
+      setJoinedPlayer(newPlayer);
+      setJoinState(prev => ({ ...prev, step: 'lobby' }));
+    } catch (error) {
+      console.error('[P2P Client] Failed to connect:', error);
+      setP2pConnectionState('failed');
+    }
   };
 
   const handleDeckSelect = (deck: SavedDeck) => {
@@ -198,50 +234,57 @@ function JoinGameContent() {
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Join "{joinState.game?.name}"</CardTitle>
-            <CardDescription>
-              Game Format: {joinState.game ? formatDisplayNames[joinState.game.format] : 'Unknown'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleNameSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="player-name">Your Name</Label>
-                <Input
-                  id="player-name"
-                  placeholder="Enter your name"
-                  value={playerNameInput}
-                  onChange={(e) => setPlayerNameInput(e.target.value)}
-                  maxLength={20}
-                />
-              </div>
-              
-              <div className="p-3 bg-muted rounded-lg space-y-1">
-                <div className="flex items-center gap-2 text-sm">
-                  <Users className="w-4 h-4" />
-                  <span>{joinState.game?.currentPlayers || 0} / {joinState.game?.maxPlayers} players</span>
+
+        {showP2pEntry ? (
+          <ConnectionDataEntry
+            onConnect={handleP2PConnect}
+            className="max-w-2xl"
+          />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Join "{joinState.game?.name}"</CardTitle>
+              <CardDescription>
+                Game Format: {joinState.game ? formatDisplayNames[joinState.game.format] : 'Unknown'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleNameSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="player-name">Your Name</Label>
+                  <Input
+                    id="player-name"
+                    placeholder="Enter your name"
+                    value={playerNameInput}
+                    onChange={(e) => setPlayerNameInput(e.target.value)}
+                    maxLength={20}
+                  />
                 </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Crown className="w-4 h-4" />
-                  <span>Host: {joinState.game?.hostName}</span>
-                </div>
-                {joinState.game?.allowSpectators && (
+
+                <div className="p-3 bg-muted rounded-lg space-y-1">
                   <div className="flex items-center gap-2 text-sm">
-                    <Eye className="w-4 h-4" />
-                    <span>Spectators allowed</span>
+                    <Users className="w-4 h-4" />
+                    <span>{joinState.game?.currentPlayers || 0} / {joinState.game?.maxPlayers} players</span>
                   </div>
-                )}
-              </div>
-              
-              <Button type="submit" className="w-full" disabled={!playerNameInput.trim()}>
-                Join Game
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Crown className="w-4 h-4" />
+                    <span>Host: {joinState.game?.hostName}</span>
+                  </div>
+                  {joinState.game?.allowSpectators && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Eye className="w-4 h-4" />
+                      <span>Spectators allowed</span>
+                    </div>
+                  )}
+                </div>
+
+                <Button type="submit" className="w-full" disabled={!playerNameInput.trim()}>
+                  Join Game
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
       </div>
     );
   }
