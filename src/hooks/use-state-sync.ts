@@ -54,6 +54,8 @@ const DEFAULT_STATE_SYNC_CONFIG: StateSyncConfig = {
  * State sync status
  */
 export interface StateSyncStatus {
+  /** Connection status */
+  status?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   /** Whether the game is in sync with all peers */
   isInSync: boolean;
   /** Current local state hash */
@@ -117,6 +119,8 @@ export interface UseStateSyncReturn {
   handleSyncMessage: (message: GameSyncMessage) => void;
   /** Manually trigger a sync check */
   checkSync: () => SyncVerificationResult | null;
+  /** Send a sync message to all peers */
+  sendSyncMessage: (message: GameSyncMessage) => void;
   /** Attempt to resolve a desync */
   resolveDesync: (remoteState: GameState, remotePeerId: PeerId) => ConflictResolution | null;
   /** Get the deterministic engine */
@@ -202,6 +206,12 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
     
     engineRef.current.registerPeer(peerId);
     console.log('[StateSync] Registered peer:', peerId);
+
+    // If we have game state, we could initiate handshake here
+    if (gameStateRef.current) {
+      console.log('[StateSync] Initiating handshake with peer:', peerId);
+      // In a real P2P scenario, we would send a handshake-init message
+    }
   }, []);
   
   // Unregister a peer
@@ -315,6 +325,32 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
         // Handle conflict resolution from peer
         setLastResolution(message.resolution);
         setIsResolving(false);
+        break;
+      }
+      
+      case 'handshake-init': {
+        // Handle incoming handshake request
+        if (gameStateRef.current && engineRef.current) {
+          const success = engineRef.current.handleHandshakeResponse(
+            message.senderId,
+            message.payload,
+            gameStateRef.current
+          );
+          console.log('[StateSync] Handshake init from', message.senderId, success ? 'Success' : 'Failed');
+        }
+        break;
+      }
+
+      case 'handshake-response': {
+        // Handle incoming handshake response
+        if (gameStateRef.current && engineRef.current) {
+          const success = engineRef.current.handleHandshakeResponse(
+            message.senderId,
+            message.payload,
+            gameStateRef.current
+          );
+          console.log('[StateSync] Handshake response from', message.senderId, success ? 'Success' : 'Failed');
+        }
         break;
       }
       
@@ -452,6 +488,14 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
     }
   }, [status.consecutiveDesyncs, fullConfig.desyncThreshold, fullConfig.autoResolveConflicts, desyncAlert]);
   
+  // Send sync message
+  const sendSyncMessage = useCallback((message: GameSyncMessage) => {
+    if (!engineRef.current) return;
+    
+    // In a real P2P scenario, this would broadcast the message via WebRTC
+    console.log('[StateSync] Sending message:', message.type);
+  }, []);
+
   return {
     status,
     desyncAlert,
@@ -464,6 +508,7 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
     recordAction,
     handleSyncMessage,
     checkSync,
+    sendSyncMessage,
     resolveDesync,
     getEngine,
     reset,

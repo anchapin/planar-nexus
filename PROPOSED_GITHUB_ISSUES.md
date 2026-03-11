@@ -4,11 +4,12 @@ This document defines the necessary GitHub issues to track the progress of closi
 
 ---
 
-## 1. [Critical] Bridge Game Engine with UI Board (Issue #521 Refinement)
+## 1. [Critical] Bridge Game Engine with UI Board (Issue #560)
 
 **Title:** Connect Single-Player UI to Game Engine for Playable Gameplay
 **Labels:** `critical`, `gameplay`, `ui-integration`
 **Priority:** Highest
+**Link:** https://github.com/anchapin/planar-nexus/issues/560
 **Description:**
 The current `src/app/(app)/game/[id]/page.tsx` and `GameBoard` component are largely visual. Key interactive logic—such as playing a card, tapping for mana, or declaring attackers—is currently represented by `console.log` placeholders or TODOs.
 
@@ -21,11 +22,12 @@ The current `src/app/(app)/game/[id]/page.tsx` and `GameBoard` component are lar
 
 ---
 
-## 2. [Critical] Resolve Test Infrastructure and CI/CD Failures (Issue #515)
+## 2. [Critical] Resolve Test Infrastructure and CI/CD Failures (Issue #561)
 
 **Title:** Fix Jest Dependency Conflicts and Restore CI Pipeline
 **Labels:** `critical`, `infrastructure`, `tests`
 **Priority:** Highest
+**Link:** https://github.com/anchapin/planar-nexus/issues/561
 **Description:**
 Known dependency conflicts have caused test coverage failures, meaning the "Complete" engine logic (layers, SBAs) is not currently verified by a passing CI pipeline.
 
@@ -37,11 +39,12 @@ Known dependency conflicts have caused test coverage failures, meaning the "Comp
 
 ---
 
-## 3. [High] Complete AI Proxy Migration and Security (Issue #522)
+## 3. [High] Complete AI Proxy Migration and Security (Issue #562)
 
 **Title:** Full Integration of Server-Side AI Proxy across All AI Flows
 **Labels:** `high`, `security`, `ai`
 **Priority:** High
+**Link:** https://github.com/anchapin/planar-nexus/issues/562
 **Description:**
 While the server-side AI proxy infrastructure exists, it is not yet fully utilized by all AI components (Combat AI, Stack AI, Deck Coach). This is required for the "Bring Your Own Key" architecture to be secure.
 
@@ -54,11 +57,12 @@ While the server-side AI proxy infrastructure exists, it is not yet fully utiliz
 
 ---
 
-## 4. [High] Action Validation and Rule Enforcement
+## 4. [High] Action Validation and Rule Enforcement (Issue #563)
 
 **Title:** Implement Server/Engine-Side Action Validation
 **Labels:** `high`, `rules`, `engine`
 **Priority:** High
+**Link:** https://github.com/anchapin/planar-nexus/issues/563
 **Description:**
 While `game-rules.ts` defines formats, the engine does not yet strictly enforce these rules during real-time UI interactions (e.g., preventing a player from playing two lands per turn).
 
@@ -70,11 +74,12 @@ While `game-rules.ts` defines formats, the engine does not yet strictly enforce 
 
 ---
 
-## 5. [Medium] Multiplayer Polish and Sync Verification (Issue #524)
+## 5. [Medium] Multiplayer Polish and Sync Verification (Issue #564)
 
 **Title:** Robust Loading States and Peer Sync for Multiplayer
 **Labels:** `medium`, `multiplayer`, `ux`
 **Priority:** Medium
+**Link:** https://github.com/anchapin/planar-nexus/issues/564
 **Description:**
 The transition to PeerJS needs better UX and reliability during peer connections and state synchronization.
 
@@ -86,11 +91,12 @@ The transition to PeerJS needs better UX and reliability during peer connections
 
 ---
 
-## 6. [Medium] Remove `any` Types from AI and Game State (Issue #516)
+## 6. [Medium] Remove `any` Types from AI and Game State (Issue #565)
 
 **Title:** Enforce Strict Typing in AI Flows and State Transitions
 **Labels:** `medium`, `typescript`, `refactor`
 **Priority:** Medium
+**Link:** https://github.com/anchapin/planar-nexus/issues/565
 **Description:**
 Significant use of `any` in AI flows and game state conversions leads to potential runtime errors during complex state transitions.
 

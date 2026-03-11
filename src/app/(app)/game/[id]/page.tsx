@@ -34,8 +34,12 @@ import {
   castSpell,
   activateManaAbility,
   isLand,
+  isCreature,
   tapCard,
   untapCard,
+  declareAttackers,
+  declareBlockers,
+  resolveCombatDamage,
   type GameState,
   type Player,
   type CardInstance,
@@ -267,7 +271,7 @@ class AIOpponent {
    * Make a decision for the AI's turn
    */
   makeDecision(gameState: GameState, aiPlayerId: string): {
-    action: 'play_land' | 'cast_spell' | 'attack' | 'pass' | 'tap_mana';
+    action: 'play_land' | 'cast_spell' | 'attack' | 'block' | 'pass' | 'tap_mana';
     data?: any;
   } {
     const config = getDifficultyConfig(this.difficulty);
@@ -278,17 +282,24 @@ class AIOpponent {
       return { action: 'pass' };
     }
     
+    // Phase-specific decisions
+    if (gameState.turn.currentPhase === 'declare_attackers') {
+      const attackers = this.getAttackers(gameState, aiPlayerId);
+      if (attackers.length > 0) {
+        return { action: 'attack', data: { attackers } };
+      }
+      return { action: 'pass' };
+    }
+
+    if (gameState.turn.currentPhase === 'declare_blockers') {
+      return { action: 'block' };
+    }
+
     const evaluation = this.evaluateState(gameState, aiPlayerId);
     
     // Simple decision logic based on evaluation
     if (evaluation.score > 0.5) {
       // Ahead - play aggressively
-      if (gameState.turn.currentPhase === 'declare_attackers') {
-        const attackers = this.getAttackers(gameState, aiPlayerId);
-        if (attackers.length > 0) {
-          return { action: 'attack', data: { attackers } };
-        }
-      }
       return { action: 'play_land' };
     } else if (evaluation.score < -0.5) {
       // Behind - play defensively
@@ -367,10 +378,15 @@ function GameBoardContent() {
   
   // State for actions requiring targeting
   const [pendingAction, setPendingAction] = useState<{
-    type: 'cast' | 'activate' | 'target';
-    cardId: string;
+    type: 'cast' | 'activate' | 'target' | 'attack' | 'block';
+    cardId?: string;
     abilityIndex?: number;
+    attackerId?: string; // For blocking
   } | null>(null);
+
+  // Combat state
+  const [declaredAttackers, setDeclaredAttackers] = useState<{cardId: string, defenderId: string}[]>([]);
+  const [declaredBlockers, setDeclaredBlockers] = useState<Map<string, string[]>>(new Map());
   
   const aiOpponentRef = useRef<AIOpponent | null>(null);
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -505,6 +521,17 @@ function GameBoardContent() {
       
       switch (decision.action) {
         case 'pass':
+          // Auto-resolve combat if entering damage phase
+          if (newState.turn.currentPhase === 'combat_damage') {
+             const combatResult = resolveCombatDamage(newState);
+             if (combatResult.success) {
+               newState = combatResult.state;
+               toast({
+                 title: 'Combat Resolved',
+                 description: combatResult.description,
+               });
+             }
+          }
           newState = passPriority(newState, aiPlayer.id);
           toast({
             title: 'AI Action',
@@ -513,17 +540,86 @@ function GameBoardContent() {
           break;
           
         case 'attack':
-          // Combat logic would go here
-          toast({
-            title: 'AI Action',
-            description: 'AI is attacking!',
-          });
-          // For now, AI just passes if combat isn't fully implemented
-          newState = passPriority(newState, aiPlayer.id);
+          if (newState.turn.currentPhase === 'declare_attackers') {
+            const attackers = decision.data?.attackers || [];
+            const player = Array.from(newState.players.values()).find(p => p.name === playerName);
+            if (player && attackers.length > 0) {
+              const attackResult = declareAttackers(newState, attackers.map((id: string) => ({
+                cardId: id,
+                defenderId: player.id
+              })));
+              if (attackResult.success) {
+                newState = attackResult.state;
+                toast({
+                  title: 'AI Action',
+                  description: `AI is attacking with ${attackers.length} creatures!`,
+                });
+              } else {
+                newState = passPriority(newState, aiPlayer.id);
+              }
+            } else {
+              newState = passPriority(newState, aiPlayer.id);
+            }
+          } else {
+            newState = passPriority(newState, aiPlayer.id);
+          }
+          break;
+
+        case 'block':
+          if (newState.turn.currentPhase === 'declare_blockers') {
+            // AI blocking logic
+            const player = Array.from(newState.players.values()).find(p => p.name === playerName);
+            if (player && newState.combat.attackers.length > 0) {
+              const attackerIds = newState.combat.attackers.map(a => a.cardId);
+              const assignments = aiOpponentRef.current?.getBlockers(newState, aiPlayer.id, attackerIds) || {};
+              const blockerMap = new Map<string, string[]>();
+              
+              Object.entries(assignments).forEach(([attackerId, blockerIds]) => {
+                blockerMap.set(attackerId, blockerIds);
+              });
+              
+              if (blockerMap.size > 0) {
+                const blockResult = declareBlockers(newState, blockerMap);
+                if (blockResult.success) {
+                  newState = blockResult.state;
+                  toast({
+                    title: 'AI Action',
+                    description: `AI blocked with ${Array.from(blockerMap.values()).flat().length} creatures`,
+                  });
+                } else {
+                  newState = passPriority(newState, aiPlayer.id);
+                }
+              } else {
+                newState = passPriority(newState, aiPlayer.id);
+              }
+            } else {
+              newState = passPriority(newState, aiPlayer.id);
+            }
+          } else {
+            newState = passPriority(newState, aiPlayer.id);
+          }
           break;
           
+        case 'play_land': {
+          // AI simple land play logic
+          const handZone = newState.zones.get(`${aiPlayer.id}-hand`);
+          const landId = handZone?.cardIds.find(id => isLand(newState.cards.get(id)!));
+          if (landId && ValidationService.canPlayLand(newState, aiPlayer.id, landId).isValid) {
+            const result = playLand(newState, aiPlayer.id, landId);
+            if (result.success) {
+              newState = result.state;
+              toast({
+                title: 'AI Action',
+                description: 'AI played a land',
+              });
+            }
+          }
+          newState = passPriority(newState, aiPlayer.id);
+          break;
+        }
+
         default:
-          // Default: pass priority for now
+          // Default: pass priority
           newState = passPriority(newState, aiPlayer.id);
           break;
       }
@@ -635,6 +731,56 @@ function GameBoardContent() {
         }
       }
     } else if (zone === 'battlefield') {
+      // Handle combat declarations
+      if (gameState.turn.currentPhase === 'declare_attackers' && hasPriority) {
+        if (isCreature(card) && card.controllerId === player.id) {
+          const alreadyAttacking = declaredAttackers.find(a => a.cardId === cardId);
+          if (alreadyAttacking) {
+            setDeclaredAttackers(prev => prev.filter(a => a.cardId !== cardId));
+          } else {
+            const opponentId = Array.from(gameState.players.values()).find(p => p.id !== player.id)?.id;
+            if (opponentId) {
+              setDeclaredAttackers(prev => [...prev, { cardId, defenderId: opponentId }]);
+            }
+          }
+          return;
+        }
+      }
+
+      if (gameState.turn.currentPhase === 'declare_blockers' && hasPriority) {
+        if (isCreature(card) && card.controllerId === player.id) {
+          // If already in blocking mode, select this as blocker
+          if (pendingAction?.type === 'block' && pendingAction.attackerId) {
+            const attackerId = pendingAction.attackerId;
+            setDeclaredBlockers(prev => {
+              const next = new Map(prev);
+              const current = next.get(attackerId) || [];
+              if (!current.includes(cardId)) {
+                next.set(attackerId, [...current, cardId]);
+              }
+              return next;
+            });
+            setPendingAction(null);
+          } else {
+            // Enter blocking mode for an attacker (this creature is NOT the attacker)
+            // Actually, we click the attacker first, then the blocker.
+            // Wait, UI usually works: click blocker, then click attacker to block.
+            // Let's do: click attacker (from opponent) to select it, then click our creature to block it.
+          }
+          return;
+        } else if (isCreature(card) && card.controllerId !== player.id) {
+          // Clicked opponent's creature - is it attacking?
+          if (gameState.combat.attackers.some(a => a.cardId === cardId)) {
+            setPendingAction({ type: 'block', attackerId: cardId });
+            toast({
+              title: "Blocking",
+              description: "Select a creature to block with",
+            });
+          }
+          return;
+        }
+      }
+
       // Activate abilities or tap/untap
       if (hasPriority) {
         if (isLand(card)) {
@@ -735,6 +881,34 @@ function GameBoardContent() {
     }
 
     let newState = passPriority(gameState, player.id);
+    
+    // If we're passing in declare_attackers or declare_blockers, apply declarations
+    if (gameState.turn.currentPhase === 'declare_attackers') {
+      const result = declareAttackers(gameState, declaredAttackers);
+      if (result.success) {
+        newState = passPriority(result.state, player.id);
+        setDeclaredAttackers([]);
+      }
+    } else if (gameState.turn.currentPhase === 'declare_blockers') {
+      const result = declareBlockers(gameState, declaredBlockers);
+      if (result.success) {
+        newState = passPriority(result.state, player.id);
+        setDeclaredBlockers(new Map());
+      }
+    }
+
+    // Auto-resolve combat if entering damage phase
+    if (newState.turn.currentPhase === 'combat_damage') {
+      const combatResult = resolveCombatDamage(newState);
+      if (combatResult.success) {
+        newState = combatResult.state;
+        toast({
+          title: 'Combat Resolved',
+          description: combatResult.description,
+        });
+      }
+    }
+
     const result = checkStateBasedActions(newState);
     newState = result.state;
     setGameState(newState);
@@ -850,6 +1024,7 @@ function GameBoardContent() {
       commandZone: [],
       isCurrentTurn: player.id === gameState.turn.activePlayerId,
       hasPriority: player.id === gameState.priorityPlayerId,
+      landsPlayedThisTurn: player.landsPlayedThisTurn,
     };
   });
   
@@ -914,8 +1089,6 @@ function GameBoardContent() {
             onOfferDraw={handleOfferDraw}
             onAcceptDraw={handleAcceptDraw}
             onDeclineDraw={handleDeclineDraw}
-            priorityPlayerId={gameState.priorityPlayerId || undefined}
-            activePlayerId={gameState.turn.activePlayerId}
           />
         </div>
       </main>
