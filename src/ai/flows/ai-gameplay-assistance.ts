@@ -11,19 +11,18 @@
  * - evaluateBoardState - Provide overall board evaluation
  */
 
-import { evaluateGameState, quickScore } from '@/ai/game-state-evaluator';
+import { evaluateGameState, quickScore, type GameEvaluation, type GameState } from '@/ai/game-state-evaluator';
 import { enforceRateLimit, debounceAsync, aiRequestQueue, getRateLimitStatus, RateLimitError } from '@/lib/rate-limiter';
-import type {
-  GameState,
-  Card,
-  GameEvaluation,
-  Threat,
-  PlaySuggestion,
-  Warning,
-  ManaSuggestion,
-  ManaBreakdown,
-  AlternativePlay,
-} from '@/ai/types';
+import type { Card as CardType } from '@/types/game';
+
+// Type aliases for compatibility
+type Card = CardType;
+type Threat = { permanentId: string; threatLevel: number; reason: string; urgency: string };
+type PlaySuggestion = { cardName: string; priority: string; reasoning: string; manaCost?: number };
+type Warning = { type: string; message: string; relatedCards?: string[] };
+type ManaSuggestion = { cardName?: string; action: string; manaCost: number; priority: string; reasoning: string };
+type ManaBreakdown = { total: number; colored: Record<string, number>; colorless: number };
+type AlternativePlay = { cardName: string; rating: string; reason: string };
 
 // Input schema for game state analysis
 interface GameStateAnalysisInput {
