@@ -60,8 +60,14 @@
       "frameworks": [],
       "exceptionDomain": null,
       "signingIdentity": null,
-      "providerShortName": null,
-      "entitlements": null
+      "providerShortName": "PlanarNexus",
+      "entitlements": "entitlements.plist",
+      "hardenedRuntime": true,
+      "files": {},
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Planar Nexus needs microphone access for voice commands (optional feature)",
+        "NSCameraUsageDescription": "Planar Nexus needs camera access for AR card visualization (optional feature)"
+      }
     },
     "linux": {
       "appimage": {
