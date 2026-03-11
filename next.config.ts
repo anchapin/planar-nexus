@@ -45,14 +45,6 @@ const nextConfig: NextConfig = {
   // Ensure trailing slashes for static hosting
   trailingSlash: true,
 
-  // TypeScript and ESLint settings
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
   // Set base path for deployment
   basePath: '',
 };

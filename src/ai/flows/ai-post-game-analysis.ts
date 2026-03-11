@@ -13,9 +13,11 @@
 // Types for game replay data (used for type documentation)
 // These interfaces describe the expected structure of replay data
 
+import type { TurnData, GameReplay, CardSuggestion, GameAnalysisTurn } from '@/ai/types';
+
 // Input schema for game analysis
 interface GameAnalysisInput {
-  replay: Record<string, unknown>;
+  replay: GameReplay;
   playerName: string;
 }
 
@@ -46,7 +48,7 @@ interface GameAnalysisOutput {
 
 // Input schema for key moments identification
 interface KeyMomentsInput {
-  replay: Record<string, unknown>;
+  replay: GameReplay;
   playerName: string;
 }
 
@@ -64,7 +66,7 @@ interface KeyMomentsOutput {
 
 // Input schema for quick tips
 interface QuickTipsInput {
-  replay: Record<string, unknown>;
+  replay: GameReplay;
   playerName: string;
 }
 
@@ -163,9 +165,9 @@ function generateQuickTipsHeuristic(input: QuickTipsInput): QuickTipsOutput {
   };
 }
 
-function generateGameSummary(replay: Record<string, unknown>, playerName: string): string {
+function generateGameSummary(replay: GameReplay, playerName: string): string {
   // Simplified game summary generation
-  const turns = replay.turns as any[] || [];
+  const turns = replay.turns as GameAnalysisTurn[] || [];
   const totalTurns = turns.length;
 
   const playerLife = replay.playerLife as number || 20;
@@ -187,11 +189,11 @@ function generateGameSummary(replay: Record<string, unknown>, playerName: string
 }
 
 function identifyKeyMomentsInReplay(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): GameAnalysisOutput['keyMoments'] {
   const moments: GameAnalysisOutput['keyMoments'] = [];
-  const turns = replay.turns as any[] || [];
+  const turns = replay.turns as GameAnalysisTurn[] || [];
 
   turns.forEach((turn, index) => {
     // Look for significant life changes
@@ -226,11 +228,11 @@ function identifyKeyMomentsInReplay(
 }
 
 function identifyMistakes(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): GameAnalysisOutput['mistakes'] {
   const mistakes: GameAnalysisOutput['mistakes'] = [];
-  const turns = replay.turns as any[] || [];
+  const turns = replay.turns as GameAnalysisTurn[] || [];
 
   turns.forEach((turn, index) => {
     // Identify missed opportunities
@@ -264,7 +266,7 @@ function identifyMistakes(
 }
 
 function identifyStrengths(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): string[] {
   const strengths: string[] = [];
@@ -276,8 +278,8 @@ function identifyStrengths(
     strengths.push("Maintained healthy life total throughout the game");
   }
 
-  const turns = replay.turns as any[] || [];
-  const playerCardAdvantage = turns.reduce((sum: number, turn: any) => {
+  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const playerCardAdvantage = turns.reduce((sum: number, turn: GameAnalysisTurn) => {
     return sum + (turn.cardAdvantage?.[playerName] || 0);
   }, 0);
 
@@ -291,7 +293,7 @@ function identifyStrengths(
 }
 
 function identifyImprovementAreas(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): string[] {
   const areas: string[] = [];
@@ -303,8 +305,8 @@ function identifyImprovementAreas(
     areas.push("Improve defensive strategies to preserve life total");
   }
 
-  const turns = replay.turns as any[] || [];
-  const missedOpportunities = turns.reduce((count: number, turn: any) => {
+  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const missedOpportunities = turns.reduce((count: number, turn: GameAnalysisTurn) => {
     return count + (turn.missedOpportunities?.[playerName]?.length || 0);
   }, 0);
 
@@ -319,7 +321,7 @@ function identifyImprovementAreas(
 }
 
 function generateDeckSuggestions(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): GameAnalysisOutput['deckSuggestions'] {
   const suggestions: GameAnalysisOutput['deckSuggestions'] = [];
@@ -334,10 +336,10 @@ function generateDeckSuggestions(
     });
   }
 
-  const turns = replay.turns as any[] || [];
-  const averageManaCost = turns.reduce((sum: number, turn: any) => {
+  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const averageManaCost = turns.reduce((sum: number, turn: GameAnalysisTurn) => {
     return sum + (turn.manaCost || 0);
-  }, 0) / turns.length;
+  }, 0) / (turns.length || 1);
 
   if (averageManaCost > 3.5) {
     suggestions.push({
@@ -355,7 +357,7 @@ function generateDeckSuggestions(
 }
 
 function calculateOverallRating(
-  replay: Record<string, unknown>,
+  replay: GameReplay,
   playerName: string
 ): number {
   const playerLife = replay.playerLife as number || 20;
@@ -368,8 +370,8 @@ function calculateOverallRating(
   rating += lifeDiff * 0.2;
 
   // Adjust based on card advantage
-  const turns = replay.turns as any[] || [];
-  const playerCardAdvantage = turns.reduce((sum: number, turn: any) => {
+  const turns = (replay.turns as GameAnalysisTurn[]) || [];
+  const playerCardAdvantage = turns.reduce((sum: number, turn: GameAnalysisTurn) => {
     return sum + (turn.cardAdvantage?.[playerName] || 0);
   }, 0);
   rating += playerCardAdvantage * 0.5;

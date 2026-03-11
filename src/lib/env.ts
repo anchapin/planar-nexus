@@ -11,13 +11,10 @@
 export const API_ENDPOINTS = {
   /** Z.ai API base URL */
   ZAI: process.env.NEXT_PUBLIC_ZAI_API_URL || 'https://api.z-ai.com/v1',
-  
-  /** Anthropic API base URL */
-  ANTHROPIC: process.env.NEXT_PUBLIC_ANTHROPIC_API_URL || 'https://api.anthropic.com/v1',
-  
+
   /** OpenAI API base URL */
   OPENAI: process.env.NEXT_PUBLIC_OPENAI_API_URL || 'https://api.openai.com/v1',
-  
+
   /** Google AI API base URL */
   GOOGLE: process.env.NEXT_PUBLIC_GOOGLE_API_URL || 'https://generativelanguage.googleapis.com/v1',
 } as const;

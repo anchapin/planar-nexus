@@ -191,15 +191,15 @@ export async function hasApiKey(provider: AIProvider): Promise<boolean> {
  * Get all providers with stored keys
  */
 export async function getProvidersWithKeys(): Promise<AIProvider[]> {
-  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'zaic', 'custom'];
+  const providers: AIProvider[] = ['google', 'openai', 'zaic', 'custom'];
   const result: AIProvider[] = [];
-  
+
   for (const provider of providers) {
     if (await hasApiKey(provider)) {
       result.push(provider);
     }
   }
-  
+
   return result;
 }
 
@@ -213,15 +213,14 @@ async function getStatusStorage(): Promise<Record<AIProvider, ProviderKeyStatus>
   const defaultStatus: Record<AIProvider, ProviderKeyStatus> = {
     google: { provider: 'google', hasKey: false },
     openai: { provider: 'openai', hasKey: false },
-    anthropic: { provider: 'anthropic', hasKey: false },
     zaic: { provider: 'zaic', hasKey: false },
     custom: { provider: 'custom', hasKey: false },
   };
-  
+
   if (!stored) {
     return defaultStatus;
   }
-  
+
   try {
     const key = await getEncryptionKey();
     const encryptedData: EncryptedKeyData = JSON.parse(stored);
@@ -289,22 +288,6 @@ export async function validateApiKey(
       return { valid: true };
     }
 
-    // For Anthropic, test with a models list request
-    if (provider === 'anthropic') {
-      await safeFetch(
-        `${API_ENDPOINTS.ANTHROPIC}/models`,
-        {
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01'
-          },
-          timeoutMs: 10000,
-          errorMessage: 'Anthropic API validation failed'
-        }
-      );
-      return { valid: true };
-    }
-
     // For Z.ai, test with a minimal request
     if (provider === 'zaic') {
       await safeFetch(
@@ -336,12 +319,12 @@ export async function validateApiKey(
  * Clear all stored API keys (for logout)
  */
 export async function clearAllApiKeys(): Promise<void> {
-  const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'zaic', 'custom'];
-  
+  const providers: AIProvider[] = ['google', 'openai', 'zaic', 'custom'];
+
   for (const provider of providers) {
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}_${provider}`);
   }
-  
+
   localStorage.removeItem(STATUS_STORAGE_KEY);
 }
 

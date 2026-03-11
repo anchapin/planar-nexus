@@ -11,11 +11,12 @@
 
 import { generateOpponentDeck, generateRandomDeck, generateThemedDeck } from '@/lib/opponent-deck-generator';
 import type { Format } from '@/lib/game-rules';
+import type { StrategicTheme, DifficultyLevel } from '@/lib/opponent-deck-generator';
 
 // Input Schema - simplified for heuristic generation
 interface AIOpponentDeckGenerationInput {
-  theme?: string;
-  difficulty?: 'easy' | 'medium' | 'hard';
+  theme?: StrategicTheme;
+  difficulty?: DifficultyLevel;
   format?: Format;
   colorIdentity?: string[];
 }
@@ -34,10 +35,10 @@ export async function generateAIOpponentDeck(
 
     // Generate deck using heuristic algorithms
     const generatedDeck = theme
-      ? generateThemedDeck(theme as any, format, difficulty as any)
+      ? generateThemedDeck(theme, format, difficulty)
       : generateOpponentDeck({
           format,
-          difficulty: difficulty as any,
+          difficulty,
           colorIdentity: colorIdentity,
         });
 
