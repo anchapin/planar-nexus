@@ -1,15 +1,16 @@
 /**
  * Mana System
- * 
+ *
  * This module implements the mana system for Magic: The Gathering,
  * including mana pool management, land playing, and mana abilities.
- * 
+ *
  * Reference: CR 106 - Mana, CR 305 - Lands
  */
 
 import type { GameState, PlayerId, CardInstanceId, ManaPool } from "./types";
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
+import { ValidationService } from "./validation-service";
 
 /**
  * Create an empty mana pool
@@ -269,9 +270,6 @@ export function playLand(
   cardId: CardInstanceId,
   modeId?: string
 ): { success: boolean; state: GameState; error?: string } {
-  // Import validation service inline to avoid circular dependency
-  const { ValidationService } = require("./validation-service");
-  
   // Create a game action for validation
   const action = {
     type: "play_land" as const,
@@ -279,7 +277,7 @@ export function playLand(
     timestamp: Date.now(),
     data: { cardId },
   };
-  
+
   // Validate the action before executing
   const validationResult = ValidationService.validateAction(state, action, modeId);
   if (!validationResult.isValid) {
