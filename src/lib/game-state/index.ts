@@ -35,9 +35,11 @@ import {
 import {
   playLand,
   activateManaAbility,
+  canPlayLand,
 } from "./mana";
 import {
   castSpell,
+  canCastSpell,
 } from "./spell-casting";
 import {
   isLand,
