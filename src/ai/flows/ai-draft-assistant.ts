@@ -2,6 +2,7 @@
  * @fileOverview Heuristic-powered draft and sealed deck assistant
  *
  * Issue #446: Remove AI provider dependencies
+ * Issue #565: Enforce strict typing in AI flows and state transitions
  * Replaced Genkit-based AI flows with heuristic algorithms.
  *
  * Provides:
@@ -352,25 +353,45 @@ function detectArchetypes(
   // Simple archetype detection based on card types
   const archetypes: SealedBuildOutput['archetypes'] = [];
 
-  const creatureCount = pool.filter((c: DraftCard) => c.type?.includes('Creature')).length;
+  const creatureCount = pool.filter((c) => {
+    const type = c.type;
+    return typeof type === 'string' && type.includes('Creature');
+  }).length;
+  
   if (creatureCount > 15) {
+    const creatureCards = pool
+      .filter((c) => {
+        const type = c.type;
+        return typeof type === 'string' && type.includes('Creature');
+      })
+      .map((c) => c.name)
+      .slice(0, 5);
+    
     archetypes.push({
       name: 'Aggro',
       score: creatureCount,
-      cards: pool.filter((c: DraftCard) => c.type?.includes('Creature')).map((c: DraftCard) => c.name).slice(0, 5),
+      cards: creatureCards,
     });
   }
 
-  const spellCount = pool.filter((c: DraftCard) =>
-    c.type?.includes('Instant') || c.type?.includes('Sorcery')
-  ).length;
+  const spellCount = pool.filter((c) => {
+    const type = c.type;
+    return typeof type === 'string' && (type.includes('Instant') || type.includes('Sorcery'));
+  }).length;
+  
   if (spellCount > 10) {
+    const spellCards = pool
+      .filter((c) => {
+        const type = c.type;
+        return typeof type === 'string' && (type.includes('Instant') || type.includes('Sorcery'));
+      })
+      .map((c) => c.name)
+      .slice(0, 5);
+    
     archetypes.push({
       name: 'Control',
       score: spellCount,
-      cards: pool.filter((c: DraftCard) =>
-        c.type?.includes('Instant') || c.type?.includes('Sorcery')
-      ).map((c: DraftCard) => c.name).slice(0, 5),
+      cards: spellCards,
     });
   }
 
