@@ -11,6 +11,7 @@
 
 import { reviewDeckHeuristic } from '@/lib/heuristic-deck-coach';
 import { validateCardLegality } from '@/lib/server-card-operations';
+import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
 
 // Input types for deck review function
 export interface DeckReviewInput {
@@ -45,58 +46,73 @@ export interface DeckReviewOutput {
 export async function reviewDeck(
   input: DeckReviewInput
 ): Promise<DeckReviewOutput> {
-  // Parse the decklist to get card data
-  const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
-  const cards: HeuristicCard[] = [];
-
-  // Simple parser - in production, you'd use proper card database lookup
-  for (const line of lines) {
-    const match = line.match(/^(\d+)\s+(.+)$/);
-    if (match) {
-      const [, quantity, name] = match;
-      cards.push({
-        name: name.trim(),
-        count: parseInt(quantity, 10),
-        // Add placeholder properties to satisfy DeckCard type
-        id: crypto.randomUUID(),
-        cmc: 0,
-        colors: [],
-        legalities: {},
-        type_line: 'Unknown',
-        mana_cost: '{0}',
-        color_identity: [],
-      });
+  // Enforce rate limiting
+  const userId = `deck-review-${input.format}`;
+  try {
+    enforceRateLimit(userId);
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      throw new Error(
+        `Rate limit exceeded. Please wait ${Math.ceil(error.retryAfter / 1000)} seconds before making another request.`
+      );
     }
+    throw error;
   }
 
-  // Use heuristic analysis instead of AI
-  const result = reviewDeckHeuristic(input.decklist, input.format, cards);
+  // Queue the request for processing
+  return aiRequestQueue.add(async () => {
+    // Parse the decklist to get card data
+    const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
+    const cards: HeuristicCard[] = [];
 
-  // Validate card suggestions for legality
-  const validatedOptions = await Promise.all(
-    result.deckOptions.map(async (option) => {
-      const cardsToAdd = option.cardsToAdd || [];
-      const cardsToRemove = option.cardsToRemove || [];
-
-      // Validate cards to add
-      let validatedCardsToAdd = cardsToAdd;
-      if (cardsToAdd.length > 0) {
-        const validation = await validateCardLegality(
-          cardsToAdd.map(c => ({ name: c.name, quantity: c.quantity })),
-          input.format
-        );
-
-        if (validation.notFound.length > 0 || validation.illegal.length > 0) {
-          // Remove illegal or not found cards
-          validatedCardsToAdd = cardsToAdd.filter(
-            c => !validation.notFound.includes(c.name) && !validation.illegal.includes(c.name)
-          );
-        }
+    // Simple parser - in production, you'd use proper card database lookup
+    for (const line of lines) {
+      const match = line.match(/^(\d+)\s+(.+)$/);
+      if (match) {
+        const [, quantity, name] = match;
+        cards.push({
+          name: name.trim(),
+          count: parseInt(quantity, 10),
+          // Add placeholder properties to satisfy DeckCard type
+          id: crypto.randomUUID(),
+          cmc: 0,
+          colors: [],
+          legalities: {},
+          type_line: 'Unknown',
+          mana_cost: '{0}',
+          color_identity: [],
+        });
       }
+    }
 
-      // Ensure equal counts
-      const addCount = validatedCardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
-      const removeCount = cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
+    // Use heuristic analysis instead of AI
+    const result = reviewDeckHeuristic(input.decklist, input.format, cards);
+
+    // Validate card suggestions for legality
+    const validatedOptions = await Promise.all(
+      result.deckOptions.map(async (option) => {
+        const cardsToAdd = option.cardsToAdd || [];
+        const cardsToRemove = option.cardsToRemove || [];
+
+        // Validate cards to add
+        let validatedCardsToAdd = cardsToAdd;
+        if (cardsToAdd.length > 0) {
+          const validation = await validateCardLegality(
+            cardsToAdd.map(c => ({ name: c.name, quantity: c.quantity })),
+            input.format
+          );
+
+          if (validation.notFound.length > 0 || validation.illegal.length > 0) {
+            // Remove illegal or not found cards
+            validatedCardsToAdd = cardsToAdd.filter(
+              c => !validation.notFound.includes(c.name) && !validation.illegal.includes(c.name)
+            );
+          }
+        }
+
+        // Ensure equal counts
+        const addCount = validatedCardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
+        const removeCount = cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
 
       if (addCount !== removeCount) {
         // Adjust removals to match additions
@@ -129,4 +145,5 @@ export async function reviewDeck(
       (option.cardsToRemove && option.cardsToRemove.length > 0)
     ),
   };
+  }, 'normal');
 }
