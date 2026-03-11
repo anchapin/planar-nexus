@@ -45,13 +45,19 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": null,
       "nsis": {
-        "installMode": "currentUser",
-        "license": null,
-        "installerIcon": null,
+        "installMode": "perMachine",
+        "license": "../LICENSE",
+        "installerIcon": "icons/icon.ico",
         "headerImage": null,
         "sidebarImage": null,
         "languages": ["English"],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "allowToChangeInstallationDirectory": true,
+        "oneClick": false,
+        "perMachine": true,
+        "runAfterFinish": true
       },
       "wix": null
     },
