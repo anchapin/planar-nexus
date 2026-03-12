@@ -49,7 +49,7 @@
       "minimumSystemVersion": "10.15",
       "frameworks": [],
       "exceptionDomain": "",
-      "signingIdentity": "-",  // "-" means ad-hoc signing for development builds
+      "signingIdentity": "-",
       "providerShortName": null,
       "entitlements": "entitlements.plist",
       "hardenedRuntime": true,
