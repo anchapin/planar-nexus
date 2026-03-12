@@ -1,0 +1,362 @@
+# Planar Nexus Release Automation Workflow
+# Triggers: Tag push (v*), Release published, or manual dispatch
+# Builds installers for Windows, macOS, and Linux
+# Creates GitHub release and uploads all artifacts
+
+name: Release Automation
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags (v1.0.0, v1.0.1, etc.)
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Build platform'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+      create_release:
+        description: 'Create GitHub release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ============================================================================
+  # Windows Build
+  # ============================================================================
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' && (github.inputs.platform == 'all' || github.inputs.platform == 'windows') || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Next.js frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@latest
+
+      - name: Build Tauri Windows app
+        run: tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload Windows NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-nsis-installer
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Windows MSI installer (if exists)
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-installer
+          path: src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ============================================================================
+  # macOS Build
+  # ============================================================================
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' && (github.inputs.platform == 'all' || github.inputs.platform == 'macos') || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Next.js frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@latest
+
+      - name: Build Tauri macOS app (Universal)
+        run: tauri build --target universal-apple-darwin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload macOS App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: src-tauri/target/release/bundle/macos/*.app
+          retention-days: 30
+          if-no-files-found: error
+
+  # ============================================================================
+  # Linux Build
+  # ============================================================================
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch' && (github.inputs.platform == 'all' || github.inputs.platform == 'linux') || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Next.js frontend
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli@latest
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libgtk-3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            libxdo-dev \
+            libssl-dev \
+            pkg-config \
+            libx11-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxcursor-dev \
+            libxcomposite-dev \
+            libxdamage-dev \
+            libxfixes-dev \
+            libxinerama-dev \
+            libxtst-dev \
+            libatk1.0-dev \
+            libasound2-dev \
+            libatspi2.0-dev \
+            libcups2-dev
+
+      - name: Build Tauri Linux packages
+        run: tauri build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-deb-package
+          path: src-tauri/target/release/bundle/deb/*.deb
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload RPM package (if exists)
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm-package
+          path: src-tauri/target/release/bundle/rpm/*.rpm
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ============================================================================
+  # Create/Update GitHub Release
+  # ============================================================================
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos, build-linux]
+    if: always() && (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.inputs.create_release == 'true') || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: |
+          echo "=== Downloaded Artifacts ==="
+          find artifacts -type f
+          echo "==========================="
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.release.tag_name }}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Release version: $VERSION"
+
+      - name: Generate release notes (if not provided)
+        id: release_notes
+        run: |
+          if [[ -f "RELEASE_NOTES_${{ steps.get_version.outputs.version }}.md" ]]; then
+            echo "Using existing release notes"
+            cp "RELEASE_NOTES_${{ steps.get_version.outputs.version }}.md" release-notes.md
+          elif [[ -f "RELEASE_NOTES.md" ]]; then
+            echo "Using generic release notes"
+            cp "RELEASE_NOTES.md" release-notes.md
+          else
+            echo "Generating release notes from changelog"
+            cat > release-notes.md << 'EOF'
+          # Planar Nexus ${{ steps.get_version.outputs.version }}
+          
+          ## 🎉 What's New
+          
+          See the full changelog for details.
+          
+          ## 📦 Installation
+          
+          Download the appropriate installer for your platform:
+          
+          - **Windows**: `.exe` installer
+          - **macOS**: `.dmg` file
+          - **Linux**: `.deb` or `.AppImage`
+          
+          ## 🐛 Bug Fixes
+          
+          - Various bug fixes and improvements
+          
+          ## 🙏 Acknowledgments
+          
+          Thanks to all contributors!
+          EOF
+          fi
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Planar Nexus ${{ steps.get_version.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.version, 'beta') || contains(steps.get_version.outputs.version, 'alpha') || contains(steps.get_version.outputs.version, 'rc') }}
+          files: |
+            artifacts/windows-nsis-installer/*.exe
+            artifacts/windows-msi-installer/*.msi
+            artifacts/macos-dmg/*.dmg
+            artifacts/macos-app/*.app
+            artifacts/linux-deb-package/*.deb
+            artifacts/linux-appimage/*.AppImage
+            artifacts/linux-rpm-package/*.rpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-summary
+          path: release-notes.md
+          retention-days: 90
+
+  # ============================================================================
+  # Notify on Failure
+  # ============================================================================
+  notify-failure:
+    name: Notify on Build Failure
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos, build-linux, release]
+    if: failure()
+    
+    steps:
+      - name: Check job failures
+        run: |
+          echo "⚠️ Build failed for ${{ github.repository }}"
+          echo "Tag: ${{ github.ref_name }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo ""
+          echo "Please check the workflow logs for details."

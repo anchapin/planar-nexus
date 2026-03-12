@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Planar Nexus",
+  "productName": "Planar-Nexus",
   "version": "1.0.0",
-  "identifier": "com.planarnexus.app",
+  "identifier": "com.planarnexus.desktop",
   "build": {
     "frontendDist": "../.next",
     "devUrl": "http://localhost:9002",
@@ -36,7 +36,7 @@
     "category": "Game",
     "shortDescription": "A digital Magic: The Gathering tabletop experience",
     "longDescription": "Planar Nexus is a digital Magic: The Gathering tabletop experience built with Next.js, featuring deck building, AI coaching, and multiplayer functionality.",
-    "copyright": "Copyright 2024 Planar Nexus",
+    "copyright": "Copyright 2026 Planar Nexus",
     "publisher": "Planar Nexus",
     "windows": {
       "nsis": {
@@ -73,7 +73,7 @@
         "bundleMediaFramework": true
       },
       "deb": {
-        "depends": ["libwebkit2gtk-4.0-37", "libappindicator3-1"]
+        "depends": ["libwebkit2gtk-4.1-dev", "libappindicator3-1"]
       }
     }
   },
