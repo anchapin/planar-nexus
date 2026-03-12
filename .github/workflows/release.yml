@@ -29,6 +29,11 @@ on:
         default: 'true'
         type: boolean
 
+permissions:
+  contents: write
+  packages: write
+  actions: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -260,9 +265,11 @@ jobs:
     needs: [build-windows, build-macos, build-linux]
     if: |
       always() &&
-      (github.event_name == 'release' ||
-       (github.event_name == 'workflow_dispatch' && inputs.create_release) ||
-       github.event_name == 'push')
+      (
+        github.event_name == 'release' ||
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.create_release == true && startsWith(github.ref, 'refs/tags/'))
+      )
 
     steps:
       - name: Checkout repository
@@ -287,7 +294,8 @@ jobs:
           elif [[ -n "${{ github.event.release.tag_name }}" ]]; then
             VERSION=${{ github.event.release.tag_name }}
           else
-            VERSION="manual-build"
+            echo "No valid tag found, skipping release creation"
+            exit 0
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Release version: $VERSION"
@@ -344,6 +352,7 @@ jobs:
             artifacts/linux-deb-package/*.deb
             artifacts/linux-appimage/*.AppImage
             artifacts/linux-rpm-package/*.rpm
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
