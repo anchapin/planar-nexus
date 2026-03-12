@@ -15,9 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Heart, Clock, Info, RotateCcw, Play, Pause, SkipForward } from 'lucide-react';
 import { GameBoard } from '@/components/game-board';
-import type { PlayerCount } from '@/types/game';
+import type { PlayerCount, ZoneType } from '@/types/game';
 import { useToast } from '@/hooks/use-toast';
 import type { ScryfallCard } from '@/app/actions';
+import type { Permanent, HandCard } from '@/ai/game-state-evaluator';
 
 // Game engine imports
 import {
@@ -57,7 +58,7 @@ import {
 import { ValidationService } from '@/lib/validation-service';
 
 // AI imports
-import { GameStateEvaluator, type GameState as AIGameState } from '@/ai/game-state-evaluator';
+import { GameStateEvaluator, type GameState as AIGameState, type PlayerState, type TurnInfo } from '@/ai/game-state-evaluator';
 import { getDifficultyConfig, type DifficultyLevel } from '@/ai/ai-difficulty';
 import { CombatDecisionTree } from '@/ai/decision-making';
 
@@ -126,27 +127,36 @@ function generateSimpleDeck(): ScryfallCard[] {
  * Convert engine GameState to AI-evaluable format
  */
 function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string): AIGameState {
-  const players: { [key: string]: any } = {};
-  
+  const players: { [key: string]: PlayerState } = {};
+
   engineState.players.forEach((player, playerId) => {
     const battlefield = Array.from(engineState.cards.values())
       .filter(card => {
         const zone = engineState.zones.get(`${playerId}-battlefield`);
         return zone?.cardIds.includes(card.id);
       })
-      .map(card => ({
-        id: card.id,
-        cardId: card.oracleId,
-        name: card.cardData.name,
-        type: card.cardData.type_line.toLowerCase().includes('creature') ? 'creature' :
-              card.cardData.type_line.toLowerCase().includes('land') ? 'land' : 'other',
-        controller: card.controllerId,
-        tapped: card.isTapped,
-        power: card.cardData.power ? parseInt(card.cardData.power) : 0,
-        toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : 0,
-        manaValue: card.cardData.cmc,
-      }));
-    
+      .map(card => {
+        const typeLine = card.cardData.type_line.toLowerCase();
+        let permanentType: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker' = 'creature';
+        if (typeLine.includes('land')) permanentType = 'land';
+        else if (typeLine.includes('artifact')) permanentType = 'artifact';
+        else if (typeLine.includes('enchantment')) permanentType = 'enchantment';
+        else if (typeLine.includes('planeswalker')) permanentType = 'planeswalker';
+        else if (typeLine.includes('creature')) permanentType = 'creature';
+
+        return {
+          id: card.id,
+          cardId: card.oracleId,
+          name: card.cardData.name,
+          type: permanentType,
+          controller: card.controllerId,
+          tapped: card.isTapped,
+          power: card.cardData.power ? parseInt(card.cardData.power) : 0,
+          toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : 0,
+          manaValue: card.cardData.cmc,
+        };
+      });
+
     const handZone = engineState.zones.get(`${playerId}-hand`);
     const handCards = handZone?.cardIds.map(id => {
       const card = engineState.cards.get(id);
@@ -157,10 +167,10 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
         manaValue: card?.cardData.cmc || 0,
       };
     }) || [];
-    
+
     const graveyardZone = engineState.zones.get(`${playerId}-graveyard`);
     const libraryZone = engineState.zones.get(`${playerId}-library`);
-    
+
     players[playerId] = {
       id: playerId,
       life: player.life,
@@ -181,13 +191,13 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
       },
     };
   });
-  
+
   return {
     players,
     turnInfo: {
       currentTurn: engineState.turn.turnNumber,
       currentPlayer: engineState.turn.activePlayerId,
-      phase: engineState.turn.currentPhase as any,
+      phase: engineState.turn.currentPhase as TurnInfo['phase'],
       priority: engineState.priorityPlayerId || '',
     },
     stack: engineState.stack.map(s => ({
@@ -257,13 +267,13 @@ class AIOpponent {
   getBlockers(gameState: GameState, aiPlayerId: string, _attackerIds: string[]): { [attackerId: string]: string[] } {
     const aiState = convertToAIGameState(gameState, aiPlayerId);
     this.combatDecider = new CombatDecisionTree(aiState, aiPlayerId, this.difficulty);
-    
+
     // In this simple implementation, we assume we want to evaluate all attacks
     // We would need the actual Permanent objects for attackers
-    // This is a simplification
-    const attackers: any[] = []; 
+    // This is a simplification - using empty array as placeholder
+    const attackers: Permanent[] = [];
     const blockPlan = this.combatDecider.generateBlockingPlan(attackers);
-    
+
     const assignments: { [attackerId: string]: string[] } = {};
     blockPlan.blocks.forEach(b => {
       if (b.attackerId && b.blockerId) {
@@ -271,30 +281,30 @@ class AIOpponent {
         assignments[b.attackerId].push(b.blockerId);
       }
     });
-    
+
     return assignments;
   }
-  
+
   /**
    * Make a decision for the AI's turn
    */
   makeDecision(gameState: GameState, aiPlayerId: string): {
     action: 'play_land' | 'cast_spell' | 'attack' | 'block' | 'pass' | 'tap_mana';
-    data?: any;
+    data?: AIDecisionData;
   } {
     const config = getDifficultyConfig(this.difficulty);
-    
+
     // Apply randomness based on difficulty
     if (Math.random() < config.randomnessFactor) {
       // Make a random/silly move
       return { action: 'pass' };
     }
-    
+
     // Phase-specific decisions
     if (gameState.turn.currentPhase === 'declare_attackers') {
       const attackers = this.getAttackers(gameState, aiPlayerId);
       if (attackers.length > 0) {
-        return { action: 'attack', data: { attackers } };
+        return { action: 'attack', data: { attackers } as AttackDecisionData };
       }
       return { action: 'pass' };
     }
@@ -304,7 +314,7 @@ class AIOpponent {
     }
 
     const evaluation = this.evaluateState(gameState, aiPlayerId);
-    
+
     // Simple decision logic based on evaluation
     if (evaluation.score > 0.5) {
       // Ahead - play aggressively
@@ -313,11 +323,28 @@ class AIOpponent {
       // Behind - play defensively
       return { action: 'pass' };
     }
-    
+
     // Default: play lands and develop board
     return { action: 'play_land' };
   }
 }
+
+/**
+ * AI decision data types
+ */
+interface AttackDecisionData {
+  attackers: string[];
+}
+
+interface BlockDecisionData {
+  blockers: { [attackerId: string]: string[] };
+}
+
+interface ManaDecisionData {
+  cardId: string;
+}
+
+type AIDecisionData = AttackDecisionData | BlockDecisionData | ManaDecisionData | undefined;
 
 /**
  * Get or create active game from storage
@@ -551,7 +578,8 @@ function GameBoardContent() {
           
         case 'attack':
           if (newState.turn.currentPhase === 'declare_attackers') {
-            const attackers = decision.data?.attackers || [];
+            const attackData = decision.data as AttackDecisionData | undefined;
+            const attackers = attackData?.attackers || [];
             const player = Array.from(newState.players.values()).find(p => p.name === playerName);
             if (player && attackers.length > 0) {
               const attackResult = declareAttackers(newState, attackers.map((id: string) => ({
@@ -713,10 +741,12 @@ function GameBoardContent() {
                   variant: "destructive"
                 });
               }
-            } catch (error: any) {
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+              console.error('Error casting spell:', errorMessage);
               toast({
                 title: "Error casting spell",
-                description: error.message || "An unexpected error occurred.",
+                description: errorMessage,
                 variant: "destructive"
               });
             }
@@ -806,10 +836,12 @@ function GameBoardContent() {
                   variant: "destructive"
                 });
               }
-            } catch (error: any) {
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+              console.error('Error casting spell:', errorMessage);
               toast({
                 title: "Error casting spell",
-                description: error.message || "An unexpected error occurred.",
+                description: errorMessage,
                 variant: "destructive"
               });
             }
@@ -914,8 +946,9 @@ function GameBoardContent() {
               }
               return;
             }
-          } catch (e) {
-            // Fall through to manual tap
+          } catch (_error) {
+            // Mana ability activation failed, fall through to manual tap
+            // This is expected for non-mana lands or when activation fails
           }
         }
         
@@ -969,10 +1002,12 @@ function GameBoardContent() {
                   variant: "destructive"
                 });
               }
-            } catch (error: any) {
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+              console.error('Error casting spell:', errorMessage);
               toast({
                 title: "Error casting spell",
-                description: error.message || "An unexpected error occurred.",
+                description: errorMessage,
                 variant: "destructive"
               });
             }
@@ -1312,7 +1347,7 @@ function GameBoardContent() {
         .map(card => ({
           id: card.id,
           card: card.cardData,
-          zone: zoneType as any,
+          zone: zoneType as ZoneType,
           playerId: player.id,
           tapped: card.isTapped,
           faceDown: card.isFaceDown,
