@@ -108,7 +108,7 @@ export function TurnTimer({
   };
 
   return (
-    <div className={cn('flex flex-col gap-2', className)}>
+    <div className={cn('flex flex-col gap-2', className)} role="timer" aria-live="polite" aria-atomic="true">
       {/* Timer display */}
       <div
         className={cn(
@@ -126,7 +126,7 @@ export function TurnTimer({
               timerState === 'expired' && 'text-red-500'
             )}
           />
-          <span className="text-sm font-medium">
+          <span className="text-sm font-medium" aria-label={`Time remaining: ${timerState === 'expired' ? 'Time!' : formatTime(timeRemaining)}`}>
             {timerState === 'expired' ? 'Time!' : formatTime(timeRemaining)}
           </span>
         </div>
@@ -141,6 +141,7 @@ export function TurnTimer({
                 className="h-6 w-6"
                 onClick={handleStart}
                 disabled={timeRemaining === 0}
+                aria-label={timerState === 'paused' ? 'Resume timer' : 'Start timer'}
               >
                 <Play className="w-3 h-3" />
               </Button>
@@ -150,6 +151,8 @@ export function TurnTimer({
                 size="icon"
                 className="h-6 w-6"
                 onClick={handlePause}
+                aria-label="Pause timer"
+                aria-pressed="true"
               >
                 <Pause className="w-3 h-3" />
               </Button>
@@ -159,6 +162,7 @@ export function TurnTimer({
               size="icon"
               className="h-6 w-6"
               onClick={handleReset}
+              aria-label="Reset timer"
             >
               <RotateCcw className="w-3 h-3" />
             </Button>

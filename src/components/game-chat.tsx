@@ -116,6 +116,8 @@ export function GameChat({
       <div
         className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 rounded-t-lg cursor-pointer"
         onClick={() => setIsMinimized(!isMinimized)}
+        role="banner"
+        aria-label="Game chat header"
       >
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4" />
@@ -132,6 +134,7 @@ export function GameChat({
             size="icon"
             className="h-6 w-6"
             onClick={() => setIsMinimized(!isMinimized)}
+            aria-label={isMinimized ? 'Expand chat' : 'Minimize chat'}
           >
             {isMinimized ? (
               <Maximize2 className="w-3 h-3" />
@@ -144,6 +147,7 @@ export function GameChat({
             size="icon"
             className="h-6 w-6"
             onClick={() => setIsOpen(false)}
+            aria-label="Close chat"
           >
             <X className="w-3 h-3" />
           </Button>
@@ -162,6 +166,8 @@ export function GameChat({
                   size="sm"
                   onClick={() => setIsTeamChatActive(false)}
                   className="flex-1 h-7 text-xs"
+                  aria-pressed={!isTeamChatActive}
+                  aria-label="Show all chat"
                 >
                   <MessageCircle className="w-3 h-3 mr-1" />
                   All
@@ -171,6 +177,8 @@ export function GameChat({
                   size="sm"
                   onClick={() => setIsTeamChatActive(true)}
                   className="flex-1 h-7 text-xs"
+                  aria-pressed={isTeamChatActive}
+                  aria-label="Show team chat"
                 >
                   <Users className="w-3 h-3 mr-1" />
                   Team
@@ -180,7 +188,7 @@ export function GameChat({
           )}
 
           {/* Messages */}
-          <ScrollArea className="flex-1 px-3 py-2">
+          <ScrollArea className="flex-1 px-3 py-2" role="log" aria-live="polite" aria-label="Chat messages">
             <div ref={scrollRef} className="space-y-3">
               {filteredMessages.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-4">
@@ -263,8 +271,9 @@ export function GameChat({
                 placeholder="Type a message..."
                 className="flex-1"
                 maxLength={500}
+                aria-label="Chat message"
               />
-              <Button type="submit" size="icon" disabled={!inputValue.trim()}>
+              <Button type="submit" size="icon" disabled={!inputValue.trim()} aria-label="Send message">
                 <Send className="w-4 h-4" />
               </Button>
             </div>
@@ -288,10 +297,11 @@ export function ChatToggle({ unreadCount = 0, onClick }: ChatToggleProps) {
       size="icon"
       className="relative"
       onClick={onClick}
+      aria-label={`Open chat ${unreadCount > 0 ? `(${unreadCount} unread messages)` : ''}`}
     >
       <MessageCircle className="w-4 h-4" />
       {unreadCount > 0 && (
-        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center" aria-hidden="true">
           {unreadCount > 9 ? '9+' : unreadCount}
         </span>
       )}

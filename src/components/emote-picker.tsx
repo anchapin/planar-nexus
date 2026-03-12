@@ -67,12 +67,14 @@ export function EmotePicker({ onSelectEmote, disabled, className }: EmotePickerP
           size="icon"
           disabled={disabled}
           className={cn('h-8 w-8', className)}
+          aria-label="Open emote picker"
+          aria-expanded={open}
         >
           <Smile className="w-4 h-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-2" align="start">
-        <div className="grid grid-cols-5 gap-1">
+      <PopoverContent className="w-auto p-2" align="start" role="listbox" aria-label="Select an emote">
+        <div className="grid grid-cols-5 gap-1" role="listbox">
           {EMOTES.map((emote) => (
             <Button
               key={emote.type}
@@ -80,6 +82,7 @@ export function EmotePicker({ onSelectEmote, disabled, className }: EmotePickerP
               size="icon"
               className="h-9 w-9 hover:bg-muted"
               onClick={() => handleEmoteSelect(emote.type)}
+              aria-label={emote.label}
               title={emote.label}
             >
               {emote.icon}
@@ -129,7 +132,7 @@ export function EmoteFeed({ emotes, className }: EmoteFeedProps) {
   if (recentEmotes.length === 0) return null;
 
   return (
-    <div className={cn('flex gap-1 flex-wrap', className)}>
+    <div className={cn('flex gap-1 flex-wrap', className)} role="log" aria-live="polite" aria-label="Recent emotes">
       {recentEmotes.map((emote) => (
         <div
           key={emote.id}
