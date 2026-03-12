@@ -52,6 +52,41 @@ export interface Deck {
 
 const STORAGE_KEY = 'planar_nexus_decks';
 
+/**
+ * Stored deck schema (matching indexeddb-storage.ts)
+ */
+interface StoredDeckCard {
+  card: {
+    id: string;
+    name: string;
+    cmc: number;
+    colors: string[];
+    color_identity: string[];
+    type_line: string;
+    image_uris?: {
+      normal?: string;
+      large?: string;
+    };
+    oracle_text?: string;
+    mana_cost?: string;
+    keywords?: string[];
+    legalities?: Record<string, string>;
+    card_faces?: Array<{
+      name?: string;
+      mana_cost?: string;
+      type_line?: string;
+      oracle_text?: string;
+      power?: string;
+      toughness?: string;
+      image_uris?: {
+        normal?: string;
+        large?: string;
+      };
+    }>;
+  };
+  count: number;
+}
+
 // ============================================================================
 // DECK STORAGE MANAGER
 // ============================================================================
@@ -76,7 +111,7 @@ class DeckStorageManager {
    * Convert Deck to StoredDeck for IndexedDB
    */
   private toStoredDeck(deck: Deck): StoredDeck {
-    const storedCards: any[] = deck.cards.map((card: any) => ({
+    const storedCards: StoredDeckCard[] = deck.cards.map((card) => ({
       card: {
         id: card.id,
         name: card.name,
@@ -91,15 +126,16 @@ class DeckStorageManager {
         oracle_text: card.oracle_text,
         mana_cost: card.mana_cost,
         keywords: card.keywords,
+        legalities: card.legalities || {},
       },
-      count: card.quantity,
+      count: card.count,
     }));
 
     return {
       id: deck.id,
       name: deck.name,
       format: deck.format,
-      cards: storedCards as any,
+      cards: storedCards,
       createdAt: deck.createdAt,
       updatedAt: deck.updatedAt,
       metadata: deck.metadata || {},
@@ -114,18 +150,24 @@ class DeckStorageManager {
       id: stored.id,
       name: stored.name,
       format: stored.format,
-      cards: stored.cards.map(storedCard => ({
-        ...storedCard.card,
-        image_uris: storedCard.card.image_uris ? {
+      cards: stored.cards.map(storedCard => {
+        const card = storedCard.card as unknown as DeckCard;
+        // Reconstruct image_uris with all required fields
+        const image_uris = storedCard.card.image_uris ? {
           small: storedCard.card.image_uris.normal || '',
           normal: storedCard.card.image_uris.normal || '',
           large: storedCard.card.image_uris.large || '',
           png: storedCard.card.image_uris.large || '',
           art_crop: storedCard.card.image_uris.large || '',
           border_crop: storedCard.card.image_uris.large || '',
-        } : undefined,
-        quantity: storedCard.count,
-      })) as any,
+        } : undefined;
+        return {
+          ...card,
+          image_uris,
+          count: storedCard.count,
+          legalities: (storedCard.card as any).legalities || {},
+        };
+      }),
       createdAt: stored.createdAt,
       updatedAt: stored.updatedAt,
       metadata: stored.metadata,

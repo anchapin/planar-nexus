@@ -22,6 +22,7 @@ import {
   type ConflictResolution,
   type GameSyncMessage,
   type DeterministicAction,
+  type HandshakePayload,
   DEFAULT_SYNC_CONFIG,
 } from '@/lib/game-state/deterministic-sync';
 
@@ -331,9 +332,16 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
       case 'handshake-init': {
         // Handle incoming handshake request
         if (gameStateRef.current && engineRef.current) {
+          const payload = message.payload as { peerId: string; initialSequence: number; stateHash: string };
+          const handshakePayload: HandshakePayload = {
+            peerId: payload.peerId,
+            sequenceNumber: payload.initialSequence,
+            stateHash: payload.stateHash,
+            timestamp: Date.now(),
+          };
           const success = engineRef.current.handleHandshakeResponse(
             message.senderId,
-            message.payload,
+            handshakePayload,
             gameStateRef.current
           );
           console.log('[StateSync] Handshake init from', message.senderId, success ? 'Success' : 'Failed');
@@ -344,9 +352,16 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
       case 'handshake-response': {
         // Handle incoming handshake response
         if (gameStateRef.current && engineRef.current) {
+          const payload = message.payload as { peerId: string; acknowledgedSequence: number; stateHash: string; status: string };
+          const handshakePayload: HandshakePayload = {
+            peerId: payload.peerId,
+            sequenceNumber: payload.acknowledgedSequence,
+            stateHash: payload.stateHash,
+            timestamp: Date.now(),
+          };
           const success = engineRef.current.handleHandshakeResponse(
             message.senderId,
-            message.payload,
+            handshakePayload,
             gameStateRef.current
           );
           console.log('[StateSync] Handshake response from', message.senderId, success ? 'Success' : 'Failed');
