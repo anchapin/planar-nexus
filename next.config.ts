@@ -3,6 +3,7 @@ import type {NextConfig} from 'next';
 const nextConfig: NextConfig = {
   // Static export for client-side only deployment
   // Now that all Server Actions have been removed, we can use static export
+  // Note: Disabled for now - causes issues with use client pages
   // output: 'export',
 
   // Disable ESLint during build for faster builds

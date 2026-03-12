@@ -9,6 +9,9 @@
  * - User authentication integration
  */
 
+// Required for static export
+export const dynamic = 'force-static';
+
 import { NextRequest, NextResponse } from 'next/server';
 import { AIProvider } from '@/ai/providers/types';
 import {
