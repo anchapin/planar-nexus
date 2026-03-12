@@ -124,8 +124,22 @@ export interface StateSnapshot {
 }
 
 /**
+ * Handshake payload for peer synchronization
+ */
+export interface HandshakePayload {
+  /** Peer ID */
+  peerId: PeerId;
+  /** Sequence number */
+  sequenceNumber: SequenceNumber;
+  /** State hash */
+  stateHash: string;
+  /** Timestamp */
+  timestamp: number;
+}
+
+/**
  * Deterministic Game State Engine
- * 
+ *
  * This class manages deterministic game state transitions and synchronization.
  */
 export class DeterministicGameStateEngine {
@@ -267,7 +281,7 @@ export class DeterministicGameStateEngine {
   /**
    * Initiate handshake with a peer
    */
-  initiateHandshake(peerId: PeerId, currentState: GameState): { type: string; payload: any } {
+  initiateHandshake(peerId: PeerId, currentState: GameState): { type: string; payload: HandshakePayload } {
     const peerState = this.peerStates.get(peerId);
     if (peerState) {
       peerState.handshakeStatus = 'pending';
@@ -287,7 +301,7 @@ export class DeterministicGameStateEngine {
   /**
    * Handle an incoming handshake response
    */
-  handleHandshakeResponse(peerId: PeerId, payload: any, currentState: GameState): boolean {
+  handleHandshakeResponse(peerId: PeerId, payload: HandshakePayload, currentState: GameState): boolean {
     const peerState = this.peerStates.get(peerId);
     if (!peerState) return false;
 

@@ -52,6 +52,28 @@ export interface Deck {
 
 const STORAGE_KEY = 'planar_nexus_decks';
 
+/**
+ * Stored deck schema (matching indexeddb-storage.ts)
+ */
+interface StoredDeckCard {
+  card: {
+    id: string;
+    name: string;
+    cmc: number;
+    colors: string[];
+    color_identity: string[];
+    type_line: string;
+    image_uris?: {
+      normal?: string;
+      large?: string;
+    };
+    oracle_text?: string;
+    mana_cost?: string;
+    keywords?: string[];
+  };
+  count: number;
+}
+
 // ============================================================================
 // DECK STORAGE MANAGER
 // ============================================================================
@@ -76,7 +98,7 @@ class DeckStorageManager {
    * Convert Deck to StoredDeck for IndexedDB
    */
   private toStoredDeck(deck: Deck): StoredDeck {
-    const storedCards: any[] = deck.cards.map((card: any) => ({
+    const storedCards: StoredDeckCard[] = deck.cards.map((card) => ({
       card: {
         id: card.id,
         name: card.name,
@@ -99,7 +121,7 @@ class DeckStorageManager {
       id: deck.id,
       name: deck.name,
       format: deck.format,
-      cards: storedCards as any,
+      cards: storedCards,
       createdAt: deck.createdAt,
       updatedAt: deck.updatedAt,
       metadata: deck.metadata || {},
@@ -125,7 +147,7 @@ class DeckStorageManager {
           border_crop: storedCard.card.image_uris.large || '',
         } : undefined,
         quantity: storedCard.count,
-      })) as any,
+      })),
       createdAt: stored.createdAt,
       updatedAt: stored.updatedAt,
       metadata: stored.metadata,

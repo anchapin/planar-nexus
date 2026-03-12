@@ -53,6 +53,47 @@ interface AIBoardEval {
   boardAdvantage?: string;
 }
 
+interface AIPlayerState {
+  id: string;
+  name: string;
+  life: number;
+  poisonCounters: number;
+  hand: Array<{
+    cardId: string;
+    name: string;
+    type: string;
+    manaValue: number;
+  }>;
+  battlefield: Array<{
+    id: string;
+    cardId: string;
+    name: string;
+    type: string;
+    controller: string;
+    manaValue: number;
+  }>;
+  manaPool: {
+    colorless: number;
+    white: number;
+    blue: number;
+    black: number;
+    red: number;
+    green: number;
+    generic: number;
+  };
+}
+
+interface AIGameStateForAnalysis {
+  players: { [id: string]: AIPlayerState };
+  turnInfo: {
+    currentTurn: number;
+    currentPlayer: string;
+    phase: 'precombat_main' | 'declare_attackers' | 'declare_blockers' | 'combat_damage' | 'postcombat_main' | 'ending';
+    priority: string;
+  };
+  stack: Array<unknown>;
+}
+
 // Mock data generator for demonstration
 function generateMockPlayer(
   id: string,
@@ -326,8 +367,8 @@ export default function GameBoardPage() {
   };
 
   // Convert player state to game state format for AI analysis
-  const convertToGameState = () => {
-    const playersMap: { [id: string]: any } = {};
+  const convertToGameState = (): AIGameStateForAnalysis => {
+    const playersMap: { [id: string]: AIPlayerState } = {};
     players.forEach(p => {
       playersMap[p.id] = {
         id: p.id,
