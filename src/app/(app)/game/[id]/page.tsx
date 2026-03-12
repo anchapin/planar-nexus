@@ -1,7 +1,7 @@
 /**
  * Game Board Page - Single Player Implementation
  * Displays the active game board for single-player games against AI or self-play
- * 
+ *
  * Issue #521: Connect single-player UI to game engine (implement playable game)
  */
 
@@ -19,6 +19,7 @@ import type { PlayerCount, ZoneType } from '@/types/game';
 import { useToast } from '@/hooks/use-toast';
 import type { ScryfallCard } from '@/app/actions';
 import type { Permanent, HandCard } from '@/ai/game-state-evaluator';
+import { gameLogger } from '@/lib/logger';
 
 // Game engine imports
 import {
@@ -234,7 +235,7 @@ class AIOpponent {
         recommendations: evaluation.recommendedActions,
       };
     } catch (error) {
-      console.error('AI evaluation error:', error);
+      gameLogger.error('AI evaluation error:', error);
       return { score: 0, recommendations: [] };
     }
   }
@@ -363,7 +364,7 @@ async function getOrCreateActiveGame(
       const gameState = JSON.parse(savedGame.gameStateJson) as GameState;
       return { gameState, isNew: false };
     } catch (error) {
-      console.error('Failed to parse saved game state:', error);
+      gameLogger.error('Failed to parse saved game state:', error);
     }
   }
   
@@ -395,7 +396,7 @@ async function saveActiveGame(gameState: GameState): Promise<void> {
   try {
     await savedGamesManager.saveToAutoSave(gameState, null, 0);
   } catch (error) {
-    console.error('Failed to save game state:', error);
+    gameLogger.error('Failed to save game state:', error);
   }
 }
 
@@ -493,7 +494,7 @@ function GameBoardContent() {
         
         setError(null);
       } catch (err) {
-        console.error('Failed to initialize game:', err);
+        gameLogger.error('Failed to initialize game:', err);
         setError('Failed to load game. Please try again.');
         toast({
           title: 'Error',
@@ -743,7 +744,7 @@ function GameBoardContent() {
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-              console.error('Error casting spell:', errorMessage);
+              gameLogger.error('Error casting spell:', errorMessage);
               toast({
                 title: "Error casting spell",
                 description: errorMessage,
@@ -838,7 +839,7 @@ function GameBoardContent() {
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-              console.error('Error casting spell:', errorMessage);
+              gameLogger.error('Error casting spell:', errorMessage);
               toast({
                 title: "Error casting spell",
                 description: errorMessage,
@@ -1004,7 +1005,7 @@ function GameBoardContent() {
               }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-              console.error('Error casting spell:', errorMessage);
+              gameLogger.error('Error casting spell:', errorMessage);
               toast({
                 title: "Error casting spell",
                 description: errorMessage,

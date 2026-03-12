@@ -28,6 +28,8 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "warn",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // Prevent console.log in production code (use logger utility instead)
+      "no-console": ["warn", { allow: ["warn", "error", "info"] }],
       // Prevent direct API calls with Authorization headers in client code (security)
       "no-restricted-syntax": [
         "warn",

@@ -12,6 +12,7 @@
 import type { AIProviderConfig, AIResponse } from '@/ai/types';
 import { DEFAULT_MODELS } from './types';
 import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
+import { aiLogger } from '@/lib/logger';
 
 /**
  * OpenAI provider configuration
@@ -146,7 +147,7 @@ async function sendOpenAIChatViaProxy(
 
     return proxyResponse.data;
   } catch (error) {
-    console.error('OpenAI proxy request failed:', error);
+    aiLogger.error('OpenAI proxy request failed:', error);
     throw error;
   }
 }

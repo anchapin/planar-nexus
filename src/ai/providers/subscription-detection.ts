@@ -19,6 +19,7 @@ import type {
 } from './types';
 import { safeFetch, FullResponse, ApiError } from '@/lib/fetch-utils';
 import { API_ENDPOINTS } from '@/lib/env';
+import { aiLogger } from '@/lib/logger';
 
 // Re-export SubscriptionDetection type for consumers
 export type { SubscriptionDetection } from './types';
@@ -304,7 +305,7 @@ export function saveSubscriptionDetection(detection: SubscriptionDetection): voi
       savedAt: Date.now(),
     }));
   } catch (error) {
-    console.error('Failed to save subscription detection:', error);
+    aiLogger.error('Failed to save subscription detection:', error);
   }
 }
 
@@ -318,7 +319,7 @@ export function loadSubscriptionDetection(): SubscriptionDetection | null {
       return JSON.parse(stored);
     }
   } catch (error) {
-    console.error('Failed to load subscription detection:', error);
+    aiLogger.error('Failed to load subscription detection:', error);
   }
   return null;
 }
@@ -330,7 +331,7 @@ export function clearSubscriptionDetection(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch (error) {
-    console.error('Failed to clear subscription detection:', error);
+    aiLogger.error('Failed to clear subscription detection:', error);
   }
 }
 
@@ -357,7 +358,7 @@ export async function detectAllSubscriptions(): Promise<SubscriptionDetection> {
       }
     } catch {
       // Provider may not have a key stored, skip
-      console.debug(`No API key found for ${provider}`);
+      aiLogger.debug(`No API key found for ${provider}`);
     }
   }
   
