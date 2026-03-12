@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev --turbopack -p 9002",
     "dev:tauri": "tauri dev",
-    "build": "NODE_ENV=production next build",
+    "build": "next build",
     "build:tauri": "tauri build",
     "build:mac": "tauri build --target universal-apple-darwin",
     "build:mac:dmg": "tauri build --target universal-apple-darwin --bundles dmg",
