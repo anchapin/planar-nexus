@@ -506,9 +506,9 @@ export default function GameBoardPage() {
             <h2 className="font-semibold text-sm">Life Total Controls</h2>
 
             {players.map((player, idx) => (
-              <Card key={player.id} className={idx === players.length - 1 ? "border-primary/50" : ""}>
+              <Card key={player.id} className={idx === players.length - 1 ? "border-primary/50" : ""} role="region" aria-labelledby={`player-${player.id}-label`}>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center justify-between" id={`player-${player.id}-label`}>
                     {player.name}
                     {player.isCurrentTurn && (
                       <span className="text-xs text-primary animate-pulse">Active</span>
@@ -517,12 +517,13 @@ export default function GameBoardPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl font-mono font-bold">{player.lifeTotal}</span>
+                    <span className="text-2xl font-mono font-bold" aria-label={`${player.name} has ${player.lifeTotal} life`}>{player.lifeTotal}</span>
                     <div className="flex gap-1">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => damagePlayer(idx, 1)}
+                        aria-label={`Deal 1 damage to ${player.name}`}
                       >
                         -1
                       </Button>
@@ -530,6 +531,7 @@ export default function GameBoardPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => healPlayer(idx, 1)}
+                        aria-label={`Heal 1 life to ${player.name}`}
                       >
                         +1
                       </Button>
@@ -541,6 +543,7 @@ export default function GameBoardPage() {
                       variant="outline"
                       className="flex-1"
                       onClick={() => damagePlayer(idx, 5)}
+                      aria-label={`Deal 5 damage to ${player.name}`}
                     >
                       -5
                     </Button>
@@ -549,6 +552,7 @@ export default function GameBoardPage() {
                       variant="outline"
                       className="flex-1"
                       onClick={() => healPlayer(idx, 5)}
+                      aria-label={`Heal 5 life to ${player.name}`}
                     >
                       +5
                     </Button>
@@ -567,6 +571,8 @@ export default function GameBoardPage() {
               checked={timerEnabled}
               onChange={(e) => setTimerEnabled(e.target.checked)}
               className="toggle"
+              aria-checked={timerEnabled}
+              aria-label="Enable turn timer"
             />
           </div>
 
@@ -596,14 +602,17 @@ export default function GameBoardPage() {
                 checked={aiAssistanceEnabled}
                 onChange={(e) => setAiAssistanceEnabled(e.target.checked)}
                 className="toggle"
+                aria-checked={aiAssistanceEnabled}
+                aria-label="Enable AI hints"
               />
             </div>
-            <Button 
-              onClick={handleAIAssistance} 
+            <Button
+              onClick={handleAIAssistance}
               disabled={isAnalyzing || !aiAssistanceEnabled}
               variant="outline"
               className="w-full"
               size="sm"
+              aria-pressed={aiAssistanceEnabled}
             >
               {isAnalyzing ? "Analyzing..." : "Get AI Suggestions"}
             </Button>
@@ -698,10 +707,11 @@ export default function GameBoardPage() {
               size="icon"
               className="relative bg-card/90"
               onClick={() => setChatOpen(true)}
+              aria-label={`Open chat ${unreadCount > 0 ? `(${unreadCount} unread messages)` : ''}`}
             >
               <MessageCircle className="w-4 h-4" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center" aria-hidden="true">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
@@ -721,7 +731,7 @@ export default function GameBoardPage() {
         
         {/* Floating AI Assistance Panel */}
         {(aiAnalysis || aiManaAdvice || aiBoardEval) && aiAssistanceEnabled && (
-          <Card className="absolute top-4 left-4 w-72 max-h-[60vh] overflow-y-auto z-10 shadow-lg bg-card/95">
+          <Card className="absolute top-4 left-4 w-72 max-h-[60vh] overflow-y-auto z-10 shadow-lg bg-card/95" role="complementary" aria-label="AI Game Suggestions" aria-live="polite">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Lightbulb className="h-4 w-4 text-yellow-500" />
