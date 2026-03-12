@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback, useEffect } from "react";
 import { GameBoard } from "@/components/game-board";
 import { GameChat } from "@/components/game-chat";
 import { EmotePicker, EmoteFeed } from "@/components/emote-picker";
@@ -17,8 +17,10 @@ import { Swords, Eye, MessageCircle, Smile, Lightbulb, AlertTriangle, Zap } from
 import { useToast } from "@/hooks/use-toast";
 import { useGameChat } from "@/hooks/use-game-chat";
 import { useGameEmotes } from "@/hooks/use-game-emotes";
+import { useGameEngine } from "@/hooks/use-game-engine";
 import { cn } from "@/lib/utils";
 import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
+import type { CardInstanceId, PlayerId } from "@/lib/game-state/types";
 
 // Type definitions for AI analysis results
 interface SuggestedPlay {
@@ -53,7 +55,10 @@ interface AIBoardEval {
   boardAdvantage?: string;
 }
 
-// Mock data generator for demonstration
+/**
+ * @deprecated Mock data generator - kept for backward compatibility only.
+ * Use useGameEngine hook instead for actual game state management.
+ */
 function generateMockPlayer(
   id: string,
   name: string,
@@ -169,8 +174,6 @@ function generateMockPlayer(
 
 export default function GameBoardPage() {
   const [playerCount, setPlayerCount] = React.useState<PlayerCount>(2);
-  const [currentTurnIndex, setCurrentTurnIndex] = React.useState(0);
-  const [players, setPlayers] = React.useState<PlayerState[]>([]);
   const [timerEnabled, setTimerEnabled] = React.useState(false);
   const [chatOpen, setChatOpen] = React.useState(true);
   const [aiAssistanceEnabled, setAiAssistanceEnabled] = React.useState(false);
@@ -178,57 +181,109 @@ export default function GameBoardPage() {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [aiManaAdvice, setAiManaAdvice] = useState<AIManaAdvice | null>(null);
   const [aiBoardEval, setAiBoardEval] = useState<AIBoardEval | null>(null);
+  const [useEngine, setUseEngine] = React.useState(true); // Toggle between engine and mock
   const { toast } = useToast();
 
-  // Get current player info
+  // Initialize game engine
+  const playerNames = playerCount === 2 
+    ? ["Opponent", "You"] 
+    : ["Player 1", "Player 2", "Player 3", "You"];
+  
+  const {
+    gameState,
+    engineState,
+    isGameStarted,
+    currentPlayerId,
+    initializeGame,
+    startGame,
+    resetGame,
+    advancePhase: engineAdvancePhase,
+    nextTurn: engineNextTurn,
+    playLand: enginePlayLand,
+    castSpell: engineCastSpell,
+    tapCard: engineTapCard,
+    untapCard: engineUntapCard,
+    declareAttackers: engineDeclareAttackers,
+    declareBlockers: engineDeclareBlockers,
+    damagePlayer: engineDamagePlayer,
+    healPlayer: engineHealPlayer,
+    concede: engineConcede,
+    offerDraw: engineOfferDraw,
+    acceptDraw: engineAcceptDraw,
+    declineDraw: engineDeclineDraw,
+    drawCard: engineDrawCard,
+    canPlayLand,
+    canCastSpell,
+  } = useGameEngine({
+    playerNames,
+    startingLife: playerCount === 2 ? 20 : 40,
+    isCommander: playerCount === 4,
+    autoStart: false,
+  });
+
+  // Use engine state if available, otherwise fall back to mock state
+  const players = gameState?.players || [];
+  const currentTurnIndex = gameState?.currentTurnPlayerIndex || 0;
   const currentPlayer = players.length > 0 ? players[players.length - 1] : null;
-  const currentPlayerId = currentPlayer?.id || "player-2";
+  const currentPlayerIdLocal = currentPlayerId || currentPlayer?.id || "player-2";
   const currentPlayerName = currentPlayer?.name || "You";
 
   // Initialize chat
-  const { 
-    messages, 
-    sendMessage, 
+  const {
+    messages,
+    sendMessage,
     clearMessages,
     unreadCount,
-    markAsRead 
+    markAsRead
   } = useGameChat({
-    currentPlayerId,
+    currentPlayerId: currentPlayerIdLocal,
     currentPlayerName,
   });
 
   // Initialize emotes
   const { emotes, sendEmote, clearEmotes } = useGameEmotes({
-    currentPlayerId,
+    currentPlayerId: currentPlayerIdLocal,
     currentPlayerName,
   });
 
   // Initialize damage events
   const { events: damageEvents, addDamage, addHeal } = useDamageEvents();
 
-  // Initialize players when player count changes
+  // Initialize game when player count changes
   React.useEffect(() => {
-    const newPlayers: PlayerState[] = [];
+    if (useEngine) {
+      // Reset and reinitialize with engine
+      resetGame();
+      initializeGame();
+    } else {
+      // Fall back to mock data
+      const newPlayers: PlayerState[] = [];
 
-    if (playerCount === 2) {
-      newPlayers.push(
-        generateMockPlayer("player-1", "Opponent", 20, false),
-        generateMockPlayer("player-2", "You", 20, false)
-      );
-    } else if (playerCount === 4) {
-      newPlayers.push(
-        generateMockPlayer("player-1", "Player 1", 40, true),
-        generateMockPlayer("player-2", "Player 2", 40, true),
-        generateMockPlayer("player-3", "Player 3", 40, true),
-        generateMockPlayer("player-4", "You", 40, true)
-      );
+      if (playerCount === 2) {
+        newPlayers.push(
+          generateMockPlayer("player-1", "Opponent", 20, false),
+          generateMockPlayer("player-2", "You", 20, false)
+        );
+      } else if (playerCount === 4) {
+        newPlayers.push(
+          generateMockPlayer("player-1", "Player 1", 40, true),
+          generateMockPlayer("player-2", "Player 2", 40, true),
+          generateMockPlayer("player-3", "Player 3", 40, true),
+          generateMockPlayer("player-4", "You", 40, true)
+        );
+      }
+
+      clearMessages();
+      clearEmotes();
     }
+  }, [playerCount, useEngine]);
 
-    setPlayers(newPlayers);
-    setCurrentTurnIndex(0);
-    clearMessages();
-    clearEmotes();
-  }, [playerCount, clearMessages, clearEmotes]);
+  // Auto-start game when initialized
+  React.useEffect(() => {
+    if (useEngine && engineState && !isGameStarted) {
+      startGame();
+    }
+  }, [useEngine, engineState, isGameStarted, startGame]);
 
   // Handle chat open/close
   React.useEffect(() => {
@@ -237,96 +292,270 @@ export default function GameBoardPage() {
     }
   }, [chatOpen, messages.length, markAsRead]);
 
-  const handleCardClick = (cardId: string, zone: ZoneType) => {
-    toast({
-      title: "Card Selected",
-      description: `Clicked card ${cardId} in ${zone}`,
-    });
-  };
+  // Handle card click - integrated with engine
+  const handleCardClick = useCallback((cardId: string, zone: ZoneType) => {
+    if (useEngine && engineState) {
+      // Engine integration - handle card interactions
+      const card = engineState.cards.get(cardId as CardInstanceId);
+      
+      if (zone === "battlefield" && card) {
+        // Toggle tap/untap for battlefield cards
+        if (card.isTapped) {
+          engineUntapCard(cardId as CardInstanceId);
+          toast({
+            title: "Card Untapped",
+            description: `${card.cardData.name} was untapped`,
+          });
+        } else {
+          engineTapCard(cardId as CardInstanceId);
+          toast({
+            title: "Card Tapped",
+            description: `${card.cardData.name} was tapped`,
+          });
+        }
+      } else if (zone === "hand" && card) {
+        // Card in hand - show details or offer to play
+        const canPlayLandResult = canPlayLand(currentPlayerIdLocal);
+        const canCastSpellResult = canCastSpell(currentPlayerIdLocal, cardId as CardInstanceId);
+        
+        if (card.cardData.type_line?.toLowerCase().includes("land") && canPlayLandResult) {
+          const result = enginePlayLand(cardId as CardInstanceId);
+          if (result.success) {
+            toast({
+              title: "Land Played",
+              description: `${card.cardData.name} was played`,
+            });
+          } else {
+            toast({
+              title: "Cannot Play Land",
+              description: result.error || "You cannot play a land right now",
+              variant: "destructive",
+            });
+          }
+        } else if (canCastSpellResult) {
+          toast({
+            title: "Spell Ready",
+            description: `${card.cardData.name} can be cast (mana required)`,
+          });
+        } else {
+          toast({
+            title: "Card Selected",
+            description: `${card.cardData.name} - ${card.cardData.type_line}`,
+          });
+        }
+      } else {
+        toast({
+          title: "Card Selected",
+          description: `${card?.cardData.name || cardId} in ${zone}`,
+        });
+      }
+    } else {
+      // Legacy mock data handling
+      toast({
+        title: "Card Selected",
+        description: `Clicked card ${cardId} in ${zone}`,
+      });
+    }
+  }, [useEngine, engineState, currentPlayerIdLocal, engineUntapCard, engineTapCard, enginePlayLand, canPlayLand, canCastSpell, toast]);
 
   const handleZoneClick = (zone: ZoneType, playerId: string) => {
-    const player = players.find((p) => p.id === playerId);
-    let zoneData: unknown[] = [];
-    
-    // Map ZoneType to PlayerState properties
-    switch (zone) {
-      case "commandZone":
-        zoneData = player?.commandZone || [];
-        break;
-      case "battlefield":
-        zoneData = player?.battlefield || [];
-        break;
-      case "hand":
-        zoneData = player?.hand || [];
-        break;
-      case "graveyard":
-        zoneData = player?.graveyard || [];
-        break;
-      case "exile":
-        zoneData = player?.exile || [];
-        break;
-      case "library":
-        zoneData = player?.library || [];
-        break;
-      case "stack":
-      case "sideboard":
-      case "anticipate":
-        // These zones don't exist in PlayerState yet
-        zoneData = [];
-        break;
-    }
+    if (useEngine && engineState) {
+      const player = engineState.players.get(playerId as PlayerId);
+      const zoneKey = `${playerId}-${zone === "commandZone" ? "command" : zone}`;
+      const zoneData = engineState.zones.get(zoneKey);
+      
+      toast({
+        title: `${zone.charAt(0).toUpperCase() + zone.slice(1)} Zone`,
+        description: `${player?.name}'s ${zone}: ${zoneData?.cardIds.length || 0} cards`,
+      });
+    } else {
+      // Legacy mock data handling
+      const player = players.find((p) => p.id === playerId);
+      let zoneData: unknown[] = [];
 
-    toast({
-      title: `${zone.charAt(0).toUpperCase() + zone.slice(1)} Zone`,
-      description: `${player?.name}'s ${zone}: ${zoneData?.length || 0} cards`,
-    });
+      // Map ZoneType to PlayerState properties
+      switch (zone) {
+        case "commandZone":
+          zoneData = player?.commandZone || [];
+          break;
+        case "battlefield":
+          zoneData = player?.battlefield || [];
+          break;
+        case "hand":
+          zoneData = player?.hand || [];
+          break;
+        case "graveyard":
+          zoneData = player?.graveyard || [];
+          break;
+        case "exile":
+          zoneData = player?.exile || [];
+          break;
+        case "library":
+          zoneData = player?.library || [];
+          break;
+        case "stack":
+        case "sideboard":
+        case "anticipate":
+          // These zones don't exist in PlayerState yet
+          zoneData = [];
+          break;
+      }
+
+      toast({
+        title: `${zone.charAt(0).toUpperCase() + zone.slice(1)} Zone`,
+        description: `${player?.name}'s ${zone}: ${zoneData?.length || 0} cards`,
+      });
+    }
   };
 
   const advanceTurn = () => {
-    const nextIndex = (currentTurnIndex + 1) % players.length;
-    setCurrentTurnIndex(nextIndex);
-
-    // Update isCurrentTurn flags
-    setPlayers((prev) =>
-      prev.map((player, idx) => ({
-        ...player,
-        isCurrentTurn: idx === nextIndex,
-      }))
-    );
+    if (useEngine && engineState) {
+      // Use engine's turn advancement
+      engineNextTurn();
+      toast({
+        title: "Turn Advanced",
+        description: `Now ${engineState.players.get(engineState.turn.activePlayerId)?.name}'s turn`,
+      });
+    } else {
+      // Legacy mock data handling
+      const nextIndex = (currentTurnIndex + 1) % players.length;
+      
+      // Update isCurrentTurn flags
+      // This is handled by the engine now
+      toast({
+        title: "Turn Advanced",
+        description: `Now ${players[nextIndex]?.name}'s turn`,
+      });
+    }
   };
 
   const damagePlayer = (playerIndex: number, amount: number) => {
-    const targetPlayer = players[playerIndex];
-    setPlayers((prev) =>
-      prev.map((player, idx) =>
-        idx === playerIndex
-          ? { ...player, lifeTotal: Math.max(0, player.lifeTotal - amount) }
-          : player
-      )
-    );
-    // Show damage indicator
-    if (targetPlayer) {
-      addDamage(amount, 'combat', targetPlayer.id);
+    if (useEngine && engineState) {
+      // Use engine for damage
+      const playerIds = Array.from(engineState.players.keys());
+      const targetPlayerId = playerIds[playerIndex];
+      if (targetPlayerId) {
+        engineDamagePlayer(targetPlayerId as PlayerId, amount);
+        addDamage(amount, 'combat', targetPlayerId);
+        toast({
+          title: "Damage Dealt",
+          description: `${amount} damage dealt to ${engineState.players.get(targetPlayerId)?.name}`,
+        });
+      }
+    } else {
+      // Legacy mock data handling
+      const targetPlayer = players[playerIndex];
+      if (targetPlayer) {
+        addDamage(amount, 'combat', targetPlayer.id);
+        toast({
+          title: "Damage Dealt",
+          description: `${amount} damage dealt to ${targetPlayer.name}`,
+        });
+      }
     }
   };
 
   const healPlayer = (playerIndex: number, amount: number) => {
-    const targetPlayer = players[playerIndex];
-    setPlayers((prev) =>
-      prev.map((player, idx) =>
-        idx === playerIndex
-          ? { ...player, lifeTotal: player.lifeTotal + amount }
-          : player
-      )
-    );
-    // Show heal indicator
-    if (targetPlayer) {
-      addHeal(amount, targetPlayer.id);
+    if (useEngine && engineState) {
+      // Use engine for healing
+      const playerIds = Array.from(engineState.players.keys());
+      const targetPlayerId = playerIds[playerIndex];
+      if (targetPlayerId) {
+        engineHealPlayer(targetPlayerId as PlayerId, amount);
+        addHeal(amount, targetPlayerId);
+        toast({
+          title: "Life Gained",
+          description: `${amount} life gained by ${engineState.players.get(targetPlayerId)?.name}`,
+        });
+      }
+    } else {
+      // Legacy mock data handling
+      const targetPlayer = players[playerIndex];
+      if (targetPlayer) {
+        addHeal(amount, targetPlayer.id);
+        toast({
+          title: "Life Gained",
+          description: `${amount} life gained by ${targetPlayer.name}`,
+        });
+      }
     }
   };
 
   // Convert player state to game state format for AI analysis
   const convertToGameState = () => {
+    if (useEngine && engineState) {
+      // Use actual engine state for AI analysis
+      const playersMap: { [id: string]: any } = {};
+      
+      // Convert engine phase to UI phase
+      const phaseMap: Record<string, "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end"> = {
+        untap: "beginning",
+        upkeep: "beginning",
+        draw: "beginning",
+        precombat_main: "precombat_main",
+        begin_combat: "combat",
+        declare_attackers: "combat",
+        declare_blockers: "combat",
+        combat_damage_first_strike: "combat",
+        combat_damage: "combat",
+        end_combat: "combat",
+        postcombat_main: "postcombat_main",
+        end: "end",
+        cleanup: "end",
+      };
+
+      engineState.players.forEach((player, playerId) => {
+        const handZone = engineState.zones.get(`${playerId}-hand`);
+        const battlefieldZone = engineState.zones.get(`${playerId}-battlefield`);
+        
+        playersMap[playerId] = {
+          id: playerId,
+          name: player.name,
+          life: player.life,
+          poisonCounters: player.poisonCounters,
+          hand: handZone?.cardIds.map(cardId => {
+            const card = engineState.cards.get(cardId);
+            return {
+              cardId,
+              name: card?.cardData.name || "Unknown",
+              type: card?.cardData.type_line || "Unknown",
+              manaValue: card?.cardData.cmc || 0,
+            };
+          }) || [],
+          battlefield: battlefieldZone?.cardIds.map(cardId => {
+            const card = engineState.cards.get(cardId);
+            return {
+              id: cardId,
+              cardId,
+              name: card?.cardData.name || "Unknown",
+              type: card?.cardData.type_line?.toLowerCase().includes("creature") ? "creature" : "other",
+              controller: playerId,
+              manaValue: card?.cardData.cmc || 0,
+              tapped: card?.isTapped || false,
+            };
+          }) || [],
+          manaPool: player.manaPool,
+        };
+      });
+
+      return {
+        players: playersMap,
+        turnInfo: {
+          currentTurn: engineState.turn.turnNumber,
+          currentPlayer: engineState.turn.activePlayerId,
+          phase: phaseMap[engineState.turn.currentPhase] || "precombat_main",
+          priority: engineState.priorityPlayerId || engineState.turn.activePlayerId,
+        },
+        stack: engineState.stack.map(obj => ({
+          cardId: obj.sourceCardId || "",
+          controller: obj.controllerId,
+          type: obj.type,
+          targets: obj.targets?.map(t => t.targetId) || [],
+        })),
+      };
+    }
+
+    // Legacy mock data conversion
     const playersMap: { [id: string]: any } = {};
     players.forEach(p => {
       playersMap[p.id] = {
@@ -362,6 +591,50 @@ export default function GameBoardPage() {
       },
       stack: [],
     };
+  };
+
+  // Handle concede
+  const handleConcede = () => {
+    if (useEngine && currentPlayerIdLocal) {
+      engineConcede(currentPlayerIdLocal as PlayerId);
+      toast({
+        title: "Game Conceded",
+        description: "You have conceded the game",
+      });
+    }
+  };
+
+  // Handle offer draw
+  const handleOfferDraw = () => {
+    if (useEngine && currentPlayerIdLocal) {
+      engineOfferDraw(currentPlayerIdLocal as PlayerId);
+      toast({
+        title: "Draw Offered",
+        description: "You have offered a draw to all players",
+      });
+    }
+  };
+
+  // Handle accept draw
+  const handleAcceptDraw = () => {
+    if (useEngine && currentPlayerIdLocal) {
+      engineAcceptDraw(currentPlayerIdLocal as PlayerId);
+      toast({
+        title: "Draw Accepted",
+        description: "The game ends in a draw",
+      });
+    }
+  };
+
+  // Handle decline draw
+  const handleDeclineDraw = () => {
+    if (useEngine && currentPlayerIdLocal) {
+      engineDeclineDraw(currentPlayerIdLocal as PlayerId);
+      toast({
+        title: "Draw Declined",
+        description: "The draw offer has been declined",
+      });
+    }
   };
 
   // Handle AI assistance request
@@ -444,6 +717,22 @@ export default function GameBoardPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="flex items-center justify-between">
+              <Label htmlFor="engine-toggle" className="text-sm">Use Game Engine</Label>
+              <input
+                type="checkbox"
+                id="engine-toggle"
+                checked={useEngine}
+                onChange={(e) => setUseEngine(e.target.checked)}
+                className="toggle"
+              />
+            </div>
+            {useEngine && (
+              <p className="text-xs text-muted-foreground">
+                Using actual game state engine. {isGameStarted ? "Game in progress." : "Initializing..."}
+              </p>
+            )}
 
             <Button onClick={advanceTurn} className="w-full" variant="default">
               Advance Turn
@@ -587,35 +876,74 @@ export default function GameBoardPage() {
           <div className="space-y-2">
             <h2 className="font-semibold text-sm flex items-center gap-2">
               <Eye className="h-4 w-4" />
-              Demo Controls
+              {useEngine ? "Engine Controls" : "Demo Controls"}
             </h2>
-            <p className="text-xs text-muted-foreground">
-              This is a demonstration of the game board layout with mock data.
-              Click on zones and cards to interact with the board.
-            </p>
-            <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
-              <li>Hover over zones to see card counts</li>
-              <li>Click zones to view detailed contents</li>
-              <li>Use life total controls to simulate damage</li>
-              <li>Advance turn to see active player indicator</li>
-              <li>Try both 2-player and 4-player layouts</li>
-            </ul>
+            {useEngine ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Game engine is active. Click cards to interact:
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Click battlefield cards to tap/untap</li>
+                  <li>Click land cards in hand to play them (during main phase)</li>
+                  <li>Click spell cards to see casting info</li>
+                  <li>Use life total controls for damage/healing</li>
+                  <li>Advance Turn to progress to next player</li>
+                  <li>Concede or Offer Draw from game board menu</li>
+                </ul>
+                <div className="mt-2 p-2 rounded bg-primary/10 text-xs">
+                  <strong>Engine Status:</strong> {isGameStarted ? "Running" : "Initializing"} | 
+                  Turn: {gameState?.turnNumber || 0} | 
+                  Phase: {gameState?.currentPhase || "N/A"}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  This is a demonstration of the game board layout with mock data.
+                  Click on zones and cards to interact with the board.
+                </p>
+                <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                  <li>Hover over zones to see card counts</li>
+                  <li>Click zones to view detailed contents</li>
+                  <li>Use life total controls to simulate damage</li>
+                  <li>Advance turn to see active player indicator</li>
+                  <li>Try both 2-player and 4-player layouts</li>
+                </ul>
+              </>
+            )}
           </div>
 
           <Separator />
 
           {/* Info */}
           <div className="text-xs text-muted-foreground space-y-1">
-            <p className="font-medium">Phase 2.1 Features:</p>
+            <p className="font-medium">{useEngine ? "Game Engine Features:" : "Phase 2.1 Features:"}</p>
             <ul className="space-y-1 list-disc list-inside">
-              <li>Responsive 2-player layout</li>
-              <li>Responsive 4-player Commander layout</li>
-              <li>All game zones displayed</li>
-              <li>Command zone support</li>
-              <li>Life total tracking</li>
-              <li>Poison counter display</li>
-              <li>Commander damage tracking</li>
-              <li>Active turn indicator</li>
+              {useEngine ? (
+                <>
+                  <li>Full game state management</li>
+                  <li>Turn phase progression</li>
+                  <li>Land playing (one per turn)</li>
+                  <li>Spell casting with mana validation</li>
+                  <li>Card tap/untap mechanics</li>
+                  <li>Combat system (attackers/blockers)</li>
+                  <li>Damage and life tracking</li>
+                  <li>Concede and draw offers</li>
+                  <li>State-based actions</li>
+                </>
+              ) : (
+                <>
+                  <li>Responsive 2-player layout</li>
+                  <li>Responsive 4-player Commander layout</li>
+                  <li>All game zones displayed</li>
+                  <li>Command zone support</li>
+                  <li>Life total tracking</li>
+                  <li>Poison counter display</li>
+                  <li>Commander damage tracking</li>
+                  <li>Active turn indicator</li>
+                </>
+              )}
             </ul>
           </div>
         </div>
@@ -630,6 +958,14 @@ export default function GameBoardPage() {
             currentTurnIndex={currentTurnIndex}
             onCardClick={handleCardClick}
             onZoneClick={handleZoneClick}
+            onConcede={handleConcede}
+            onOfferDraw={handleOfferDraw}
+            onAcceptDraw={handleAcceptDraw}
+            onDeclineDraw={handleDeclineDraw}
+            hasActiveDrawOffer={useEngine ? (engineState?.players.get(currentPlayerIdLocal as PlayerId)?.hasOfferedDraw ?? false) : false}
+            hasPlayerOfferedDraw={useEngine ? (engineState?.players.get(currentPlayerIdLocal as PlayerId)?.hasOfferedDraw ?? false) : false}
+            isGameOver={useEngine ? (engineState?.status === "completed") : false}
+            damageEvents={damageEvents}
           />
         )}
         
@@ -638,7 +974,7 @@ export default function GameBoardPage() {
           {chatOpen ? (
             <GameChat
               messages={messages}
-              currentPlayerId={currentPlayerId}
+              currentPlayerId={currentPlayerIdLocal}
               currentPlayerName={currentPlayerName}
               onSendMessage={sendMessage}
               className="shadow-lg"
