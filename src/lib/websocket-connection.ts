@@ -174,8 +174,9 @@ export class WebSocketConnection {
             this.roomId = response.payload.roomId;
             resolve(response.payload);
           }
-        } catch {
-          // Ignore parse errors
+        } catch (err) {
+          console.error('[WebSocket] Failed to parse room creation response:', err);
+          // Continue waiting for valid response
         }
       };
 
@@ -225,8 +226,9 @@ export class WebSocketConnection {
             this.socket?.removeEventListener('message', handler);
             reject(new Error('Game not found'));
           }
-        } catch {
-          // Ignore parse errors
+        } catch (err) {
+          console.error('[WebSocket] Failed to parse room join response:', err);
+          // Continue waiting for valid response
         }
       };
 

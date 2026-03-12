@@ -101,7 +101,13 @@ export function useStorageBackup() {
       const quotaInfo = await indexedDBStorage.getStorageQuota();
       setQuota(quotaInfo);
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       console.error('Failed to load storage quota:', err);
+      setError({
+        message: `Failed to load storage quota: ${errorMessage}`,
+        code: 'QUOTA_LOAD_FAILED',
+        details: err,
+      });
     }
   }, []);
 
@@ -234,7 +240,13 @@ export function useStorageBackup() {
       const json = JSON.stringify(backupData, null, 2);
       return new Blob([json]).size;
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       console.error('Failed to estimate backup size:', err);
+      setError({
+        message: `Failed to estimate backup size: ${errorMessage}`,
+        code: 'SIZE_ESTIMATE_FAILED',
+        details: err,
+      });
       return 0;
     }
   }, []);
@@ -323,12 +335,17 @@ export function validateBackupFile(file: File): Promise<boolean> {
           data.checksum !== undefined;
 
         resolve(isValid);
-      } catch {
+      } catch (err) {
+        console.error('Failed to validate backup file:', err);
         resolve(false);
       }
     };
 
-    reader.onerror = () => resolve(false);
+    reader.onerror = () => {
+      console.error('Failed to read backup file');
+      resolve(false);
+    };
+
     reader.readAsText(file);
   });
 }

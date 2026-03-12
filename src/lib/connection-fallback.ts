@@ -166,14 +166,15 @@ export class ConnectionFallbackManager {
               clearTimeout(this.fallbackTimer);
               this.fallbackTimer = null;
             }
-            
+
             this.connectWebSocket()
               .then((connectionType) => {
                 resolved = true;
                 resolve(connectionType);
               })
-              .catch(() => {
+              .catch((wsError) => {
                 if (!resolved) {
+                  console.error('[ConnectionFallback] WebSocket fallback failed:', wsError);
                   reject(new Error(`Both WebRTC and WebSocket failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
                 }
               });
