@@ -52,7 +52,7 @@
       "signingIdentity": "-",
       "providerShortName": null,
       "entitlements": "entitlements.plist",
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "dmg": {
         "appPosition": {
           "x": 180,
