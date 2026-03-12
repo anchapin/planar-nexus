@@ -57,9 +57,17 @@
         "allowToChangeInstallationDirectory": true,
         "oneClick": false,
         "perMachine": true,
-        "runAfterFinish": true
+        "runAfterFinish": true,
+        "compression": "lzma",
+        "appImagePaths": ["Planar Nexus"],
+        "shortcutLanguage": 1033,
+        "minimumSupportedWindowsVersion": "10"
       },
-      "wix": null
+      "wix": null,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "webviewFixedRuntimePath": null
     },
     "macOS": {
       "minimumSystemVersion": "10.15",
@@ -73,7 +81,24 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Planar Nexus needs microphone access for voice commands (optional feature)",
         "NSCameraUsageDescription": "Planar Nexus needs camera access for AR card visualization (optional feature)"
-      }
+      },
+      "dmg": {
+        "appPosition": {
+          "x": 180,
+          "y": 170
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 170
+        },
+        "windowSize": {
+          "height": 400,
+          "width": 660
+        }
+      },
+      "minimumSystemVersion": "10.15",
+      "codesigningIdentity": null,
+      "codesigningOptions": null
     },
     "linux": {
       "appimage": {
