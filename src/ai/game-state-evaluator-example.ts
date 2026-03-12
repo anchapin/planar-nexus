@@ -3,6 +3,9 @@
  *
  * This file demonstrates how to use the AI game state evaluation system
  * with realistic MTG game scenarios.
+ *
+ * @development_only - This file is for development and testing purposes only
+ * and should not be included in production builds.
  */
 
 import {

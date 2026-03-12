@@ -9,6 +9,7 @@
 import { AIProviderConfig } from './types';
 import { API_ENDPOINTS } from '@/lib/env';
 import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
+import { aiLogger } from '@/lib/logger';
 
 /**
  * Google AI provider configuration
@@ -184,7 +185,7 @@ async function sendGoogleAIChatViaProxy(
 
     return proxyResponse.data;
   } catch (error) {
-    console.error('Google AI proxy request failed:', error);
+    aiLogger.error('Google AI proxy request failed:', error);
     throw error;
   }
 }

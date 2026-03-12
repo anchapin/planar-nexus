@@ -12,6 +12,7 @@
 import { AIProviderConfig } from './types';
 import { API_ENDPOINTS } from '@/lib/env';
 import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
+import { aiLogger } from '@/lib/logger';
 
 /**
  * Z.ai provider configuration
@@ -146,7 +147,7 @@ async function sendZAIChatViaProxy(
 
     return proxyResponse.data;
   } catch (error) {
-    console.error('Z.ai proxy request failed:', error);
+    aiLogger.error('Z.ai proxy request failed:', error);
     throw error;
   }
 }
