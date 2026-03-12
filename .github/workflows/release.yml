@@ -278,8 +278,7 @@ jobs:
       always() &&
       (
         github.event_name == 'release' ||
-        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
-        (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
       ) &&
       (needs.build-windows.result == 'success' || needs.build-macos.result == 'success' || needs.build-linux.result == 'success')
 
