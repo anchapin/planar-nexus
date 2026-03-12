@@ -42,16 +42,47 @@ export interface AIDifficultyConfig {
 
 /**
  * Complete difficulty configurations
+ * 
+ * Each difficulty level is tuned to provide a distinct challenge level:
+ * - Easy: Beginner-friendly, makes obvious mistakes, prioritizes survival
+ * - Medium: Balanced opponent, reasonable plays with occasional errors
+ * - Hard: Challenging for experienced players, values advantage and tempo
+ * - Expert: Near-optimal play, punishes mistakes, deep strategic thinking
+ * 
+ * Target win rates (player vs AI):
+ * - Easy: ~80% player win rate
+ * - Medium: ~60% player win rate
+ * - Hard: ~40% player win rate
+ * - Expert: ~25% player win rate
  */
 export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
   easy: {
     level: 'easy',
     displayName: 'Easy',
-    description: 'AI makes more mistakes and plays randomly. Great for learning.',
+    description: 'Makes frequent mistakes and random plays. Perfect for learning the game.',
     randomnessFactor: 0.4,
     lookaheadDepth: 1,
     evaluationWeights: {
-      ...DefaultWeights.easy,
+      // Easy AI prioritizes survival over strategic advantage
+      // Low weights mean it ignores long-term planning
+      lifeScore: 1.5,        // High: strongly values staying alive
+      poisonScore: 3.0,      // Low: doesn't understand poison threat well
+      cardAdvantage: 0.3,    // Low: ignores card advantage
+      handQuality: 0.2,      // Low: doesn't evaluate hand quality
+      libraryDepth: 0.1,     // Low: ignores mill risk
+      creaturePower: 0.5,    // Low: undervalues attacking power
+      creatureToughness: 0.3,// Low: ignores creature survivability
+      creatureCount: 0.3,    // Low: doesn't value board presence
+      permanentAdvantage: 0.3,// Low: ignores permanent advantage
+      manaAvailable: 0.2,    // Low: inefficient mana usage
+      tempoAdvantage: 0.2,   // Low: doesn't understand tempo
+      commanderDamageWeight: 1.0, // Low: ignores commander damage
+      commanderPresence: 0.3,     // Low: undervalues commander
+      cardSelection: 0.2,    // Low: poor card evaluation
+      graveyardValue: 0.1,   // Low: ignores graveyard resources
+      synergy: 0.1,          // Low: doesn't recognize synergies
+      winConditionProgress: 0.5, // Low: slow to close games
+      inevitability: 0.3,    // Low: doesn't plan for long game
     },
     useLookahead: false,
     blunderChance: 0.25,
@@ -61,11 +92,29 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
   medium: {
     level: 'medium',
     displayName: 'Medium',
-    description: 'Balanced AI opponent. Makes reasonable decisions with occasional mistakes.',
+    description: 'Balanced opponent. Makes reasonable plays but can be outsmarted.',
     randomnessFactor: 0.2,
     lookaheadDepth: 2,
     evaluationWeights: {
-      ...DefaultWeights.medium,
+      // Medium AI has balanced evaluation - understands basics but not advanced strategy
+      lifeScore: 1.0,        // Moderate: values life but not obsessed
+      poisonScore: 6.0,      // Moderate: respects poison threat
+      cardAdvantage: 0.8,    // Moderate: understands card advantage basics
+      handQuality: 0.5,      // Moderate: evaluates hand somewhat
+      libraryDepth: 0.2,     // Low-moderate: aware of mill risk
+      creaturePower: 1.0,    // Moderate: values attacking power
+      creatureToughness: 0.8,// Moderate: considers creature survivability
+      creatureCount: 0.8,    // Moderate: values board presence
+      permanentAdvantage: 1.0,// Moderate: understands permanent advantage
+      manaAvailable: 0.6,    // Moderate: decent mana efficiency
+      tempoAdvantage: 0.5,   // Moderate: understands tempo basics
+      commanderDamageWeight: 2.5, // Moderate: respects commander damage
+      commanderPresence: 0.8,     // Moderate: values commander
+      cardSelection: 0.6,    // Moderate: decent card evaluation
+      graveyardValue: 0.4,   // Low-moderate: some graveyard awareness
+      synergy: 0.3,          // Low: basic synergy recognition
+      winConditionProgress: 1.5, // Moderate: pushes win conditions
+      inevitability: 0.8,    // Moderate: plans ahead somewhat
     },
     useLookahead: true,
     blunderChance: 0.1,
@@ -75,11 +124,29 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
   hard: {
     level: 'hard',
     displayName: 'Hard',
-    description: 'Skilled AI that makes few mistakes. Challenging for most players.',
+    description: 'Skilled opponent. Makes few mistakes and punishes errors.',
     randomnessFactor: 0.1,
     lookaheadDepth: 3,
     evaluationWeights: {
-      ...DefaultWeights.hard,
+      // Hard AI values strategic advantage and tempo - challenging for experienced players
+      lifeScore: 0.8,        // Lower: willing to trade life for advantage
+      poisonScore: 9.0,      // High: very respectful of poison
+      cardAdvantage: 1.5,    // High: strongly values card advantage
+      handQuality: 0.9,      // High: good hand evaluation
+      libraryDepth: 0.4,     // Moderate: manages library carefully
+      creaturePower: 1.5,    // High: values aggressive positioning
+      creatureToughness: 1.2,// High: considers creature trades carefully
+      creatureCount: 1.2,    // High: values board control
+      permanentAdvantage: 1.8,// High: fights for permanent advantage
+      manaAvailable: 1.0,    // High: efficient mana usage
+      tempoAdvantage: 1.0,   // High: understands tempo importance
+      commanderDamageWeight: 4.0, // High: uses commander damage strategically
+      commanderPresence: 1.5,     // High: leverages commander well
+      cardSelection: 1.0,    // High: excellent card evaluation
+      graveyardValue: 0.7,   // Moderate-high: utilizes graveyard
+      synergy: 0.7,          // Moderate-high: recognizes synergies
+      winConditionProgress: 2.5, // High: aggressively pursues wins
+      inevitability: 1.5,    // High: plans for long game
     },
     useLookahead: true,
     blunderChance: 0.05,
@@ -89,31 +156,32 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
   expert: {
     level: 'expert',
     displayName: 'Expert',
-    description: 'Maximum AI challenge. Near-perfect play with deep lookahead.',
-    randomnessFactor: 0.02,
+    description: 'Near-perfect play. Deep lookahead and optimal decision-making.',
+    randomnessFactor: 0.05,
     lookaheadDepth: 4,
     evaluationWeights: {
-      lifeScore: 0.4,
-      poisonScore: 12.0,
-      cardAdvantage: 2.0,
-      handQuality: 1.5,
-      libraryDepth: 0.8,
-      creaturePower: 2.0,
-      creatureToughness: 1.5,
-      creatureCount: 2.0,
-      permanentAdvantage: 2.5,
-      manaAvailable: 1.5,
-      tempoAdvantage: 1.2,
-      commanderDamageWeight: 5.0,
-      commanderPresence: 2.0,
-      cardSelection: 1.5,
-      graveyardValue: 1.0,
-      synergy: 1.0,
-      winConditionProgress: 4.0,
-      inevitability: 2.5,
+      // Expert AI has near-optimal weight distribution - minimal weaknesses
+      lifeScore: 0.6,        // Optimized: trades life efficiently for value
+      poisonScore: 12.0,     // Maximum: understands poison is lethal
+      cardAdvantage: 2.0,    // Maximum: card advantage is king
+      handQuality: 1.5,      // High: excellent hand assessment
+      libraryDepth: 0.8,     // High: manages deck resources optimally
+      creaturePower: 2.0,    // High: maximizes combat advantage
+      creatureToughness: 1.5,// High: optimal creature trading
+      creatureCount: 2.0,    // High: dominates board states
+      permanentAdvantage: 2.5,// Maximum: controls battlefield
+      manaAvailable: 1.5,    // High: perfect mana efficiency
+      tempoAdvantage: 1.2,   // High: tempo-focused play
+      commanderDamageWeight: 5.0, // Maximum: lethal commander math
+      commanderPresence: 2.0,     // High: commander-centric strategy
+      cardSelection: 1.5,    // High: best card choices
+      graveyardValue: 1.0,   // High: full graveyard utilization
+      synergy: 1.0,          // High: maximizes card synergies
+      winConditionProgress: 4.0, // Maximum: closes games efficiently
+      inevitability: 2.5,    // Maximum: unbeatable in long games
     },
     useLookahead: true,
-    blunderChance: 0.01,
+    blunderChance: 0.02,
     tempoPriority: 0.9,
     riskTolerance: 0.85,
   },

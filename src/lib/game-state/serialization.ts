@@ -1,741 +1,505 @@
 /**
- * @fileOverview Game state serialization for save/load functionality
+ * @fileoverview GameState Serialization and Conversion
  *
- * Issue #31: Phase 2.3: Implement game state serialization
+ * This module provides conversion functions between Engine GameState format
+ * and AI GameState format. It enables the AI to work with real game state
+ * while maintaining the engine's detailed internal representation.
  *
- * Provides:
- * - Serialize game state to JSON
- * - Include all zones and card states
- * - Handle random number generator state
- * - Timestamp and metadata
- * - Version handling for backwards compatibility
+ * Key functions:
+ * - engineToAIState: Convert Engine GameState to AI format
+ * - aiToEngineState: Convert AI format back to Engine format (for action results)
+ * - engineToUnified: Alias for engineToAIState
+ * - unifiedToEngine: Alias for aiToEngineState
  */
 
-import type { GameState, CardInstance, Player, Zone, StackObject, Turn, Combat, WaitingChoice, ManaPool } from './types';
+import {
+  GameState as EngineGameState,
+  PlayerId,
+  CardInstanceId,
+  Player,
+  CardInstance,
+  Zone,
+  StackObject,
+  Phase,
+  AIGameState,
+  AIPlayerState,
+  AIPermanent,
+  AIHandCard,
+  AITurnInfo,
+  AIStackObject,
+  AICombatState,
+} from './types';
+import { PHASE_MAPPING } from './types';
 
 /**
- * Current serialization version
+ * Helper: Get card color identity from card data
  */
-export const SERIALIZATION_VERSION = '1.0.0';
+function getCardColors(cardData: CardInstance['cardData']): string[] {
+  const colors: string[] = [];
+  const colorMap: Record<string, string> = {
+    W: 'white',
+    U: 'blue',
+    B: 'black',
+    R: 'red',
+    G: 'green',
+  };
 
-/**
- * Minimum supported version for migrations
- */
-export const MIN_SUPPORTED_VERSION = '1.0.0';
+  if (cardData.mana_cost) {
+    for (const [symbol, color] of Object.entries(colorMap)) {
+      if (cardData.mana_cost.includes(`{${symbol}}`)) {
+        colors.push(color);
+      }
+    }
+  }
 
-/**
- * Serialized game state metadata
- */
-export interface SerializedGameMetadata {
-  /** Version of the serialization format */
-  version: string;
-  /** When the save was created */
-  savedAt: number;
-  /** When the game was originally created */
-  gameCreatedAt: number;
-  /** When the game was last modified */
-  gameLastModifiedAt: number;
-  /** Description of the save */
-  description?: string;
+  // Also check color_identity if available
+  if (cardData.color_identity) {
+    for (const symbol of cardData.color_identity) {
+      const color = colorMap[symbol];
+      if (color && !colors.includes(color)) {
+        colors.push(color);
+      }
+    }
+  }
+
+  return colors;
 }
 
 /**
- * Complete serialized game state
+ * Helper: Determine permanent type from card type line
  */
-export interface SerializedGameState {
-  /** Metadata about the save */
-  metadata: SerializedGameMetadata;
-  /** The serialized game state */
-  state: SerializedGameStateData;
+function getPermanentType(typeLine: string): AIPermanent['type'] {
+  const lowerType = typeLine.toLowerCase();
+
+  if (lowerType.includes('creature')) return 'creature';
+  if (lowerType.includes('land')) return 'land';
+  if (lowerType.includes('planeswalker')) return 'planeswalker';
+  if (lowerType.includes('artifact')) return 'artifact';
+  if (lowerType.includes('enchantment')) return 'enchantment';
+  return 'other';
 }
 
 /**
- * Serializable game state data (without Maps)
+ * Helper: Get step name from phase
  */
-export interface SerializedGameStateData {
-  /** Unique game identifier */
-  gameId: string;
-  /** All players in the game */
-  players: SerializedPlayer[];
-  /** All card instances */
-  cards: SerializedCardInstance[];
-  /** All zones */
-  zones: SerializedZone[];
-  /** Objects currently on the stack */
-  stack: SerializedStackObject[];
-  /** Current turn state */
-  turn: SerializedTurn;
-  /** Combat state */
-  combat: SerializedCombat;
-  /** Current choice waiting for player input */
-  waitingChoice: SerializedWaitingChoice | null;
-  /** Player who has priority */
-  priorityPlayerId: string | null;
-  /** Number of consecutive passes */
-  consecutivePasses: number;
-  /** Game status */
-  status: 'not_started' | 'in_progress' | 'paused' | 'completed';
-  /** Winner(s) of the game */
-  winners: string[];
-  /** How the game ended */
-  endReason: string | null;
-  /** Game format */
-  format: string;
+function getStepFromPhase(phase: Phase): string {
+  const stepMap: Record<Phase, string> = {
+    [Phase.UNTAP]: 'untap',
+    [Phase.UPKEEP]: 'upkeep',
+    [Phase.DRAW]: 'draw',
+    [Phase.PRECOMBAT_MAIN]: 'main',
+    [Phase.BEGIN_COMBAT]: 'begin_combat',
+    [Phase.DECLARE_ATTACKERS]: 'declare_attackers',
+    [Phase.DECLARE_BLOCKERS]: 'declare_blockers',
+    [Phase.COMBAT_DAMAGE_FIRST_STRIKE]: 'first_strike_damage',
+    [Phase.COMBAT_DAMAGE]: 'combat_damage',
+    [Phase.END_COMBAT]: 'end_combat',
+    [Phase.POSTCOMBAT_MAIN]: 'main',
+    [Phase.END]: 'end',
+    [Phase.CLEANUP]: 'cleanup',
+  };
+  return stepMap[phase];
 }
 
 /**
- * Serializable player data
+ * Convert Engine Player to AI PlayerState
  */
-export interface SerializedPlayer {
-  id: string;
-  name: string;
-  life: number;
-  poisonCounters: number;
-  commanderDamage: [string, number][];
-  maxHandSize: number;
-  currentHandSizeModifier: number;
-  hasLost: boolean;
-  lossReason: string | null;
-  landsPlayedThisTurn: number;
-  maxLandsPerTurn: number;
-  manaPool: SerializedManaPool;
-  isInCommandZone: boolean;
-  experienceCounters: number;
-  commanderCastCount: number;
-  hasPassedPriority: boolean;
-  hasActivatedManaAbility: boolean;
-  additionalCombatPhase: boolean;
-  additionalMainPhase: boolean;
-  hasOfferedDraw: boolean;
-  hasAcceptedDraw: boolean;
-}
+function convertPlayerToAI(
+  enginePlayer: Player,
+  engineState: EngineGameState
+): AIPlayerState {
+  // Get player's zones
+  const handZone = engineState.zones.get(`${enginePlayer.id}-hand`);
+  const battlefieldZone = engineState.zones.get(`${enginePlayer.id}-battlefield`);
+  const graveyardZone = engineState.zones.get(`${enginePlayer.id}-graveyard`);
+  const exileZone = engineState.zones.get(`${enginePlayer.id}-exile`);
+  const libraryZone = engineState.zones.get(`${enginePlayer.id}-library`);
 
-/**
- * Serializable mana pool
- */
-export interface SerializedManaPool {
-  colorless: number;
-  white: number;
-  blue: number;
-  black: number;
-  red: number;
-  green: number;
-  generic: number;
-}
+  // Convert hand cards
+  const hand: AIHandCard[] = [];
+  if (handZone) {
+    for (const cardId of handZone.cardIds) {
+      const card = engineState.cards.get(cardId);
+      if (card) {
+        hand.push({
+          cardInstanceId: card.id,
+          name: card.cardData.name,
+          type: card.cardData.type_line,
+          manaValue: card.cardData.cmc,
+          colors: getCardColors(card.cardData),
+          oracleText: card.cardData.oracle_text,
+          keywords: card.cardData.keywords,
+        });
+      }
+    }
+  }
 
-/**
- * Serializable card instance
- */
-export interface SerializedCardInstance {
-  id: string;
-  oracleId: string;
-  cardData: unknown; // ScryfallCard - serialized as-is
-  currentFaceIndex: number;
-  isFaceDown: boolean;
-  controllerId: string;
-  ownerId: string;
-  isTapped: boolean;
-  isFlipped: boolean;
-  isTurnedFaceUp: boolean;
-  isPhasedOut: boolean;
-  hasSummoningSickness: boolean;
-  counters: { type: string; count: number }[];
-  damage: number;
-  toughnessModifier: number;
-  powerModifier: number;
-  attachedToId: string | null;
-  attachedCardIds: string[];
-  enteredBattlefieldTimestamp: number;
-  attachedTimestamp: number | null;
-  isToken: boolean;
-  tokenData: unknown | null;
-}
+  // Convert battlefield permanents
+  const battlefield: AIPermanent[] = [];
+  if (battlefieldZone) {
+    for (const cardId of battlefieldZone.cardIds) {
+      const card = engineState.cards.get(cardId);
+      if (card && card.controllerId === enginePlayer.id) {
+        battlefield.push({
+          id: card.id,
+          cardInstanceId: card.id,
+          name: card.cardData.name,
+          type: getPermanentType(card.cardData.type_line),
+          controller: card.controllerId,
+          tapped: card.isTapped,
+          power: card.cardData.power ? parseInt(card.cardData.power) : undefined,
+          toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : undefined,
+          loyalty: card.cardData.loyalty ? parseInt(card.cardData.loyalty) : undefined,
+          counters: card.counters?.reduce((acc, counter) => {
+            acc[counter.type] = counter.count;
+            return acc;
+          }, {} as { [key: string]: number }),
+          keywords: card.cardData.keywords,
+          manaValue: card.cardData.cmc,
+          summoningSickness: card.hasSummoningSickness,
+          damage: card.damage > 0 ? card.damage : undefined,
+        });
+      }
+    }
+  }
 
-/**
- * Serializable zone
- */
-export interface SerializedZone {
-  id: string;
-  type: string;
-  playerId: string | null;
-  cardIds: string[];
-  isRevealed: boolean;
-  visibleTo: string[];
-}
+  // Convert graveyard
+  const graveyard: string[] = [];
+  if (graveyardZone) {
+    graveyard.push(...graveyardZone.cardIds);
+  }
 
-/**
- * Serializable stack object
- */
-export interface SerializedStackObject {
-  id: string;
-  type: 'spell' | 'ability';
-  sourceCardId: string | null;
-  controllerId: string;
-  name: string;
-  text: string;
-  manaCost: string | null;
-  targets: { type: string; targetId: string; isValid: boolean }[];
-  chosenModes: string[];
-  variableValues: [string, number][];
-  isCountered: boolean;
-  timestamp: number;
-}
+  // Convert exile
+  const exile: string[] = [];
+  if (exileZone) {
+    exile.push(...exileZone.cardIds);
+  }
 
-/**
- * Serializable turn
- */
-export interface SerializedTurn {
-  activePlayerId: string;
-  currentPhase: string;
-  turnNumber: number;
-  extraTurns: number;
-  isFirstTurn: boolean;
-  startedAt: number;
-}
+  // Convert library count
+  const library = libraryZone ? libraryZone.cardIds.length : 0;
 
-/**
- * Serializable combat
- */
-export interface SerializedCombat {
-  inCombatPhase: boolean;
-  attackers: SerializedAttacker[];
-  blockers: [string, SerializedBlocker[]][];
-  remainingCombatPhases: number;
-}
+  // Convert mana pool
+  const manaPool: { [color: string]: number } = {
+    colorless: enginePlayer.manaPool.colorless,
+    white: enginePlayer.manaPool.white,
+    blue: enginePlayer.manaPool.blue,
+    black: enginePlayer.manaPool.black,
+    red: enginePlayer.manaPool.red,
+    green: enginePlayer.manaPool.green,
+    generic: enginePlayer.manaPool.generic,
+  };
 
-/**
- * Serializable attacker
- */
-export interface SerializedAttacker {
-  cardId: string;
-  defenderId: string;
-  isAttackingPlaneswalker: boolean;
-  damageToDeal: number;
-  hasFirstStrike: boolean;
-  hasDoubleStrike: boolean;
-}
+  // Convert commander damage Map to object
+  const commanderDamage: { [playerId: string]: number } = {};
+  enginePlayer.commanderDamage.forEach((damage, playerId) => {
+    commanderDamage[playerId] = damage;
+  });
 
-/**
- * Serializable blocker
- */
-export interface SerializedBlocker {
-  cardId: string;
-  attackerId: string;
-  damageToDeal: number;
-  blockerOrder: number;
-  hasFirstStrike: boolean;
-  hasDoubleStrike: boolean;
-}
-
-/**
- * Serializable waiting choice
- */
-export interface SerializedWaitingChoice {
-  type: string;
-  playerId: string;
-  stackObjectId: string | null;
-  prompt: string;
-  choices: { label: string; value: unknown; isValid: boolean }[];
-  minChoices: number;
-  maxChoices: number;
-  presentedAt: number;
-}
-
-/**
- * Serialize a player to JSON-compatible format
- */
-function serializePlayer(player: Player): SerializedPlayer {
   return {
-    id: player.id,
-    name: player.name,
-    life: player.life,
-    poisonCounters: player.poisonCounters,
-    commanderDamage: Array.from(player.commanderDamage.entries()),
-    maxHandSize: player.maxHandSize,
-    currentHandSizeModifier: player.currentHandSizeModifier,
-    hasLost: player.hasLost,
-    lossReason: player.lossReason,
-    landsPlayedThisTurn: player.landsPlayedThisTurn,
-    maxLandsPerTurn: player.maxLandsPerTurn,
-    manaPool: serializeManaPool(player.manaPool),
-    isInCommandZone: player.isInCommandZone,
-    experienceCounters: player.experienceCounters,
-    commanderCastCount: player.commanderCastCount,
-    hasPassedPriority: player.hasPassedPriority,
-    hasActivatedManaAbility: player.hasActivatedManaAbility,
-    additionalCombatPhase: player.additionalCombatPhase,
-    additionalMainPhase: player.additionalMainPhase,
-    hasOfferedDraw: player.hasOfferedDraw,
-    hasAcceptedDraw: player.hasAcceptedDraw,
+    id: enginePlayer.id,
+    name: enginePlayer.name,
+    life: enginePlayer.life,
+    poisonCounters: enginePlayer.poisonCounters,
+    commanderDamage,
+    hand,
+    graveyard,
+    exile,
+    library,
+    battlefield,
+    manaPool,
+    landsPlayedThisTurn: enginePlayer.landsPlayedThisTurn,
+    hasPassedPriority: enginePlayer.hasPassedPriority,
   };
 }
 
 /**
- * Serialize a mana pool
+ * Convert Engine StackObject to AIStackObject
  */
-function serializeManaPool(manaPool: ManaPool): SerializedManaPool {
+function convertStackObjectToAI(
+  engineStack: StackObject[],
+  engineState: EngineGameState
+): AIStackObject[] {
+  return engineStack.map((stackObj) => {
+    let cardInstanceId = '';
+    let manaValue = 0;
+    let colors: string[] | undefined;
+    let name = stackObj.name;
+
+    // Try to get card data from source
+    if (stackObj.sourceCardId) {
+      const card = engineState.cards.get(stackObj.sourceCardId);
+      if (card) {
+        cardInstanceId = card.id;
+        manaValue = card.cardData.cmc;
+        colors = getCardColors(card.cardData);
+        name = card.cardData.name;
+      }
+    }
+
+    // Convert targets to target IDs
+    const targetIds = stackObj.targets?.map((t) => t.targetId);
+
+    return {
+      id: stackObj.id,
+      cardInstanceId,
+      controller: stackObj.controllerId,
+      type: stackObj.type,
+      targets: targetIds,
+      name,
+      manaValue,
+      colors,
+    };
+  });
+}
+
+/**
+ * Convert Engine Combat to AICombatState
+ */
+function convertCombatToAI(
+  engineCombat: EngineGameState['combat']
+): AICombatState {
+  // Convert attackers
+  const attackers = engineCombat.attackers.map((attacker) => ({
+    cardInstanceId: attacker.cardId,
+    defenderId: attacker.defenderId,
+    isAttackingPlaneswalker: attacker.isAttackingPlaneswalker,
+    damageToDeal: attacker.damageToDeal,
+    hasFirstStrike: attacker.hasFirstStrike,
+    hasDoubleStrike: attacker.hasDoubleStrike,
+  }));
+
+  // Convert blockers from Map to object
+  const blockers: { [attackerId: string]: {
+    cardInstanceId: string;
+    attackerId: string;
+    damageToDeal: number;
+    blockerOrder: number;
+    hasFirstStrike: boolean;
+    hasDoubleStrike: boolean;
+  }[] } = {};
+  engineCombat.blockers.forEach((blockerList, attackerId) => {
+    blockers[attackerId] = blockerList.map((blocker) => ({
+      cardInstanceId: blocker.cardId,
+      attackerId: blocker.attackerId,
+      damageToDeal: blocker.damageToDeal,
+      blockerOrder: blocker.blockerOrder,
+      hasFirstStrike: blocker.hasFirstStrike,
+      hasDoubleStrike: blocker.hasDoubleStrike,
+    }));
+  });
+
   return {
-    colorless: manaPool.colorless,
-    white: manaPool.white,
-    blue: manaPool.blue,
-    black: manaPool.black,
-    red: manaPool.red,
-    green: manaPool.green,
-    generic: manaPool.generic,
+    inCombatPhase: engineCombat.inCombatPhase,
+    attackers,
+    blockers,
   };
 }
 
 /**
- * Serialize a card instance
+ * Convert Engine GameState to AI GameState format
+ * This is the main conversion function used by AI modules
  */
-function serializeCardInstance(card: CardInstance): SerializedCardInstance {
+export function engineToAIState(engineState: EngineGameState): AIGameState {
+  // Convert all players
+  const players: { [playerId: string]: AIPlayerState } = {};
+  engineState.players.forEach((player, playerId) => {
+    players[playerId] = convertPlayerToAI(player, engineState);
+  });
+
+  // Convert turn info
+  const turnInfo: AITurnInfo = {
+    currentTurn: engineState.turn.turnNumber,
+    currentPlayer: engineState.turn.activePlayerId,
+    phase: PHASE_MAPPING[engineState.turn.currentPhase],
+    step: getStepFromPhase(engineState.turn.currentPhase),
+    priority: engineState.priorityPlayerId || engineState.turn.activePlayerId,
+  };
+
+  // Convert stack
+  const stack = convertStackObjectToAI(engineState.stack, engineState);
+
+  // Convert combat
+  const combat = convertCombatToAI(engineState.combat);
+
   return {
-    id: card.id,
-    oracleId: card.oracleId,
-    cardData: card.cardData,
-    currentFaceIndex: card.currentFaceIndex,
-    isFaceDown: card.isFaceDown,
-    controllerId: card.controllerId,
-    ownerId: card.ownerId,
-    isTapped: card.isTapped,
-    isFlipped: card.isFlipped,
-    isTurnedFaceUp: card.isTurnedFaceUp,
-    isPhasedOut: card.isPhasedOut,
-    hasSummoningSickness: card.hasSummoningSickness,
-    counters: card.counters.map(c => ({ type: c.type, count: c.count })),
-    damage: card.damage,
-    toughnessModifier: card.toughnessModifier,
-    powerModifier: card.powerModifier,
-    attachedToId: card.attachedToId,
-    attachedCardIds: Array.from(card.attachedCardIds),
-    enteredBattlefieldTimestamp: card.enteredBattlefieldTimestamp,
-    attachedTimestamp: card.attachedTimestamp,
-    isToken: card.isToken,
-    tokenData: card.tokenData,
+    players,
+    turnInfo,
+    stack,
+    combat,
   };
 }
 
 /**
- * Serialize a zone
+ * Alias for engineToAIState - converts Engine to Unified format
  */
-function serializeZone(zone: Zone, id: string): SerializedZone {
-  return {
-    id,
-    type: zone.type,
-    playerId: zone.playerId,
-    cardIds: [...zone.cardIds],
-    isRevealed: zone.isRevealed,
-    visibleTo: [...zone.visibleTo],
-  };
+export function engineToUnified(engineState: EngineGameState): AIGameState {
+  return engineToAIState(engineState);
 }
 
 /**
- * Serialize a stack object
+ * Convert AI PlayerState back to Engine Player
+ * Note: This is used when AI actions need to be validated against engine state
+ * The baseEngineState is used as the source of truth for detailed data
  */
-function serializeStackObject(obj: StackObject): SerializedStackObject {
+function convertAIPlayerToEngine(
+  aiPlayer: AIPlayerState,
+  baseEnginePlayer: Player
+): Partial<Player> {
   return {
-    id: obj.id,
-    type: obj.type,
-    sourceCardId: obj.sourceCardId,
-    controllerId: obj.controllerId,
-    name: obj.name,
-    text: obj.text,
-    manaCost: obj.manaCost,
-    targets: obj.targets.map(t => ({ type: t.type, targetId: t.targetId, isValid: t.isValid })),
-    chosenModes: [...obj.chosenModes],
-    variableValues: Array.from(obj.variableValues.entries()),
-    isCountered: obj.isCountered,
-    timestamp: obj.timestamp,
-  };
-}
-
-/**
- * Serialize a turn
- */
-function serializeTurn(turn: Turn): SerializedTurn {
-  return {
-    activePlayerId: turn.activePlayerId,
-    currentPhase: turn.currentPhase,
-    turnNumber: turn.turnNumber,
-    extraTurns: turn.extraTurns,
-    isFirstTurn: turn.isFirstTurn,
-    startedAt: turn.startedAt,
-  };
-}
-
-/**
- * Serialize combat
- */
-function serializeCombat(combat: Combat): SerializedCombat {
-  return {
-    inCombatPhase: combat.inCombatPhase,
-    attackers: combat.attackers.map(a => ({
-      cardId: a.cardId,
-      defenderId: a.defenderId,
-      isAttackingPlaneswalker: a.isAttackingPlaneswalker,
-      damageToDeal: a.damageToDeal,
-      hasFirstStrike: a.hasFirstStrike,
-      hasDoubleStrike: a.hasDoubleStrike,
-    })),
-    blockers: Array.from(combat.blockers.entries()),
-    remainingCombatPhases: combat.remainingCombatPhases,
-  };
-}
-
-/**
- * Serialize waiting choice
- */
-function serializeWaitingChoice(choice: WaitingChoice | null): SerializedWaitingChoice | null {
-  if (!choice) return null;
-
-  return {
-    type: choice.type,
-    playerId: choice.playerId,
-    stackObjectId: choice.stackObjectId,
-    prompt: choice.prompt,
-    choices: choice.choices.map(c => ({
-      label: c.label,
-      value: c.value,
-      isValid: c.isValid,
-    })),
-    minChoices: choice.minChoices,
-    maxChoices: choice.maxChoices,
-    presentedAt: choice.presentedAt,
-  };
-}
-
-/**
- * Serialize game state to JSON-compatible format
- */
-export function serializeGameState(
-  state: GameState,
-  description?: string
-): SerializedGameState {
-  const serializedData: SerializedGameStateData = {
-    gameId: state.gameId,
-    players: Array.from(state.players.values()).map(serializePlayer),
-    cards: Array.from(state.cards.values()).map(serializeCardInstance),
-    zones: Array.from(state.zones.entries()).map(([id, zone]) => serializeZone(zone, id)),
-    stack: state.stack.map(serializeStackObject),
-    turn: serializeTurn(state.turn),
-    combat: serializeCombat(state.combat),
-    waitingChoice: serializeWaitingChoice(state.waitingChoice),
-    priorityPlayerId: state.priorityPlayerId,
-    consecutivePasses: state.consecutivePasses,
-    status: state.status,
-    winners: [...state.winners],
-    endReason: state.endReason,
-    format: state.format,
-  };
-
-  return {
-    metadata: {
-      version: SERIALIZATION_VERSION,
-      savedAt: Date.now(),
-      gameCreatedAt: state.createdAt,
-      gameLastModifiedAt: state.lastModifiedAt,
-      description,
+    life: aiPlayer.life,
+    poisonCounters: aiPlayer.poisonCounters,
+    landsPlayedThisTurn: aiPlayer.landsPlayedThisTurn,
+    hasPassedPriority: aiPlayer.hasPassedPriority,
+    // Mana pool conversion
+    manaPool: {
+      colorless: aiPlayer.manaPool.colorless || 0,
+      white: aiPlayer.manaPool.white || 0,
+      blue: aiPlayer.manaPool.blue || 0,
+      black: aiPlayer.manaPool.black || 0,
+      red: aiPlayer.manaPool.red || 0,
+      green: aiPlayer.manaPool.green || 0,
+      generic: aiPlayer.manaPool.generic || 0,
     },
-    state: serializedData,
   };
 }
 
 /**
- * Serialize game state to JSON string
+ * Convert AI GameState back to Engine GameState
+ * This is primarily used for validation - the engine state is the source of truth
+ * AI actions are applied to the engine state, not converted back
  */
-export function serializeToJSON(state: GameState, description?: string): string {
-  return JSON.stringify(serializeGameState(state, description), null, 2);
-}
-
-/**
- * Deserialize a mana pool
- */
-function deserializeManaPool(data: SerializedManaPool): ManaPool {
-  return {
-    colorless: data.colorless,
-    white: data.white,
-    blue: data.blue,
-    black: data.black,
-    red: data.red,
-    green: data.green,
-    generic: data.generic,
-  };
-}
-
-/**
- * Deserialize a player
- */
-function deserializePlayer(data: SerializedPlayer): Player {
-  return {
-    id: data.id,
-    name: data.name,
-    life: data.life,
-    poisonCounters: data.poisonCounters,
-    commanderDamage: new Map(data.commanderDamage),
-    maxHandSize: data.maxHandSize,
-    currentHandSizeModifier: data.currentHandSizeModifier,
-    hasLost: data.hasLost,
-    lossReason: data.lossReason,
-    landsPlayedThisTurn: data.landsPlayedThisTurn,
-    maxLandsPerTurn: data.maxLandsPerTurn,
-    manaPool: deserializeManaPool(data.manaPool),
-    isInCommandZone: data.isInCommandZone,
-    experienceCounters: data.experienceCounters,
-    commanderCastCount: data.commanderCastCount,
-    hasPassedPriority: data.hasPassedPriority,
-    hasActivatedManaAbility: data.hasActivatedManaAbility,
-    additionalCombatPhase: data.additionalCombatPhase,
-    additionalMainPhase: data.additionalMainPhase,
-    hasOfferedDraw: data.hasOfferedDraw,
-    hasAcceptedDraw: data.hasAcceptedDraw,
-  };
-}
-
-/**
- * Deserialize a card instance
- */
-function deserializeCardInstance(data: SerializedCardInstance): CardInstance {
-  return {
-    id: data.id,
-    oracleId: data.oracleId,
-    cardData: data.cardData as CardInstance['cardData'],
-    currentFaceIndex: data.currentFaceIndex,
-    isFaceDown: data.isFaceDown,
-    controllerId: data.controllerId,
-    ownerId: data.ownerId,
-    isTapped: data.isTapped,
-    isFlipped: data.isFlipped,
-    isTurnedFaceUp: data.isTurnedFaceUp,
-    isPhasedOut: data.isPhasedOut,
-    hasSummoningSickness: data.hasSummoningSickness,
-    counters: data.counters,
-    damage: data.damage,
-    toughnessModifier: data.toughnessModifier,
-    powerModifier: data.powerModifier,
-    attachedToId: data.attachedToId,
-    attachedCardIds: Array.from(data.attachedCardIds),
-    enteredBattlefieldTimestamp: data.enteredBattlefieldTimestamp,
-    attachedTimestamp: data.attachedTimestamp,
-    isToken: data.isToken,
-    tokenData: data.tokenData as CardInstance['tokenData'],
-  };
-}
-
-/**
- * Deserialize a zone
- */
-function deserializeZone(data: SerializedZone): Zone {
-  return {
-    type: data.type as Zone['type'],
-    playerId: data.playerId,
-    cardIds: data.cardIds,
-    isRevealed: data.isRevealed,
-    visibleTo: data.visibleTo,
-  };
-}
-
-/**
- * Deserialize a stack object
- */
-function deserializeStackObject(data: SerializedStackObject): StackObject {
-  return {
-    id: data.id,
-    type: data.type,
-    sourceCardId: data.sourceCardId,
-    controllerId: data.controllerId,
-    name: data.name,
-    text: data.text,
-    manaCost: data.manaCost,
-    targets: data.targets.map(t => ({
-      type: t.type as StackObject['targets'][0]['type'],
-      targetId: t.targetId,
-      isValid: t.isValid,
-    })),
-    chosenModes: Array.from(data.chosenModes),
-    variableValues: new Map(data.variableValues),
-    isCountered: data.isCountered,
-    timestamp: data.timestamp,
-  };
-}
-
-/**
- * Deserialize a turn
- */
-function deserializeTurn(data: SerializedTurn, _Phase: { [key: string]: string }): Turn {
-  return {
-    activePlayerId: data.activePlayerId,
-    currentPhase: data.currentPhase as Turn['currentPhase'],
-    turnNumber: data.turnNumber,
-    extraTurns: data.extraTurns,
-    isFirstTurn: data.isFirstTurn,
-    startedAt: data.startedAt,
-  };
-}
-
-/**
- * Deserialize combat
- */
-function deserializeCombat(data: SerializedCombat): Combat {
-  return {
-    inCombatPhase: data.inCombatPhase,
-    attackers: data.attackers.map(a => ({
-      cardId: a.cardId,
-      defenderId: a.defenderId,
-      isAttackingPlaneswalker: a.isAttackingPlaneswalker,
-      damageToDeal: a.damageToDeal,
-      hasFirstStrike: a.hasFirstStrike,
-      hasDoubleStrike: a.hasDoubleStrike,
-    })),
-    blockers: new Map(data.blockers),
-    remainingCombatPhases: data.remainingCombatPhases,
-  };
-}
-
-/**
- * Deserialize waiting choice
- */
-function deserializeWaitingChoice(data: SerializedWaitingChoice | null): WaitingChoice | null {
-  if (!data) return null;
-
-  return {
-    type: data.type as WaitingChoice['type'],
-    playerId: data.playerId,
-    stackObjectId: data.stackObjectId,
-    prompt: data.prompt,
-    choices: data.choices.map(c => ({
-      label: c.label,
-      value: c.value as WaitingChoice['choices'][0]['value'],
-      isValid: c.isValid,
-    })),
-    minChoices: data.minChoices,
-    maxChoices: data.maxChoices,
-    presentedAt: data.presentedAt,
-  };
-}
-
-/**
- * Deserialize game state from serialized data
- */
-export function deserializeGameState(data: SerializedGameState): GameState {
-  // Validate version
-  const version = data.metadata.version;
-  if (versionCompare(version, MIN_SUPPORTED_VERSION) < 0) {
-    throw new Error(`Cannot load game state: version ${version} is no longer supported. Minimum supported version is ${MIN_SUPPORTED_VERSION}`);
-  }
-
-  const state = data.state;
-
-  return {
-    gameId: state.gameId,
-    players: new Map(state.players.map(p => [p.id, deserializePlayer(p)])),
-    cards: new Map(state.cards.map(c => [c.id, deserializeCardInstance(c)])),
-    zones: new Map(state.zones.map(z => [z.id, deserializeZone(z)])),
-    stack: state.stack.map(deserializeStackObject),
-    turn: deserializeTurn(state.turn, {}),
-    combat: deserializeCombat(state.combat),
-    waitingChoice: deserializeWaitingChoice(state.waitingChoice),
-    priorityPlayerId: state.priorityPlayerId,
-    consecutivePasses: state.consecutivePasses,
-    status: state.status,
-    winners: state.winners,
-    endReason: state.endReason,
-    format: state.format,
-    createdAt: data.metadata.gameCreatedAt,
-    lastModifiedAt: data.metadata.gameLastModifiedAt,
-  };
-}
-
-/**
- * Deserialize game state from JSON string
- */
-export function deserializeFromJSON(json: string): GameState {
-  const data = JSON.parse(json) as SerializedGameState;
-  return deserializeGameState(data);
-}
-
-/**
- * Validate serialized game state structure
- */
-export function validateSerializedState(data: unknown): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  if (!data || typeof data !== 'object') {
-    return { valid: false, errors: ['Data must be an object'] };
-  }
-
-  const state = data as SerializedGameState;
-
-  // Check metadata
-  if (!state.metadata) {
-    errors.push('Missing metadata');
-  } else {
-    if (!state.metadata.version) {
-      errors.push('Missing metadata.version');
-    }
-    if (!state.metadata.savedAt) {
-      errors.push('Missing metadata.savedAt');
+export function aiToEngineState(
+  aiState: AIGameState,
+  baseEngineState: EngineGameState
+): EngineGameState {
+  // Update players with AI state data
+  const updatedPlayers = new Map(baseEngineState.players);
+  for (const [playerId, aiPlayer] of Object.entries(aiState.players)) {
+    const basePlayer = baseEngineState.players.get(playerId);
+    if (basePlayer) {
+      const updates = convertAIPlayerToEngine(aiPlayer, basePlayer);
+      updatedPlayers.set(playerId, { ...basePlayer, ...updates });
     }
   }
 
-  // Check state
-  if (!state.state) {
-    errors.push('Missing state');
-    return { valid: false, errors };
-  }
-
-  const s = state.state;
-
-  if (!s.gameId) errors.push('Missing state.gameId');
-  if (!s.players) errors.push('Missing state.players');
-  if (!s.cards) errors.push('Missing state.cards');
-  if (!s.zones) errors.push('Missing state.zones');
-  if (!s.turn) errors.push('Missing state.turn');
-  if (!s.combat) errors.push('Missing state.combat');
-  if (!s.status) errors.push('Missing state.status');
-  if (!s.format) errors.push('Missing state.format');
-
   return {
-    valid: errors.length === 0,
-    errors,
+    ...baseEngineState,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
   };
 }
 
 /**
- * Compare semantic versions
- * Returns: -1 if v1 < v2, 0 if v1 == v2, 1 if v1 > v2
+ * Alias for aiToEngineState - converts Unified to Engine format
  */
-function versionCompare(v1: string, v2: string): number {
-  const parts1 = v1.split('.').map(Number);
-  const parts2 = v2.split('.').map(Number);
-
-  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-    const p1 = parts1[i] || 0;
-    const p2 = parts2[i] || 0;
-
-    if (p1 < p2) return -1;
-    if (p1 > p2) return 1;
-  }
-
-  return 0;
+export function unifiedToEngine(
+  aiState: AIGameState,
+  baseEngineState: EngineGameState
+): EngineGameState {
+  return aiToEngineState(aiState, baseEngineState);
 }
 
 /**
- * Migrate serialized state to current version
- * This would be extended for future version migrations
+ * Get a simplified view of a specific player's state for AI
+ * This is useful when the AI only needs to evaluate from one player's perspective
  */
-export function migrateToCurrentVersion(data: SerializedGameState): SerializedGameState {
-  const version = data.metadata.version;
+export function getAIPlayerView(
+  engineState: EngineGameState,
+  playerId: PlayerId
+): {
+  playerState: AIPlayerState;
+  turnInfo: AITurnInfo;
+  stack: AIStackObject[];
+  combat: AICombatState | undefined;
+} {
+  const aiState = engineToAIState(engineState);
+  return {
+    playerState: aiState.players[playerId],
+    turnInfo: aiState.turnInfo,
+    stack: aiState.stack,
+    combat: aiState.combat,
+  };
+}
 
-  // If already current version, return as-is
-  if (version === SERIALIZATION_VERSION) {
-    return data;
+/**
+ * Compare two AI GameState objects and return differences
+ * Useful for debugging and testing
+ */
+export function compareAIStates(state1: AIGameState, state2: AIGameState): {
+  lifeDifferences: { playerId: string; state1: number; state2: number }[];
+  battlefieldDifferences: { playerId: string; state1: number; state2: number }[];
+  handDifferences: { playerId: string; state1: number; state2: number }[];
+  phaseChanged: boolean;
+  stackChanged: boolean;
+  combatChanged: boolean;
+} {
+  const lifeDifferences: { playerId: string; state1: number; state2: number }[] = [];
+  const battlefieldDifferences: { playerId: string; state1: number; state2: number }[] = [];
+  const handDifferences: { playerId: string; state1: number; state2: number }[] = [];
+
+  for (const playerId of Object.keys(state1.players)) {
+    const p1 = state1.players[playerId];
+    const p2 = state2.players[playerId];
+
+    if (!p2) continue;
+
+    if (p1.life !== p2.life) {
+      lifeDifferences.push({ playerId, state1: p1.life, state2: p2.life });
+    }
+    if (p1.battlefield.length !== p2.battlefield.length) {
+      battlefieldDifferences.push({
+        playerId,
+        state1: p1.battlefield.length,
+        state2: p2.battlefield.length,
+      });
+    }
+    if (p1.hand.length !== p2.hand.length) {
+      handDifferences.push({
+        playerId,
+        state1: p1.hand.length,
+        state2: p2.hand.length,
+      });
+    }
   }
 
-  // Add migration logic here for future versions
-  // Example:
-  // if (versionCompare(version, '2.0.0') < 0) {
-  //   data = migrateToV2(data);
-  // }
+  return {
+    lifeDifferences,
+    battlefieldDifferences,
+    handDifferences,
+    phaseChanged: state1.turnInfo.phase !== state2.turnInfo.phase,
+    stackChanged: state1.stack.length !== state2.stack.length,
+    combatChanged: JSON.stringify(state1.combat) !== JSON.stringify(state2.combat),
+  };
+}
 
-  return data;
+// ============================================================================
+// Backward Compatibility Exports
+// ============================================================================
+// These exports maintain compatibility with existing code that uses the old
+// serialization function names.
+// ============================================================================
+
+/**
+ * Serialized game state format for storage/transmission
+ * @deprecated Use AIGameState instead
+ */
+export type SerializedGameState = AIGameState;
+
+/**
+ * Serialize game state for storage/transmission
+ * @deprecated Use engineToAIState instead
+ */
+export function serializeGameState(engineState: EngineGameState): SerializedGameState {
+  return engineToAIState(engineState);
+}
+
+/**
+ * Deserialize game state from storage/transmission
+ * @deprecated Use aiToEngineState instead
+ */
+export function deserializeGameState(
+  serializedState: SerializedGameState,
+  baseEngineState: EngineGameState
+): EngineGameState {
+  return aiToEngineState(serializedState, baseEngineState);
 }

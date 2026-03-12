@@ -6,87 +6,26 @@
  * It serves as the foundation for AI opponent decision-making in gameplay.
  *
  * Key components:
- * - GameState interface: Represents the complete game state
+ * - GameState interface: Represents the complete game state (unified format)
  * - Evaluation weights: Tunable parameters for different strategic factors
  * - Evaluation functions: Score various aspects of the game state
  * - Multi-factor evaluation: Combines all factors into a single score
+ *
+ * This module now uses the unified AIGameState format from the engine.
+ * Use engineToAIState() from serialization.ts to convert engine state.
  */
 
-/**
- * Represents a permanent on the battlefield
- */
-export interface Permanent {
-  id: string;
-  cardId: string;
-  name: string;
-  type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker';
-  controller: string; // Player ID
-  tapped?: boolean;
-  power?: number;
-  toughness?: number;
-  loyalty?: number;
-  counters?: { [key: string]: number };
-  keywords?: string[];
-  manaValue?: number;
-}
+// Import unified types from engine
+import type {
+  AIGameState as GameState,
+  AIPlayerState as PlayerState,
+  AIPermanent as Permanent,
+  AIHandCard as HandCard,
+  AITurnInfo as TurnInfo,
+} from '@/lib/game-state/types';
 
-/**
- * Represents a card in a player's hand
- */
-export interface HandCard {
-  cardId: string;
-  name: string;
-  type: string;
-  manaValue: number;
-  colors?: string[];
-}
-
-/**
- * Represents a player's state in the game
- */
-export interface PlayerState {
-  id: string;
-  life: number;
-  poisonCounters: number;
-  commanderDamage: { [playerId: string]: number }; // For Commander format
-  hand: HandCard[];
-  graveyard: string[]; // Card IDs
-  exile: string[]; // Card IDs
-  library: number; // Cards remaining
-  battlefield: Permanent[];
-  manaPool: { [color: string]: number };
-}
-
-/**
- * Represents the current phase and turn information
- */
-export interface TurnInfo {
-  currentTurn: number;
-  currentPlayer: string;
-  phase: 'beginning' | 'precombat_main' | 'combat' | 'postcombat_main' | 'end';
-  step?: string; // e.g., 'upkeep', 'draw', 'declare_attackers', etc.
-  priority: string; // Player who has priority
-}
-
-/**
- * Represents the complete game state
- */
-export interface GameState {
-  players: { [playerId: string]: PlayerState };
-  turnInfo: TurnInfo;
-  stack: Array<{
-    cardId: string;
-    controller: string;
-    type: 'spell' | 'ability';
-    targets?: string[];
-  }>;
-  commandZone?: {
-    [playerId: string]: {
-      commander?: Permanent;
-      partner?: Permanent;
-    };
-  };
-}
+// Re-export for backward compatibility
+export type { GameState, PlayerState, Permanent, HandCard, TurnInfo };
 
 /**
  * Represents a threat assessment for a permanent
@@ -148,67 +87,93 @@ export interface EvaluationWeights {
 
 /**
  * Default evaluation weights for different difficulty levels
+ * These weights are used by the AI to evaluate game states
+ * Higher values = more importance placed on that factor
  */
 export const DefaultWeights: Record<string, EvaluationWeights> = {
   easy: {
-    lifeScore: 1.0,
-    poisonScore: 5.0,
-    cardAdvantage: 0.5,
-    handQuality: 0.3,
+    // Easy AI: Prioritizes survival, ignores strategic advantage
+    lifeScore: 1.5,
+    poisonScore: 3.0,
+    cardAdvantage: 0.3,
+    handQuality: 0.2,
     libraryDepth: 0.1,
-    creaturePower: 1.0,
-    creatureToughness: 0.8,
-    creatureCount: 0.5,
-    permanentAdvantage: 0.5,
-    manaAvailable: 0.3,
+    creaturePower: 0.5,
+    creatureToughness: 0.3,
+    creatureCount: 0.3,
+    permanentAdvantage: 0.3,
+    manaAvailable: 0.2,
     tempoAdvantage: 0.2,
-    commanderDamageWeight: 2.0,
-    commanderPresence: 0.5,
-    cardSelection: 0.3,
-    graveyardValue: 0.2,
+    commanderDamageWeight: 1.0,
+    commanderPresence: 0.3,
+    cardSelection: 0.2,
+    graveyardValue: 0.1,
     synergy: 0.1,
-    winConditionProgress: 1.0,
-    inevitability: 0.5,
+    winConditionProgress: 0.5,
+    inevitability: 0.3,
   },
   medium: {
-    lifeScore: 0.8,
-    poisonScore: 8.0,
-    cardAdvantage: 1.0,
-    handQuality: 0.6,
-    libraryDepth: 0.3,
-    creaturePower: 1.2,
-    creatureToughness: 1.0,
-    creatureCount: 1.0,
-    permanentAdvantage: 1.2,
-    manaAvailable: 0.8,
-    tempoAdvantage: 0.6,
-    commanderDamageWeight: 3.0,
-    commanderPresence: 1.0,
-    cardSelection: 0.8,
-    graveyardValue: 0.5,
-    synergy: 0.4,
-    winConditionProgress: 2.0,
-    inevitability: 1.0,
+    // Medium AI: Balanced evaluation, understands basics
+    lifeScore: 1.0,
+    poisonScore: 6.0,
+    cardAdvantage: 0.8,
+    handQuality: 0.5,
+    libraryDepth: 0.2,
+    creaturePower: 1.0,
+    creatureToughness: 0.8,
+    creatureCount: 0.8,
+    permanentAdvantage: 1.0,
+    manaAvailable: 0.6,
+    tempoAdvantage: 0.5,
+    commanderDamageWeight: 2.5,
+    commanderPresence: 0.8,
+    cardSelection: 0.6,
+    graveyardValue: 0.4,
+    synergy: 0.3,
+    winConditionProgress: 1.5,
+    inevitability: 0.8,
   },
   hard: {
-    lifeScore: 0.6,
-    poisonScore: 10.0,
+    // Hard AI: Values strategic advantage and tempo
+    lifeScore: 0.8,
+    poisonScore: 9.0,
     cardAdvantage: 1.5,
-    handQuality: 1.0,
-    libraryDepth: 0.5,
+    handQuality: 0.9,
+    libraryDepth: 0.4,
     creaturePower: 1.5,
     creatureToughness: 1.2,
-    creatureCount: 1.5,
-    permanentAdvantage: 2.0,
-    manaAvailable: 1.2,
+    creatureCount: 1.2,
+    permanentAdvantage: 1.8,
+    manaAvailable: 1.0,
     tempoAdvantage: 1.0,
     commanderDamageWeight: 4.0,
     commanderPresence: 1.5,
-    cardSelection: 1.2,
-    graveyardValue: 0.8,
-    synergy: 0.8,
-    winConditionProgress: 3.0,
-    inevitability: 2.0,
+    cardSelection: 1.0,
+    graveyardValue: 0.7,
+    synergy: 0.7,
+    winConditionProgress: 2.5,
+    inevitability: 1.5,
+  },
+  expert: {
+    // Expert AI: Near-optimal weight distribution
+    lifeScore: 0.6,
+    poisonScore: 12.0,
+    cardAdvantage: 2.0,
+    handQuality: 1.5,
+    libraryDepth: 0.8,
+    creaturePower: 2.0,
+    creatureToughness: 1.5,
+    creatureCount: 2.0,
+    permanentAdvantage: 2.5,
+    manaAvailable: 1.5,
+    tempoAdvantage: 1.2,
+    commanderDamageWeight: 5.0,
+    commanderPresence: 2.0,
+    cardSelection: 1.5,
+    graveyardValue: 1.0,
+    synergy: 1.0,
+    winConditionProgress: 4.0,
+    inevitability: 2.5,
   },
 };
 

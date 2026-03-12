@@ -8,7 +8,7 @@
  */
 
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
-import type { GameState } from './game-state/types';
+import type { GameState, Phase, PlayerId } from './game-state/types';
 import {
   ICEConfigurationManager,
   ICEConnectionMonitor,
@@ -233,21 +233,31 @@ export class WebRTCConnection {
       allowLoopback: false,
       allowLinkLocal: false,
     });
-    
+
     // Set default event handlers
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     const defaultEvents: P2PEvents = {
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onConnectionStateChange: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onMessage: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onGameStateSync: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onPlayerAction: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onChat: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onEmote: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onError: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onPeerConnected: () => {},
+      // eslint-disable-next-line @typescript-eslint/no-empty-function
       onPeerDisconnected: () => {},
     };
-    
-    this.events = options.events 
+
+    this.events = options.events
       ? { ...defaultEvents, ...options.events }
       : defaultEvents;
   }
@@ -575,8 +585,40 @@ export class WebRTCConnection {
    * Handle game state sync message
    */
   private handleGameStateSync(message: GameStateSyncMessage): void {
-    const gameState = deserializeGameState(message.payload.gameState);
+    const baseState = this.createBaseEngineState();
+    const gameState = deserializeGameState(message.payload.gameState, baseState);
     this.events.onGameStateSync(gameState, '');
+  }
+
+  /**
+   * Create a minimal base engine state for deserialization
+   */
+  private createBaseEngineState(): any {
+    return {
+      gameId: '',
+      players: new Map(),
+      cards: new Map(),
+      zones: new Map(),
+      stack: [],
+      turn: { 
+        activePlayerId: '' as PlayerId, 
+        currentPhase: 'precombat_main' as Phase, 
+        turnNumber: 1,
+        extraTurns: 0,
+        isFirstTurn: true,
+        startedAt: Date.now(),
+      },
+      combat: { attacking: [], blocking: [] },
+      waitingChoice: null,
+      priorityPlayerId: null,
+      consecutivePasses: 0,
+      status: 'not_started',
+      winners: [],
+      endReason: null,
+      format: 'commander',
+      createdAt: Date.now(),
+      lastModifiedAt: Date.now(),
+    };
   }
 
   /**
@@ -770,8 +812,8 @@ export class WebRTCConnection {
    * Send game state to peers
    */
   sendGameState(gameState: GameState, isFullSync: boolean = false): void {
-    const serializedState = serializeGameState(gameState, isFullSync ? 'Full sync' : 'Delta sync');
-    
+    const serializedState = serializeGameState(gameState);
+
     this.send({
       type: 'game-state-sync',
       senderId: this.localPlayerId,

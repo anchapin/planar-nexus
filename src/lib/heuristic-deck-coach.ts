@@ -7,6 +7,10 @@
  */
 
 import type { DeckCard } from '@/app/actions';
+import { detectArchetype, getArchetypeDetails } from '@/ai/archetype-detector';
+import { detectSynergies, detectMissingSynergies, type MissingSynergy } from '@/ai/synergy-detector';
+import type { ArchetypeResult } from '@/ai/archetype-signatures';
+import type { SynergyResult } from '@/ai/synergy-detector';
 
 // Extended interface for heuristic analysis with optional properties
 interface HeuristicCard {
@@ -19,9 +23,38 @@ interface HeuristicCard {
   type_line?: string;
   mana_cost?: string;
   color_identity?: string[];
+  oracle_text?: string;
 }
 
-// Output types matching the original AI coach
+// Archetype information for coach report
+export interface ArchetypeInfo {
+  primary: string;
+  confidence: number;
+  secondary?: string;
+  secondaryConfidence?: number;
+  description?: string;
+  category?: string;
+}
+
+// Synergy information for coach report
+export interface SynergyInfo {
+  name: string;
+  score: number;
+  cards: string[];
+  description: string;
+  category: string;
+}
+
+// Missing synergy information for coach report
+export interface MissingSynergyInfo {
+  synergy: string;
+  missing: string;
+  description: string;
+  suggestion: string;
+  impact: 'high' | 'medium' | 'low';
+}
+
+// Output types matching the original AI coach with archetype and synergies
 export interface DeckReviewOutput {
   reviewSummary: string;
   deckOptions: Array<{
@@ -30,6 +63,11 @@ export interface DeckReviewOutput {
     cardsToAdd?: Array<{ name: string; quantity: number }>;
     cardsToRemove?: Array<{ name: string; quantity: number }>;
   }>;
+  archetype?: ArchetypeInfo;
+  synergies?: {
+    present: SynergyInfo[];
+    missing: MissingSynergyInfo[];
+  };
 }
 
 // Archetype definitions
@@ -507,6 +545,24 @@ function colorFixingForColors(colors: string[]): string {
 }
 
 /**
+ * Convert HeuristicCard to DeckCard for archetype detection
+ */
+function toDeckCard(card: HeuristicCard): DeckCard {
+  return {
+    name: card.name,
+    count: card.count,
+    id: card.id || crypto.randomUUID(),
+    cmc: card.cmc || 0,
+    colors: card.colors || [],
+    legalities: card.legalities || {},
+    type_line: card.type_line || '',
+    mana_cost: card.mana_cost || '{0}',
+    color_identity: card.color_identity || [],
+    oracle_text: card.oracle_text || '',
+  } as DeckCard;
+}
+
+/**
  * Main function to analyze a deck and generate coaching feedback
  *
  * @param decklist - The deck list as text (e.g., "1 Sol Ring\n2 Lightning Bolt...")
@@ -523,8 +579,49 @@ export function reviewDeckHeuristic(
   const reviewSummary = generateReviewSummary(composition, format, cards);
   const deckOptions = generateDeckOptions(composition, cards, format);
 
+  // Detect archetype using new detection system
+  const deckCards = cards.map(toDeckCard);
+  const archetypeResult = detectArchetype(deckCards);
+  
+  // Get archetype details
+  const archetypeDetails = getArchetypeDetails(archetypeResult.primary);
+  
+  const archetype: ArchetypeInfo | undefined = archetypeResult.primary !== 'Unknown' ? {
+    primary: archetypeResult.primary,
+    confidence: archetypeResult.confidence,
+    secondary: archetypeResult.secondary,
+    secondaryConfidence: archetypeResult.secondaryConfidence,
+    description: archetypeDetails?.description,
+    category: archetypeDetails?.category,
+  } : undefined;
+
+  // Detect synergies
+  const synergyResults = detectSynergies(deckCards, 40, 5);
+  const synergies: SynergyInfo[] = synergyResults.map(s => ({
+    name: s.name,
+    score: s.score,
+    cards: s.cards,
+    description: s.description,
+    category: s.category,
+  }));
+
+  // Detect missing synergies
+  const missingSynergyResults = detectMissingSynergies(deckCards, archetypeResult.primary);
+  const missingSynergies: MissingSynergyInfo[] = missingSynergyResults.map(m => ({
+    synergy: m.synergy,
+    missing: m.missing,
+    description: m.description,
+    suggestion: m.suggestion,
+    impact: m.impact,
+  }));
+
   return {
     reviewSummary,
     deckOptions,
+    archetype,
+    synergies: {
+      present: synergies.length > 0 ? synergies : [],
+      missing: missingSynergies.length > 0 ? missingSynergies : [],
+    },
   };
 }

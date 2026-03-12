@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": {
+      "command": "npm run lint -- --fix",
+      "onTools": ["Edit", "Write"],
+      "description": "Auto-fix linting issues after code changes"
+    },
+    "PreToolUse": {
+      "command": "echo 'Blocking .env file edits for security'",
+      "onTools": ["Edit", "Write"],
+      "onFiles": ["**/.env*", "**/*.pem"],
+      "block": true,
+      "description": "Block edits to environment files"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write",
+      "Bash(npm run lint:*)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run test:*)",
+      "Bash(git *)",
+      "Bash(gh *)"
+    ]
+  }
+}

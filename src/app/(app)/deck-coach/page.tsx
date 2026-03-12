@@ -12,12 +12,14 @@ import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
 import { Bot, Loader2, TrendingUp } from "lucide-react";
 import { ReviewDisplay } from "./_components/review-display";
+import { EnhancedReviewDisplay } from "./_components/enhanced-review-display";
 import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { DeckSelector } from "@/components/deck-selector";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CoachReportSkeleton, LoadingProgress } from "./_components/coach-skeleton";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -52,7 +54,7 @@ export default function DeckCoachPage() {
         if (originalDeckCards) {
           initialCards = originalDeckCards;
         } else {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, format);
+            const { found, notFound, illegal } = await importDecklistClient(decklist, undefined, format);
             if (notFound.length > 0) {
                  toast({
                     variant: "destructive",
@@ -122,7 +124,7 @@ export default function DeckCoachPage() {
 
       if (cardsToAddFromAI.length > 0) {
         const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
-        const importResult = await importDecklistClient(decklistForImport, format);
+        const importResult = await importDecklistClient(decklistForImport, undefined, format);
         cardsToAddFromApi = importResult.found;
         notFound = importResult.notFound;
         illegal = importResult.illegal;
@@ -316,28 +318,36 @@ export default function DeckCoachPage() {
         </Card>
         
         <div className="flex flex-col">
-            {isPending && (
-                <Card className="flex-1 flex items-center justify-center">
-                    <div className="text-center text-muted-foreground">
-                        <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
-                        <p className="mt-4">The AI coach is analyzing your deck...</p>
-                    </div>
-                </Card>
+            {/* Loading state with skeleton */}
+            {isPending && analysisType === "review" && (
+              <CoachReportSkeleton />
             )}
+            
+            {/* Loading state for meta analysis */}
+            {isPending && analysisType === "meta" && (
+              <LoadingProgress message="Analyzing metagame and optimizing your deck..." />
+            )}
+            
+            {/* Enhanced Review Display */}
             {!isPending && review && originalDeckCards && analysisType === "review" && (
-              <ReviewDisplay 
-                review={review} 
-                onSaveNewDeck={handleSaveNewDeck} 
+              <EnhancedReviewDisplay
+                review={review}
+                onSaveNewDeck={handleSaveNewDeck}
+                decklist={decklist}
               />
             )}
+            
+            {/* Meta Analysis Display */}
             {!isPending && metaAnalysis && analysisType === "meta" && (
-              <MetaAnalysisDisplay 
+              <MetaAnalysisDisplay
                 analysis={metaAnalysis}
                 format={format}
                 onSaveNewDeck={handleSaveMetaDeck}
                 originalDeckCards={originalDeckCards}
               />
             )}
+            
+            {/* Empty state */}
             {!isPending && !review && !metaAnalysis && (
                 <Card className="flex-1 flex items-center justify-center border-dashed">
                     <div className="text-center text-muted-foreground">

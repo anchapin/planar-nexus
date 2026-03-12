@@ -191,7 +191,7 @@ function getCRC32Table(): Uint32Array {
  * Calculate checksum for game state
  */
 export function calculateStateChecksum(gameState: GameState, algorithm: ChecksumAlgorithm = DEFAULT_CHECKSUM_ALGORITHM): string {
-  const serialized = serializeGameState(gameState, 'Handshake checksum');
+  const serialized = serializeGameState(gameState);
   const data = JSON.stringify(serialized);
 
   switch (algorithm) {
@@ -405,7 +405,7 @@ export function createStateSyncResponse(
   isFullSync: boolean,
   algorithm: ChecksumAlgorithm = DEFAULT_CHECKSUM_ALGORITHM
 ): StateSyncResponseMessage {
-  const serialized = serializeGameState(gameState, 'State sync response');
+  const serialized = serializeGameState(gameState);
   const checksum = calculateStateChecksum(gameState, algorithm);
   
   return {

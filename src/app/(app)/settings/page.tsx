@@ -38,6 +38,24 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      <div className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Card Database</CardTitle>
+            <CardDescription>
+              Import and manage your card database
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <a href="/database-management">
+                Manage Database
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
       <Tabs defaultValue="card-images" className="space-y-6">
         <TabsList>
           <TabsTrigger value="card-images">Card Images</TabsTrigger>

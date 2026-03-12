@@ -32,7 +32,7 @@ function createCombatGameState(): GameState {
     battlefield: [
       {
         id: 'creature1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Stormwing Entity',
         type: 'creature',
         controller: 'ai_player',
@@ -44,7 +44,7 @@ function createCombatGameState(): GameState {
       },
       {
         id: 'creature2',
-        cardId: 'c2',
+        cardInstanceId: 'c2',
         name: 'Goblin Guide',
         type: 'creature',
         controller: 'ai_player',
@@ -56,7 +56,7 @@ function createCombatGameState(): GameState {
       },
       {
         id: 'creature3',
-        cardId: 'c3',
+        cardInstanceId: 'c3',
         name: 'Keldon Marauders',
         type: 'creature',
         controller: 'ai_player',
@@ -68,7 +68,7 @@ function createCombatGameState(): GameState {
       },
       {
         id: 'land1',
-        cardId: 'l1',
+        cardInstanceId: 'l1',
         name: 'Mountain',
         type: 'land',
         controller: 'ai_player',
@@ -92,7 +92,7 @@ function createCombatGameState(): GameState {
     battlefield: [
       {
         id: 'opp_creature1',
-        cardId: 'oc1',
+        cardInstanceId: 'oc1',
         name: 'Carnage Tyrant',
         type: 'creature',
         controller: 'opponent',
@@ -104,7 +104,7 @@ function createCombatGameState(): GameState {
       },
       {
         id: 'opp_creature2',
-        cardId: 'oc2',
+        cardInstanceId: 'oc2',
         name: 'Birds of Paradise',
         type: 'creature',
         controller: 'opponent',
@@ -116,7 +116,7 @@ function createCombatGameState(): GameState {
       },
       {
         id: 'opp_creature3',
-        cardId: 'oc3',
+        cardInstanceId: 'oc3',
         name: 'Thrun, the Last Troll',
         type: 'creature',
         controller: 'opponent',
@@ -186,7 +186,7 @@ export function example2_BlockingDecisions(): CombatPlan {
   const attackers: Permanent[] = [
     {
       id: 'opp_creature1',
-      cardId: 'oc1',
+      cardInstanceId: 'oc1',
       name: 'Carnage Tyrant',
       type: 'creature',
       controller: 'opponent',
@@ -290,7 +290,7 @@ export function example4_EvasionCreatures(): void {
         battlefield: [
           {
             id: 'flying_creature',
-            cardId: 'fc',
+            cardInstanceId: 'fc',
             name: 'Serra Angel',
             type: 'creature',
             controller: 'ai_player',
@@ -302,7 +302,7 @@ export function example4_EvasionCreatures(): void {
           },
           {
             id: 'ground_creature',
-            cardId: 'gc',
+            cardInstanceId: 'gc',
             name: 'Hill Giant',
             type: 'creature',
             controller: 'ai_player',
@@ -327,7 +327,7 @@ export function example4_EvasionCreatures(): void {
         battlefield: [
           {
             id: 'ground_blocker',
-            cardId: 'gb',
+            cardInstanceId: 'gb',
             name: 'Gray Ogre',
             type: 'creature',
             controller: 'opponent',
@@ -390,7 +390,7 @@ export function example5_CombatTrades(): void {
         battlefield: [
           {
             id: 'my_creature',
-            cardId: 'mc',
+            cardInstanceId: 'mc',
             name: 'Grizzly Bears',
             type: 'creature',
             controller: 'ai_player',
@@ -415,7 +415,7 @@ export function example5_CombatTrades(): void {
         battlefield: [
           {
             id: 'expensive_creature',
-            cardId: 'ec',
+            cardInstanceId: 'ec',
             name: 'Craw Wurm',
             type: 'creature',
             controller: 'opponent',
@@ -483,7 +483,7 @@ export function example6_MultiBlocking(): void {
         battlefield: [
           {
             id: 'blocker1',
-            cardId: 'b1',
+            cardInstanceId: 'b1',
             name: 'Savannah Lions',
             type: 'creature',
             controller: 'ai_player',
@@ -495,7 +495,7 @@ export function example6_MultiBlocking(): void {
           },
           {
             id: 'blocker2',
-            cardId: 'b2',
+            cardInstanceId: 'b2',
             name: 'Gray Ogre',
             type: 'creature',
             controller: 'ai_player',
@@ -535,7 +535,7 @@ export function example6_MultiBlocking(): void {
   const attackers: Permanent[] = [
     {
       id: 'menace_attacker',
-      cardId: 'ma',
+      cardInstanceId: 'ma',
       name: 'Bloodrage Brawler',
       type: 'creature',
       controller: 'opponent',

@@ -158,3 +158,76 @@
 .animate-slide-down {
   animation: slide-down 1s ease-in-out;
 }
+
+/* Print styles for PDF export */
+@media print {
+  /* Hide non-essential elements */
+  nav,
+  header:not(.print-header),
+  footer,
+  button,
+  .no-print,
+  [class*="sidebar"],
+  [class*="nav"],
+  .deck-selector,
+  textarea,
+  input,
+  select {
+    display: none !important;
+  }
+
+  /* Ensure content is visible */
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Card styling for print */
+  [class*="card"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border: 1px solid #ccc !important;
+    box-shadow: none !important;
+  }
+
+  /* Ensure text is readable */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid;
+    color: black !important;
+  }
+
+  /* Links */
+  a {
+    text-decoration: underline;
+    color: black !important;
+  }
+
+  /* Images */
+  img {
+    max-width: 100% !important;
+  }
+
+  /* Prevent orphans */
+  p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Main content area */
+  main {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Coach report specific */
+  .coach-report {
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  /* Section breaks */
+  section,
+  [class*="section"] {
+    page-break-before: avoid;
+  }
+}

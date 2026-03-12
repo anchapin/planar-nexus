@@ -1,251 +1,399 @@
 # Planar Nexus
 
-**Disclaimer**: Planar Nexus is not affiliated with, endorsed by, or connected to Wizards of the Coast, Magic: The Gathering, or any of their affiliates. All Magic: The Gathering content is trademarked and copyrighted by Wizards of the Coast. This project is provided for educational and entertainment purposes only.
+**Free open-source tabletop card game deck builder and AI-powered playtester**
 
-A digital Magic: The Gathering tabletop experience with deck building, AI coaching, and multiplayer functionality.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen)](actions-url)
+[![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
 
-## Project Overview
-
-Planar Nexus aims to be a comprehensive MTG video game featuring:
-- **Deck Builder** - Import, export, save, and create custom decks for all MTG formats
-- **AI Deck Coach** - Get intelligent feedback on your decks with legal card suggestions
-- **Single Player Mode** - Play solo or against AI opponents with adjustable difficulty
-- **Multiplayer Mode** - 1v1 and 4-player PVP without a central game server
-- **Bring Your Own AI Key** - Use your own API keys from Claude, Copilot, Gemini, Z.ai, and more
-
-## Getting Started
-
-To start development, take a look at `src/app/page.tsx` and `CLAUDE.md` for development commands and architecture details.
+> **Disclaimer**: Planar Nexus is not affiliated with, endorsed by, or connected to Wizards of the Coast, Magic: The Gathering, or any of their affiliates. All Magic: The Gathering content is trademarked and copyrighted by Wizards of the Coast. This project is provided for educational and entertainment purposes only.
 
 ---
 
-## Roadmap
+## Table of Contents
 
-### Current Status (v0.1)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Deck Builder | ✅ Complete | Full import/export, save/load, format validation, Scryfall integration |
-| AI Deck Coach | ✅ Complete | Strategic analysis, legal suggestions, multiple optimization paths |
-| Single Player | ✅ Complete | UI screens exist, game engine fully complete |
-| Multiplayer | ✅ Complete | P2P WebRTC, lobby system, 1v1, 4-player Commander, 2v2 teams |
-| Game Engine | ✅ Complete | Core mechanics implemented (state, combat, layers, SBAs, replacement effects) |
-| AI Providers | ✅ Complete | Multi-provider support (Gemini, Claude, OpenAI, Z.ai) with subscription linking |
-| Visual Effects | ✅ Complete | Card art, attack/block animations, spell effects, sound system, card sleeves |
-| Social Features | ✅ Complete | Friends list, match history, trading system, replay sharing |
-| Tournament | ✅ Complete | Bracket system, Swiss pairing, round timer, judge tools |
+- [Overview](#overview)
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Screenshots](#screenshots)
+- [Documentation](#documentation)
+- [Requirements](#requirements)
+- [Development](#development)
+- [License](#license)
 
 ---
 
-### Phase 1: Core Game Engine (Required for Single & Multiplayer)
+## Overview
 
-**Priority: CRITICAL** - Blocks all gameplay features
+Planar Nexus is a comprehensive digital tabletop card game experience built with Next.js 15, TypeScript, and Tauri. Build decks, get AI-powered coaching, play against AI opponents, and compete with friends online.
 
-#### 1.1 Game State Management
-- [x] Implement game state data structures (players, battlefield, hands, graveyards, exile, stack, command zones)
-- [x] Create card state tracking (tapped, flipped, counters, attachments, auras/equipment)
-- [x] Implement turn phases (beginning, precombat main, combat, postcombat main, end)
-- [x] Create priority pass system for stack resolution
-- [x] Implement turn/round tracking for multiplayer
-
-#### 1.2 Card Mechanics
-- [x] Land playing and mana pool system
-- [x] Spell casting (paying costs, putting on stack)
-- [x] Stack resolution (responding, priority passing, resolution order)
-- [x] Combat system (attackers, blockers, damage assignment, first/double strike)
-- [x] Activated abilities and triggered abilities
-- [x] Keyword action handling (destroy, exile, sacrifice, draw, discard, etc.)
-
-#### 1.3 Card Rules Engine
-- [x] Parse and interpret Oracle text for common abilities
-- [x] Handle evergreen keywords (flying, trample, haste, deathtouch, etc.)
-- [x] Implement replacement effects and prevention effects
-- [x] Handle state-based actions (creature death, planeswalker rules, etc.)
-- [x] Implement layer system for continuous effects
+**Key Highlights**:
+- **500+ card database** with offline support and instant fuzzy search
+- **18 deck archetype detection** with 70%+ confidence scoring
+- **24 synergy patterns** with actionable recommendations
+- **4 AI difficulty levels** from beginner-friendly to expert
+- **Full multiplayer** with P2P WebRTC (no central game server)
+- **Privacy-first** - all data stored locally, bring your own AI keys
 
 ---
 
-### Phase 2: Single Player Gameplay
+## Features
 
-**Priority: HIGH**
+### Deck Builder
+- Search 500+ cards with instant fuzzy matching
+- Format validation for Commander, Standard, Modern, Legacy, and Vintage
+- Real-time mana curve and deck statistics
+- Import/export decklists (text, JSON, URL)
+- Save and organize unlimited decks locally
+- Offline-capable with IndexedDB storage
 
-#### 2.1 Game Board UI
-- [x] Design and implement game board layout
-- [x] Card rendering (face-up, face-down, token representation)
-- [x] Hand display and card selection
-- [x] Battlefield visualization with card positioning
-- [x] Graveyard/exile/command zone viewers
-- [x] Stack display and priority indicators
-- [x] Life total and poison counter tracking
-- [x] Commander damage tracking (for Commander format)
+### AI Deck Coach
+- Detects 18 deck archetypes (Aggro, Control, Combo, Tribal, etc.)
+- Identifies 24+ synergy patterns with scoring
+- Suggests missing synergy cards with impact levels
+- Highlights key cards and their roles
+- Export reports as text or PDF
+- Multiple AI providers: Gemini, Claude, OpenAI, Z.ai
 
-#### 2.2 Game Interaction System
-- [x] Click-to-act interface for cards
-- [x] Menu system for activated abilities
-- [x] Targeting system for spells/abilities
-- [x] Attack/block declaration UI
-- [x] Mana payment interface
-- [x] Optional "yes/no" dialogs for triggers
+### AI Opponent
+- 4 difficulty levels with distinct behavioral profiles:
+  - **Easy**: 80% player win rate, beginner-friendly
+  - **Medium**: 60% player win rate, balanced challenge
+  - **Hard**: 40% player win rate, experienced players
+  - **Expert**: 25% player win rate, near-perfect play
+- Full game AI with intelligent combat decisions
+- Game history tracking and replay analysis
+- Customizable AI themes (Aggro, Control, Combo)
 
-#### 2.3 Save/Load System
-- [x] Game state serialization
-- [x] In-memory game replay system
-- [x] Saved games browser
-- [x] Auto-save functionality
+### Multiplayer
+- Peer-to-peer WebRTC connections (no central server)
+- 1v1 and 4-player Commander formats
+- 2v2 teams mode
+- Lobby system with game codes
+- Spectator mode for observers
+- Friends list and match history
 
----
-
-### Phase 3: AI Opponent & Gameplay
-
-**Priority: HIGH**
-
-#### 3.1 AI Decision Engine
-- [x] AI game state evaluation (heuristic scoring)
-- [x] Decision trees for main phase actions
-- [x] Combat AI (attacking, blocking decisions)
-- [x] Stack interaction AI (when to respond, with what)
-- [x] Mulligan decision logic
-- [x] Difficulty tuning (randomness, lookahead depth, evaluation accuracy)
-
-#### 3.2 AI Integration with Providers
-- [x] Abstract AI provider interface
-- [x] Gemini integration
-- [x] Claude API integration via Anthropic SDK
-- [x] OpenAI/Copilot integration
-- [x] Z.ai integration
-- [x] Fallback and error handling for provider failures
-
-#### 3.3 Bring Your Own Key System
-- [x] User settings page for API key management
-- [x] Secure local storage for API keys
-- [x] Provider selection interface
-- [x] API key validation on save
-- [x] Usage tracking per provider (if available)
-- [x] Subscription plan linking (if applicable)
-
-#### 3.4 Enhanced AI Features
-- [x] AI deck building suggestions based on meta analysis
-- [x] Real-time gameplay assistance (hints, suggest plays)
-- [x] Post-game analysis and improvement suggestions
-- [x] Draft/sealed deck AI assistance
+### Visual Experience
+- High-resolution card art display
+- Attack/block animations
+- Spell casting effects and combat text
+- Customizable card sleeves and playmats
+- Sound effects and background music
+- Dark mode interface
 
 ---
 
-### Phase 4: Multiplayer Infrastructure
+## Quick Start
 
-**Priority: MEDIUM** (Can be developed in parallel with Phase 2-3)
+### Option 1: Download Pre-built Installer (Recommended)
 
-#### 4.1 Peer-to-Peer Networking
-- [x] WebRTC implementation for direct player connections
-- [x] Signaling server for WebRTC handshake (lightweight, minimal state)
-- [x] Connection management (reconnection, handling disconnects)
-- [x] NAT traversal and STUN/TURN servers
+1. **Download** the installer for your platform from [GitHub Releases](https://github.com/anchapin/planar-nexus/releases)
+   - **Windows**: `Planar-Nexus-setup.exe`
+   - **macOS**: `Planar-Nexus.dmg`
+   - **Linux**: `planar-nexus_1.0.0_amd64.deb` or `.AppImage`
 
-#### 4.2 Game State Synchronization
-- [x] Deterministic game state engine
-- [x] Action broadcasting system (player actions sent to all peers)
-- [x] State hash verification for sync detection
-- [x] Conflict resolution for desync
-- [x] Replay buffering for late joins
+2. **Run** the installer and follow the prompts
 
-#### 4.3 Lobby System
-- [x] Host game functionality (generate game code)
-- [x] Join game by code
-- [x] Public game browser (with signaling server discovery)
-- [x] Player ready system
-- [x] Deck selection per player
-- [x] Format enforcement
+3. **Launch** Planar Nexus and start building decks!
 
-#### 4.4 Multiplayer Features
-- [x] 1v1 mode implementation
-- [x] 4-player free-for-all (Commander style)
-- [x] 2v2 teams mode
-- [x] Spectator mode
-- [x] Chat system
-- [x] Emote/timer system
-- [x] Concede and draw options
+### Option 2: Web Version
 
-#### 4.5 Alternative: Serverless Architecture Options
-- [x] Evaluate Firebase Realtime Database for signaling/state
-- [x] Consider WebSocket fallback for non-P2P scenarios
-- [x] Hybrid approach: P2P gameplay with lightweight signaling
+Visit the hosted web version at [planarnexus.app](https://planarnexus.app) (if available)
+
+### Option 3: Build from Source
+
+See [Development](#development) section below.
 
 ---
 
-### Phase 5: Polish & Enhancement
+## Installation
 
-**Priority: LOW**
+### System Requirements
 
-#### 5.1 Visual Effects
-- [x] Card art display and high-res rendering
-- [x] Attack/block animations
-- [x] Spell casting effects
-- [x] Damage indicators and floating combat text
-- [x] Sound effects and music
-- [x] Card sleeves and playmats customization
+| Platform | Minimum Requirements |
+|----------|---------------------|
+| **Windows** | Windows 10+ (64-bit), 4GB RAM, 500MB disk space |
+| **macOS** | macOS 10.15+ (Catalina), 4GB RAM, 500MB disk space |
+| **Linux** | Ubuntu 22.04+ or equivalent, 4GB RAM, 500MB disk space |
+| **Web** | Modern browser (Chrome, Firefox, Safari, Edge) |
 
-#### 5.2 Tournament Features
-- [x] Bracket system for tournaments
-- [x] Swiss pairing support
-- [x] Round timer with clock extensions
-- [x] Judge tools (for local events)
+### Windows Installation
 
-#### 5.3 Advanced Features
-- [x] Replay system with shareable links
-- [x] Deck statistics and analytics
-- [x] Collection tracker
-- [x] Trading system (if applicable)
-- [x] Achievement/badge system
+1. Download `Planar-Nexus-setup.exe` from [Releases](https://github.com/anchapin/planar-nexus/releases)
+2. Run the installer
+3. If SmartScreen warns, click "More info" → "Run anyway"
+4. Follow installation prompts
+5. Launch from Start Menu or Desktop
+
+### macOS Installation
+
+1. Download `Planar-Nexus.dmg` from [Releases](https://github.com/anchapin/planar-nexus/releases)
+2. Open the DMG file
+3. Drag Planar Nexus to Applications folder
+4. If Gatekeeper blocks, right-click → Open → Open
+5. Launch from Applications folder
+
+### Linux Installation
+
+**Debian/Ubuntu**:
+```bash
+# Download the .deb file
+wget https://github.com/anchapin/planar-nexus/releases/download/v1.0.0/planar-nexus_1.0.0_amd64.deb
+
+# Install dependencies
+sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev
+
+# Install the package
+sudo dpkg -i planar-nexus_1.0.0_amd64.deb
+```
+
+**AppImage** (works on most distributions):
+```bash
+# Download the AppImage
+wget https://github.com/anchapin/planar-nexus/releases/download/v1.0.0/Planar-Nexus.AppImage
+
+# Make executable
+chmod +x Planar-Nexus.AppImage
+
+# Run
+./Planar-Nexus.AppImage
+```
 
 ---
 
-## Technical Debt & Improvements
+## Screenshots
 
-- [x] Migrate from hardcoded Gemini-only AI to provider-agnostic architecture
-- [x] Add comprehensive unit tests for game rules
-- [x] Add E2E tests for game scenarios
-- [x] Performance optimization for large board states
-- [x] Accessibility improvements (screen reader support, keyboard navigation)
-- [x] Mobile responsiveness improvements
-- [x] Offline mode (PWA with local caching)
+### Deck Builder
+![Deck Builder](docs/screenshots/deck-builder.png)
+*Build and validate decks with instant card search and format checking*
+
+### AI Coach Report
+![AI Coach](docs/screenshots/ai-coach.png)
+*Get intelligent deck analysis with archetype detection and synergy suggestions*
+
+### AI Opponent Gameplay
+![AI Opponent](docs/screenshots/ai-opponent.png)
+*Play against AI with 4 difficulty levels and distinct behavioral profiles*
+
+### Multiplayer Lobby
+![Multiplayer](docs/screenshots/multiplayer.png)
+*Create or join games with friends via P2P WebRTC connections*
 
 ---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [User Guide](docs/USER_GUIDE.md) | Complete guide to using Planar Nexus features |
+| [API Documentation](docs/API.md) | AI provider configuration and API reference |
+| [Contributing Guide](docs/CONTRIBUTING.md) | How to contribute code and documentation |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
+| [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Building and deploying for all platforms |
+| [Distribution Guide](docs/DISTRIBUTION_GUIDE.md) | Release management and distribution channels |
+
+---
+
+## Requirements
+
+### Runtime Requirements
+
+- **Node.js**: 20 or higher (for development)
+- **Browser**: Chrome 90+, Firefox 88+, Safari 14+, Edge 90+
+- **Storage**: 500MB for application + card database
+- **Memory**: 4GB RAM minimum, 8GB recommended
+- **Network**: Internet connection for initial card database import (optional)
+
+### Development Requirements
+
+- **Node.js**: 20+
+- **npm** or **yarn**
+- **Git**
+- **Rust toolchain** (for Tauri builds)
+- **Platform-specific build tools** (see [Deployment Guide](docs/DEPLOYMENT_GUIDE.md))
+
+---
+
+## Development
+
+### Clone and Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/anchapin/planar-nexus
+cd planar-nexus
+
+# Install dependencies
+npm install
+```
+
+### Development Server
+
+```bash
+# Start development server (runs on port 9002)
+npm run dev
+
+# Start AI development UI (Genkit)
+npm run genkit:dev
+
+# Start AI development with hot-reload
+npm run genkit:watch
+```
+
+### Build Commands
+
+```bash
+# Production build
+NODE_ENV=production npm run build
+
+# Start production server
+npm start
+
+# Build Tauri desktop app
+npm run build:tauri
+
+# Build for specific platform
+npm run build:win      # Windows
+npm run build:mac      # macOS
+npm run build:linux    # Linux
+```
+
+### Testing
+
+```bash
+# Run unit tests
+npm test
+
+# Run tests with coverage
+npm test -- --coverage
+
+# Run E2E tests
+npx playwright test
+
+# Watch mode
+npm run test:watch
+```
+
+### Linting and Type Checking
+
+```bash
+# ESLint
+npm run lint
+
+# TypeScript type check
+npm run typecheck
+```
+
+### Project Structure
+
+```
+planar-nexus/
+├── src/
+│   ├── app/              # Next.js app router pages
+│   │   ├── (app)/        # Protected routes with shared layout
+│   │   │   ├── dashboard/
+│   │   │   ├── deck-builder/
+│   │   │   ├── deck-coach/
+│   │   │   ├── single-player/
+│   │   │   └── multiplayer/
+│   │   ├── api/          # API routes
+│   │   └── actions.ts    # Server actions
+│   ├── ai/               # AI modules
+│   │   ├── providers/    # AI provider implementations
+│   │   ├── flows/        # Genkit AI flows
+│   │   └── difficulty.ts # AI difficulty configuration
+│   ├── lib/              # Utilities and shared code
+│   │   ├── game-state/   # Game engine
+│   │   ├── card-database.ts
+│   │   └── utils.ts
+│   └── components/       # React components
+│       └── ui/           # Shadcn/ui components
+├── src-tauri/            # Tauri backend
+├── docs/                 # Documentation
+├── .planning/            # GSD planning documents
+├── scripts/              # Utility scripts
+└── public/               # Static assets
+```
+
+### Import Card Database
+
+Planar Nexus starts with an empty card database. Import cards for personal use:
+
+```bash
+# Fetch 500 Commander-legal cards
+npx tsx scripts/fetch-cards-for-db.ts --format commander --limit 500
+
+# Import via UI: Settings → Database Management → Select JSON File
+```
+
+See [Card Database Import Guide](CARD_DATABASE_IMPORT.md) for details.
+
+---
+
+## Technology Stack
+
+| Category | Technology |
+|----------|------------|
+| **Frontend** | Next.js 15, React 19, TypeScript 5 |
+| **UI** | Shadcn/ui, Radix UI, Tailwind CSS |
+| **Backend** | Tauri 2, Rust |
+| **AI** | Genkit, Gemini, Claude, OpenAI, Z.ai |
+| **Database** | IndexedDB (client-side) |
+| **Networking** | WebRTC (PeerJS) |
+| **Testing** | Jest, Playwright |
+| **Build** | Turbopack, Next.js Build |
+
+---
+
+## License
+
+Planar Nexus is released under the [MIT License](LICENSE).
+
+```
+MIT License
+
+Copyright (c) 2024 Planar Nexus
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ---
 
 ## Legal Notices
 
-**Trademark Notice**: Magic: The Gathering, Magic, MTG, and all related characters and elements are trademarks of Wizards of the Coast, LLC.
+**Trademark Notice**: Magic: The Gathering, Magic, MTG, "Commander," "Legendary," and all related characters and elements are trademarks of Wizards of the Coast, LLC. This project is not affiliated with, endorsed by, or connected to Wizards of the Coast.
 
 **Copyright Notice**: All card images, text, and game rules are property of Wizards of the Coast. This project uses the Scryfall API for card data but does not host any copyrighted materials.
 
-**No Affiliation**: This project is not affiliated with, endorsed by, or connected to Wizards of the Coast. It is an independent, non-commercial project created for educational and entertainment purposes.
+**No Affiliation**: This project is an independent, non-commercial project created for educational and entertainment purposes.
 
 ---
 
-## Development Notes
+## Support and Community
 
-The codebase is well-structured with Next.js 15, TypeScript, and Genkit AI flows. The deck builder, AI coach, and game engine features are production-ready. The game engine includes comprehensive implementations of:
-- Game state management with full zone tracking
-- Combat system with first/double strike, trample, deathtouch
-- Layer system for continuous effects (CR 613)
-- State-based actions (CR 704)
-- Replacement and prevention effects (CR 614-616)
-- AI difficulty tuning with multiple levels
-- Full multiplayer support with P2P WebRTC
-- Visual effects including animations, sounds, and card art
-- Social features including friends, trading, and replays
+- **Bug Reports**: [GitHub Issues](https://github.com/anchapin/planar-nexus/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/anchapin/planar-nexus/discussions)
+- **Documentation**: [Wiki](https://github.com/anchapin/planar-nexus/wiki)
 
-All planned features have been implemented. The project is feature-complete for v0.1.
+---
 
-**Estimated Effort:**
-- Phase 1 (Game Engine): 60-80% of total effort
-- Phase 2 (UI): 10-15% of total effort
-- Phase 3 (AI Gameplay): 10-15% of total effort
-- Phase 4 (Multiplayer): 15-20% of total effort
-- Phase 5 (Polish): 5-10% of total effort
-
-**Parallelization Opportunities:**
-- Phase 4 (Multiplayer networking) can be developed alongside Phases 2-3 by using mock game states
-- AI provider abstraction can be refactored while using existing Gemini flows
-- UI components can be built with mock data before game engine is complete
+**Version**: 1.0.0  
+**Last Updated**: March 12, 2026

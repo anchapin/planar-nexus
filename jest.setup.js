@@ -1,6 +1,9 @@
 // Jest setup for browser APIs
 require('fake-indexeddb/auto');
 
+// Testing Library matchers
+require('@testing-library/jest-dom');
+
 // Polyfill for TextEncoder/TextDecoder
 global.TextEncoder = require('util').TextEncoder;
 global.TextDecoder = require('util').TextDecoder;
@@ -110,4 +113,113 @@ global.navigator = {
       quota: 50 * 1024 * 1024, // 50MB
     }),
   },
+};
+
+// ============================================================================
+// Test Data Seeding Utilities
+// ============================================================================
+
+/**
+ * Mock card database for testing
+ * Provides consistent test data across all test suites
+ */
+const mockCardDatabase = {
+  cards: [],
+  isInitialized: false,
+  
+  async initialize() {
+    if (this.isInitialized) return true;
+    
+    // Load test fixtures if available
+    try {
+      const { testCards } = require('./src/lib/__fixtures__/test-cards');
+      this.cards = testCards;
+      this.isInitialized = true;
+      return true;
+    } catch (err) {
+      console.warn('Could not load test card fixtures:', err.message);
+      this.cards = [];
+      this.isInitialized = false;
+      return false;
+    }
+  },
+  
+  async searchCards(query) {
+    if (!this.isInitialized) await this.initialize();
+    
+    if (!query || query.trim() === '') {
+      return this.cards;
+    }
+    
+    const lowerQuery = query.toLowerCase();
+    return this.cards.filter(card => 
+      card.name.toLowerCase().includes(lowerQuery) ||
+      card.types?.some(type => type.toLowerCase().includes(lowerQuery)) ||
+      card.subtypes?.some(subtype => subtype.toLowerCase().includes(lowerQuery))
+    );
+  },
+  
+  async getCardByName(name) {
+    if (!this.isInitialized) await this.initialize();
+    return this.cards.find(card => card.name === name);
+  },
+  
+  async getAllCards() {
+    if (!this.isInitialized) await this.initialize();
+    return this.cards;
+  },
+  
+  async getCardsByColor(color) {
+    if (!this.isInitialized) await this.initialize();
+    return this.cards.filter(card => card.colors?.includes(color));
+  },
+  
+  async getCardsByType(type) {
+    if (!this.isInitialized) await this.initialize();
+    return this.cards.filter(card => card.types?.includes(type));
+  },
+  
+  reset() {
+    this.cards = [];
+    this.isInitialized = false;
+  },
+};
+
+global.mockCardDatabase = mockCardDatabase;
+
+/**
+ * Clears all test data and resets mocks
+ * Should be called in beforeEach for isolated tests
+ */
+global.clearTestData = () => {
+  // Clear IndexedDB mock
+  if (global.indexedDB) {
+    const dbName = global.indexedDB.databases?.[0]?.name || 'test-db';
+    // Note: fake-indexeddb handles cleanup automatically
+  }
+  
+  // Clear localStorage mock
+  if (global.localStorage) {
+    global.localStorage.clear();
+  }
+  
+  // Reset card database mock
+  mockCardDatabase.reset();
+  
+  // Clear any pending timers
+  jest.clearAllTimers();
+};
+
+/**
+ * Seeds the database with test data
+ * Should be called in beforeEach when tests need data
+ */
+global.seedTestData = async (customCards = []) => {
+  const { testCards } = require('./src/lib/__fixtures__/test-cards');
+  const cardsToSeed = customCards.length > 0 ? customCards : testCards;
+  
+  mockCardDatabase.cards = [...cardsToSeed];
+  mockCardDatabase.isInitialized = true;
+  
+  return cardsToSeed;
 };

@@ -1,13 +1,12 @@
 /**
- * @fileOverview Card operations using embedded data
+ * @fileOverview Card operations using database
  *
- * These functions work with embedded card data for AI flows.
- * They use embedded card data and work in both server and client environments.
- * Originally designed for server-side but now compatible with client-side execution.
+ * These functions work with the card database (IndexedDB).
+ * They require the database to be initialized with card data.
  */
 
 import type { MinimalCard } from './card-database';
-import { ESSENTIAL_CARDS } from './card-database';
+import { searchCardsOffline, getCardByName, initializeCardDatabase } from './card-database';
 import { type Format } from '@/lib/game-rules';
 import { sanitizeCardInput } from './decklist-utils';
 
@@ -20,7 +19,7 @@ export interface ServerDeckCard extends MinimalCard {
 let isInitialized = false;
 
 /**
- * Initialize server-side card operations with embedded data
+ * Initialize server-side card operations with database
  */
 async function initializeServerCardOperations(): Promise<void> {
   if (isInitialized) {
@@ -28,6 +27,7 @@ async function initializeServerCardOperations(): Promise<void> {
   }
 
   try {
+    await initializeCardDatabase();
     isInitialized = true;
   } catch (error) {
     console.error('Failed to initialize server-side card operations:', error);
@@ -36,8 +36,8 @@ async function initializeServerCardOperations(): Promise<void> {
 }
 
 /**
- * Validate card legality using embedded card data
- * This works in server-side Node.js environment
+ * Validate card legality using database
+ * This works in both server and client environments
  */
 export async function validateCardLegality(
   cards: { name: string; quantity: number }[],
@@ -55,13 +55,13 @@ export async function validateCardLegality(
     return { found: [], notFound: malformedInputs, illegal: [] };
   }
 
-  // Find cards in embedded data
+  // Find cards in database
   const found: ServerDeckCard[] = [];
   const illegal: string[] = [];
   const notFoundNames = new Set<string>();
 
   for (const [lowerCaseName, requestDetails] of cardMap.entries()) {
-    const cardInDb = ESSENTIAL_CARDS.find(c => c.name.toLowerCase() === lowerCaseName);
+    const cardInDb = await getCardByName(requestDetails.originalName);
 
     if (cardInDb) {
       const isLegal = cardInDb.legalities?.[format] === 'legal';

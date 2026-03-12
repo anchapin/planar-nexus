@@ -6,7 +6,7 @@
  * using client-side signaling without server dependencies.
  */
 
-import type { GameState } from './game-state/types';
+import type { GameState, Phase, PlayerId } from './game-state/types';
 import {
   LocalSignalingClient,
   createLocalSignalingClient,
@@ -322,7 +322,7 @@ export class P2PGameConnection {
    * Send game state to remote peer
    */
   sendGameState(gameState: GameState, isFullSync: boolean = false): boolean {
-    const serialized = serializeGameState(gameState, isFullSync ? 'Full sync' : 'Delta sync');
+    const serialized = serializeGameState(gameState);
 
     return this.send({
       type: 'game-state-sync',
@@ -470,8 +470,40 @@ export class P2PGameConnection {
    */
   private handleGameStateSync(message: GameMessage): void {
     const data = message.data as { gameState: SerializedGameState; isFullSync: boolean };
-    const gameState = deserializeGameState(data.gameState);
+    const baseState = this.createBaseEngineState();
+    const gameState = deserializeGameState(data.gameState, baseState);
     this.events.onGameStateSync(gameState);
+  }
+
+  /**
+   * Create a minimal base engine state for deserialization
+   */
+  private createBaseEngineState(): any {
+    return {
+      gameId: '',
+      players: new Map(),
+      cards: new Map(),
+      zones: new Map(),
+      stack: [],
+      turn: { 
+        activePlayerId: '' as PlayerId, 
+        currentPhase: 'precombat_main' as Phase, 
+        turnNumber: 1,
+        extraTurns: 0,
+        isFirstTurn: true,
+        startedAt: Date.now(),
+      },
+      combat: { attacking: [], blocking: [] },
+      waitingChoice: null,
+      priorityPlayerId: null,
+      consecutivePasses: 0,
+      status: 'not_started',
+      winners: [],
+      endReason: null,
+      format: 'commander',
+      createdAt: Date.now(),
+      lastModifiedAt: Date.now(),
+    };
   }
 
   /**

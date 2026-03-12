@@ -1,0 +1,561 @@
+/**
+ * @fileoverview Unit Tests for GameStateEvaluator
+ *
+ * Tests for heuristic game state evaluation functions.
+ */
+
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import {
+  GameStateEvaluator,
+  DefaultWeights,
+  type EvaluationWeights,
+  type DetailedEvaluation,
+} from '../game-state-evaluator';
+import type { AIGameState, AIPlayerState, AIPermanent, AIHandCard } from '@/lib/game-state/types';
+
+/**
+ * Create a mock AI player state for testing
+ */
+function createMockPlayerState(
+  id: string,
+  life: number = 20,
+  hand: AIHandCard[] = [],
+  battlefield: AIPermanent[] = [],
+  graveyard: string[] = [],
+  exile: string[] = [],
+  library: number = 40
+): AIPlayerState {
+  return {
+    id,
+    name: `Player ${id}`,
+    life,
+    poisonCounters: 0,
+    hand,
+    battlefield,
+    graveyard,
+    exile,
+    library,
+    manaPool: { white: 0, blue: 0, black: 0, red: 0, green: 0, colorless: 0, generic: 0 },
+    commanderDamage: {},
+    landsPlayedThisTurn: 0,
+    hasPassedPriority: false,
+  };
+}
+
+/**
+ * Create a mock permanent for testing
+ */
+function createMockPermanent(
+  id: string,
+  name: string,
+  type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker' = 'creature',
+  power?: number,
+  toughness?: number,
+  tapped: boolean = false,
+  manaValue: number = 1,
+  keywords: string[] = []
+): AIPermanent {
+  return {
+    cardInstanceId: id,
+    id,
+    name,
+    type,
+    controller: 'player1',
+    tapped,
+    manaValue,
+    power,
+    toughness,
+    keywords,
+  };
+}
+
+/**
+ * Create a mock hand card for testing
+ */
+function createMockHandCard(
+  name: string,
+  manaValue: number,
+  type: string = 'Creature'
+): AIHandCard {
+  return {
+    cardInstanceId: `hand-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    name,
+    manaValue,
+    type,
+    colors: [],
+  };
+}
+
+/**
+ * Create a basic test game state
+ */
+function createTestGameState(
+  player1Life: number = 20,
+  player2Life: number = 20,
+  player1Hand: AIHandCard[] = [],
+  player2Hand: AIHandCard[] = [],
+  player1Battlefield: AIPermanent[] = [],
+  player2Battlefield: AIPermanent[] = []
+): AIGameState {
+  return {
+    players: {
+      player1: createMockPlayerState('player1', player1Life, player1Hand, player1Battlefield),
+      player2: createMockPlayerState('player2', player2Life, player2Hand, player2Battlefield),
+    },
+    turnInfo: {
+      currentTurn: 1,
+      currentPlayer: 'player1',
+      priority: 'player1',
+      phase: 'precombat_main',
+      step: 'main',
+    },
+    stack: [],
+    combat: {
+      inCombatPhase: false,
+      attackers: [],
+      blockers: {},
+    },
+  };
+}
+
+describe('GameStateEvaluator', () => {
+  describe('constructor', () => {
+    it('should initialize with default difficulty (medium)', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+
+      const weights = evaluator.getWeights();
+      expect(weights).toEqual(DefaultWeights.medium);
+    });
+
+    it('should initialize with specified difficulty', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1', 'hard');
+
+      const weights = evaluator.getWeights();
+      expect(weights).toEqual(DefaultWeights.hard);
+    });
+
+    it('should store the evaluating player ID', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player2');
+
+      // This is tested indirectly through evaluate()
+      const evaluation = evaluator.evaluate();
+      expect(evaluation).toBeDefined();
+    });
+  });
+
+  describe('setWeights and getWeights', () => {
+    it('should update weights with setWeights', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+
+      const customWeights: Partial<EvaluationWeights> = {
+        lifeScore: 2.0,
+        creaturePower: 1.5,
+      };
+
+      evaluator.setWeights(customWeights);
+      const weights = evaluator.getWeights();
+
+      expect(weights.lifeScore).toBe(2.0);
+      expect(weights.creaturePower).toBe(1.5);
+      // Other weights should remain unchanged
+      expect(weights.poisonScore).toBe(DefaultWeights.medium.poisonScore);
+    });
+
+    it('should return a copy of weights (not mutable reference)', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+
+      const weights1 = evaluator.getWeights();
+      weights1.lifeScore = 999;
+
+      const weights2 = evaluator.getWeights();
+      expect(weights2.lifeScore).toBe(DefaultWeights.medium.lifeScore);
+    });
+  });
+
+  describe('evaluate()', () => {
+    it('should return a complete evaluation object', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation).toHaveProperty('totalScore');
+      expect(evaluation).toHaveProperty('factors');
+      expect(evaluation).toHaveProperty('threats');
+      expect(evaluation).toHaveProperty('opportunities');
+      expect(evaluation).toHaveProperty('recommendedActions');
+    });
+
+    it('should evaluate life score correctly', () => {
+      // Player has more life than opponent
+      let gameState = createTestGameState(25, 15);
+      let evaluator = new GameStateEvaluator(gameState, 'player1');
+      let evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.lifeScore).toBeGreaterThan(0);
+
+      // Player has less life than opponent
+      gameState = createTestGameState(15, 25);
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.lifeScore).toBeLessThan(0);
+
+      // Equal life
+      gameState = createTestGameState(20, 20);
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.lifeScore).toBeCloseTo(0, 1);
+    });
+
+    it('should evaluate poison score correctly', () => {
+      const gameState = createTestGameState();
+      
+      // No poison
+      let evaluator = new GameStateEvaluator(gameState, 'player1');
+      let evaluation = evaluator.evaluate();
+      expect(evaluation.factors.poisonScore).toBeCloseTo(0);
+
+      // 5 poison counters (halfway to lethal)
+      gameState.players.player1.poisonCounters = 5;
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+      expect(evaluation.factors.poisonScore).toBe(-0.5);
+
+      // 10 poison counters (lethal)
+      gameState.players.player1.poisonCounters = 10;
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+      expect(evaluation.factors.poisonScore).toBe(-1);
+    });
+
+    it('should evaluate card advantage correctly', () => {
+      // Player has more cards than opponent
+      const player1Hand = [
+        createMockHandCard('Card1', 2),
+        createMockHandCard('Card2', 3),
+      ];
+      const player2Hand = [createMockHandCard('Card3', 1)];
+
+      let gameState = createTestGameState(20, 20, player1Hand, player2Hand);
+      let evaluator = new GameStateEvaluator(gameState, 'player1');
+      let evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.cardAdvantage).toBeGreaterThan(0);
+
+      // Player has fewer cards
+      gameState = createTestGameState(20, 20, player2Hand, player1Hand);
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.cardAdvantage).toBeLessThan(0);
+    });
+
+    it('should evaluate hand quality based on mana curve', () => {
+      // Good curve (avg ~2.5)
+      const goodHand = [
+        createMockHandCard('Card1', 2),
+        createMockHandCard('Card2', 3),
+        createMockHandCard('Land', 0, 'Land'),
+      ];
+
+      const gameState = createTestGameState(20, 20, goodHand, []);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.handQuality).toBeGreaterThan(0.5);
+    });
+
+    it('should evaluate hand quality lower without mana sources', () => {
+      // No lands in hand
+      const noManaHand = [
+        createMockHandCard('Card1', 4),
+        createMockHandCard('Card2', 5),
+      ];
+
+      const gameState = createTestGameState(20, 20, noManaHand, []);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.handQuality).toBeLessThan(0.5);
+    });
+
+    it('should evaluate library depth correctly', () => {
+      // Large library
+      let gameState = createTestGameState();
+      gameState.players.player1.library = 30;
+      let evaluator = new GameStateEvaluator(gameState, 'player1');
+      let evaluation = evaluator.evaluate();
+      expect(evaluation.factors.libraryDepth).toBe(1);
+
+      // Medium library
+      gameState.players.player1.library = 15;
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+      expect(evaluation.factors.libraryDepth).toBe(0.5);
+
+      // Low library (danger zone)
+      gameState.players.player1.library = 3;
+      evaluator = new GameStateEvaluator(gameState, 'player1');
+      evaluation = evaluator.evaluate();
+      expect(evaluation.factors.libraryDepth).toBe(-1);
+    });
+
+    it('should evaluate creature power correctly', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+        createMockPermanent('c2', 'Ogre', 'creature', 3, 2),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c3', 'Bear', 'creature', 2, 2),
+      ];
+
+      const gameState = createTestGameState(20, 20, [], [], player1Creatures, player2Creatures);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.creaturePower).toBeGreaterThan(0);
+    });
+
+    it('should only count untapped creatures for power evaluation', () => {
+      const tappedCreature = createMockPermanent('c1', 'Bear', 'creature', 2, 2, true);
+      const gameState = createTestGameState(20, 20, [], [], [tappedCreature], []);
+      
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.creaturePower).toBeLessThanOrEqual(0);
+    });
+
+    it('should evaluate permanent advantage correctly', () => {
+      const player1Permanents = [
+        createMockPermanent('c1', 'Bear', 'creature'),
+        createMockPermanent('a1', 'Artifact', 'artifact'),
+      ];
+      const player2Permanents = [
+        createMockPermanent('c2', 'Bear', 'creature'),
+      ];
+
+      const gameState = createTestGameState(20, 20, [], [], player1Permanents, player2Permanents);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.permanentAdvantage).toBeGreaterThan(0);
+    });
+
+    it('should evaluate mana available correctly', () => {
+      const gameState = createTestGameState();
+      gameState.players.player1.manaPool = {
+        white: 2,
+        blue: 1,
+        black: 0,
+        red: 3,
+        green: 0,
+        colorless: 2,
+        generic: 0,
+      };
+
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.manaAvailable).toBeGreaterThan(0);
+    });
+
+    it('should generate threat assessments', () => {
+      const opponentCreatures = [
+        createMockPermanent('c1', 'Big Creature', 'creature', 5, 5),
+      ];
+      const gameState = createTestGameState(20, 20, [], [], [], opponentCreatures);
+      gameState.players.player2.battlefield = opponentCreatures;
+
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.threats).toBeDefined();
+      expect(Array.isArray(evaluation.threats)).toBe(true);
+    });
+
+    it('should generate opportunity assessments', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.opportunities).toBeDefined();
+      expect(Array.isArray(evaluation.opportunities)).toBe(true);
+    });
+
+    it('should generate recommended actions', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.recommendedActions).toBeDefined();
+      expect(Array.isArray(evaluation.recommendedActions)).toBe(true);
+    });
+  });
+
+  describe('evaluateCardPriority', () => {
+    it('should prioritize low-cost cards early game', () => {
+      const gameState = createTestGameState();
+      gameState.turnInfo.currentTurn = 2;
+      
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      
+      // This tests the internal logic through the evaluation
+      const evaluation = evaluator.evaluate();
+      expect(evaluation).toBeDefined();
+    });
+  });
+
+  describe('evaluateAttack', () => {
+    it('should evaluate attacking when ahead on board', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+        createMockPermanent('c2', 'Ogre', 'creature', 3, 2),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c3', 'Bear', 'creature', 2, 2),
+      ];
+
+      const gameState = createTestGameState(20, 15, [], [], player1Creatures, player2Creatures);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      // Should recommend aggressive action when ahead
+      expect(evaluation.totalScore).toBeGreaterThan(0);
+    });
+
+    it('should evaluate attacking more cautiously when behind', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Bear', 'creature', 2, 2),
+        createMockPermanent('c3', 'Ogre', 'creature', 3, 2),
+      ];
+
+      const gameState = createTestGameState(15, 20, [], [], player1Creatures, player2Creatures);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      // Score should be lower when behind
+      expect(evaluation.totalScore).toBeLessThan(5);
+    });
+  });
+
+  describe('difficulty-based evaluation', () => {
+    it('should use different weights for easy difficulty', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1', 'easy');
+      
+      const weights = evaluator.getWeights();
+      
+      // Easy AI values survival more
+      expect(weights.lifeScore).toBeGreaterThan(DefaultWeights.medium.lifeScore);
+      // Easy AI ignores card advantage
+      expect(weights.cardAdvantage).toBeLessThan(DefaultWeights.medium.cardAdvantage);
+    });
+
+    it('should use different weights for expert difficulty', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1', 'expert');
+      
+      const weights = evaluator.getWeights();
+      
+      // Expert AI has balanced, strategic weights
+      expect(weights.cardAdvantage).toBeGreaterThan(DefaultWeights.easy.cardAdvantage);
+      expect(weights.synergy).toBeGreaterThan(DefaultWeights.easy.synergy);
+    });
+
+    it('should produce different evaluations based on difficulty', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+      ];
+
+      const gameState = createTestGameState(20, 20, [], [], player1Creatures, []);
+      
+      const easyEvaluator = new GameStateEvaluator(gameState, 'player1', 'easy');
+      const expertEvaluator = new GameStateEvaluator(gameState, 'player1', 'expert');
+      
+      const easyEval = easyEvaluator.evaluate();
+      const expertEval = expertEvaluator.evaluate();
+      
+      // Different difficulties should produce different total scores
+      expect(easyEval.totalScore).not.toBe(expertEval.totalScore);
+    });
+  });
+
+  describe('multi-opponent evaluation', () => {
+    it('should handle evaluation with multiple opponents', () => {
+      const gameState: AIGameState = {
+        players: {
+          player1: createMockPlayerState('player1', 20),
+          player2: createMockPlayerState('player2', 15),
+          player3: createMockPlayerState('player3', 25),
+        },
+        turnInfo: {
+          currentTurn: 1,
+          currentPlayer: 'player1',
+          priority: 'player1',
+          phase: 'precombat_main',
+          step: 'main',
+        },
+        stack: [],
+        combat: {
+          inCombatPhase: false,
+          attackers: [],
+          blockers: {},
+        },
+      };
+
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation).toBeDefined();
+      expect(evaluation.totalScore).toBeDefined();
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should handle empty battlefield', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.creaturePower).toBe(0);
+      expect(evaluation.factors.creatureCount).toBe(0);
+    });
+
+    it('should handle empty hand', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.handQuality).toBeLessThanOrEqual(0);
+    });
+
+    it('should handle very high life totals', () => {
+      const gameState = createTestGameState(100, 10);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      // Life score should be capped at 1
+      expect(evaluation.factors.lifeScore).toBeLessThanOrEqual(1);
+    });
+
+    it('should handle negative life totals', () => {
+      const gameState = createTestGameState(-5, 20);
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      // Life score should be capped at -1
+      expect(evaluation.factors.lifeScore).toBeGreaterThanOrEqual(-1);
+    });
+  });
+});

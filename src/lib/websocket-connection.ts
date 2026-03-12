@@ -8,7 +8,7 @@
 
 import type { P2PMessage } from './webrtc-p2p';
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
-import type { GameState } from './game-state/types';
+import type { GameState, Phase, PlayerId } from './game-state/types';
 
 /**
  * WebSocket connection configuration
@@ -290,8 +290,40 @@ export class WebSocketConnection {
    */
   private handleGameStateSync(message: P2PMessage): void {
     const payload = message.payload as { gameState: SerializedGameState };
-    const gameState = deserializeGameState(payload.gameState);
+    const baseState = this.createBaseEngineState();
+    const gameState = deserializeGameState(payload.gameState, baseState);
     this.events.onGameStateSync(gameState);
+  }
+
+  /**
+   * Create a minimal base engine state for deserialization
+   */
+  private createBaseEngineState(): any {
+    return {
+      gameId: '',
+      players: new Map(),
+      cards: new Map(),
+      zones: new Map(),
+      stack: [],
+      turn: { 
+        activePlayerId: '' as PlayerId, 
+        currentPhase: 'precombat_main' as Phase, 
+        turnNumber: 1,
+        extraTurns: 0,
+        isFirstTurn: true,
+        startedAt: Date.now(),
+      },
+      combat: { attacking: [], blocking: [] },
+      waitingChoice: null,
+      priorityPlayerId: null,
+      consecutivePasses: 0,
+      status: 'not_started',
+      winners: [],
+      endReason: null,
+      format: 'commander',
+      createdAt: Date.now(),
+      lastModifiedAt: Date.now(),
+    };
   }
 
   /**
@@ -375,8 +407,8 @@ export class WebSocketConnection {
    * Send game state to other players
    */
   sendGameState(gameState: GameState, isFullSync: boolean = false): void {
-    const serializedState = serializeGameState(gameState, isFullSync ? 'Full sync' : 'Delta sync');
-    
+    const serializedState = serializeGameState(gameState);
+
     this.send({
       type: 'game-state-sync',
       senderId: this.playerId,

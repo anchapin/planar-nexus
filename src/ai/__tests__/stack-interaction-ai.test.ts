@@ -662,9 +662,9 @@ function createTestGameState(): GameState {
     poisonCounters: 0,
     commanderDamage: {},
     hand: [
-      { cardId: 'card1', name: 'Counterspell', type: 'Instant', manaValue: 2 },
-      { cardId: 'card2', name: 'Instant', type: 'Instant', manaValue: 1 },
-      { cardId: 'card3', name: 'Creature', type: 'Creature', manaValue: 3 },
+      { cardInstanceId: 'card1', name: 'Counterspell', type: 'Instant', manaValue: 2 },
+      { cardInstanceId: 'card2', name: 'Instant', type: 'Instant', manaValue: 1 },
+      { cardInstanceId: 'card3', name: 'Creature', type: 'Creature', manaValue: 3 },
     ],
     graveyard: [],
     exile: [],
@@ -672,7 +672,7 @@ function createTestGameState(): GameState {
     battlefield: [
       {
         id: 'land1',
-        cardId: 'land1',
+        cardInstanceId: 'land1',
         name: 'Island',
         type: 'land',
         controller: 'player1',
@@ -680,7 +680,7 @@ function createTestGameState(): GameState {
       },
       {
         id: 'land2',
-        cardId: 'land2',
+        cardInstanceId: 'land2',
         name: 'Island',
         type: 'land',
         controller: 'player1',
@@ -688,7 +688,7 @@ function createTestGameState(): GameState {
       },
       {
         id: 'land3',
-        cardId: 'land3',
+        cardInstanceId: 'land3',
         name: 'Island',
         type: 'land',
         controller: 'player1',
@@ -704,8 +704,8 @@ function createTestGameState(): GameState {
     poisonCounters: 0,
     commanderDamage: {},
     hand: [
-      { cardId: 'opp1', name: 'Creature', type: 'Creature', manaValue: 3 },
-      { cardId: 'opp2', name: 'Sorcery', type: 'Sorcery', manaValue: 2 },
+      { cardInstanceId: 'opp1', name: 'Creature', type: 'Creature', manaValue: 3 },
+      { cardInstanceId: 'opp2', name: 'Sorcery', type: 'Sorcery', manaValue: 2 },
     ],
     graveyard: [],
     exile: [],
@@ -713,7 +713,7 @@ function createTestGameState(): GameState {
     battlefield: [
       {
         id: 'opp_land1',
-        cardId: 'opp_land1',
+        cardInstanceId: 'opp_land1',
         name: 'Mountain',
         type: 'land',
         controller: 'player2',
@@ -721,7 +721,7 @@ function createTestGameState(): GameState {
       },
       {
         id: 'opp_land2',
-        cardId: 'opp_land2',
+        cardInstanceId: 'opp_land2',
         name: 'Mountain',
         type: 'land',
         controller: 'player2',

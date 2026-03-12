@@ -26,7 +26,7 @@ const eslintConfig = [
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-empty-function": "error",
+      "@typescript-eslint/no-empty-function": "warn", // Changed to warn for callback interfaces
       "no-empty": ["error", { "allowEmptyCatch": false }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
@@ -45,6 +45,16 @@ const eslintConfig = [
       react: {
         version: "detect",
       },
+    },
+  },
+  {
+    // Test files can use console and have relaxed rules
+    files: ["**/__tests__/**/*", "**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "no-console": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-empty-function": "off",
     },
   },
   {

@@ -119,7 +119,7 @@ export default function DeckBuilderPage() {
     });
   };
 
-  const importDeck = (decklist: string) => {
+  const importDeck = (decklist: string, format?: 'standard' | 'mtgo' | 'json') => {
     if (!decklist.trim()) {
         toast({
             variant: "destructive",
@@ -131,8 +131,8 @@ export default function DeckBuilderPage() {
     setActiveDeckId(null);
     startImportTransition(async () => {
         try {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, format);
-            
+            const { found, notFound, illegal } = await importDecklistClient(decklist, format, format);
+
             if (found.length > 0) {
                 setDeck(found);
                 toast({

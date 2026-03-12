@@ -15,16 +15,22 @@
  * - Evasion consideration: Handle flying, unblockable, etc.
  * - Damage optimization: Trample, first strike, double strike
  * - Trade assessment: 2-for-1 evaluation
+ *
+ * This module now uses the unified AIGameState format from the engine.
  */
 
-import {
-  GameState,
-  Permanent,
-  PlayerState,
-  HandCard,
-} from '../game-state-evaluator';
+// Import unified types from engine
+import type {
+  AIGameState as GameState,
+  AIPlayerState as PlayerState,
+  AIPermanent as Permanent,
+  AIHandCard as HandCard,
+} from '@/lib/game-state/types';
 import { callAIProxy } from '@/lib/ai-proxy-client';
 import { AIProvider } from '../providers/types';
+
+// Re-export for backward compatibility
+export type { GameState, PlayerState, Permanent, HandCard };
 
 /**
  * Card data interface for combat tricks
@@ -1028,12 +1034,12 @@ export class CombatDecisionTree {
 
     // Calculate expected value
     const expectedValue = this.calculateTrickValue(parsed, targetAnalysis, aiPlayer);
-    
+
     // Determine best timing
     const timing = this.determineTrickTiming(parsed, attacks);
-    
+
     return {
-      cardId: card.cardId,
+      cardId: card.cardInstanceId,
       name: card.name,
       timing,
       targetId: targetAnalysis.targetId,

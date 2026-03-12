@@ -13,7 +13,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Download, Upload, Trash2, Loader2, Save } from "lucide-react";
+import { Download, Upload, Trash2, Loader2, Save, Clipboard, ClipboardPaste, Link as LinkIcon, FileText, Share2 } from "lucide-react";
 import { useState } from "react";
 import {
   AlertDialog,
@@ -26,50 +26,277 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 
 interface ImportExportControlsProps {
-  onImport: (decklist: string) => void;
+  onImport: (decklist: string, format?: 'standard' | 'mtgo' | 'json') => void;
   onExport: () => void;
   onClear: () => void;
   onSave: () => void;
   isDeckSaved: boolean;
   isImporting?: boolean;
+  deckName?: string;
+  deckCards?: Array<{ name: string; quantity: number }>;
 }
 
-export function ImportExportControls({ onImport, onExport, onClear, onSave, isDeckSaved, isImporting = false }: ImportExportControlsProps) {
+export function ImportExportControls({ onImport, onExport, onClear, onSave, isDeckSaved, isImporting = false, deckName, deckCards }: ImportExportControlsProps) {
   const [importText, setImportText] = useState("");
+  const [importFormat, setImportFormat] = useState<'standard' | 'mtgo' | 'json'>('standard');
+  const [importUrl, setImportUrl] = useState("");
+  const [activeTab, setActiveTab] = useState<'text' | 'url'>('text');
+  const { toast } = useToast();
 
   const handleImportClick = () => {
-    onImport(importText);
+    onImport(importText, importFormat);
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setImportText(text);
+      toast({
+        title: "Pasted from clipboard",
+        description: "Decklist pasted successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to paste",
+        description: "Clipboard access denied or not supported",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCopyToClipboard = async () => {
+    if (!deckCards || deckCards.length === 0) {
+      toast({
+        title: "No cards to copy",
+        description: "Add cards to your deck first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const decklist = deckCards
+      .map(card => `${card.quantity} ${card.name}`)
+      .join('\n');
+
+    try {
+      await navigator.clipboard.writeText(decklist);
+      toast({
+        title: "Copied to clipboard",
+        description: `${deckCards.length} cards copied`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to copy",
+        description: "Clipboard access denied",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUrlImport = async () => {
+    if (!importUrl) {
+      toast({
+        title: "Enter a URL",
+        description: "Please paste a deck URL",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({
+      title: "URL import coming soon",
+      description: "Support for MTGGoldfish, TappedOut, and Moxfield URLs",
+    });
+    // TODO: Implement URL fetching with CORS proxy
+  };
+
+  const handleExportJSON = () => {
+    if (!deckCards || deckCards.length === 0) {
+      toast({
+        title: "No cards to export",
+        description: "Add cards to your deck first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const exportData = {
+      name: deckName || "My Deck",
+      format: "commander",
+      cards: deckCards,
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(deckName || 'deck').replace(/[^a-z0-9]/gi, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Exported JSON",
+      description: "Deck exported as JSON file",
+    });
+  };
+
+  const handleShareDeck = async () => {
+    if (!deckCards || deckCards.length === 0) {
+      toast({
+        title: "No cards to share",
+        description: "Add cards to your deck first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const decklist = deckCards
+      .map(card => `${card.quantity} ${card.name}`)
+      .join('\n');
+
+    const shareData = {
+      title: deckName || "My Deck",
+      text: `Check out my deck: ${deckName || "My Deck"}\n\n${decklist}`,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (error) {
+        // User cancelled or share failed
+      }
+    } else {
+      // Fallback to clipboard
+      await navigator.clipboard.writeText(shareData.text);
+      toast({
+        title: "Copied to clipboard",
+        description: "Deck copied for sharing",
+      });
+    }
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
       <Button variant="outline" size="sm" onClick={onSave} disabled={isDeckSaved}>
         <Save className="mr-2" />
         {isDeckSaved ? 'Saved' : 'Save'}
       </Button>
-      <Dialog onOpenChange={(open) => !open && setImportText("")}>
+
+      <Button variant="outline" size="sm" onClick={handleCopyToClipboard}>
+        <Clipboard className="mr-2" />
+        Copy
+      </Button>
+
+      <Dialog onOpenChange={(open) => {
+        if (!open) {
+          setImportText("");
+          setImportUrl("");
+          setActiveTab('text');
+        }
+      }}>
         <DialogTrigger asChild>
           <Button variant="outline" size="sm">
             <Upload className="mr-2" />
             Import
           </Button>
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Import Decklist</DialogTitle>
             <DialogDescription>
-              Paste your decklist below (e.g., from a .txt file). One card per line.
+              Import from text, URL, or clipboard
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            placeholder="1 Sol Ring&#10;1 Command Tower&#10;..."
-            className="h-64"
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            disabled={isImporting}
-          />
+
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'text' | 'url')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="text">Text/Clipboard</TabsTrigger>
+              <TabsTrigger value="url">URL Import</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="text" className="space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePasteFromClipboard}
+                  className="flex-1"
+                >
+                  <ClipboardPaste className="mr-2 h-4 w-4" />
+                  Paste from Clipboard
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="import-format">Format</Label>
+                <Tabs value={importFormat} onValueChange={(v) => setImportFormat(v as typeof importFormat)}>
+                  <TabsList>
+                    <TabsTrigger value="standard">Standard</TabsTrigger>
+                    <TabsTrigger value="mtgo">MTGO</TabsTrigger>
+                    <TabsTrigger value="json">JSON</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              <Textarea
+                placeholder={
+                  importFormat === 'mtgo'
+                    ? "4 Sol Ring\n2 Arcane Signet\n1 Lightning Bolt"
+                    : importFormat === 'json'
+                    ? '{"cards": [{"name": "Sol Ring", "quantity": 4}]}'
+                    : "1 Sol Ring\n1 Command Tower\n..."
+                }
+                className="h-64"
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                disabled={isImporting}
+              />
+
+              {importFormat === 'mtgo' && (
+                <p className="text-xs text-muted-foreground">
+                  MTGO format: <code className="bg-muted px-1 py-0.5 rounded">COUNT CARDNAME</code> (e.g., <code className="bg-muted px-1 py-0.5 rounded">4 Sol Ring</code>)
+                </p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="url" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="import-url">Deck URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="import-url"
+                    placeholder="https://mtggoldfish.com/decks/..."
+                    value={importUrl}
+                    onChange={(e) => setImportUrl(e.target.value)}
+                    disabled={isImporting}
+                  />
+                  <Button onClick={handleUrlImport} disabled={isImporting}>
+                    <LinkIcon className="mr-2 h-4 w-4" />
+                    Import
+                  </Button>
+                </div>
+              </div>
+
+              <div className="text-xs text-muted-foreground space-y-2">
+                <p>Supported sites (coming soon):</p>
+                <ul className="list-disc list-inside space-y-1">
+                  <li>MTGGoldfish</li>
+                  <li>TappedOut</li>
+                  <li>Moxfield</li>
+                </ul>
+              </div>
+            </TabsContent>
+          </Tabs>
+
           <DialogFooter>
             <DialogClose asChild>
               <Button type="button" onClick={handleImportClick} disabled={isImporting}>
@@ -80,10 +307,41 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Button variant="outline" size="sm" onClick={onExport}>
-        <Download className="mr-2" />
-        Export
-      </Button>
+
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">
+            <Download className="mr-2" />
+            Export
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Deck</DialogTitle>
+            <DialogDescription>
+              Choose your export format
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Button variant="outline" className="w-full justify-start" onClick={handleCopyToClipboard}>
+              <Clipboard className="mr-2 h-4 w-4" />
+              Copy to Clipboard
+            </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={handleExportJSON}>
+              <FileText className="mr-2 h-4 w-4" />
+              Export as JSON
+            </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={onExport}>
+              <Download className="mr-2 h-4 w-4" />
+              Export as Text
+            </Button>
+            <Button variant="outline" className="w-full justify-start" onClick={handleShareDeck}>
+              <Share2 className="mr-2 h-4 w-4" />
+              Share Deck
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog>
         <AlertDialogTrigger asChild>

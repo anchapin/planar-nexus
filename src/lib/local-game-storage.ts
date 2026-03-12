@@ -4,7 +4,7 @@
  */
 
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
-import type { GameState } from './game-state/types';
+import type { GameState, Phase, PlayerId } from './game-state/types';
 
 // IndexedDB configuration
 const DB_NAME = 'PlanarNexusGameDB';
@@ -165,7 +165,7 @@ class LocalGameStorageManager {
       gameCode,
       hostId,
       hostName,
-      gameState: initialGameState ? serializeGameState(initialGameState, 'Initial state') : undefined,
+      gameState: initialGameState ? serializeGameState(initialGameState) : undefined,
       gameStateVersion: initialGameState ? 1 : 0,
       createdAt: now,
       updatedAt: now,
@@ -255,7 +255,7 @@ class LocalGameStorageManager {
       version: this.currentVersion + 1,
       timestamp: Date.now(),
       senderId: this.isHost ? 'host' : 'client',
-      data: serializeGameState(gameState, isFullSync ? 'Full sync' : 'Delta update'),
+      data: serializeGameState(gameState),
     };
 
     // Queue update for processing
@@ -300,9 +300,41 @@ class LocalGameStorageManager {
       this.currentVersion = update.version;
 
       // Notify callbacks
-      const gameState = deserializeGameState(update.data);
+      const baseState = this.createBaseEngineState();
+      const gameState = deserializeGameState(update.data, baseState);
       this.callbacks?.onGameStateUpdate(gameState, update.version);
     }
+  }
+
+  /**
+   * Create a minimal base engine state for deserialization
+   */
+  private createBaseEngineState(): any {
+    return {
+      gameId: '',
+      players: new Map(),
+      cards: new Map(),
+      zones: new Map(),
+      stack: [],
+      turn: { 
+        activePlayerId: '' as PlayerId, 
+        currentPhase: 'precombat_main' as Phase, 
+        turnNumber: 1,
+        extraTurns: 0,
+        isFirstTurn: true,
+        startedAt: Date.now(),
+      },
+      combat: { attacking: [], blocking: [] },
+      waitingChoice: null,
+      priorityPlayerId: null,
+      consecutivePasses: 0,
+      status: 'not_started',
+      winners: [],
+      endReason: null,
+      format: 'commander',
+      createdAt: Date.now(),
+      lastModifiedAt: Date.now(),
+    };
   }
 
   /**
@@ -318,7 +350,8 @@ class LocalGameStorageManager {
       return null;
     }
 
-    return deserializeGameState(session.gameState);
+    const baseState = this.createBaseEngineState();
+    return deserializeGameState(session.gameState, baseState);
   }
 
   /**

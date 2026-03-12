@@ -31,21 +31,21 @@ function createSampleGameState(): GameState {
     commanderDamage: {},
     hand: [
       {
-        cardId: 'card1',
+        cardInstanceId: 'card1',
         name: 'Lightning Bolt',
         type: 'Instant',
         manaValue: 1,
         colors: ['R'],
       },
       {
-        cardId: 'card2',
+        cardInstanceId: 'card2',
         name: 'Goblin Guide',
         type: 'Creature — Goblin Scout',
         manaValue: 1,
         colors: ['R'],
       },
       {
-        cardId: 'card3',
+        cardInstanceId: 'card3',
         name: 'Mountain',
         type: 'Land',
         manaValue: 0,
@@ -58,7 +58,7 @@ function createSampleGameState(): GameState {
     battlefield: [
       {
         id: 'perm1',
-        cardId: 'card6',
+        cardInstanceId: 'card6',
         name: 'Monastery Swiftspear',
         type: 'creature',
         controller: 'player1',
@@ -70,7 +70,7 @@ function createSampleGameState(): GameState {
       },
       {
         id: 'perm2',
-        cardId: 'card7',
+        cardInstanceId: 'card7',
         name: 'Eidolon of the Great Revel',
         type: 'creature',
         controller: 'player1',
@@ -82,7 +82,7 @@ function createSampleGameState(): GameState {
       },
       {
         id: 'perm3',
-        cardId: 'card8',
+        cardInstanceId: 'card8',
         name: 'Mountain',
         type: 'land',
         controller: 'player1',
@@ -91,7 +91,7 @@ function createSampleGameState(): GameState {
       },
       {
         id: 'perm4',
-        cardId: 'card9',
+        cardInstanceId: 'card9',
         name: 'Mountain',
         type: 'land',
         controller: 'player1',
@@ -110,21 +110,21 @@ function createSampleGameState(): GameState {
     commanderDamage: {},
     hand: [
       {
-        cardId: 'card10',
+        cardInstanceId: 'card10',
         name: 'Counterspell',
         type: 'Instant',
         manaValue: 2,
         colors: ['U'],
       },
       {
-        cardId: 'card11',
+        cardInstanceId: 'card11',
         name: 'Snapcaster Mage',
         type: 'Creature — Human Wizard',
         manaValue: 2,
         colors: ['U'],
       },
       {
-        cardId: 'card12',
+        cardInstanceId: 'card12',
         name: 'Brainstorm',
         type: 'Instant',
         manaValue: 1,
@@ -137,7 +137,7 @@ function createSampleGameState(): GameState {
     battlefield: [
       {
         id: 'perm5',
-        cardId: 'card14',
+        cardInstanceId: 'card14',
         name: 'Sphinx of Jwar Isle',
         type: 'creature',
         controller: 'player2',
@@ -149,7 +149,7 @@ function createSampleGameState(): GameState {
       },
       {
         id: 'perm6',
-        cardId: 'card15',
+        cardInstanceId: 'card15',
         name: 'Island',
         type: 'land',
         controller: 'player2',
@@ -158,7 +158,7 @@ function createSampleGameState(): GameState {
       },
       {
         id: 'perm7',
-        cardId: 'card16',
+        cardInstanceId: 'card16',
         name: 'Island',
         type: 'land',
         controller: 'player2',
@@ -167,7 +167,7 @@ function createSampleGameState(): GameState {
       },
       {
         id: 'perm8',
-        cardId: 'card17',
+        cardInstanceId: 'card17',
         name: 'Island',
         type: 'land',
         controller: 'player2',
@@ -208,14 +208,14 @@ function createCommanderGameState(): GameState {
     commanderDamage: { player2: 8 }, // Dealt 8 commander damage
     hand: [
       {
-        cardId: 'card1',
+        cardInstanceId: 'card1',
         name: 'Sol Ring',
         type: 'Artifact',
         manaValue: 1,
         colors: [],
       },
       {
-        cardId: 'card2',
+        cardInstanceId: 'card2',
         name: 'Sakura-Tribe Elder',
         type: 'Creature — Snake Shaman',
         manaValue: 2,
@@ -228,7 +228,7 @@ function createCommanderGameState(): GameState {
     battlefield: [
       {
         id: 'perm1',
-        cardId: 'commander1',
+        cardInstanceId: 'commander1',
         name: 'Krenko, Mob Boss',
         type: 'creature',
         controller: 'player1',
@@ -241,7 +241,7 @@ function createCommanderGameState(): GameState {
       },
       {
         id: 'perm2',
-        cardId: 'land1',
+        cardInstanceId: 'land1',
         name: 'Mountain',
         type: 'land',
         controller: 'player1',
@@ -250,7 +250,7 @@ function createCommanderGameState(): GameState {
       },
       {
         id: 'perm3',
-        cardId: 'land2',
+        cardInstanceId: 'land2',
         name: 'Mountain',
         type: 'land',
         controller: 'player1',
@@ -259,7 +259,7 @@ function createCommanderGameState(): GameState {
       },
       {
         id: 'perm4',
-        cardId: 'land3',
+        cardInstanceId: 'land3',
         name: 'Mountain',
         type: 'land',
         controller: 'player1',
@@ -278,14 +278,14 @@ function createCommanderGameState(): GameState {
     commanderDamage: {},
     hand: [
       {
-        cardId: 'card10',
+        cardInstanceId: 'card10',
         name: 'Wrath of God',
         type: 'Sorcery',
         manaValue: 4,
         colors: ['W'],
       },
       {
-        cardId: 'card11',
+        cardInstanceId: 'card11',
         name: 'Swords to Plowshares',
         type: 'Instant',
         manaValue: 1,
@@ -298,7 +298,7 @@ function createCommanderGameState(): GameState {
     battlefield: [
       {
         id: 'perm5',
-        cardId: 'commander2',
+        cardInstanceId: 'commander2',
         name: 'Rhalgor, the Rampant',
         type: 'creature',
         controller: 'player2',
@@ -309,7 +309,7 @@ function createCommanderGameState(): GameState {
       },
       {
         id: 'perm6',
-        cardId: 'land4',
+        cardInstanceId: 'land4',
         name: 'Plains',
         type: 'land',
         controller: 'player2',
@@ -318,7 +318,7 @@ function createCommanderGameState(): GameState {
       },
       {
         id: 'perm7',
-        cardId: 'land5',
+        cardInstanceId: 'land5',
         name: 'Plains',
         type: 'land',
         controller: 'player2',
@@ -348,25 +348,27 @@ function createCommanderGameState(): GameState {
       player1: {
         commander: {
           id: 'commander1',
-          cardId: 'commander1',
+          cardInstanceId: 'commander1',
           name: 'Krenko, Mob Boss',
           type: 'creature',
           controller: 'player1',
           power: 3,
           toughness: 3,
           manaValue: 4,
+          tapped: false,
         },
       },
       player2: {
         commander: {
           id: 'commander2',
-          cardId: 'commander2',
+          cardInstanceId: 'commander2',
           name: 'Rhalgor, the Rampant',
           type: 'creature',
           controller: 'player2',
           power: 5,
           toughness: 5,
           manaValue: 5,
+          tapped: false,
         },
       },
     },

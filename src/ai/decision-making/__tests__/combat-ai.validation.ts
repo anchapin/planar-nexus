@@ -68,7 +68,7 @@ export function test1_BasicAttackGeneration(): { passed: boolean; message: strin
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -104,7 +104,7 @@ export function test2_DefensiveStrategy(): { passed: boolean; message: string } 
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -118,7 +118,7 @@ export function test2_DefensiveStrategy(): { passed: boolean; message: string } 
   const oppCreatures: Permanent[] = [
     {
       id: 'oc1',
-      cardId: 'oc1',
+      cardInstanceId: 'oc1',
       name: 'Hill Giant',
       type: 'creature',
       controller: 'opponent',
@@ -148,7 +148,7 @@ export function test3_AggressiveStrategy(): { passed: boolean; message: string }
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -184,7 +184,7 @@ export function test4_EvasionPrioritization(): { passed: boolean; message: strin
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Serra Angel',
       type: 'creature',
       controller: 'ai_player',
@@ -196,7 +196,7 @@ export function test4_EvasionPrioritization(): { passed: boolean; message: strin
     },
     {
       id: 'c2',
-      cardId: 'c2',
+      cardInstanceId: 'c2',
       name: 'Hill Giant',
       type: 'creature',
       controller: 'ai_player',
@@ -240,7 +240,7 @@ export function test5_BlockingDecisions(): { passed: boolean; message: string } 
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -259,7 +259,7 @@ export function test5_BlockingDecisions(): { passed: boolean; message: string } 
   const attackers: Permanent[] = [
     {
       id: 'oc1',
-      cardId: 'oc1',
+      cardInstanceId: 'oc1',
       name: 'Craw Wurm',
       type: 'creature',
       controller: 'opponent',
@@ -292,7 +292,7 @@ export function test6_TradeEvaluation(): { passed: boolean; message: string } {
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -306,7 +306,7 @@ export function test6_TradeEvaluation(): { passed: boolean; message: string } {
   const oppCreatures: Permanent[] = [
     {
       id: 'oc1',
-      cardId: 'oc1',
+      cardInstanceId: 'oc1',
       name: 'Craw Wurm',
       type: 'creature',
       controller: 'opponent',
@@ -346,7 +346,7 @@ export function test7_MenaceMultiBlocking(): { passed: boolean; message: string 
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Savannah Lions',
       type: 'creature',
       controller: 'ai_player',
@@ -357,7 +357,7 @@ export function test7_MenaceMultiBlocking(): { passed: boolean; message: string 
     },
     {
       id: 'c2',
-      cardId: 'c2',
+      cardInstanceId: 'c2',
       name: 'Gray Ogre',
       type: 'creature',
       controller: 'ai_player',
@@ -376,7 +376,7 @@ export function test7_MenaceMultiBlocking(): { passed: boolean; message: string 
   const attackers: Permanent[] = [
     {
       id: 'oc1',
-      cardId: 'oc1',
+      cardInstanceId: 'oc1',
       name: 'Bloodrage Brawler',
       type: 'creature',
       controller: 'opponent',
@@ -414,7 +414,7 @@ export function test8_SummoningSickness(): { passed: boolean; message: string } 
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -425,7 +425,7 @@ export function test8_SummoningSickness(): { passed: boolean; message: string } 
     },
     {
       id: 'c2',
-      cardId: 'c2',
+      cardInstanceId: 'c2',
       name: 'Elvish Mystic',
       type: 'creature',
       controller: 'ai_player',
@@ -463,7 +463,7 @@ export function test9_TappedCreatures(): { passed: boolean; message: string } {
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',
@@ -501,7 +501,7 @@ export function test10_CustomConfiguration(): { passed: boolean; message: string
   const aiCreatures: Permanent[] = [
     {
       id: 'c1',
-      cardId: 'c1',
+      cardInstanceId: 'c1',
       name: 'Grizzly Bears',
       type: 'creature',
       controller: 'ai_player',

@@ -42,6 +42,30 @@ export interface DeckReviewOutput {
     cardsToAdd?: Array<{ name: string; quantity: number }>;
     cardsToRemove?: Array<{ name: string; quantity: number }>;
   }>;
+  archetype?: {
+    primary: string;
+    confidence: number;
+    secondary?: string;
+    secondaryConfidence?: number;
+    description?: string;
+    category?: string;
+  };
+  synergies?: {
+    present: Array<{
+      name: string;
+      score: number;
+      cards: string[];
+      description: string;
+      category: string;
+    }>;
+    missing: Array<{
+      synergy: string;
+      missing: string;
+      description: string;
+      suggestion: string;
+      impact: 'high' | 'medium' | 'low';
+    }>;
+  };
 }
 
 export async function reviewDeck(
@@ -176,6 +200,8 @@ export async function reviewDeck(
       (option.cardsToAdd && option.cardsToAdd.length > 0) ||
       (option.cardsToRemove && option.cardsToRemove.length > 0)
     ),
+    archetype: result.archetype,
+    synergies: result.synergies,
   };
   }, 'normal');
 }

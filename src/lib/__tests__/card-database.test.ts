@@ -20,8 +20,12 @@ import {
   MinimalCard,
 } from '../card-database';
 
+import { testCards, sampleDeck, createCardCopy, getCardsByColor, getCardsByType } from '../__fixtures__/test-cards';
+
 describe('Card Database', () => {
   beforeAll(async () => {
+    // Seed test data before initializing database
+    await seedTestData();
     // Initialize database for all tests
     await initializeCardDatabase();
   });
@@ -29,6 +33,13 @@ describe('Card Database', () => {
   afterAll(async () => {
     // Clean up database after tests
     await clearDatabase();
+    // Clear test data
+    clearTestData();
+  });
+
+  beforeEach(() => {
+    // Reset database state before each test for isolation
+    clearTestData();
   });
 
   describe('Initialization', () => {

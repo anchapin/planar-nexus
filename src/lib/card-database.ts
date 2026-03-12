@@ -81,10 +81,11 @@ export interface CardDatabaseOptions {
 
 // IndexedDB configuration
 const DB_NAME = 'PlanarNexusCardDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for image cache store
 const STORE_NAME = 'cards';
 const INDEX_NAME = 'name';
 const LEGALITY_INDEX_NAME = 'format_legality';
+const IMAGE_STORE_NAME = 'card_images';
 
 // Database state
 let db: IDBDatabase | null = null;
@@ -92,209 +93,9 @@ let fuseInstance: Fuse<MinimalCard> | null = null;
 let isInitialized = false;
 let initPromise: Promise<void> | null = null;
 
-// Essential commander cards for initial population
-export const ESSENTIAL_CARDS: MinimalCard[] = [
-  {
-    id: 'card-001',
-    name: 'Sol Ring',
-    cmc: 1,
-    type_line: 'Artifact',
-    oracle_text: '{T}: Add {C}{C}.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-002',
-    name: 'Arcane Signet',
-    cmc: 2,
-    type_line: 'Artifact',
-    oracle_text: '{T}: Add {C}. Activate this ability only if you control a commander.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-003',
-    name: 'Lightning Bolt',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Lightning Bolt deals 3 damage to any target.',
-    colors: ['R'],
-    color_identity: ['R'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-004',
-    name: 'Counterspell',
-    cmc: 2,
-    type_line: 'Instant',
-    oracle_text: 'Counter target spell.',
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-005',
-    name: 'Swords to Plowshares',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Exile target creature. Its controller gains life equal to its power.',
-    colors: ['W'],
-    color_identity: ['W'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-006',
-    name: 'Rampant Growth',
-    cmc: 2,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-007',
-    name: 'Brainstorm',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Draw three cards, then put two cards from your hand on top of your library in any order.',
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-008',
-    name: 'Llanowar Elves',
-    cmc: 1,
-    type_line: 'Creature — Elf Druid',
-    oracle_text: '{T}: Add {G}.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-009',
-    name: 'Cultivate',
-    cmc: 3,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-010',
-    name: 'Path to Exile',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Exile target creature. Its controller may search their library for a basic land card, put that card onto the battlefield tapped, then shuffle.',
-    colors: ['W'],
-    color_identity: ['W'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-011',
-    name: 'Go for the Throat',
-    cmc: 2,
-    type_line: 'Instant',
-    oracle_text: 'Destroy target artifact or creature.',
-    colors: ['B'],
-    color_identity: ['B'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-012',
-    name: 'Kodama\'s Reach',
-    cmc: 3,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-013',
-    name: 'Command Tower',
-    cmc: 1,
-    type_line: 'Land',
-    oracle_text: '{T}: Add one mana of any color in your commander\'s color identity.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-014',
-    name: 'Commander\'s Sphere',
-    cmc: 3,
-    type_line: 'Artifact',
-    oracle_text: '{T}: Add one mana of any color in your commander\'s color identity.\n{1}, Sacrifice Commander\'s Sphere: Draw a card.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-015',
-    name: 'Arcane Lighthouse',
-    cmc: 0,
-    type_line: 'Land',
-    oracle_text: '{T}: Add {C}.\n{4}, {T}: Until end of turn, creatures your opponents control lose hexproof and can\'t have shroud.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-016',
-    name: 'Dark Ritual',
-    cmc: 1,
-    type_line: 'Instant',
-    oracle_text: 'Add {B}{B}{B}.',
-    colors: ['B'],
-    color_identity: ['B'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-017',
-    name: 'Mana Vault',
-    cmc: 0,
-    type_line: 'Artifact',
-    oracle_text: 'Mana Vault doesn\'t untap during your untap step.\nAt the beginning of your upkeep, you may pay {4}. If you do, untap Mana Vault.\n{T}: Add {C}{C}{C}.',
-    colors: [],
-    color_identity: [],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-018',
-    name: 'Birds of Paradise',
-    cmc: 1,
-    type_line: 'Creature — Bird',
-    oracle_text: 'Flying\n{T}: Add one mana of any color.',
-    colors: ['G'],
-    color_identity: ['G', 'W', 'U', 'B', 'R'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-019',
-    name: 'Cyclonic Rift',
-    cmc: 2,
-    type_line: 'Instant',
-    oracle_text: 'Return target nonland permanent you don\'t control to its owner\'s hand.\nOverload {6}{U} (You may cast this spell for its overload cost. If you do, change its text by replacing all instances of "target" with "each.")',
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-  {
-    id: 'card-020',
-    name: 'Cultivate',
-    cmc: 3,
-    type_line: 'Sorcery',
-    oracle_text: 'Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.',
-    colors: ['G'],
-    color_identity: ['G'],
-    legalities: { commander: 'legal', modern: 'legal', legacy: 'legal', vintage: 'legal' },
-  },
-];
+// NOTE: Database starts empty. Users must import their own card data
+// to avoid legal issues. Use scripts/fetch-cards-for-db.ts to generate
+// a personal card database, then import via Settings → Database Management.
 
 /**
  * Open IndexedDB and create schema if needed
@@ -309,17 +110,22 @@ async function openDatabase(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const database = (event.target as IDBOpenDBRequest).result;
 
-    // Create object store for cards
-    if (!database.objectStoreNames.contains(STORE_NAME)) {
-      const cardStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      // Create object store for cards
+      if (!database.objectStoreNames.contains(STORE_NAME)) {
+        const cardStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
 
-      // Create indexes for fast lookups
-      cardStore.createIndex(INDEX_NAME, 'name', { unique: false });
-      cardStore.createIndex('name_lower', 'name_lower', { unique: false });
+        // Create indexes for fast lookups
+        cardStore.createIndex(INDEX_NAME, 'name', { unique: false });
+        cardStore.createIndex('name_lower', 'name_lower', { unique: false });
 
-      // Compound index for format legality queries
-      cardStore.createIndex(LEGALITY_INDEX_NAME, ['legalities.format', 'legalities.status'], { unique: false });
-    }
+        // Compound index for format legality queries
+        cardStore.createIndex(LEGALITY_INDEX_NAME, ['legalities.format', 'legalities.status'], { unique: false });
+      }
+
+      // Create object store for card images (added in version 2)
+      if (!database.objectStoreNames.contains(IMAGE_STORE_NAME)) {
+        database.createObjectStore(IMAGE_STORE_NAME, { keyPath: 'cardId' });
+      }
     };
   });
 }
@@ -341,15 +147,12 @@ export async function initializeCardDatabase(): Promise<void> {
       // Open IndexedDB
       db = await openDatabase();
 
-      // Check if database is empty and populate with essential cards
-      const cardCount = await getCardCount();
-      if (cardCount === 0) {
-        await populateDatabase(ESSENTIAL_CARDS);
-      }
-
+      // Database starts empty - users must import their own card data
       // Load all cards into memory for fuzzy search
       const allCards = await getAllCardsFromDB();
-      initializeFuzzySearch(allCards);
+      if (allCards.length > 0) {
+        initializeFuzzySearch(allCards);
+      }
 
       isInitialized = true;
     } catch (error) {
@@ -662,4 +465,193 @@ export async function getAllCards(): Promise<MinimalCard[]> {
   }
 
   return getAllCardsFromDB();
+}
+
+/**
+ * ==========================================
+ * IMAGE CACHING FUNCTIONS
+ * ==========================================
+ */
+
+/**
+ * Cache a card image
+ */
+export async function cacheCardImage(cardId: string, imageUrl: string, imageData: Blob): Promise<void> {
+  if (!db) throw new Error('Database not initialized');
+
+  return new Promise((resolve, reject) => {
+    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(IMAGE_STORE_NAME);
+    const request = store.put({
+      cardId,
+      imageUrl,
+      imageData,
+      cachedAt: Date.now(),
+    });
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Get cached card image
+ */
+export async function getCachedImage(cardId: string): Promise<{ imageUrl: string; imageData: Blob } | null> {
+  if (!db) throw new Error('Database not initialized');
+
+  return new Promise((resolve, reject) => {
+    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(IMAGE_STORE_NAME);
+    const request = store.get(cardId);
+
+    request.onsuccess = () => {
+      const result = request.result;
+      if (result) {
+        resolve({ imageUrl: result.imageUrl, imageData: result.imageData });
+      } else {
+        resolve(null);
+      }
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Get cached image count
+ */
+export async function getImageCount(): Promise<number> {
+  if (!db) throw new Error('Database not initialized');
+
+  return new Promise((resolve, reject) => {
+    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readonly');
+    const store = transaction.objectStore(IMAGE_STORE_NAME);
+    const request = store.count();
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Clear image cache
+ */
+export async function clearImageCache(): Promise<void> {
+  if (!db) throw new Error('Database not initialized');
+
+  return new Promise((resolve, reject) => {
+    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(IMAGE_STORE_NAME);
+    const request = store.clear();
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * ==========================================
+ * BULK IMPORT FUNCTIONS
+ * ==========================================
+ */
+
+/**
+ * Import cards from a JSON array (for user-provided card database)
+ */
+export async function importCardsFromJSON(cards: MinimalCard[], onProgress?: (count: number, total: number) => void): Promise<void> {
+  if (!isInitialized) {
+    await initializeCardDatabase();
+  }
+
+  if (!db) throw new Error('Database not initialized');
+
+  const batchSize = 100;
+  let imported = 0;
+
+  for (let i = 0; i < cards.length; i += batchSize) {
+    const batch = cards.slice(i, i + batchSize);
+    
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+
+    await new Promise<void>((resolve, reject) => {
+      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve();
+
+      batch.forEach((card) => {
+        store.put({
+          ...card,
+          name_lower: card.name.toLowerCase(),
+        });
+      });
+    });
+
+    imported += batch.length;
+    onProgress?.(imported, cards.length);
+  }
+
+  // Reinitialize fuzzy search with all cards
+  const allCards = await getAllCardsFromDB();
+  initializeFuzzySearch(allCards);
+}
+
+/**
+ * Import cards from a JSON file (browser environment)
+ */
+export async function importCardsFromFile(file: File, onProgress?: (count: number, total: number) => Promise<void>): Promise<{ count: number; errors: string[] }> {
+  const errors: string[] = [];
+  
+  try {
+    const text = await file.text();
+    const cards = JSON.parse(text) as MinimalCard[];
+    
+    if (!Array.isArray(cards)) {
+      throw new Error('Invalid format: expected an array of cards');
+    }
+
+    // Validate card structure
+    const validCards: MinimalCard[] = [];
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i];
+      if (!card.id || !card.name || !card.cmc || !card.type_line || !card.colors || !card.legalities) {
+        errors.push(`Card ${i + 1}: Missing required fields`);
+        continue;
+      }
+      validCards.push(card);
+    }
+
+    // Import valid cards
+    await importCardsFromJSON(validCards, (count, total) => {
+      onProgress?.(count, total);
+    });
+
+    return { count: validCards.length, errors };
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`Failed to parse card file: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get database statistics
+ */
+export async function getDatabaseStats(): Promise<{
+  cardCount: number;
+  imageCount: number;
+  isInitialized: boolean;
+}> {
+  if (!isInitialized) {
+    await initializeCardDatabase();
+  }
+
+  const cardCount = await getCardCount();
+  const imageCount = await getImageCount();
+
+  return {
+    cardCount,
+    imageCount,
+    isInitialized,
+  };
 }

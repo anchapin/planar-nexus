@@ -5,6 +5,12 @@ const nextConfig: NextConfig = {
   // Now that all Server Actions have been removed, we can use static export
   // output: 'export',
 
+  // Disable ESLint during build for faster builds
+  // Linting should be run separately in CI/CD
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // Configure image optimization
   images: {
     unoptimized: true,

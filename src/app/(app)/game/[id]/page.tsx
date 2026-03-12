@@ -147,7 +147,7 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
 
         return {
           id: card.id,
-          cardId: card.oracleId,
+          cardInstanceId: card.id,
           name: card.cardData.name,
           type: permanentType,
           controller: card.controllerId,
@@ -162,7 +162,7 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
     const handCards = handZone?.cardIds.map(id => {
       const card = engineState.cards.get(id);
       return {
-        cardId: card?.oracleId || '',
+        cardInstanceId: card?.id || '',
         name: card?.cardData.name || 'Unknown',
         type: card?.cardData.type_line || 'Unknown',
         manaValue: card?.cardData.cmc || 0,
@@ -193,6 +193,32 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
     };
   });
 
+  // Convert combat state
+  const combat = {
+    inCombatPhase: engineState.combat.inCombatPhase,
+    attackers: engineState.combat.attackers.map(a => ({
+      cardInstanceId: a.cardId,
+      defenderId: a.defenderId,
+      isAttackingPlaneswalker: a.isAttackingPlaneswalker,
+      damageToDeal: a.damageToDeal,
+      hasFirstStrike: a.hasFirstStrike,
+      hasDoubleStrike: a.hasDoubleStrike,
+    })),
+    blockers: Object.fromEntries(
+      Array.from(engineState.combat.blockers.entries()).map(([attackerId, blockers]) => [
+        attackerId,
+        blockers.map(b => ({
+          cardInstanceId: b.cardId,
+          attackerId: b.attackerId,
+          damageToDeal: b.damageToDeal,
+          blockerOrder: b.blockerOrder,
+          hasFirstStrike: b.hasFirstStrike,
+          hasDoubleStrike: b.hasDoubleStrike,
+        })),
+      ])
+    ),
+  };
+
   return {
     players,
     turnInfo: {
@@ -201,11 +227,18 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
       phase: engineState.turn.currentPhase as TurnInfo['phase'],
       priority: engineState.priorityPlayerId || '',
     },
-    stack: engineState.stack.map(s => ({
-      cardId: s.sourceCardId || '',
-      controller: s.controllerId,
-      type: s.type,
-    })),
+    stack: engineState.stack.map(s => {
+      const sourceCard = s.sourceCardId ? engineState.cards.get(s.sourceCardId) : null;
+      return {
+        id: s.id,
+        cardInstanceId: s.sourceCardId || '',
+        name: sourceCard?.cardData.name || s.name,
+        controller: s.controllerId,
+        type: s.type,
+        manaValue: sourceCard?.cardData.cmc || 0,
+      };
+    }),
+    combat,
   };
 }
 

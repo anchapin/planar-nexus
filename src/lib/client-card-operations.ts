@@ -9,7 +9,7 @@
 import type { ScryfallCard, DeckCard } from '@/app/actions';
 import { initializeCardDatabase, searchCardsOffline, getCardByName } from '@/lib/card-database';
 import { type Format } from '@/lib/game-rules';
-import { sanitizeCardInput, aggregateCardsById } from './decklist-utils';
+import { sanitizeCardInput, aggregateCardsById, parseDecklist, type DecklistFormat } from './decklist-utils';
 
 /**
  * Search for cards using local IndexedDB database with fuzzy search
@@ -133,28 +133,14 @@ export async function validateCardLegalityClient(
  */
 export async function importDecklistClient(
   decklist: string,
+  decklistFormat?: DecklistFormat,
   format?: Format
 ): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
-  const lines = decklist.split('\n').filter(line => line.trim() !== '');
-  if (lines.length === 0) {
-    return { found: [], notFound: [], illegal: [] };
-  }
-
-  const cardDetails: { name: string; quantity: number }[] = [];
-
-  for (const line of lines) {
-    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
-    if (match) {
-      const name = match[2]?.trim();
-      const count = parseInt(match[1] || '1', 10);
-      if (name && !/^\/\//.test(name) && name.toLowerCase() !== 'sideboard') {
-        cardDetails.push({ name, quantity: count });
-      }
-    }
-  }
-
+  // Parse decklist with format detection
+  const cardDetails = parseDecklist(decklist, decklistFormat);
+  
   if (cardDetails.length === 0) {
-    return { found: [], notFound: lines, illegal: [] };
+    return { found: [], notFound: [], illegal: [] };
   }
 
   const { found, notFound, illegal } = await validateCardLegalityClient(cardDetails, format || 'commander');

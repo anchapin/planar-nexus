@@ -22,16 +22,24 @@ import {
  * Helper function to convert StackAction to GameState stack item
  */
 function toGameStateStackItem(action: StackAction): {
-  cardId: string;
+  id: string;
+  cardInstanceId: string;
   controller: string;
   type: 'spell' | 'ability';
   targets?: string[];
+  name: string;
+  manaValue: number;
+  colors?: string[];
 } {
   return {
-    cardId: action.cardId,
+    id: action.id,
+    cardInstanceId: action.cardId,
     controller: action.controller,
     type: action.type,
-    targets: action.targets?.map(t => 
+    name: action.name,
+    manaValue: action.manaValue,
+    colors: action.colors,
+    targets: action.targets?.map(t =>
       t.playerId || t.permanentId || t.cardId || ''
     ).filter(Boolean),
   };
@@ -53,7 +61,7 @@ function createBasicGameState(
     poisonCounters: 0,
     commanderDamage: {},
     hand: Array.from({ length: playerHandSize }, (_, i) => ({
-      cardId: `card_${i}`,
+      cardInstanceId: `card_${i}`,
       name: `Card ${i}`,
       type: i % 2 === 0 ? 'Instant' : 'Creature',
       manaValue: Math.floor(Math.random() * 5) + 1,
@@ -64,7 +72,7 @@ function createBasicGameState(
     battlefield: [
       {
         id: 'land1',
-        cardId: 'land_1',
+        cardInstanceId: 'land_1',
         name: 'Island',
         type: 'land',
         controller: 'player1',
@@ -72,7 +80,7 @@ function createBasicGameState(
       },
       {
         id: 'land2',
-        cardId: 'land_2',
+        cardInstanceId: 'land_2',
         name: 'Island',
         type: 'land',
         controller: 'player1',
@@ -80,7 +88,7 @@ function createBasicGameState(
       },
       {
         id: 'land3',
-        cardId: 'land_3',
+        cardInstanceId: 'land_3',
         name: 'Island',
         type: 'land',
         controller: 'player1',
@@ -96,7 +104,7 @@ function createBasicGameState(
     poisonCounters: 0,
     commanderDamage: {},
     hand: Array.from({ length: opponentHandSize }, (_, i) => ({
-      cardId: `opp_card_${i}`,
+      cardInstanceId: `opp_card_${i}`,
       name: `Opponent Card ${i}`,
       type: 'Sorcery',
       manaValue: Math.floor(Math.random() * 5) + 1,
@@ -107,7 +115,7 @@ function createBasicGameState(
     battlefield: [
       {
         id: 'opp_land1',
-        cardId: 'opp_land_1',
+        cardInstanceId: 'opp_land_1',
         name: 'Mountain',
         type: 'land',
         controller: 'player2',
@@ -115,7 +123,7 @@ function createBasicGameState(
       },
       {
         id: 'opp_land2',
-        cardId: 'opp_land_2',
+        cardInstanceId: 'opp_land_2',
         name: 'Mountain',
         type: 'land',
         controller: 'player2',

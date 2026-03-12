@@ -12,11 +12,21 @@
  * - CounterspellDecider: Determines when to use counterspells
  * - StackOrderOptimizer: Optimizes multiple response ordering
  * - ResourceManager: Manages holding vs. using mana
+ *
+ * This module now uses the unified AIGameState format from the engine.
  */
 
-import { GameState, evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
+// Import unified types from engine
+import type {
+  AIGameState as GameState,
+  AIStackObject,
+} from '@/lib/game-state/types';
+import { evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
 import { callAIProxy } from '@/lib/ai-proxy-client';
 import { AIProvider } from './providers/types';
+
+// Re-export GameState for backward compatibility
+export type { GameState };
 
 /**
  * Represents a spell or ability on the stack

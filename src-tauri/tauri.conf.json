@@ -1,10 +1,9 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Planar Nexus",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "com.planarnexus.app",
   "build": {
-    "devtools": true,
     "frontendDist": "../.next",
     "devUrl": "http://localhost:9002",
     "beforeDevCommand": "npm run dev",
@@ -27,7 +26,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -41,47 +39,20 @@
     "copyright": "Copyright 2024 Planar Nexus",
     "publisher": "Planar Nexus",
     "windows": {
-      "certificateThumbprint": null,
-      "digestAlgorithm": "sha256",
-      "timestampUrl": null,
       "nsis": {
-        "installMode": "perMachine",
-        "license": "../LICENSE",
         "installerIcon": "icons/icon.ico",
-        "headerImage": null,
-        "sidebarImage": null,
-        "languages": ["English"],
-        "displayLanguageSelector": false,
-        "createDesktopShortcut": true,
-        "createStartMenuShortcut": true,
-        "allowToChangeInstallationDirectory": true,
-        "oneClick": false,
-        "perMachine": true,
-        "runAfterFinish": true,
-        "compression": "lzma",
-        "appImagePaths": ["Planar Nexus"],
-        "shortcutLanguage": 1033,
-        "minimumSupportedWindowsVersion": "10"
-      },
-      "wix": null,
-      "webviewInstallMode": {
-        "type": "downloadBootstrapper"
-      },
-      "webviewFixedRuntimePath": null
+        "installMode": "currentUser",
+        "compression": "lzma"
+      }
     },
     "macOS": {
       "minimumSystemVersion": "10.15",
       "frameworks": [],
-      "exceptionDomain": null,
+      "exceptionDomain": "",
       "signingIdentity": null,
-      "providerShortName": "PlanarNexus",
+      "providerShortName": null,
       "entitlements": "entitlements.plist",
       "hardenedRuntime": true,
-      "files": {},
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Planar Nexus needs microphone access for voice commands (optional feature)",
-        "NSCameraUsageDescription": "Planar Nexus needs camera access for AR card visualization (optional feature)"
-      },
       "dmg": {
         "appPosition": {
           "x": 180,
@@ -95,46 +66,21 @@
           "height": 400,
           "width": 660
         }
-      },
-      "minimumSystemVersion": "10.15",
-      "codesigningIdentity": null,
-      "codesigningOptions": null
+      }
     },
     "linux": {
       "appimage": {
         "bundleMediaFramework": true
       },
       "deb": {
-        "depends": [],
-        "files": {}
-      },
-      "rpm": {
-        "depends": []
+        "depends": ["libwebkit2gtk-4.0-37", "libappindicator3-1"]
       }
-    },
-    "ios": {
-      "minimumOSVersion": "14.0",
-      "devices": ["iphone", "ipad"],
-      "signingIdentity": null,
-      "provisioningProfiles": null,
-      "entitlements": null
-    },
-    "android": {
-      "minSdkVersion": 24,
-      "targetSdkVersion": 34,
-      "permissions": [
-        "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
-      ],
-      "manifest": null,
-      "keyAlias": null,
-      "keyStore": null,
-      "signingKeystore": null
     }
   },
   "plugins": {
     "updater": {
-      "pubkey": null,
+      "active": true,
+      "pubkey": "",
       "endpoints": []
     }
   }

@@ -1,11 +1,15 @@
 #!/usr/bin/env tsx
 
 /**
- * Script to fetch cards from Scryfall API and format them for the local card database
- * This can be used to populate the IndexedDB with more cards
+ * Script to fetch cards from Scryfall API for user's personal card database
+ * 
+ * IMPORTANT: This script is for personal use only. Users should run this themselves
+ * to create their own card database. Do not distribute pre-generated card data.
  *
  * Usage:
- *   npx tsx scripts/fetch-cards-for-db.ts --format commander --limit 1000
+ *   npx tsx scripts/fetch-cards-for-db.ts --format commander --limit 1000 --output ./my-cards.json
+ *
+ * Then import the JSON file via the app's Database Management page.
  */
 
 import fs from 'fs';
@@ -58,11 +62,20 @@ interface ScryfallCard {
 // Parse command line arguments
 const args = process.argv.slice(2);
 const format = args.find(arg => arg.startsWith('--format='))?.split('=')[1] || 'commander';
-const limit = parseInt(args.find(arg => arg.startsWith('--limit='))?.split('=')[1] || '1000', 10);
-const outputFile = args.find(arg => arg.startsWith('--output='))?.split('=')[1] || './src/lib/card-data.json';
+const limit = parseInt(args.find(arg => arg.startsWith('--limit='))?.split('=')[1] || '500', 10);
+const outputFile = args.find(arg => arg.startsWith('--output='))?.split('=')[1] || './my-card-database.json';
 
-console.log(`Fetching cards for format: ${format}, limit: ${limit}`);
-console.log(`Output file: ${outputFile}`);
+console.log(`\n🃏 Card Database Import Tool`);
+console.log(`================================`);
+console.log(`Format: ${format}`);
+console.log(`Limit: ${limit} cards`);
+console.log(`Output: ${outputFile}`);
+console.log(`\n⚠️  IMPORTANT: This is for personal use only. Do not distribute card data.`);
+console.log(`\n📋 After running this script:`);
+console.log(`   1. Open Planar Nexus app`);
+console.log(`   2. Go to Settings → Database Management`);
+console.log(`   3. Click "Import Card Database"`);
+console.log(`   4. Select this JSON file: ${outputFile}\n`);
 
 async function fetchAllCards(format: string, limit: number): Promise<ScryfallCard[]> {
   const allCards: ScryfallCard[] = [];
@@ -92,7 +105,7 @@ async function fetchAllCards(format: string, limit: number): Promise<ScryfallCar
       hasMore = data.has_more || false;
       nextPage = data.next_page || null;
 
-      // Rate limiting: wait 100ms between requests
+      // Rate limiting: wait 100ms between requests (Scryfall allows ~10 req/sec)
       await new Promise(resolve => setTimeout(resolve, 100));
     } catch (error) {
       console.error('Error fetching cards:', error);
@@ -131,7 +144,7 @@ function normalizeCard(card: ScryfallCard): ScryfallCard {
 
 async function main() {
   try {
-    console.log('Starting card fetch...');
+    console.log('Starting card fetch...\n');
     const cards = await fetchAllCards(format, limit);
 
     if (cards.length === 0) {
@@ -152,23 +165,13 @@ async function main() {
     }
 
     fs.writeFileSync(outputPath, JSON.stringify(normalizedCards, null, 2));
-    console.log(`Successfully wrote ${normalizedCards.length} cards to ${outputPath}`);
-
-    // Generate TypeScript export
-    const tsPath = outputPath.replace('.json', '.ts');
-    const tsContent = `/**
- * Auto-generated card data for local database
- * Generated on: ${new Date().toISOString()}
- * Format: ${format}
- * Total cards: ${normalizedCards.length}
- */
-
-import { MinimalCard } from './card-database';
-
-export const CARD_DATA: MinimalCard[] = ${JSON.stringify(normalizedCards, null, 2)} as any;
-`;
-    fs.writeFileSync(tsPath, tsContent);
-    console.log(`Successfully wrote TypeScript export to ${tsPath}`);
+    console.log(`\n✅ Successfully wrote ${normalizedCards.length} cards to ${outputPath}`);
+    console.log(`\n📥 Next steps:`);
+    console.log(`   1. Open Planar Nexus`);
+    console.log(`   2. Navigate to Settings → Database Management`);
+    console.log(`   3. Click "Import Card Database"`);
+    console.log(`   4. Select: ${outputPath}`);
+    console.log(`\n`);
 
   } catch (error) {
     console.error('Error:', error);

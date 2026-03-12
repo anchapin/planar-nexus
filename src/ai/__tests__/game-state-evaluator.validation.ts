@@ -126,16 +126,16 @@ async function runValidation() {
   runTest('Card advantage should improve score', () => {
     const cardAdvantageState = createMinimalGameState(20, 20);
     cardAdvantageState.players.player1.hand = [
-      { cardId: '1', name: 'Card', type: 'Creature', manaValue: 2 },
-      { cardId: '2', name: 'Card', type: 'Creature', manaValue: 2 },
-      { cardId: '3', name: 'Card', type: 'Creature', manaValue: 2 },
+      { cardInstanceId: '1', name: 'Card', type: 'Creature', manaValue: 2 },
+      { cardInstanceId: '2', name: 'Card', type: 'Creature', manaValue: 2 },
+      { cardInstanceId: '3', name: 'Card', type: 'Creature', manaValue: 2 },
     ];
 
     const cardDisadvantageState = createMinimalGameState(20, 20);
     cardDisadvantageState.players.player2.hand = [
-      { cardId: '1', name: 'Card', type: 'Creature', manaValue: 2 },
-      { cardId: '2', name: 'Card', type: 'Creature', manaValue: 2 },
-      { cardId: '3', name: 'Card', type: 'Creature', manaValue: 2 },
+      { cardInstanceId: '1', name: 'Card', type: 'Creature', manaValue: 2 },
+      { cardInstanceId: '2', name: 'Card', type: 'Creature', manaValue: 2 },
+      { cardInstanceId: '3', name: 'Card', type: 'Creature', manaValue: 2 },
     ];
 
     const advantageScore = quickScore(cardAdvantageState, 'player1', 'medium');
@@ -150,21 +150,23 @@ async function runValidation() {
     creatureAdvantageState.players.player1.battlefield = [
       {
         id: 'c1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Creature',
         type: 'creature',
         controller: 'player1',
         power: 2,
         toughness: 2,
+        tapped: false,
       },
       {
         id: 'c2',
-        cardId: 'c2',
+        cardInstanceId: 'c2',
         name: 'Creature',
         type: 'creature',
         controller: 'player1',
         power: 2,
         toughness: 2,
+        tapped: false,
       },
     ];
 
@@ -172,21 +174,23 @@ async function runValidation() {
     creatureDisadvantageState.players.player2.battlefield = [
       {
         id: 'c1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Creature',
         type: 'creature',
         controller: 'player2',
         power: 2,
         toughness: 2,
+        tapped: false,
       },
       {
         id: 'c2',
-        cardId: 'c2',
+        cardInstanceId: 'c2',
         name: 'Creature',
         type: 'creature',
         controller: 'player2',
         power: 2,
         toughness: 2,
+        tapped: false,
       },
     ];
 
@@ -202,7 +206,7 @@ async function runValidation() {
     strongCreatureState.players.player1.battlefield = [
       {
         id: 'c1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Strong Creature',
         type: 'creature',
         controller: 'player1',
@@ -214,7 +218,7 @@ async function runValidation() {
     strongCreatureState.players.player2.battlefield = [
       {
         id: 'c2',
-        cardId: 'c2',
+        cardInstanceId: 'c2',
         name: 'Weak Creature',
         type: 'creature',
         controller: 'player2',
@@ -228,7 +232,7 @@ async function runValidation() {
     weakCreatureState.players.player1.battlefield = [
       {
         id: 'c1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Weak Creature',
         type: 'creature',
         controller: 'player1',
@@ -240,7 +244,7 @@ async function runValidation() {
     weakCreatureState.players.player2.battlefield = [
       {
         id: 'c2',
-        cardId: 'c2',
+        cardInstanceId: 'c2',
         name: 'Strong Creature',
         type: 'creature',
         controller: 'player2',
@@ -262,7 +266,7 @@ async function runValidation() {
     gameState.players.player2.battlefield = [
       {
         id: 'c1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Attacker',
         type: 'creature',
         controller: 'player2',
@@ -284,11 +288,12 @@ async function runValidation() {
     gameState.players.player2.battlefield = [
       {
         id: 'p1',
-        cardId: 'p1',
+        cardInstanceId: 'p1',
         name: 'Test Planeswalker',
         type: 'planeswalker',
         controller: 'player2',
         loyalty: 5,
+        tapped: false,
       },
     ];
 
@@ -307,12 +312,13 @@ async function runValidation() {
     gameState.players.player1.battlefield = [
       {
         id: 'c1',
-        cardId: 'c1',
+        cardInstanceId: 'c1',
         name: 'Creature',
         type: 'creature',
         controller: 'player1',
         power: 3,
         toughness: 3,
+        tapped: false,
       },
     ];
 
@@ -376,24 +382,26 @@ async function runValidation() {
       player1: {
         commander: {
           id: 'cmd1',
-          cardId: 'cmd1',
+          cardInstanceId: 'cmd1',
           name: 'Test Commander',
           type: 'creature',
           controller: 'player1',
           power: 3,
           toughness: 3,
+          tapped: false,
         },
       },
     };
     gameState.players.player1.battlefield = [
       {
         id: 'cmd1',
-        cardId: 'cmd1',
+        cardInstanceId: 'cmd1',
         name: 'Test Commander',
         type: 'creature',
         controller: 'player1',
         power: 3,
         toughness: 3,
+        tapped: false,
       },
     ];
 
