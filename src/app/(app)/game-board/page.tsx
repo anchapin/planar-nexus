@@ -58,6 +58,7 @@ interface AIPlayerState {
   name: string;
   life: number;
   poisonCounters: number;
+  commanderDamage: { [playerId: string]: number };
   hand: Array<{
     cardId: string;
     name: string;
@@ -68,10 +69,13 @@ interface AIPlayerState {
     id: string;
     cardId: string;
     name: string;
-    type: string;
+    type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker';
     controller: string;
     manaValue: number;
   }>;
+  graveyard: string[];
+  exile: string[];
+  library: number;
   manaPool: {
     colorless: number;
     white: number;
@@ -88,10 +92,10 @@ interface AIGameStateForAnalysis {
   turnInfo: {
     currentTurn: number;
     currentPlayer: string;
-    phase: 'precombat_main' | 'declare_attackers' | 'declare_blockers' | 'combat_damage' | 'postcombat_main' | 'ending';
+    phase: 'beginning' | 'precombat_main' | 'combat' | 'postcombat_main' | 'end';
     priority: string;
   };
-  stack: Array<unknown>;
+  stack: Array<{ cardId: string; controller: string; type: 'spell' | 'ability'; targets?: string[] }>;
 }
 
 // Mock data generator for demonstration
@@ -375,6 +379,7 @@ export default function GameBoardPage() {
         name: p.name,
         life: p.lifeTotal,
         poisonCounters: p.poisonCounters,
+        commanderDamage: {},
         hand: p.hand.map(c => ({
           cardId: c.id,
           name: c.card.name,
@@ -385,10 +390,13 @@ export default function GameBoardPage() {
           id: c.id,
           cardId: c.card.id,
           name: c.card.name,
-          type: 'creature', // Simplified
+          type: 'creature' as const,
           controller: p.id,
           manaValue: c.card.cmc,
         })),
+        graveyard: p.graveyard.map(c => c.card.id),
+        exile: p.exile.map(c => c.card.id),
+        library: p.library.length,
         manaPool: { colorless: 1, white: 1, blue: 1, black: 0, red: 0, green: 0, generic: 0 },
       };
     });

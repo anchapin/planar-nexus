@@ -18,6 +18,7 @@ import { GameBoard } from '@/components/game-board';
 import type { PlayerCount, ZoneType } from '@/types/game';
 import { useToast } from '@/hooks/use-toast';
 import type { ScryfallCard } from '@/app/actions';
+import type { Permanent, HandCard } from '@/ai/game-state-evaluator';
 
 // Game engine imports
 import {
@@ -134,18 +135,27 @@ function convertToAIGameState(engineState: GameState, evaluatingPlayerId: string
         const zone = engineState.zones.get(`${playerId}-battlefield`);
         return zone?.cardIds.includes(card.id);
       })
-      .map(card => ({
-        id: card.id,
-        cardId: card.oracleId,
-        name: card.cardData.name,
-        type: card.cardData.type_line.toLowerCase().includes('creature') ? 'creature' :
-              card.cardData.type_line.toLowerCase().includes('land') ? 'land' : 'other',
-        controller: card.controllerId,
-        tapped: card.isTapped,
-        power: card.cardData.power ? parseInt(card.cardData.power) : 0,
-        toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : 0,
-        manaValue: card.cardData.cmc,
-      }));
+      .map(card => {
+        const typeLine = card.cardData.type_line.toLowerCase();
+        let permanentType: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker' = 'creature';
+        if (typeLine.includes('land')) permanentType = 'land';
+        else if (typeLine.includes('artifact')) permanentType = 'artifact';
+        else if (typeLine.includes('enchantment')) permanentType = 'enchantment';
+        else if (typeLine.includes('planeswalker')) permanentType = 'planeswalker';
+        else if (typeLine.includes('creature')) permanentType = 'creature';
+
+        return {
+          id: card.id,
+          cardId: card.oracleId,
+          name: card.cardData.name,
+          type: permanentType,
+          controller: card.controllerId,
+          tapped: card.isTapped,
+          power: card.cardData.power ? parseInt(card.cardData.power) : 0,
+          toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : 0,
+          manaValue: card.cardData.cmc,
+        };
+      });
 
     const handZone = engineState.zones.get(`${playerId}-hand`);
     const handCards = handZone?.cardIds.map(id => {
@@ -261,7 +271,7 @@ class AIOpponent {
     // In this simple implementation, we assume we want to evaluate all attacks
     // We would need the actual Permanent objects for attackers
     // This is a simplification - using empty array as placeholder
-    const attackers: Array<{ id: string; power: number; toughness: number }> = [];
+    const attackers: Permanent[] = [];
     const blockPlan = this.combatDecider.generateBlockingPlan(attackers);
 
     const assignments: { [attackerId: string]: string[] } = {};
@@ -568,7 +578,8 @@ function GameBoardContent() {
           
         case 'attack':
           if (newState.turn.currentPhase === 'declare_attackers') {
-            const attackers = decision.data?.attackers || [];
+            const attackData = decision.data as AttackDecisionData | undefined;
+            const attackers = attackData?.attackers || [];
             const player = Array.from(newState.players.values()).find(p => p.name === playerName);
             if (player && attackers.length > 0) {
               const attackResult = declareAttackers(newState, attackers.map((id: string) => ({
