@@ -145,12 +145,17 @@ jobs:
         run: npm install -g @tauri-apps/cli@latest
         if: success()
 
-      # Use --ci flag for macOS to handle code signing gracefully in CI
-      # Note: For proper code signing, configure APPLE_SIGNING_IDENTITY, APPLE_ID,
-      # APPLE_PASSWORD, and APPLE_TEAM_ID secrets in your repository.
+      # Build Tauri macOS app (Universal)
+      # Note: For proper code signing and notarization, configure APPLE_SIGNING_IDENTITY, 
+      # APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID secrets in your repository.
       # Without these, ad-hoc signing will be used (app will work but won't pass Gatekeeper).
       - name: Build Tauri macOS app (Universal)
-        run: tauri build --target universal-apple-darwin --ci
+        run: |
+          if [ -n "$APPLE_SIGNING_IDENTITY" ] && [ "$APPLE_SIGNING_IDENTITY" != "-" ]; then
+            tauri build --target universal-apple-darwin --ci
+          else
+            tauri build --target universal-apple-darwin
+          fi
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
