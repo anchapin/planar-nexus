@@ -22,6 +22,22 @@ import {
 
 import { testCards, sampleDeck, createCardCopy, getCardsByColor, getCardsByType } from '../__fixtures__/test-cards';
 
+// Seed and clear test data functions for card database tests
+// These populate the database with test fixtures before tests run
+
+async function seedTestData(customCards?: unknown[]): Promise<unknown[]> {
+  const cardsToSeed = customCards || testCards;
+  for (const card of cardsToSeed) {
+    await addCard(card as MinimalCard);
+  }
+  return cardsToSeed;
+}
+
+function clearTestData(): void {
+  // Clear database by removing all cards
+  indexedDB.deleteDatabase('mtg-card-database');
+}
+
 describe('Card Database', () => {
   beforeAll(async () => {
     // Seed test data before initializing database
@@ -37,9 +53,10 @@ describe('Card Database', () => {
     clearTestData();
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset database state before each test for isolation
-    clearTestData();
+    // Re-seed data so each test has access to cards
+    await seedTestData();
   });
 
   describe('Initialization', () => {
@@ -52,15 +69,15 @@ describe('Card Database', () => {
 
   describe('Search Functionality', () => {
     it('should search for cards by name', async () => {
-      const results = await searchCardsOffline('Sol Ring');
+      const results = await searchCardsOffline('Test Angel');
       expect(results.length).toBeGreaterThan(0);
-      expect(results[0].name).toBe('Sol Ring');
+      expect(results[0].name).toBe('Test Angel');
     });
 
     it('should perform fuzzy search', async () => {
-      const results = await searchCardsOffline('sol rn');
+      const results = await searchCardsOffline('test an');
       expect(results.length).toBeGreaterThan(0);
-      expect(results[0].name.toLowerCase()).toContain('sol');
+      expect(results[0].name.toLowerCase()).toContain('test');
     });
 
     it('should respect maxCards limit', async () => {
@@ -69,7 +86,7 @@ describe('Card Database', () => {
     });
 
     it('should filter by format', async () => {
-      const results = await searchCardsOffline('Sol Ring', { format: 'commander' });
+      const results = await searchCardsOffline('Test Angel', { format: 'commander' });
       expect(results.length).toBeGreaterThan(0);
       expect(results[0].legalities.commander).toBe('legal');
     });
@@ -87,19 +104,19 @@ describe('Card Database', () => {
 
   describe('Card Retrieval', () => {
     it('should get card by exact name', async () => {
-      const card = await getCardByName('Sol Ring');
+      const card = await getCardByName('Test Angel');
       expect(card).toBeDefined();
-      expect(card?.name).toBe('Sol Ring');
+      expect(card?.name).toBe('Test Angel');
     });
 
     it('should get card by ID', async () => {
       // First find the card by name to get its ID
-      const cardByName = await getCardByName('Sol Ring');
+      const cardByName = await getCardByName('Test Angel');
       expect(cardByName).toBeDefined();
 
       const card = await getCardById(cardByName!.id);
       expect(card).toBeDefined();
-      expect(card?.name).toBe('Sol Ring');
+      expect(card?.name).toBe('Test Angel');
     });
 
     it('should return undefined for non-existent card', async () => {
@@ -119,15 +136,13 @@ describe('Card Database', () => {
 
   describe('Legality Checking', () => {
     it('should check if card is legal in format', async () => {
-      const isLegal = await isCardLegal('Sol Ring', 'commander');
+      const isLegal = await isCardLegal('Test Angel', 'commander');
       expect(isLegal).toBe(true);
     });
 
     it('should return false for illegal card', async () => {
-      // Note: Sol Ring is legal in most formats, so this test depends on having
-      // a card that's not legal in a specific format
-      const isLegal = await isCardLegal('Sol Ring', 'pauper');
-      // Sol Ring is not legal in Pauper
+      // Note: Test Creature is not legal in standard format
+      const isLegal = await isCardLegal('Test Creature', 'standard');
       expect(isLegal).toBe(false);
     });
   });
@@ -136,8 +151,8 @@ describe('Card Database', () => {
     it('should validate legal deck', async () => {
       const validation = await validateDeckOffline(
         [
-          { name: 'Sol Ring', quantity: 1 },
-          { name: 'Lightning Bolt', quantity: 4 },
+          { name: 'Test Angel', quantity: 1 },
+          { name: 'Test Knight', quantity: 4 },
         ],
         'commander'
       );
@@ -149,11 +164,11 @@ describe('Card Database', () => {
     it('should detect illegal cards', async () => {
       const validation = await validateDeckOffline(
         [
-          { name: 'Sol Ring', quantity: 1 },
-          // Add a card that's not legal in the format
-          { name: 'Ancestral Recall', quantity: 1 },
+          { name: 'Test Angel', quantity: 1 },
+          // Add a card that's not legal in the format (Test Creature is not legal in standard)
+          { name: 'Test Creature', quantity: 1 },
         ],
-        'pauper'
+        'standard'
       );
       expect(validation.valid).toBe(false);
       expect(validation.illegalCards.length).toBeGreaterThan(0);
@@ -162,7 +177,7 @@ describe('Card Database', () => {
     it('should detect missing cards', async () => {
       const validation = await validateDeckOffline(
         [
-          { name: 'Sol Ring', quantity: 1 },
+          { name: 'Test Angel', quantity: 1 },
           { name: 'NonExistentCard', quantity: 1 },
         ],
         'commander'
