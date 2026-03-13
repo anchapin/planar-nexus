@@ -288,7 +288,7 @@ describe('GameStateEvaluator', () => {
 
     it('should evaluate library depth correctly', () => {
       // Large library
-      let gameState = createTestGameState();
+      const gameState = createTestGameState();
       gameState.players.player1.library = 30;
       let evaluator = new GameStateEvaluator(gameState, 'player1');
       let evaluation = evaluator.evaluate();
