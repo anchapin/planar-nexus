@@ -3,6 +3,7 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
 import { LandingFooter } from '@/components/landing-footer';
+import { SkipLink } from '@/components/skip-link';
 
 export const metadata: Metadata = {
   title: 'Planar Nexus',
@@ -49,8 +50,11 @@ export default function RootLayout({
         <meta name="format-detection" content="telephone=no" />
       </head>
       <body className="font-body antialiased" suppressHydrationWarning>
+        <SkipLink targetId="main-content" />
         <ServiceWorkerRegistration />
-        {children}
+        <main id="main-content">
+          {children}
+        </main>
         <LandingFooter />
         <Toaster />
       </body>

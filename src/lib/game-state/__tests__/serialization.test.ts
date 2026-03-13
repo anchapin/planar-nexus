@@ -52,7 +52,7 @@ describe('serialization', () => {
     });
 
     it('should convert player life and poison counters', () => {
-      let engineState = createInitialGameState(['Player 1', 'Player 2'], 20);
+      const engineState = createInitialGameState(['Player 1', 'Player 2'], 20);
       
       // Modify player state
       const player1Id = Array.from(engineState.players.keys())[0];
@@ -129,7 +129,7 @@ describe('serialization', () => {
     });
 
     it('should convert mana pool', () => {
-      let engineState = createInitialGameState(['Player 1', 'Player 2']);
+      const engineState = createInitialGameState(['Player 1', 'Player 2']);
       const player1Id = Array.from(engineState.players.keys())[0];
       
       const player1 = engineState.players.get(player1Id);
@@ -346,7 +346,7 @@ describe('serialization', () => {
 
   describe('round-trip conversion', () => {
     it('should preserve key data through round-trip conversion', () => {
-      let engineState = createInitialGameState(['Player 1', 'Player 2'], 20);
+      const engineState = createInitialGameState(['Player 1', 'Player 2'], 20);
       const player1Id = Array.from(engineState.players.keys())[0];
 
       // Set up some state

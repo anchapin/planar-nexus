@@ -1,6 +1,7 @@
 /**
  * AI Proxy Client
  * Issue #522: Implement server-side API key validation and proxy for AI calls
+ * Issue #591: Implement server-side streaming proxy for Zaic AI provider
  *
  * This module provides a client for making AI API calls through the server-side proxy.
  * It ensures API keys are never exposed to the browser and provides:
@@ -8,6 +9,7 @@
  * - Rate limiting enforcement
  * - Usage tracking
  * - Consistent error handling
+ * - Streaming support for real-time AI responses
  */
 
 import { AIProvider } from '@/ai/providers/types';
@@ -296,5 +298,91 @@ export function getProxyErrorMessage(
       return 'Invalid AI provider specified.';
     default:
       return response.error;
+  }
+}
+
+/**
+ * Call AI proxy with streaming support
+ * 
+ * @param request - The proxy request with provider, endpoint, and body
+ * @returns A ReadableStream for consuming the streaming response
+ * 
+ * This function establishes a streaming connection to the AI provider
+ * through the server-side proxy, keeping API keys secure.
+ */
+export async function callAIProxyStream(
+  request: AIProxyRequest
+): Promise<ReadableStream<Uint8Array>> {
+  const response = await fetch(getProxyEndpoint(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ...request,
+      // Ensure streaming is enabled in the body
+      body: {
+        ...request.body,
+        stream: true,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Streaming proxy error: ${response.status} - ${errorText}`);
+  }
+
+  if (!response.body) {
+    throw new Error('Streaming proxy returned no body');
+  }
+
+  return response.body;
+}
+
+/**
+ * Create an async generator from a streaming response
+ * 
+ * This helper function converts a ReadableStream into an async generator
+ * that yields text chunks from the SSE stream.
+ */
+export async function* streamToAsyncGenerator(
+  stream: ReadableStream<Uint8Array>
+): AsyncGenerator<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        // Yield any remaining data in buffer
+        if (buffer.trim()) {
+          yield buffer;
+        }
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          // Skip [DONE] marker
+          if (data.trim() === '[DONE]') {
+            return;
+          }
+          yield data + '\n';
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
   }
 }
