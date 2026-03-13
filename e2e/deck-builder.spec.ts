@@ -21,12 +21,12 @@ test.describe('Deck Builder', () => {
     await expect(page).toHaveTitle(/Deck Builder|Planar Nexus/);
     
     // Verify main elements exist
-    await expect(page.locator('h1, h2').filter({ hasText: /deck|Deck/i })).toBeVisible();
+    await expect(page.locator(`h1, h2`).filter({ hasText: /deck|Deck/i })).toBeVisible();
   });
 
   test('should search for cards', async ({ page }) => {
     // Find search input
-    const searchInput = page.locator('input[placeholder*="search" i], input[aria-label*="search" i], input[type="text"]').first();
+    const searchInput = page.locator(`input[placeholder*="search" i], input[aria-label*="search" i], input[type="text"]`).first();
     
     if (await searchInput.isVisible()) {
       // Search for a card
@@ -34,7 +34,7 @@ test.describe('Deck Builder', () => {
       await page.waitForTimeout(500); // Wait for search debounce
       
       // Verify search results appear
-      const results = page.locator('[data-testid="card-result"], .card-result, [class*="card"]');
+      const results = page.locator(`[data-testid='card-result'], .card-result, [class*="card"]`);
       // At least some results should appear
       await expect(results.first()).toBeVisible({ timeout: 5000 });
     }
@@ -42,7 +42,7 @@ test.describe('Deck Builder', () => {
 
   test('should display deck statistics', async ({ page }) => {
     // Look for deck stats section
-    const statsSection = page.locator('[data-testid="deck-stats"], [class*="stats"], [class*="deck-info"]').first();
+    const statsSection = page.locator(`[data-testid='deck-stats'], [class*="stats"], [class*="deck-info"]`).first();
     
     if (await statsSection.isVisible()) {
       // Should show card count
@@ -62,7 +62,7 @@ test.describe('Deck Builder', () => {
     await page.waitForLoadState('domcontentloaded');
     
     // Look for deck coach link/button
-    const coachLink = page.locator('a[href*="deck-coach"], button').filter({ hasText: /Coach|Deck Coach/i });
+    const coachLink = page.locator(`a[href*="deck-coach"], button`).filter({ hasText: /Coach|Deck Coach/i });
     
     if (await coachLink.isVisible()) {
       await coachLink.click();
@@ -72,7 +72,7 @@ test.describe('Deck Builder', () => {
 
   test('should navigate to saved decks', async ({ page }) => {
     // Look for saved decks link
-    const savedDecksLink = page.locator('a[href*="decks"], a[href*="saved"]').filter({ hasText: /Saved Decks|My Decks/i });
+    const savedDecksLink = page.locator(`a[href*="decks"], a[href*="saved"]`).filter({ hasText: /Saved Decks|My Decks/i });
     
     if (await savedDecksLink.isVisible()) {
       await savedDecksLink.click();
@@ -87,7 +87,7 @@ test.describe('Deck Validation', () => {
     await page.goto('/deck-builder');
     
     // Look for format selector
-    const formatSelector = page.locator('select[data-testid="format"], select[aria-label*="format" i]').first();
+    const formatSelector = page.locator(`select[data-testid='format'], select[aria-label*="format" i]`).first();
     
     if (await formatSelector.isVisible()) {
       // Should have format options
@@ -100,7 +100,7 @@ test.describe('Deck Validation', () => {
     await page.goto('/deck-builder');
     
     // Look for validation section
-    const validationSection = page.locator('[data-testid="validation"], [class*="validation"], [class*="deck-errors"]').first();
+    const validationSection = page.locator(`[data-testid='validation'], [class*="validation"], [class*="deck-errors"]`).first();
     
     if (await validationSection.isVisible()) {
       // Should show some validation status
@@ -114,7 +114,7 @@ test.describe('Deck Import/Export', () => {
     await page.goto('/deck-builder');
     
     // Look for import button
-    const importButton = page.locator('button:has-text("Import"), button:has-text("import"), [data-testid="import"]').first();
+    const importButton = page.locator(`button:has-text("Import"), button:has-text("import"), [data-testid='import']`).first();
     
     if (await importButton.isVisible()) {
       await expect(importButton).toBeVisible();
@@ -125,7 +125,7 @@ test.describe('Deck Import/Export', () => {
     await page.goto('/deck-builder');
     
     // Look for export button
-    const exportButton = page.locator('button:has-text("Export"), button:has-text("export"), [data-testid="export"]').first();
+    const exportButton = page.locator(`button:has-text("Export"), button:has-text("export"), [data-testid='export']`).first();
     
     if (await exportButton.isVisible()) {
       await expect(exportButton).toBeVisible();

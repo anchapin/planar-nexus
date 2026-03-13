@@ -22,12 +22,12 @@ test.describe('AI Deck Coach', () => {
     await expect(page).toHaveTitle(/Coach|Deck Coach|Planar Nexus/i);
     
     // Verify main heading exists
-    await expect(page.locator('h1, h2').filter({ hasText: /coach|Coach/i })).toBeVisible();
+    await expect(page.locator(`h1, h2`).filter({ hasText: /coach|Coach/i })).toBeVisible();
   });
 
   test('should show deck selection', async ({ page }) => {
     // Look for deck selector
-    const deckSelector = page.locator('select[data-testid="deck-select"], select[aria-label*="deck" i], [data-testid="deck-list"]').first();
+    const deckSelector = page.locator(`select[data-testid='deck-select'], select[aria-label*="deck" i], [data-testid='deck-list']`).first();
     
     if (await deckSelector.isVisible()) {
       await expect(deckSelector).toBeVisible();
@@ -36,7 +36,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display archetype analysis', async ({ page }) => {
     // Look for archetype section
-    const archetypeSection = page.locator('[data-testid="archetype"], [class*="archetype"]').filter({ hasText: /Archetype/i }).first();
+    const archetypeSection = page.locator(`[data-testid='archetype'], [class*="archetype"]`).filter({ hasText: /Archetype/i }).first();
     
     if (await archetypeSection.isVisible()) {
       await expect(archetypeSection).toBeVisible();
@@ -45,7 +45,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display synergies section', async ({ page }) => {
     // Look for synergies section
-    const synergiesSection = page.locator('[data-testid="synergies"], [class*="synergy"]').filter({ hasText: /Synerg/i }).first();
+    const synergiesSection = page.locator(`[data-testid='synergies'], [class*="synergy"]`).filter({ hasText: /Synerg/i }).first();
     
     if (await synergiesSection.isVisible()) {
       await expect(synergiesSection).toBeVisible();
@@ -54,7 +54,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display missing synergies', async ({ page }) => {
     // Look for missing synergies section
-    const missingSection = page.locator('[data-testid="missing-synergies"], [class*="missing"]').filter({ hasText: /Missing/i }).first();
+    const missingSection = page.locator(`[data-testid='missing-synergies'], [class*="missing"]`).filter({ hasText: /Missing/i }).first();
     
     if (await missingSection.isVisible()) {
       await expect(missingSection).toBeVisible();
@@ -63,7 +63,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display key cards', async ({ page }) => {
     // Look for key cards section
-    const keyCardsSection = page.locator('[data-testid="key-cards"], [class*="key-card"]').filter({ hasText: /Key Card/i }).first();
+    const keyCardsSection = page.locator(`[data-testid='key-cards'], [class*="key-card"]`).filter({ hasText: /Key Card/i }).first();
     
     if (await keyCardsSection.isVisible()) {
       await expect(keyCardsSection).toBeVisible();
@@ -72,7 +72,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should have export functionality', async ({ page }) => {
     // Look for export button
-    const exportButton = page.locator('button:has-text("Export"), button:has-text("export"), [data-testid="export"]').first();
+    const exportButton = page.locator(`button:has-text("Export"), button:has-text("export"), [data-testid='export']`).first();
     
     if (await exportButton.isVisible()) {
       await expect(exportButton).toBeVisible();
@@ -82,21 +82,21 @@ test.describe('AI Deck Coach', () => {
       await page.waitForTimeout(500);
       
       // Look for export options
-      const exportOptions = page.locator('[data-testid="dropdown-item"], [role="menuitem"]').filter({ hasText: /Download|Print/i });
+      const exportOptions = page.locator(`[data-testid='dropdown-item'], [role="menuitem"]`).filter({ hasText: /Download|Print/i });
       await expect(exportOptions.first()).toBeVisible({ timeout: 3000 });
     }
   });
 
   test('should show loading state during analysis', async ({ page }) => {
     // Look for analyze/generate button
-    const analyzeButton = page.locator('button:has-text("Analyze"), button:has-text("Generate"), button:has-text("Get Report")').first();
+    const analyzeButton = page.locator(`button:has-text("Analyze"), button:has-text("Generate"), button:has-text("Get Report")`).first();
     
     if (await analyzeButton.isVisible()) {
       // Click analyze
       await analyzeButton.click();
       
       // Should show loading state
-      const loadingState = page.locator('[data-testid="loading"], [class*="loading"], [class*="skeleton"]').filter({ hasText: /Analyzing|Generating/i });
+      const loadingState = page.locator(`[data-testid='loading'], [class*="loading"], [class*="skeleton"]`).filter({ hasText: /Analyzing|Generating/i });
       
       // Loading state should appear (might be brief)
       await page.waitForTimeout(1000);
@@ -105,7 +105,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display improvement suggestions', async ({ page }) => {
     // Look for suggestions section
-    const suggestionsSection = page.locator('[data-testid="suggestions"], [class*="suggestion"], [class*="improvement"]').filter({ hasText: /Suggestion|Improvement/i }).first();
+    const suggestionsSection = page.locator(`[data-testid='suggestions'], [class*="suggestion"], [class*="improvement"]`).filter({ hasText: /Suggestion|Improvement/i }).first();
     
     if (await suggestionsSection.isVisible()) {
       await expect(suggestionsSection).toBeVisible();
@@ -118,7 +118,7 @@ test.describe('AI Coach Report Display', () => {
     await page.goto('/deck-coach');
     
     // Look for confidence display
-    const confidenceDisplay = page.locator('[data-testid="confidence"]').filter({ hasText: /confidence|Confidence|%/i }).first();
+    const confidenceDisplay = page.locator(`[data-testid='confidence']`).filter({ hasText: /confidence|Confidence|%/i }).first();
     
     if (await confidenceDisplay.isVisible()) {
       await expect(confidenceDisplay).toBeVisible();
@@ -129,7 +129,7 @@ test.describe('AI Coach Report Display', () => {
     await page.goto('/deck-coach');
     
     // Look for impact badges
-    const impactBadges = page.locator('[data-testid="impact"], [class*="impact"]').filter({ hasText: /HIGH|MEDIUM|LOW/i });
+    const impactBadges = page.locator(`[data-testid='impact'], [class*="impact"]`).filter({ hasText: /HIGH|MEDIUM|LOW/i });
     
     if (await impactBadges.count() > 0) {
       await expect(impactBadges.first()).toBeVisible();
@@ -140,7 +140,7 @@ test.describe('AI Coach Report Display', () => {
     await page.goto('/deck-coach');
     
     // Look for archetype badge
-    const archetypeBadge = page.locator('[data-testid="archetype-badge"], [class*="archetype-badge"], [role="badge"]').first();
+    const archetypeBadge = page.locator(`[data-testid='archetype-badge'], [class*="archetype-badge"], [role="badge"]`).first();
     
     if (await archetypeBadge.isVisible()) {
       await expect(archetypeBadge).toBeVisible();
