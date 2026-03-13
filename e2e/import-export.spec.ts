@@ -109,7 +109,7 @@ test.describe('Deck Import', () => {
           await page.waitForTimeout(1000);
           
           // Should show error message
-          const errorMessage = page.locator('[data-testid="error"], [class*="error"], [role="alert"], text=/invalid|not found|error/i').first();
+          const errorMessage = page.locator('[data-testid="error"], [class*="error"], [role="alert"]').filter({ hasText: /invalid|not found|error/i }).first();
           
           if (await errorMessage.isVisible()) {
             await expect(errorMessage).toBeVisible();
@@ -143,7 +143,7 @@ test.describe('Deck Export', () => {
       await page.waitForTimeout(500);
       
       // Look for text export option
-      const textExportOption = page.locator('[data-testid="dropdown-item"], [role="menuitem"], text=/Text|Copy/i').first();
+      const textExportOption = page.locator('[data-testid="dropdown-item"], [role="menuitem"]').filter({ hasText: /Text|Copy/i }).first();
       
       if (await textExportOption.isVisible()) {
         await expect(textExportOption).toBeVisible();
@@ -160,7 +160,7 @@ test.describe('Deck Export', () => {
       await page.waitForTimeout(500);
       
       // Look for JSON export option
-      const jsonExportOption = page.locator('[data-testid="dropdown-item"], [role="menuitem"], text=/JSON/i').first();
+      const jsonExportOption = page.locator('[data-testid="dropdown-item"], [role="menuitem"]').filter({ hasText: /JSON/i }).first();
       
       if (await jsonExportOption.isVisible()) {
         await expect(jsonExportOption).toBeVisible();
@@ -197,7 +197,7 @@ test.describe('Import/Export Round Trip', () => {
       await page.waitForTimeout(500);
       
       // Look for copy option
-      const copyOption = page.locator('[data-testid="dropdown-item"], text=/Copy/i').first();
+      const copyOption = page.locator('[data-testid="dropdown-item"]').filter({ hasText: /Copy/i }).first();
       
       if (await copyOption.isVisible()) {
         // Verify export functionality exists

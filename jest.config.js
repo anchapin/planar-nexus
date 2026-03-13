@@ -11,9 +11,11 @@ module.exports = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {
-        esModuleInterop: true,
-        allowSyntheticDefaultImports: true,
+        'jsx': 'react-jsx',
+        'esModuleInterop': true,
+        'allowSyntheticDefaultImports': true,
       },
+      useESM: false,
     }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],

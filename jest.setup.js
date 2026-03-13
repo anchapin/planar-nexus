@@ -221,5 +221,15 @@ global.seedTestData = async (customCards = []) => {
   mockCardDatabase.cards = [...cardsToSeed];
   mockCardDatabase.isInitialized = true;
   
+  // Also add cards to the actual IndexedDB for tests that use the real database
+  try {
+    const { addCards, initializeCardDatabase } = require('./src/lib/card-database');
+    await initializeCardDatabase();
+    await addCards(cardsToSeed);
+  } catch (err) {
+    // If the card database module isn't available or fails, continue with mock only
+    console.warn('Could not seed real card database:', err.message);
+  }
+  
   return cardsToSeed;
 };

@@ -87,7 +87,7 @@ test.describe('Single Player vs AI', () => {
       await page.waitForTimeout(2000);
       
       // Should show life totals
-      const lifeDisplay = page.locator('[data-testid="life"], [class*="life"], text=/\\d+/').first();
+      const lifeDisplay = page.locator('[data-testid="life"], [class*="life"]').filter({ hasText: /\d+/ }).first();
       
       if (await lifeDisplay.isVisible()) {
         await expect(lifeDisplay).toBeVisible();
@@ -104,7 +104,7 @@ test.describe('Single Player vs AI', () => {
       await page.waitForTimeout(2000);
       
       // Should show turn indicator
-      const turnIndicator = page.locator('[data-testid="turn"], [class*="turn"], text=/Turn|Player/i').first();
+      const turnIndicator = page.locator('[data-testid="turn"], [class*="turn"]').filter({ hasText: /Turn|Player/i }).first();
       
       if (await turnIndicator.isVisible()) {
         await expect(turnIndicator).toBeVisible();
@@ -121,7 +121,7 @@ test.describe('Single Player vs AI', () => {
       await page.waitForTimeout(2000);
       
       // Should show phase indicator
-      const phaseIndicator = page.locator('[data-testid="phase"], [class*="phase"], text=/Main|Combat|End|Draw/i').first();
+      const phaseIndicator = page.locator('[data-testid="phase"], [class*="phase"]').filter({ hasText: /Main|Combat|End|Draw/i }).first();
       
       if (await phaseIndicator.isVisible()) {
         await expect(phaseIndicator).toBeVisible();
@@ -157,7 +157,7 @@ test.describe('AI Opponent Behavior', () => {
       await page.waitForTimeout(3000);
       
       // Look for AI thinking indicator
-      const thinkingIndicator = page.locator('[data-testid="ai-thinking"], [class*="thinking"], text=/AI.*think|Opponent.*turn/i').first();
+      const thinkingIndicator = page.locator('[data-testid="ai-thinking"], [class*="thinking"]').filter({ hasText: /AI.*think|Opponent.*turn/i }).first();
       
       // May or may not be visible depending on timing
       if (await thinkingIndicator.isVisible()) {
@@ -175,7 +175,7 @@ test.describe('AI Opponent Behavior', () => {
       await page.waitForTimeout(2000);
       
       // Should show difficulty somewhere
-      const difficultyDisplay = page.locator('[data-testid="difficulty"], [class*="difficulty"], text=/Easy|Medium|Hard|Expert/i').first();
+      const difficultyDisplay = page.locator('[data-testid="difficulty"], [class*="difficulty"]').filter({ hasText: /Easy|Medium|Hard|Expert/i }).first();
       
       if (await difficultyDisplay.isVisible()) {
         await expect(difficultyDisplay).toBeVisible();

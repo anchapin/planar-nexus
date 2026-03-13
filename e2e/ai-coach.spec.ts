@@ -36,7 +36,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display archetype analysis', async ({ page }) => {
     // Look for archetype section
-    const archetypeSection = page.locator('[data-testid="archetype"], [class*="archetype"], text=/Archetype/i').first();
+    const archetypeSection = page.locator('[data-testid="archetype"], [class*="archetype"]').filter({ hasText: /Archetype/i }).first();
     
     if (await archetypeSection.isVisible()) {
       await expect(archetypeSection).toBeVisible();
@@ -45,7 +45,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display synergies section', async ({ page }) => {
     // Look for synergies section
-    const synergiesSection = page.locator('[data-testid="synergies"], [class*="synergy"], text=/Synerg/i').first();
+    const synergiesSection = page.locator('[data-testid="synergies"], [class*="synergy"]').filter({ hasText: /Synerg/i }).first();
     
     if (await synergiesSection.isVisible()) {
       await expect(synergiesSection).toBeVisible();
@@ -54,7 +54,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display missing synergies', async ({ page }) => {
     // Look for missing synergies section
-    const missingSection = page.locator('[data-testid="missing-synergies"], [class*="missing"], text=/Missing/i').first();
+    const missingSection = page.locator('[data-testid="missing-synergies"], [class*="missing"]').filter({ hasText: /Missing/i }).first();
     
     if (await missingSection.isVisible()) {
       await expect(missingSection).toBeVisible();
@@ -63,7 +63,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display key cards', async ({ page }) => {
     // Look for key cards section
-    const keyCardsSection = page.locator('[data-testid="key-cards"], [class*="key-card"], text=/Key Card/i').first();
+    const keyCardsSection = page.locator('[data-testid="key-cards"], [class*="key-card"]').filter({ hasText: /Key Card/i }).first();
     
     if (await keyCardsSection.isVisible()) {
       await expect(keyCardsSection).toBeVisible();
@@ -82,7 +82,7 @@ test.describe('AI Deck Coach', () => {
       await page.waitForTimeout(500);
       
       // Look for export options
-      const exportOptions = page.locator('[data-testid="dropdown-item"], [role="menuitem"], text=/Download|Print/i');
+      const exportOptions = page.locator('[data-testid="dropdown-item"], [role="menuitem"]').filter({ hasText: /Download|Print/i });
       await expect(exportOptions.first()).toBeVisible({ timeout: 3000 });
     }
   });
@@ -96,7 +96,7 @@ test.describe('AI Deck Coach', () => {
       await analyzeButton.click();
       
       // Should show loading state
-      const loadingState = page.locator('[data-testid="loading"], [class*="loading"], [class*="skeleton"], text=/Analyzing|Generating/i');
+      const loadingState = page.locator('[data-testid="loading"], [class*="loading"], [class*="skeleton"]').filter({ hasText: /Analyzing|Generating/i });
       
       // Loading state should appear (might be brief)
       await page.waitForTimeout(1000);
@@ -105,7 +105,7 @@ test.describe('AI Deck Coach', () => {
 
   test('should display improvement suggestions', async ({ page }) => {
     // Look for suggestions section
-    const suggestionsSection = page.locator('[data-testid="suggestions"], [class*="suggestion"], [class*="improvement"], text=/Suggestion|Improvement/i').first();
+    const suggestionsSection = page.locator('[data-testid="suggestions"], [class*="suggestion"], [class*="improvement"]').filter({ hasText: /Suggestion|Improvement/i }).first();
     
     if (await suggestionsSection.isVisible()) {
       await expect(suggestionsSection).toBeVisible();
@@ -118,7 +118,7 @@ test.describe('AI Coach Report Display', () => {
     await page.goto('/deck-coach');
     
     // Look for confidence display
-    const confidenceDisplay = page.locator('[data-testid="confidence"], text=/confidence|Confidence|%/i').first();
+    const confidenceDisplay = page.locator('[data-testid="confidence"]').filter({ hasText: /confidence|Confidence|%/i }).first();
     
     if (await confidenceDisplay.isVisible()) {
       await expect(confidenceDisplay).toBeVisible();
@@ -129,7 +129,7 @@ test.describe('AI Coach Report Display', () => {
     await page.goto('/deck-coach');
     
     // Look for impact badges
-    const impactBadges = page.locator('[data-testid="impact"], [class*="impact"], text=/HIGH|MEDIUM|LOW/i');
+    const impactBadges = page.locator('[data-testid="impact"], [class*="impact"]').filter({ hasText: /HIGH|MEDIUM|LOW/i });
     
     if (await impactBadges.count() > 0) {
       await expect(impactBadges.first()).toBeVisible();
