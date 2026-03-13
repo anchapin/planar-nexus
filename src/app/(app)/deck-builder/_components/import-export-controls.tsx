@@ -47,6 +47,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
   const [importFormat, setImportFormat] = useState<'standard' | 'mtgo' | 'json'>('standard');
   const [importUrl, setImportUrl] = useState("");
   const [activeTab, setActiveTab] = useState<'text' | 'url'>('text');
+  const [isUrlImporting, setIsUrlImporting] = useState(false);
   const { toast } = useToast();
 
   const handleImportClick = () => {
@@ -109,11 +110,59 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
       return;
     }
 
-    toast({
-      title: "URL import coming soon",
-      description: "Support for MTGGoldfish, TappedOut, and Moxfield URLs",
-    });
-    // TODO: Implement URL fetching with CORS proxy
+    // Validate URL format
+    try {
+      new URL(importUrl);
+    } catch {
+      toast({
+        title: "Invalid URL",
+        description: "Please enter a valid URL",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUrlImporting(true);
+
+    try {
+      const response = await fetch('/api/deck-import', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: importUrl }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Import failed",
+          description: data.error || "Failed to import deck from URL",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Import the parsed decklist
+      onImport(data.decklist, 'standard');
+      
+      toast({
+        title: "Deck imported",
+        description: `Successfully imported ${data.cardCount} cards from ${data.siteName}`,
+      });
+
+      // Reset the URL input and close dialog
+      setImportUrl("");
+    } catch (error) {
+      toast({
+        title: "Import failed",
+        description: "An error occurred while fetching the deck",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUrlImporting(false);
+    }
   };
 
   const handleExportJSON = () => {
@@ -277,17 +326,26 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
                     placeholder="https://mtggoldfish.com/decks/..."
                     value={importUrl}
                     onChange={(e) => setImportUrl(e.target.value)}
-                    disabled={isImporting}
+                    disabled={isUrlImporting}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleUrlImport();
+                      }
+                    }}
                   />
-                  <Button onClick={handleUrlImport} disabled={isImporting}>
-                    <LinkIcon className="mr-2 h-4 w-4" />
-                    Import
+                  <Button onClick={handleUrlImport} disabled={isUrlImporting}>
+                    {isUrlImporting ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <LinkIcon className="mr-2 h-4 w-4" />
+                    )}
+                    {isUrlImporting ? 'Importing...' : 'Import'}
                   </Button>
                 </div>
               </div>
 
               <div className="text-xs text-muted-foreground space-y-2">
-                <p>Supported sites (coming soon):</p>
+                <p>Supported sites:</p>
                 <ul className="list-disc list-inside space-y-1">
                   <li>MTGGoldfish</li>
                   <li>TappedOut</li>
