@@ -26,6 +26,7 @@ on:
 env:
   NODE_VERSION: '20'
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # Determine build type: 'release' for release events, otherwise from workflow_dispatch input
