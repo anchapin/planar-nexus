@@ -327,7 +327,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 async function handleStreamingRequest(
   request: NextRequest,
   body: AIProxyRequest,
-  providerConfig: { apiKey: string; rateLimit?: { limit: number; windowMs: number } }
+  providerConfig: { apiKey: string; rateLimit?: { maxRequests: number; windowMs: number } }
 ): Promise<NextResponse> {
   const { provider, endpoint, model, userId = 'anonymous' } = body;
   
