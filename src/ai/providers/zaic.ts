@@ -11,7 +11,7 @@
 
 import { AIProviderConfig } from './types';
 import { API_ENDPOINTS } from '@/lib/env';
-import { callAIProxy, getProxyErrorMessage } from '@/lib/ai-proxy-client';
+import { callAIProxy, getProxyErrorMessage, callAIProxyStream, streamToAsyncGenerator } from '@/lib/ai-proxy-client';
 import { aiLogger } from '@/lib/logger';
 
 /**
@@ -154,29 +154,41 @@ async function sendZAIChatViaProxy(
 
 
 /**
- * Send a streaming chat completion request to Z.ai
+ * Send a streaming chat completion request to Z.ai via server-side proxy
  * 
  * @param config - Provider configuration
  * @param request - Chat request
  * @returns Async iterable for streaming response
  * 
- * @deprecated SECURITY RISK: This function makes direct API calls exposing API keys.
- * Use sendZAIChat() instead which routes through the server-side proxy.
- * 
- * TODO: Implement server-side streaming proxy to restore this functionality securely.
- * See: https://github.com/anchapin/planar-nexus/issues/578
+ * This function routes streaming AI calls through the server-side proxy,
+ * keeping API keys secure while providing real-time streaming responses.
  */
 export async function sendZAIChatStream(
   config: ZAIProviderConfig,
   request: Omit<ZAIChatRequest, 'model'>
 ): Promise<AsyncGenerator<string>> {
-  // SECURITY WARNING: This function is deprecated and should not be used.
-  // It exposes API keys in client-side code, which is a critical security vulnerability.
-  throw new Error(
-    'sendZAIChatStream is deprecated due to critical security vulnerability (API key exposure). ' +
-    'Use sendZAIChat() instead for secure proxy-based calls. ' +
-    'Server-side streaming support is planned. See issue #578.'
-  );
+  try {
+    // Get streaming response from proxy
+    const stream = await callAIProxyStream({
+      provider: 'zaic',
+      endpoint: 'chat/completions',
+      model: config.model || DEFAULT_ZAI_CONFIG.model,
+      body: {
+        messages: request.messages,
+        max_tokens: config.maxTokens || request.max_tokens,
+        temperature: config.temperature || request.temperature,
+        top_p: request.top_p,
+        stop: request.stop,
+        stream: true, // Request streaming from the provider
+      },
+    });
+
+    // Convert to async generator for easier consumption
+    return streamToAsyncGenerator(stream);
+  } catch (error) {
+    aiLogger.error('Z.ai streaming proxy request failed:', error);
+    throw error;
+  }
 }
 
 /**

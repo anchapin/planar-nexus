@@ -1,12 +1,14 @@
 /**
  * AI Proxy API Route
  * Issue #522: Implement server-side API key validation and proxy for AI calls
+ * Issue #591: Implement server-side streaming proxy for Zaic AI provider
  *
  * This API route proxies AI provider requests server-side, providing:
  * - Secure API key storage (server environment variables)
  * - Server-side rate limiting
  * - Usage tracking and logging
  * - User authentication integration
+ * - Streaming support for real-time AI responses
  */
 
 // Required for static export
@@ -134,6 +136,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const { provider, endpoint, model, userId = 'anonymous' } = body;
 
+    // Check for streaming request
+    const isStreaming = body.body?.stream === true;
+    
     // Validate provider
     if (!provider || !['google', 'openai', 'zaic', 'custom'].includes(provider)) {
       return NextResponse.json(
@@ -162,6 +167,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         },
         { status: 503 }
       );
+    }
+
+    // Handle streaming requests separately
+    if (isStreaming) {
+      return handleStreamingRequest(request, body, providerConfig);
     }
 
     // Get client identifier for rate limiting
@@ -305,6 +315,94 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Handle streaming AI requests
+ * POST /api/ai-proxy with stream: true in body
+ * 
+ * This enables real-time streaming responses from AI providers while keeping
+ * API keys secure on the server side.
+ */
+async function handleStreamingRequest(
+  request: NextRequest,
+  body: AIProxyRequest,
+  providerConfig: { apiKey: string; rateLimit?: { limit: number; windowMs: number } }
+): Promise<NextResponse> {
+  const { provider, endpoint, model, userId = 'anonymous' } = body;
+  
+  // Build the proxied request
+  const targetUrl = buildTargetUrl(provider as AIProvider, endpoint, providerConfig.apiKey);
+  const requestBody = buildRequestBody(provider as AIProvider, body, model);
+  const headers = buildRequestHeaders(provider as AIProvider, providerConfig.apiKey);
+  
+  // Enable streaming
+  requestBody.stream = true;
+
+  // Create a readable stream for the response
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        const response = await fetch(targetUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(requestBody),
+        });
+
+        if (!response.ok || !response.body) {
+          const errorText = await response.text();
+          controller.enqueue(encoder.encode(`data: {"error": "${errorText}"}\n\n`));
+          controller.close();
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            // Send any remaining data in buffer
+            if (buffer.trim()) {
+              controller.enqueue(encoder.encode(buffer));
+            }
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE events
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              controller.enqueue(encoder.encode(line + '\n'));
+            } else if (line.trim()) {
+              // Pass through other lines
+              controller.enqueue(encoder.encode(line + '\n'));
+            }
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Stream error';
+        controller.enqueue(encoder.encode(`data: {"error": "${errorMessage}"}\n\n`));
+        controller.close();
+      }
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 }
 
 /**
