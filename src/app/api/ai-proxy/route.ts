@@ -169,7 +169,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Handle streaming requests separately
+    // Handle streaming requests separately (pass rateLimit as-is now)
     if (isStreaming) {
       return handleStreamingRequest(request, body, providerConfig);
     }
@@ -177,10 +177,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Get client identifier for rate limiting
     const clientId = getClientIdentifier(request, userId);
 
-    // Check rate limit
+    // Check rate limit (transform maxRequests to limit for enforceRateLimit)
     let rateLimitResult;
+    const rateLimitConfig = providerConfig.rateLimit
+      ? { maxRequests: providerConfig.rateLimit.maxRequests, windowMs: providerConfig.rateLimit.windowMs }
+      : undefined;
     try {
-      rateLimitResult = enforceRateLimit(clientId, providerConfig.rateLimit);
+      rateLimitResult = enforceRateLimit(clientId, rateLimitConfig);
     } catch (error) {
       if (error instanceof RateLimitError) {
         await usageLogger.markFailure('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED').save();
