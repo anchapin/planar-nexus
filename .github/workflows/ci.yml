@@ -35,12 +35,15 @@ jobs:
         run: npm test -- --coverage --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MB
       
       - name: Upload coverage to Codecov
+        if: github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage/lcov.info
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   
   e2e:
     name: E2E Tests
