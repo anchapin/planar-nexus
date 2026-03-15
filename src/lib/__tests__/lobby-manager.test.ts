@@ -51,7 +51,7 @@ jest.mock('../multiplayer-types', () => ({
 import { lobbyManager } from '../lobby-manager';
 import { publicLobbyBrowser } from '../public-lobby-browser';
 import { generateGameCode, generateLobbyId, generatePlayerId } from '../game-code-generator';
-import type { GameFormat } from '../multiplayer-types';
+import type { GameFormat, PlayerCount } from '../multiplayer-types';
 
 describe('LobbyManager', () => {
   let lobbyManagerInstance: typeof lobbyManager;
@@ -73,7 +73,7 @@ describe('LobbyManager', () => {
       const config = {
         name: 'Test Game',
         format: 'standard' as GameFormat,
-        maxPlayers: '2',
+        maxPlayers: '2' as PlayerCount,
         settings: {
           isPublic: false,
           allowSpectators: false,
@@ -98,9 +98,11 @@ describe('LobbyManager', () => {
       const config = {
         name: 'Test Game',
         format: 'standard' as GameFormat,
-        maxPlayers: '2',
+        maxPlayers: '2' as PlayerCount,
         settings: {
           isPublic: false,
+          allowSpectators: false,
+          timerEnabled: false,
         },
       };
 
@@ -115,9 +117,11 @@ describe('LobbyManager', () => {
       const config = {
         name: 'Public Game',
         format: 'standard' as GameFormat,
-        maxPlayers: '2',
+        maxPlayers: '2' as PlayerCount,
         settings: {
           isPublic: true,
+          allowSpectators: false,
+          timerEnabled: false,
         },
       };
 
@@ -135,9 +139,11 @@ describe('LobbyManager', () => {
       const config = {
         name: 'Private Game',
         format: 'standard' as GameFormat,
-        maxPlayers: '2',
+        maxPlayers: '2' as PlayerCount,
         settings: {
           isPublic: false,
+          allowSpectators: false,
+          timerEnabled: false,
         },
       };
 
@@ -157,9 +163,11 @@ describe('LobbyManager', () => {
       const config = {
         name: 'Test Game',
         format: 'standard' as GameFormat,
-        maxPlayers: '2',
+        maxPlayers: '2' as PlayerCount,
         settings: {
           isPublic: false,
+          allowSpectators: false,
+          timerEnabled: false,
         },
       };
 
@@ -176,9 +184,11 @@ describe('LobbyManager', () => {
       const config = {
         name: 'Test Game',
         format: 'standard' as GameFormat,
-        maxPlayers: '2',
+        maxPlayers: '2' as PlayerCount,
         settings: {
           isPublic: false,
+          allowSpectators: false,
+          timerEnabled: false,
         },
       };
       lobbyManagerInstance.createLobby(config, 'Host');
