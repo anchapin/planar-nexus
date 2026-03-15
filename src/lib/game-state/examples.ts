@@ -5,6 +5,7 @@
  * and can serve as the basis for unit tests.
  */
 
+/* eslint-disable no-console */
 import {
   createInitialGameState,
   loadDeckForPlayer,

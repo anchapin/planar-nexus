@@ -76,8 +76,8 @@ export class ValidationService {
     // Check game mode config first
     if (modeId) {
       const gameMode = getGameMode(modeId);
-      if (gameMode && (gameMode as any).maxLandsPerTurn !== undefined) {
-        return (gameMode as any).maxLandsPerTurn;
+      if (gameMode && (gameMode as unknown as Record<string, unknown>).maxLandsPerTurn !== undefined) {
+        return (gameMode as unknown as Record<string, unknown>).maxLandsPerTurn as number;
       }
     }
 
