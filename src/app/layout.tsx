@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration';
 import { LandingFooter } from '@/components/landing-footer';
 import { SkipLink } from '@/components/skip-link';
+import { AchievementNotificationToast } from '@/components/achievement-notification';
 
 export const metadata: Metadata = {
   title: 'Planar Nexus',
@@ -57,6 +58,7 @@ export default function RootLayout({
         </main>
         <LandingFooter />
         <Toaster />
+        <AchievementNotificationToast />
       </body>
     </html>
   );
