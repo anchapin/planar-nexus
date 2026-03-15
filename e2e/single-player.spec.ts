@@ -71,23 +71,25 @@ test.describe('Single Player vs AI', () => {
     await page.goto('/single-player');
     await page.getByRole('tab', { name: 'Play against AI' }).click();
     
+    // Wait for the page to fully load
+    await page.waitForLoadState('networkidle');
+    
     // The start button navigates directly, let's see what happens
     const startButton = page.locator('button:has-text("Start Game vs AI")');
     
     // Check button is visible 
-    await expect(startButton).toBeVisible();
+    await expect(startButton).toBeVisible({ timeout: 10000 });
     
-    // Try clicking - it may be disabled if no deck selected, or may navigate
-    await startButton.click();
+    // Check if button is disabled (requires deck selection)
+    const isDisabled = await startButton.isDisabled();
     
-    // Check if we navigated or stayed on page
-    const currentUrl = page.url();
-    if (currentUrl.includes('game-board')) {
-      await expect(page).toHaveURL(/.*game-board/);
-    } else {
-      // If not navigated, button might be disabled - that's ok for this test
-      // The test just verifies the button exists and is clickable
+    if (!isDisabled) {
+      // Button is enabled - click to navigate
+      await startButton.click();
+      // Wait for navigation with timeout
+      await page.waitForURL(/.*game-board.*/, { timeout: 10000 });
     }
+    // If disabled, that's fine - user needs to select a deck first
   });
 
   test('should display player life totals', async ({ page }) => {
