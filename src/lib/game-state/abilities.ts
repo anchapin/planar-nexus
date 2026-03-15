@@ -127,7 +127,7 @@ export function canActivateAbility(
   }
 
   // Check if card is on the battlefield
-  const battlefieldZone = state.zones.get(`battlefield-${playerId}`);
+  const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
   if (!battlefieldZone || !battlefieldZone.cardIds.includes(cardId)) {
     return { canActivate: false, reason: 'Card is not on the battlefield' };
   }
@@ -283,7 +283,7 @@ export function activateAbility(
   }
 
   // Move card to stack (for abilities that go on stack)
-  const battlefieldZone = currentState.zones.get(`battlefield-${playerId}`);
+  const battlefieldZone = currentState.zones.get(`${playerId}-battlefield`);
   
   let cardMovedState = currentState;
   if (battlefieldZone && battlefieldZone.cardIds.includes(cardId)) {
@@ -407,7 +407,7 @@ export function canActivateLoyaltyAbility(
   }
 
   // Check if card is on the battlefield
-  const battlefieldZone = state.zones.get(`battlefield-${playerId}`);
+  const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
   if (!battlefieldZone || !battlefieldZone.cardIds.includes(cardId)) {
     return { canActivate: false, reason: 'Planeswalker is not on the battlefield' };
   }
@@ -427,8 +427,13 @@ export function canActivateLoyaltyAbility(
   const loyaltyCounter = card.counters?.find(c => c.type === 'loyalty');
   const currentLoyalty = loyaltyCounter?.count || 0;
 
-  // Check if player has enough loyalty
+  // Check if player has enough loyalty (for costs > 0, need at least that many counters)
   if (abilityCost > 0 && currentLoyalty < abilityCost) {
+    return { canActivate: false, reason: 'Not enough loyalty counters' };
+  }
+
+  // For negative costs (like -3), we need at least 3 loyalty to remove
+  if (abilityCost < 0 && currentLoyalty < Math.abs(abilityCost)) {
     return { canActivate: false, reason: 'Not enough loyalty counters' };
   }
 

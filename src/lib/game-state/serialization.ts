@@ -15,10 +15,8 @@
 import {
   GameState as EngineGameState,
   PlayerId,
-  CardInstanceId,
   Player,
   CardInstance,
-  Zone,
   StackObject,
   Phase,
   AIGameState,
@@ -343,7 +341,7 @@ export function engineToUnified(engineState: EngineGameState): AIGameState {
  */
 function convertAIPlayerToEngine(
   aiPlayer: AIPlayerState,
-  baseEnginePlayer: Player
+  _baseEnginePlayer: Player
 ): Partial<Player> {
   return {
     life: aiPlayer.life,
