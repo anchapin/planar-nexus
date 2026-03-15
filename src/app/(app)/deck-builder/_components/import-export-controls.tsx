@@ -235,12 +235,12 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <Button variant="outline" size="sm" onClick={onSave} disabled={isDeckSaved}>
+      <Button variant="outline" size="sm" onClick={onSave} disabled={isDeckSaved} data-testid="save-deck-button">
         <Save className="mr-2" />
         {isDeckSaved ? 'Saved' : 'Save'}
       </Button>
 
-      <Button variant="outline" size="sm" onClick={handleCopyToClipboard}>
+      <Button variant="outline" size="sm" onClick={handleCopyToClipboard} data-testid="copy-deck-button">
         <Clipboard className="mr-2" />
         Copy
       </Button>
@@ -253,7 +253,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
         }
       }}>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" data-testid="import-deck-button">
             <Upload className="mr-2" />
             Import
           </Button>
@@ -279,6 +279,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
                   size="sm"
                   onClick={handlePasteFromClipboard}
                   className="flex-1"
+                  data-testid="paste-deck-button"
                 >
                   <ClipboardPaste className="mr-2 h-4 w-4" />
                   Paste from Clipboard
@@ -287,7 +288,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
 
               <div className="space-y-2">
                 <Label htmlFor="import-format">Format</Label>
-                <Tabs value={importFormat} onValueChange={(v) => setImportFormat(v as typeof importFormat)}>
+                <Tabs value={importFormat} onValueChange={(v) => setImportFormat(v as typeof importFormat)} data-testid="import-format-tabs">
                   <TabsList>
                     <TabsTrigger value="standard">Standard</TabsTrigger>
                     <TabsTrigger value="mtgo">MTGO</TabsTrigger>
@@ -308,6 +309,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
                 disabled={isImporting}
+                data-testid="import-textarea"
               />
 
               {importFormat === 'mtgo' && (
@@ -357,7 +359,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
 
           <DialogFooter>
             <DialogClose asChild>
-              <Button type="button" onClick={handleImportClick} disabled={isImporting}>
+              <Button type="button" onClick={handleImportClick} disabled={isImporting} data-testid="confirm-import-button">
                 {isImporting && <Loader2 className="mr-2 animate-spin" />}
                 {isImporting ? 'Importing...' : 'Import'}
               </Button>
@@ -368,7 +370,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
 
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" data-testid="export-deck-button">
             <Download className="mr-2" />
             Export
           </Button>
@@ -381,15 +383,15 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Button variant="outline" className="w-full justify-start" onClick={handleCopyToClipboard}>
+            <Button variant="outline" className="w-full justify-start" onClick={handleCopyToClipboard} data-testid="export-copy-button">
               <Clipboard className="mr-2 h-4 w-4" />
               Copy to Clipboard
             </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={handleExportJSON}>
+            <Button variant="outline" className="w-full justify-start" onClick={handleExportJSON} data-testid="export-json-button">
               <FileText className="mr-2 h-4 w-4" />
               Export as JSON
             </Button>
-            <Button variant="outline" className="w-full justify-start" onClick={onExport}>
+            <Button variant="outline" className="w-full justify-start" onClick={onExport} data-testid="export-text-button">
               <Download className="mr-2 h-4 w-4" />
               Export as Text
             </Button>
@@ -403,7 +405,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
 
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button variant="destructive" size="sm">
+          <Button variant="destructive" size="sm" data-testid="clear-deck-button">
             <Trash2 className="mr-2" />
             Clear
           </Button>
@@ -417,7 +419,7 @@ export function ImportExportControls({ onImport, onExport, onClear, onSave, isDe
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={onClear}>Clear Deck</AlertDialogAction>
+            <AlertDialogAction onClick={onClear} data-testid="confirm-clear-button">Clear Deck</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

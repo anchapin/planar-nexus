@@ -108,6 +108,7 @@ export function CardSearch({ onAddCard }: CardSearchProps) {
           aria-label="Search cards by name"
           aria-describedby="search-hint"
           disabled={isInitializing}
+          data-testid="card-search-input"
         />
       </div>
 
@@ -168,6 +169,7 @@ export function CardSearch({ onAddCard }: CardSearchProps) {
                 className="relative aspect-[5/7] w-full transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation"
                 title={`Add ${card.name} to deck`}
                 aria-label={`Add ${card.name} to deck`}
+                data-testid={`card-result-${card.name.toLowerCase().replace(/\s+/g, '-')}`}
               >
                 {card.image_uris?.large || card.image_uris?.normal ? (
                   <Image

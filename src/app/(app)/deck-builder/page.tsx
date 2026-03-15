@@ -5,7 +5,7 @@ import { useState, useTransition, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
-import { type Format } from "@/lib/game-rules";
+import { formatRules, getGameModeIdFromFormatName, type Format } from "@/lib/game-rules";
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
@@ -61,7 +61,8 @@ export default function DeckBuilderPage() {
   }
 
   const addCardToDeck = (card: ScryfallCard) => {
-    const rules = formatRules[format as keyof typeof formatRules];
+    const gameModeId = getGameModeIdFromFormatName(format);
+    const rules = formatRules[gameModeId as keyof typeof formatRules];
 
     handleDeckChange((prevDeck) => {
       const existingCard = prevDeck.find((c) => c.id === card.id);
@@ -119,7 +120,7 @@ export default function DeckBuilderPage() {
     });
   };
 
-  const importDeck = (decklist: string, format?: 'standard' | 'mtgo' | 'json') => {
+  const importDeck = (decklist: string, decklistFormat?: 'standard' | 'mtgo' | 'json') => {
     if (!decklist.trim()) {
         toast({
             variant: "destructive",
@@ -131,7 +132,7 @@ export default function DeckBuilderPage() {
     setActiveDeckId(null);
     startImportTransition(async () => {
         try {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, format, format);
+            const { found, notFound, illegal } = await importDecklistClient(decklist, decklistFormat, format);
 
             if (found.length > 0) {
                 setDeck(found);
@@ -256,7 +257,7 @@ export default function DeckBuilderPage() {
           <div className="flex items-center gap-2">
             <Label htmlFor="format-select" className="text-muted-foreground">Format</Label>
             <Select value={format} onValueChange={handleFormatChange}>
-                <SelectTrigger id="format-select" className="w-40 capitalize">
+                <SelectTrigger id="format-select" data-testid="format-select" className="w-40 capitalize">
                     <SelectValue placeholder="Select format" />
                 </SelectTrigger>
                 <SelectContent>

@@ -53,7 +53,7 @@ export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard }: Dec
             onChange={(e) => onDeckNameChange(e.target.value)}
         />
         <CardDescription>
-          {totalCards} cards
+          <span data-testid="deck-count">{totalCards} cards</span>
         </CardDescription>
       </CardHeader>
       <Separator />
@@ -73,7 +73,7 @@ export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard }: Dec
                                 <h4 className="font-semibold text-muted-foreground mb-2">{category} ({categoryCount})</h4>
                                 <ul className="space-y-1">
                                     {categorizedDeck[category].sort((a: DeckCard, b: DeckCard) => a.name.localeCompare(b.name)).map(card => (
-                                        <li key={card.id} className="group flex items-center justify-between text-sm p-1 rounded-md hover:bg-secondary">
+                                        <li key={card.id} className="group flex items-center justify-between text-sm p-1 rounded-md hover:bg-secondary" data-testid={`deck-item-${card.name.toLowerCase().replace(/\s+/g, '-')}`}>
                                             <span>{card.count}x {card.name}</span>
                                             <Button variant="ghost" size="icon" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => onRemoveCard(card.id)}>
                                                 <MinusCircle className="size-4 text-destructive"/>
