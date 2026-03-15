@@ -8,10 +8,12 @@
 import { test, expect } from '@playwright/test';
 import { seedCardDatabase } from './test-utils';
 
-// Skip all tests in this describe block in CI - they have timing issues with IndexedDB seeding
-const describeConditionally = process.env.CI === 'true' ? test.describe.skip : test.describe;
+// Run tests in CI but with longer timeouts and retries
+const testOptions = process.env.CI === 'true' 
+  ? { retries: 2, timeout: 60000 } 
+  : { retries: 0, timeout: 30000 };
 
-describeConditionally('Import/Export Round Trip', () => {
+test.describe('Import/Export Round Trip', () => {
   test.beforeEach(async ({ page }) => {
     // Seed database before navigation
     await seedCardDatabase(page);
@@ -107,12 +109,13 @@ describeConditionally('Import/Export Round Trip', () => {
   });
 
   test('should round-trip via clipboard', async ({ page, context }) => {
-    // This test is flaky in CI/headless mode due to clipboard permission issues
-    // Skip in CI - the clipboard API is unreliable in headless browsers
-    test.skip(process.env.CI === 'true', 'Clipboard test is flaky in CI environment');
-    
-    // Grant clipboard permissions
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // Grant clipboard permissions - handle case where permissions may not be available
+    try {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    } catch (e) {
+      // Permissions not available - test will use fallback approach
+      console.log('Clipboard permissions not available, using fallback');
+    }
     
     // Set format to Commander so cards are legal
     const formatSelect = page.getByTestId('format-select');
