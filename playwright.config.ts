@@ -59,36 +59,13 @@ export default defineConfig({
   },
   
   // Configure projects for major browsers
+  // Only run Chromium in CI/local environments since other browsers may not be installed
   projects: [
     {
       name: 'chromium',
       use: { 
         // Test against Chromium
         channel: 'chromium',
-      },
-    },
-    
-    // Test against Firefox
-    {
-      name: 'firefox',
-      use: { 
-        channel: 'firefox',
-      },
-    },
-    
-    // Test against WebKit (Safari)
-    {
-      name: 'webkit',
-      use: { 
-        channel: 'chrome', // Use Chrome as WebKit proxy for local testing
-      },
-    },
-    
-    // Test against Microsoft Edge
-    {
-      name: 'Microsoft Edge',
-      use: { 
-        channel: 'msedge',
       },
     },
   ],
