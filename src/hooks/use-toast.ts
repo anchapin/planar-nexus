@@ -11,7 +11,7 @@ import type {
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
 
-type ToasterToast = ToastProps & {
+type ToasterToast = Omit<ToastProps, "title" | "description"> & {
   id: string
   title?: React.ReactNode
   description?: React.ReactNode
@@ -142,7 +142,10 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id" | "title" | "description"> & {
+  title?: React.ReactNode
+  description?: React.ReactNode
+}
 
 function toast({ ...props }: Toast) {
   const id = genId()
