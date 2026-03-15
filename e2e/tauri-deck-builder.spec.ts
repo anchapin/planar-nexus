@@ -20,15 +20,23 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const execAsync = promisify(exec);
+// Create execAsync with shell option - use bash if available, fall back to sh
+const execWithShell = async (command: string, options?: any): Promise<{ stdout: string; stderr: string }> => {
+  const execAsync = promisify(exec);
+  const shellOptions = {
+    ...options,
+    shell: process.env.SHELL || '/bin/bash',
+  };
+  return execAsync(command, shellOptions);
+};
+
+// Use execWithShell instead of execAsync for all commands
+const execAsync = execWithShell;
 
 // Configuration
 const APP_NAME = 'planar-nexus';
 // Base path - use env var or default to local dev path
 const BASE_PATH = process.env.APP_PATH || '/home/alex/Projects/planar-nexus';
-
-// Use /usr/bin/sh which is available in Docker containers
-const shellPath = '/usr/bin/sh';
 
 test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () => {
   test.skip(process.platform !== 'linux', 'This test only runs on Linux');
