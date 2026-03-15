@@ -28,6 +28,7 @@ describeConditionally('Import/Export Round Trip', () => {
       const text = await deckCount.textContent();
       if (text && !text.includes('0 cards')) {
         await clearButton.click();
+        await page.waitForLoadState('networkidle');
         const confirmClear = page.getByTestId('confirm-clear-button');
         await expect(confirmClear).toBeVisible();
         await confirmClear.click();
