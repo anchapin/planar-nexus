@@ -1,0 +1,92 @@
+[
+  {
+    "id": "lightning-bolt-id",
+    "name": "Lightning Bolt",
+    "cmc": 1,
+    "type_line": "Instant",
+    "colors": ["R"],
+    "color_identity": ["R"],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  },
+  {
+    "id": "mountain-id",
+    "name": "Mountain",
+    "cmc": 0,
+    "type_line": "Basic Land — Mountain",
+    "colors": [],
+    "color_identity": ["R"],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  },
+  {
+    "id": "island-id",
+    "name": "Island",
+    "cmc": 0,
+    "type_line": "Basic Land — Island",
+    "colors": [],
+    "color_identity": ["U"],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  },
+  {
+    "id": "sol-ring-id",
+    "name": "Sol Ring",
+    "cmc": 1,
+    "type_line": "Artifact",
+    "colors": [],
+    "color_identity": [],
+    "legalities": { "commander": "legal", "standard": "illegal" }
+  },
+  {
+    "id": "arcane-signet-id",
+    "name": "Arcane Signet",
+    "cmc": 2,
+    "type_line": "Artifact",
+    "colors": [],
+    "color_identity": [],
+    "legalities": { "commander": "legal", "standard": "illegal" }
+  },
+  {
+    "id": "command-tower-id",
+    "name": "Command Tower",
+    "cmc": 0,
+    "type_line": "Land",
+    "colors": [],
+    "color_identity": [],
+    "legalities": { "commander": "legal", "standard": "illegal" }
+  },
+  {
+    "id": "counterspell-id",
+    "name": "Counterspell",
+    "cmc": 2,
+    "type_line": "Instant",
+    "colors": ["U"],
+    "color_identity": ["U"],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  },
+  {
+    "id": "lightning-greaves-id",
+    "name": "Lightning Greaves",
+    "cmc": 2,
+    "type_line": "Artifact — Equipment",
+    "colors": [],
+    "color_identity": [],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  },
+  {
+    "id": "cultivate-id",
+    "name": "Cultivate",
+    "cmc": 3,
+    "type_line": "Sorcery",
+    "colors": ["G"],
+    "color_identity": ["G"],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  },
+  {
+    "id": "terror-id",
+    "name": "Terror",
+    "cmc": 2,
+    "type_line": "Instant",
+    "colors": ["B"],
+    "color_identity": ["B"],
+    "legalities": { "commander": "legal", "standard": "legal" }
+  }
+]

@@ -10,6 +10,9 @@ export default defineConfig({
   // Directory containing E2E tests
   testDir: './e2e',
   
+  // Ignore Tauri tests - they require root for .deb installation
+  testIgnore: '**/tauri-deck-builder.spec.ts',
+  
   // Timeout for individual tests (30 seconds)
   timeout: 30000,
   
