@@ -21,12 +21,12 @@ test.describe('Multiplayer Lobby', () => {
   });
 
   test('should navigate to host page', async ({ page }) => {
-    await page.click('text=Create Lobby');
+    await page.click('a:has-text("Create Lobby")');
     await expect(page).toHaveURL(/.*multiplayer\/host/);
   });
 
   test('should navigate to browse page', async ({ page }) => {
-    await page.click('text=Browse Public Games');
+    await page.click('a:has-text("Browse Public Games")');
     await expect(page).toHaveURL(/.*multiplayer\/browse/);
   });
 });
