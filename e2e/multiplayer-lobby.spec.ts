@@ -6,26 +6,26 @@ test.describe('Multiplayer Lobby', () => {
   });
 
   test('should load multiplayer page', async ({ page }) => {
-    await expect(page.locator(`h1`)).toContainText(/Multiplayer/i);
+    await expect(page.locator('h1').filter({ hasText: /Multiplayer/i })).toBeVisible();
   });
 
   test('should show host game option', async ({ page }) => {
-    const hostButton = page.locator(`text=Host, a[href*="host"]`).first();
+    const hostButton = page.locator('text=Create Lobby').first();
     await expect(hostButton).toBeVisible();
   });
 
   test('should show join game option', async ({ page }) => {
-    const joinButton = page.locator(`text=Join, a[href*="browse"]`).first();
+    const joinButton = page.locator('text=Browse Public Games').first();
     await expect(joinButton).toBeVisible();
   });
 
   test('should navigate to host page', async ({ page }) => {
-    await page.click('text=Host');
+    await page.click('text=Create Lobby');
     await expect(page).toHaveURL(/.*multiplayer\/host/);
   });
 
   test('should navigate to browse page', async ({ page }) => {
-    await page.click('text=Join');
+    await page.click('text=Browse Public Games');
     await expect(page).toHaveURL(/.*multiplayer\/browse/);
   });
 });
