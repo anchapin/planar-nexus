@@ -6,17 +6,16 @@ test.describe('Multiplayer Lobby', () => {
   });
 
   test('should load multiplayer page', async ({ page }) => {
-    // Use getByRole to get the page heading specifically (not sidebar)
-    await expect(page.getByRole('heading', { name: /Multiplayer/i, level: 1 })).toBeVisible();
+    await expect(page.locator('h1').filter({ hasText: /Multiplayer/i })).toBeVisible();
   });
 
   test('should show host game option', async ({ page }) => {
-    const hostButton = page.locator(`text=Create Lobby`).first();
+    const hostButton = page.locator('a[href*="/multiplayer/host"] button, a:has-text("Create Lobby")').first();
     await expect(hostButton).toBeVisible();
   });
 
   test('should show join game option', async ({ page }) => {
-    const joinButton = page.locator(`text=Browse Public Games`).first();
+    const joinButton = page.locator('a[href*="/multiplayer/browse"] button, a:has-text("Browse Public Games")').first();
     await expect(joinButton).toBeVisible();
   });
 
