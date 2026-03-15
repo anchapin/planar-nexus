@@ -441,38 +441,38 @@ export function createGameAction(
  * Generate human-readable description for an action
  */
 export function describeAction(action: GameAction, playerName: string): string {
-  const { type, data: actionData } = action;
-  const data = actionData as any;
+  const { type, data } = action;
+  const actionData = data as Record<string, unknown>;
 
   switch (type) {
     case 'cast_spell':
-      return `${playerName} cast ${data.cardName || 'a spell'}`;
+      return `${playerName} cast ${(actionData.cardName as string) || 'a spell'}`;
     case 'activate_ability':
-      return `${playerName} activated ${data.abilityName || 'an ability'}`;
+      return `${playerName} activated ${(actionData.abilityName as string) || 'an ability'}`;
     case 'play_land':
       return `${playerName} played a land`;
     case 'draw_card':
       return `${playerName} drew a card`;
     case 'discard_card':
-      return `${playerName} discarded ${data.cardName || 'a card'}`;
+      return `${playerName} discarded ${(actionData.cardName as string) || 'a card'}`;
     case 'declare_attackers':
       return `${playerName} declared attackers`;
     case 'declare_blockers':
       return `${playerName} declared blockers`;
     case 'tap_card':
-      return `${playerName} tapped ${data.cardName || 'a card'}`;
+      return `${playerName} tapped ${(actionData.cardName as string) || 'a card'}`;
     case 'untap_card':
-      return `${playerName} untapped ${data.cardName || 'a card'}`;
+      return `${playerName} untapped ${(actionData.cardName as string) || 'a card'}`;
     case 'destroy_card':
-      return `${data.cardName || 'A card'} was destroyed`;
+      return `${(actionData.cardName as string) || 'A card'} was destroyed`;
     case 'exile_card':
-      return `${data.cardName || 'A card'} was exiled`;
+      return `${(actionData.cardName as string) || 'A card'} was exiled`;
     case 'gain_life':
-      return `${playerName} gained ${data.amount || 0} life`;
+      return `${playerName} gained ${(actionData.amount as number) || 0} life`;
     case 'lose_life':
-      return `${playerName} lost ${data.amount || 0} life`;
+      return `${playerName} lost ${(actionData.amount as number) || 0} life`;
     case 'deal_damage':
-      return `${playerName} dealt ${data.amount || 0} damage to ${data.target || 'target'}`;
+      return `${playerName} dealt ${(actionData.amount as number) || 0} damage to ${(actionData.target as string) || 'target'}`;
     case 'mulligan':
       return `${playerName} took a mulligan`;
     case 'concede':
