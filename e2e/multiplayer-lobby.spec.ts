@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Multiplayer Lobby', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/multiplayer');
+    // Wait for page to fully load before running assertions
+    await page.waitForLoadState('networkidle');
   });
 
   test('should load multiplayer page', async ({ page }) => {
@@ -11,24 +13,24 @@ test.describe('Multiplayer Lobby', () => {
   });
 
   test('should show host game option', async ({ page }) => {
-    const hostButton = page.locator(`text=Create Lobby`).first();
+    const hostButton = page.getByRole('link', { name: /create lobby/i });
     await expect(hostButton).toBeVisible();
   });
 
   test('should show join game option', async ({ page }) => {
-    const joinButton = page.locator(`text=Browse Public Games`).first();
+    const joinButton = page.getByRole('link', { name: /browse public games/i });
     await expect(joinButton).toBeVisible();
   });
 
   test('should navigate to host page', async ({ page }) => {
-    await page.click('a:has-text("Create Lobby")');
-    // Wait for navigation to complete
-    await page.waitForURL(/.*multiplayer\/host/, { timeout: 10000 });
+    await page.getByRole('link', { name: /create lobby/i }).click();
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/.*multiplayer\/host/);
   });
 
   test('should navigate to browse page', async ({ page }) => {
-    await page.click('a:has-text("Browse Public Games")');
-    // Wait for navigation to complete
-    await page.waitForURL(/.*multiplayer\/browse/, { timeout: 10000 });
+    await page.getByRole('link', { name: /browse public games/i }).click();
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/.*multiplayer\/browse/);
   });
 });
