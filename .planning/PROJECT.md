@@ -90,6 +90,16 @@ Measurable outcomes:
 
 ---
 
-**Created**: 2026-03-12  
-**Last Updated**: 2026-03-12  
-**Version**: 1.0.0
+## Current Milestone: v1.1 Polish & Stability Pass
+
+**Goal:** Fix known issues from v1.0 QA and improve overall quality
+
+**Target features:**
+- Fix 5 medium-priority bugs (test infrastructure, E2E selectors)
+- Fix 8 low-priority bugs (ESLint warnings, selectors, timing)
+- Cold start performance optimization (~10s → <5s)
+- Mobile responsiveness improvements
+- Keyboard shortcuts for deck builder
+
+**Version:** 1.1.0
+**Started:** 2026-03-16
