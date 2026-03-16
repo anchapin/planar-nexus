@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatRules } from "@/lib/game-rules";
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
