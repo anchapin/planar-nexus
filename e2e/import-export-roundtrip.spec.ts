@@ -28,6 +28,7 @@ describeConditionally('Import/Export Round Trip', () => {
       const text = await deckCount.textContent();
       if (text && !text.includes('0 cards')) {
         await clearButton.click();
+        await page.waitForLoadState('networkidle');
         const confirmClear = page.getByTestId('confirm-clear-button');
         await expect(confirmClear).toBeVisible();
         await confirmClear.click();
@@ -107,10 +108,6 @@ describeConditionally('Import/Export Round Trip', () => {
   });
 
   test('should round-trip via clipboard', async ({ page, context }) => {
-    // This test is flaky in CI/headless mode due to clipboard permission issues
-    // Skip in CI - the clipboard API is unreliable in headless browsers
-    test.skip(process.env.CI === 'true', 'Clipboard test is flaky in CI environment');
-    
     // Grant clipboard permissions
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     
@@ -165,24 +162,47 @@ describeConditionally('Import/Export Round Trip', () => {
     await page.getByTestId('export-deck-button').click();
     await page.getByTestId('export-copy-button').click();
     
-    // Wait a moment for clipboard write to complete
-    await page.waitForTimeout(1000);
+    // Wait for clipboard write with retry using page.evaluate
+    await page.waitForFunction(async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        return text.includes('Lightning Bolt') && text.includes('Sol Ring');
+      } catch {
+        return false;
+      }
+    }, { timeout: 10000 });
     
     // 3. Clear deck
     await page.getByTestId('clear-deck-button').click();
     await page.getByTestId('confirm-clear-button').click();
     await expect(page.getByTestId('deck-count')).toContainText('0 cards');
 
-    // 4. Import from clipboard
+    // 4. Import from clipboard - use page.evaluate to read clipboard with retry
     await page.getByTestId('import-deck-button').click();
-    await page.getByTestId('paste-deck-button').click();
     
-    // Wait for paste to complete (may need more time for clipboard read)
-    await page.waitForTimeout(2000);
+    // Read clipboard using evaluate with retry logic
+    let clipboardContent = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        clipboardContent = await page.evaluate(async () => {
+          return await navigator.clipboard.readText();
+        });
+        if (clipboardContent && clipboardContent.length > 0) {
+          break;
+        }
+      } catch (e) {
+        // Retry after delay
+        await page.waitForTimeout(500);
+      }
+    }
     
-    // Verify textarea has content from clipboard
+    // Verify we got clipboard content
+    expect(clipboardContent).toBeTruthy();
+    expect(clipboardContent.length).toBeGreaterThan(0);
+    
+    // Fill the textarea with clipboard content
     const textarea = page.getByTestId('import-textarea');
-    await expect(textarea).not.toBeEmpty({ timeout: 10000 });
+    await textarea.fill(clipboardContent);
     
     await page.getByTestId('confirm-import-button').click();
 
