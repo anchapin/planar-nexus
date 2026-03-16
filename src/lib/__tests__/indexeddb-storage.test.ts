@@ -468,5 +468,42 @@ describe('IndexedDB Storage', () => {
       // Note: This test is limited because we can't easily mock the actual migration
       // In a real scenario, you'd verify the data was moved
     });
+
+    it('should handle corrupted localStorage data gracefully', async () => {
+      // Mock localStorage with corrupted JSON
+      const originalLocalStorage = global.localStorage;
+      global.localStorage = {
+        getItem: (key: string) => {
+          if (key === 'planar_nexus_decks') {
+            return 'not valid json {';
+          }
+          return null;
+        },
+        setItem: () => {},
+        removeItem: () => {},
+        clear: () => {},
+      } as any;
+
+      // Should not throw
+      await expect(migrateFromLocalStorage()).resolves.not.toThrow();
+
+      // Restore localStorage
+      global.localStorage = originalLocalStorage;
+    });
+
+    it('should handle empty localStorage gracefully', async () => {
+      const originalLocalStorage = global.localStorage;
+      global.localStorage = {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+        clear: () => {},
+      } as any;
+
+      // Should not throw and handle empty case
+      await expect(migrateFromLocalStorage()).resolves.not.toThrow();
+
+      global.localStorage = originalLocalStorage;
+    });
   });
 });
