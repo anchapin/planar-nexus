@@ -24,6 +24,7 @@ import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai
 import { useGameEngine } from "@/hooks/use-game-engine";
 import type { CardInstanceId } from "@/lib/game-state/types";
 import { saveGameRecord, createGameRecord, type GameMode, type GameResult } from '@/lib/game-history';
+import { useAchievementTracking } from '@/hooks/use-achievement-tracking';
 
 // Type definitions for AI analysis results
 interface SuggestedPlay {
@@ -73,6 +74,7 @@ export default function GameBoardPage() {
   const [difficulty, setDifficulty] = useState('medium');
   const [aiTheme, setAiTheme] = useState('aggressive');
   const { toast } = useToast();
+  const { trackGameAchievements } = useAchievementTracking();
 
   // Get game mode from URL params on client side
   useEffect(() => {
@@ -341,6 +343,12 @@ export default function GameBoardPage() {
     });
     
     saveGameRecord(record);
+    
+    // Track achievements for this game
+    if (currentPlayerId) {
+      trackGameAchievements(currentPlayerId, gameState, result === 'win');
+    }
+    
     setGameResult({ result, life: player?.lifeTotal || 0, turns: gameState.turnNumber });
     setShowGameResult(true);
     
