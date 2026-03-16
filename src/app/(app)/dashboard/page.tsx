@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { ArrowRight, Bot, Library, Swords, Users } from 'lucide-react';
+import { ArrowRight, Bot, Library, Swords, Users, Eye } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -12,6 +12,7 @@ export default function DashboardPage() {
     'deck-coach': PlaceHolderImages.find((img) => img.id === 'deck-coach-promo'),
     'single-player': PlaceHolderImages.find((img) => img.id === 'single-player-promo'),
     'multiplayer': PlaceHolderImages.find((img) => img.id === 'multiplayer-promo'),
+    'spectator': PlaceHolderImages.find((img) => img.id === 'spectator-promo'),
   };
 
   const features = [
@@ -35,6 +36,13 @@ export default function DashboardPage() {
       icon: Swords,
       link: '/single-player',
       image: promoImages['single-player'],
+    },
+    {
+      title: 'Spectator Mode',
+      description: 'Watch two AI opponents battle it out with play-by-play commentary. Learn from the best strategies.',
+      icon: Eye,
+      link: '/spectator',
+      image: promoImages['spectator'],
     },
     {
       title: 'Multiplayer',
