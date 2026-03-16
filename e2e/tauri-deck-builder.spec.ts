@@ -31,14 +31,14 @@ const BASE_PATH = process.env.APP_PATH || '/home/alex/Projects/planar-nexus';
 const shellPath = '/usr/bin/sh';
 
 test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () => {
-  test.skip(process.platform !== 'linux', 'This test only runs on Linux');
+  test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test only runs on Linux and not in CI');
 
   let appPath: string;
 
   test.afterEach(async () => {
     // Kill any running instances
     try {
-      await execAsync(`pkill -f "${APP_NAME}" 2>/dev/null || true`);
+      await execAsync(`pkill -f "${APP_NAME}" 2>/dev/null || true`, { shell: shellPath });
     } catch {}
   });
 
@@ -55,6 +55,7 @@ test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () =>
         await execAsync('npm run build:linux:deb', {
           cwd: BASE_PATH,
           timeout: 600000, // 10 minutes
+          shell: shellPath,
         });
         console.log('Build completed');
       } catch (error: any) {
@@ -96,16 +97,16 @@ test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () =>
     console.log('Attempting to install package...');
     try {
       // Remove existing installation first
-      await execAsync(`dpkg -r ${APP_NAME} 2>/dev/null || true`);
+      await execAsync(`dpkg -r ${APP_NAME} 2>/dev/null || true`, { shell: shellPath });
       
       // Try to install with dpkg first
-      await execAsync(`dpkg -i "${appPath}"`);
+      await execAsync(`dpkg -i "${appPath}"`, { shell: shellPath });
       console.log('Package installed successfully via dpkg');
     } catch (error: any) {
       // If dpkg fails, try with apt-get (still likely to fail without root)
       try {
         console.log('dpkg failed, trying apt-get...');
-        await execAsync(`apt-get install -y "${appPath}"`);
+        await execAsync(`apt-get install -y "${appPath}"`, { shell: shellPath });
         console.log('Package installed via apt-get');
       } catch (aptError: any) {
         // Installation failed - likely due to permissions
@@ -118,7 +119,7 @@ test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () =>
 
     // Verify installation (if it succeeded)
     try {
-      const { stdout } = await execAsync(`dpkg -l ${APP_NAME}`);
+      const { stdout } = await execAsync(`dpkg -l ${APP_NAME}`, { shell: shellPath });
       if (stdout.includes(APP_NAME)) {
         console.log('Installation verified');
       }
@@ -133,6 +134,7 @@ test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () =>
     try {
       const appProcess = await execAsync(`"${APP_NAME}" &`, {
         cwd: '/usr/bin',
+        shell: shellPath,
       }).catch(() => null);
 
       // Wait for app to start
@@ -140,7 +142,7 @@ test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () =>
 
       // Check if app is running
       try {
-        const { stdout } = await execAsync(`pgrep -f "${APP_NAME}"`);
+        const { stdout } = await execAsync(`pgrep -f "${APP_NAME}"`, { shell: shellPath });
         console.log('App is running, PID:', stdout.trim());
         appLaunched = true;
       } catch {
