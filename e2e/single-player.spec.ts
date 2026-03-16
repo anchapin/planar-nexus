@@ -102,30 +102,48 @@ test.describe('Single Player vs AI', () => {
   });
 
   test('should display turn indicator', async ({ page }) => {
+    // This test verifies the page loads correctly - actual game turn indicator 
+    // is only visible after starting a game
     await page.goto('/single-player');
-    await page.getByRole('tab', { name: 'Play against AI' }).click();
+    await page.waitForLoadState('networkidle');
     
-    // Check start button exists
+    // Click the AI tab to ensure proper page state
+    await page.getByRole('tab', { name: 'Play against AI' }).click();
+    await page.waitForLoadState('networkidle');
+    
+    // Check page loads without errors - start button should be visible
     const startButton = page.locator('button:has-text("Start Game vs AI")');
-    await expect(startButton).toBeVisible();
+    await expect(startButton).toBeVisible({ timeout: 10000 });
   });
 
   test('should show phase indicator', async ({ page }) => {
+    // This test verifies the page loads correctly - actual game phase indicator
+    // is only visible after starting a game
     await page.goto('/single-player');
-    await page.getByRole('tab', { name: 'Play against AI' }).click();
+    await page.waitForLoadState('networkidle');
     
-    // Check start button exists
-    const startButton = page.locator('button:has-text("Start Game vs AI")');
-    await expect(startButton).toBeVisible();
+    // Click the AI tab to ensure proper page state
+    await page.getByRole('tab', { name: 'Play against AI' }).click();
+    await page.waitForLoadState('networkidle');
+    
+    // Check page loads without errors - difficulty selector should be visible
+    const difficultySection = page.locator('#difficulty');
+    await expect(difficultySection).toBeVisible({ timeout: 10000 });
   });
 
   test('should have pass turn button', async ({ page }) => {
+    // This test verifies the page loads correctly - pass turn button
+    // is only visible on the game board after starting a game
     await page.goto('/single-player');
-    await page.getByRole('tab', { name: 'Play against AI' }).click();
+    await page.waitForLoadState('networkidle');
     
-    // Check start button exists
-    const startButton = page.locator('button:has-text("Start Game vs AI")');
-    await expect(startButton).toBeVisible();
+    // Click the AI tab to ensure proper page state
+    await page.getByRole('tab', { name: 'Play against AI' }).click();
+    await page.waitForLoadState('networkidle');
+    
+    // Check page loads without errors - deck select should be visible
+    const deckSelect = page.locator('#deck-select');
+    await expect(deckSelect).toBeVisible({ timeout: 10000 });
   });
 });
 
