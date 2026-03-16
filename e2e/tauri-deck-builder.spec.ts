@@ -21,13 +21,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Create execAsync with shell option - use bash if available, fall back to sh
+const shellPath = process.env.SHELL || '/bin/bash';
 const execWithShell = async (command: string, options?: any): Promise<{ stdout: string; stderr: string }> => {
   const execAsync = promisify(exec);
   const shellOptions = {
     ...options,
-    shell: process.env.SHELL || '/bin/bash',
+    shell: shellPath,
   };
-  return execAsync(command, shellOptions);
+  const result = await execAsync(command, shellOptions);
+  return {
+    stdout: result.stdout?.toString() || '',
+    stderr: result.stderr?.toString() || '',
+  };
 };
 
 // Use execWithShell instead of execAsync for all commands
@@ -46,7 +51,7 @@ test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test 
   test.afterEach(async () => {
     // Kill any running instances
     try {
-      await execAsync(`pkill -f "${APP_NAME}" 2>/dev/null || true`, { shell: shellPath });
+      await execAsync(`pkill -f "${APP_NAME}" 2>/dev/null || true`, );
     } catch {}
   });
 
@@ -54,7 +59,7 @@ test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test 
     // Check if Cargo/Rust is available before attempting build
     let cargoAvailable = false;
     try {
-      await execAsync('cargo --version', { shell: shellPath });
+      await execAsync('cargo --version', );
       cargoAvailable = true;
     } catch {
       console.log('Cargo/Rust not available - will skip Tauri build and test via dev server');
@@ -120,16 +125,16 @@ test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test 
     console.log('Attempting to install package...');
     try {
       // Remove existing installation first
-      await execAsync(`dpkg -r ${APP_NAME} 2>/dev/null || true`, { shell: shellPath });
+      await execAsync(`dpkg -r ${APP_NAME} 2>/dev/null || true`, );
       
       // Try to install with dpkg first
-      await execAsync(`dpkg -i "${appPath}"`, { shell: shellPath });
+      await execAsync(`dpkg -i "${appPath}"`, );
       console.log('Package installed successfully via dpkg');
     } catch (error: any) {
       // If dpkg fails, try with apt-get (still likely to fail without root)
       try {
         console.log('dpkg failed, trying apt-get...');
-        await execAsync(`apt-get install -y "${appPath}"`, { shell: shellPath });
+        await execAsync(`apt-get install -y "${appPath}"`, );
         console.log('Package installed via apt-get');
       } catch (aptError: any) {
         // Installation failed - likely due to permissions
@@ -142,7 +147,7 @@ test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test 
 
     // Verify installation (if it succeeded)
     try {
-      const { stdout } = await execAsync(`dpkg -l ${APP_NAME}`, { shell: shellPath });
+      const { stdout } = await execAsync(`dpkg -l ${APP_NAME}`, );
       if (stdout.includes(APP_NAME)) {
         console.log('Installation verified');
       }
@@ -165,7 +170,7 @@ test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test 
 
       // Check if app is running
       try {
-        const { stdout } = await execAsync(`pgrep -f "${APP_NAME}"`, { shell: shellPath });
+        const { stdout } = await execAsync(`pgrep -f "${APP_NAME}"`, );
         console.log('App is running, PID:', stdout.trim());
         appLaunched = true;
       } catch {

@@ -8,10 +8,10 @@
 
 import { useCallback } from 'react';
 import { achievementManager } from '@/lib/achievements';
-import type { GameState } from '@/lib/game-state/types';
+import type { GameState as UIGameState } from '@/types/game';
 
 export interface AchievementTriggerContext {
-  gameState: GameState;
+  gameState: UIGameState;
   won: boolean;
 }
 
@@ -28,7 +28,7 @@ export function useAchievementTracking(playerId: string) {
     const { gameState, won } = context;
     
     // Use the built-in game achievement checker
-    await achievementManager.checkGameAchievements(playerId, gameState, won);
+    await achievementManager.checkGameAchievements(playerId, gameState as any, won);
   }, [playerId]);
 
   /**

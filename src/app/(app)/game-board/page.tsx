@@ -74,7 +74,8 @@ export default function GameBoardPage() {
   const [difficulty, setDifficulty] = useState('medium');
   const [aiTheme, setAiTheme] = useState('aggressive');
   const { toast } = useToast();
-  const { trackGameAchievements } = useAchievementTracking();
+  // Use player-2 as default for achievement tracking since this is a self-play game
+  const { onGameEnd, trackCollectionAchievements } = useAchievementTracking("player-2");
 
   // Get game mode from URL params on client side
   useEffect(() => {
@@ -345,9 +346,7 @@ export default function GameBoardPage() {
     saveGameRecord(record);
     
     // Track achievements for this game
-    if (currentPlayerId) {
-      trackGameAchievements(currentPlayerId, gameState, result === 'win');
-    }
+    onGameEnd({ gameState, won: result === 'win' });
     
     setGameResult({ result, life: player?.lifeTotal || 0, turns: gameState.turnNumber });
     setShowGameResult(true);
