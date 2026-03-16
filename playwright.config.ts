@@ -56,13 +56,25 @@ export default defineConfig({
   },
   
   // Configure projects for major browsers
-  // Only run Chromium in CI/local environments since other browsers may not be installed
+  // Firefox and WebKit now installed for cross-browser testing
   projects: [
     {
       name: 'chromium',
       use: { 
         // Test against Chromium
         channel: 'chromium',
+      },
+    },
+    {
+      name: 'firefox',
+      use: { 
+        // Test against Firefox - don't specify channel for installed browsers
+      },
+    },
+    {
+      name: 'webkit',
+      use: { 
+        // Test against WebKit - don't specify channel for installed browsers
       },
     },
   ],
