@@ -107,10 +107,6 @@ describeConditionally('Import/Export Round Trip', () => {
   });
 
   test('should round-trip via clipboard', async ({ page, context }) => {
-    // This test is flaky in CI/headless mode due to clipboard permission issues
-    // Skip in CI - the clipboard API is unreliable in headless browsers
-    test.skip(process.env.CI === 'true', 'Clipboard test is flaky in CI environment');
-    
     // Grant clipboard permissions
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     
@@ -165,8 +161,8 @@ describeConditionally('Import/Export Round Trip', () => {
     await page.getByTestId('export-deck-button').click();
     await page.getByTestId('export-copy-button').click();
     
-    // Wait a moment for clipboard write to complete
-    await page.waitForTimeout(1000);
+    // Wait for toast to confirm clipboard write completed
+    await expect(page.getByText('Copied to clipboard')).toBeVisible({ timeout: 10000 });
     
     // 3. Clear deck
     await page.getByTestId('clear-deck-button').click();
@@ -177,8 +173,8 @@ describeConditionally('Import/Export Round Trip', () => {
     await page.getByTestId('import-deck-button').click();
     await page.getByTestId('paste-deck-button').click();
     
-    // Wait for paste to complete (may need more time for clipboard read)
-    await page.waitForTimeout(2000);
+    // Wait for toast to confirm clipboard read completed
+    await expect(page.getByText('Pasted from clipboard')).toBeVisible({ timeout: 10000 });
     
     // Verify textarea has content from clipboard
     const textarea = page.getByTestId('import-textarea');
