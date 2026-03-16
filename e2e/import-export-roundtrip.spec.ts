@@ -8,10 +8,12 @@
 import { test, expect } from '@playwright/test';
 import { seedCardDatabase } from './test-utils';
 
-// Skip all tests in this describe block in CI - they have timing issues with IndexedDB seeding
-const describeConditionally = process.env.CI === 'true' ? test.describe.skip : test.describe;
+// Run tests in CI but with longer timeouts and retries
+const testOptions = process.env.CI === 'true' 
+  ? { retries: 2, timeout: 60000 } 
+  : { retries: 0, timeout: 30000 };
 
-describeConditionally('Import/Export Round Trip', () => {
+test.describe('Import/Export Round Trip', () => {
   test.beforeEach(async ({ page }) => {
     // Seed database before navigation
     await seedCardDatabase(page);
@@ -159,6 +161,7 @@ describeConditionally('Import/Export Round Trip', () => {
     await expect(page.getByTestId('deck-item-sol-ring')).toBeVisible({ timeout: 5000 });
 
     // 2. Export to clipboard
+    // Use page.evaluate to ensure clipboard API is called in the right context
     await page.getByTestId('export-deck-button').click();
     await page.getByTestId('export-copy-button').click();
     
