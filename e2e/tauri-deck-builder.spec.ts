@@ -31,8 +31,7 @@ const BASE_PATH = process.env.APP_PATH || '/home/alex/Projects/planar-nexus';
 const shellPath = '/usr/bin/sh';
 
 test.describe.serial('Tauri Desktop App - Linux Installer & Deck Builder', () => {
-  // Note: Test is no longer skipped in CI - it will run via dev server
-  // Tauri-specific build/install tests will skip gracefully if tools unavailable
+test.skip(process.platform !== 'linux' || process.env.CI === 'true', 'This test only runs on Linux and not in CI');
 
   let appPath: string;
 
