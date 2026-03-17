@@ -231,6 +231,10 @@ export class IndexedDBStorage {
             } else if (storeName === 'usage-tracking') {
               store.createIndex('provider', 'provider', { unique: false });
               store.createIndex('timestamp', 'timestamp', { unique: false });
+            } else if (storeName === 'game-history') {
+              store.createIndex('date', 'date', { unique: false });
+              store.createIndex('result', 'result', { unique: false });
+              store.createIndex('mode', 'mode', { unique: false });
             }
           }
         }
@@ -605,8 +609,8 @@ export class IndexedDBStorage {
  */
 const DEFAULT_STORAGE_CONFIG: StorageConfig = {
   dbName: 'PlanarNexusStorage',
-  version: 1,
-  stores: ['decks', 'saved-games', 'preferences', 'usage-tracking', 'achievements'],
+  version: 2,
+  stores: ['decks', 'saved-games', 'preferences', 'usage-tracking', 'achievements', 'game-history'],
 };
 
 /**
@@ -635,10 +639,34 @@ export async function getStorage(): Promise<IndexedDBStorage> {
 }
 
 /**
+ * Migrate game history from localStorage to IndexedDB
+ */
+export async function migrateGameHistoryToIndexedDB(storageInstance?: IndexedDBStorage): Promise<void> {
+  const storage = storageInstance || await getStorage();
+  const gameHistoryKey = 'planar-nexus-game-history';
+  const gameHistoryData = localStorage.getItem(gameHistoryKey);
+
+  if (gameHistoryData) {
+    try {
+      const gameHistory = JSON.parse(gameHistoryData);
+      if (Array.isArray(gameHistory)) {
+        await storage.setAll('game-history', gameHistory);
+        // localStorage.removeItem(gameHistoryKey);
+      }
+    } catch (error) {
+      console.error('Failed to migrate game history:', error);
+    }
+  }
+}
+
+/**
  * Migrate data from localStorage to IndexedDB
  */
 export async function migrateFromLocalStorage(): Promise<void> {
   const storage = await getStorage();
+
+  // Migrate game history
+  await migrateGameHistoryToIndexedDB();
 
   // Migrate decks
   const decksKey = 'planar_nexus_decks';
