@@ -1,59 +1,73 @@
-# Planar Nexus — Roadmap
-
-## Milestones
-
-- ✅ **v1.0 MVP** — Phases 1-3 (shipped 2026-03-12) — [Archive](.planning/milestones/v1.0-ROADMAP.md)
-- ✅ **v1.1 Polish & Stability Pass** — Phases 1-5 (shipped 2026-03-17) — [Archive](.planning/milestones/v1.1-ROADMAP.md)
-- 🚧 **v1.2 Custom Card Creation** — Phases 6-8 (in progress)
-- 📋 **v2.0 Cloud Sync** — Phases 9-10 (planned)
-
----
+# Planar Nexus — Roadmap (v1.2 AI Intelligence & Advanced Coaching)
 
 ## Phases
 
-<details>
-<summary>✅ v1.1 Polish & Stability Pass (Phases 1-5) — SHIPPED 2026-03-17</summary>
+- [ ] **Phase 6: Multi-Provider LLM & Streaming Infrastructure** - Implement Vercel AI SDK with multi-model support and SSE streaming.
+- [ ] **Phase 7: Local Intelligence Foundation** - Integrate Orama and Transformers.js for offline-first RAG and vector search.
+- [ ] **Phase 8: AI Deck Assistant UX** - Build proactive card suggestion UI with real-time synergy explanations.
+- [ ] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
+- [ ] **Phase 10: Expert Opponent AI Refinement** - Tune heuristic weights and stack interaction logic for high-level play.
 
-- [x] Phase 1: Test Infrastructure (3/3 plans) — completed 2026-03-16
-- [x] Phase 2: E2E Test Stabilization (5/5 plans) — completed 2026-03-17
-- [x] Phase 3: Code Quality (5/5 plans) — completed 2026-03-17
-- [x] Phase 4: Performance Optimization (3/3 plans) — completed 2026-03-17
-- [x] Phase 5: UX Enhancements (2/2 plans) — completed 2026-03-17
+## Progress Table
 
-</details>
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 6. Multi-Provider LLM & Streaming | 0/0 | Not started | - |
+| 7. Local Intelligence Foundation | 0/0 | Not started | - |
+| 8. AI Deck Assistant UX | 0/0 | Not started | - |
+| 9. Adaptive Coaching & Player History | 0/0 | Not started | - |
+| 10. Expert Opponent AI Refinement | 0/0 | Not started | - |
 
-<details>
-<summary>✅ v1.0 MVP (Phases 1-3) — SHIPPED 2026-03-12</summary>
+## Phase Details
 
-- [x] Phase 1: Core Foundation (6/6 plans) — completed 2026-03-12
-- [x] Phase 2: AI Enhancement (5/5 plans) — completed 2026-03-12
-- [x] Phase 3: Polish & Release (5/5 plans) — completed 2026-03-12
+### Phase 6: Multi-Provider LLM & Streaming Infrastructure
+**Goal**: Users experience near-instant, reliable AI responses from their preferred provider.
+**Depends on**: Phase 5 (v1.1 Completion)
+**Requirements**: REQ-9.1, REQ-9.2, REQ-9.3, REQ-T6
+**Success Criteria**:
+1. User can switch between OpenAI, Anthropic, and Google Gemini in settings and receive responses from the selected provider.
+2. AI responses begin appearing in the UI within 500ms of the request (streaming).
+3. AI Coach functions in basic heuristic mode when the user is offline or the API is unavailable.
+4. The AI can answer questions about specific cards by searching the local database (via MCP bridge).
+**Plans**: TBD
 
-</details>
+### Phase 7: Local Intelligence Foundation
+**Goal**: The application has a high-performance local search and embedding engine that understands card synergies.
+**Depends on**: Phase 6
+**Requirements**: REQ-10.1, REQ-10.2, REQ-10.3, REQ-T5
+**Success Criteria**:
+1. Card database is indexed into Orama on first launch with no visible UI lag (background worker).
+2. Local vector search for "synergistic cards" returns results in less than 50ms.
+3. Player history and generated embeddings persist across sessions via Dexie.js.
+4. Vectorization process consumes less than 20% CPU on average during initial indexing.
+**Plans**: TBD
 
-### 🚧 v1.2 Custom Card Creation (In Progress)
+### Phase 8: AI Deck Assistant UX
+**Goal**: Users receive helpful, real-time card suggestions that explain why they fit the current deck.
+**Depends on**: Phase 7
+**Requirements**: REQ-11.1, REQ-11.2
+**Success Criteria**:
+1. User sees a list of suggested cards that update in real-time as they add cards to their deck.
+2. User can click "Why this card?" and see a brief, streamed explanation of the synergy.
+3. Synergistic cards are visually highlighted in the main card browser when a deck is being edited.
+**Plans**: TBD
 
-**Goal**: Enable users to create and save custom cards with WYSIWYG editor
+### Phase 9: Adaptive Coaching & Player History
+**Goal**: The AI provides personalized advice based on the player's specific gameplay history and improvement over time.
+**Depends on**: Phase 7, Phase 8
+**Requirements**: REQ-12.1, REQ-12.2
+**Success Criteria**:
+1. User can view a "Coach Report" that summarizes their win/loss trends and common mistakes.
+2. The AI coach references specific past games or similar situations when giving advice.
+3. Opponent difficulty automatically suggests adjustments based on the player's recent performance.
+**Plans**: TBD
 
-- [ ] Phase 6: Card Studio Foundation (3 plans)
-- [ ] Phase 7: WYSIWYG Editor (4 plans)
-- [ ] Phase 8: Custom Card Integration (3 plans)
-
----
-
-## Progress
-
-| Phase             | Milestone | Plans Complete | Status      | Completed  |
-| ----------------- | --------- | -------------- | ----------- | ---------- |
-| 1. Test Infra     | v1.1      | 3/3            | Complete    | 2026-03-16 |
-| 2. E2E Stabilize  | v1.1      | 5/5            | Complete    | 2026-03-17 |
-| 3. Code Quality   | v1.1      | 5/5            | Complete    | 2026-03-17 |
-| 4. Performance    | v1.1      | 3/3            | Complete    | 2026-03-17 |
-| 5. UX Enhance     | v1.1      | 2/2            | Complete    | 2026-03-17 |
-| 6. Card Studio    | v1.2      | 0/3            | Not started | -          |
-| 7. WYSIWYG Ed     | v1.2      | 0/4            | Not started | -          |
-| 8. Integration    | v1.2      | 0/3            | Not started | -          |
-
----
-
-**Last Updated**: 2026-03-17 after v1.1 milestone completion
+### Phase 10: Expert Opponent AI Refinement
+**Goal**: High-level players face a challenging AI that handles complex stack interactions and multi-card synergies.
+**Depends on**: Phase 6
+**Requirements**: REQ-13.1, REQ-13.2
+**Success Criteria**:
+1. Expert AI successfully executes complex, multi-target "combos" or interactions defined in its logic.
+2. AI makes optimal "stack" decisions (e.g., responding to a player's removal spell with a protection spell).
+3. AI combat logic handles complex multi-blocker scenarios without obvious tactical blunders.
+**Plans**: TBD

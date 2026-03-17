@@ -1,63 +1,34 @@
----
-gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: AI Intelligence & Advanced Coaching
-status: planning
-last_updated: "2026-03-17T11:00:00.000Z"
-progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
----
+# Project State: Planar Nexus
 
-# Planar Nexus — Project State
-
-## Current Session
-
-**Date**: 2026-03-17
-**Status**: Defining requirements for v1.2 milestone
-**Active Milestone**: v1.2 - AI Intelligence & Advanced Coaching 🚧 PLANNING
-
----
-
-## v1.2: AI Intelligence & Advanced Coaching
-
-**Goal:** Build a comprehensive AI-powered card game experience with advanced coaching and adaptive opponents.
-
-**Features:**
-- Advanced LLM Integration (multi-provider, streaming, refined prompts)
-- AI Deck Assistant (proactive suggestions, synergy-aware building)
-- Adaptive Coaching (learned from player history and game results)
-- Improved Opponent AI (expert refinement, complex interaction support)
-
----
+## Project Reference
+- **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
+- **Current Focus**: v1.2 AI Intelligence & Advanced Coaching.
 
 ## Current Position
+- **Phase**: Phase 6: Multi-Provider LLM & Streaming Infrastructure
+- **Plan**: TBD
+- **Status**: ⚪ Not Started
+- **Progress**: [░░░░░░░░░░░░░░░░░░░░] 0%
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-03-17 — Milestone v1.2 started
+## Performance Metrics
+- **Test Stability**: 95%+ E2E pass rate (v1.1 baseline)
+- **Bundle Size**: 102KB (v1.1 baseline)
+- **AI Latency**: TBD (Target: <500ms for first chunk)
 
----
+## Accumulated Context
 
-## v1.1 (SHIPPED 2026-03-17)
+### Decisions
+- **Vercel AI SDK**: Chosen for multi-provider streaming support (v1.2).
+- **Orama**: Chosen for local vector search and hybrid RAG (v1.2).
+- **Transformers.js**: Chosen for browser-side embedding generation (v1.2).
+- **Dexie.js**: Chosen for persistent history and embedding storage (v1.2).
 
-Milestone v1.1 archived. See `.planning/milestones/v1.1-ROADMAP.md` for details.
+### Todos
+- [ ] Initialize Phase 6 planning (`/gsd:plan-phase 6`)
 
----
+### Blockers
+- None.
 
-## v1.0 (SHIPPED 2026-03-12)
-
-Milestone v1.0 archived. See `.planning/milestones/v1.0-ROADMAP.md` for details.
-
----
-
-## Project Summary
-
-**Vision**: Free open-source tabletop card game deck builder and tester with AI coaching
-
----
-
-**Last Updated**: 2026-03-17
+## Session Continuity
+- **Last Action**: Created roadmap for v1.2 milestone.
+- **Next Step**: Start planning for Phase 6.
