@@ -17,22 +17,15 @@ Planar Nexus provides:
 - **Primary**: Tabletop card game players (Commander, Standard, Modern formats)
 - **Secondary**: Content creators testing deck ideas
 
-## v1.2 Scope (In Progress)
+## v1.2 Scope: AI Intelligence & Advanced Coaching (In Progress)
 
-### Must-Have Features (v1.2)
-| ID | Feature | Priority |
-|----|---------|----------|
-| REQ-6 | Custom card studio foundation | P0 |
-| REQ-7 | WYSIWYG card editor | P0 |
-| REQ-8 | Integration of custom cards into decks and engine | P1 |
+**Goal:** Build a comprehensive AI-powered card game experience with advanced coaching and adaptive opponents.
 
-### Success Criteria
-✅ **User can create a custom card, add it to a deck, and playtest it in <5 minutes.**
-
-Measurable outcomes:
-- WYSIWYG editor supports at least 3 card layouts.
-- Custom artwork can be uploaded and rendered in the game board.
-- AI opponent can evaluate and play against custom cards.
+**Target features:**
+- **Advanced LLM Integration**: Multi-provider support (OpenAI, Anthropic, Google) with streaming responses and refined prompts.
+- **AI Deck Assistant**: Proactive card suggestions during construction based on archetype and synergy scores.
+- **Adaptive Coaching**: AI learns from player games and history to provide more personalized coaching.
+- **Improved Opponent AI**: Refined decision-making for expert difficulty and support for complex card interactions.
 
 ---
 
@@ -88,6 +81,6 @@ Measurable outcomes:
 
 ---
 
-**Current Milestone**: v1.2 Custom Card Creation Studio  
+**Current Milestone**: v1.2 AI Intelligence & Advanced Coaching  
 **Version**: 1.2.0  
 **Last Updated**: 2026-03-17 after v1.1 milestone completion

@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: Custom Card Creation Studio
+milestone_name: AI Intelligence & Advanced Coaching
 status: planning
 last_updated: "2026-03-17T11:00:00.000Z"
 progress:
-  total_phases: 3
+  total_phases: 0
   completed_phases: 0
-  total_plans: 10
+  total_plans: 0
   completed_plans: 0
 ---
 
@@ -16,31 +16,29 @@ progress:
 ## Current Session
 
 **Date**: 2026-03-17
-**Status**: Milestone v1.1 archived, starting v1.2 planning
-**Active Milestone**: v1.2 - Custom Card Creation Studio 🚧 PLANNING
+**Status**: Defining requirements for v1.2 milestone
+**Active Milestone**: v1.2 - AI Intelligence & Advanced Coaching 🚧 PLANNING
 
 ---
 
-## v1.2: Custom Card Creation Studio
+## v1.2: AI Intelligence & Advanced Coaching
 
-**Goal:** Enable users to create and playtest custom cards with a full WYSIWYG editor.
+**Goal:** Build a comprehensive AI-powered card game experience with advanced coaching and adaptive opponents.
 
 **Features:**
-- Phase 6: Card Studio Foundation (3 plans)
-- Phase 7: WYSIWYG Editor (4 plans)
-- Phase 8: Custom Card Integration (3 plans)
+- Advanced LLM Integration (multi-provider, streaming, refined prompts)
+- AI Deck Assistant (proactive suggestions, synergy-aware building)
+- Adaptive Coaching (learned from player history and game results)
+- Improved Opponent AI (expert refinement, complex interaction support)
 
 ---
 
-## v1.2 Phase Roadmap
+## Current Position
 
-| Phase | Plans | Status |
-|-------|-------|--------|
-| Phase 6: Card Studio Foundation | 3 | 📋 Planned |
-| Phase 7: WYSIWYG Editor | 4 | 📋 Planned |
-| Phase 8: Custom Card Integration | 3 | 📋 Planned |
-
-**Total:** 10 plans, 0% complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-17 — Milestone v1.2 started
 
 ---
 
@@ -59,20 +57,6 @@ Milestone v1.0 archived. See `.planning/milestones/v1.0-ROADMAP.md` for details.
 ## Project Summary
 
 **Vision**: Free open-source tabletop card game deck builder and tester with AI coaching
-
----
-
-## Current Position
-
-### Completed (v1.1)
-- ✅ Phase 1: Test Infrastructure (3/3 plans)
-- ✅ Phase 2: E2E Test Stabilization (5/5 plans)
-- ✅ Phase 3: Code Quality (5/5 plans)
-- ✅ Phase 4: Performance Optimization (3/3 plans)
-- ✅ Phase 5: UX Enhancements (2/2 plans)
-
-### In Progress (v1.2)
-- 📋 Phase 6: Card Studio Foundation (Planning)
 
 ---
 
