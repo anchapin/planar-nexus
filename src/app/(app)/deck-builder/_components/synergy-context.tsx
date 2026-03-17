@@ -110,12 +110,7 @@ export function SynergyProvider({
           }
 
           // 2. Query Orama for synergistic cards using the deck vector
-          // Note: searchByVector will be implemented in OramaManager
-          const searchResults = await oramaManager.search({
-            vector: deckVector,
-            limit: 40, // Get a surplus to account for filtering existing cards
-            similarity: 0.5,
-          });
+          const searchResults = await oramaManager.searchByVector(deckVector, 40);
 
           // 3. Process results: map scores and fetch full card data for suggestions
           const deckCardIds = new Set(deck.map(c => c.id));

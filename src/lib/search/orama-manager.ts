@@ -148,6 +148,17 @@ export class OramaManager {
 
     return await oramaSearch(orama, searchOptions);
   }
+
+  /**
+   * Performs vector-only search using Orama.
+   */
+  async searchByVector(vector: number[], limit: number = 20) {
+    return this.search({
+      vector,
+      limit,
+      similarity: 0.5,
+    });
+  }
 }
 
 export const oramaManager = new OramaManager();
