@@ -42,6 +42,13 @@ export interface AIAction {
   targetPlayerId?: PlayerId;
   parameters?: Record<string, unknown>;
   reasoning?: string;
+  // Multi-target support
+  targetIds?: string[];
+  // Variable cost support
+  xValue?: number;
+  kicked?: boolean;
+  // Modal spell support
+  mode?: string;
 }
 
 export type AIActionType = 
@@ -80,7 +87,14 @@ export async function executeAIAction(
         return executePlayLand(gameState, aiPlayerId, action.cardId!);
       
       case 'cast_spell':
-        return executeCastSpell(gameState, aiPlayerId, action.cardId!, action.targetId);
+        return executeCastSpell(
+          gameState, 
+          aiPlayerId, 
+          action.cardId!, 
+          action.targetIds || action.targetId,
+          action.mode ? [action.mode] : [],
+          action.xValue || 0
+        );
       
       case 'attack':
         return executeAttack(gameState, aiPlayerId, action.cardId!, action.targetId);
@@ -151,12 +165,15 @@ function executePlayLand(
 
 /**
  * Execute cast spell action
+ * Supports multi-target, X-cost, kicker, and modal spells
  */
 function executeCastSpell(
   gameState: EngineGameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-  targetId?: string | PlayerId
+  targetIdOrIds?: string | PlayerId | string[],
+  chosenModes: string[] = [],
+  xValue: number = 0
 ): AIActionResult {
   const canCast = engineCanCastSpell(gameState, playerId, cardId);
   
@@ -164,25 +181,36 @@ function executeCastSpell(
     return { 
       success: false, 
       error: 'Cannot cast spell (no mana or no priority)',
-      action: { type: 'cast_spell', cardId, targetId }
+      action: { type: 'cast_spell', cardId, targetId: targetIdOrIds as string }
     };
   }
 
-  const targets = targetId ? [{ type: 'card' as const, targetId, isValid: true }] : undefined;
-  const result = engineCastSpell(gameState, playerId, cardId, targets);
+  // Handle multi-target: array of targetIds
+  let targets;
+  if (Array.isArray(targetIdOrIds)) {
+    targets = targetIdOrIds.map((tid) => ({ 
+      type: 'card' as const, 
+      targetId: tid, 
+      isValid: true 
+    }));
+  } else if (targetIdOrIds) {
+    targets = [{ type: 'card' as const, targetId: targetIdOrIds, isValid: true }];
+  }
+
+  const result = engineCastSpell(gameState, playerId, cardId, targets, chosenModes, xValue);
   
   if (result.success) {
     return { 
       success: true, 
       newState: result.state,
-      action: { type: 'cast_spell', cardId, targetId }
+      action: { type: 'cast_spell', cardId, targetId: targetIdOrIds as string, mode: chosenModes[0], xValue }
     };
   }
 
   return { 
     success: false, 
     error: result.error || 'Failed to cast spell',
-    action: { type: 'cast_spell', cardId, targetId }
+    action: { type: 'cast_spell', cardId, targetId: targetIdOrIds as string }
   };
 }
 

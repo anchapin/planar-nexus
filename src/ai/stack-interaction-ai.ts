@@ -46,6 +46,14 @@ export interface StackAction {
   }[];
   isInstantSpeed: boolean;
   timestamp: number;
+  // Multi-target support
+  targetCount?: number;
+  isMultiTarget?: boolean;
+  // Variable cost support
+  hasXCost?: boolean;
+  kickerCost?: number;
+  // Modal spell support
+  modalChoices?: string[];
 }
 
 /**
@@ -60,6 +68,15 @@ export interface AvailableResponse {
   canCounter: boolean;
   canTarget: string[];
   effect: ResponseEffect;
+  // Multi-target support
+  targetCount?: number;
+  canTargetMultiple?: boolean;
+  // Variable cost support
+  variableCost?: boolean;
+  hasXCost?: boolean;
+  hasKicker?: boolean;
+  // Modal spell support
+  modalOptions?: string[];
 }
 
 /**
@@ -1285,6 +1302,161 @@ export class StackInteractionAI {
     // Sort by effect value
     instants.sort((a, b) => b.effect.value - a.effect.value);
     return instants[0];
+  }
+
+  /**
+   * Evaluate optimal targets for multi-target spells
+   * Evaluates which targets provide the best value for multi-target spells
+   */
+  evaluateMultiTargetResponse(
+    response: AvailableResponse,
+    context: StackContext
+  ): string[] {
+    const availableTargets = response.canTarget || [];
+    const maxTargets = response.targetCount || availableTargets.length;
+    
+    // Score each target by importance
+    const scoredTargets = availableTargets.map((targetId) => ({
+      targetId,
+      score: this.scoreTarget(targetId),
+    }));
+
+    // Sort by score descending
+    scoredTargets.sort((a, b) => b.score - a.score);
+
+    // Return top N targets
+    return scoredTargets.slice(0, maxTargets).map((t) => t.targetId);
+  }
+
+  /**
+   * Score a target based on priority
+   */
+  private scoreTarget(targetId: string): number {
+    const battlefield = (this.gameState as any).battlefield || [];
+    const permanent = battlefield.find((p: any) => p.id === targetId);
+    if (!permanent) return 0.3; // Player target or unknown
+
+    let score = 0.5;
+
+    // Creatures - higher score for threats
+    if (permanent.type === 'creature') {
+      const power = permanent.power || 0;
+      score += Math.min(0.4, power / 5);
+      if (permanent.keywords?.includes('flying')) score += 0.1;
+      if (permanent.keywords?.includes('trample')) score += 0.1;
+    }
+
+    // Planeswalkers - high priority
+    if (permanent.type === 'planeswalker') {
+      score += 0.5;
+      const loyalty = permanent.loyalty || 0;
+      score += Math.min(0.2, loyalty / 5);
+    }
+
+    // Artifacts/Enchantments - moderate priority
+    if (permanent.type === 'artifact' || permanent.type === 'enchantment') {
+      score += 0.2;
+    }
+
+    return Math.min(1, score);
+  }
+
+  /**
+   * Evaluate optimal X value or whether to kick a spell
+   * Determines optimal cost for variable cost abilities (X spells, kicker)
+   */
+  evaluateVariableCost(
+    response: AvailableResponse,
+    context: StackContext
+  ): { xValue?: number; shouldKick?: boolean; recommendedCost: number } {
+    const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
+    const manaAvailable = this.calculateAvailableMana(context);
+
+    // Default recommendations
+    let recommendedCost = response.manaValue;
+    let xValue: number | undefined;
+    let shouldKick: boolean | undefined;
+
+    // Handle X-cost spells
+    if (response.hasXCost && manaAvailable > response.manaValue) {
+      // Calculate optimal X based on threat level
+      const threatLevel = this.assessActionThreat(context, currentEvaluation);
+      
+      // More X for higher threats
+      const extraMana = manaAvailable - response.manaValue;
+      xValue = Math.min(extraMana, Math.floor(threatLevel * 5));
+      recommendedCost = response.manaValue + (xValue || 0);
+    }
+
+    // Handle kicker
+    if (response.hasKicker && manaAvailable > response.manaValue + 1) {
+      const threatLevel = this.assessActionThreat(context, currentEvaluation);
+      // Kick for high threats or when we're winning
+      shouldKick = threatLevel > 0.5 || currentEvaluation.totalScore > 1;
+      if (shouldKick) {
+        recommendedCost = response.manaValue + 1;
+      }
+    }
+
+    return { xValue, shouldKick, recommendedCost };
+  }
+
+  /**
+   * Calculate available mana for variable cost decisions
+   */
+  private calculateAvailableMana(context: StackContext): number {
+    // Simplified mana calculation - in real implementation would check actual mana pool
+    const player = this.gameState.players[this.playerId];
+    return player ? (player as any).manaAvailable || 7 : 7;
+  }
+
+  /**
+   * Evaluate which mode to choose for modal spells
+   * Returns the recommended mode based on game state
+   */
+  evaluateModalChoice(
+    response: AvailableResponse,
+    choice: string,
+    context: StackContext
+  ): number {
+    const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
+    
+    // Score the choice based on game state
+    let score = 0.5;
+
+    const lowerChoice = choice.toLowerCase();
+    const lowerName = response.name.toLowerCase();
+
+    // "Destroy target creature" - good when we have creature threats
+    if (lowerChoice.includes('destroy') && lowerChoice.includes('creature')) {
+      const threats = currentEvaluation.threats.filter(
+        (t: any) => t.type === 'creature' && t.source === 'opponent'
+      );
+      score += Math.min(0.4, threats.length * 0.15);
+    }
+
+    // "Counter target spell" - good for high threat spells
+    if (lowerChoice.includes('counter')) {
+      const threatLevel = this.assessActionThreat(context, currentEvaluation);
+      score += threatLevel * 0.3;
+    }
+
+    // "Draw cards" - good when behind
+    if (lowerChoice.includes('draw')) {
+      if (currentEvaluation.factors.cardAdvantage < 0) {
+        score += 0.3;
+      }
+    }
+
+    // "Gain life" - good when at low life
+    if (lowerChoice.includes('life') || lowerChoice.includes('life')) {
+      const player = this.gameState.players[this.playerId];
+      if (player && player.life <= 10) {
+        score += 0.4;
+      }
+    }
+
+    return Math.min(1, Math.max(0, score));
   }
 }
 
