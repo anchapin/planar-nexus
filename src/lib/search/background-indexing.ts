@@ -3,16 +3,42 @@ import { db } from '../db/local-intelligence-db';
 import { EmbeddingClient } from '../ai/embedding-client';
 import { oramaManager } from './orama-manager';
 
+export interface IndexingProgress {
+  status: 'idle' | 'indexing' | 'completed' | 'error';
+  total: number;
+  processed: number;
+  error?: Error;
+}
+
+export type ProgressListener = (progress: IndexingProgress) => void;
+
 export class BackgroundIndexingManager {
   private static instance: BackgroundIndexingManager | null = null;
   private isIndexing = false;
   private batchSize = 50;
+  private listeners: Set<ProgressListener> = new Set();
+  private progress: IndexingProgress = {
+    status: 'idle',
+    total: 0,
+    processed: 0,
+  };
 
   static getInstance(): BackgroundIndexingManager {
     if (!this.instance) {
       this.instance = new BackgroundIndexingManager();
     }
     return this.instance;
+  }
+
+  subscribe(listener: ProgressListener) {
+    this.listeners.add(listener);
+    listener(this.progress);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(update: Partial<IndexingProgress>) {
+    this.progress = { ...this.progress, ...update };
+    this.listeners.forEach(l => l(this.progress));
   }
 
   /**
@@ -25,11 +51,13 @@ export class BackgroundIndexingManager {
   async startIndexing() {
     if (this.isIndexing) return;
     this.isIndexing = true;
+    this.notify({ status: 'indexing', processed: 0, total: 0 });
 
     try {
       const cards = await getAllCards();
       if (cards.length === 0) {
         console.log('No cards found in source database.');
+        this.notify({ status: 'idle' });
         return;
       }
 
@@ -45,10 +73,12 @@ export class BackgroundIndexingManager {
         console.log('Search index is up to date.');
         // Still ensure Orama is loaded from snapshot if it hasn't been
         await oramaManager.init();
+        this.notify({ status: 'completed', processed: 0, total: 0 });
         return;
       }
 
       console.log(`Indexing ${cardsToEmbed.length} cards...`);
+      this.notify({ total: cardsToEmbed.length });
 
       for (let i = 0; i < cardsToEmbed.length; i += this.batchSize) {
         const batch = cardsToEmbed.slice(i, i + this.batchSize);
@@ -72,12 +102,16 @@ export class BackgroundIndexingManager {
         // Persist the Orama index snapshot
         await oramaManager.saveIndex();
         
-        console.log(`Progress: ${Math.min(i + this.batchSize, cardsToEmbed.length)} / ${cardsToEmbed.length}`);
+        const processed = Math.min(i + this.batchSize, cardsToEmbed.length);
+        console.log(`Progress: ${processed} / ${cardsToEmbed.length}`);
+        this.notify({ processed });
       }
 
       console.log('Indexing complete.');
+      this.notify({ status: 'completed' });
     } catch (error) {
       console.error('Background indexing failed:', error);
+      this.notify({ status: 'error', error: error as Error });
     } finally {
       this.isIndexing = false;
     }
@@ -88,6 +122,10 @@ export class BackgroundIndexingManager {
    */
   getIsIndexing(): boolean {
     return this.isIndexing;
+  }
+
+  getProgress(): IndexingProgress {
+    return this.progress;
   }
 }
 
