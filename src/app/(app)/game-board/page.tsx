@@ -22,9 +22,12 @@ import { useGameEmotes } from "@/hooks/use-game-emotes";
 import { cn } from "@/lib/utils";
 import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
 import { useGameEngine } from "@/hooks/use-game-engine";
-import type { CardInstanceId } from "@/lib/game-state/types";
+import type { CardInstanceId, GameAction, ActionType } from "@/lib/game-state/types";
 import { saveGameRecord, createGameRecord, type GameMode, type GameResult } from '@/lib/game-history';
 import { useAchievementTracking } from '@/hooks/use-achievement-tracking';
+import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
+import { summarizeGame } from "@/lib/game-summarizer";
+import { engineToAIState } from "@/lib/game-state/serialization";
 
 // Type definitions for AI analysis results
 interface SuggestedPlay {
@@ -73,6 +76,8 @@ export default function GameBoardPage() {
   const [gameMode, setGameMode] = useState<GameMode>('self_play');
   const [difficulty, setDifficulty] = useState('medium');
   const [aiTheme, setAiTheme] = useState('aggressive');
+  const [actions, setActions] = useState<GameAction[]>([]);
+  const [mistakes, setMistakes] = useState<string[]>([]);
   const { toast } = useToast();
   // Use player-2 as default for achievement tracking since this is a self-play game
   const { onGameEnd, trackCollectionAchievements } = useAchievementTracking("player-2");
@@ -96,13 +101,13 @@ export default function GameBoardPage() {
     currentPlayerId,
     initializeGame,
     startGame,
-    advancePhase,
-    nextTurn,
-    passPriority,
-    playLand,
-    tapCard,
-    untapCard,
-    damagePlayer,
+    advancePhase: engineAdvancePhase,
+    nextTurn: engineNextTurn,
+    passPriority: enginePassPriority,
+    playLand: enginePlayLand,
+    tapCard: engineTapCard,
+    untapCard: engineUntapCard,
+    damagePlayer: engineDamagePlayer,
     canPlayLand,
   } = useGameEngine({
     playerNames: ["Opponent", "You"],
@@ -110,6 +115,70 @@ export default function GameBoardPage() {
     isCommander: false,
     autoStart: true,
   });
+
+  // Track an action and check for mistakes
+  const trackAction = React.useCallback((type: ActionType, data: any) => {
+    if (!engineState || !currentPlayerId) return;
+
+    const action: GameAction = {
+      type,
+      playerId: currentPlayerId,
+      timestamp: Date.now(),
+      data,
+    };
+    
+    setActions(prev => [...prev, action]);
+
+    // Mistake detection: evaluate current state after action
+    // Convert engine state to AI format for evaluation
+    const aiState = engineToAIState(engineState);
+    const evaluation = evaluateGameState(aiState, currentPlayerId, 'hard');
+    
+    // If the evaluation shows a poor position, flag it as a potential mistake
+    // A low total score relative to turn number suggests mistakes were made
+    const turnsPlayed = engineState.turn.turnNumber;
+    const expectedScore = turnsPlayed * 5; // Rough heuristic
+    if (evaluation.totalScore < expectedScore - 10) {
+      const mistakeMsg = `Potential mistake detected: ${type}. Score: ${evaluation.totalScore}. Recommendation: ${evaluation.recommendedActions[0] || 'Consider re-evaluating your strategy.'}`;
+      setMistakes(prev => [...prev, mistakeMsg]);
+    }
+  }, [engineState, currentPlayerId]);
+
+  // Wrapped engine actions
+  const advancePhase = () => {
+    trackAction('pass_priority', { reason: 'advance_phase' });
+    engineAdvancePhase();
+  };
+
+  const nextTurn = () => {
+    trackAction('pass_priority', { reason: 'next_turn' });
+    engineNextTurn();
+  };
+
+  const passPriority = () => {
+    trackAction('pass_priority', {});
+    enginePassPriority();
+  };
+
+  const playLand = (cardId: CardInstanceId) => {
+    trackAction('play_land', { cardId });
+    return enginePlayLand(cardId);
+  };
+
+  const tapCard = (cardId: CardInstanceId) => {
+    trackAction('tap_card', { cardId });
+    engineTapCard(cardId);
+  };
+
+  const untapCard = (cardId: CardInstanceId) => {
+    trackAction('untap_card', { cardId });
+    engineUntapCard(cardId);
+  };
+
+  const damagePlayer = (playerId: string, amount: number) => {
+    trackAction('deal_damage', { targetId: playerId, amount });
+    engineDamagePlayer(playerId, amount);
+  };
 
   // Initialize game on mount
   useEffect(() => {
@@ -123,7 +192,8 @@ export default function GameBoardPage() {
 
   // Initialize chat
   const {
-    messages,
+    messages: aiMessages,
+    legacyMessages: messages,
     sendMessage,
     clearMessages,
     unreadCount,
@@ -331,16 +401,24 @@ export default function GameBoardPage() {
     const player = gameState.players.find(p => p.id === currentPlayerId);
     const opponent = gameState.players.find(p => p.id !== currentPlayerId);
     
+    const playerDeck = 'Selected Deck'; // Would get from actual deck selection
+    
+    // Generate AI summary of the game
+    const summary = summarizeGame(actions, result, playerDeck);
+
     const record = createGameRecord({
       mode: gameMode,
       result,
-      playerDeck: 'Selected Deck', // Would get from actual deck selection
+      playerDeck,
       opponentDeck: gameMode === 'vs_ai' ? `AI (${aiTheme})` : undefined,
       difficulty: gameMode === 'vs_ai' ? difficulty : undefined,
       turns: gameState.turnNumber,
       playerLifeAtEnd: player?.lifeTotal || 0,
       opponentLifeAtEnd: opponent?.lifeTotal || 0,
       mulligans: 0, // Would track from actual game
+      actions,
+      mistakes,
+      summary,
     });
     
     saveGameRecord(record);

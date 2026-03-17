@@ -233,10 +233,25 @@ export function createGameRecord(options: {
   opponentLifeAtEnd?: number;
   mulligans: number;
   notes?: string;
+  actions?: GameAction[];
+  mistakes?: string[];
+  summary?: string;
 }): GameRecord {
   return {
     id: `game-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     date: Date.now(),
-    ...options,
+    mode: options.mode,
+    result: options.result,
+    playerDeck: options.playerDeck,
+    opponentDeck: options.opponentDeck,
+    difficulty: options.difficulty,
+    turns: options.turns,
+    playerLifeAtEnd: options.playerLifeAtEnd,
+    opponentLifeAtEnd: options.opponentLifeAtEnd,
+    mulligans: options.mulligans,
+    notes: options.notes,
+    actions: options.actions,
+    mistakes: options.mistakes,
+    summary: options.summary,
   };
 }
