@@ -1,4 +1,6 @@
 import { create, type AnyOrama, insertMultiple, search as oramaSearch } from '@orama/orama';
+import { persist, restore } from '@orama/plugin-data-persistence';
+import { db } from '../db/local-intelligence-db';
 import { MinimalCard } from '../card-database';
 
 export interface CardDocument {
@@ -25,6 +27,11 @@ export class OramaManager {
   async init() {
     if (this.orama) return;
 
+    // Try to load from database first
+    const loaded = await this.loadIndex();
+    if (loaded) return;
+
+    // If no snapshot exists, create a new one
     this.orama = await create({
       schema: {
         id: 'string',
@@ -35,6 +42,40 @@ export class OramaManager {
         vector: 'vector[384]',
       } as const,
     });
+  }
+
+  /**
+   * Loads the index from the database snapshot.
+   */
+  async loadIndex(): Promise<boolean> {
+    try {
+      const snapshot = await db.orama_snapshots.get('main');
+      if (snapshot) {
+        this.orama = await restore('json', snapshot.data);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to load Orama index:', error);
+    }
+    return false;
+  }
+
+  /**
+   * Saves the current index to the database as a snapshot.
+   */
+  async saveIndex() {
+    if (!this.orama) return;
+
+    try {
+      const data = await persist(this.orama, 'json');
+      await db.orama_snapshots.put({
+        id: 'main',
+        data,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.error('Failed to save Orama index:', error);
+    }
   }
 
   /**
