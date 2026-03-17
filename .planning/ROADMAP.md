@@ -15,7 +15,7 @@
 | 6. Multi-Provider LLM & Streaming | 5/5 | Completed | 2026-03-17 |
 | 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
-| 9. Adaptive Coaching & Player History | 1/3 | In progress | - |
+| 9. Adaptive Coaching & Player History | 2/4 | In progress | - |
 | 10. Expert Opponent AI Refinement | 0/2 | Not started | - |
 
 ## Phase Details
@@ -66,8 +66,9 @@
 3. Opponent difficulty automatically suggests adjustments based on the player's recent performance.
 **Plans**:
 - [x] 09-01-PLAN.md — Game History Infrastructure & Migration (COMPLETED)
-- [ ] 09-02-PLAN.md — Semantic History Retrieval
+- [x] 09-02-PLAN.md — Gameplay Integration & Persistence (COMPLETED)
 - [ ] 09-03-PLAN.md — Coach Report UI
+- [ ] 09-04-PLAN.md — Adaptive Difficulty
 
 ### Phase 10: Expert Opponent AI Refinement
 **Goal**: High-level players face a challenging AI that handles complex stack interactions and multi-card synergies.
