@@ -4,11 +4,7 @@
 **Free open-source tabletop card game deck builder and tester with AI coaching.** Build decks, get AI-powered meta analysis, and playtest against AI opponents — all in a legal-safe, client-side application distributable as desktop installers for Windows, Mac, and Linux.
 
 ## Problem Statement
-Card game players need accessible tools to:
-- Build and test decks without expensive physical cards
-- Get feedback on deck performance against current meta
-- Playtest against realistic AI opponents before playing with humans
-- Import/export decks across platforms
+Card game players need accessible tools to build and test decks without expensive physical cards, get feedback on performance against the meta, and playtest against realistic AI opponents.
 
 ## Solution
 Planar Nexus provides:
@@ -20,86 +16,78 @@ Planar Nexus provides:
 ## Target Users
 - **Primary**: Tabletop card game players (Commander, Standard, Modern formats)
 - **Secondary**: Content creators testing deck ideas
-- **Tertiary**: New players learning game mechanics
 
-## v1.0 Scope
+## v1.2 Scope (In Progress)
 
-### Must-Have Features (REQ)
+### Must-Have Features (v1.2)
 | ID | Feature | Priority |
 |----|---------|----------|
-| REQ-1 | Upload card metadata, images, and rules | P0 |
-| REQ-2 | Import/export decks (text, JSON, clipboard) | P0 |
-| REQ-3 | Create and save decks with format validation | P0 |
-| REQ-4 | AI coach feedback on deck meta performance | P1 |
-| REQ-5 | AI opponent playtesting | P0 |
+| REQ-6 | Custom card studio foundation | P0 |
+| REQ-7 | WYSIWYG card editor | P0 |
+| REQ-8 | Integration of custom cards into decks and engine | P1 |
 
 ### Success Criteria
-✅ **User can go from install to testing deck against AI opponent within 5-10 minutes**
+✅ **User can create a custom card, add it to a deck, and playtest it in <5 minutes.**
 
 Measurable outcomes:
-- Fresh install → deck testing in ≤10 minutes
-- Card database contains 100+ cards minimum
-- AI opponent plays full game loops (not prototype)
-- Deck coach provides actionable recommendations
-- Import works from standard text decklists
+- WYSIWYG editor supports at least 3 card layouts.
+- Custom artwork can be uploaded and rendered in the game board.
+- AI opponent can evaluate and play against custom cards.
 
-### Out of Scope (v1.0)
-- Multiplayer (P2P already exists, not v1.0 focus)
-- Custom card creation UI
-- Cloud sync / account system
-- Achievement system
-- Trading system
-- Admin card management UI
+---
+
+## Validated Milestones
+
+### ✅ v1.1 Polish & Stability Pass — 2026-03-17
+- Shipped 1,618 passing unit tests and 180+ E2E tests.
+- Optimized bundle size to 102KB.
+- Implemented mobile responsiveness and keyboard shortcuts.
+- Launched AI spectator mode with commentary.
+
+### ✅ v1.0 MVP — 2026-03-12
+- Card database with bulk import.
+- Core deck builder with format validation.
+- Heuristic AI coach and opponent difficulty levels.
+- Tauri desktop installers for all platforms.
+
+---
 
 ## Technical Context
 
-### Current Stack (Keep)
+### Current Stack
 - **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
 - **UI**: Shadcn/ui (Radix primitives)
 - **Storage**: IndexedDB (offline-first)
 - **Desktop**: Tauri 2.x
 - **AI**: Custom proxy + heuristic fallbacks
 
-### Current State: ~85% Complete
-- ✅ Deck builder fully functional
-- ✅ Import/export working (95%)
-- ✅ AI coach heuristic system working
-- ✅ AI opponent deck generation working
-- ⚠️ Game engine not connected to UI
-- ⚠️ Card database only has 20 cards (needs 100+)
-- ⚠️ Single-player mode shows "Prototype"
+### Current State: v1.1 SHIPPED 🚀
+- ✅ Test infrastructure 100% stable
+- ✅ Production builds verified for all platforms
+- ✅ Full user/dev documentation complete
+- ✅ AI spectator mode live
 
-### Critical Gaps to Close
-1. **Game Engine ↔ UI Integration** — Connect GameState to game-board and single-player UIs
-2. **Card Database Expansion** — Bulk import 500+ cards
-3. **AI Gameplay Loop** — AI decision engine must actually play cards
-4. **Build Pipeline** — Fix TypeScript errors, enable strict checks
+## Key Decisions
 
-## Non-Goals
-- Competing with official game tools
-- Supporting every possible format
-- Perfect AI (heuristic + optional LLM is acceptable)
-- Mobile apps (desktop + web only for v1.0)
+| Decision | Rationale | Outcome |
+|----------|-----------|---------|
+| Next.js App Router | Modern architecture, easy routing | ✓ Good |
+| IndexedDB | Offline-first, no server needed | ✓ Good |
+| Tauri | Lightweight desktop wrapper | ✓ Good |
+| AI Proxy | Secure API key management | ✓ Good |
+| Service Worker | Offline support and performance | ✓ Good |
+
+---
 
 ## Project Principles
 1. **Offline-First** — Everything works without network
-2. **Legal-Safe** — Generic terminology, procedural art, no copyrighted assets
+2. **Legal-Safe** — Generic terminology, procedural art
 3. **Client-Side** — Minimal server infrastructure
-4. **Open Source** — MIT licensed, community-driven
+4. **Open Source** — MIT licensed
 5. **Privacy-First** — No telemetry, no accounts required
 
 ---
 
-## Current Milestone: v1.1 Polish & Stability Pass
-
-**Goal:** Fix known issues from v1.0 QA and improve overall quality
-
-**Target features:**
-- Fix 5 medium-priority bugs (test infrastructure, E2E selectors)
-- Fix 8 low-priority bugs (ESLint warnings, selectors, timing)
-- Cold start performance optimization (~10s → <5s)
-- Mobile responsiveness improvements
-- Keyboard shortcuts for deck builder
-
-**Version:** 1.1.0
-**Started:** 2026-03-16
+**Current Milestone**: v1.2 Custom Card Creation Studio  
+**Version**: 1.2.0  
+**Last Updated**: 2026-03-17 after v1.1 milestone completion

@@ -1,216 +1,57 @@
-# Planar Nexus — v1.0 Requirements
+# Planar Nexus — v1.2 Requirements (Custom Card Creation Studio)
 
-## REQ-1: Card Metadata, Images & Rules Management
-
-### REQ-1.1: Card Database Schema
-- [ ] Maintain `MinimalCard` interface with all required fields
-- [ ] Support card faces (double-sided cards)
-- [ ] Store format legality per card
-- [ ] Include keywords for ability filtering
-
-**Acceptance**: Schema supports 500+ cards without performance degradation
-
-### REQ-1.2: Card Storage & Retrieval
-- [ ] IndexedDB storage with efficient indexing
-- [ ] Fuzzy search returning results in <100ms
-- [ ] Bulk import capability (500+ cards)
-- [ ] Card image caching in IndexedDB
-
-**Acceptance**: Search feels instant; images load without flicker
-
-### REQ-1.3: Card Data Population
-- [ ] Script to bulk import cards from Scryfall API
-- [ ] Minimum 100 cards for v1.0 (target 500)
-- [ ] Include all 5 colors + artifacts + lands
-- [ ] Cover all CMC ranges 0-8+
-
-**Acceptance**: Database contains 100+ diverse cards covering all colors and CMC ranges
-
-### REQ-1.4: Format Rules Configuration
-- [ ] Support 7 formats: Commander, Standard, Modern, Pioneer, Legacy, Vintage, Pauper
-- [ ] Enforce deck construction rules per format
-- [ ] Maintain ban/restricted lists
-- [ ] Generic terminology (legal-safe)
-
-**Acceptance**: Deck validation correctly rejects illegal decks for each format
+**Milestone:** v1.2  
+**Goal**: Enable users to create, save, and playtest custom cards with a full WYSIWYG editor.
 
 ---
 
-## REQ-2: Deck Import/Export
+## REQ-6: Card Studio Foundation
 
-### REQ-2.1: Text Decklist Import
-- [ ] Parse standard format ("1 Sol Ring", "4 Lightning Bolt")
-- [ ] Handle card name variations via fuzzy matching
-- [ ] Report missing cards clearly
-- [ ] Report format-illegal cards
+### REQ-6.1: Custom Card Schema
+- [ ] Define `CustomCard` interface extending `MinimalCard`
+- [ ] Support custom artwork uploads/blob storage
+- [ ] Store editor-specific metadata (layout, font choices)
 
-**Acceptance**: Can import decklists from MTGGoldfish, TappedOut, etc.
-
-### REQ-2.2: JSON Import/Export
-- [ ] Export full deck with metadata as JSON
-- [ ] Import JSON backup files
-- [ ] Validate schema on import
-- [ ] Handle version migration if schema changes
-
-**Acceptance**: Full round-trip backup/restore works
-
-### REQ-2.3: Clipboard Integration
-- [ ] One-click copy decklist to clipboard
-- [ ] Paste from clipboard button
-- [ ] Auto-detect decklist format
-
-**Acceptance**: User can share decklists via Discord, forums, etc.
-
-### REQ-2.4: File Download
-- [ ] Download decklist as `.txt` file
-- [ ] Download deck as `.json` file
-- [ ] Meaningful filenames (deck-name-format.txt)
-
-**Acceptance**: Files download with correct names and content
+### REQ-6.2: Asset Management
+- [ ] Implement local storage for custom card images
+- [ ] Handle asset cleanup for deleted cards
+- [ ] Support export/import of custom card packages
 
 ---
 
-## REQ-3: Deck Creation & Saving
+## REQ-7: WYSIWYG Editor
 
-### REQ-3.1: Deck Builder UI
-- [ ] Card search with filters (color, CMC, type, keywords)
-- [ ] Add/remove cards with quantity controls
-- [ ] Format selection dropdown
-- [ ] Real-time deck validation
-- [ ] Card count display (cards, unique cards, avg CMC)
+### REQ-7.1: Interactive Card Preview
+- [ ] Real-time rendering of card data on template
+- [ ] Support multiple layouts (Standard, Saga, Planeswalker)
+- [ ] Text overflow handling and auto-scaling
 
-**Acceptance**: Intuitive deck building experience
-
-### REQ-3.2: Deck Persistence
-- [ ] Save decks to IndexedDB
-- [ ] Load saved decks
-- [ ] Delete decks with confirmation
-- [ ] Duplicate decks
-- [ ] Auto-save on changes
-
-**Acceptance**: Decks persist across browser sessions
-
-### REQ-3.3: Deck Metadata
-- [ ] Deck name (required)
-- [ ] Format selection
-- [ ] Optional: description, tags, commander
-- [ ] Created/updated timestamps
-
-**Acceptance**: Decks are searchable and organizable
-
-### REQ-3.4: Deck Statistics
-- [ ] Mana curve visualization
-- [ ] Color distribution pie chart
-- [ ] Card type breakdown (creatures, spells, lands)
-- [ ] Format legality indicator
-
-**Acceptance**: User understands deck composition at a glance
+### REQ-7.2: Editor Controls
+- [ ] Field-by-field editing (Name, Mana, Type, Text, P/T)
+- [ ] Image cropping and scaling tools
+- [ ] Frame color and mana symbol picker
 
 ---
 
-## REQ-4: AI Coach Feedback
+## REQ-8: Custom Card Integration
 
-### REQ-4.1: Heuristic Deck Analysis
-- [ ] Detect deck archetype (6+ archetypes)
-- [ ] Analyze mana curve appropriateness
-- [ ] Evaluate color distribution
-- [ ] Assess card type ratios
-- [ ] Format-specific recommendations
+### REQ-8.1: Deck Builder Support
+- [ ] Filter by "Custom" source in card browser
+- [ ] Add custom cards to decks with validation
+- [ ] Warning for decks containing un-validated custom cards
 
-**Acceptance**: Provides actionable improvement suggestions
-
-### REQ-4.2: Deck Review Output
-- [ ] Summary of deck strengths/weaknesses
-- [ ] 3-5 specific improvement options
-- [ ] Each option includes cards to add/remove
-- [ ] Save optimized deck variants
-
-**Acceptance**: User can save coach's recommended changes as new deck
-
-### REQ-4.3: Meta Analysis
-- [ ] Display current meta context
-- [ ] Show how deck performs against meta archetypes
-- [ ] Suggest meta-specific tech cards
-
-**Acceptance**: User understands deck's meta positioning
-
-### REQ-4.4: Optional LLM Enhancement
-- [ ] Multi-provider AI support (Google, OpenAI, Z.ai)
-- [ ] Server-side proxy for API keys
-- [ ] Graceful fallback to heuristics when AI unavailable
-- [ ] Clear documentation for API key setup
-
-**Acceptance**: LLM analysis works when configured; heuristics always available
-
----
-
-## REQ-5: AI Opponent Playtesting
-
-### REQ-5.1: Opponent Deck Generation
-- [ ] 10+ archetypes (Aggro, Control, Midrange, Combo, etc.)
-- [ ] 21+ strategic themes (burn, zombies, dragons, etc.)
-- [ ] 4 difficulty levels (easy, medium, hard, expert)
-- [ ] 200+ card pool for AI decks
-
-**Acceptance**: Generated decks feel distinct and appropriately challenging
-
-### REQ-5.2: Game Engine Integration
-- [ ] Connect GameState engine to game-board UI
-- [ ] Replace all mock data with real GameState
-- [ ] Implement full game loop (draw, main, combat, end phases)
-- [ ] Priority system and stack management
-
-**Acceptance**: Full games can be played from start to finish
-
-### REQ-5.3: AI Decision Engine
-- [ ] Combat AI (attackers, blockers, damage)
-- [ ] Stack interaction AI (spell responses)
-- [ ] Game state evaluation (board state, life totals)
-- [ ] AI turn automation (AI plays cards, attacks, casts spells)
-
-**Acceptance**: AI opponent plays complete games without user intervention for AI actions
-
-### REQ-5.4: Single Player UI
-- [ ] Remove "Prototype" status
-- [ ] Configure AI opponent (difficulty, theme, archetype)
-- [ ] Start game with user deck vs AI deck
-- [ ] Display game result (win/loss/draw)
-
-**Acceptance**: User can select deck, configure AI, and playtest within 2 minutes
-
-### REQ-5.5: AI vs AI Spectator (Stretch)
-- [ ] Watch two AI opponents play each other
-- [ ] Speed controls (normal, fast, instant)
-- [ ] Play-by-play commentary
-
-**Acceptance**: Can observe full AI vs AI game
+### REQ-8.2: Game Engine Support
+- [ ] Load custom card data into GameState
+- [ ] Simple keyword parsing for custom text
+- [ ] Support custom cards in AI playtesting
 
 ---
 
 ## Technical Requirements
 
-### REQ-T1: Performance
-- [ ] App loads in <3 seconds
-- [ ] Card search returns in <100ms
-- [ ] Deck save/load in <500ms
-- [ ] No memory leaks in long sessions
-
-### REQ-T2: Offline Support
-- [ ] All core features work without network
-- [ ] IndexedDB persists across sessions
-- [ ] Graceful degradation when AI unavailable
-
-### REQ-T3: Build Quality
-- [ ] Zero TypeScript errors
-- [ ] All tests passing (Jest, Playwright)
-- [ ] No console errors in production
-- [ ] Tauri builds for all platforms
-
-### REQ-T4: User Experience
-- [ ] Install → playtest in ≤10 minutes
-- [ ] Clear onboarding for first-time users
-- [ ] Helpful error messages
-- [ ] Responsive UI (works on laptops, desktops)
+### REQ-T5: Editor Performance
+- [ ] Render updates in <50ms
+- [ ] Image processing done on-client via Canvas/WebAssembly
 
 ---
 
@@ -218,14 +59,10 @@
 
 | Requirement | Status | Phase | Plans |
 |-------------|--------|-------|-------|
-| REQ-1: Card Management | 🟡 70% | Phase 1 | 1.1, 1.2 |
-| REQ-2: Import/Export | 🟢 95% | Phase 1 | 1.3 |
-| REQ-3: Deck Creation | 🟢 100% | Done | - |
-| REQ-4: AI Coach | 🟢 85% | Phase 2 | 2.1 |
-| REQ-5: AI Opponent | 🟡 80% | Phase 1, 2 | 1.4, 1.5, 2.2 |
-| REQ-T: Technical | 🟡 75% | Phase 1, 3 | 1.6, 3.1 |
+| REQ-6: Foundation | ⚪ 0% | Phase 6 | - |
+| REQ-7: Editor UI | ⚪ 0% | Phase 7 | - |
+| REQ-8: Integration | ⚪ 0% | Phase 8 | - |
 
 ---
 
-**Created**: 2026-03-12  
-**Last Updated**: 2026-03-12
+**Last Updated**: 2026-03-17 after v1.1 milestone completion
