@@ -6,6 +6,7 @@
  */
 
 import type { PlayerId, GameAction } from '@/lib/game-state/types';
+import { getStorage } from '@/lib/indexeddb-storage';
 
 /**
  * Game result types
@@ -82,7 +83,8 @@ export interface ModeStats {
 const STORAGE_KEY = 'planar-nexus-game-history';
 
 /**
- * Get all game records
+ * Get all game records (synchronous, uses localStorage)
+ * For IndexedDB access, use getAllGameRecordsAsync()
  */
 export function getAllGameRecords(): GameRecord[] {
   if (typeof window === 'undefined') return [];
@@ -98,10 +100,47 @@ export function getAllGameRecords(): GameRecord[] {
 }
 
 /**
- * Save a game record
+ * Get all game records from IndexedDB (async)
+ * Falls back to localStorage if IndexedDB is empty
  */
-export function saveGameRecord(record: GameRecord): void {
+export async function getAllGameRecordsAsync(): Promise<GameRecord[]> {
+  if (typeof window === 'undefined') return [];
+  
   try {
+    // Try IndexedDB first
+    const storage = await getStorage();
+    const records = await storage.getAll<GameRecord>('game-history');
+    
+    if (records && records.length > 0) {
+      // Sort by date descending (most recent first)
+      return records.sort((a, b) => b.date - a.date);
+    }
+    
+    // Fall back to localStorage for backward compatibility
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return [];
+    return JSON.parse(stored) as GameRecord[];
+  } catch (error) {
+    console.error('Failed to load game history from IndexedDB:', error);
+    
+    // Fall back to localStorage on error
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (!stored) return [];
+      return JSON.parse(stored) as GameRecord[];
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
+ * Save a game record
+ * Writes to both IndexedDB and localStorage for backward compatibility
+ */
+export async function saveGameRecord(record: GameRecord): Promise<void> {
+  try {
+    // First save to localStorage (for backward compatibility)
     const records = getAllGameRecords();
     records.unshift(record); // Add to beginning
     
@@ -111,6 +150,14 @@ export function saveGameRecord(record: GameRecord): void {
     }
     
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    
+    // Also save to IndexedDB
+    try {
+      const storage = await getStorage();
+      await storage.set('game-history', record);
+    } catch (idbError) {
+      console.warn('Failed to save to IndexedDB:', idbError);
+    }
   } catch (error) {
     console.error('Failed to save game record:', error);
   }
@@ -214,9 +261,19 @@ export function getRecentGames(limit: number = 10): GameRecord[] {
 
 /**
  * Clear all game history
+ * Clears both IndexedDB and localStorage
  */
-export function clearGameHistory(): void {
+export async function clearGameHistory(): Promise<void> {
+  // Clear localStorage
   localStorage.removeItem(STORAGE_KEY);
+  
+  // Clear IndexedDB
+  try {
+    const storage = await getStorage();
+    await storage.clear('game-history');
+  } catch (error) {
+    console.warn('Failed to clear IndexedDB game-history store:', error);
+  }
 }
 
 /**
