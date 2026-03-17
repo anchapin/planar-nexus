@@ -28,6 +28,14 @@ export interface PlayerDecision {
   context: any;
 }
 
+export interface GameEmbedding {
+  id?: number;
+  gameId: string;
+  model: string;
+  vector: number[] | Float32Array;
+  createdAt: number;
+}
+
 /**
  * Local database for storing embeddings, search index snapshots,
  * game history, and player decisions.
@@ -38,6 +46,7 @@ export class LocalIntelligenceDB extends Dexie {
   orama_snapshots!: EntityTable<OramaSnapshot, 'id'>;
   game_history!: EntityTable<GameHistory, 'id'>;
   player_decisions!: EntityTable<PlayerDecision, 'id'>;
+  game_embeddings!: EntityTable<GameEmbedding, 'id'>;
 
   constructor() {
     super('LocalIntelligenceDB');
@@ -48,6 +57,11 @@ export class LocalIntelligenceDB extends Dexie {
       orama_snapshots: 'id, data, timestamp',
       game_history: '++id, timestamp, type, data',
       player_decisions: '++id, gameId, timestamp, decision, context'
+    });
+    
+    // Version 2: Add game_embeddings table for semantic game search
+    this.version(2).stores({
+      game_embeddings: '++id, gameId, [gameId+model], createdAt'
     });
   }
 }
