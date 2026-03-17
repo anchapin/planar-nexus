@@ -1,7 +1,8 @@
-import { create, type AnyOrama, insertMultiple, search as oramaSearch } from '@orama/orama';
+import { create, type AnyOrama, insertMultiple, search as oramaSearch, insert } from '@orama/orama';
 import { persist, restore } from '@orama/plugin-data-persistence';
 import { db } from '../db/local-intelligence-db';
 import { MinimalCard } from '../card-database';
+import type { GameRecord } from '../game-history';
 
 export interface CardDocument {
   id: string;
@@ -9,6 +10,20 @@ export interface CardDocument {
   text: string;
   type: string;
   color: string;
+  vector: number[];
+}
+
+/**
+ * Document for game history search
+ */
+export interface GameHistoryDocument {
+  id: string;
+  summary: string;
+  result: string;
+  deck: string;
+  opponentDeck?: string;
+  mode: string;
+  turns: number;
   vector: number[];
 }
 
@@ -162,3 +177,136 @@ export class OramaManager {
 }
 
 export const oramaManager = new OramaManager();
+
+/**
+ * Manager for the game history Orama index.
+ * Handles semantic search over past game situations.
+ */
+export class GameHistoryOramaManager {
+  protected orama: AnyOrama | null = null;
+
+  /**
+   * Initialize the game history index.
+   */
+  async init() {
+    if (this.orama) return;
+
+    const loaded = await this.loadIndex();
+    if (loaded) return;
+
+    this.orama = await create({
+      schema: {
+        id: 'string',
+        summary: 'string',
+        result: 'string',
+        deck: 'string',
+        opponentDeck: 'string',
+        mode: 'string',
+        turns: 'number',
+        vector: 'vector[384]',
+      } as const,
+    });
+  }
+
+  /**
+   * Loads the game history index from the database.
+   */
+  async loadIndex(): Promise<boolean> {
+    try {
+      const snapshot = await db.orama_snapshots.get('game_history');
+      if (snapshot) {
+        this.orama = await restore('json', snapshot.data);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to load game history Orama index:', error);
+    }
+    return false;
+  }
+
+  /**
+   * Saves the game history index to the database.
+   */
+  async saveIndex() {
+    if (!this.orama) return;
+
+    try {
+      const data = await persist(this.orama, 'json');
+      await db.orama_snapshots.put({
+        id: 'game_history',
+        data,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.error('Failed to save game history Orama index:', error);
+    }
+  }
+
+  /**
+   * Get the Orama instance.
+   */
+  async getOrama(): Promise<AnyOrama> {
+    if (!this.orama) {
+      await this.init();
+    }
+    return this.orama!;
+  }
+
+  /**
+   * Upsert a game record into the history index.
+   */
+  async upsertGameHistory(game: GameRecord, vector: number[]) {
+    const orama = await this.getOrama();
+
+    const document: GameHistoryDocument = {
+      id: game.id,
+      summary: game.summary || `${game.result} with ${game.playerDeck} vs ${game.opponentDeck || 'unknown'}`,
+      result: game.result,
+      deck: game.playerDeck,
+      opponentDeck: game.opponentDeck,
+      mode: game.mode,
+      turns: game.turns,
+      vector: vector || new Array(384).fill(0),
+    };
+
+    await insert(orama, document);
+    await this.saveIndex();
+  }
+
+  /**
+   * Search game history using hybrid search.
+   */
+  async searchHistory(params: {
+    term?: string;
+    vector?: number[];
+    similarity?: number;
+    limit?: number;
+    where?: Record<string, any>;
+  }) {
+    const orama = await this.getOrama();
+
+    const searchOptions: any = {
+      term: params.term,
+      limit: params.limit ?? 10,
+      where: params.where,
+    };
+
+    if (params.vector) {
+      searchOptions.vector = {
+        value: params.vector,
+        property: 'vector',
+        similarity: params.similarity ?? 0.7,
+      };
+
+      if (params.term) {
+        searchOptions.mode = 'hybrid';
+      } else {
+        searchOptions.mode = 'vector';
+      }
+    }
+
+    return await oramaSearch(orama, searchOptions);
+  }
+}
+
+export const gameHistoryOramaManager = new GameHistoryOramaManager();
