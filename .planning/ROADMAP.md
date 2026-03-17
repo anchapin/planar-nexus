@@ -6,7 +6,7 @@
 - [x] **Phase 7: Local Intelligence Foundation** - Integrate Orama and Transformers.js for offline-first RAG and vector search.
 - [>] **Phase 8: AI Deck Assistant UX** - Build proactive card suggestion UI with real-time synergy explanations.
 - [x] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
-- [ ] **Phase 10: Expert Opponent AI Refinement** - Tune heuristic weights and stack interaction logic for high-level play.
+- [>] **Phase 10: Expert Opponent AI Refinement** - Tune heuristic weights and stack interaction logic for high-level play.
 
 ## Progress Table
 
@@ -16,7 +16,7 @@
 | 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
 | 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
-| 10. Expert Opponent AI Refinement | 0/3 | Not started | - |
+| 10. Expert Opponent AI Refinement | 0/3 | In Progress | - |
 
 ## Phase Details
 
