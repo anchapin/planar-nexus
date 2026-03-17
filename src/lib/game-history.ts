@@ -5,7 +5,7 @@
  * Stores win/loss records, game stats, and history.
  */
 
-import type { PlayerId } from '@/lib/game-state/types';
+import type { PlayerId, GameAction } from '@/lib/game-state/types';
 
 /**
  * Game result types
@@ -33,6 +33,9 @@ export interface GameRecord {
   opponentLifeAtEnd?: number;
   mulligans: number; // Player mulligan count
   notes?: string;
+  actions?: GameAction[]; // List of actions performed in the game
+  mistakes?: string[]; // List of identified mistakes/coaching tips
+  summary?: string; // Natural language summary of the game
 }
 
 /**
