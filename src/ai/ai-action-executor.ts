@@ -29,6 +29,8 @@ import {
 } from '@/lib/game-state/combat';
 import { tapCardAction, untapCardAction } from '@/lib/game-state/keyword-actions';
 import { passPriority } from '@/lib/game-state/game-state';
+import { quickScore } from './game-state-evaluator';
+import type { GameState } from './game-state-evaluator';
 
 /**
  * AI Action types
@@ -551,4 +553,66 @@ export function getAvailableBlockersAI(aiState: AIGameState, playerId: PlayerId)
   return player.battlefield
     .filter(perm => perm.type === 'creature' && !perm.tapped)
     .map(perm => perm.cardInstanceId);
+}
+
+/**
+ * Lookahead evaluation for complex interactions
+ * Simulates future game states given current state + action
+ * Returns expected value score based on depth
+ */
+export async function evaluateLookahead(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+  depth: number,
+  action?: AIAction
+): Promise<number> {
+  // Base case: max depth reached
+  if (depth <= 0) {
+    const aiState = getAIGameState(gameState);
+    // Use quick score for terminal evaluation
+    return quickScore(aiState as unknown as GameState, playerId, 'medium');
+  }
+
+  // If no action provided, just evaluate current state
+  if (!action) {
+    const aiState = getAIGameState(gameState);
+    return quickScore(aiState as unknown as GameState, playerId, 'medium');
+  }
+
+  // Execute the action to get new state (async)
+  const result = await executeAIAction(gameState, action, playerId);
+  
+  if (!result.success || !result.newState) {
+    // Action failed, return negative value
+    return -100;
+  }
+
+  // Get opponent ID (the one who would respond)
+  const opponentId = getOpponentPlayerId(gameState, playerId);
+  
+  // For depth > 1, simulate opponent's best response and recurse
+  if (depth > 1) {
+    // Get opponent's available actions (simplified - just evaluate their perspective)
+    const opponentState = result.newState;
+    const opponentScore = quickScore(
+      getAIGameState(opponentState) as unknown as GameState,
+      opponentId,
+      'medium'
+    );
+    
+    // Our score after opponent's potential response
+    const ourScore = quickScore(
+      getAIGameState(result.newState) as unknown as GameState,
+      playerId,
+      'medium'
+    );
+    
+    // Combine: our immediate gain minus opponent's potential gain
+    // This is simplified - real implementation would explore opponent actions
+    return ourScore - (opponentScore * 0.5) / depth;
+  }
+
+  // For depth === 1, just evaluate the resulting state
+  const aiState = getAIGameState(result.newState);
+  return quickScore(aiState as unknown as GameState, playerId, 'medium');
 }

@@ -229,6 +229,23 @@ export const DefaultResponseWeights: Record<string, ResponseWeights> = {
     stackDepthPenalty: 0.3,
     responseEfficiency: 1.0,
   },
+  expert: {
+    threatPrevention: 2.5,
+    cardAdvantage: 2.0,
+    tempo: 1.5,
+    resourceConservation: 1.5,
+    earlyGame: 0.5,
+    midGame: 1.0,
+    lateGame: 1.8,
+    winConditionProtection: 2.0,
+    valuePlayProtection: 1.5,
+    bluffProtection: 0.8,
+    gettingCounterplayed: 1.2,
+    wastingRemoval: 1.5,
+    fallingBehind: 1.5,
+    stackDepthPenalty: 0.4,
+    responseEfficiency: 1.5,
+  },
 };
 
 /**
@@ -242,12 +259,12 @@ export class StackInteractionAI {
   constructor(
     gameState: GameState,
     playerId: string,
-    difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+    difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
   ) {
     this.gameState = gameState;
     this.playerId = playerId;
-    this.weights = DefaultResponseWeights[difficulty];
-    // We'll use the imported evaluateGameState function
+    // Default to medium if difficulty not recognized
+    this.weights = DefaultResponseWeights[difficulty] || DefaultResponseWeights['medium'];
   }
 
   /**
