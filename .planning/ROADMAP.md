@@ -15,7 +15,7 @@
 | 6. Multi-Provider LLM & Streaming | 5/5 | Completed | 2026-03-17 |
 | 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
-| 9. Adaptive Coaching & Player History | 4/4 | Completed | 2026-03-17 |
+| 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
 | 10. Expert Opponent AI Refinement | 0/2 | Not started | - |
 
 ## Phase Details
@@ -69,6 +69,7 @@
 - [x] 09-02-PLAN.md — Gameplay Integration & Persistence (COMPLETED)
 - [x] 09-03-PLAN.md — Semantic History & AI Coach Tools (COMPLETED)
 - [x] 09-04-PLAN.md — Coach Report Service Integration (COMPLETED)
+- [ ] 09-05-PLAN.md — Gap Closure: IndexedDB Integration (PENDING)
 
 ### Phase 10: Expert Opponent AI Refinement
 **Goal**: High-level players face a challenging AI that handles complex stack interactions and multi-card synergies.
