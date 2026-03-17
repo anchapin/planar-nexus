@@ -1330,6 +1330,169 @@ export class CombatDecisionTree {
       (p) => p.id !== this.aiPlayerId
     );
   }
+
+  /**
+   * Evaluate a potential trade between blocking and attacking creatures
+   * Calculates card advantage impact (trading 1-for-1, 2-for-1, etc.)
+   */
+  evaluateTrade(
+    blockingCreature: Permanent,
+    attackingCreature: Permanent,
+    context: { attackers: Permanent[]; blockers: Permanent[] }
+  ): number {
+    let tradeValue = 0;
+
+    // Calculate card advantage
+    const blockerValue = blockingCreature.manaValue || 1;
+    const attackerValue = attackingCreature.manaValue || 1;
+
+    // Positive if we're trading up (attacker is more expensive)
+    tradeValue += (attackerValue - blockerValue) * 0.3;
+
+    // Check for 2-for-1 potential
+    const willKillBlocker = (attackingCreature.power || 0) >= (blockingCreature.toughness || 0);
+    const willKillAttacker = (blockingCreature.power || 0) >= (attackingCreature.toughness || 0);
+
+    if (willKillBlocker && willKillAttacker) {
+      // 1-for-1 trade - neutral
+      tradeValue += 0;
+    } else if (willKillBlocker && !willKillAttacker) {
+      // We get a favorable trade
+      tradeValue += 0.5;
+    } else if (!willKillBlocker && willKillAttacker) {
+      // Unfavorable trade
+      tradeValue -= 0.5;
+    }
+
+    // Check for recursive value (ETB/LTB triggers)
+    const blockerHasETB = this.hasETBValue(blockingCreature);
+    const attackerHasLTB = this.hasLTBValue(attackingCreature);
+
+    if (blockerHasETB) tradeValue += 0.3; // Blocker has etb trigger
+    if (attackerHasLTB) tradeValue += 0.2; // Attacker dies and has LTB
+
+    // Factor in difficulty - expert weighs card advantage more heavily
+    tradeValue *= this.config.cardAdvantageWeight / 1.0;
+
+    // Expert level bonus for card advantage awareness
+    if (this.config.cardAdvantageWeight >= 2.0) {
+      tradeValue += 0.2; // Expert actively seeks 2-for-1s
+    }
+
+    return tradeValue;
+  }
+
+  /**
+   * Check if creature has enter-the-battlefield value
+   */
+  private hasETBValue(creature: Permanent): boolean {
+    // Simplified check - in real implementation would check oracle text
+    const name = creature.name?.toLowerCase() || '';
+    const keywords = creature.keywords || [];
+    
+    // Common ETB patterns
+    const etbKeywords = ['deathrattle', 'entersthebattlefield', 'etb'];
+    const etbNames = ['draw', 'scry', 'create', 'token', 'destroy', 'exile', 'counter'];
+    
+    return etbKeywords.some(k => keywords.includes(k)) ||
+           etbNames.some(n => name.includes(n));
+  }
+
+  /**
+   * Check if creature has leave-the-battlefield value
+   */
+  private hasLTBValue(creature: Permanent): boolean {
+    const name = creature.name?.toLowerCase() || '';
+    const keywords = creature.keywords || [];
+    
+    // Common LTB patterns
+    const ltbKeywords = ['deathrattle', 'leavesthebattlefield', 'ltb'];
+    const ltbNames = ['when', 'dies', 'leave', 'sacrifice'];
+    
+    return ltbKeywords.some(k => keywords.includes(k)) ||
+           ltbNames.some(n => name.includes(n));
+  }
+
+  /**
+   * Decide whether to multi-block with 2+ creatures
+   * Expert decision: when to block with multiple creatures
+   */
+  shouldMultiBlock(
+    attacker: Permanent,
+    availableBlockers: Permanent[],
+    context: { attackers: Permanent[]; blockers: Permanent[] }
+  ): { shouldMultiBlock: boolean; selectedBlockers: Permanent[]; reasoning: string } {
+    const attackers = context.attackers;
+    
+    // Don't multi-block if we only have 1 creature
+    if (availableBlockers.length < 2) {
+      return { shouldMultiBlock: false, selectedBlockers: [], reasoning: 'Insufficient blockers' };
+    }
+
+    // High threat attacker - more likely to multi-block
+    const threatLevel = this.evaluateAttackerThreat(attacker);
+    
+    // Expert aggressively multi-blocks high-threat creatures
+    const multiBlockThreshold = this.config.cardAdvantageWeight >= 2.0 ? 0.4 : 0.6;
+
+    if (threatLevel < multiBlockThreshold) {
+      return { 
+        shouldMultiBlock: false, 
+        selectedBlockers: [], 
+        reasoning: `Attacker threat level ${threatLevel.toFixed(2)} below threshold` 
+      };
+    }
+
+    // Check if attacker has trample - good reason to multi-block
+    const hasTrample = attacker.keywords?.includes('trample');
+    
+    // Check if we're at low life - protect ourselves
+    const aiPlayer = this.gameState.players[this.aiPlayerId];
+    const atLowLife = aiPlayer && aiPlayer.life <= (this.config.lifeThreshold || 10);
+
+    // Select best 2 blockers
+    const sortedBlockers = [...availableBlockers].sort((a, b) => {
+      // Prefer cheaper blockers (more expendable)
+      return (a.manaValue || 1) - (b.manaValue || 1);
+    });
+
+    const selectedBlockers = sortedBlockers.slice(0, 2);
+    
+    let reasoning = `Multi-blocking with ${selectedBlockers.map(b => b.name).join(', ')}`;
+    if (hasTrample) reasoning += ' (trample prevention)';
+    if (atLowLife) reasoning += ' (low life protection)';
+    reasoning += ` [threat: ${threatLevel.toFixed(2)}]`;
+
+    return {
+      shouldMultiBlock: true,
+      selectedBlockers,
+      reasoning
+    };
+  }
+
+  /**
+   * Evaluate how threatening an attacker is
+   */
+  private evaluateAttackerThreat(attacker: Permanent): number {
+    let threat = 0;
+
+    // Power is the main threat factor
+    const power = attacker.power || 0;
+    threat += Math.min(0.5, power / 10);
+
+    // Keywords add threat
+    const keywords = attacker.keywords || [];
+    if (keywords.includes('flying')) threat += 0.15;
+    if (keywords.includes('trample')) threat += 0.15;
+    if (keywords.includes('lifelink')) threat += 0.1;
+    if (keywords.includes('.double_strike')) threat += 0.15;
+
+    // High mana value = more threatening
+    const manaValue = attacker.manaValue || 0;
+    threat += Math.min(0.2, manaValue / 20);
+
+    return Math.min(1, threat);
+  }
 }
 
 /**
