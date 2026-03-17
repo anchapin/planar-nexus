@@ -16,7 +16,7 @@
 | 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
 | 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
-| 10. Expert Opponent AI Refinement | 0/2 | Not started | - |
+| 10. Expert Opponent AI Refinement | 0/3 | Not started | - |
 
 ## Phase Details
 
@@ -79,4 +79,7 @@
 1. Expert AI successfully executes complex, multi-target "combos" or interactions defined in its logic.
 2. AI makes optimal "stack" decisions (e.g., responding to a player's removal spell with a protection spell).
 3. AI combat logic handles complex multi-blocker scenarios without obvious tactical blunders.
-**Plans**: TBD
+**Plans**:
+- [ ] 10-01-PLAN.md — Expert Stack Interaction Weights & Lookahead Implementation
+- [ ] 10-02-PLAN.md — Multi-Target & Variable Cost Handling
+- [ ] 10-03-PLAN.md — Combat AI Multi-Blocker Refinement
