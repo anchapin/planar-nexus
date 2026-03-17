@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SynergyProvider } from "./_components/synergy-context";
+import { AIDeckAssistant } from "./_components/ai-deck-assistant";
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
@@ -22,6 +24,8 @@ export default function DeckBuilderPage() {
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
   const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const searchInputRef = useRef<{ focus: () => void }>(null);
 
   const { toast } = useToast();
   const [isImporting, startImportTransition] = useTransition();
@@ -43,12 +47,34 @@ export default function DeckBuilderPage() {
     }
   }, [deck, deckName, format, activeDeckId, savedDecks]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+S or Cmd+S to save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveDeck();
+      }
+      // Ctrl+F or Cmd+F to focus search
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      // Escape to close dialogs (handled by Dialog component, but we track state)
+      else if (e.key === 'Escape') {
+        setIsImportDialogOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []); // Empty deps - handlers are stable
 
   const handleDeckChange = (updater: (prevDeck: DeckCard[]) => DeckCard[]) => {
     setDeck(updater);
     setIsDeckSaved(false);
   };
-  
+
   const handleDeckNameChange = (name: string) => {
     setDeckName(name);
     setIsDeckSaved(false);
@@ -249,51 +275,56 @@ export default function DeckBuilderPage() {
   }
 
   return (
-    <div className="flex h-full min-h-svh w-full flex-col p-4 md:p-6">
-      <div className="flex items-center justify-between gap-4 mb-4">
-        <div className="flex items-center gap-6">
-          <h1 className="font-headline text-3xl font-bold">Deck Builder</h1>
-          <div className="flex items-center gap-2">
-            <Label htmlFor="format-select" className="text-muted-foreground">Format</Label>
-            <Select value={format} onValueChange={handleFormatChange}>
-                <SelectTrigger id="format-select" data-testid="format-select" className="w-40 capitalize">
-                    <SelectValue placeholder="Select format" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value="commander">Commander</SelectItem>
-                    <SelectItem value="standard">Standard</SelectItem>
-                    <SelectItem value="modern">Modern</SelectItem>
-                    <SelectItem value="pioneer">Pioneer</SelectItem>
-                    <SelectItem value="legacy">Legacy</SelectItem>
-                    <SelectItem value="vintage">Vintage</SelectItem>
-                    <SelectItem value="pauper">Pauper</SelectItem>
-                </SelectContent>
-            </Select>
+    <SynergyProvider deck={deck}>
+      <div className="flex h-full min-h-svh w-full flex-col p-4 md:p-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+            <h1 className="font-headline text-3xl font-bold whitespace-nowrap">Deck Builder</h1>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="format-select" className="text-muted-foreground">Format</Label>
+              <Select value={format} onValueChange={handleFormatChange}>
+                  <SelectTrigger id="format-select" data-testid="format-select" className="w-40 capitalize">
+                      <SelectValue placeholder="Select format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                      <SelectItem value="commander">Commander</SelectItem>
+                      <SelectItem value="standard">Standard</SelectItem>
+                      <SelectItem value="modern">Modern</SelectItem>
+                      <SelectItem value="pioneer">Pioneer</SelectItem>
+                      <SelectItem value="legacy">Legacy</SelectItem>
+                      <SelectItem value="vintage">Vintage</SelectItem>
+                      <SelectItem value="pauper">Pauper</SelectItem>
+                  </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <ImportExportControls onImport={importDeck} onExport={exportDeck} onClear={clearDeck} onSave={saveDeck} isDeckSaved={isDeckSaved} isImporting={isImporting} />
+        </div>
+        <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-2">
+              <CardSearch ref={searchInputRef} onAddCard={addCardToDeck} />
+          </div>
+          <div className="lg:col-span-1 flex flex-col gap-6">
+              <DeckList 
+                  deck={deck} 
+                  deckName={deckName}
+                  onDeckNameChange={handleDeckNameChange}
+                  onRemoveCard={removeCardFromDeck} 
+              />
+          </div>
+          <div className="lg:col-span-1 flex flex-col gap-6">
+              <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
+              <Card>
+                  <CardHeader className="py-4">
+                      <CardTitle className="text-lg">Saved Decks</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pb-4">
+                      <SavedDecksList savedDecks={savedDecks} onLoadDeck={loadDeck} onDeleteDeck={deleteDeck} activeDeckId={activeDeckId} />
+                  </CardContent>
+              </Card>
           </div>
         </div>
-        <ImportExportControls onImport={importDeck} onExport={exportDeck} onClear={clearDeck} onSave={saveDeck} isDeckSaved={isDeckSaved} isImporting={isImporting} />
       </div>
-      <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-            <CardSearch onAddCard={addCardToDeck} />
-        </div>
-        <div className="lg:col-span-1 flex flex-col gap-6">
-            <DeckList 
-                deck={deck} 
-                deckName={deckName}
-                onDeckNameChange={handleDeckNameChange}
-                onRemoveCard={removeCardFromDeck} 
-            />
-            <Card>
-                <CardHeader>
-                    <CardTitle>Saved Decks</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <SavedDecksList savedDecks={savedDecks} onLoadDeck={loadDeck} onDeleteDeck={deleteDeck} activeDeckId={activeDeckId} />
-                </CardContent>
-            </Card>
-        </div>
-      </div>
-    </div>
+    </SynergyProvider>
   );
 }
