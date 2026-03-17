@@ -2,21 +2,21 @@
 
 ## Phases
 
-- [ ] **Phase 6: Multi-Provider LLM & Streaming Infrastructure** - Implement Vercel AI SDK with multi-model support and SSE streaming.
-- [ ] **Phase 7: Local Intelligence Foundation** - Integrate Orama and Transformers.js for offline-first RAG and vector search.
-- [ ] **Phase 8: AI Deck Assistant UX** - Build proactive card suggestion UI with real-time synergy explanations.
-- [ ] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
+- [x] **Phase 6: Multi-Provider LLM & Streaming Infrastructure** - Implement Vercel AI SDK with multi-model support and SSE streaming.
+- [x] **Phase 7: Local Intelligence Foundation** - Integrate Orama and Transformers.js for offline-first RAG and vector search.
+- [>] **Phase 8: AI Deck Assistant UX** - Build proactive card suggestion UI with real-time synergy explanations.
+- [>] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
 - [ ] **Phase 10: Expert Opponent AI Refinement** - Tune heuristic weights and stack interaction logic for high-level play.
 
 ## Progress Table
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 6. Multi-Provider LLM & Streaming | 0/0 | Not started | - |
-| 7. Local Intelligence Foundation | 0/0 | Not started | - |
-| 8. AI Deck Assistant UX | 0/0 | Not started | - |
-| 9. Adaptive Coaching & Player History | 0/0 | Not started | - |
-| 10. Expert Opponent AI Refinement | 0/0 | Not started | - |
+| 6. Multi-Provider LLM & Streaming | 5/5 | Completed | 2026-03-17 |
+| 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
+| 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
+| 9. Adaptive Coaching & Player History | 1/3 | In progress | - |
+| 10. Expert Opponent AI Refinement | 0/2 | Not started | - |
 
 ## Phase Details
 
@@ -50,7 +50,11 @@
 1. User sees a list of suggested cards that update in real-time as they add cards to their deck.
 2. User can click "Why this card?" and see a brief, streamed explanation of the synergy.
 3. Synergistic cards are visually highlighted in the main card browser when a deck is being edited.
-**Plans**: TBD
+
+**Plans**:
+- [ ] 08-01-PLAN.md — Synergy Infrastructure & State (Vectorization bridge)
+- [ ] 08-02-PLAN.md — AI Assistant UI & Streaming Explanations
+- [ ] 08-03-PLAN.md — Search Integration & E2E Verification
 
 ### Phase 9: Adaptive Coaching & Player History
 **Goal**: The AI provides personalized advice based on the player's specific gameplay history and improvement over time.
@@ -60,7 +64,10 @@
 1. User can view a "Coach Report" that summarizes their win/loss trends and common mistakes.
 2. The AI coach references specific past games or similar situations when giving advice.
 3. Opponent difficulty automatically suggests adjustments based on the player's recent performance.
-**Plans**: TBD
+**Plans**:
+- [x] 09-01-PLAN.md — Game History Infrastructure & Migration (COMPLETED)
+- [ ] 09-02-PLAN.md — Semantic History Retrieval
+- [ ] 09-03-PLAN.md — Coach Report UI
 
 ### Phase 10: Expert Opponent AI Refinement
 **Goal**: High-level players face a challenging AI that handles complex stack interactions and multi-card synergies.
