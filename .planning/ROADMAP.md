@@ -5,7 +5,7 @@
 - [x] **Phase 6: Multi-Provider LLM & Streaming Infrastructure** - Implement Vercel AI SDK with multi-model support and SSE streaming.
 - [x] **Phase 7: Local Intelligence Foundation** - Integrate Orama and Transformers.js for offline-first RAG and vector search.
 - [>] **Phase 8: AI Deck Assistant UX** - Build proactive card suggestion UI with real-time synergy explanations.
-- [>] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
+- [x] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
 - [ ] **Phase 10: Expert Opponent AI Refinement** - Tune heuristic weights and stack interaction logic for high-level play.
 
 ## Progress Table
@@ -15,7 +15,7 @@
 | 6. Multi-Provider LLM & Streaming | 5/5 | Completed | 2026-03-17 |
 | 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
-| 9. Adaptive Coaching & Player History | 3/4 | In progress | - |
+| 9. Adaptive Coaching & Player History | 4/4 | Completed | 2026-03-17 |
 | 10. Expert Opponent AI Refinement | 0/2 | Not started | - |
 
 ## Phase Details
@@ -68,7 +68,7 @@
 - [x] 09-01-PLAN.md — Game History Infrastructure & Migration (COMPLETED)
 - [x] 09-02-PLAN.md — Gameplay Integration & Persistence (COMPLETED)
 - [x] 09-03-PLAN.md — Semantic History & AI Coach Tools (COMPLETED)
-- [ ] 09-04-PLAN.md — Coach Report Service Integration
+- [x] 09-04-PLAN.md — Coach Report Service Integration (COMPLETED)
 
 ### Phase 10: Expert Opponent AI Refinement
 **Goal**: High-level players face a challenging AI that handles complex stack interactions and multi-card synergies.
