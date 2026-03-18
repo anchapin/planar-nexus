@@ -2,26 +2,26 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Draft/Sealed Limited Modes
-status: unknown
-last_updated: "2026-03-18T17:14:36.085Z"
+status: executing
+last_updated: "2026-03-18T17:58:38Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 8
+  completed_plans: 6
 ---
 
 # Project State: Planar Nexus
 
 ## Project Reference
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: Planning v1.4 Draft/Sealed Limited Modes
+- **Current Focus**: v1.4 Draft/Sealed Limited Modes
 
 ## Current Position
 - **Milestone**: v1.4 EXECUTING
-- **Status**: Plan 14-03 Complete (Limited Deck Builder)
-- **Current Phase**: Phase 14 (Foundation) - Plan 03/04
-- **Next**: Plan 14-04 (Sealed/Draft Flow - TBD)
+- **Status**: Plan 15-01 Complete (Draft Core)
+- **Current Phase**: Phase 15 (Draft Core) - Plan 01/03
+- **Next**: Plan 15-02 (Draft UI)
 
 ## Milestone History
 
@@ -37,8 +37,8 @@ progress:
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 14 | Foundation | SET-01-03 ✅, SEAL-01-05 ✅, LBld-01-06 ✅, ISOL-01-03 ✅ | Plan 03/04 |
-| 15 | Draft Core | DRFT-01-11 | Not started |
+| 14 | Foundation | SET-01-03 ✅, SEAL-01-05 ✅, LBld-01-06 ✅, ISOL-01-03 ✅ | Complete |
+| 15 | Draft Core | DRFT-01-11 | Plan 01/03 |
 | 16 | AI Neighbors | NEIB-01-05 | Not started |
 | 17 | Play Integration | LPLY-01-03 | Not started |
 
@@ -53,8 +53,8 @@ progress:
 - Pool persistence with session ID ✅
 
 ### Phase 15: Draft Core
-- 3-pack draft with 14 cards each
-- Face-down packs revealed on open
+- 3-pack draft with 14 cards each ✅ (15-01)
+- Face-down packs revealed on open ✅ (15-01)
 - Card selection to add to draft pool
 - Pick timer with visual warnings (green → yellow → red)
 - Timer auto-pick or skip on expiration
@@ -79,6 +79,6 @@ progress:
 - **Unmapped**: 0 ✓
 
 ## Session Continuity
-- **Last Action**: Completed 14-03-PLAN (Limited Deck Builder)
-- **Next Step**: Plan 14-04 (Sealed/Draft Flow integration)
-- **Plan command**: `/gsd-execute-plan 14-04`
+- **Last Action**: Completed 15-01-PLAN (Draft Types and Generator)
+- **Next Step**: Plan 15-02 (Draft UI)
+- **Plan command**: `/gsd-execute-plan 15-02`

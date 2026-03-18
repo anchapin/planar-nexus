@@ -50,7 +50,7 @@
 - [x] **Phase 14: Foundation** — Set selection, sealed core, limited deck builder, pool isolation ✓ (completed 2026-03-18)
 - [ ] **Phase 15: Draft Core** — Draft state machine, timer, picker UI, pool display
   **Plans:**
-  - [ ] 15-01-PLAN.md — Draft types, session creation, face-down pack generation
+  - [x] 15-01-PLAN.md — Draft types, session creation, face-down pack generation
   - [ ] 15-02-PLAN.md — Draft UI (pack view, card picking, pool display)
   - [ ] 15-03-PLAN.md — Draft timer with color states and auto-pick
   - [ ] 15-04-PLAN.md — Draft completion, persistence, and verification
@@ -104,7 +104,13 @@ Plans:
 5. Timer expiration auto-picks last hovered card or prompts user to skip
 6. Draft completes after 3 packs and session persists for resumption
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+- [x] 15-01-PLAN.md — Draft types, session creation, face-down pack generation ✅
+- [ ] 15-02-PLAN.md — Draft UI (pack view, card picking, pool display)
+- [ ] 15-03-PLAN.md — Draft timer with color states and auto-pick
+- [ ] 15-04-PLAN.md — Draft completion, persistence, and verification
 
 ---
 
@@ -146,13 +152,13 @@ Plans:
 
 | Phase | Goal | Requirements | Plans Complete | Status | Completed |
 |-------|------|--------------|----------------|--------|-----------|
-| 14. Foundation | Set selection, sealed core, limited deck builder | Complete    | 2026-03-18 | 🚧 In progress | - |
-| 15. Draft Core | Draft state machine, timer, picker UI | 11 | 0/6 | Not started | - |
+| 14. Foundation | Set selection, sealed core, limited deck builder | Complete    | 2026-03-18 | ✅ Complete | 2026-03-18 |
+| 15. Draft Core | Draft state machine, timer, picker UI | 11 | 1/4 | 🚧 In progress | - |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 0/5 | Not started | - |
 | 17. Play Integration | Launch AI game with limited deck | 3 | 0/3 | Not started | - |
 
 ---
 
-**Current Status**: v1.4 PLANNING 🚧
+**Current Status**: v1.4 EXECUTING 🚧 — Phase 15 (Draft Core) in progress
 
 _For archived milestones, see `.planning/milestones/`_
