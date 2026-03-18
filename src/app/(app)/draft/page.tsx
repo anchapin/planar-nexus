@@ -2,7 +2,7 @@
  * Draft Page
  *
  * Phase 15: Draft Core
- * Requirements: DRFT-04, DRFT-05
+ * Requirements: DRFT-04, DRFT-05, DRFT-06, DRFT-07, DRFT-08
  *
  * Features:
  * - Create new draft session (?set={code})
@@ -10,6 +10,8 @@
  * - Pick cards from packs
  * - View draft pool
  * - Session persistence
+ * - Draft timer with color states (DRFT-06, DRFT-07)
+ * - Auto-pick or skip dialog on timer expiry (DRFT-08)
  */
 
 "use client";
@@ -21,8 +23,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { DraftPicker, useDraftPicker, pickCard, openCurrentPack } from "@/components/draft-picker";
+import { DraftPicker, useDraftPicker, pickCard, openCurrentPack, advanceToNextPack } from "@/components/draft-picker";
 import { DraftPoolView } from "@/components/draft-pool-view";
+import { DraftTimer } from "@/components/draft-timer";
+import { SkipPickDialog } from "@/components/skip-pick-dialog";
+import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
 import { createDraftSession, isDraftComplete } from "@/lib/limited/draft-generator";
 import { getSession, updatePool } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
@@ -54,17 +59,100 @@ export default function DraftPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [setName, setSetName] = useState<string>("");
+  const [showSkipDialog, setShowSkipDialog] = useState(false);
+  const [isTimerActive, setIsTimerActive] = useState(false);
+
+  // Draft timer hook (DRFT-06, DRFT-07, DRFT-08)
+  const {
+    timeRemaining,
+    colorState,
+    start: startTimer,
+    pause: pauseTimer,
+    reset: resetTimer,
+    handleExpire,
+    lastHoveredCardId,
+  } = useDraftTimer({
+    initialSeconds: DRAFT_TIMER_CONFIG.defaultSeconds,
+    autoStart: false,
+    lastHoveredCardId: session?.lastHoveredCardId ?? null,
+    onExpire: () => {
+      // Timer expired - handle via handleExpire
+    },
+    onPickCard: (cardId) => {
+      // Auto-pick the hovered card
+      if (session) {
+        const updatedSession = pickCard(session, cardId);
+        setSession(updatedSession);
+        resetTimer();
+        // Check if draft is complete
+        if (isDraftComplete(updatedSession)) {
+          setIsTimerActive(false);
+        }
+      }
+    },
+    onShowSkipDialog: () => {
+      setShowSkipDialog(true);
+    },
+  });
 
   // Draft picker hooks
   const {
-    handlePickCard,
+    handlePickCard: draftPickerPick,
     handleOpenPack,
-    handleHoverCard,
+    handleHoverCard: draftPickerHover,
+    handleAdvanceToNextPack,
   } = session ? useDraftPicker(session, setSession) : {
     handlePickCard: () => {},
     handleOpenPack: () => {},
     handleHoverCard: () => {},
+    handleAdvanceToNextPack: () => {},
   };
+
+  // Handle card pick - reset timer after pick
+  const handleCardPick = useCallback((cardId: string) => {
+    draftPickerPick(cardId);
+    resetTimer();
+    // Timer will be restarted when new pick starts
+  }, [draftPickerPick, resetTimer]);
+
+  // Handle card hover - track for auto-pick (DRFT-08)
+  const handleHoverCard = useCallback((cardId: string | null) => {
+    draftPickerHover(cardId);
+    // Update session's lastHoveredCardId
+    if (session) {
+      setSession({
+        ...session,
+        lastHoveredCardId: cardId,
+      });
+    }
+  }, [draftPickerHover, session]);
+
+  // Handle skip dialog skip
+  const handleSkip = useCallback(() => {
+    setShowSkipDialog(false);
+    // Advance to next pick/pack without picking a card
+    if (session) {
+      // For now, just skip to next pack or complete
+      if (session.draftState === 'pack_complete') {
+        // Move to next pack
+        const updatedSession = advanceToNextPack(session);
+        setSession(updatedSession);
+        resetTimer();
+        setIsTimerActive(true);
+      } else {
+        // Complete the draft or skip pick
+        resetTimer();
+      }
+    }
+  }, [session, resetTimer]);
+
+  // Handle skip dialog cancel
+  const handleCancelSkip = useCallback(() => {
+    setShowSkipDialog(false);
+    // Resume timer with remaining time
+    setIsTimerActive(true);
+    startTimer();
+  }, [startTimer]);
 
   // Save session to IndexedDB on change
   useEffect(() => {
@@ -150,21 +238,14 @@ export default function DraftPage() {
     if (!session) return;
 
     // Open first pack
-    setSession(openCurrentPack(session));
-  }, [session, setSession]);
-
-  // Handle card pick
-  const handleCardPick = useCallback((cardId: string) => {
-    if (!session) return;
-
-    const updatedSession = pickCard(session, cardId);
+    const updatedSession = openCurrentPack(session);
     setSession(updatedSession);
-
-    // Check if draft is complete
-    if (isDraftComplete(updatedSession)) {
-      // Could show completion modal here
-    }
-  }, [session, setSession]);
+    
+    // Start timer when draft begins (DRFT-06)
+    resetTimer();
+    setIsTimerActive(true);
+    startTimer();
+  }, [session, setSession, resetTimer, startTimer]);
 
   // Loading state
   if (isLoading || isCreating) {
@@ -280,10 +361,15 @@ export default function DraftPage() {
   // Drafting state - main UI
   return (
     <div className="flex h-full min-h-svh w-full flex-col">
-      {/* Header */}
+      {/* Header with Timer (DRFT-06, DRFT-07) */}
       <DraftHeader
         session={session}
         onQuit={() => router.push("/set-browser")}
+        timeRemaining={timeRemaining}
+        colorState={colorState}
+        isTimerActive={isTimerActive}
+        onPauseTimer={pauseTimer}
+        onResumeTimer={startTimer}
       />
 
       {/* Main Content */}
@@ -311,6 +397,13 @@ export default function DraftPage() {
       <div className="lg:hidden border-t p-4 bg-card">
         <MobilePoolBar pool={session.pool} />
       </div>
+
+      {/* Skip Pick Dialog (DRFT-08) */}
+      <SkipPickDialog
+        isOpen={showSkipDialog}
+        onSkip={handleSkip}
+        onCancel={handleCancelSkip}
+      />
     </div>
   );
 }
@@ -322,9 +415,22 @@ export default function DraftPage() {
 interface DraftHeaderProps {
   session: DraftSession;
   onQuit: () => void;
+  timeRemaining?: number;
+  colorState?: 'green' | 'yellow' | 'red';
+  isTimerActive?: boolean;
+  onPauseTimer?: () => void;
+  onResumeTimer?: () => void;
 }
 
-function DraftHeader({ session, onQuit }: DraftHeaderProps) {
+function DraftHeader({ 
+  session, 
+  onQuit, 
+  timeRemaining, 
+  colorState = 'green',
+  isTimerActive = false,
+  onPauseTimer,
+  onResumeTimer,
+}: DraftHeaderProps) {
   const currentPack = session.currentPackIndex + 1;
   const currentPick = session.currentPickIndex + 1;
 
@@ -346,9 +452,20 @@ function DraftHeader({ session, onQuit }: DraftHeaderProps) {
         </div>
       </div>
 
-      <Button variant="ghost" size="sm" onClick={onQuit}>
-        Quit Draft
-      </Button>
+      {/* Timer (DRFT-06, DRFT-07) */}
+      <div className="flex items-center gap-3">
+        {timeRemaining !== undefined && isTimerActive && (
+          <DraftTimer
+            timeRemaining={timeRemaining}
+            colorState={colorState}
+            maxSeconds={DRAFT_TIMER_CONFIG.defaultSeconds}
+            isPaused={!isTimerActive}
+          />
+        )}
+        <Button variant="ghost" size="sm" onClick={onQuit}>
+          Quit Draft
+        </Button>
+      </div>
     </div>
   );
 }
