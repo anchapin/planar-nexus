@@ -42,6 +42,77 @@ export interface ScryfallSet {
 export type SetSortOption = 'release_date' | 'name' | 'card_count';
 
 // ============================================================================
+// Draft Types (Phase 15)
+// ============================================================================
+
+/**
+ * Draft state machine states
+ * DRFT-04: Visual states for draft flow
+ */
+export type DraftState = 'intro' | 'picking' | 'pack_complete' | 'draft_complete';
+
+/**
+ * A card in draft (with draft-specific metadata)
+ * Extends PoolCard with draft-specific fields
+ */
+export interface DraftCard extends PoolCard {
+  // Inherits: packId, packSlot, addedAt, isFoil from PoolCard
+  // Adds draft-specific:
+  pickedAt?: string; // When card was picked
+}
+
+/**
+ * Draft pack - cards hidden until opened
+ * DRFT-03: Cards face-down until user opens pack
+ */
+export interface DraftPack {
+  /** Unique pack ID */
+  id: string;
+  /** All 14 cards in pack */
+  cards: DraftCard[];
+  /** DRFT-03: Are cards revealed? */
+  isOpened: boolean;
+  /** Cards already picked from this pack */
+  pickedCardIds: string[];
+}
+
+/**
+ * Draft card for display (shows card or face-down)
+ * DRFT-03: Visual representation of cards in pack
+ */
+export interface DraftDisplayCard {
+  id: string;
+  /** null = face-down */
+  card: DraftCard | null;
+  isFaceDown: boolean;
+  isPicked: boolean;
+  packIndex: number;
+  slot: number;
+}
+
+/**
+ * Draft session - extends LimitedSession with draft state
+ * DRFT-01: Session creation with UUID
+ * DRFT-02: 3 packs of 14 cards
+ * DRFT-05: Pack-by-pack drafting
+ */
+export interface DraftSession extends LimitedSession {
+  mode: 'draft'; // Override to 'draft'
+  /** Current state in draft flow */
+  draftState: DraftState;
+  /** 0-2 for 3 packs */
+  currentPackIndex: number;
+  /** 0-13 for 14 picks per pack */
+  currentPickIndex: number;
+  /** All 3 packs */
+  packs: DraftPack[];
+  /** DRFT-06: Current timer value */
+  timerSeconds: number;
+  /** DRFT-08: For auto-pick functionality */
+  lastHoveredCardId: string | null;
+}
+
+// ============================================================================
 // Core Types
 // ============================================================================
 
