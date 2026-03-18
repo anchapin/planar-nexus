@@ -29,10 +29,10 @@ import { DraftTimer } from "@/components/draft-timer";
 import { SkipPickDialog } from "@/components/skip-pick-dialog";
 import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
 import { createDraftSession, isDraftComplete } from "@/lib/limited/draft-generator";
-import { getSession, updatePool } from "@/lib/limited/pool-storage";
+import { getSession, saveDraftSession } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
 import type { DraftSession } from "@/lib/limited/types";
-import { Loader2, Package, Play, CheckCircle, ArrowRight } from "lucide-react";
+import { Loader2, Package, Play } from "lucide-react";
 
 // ============================================================================
 // Constants
@@ -154,14 +154,14 @@ export default function DraftPage() {
     startTimer();
   }, [startTimer]);
 
-  // Save session to IndexedDB on change
+  // Save session to IndexedDB on change (DRFT-10, DRFT-11)
   useEffect(() => {
     if (!session) return;
 
     const saveSession = async () => {
       try {
-        // Update pool in storage
-        await updatePool(session.id, session.pool);
+        // Save full draft session state for persistence/resume
+        await saveDraftSession(session);
       } catch (err) {
         console.error("Failed to save session:", err);
       }
@@ -280,8 +280,23 @@ export default function DraftPage() {
     );
   }
 
+  // Redirect to complete page when draft is finished (DRFT-09)
+  useEffect(() => {
+    if (session && isDraftComplete(session)) {
+      // Update session status
+      const updatedSession = {
+        ...session,
+        draftState: "draft_complete" as const,
+        status: "completed" as const,
+      };
+      saveDraftSession(updatedSession);
+      // Redirect to completion page
+      router.replace(`/draft/complete?session=${session.id}`);
+    }
+  }, [session, router]);
+
   // Intro state - show start button
-  if (session.draftState === "intro") {
+  if (session?.draftState === "intro") {
     return (
       <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
         <Card className="max-w-lg w-full">
@@ -310,47 +325,6 @@ export default function DraftPage() {
             >
               <Play className="h-5 w-5 mr-2" />
               Start Draft
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Draft complete state
-  if (session.draftState === "draft_complete") {
-    return (
-      <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
-        <Card className="max-w-lg w-full">
-          <CardHeader className="text-center">
-            <CheckCircle className="h-16 w-16 mx-auto mb-4 text-green-500" />
-            <CardTitle className="text-3xl">Draft Complete!</CardTitle>
-            <p className="text-muted-foreground mt-2">
-              You picked {session.pool.length} cards
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-center text-sm text-muted-foreground">
-              <p>You can now build your deck from your pool.</p>
-              <p className="mt-2">
-                Don't forget: 40-card minimum, 4 copies of each card max.
-              </p>
-            </div>
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={() => router.push(`/limited-deck-builder?session=${session.id}`)}
-            >
-              <Layers className="h-5 w-5 mr-2" />
-              Build Deck
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => router.push(`/draft?session=${session.id}`)}
-            >
-              Review Pool
             </Button>
           </CardContent>
         </Card>
