@@ -85,6 +85,18 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
   
   // Store all cards for filtering
   const [allCards, setAllCards] = useState<MinimalCard[]>([]);
+  
+  // Keyboard navigation state
+  const [selectedIndex, setSelectedIndex] = useState<number>(-1);
+
+  // Flash state for visual feedback when card is added
+  const [flashCardId, setFlashCardId] = useState<string | null>(null);
+
+  // Trigger flash effect for a card
+  const triggerFlash = useCallback((cardId: string) => {
+    setFlashCardId(cardId);
+    setTimeout(() => setFlashCardId(null), 400);
+  }, []);
 
   // Expose focus method to parent
   useImperativeHandle(ref, () => ({
@@ -215,6 +227,45 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
     }
   }, [deletePreset, selectedSavedPresetId, toast]);
 
+  // Handle keyboard navigation in search results
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (results.length === 0) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex(prev => 
+          prev < results.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex(prev => 
+          prev > 0 ? prev - 1 : results.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0 && results[selectedIndex]) {
+          onAddCard(results[selectedIndex]);
+        }
+        break;
+    }
+  }, [results, selectedIndex, onAddCard]);
+
+  // Reset selectedIndex when results change
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [results]);
+
+  // Scroll selected card into view
+  useEffect(() => {
+    if (selectedIndex >= 0) {
+      const button = document.querySelector(`[data-card-index="${selectedIndex}"]`) as HTMLElement;
+      button?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedIndex]);
+
   // Initialize database on mount
   useEffect(() => {
     async function initDB() {
@@ -320,6 +371,7 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
             className="pl-10"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             aria-label="Search cards by name"
             aria-describedby="search-hint"
             disabled={isInitializing}
@@ -532,17 +584,31 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
           )}
 
           {!isInitializing && !isPending &&
-            results.map((card) => {
+            results.map((card, index) => {
               const synergy = synergyData.get(card.id);
+              const isSelected = selectedIndex === index;
               const hasHighSynergy = synergy && synergy.score >= 60;
 
               return (
                 <button
                   key={card.id}
-                  onClick={() => onAddCard(card)}
-                  className="relative aspect-[5/7] w-full transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group"
-                  title={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ''}`}
-                  aria-label={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ''}`}
+                  data-card-index={index}
+                  onClick={(e) => {
+                    // Trigger flash effect
+                    triggerFlash(card.id);
+                    // Shift+Click adds 4 copies (max allowed)
+                    if (e.shiftKey) {
+                      const MAX_QUICK_ADD = 4;
+                      for (let i = 0; i < MAX_QUICK_ADD; i++) {
+                        onAddCard(card);
+                      }
+                    } else {
+                      onAddCard(card);
+                    }
+                  }}
+                  className={`relative aspect-[5/7] w-full transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${isSelected ? 'ring-4 ring-primary ring-offset-2' : ''} ${flashCardId === card.id ? 'ring-4 ring-green-500 ring-offset-2' : ''}`}
+                  title={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ''} - Shift+Click for 4-of`}
+                  aria-label={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ''} - Shift+Click for 4-of${isSelected ? ' (selected)' : ''}`}
                   data-testid={`card-result-${card.name.toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   {card.image_uris?.large || card.image_uris?.normal ? (
