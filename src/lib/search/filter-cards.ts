@@ -204,6 +204,11 @@ function isColorSubset(cardColors: string[], allowedColors: string[]): boolean {
  * Filter cards by Commander color identity rules
  * A card is legal if its color_identity is a SUBSET of allowedColors
  * For 5-color commander (WUBRG), all cards are allowed
+ * 
+ * NOTE: Commander logic is implemented here rather than importing from game-rules.ts
+ * because game-rules.ts focuses on deck-level validation (validateDeckFormat), not
+ * card-level filtering. This is acceptable architectural separation - game-rules.ts
+ * handles game state and deck validation while filter-cards.ts handles card filtering.
  */
 export function filterByCommanderRules(cards: MinimalCard[], allowedColors: string[]): MinimalCard[] {
   if (!allowedColors || allowedColors.length === 0) return cards;
