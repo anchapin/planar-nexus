@@ -9,51 +9,20 @@
  * DRFT-08: Timer expiration auto-picks last hovered card or skip
  */
 
-// Re-export the types/config that will be defined in use-draft-timer.ts
-// These are defined here for the test scaffold to validate structure
-export const DRAFT_TIMER_CONFIG = {
-  defaultSeconds: 45,
-  warningThreshold: 15,
-  criticalThreshold: 5,
-} as const;
+import { renderHook, act } from '@testing-library/react';
+import { useDraftTimer, DRAFT_TIMER_CONFIG, TimerColorState } from '../use-draft-timer';
 
-export type TimerColorState = 'green' | 'yellow' | 'red';
-
-// Re-export the interfaces that will be defined in use-draft-timer.ts
-export interface UseDraftTimerOptions {
-  initialSeconds?: number;
-  autoStart?: boolean;
-  onExpire: () => void;
-  lastHoveredCardId: string | null;
-  onPickCard?: (cardId: string) => void;
-  onShowSkipDialog?: () => void;
-}
-
-export interface UseDraftTimerReturn {
-  timeRemaining: number;
-  colorState: TimerColorState;
-  isRunning: boolean;
-  start: () => void;
-  pause: () => void;
-  reset: () => void;
-  handleExpire: () => void;
-  lastHoveredCardId: string | null;
-}
-
-// Mock implementation for testing the interface contract
-export function useDraftTimer(options: UseDraftTimerOptions): UseDraftTimerReturn {
-  // This is a mock - the actual implementation will be in use-draft-timer.ts
-  return {
-    timeRemaining: options.initialSeconds ?? DRAFT_TIMER_CONFIG.defaultSeconds,
-    colorState: 'green',
-    isRunning: false,
+// Mock useTurnTimer to isolate draft timer logic
+jest.mock('../use-turn-timer', () => ({
+  useTurnTimer: jest.fn(() => ({
+    timeRemaining: 45,
+    timerState: 'idle',
     start: jest.fn(),
     pause: jest.fn(),
     reset: jest.fn(),
-    handleExpire: jest.fn(),
-    lastHoveredCardId: options.lastHoveredCardId,
-  };
-}
+    addTime: jest.fn(),
+  })),
+}));
 
 describe('DRFT-06: Draft timer countdown', () => {
   describe('DRAFT_TIMER_CONFIG', () => {
@@ -70,30 +39,26 @@ describe('DRFT-06: Draft timer countdown', () => {
     });
   });
 
-  describe('useDraftTimer interface', () => {
-    it('should be callable with required options', () => {
+  describe('useDraftTimer', () => {
+    it('should initialize with default 45 seconds', () => {
       const mockOnExpire = jest.fn();
-      
-      // Test that the interface contract is valid
-      const options: UseDraftTimerOptions = {
+      const { result } = renderHook(() => useDraftTimer({
         onExpire: mockOnExpire,
         lastHoveredCardId: null,
-      };
-      
-      expect(options.onExpire).toBeDefined();
-      expect(options.lastHoveredCardId).toBeNull();
+      }));
+
+      expect(result.current.timeRemaining).toBe(45);
     });
 
-    it('should accept custom initial seconds option', () => {
+    it('should accept custom initial seconds', () => {
       const mockOnExpire = jest.fn();
-      
-      const options: UseDraftTimerOptions = {
+      const { result } = renderHook(() => useDraftTimer({
         initialSeconds: 30,
         onExpire: mockOnExpire,
         lastHoveredCardId: null,
-      };
-      
-      expect(options.initialSeconds).toBe(30);
+      }));
+
+      expect(result.current.timeRemaining).toBe(30);
     });
   });
 });
@@ -108,189 +73,185 @@ describe('DRFT-07: Timer color states', () => {
     });
   });
 
-  describe('color state boundaries', () => {
-    it('should define green as > warning threshold', () => {
-      const timeRemaining = DRAFT_TIMER_CONFIG.warningThreshold + 1;
-      expect(timeRemaining).toBeGreaterThan(DRAFT_TIMER_CONFIG.warningThreshold);
+  describe('color state transitions', () => {
+    it('should be green when time > warning threshold (15s)', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 45,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+      }));
+
+      // At 45 seconds, should be green
+      expect(result.current.colorState).toBe('green');
     });
 
-    it('should define yellow when <= warning threshold and > critical', () => {
-      const timeRemaining = DRAFT_TIMER_CONFIG.warningThreshold;
-      expect(timeRemaining).toBeLessThanOrEqual(DRAFT_TIMER_CONFIG.warningThreshold);
-      expect(timeRemaining).toBeGreaterThan(DRAFT_TIMER_CONFIG.criticalThreshold);
+    it('should be yellow when time <= warning threshold (15s) and > critical (5s)', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 10,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+      }));
+
+      // At 10 seconds, should be yellow
+      expect(result.current.colorState).toBe('yellow');
     });
 
-    it('should define red when <= critical threshold', () => {
-      const timeRemaining = DRAFT_TIMER_CONFIG.criticalThreshold;
-      expect(timeRemaining).toBeLessThanOrEqual(DRAFT_TIMER_CONFIG.criticalThreshold);
+    it('should be red when time <= critical threshold (5s)', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 3,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+      }));
+
+      // At 3 seconds, should be red
+      expect(result.current.colorState).toBe('red');
+    });
+  });
+
+  describe('color state at boundaries', () => {
+    it('should be yellow at exactly 15 seconds', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 15,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+      }));
+
+      expect(result.current.colorState).toBe('yellow');
+    });
+
+    it('should be red at exactly 5 seconds', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 5,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+      }));
+
+      expect(result.current.colorState).toBe('red');
+    });
+
+    it('should be green at exactly 16 seconds', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 16,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+      }));
+
+      expect(result.current.colorState).toBe('green');
     });
   });
 });
 
 describe('DRFT-08: Auto-pick on timer expiration', () => {
-  describe('UseDraftTimerOptions interface', () => {
-    it('should require onExpire callback', () => {
-      const options: UseDraftTimerOptions = {
-        onExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
+  describe('handleExpire behavior', () => {
+    it('should auto-pick when card was hovered before expiry', () => {
+      const mockOnPick = jest.fn();
+      const mockOnExpire = jest.fn();
       
-      expect(options.onExpire).toBeDefined();
-    });
-
-    it('should require lastHoveredCardId', () => {
-      const options: UseDraftTimerOptions = {
-        onExpire: jest.fn(),
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 45,
+        onExpire: mockOnExpire,
         lastHoveredCardId: 'card-123',
-      };
-      
-      expect(options.lastHoveredCardId).toBe('card-123');
+        onPickCard: mockOnPick,
+      }));
+
+      // When timer expires with hovered card, should auto-pick
+      act(() => {
+        result.current.handleExpire();
+      });
+
+      expect(mockOnPick).toHaveBeenCalledWith('card-123');
     });
 
-    it('should optionally support onPickCard callback', () => {
-      const options: UseDraftTimerOptions = {
-        onExpire: jest.fn(),
-        lastHoveredCardId: null,
-        onPickCard: jest.fn(),
-      };
+    it('should show skip dialog when no card was hovered', () => {
+      const mockOnShowSkipDialog = jest.fn();
+      const mockOnExpire = jest.fn();
       
-      expect(options.onPickCard).toBeDefined();
-    });
+      const { result } = renderHook(() => useDraftTimer({
+        initialSeconds: 45,
+        onExpire: mockOnExpire,
+        lastHoveredCardId: null,
+        onShowSkipDialog: mockOnShowSkipDialog,
+      }));
 
-    it('should optionally support onShowSkipDialog callback', () => {
-      const options: UseDraftTimerOptions = {
-        onExpire: jest.fn(),
-        lastHoveredCardId: null,
-        onShowSkipDialog: jest.fn(),
-      };
-      
-      expect(options.onShowSkipDialog).toBeDefined();
+      // When timer expires without hovered card, should show skip dialog
+      act(() => {
+        result.current.handleExpire();
+      });
+
+      expect(mockOnShowSkipDialog).toHaveBeenCalled();
     });
   });
 
-  describe('UseDraftTimerReturn interface', () => {
-    it('should expose handleExpire function', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
+  describe('lastHoveredCardId tracking', () => {
+    it('should be null by default', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        onExpire: mockOnExpire,
         lastHoveredCardId: null,
-      };
-      
-      expect(typeof returnType.handleExpire).toBe('function');
+      }));
+
+      expect(result.current.lastHoveredCardId).toBeNull();
     });
 
-    it('should expose lastHoveredCardId state', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
+    it('should track the last hovered card ID', () => {
+      const mockOnExpire = jest.fn();
+      const { result } = renderHook(() => useDraftTimer({
+        onExpire: mockOnExpire,
         lastHoveredCardId: 'card-abc',
-      };
-      
-      expect(returnType.lastHoveredCardId).toBe('card-abc');
+      }));
+
+      expect(result.current.lastHoveredCardId).toBe('card-abc');
     });
   });
 });
 
 describe('Timer controls', () => {
-  describe('UseDraftTimerReturn interface', () => {
-    it('should expose start function', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
+  it('should expose start function', () => {
+    const mockOnExpire = jest.fn();
+    const { result } = renderHook(() => useDraftTimer({
+      onExpire: mockOnExpire,
+      lastHoveredCardId: null,
+    }));
 
-      expect(typeof returnType.start).toBe('function');
-    });
+    expect(result.current.start).toBeDefined();
+    expect(typeof result.current.start).toBe('function');
+  });
 
-    it('should expose pause function', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
+  it('should expose pause function', () => {
+    const mockOnExpire = jest.fn();
+    const { result } = renderHook(() => useDraftTimer({
+      onExpire: mockOnExpire,
+      lastHoveredCardId: null,
+    }));
 
-      expect(typeof returnType.pause).toBe('function');
-    });
+    expect(result.current.pause).toBeDefined();
+    expect(typeof result.current.pause).toBe('function');
+  });
 
-    it('should expose reset function', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
+  it('should expose reset function', () => {
+    const mockOnExpire = jest.fn();
+    const { result } = renderHook(() => useDraftTimer({
+      onExpire: mockOnExpire,
+      lastHoveredCardId: null,
+    }));
 
-      expect(typeof returnType.reset).toBe('function');
-    });
+    expect(result.current.reset).toBeDefined();
+    expect(typeof result.current.reset).toBe('function');
+  });
 
-    it('should expose isRunning state', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
+  it('should expose isRunning state', () => {
+    const mockOnExpire = jest.fn();
+    const { result } = renderHook(() => useDraftTimer({
+      onExpire: mockOnExpire,
+      lastHoveredCardId: null,
+    }));
 
-      expect(typeof returnType.isRunning).toBe('boolean');
-    });
-
-    it('should expose timeRemaining state', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'green',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
-
-      expect(typeof returnType.timeRemaining).toBe('number');
-    });
-
-    it('should expose colorState type', () => {
-      const returnType: UseDraftTimerReturn = {
-        timeRemaining: 45,
-        colorState: 'yellow',
-        isRunning: false,
-        start: jest.fn(),
-        pause: jest.fn(),
-        reset: jest.fn(),
-        handleExpire: jest.fn(),
-        lastHoveredCardId: null,
-      };
-
-      expect(['green', 'yellow', 'red']).toContain(returnType.colorState);
-    });
+    expect(typeof result.current.isRunning).toBe('boolean');
   });
 });
