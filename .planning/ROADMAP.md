@@ -78,7 +78,7 @@
 Plans:
 - [x] 14-01-PLAN.md — Foundation & Set Browser (types, set service, set browser UI) ✅
 - [x] 14-02-PLAN.md — Sealed Core (pool generation, pool storage, isolation) ✅
-- [ ] 14-03-PLAN.md — Limited Deck Builder (validator, sealed page, limited deck builder)
+- [x] 14-03-PLAN.md — Limited Deck Builder (validator, sealed page, limited deck builder) ✅
 - [ ] 14-04-PLAN.md — Verification (human checkpoint)
 
 ---
@@ -140,7 +140,7 @@ Plans:
 
 | Phase | Goal | Requirements | Plans Complete | Status | Completed |
 |-------|------|--------------|----------------|--------|-----------|
-| 14. Foundation | Set selection, sealed core, limited deck builder | 17 | 2/4 | 🚧 In progress | - |
+| 14. Foundation | Set selection, sealed core, limited deck builder | 17 | 3/4 | 🚧 In progress | - |
 | 15. Draft Core | Draft state machine, timer, picker UI | 11 | 0/6 | Not started | - |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 0/5 | Not started | - |
 | 17. Play Integration | Launch AI game with limited deck | 3 | 0/3 | Not started | - |
