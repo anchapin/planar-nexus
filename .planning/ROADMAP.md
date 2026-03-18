@@ -17,7 +17,7 @@
 | 10. Expert Opponent AI Refinement | 3/3 | Complete   | 2026-03-17 |
 | 11. Search & Filter Infrastructure | 4/4 | Complete    | 2026-03-18 |
 | 12. Saved Searches & Statistics | 3/5 | Complete    | 2026-03-18 |
-| 13. Quick-Add & Performance | 0/3 | Not started | - |
+| 13. Quick-Add & Performance | 1/3 | In Progress | - |
 
 ## Phase Details
 
@@ -154,6 +154,6 @@
 8. Scrolling through 100+ results is smooth without jank
 
 **Plans**: 
-- [ ] 13-01-PLAN.md — Keyboard Navigation (Enter-to-add, arrow keys)
+- [x] 13-01-PLAN.md — Keyboard Navigation (Enter-to-add, arrow keys) (COMPLETED)
 - [ ] 13-02-PLAN.md — Shift+Click & Visual Feedback
 - [ ] 13-03-PLAN.md — Performance & Virtual Scrolling
