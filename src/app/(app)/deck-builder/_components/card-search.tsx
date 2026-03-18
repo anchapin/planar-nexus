@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useCallback, useEffect, forwardRef, useImperativeHandle, useRef } from "react";
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { ScryfallCard } from "@/app/actions";
 import { initializeCardDatabase, getDatabaseStatus, searchCardsOffline, getAllCards } from "@/lib/card-database";
 import type { MinimalCard } from "@/lib/card-database";
@@ -91,6 +92,34 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
 
   // Flash state for visual feedback when card is added
   const [flashCardId, setFlashCardId] = useState<string | null>(null);
+
+  // Virtual scrolling refs and state
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [columnCount, setColumnCount] = useState(3);
+
+  // Update column count based on window size
+  useEffect(() => {
+    const updateColumnCount = () => {
+      if (typeof window === 'undefined') return;
+      if (window.innerWidth >= 1536) setColumnCount(5);
+      else if (window.innerWidth >= 1280) setColumnCount(4);
+      else if (window.innerWidth >= 1024) setColumnCount(3);
+      else if (window.innerWidth >= 768) setColumnCount(4);
+      else setColumnCount(3);
+    };
+
+    updateColumnCount();
+    window.addEventListener('resize', updateColumnCount);
+    return () => window.removeEventListener('resize', updateColumnCount);
+  }, []);
+
+  // Virtualizer for large result sets
+  const rowVirtualizer = useVirtualizer({
+    count: results.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 280, // Card height + gap
+    overscan: 5,
+  });
 
   // Trigger flash effect for a card
   const triggerFlash = useCallback((cardId: string) => {
@@ -258,13 +287,12 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
     setSelectedIndex(-1);
   }, [results]);
 
-  // Scroll selected card into view
+  // Scroll selected card into view using virtualizer
   useEffect(() => {
-    if (selectedIndex >= 0) {
-      const button = document.querySelector(`[data-card-index="${selectedIndex}"]`) as HTMLElement;
-      button?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (selectedIndex >= 0 && rowVirtualizer) {
+      rowVirtualizer.scrollToIndex(selectedIndex);
     }
-  }, [selectedIndex]);
+  }, [selectedIndex, rowVirtualizer]);
 
   // Initialize database on mount
   useEffect(() => {
@@ -534,65 +562,88 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
         </DialogContent>
       </Dialog>
 
-      {/* Search Results */}
-      <ScrollArea className="flex-grow rounded-lg border bg-card p-4">
-        <div
-          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-3 xl:grid-cols-4 gap-4"
-          role="list"
-          aria-label="Search results"
-        >
-          {isInitializing && (
-            <>
-              <div className="col-span-full text-center text-muted-foreground py-10">
-                <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
-                <p>Initializing offline card database...</p>
-              </div>
+      {/* Search Results - Virtualized for performance */}
+      <div
+        ref={parentRef}
+        className="flex-grow rounded-lg border bg-card overflow-auto"
+        role="list"
+        aria-label="Search results"
+      >
+        {/* Loading state */}
+        {isInitializing && (
+          <div className="p-4">
+            <div className="text-center text-muted-foreground py-10">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
+              <p>Initializing offline card database...</p>
+            </div>
+            <div 
+              className="grid gap-4"
+              style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
+            >
               {Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-[5/7] rounded-lg" aria-hidden="true" />
               ))}
-            </>
-          )}
-
-          {!isInitializing && isPending && (
-            Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="aspect-[5/7] rounded-lg" aria-hidden="true" />
-            ))
-          )}
-
-          {!isInitializing && !isPending && results.length === 0 && (
-             <div
-              className="col-span-full text-center text-muted-foreground py-10"
-              role="status"
-              aria-live="polite"
-            >
-                <p id="search-hint">
-                {debouncedQuery.length > 2
-                    ? "No cards found in local database."
-                    : "Enter a search term to find cards."}
-                </p>
-                {debouncedQuery.length > 2 && (
-                  <div className="mt-4 p-4 bg-muted rounded-lg max-w-md mx-auto">
-                    <p className="text-sm mb-2">
-                      <strong>Local Database Active</strong>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Search results come from your offline card database. The current database contains essential commander cards. More cards can be added via bulk import in future updates.
-                    </p>
-                  </div>
-                )}
             </div>
-          )}
+          </div>
+        )}
 
-          {!isInitializing && !isPending &&
-            results.map((card, index) => {
+        {/* Pending state */}
+        {!isInitializing && isPending && (
+          <div className="p-4">
+            <div 
+              className="grid gap-4"
+              style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
+            >
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="aspect-[5/7] rounded-lg" aria-hidden="true" />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty results state */}
+        {!isInitializing && !isPending && results.length === 0 && (
+          <div
+            className="text-center text-muted-foreground py-10 px-4"
+            role="status"
+            aria-live="polite"
+          >
+            <p id="search-hint">
+              {debouncedQuery.length > 2
+                ? "No cards found in local database."
+                : "Enter a search term to find cards."}
+            </p>
+            {debouncedQuery.length > 2 && (
+              <div className="mt-4 p-4 bg-muted rounded-lg max-w-md mx-auto">
+                <p className="text-sm mb-2">
+                  <strong>Local Database Active</strong>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Search results come from your offline card database. The current database contains essential commander cards. More cards can be added via bulk import in future updates.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Virtualized card grid */}
+        {!isInitializing && !isPending && results.length > 0 && (
+          <div
+            className="relative p-4"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+              const rowIndex = Math.floor(virtualItem.index / columnCount);
+              const colIndex = virtualItem.index % columnCount;
+              const card = results[virtualItem.index];
               const synergy = synergyData.get(card.id);
-              const isSelected = selectedIndex === index;
+              const isSelected = selectedIndex === virtualItem.index;
               const hasHighSynergy = synergy && synergy.score >= 60;
 
               return (
                 <button
                   key={card.id}
-                  data-card-index={index}
+                  data-card-index={virtualItem.index}
                   onClick={(e) => {
                     // Trigger flash effect
                     triggerFlash(card.id);
@@ -606,7 +657,15 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
                       onAddCard(card);
                     }
                   }}
-                  className={`relative aspect-[5/7] w-full transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${isSelected ? 'ring-4 ring-primary ring-offset-2' : ''} ${flashCardId === card.id ? 'ring-4 ring-green-500 ring-offset-2' : ''}`}
+                  className={`absolute aspect-[5/7] transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${isSelected ? 'ring-4 ring-primary ring-offset-2' : ''} ${flashCardId === card.id ? 'ring-4 ring-green-500 ring-offset-2' : ''}`}
+                  style={{
+                    height: `${virtualItem.size}px`,
+                    transform: `translateY(${virtualItem.start}px)`,
+                    left: `${(colIndex / columnCount) * 100}%`,
+                    width: `${100 / columnCount}%`,
+                    padding: '0 8px',
+                    boxSizing: 'border-box',
+                  }}
                   title={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ''} - Shift+Click for 4-of`}
                   aria-label={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ''} - Shift+Click for 4-of${isSelected ? ' (selected)' : ''}`}
                   data-testid={`card-result-${card.name.toLowerCase().replace(/\s+/g, '-')}`}
@@ -638,8 +697,9 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
                 </button>
               );
             })}
-        </div>
-      </ScrollArea>
+          </div>
+        )}
+      </div>
     </div>
   );
 });
