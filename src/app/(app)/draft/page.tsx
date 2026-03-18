@@ -36,6 +36,8 @@ import { createDraftSession, isDraftComplete, isAiPickTurn, passPack, getNextPac
 import { selectAiPick } from "@/lib/ai-neighbor-logic";
 import { getSession, saveDraftSession } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
+import { AiPickingIndicator } from "@/components/ai-picking-indicator";
+import { PackPassingAnimation, PackHolderBadge, TurnIndicator } from "@/components/pack-passing-animation";
 import { Loader2, Package, Play } from "lucide-react";
 
 // ============================================================================
@@ -615,15 +617,17 @@ function DraftHeader({
             Pick {currentPick}/{CARDS_PER_PACK}
           </Badge>
           
-          {/* NEIB-04: AI Neighbor Status */}
+          {/* NEIB-05: AI Neighbor Status with visual indicator */}
           {session.aiNeighbor?.enabled && (
-            <Badge variant={aiIsPicking ? "default" : "secondary"} className="font-mono">
-              {aiIsPicking ? (
-                <>🤖 AI Picking...</>
-              ) : (
-                <>🤖 AI Pool: {aiPoolSize}</>
-              )}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <AiPickingIndicator 
+                isPicking={!!aiIsPicking} 
+                difficulty={session.aiNeighbor.difficulty}
+              />
+              <span className="text-xs text-muted-foreground">
+                Pool: {aiPoolSize}
+              </span>
+            </div>
           )}
         </div>
       </div>

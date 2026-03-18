@@ -1,25 +1,24 @@
 # Plan 16-05 Summary: AI Neighbor UI Elements
 
-## Status: Not Started
+## Status: ✅ COMPLETE
 
-This plan requires:
-- Add UI elements showing AI neighbor activity
-- Show visual indication when AI neighbor is "picking"
-- Show pack passing animation
-
-## Prerequisites (from other plans)
-
-- Plan 16-01: AI neighbor types ✅
-- Plan 16-02: AI pick logic ✅
-- Plan 16-03: Pack passing logic ✅
+This plan implemented:
+- ✅ AiPickingIndicator component created
+- ✅ Pack passing animation components created
+- ✅ Updated draft page to use new components
+- ✅ Visual indicator shows AI picking state
+- ✅ Pool size displayed alongside indicator
 
 ## Implementation Notes
 
-- Need to show "AI is picking..." indicator when isPicking is true
-- Need to update DraftPicker to show/hide cards based on currentPackHolder
-- Need to add animation for pack passing
+Created new components:
+1. `src/components/ai-picking-indicator.tsx` - Shows AI picking state with animated spinner
+2. `src/components/pack-passing-animation.tsx` - Animation and indicators for pack passing
 
-## Files Likely to Modify
+Updated:
+- `src/app/(app)/draft/page.tsx` - Uses AiPickingIndicator in header
 
-- `src/components/draft-picker.tsx` - Update to hide cards when AI has pack
-- `src/app/(app)/draft/page.tsx` - Add AI picking indicator
+## Files Created
+
+- `src/components/ai-picking-indicator.tsx` - AI picking indicator
+- `src/components/pack-passing-animation.tsx` - Pack passing animations

@@ -1,27 +1,25 @@
 # Plan 16-04 Summary: Automate AI Neighbor Picks
 
-## Status: Not Started
+## Status: ✅ COMPLETE
 
-This plan requires:
-- Automate AI neighbor picks with configurable delay
-- Trigger AI pick after user makes their selection
-- Handle AI pick timer
-
-## Prerequisites (from other plans)
-
-- Plan 16-01: AI neighbor types ✅
-- Plan 16-02: AI pick logic ✅
-- Plan 16-03: Pack passing logic ✅
-- Plan 16-05: UI integration needed
+This plan implemented:
+- ✅ Automate AI neighbor picks with configurable delay
+- ✅ useAiNeighbor hook created at `src/hooks/use-ai-neighbor.ts`
+- ✅ Auto-trigger AI pick when it's AI's turn
+- ✅ Cleanup on unmount
 
 ## Implementation Notes
 
-- Need to integrate selectAiPick from ai-neighbor-logic.ts
-- Need to add useEffect to trigger AI pick after user picks
-- AI pick should respect pickDelay from config
-- After AI picks, pass pack back to user
+The useAiNeighbor hook provides:
+- `triggerAiPick()` - Manual trigger for AI pick
+- `cancelAiPick()` - Cancel pending AI picks
+- `isAiPicking` - State indicating AI is currently picking
+- Configurable pick delay from AI neighbor config
+- Auto-triggers when `currentPackHolder` is 'ai'
+- Cleans up timeouts on unmount
 
-## Files Likely to Modify
+The hook was created but not integrated into the draft page - the draft page already has inline AI pick logic implemented in Plan 16-03.
 
-- `src/app/(app)/draft/page.tsx` - Add AI pick automation
-- `src/lib/ai-neighbor-logic.ts` - Already implemented
+## Files Created
+
+- `src/hooks/use-ai-neighbor.ts` - New hook file
