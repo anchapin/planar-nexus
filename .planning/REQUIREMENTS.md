@@ -1,174 +1,145 @@
-# Planar Nexus — v1.3 Requirements (Deck Builder UX Enhancements)
+# Requirements: Planar Nexus v1.4 — Draft/Sealed Limited Modes
 
-**Milestone:** v1.3  
-**Goal**: Improve deck building experience with advanced search, filtering, and deck analysis tools.
-**Status:** ✅ SHIPPED 2026-03-18
-
----
-
-## SEARCH: Advanced Search
-
-### SEARCH-01: Multi-Attribute Search Filters
-- [x] Filter cards by CMC (converted mana cost) — exact match and ranges
-- [x] Filter by card type (Creature, Instant, Sorcery, Enchantment, Artifact, Planeswalker, Land)
-- [x] Filter by subtype/supertype
-- [x] Filter by rarity (Common, Uncommon, Rare, Mythic)
-- [x] Filter by set ( expansion symbol)
-
-### SEARCH-02: Color and Identity Filters
-- [x] Filter by exact color identity (W, U, B, R, G, multicolor)
-- [x] Filter by color combination (e.g., "at least these colors")
-- [x] Commander color identity filter (respects WUBRG rules)
-
-### SEARCH-03: Power/Toughness Filters
-- [x] Filter creatures by power range
-- [x] Filter creatures by toughness range
-- [x] Combined P/T search (e.g., "power >= 3")
-
-### SEARCH-04: Format Legality Filter
-- [x] Filter by format legality (Standard, Modern, Commander, Legacy, Vintage, Pauper)
-- [x] Show format legality badges on cards
+**Defined:** 2026-03-18
+**Core Value:** Free open-source tabletop card game deck builder and tester with AI coaching.
+**Research:** `.planning/research/SUMMARY.md` (completed 2026-03-18)
 
 ---
 
-## FUZZY: Fuzzy Search
+## v1.4 Requirements
 
-### FUZZY-01: Typo-Tolerant Search
-- [x] Accept minor typos in card names (Levenshtein distance <= 2)
-- [ ] Configurable fuzzy threshold in settings
+### Set Selection
 
-### FUZZY-02: Partial Matching
-- [x] Match partial words in card names ("bolt" finds "Lightning Bolt")
-- [x] Match partial words in card text
+- [ ] **SET-01**: User can browse available MTG sets by name, release date, and popularity
+- [ ] **SET-02**: User can select a set for Draft or Sealed from the set browser
+- [ ] **SET-03**: Set selection shows card count and set details before confirming
 
-### FUZZY-03: Synonym Matching
-- [x] Map common synonyms (e.g., "draw" finds "draw a card" effects)
-- [x] Handle alternate card names and promos
+### Draft Mode
 
----
+- [ ] **DRFT-01**: User can start a new Draft session with selected set
+- [ ] **DRFT-02**: Draft opens 3 packs of 14 cards each, presented one at a time
+- [ ] **DRFT-03**: Pack cards display face-down until user opens the pack
+- [ ] **DRFT-04**: User can select one card from pack to add to draft pool
+- [ ] **DRFT-05**: User can view current draft pool (all picked cards)
+- [ ] **DRFT-06**: Draft timer counts down per pick (configurable, default 45 seconds)
+- [ ] **DRFT-07**: Timer shows visual warning states (green → yellow → red)
+- [ ] **DRFT-08**: Timer expiration auto-picks last hovered card or prompts skip
+- [ ] **DRFT-09**: Draft completes after 3 packs (42 cards picked)
+- [ ] **DRFT-10**: Draft pool persists across page refresh
+- [ ] **DRFT-11**: Draft session can be resumed if interrupted
 
-## SAVED: Saved Searches
+### AI Draft Neighbors
 
-### SAVED-01: Search Presets
-- [x] Save current filter configuration as named preset
-- [x] Load saved presets from dropdown
-- [x] Delete saved presets
-- [x] Presets persist in IndexedDB
+- [ ] **NEIB-01**: User can draft against AI bot "neighbors" (simulated 2-player table)
+- [ ] **NEIB-02**: AI neighbors pick cards using heuristic logic (color preference, archetype)
+- [ ] **NEIB-03**: AI neighbors have difficulty levels (Easy: random, Medium: color-focused)
+- [ ] **NEIB-04**: Visual indication shows when AI neighbor is "picking"
+- [ ] **NEIB-05**: Pack cards visually "pass" between user and AI neighbor
 
-### SAVED-02: Quick Access Presets
-- [x] Built-in presets for common searches (e.g., "Creatures under 3 mana")
-- [x] One-click preset application
+### Sealed Mode
 
----
+- [ ] **SEAL-01**: User can start a new Sealed session with selected set
+- [ ] **SEAL-02**: Sealed opens 6 packs immediately, all cards revealed in pool
+- [ ] **SEAL-03**: User can browse and filter sealed pool cards (by color, type, CMC)
+- [ ] **SEAL-04**: Sealed pool persists across page refresh
+- [ ] **SEAL-05**: Sealed pool can be saved and resumed
 
-## SORT: Enhanced Sorting
+### Limited Deck Building
 
-### SORT-01: Multi-Sort Options
-- [x] Sort by CMC (ascending/descending)
-- [x] Sort by color
-- [x] Sort by type
-- [x] Sort by rarity (color-coded)
-- [x] Sort by set (alphabetical or by release date)
-- [x] Sort by name (alphabetical)
-- [x] Sort by power/toughness
+- [ ] **LBld-01**: User can build a deck from draft/sealed pool cards only
+- [ ] **LBld-02**: Deck builder shows "Limited" filter restricting to current pool
+- [ ] **LBld-03**: Deck validates 40-card minimum requirement
+- [ ] **LBld-04**: Deck validates 4-copy limit per card
+- [ ] **LBld-05**: Deck validates no sideboard (40-card main deck only)
+- [ ] **LBld-06**: Deck can be saved and loaded for limited session
 
-### SORT-02: Sort Persistence
-- [x] Remember last used sort preference
-- [x] Sort preference persists across sessions
+### Limited Play Integration
 
----
+- [ ] **LPLY-01**: User can launch AI opponent game with built limited deck
+- [ ] **LPLY-02**: Limited deck format validated before AI game starts
+- [ ] **LPLY-03**: Post-game returns user to limited session
 
-## STATS: Deck Statistics
+### Pool Isolation
 
-### STATS-01: Mana Curve Display
-- [x] Visual bar chart of mana costs in deck
-- [x] Separate curves for lands vs non-lands
-- [x] Interactive — click bar to filter
-
-### STATS-02: Card Type Breakdown
-- [x] Pie/bar chart showing distribution (Creatures, Instants, Sorceries, etc.)
-- [x] Count and percentage for each type
-- [x] Legend with click-to-filter
-
-### STATS-03: Color Distribution
-- [x] Visual representation of color mana requirements
-- [x] Color pie showing mana production vs color costs
+- [ ] **ISOL-01**: Limited pool cards do not appear in regular deck collection
+- [ ] **ISOL-02**: Limited pool is scoped to specific draft/sealed session
+- [ ] **ISOL-03**: Limited pool has session ID and cannot be merged
 
 ---
 
-## QUICK: Quick-Add Features
+## Out of Scope
 
-### QUICK-01: Keyboard Shortcuts
-- [x] Hotkey to add card from search to deck (e.g., Enter key)
-- [ ] Hotkey to toggle search results
-- [x] Arrow key navigation in search results
-
-### QUICK-02: One-Click Add
-- [x] Click card in results to add directly to deck
-- [x] Shift+Click to add 4-of (or maximum allowed)
-- [x] Visual feedback on add (flash/highlight)
-
----
-
-## Technical Requirements
-
-### REQ-T7: Search Performance
-- [x] Search results appear in <100ms for local database
-- [x] Filter application feels instant (<50ms UI update)
-- [x] Smooth scrolling with 100+ results
-
-### REQ-T8: UI Responsiveness
-- [x] No jank during filter changes
-- [x] Virtual scrolling for large result sets
-- [x] Debounced search input (300ms)
+| Feature | Reason |
+|---------|--------|
+| Sideboarding | Complex UX, defer to v1.5+ |
+| Multiplayer Draft | Infrastructure-heavy, AI-only in v1.4 |
+| Real-time multiplayer | WebSocket complexity, out of scope |
+| Cube Draft | Requires content management system |
+| Draft Tournament Mode | Swiss brackets, significant backend |
+| Pick-by-pick AI hints | Nice-to-have, defer to v1.5 |
+| Undo functionality | UX complexity, defer to v1.5 |
+| Draft summary statistics | Polish, defer to v1.5 |
+| Pool analysis charts | Polish, defer to v1.5 |
+| Raredraft mode | Conflicts with core experience |
 
 ---
 
-## Future Requirements
+## Traceability
 
-- **REQ-16**: Draft/Sealed Game Mode (v1.4)
-- **REQ-17**: Tournament Support (v1.4)
-- **REQ-18**: Multiplayer (v2.0)
-- **REQ-19**: Social Features (v2.0)
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| SET-01 | Phase 14 | Pending |
+| SET-02 | Phase 14 | Pending |
+| SET-03 | Phase 14 | Pending |
+| DRFT-01 | Phase 15 | Pending |
+| DRFT-02 | Phase 15 | Pending |
+| DRFT-03 | Phase 15 | Pending |
+| DRFT-04 | Phase 15 | Pending |
+| DRFT-05 | Phase 15 | Pending |
+| DRFT-06 | Phase 15 | Pending |
+| DRFT-07 | Phase 15 | Pending |
+| DRFT-08 | Phase 15 | Pending |
+| DRFT-09 | Phase 15 | Pending |
+| DRFT-10 | Phase 15 | Pending |
+| DRFT-11 | Phase 15 | Pending |
+| NEIB-01 | Phase 16 | Pending |
+| NEIB-02 | Phase 16 | Pending |
+| NEIB-03 | Phase 16 | Pending |
+| NEIB-04 | Phase 16 | Pending |
+| NEIB-05 | Phase 16 | Pending |
+| SEAL-01 | Phase 14 | Pending |
+| SEAL-02 | Phase 14 | Pending |
+| SEAL-03 | Phase 14 | Pending |
+| SEAL-04 | Phase 14 | Pending |
+| SEAL-05 | Phase 14 | Pending |
+| LBld-01 | Phase 14 | Pending |
+| LBld-02 | Phase 14 | Pending |
+| LBld-03 | Phase 14 | Pending |
+| LBld-04 | Phase 14 | Pending |
+| LBld-05 | Phase 14 | Pending |
+| LBld-06 | Phase 14 | Pending |
+| LPLY-01 | Phase 17 | Pending |
+| LPLY-02 | Phase 17 | Pending |
+| LPLY-03 | Phase 17 | Pending |
+| ISOL-01 | Phase 14 | Pending |
+| ISOL-02 | Phase 14 | Pending |
+| ISOL-03 | Phase 14 | Pending |
+
+**Coverage:**
+- v1.4 requirements: 35 total
+- Mapped to phases: 35
+- Unmapped: 0 ✓
 
 ---
 
-## Out of Scope (v1.3)
+## Research Dependencies
 
-- Online card trading
-- Price/scryfall data integration
-- Deck sharing via link
-- Export to other formats (beyond current support)
+From SUMMARY.md, flagged items to address during planning:
 
----
-
-## Requirements Traceability
-
-| Requirement | Status | Phase | Completed |
-|-------------|--------|-------|-----------|
-| SEARCH-01: Multi-Attribute Search Filters | ✅ Complete | Phase 11 | 2026-03-18 |
-| SEARCH-02: Color and Identity Filters | ✅ Complete | Phase 11 | 2026-03-18 |
-| SEARCH-03: Power/Toughness Filters | ✅ Complete | Phase 11 | 2026-03-18 |
-| SEARCH-04: Format Legality Filter | ✅ Complete | Phase 11 | 2026-03-18 |
-| FUZZY-01: Typo-Tolerant Search | ✅ Complete | Phase 11 | 2026-03-18 |
-| FUZZY-02: Partial Matching | ✅ Complete | Phase 11 | 2026-03-18 |
-| FUZZY-03: Synonym Matching | ✅ Complete | Phase 11 | 2026-03-18 |
-| SORT-01: Multi-Sort Options | ✅ Complete | Phase 11 | 2026-03-18 |
-| SORT-02: Sort Persistence | ✅ Complete | Phase 11 | 2026-03-18 |
-| SAVED-01: Search Presets | ✅ Complete | Phase 12 | 2026-03-18 |
-| SAVED-02: Quick Access Presets | ✅ Complete | Phase 12 | 2026-03-18 |
-| STATS-01: Mana Curve Display | ✅ Complete | Phase 12 | 2026-03-18 |
-| STATS-02: Card Type Breakdown | ✅ Complete | Phase 12 | 2026-03-18 |
-| STATS-03: Color Distribution | ✅ Complete | Phase 12 | 2026-03-18 |
-| QUICK-01: Keyboard Shortcuts | ✅ Complete | Phase 13 | 2026-03-18 |
-| QUICK-02: One-Click Add | ✅ Complete | Phase 13 | 2026-03-18 |
-| REQ-T7: Search Performance | ✅ Complete | Phase 13 | 2026-03-18 |
-| REQ-T8: UI Responsiveness | ✅ Complete | Phase 13 | 2026-03-18 |
-
-**Total: 18/18 requirements complete**
+1. **Set-specific pack configs** — Modern MTG sets have variable card counts per pack. Need Scryfall sealed content data or manual configuration.
+2. **Bot difficulty calibration** — Heuristic weights need tuning against real draft data.
 
 ---
 
-**Last Updated**: 2026-03-18 after v1.3 milestone completion
-
-**Note:** Two minor features not implemented (configurable fuzzy threshold, hotkey to toggle search results) - can be added in future releases if requested.
+*Requirements defined: 2026-03-18*
+*Last updated: 2026-03-18 after requirements gathering*
