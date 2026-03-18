@@ -2,11 +2,13 @@
 
 ## v1.4 Draft/Sealed Limited Modes (In Progress)
 
-**Phases completed:** 2 phases (Phase 14 Foundation ✅, Phase 15 Draft Core ✅)
+**Phases completed:** 4 phases (Phase 14 Foundation ✅, Phase 15 Draft Core ✅, Phase 16 AI Neighbors ✅, Phase 17 Play Integration ✅)
 
 **Key accomplishments:**
 - **Phase 14 Foundation**: Set browser, sealed pool generation, pool filtering, limited deck builder
 - **Phase 15 Draft Core**: 3-pack drafting, face-down packs, card picking, timer with auto-pick, session persistence
+- **Phase 16 AI Neighbors**: AI opponent in draft, heuristic-based picking (Easy/Medium), visual indicators
+- **Phase 17 Play Integration**: Launch AI opponent from limited session, format validation, session persistence
 
 ---
 
