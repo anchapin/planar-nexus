@@ -76,10 +76,10 @@
 **Plans**: 4 plans
 
 Plans:
-- [x] 14-01-PLAN.md — Foundation & Set Browser (types, set service, set browser UI)
-- [x] 14-02-PLAN.md — Sealed Core (pool generation, pool storage, isolation)
-- [x] 14-03-PLAN.md — Limited Deck Builder (validator, sealed page, limited deck builder)
-- [x] 14-04-PLAN.md — Verification (human checkpoint)
+- [x] 14-01-PLAN.md — Foundation & Set Browser (types, set service, set browser UI) ✅
+- [ ] 14-02-PLAN.md — Sealed Core (pool generation, pool storage, isolation)
+- [ ] 14-03-PLAN.md — Limited Deck Builder (validator, sealed page, limited deck builder)
+- [ ] 14-04-PLAN.md — Verification (human checkpoint)
 
 ---
 
