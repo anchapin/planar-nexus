@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useCollection } from "@/hooks/use-collection";
 import type { ScryfallCard } from "@/app/actions";
-import { searchCardsOffline } from "@/lib/card-database";
+import { searchCardsOffline, getAllCards, type MinimalCard } from "@/lib/card-database";
 import { type Format } from "@/lib/game-rules";
+import { useCardFilters } from "@/hooks/use-card-filters";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,6 +186,12 @@ export default function CollectionPage() {
     exportToCSV,
   } = useCollection();
 
+  // Initialize filter hook for advanced filtering
+  const { filters, setFilter, sortConfig, setSort, hasActiveFilters, search: filterSearch } = useCardFilters();
+  
+  // Store all cards for filtering
+  const [allCards, setAllCards] = useState<MinimalCard[]>([]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState< ScryfallCard[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -192,17 +199,79 @@ export default function CollectionPage() {
   const [newCollectionName, setNewCollectionName] = useState("");
   const [showNewCollectionDialog, setShowNewCollectionDialog] = useState(false);
 
+  // Load all cards on mount for filtering
+  useEffect(() => {
+    async function loadCards() {
+      try {
+        const cards = await getAllCards();
+        setAllCards(cards);
+      } catch (error) {
+        console.error("Failed to load cards for filtering:", error);
+      }
+    }
+    loadCards();
+  }, []);
+
+  // Convert ScryfallCard to MinimalCard for filtering
+  const toMinimalCard = (card: ScryfallCard): MinimalCard => ({
+    id: card.id,
+    name: card.name,
+    set: card.set,
+    collector_number: card.collector_number,
+    cmc: card.cmc,
+    type_line: card.type_line || '',
+    oracle_text: card.oracle_text,
+    colors: card.colors || [],
+    color_identity: card.color_identity || [],
+    rarity: card.rarity,
+    legalities: card.legalities || {},
+    image_uris: card.image_uris,
+    mana_cost: card.mana_cost,
+    power: card.power,
+    toughness: card.toughness,
+    keywords: card.keywords || [],
+  });
+
   const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim() && !hasActiveFilters) return;
 
     setIsSearching(true);
     try {
-      const results = await searchCardsOffline(searchQuery, {
-        maxCards: 20,
-        format: "commander" as Format,
-        includeImages: true,
-      });
-      setSearchResults(results as ScryfallCard[]);
+      let results: ScryfallCard[];
+      
+      if (searchQuery.trim()) {
+        // Perform name-based search
+        results = await searchCardsOffline(searchQuery, {
+          maxCards: 20,
+          format: "commander" as Format,
+          includeImages: true,
+        }) as ScryfallCard[];
+        
+        // Apply additional filters if active
+        if (hasActiveFilters && results.length > 0) {
+          const minimalCards = results.map(toMinimalCard);
+          const filtered = filterSearch(searchQuery, minimalCards);
+          const filteredIds = new Set(filtered.map(c => c.id));
+          results = results.filter(card => filteredIds.has(card.id));
+        }
+      } else if (hasActiveFilters && allCards.length > 0) {
+        // No search query but filters active - filter all cards
+        const filtered = filterSearch('', allCards);
+        const filteredIds = new Set(filtered.map(c => c.id));
+        
+        // Get full card data for filtered results
+        results = await searchCardsOffline('', {
+          maxCards: 100,
+          format: "commander" as Format,
+          includeImages: true,
+        }) as ScryfallCard[];
+        
+        results = results.filter(card => filteredIds.has(card.id));
+      } else {
+        results = [];
+      }
+      
+      setSearchResults(results);
     } catch (error) {
       console.error(error);
       toast({
