@@ -19,8 +19,8 @@
 - [ ] **DRFT-01**: User can start a new Draft session with selected set
 - [ ] **DRFT-02**: Draft opens 3 packs of 14 cards each, presented one at a time
 - [ ] **DRFT-03**: Pack cards display face-down until user opens the pack
-- [ ] **DRFT-04**: User can select one card from pack to add to draft pool
-- [ ] **DRFT-05**: User can view current draft pool (all picked cards)
+- [x] **DRFT-04**: User can select one card from pack to add to draft pool
+- [x] **DRFT-05**: User can view current draft pool (all picked cards)
 - [ ] **DRFT-06**: Draft timer counts down per pick (configurable, default 45 seconds)
 - [ ] **DRFT-07**: Timer shows visual warning states (green → yellow → red)
 - [ ] **DRFT-08**: Timer expiration auto-picks last hovered card or prompts skip
@@ -94,8 +94,8 @@
 | DRFT-01 | Phase 15 | Pending |
 | DRFT-02 | Phase 15 | Pending |
 | DRFT-03 | Phase 15 | Pending |
-| DRFT-04 | Phase 15 | Pending |
-| DRFT-05 | Phase 15 | Pending |
+| DRFT-04 | Phase 15 | Complete |
+| DRFT-05 | Phase 15 | Complete |
 | DRFT-06 | Phase 15 | Pending |
 | DRFT-07 | Phase 15 | Pending |
 | DRFT-08 | Phase 15 | Pending |

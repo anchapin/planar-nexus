@@ -153,7 +153,7 @@ Plans:
 | Phase | Goal | Requirements | Plans Complete | Status | Completed |
 |-------|------|--------------|----------------|--------|-----------|
 | 14. Foundation | Set selection, sealed core, limited deck builder | Complete    | 2026-03-18 | ✅ Complete | 2026-03-18 |
-| 15. Draft Core | Draft state machine, timer, picker UI | 11 | 1/4 | 🚧 In progress | - |
+| 15. Draft Core | 2/4 | In Progress|  | 🚧 In progress | - |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 0/5 | Not started | - |
 | 17. Play Integration | Launch AI game with limited deck | 3 | 0/3 | Not started | - |
 
