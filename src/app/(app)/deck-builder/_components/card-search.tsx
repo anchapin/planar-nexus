@@ -6,12 +6,25 @@ import { initializeCardDatabase, getDatabaseStatus, searchCardsOffline, getAllCa
 import type { MinimalCard } from "@/lib/card-database";
 import { type Format } from "@/lib/game-rules";
 import { useCardFilters } from "@/hooks/use-card-filters";
+import { useSearchPresets } from "@/hooks/use-search-presets";
+import { QUICK_PRESETS, getPresetsByCategory, type QuickPreset } from "@/lib/search/quick-presets";
 import { Input } from "@/components/ui/input";
-import { Search, Database, Loader2 } from "lucide-react";
+import { Search, Database, Loader2, X, Save, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useDebounce } from "use-debounce";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+  SelectLabel,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useSynergy } from "./synergy-context";
 import Image from "next/image";
@@ -60,6 +73,16 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
   // Initialize filter hook for advanced filtering
   const { filters, setFilter, sortConfig, setSort, hasActiveFilters, search: filterSearch, resetFilters } = useCardFilters();
   
+  // Quick presets state
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const presetsByCategory = getPresetsByCategory();
+  
+  // Saved search presets
+  const { presets: savedPresets, isLoading: isLoadingPresets, savePreset, deletePreset } = useSearchPresets();
+  const [selectedSavedPresetId, setSelectedSavedPresetId] = useState<string | null>(null);
+  const [isSavePresetDialogOpen, setIsSavePresetDialogOpen] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  
   // Store all cards for filtering
   const [allCards, setAllCards] = useState<MinimalCard[]>([]);
 
@@ -67,6 +90,130 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
   useImperativeHandle(ref, () => ({
     focus: () => inputRef.current?.focus(),
   }), []);
+
+  // Handle applying a quick preset
+  const handleQuickPreset = useCallback((presetId: string) => {
+    if (presetId === 'clear') {
+      // Clear all filters
+      resetFilters();
+      setSelectedPresetId(null);
+      return;
+    }
+
+    const preset = QUICK_PRESETS.find(p => p.id === presetId);
+    if (!preset) return;
+
+    // Clear existing filters first
+    resetFilters();
+
+    // Apply each filter from the preset
+    Object.entries(preset.filters).forEach(([key, value]) => {
+      if (value !== undefined) {
+        setFilter(key as keyof typeof filters, value);
+      }
+    });
+
+    setSelectedPresetId(presetId);
+  }, [resetFilters, setFilter]);
+
+  // Update selected preset when filters change externally
+  useEffect(() => {
+    if (!hasActiveFilters) {
+      setSelectedPresetId(null);
+      return;
+    }
+
+    // Check if current filters match any preset
+    const match = QUICK_PRESETS.find(preset => {
+      const presetFilters = preset.filters;
+      return Object.entries(presetFilters).every(([key, value]) => {
+        if (value === undefined) return true;
+        const currentValue = filters[key as keyof typeof filters];
+        return JSON.stringify(currentValue) === JSON.stringify(value);
+      });
+    });
+
+    setSelectedPresetId(match?.id || null);
+  }, [filters, hasActiveFilters]);
+
+  // Handle saving a preset
+  const handleSavePreset = useCallback(async () => {
+    if (!newPresetName.trim()) {
+      toast({
+        title: "Preset name required",
+        description: "Please enter a name for your preset.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await savePreset(newPresetName.trim(), filters, sortConfig.option, sortConfig.direction);
+      setNewPresetName("");
+      setIsSavePresetDialogOpen(false);
+      toast({
+        title: "Preset saved",
+        description: `"${newPresetName.trim()}" has been saved.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to save preset",
+        description: "There was an error saving your preset.",
+        variant: "destructive",
+      });
+    }
+  }, [newPresetName, filters, sortConfig, savePreset, toast]);
+
+  // Handle loading a saved preset
+  const handleLoadSavedPreset = useCallback((presetId: string) => {
+    const preset = savedPresets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    // Clear existing filters first
+    resetFilters();
+
+    // Apply filters from the saved preset
+    if (preset.filters) {
+      Object.entries(preset.filters).forEach(([key, value]) => {
+        if (value !== undefined) {
+          setFilter(key as keyof typeof filters, value);
+        }
+      });
+    }
+
+    // Apply sort if present
+    if (preset.sortOption || preset.sortDirection) {
+      setSort({
+        option: preset.sortOption || 'name',
+        direction: preset.sortDirection || 'asc',
+      });
+    }
+
+    setSelectedSavedPresetId(presetId);
+    setSelectedPresetId(null); // Clear quick preset selection
+  }, [savedPresets, resetFilters, setFilter, setSort]);
+
+  // Handle deleting a saved preset
+  const handleDeleteSavedPreset = useCallback(async (presetId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    try {
+      await deletePreset(presetId);
+      if (selectedSavedPresetId === presetId) {
+        setSelectedSavedPresetId(null);
+      }
+      toast({
+        title: "Preset deleted",
+        description: "The preset has been removed.",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to delete preset",
+        description: "There was an error deleting the preset.",
+        variant: "destructive",
+      });
+    }
+  }, [deletePreset, selectedSavedPresetId, toast]);
 
   // Initialize database on mount
   useEffect(() => {
@@ -161,22 +308,179 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(function
         )}
       </div>
 
-      {/* Search Input */}
-      <div className="relative mb-4">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <Input
-          ref={inputRef}
-          type="search"
-          placeholder="Search for cards (e.g., 'Sol Ring') + Ctrl+F"
-          className="pl-10"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Search cards by name"
-          aria-describedby="search-hint"
-          disabled={isInitializing}
-          data-testid="card-search-input"
-        />
+      {/* Search Input and Quick Filters */}
+      <div className="space-y-3 mb-4">
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input
+            ref={inputRef}
+            type="search"
+            placeholder="Search for cards (e.g., 'Sol Ring') + Ctrl+F"
+            className="pl-10"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search cards by name"
+            aria-describedby="search-hint"
+            disabled={isInitializing}
+            data-testid="card-search-input"
+          />
+        </div>
+
+        {/* Quick Presets Dropdown */}
+        <div className="flex items-center gap-2">
+          <Select value={selectedPresetId || ''} onValueChange={handleQuickPreset}>
+            <SelectTrigger className="w-full" aria-label="Quick filters">
+              <SelectValue placeholder="Quick Filters" />
+            </SelectTrigger>
+            <SelectContent>
+              {/* CMC Presets */}
+              <SelectGroup>
+                <SelectLabel>Converted Mana Cost</SelectLabel>
+                {presetsByCategory.cmc.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+
+              {/* Type Presets */}
+              <SelectGroup>
+                <SelectLabel>Card Type</SelectLabel>
+                {presetsByCategory.type.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+
+              {/* Rarity Presets */}
+              <SelectGroup>
+                <SelectLabel>Rarity</SelectLabel>
+                {presetsByCategory.rarity.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+
+              {/* Color Presets */}
+              <SelectGroup>
+                <SelectLabel>Color</SelectLabel>
+                {presetsByCategory.color.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+
+              {/* Clear Filters Option */}
+              <SelectItem value="clear" className="text-muted-foreground">
+                Clear Filters
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Active Filters Badge */}
+          {hasActiveFilters && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                resetFilters();
+                setSelectedPresetId(null);
+              }}
+              className="shrink-0"
+              aria-label="Clear all filters"
+            >
+              <X className="h-4 w-4 mr-1" />
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Saved Presets Controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Save Preset Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSavePresetDialogOpen(true)}
+            disabled={isInitializing || !hasActiveFilters}
+            className="flex items-center gap-1"
+          >
+            <Save className="h-4 w-4" />
+            Save
+          </Button>
+
+          {/* Load Saved Preset Dropdown */}
+          <Select
+            value={selectedSavedPresetId || ""}
+            onValueChange={(value) => {
+              if (value) {
+                handleLoadSavedPreset(value);
+              }
+            }}
+            disabled={isInitializing || isLoadingPresets || savedPresets.length === 0}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Load saved preset" />
+            </SelectTrigger>
+            <SelectContent>
+              {savedPresets.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>{preset.name}</span>
+                    <button
+                      onClick={(e) => handleDeleteSavedPreset(preset.id, e)}
+                      className="p-1 hover:bg-destructive hover:text-destructive-foreground rounded"
+                      aria-label={`Delete ${preset.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {savedPresets.length === 0 && !isLoadingPresets && (
+            <span className="text-xs text-muted-foreground">No saved presets</span>
+          )}
+        </div>
       </div>
+
+      {/* Save Preset Dialog */}
+      <Dialog open={isSavePresetDialogOpen} onOpenChange={setIsSavePresetDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save Filter Preset</DialogTitle>
+            <DialogDescription>
+              Save your current filter configuration for quick access later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              placeholder="Preset name (e.g., 'Blue Control')"
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  handleSavePreset();
+                }
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSavePresetDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSavePreset}>
+              Save Preset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Search Results */}
       <ScrollArea className="flex-grow rounded-lg border bg-card p-4">
