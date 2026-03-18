@@ -103,9 +103,9 @@
 - [ ] Arrow key navigation in search results
 
 ### QUICK-02: One-Click Add
-- [ ] Click card in results to add directly to deck
-- [ ] Shift+Click to add 4-of (or maximum allowed)
-- [ ] Visual feedback on add (flash/highlight)
+- [x] Click card in results to add directly to deck
+- [x] Shift+Click to add 4-of (or maximum allowed)
+- [x] Visual feedback on add (flash/highlight)
 
 ---
 
@@ -160,7 +160,7 @@
 | STATS-02: Card Type Breakdown | ✅ Complete | Phase 12-03 | 2026-03-18 |
 | STATS-03: Color Distribution | ✅ Complete | Phase 12-03 | 2026-03-18 |
 | QUICK-01: Keyboard Shortcuts | ⬜ Pending | Phase 13 | - |
-| QUICK-02: One-Click Add | ⬜ Pending | Phase 13 | - |
+| QUICK-02: One-Click Add | ✅ Complete | Phase 13-02 | 2026-03-18 |
 | REQ-T7: Search Performance | ⬜ Pending | Phase 13 | - |
 | REQ-T8: UI Responsiveness | ⬜ Pending | Phase 13 | - |
 
