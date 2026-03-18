@@ -47,7 +47,7 @@
 <details>
 <summary>🚧 v1.4 Draft/Sealed Limited Modes — PLANNING</summary>
 
-- [ ] **Phase 14: Foundation** — Set selection, sealed core, limited deck builder, pool isolation ✓
+- [x] **Phase 14: Foundation** — Set selection, sealed core, limited deck builder, pool isolation ✓ (completed 2026-03-18)
 - [ ] **Phase 15: Draft Core** — Draft state machine, timer, picker UI, pool display
 - [ ] **Phase 16: AI Neighbors** — Bot simulation, passing mechanics
 - [ ] **Phase 17: Play Integration** — Launch AI game with limited deck
@@ -140,7 +140,7 @@ Plans:
 
 | Phase | Goal | Requirements | Plans Complete | Status | Completed |
 |-------|------|--------------|----------------|--------|-----------|
-| 14. Foundation | Set selection, sealed core, limited deck builder | 17 | 3/4 | 🚧 In progress | - |
+| 14. Foundation | Set selection, sealed core, limited deck builder | Complete    | 2026-03-18 | 🚧 In progress | - |
 | 15. Draft Core | Draft state machine, timer, picker UI | 11 | 0/6 | Not started | - |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 0/5 | Not started | - |
 | 17. Play Integration | Launch AI game with limited deck | 3 | 0/3 | Not started | - |

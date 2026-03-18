@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Draft/Sealed Limited Modes
 status: unknown
-last_updated: "2026-03-18T14:05:00.000Z"
+last_updated: "2026-03-18T17:14:36.085Z"
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
   completed_plans: 4
 ---
