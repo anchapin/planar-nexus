@@ -300,6 +300,53 @@ export function isDraftComplete(session: DraftSession): boolean {
 }
 
 // ============================================================================
+// Pack Passing (NEIB-05)
+// ============================================================================
+
+/**
+ * Pass pack from current holder to the other player
+ * In draft: pack passes left, then right, alternating
+ */
+export function passPack(session: DraftSession): DraftSession {
+  const newHolder: 'user' | 'ai' = session.currentPackHolder === 'user' ? 'ai' : 'user';
+
+  return {
+    ...session,
+    currentPackHolder: newHolder,
+  };
+}
+
+/**
+ * Check if it's the AI's turn to pick
+ */
+export function isAiPickTurn(session: DraftSession): boolean {
+  return Boolean(session.aiNeighbor?.enabled && session.currentPackHolder === 'ai');
+}
+
+/**
+ * Check if it's the user's turn to pick
+ */
+export function isUserPickTurn(session: DraftSession): boolean {
+  // User picks when AI is disabled OR when pack holder is user
+  return !session.aiNeighbor?.enabled || session.currentPackHolder === 'user';
+}
+
+/**
+ * Get the next pack holder after a pick
+ * Handles pack rotation direction changes per round
+ */
+export function getNextPackHolder(
+  currentHolder: 'user' | 'ai',
+  pickIndex: number,  // 0-13
+  aiEnabled: boolean
+): 'user' | 'ai' {
+  if (!aiEnabled) return 'user';
+
+  // For 2-player: user picks, passes to AI, AI picks, passes back
+  return currentHolder === 'user' ? 'ai' : 'user';
+}
+
+// ============================================================================
 // Exports
 // ============================================================================
 
