@@ -104,7 +104,10 @@
 7. User can sort search results by CMC, color, type, rarity, set, name, or power/toughness
 8. User's preferred sort order persists across browser sessions
 
-**Plans**: TBD
+**Plans**:
+- [ ] 11-01-PLAN.md — Core Filter Infrastructure (CMC, type, rarity, set)
+- [ ] 11-02-PLAN.md — Advanced Filters (color identity, P/T, format legality)
+- [ ] 11-03-PLAN.md — Fuzzy Search & Sorting (Levenshtein, partial, synonyms, persistence)
 
 ---
 
