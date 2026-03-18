@@ -50,9 +50,9 @@
 - [x] **Phase 14: Foundation** — Set selection, sealed core, limited deck builder, pool isolation ✓ (completed 2026-03-18)
 - [ ] **Phase 15: Draft Core** — Draft state machine, timer, picker UI, pool display
   **Plans:**
-  - [x] 15-01-PLAN.md — Draft types, session creation, face-down pack generation
-  - [ ] 15-02-PLAN.md — Draft UI (pack view, card picking, pool display)
-  - [ ] 15-03-PLAN.md — Draft timer with color states and auto-pick
+  - [x] 15-01-PLAN.md — Draft types, session creation, face-down pack generation ✅
+  - [x] 15-02-PLAN.md — Draft UI (pack view, card picking, pool display) ✅
+  - [x] 15-03-PLAN.md — Draft timer with color states and auto-pick ✅
   - [ ] 15-04-PLAN.md — Draft completion, persistence, and verification
   - [ ] Phase 15 planned 2026-03-18
 - [ ] **Phase 16: AI Neighbors** — Bot simulation, passing mechanics
@@ -108,8 +108,8 @@ Plans:
 
 Plans:
 - [x] 15-01-PLAN.md — Draft types, session creation, face-down pack generation ✅
-- [ ] 15-02-PLAN.md — Draft UI (pack view, card picking, pool display)
-- [ ] 15-03-PLAN.md — Draft timer with color states and auto-pick
+- [x] 15-02-PLAN.md — Draft UI (pack view, card picking, pool display) ✅
+- [x] 15-03-PLAN.md — Draft timer with color states and auto-pick ✅
 - [ ] 15-04-PLAN.md — Draft completion, persistence, and verification
 
 ---
@@ -153,7 +153,7 @@ Plans:
 | Phase | Goal | Requirements | Plans Complete | Status | Completed |
 |-------|------|--------------|----------------|--------|-----------|
 | 14. Foundation | Set selection, sealed core, limited deck builder | Complete    | 2026-03-18 | ✅ Complete | 2026-03-18 |
-| 15. Draft Core | 2/4 | In Progress|  | 🚧 In progress | - |
+| 15. Draft Core | 3/4 | In Progress|  | 🚧 In progress | - |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 0/5 | Not started | - |
 | 17. Play Integration | Launch AI game with limited deck | 3 | 0/3 | Not started | - |
 

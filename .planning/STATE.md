@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: Draft/Sealed Limited Modes
 status: executing
-last_updated: "2026-03-18T18:06:41Z"
+last_updated: "2026-03-18T18:09:36.705Z"
 progress:
   total_phases: 4
   completed_phases: 1
@@ -19,9 +19,9 @@ progress:
 
 ## Current Position
 - **Milestone**: v1.4 EXECUTING
-- **Status**: Plan 15-02 Complete (Draft UI)
-- **Current Phase**: Phase 15 (Draft Core) - Plan 02/03
-- **Next**: Plan 15-03 (Draft Timer)
+- **Status**: Plan 15-03 Complete (Draft Timer)
+- **Current Phase**: Phase 15 (Draft Core) - Plan 03/03
+- **Next**: Plan 15-04 (Draft Completion & Persistence)
 
 ## Milestone History
 
@@ -38,7 +38,7 @@ progress:
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
 | 14 | Foundation | SET-01-03 ✅, SEAL-01-05 ✅, LBld-01-06 ✅, ISOL-01-03 ✅ | Complete |
-| 15 | Draft Core | DRFT-01-11 | Plan 02/03 |
+| 15 | Draft Core | DRFT-01-11 | Plan 03/03 |
 | 16 | AI Neighbors | NEIB-01-05 | Not started |
 | 17 | Play Integration | LPLY-01-03 | Not started |
 
@@ -57,8 +57,8 @@ progress:
 - Face-down packs revealed on open ✅ (15-01)
 - Card selection to add to draft pool ✅ (15-02)
 - Pool always visible during picking ✅ (15-02)
-- Pick timer with visual warnings (green → yellow → red)
-- Timer auto-pick or skip on expiration
+- Pick timer with visual warnings (green → yellow → red) ✅ (15-03)
+- Timer auto-pick or skip on expiration ✅ (15-03)
 - Draft completion and session persistence
 
 ### Phase 16: AI Neighbors
@@ -80,11 +80,13 @@ progress:
 - **Unmapped**: 0 ✓
 
 ## Session Continuity
-- **Last Action**: Completed 15-02-PLAN (Draft UI)
-- **Next Step**: Plan 15-03 (Draft Timer)
-- **Plan command**: `/gsd-execute-plan 15-03`
+- **Last Action**: Completed 15-03-PLAN (Draft Timer)
+- **Next Step**: Plan 15-04 (Draft Completion & Persistence)
+- **Plan command**: `/gsd-execute-plan 15-04`
 
 ## Decisions Made
 - Pack-first drafting UX: cards stay face-down until user clicks to open
 - Pool sidebar always visible during picking for easy reference
 - Pick logic as pure functions for testability
+- Timer color thresholds: green >15s, yellow ≤15s, red ≤5s
+- Skip dialog auto-skips after 5 seconds if no action taken
