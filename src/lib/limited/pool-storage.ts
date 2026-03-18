@@ -10,6 +10,10 @@
  * SEAL-03: Pool filtering by color, type, CMC
  * SEAL-04, SEAL-05: Pool persistence and save/resume
  * LBld-06: Save/load limited deck for session
+ *
+ * Draft-specific (Phase 15):
+ * DRFT-10: Draft pool persists across page refresh
+ * DRFT-11: Session can be resumed if interrupted
  */
 
 import Dexie from 'dexie';
@@ -19,6 +23,8 @@ import type {
   LimitedDeckCard,
   PoolFilters,
   CreateSessionOptions,
+  DraftSession,
+  DraftState,
 } from './types';
 import {
   filterByColor,
@@ -508,6 +514,128 @@ export function countPoolByColor(pool: PoolCard[]): Record<string, number> {
   }
 
   return counts;
+}
+
+// ============================================================================
+// Draft Session Storage (Phase 15 - DRFT-10, DRFT-11)
+// ============================================================================
+
+/**
+ * Save a draft session to IndexedDB
+ * DRFT-10: Persists full draft state including packs, picks, timer
+ *
+ * @param session - Draft session to save
+ */
+export async function saveDraftSession(session: DraftSession): Promise<void> {
+  const database = getDatabase();
+  await database.sessions.put({
+    ...session,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Get a draft session by ID
+ * DRFT-11: Resume interrupted draft
+ *
+ * @param id - Session ID
+ * @returns DraftSession or null if not found / not a draft
+ */
+export async function getDraftSession(
+  id: string
+): Promise<DraftSession | null> {
+  const database = getDatabase();
+  const session = await database.sessions.get(id);
+
+  if (!session) return null;
+  if (session.mode !== 'draft') return null;
+
+  return session as DraftSession;
+}
+
+/**
+ * Update a draft session
+ * DRFT-10: Auto-save on every state change
+ *
+ * @param session - Updated draft session
+ */
+export async function updateDraftSession(
+  session: DraftSession
+): Promise<void> {
+  const database = getDatabase();
+
+  if (session.id) {
+    await database.sessions.update(session.id, {
+      ...session,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+}
+
+/**
+ * Delete a draft session
+ *
+ * @param id - Session ID to delete
+ */
+export async function deleteDraftSession(id: string): Promise<void> {
+  const database = getDatabase();
+  await database.sessions.delete(id);
+}
+
+/**
+ * Get all draft sessions
+ * DRFT-11: List all draft sessions for resume
+ *
+ * @returns Array of all draft sessions
+ */
+export async function getAllDraftSessions(): Promise<DraftSession[]> {
+  const database = getDatabase();
+  const sessions = await database.sessions
+    .where('mode')
+    .equals('draft')
+    .toArray();
+
+  return sessions as DraftSession[];
+}
+
+/**
+ * Get draft sessions by status
+ * Useful for filtering in-progress vs completed drafts
+ *
+ * @param status - Session status to filter by
+ * @returns Array of draft sessions with matching status
+ */
+export async function getDraftSessionsByStatus(
+  status: 'in_progress' | 'completed' | 'abandoned'
+): Promise<DraftSession[]> {
+  const database = getDatabase();
+  const sessions = await database.sessions
+    .where('mode')
+    .equals('draft')
+    .toArray();
+
+  return (sessions as DraftSession[]).filter((s) => s.status === status);
+}
+
+/**
+ * Get draft session by draft state
+ * Useful for finding sessions in 'intro', 'picking', etc.
+ *
+ * @param draftState - Draft state to filter by
+ * @returns Array of draft sessions with matching state
+ */
+export async function getDraftSessionsByState(
+  draftState: DraftState
+): Promise<DraftSession[]> {
+  const database = getDatabase();
+  const sessions = await database.sessions
+    .where('mode')
+    .equals('draft')
+    .toArray();
+
+  return (sessions as DraftSession[]).filter(
+    (s) => 'draftState' in s && s.draftState === draftState
+  );
 }
 
 // ============================================================================

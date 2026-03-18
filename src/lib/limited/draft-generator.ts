@@ -18,6 +18,7 @@ import type {
   DraftCard,
   PoolCard,
 } from './types';
+import { saveDraftSession } from './pool-storage';
 
 // Re-export types for convenience
 export type { DraftSession, DraftPack, DraftCard };
@@ -193,10 +194,11 @@ export async function generateDraftPacks(
  * DRFT-02: 3 packs of 14 cards
  * DRFT-03: Packs face-down
  * DRFT-06: 45-second timer
+ * DRFT-10: Persists to IndexedDB immediately
  *
  * @param setCode - Set code (e.g., 'M21')
  * @param setName - Human-readable set name
- * @returns Complete draft session
+ * @returns Complete draft session (saved to IndexedDB)
  */
 export async function createDraftSession(
   setCode: string,
@@ -227,6 +229,9 @@ export async function createDraftSession(
     timerSeconds: DEFAULT_TIMER_SECONDS, // DRFT-06
     lastHoveredCardId: null, // DRFT-08
   };
+
+  // DRFT-10: Save to IndexedDB immediately
+  await saveDraftSession(session);
 
   return session;
 }
