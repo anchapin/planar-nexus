@@ -108,7 +108,7 @@
 - [x] 11-01-PLAN.md — Core Filter Infrastructure (CMC, type, rarity, set)
 - [x] 11-02-PLAN.md — Advanced Filters (color identity, P/T, format legality)
 - [x] 11-03-PLAN.md — Fuzzy Search & Sorting (Levenshtein, partial, synonyms, persistence)
-- [ ] 11-04-PLAN.md — Gap Closure: UI Integration (useCardFilters wiring)
+- [x] 11-04-PLAN.md — Gap Closure: UI Integration (useCardFilters wiring)
 
 ---
 
