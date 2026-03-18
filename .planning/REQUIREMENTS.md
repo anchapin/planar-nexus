@@ -159,10 +159,10 @@
 | STATS-01: Mana Curve Display | ✅ Complete | Phase 12-03 | 2026-03-18 |
 | STATS-02: Card Type Breakdown | ✅ Complete | Phase 12-03 | 2026-03-18 |
 | STATS-03: Color Distribution | ✅ Complete | Phase 12-03 | 2026-03-18 |
-| QUICK-01: Keyboard Shortcuts | ⬜ Pending | Phase 13 | - |
+| QUICK-01: Keyboard Shortcuts | ✅ Complete | Phase 13-01 | 2026-03-18 |
 | QUICK-02: One-Click Add | ✅ Complete | Phase 13-02 | 2026-03-18 |
-| REQ-T7: Search Performance | ⬜ Pending | Phase 13 | - |
-| REQ-T8: UI Responsiveness | ⬜ Pending | Phase 13 | - |
+| REQ-T7: Search Performance | ✅ Complete | Phase 13-03 | 2026-03-18 |
+| REQ-T8: UI Responsiveness | ✅ Complete | Phase 13-03 | 2026-03-18 |
 
 ---
 
