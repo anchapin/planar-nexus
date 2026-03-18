@@ -2,7 +2,7 @@
 
 ## Phases
 
-- [ ] **Phase 11: Search & Filter Infrastructure** — Core search, filters, fuzzy matching, sorting
+- [x] **Phase 11: Search & Filter Infrastructure** — Core search, filters, fuzzy matching, sorting
 - [ ] **Phase 12: Saved Searches & Statistics** — Search presets, deck analytics
 - [ ] **Phase 13: Quick-Add & Performance** — Keyboard shortcuts, one-click add, performance tuning
 
@@ -15,7 +15,7 @@
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
 | 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
 | 10. Expert Opponent AI Refinement | 3/3 | Complete   | 2026-03-17 |
-| 11. Search & Filter Infrastructure | 1/3 | In Progress | - |
+| 11. Search & Filter Infrastructure | 3/3 | Complete   | 2026-03-17 |
 | 12. Saved Searches & Statistics | 0 | Not started | - |
 | 13. Quick-Add & Performance | 0 | Not started | - |
 
@@ -106,8 +106,8 @@
 
 **Plans**:
 - [x] 11-01-PLAN.md — Core Filter Infrastructure (CMC, type, rarity, set)
-- [ ] 11-02-PLAN.md — Advanced Filters (color identity, P/T, format legality)
-- [ ] 11-03-PLAN.md — Fuzzy Search & Sorting (Levenshtein, partial, synonyms, persistence)
+- [x] 11-02-PLAN.md — Advanced Filters (color identity, P/T, format legality)
+- [x] 11-03-PLAN.md — Fuzzy Search & Sorting (Levenshtein, partial, synonyms, persistence)
 
 ---
 
