@@ -1,12 +1,10 @@
-# Planar Nexus — Roadmap (v1.2 AI Intelligence & Advanced Coaching)
+# Planar Nexus — Roadmap (v1.3 Deck Builder UX Enhancements)
 
 ## Phases
 
-- [x] **Phase 6: Multi-Provider LLM & Streaming Infrastructure** - Implement Vercel AI SDK with multi-model support and SSE streaming.
-- [x] **Phase 7: Local Intelligence Foundation** - Integrate Orama and Transformers.js for offline-first RAG and vector search.
-- [>] **Phase 8: AI Deck Assistant UX** - Build proactive card suggestion UI with real-time synergy explanations.
-- [x] **Phase 9: Adaptive Coaching & Player History** - Implement semantic history retrieval and personalized coach reports.
-- [>] **Phase 10: Expert Opponent AI Refinement** - Tune heuristic weights and stack interaction logic for high-level play.
+- [ ] **Phase 11: Search & Filter Infrastructure** — Core search, filters, fuzzy matching, sorting
+- [ ] **Phase 12: Saved Searches & Statistics** — Search presets, deck analytics
+- [ ] **Phase 13: Quick-Add & Performance** — Keyboard shortcuts, one-click add, performance tuning
 
 ## Progress Table
 
@@ -16,7 +14,10 @@
 | 7. Local Intelligence Foundation | 5/5 | Completed | 2026-03-17 |
 | 8. AI Deck Assistant UX | 3/3 | Completed | 2026-03-17 |
 | 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
-| 10. Expert Opponent AI Refinement | 0/3 | In Progress | - |
+| 10. Expert Opponent AI Refinement | 3/3 | Complete   | 2026-03-17 |
+| 11. Search & Filter Infrastructure | 0 | Not started | - |
+| 12. Saved Searches & Statistics | 0 | Not started | - |
+| 13. Quick-Add & Performance | 0 | Not started | - |
 
 ## Phase Details
 
@@ -83,3 +84,66 @@
 - [ ] 10-01-PLAN.md — Expert Stack Interaction Weights & Lookahead Implementation
 - [ ] 10-02-PLAN.md — Multi-Target & Variable Cost Handling
 - [ ] 10-03-PLAN.md — Combat AI Multi-Blocker Refinement
+
+---
+
+### Phase 11: Search & Filter Infrastructure
+**Goal**: Users can find cards using advanced multi-attribute filters with fuzzy matching and flexible sorting
+
+**Depends on**: Phase 10 (v1.2 Completion)
+
+**Requirements**: SEARCH-01, SEARCH-02, SEARCH-03, SEARCH-04, FUZZY-01, FUZZY-02, FUZZY-03, SORT-01, SORT-02
+
+**Success Criteria** (what must be TRUE):
+1. User can filter cards by CMC (exact or range), card type, rarity, and set
+2. User can filter cards by color identity and Commander color identity rules
+3. User can filter creatures by power and toughness ranges
+4. User can filter by format legality (Standard, Modern, Commander, etc.)
+5. User can search card names with typo tolerance (Levenshtein distance <= 2)
+6. User can find cards using partial word matches in name and text
+7. User can sort search results by CMC, color, type, rarity, set, name, or power/toughness
+8. User's preferred sort order persists across browser sessions
+
+**Plans**: TBD
+
+---
+
+### Phase 12: Saved Searches & Statistics
+**Goal**: Users can save filter presets for quick access and view deck analytics
+
+**Depends on**: Phase 11
+
+**Requirements**: SAVED-01, SAVED-02, STATS-01, STATS-02, STATS-03
+
+**Success Criteria** (what must be TRUE):
+1. User can save current filter configuration as a named preset
+2. User can load saved presets from a dropdown menu
+3. User can delete saved presets
+4. User can access built-in quick presets (e.g., "Creatures under 3 mana")
+5. User can view a mana curve bar chart for their deck
+6. User can view card type breakdown as a chart with counts and percentages
+7. User can view color distribution visualization for their deck
+8. Presets persist in IndexedDB across sessions
+
+**Plans**: TBD
+
+---
+
+### Phase 13: Quick-Add & Performance
+**Goal**: Users can rapidly add cards with minimal clicks and experience responsive performance
+
+**Depends on**: Phase 12
+
+**Requirements**: QUICK-01, QUICK-02, REQ-T7, REQ-T8
+
+**Success Criteria** (what must be TRUE):
+1. User can press Enter to add highlighted card from search to deck
+2. User can use arrow keys to navigate through search results
+3. User can click a card to add it directly to deck
+4. User can Shift+Click to add 4-of (maximum allowed)
+5. Visual feedback appears when a card is added (flash/highlight)
+6. Search results appear in under 100ms for local database
+7. Filter changes update UI in under 50ms
+8. Scrolling through 100+ results is smooth without jank
+
+**Plans**: TBD

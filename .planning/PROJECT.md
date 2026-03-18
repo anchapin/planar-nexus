@@ -17,7 +17,22 @@ Planar Nexus provides:
 - **Primary**: Tabletop card game players (Commander, Standard, Modern formats)
 - **Secondary**: Content creators testing deck ideas
 
-## v1.2 Scope: AI Intelligence & Advanced Coaching (In Progress)
+## v1.3 Scope: Deck Builder UX Enhancements (Next)
+
+**Goal:** Improve deck building experience with advanced search, filtering, and deck analysis tools.
+
+**Target features:**
+- **Advanced Search Filters**: Filter by CMC, color, type, rarity, power/toughness, format legality
+- **Fuzzy Search**: Typo-tolerant search with partial matching
+- **Saved Searches**: Store and recall custom filter presets
+- **Enhanced Sorting**: Sort by CMC, color, type, rarity, set
+- **Color Identity Filter**: Filter by Commander color identity
+- **Deck Statistics**: Mana curve, card type breakdown, color distribution
+- **Quick-Add**: Fast card addition from search results
+
+---
+
+## v1.2 Scope: AI Intelligence & Advanced Coaching (Complete)
 
 **Goal:** Build a comprehensive AI-powered card game experience with advanced coaching and adaptive opponents.
 
@@ -30,6 +45,13 @@ Planar Nexus provides:
 ---
 
 ## Validated Milestones
+
+### ✅ v1.2 AI Intelligence & Advanced Coaching — 2026-03-17
+- Multi-provider LLM integration (OpenAI, Anthropic, Google Gemini).
+- Local intelligence foundation with Orama and Transformers.js.
+- AI Deck Assistant with proactive suggestions and streaming explanations.
+- Adaptive coaching with player history and personalized reports.
+- Expert opponent AI with stack interaction and multi-blocker handling.
 
 ### ✅ v1.1 Polish & Stability Pass — 2026-03-17
 - Shipped 1,618 passing unit tests and 180+ E2E tests.
@@ -81,6 +103,6 @@ Planar Nexus provides:
 
 ---
 
-**Current Milestone**: v1.2 AI Intelligence & Advanced Coaching  
-**Version**: 1.2.0  
-**Last Updated**: 2026-03-17 after v1.1 milestone completion
+**Current Milestone**: v1.3 Deck Builder UX Enhancements  
+**Version**: 1.3.0  
+**Last Updated**: 2026-03-17 after v1.2 milestone completion
