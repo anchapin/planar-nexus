@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.4
-milestone_name: next
+milestone_name: Draft/Sealed Limited Modes
 status: planning
-last_updated: "2026-03-18T12:35:00Z"
+last_updated: "2026-03-18"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -15,11 +15,11 @@ progress:
 
 ## Project Reference
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: Planning v1.4 milestone
+- **Current Focus**: Planning v1.4 Draft/Sealed Limited Modes
 
 ## Current Position
 - **Milestone**: v1.3 COMPLETE ✅
-- **Status**: Ready for v1.4 planning
+- **Status**: Starting v1.4 milestone
 
 ## Milestone History
 
@@ -29,36 +29,24 @@ progress:
 | v1.1 | Polish & Stability | 2026-03-17 | 4-5 |
 | v1.2 | AI Intelligence | 2026-03-17 | 6-10 |
 | v1.3 | Deck Builder UX | 2026-03-18 | 11-13 |
+| v1.4 | Draft/Sealed | Planning | 14+ |
 
-## Performance Metrics
-- **Test Stability**: 95%+ E2E pass rate
-- **Bundle Size**: 112KB
-- **AI Latency**: <300ms (first chunk)
-- **Search Latency**: <100ms
+## v1.4 Scope
 
-## Key Decisions (v1.3)
+### Draft Mode
+- 3-pack simulation with AI neighbors
+- Timer per pick
+- AI opponent battle after deck built
 
-### Search & Filters
-- **Fuzzy Search**: Fuse.js + Levenshtein post-filtering (threshold <= 2)
-- **Filter Order**: format > color > type > cmc > rarity > set > power/toughness
-- **Commander Color Identity**: Subset logic (card colors ⊆ allowed colors)
-- **P/T Filters**: Only apply to creatures with numeric values
+### Sealed Mode
+- 6-pack pool opening
+- AI opponent battle after deck built
 
-### Persistence
-- **Search Presets**: IndexedDB with separate PlanarNexusPresetsDB
-- **Sort Preferences**: IndexedDB with PlanarNexusSearchDB
-- **Deck Statistics**: IndexedDB via useDeckStatistics hook
-
-### UI/Performance
-- **Charts**: Recharts for mana curve, type breakdown, color distribution
-- **Virtual Scrolling**: @tanstack/react-virtual for smooth scrolling
-- **Preset Categories**: CMC, Type, Rarity, Color
-
-## Next Steps
-- [ ] Plan v1.4 milestone
-- [ ] Define new requirements
-- [ ] Create phase roadmap
+### Shared
+- User selects which set to pull cards from
+- Reuse existing deck builder with "Limited" pool filter
 
 ## Session Continuity
-- **Last Action**: Completed v1.3 milestone completion
-- **Next Step**: `/gsd-new-milestone` to start v1.4 planning
+- **Last Action**: Confirmed v1.4 scope (Draft/Sealed)
+- **Next Step**: Define requirements and create roadmap
+

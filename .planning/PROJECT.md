@@ -19,15 +19,18 @@ Planar Nexus provides:
 
 ---
 
-## v1.4 Scope: Next (Planning)
+## v1.4 Scope: Draft/Sealed Limited Modes (Planning)
 
-**Goal:** TBD — Ready for milestone planning
+**Goal:** Add Draft and Sealed game modes for variety gameplay.
 
-Potential focus areas:
-- Draft/Sealed Game Mode
-- Tournament Support
-- Multiplayer
-- Social Features
+**Target features:**
+- **Draft Mode**: 3-pack simulation with AI neighbors, timer per pick, AI opponent battle
+- **Sealed Mode**: 6-pack pool opening, AI opponent battle
+- **Shared**: Set selection, reuse deck builder with "Limited" pool filter
+
+**Out of Scope:**
+- Sideboarding (v1.5+)
+- Multiplayer Draft/Sealed (AI only in v1.4)
 
 ---
 
@@ -47,6 +50,9 @@ Potential focus areas:
 ---
 
 ## Validated Milestones
+
+### ✅ v1.4 Draft/Sealed Limited Modes — Planning
+- **Status:** Planning in progress
 
 ### ✅ v1.3 Deck Builder UX Enhancements — 2026-03-18
 - Advanced multi-attribute card filters (CMC, type, color, rarity, P/T, format)
@@ -118,6 +124,6 @@ Potential focus areas:
 
 ---
 
-**Current Milestone**: v1.4 (Planning)
+**Current Milestone**: v1.4 (Draft/Sealed Limited Modes)
 **Version**: 1.3.0
-**Last Updated**: 2026-03-18 after v1.3 milestone completion
+**Last Updated**: 2026-03-18 after v1.4 milestone initiation
