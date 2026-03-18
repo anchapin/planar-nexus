@@ -6,9 +6,9 @@
 
 ## Current Position
 - **Phase**: Phase 11 - Search & Filter Infrastructure
-- **Plan**: 01 (complete)
+- **Plan**: 02 (complete)
 - **Status**: In Progress
-- **Progress**: [▓▓▓░░░░░░░] 33%
+- **Progress**: 66%
 
 ## Current Plan
 - Phase: Phase 11 - Search & Filter Infrastructure
@@ -35,6 +35,9 @@
 - **Deck Statistics**: Mana curve, type breakdown, color distribution visualizations
 - **Persistence**: IndexedDB for saved searches and preferences
 - **Filter Infrastructure**: Using OR-logic for type filtering, supports both colors and color_identity
+- **Commander Color Identity**: Subset logic (card colors must be subset of allowed)
+- **P/T Filters**: Only apply to creatures with numeric values (* and complex values excluded)
+- **Filter Order**: format > color > type > cmc > rarity > set > power/toughness
 
 ### Todos
 - [ ] Complete Phase 11: Search & Filter Infrastructure
@@ -43,5 +46,5 @@
 - [ ] Complete v1.3 milestone
 
 ## Session Continuity
-- **Last Action**: Completed Plan 11-01 - Filter Infrastructure
-- **Next Step**: Execute Plan 11-02
+- **Last Action**: Completed Plan 11-02 - Advanced Card Filters
+- **Next Step**: Execute Plan 11-03
