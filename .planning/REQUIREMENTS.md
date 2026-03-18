@@ -80,18 +80,18 @@
 ## STATS: Deck Statistics
 
 ### STATS-01: Mana Curve Display
-- [ ] Visual bar chart of mana costs in deck
-- [ ] Separate curves for lands vs non-lands
-- [ ] Interactive — click bar to filter
+- [x] Visual bar chart of mana costs in deck
+- [x] Separate curves for lands vs non-lands
+- [x] Interactive — click bar to filter
 
 ### STATS-02: Card Type Breakdown
-- [ ] Pie/bar chart showing distribution (Creatures, Instants, Sorceries, etc.)
-- [ ] Count and percentage for each type
-- [ ] Legend with click-to-filter
+- [x] Pie/bar chart showing distribution (Creatures, Instants, Sorceries, etc.)
+- [x] Count and percentage for each type
+- [x] Legend with click-to-filter
 
 ### STATS-03: Color Distribution
-- [ ] Visual representation of color mana requirements
-- [ ] Color pie showing mana production vs color costs
+- [x] Visual representation of color mana requirements
+- [x] Color pie showing mana production vs color costs
 
 ---
 
@@ -156,9 +156,9 @@
 | SORT-02: Sort Persistence | ⬜ Pending | Phase 11 | - |
 | SAVED-01: Search Presets | ⬜ Pending | Phase 12 | - |
 | SAVED-02: Quick Access Presets | ⬜ Pending | Phase 12 | - |
-| STATS-01: Mana Curve Display | ⬜ Pending | Phase 12 | - |
-| STATS-02: Card Type Breakdown | ⬜ Pending | Phase 12 | - |
-| STATS-03: Color Distribution | ⬜ Pending | Phase 12 | - |
+| STATS-01: Mana Curve Display | ✅ Complete | Phase 12-03 | 2026-03-18 |
+| STATS-02: Card Type Breakdown | ✅ Complete | Phase 12-03 | 2026-03-18 |
+| STATS-03: Color Distribution | ✅ Complete | Phase 12-03 | 2026-03-18 |
 | QUICK-01: Keyboard Shortcuts | ⬜ Pending | Phase 13 | - |
 | QUICK-02: One-Click Add | ⬜ Pending | Phase 13 | - |
 | REQ-T7: Search Performance | ⬜ Pending | Phase 13 | - |
