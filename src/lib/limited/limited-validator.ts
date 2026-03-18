@@ -171,17 +171,17 @@ export function validateLimitedDeck(
  *
  * LBld-04: Prevents adding cards that would exceed 4-copy limit
  *
- * @param poolCard - The card to add (must be from pool)
+ * @param card - The card to add (from pool or deck) - needs id property
  * @param currentDeck - Current deck state
  * @returns true if the card can be added
  */
 export function canAddCardToDeck(
-  poolCard: PoolCard,
+  card: { id: string },
   currentDeck: LimitedDeckCard[]
 ): boolean {
   // Find existing count of this card
   const existingEntry = currentDeck.find(
-    (d) => d.card.id === poolCard.id
+    (d) => d.card.id === card.id
   );
 
   if (existingEntry) {

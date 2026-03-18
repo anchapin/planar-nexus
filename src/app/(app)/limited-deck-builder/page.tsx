@@ -188,8 +188,10 @@ export default function LimitedDeckBuilderPage() {
   }, [deck]);
 
   // Add card to deck
-  const addCardToDeck = (poolCard: PoolCard) => {
-    if (!isPoolCard(poolCard.id, pool)) {
+  const addCardToDeck = (cardId: string) => {
+    // Find the card in the pool
+    const poolCard = pool.find((c) => c.id === cardId);
+    if (!poolCard) {
       toast({
         variant: "destructive",
         title: "Cannot Add Card",
@@ -209,7 +211,7 @@ export default function LimitedDeckBuilderPage() {
 
     setDeck((prevDeck) => {
       const existingIndex = prevDeck.findIndex(
-        (d) => d.card.id === poolCard.id
+        (d) => d.card.id === cardId
       );
 
       if (existingIndex >= 0) {
@@ -450,7 +452,7 @@ export default function LimitedDeckBuilderPage() {
                   card={cards[0]}
                   quantity={cards.length}
                   inDeck={getCardCountInDeck(cards[0].id, deck)}
-                  onAdd={() => addCardToDeck(cards[0])}
+                  onAdd={() => addCardToDeck(cards[0].id)}
                   disabled={!canAddCardToDeck(cards[0], deck)}
                 />
               ))}
@@ -499,7 +501,7 @@ export default function LimitedDeckBuilderPage() {
                     <DeckCardRow
                       key={deckCard.card.id}
                       card={deckCard}
-                      onAdd={() => addCardToDeck(deckCard.card)}
+                      onAdd={() => addCardToDeck(deckCard.card.id)}
                       onRemove={() => removeCardFromDeck(deckCard.card.id)}
                       canAdd={canAddCardToDeck(deckCard.card, deck)}
                     />
