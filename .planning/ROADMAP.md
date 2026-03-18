@@ -3,7 +3,7 @@
 ## Phases
 
 - [x] **Phase 11: Search & Filter Infrastructure** — Core search, filters, fuzzy matching, sorting
-- [ ] **Phase 12: Saved Searches & Statistics** — Search presets, deck analytics
+- [x] **Phase 12: Saved Searches & Statistics** — Search presets, deck analytics (completed 2026-03-18)
 - [ ] **Phase 13: Quick-Add & Performance** — Keyboard shortcuts, one-click add, performance tuning
 
 ## Progress Table
@@ -16,7 +16,7 @@
 | 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
 | 10. Expert Opponent AI Refinement | 3/3 | Complete   | 2026-03-17 |
 | 11. Search & Filter Infrastructure | 4/4 | Complete    | 2026-03-18 |
-| 12. Saved Searches & Statistics | 3/5 | In Progress|  |
+| 12. Saved Searches & Statistics | 3/5 | Complete    | 2026-03-18 |
 | 13. Quick-Add & Performance | 0 | Not started | - |
 
 ## Phase Details
