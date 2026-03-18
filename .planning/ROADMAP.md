@@ -129,7 +129,10 @@
 7. User can view color distribution visualization for their deck
 8. Presets persist in IndexedDB across sessions
 
-**Plans**: TBD
+**Plans**:
+- [ ] 12-01-PLAN.md — Search Presets (IndexedDB storage, save/load/delete)
+- [ ] 12-02-PLAN.md — Quick Access Presets (built-in filter presets)
+- [ ] 12-03-PLAN.md — Deck Statistics (mana curve, type breakdown, color distribution)
 
 ---
 
