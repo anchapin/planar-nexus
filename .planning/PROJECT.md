@@ -8,7 +8,7 @@ Card game players need accessible tools to build and test decks without expensiv
 
 ## Solution
 Planar Nexus provides:
-1. **Deck Builder** — Intuitive card browser and deck construction with format validation
+1. **Deck Builder** — Intuitive card browser with advanced search, filtering, and deck analytics
 2. **AI Coach** — Heuristic and LLM-powered deck analysis with improvement suggestions
 3. **AI Opponent** — Playtest decks against configurable AI opponents with multiple difficulty levels
 4. **Cross-Platform** — Browser-based and native desktop installers via Tauri
@@ -17,34 +17,43 @@ Planar Nexus provides:
 - **Primary**: Tabletop card game players (Commander, Standard, Modern formats)
 - **Secondary**: Content creators testing deck ideas
 
-## v1.3 Scope: Deck Builder UX Enhancements (Next)
+---
 
-**Goal:** Improve deck building experience with advanced search, filtering, and deck analysis tools.
+## v1.4 Scope: Next (Planning)
 
-**Target features:**
-- **Advanced Search Filters**: Filter by CMC, color, type, rarity, power/toughness, format legality
-- **Fuzzy Search**: Typo-tolerant search with partial matching
-- **Saved Searches**: Store and recall custom filter presets
-- **Enhanced Sorting**: Sort by CMC, color, type, rarity, set
-- **Color Identity Filter**: Filter by Commander color identity
-- **Deck Statistics**: Mana curve, card type breakdown, color distribution
-- **Quick-Add**: Fast card addition from search results
+**Goal:** TBD — Ready for milestone planning
+
+Potential focus areas:
+- Draft/Sealed Game Mode
+- Tournament Support
+- Multiplayer
+- Social Features
 
 ---
 
-## v1.2 Scope: AI Intelligence & Advanced Coaching (Complete)
+## v1.3 Scope: Deck Builder UX Enhancements ✅ SHIPPED 2026-03-18
 
-**Goal:** Build a comprehensive AI-powered card game experience with advanced coaching and adaptive opponents.
+**Goal:** Improve deck building experience with advanced search, filtering, and deck analysis tools.
 
-**Target features:**
-- **Advanced LLM Integration**: Multi-provider support (OpenAI, Anthropic, Google) with streaming responses and refined prompts.
-- **AI Deck Assistant**: Proactive card suggestions during construction based on archetype and synergy scores.
-- **Adaptive Coaching**: AI learns from player games and history to provide more personalized coaching.
-- **Improved Opponent AI**: Refined decision-making for expert difficulty and support for complex card interactions.
+**Delivered:**
+- **Advanced Search Filters**: Filter by CMC, color, type, rarity, power/toughness, format legality
+- **Fuzzy Search**: Typo-tolerant search with Levenshtein distance and partial matching
+- **Saved Searches**: Store and recall custom filter presets (IndexedDB persistence)
+- **Enhanced Sorting**: Sort by CMC, color, type, rarity, set, name, power/toughness
+- **Color Identity Filter**: Commander color identity with subset checking
+- **Deck Statistics**: Mana curve, card type breakdown, color distribution (Recharts)
+- **Quick-Add**: Enter key, arrow navigation, Shift+Click, virtual scrolling (<100ms)
 
 ---
 
 ## Validated Milestones
+
+### ✅ v1.3 Deck Builder UX Enhancements — 2026-03-18
+- Advanced multi-attribute card filters (CMC, type, color, rarity, P/T, format)
+- Fuzzy search with Levenshtein distance <= 2 and partial matching
+- Search presets with IndexedDB persistence (save/load/delete)
+- Deck statistics visualizations (mana curve, type breakdown, color distribution)
+- Keyboard shortcuts (Enter, arrow keys) and virtual scrolling for performance
 
 ### ✅ v1.2 AI Intelligence & Advanced Coaching — 2026-03-17
 - Multi-provider LLM integration (OpenAI, Anthropic, Google Gemini).
@@ -71,16 +80,19 @@ Planar Nexus provides:
 
 ### Current Stack
 - **Frontend**: Next.js 15, React 19, TypeScript, Tailwind CSS
-- **UI**: Shadcn/ui (Radix primitives)
+- **UI**: Shadcn/ui (Radix primitives), Recharts
 - **Storage**: IndexedDB (offline-first)
 - **Desktop**: Tauri 2.x
 - **AI**: Custom proxy + heuristic fallbacks
+- **Search**: Orama (full-text), Fuse.js (fuzzy), Levenshtein (typo-tolerance)
+- **Performance**: @tanstack/react-virtual for virtual scrolling
 
-### Current State: v1.1 SHIPPED 🚀
-- ✅ Test infrastructure 100% stable
-- ✅ Production builds verified for all platforms
-- ✅ Full user/dev documentation complete
-- ✅ AI spectator mode live
+### Current State: v1.3 SHIPPED 🚀
+- ✅ Advanced deck builder with fuzzy search and filters
+- ✅ Deck statistics (mana curve, type breakdown, color distribution)
+- ✅ Search presets with persistence
+- ✅ Keyboard navigation and virtual scrolling
+- ✅ Virtualized card display for smooth scrolling
 
 ## Key Decisions
 
@@ -91,6 +103,9 @@ Planar Nexus provides:
 | Tauri | Lightweight desktop wrapper | ✓ Good |
 | AI Proxy | Secure API key management | ✓ Good |
 | Service Worker | Offline support and performance | ✓ Good |
+| Orama + Fuse.js | Fast local search with fuzzy matching | ✓ Good |
+| Recharts | Interactive data visualization | ✓ Good |
+| @tanstack/react-virtual | Smooth scrolling with large datasets | ✓ Good |
 
 ---
 
@@ -103,6 +118,6 @@ Planar Nexus provides:
 
 ---
 
-**Current Milestone**: v1.3 Deck Builder UX Enhancements  
-**Version**: 1.3.0  
-**Last Updated**: 2026-03-17 after v1.2 milestone completion
+**Current Milestone**: v1.4 (Planning)
+**Version**: 1.3.0
+**Last Updated**: 2026-03-18 after v1.3 milestone completion

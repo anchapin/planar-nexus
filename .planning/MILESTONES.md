@@ -1,5 +1,14 @@
 # Milestones
 
+## v1.3 Deck Builder UX Enhancements (Shipped: 2026-03-18)
+
+**Phases completed:** 7 phases, 22 plans, 9 tasks
+
+**Key accomplishments:**
+- (none recorded)
+
+---
+
 ## v1.1 Polish & Stability Pass (Shipped: 2026-03-17)
 
 **Phases completed:** 5 phases, 18 plans, 64 tasks

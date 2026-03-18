@@ -1,71 +1,64 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: milestone
-status: unknown
-last_updated: "2026-03-18T12:00:08.133Z"
+milestone: v1.4
+milestone_name: next
+status: planning
+last_updated: "2026-03-18T12:35:00Z"
 progress:
-  total_phases: 8
-  completed_phases: 6
-  total_plans: 21
-  completed_plans: 22
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State: Planar Nexus
 
 ## Project Reference
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: v1.3 Deck Builder UX Enhancements.
+- **Current Focus**: Planning v1.4 milestone
 
 ## Current Position
-- **Phase**: Phase 13 - Quick-Add & Performance
-- **Plan**: Plan 13-03 - Virtual Scrolling Implementation
-- **Status**: Complete
-- **Progress**: 100%
+- **Milestone**: v1.3 COMPLETE ✅
+- **Status**: Ready for v1.4 planning
 
-## Current Plan
-- Phase: Phase 13 - Quick-Add & Performance
-- Plan: 03 (Complete)
-- Total Plans in Phase: 3
+## Milestone History
+
+| Version | Name | Shipped | Phases |
+|---------|------|---------|--------|
+| v1.0 | MVP | 2026-03-12 | 1-3 |
+| v1.1 | Polish & Stability | 2026-03-17 | 4-5 |
+| v1.2 | AI Intelligence | 2026-03-17 | 6-10 |
+| v1.3 | Deck Builder UX | 2026-03-18 | 11-13 |
 
 ## Performance Metrics
 - **Test Stability**: 95%+ E2E pass rate
 - **Bundle Size**: 112KB
 - **AI Latency**: <300ms (first chunk)
+- **Search Latency**: <100ms
 
-## Phase Summary (v1.3)
-| Phase | Goal | Requirements |
-|-------|------|--------------|
-| 11 | Search & Filter Infrastructure | 9 requirements |
-| 12 | Saved Searches & Statistics | 5 requirements |
-| 13 | Quick-Add & Performance | 4 requirements |
+## Key Decisions (v1.3)
 
-## Accumulated Context
-
-### Decisions
-- **Search Infrastructure**: Building on existing card browser foundation from v1.0-v1.2
-- **Fuzzy Search**: Using Levenshtein distance for typo tolerance
-- **Deck Statistics**: Mana curve, type breakdown, color distribution visualizations
-- **Persistence**: IndexedDB for saved searches and preferences
-- **Filter Infrastructure**: Using OR-logic for type filtering, supports both colors and color_identity
-- **Commander Color Identity**: Subset logic (card colors must be subset of allowed)
-- **P/T Filters**: Only apply to creatures with numeric values (* and complex values excluded)
+### Search & Filters
+- **Fuzzy Search**: Fuse.js + Levenshtein post-filtering (threshold <= 2)
 - **Filter Order**: format > color > type > cmc > rarity > set > power/toughness
-- **Fuzzy Search Implementation**: Fuse.js with Levenshtein post-filtering for FUZZY-01 compliance
-- **Commander Filtering Architecture**: filter-cards.ts handles card-level filtering, game-rules.ts handles deck-level validation - appropriate separation
-- **Quick Presets**: Built-in filter presets organized by category (CMC, Type, Rarity, Color)
-- **Search Presets Storage**: IndexedDB with separate database (PlanarNexusPresetsDB) for cleaner separation
-- [Phase 12-saved-searches-statistics]: Search Presets: Used separate IndexedDB database (PlanarNexusPresetsDB) from preferences DB for cleaner separation
-- [Phase 12-03]: Deck Statistics: Used Recharts for interactive charts with collapsible panel design
+- **Commander Color Identity**: Subset logic (card colors ⊆ allowed colors)
+- **P/T Filters**: Only apply to creatures with numeric values
 
-### Todos
-- [x] Complete Phase 11: Search & Filter Infrastructure
-- [x] Complete Phase 12: Saved Searches & Statistics
-- [x] Complete Phase 13: Quick-Add & Performance (Plan 13-01)
-- [x] Complete Phase 13: Quick-Add & Performance (Plan 13-02)
-- [x] Complete Phase 13: Quick-Add & Performance (Plan 13-03)
-- [ ] Complete v1.3 milestone
+### Persistence
+- **Search Presets**: IndexedDB with separate PlanarNexusPresetsDB
+- **Sort Preferences**: IndexedDB with PlanarNexusSearchDB
+- **Deck Statistics**: IndexedDB via useDeckStatistics hook
+
+### UI/Performance
+- **Charts**: Recharts for mana curve, type breakdown, color distribution
+- **Virtual Scrolling**: @tanstack/react-virtual for smooth scrolling
+- **Preset Categories**: CMC, Type, Rarity, Color
+
+## Next Steps
+- [ ] Plan v1.4 milestone
+- [ ] Define new requirements
+- [ ] Create phase roadmap
 
 ## Session Continuity
-- **Last Action**: Completed Plan 13-03 - Virtual Scrolling Implementation
-- **Next Step**: Phase 13 complete - all plans finished
+- **Last Action**: Completed v1.3 milestone completion
+- **Next Step**: `/gsd-new-milestone` to start v1.4 planning
