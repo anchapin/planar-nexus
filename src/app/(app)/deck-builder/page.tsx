@@ -16,6 +16,7 @@ import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SynergyProvider } from "./_components/synergy-context";
 import { AIDeckAssistant } from "./_components/ai-deck-assistant";
+import { DeckStatsPanel } from "./_components/deck-stats-panel";
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
@@ -314,6 +315,7 @@ export default function DeckBuilderPage() {
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
               <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
+              <DeckStatsPanel deck={deck} />
               <Card>
                   <CardHeader className="py-4">
                       <CardTitle className="text-lg">Saved Decks</CardTitle>
