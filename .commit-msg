@@ -1,0 +1,6 @@
+feat(08-03): highlight high-synergy cards in search results
+
+- Import and consume useSynergy hook in CardSearch
+- Display a synergy score badge for cards with >= 60% synergy
+- Color-code badges (green for high, orange for medium)
+- Update card title and aria-label with synergy info

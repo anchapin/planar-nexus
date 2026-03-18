@@ -11,7 +11,7 @@
 /**
  * Supported AI providers
  */
-export type AIProvider = 'google' | 'openai' | 'zaic' | 'custom';
+export type AIProvider = 'google' | 'openai' | 'anthropic' | 'zaic' | 'custom';
 
 /**
  * Subscription tier levels
@@ -251,6 +251,7 @@ export function isAIEvaluationResult(value: unknown): value is AIEvaluationResul
 export const DEFAULT_MODELS: Record<string, string> = {
   google: 'gemini-1.5-flash-latest',
   openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-sonnet-20241022',
   zaic: 'default',
 };
 
@@ -265,6 +266,11 @@ export const DEFAULT_CONFIGS: Record<AIProvider, Partial<AIProviderConfig>> = {
   },
   openai: {
     model: DEFAULT_MODELS.openai,
+    temperature: 0.7,
+    maxOutputTokens: 8192,
+  },
+  anthropic: {
+    model: DEFAULT_MODELS.anthropic,
     temperature: 0.7,
     maxOutputTokens: 8192,
   },

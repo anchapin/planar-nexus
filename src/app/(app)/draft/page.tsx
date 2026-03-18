@@ -32,7 +32,8 @@ import { DraftTimer } from "@/components/draft-timer";
 import { SkipPickDialog } from "@/components/skip-pick-dialog";
 import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
 import type { DraftSession, AiDifficulty, CreateDraftSessionOptions } from "@/lib/limited/types";
-import { createDraftSession, isDraftComplete } from "@/lib/limited/draft-generator";
+import { createDraftSession, isDraftComplete, isAiPickTurn, passPack, getNextPackHolder } from "@/lib/limited/draft-generator";
+import { selectAiPick } from "@/lib/ai-neighbor-logic";
 import { getSession, saveDraftSession } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
 import { Loader2, Package, Play } from "lucide-react";
@@ -115,12 +116,26 @@ export default function DraftPage() {
     handleAdvanceToNextPack: () => {},
   };
 
-  // Handle card pick - reset timer after pick
+  // Handle card pick - reset timer after pick, pass pack to AI if neighbor enabled
   const handleCardPick = useCallback((cardId: string) => {
     draftPickerPick(cardId);
     resetTimer();
+    
+    // NEIB-05: Pass pack to AI after user picks
+    if (session?.aiNeighbor?.enabled) {
+      const nextHolder = getNextPackHolder(
+        session.currentPackHolder,
+        session.currentPickIndex,
+        true
+      );
+      setSession(prev => prev ? {
+        ...prev,
+        currentPackHolder: nextHolder,
+      } : null);
+    }
+    
     // Timer will be restarted when new pick starts
-  }, [draftPickerPick, resetTimer]);
+  }, [draftPickerPick, resetTimer, session]);
 
   // Handle card hover - track for auto-pick (DRFT-08)
   const handleHoverCard = useCallback((cardId: string | null) => {
@@ -177,6 +192,122 @@ export default function DraftPage() {
     // Debounce saves
     const timeoutId = setTimeout(saveSession, 500);
     return () => clearTimeout(timeoutId);
+  }, [session]);
+
+  // NEIB-02, NEIB-04: Handle AI neighbor picks
+  useEffect(() => {
+    if (!session || !session.aiNeighbor?.enabled) return;
+    if (session.draftState !== 'picking') return;
+    if (!isAiPickTurn(session)) return;
+
+    // AI is supposed to pick - set picking state
+    if (!session.aiNeighbor.state.isPicking) {
+      // Start AI pick after delay
+      const pickDelay = session.aiNeighbor.pickDelay || 2000;
+      const aiNeighbor = session.aiNeighbor;
+      
+      // Set AI as picking
+      setSession({
+        ...session,
+        aiNeighbor: {
+          ...aiNeighbor,
+          state: {
+            ...aiNeighbor.state,
+            isPicking: true,
+            pickStartTime: Date.now(),
+          },
+        },
+      });
+
+      // Make AI pick after delay
+      const timer = setTimeout(async () => {
+        const currentPack = session.packs[session.currentPackIndex];
+        if (!currentPack || currentPack.cards.length === 0) return;
+
+        // Select card for AI to pick
+        const pickedCard = selectAiPick(currentPack, aiNeighbor);
+        if (!pickedCard) return;
+
+        // Add card to AI's pool
+        const updatedAiNeighbor = {
+          ...aiNeighbor,
+          state: {
+            ...aiNeighbor.state,
+            pool: [...aiNeighbor.state.pool, pickedCard],
+            isPicking: false,
+            pickStartTime: null,
+          },
+        };
+
+        // Pass pack to next holder
+        const nextHolder = getNextPackHolder(
+          session.currentPackHolder,
+          session.currentPickIndex,
+          true
+        );
+
+        // Advance pick index
+        let newPickIndex = session.currentPickIndex + 1;
+        let newPackIndex = session.currentPackIndex;
+        
+        // Check if pack is complete
+        if (newPickIndex >= 14) {
+          newPickIndex = 0;
+          newPackIndex = session.currentPackIndex + 1;
+        }
+
+        // Check if draft is complete
+        if (newPackIndex >= 3) {
+          setSession({
+            ...session,
+            aiNeighbor: updatedAiNeighbor,
+            packs: session.packs.map((pack, idx) => 
+              idx === session.currentPackIndex
+                ? { ...pack, pickedCardIds: [...pack.pickedCardIds, pickedCard.id] }
+                : pack
+            ),
+            currentPackHolder: nextHolder,
+            currentPickIndex: newPickIndex,
+            currentPackIndex: newPackIndex,
+            draftState: 'draft_complete',
+            status: 'completed',
+          });
+        } else {
+          // Move to next pick or pack
+          if (newPickIndex === 0) {
+            // Opened next pack
+            setSession({
+              ...session,
+              aiNeighbor: updatedAiNeighbor,
+              packs: session.packs.map((pack, idx) => 
+                idx === session.currentPackIndex
+                  ? { ...pack, pickedCardIds: [...pack.pickedCardIds, pickedCard.id] }
+                  : pack
+              ).map((pack, idx) =>
+                idx === newPackIndex ? { ...pack, isOpened: true } : pack
+              ),
+              currentPackHolder: nextHolder,
+              currentPickIndex: newPickIndex,
+              currentPackIndex: newPackIndex,
+            });
+          } else {
+            setSession({
+              ...session,
+              aiNeighbor: updatedAiNeighbor,
+              packs: session.packs.map((pack, idx) => 
+                idx === session.currentPackIndex
+                  ? { ...pack, pickedCardIds: [...pack.pickedCardIds, pickedCard.id] }
+                  : pack
+              ),
+              currentPackHolder: nextHolder,
+              currentPickIndex: newPickIndex,
+            });
+          }
+        }
+      }, pickDelay);
+
+      return () => clearTimeout(timer);
+    }
   }, [session]);
 
   // Initialize session
@@ -463,6 +594,10 @@ function DraftHeader({
 }: DraftHeaderProps) {
   const currentPack = session.currentPackIndex + 1;
   const currentPick = session.currentPickIndex + 1;
+  
+  // NEIB-04: Check if AI is picking
+  const aiIsPicking = session.aiNeighbor?.state?.isPicking;
+  const aiPoolSize = session.aiNeighbor?.state?.pool?.length ?? 0;
 
   return (
     <div className="flex items-center justify-between p-4 border-b bg-card">
@@ -479,6 +614,17 @@ function DraftHeader({
           <Badge variant="outline" className="font-mono">
             Pick {currentPick}/{CARDS_PER_PACK}
           </Badge>
+          
+          {/* NEIB-04: AI Neighbor Status */}
+          {session.aiNeighbor?.enabled && (
+            <Badge variant={aiIsPicking ? "default" : "secondary"} className="font-mono">
+              {aiIsPicking ? (
+                <>🤖 AI Picking...</>
+              ) : (
+                <>🤖 AI Pool: {aiPoolSize}</>
+              )}
+            </Badge>
+          )}
         </div>
       </div>
 

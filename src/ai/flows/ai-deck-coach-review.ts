@@ -85,8 +85,11 @@ export async function reviewDeck(
     throw error;
   }
 
-  // Use AI if requested
-  if (useAI) {
+  // Check online status if in browser
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+  // Use AI if requested and online
+  if (useAI && !isOffline) {
     try {
       const response = await callAIProxy<DeckReviewOutput>({
         provider: 'openai',
@@ -96,7 +99,7 @@ export async function reviewDeck(
           messages: [
             { 
               role: 'system', 
-              content: 'You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements.' 
+              content: 'You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements. Return result as JSON.' 
             },
             { 
               role: 'user', 
@@ -115,8 +118,9 @@ export async function reviewDeck(
     }
   }
 
-  // Queue the request for processing (heuristic)
+  // Queue the request for processing (heuristic fallback)
   return aiRequestQueue.add(async () => {
+    // ... rest of heuristic logic ...
     // Parse the decklist to get card data
     const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
     const cards: HeuristicCard[] = [];
@@ -195,7 +199,9 @@ export async function reviewDeck(
   );
 
   return {
-    reviewSummary: result.reviewSummary,
+    reviewSummary: (isOffline || useAI) 
+      ? `[Heuristic Mode - AI Unavailable] ${result.reviewSummary}` 
+      : result.reviewSummary,
     deckOptions: validatedOptions.filter(option =>
       (option.cardsToAdd && option.cardsToAdd.length > 0) ||
       (option.cardsToRemove && option.cardsToRemove.length > 0)

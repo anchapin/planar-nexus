@@ -1,87 +1,87 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { ChatMessage } from '@/components/game-chat';
+import { useChat } from 'ai/react';
+import { playerHistoryTool } from '@/ai/tools/player-history-client';
+import { useState, useCallback, useMemo } from 'react';
 
 interface UseGameChatOptions {
   currentPlayerId: string;
   currentPlayerName: string;
-  maxMessages?: number;
-}
-
-interface UseGameChatReturn {
-  messages: ChatMessage[];
-  sendMessage: (content: string) => void;
-  addSystemMessage: (content: string) => void;
-  clearMessages: () => void;
-  unreadCount: number;
-  markAsRead: () => void;
+  initialMessages?: any[];
 }
 
 /**
- * Hook for managing game chat state
+ * Hook for managing game chat and AI coach interactions.
+ * Uses Vercel AI SDK for streaming and tool support.
+ * Includes compatibility layer for legacy game-chat components.
  */
 export function useGameChat({ 
   currentPlayerId, 
   currentPlayerName,
-  maxMessages = 100 
-}: UseGameChatOptions): UseGameChatReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  initialMessages = []
+}: UseGameChatOptions) {
   const [unreadCount, setUnreadCount] = useState(0);
 
+  const chat = useChat({
+    api: '/api/chat',
+    initialMessages,
+    body: {
+      userId: currentPlayerId,
+      userName: currentPlayerName,
+    },
+    tools: {
+      getPlayerHistory: playerHistoryTool,
+    },
+    maxSteps: 5,
+    onResponse: (response) => {
+      if (!response.ok) {
+        console.error('Chat error:', response.statusText);
+      }
+    },
+    onFinish: () => {
+      // Increment unread if chat isn't focused (generic logic)
+      setUnreadCount(prev => prev + 1);
+    },
+    onError: (error) => {
+      console.error('Chat hook error:', error);
+    },
+  });
+
+  // Compatibility: Map AI SDK messages to ChatMessage format
+  const legacyMessages = useMemo(() => {
+    return chat.messages.map(m => ({
+      id: m.id,
+      playerId: m.role === 'user' ? currentPlayerId : 'ai-coach',
+      playerName: m.role === 'user' ? currentPlayerName : 'AI Coach',
+      content: m.content,
+      timestamp: m.createdAt ? m.createdAt.getTime() : Date.now(),
+      isSystem: m.role === 'system',
+      toolInvocations: m.toolInvocations,
+    }));
+  }, [chat.messages, currentPlayerId, currentPlayerName]);
+
+  // Compatibility: Legacy methods
   const sendMessage = useCallback((content: string) => {
-    const newMessage: ChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      playerId: currentPlayerId,
-      playerName: currentPlayerName,
-      content: content.trim(),
-      timestamp: Date.now(),
-    };
-
-    setMessages((prev) => {
-      const updated = [...prev, newMessage];
-      // Limit message history
-      if (updated.length > maxMessages) {
-        return updated.slice(-maxMessages);
-      }
-      return updated;
-    });
-  }, [currentPlayerId, currentPlayerName, maxMessages]);
-
-  const addSystemMessage = useCallback((content: string) => {
-    const systemMessage: ChatMessage = {
-      id: `sys-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      playerId: 'system',
-      playerName: 'System',
-      content,
-      timestamp: Date.now(),
-      isSystem: true,
-    };
-
-    setMessages((prev) => {
-      const updated = [...prev, systemMessage];
-      if (updated.length > maxMessages) {
-        return updated.slice(-maxMessages);
-      }
-      return updated;
-    });
-  }, [maxMessages]);
+    chat.append({ role: 'user', content });
+  }, [chat.append]);
 
   const clearMessages = useCallback(() => {
-    setMessages([]);
-    setUnreadCount(0);
-  }, []);
+    chat.setMessages([]);
+  }, [chat.setMessages]);
 
   const markAsRead = useCallback(() => {
     setUnreadCount(0);
   }, []);
 
   return {
-    messages,
+    ...chat,
+    messages: chat.messages, // AI SDK format
+    legacyMessages,          // ChatMessage format
     sendMessage,
-    addSystemMessage,
     clearMessages,
     unreadCount,
     markAsRead,
+    currentPlayerId,
+    currentPlayerName,
   };
 }

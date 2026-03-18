@@ -103,3 +103,13 @@ None - no external service configuration required.
 ---
 *Phase: 15-draft-core*
 *Completed: 2026-03-18*
+
+## Self-Check: PASSED
+
+Verified:
+- ✅ SUMMARY.md created at correct path
+- ✅ 4 commits present (test, feat x2, docs)
+- ✅ src/lib/limited/draft-generator.ts exists
+- ✅ src/lib/limited/__tests__/draft-generator.test.ts exists
+- ✅ src/lib/limited/types.ts modified
+- ✅ 13 tests passing

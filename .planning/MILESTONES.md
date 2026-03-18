@@ -1,5 +1,15 @@
 # Milestones
 
+## v1.4 Draft/Sealed Limited Modes (In Progress)
+
+**Phases completed:** 2 phases (Phase 14 Foundation ✅, Phase 15 Draft Core ✅)
+
+**Key accomplishments:**
+- **Phase 14 Foundation**: Set browser, sealed pool generation, pool filtering, limited deck builder
+- **Phase 15 Draft Core**: 3-pack drafting, face-down packs, card picking, timer with auto-pick, session persistence
+
+---
+
 ## v1.3 Deck Builder UX Enhancements (Shipped: 2026-03-18)
 
 **Phases completed:** 7 phases, 22 plans, 9 tasks

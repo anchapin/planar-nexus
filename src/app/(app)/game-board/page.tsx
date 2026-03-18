@@ -421,7 +421,7 @@ export default function GameBoardPage() {
       summary,
     });
     
-    saveGameRecord(record);
+    saveGameRecord(record).catch(console.error);
     
     // Track achievements for this game
     onGameEnd({ gameState, won: result === 'win' });

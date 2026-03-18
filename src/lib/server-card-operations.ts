@@ -126,3 +126,28 @@ export async function importDecklist(
 
   return { found: aggregatedFound, notFound, illegal };
 }
+
+/**
+ * Search for cards in the database
+ */
+export async function searchCards(
+  query: string,
+  options?: { format?: string; maxCards?: number }
+): Promise<ServerDeckCard[]> {
+  await initializeServerCardOperations();
+  
+  // Convert string format to Format type if it exists in game-rules
+  const searchOptions = {
+    format: options?.format,
+    maxCards: options?.maxCards
+  };
+  
+  const results = await searchCardsOffline(query, searchOptions);
+  
+  // Map to ServerDeckCard format (add count: 1 as default for search results)
+  return results.map(card => ({
+    ...card,
+    count: 1
+  })) as ServerDeckCard[];
+}
+

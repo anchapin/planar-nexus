@@ -27,21 +27,21 @@ export interface ServerApiKeyConfig {
 /**
  * Environment variable mappings for providers
  */
-const PROVIDER_ENV_MAPPING: Record<AIProvider, { apiKey: string; baseURL?: string }> = {
+const PROVIDER_ENV_MAPPING: Record<AIProvider, { apiKey: string[]; baseURL?: string }> = {
   google: {
-    apiKey: 'GOOGLE_AI_API_KEY',
+    apiKey: ['GOOGLE_AI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY'],
     baseURL: 'NEXT_PUBLIC_GOOGLE_API_URL',
   },
   openai: {
-    apiKey: 'OPENAI_API_KEY',
+    apiKey: ['OPENAI_API_KEY'],
     baseURL: 'NEXT_PUBLIC_OPENAI_API_URL',
   },
   zaic: {
-    apiKey: 'ZAI_API_KEY',
+    apiKey: ['ZAI_API_KEY'],
     baseURL: 'ZAI_BASE_URL',
   },
   custom: {
-    apiKey: 'CUSTOM_AI_API_KEY',
+    apiKey: ['CUSTOM_AI_API_KEY'],
     baseURL: 'CUSTOM_AI_BASE_URL',
   },
 };
@@ -50,11 +50,19 @@ const PROVIDER_ENV_MAPPING: Record<AIProvider, { apiKey: string; baseURL?: strin
  * Get server-side API key for a provider from environment variables
  */
 export function getServerApiKey(provider: AIProvider): string | null {
-  const envVar = PROVIDER_ENV_MAPPING[provider]?.apiKey;
-  if (!envVar) {
+  const envVars = PROVIDER_ENV_MAPPING[provider]?.apiKey;
+  if (!envVars) {
     return null;
   }
-  return process.env[envVar] || null;
+  
+  for (const envVar of envVars) {
+    const key = process.env[envVar];
+    if (key && key.length > 0) {
+      return key;
+    }
+  }
+  
+  return null;
 }
 
 /**

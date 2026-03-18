@@ -344,7 +344,11 @@ export async function callAIProxyStream(
  * Create an async generator from a streaming response
  * 
  * This helper function converts a ReadableStream into an async generator
- * that yields text chunks from the SSE stream.
+ * that yields text chunks from the stream.
+ * 
+ * Supports both:
+ * 1. Standard SSE format (data: { ... }\n\n)
+ * 2. Vercel AI SDK Data Stream format (0:"chunk"\n)
  */
 export async function* streamToAsyncGenerator(
   stream: ReadableStream<Uint8Array>
@@ -360,18 +364,26 @@ export async function* streamToAsyncGenerator(
       if (done) {
         // Yield any remaining data in buffer
         if (buffer.trim()) {
-          yield buffer;
+          // Check if it's a remaining legacy SSE line
+          if (buffer.startsWith('data: ')) {
+            yield buffer.slice(6) + '\n';
+          } else {
+            yield buffer;
+          }
         }
         break;
       }
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Process complete SSE events
+      // Process complete lines
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
       for (const line of lines) {
+        if (line.trim() === '') continue;
+
+        // Handle standard SSE format
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
           // Skip [DONE] marker
@@ -379,6 +391,28 @@ export async function* streamToAsyncGenerator(
             return;
           }
           yield data + '\n';
+        } 
+        // Handle Vercel AI SDK Data Stream format
+        // Format is usually <type>:<value> where type '0' is text
+        else if (line.startsWith('0:')) {
+          try {
+            const textChunk = JSON.parse(line.slice(2));
+            if (typeof textChunk === 'string') {
+              yield textChunk;
+            }
+          } catch (e) {
+            // If not valid JSON, just yield as-is
+            yield line.slice(2);
+          }
+        }
+        // Other types (d: metadata, e: error, etc.) can be handled or ignored
+        else if (line.startsWith('e:')) {
+          try {
+            const errorData = JSON.parse(line.slice(2));
+            yield `{"error": ${JSON.stringify(errorData)}}\n`;
+          } catch (e) {
+            yield `{"error": "${line.slice(2)}"}\n`;
+          }
         }
       }
     }
