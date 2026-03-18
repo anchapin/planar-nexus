@@ -8,7 +8,7 @@ import {
   TrendingUp, 
   TrendingDown, 
   Minus,
-  PieChart,
+  PieChart as PieChartIcon,
   Activity,
   Download,
   Upload,
@@ -20,6 +20,39 @@ import {
   Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts';
+
+// Magic color hex codes for charts
+const MAGIC_COLOR_HEX: Record<string, string> = {
+  W: '#F9F99A',
+  U: '#0E68AB',
+  B: '#150B00',
+  R: '#E12D2D',
+  G: '#00733E',
+  Colorless: '#9CA3AF',
+};
+
+// Card type colors for charts
+const TYPE_COLORS: Record<string, string> = {
+  Creature: '#8B5CF6',
+  Instant: '#3B82F6',
+  Sorcery: '#EF4444',
+  Enchantment: '#F59E0B',
+  Artifact: '#6B7280',
+  Planeswalker: '#EC4899',
+  Land: '#10B981',
+};
 
 // Deck statistics types
 export interface DeckRecord {
@@ -146,47 +179,11 @@ export function DeckStatisticsCard({ stats, className }: DeckStatisticsCardProps
   );
 }
 
-// Mana curve visualization
-interface ManaCurveChartProps {
-  manaCurve: Record<number, number>;
-  className?: string;
-}
+// ============================================
+// RECHARTS-BASED CHART COMPONENTS
+// ============================================
 
-export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
-  const maxCount = useMemo(() => {
-    return Math.max(...Object.values(manaCurve), 1);
-  }, [manaCurve]);
-
-  return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="w-5 h-5" />
-          Energy Curve
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-end justify-between gap-1 h-40">
-          {Array.from({ length: 8 }, (_, i) => {
-            const count = manaCurve[i] || 0;
-            const height = (count / maxCount) * 100;
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center">
-                <div 
-                  className="w-full bg-primary rounded-t transition-all"
-                  style={{ height: `${height}%` }}
-                />
-                <span className="text-xs mt-1">{i}</span>
-              </div>
-            );
-          })}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Color distribution pie chart
+// Color distribution pie chart (legacy CSS-based)
 interface ColorDistributionChartProps {
   distribution: Record<string, number>;
   className?: string;
@@ -208,7 +205,7 @@ export function ColorDistributionChart({ distribution, className }: ColorDistrib
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <PieChart className="w-5 h-5" />
+          <PieChartIcon className="w-5 h-5" />
           Color Distribution
         </CardTitle>
       </CardHeader>
@@ -237,6 +234,293 @@ export function ColorDistributionChart({ distribution, className }: ColorDistrib
             </div>
           );
         })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================
+// NEW RECHARTS-BASED CHART COMPONENTS
+// ============================================
+
+/**
+ * Recharts-based Mana Curve Chart
+ * Displays the distribution of cards by converted mana cost
+ */
+interface ManaCurveChartProps {
+  manaCurve: Record<number, number>;
+  className?: string;
+}
+
+export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
+  // Convert mana curve to array format for Recharts
+  const data = useMemo(() => {
+    return Object.entries(manaCurve).map(([cmc, count]) => ({
+      cmc: parseInt(cmc) >= 7 ? '7+' : cmc,
+      count,
+      cmcNum: parseInt(cmc),
+    }));
+  }, [manaCurve]);
+
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Activity className="w-5 h-5" />
+          Mana Curve
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <XAxis
+              dataKey="cmc"
+              tick={{ fontSize: 12 }}
+              tickLine={false}
+              axisLine={{ stroke: 'hsl(var(--border))' }}
+            />
+            <YAxis
+              tick={{ fontSize: 12 }}
+              tickLine={false}
+              axisLine={{ stroke: 'hsl(var(--border))' }}
+              width={30}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '8px',
+              }}
+              formatter={(value: number) => [`${value} cards`, 'Count']}
+            />
+            <Bar
+              dataKey="count"
+              fill="hsl(var(--primary))"
+              radius={[4, 4, 0, 0]}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Recharts-based Card Type Chart
+ * Displays the distribution of cards by type (creature, instant, sorcery, etc.)
+ */
+interface CardTypeChartProps {
+  typeDistribution: Record<string, number>;
+  chartType?: 'pie' | 'bar';
+  className?: string;
+}
+
+export function CardTypeChart({ typeDistribution, chartType = 'pie', className }: CardTypeChartProps) {
+  // Convert type distribution to array format for Recharts
+  const data = useMemo(() => {
+    const total = Object.values(typeDistribution).reduce((a, b) => a + b, 0);
+    return Object.entries(typeDistribution)
+      .filter(([, count]) => count > 0)
+      .map(([type, count]) => ({
+        type: type.charAt(0).toUpperCase() + type.slice(1),
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        fill: TYPE_COLORS[type] || '#6B7280',
+      }));
+  }, [typeDistribution]);
+
+  if (data.length === 0) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Type Breakdown
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No cards in deck
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (chartType === 'bar') {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Type Breakdown
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data} layout="vertical" margin={{ top: 10, right: 30, left: 60, bottom: 0 }}>
+              <XAxis
+                type="number"
+                tick={{ fontSize: 12 }}
+                tickLine={false}
+                axisLine={{ stroke: 'hsl(var(--border))' }}
+              />
+              <YAxis
+                type="category"
+                dataKey="type"
+                tick={{ fontSize: 12 }}
+                tickLine={false}
+                axisLine={{ stroke: 'hsl(var(--border))' }}
+                width={60}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                }}
+                formatter={(value: number, name: string) => [
+                  `${value} cards`,
+                  name === 'count' ? 'Count' : name,
+                ]}
+              />
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Pie chart
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Type Breakdown
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={250}>
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              outerRadius={80}
+              dataKey="count"
+              nameKey="type"
+              label={({ type, percentage }) => `${type}: ${percentage}%`}
+              labelLine={false}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '8px',
+              }}
+              formatter={(value: number) => [`${value} cards`, 'Count']}
+            />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Recharts-based Deck Color Chart
+ * Displays the color distribution of the deck
+ */
+interface DeckColorChartProps {
+  colorDistribution: Record<string, number>;
+  className?: string;
+}
+
+export function DeckColorChart({ colorDistribution, className }: DeckColorChartProps) {
+  // Convert color distribution to array format for Recharts
+  const data = useMemo(() => {
+    const total = Object.values(colorDistribution).reduce((a, b) => a + b, 0);
+    return Object.entries(colorDistribution)
+      .filter(([, count]) => count > 0)
+      .map(([color, count]) => ({
+        color,
+        count,
+        percentage: total > 0 ? Math.round((count / total) * 100) : 0,
+        fill: MAGIC_COLOR_HEX[color] || MAGIC_COLOR_HEX.Colorless,
+      }));
+  }, [colorDistribution]);
+
+  // Color name mapping for display
+  const colorNames: Record<string, string> = {
+    W: 'White',
+    U: 'Blue',
+    B: 'Black',
+    R: 'Red',
+    G: 'Green',
+    Colorless: 'Colorless',
+  };
+
+  if (data.length === 0) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Color Distribution
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No cards in deck
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Color Distribution
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={250}>
+          <PieChart>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={90}
+              dataKey="count"
+              nameKey="color"
+              label={({ color, percentage }) => `${colorNames[color] || color}: ${percentage}%`}
+              labelLine={false}
+            >
+              {data.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.fill} stroke="hsl(var(--card))" strokeWidth={2} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '8px',
+              }}
+              formatter={(value: number) => [`${value} cards`, 'Count']}
+            />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   );
