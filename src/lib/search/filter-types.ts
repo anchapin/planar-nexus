@@ -64,3 +64,11 @@ export interface CardFilters {
 }
 
 export type FilterState = CardFilters;
+
+// Supported formats for format legality filter
+export const SUPPORTED_FORMATS = [
+  'standard', 'modern', 'commander', 'legacy', 'vintage',
+  'pauper', 'pioneer', 'brawl', 'gladiator', 'historic'
+] as const;
+
+export type SupportedFormat = typeof SUPPORTED_FORMATS[number];

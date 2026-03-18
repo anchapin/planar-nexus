@@ -11,6 +11,8 @@ import type {
   RarityFilter,
   SetFilter,
   ColorFilter,
+  PowerToughnessFilter,
+  FormatLegalityFilter,
   CardFilters,
 } from './filter-types';
 
@@ -159,44 +161,267 @@ export function filterByColor(cards: MinimalCard[], filter: ColorFilter): Minima
 }
 
 /**
+ * Filter cards by color identity (colors the card can produce)
+ * Same logic as filterByColor but uses color_identity field explicitly
+ * This respects cards that produce colors through abilities
+ */
+export function filterByColorIdentity(cards: MinimalCard[], filter: ColorFilter): MinimalCard[] {
+  if (!filter || filter.colors.length === 0) return cards;
+
+  return cards.filter((card) => {
+    const cardColorIdentity = card.color_identity || [];
+
+    switch (filter.mode) {
+      case 'exact':
+        // Must have exactly the same color identity
+        if (cardColorIdentity.length !== filter.colors.length) return false;
+        return filter.colors.every((c) => cardColorIdentity.includes(c));
+
+      case 'include':
+        // Must contain all specified colors in identity
+        return filter.colors.every((c) => cardColorIdentity.includes(c));
+
+      case 'exclude':
+        // Must not contain any of the specified colors in identity
+        return !filter.colors.some((c) => cardColorIdentity.includes(c));
+
+      default:
+        return true;
+    }
+  });
+}
+
+/**
+ * Check if card colors are a subset of allowed colors
+ * Empty cardColors (colorless) returns true
+ */
+function isColorSubset(cardColors: string[], allowedColors: string[]): boolean {
+  if (cardColors.length === 0) return true;
+  return cardColors.every((color) => allowedColors.includes(color));
+}
+
+/**
+ * Filter cards by Commander color identity rules
+ * A card is legal if its color_identity is a SUBSET of allowedColors
+ * For 5-color commander (WUBRG), all cards are allowed
+ */
+export function filterByCommanderRules(cards: MinimalCard[], allowedColors: string[]): MinimalCard[] {
+  if (!allowedColors || allowedColors.length === 0) return cards;
+
+  // 5-color commander's color identity allows all cards
+  const allColors = ['W', 'U', 'B', 'R', 'G'];
+  const isFiveColor = allColors.every((c) => allowedColors.includes(c));
+
+  if (isFiveColor) {
+    return cards;
+  }
+
+  return cards.filter((card) => {
+    const cardColorIdentity = card.color_identity || [];
+    return isColorSubset(cardColorIdentity, allowedColors);
+  });
+}
+
+// ============================================================================
+// Power/Toughness Filters
+// ============================================================================
+
+/**
+ * Parse power/toughness value to number
+ * Handles special cases: "*" -> 0, "1+2" -> excluded (return null)
+ */
+function parsePowerToughness(value: string | undefined): number | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  // Handle special cases
+  if (value === '*') {
+    return 0;
+  }
+
+  // Exclude complex values like "1+1", "2*", etc.
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Check if a number is within a range
+ */
+function isInRange(value: number, range: { min?: number; max?: number }): boolean {
+  if (range.min !== undefined && value < range.min) {
+    return false;
+  }
+  if (range.max !== undefined && value > range.max) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Filter cards by creature power
+ * Only applies to cards with power field (creatures)
+ */
+export function filterByPower(cards: MinimalCard[], range: { min?: number; max?: number }): MinimalCard[] {
+  if (range.min === undefined && range.max === undefined) {
+    return cards;
+  }
+
+  return cards.filter((card) => {
+    const power = parsePowerToughness(card.power);
+
+    // Only include cards with valid numeric power (creatures)
+    if (power === null) {
+      return false;
+    }
+
+    return isInRange(power, range);
+  });
+}
+
+/**
+ * Filter cards by creature toughness
+ * Only applies to cards with toughness field (creatures)
+ */
+export function filterByToughness(cards: MinimalCard[], range: { min?: number; max?: number }): MinimalCard[] {
+  if (range.min === undefined && range.max === undefined) {
+    return cards;
+  }
+
+  return cards.filter((card) => {
+    const toughness = parsePowerToughness(card.toughness);
+
+    // Only include cards with valid numeric toughness (creatures)
+    if (toughness === null) {
+      return false;
+    }
+
+    return isInRange(toughness, range);
+  });
+}
+
+// ============================================================================
+// Format Legality Filter
+// ============================================================================
+
+/**
+ * Supported formats for legality checks
+ */
+export const FORMAT_LEGALITIES = [
+  'standard', 'modern', 'commander', 'legacy', 'vintage',
+  'pauper', 'pioneer', 'brawl', 'gladiator', 'historic'
+] as const;
+
+/**
+ * Filter cards by format legality
+ */
+export function filterByFormatLegality(cards: MinimalCard[], filter: FormatLegalityFilter): MinimalCard[] {
+  if (!filter || !filter.format) {
+    return cards;
+  }
+
+  const { format, legality } = filter;
+
+  return cards.filter((card) => {
+    const cardLegalities = card.legalities || {};
+    const cardLegality = cardLegalities[format.toLowerCase()];
+
+    if (cardLegality === undefined) {
+      // If format not specified, assume not legal
+      return false;
+    }
+
+    return cardLegality === legality;
+  });
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Get creature cards from a card list
+ * Used to enable power/toughness filtering
+ */
+export function getCreatures(cards: MinimalCard[]): MinimalCard[] {
+  return cards.filter((c) => c.type_line?.toLowerCase().includes('creature'));
+}
+
+/**
  * Apply all filters to a card array
  *
  * Applies non-undefined filters in sequence using short-circuit evaluation
- * for efficiency. Filters are applied in this order:
- * 1. searchQuery (handled externally via Fuse.js)
- * 2. cmc
- * 3. type
- * 4. rarity
- * 5. set
- * 6. color
+ * for efficiency. Filters are applied in optimized order:
+ * 1. formatLegality (most restrictive)
+ * 2. color (Commander rules)
+ * 3. type (needed before P/T to identify creatures)
+ * 4. cmc
+ * 5. rarity
+ * 6. set
+ * 7. powerToughness (only on creatures)
  */
 export function applyFilters(cards: MinimalCard[], filters: CardFilters): MinimalCard[] {
   let result = cards;
 
-  // Apply CMC filter
-  if (filters.cmc) {
-    result = filterByCMC(result, filters.cmc);
+  // 1. Format legality (most restrictive)
+  if (filters.formatLegality) {
+    result = filterByFormatLegality(result, filters.formatLegality);
   }
 
-  // Apply type filter
+  // 2. Color identity (Commander rules)
+  if (filters.color) {
+    if (filters.color.matchColorIdentity) {
+      result = filterByColorIdentity(result, filters.color);
+    } else {
+      result = filterByColor(result, filters.color);
+    }
+  }
+
+  // 3. Type filter (needed before P/T to identify creatures)
   if (filters.type) {
     result = filterByType(result, filters.type);
   }
 
-  // Apply rarity filter
+  // 4. CMC filter
+  if (filters.cmc) {
+    result = filterByCMC(result, filters.cmc);
+  }
+
+  // 5. Rarity filter
   if (filters.rarity) {
     result = filterByRarity(result, filters.rarity);
   }
 
-  // Apply set filter
+  // 6. Set filter
   if (filters.set) {
     result = filterBySet(result, filters.set);
   }
 
-  // Apply color filter
-  if (filters.color) {
-    result = filterByColor(result, filters.color);
+  // 7. Power/Toughness (only on creatures)
+  if (filters.powerToughness) {
+    let filtered = result;
+
+    if (filters.powerToughness.power) {
+      filtered = filterByPower(filtered, filters.powerToughness.power);
+    }
+
+    if (filters.powerToughness.toughness) {
+      filtered = filterByToughness(filtered, filters.powerToughness.toughness);
+    }
+
+    result = filtered;
   }
 
   return result;
 }
+
+/**
+ * Filter application order constant for debugging
+ */
+export const FILTER_ORDER: (keyof CardFilters)[] = [
+  'formatLegality', 'color', 'type', 'cmc', 'rarity', 'set', 'powerToughness'
+];

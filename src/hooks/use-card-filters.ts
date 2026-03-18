@@ -5,7 +5,9 @@
  * operations. Follows the pattern from useLocalSearch hook.
  */
 import { useState, useCallback, useMemo } from 'react';
+import type { MinimalCard } from '@/lib/card-database';
 import type { FilterState } from '@/lib/search/filter-types';
+import { applyFilters, FILTER_ORDER } from '@/lib/search/filter-cards';
 
 /**
  * Default empty filter state
@@ -21,6 +23,7 @@ export interface UseCardFiltersReturn {
   resetFilters: () => void;
   removeFilter: (key: keyof FilterState) => void;
   hasActiveFilters: boolean;
+  filteredCards: (cards: MinimalCard[]) => MinimalCard[];
 }
 
 /**
@@ -32,6 +35,7 @@ export interface UseCardFiltersReturn {
  * - resetFilters: clear all filters to default
  * - removeFilter: remove a specific filter
  * - hasActiveFilters: whether any filters are active
+ * - filteredCards: function to apply filters to card array
  */
 export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): UseCardFiltersReturn {
   const [filters, setFilters] = useState<FilterState>(initialFilters);
@@ -71,11 +75,25 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
     return Object.values(filters).some((value) => value !== undefined);
   }, [filters]);
 
+  /**
+   * Apply current filters to a card array
+   */
+  const filteredCards = useCallback((cards: MinimalCard[]) => {
+    return applyFilters(cards, filters);
+  }, [filters]);
+
   return {
     filters,
     setFilter,
     resetFilters,
     removeFilter,
     hasActiveFilters,
+    filteredCards,
   };
 }
+
+/**
+ * Filter application order constant for debugging
+ * Documents the optimized order in which filters are applied
+ */
+export { FILTER_ORDER };
