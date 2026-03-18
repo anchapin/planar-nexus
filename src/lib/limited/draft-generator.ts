@@ -17,6 +17,8 @@ import type {
   DraftPack,
   DraftCard,
   PoolCard,
+  AiDifficulty,
+  AiNeighbor,
 } from './types';
 import { saveDraftSession } from './pool-storage';
 
@@ -188,6 +190,19 @@ export async function generateDraftPacks(
 }
 
 /**
+ * Create draft session options
+ * NEIB-01: AI neighbor configuration
+ */
+interface CreateDraftSessionOptions {
+  /** AI neighbor configuration */
+  aiNeighbor?: {
+    enabled: boolean;
+    difficulty: AiDifficulty;
+    pickDelay?: number;
+  };
+}
+
+/**
  * Create a new draft session
  *
  * DRFT-01: Session creation with unique UUID
@@ -195,19 +210,36 @@ export async function generateDraftPacks(
  * DRFT-03: Packs face-down
  * DRFT-06: 45-second timer
  * DRFT-10: Persists to IndexedDB immediately
+ * NEIB-01: AI neighbor support
  *
  * @param setCode - Set code (e.g., 'M21')
  * @param setName - Human-readable set name
+ * @param options - Optional configuration including AI neighbor
  * @returns Complete draft session (saved to IndexedDB)
  */
 export async function createDraftSession(
   setCode: string,
-  setName: string
+  setName: string,
+  options?: CreateDraftSessionOptions
 ): Promise<DraftSession> {
   // Generate packs
   const packs = await generateDraftPacks(setCode);
 
   const now = new Date().toISOString();
+
+  // Build AI neighbor if enabled (NEIB-01)
+  const aiNeighbor: AiNeighbor | undefined = options?.aiNeighbor?.enabled
+    ? {
+        enabled: true,
+        difficulty: options.aiNeighbor.difficulty,
+        pickDelay: options.aiNeighbor.pickDelay ?? 2000,
+        state: {
+          pool: [],
+          isPicking: false,
+          pickStartTime: null,
+        },
+      }
+    : undefined;
 
   const session: DraftSession = {
     // From LimitedSession
@@ -228,6 +260,11 @@ export async function createDraftSession(
     packs,
     timerSeconds: DEFAULT_TIMER_SECONDS, // DRFT-06
     lastHoveredCardId: null, // DRFT-08
+
+    // AI neighbor (NEIB-01)
+    aiNeighbor,
+    // Pack holder - user starts with pack (NEIB-05)
+    currentPackHolder: 'user',
   };
 
   // DRFT-10: Save to IndexedDB immediately

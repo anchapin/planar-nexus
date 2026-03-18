@@ -52,6 +52,42 @@ export type SetSortOption = 'release_date' | 'name' | 'card_count';
 export type DraftState = 'intro' | 'picking' | 'pack_complete' | 'draft_complete';
 
 /**
+ * AI neighbor difficulty levels (NEIB-03)
+ */
+export type AiDifficulty = 'easy' | 'medium';
+
+/**
+ * AI neighbor state during drafting (NEIB-01, NEIB-03)
+ */
+export interface AiNeighborState {
+  /** Current pool of cards the AI has picked */
+  pool: PoolCard[];
+  /** Is AI currently picking (for visual indicator - NEIB-04) */
+  isPicking: boolean;
+  /** Time when AI started current pick */
+  pickStartTime: number | null;
+}
+
+/**
+ * AI neighbor configuration and state (NEIB-01, NEIB-03)
+ */
+export interface AiNeighbor {
+  /** Is AI neighbor enabled for this draft */
+  enabled: boolean;
+  /** Difficulty level */
+  difficulty: AiDifficulty;
+  /** Delay before AI picks (ms) */
+  pickDelay: number;
+  /** Current AI state during drafting */
+  state: AiNeighborState;
+}
+
+/**
+ * Who currently has the active pack (NEIB-05)
+ */
+export type PackHolder = 'user' | 'ai';
+
+/**
  * A card in draft (with draft-specific metadata)
  * Extends PoolCard with draft-specific fields
  */
@@ -95,6 +131,8 @@ export interface DraftDisplayCard {
  * DRFT-01: Session creation with UUID
  * DRFT-02: 3 packs of 14 cards
  * DRFT-05: Pack-by-pack drafting
+ * NEIB-01: AI neighbor support
+ * NEIB-05: Pack holder tracking
  */
 export interface DraftSession extends LimitedSession {
   mode: 'draft'; // Override to 'draft'
@@ -110,6 +148,10 @@ export interface DraftSession extends LimitedSession {
   timerSeconds: number;
   /** DRFT-08: For auto-pick functionality */
   lastHoveredCardId: string | null;
+  /** NEIB-01: AI neighbor configuration and state */
+  aiNeighbor?: AiNeighbor;
+  /** NEIB-05: Track who has the active pack */
+  currentPackHolder: PackHolder;
 }
 
 // ============================================================================
@@ -257,3 +299,17 @@ export interface DeckValidationResult {
 // ============================================================================
 
 export type { MinimalCard } from '@/lib/card-database';
+// Note: AiDifficulty, AiNeighborState, AiNeighbor, PackHolder are exported inline above
+
+/**
+ * Create draft session options
+ * NEIB-01: AI neighbor configuration
+ */
+export interface CreateDraftSessionOptions {
+  /** AI neighbor configuration */
+  aiNeighbor?: {
+    enabled: boolean;
+    difficulty: AiDifficulty;
+    pickDelay?: number;
+  };
+}

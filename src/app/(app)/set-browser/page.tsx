@@ -93,7 +93,7 @@ export default function SetBrowserPage() {
   // Handle set selection
   const handleSetClick = (set: ScryfallSet) => {
     setSelectedSet(set);
-    setSelectedMode("sealed"); // Default to sealed for Phase 14
+    setSelectedMode("draft"); // Default to draft for Phase 15
     setIsDialogOpen(true);
   };
 
@@ -346,8 +346,8 @@ function SelectionDialog({
                 <SelectItem value="sealed">
                   Sealed Deck (6 packs, build immediately)
                 </SelectItem>
-                <SelectItem value="draft" disabled>
-                  Draft (3 packs, pick cards) — Coming in Phase 15
+                <SelectItem value="draft">
+                  Draft (3 packs, pick cards)
                 </SelectItem>
               </SelectContent>
             </Select>

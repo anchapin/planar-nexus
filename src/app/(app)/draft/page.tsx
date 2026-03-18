@@ -23,15 +23,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { DraftPicker, useDraftPicker, pickCard, openCurrentPack, advanceToNextPack } from "@/components/draft-picker";
 import { DraftPoolView } from "@/components/draft-pool-view";
 import { DraftTimer } from "@/components/draft-timer";
 import { SkipPickDialog } from "@/components/skip-pick-dialog";
 import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
+import type { DraftSession, AiDifficulty, CreateDraftSessionOptions } from "@/lib/limited/types";
 import { createDraftSession, isDraftComplete } from "@/lib/limited/draft-generator";
 import { getSession, saveDraftSession } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
-import type { DraftSession } from "@/lib/limited/types";
 import { Loader2, Package, Play } from "lucide-react";
 
 // ============================================================================
@@ -61,6 +64,10 @@ export default function DraftPage() {
   const [setName, setSetName] = useState<string>("");
   const [showSkipDialog, setShowSkipDialog] = useState(false);
   const [isTimerActive, setIsTimerActive] = useState(false);
+
+  // NEIB-01, NEIB-03: AI neighbor configuration state
+  const [aiNeighborEnabled, setAiNeighborEnabled] = useState(false);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>('medium');
 
   // Draft timer hook (DRFT-06, DRFT-07, DRFT-08)
   const {
@@ -208,10 +215,16 @@ export default function DraftPage() {
             // Use set code as fallback
           }
 
-          // Create draft session
+          // Create draft session with AI neighbor config (NEIB-01, NEIB-03)
           const newSession = await createDraftSession(
             setCode.toLowerCase(),
-            name
+            name,
+            {
+              aiNeighbor: {
+                enabled: aiNeighborEnabled,
+                difficulty: aiDifficulty,
+              },
+            }
           );
 
           setSession(newSession);
@@ -295,7 +308,7 @@ export default function DraftPage() {
     }
   }, [session, router]);
 
-  // Intro state - show start button
+  // Intro state - show start button and AI neighbor config (NEIB-01, NEIB-03)
   if (session?.draftState === "intro") {
     return (
       <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
@@ -318,6 +331,49 @@ export default function DraftPage() {
                 <li>Build a {CARDS_PER_PACK * PACKS_PER_DRAFT}-card minimum deck</li>
               </ul>
             </div>
+
+            {/* NEIB-01, NEIB-03: AI Neighbor Configuration */}
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="ai-neighbor" className="text-base">AI Opponent</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Draft against an AI bot neighbor
+                  </p>
+                </div>
+                <Switch
+                  id="ai-neighbor"
+                  checked={aiNeighborEnabled}
+                  onCheckedChange={setAiNeighborEnabled}
+                />
+              </div>
+
+              {/* NEIB-03: Difficulty selector - only show when AI is enabled */}
+              {aiNeighborEnabled && (
+                <div className="space-y-3">
+                  <Label className="text-sm">Difficulty</Label>
+                  <RadioGroup
+                    value={aiDifficulty}
+                    onValueChange={(value) => setAiDifficulty(value as AiDifficulty)}
+                    className="flex gap-4"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="easy" id="difficulty-easy" />
+                      <Label htmlFor="difficulty-easy" className="cursor-pointer">
+                        Easy (Random picks)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="medium" id="difficulty-medium" />
+                      <Label htmlFor="difficulty-medium" className="cursor-pointer">
+                        Medium (Color-focused)
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+              )}
+            </div>
+
             <Button
               size="lg"
               className="w-full"

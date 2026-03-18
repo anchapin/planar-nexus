@@ -174,6 +174,8 @@ describe('isDraftComplete', () => {
       packs: [],
       timerSeconds: 45,
       lastHoveredCardId: null,
+      aiNeighbor: undefined,
+      currentPackHolder: 'user',
     };
     
     expect(isDraftComplete(session)).toBe(true);
