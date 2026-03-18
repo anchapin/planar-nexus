@@ -16,7 +16,7 @@
 | 9. Adaptive Coaching & Player History | 5/5 | Completed | 2026-03-17 |
 | 10. Expert Opponent AI Refinement | 3/3 | Complete   | 2026-03-17 |
 | 11. Search & Filter Infrastructure | 4/4 | Complete    | 2026-03-18 |
-| 12. Saved Searches & Statistics | 0 | Not started | - |
+| 12. Saved Searches & Statistics | 2/3 | In Progress|  |
 | 13. Quick-Add & Performance | 0 | Not started | - |
 
 ## Phase Details
@@ -130,8 +130,8 @@
 8. Presets persist in IndexedDB across sessions
 
 **Plans**:
-- [ ] 12-01-PLAN.md — Search Presets (IndexedDB storage, save/load/delete)
-- [ ] 12-02-PLAN.md — Quick Access Presets (built-in filter presets)
+- [x] 12-01-PLAN.md — Search Presets (IndexedDB storage, save/load/delete) (COMPLETED)
+- [x] 12-02-PLAN.md — Quick Access Presets (built-in filter presets) (COMPLETED)
 - [ ] 12-03-PLAN.md — Deck Statistics (mana curve, type breakdown, color distribution)
 
 ---
