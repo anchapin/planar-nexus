@@ -280,6 +280,31 @@
 
 ---
 
+### Phase 27: Chat Interface Foundation
+
+**Goal**: Core chat interface for conversational AI coaching - message history, input handling, typing indicators
+
+**Depends on**: Phase 20 (existing deck builder features)
+
+**Requirements**: CHAT-01, CHAT-02, CHAT-03, CHAT-04, CHAT-05, CHAT-06
+
+**Success Criteria** (what must be TRUE):
+
+1. Chat interface displays message history with user and AI messages clearly distinguished
+2. User can type and send messages via input field
+3. Messages are timestamped and displayed in chronological order
+4. Typing indicator shows when AI is composing response
+5. Chat history persists during session
+6. Chat interface is accessible and keyboard-navigable
+
+**Plans**: 1 plan
+
+Plans:
+
+- [ ] 27-01-PLAN.md — Chat Interface Foundation (Core chat UI, message list, input, typing indicator) ⏳
+
+---
+
 ### Phase 14: Foundation
 
 **Goal**: User can select a set, open sealed pools, and build limited decks from isolated pools
@@ -385,6 +410,7 @@ Plans:
 | 18. Meta Analysis    | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
 | 19. Matchup Guides   | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
 | 20. Optimization     | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
+| 27. Chat Interface   | Chat UI, message history, input, typing          | 6 reqs       | 1/1            | ⏳ Planned   | —          |
 
 ---
 
@@ -469,9 +495,10 @@ Plans:
 | 24. Integration      | MSW, server action tests, E2E flows              | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
 | 25. CI Gates         | Coverage threshold, commit lint, audit           | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
 | 26. Test Docs        | TESTING.md, patterns, decision guide             | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 27. Chat Interface   | Chat UI, message history, input, typing          | 6 reqs       | 1/1            | ⏳ Planned   | —          |
 
 ---
 
-**Current Status**: v1.6 COMPLETE — QA/QC Infrastructure shipped
+**Current Status**: v1.7 IN PROGRESS — Conversational AI Coach (Phase 27)
 
 _For archived milestones, see `.planning/milestones/`_

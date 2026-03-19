@@ -10,8 +10,7 @@ import { importDecklistClient } from "@/lib/client-card-operations";
 import { type Format } from "@/lib/game-rules";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
-import { Bot, Loader2, TrendingUp } from "lucide-react";
-import { ReviewDisplay } from "./_components/review-display";
+import { Bot, Loader2, TrendingUp, MessageSquare } from "lucide-react";
 import { EnhancedReviewDisplay } from "./_components/enhanced-review-display";
 import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,6 +20,8 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CoachReportSkeleton, LoadingProgress } from "./_components/coach-skeleton";
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
+import { DeckCoachChatPanel } from "@/components/chat";
+import { useDeckCoachChat } from "@/hooks/use-deck-coach-chat";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -32,9 +33,12 @@ export default function DeckCoachPage() {
   const [metaAnalysis, setMetaAnalysis] = useState<MetaAnalysisOutput | null>(null);
   const [originalDeckCards, setOriginalDeckCards] = useState<DeckCard[] | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [analysisType, setAnalysisType] = useState<"review" | "meta">("review");
+  const [analysisType, setAnalysisType] = useState<"review" | "meta" | "chat">("review");
   const [, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
   const { toast } = useToast();
+  
+  // Chat state for conversational AI
+  const { messages, isLoading: isChatLoading, sendMessage, addAssistantMessage, setLoading: setChatLoading } = useDeckCoachChat();
 
   const handleAnalyzeDeck = (type: "review" | "meta") => {
     if (decklist.trim().length === 0) {
@@ -211,6 +215,28 @@ export default function DeckCoachPage() {
     await handleSaveNewDeck(option, newDeckName);
   };
 
+  // Handle chat message submission
+  const handleChatMessage = async (content: string) => {
+    sendMessage(content);
+    
+    // For now, show a simple response - this would connect to the AI flow later
+    // In phase 28-30, we'll integrate the actual AI conversational flow
+    setChatLoading(true);
+    
+    // Simulate AI response (placeholder for actual AI integration)
+    setTimeout(() => {
+      const responses = [
+        "That's a great question about your deck! Let me analyze your card choices.",
+        "I'd recommend focusing on your mana curve to improve consistency.",
+        "Have you considered adding more interaction spells to your sideboard?",
+        "Your deck looks interesting! What format are you playing?",
+      ];
+      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+      addAssistantMessage(randomResponse);
+      setChatLoading(false);
+    }, 1500);
+  };
+
   return (
     <div className="flex-1 p-4 md:p-6">
       <header className="mb-6">
@@ -220,10 +246,14 @@ export default function DeckCoachPage() {
         </p>
       </header>
       
-      <Tabs value={analysisType} onValueChange={(v) => setAnalysisType(v as "review" | "meta")} className="mb-4">
+      <Tabs value={analysisType} onValueChange={(v) => setAnalysisType(v as "review" | "meta" | "chat")} className="mb-4">
         <TabsList>
           <TabsTrigger value="review">Deck Review</TabsTrigger>
           <TabsTrigger value="meta">Meta Analysis</TabsTrigger>
+          <TabsTrigger value="chat">
+            <MessageSquare className="w-4 h-4 mr-2" />
+            Chat
+          </TabsTrigger>
         </TabsList>
       </Tabs>
       
@@ -301,8 +331,8 @@ export default function DeckCoachPage() {
             
             <div className="flex gap-2 mt-4">
               <Button 
-                onClick={() => handleAnalyzeDeck(analysisType)} 
-                disabled={isPending} 
+                onClick={() => handleAnalyzeDeck(analysisType === 'chat' ? 'review' : analysisType)} 
+                disabled={isPending || analysisType === 'chat'} 
                 className="flex-1"
               >
                 {isPending ? (
@@ -370,8 +400,17 @@ export default function DeckCoachPage() {
               </Tabs>
             )}
             
+            {/* Chat Interface */}
+            {analysisType === "chat" && (
+              <DeckCoachChatPanel
+                messages={messages}
+                isLoading={isChatLoading}
+                onSendMessage={handleChatMessage}
+              />
+            )}
+            
             {/* Empty state */}
-            {!isPending && !review && !metaAnalysis && (
+            {!isPending && !review && !metaAnalysis && analysisType !== "chat" && (
                 <Card className="flex-1 flex items-center justify-center border-dashed">
                     <div className="text-center text-muted-foreground">
                         <Bot className="mx-auto h-12 w-12" />

@@ -1,8 +1,21 @@
-# Requirements: Planar Nexus v1.5 — Meta & Strategy AI
+# Requirements: Planar Nexus v1.7 — Conversational AI Coach
 
 **Defined:** 2026-03-19
 **Core Value:** Free open-source tabletop card game deck builder and tester with AI coaching.
 **Research:** `.planning/research/SUMMARY.md` (to be completed)
+
+---
+
+## v1.7 Requirements
+
+### Chat Interface
+
+- [ ] **CHAT-01**: Chat interface displays message history with user and AI messages clearly distinguished
+- [ ] **CHAT-02**: User can type and send messages via input field
+- [ ] **CHAT-03**: Messages are timestamped and displayed in chronological order
+- [ ] **CHAT-04**: Typing indicator shows when AI is composing response
+- [ ] **CHAT-05**: Chat history persists during session
+- [ ] **CHAT-06**: Chat interface is accessible and keyboard-navigable
 
 ---
 
