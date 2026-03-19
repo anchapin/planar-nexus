@@ -1,5 +1,18 @@
 # Milestones
 
+## v1.5 - Meta & Strategy AI (Shipped: 2026-03-19)
+
+**Status:** Complete
+
+**Phases completed:** 7 phases, 25 plans, 49 tasks
+
+**Key accomplishments:**
+- **Phase 18 Meta Analysis Foundation**: Meta deck analysis, format health score, trend tracking
+- **Phase 19 Matchup & Strategy Guides**: Anti-meta recommendations, matchup guides, game phase strategy
+- **Phase 20 Advanced Optimization**: Sideboard plans, mana curve optimization, color mana analysis
+
+---
+
 ## v1.4 Draft/Sealed Limited Modes (Shipped: 2026-03-19)
 
 **Status:** Complete
