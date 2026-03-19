@@ -277,6 +277,23 @@ npx playwright test
 npm run test:watch
 ```
 
+#### Coverage Goals
+
+The project enforces the following coverage thresholds:
+
+| Metric | Target |
+|--------|--------|
+| Lines | 70% |
+| Functions | 70% |
+| Statements | 70% |
+| Branches | 60% |
+
+Coverage reports are generated in:
+- `coverage/lcov-report/index.html` - HTML report
+- `coverage/lcov.info` - LCOV format for CI tools
+
+See [TESTING.md](./TESTING.md) for comprehensive testing documentation, patterns, and best practices.
+
 ### Linting and Type Checking
 
 ```bash

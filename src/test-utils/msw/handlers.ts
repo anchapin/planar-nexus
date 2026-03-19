@@ -19,6 +19,7 @@ const SCRYFALL_BASE = 'https://api.scryfall.com';
  */
 export function createMockScryfallCard(overrides: Partial<{
   id: string;
+  oracle_id: string;
   name: string;
   set: string;
   collector_number: string;
@@ -69,7 +70,7 @@ export function createMockScryfallCard(overrides: Partial<{
 /**
  * Create a search response for Scryfall
  */
-export function createMockSearchResponse(cards: ReturnType<typeof createMockScryfallCard>[], query: string) {
+export function createMockSearchResponse(cards: ReturnType<typeof createMockScryfallCard>[], _query: string) {
   return {
     object: 'search',
     total_cards: cards.length,
