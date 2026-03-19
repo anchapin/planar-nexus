@@ -1,69 +1,62 @@
-# Requirements: Planar Nexus v1.4 — Draft/Sealed Limited Modes
+# Requirements: Planar Nexus v1.5 — Meta & Strategy AI
 
-**Defined:** 2026-03-18
+**Defined:** 2026-03-19
 **Core Value:** Free open-source tabletop card game deck builder and tester with AI coaching.
-**Research:** `.planning/research/SUMMARY.md` (completed 2026-03-18)
+**Research:** `.planning/research/SUMMARY.md` (to be completed)
 
 ---
 
-## v1.4 Requirements
+## v1.5 Requirements
 
-### Set Selection
+### Meta Deck Analysis
 
-- [ ] **SET-01**: User can browse available MTG sets by name, release date, and popularity
-- [ ] **SET-02**: User can select a set for Draft or Sealed from the set browser
-- [ ] **SET-03**: Set selection shows card count and set details before confirming
+- [ ] **META-01**: User can view top deck archetypes in selected format (Standard, Modern, Commander)
+- [ ] **META-02**: User can see deck win rates and meta share percentages
+- [ ] **META-03**: User can analyze card inclusion rates in top decks
+- [ ] **META-04**: User can filter meta by date range (last 7 days, 30 days, all time)
 
-### Draft Mode
+### Anti-Meta Recommendations
 
-- [ ] **DRFT-01**: User can start a new Draft session with selected set
-- [ ] **DRFT-02**: Draft opens 3 packs of 14 cards each, presented one at a time
-- [ ] **DRFT-03**: Pack cards display face-down until user opens the pack
-- [x] **DRFT-04**: User can select one card from pack to add to draft pool
-- [x] **DRFT-05**: User can view current draft pool (all picked cards)
-- [ ] **DRFT-06**: Draft timer counts down per pick (configurable, default 45 seconds)
-- [ ] **DRFT-07**: Timer shows visual warning states (green → yellow → red)
-- [ ] **DRFT-08**: Timer expiration auto-picks last hovered card or prompts skip
-- [ ] **DRFT-09**: Draft completes after 3 packs (42 cards picked)
-- [ ] **DRFT-10**: Draft pool persists across page refresh
-- [ ] **DRFT-11**: Draft session can be resumed if interrupted
+- [ ] **AMETA-01**: User can get counter recommendations for specific deck archetypes
+- [ ] **AMETA-02**: User can see sideboard recommendations vs. popular matchups
+- [ ] **AMETA-03**: User can view mana base recommendations for anti-meta decks
 
-### AI Draft Neighbors
+### Format Health Score
 
-- [ ] **NEIB-01**: User can draft against AI bot "neighbors" (simulated 2-player table)
-- [ ] **NEIB-02**: AI neighbors pick cards using heuristic logic (color preference, archetype)
-- [ ] **NEIB-03**: AI neighbors have difficulty levels (Easy: random, Medium: color-focused)
-- [ ] **NEIB-04**: Visual indication shows when AI neighbor is "picking"
-- [ ] **NEIB-05**: Pack cards visually "pass" between user and AI neighbor
+- [ ] **HEALTH-01**: User can see format diversity score (0-100)
+- [ ] **HEALTH-02**: User can view color distribution in meta
+- [ ] **HEALTH-03**: User can see deck archetype balance metrics
 
-### Sealed Mode
+### Meta Trend Tracking
 
-- [ ] **SEAL-01**: User can start a new Sealed session with selected set
-- [ ] **SEAL-02**: Sealed opens 6 packs immediately, all cards revealed in pool
-- [ ] **SEAL-03**: User can browse and filter sealed pool cards (by color, type, CMC)
-- [ ] **SEAL-04**: Sealed pool persists across page refresh
-- [ ] **SEAL-05**: Sealed pool can be saved and resumed
+- [ ] **TREND-01**: User can view rising deck archetypes (past 7 days)
+- [ ] **TREND-02**: User can view declining deck archetypes
+- [ ] **TREND-03**: User can see card inclusion rate changes over time
 
-### Limited Deck Building
+### Matchup Guides
 
-- [ ] **LBld-01**: User can build a deck from draft/sealed pool cards only
-- [ ] **LBld-02**: Deck builder shows "Limited" filter restricting to current pool
-- [ ] **LBld-03**: Deck validates 40-card minimum requirement
-- [ ] **LBld-04**: Deck validates 4-copy limit per card
-- [ ] **LBld-05**: Deck validates no sideboard (40-card main deck only)
-- [ ] **LBld-06**: Deck can be saved and loaded for limited session
+- [ ] **MATCH-01**: User can get pre-game strategic advice vs. specific archetypes
+- [ ] **MATCH-02**: User can see mulligan recommendations per matchup
+- [ ] **MATCH-03**: User can view game plan tips (aggro vs. control vs. midrange)
 
-### Limited Play Integration
+### Sideboard Plans
 
-- [ ] **LPLY-01**: User can launch AI opponent game with built limited deck
-- [ ] **LPLY-02**: Limited deck format validated before AI game starts
-- [ ] **LPLY-03**: Post-game returns user to limited session
+- [ ] **SIDE-01**: User can get generic sideboard guides per archetype matchup
+- [ ] **SIDE-02**: User can see in/out recommendations with card counts
+- [ ] **SIDE-03**: User can save custom sideboard plans for future reference
 
-### Pool Isolation
+### Mana Curve Optimization
 
-- [ ] **ISOL-01**: Limited pool cards do not appear in regular deck collection
-- [ ] **ISOL-02**: Limited pool is scoped to specific draft/sealed session
-- [ ] **ISOL-03**: Limited pool has session ID and cannot be merged
+- [ ] **MANA-01**: User can get land count recommendations based on deck strategy
+- [ ] **MANA-02**: User can see mana curve suggestions for aggro/control/midrange
+- [ ] **MANA-03**: User can get color mana requirements analysis
+
+### Game Phase Strategy
+
+- [ ] **PHASE-01**: User can get opening hand evaluation tips
+- [ ] **PHASE-02**: User can see mid-game strategic priorities by deck type
+- [ ] **PHASE-03**: User can get late-game top-deck scenarios advice
+- [ ] **PHASE-04**: User can receive combat phase decision guidance
 
 ---
 
@@ -71,16 +64,10 @@
 
 | Feature | Reason |
 |---------|--------|
-| Sideboarding | Complex UX, defer to v1.5+ |
-| Multiplayer Draft | Infrastructure-heavy, AI-only in v1.4 |
-| Real-time multiplayer | WebSocket complexity, out of scope |
-| Cube Draft | Requires content management system |
-| Draft Tournament Mode | Swiss brackets, significant backend |
-| Pick-by-pick AI hints | Nice-to-have, defer to v1.5 |
-| Undo functionality | UX complexity, defer to v1.5 |
-| Draft summary statistics | Polish, defer to v1.5 |
-| Pool analysis charts | Polish, defer to v1.5 |
-| Raredraft mode | Conflicts with core experience |
+| Real-time meta data sync | Requires backend, client-side only for v1.5 |
+| Deck import from meta | Security review needed, defer |
+| Tournament results | Requires external API integration |
+| Social sharing | Not core to MVP |
 
 ---
 
@@ -88,58 +75,39 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SET-01 | Phase 14 | Pending |
-| SET-02 | Phase 14 | Pending |
-| SET-03 | Phase 14 | Pending |
-| DRFT-01 | Phase 15 | Pending |
-| DRFT-02 | Phase 15 | Pending |
-| DRFT-03 | Phase 15 | Pending |
-| DRFT-04 | Phase 15 | Complete |
-| DRFT-05 | Phase 15 | Complete |
-| DRFT-06 | Phase 15 | Pending |
-| DRFT-07 | Phase 15 | Pending |
-| DRFT-08 | Phase 15 | Pending |
-| DRFT-09 | Phase 15 | Pending |
-| DRFT-10 | Phase 15 | Pending |
-| DRFT-11 | Phase 15 | Pending |
-| NEIB-01 | Phase 16 | Pending |
-| NEIB-02 | Phase 16 | Pending |
-| NEIB-03 | Phase 16 | Pending |
-| NEIB-04 | Phase 16 | Pending |
-| NEIB-05 | Phase 16 | Pending |
-| SEAL-01 | Phase 14 | Pending |
-| SEAL-02 | Phase 14 | Pending |
-| SEAL-03 | Phase 14 | Pending |
-| SEAL-04 | Phase 14 | Pending |
-| SEAL-05 | Phase 14 | Pending |
-| LBld-01 | Phase 14 | Pending |
-| LBld-02 | Phase 14 | Pending |
-| LBld-03 | Phase 14 | Pending |
-| LBld-04 | Phase 14 | Pending |
-| LBld-05 | Phase 14 | Pending |
-| LBld-06 | Phase 14 | Pending |
-| LPLY-01 | Phase 17 | Pending |
-| LPLY-02 | Phase 17 | Pending |
-| LPLY-03 | Phase 17 | Pending |
-| ISOL-01 | Phase 14 | Pending |
-| ISOL-02 | Phase 14 | Pending |
-| ISOL-03 | Phase 14 | Pending |
+| META-01 | Phase 18 | Pending |
+| META-02 | Phase 18 | Pending |
+| META-03 | Phase 18 | Pending |
+| META-04 | Phase 18 | Pending |
+| AMETA-01 | Phase 19 | Pending |
+| AMETA-02 | Phase 19 | Pending |
+| AMETA-03 | Phase 19 | Pending |
+| HEALTH-01 | Phase 18 | Pending |
+| HEALTH-02 | Phase 18 | Pending |
+| HEALTH-03 | Phase 18 | Pending |
+| TREND-01 | Phase 18 | Pending |
+| TREND-02 | Phase 18 | Pending |
+| TREND-03 | Phase 18 | Pending |
+| MATCH-01 | Phase 19 | Pending |
+| MATCH-02 | Phase 19 | Pending |
+| MATCH-03 | Phase 19 | Pending |
+| SIDE-01 | Phase 20 | Pending |
+| SIDE-02 | Phase 20 | Pending |
+| SIDE-03 | Phase 20 | Pending |
+| MANA-01 | Phase 20 | Pending |
+| MANA-02 | Phase 20 | Pending |
+| MANA-03 | Phase 20 | Pending |
+| PHASE-01 | Phase 19 | Pending |
+| PHASE-02 | Phase 19 | Pending |
+| PHASE-03 | Phase 19 | Pending |
+| PHASE-04 | Phase 19 | Pending |
 
 **Coverage:**
-- v1.4 requirements: 35 total
-- Mapped to phases: 35
+- v1.5 requirements: 26 total
+- Mapped to phases: 26
 - Unmapped: 0 ✓
 
 ---
 
-## Research Dependencies
-
-From SUMMARY.md, flagged items to address during planning:
-
-1. **Set-specific pack configs** — Modern MTG sets have variable card counts per pack. Need Scryfall sealed content data or manual configuration.
-2. **Bot difficulty calibration** — Heuristic weights need tuning against real draft data.
-
----
-
-*Requirements defined: 2026-03-18*
-*Last updated: 2026-03-18 after requirements gathering*
+*Requirements defined: 2026-03-19*
+*Last updated: 2026-03-19 after v1.5 milestone initiation*

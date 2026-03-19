@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Meta & Strategy AI
-status: ready-to-start
-last_updated: "2026-03-19T00:15:40.000Z"
+status: planning
+last_updated: "2026-03-19T00:25:17.000Z"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -19,8 +19,8 @@ progress:
 
 ## Current Position
 - **Milestone**: v1.5 (Meta & Strategy AI)
-- **Status**: Ready to start
-- **Next**: Phase 18 - Meta Analysis Foundation
+- **Status**: Planning phases 18-20
+- **Next**: Plan phase 18
 
 ## Milestone History
 
@@ -73,14 +73,27 @@ progress:
 - Format validation before game start ✅
 - Return to session after game ends ✅
 
-## v1.5 Scope
+## v1.5 Scope (Planning)
 
-*To be determined - start new milestone to define scope*
+### Phase 18: Meta Analysis Foundation
+- Meta deck analysis (archetypes, win rates, inclusion rates) ✅
+- Format health score (diversity 0-100, color distribution)
+- Meta trend tracking (rising/declining archetypes)
+
+### Phase 19: Matchup & Strategy Guides
+- Anti-meta recommendations
+- Matchup guides (pre-game strategy, mulligans)
+- Game phase strategy (opening, mid-game, late-game)
+
+### Phase 20: Advanced Optimization
+- Sideboard plans with in/out recommendations
+- Mana curve optimization
+- Color mana requirements analysis
 
 ## Requirements Coverage
 
-- **Total v1.4 requirements**: 35
-- **Mapped to phases**: 35 ✓
+- **Total v1.5 requirements**: 26
+- **Mapped to phases**: 26 ✓
 - **Unmapped**: 0 ✓
 
 ## Session Continuity

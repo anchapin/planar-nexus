@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.4 Draft/Sealed Limited Modes** — Phases 14-17 (shipped 2026-03-19)
-- 🚧 **v1.5** — Next milestone (planning)
+- 🚧 **v1.5 Meta & Strategy AI** — Phases 18-20 (planning)
 
 ---
 
@@ -70,9 +70,76 @@
 
 </details>
 
+<details>
+<summary>🚧 v1.5 Meta & Strategy AI — Planning</summary>
+
+- [ ] Phase 18: Meta Analysis Foundation
+- [ ] Phase 19: Matchup & Strategy Guides  
+- [ ] Phase 20: Advanced Optimization
+
+</details>
+
 ---
 
 ## Phase Details
+
+### Phase 18: Meta Analysis Foundation
+**Goal**: Core meta analysis infrastructure with deck archetypes, health scoring, and trend tracking
+
+**Depends on**: Phase 17 (existing features)
+
+**Requirements**: META-01, META-02, META-03, META-04, HEALTH-01, HEALTH-02, HEALTH-03, TREND-01, TREND-02, TREND-03
+
+**Success Criteria** (what must be TRUE):
+1. User can view top deck archetypes in selected format with win rates
+2. User can see card inclusion rates in top decks
+3. User can filter meta by date range
+4. User can view format health score (0-100)
+5. User can view color distribution in meta
+6. User can see rising/declining deck archetypes
+
+**Plans**: TBD
+
+---
+
+### Phase 19: Matchup & Strategy Guides
+**Goal**: Pre-game strategic advice, matchup guides, and game phase tips
+
+**Depends on**: Phase 18
+
+**Requirements**: AMETA-01, AMETA-02, AMETA-03, MATCH-01, MATCH-02, MATCH-03, PHASE-01, PHASE-02, PHASE-03, PHASE-04
+
+**Success Criteria** (what must be TRUE):
+1. User can get counter recommendations for specific archetypes
+2. User can see sideboard recommendations vs. popular matchups
+3. User can get pre-game strategic advice vs. specific archetypes
+4. User can see mulligan recommendations per matchup
+5. User can get opening hand evaluation tips
+6. User can see mid-game strategic priorities by deck type
+7. User can get late-game advice
+
+**Plans**: TBD
+
+---
+
+### Phase 20: Advanced Optimization
+**Goal**: Sideboard planning and mana curve optimization tools
+
+**Depends on**: Phase 19
+
+**Requirements**: SIDE-01, SIDE-02, SIDE-03, MANA-01, MANA-02, MANA-03
+
+**Success Criteria** (what must be TRUE):
+1. User can get sideboard guides per archetype matchup
+2. User can see in/out recommendations with card counts
+3. User can save custom sideboard plans
+4. User can get land count recommendations based on deck strategy
+5. User can see mana curve suggestions for aggro/control/midrange
+6. User can get color mana requirements analysis
+
+**Plans**: TBD
+
+---
 
 ### Phase 14: Foundation
 **Goal**: User can select a set, open sealed pools, and build limited decks from isolated pools
@@ -166,9 +233,12 @@ Plans:
 | 15. Draft Core | 3-pack draft with timer | Complete | 4/4 | ✅ Complete | 2026-03-18 |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 6/6 | ✅ Complete | 2026-03-18 |
 | 17. Play Integration | Launch AI game with limited deck | Complete | 3/3 | ✅ Complete | 2026-03-18 |
+| 18. Meta Analysis | Meta decks, health score, trends | 10 | TBD | 🔲 Planning | — |
+| 19. Matchup Guides | Strategy, matchups, game phases | 10 | TBD | 🔲 Pending | — |
+| 20. Optimization | Sideboards, mana curves | 6 | TBD | 🔲 Pending | — |
 
 ---
 
-**Current Status**: v1.4 SHIPPED ✅ — Ready for next milestone
+**Current Status**: v1.5 STARTING — Planning phases 18-20
 
 _For archived milestones, see `.planning/milestones/`_
