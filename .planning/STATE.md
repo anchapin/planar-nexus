@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.7
-milestone_name: (Next milestone TBD)
+milestone_name: Conversational AI Coach
 status: ready
-last_updated: "2026-03-19T18:31:00.000Z"
+last_updated: "2026-03-19T18:36:45.000Z"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -16,25 +16,26 @@ progress:
 ## Project Reference
 
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: v1.7 - Ready to plan
+- **Current Focus**: v1.7 - Conversational AI Coach
 
 ## Current Position
 
-- **Milestone**: v1.7 (Ready to plan)
+- **Milestone**: v1.7 (Conversational AI Coach)
 - **Status**: 🚀 Ready to start
-- **Next**: Planning next milestone features
+- **Next**: Planning phases for conversational AI coach
 
 ## Milestone History
 
-| Version | Name                 | Shipped    | Phases |
-| ------- | -------------------- | ---------- | ------ |
-| v1.0    | MVP                  | 2026-03-12 | 1-3    |
-| v1.1    | Polish & Stability   | 2026-03-17 | 4-5    |
-| v1.2    | AI Intelligence      | 2026-03-17 | 6-10   |
-| v1.3    | Deck Builder UX      | 2026-03-18 | 11-13  |
-| v1.4    | Draft/Sealed         | 2026-03-19 | 14-17  |
-| v1.5    | Meta & Strategy AI   | 2026-03-19 | 18-20  |
-| v1.6    | QA/QC Infrastructure | 2026-03-19 | 21-26  |
+| Version | Name                    | Shipped    | Phases |
+| ------- | ----------------------- | ---------- | ------ |
+| v1.0    | MVP                     | 2026-03-12 | 1-3    |
+| v1.1    | Polish & Stability      | 2026-03-17 | 4-5    |
+| v1.2    | AI Intelligence         | 2026-03-17 | 6-10   |
+| v1.3    | Deck Builder UX         | 2026-03-18 | 11-13  |
+| v1.4    | Draft/Sealed            | 2026-03-19 | 14-17  |
+| v1.5    | Meta & Strategy AI      | 2026-03-19 | 18-20  |
+| v1.6    | QA/QC Infrastructure    | 2026-03-19 | 21-26  |
+| v1.7    | Conversational AI Coach | TBD        | TBD    |
 
 ## Phase Summary
 
@@ -167,3 +168,31 @@ progress:
 - lint-staged for staged file processing
 - Jest coverage thresholds: 70% lines, 70% functions, 70% statements, 60% branches
 - MSW for API mocking in integration tests
+
+## v1.7 Scope (Conversational AI Coach)
+
+### Phase 27: Chat Interface Foundation
+
+- Chat UI component in deck coach section
+- Message history display with user/AI distinction
+- Input field with send functionality
+- Typing indicator for AI responses
+
+### Phase 28: Natural Language Processing
+
+- Intent recognition for common deck questions
+- Card analysis integration
+- Win condition identification
+- Cut/swap card recommendations
+
+### Phase 29: Context Management
+
+- Deck context loading for each conversation
+- Conversation history for follow-up questions
+- Session persistence across page refreshes
+
+### Phase 30: AI Flow Integration
+
+- Genkit flow for conversational AI
+- Streaming responses for real-time feedback
+- Error handling and retry logic

@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.6 QA/QC Infrastructure** — Phases 21-26 (shipped 2026-03-19)
-- 🚧 **v1.7** — (Ready to plan)
+- 🚧 **v1.7 Conversational AI Coach** — (Ready to start)
 
 ---
 
@@ -85,6 +85,16 @@
       **Plans:**
   - [x] 20-01-PLAN.md — Custom Sideboard Plans (SIDE-03) ✅
   - [x] 20-02-PLAN.md — Mana Curve Optimization (MANA-01, MANA-02, MANA-03) ✅
+
+</details>
+
+<details>
+<summary>🚧 v1.7 Conversational AI Coach — IN PROGRESS</summary>
+
+- [ ] **Phase 27: Chat Interface Foundation** — Chat UI, message history, input field, typing indicator
+- [ ] **Phase 28: Natural Language Processing** — Intent recognition, card analysis, win condition identification
+- [ ] **Phase 29: Context Management** — Deck loading, conversation history, session persistence
+- [ ] **Phase 30: AI Flow Integration** — Genkit flow, streaming responses, error handling
 
 </details>
 
