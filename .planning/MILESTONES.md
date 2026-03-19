@@ -1,5 +1,22 @@
 # Milestones
 
+## v1.6 - QA/QC Infrastructure (Shipped: 2026-03-19)
+
+**Status:** Complete
+
+**Phases completed:** 6 phases, 9 plans
+
+**Key accomplishments:**
+
+- **Phase 21 Pre-commit Hooks Setup**: Husky git hooks, lint-staged for staged file processing, ESLint/Prettier/TypeScript checks
+- **Phase 22 Coverage Infrastructure**: Jest coverage thresholds (70% lines, 70% functions, 70% statements, 60% branches), CI coverage gate
+- **Phase 23 Test Utilities Library**: @/test-utils directory with React component helpers, mock implementations
+- **Phase 24 Integration Test Setup**: MSW configuration, server action integration tests, critical user flow tests
+- **Phase 25 CI Quality Gates**: Coverage threshold gate, commit message linting, npm audit security scanning
+- **Phase 26 Test Documentation**: TESTING.md with patterns, conventions, and unit vs integration vs E2E decision guide
+
+---
+
 ## v1.5 - Meta & Strategy AI (Shipped: 2026-03-19)
 
 **Status:** Complete
@@ -7,6 +24,7 @@
 **Phases completed:** 7 phases, 25 plans, 49 tasks
 
 **Key accomplishments:**
+
 - **Phase 18 Meta Analysis Foundation**: Meta deck analysis, format health score, trend tracking
 - **Phase 19 Matchup & Strategy Guides**: Anti-meta recommendations, matchup guides, game phase strategy
 - **Phase 20 Advanced Optimization**: Sideboard plans, mana curve optimization, color mana analysis
@@ -20,6 +38,7 @@
 **Phases completed:** 4 phases (Phase 14 Foundation ✅, Phase 15 Draft Core ✅, Phase 16 AI Neighbors ✅, Phase 17 Play Integration ✅)
 
 **Key accomplishments:**
+
 - **Phase 14 Foundation**: Set browser, sealed pool generation, pool filtering, limited deck builder
 - **Phase 15 Draft Core**: 3-pack drafting, face-down packs, card picking, timer with auto-pick, session persistence
 - **Phase 16 AI Neighbors**: AI opponent in draft, heuristic-based picking (Easy/Medium), visual indicators
@@ -32,6 +51,7 @@
 **Phases completed:** 7 phases, 22 plans, 9 tasks
 
 **Key accomplishments:**
+
 - (none recorded)
 
 ---
@@ -41,6 +61,7 @@
 **Phases completed:** 5 phases, 18 plans, 64 tasks
 
 **Key accomplishments:**
+
 - **Test Infrastructure Stabilization**: Created comprehensive test fixtures and resolved flaky serialization tests.
 - **E2E Reliability**: Achieved 95%+ E2E pass rate across Chromium, Firefox, and WebKit with robust selectors.
 - **Code Quality & Documentation**: Reached 1,618 passing unit tests and added 3,500+ lines of comprehensive documentation.
@@ -55,6 +76,7 @@
 **Phases completed:** 3 phases, 16 plans
 
 **Key accomplishments:**
+
 - **Core Deck Builder**: Implemented full deck construction with format validation and persistence.
 - **AI Coach**: Developed heuristic and synergy-based deck analysis with actionable recommendations.
 - **AI Opponent**: Created configurable AI opponents with 4 difficulty levels and distinct archetypes.
