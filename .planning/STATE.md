@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.6
-milestone_name: TBD
-status: unknown
-last_updated: "2026-03-19T15:36:44.284Z"
+milestone_name: QA/QC Infrastructure
+status: not_started
+last_updated: "2026-03-19T12:49:26.950735"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 25
-  completed_plans: 25
+  total_phases: 6
+  completed_phases: 0
+  total_plans: 28
+  completed_plans: 0
 ---
 
 # Project State: Planar Nexus
 
 ## Project Reference
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: v1.5 COMPLETE - Meta & Strategy AI
+- **Current Focus**: v1.6 - QA/QC Infrastructure (Not Started)
 
 ## Current Position
-- **Milestone**: v1.5 (Meta & Strategy AI)
-- **Status**: Complete ✅
-- **Next**: Phase 21 planning (if applicable)
+- **Milestone**: v1.6 (QA/QC Infrastructure)
+- **Status**: Not started (defining requirements)
+- **Next**: Phase 21 planning
 
 ## Milestone History
 
@@ -32,18 +32,50 @@ progress:
 | v1.3 | Deck Builder UX | 2026-03-18 | 11-13 |
 | v1.4 | Draft/Sealed | 2026-03-19 | 14-17 |
 | v1.5 | Meta & Strategy AI | 2026-03-19 | 18-20 |
+| v1.6 | QA/QC Infrastructure | — | 21-26 |
 
 ## Phase Summary
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 14 | Foundation | SET-01-03 ✅, SEAL-01-05 ✅, LBld-01-06 ✅, ISOL-01-03 ✅ | Complete |
-| 15 | Draft Core | DRFT-01-11 ✅ | Complete |
-| 16 | AI Neighbors | NEIB-01 ✅, NEIB-02 ✅, NEIB-03 ✅, NEIB-04 ✅, NEIB-05 ✅ | Complete |
-| 17 | Play Integration | LPLY-01 ✅, LPLY-02 ✅, LPLY-03 ✅ | Complete |
-| 18 | Meta Analysis Foundation | META-01 ✅, META-02 ✅, META-03 ✅ | Complete |
-| 19 | Matchup & Strategy Guides | ANTI-01 ✅, MUP-01 ✅, GPS-01 ✅ | Complete |
-| 20 | Advanced Optimization | SIDE-03 ✅, MANA-01 ✅, MANA-02 ✅, MANA-03 ✅ | Complete |
+| 21 | Pre-commit Hooks Setup | REQ-001 | Not Started |
+| 22 | Coverage Infrastructure | REQ-002 | Not Started |
+| 23 | Test Utilities Library | REQ-003 | Not Started |
+| 24 | Integration Test Setup | REQ-004 | Not Started |
+| 25 | CI Quality Gates | REQ-005 | Not Started |
+| 26 | Test Documentation | REQ-006 | Not Started |
+
+## v1.6 Scope (QA/QC Infrastructure)
+
+### Phase 21: Pre-commit Hooks Setup
+- Husky git hooks installation and configuration
+- lint-staged for staged file processing
+- Pre-commit ESLint, Prettier, and TypeScript checks
+
+### Phase 22: Coverage Infrastructure
+- Jest coverage thresholds configuration
+- CI coverage gate implementation
+- Multi-format coverage reports
+
+### Phase 23: Test Utilities Library
+- @/test-utils directory and helpers
+- React component test helpers
+- Mock implementations for common dependencies
+
+### Phase 24: Integration Test Setup
+- MSW (Mock Service Worker) configuration
+- Server action integration tests
+- Critical user flow integration tests
+
+### Phase 25: CI Quality Gates
+- Coverage threshold gate in CI
+- Commit message linting
+- npm audit security scanning
+
+### Phase 26: Test Documentation
+- TESTING.md documentation
+- Testing patterns and conventions
+- Unit vs integration vs E2E decision guide
 
 ## v1.4 Scope (COMPLETE)
 
@@ -102,12 +134,20 @@ progress:
 - **Unmapped**: 0 ✓
 
 ## Session Continuity
+
 - **Last Action**: v1.5 milestone completed (Phase 20)
-- **Next Step**: New milestone planning
+- **Next Step**: Phase 21 - Pre-commit Hooks Setup
 
 ## Decisions Made
+
 - Pack-first drafting UX: cards stay face-down until user clicks to open
 - Pool sidebar always visible during picking for easy reference
 - Pick logic as pure functions for testability
 - Timer color thresholds: green >15s, yellow ≤15s, red ≤5s
 - Skip dialog auto-skips after 5 seconds if no action taken
+
+### v1.6 QA/QC Infrastructure
+- Use Husky for git hooks management
+- lint-staged for staged file processing
+- Jest coverage thresholds: 70% lines, 70% functions, 70% statements, 60% branches
+- MSW for API mocking in integration tests

@@ -19,7 +19,7 @@ Planar Nexus provides:
 
 ---
 
-## v1.5 Scope: Meta & Strategy AI (Planning)
+## v1.5 Scope: Meta & Strategy AI (Planning) ✅ SHIPPED 2026-03-19
 
 **Goal:** Add meta analysis and strategic AI features to help players understand the competitive landscape and improve their game strategy.
 
@@ -32,6 +32,19 @@ Planar Nexus provides:
 - **Sideboard Plans**: Detailed sideboard recommendations per matchup
 - **Mana Curve Optimization**: Suggest optimal land counts based on deck strategy
 - **Game Phase Strategy**: Strategic advice for each game phase (opening, mid, late)
+
+---
+
+## Current Milestone: v1.6 QA/QC Infrastructure
+
+**Goal:** Establish comprehensive quality engineering infrastructure with pre-commit hooks, test strategies, and coverage reporting.
+
+**Target features:**
+- **Pre-commit Hooks**: Linting, type checking, formatting enforcement
+- **Test Infrastructure**: Unit, integration, and E2E test setup
+- **Test Coverage Goals**: Coverage thresholds and reporting
+- **CI/CD Quality Gates**: Automated quality checks in pipeline
+- **Code Quality Checks**: Static analysis and linting rules
 
 ---
 
@@ -67,8 +80,23 @@ Planar Nexus provides:
 
 ## Validated Milestones
 
-### ✅ v1.4 Draft/Sealed Limited Modes — Planning
-- **Status:** Planning in progress
+### ✅ v1.5 Meta & Strategy AI — 2026-03-19
+- **Status:** Complete ✅
+- Meta deck analysis (archetypes, win rates, inclusion rates)
+- Format health score (diversity 0-100, color distribution)
+- Meta trend tracking (rising/declining archetypes)
+- Anti-meta recommendations and matchup guides
+- Game phase strategy (opening, mid-game, late-game)
+- Sideboard plans with in/out recommendations
+- Mana curve optimization and color mana analysis
+
+### ✅ v1.4 Draft/Sealed Limited Modes — 2026-03-19
+- **Status:** Complete ✅
+- Set selection browser with card counts and release dates
+- 3-pack draft with AI neighbors, timer per pick
+- 6-pack sealed pool opening
+- Limited deck builder with pool isolation
+- Launch AI opponent from limited session
 
 ### ✅ v1.3 Deck Builder UX Enhancements — 2026-03-18
 - Advanced multi-attribute card filters (CMC, type, color, rarity, P/T, format)
@@ -140,6 +168,6 @@ Planar Nexus provides:
 
 ---
 
-**Current Milestone**: v1.5 (Meta & Strategy AI)
-**Version**: 1.4.0
-**Last Updated**: 2026-03-19 after v1.5 milestone initiation
+**Current Milestone**: v1.6 (QA/QC Infrastructure)
+**Version**: 1.6.0
+**Last Updated**: 2026-03-19 after v1.6 milestone initiation
