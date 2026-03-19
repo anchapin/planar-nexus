@@ -19,6 +19,22 @@ Planar Nexus provides:
 
 ---
 
+## v1.5 Scope: Meta & Strategy AI (Planning)
+
+**Goal:** Add meta analysis and strategic AI features to help players understand the competitive landscape and improve their game strategy.
+
+**Target features:**
+- **Meta Deck Analysis**: Analyze top decks in selected format, identify dominant strategies
+- **Anti-Meta Recommendations**: Suggest counters to popular deck types based on meta share
+- **Format Health Score**: Calculate and display format diversity metrics
+- **Meta Trend Tracking**: Show rising/falling deck archetypes over time
+- **Matchup Guides**: Pre-game strategic advice vs. specific opponent archetypes
+- **Sideboard Plans**: Detailed sideboard recommendations per matchup
+- **Mana Curve Optimization**: Suggest optimal land counts based on deck strategy
+- **Game Phase Strategy**: Strategic advice for each game phase (opening, mid, late)
+
+---
+
 ## v1.4 Scope: Draft/Sealed Limited Modes (Planning)
 
 **Goal:** Add Draft and Sealed game modes for variety gameplay.
@@ -124,6 +140,6 @@ Planar Nexus provides:
 
 ---
 
-**Current Milestone**: v1.4 (Draft/Sealed Limited Modes)
-**Version**: 1.3.0
-**Last Updated**: 2026-03-18 after v1.4 milestone initiation
+**Current Milestone**: v1.5 (Meta & Strategy AI)
+**Version**: 1.4.0
+**Last Updated**: 2026-03-19 after v1.5 milestone initiation
