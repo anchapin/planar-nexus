@@ -2,8 +2,8 @@
 
 ## Milestones
 
-- ✅ **v1.5 Meta & Strategy AI** — Phases 18-20 (shipped 2026-03-19)
-- 🚧 **v1.6 QA/QC Infrastructure** — Phases 21-26 (in progress)
+- ✅ **v1.6 QA/QC Infrastructure** — Phases 21-26 (shipped 2026-03-19)
+- 🚧 **v1.7** — (Ready to plan)
 
 ---
 
@@ -378,6 +378,90 @@ Plans:
 
 ---
 
-**Current Status**: v1.5 COMPLETE — Meta & Strategy AI shipped
+## v1.6: QA/QC Infrastructure
+
+### Phase 21: Pre-commit Hooks Setup
+
+**Goal**: Automated code quality checks before commits
+
+**Depends on**: v1.5 completion
+
+**Requirements**: REQ-001
+
+**Plans**: TBD
+
+### Phase 22: Coverage Infrastructure
+
+**Goal**: Comprehensive test coverage with CI gates
+
+**Depends on**: Phase 21
+
+**Requirements**: REQ-002
+
+**Plans**: TBD
+
+### Phase 23: Test Utilities Library
+
+**Goal**: Reusable testing helpers and mock implementations
+
+**Depends on**: Phase 22
+
+**Requirements**: REQ-003
+
+**Plans**: TBD
+
+### Phase 24: Integration Test Setup
+
+**Goal**: End-to-end testing infrastructure for critical flows
+
+**Depends on**: Phase 23
+
+**Requirements**: REQ-004
+
+**Plans**: TBD
+
+### Phase 25: CI Quality Gates
+
+**Goal**: Automated quality enforcement in CI pipeline
+
+**Depends on**: Phase 24
+
+**Requirements**: REQ-005
+
+**Plans**: TBD
+
+### Phase 26: Test Documentation
+
+**Goal**: Clear testing guide for contributors
+
+**Depends on**: Phase 25
+
+**Requirements**: REQ-006
+
+**Plans**: TBD
+
+---
+
+## Progress Table
+
+| Phase                | Goal                                             | Requirements | Plans Complete | Status      | Completed  |
+| -------------------- | ------------------------------------------------ | ------------ | -------------- | ----------- | ---------- |
+| 14. Foundation       | Set selection, sealed core, limited deck builder | Complete     | 2026-03-18     | ✅ Complete | 2026-03-18 |
+| 15. Draft Core       | 3-pack draft with timer                          | Complete     | 4/4            | ✅ Complete | 2026-03-18 |
+| 16. AI Neighbors     | Bot simulation, passing mechanics                | 5            | 6/6            | ✅ Complete | 2026-03-18 |
+| 17. Play Integration | Launch AI game with limited deck                 | Complete     | 3/3            | ✅ Complete | 2026-03-18 |
+| 18. Meta Analysis    | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 19. Matchup Guides   | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
+| 20. Optimization     | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
+| 21. Pre-commit Hooks | Husky, lint-staged, quality checks               | Complete     | 4/4            | ✅ Complete | 2026-03-19 |
+| 22. Coverage         | Jest thresholds, CI coverage gate                | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 23. Test Utils       | @/test-utils, React helpers, mocks               | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 24. Integration      | MSW, server action tests, E2E flows              | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 25. CI Gates         | Coverage threshold, commit lint, audit           | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 26. Test Docs        | TESTING.md, patterns, decision guide             | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+
+---
+
+**Current Status**: v1.6 COMPLETE — QA/QC Infrastructure shipped
 
 _For archived milestones, see `.planning/milestones/`_

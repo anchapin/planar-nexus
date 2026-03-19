@@ -1,5 +1,15 @@
 # Milestones
 
+## v1.6 v1.6 (Shipped: 2026-03-19)
+
+**Phases completed:** 0 phases, 0 plans, 0 tasks
+
+**Key accomplishments:**
+
+- (none recorded)
+
+---
+
 ## v1.6 - QA/QC Infrastructure (Shipped: 2026-03-19)
 
 **Status:** Complete
