@@ -17,6 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SynergyProvider } from "./_components/synergy-context";
 import { AIDeckAssistant } from "./_components/ai-deck-assistant";
 import { DeckStatsPanel } from "./_components/deck-stats-panel";
+import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
@@ -306,12 +308,31 @@ export default function DeckBuilderPage() {
               <CardSearch ref={searchInputRef} onAddCard={addCardToDeck} />
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
-              <DeckList 
-                  deck={deck} 
-                  deckName={deckName}
-                  onDeckNameChange={handleDeckNameChange}
-                  onRemoveCard={removeCardFromDeck} 
-              />
+              <Tabs defaultValue="deck" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="deck" className="flex-1">Deck List</TabsTrigger>
+                  <TabsTrigger value="mana-curve" className="flex-1">Mana Curve</TabsTrigger>
+                </TabsList>
+                <TabsContent value="deck" className="mt-4">
+                  <DeckList 
+                    deck={deck} 
+                    deckName={deckName}
+                    onDeckNameChange={handleDeckNameChange}
+                    onRemoveCard={removeCardFromDeck} 
+                  />
+                </TabsContent>
+                <TabsContent value="mana-curve" className="mt-4">
+                  {deck.length > 0 ? (
+                    <ManaCurveAnalysis deck={deck} />
+                  ) : (
+                    <Card>
+                      <CardContent className="py-8 text-center text-muted-foreground">
+                        Add cards to your deck to see mana curve analysis
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+              </Tabs>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
               <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />

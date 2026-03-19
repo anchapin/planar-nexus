@@ -37,12 +37,10 @@ export async function POST(req: Request) {
       tools: {
         searchCards: searchCardsTool,
       },
-      // Automatically execute server-side tools
-      maxSteps: 5,
     });
 
-    // Return the stream as a Data Stream (SSE)
-    return result.toDataStreamResponse();
+    // AI SDK v6: Use toTextStreamResponse instead of toDataStreamResponse
+    return result.toTextStreamResponse();
   } catch (error: any) {
     console.error('Chat API Error:', error);
     

@@ -16,15 +16,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Save } from 'lucide-react';
 import { 
   CounterDeckCard 
 } from './CounterDeckCard';
+import { SideboardPlanEditor } from './sideboard';
 import { 
   getCounterRecommendations, 
   getSideboardRecommendations, 
   getManaBaseRecommendations,
   CounterRecommendation,
-  ManaBaseRecommendation
+  ManaBaseRecommendation,
+  SideboardCard
 } from '@/lib/anti-meta';
 import { DeckArchetype, MagicFormat } from '@/lib/meta';
 
@@ -47,9 +50,33 @@ export function AntiMetaRecommendations({
   onOpenChange 
 }: AntiMetaRecommendationsProps) {
   const [selectedCounter, setSelectedCounter] = useState<CounterRecommendation | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [prefillData, setPrefillData] = useState<{
+    format?: MagicFormat;
+    archetypeId?: string;
+    archetypeName?: string;
+    opponentArchetypeId?: string;
+    opponentArchetypeName?: string;
+    inCards?: SideboardCard[];
+    outCards?: SideboardCard[];
+  } | undefined>(undefined);
 
   const counterRecommendations = getCounterRecommendations(archetype.id, format);
   const manaBaseRec = getManaBaseRecommendations(archetype.id, format);
+
+  const handleSaveAsCustomPlan = (counter: CounterRecommendation) => {
+    const sideboard = getSideboardRecommendations(archetype.id, counter.counterArchetypeId, format);
+    setPrefillData({
+      format,
+      archetypeId: archetype.id,
+      archetypeName: archetype.name,
+      opponentArchetypeId: counter.counterArchetypeId,
+      opponentArchetypeName: counter.counterArchetypeName,
+      inCards: sideboard?.in || [],
+      outCards: sideboard?.out || [],
+    });
+    setEditorOpen(true);
+  };
 
   const defaultTrigger = (
     <Button variant="outline" size="sm">
@@ -112,9 +139,19 @@ export function AntiMetaRecommendations({
                     return (
                       <Card key={index}>
                         <CardHeader className="pb-2">
-                          <CardTitle className="text-base">
-                            vs {counter.counterArchetypeName}
-                          </CardTitle>
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">
+                              vs {counter.counterArchetypeName}
+                            </CardTitle>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleSaveAsCustomPlan(counter)}
+                            >
+                              <Save className="h-4 w-4 mr-1" />
+                              Save Plan
+                            </Button>
+                          </div>
                         </CardHeader>
                         <CardContent>
                           {sideboard && (
@@ -221,6 +258,16 @@ export function AntiMetaRecommendations({
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* Sideboard Plan Editor */}
+      <SideboardPlanEditor
+        open={editorOpen}
+        onOpenChange={setEditorOpen}
+        defaultValues={prefillData}
+        onSave={(plan) => {
+          console.log('Saved sideboard plan:', plan);
+        }}
+      />
     </Dialog>
   );
 }

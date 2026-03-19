@@ -18,8 +18,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { DeckSelector } from "@/components/deck-selector";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CoachReportSkeleton, LoadingProgress } from "./_components/coach-skeleton";
+import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -328,23 +329,45 @@ export default function DeckCoachPage() {
               <LoadingProgress message="Analyzing metagame and optimizing your deck..." />
             )}
             
-            {/* Enhanced Review Display */}
+            {/* Enhanced Review Display with Tabs */}
             {!isPending && review && originalDeckCards && analysisType === "review" && (
-              <EnhancedReviewDisplay
-                review={review}
-                onSaveNewDeck={handleSaveNewDeck}
-                decklist={decklist}
-              />
+              <Tabs defaultValue="review" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="review" className="flex-1">AI Review</TabsTrigger>
+                  <TabsTrigger value="mana-curve" className="flex-1">Mana Curve</TabsTrigger>
+                </TabsList>
+                <TabsContent value="review">
+                  <EnhancedReviewDisplay
+                    review={review}
+                    onSaveNewDeck={handleSaveNewDeck}
+                    decklist={decklist}
+                  />
+                </TabsContent>
+                <TabsContent value="mana-curve">
+                  <ManaCurveAnalysis deck={originalDeckCards} />
+                </TabsContent>
+              </Tabs>
             )}
             
             {/* Meta Analysis Display */}
             {!isPending && metaAnalysis && analysisType === "meta" && (
-              <MetaAnalysisDisplay
-                analysis={metaAnalysis}
-                format={format}
-                onSaveNewDeck={handleSaveMetaDeck}
-                originalDeckCards={originalDeckCards}
-              />
+              <Tabs defaultValue="meta" className="w-full">
+                <TabsList className="w-full">
+                  <TabsTrigger value="meta" className="flex-1">Meta Analysis</TabsTrigger>
+                  <TabsTrigger value="mana-curve" className="flex-1">Mana Curve</TabsTrigger>
+                </TabsList>
+                <TabsContent value="meta">
+                  <MetaAnalysisDisplay
+                    analysis={metaAnalysis}
+                    format={format}
+                    onSaveNewDeck={handleSaveMetaDeck}
+                    originalDeckCards={originalDeckCards}
+                  />
+                </TabsContent>
+                <TabsContent value="mana-curve">
+                  {originalDeckCards && <ManaCurveAnalysis deck={originalDeckCards} />}
+                </TabsContent>
+              </Tabs>
             )}
             
             {/* Empty state */}

@@ -23,6 +23,7 @@ import { API_ENDPOINTS } from '@/lib/env';
 const PROVIDER_ENDPOINTS: Record<AIProvider, string> = {
   google: API_ENDPOINTS.GOOGLE,
   openai: API_ENDPOINTS.OPENAI,
+  anthropic: API_ENDPOINTS.ANTHROPIC || '',
   zaic: API_ENDPOINTS.ZAI,
   custom: process.env.CUSTOM_AI_BASE_URL || '',
 };

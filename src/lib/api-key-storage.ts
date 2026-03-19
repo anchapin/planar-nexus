@@ -214,6 +214,7 @@ async function getStatusStorage(): Promise<Record<AIProvider, ProviderKeyStatus>
   const defaultStatus: Record<AIProvider, ProviderKeyStatus> = {
     google: { provider: 'google', hasKey: false },
     openai: { provider: 'openai', hasKey: false },
+    anthropic: { provider: 'anthropic', hasKey: false },
     zaic: { provider: 'zaic', hasKey: false },
     custom: { provider: 'custom', hasKey: false },
   };

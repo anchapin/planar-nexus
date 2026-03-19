@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useGameChat } from '@/hooks/use-game-chat';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,16 +21,14 @@ export function AICoachChatPanel({
 }: AICoachChatPanelProps) {
   const {
     messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
     status,
+    sendMessage,
   } = useGameChat({
     currentPlayerId,
     currentPlayerName,
   });
 
+  const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -41,6 +39,28 @@ export function AICoachChatPanel({
   }, [messages, status]);
 
   const isThinking = status === 'submitted' || status === 'streaming';
+  const isLoading = status === 'submitted' || status === 'streaming';
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && !isLoading) {
+      sendMessage(input);
+      setInput('');
+    }
+  };
+
+  // Helper to extract text content from AI SDK v6 message
+  const getMessageContent = (message: any): string => {
+    if (!message.content) return '';
+    if (typeof message.content === 'string') return message.content;
+    if (Array.isArray(message.content)) {
+      return message.content
+        .filter((part: any) => part.type === 'text')
+        .map((part: any) => part.text)
+        .join('');
+    }
+    return '';
+  };
 
   return (
     <div className={cn('flex flex-col h-[500px] border rounded-lg bg-card shadow-sm', className)}>
@@ -50,7 +70,7 @@ export function AICoachChatPanel({
         <div className="ml-auto flex items-center gap-2">
           {isLoading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-            {status === 'idle' ? 'Ready' : status}
+            {status === 'ready' ? 'Ready' : status}
           </span>
         </div>
       </div>
@@ -64,8 +84,9 @@ export function AICoachChatPanel({
             </div>
           )}
 
-          {messages.map((message) => {
+          {messages.map((message: any) => {
             const isAI = message.role === 'assistant';
+            const content = getMessageContent(message);
             return (
               <div
                 key={message.id}
@@ -89,13 +110,13 @@ export function AICoachChatPanel({
                   )}
                 >
                   <div className="whitespace-pre-wrap leading-relaxed">
-                    {message.content}
+                    {content}
                   </div>
                   
                   {/* Handle tool calls/invocations if present in message */}
                   {message.toolInvocations && message.toolInvocations.length > 0 && (
                     <div className="mt-2 space-y-2 border-t pt-2 border-border/50">
-                      {message.toolInvocations.map((tool) => (
+                      {message.toolInvocations.map((tool: any) => (
                         <div key={tool.toolCallId} className="flex items-center gap-2 text-[10px] text-muted-foreground font-mono">
                           {tool.toolName === 'searchCards' ? <Database className="w-3 h-3" /> : <History className="w-3 h-3" />}
                           <span>EXECUTING: {tool.toolName}</span>
@@ -115,7 +136,7 @@ export function AICoachChatPanel({
             );
           })}
           
-          {isThinking && !messages[messages.length - 1]?.content && (
+          {isThinking && (
             <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4 text-primary" />
@@ -134,7 +155,7 @@ export function AICoachChatPanel({
         <div className="flex gap-2">
           <Input
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="How can I improve my win rate?"
             className="flex-1 h-10 shadow-none border-none focus-visible:ring-1"
             disabled={isLoading}

@@ -16,7 +16,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,19 @@ const CARDS_PER_PACK = 14;
 // ============================================================================
 
 export default function DraftPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    }>
+      <DraftPageContent />
+    </Suspense>
+  );
+}
+
+function DraftPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 

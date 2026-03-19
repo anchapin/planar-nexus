@@ -36,6 +36,10 @@ const PROVIDER_ENV_MAPPING: Record<AIProvider, { apiKey: string[]; baseURL?: str
     apiKey: ['OPENAI_API_KEY'],
     baseURL: 'NEXT_PUBLIC_OPENAI_API_URL',
   },
+  anthropic: {
+    apiKey: ['ANTHROPIC_API_KEY'],
+    baseURL: 'ANTHROPIC_BASE_URL',
+  },
   zaic: {
     apiKey: ['ZAI_API_KEY'],
     baseURL: 'ZAI_BASE_URL',

@@ -14,7 +14,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { Suspense, useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +73,19 @@ const COLOR_OPTIONS = [
 ];
 
 export default function LimitedDeckBuilderPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    }>
+      <LimitedDeckBuilderPageContent />
+    </Suspense>
+  );
+}
+
+function LimitedDeckBuilderPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();

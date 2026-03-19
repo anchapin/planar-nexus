@@ -18,7 +18,10 @@ export function useLocalSearch(options: UseLocalSearchOptions = {}) {
   );
 
   useEffect(() => {
-    return backgroundIndexingManager.subscribe(setIndexingProgress);
+    const unsubscribe = backgroundIndexingManager.subscribe(setIndexingProgress);
+    // Subscribe returns a function, but useEffect expects void or destructor
+    // The unsubscribe function handles cleanup
+    return () => { unsubscribe(); };
   }, []);
 
   const performSearch = useCallback(async (params: SearchParams) => {

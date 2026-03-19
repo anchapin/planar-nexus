@@ -177,24 +177,21 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
         tools: {
           searchCards: searchCardsTool,
         },
-        maxSteps: 5,
         temperature: (providerBody.temperature as number) ?? 0.7,
-        maxTokens: (providerBody.max_tokens as number) || (providerBody.maxTokens as number),
+        maxOutputTokens: (providerBody.max_tokens as number) || (providerBody.maxTokens as number),
         onFinish: async (finishResult) => {
-          // Log usage on completion
+          // Log usage on completion - usage is now a Promise in AI SDK v6
+          const usage = await finishResult.usage;
           usageLogger.setTokenUsage(
-            finishResult.usage.promptTokens,
-            finishResult.usage.completionTokens
+            usage.inputTokens ?? 0,
+            usage.outputTokens ?? 0
           );
           await usageLogger.markSuccess().save();
         },
       });
 
-      // Maintain SSE format for backward compatibility while using AI SDK backend
-      // Using toDataStreamResponse() is preferred for new frontend code,
-      // but to maintain standard SSE 'data: ' format, we might need a custom wrapper
-      // if the client strictly expects 'data: ' prefixes.
-      return result.toDataStreamResponse();
+      // AI SDK v6: Use toTextStreamResponse instead of toDataStreamResponse
+      return result.toTextStreamResponse();
     } else {
       // Non-streaming request
       const result = await generateText({
@@ -203,12 +200,14 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
         tools: {
           searchCards: searchCardsTool,
         },
-        maxSteps: 5,
         temperature: (providerBody.temperature as number) ?? 0.7,
-        maxTokens: (providerBody.max_tokens as number) || (providerBody.maxTokens as number),
+        maxOutputTokens: (providerBody.max_tokens as number) || (providerBody.maxTokens as number),
       });
 
-      usageLogger.setTokenUsage(result.usage.promptTokens, result.usage.completionTokens);
+      // AI SDK v6: usage is now a Promise with inputTokens/outputTokens
+      const usage = await result.usage;
+      const totalTokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+      usageLogger.setTokenUsage(usage.inputTokens ?? 0, usage.outputTokens ?? 0);
       await usageLogger.markSuccess().save();
 
       // Return in a format compatible with what extractContentFromResponse expects
@@ -224,9 +223,9 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
           },
         ],
         usage: {
-          prompt_tokens: result.usage.promptTokens,
-          completion_tokens: result.usage.completionTokens,
-          total_tokens: result.usage.totalTokens,
+          prompt_tokens: usage.inputTokens,
+          completion_tokens: usage.outputTokens,
+          total_tokens: totalTokens,
         },
       };
 
@@ -234,9 +233,9 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
         success: true,
         data: legacyData,
         usage: {
-          inputTokens: result.usage.promptTokens,
-          outputTokens: result.usage.completionTokens,
-          totalTokens: result.usage.totalTokens,
+          inputTokens: usage.inputTokens ?? 0,
+          outputTokens: usage.outputTokens ?? 0,
+          totalTokens: totalTokens,
         },
         rateLimit: {
           remaining: rateLimitResult.remaining,

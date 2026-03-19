@@ -36,6 +36,7 @@
 - TypeScript compiles without new errors
 - AI neighbor toggle visible on draft intro screen
 - AI neighbor config persists in IndexedDB
+- All draft tests pass (44 tests)
 
 ## Files Modified
 

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 import { Sparkles, Plus, Info, Loader2 } from "lucide-react";
 
 interface AIDeckAssistantProps {
@@ -30,9 +30,13 @@ export function AIDeckAssistant({ deck, onAddCard }: AIDeckAssistantProps) {
   const { topSuggestions, synergyData, isCalculating, error } = useSynergy();
   const [explainingCardId, setExplainingCardId] = useState<string | null>(null);
 
-  const { messages, append, isLoading, setMessages } = useChat({
-    api: "/api/chat",
+  const { messages, sendMessage, setMessages, status } = useChat({
+    onError: (error) => {
+      console.error('Chat error:', error);
+    },
   });
+
+  const isLoading = status === 'submitted' || status === 'streaming';
 
   const handleExplain = async (card: ScryfallCard) => {
     setExplainingCardId(card.id);
@@ -41,13 +45,24 @@ export function AIDeckAssistant({ deck, onAddCard }: AIDeckAssistantProps) {
     const deckCardNames = deck.map(c => c.name).join(", ");
     const prompt = `Explain the synergy between the card '${card.name}' and the current deck which includes: ${deckCardNames}. Focus on mechanical synergy and strategy. Keep it concise (2-3 sentences).`;
     
-    await append({
-      role: "user",
-      content: prompt,
-    });
+    // AI SDK v6: sendMessage needs explicit typing, cast to any for now
+    await (sendMessage as any)(prompt);
   };
 
   const suggestions = topSuggestions.slice(0, 5);
+
+  // Helper to extract text content from AI SDK v6 message
+  const getMessageContent = (message: any): string => {
+    if (!message.content) return '';
+    if (typeof message.content === 'string') return message.content;
+    if (Array.isArray(message.content)) {
+      return message.content
+        .filter((part: any) => part.type === 'text')
+        .map((part: any) => part.text)
+        .join('');
+    }
+    return '';
+  };
 
   return (
     <Card className="flex flex-col h-full border-primary/20 bg-primary/5">
@@ -84,7 +99,7 @@ export function AIDeckAssistant({ deck, onAddCard }: AIDeckAssistantProps) {
                 const synergy = synergyData.get(card.id);
                 const isExplaining = explainingCardId === card.id;
                 const assistantMessage = messages.find(m => m.role === "assistant");
-                const explanation = isExplaining ? assistantMessage?.content : null;
+                const explanation = isExplaining && assistantMessage ? getMessageContent(assistantMessage) : null;
 
                 return (
                   <Card key={card.id} className="overflow-hidden border-primary/10 bg-card/50">

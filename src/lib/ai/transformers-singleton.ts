@@ -1,4 +1,4 @@
-import { pipeline, env, type FeatureExtractionPipeline } from '@huggingface/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 
 // Configure environment for browser use
 env.allowLocalModels = false;
@@ -8,23 +8,27 @@ env.allowLocalModels = false;
 export class PipelineSingleton {
   static task = 'feature-extraction' as const;
   static model = 'Xenova/all-MiniLM-L6-v2';
-  static instance: FeatureExtractionPipeline | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static instance: any = null;
 
-  static async getInstance(progress_callback?: (progress: any) => void): Promise<FeatureExtractionPipeline> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static async getInstance(progress_callback?: (progress: any) => void): Promise<any> {
     if (this.instance === null) {
       try {
         console.info(`Initializing Transformers.js with model: ${this.model} (WebGPU)`);
-        this.instance = (await pipeline(this.task, this.model, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.instance = await pipeline(this.task as any, this.model, {
           progress_callback,
           device: 'webgpu',
-        })) as FeatureExtractionPipeline;
+        });
       } catch (e) {
         console.warn('WebGPU initialization failed, falling back to WASM/CPU:', e);
         try {
-          this.instance = (await pipeline(this.task, this.model, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this.instance = await pipeline(this.task as any, this.model, {
             progress_callback,
             device: 'wasm',
-          })) as FeatureExtractionPipeline;
+          });
         } catch (wasmError) {
           console.error('WASM initialization failed as well:', wasmError);
           throw wasmError;

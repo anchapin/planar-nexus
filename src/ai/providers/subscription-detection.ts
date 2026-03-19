@@ -158,6 +158,49 @@ const SUBSCRIPTION_PLANS: Record<AIProvider, SubscriptionPlan[]> = {
       maxTokensMultiplier: 10,
     },
   ],
+  anthropic: [
+    {
+      provider: 'anthropic',
+      tier: 'pro',
+      planName: 'Claude Pro',
+      detectedAt: 0,
+      benefits: [
+        'Priority access to Claude',
+        'Extended context',
+        'Higher rate limits',
+      ],
+      rateLimitMultiplier: 5,
+      maxTokensMultiplier: 2,
+    },
+    {
+      provider: 'anthropic',
+      tier: 'team',
+      planName: 'Claude Team',
+      detectedAt: 0,
+      benefits: [
+        'All Pro benefits',
+        'Team workspace',
+        'Admin controls',
+        'Higher limits',
+      ],
+      rateLimitMultiplier: 10,
+      maxTokensMultiplier: 4,
+    },
+    {
+      provider: 'anthropic',
+      tier: 'enterprise',
+      planName: 'Claude Enterprise',
+      detectedAt: 0,
+      benefits: [
+        'Unlimited access',
+        'Custom fine-tuning',
+        'Dedicated support',
+        'SLA guarantees',
+      ],
+      rateLimitMultiplier: 100,
+      maxTokensMultiplier: 10,
+    },
+  ],
   custom: [],
 };
 

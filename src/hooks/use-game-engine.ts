@@ -14,6 +14,7 @@ import {
   createInitialGameState as engineCreateInitialGameState,
   startGame as engineStartGame,
   drawCard as engineDrawCard,
+  loadDeckForPlayer,
   passPriority,
   concede as engineConcede,
   offerDraw as engineOfferDraw,
@@ -30,6 +31,7 @@ import { tapCardAction, untapCardAction } from "@/lib/game-state/keyword-actions
 
 // UI-facing types (compatible with existing UI)
 import type { PlayerState, CardState, ZoneType, GameState as UIGameState } from "@/types/game";
+import type { ScryfallCard } from "@/app/actions";
 
 /**
  * Convert engine GameState to UI PlayerState
@@ -171,6 +173,8 @@ export interface UseGameEngineOptions {
   startingLife?: number;
   isCommander?: boolean;
   autoStart?: boolean;
+  playerDeck?: ScryfallCard[]; // For limited deck mode (Phase 17)
+  opponentDeck?: ScryfallCard[]; // Optional opponent deck
 }
 
 export interface UseGameEngineReturn {
@@ -234,6 +238,12 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   // Ref for storing state to avoid stale closures in callbacks
   const engineStateRef = useRef<EngineGameState | null>(null);
   
+  // Store deck options in refs for use in callbacks
+  const deckOptionsRef = useRef({ playerDeck: options.playerDeck, opponentDeck: options.opponentDeck });
+  useEffect(() => {
+    deckOptionsRef.current = { playerDeck: options.playerDeck, opponentDeck: options.opponentDeck };
+  }, [options.playerDeck, options.opponentDeck]);
+  
   // Update ref when state changes
   useEffect(() => {
     engineStateRef.current = engineState;
@@ -246,8 +256,25 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   /**
    * Initialize a new game
    */
-  const initializeGame = useCallback(() => {
-    const newState = engineCreateInitialGameState(playerNames, startingLife, isCommander);
+  const initializeGame = useCallback(( decks?: { playerDeck?: ScryfallCard[]; opponentDeck?: ScryfallCard[] } ) => {
+    const decksToUse = decks || deckOptionsRef.current;
+    let newState = engineCreateInitialGameState(playerNames, startingLife, isCommander);
+    
+    // Load player deck if provided (Phase 17 - Limited deck support)
+    if (decksToUse.playerDeck && decksToUse.playerDeck.length > 0) {
+      const playerId = Array.from(newState.players.keys())[0];
+      newState = loadDeckForPlayer(newState, playerId, decksToUse.playerDeck);
+    }
+    
+    // Load opponent deck if provided
+    if (decksToUse.opponentDeck && decksToUse.opponentDeck.length > 0) {
+      const playerIds = Array.from(newState.players.keys());
+      if (playerIds.length > 1) {
+        const opponentId = playerIds[1];
+        newState = loadDeckForPlayer(newState, opponentId, decksToUse.opponentDeck);
+      }
+    }
+    
     setEngineState(newState);
     engineStateRef.current = newState;
   }, [playerNames, startingLife, isCommander]);

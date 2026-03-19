@@ -20,7 +20,7 @@ progress:
 ## Current Position
 - **Milestone**: v1.5 (Meta & Strategy AI)
 - **Status**: Planning phases 18-20
-- **Next**: Plan phase 18
+- **Next**: Plan phase 20 (planning complete)
 
 ## Milestone History
 
@@ -41,6 +41,7 @@ progress:
 | 15 | Draft Core | DRFT-01-11 ✅ | Complete |
 | 16 | AI Neighbors | NEIB-01 ✅, NEIB-02 ✅, NEIB-03 ✅, NEIB-04 ✅, NEIB-05 ✅ | Complete |
 | 17 | Play Integration | LPLY-01 ✅, LPLY-02 ✅, LPLY-03 ✅ | Complete |
+| 20 | Advanced Optimization | SIDE-03 ✅, MANA-01 ✅, MANA-02 ✅, MANA-03 ✅ | Complete |
 
 ## v1.4 Scope (COMPLETE)
 

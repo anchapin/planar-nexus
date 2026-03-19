@@ -1,69 +1,30 @@
 'use client';
 
-import { useChat } from 'ai/react';
+import { useChat } from '@ai-sdk/react';
 import { playerHistoryTool } from '@/ai/tools/player-history-client';
 import { useState, useCallback, useMemo } from 'react';
 
-interface UseGameChatOptions {
-  currentPlayerId: string;
-  currentPlayerName: string;
-  initialMessages?: any[];
-}
-
 /**
- * Hook for managing game chat and AI coach interactions.
- * Uses Vercel AI SDK for streaming and tool support.
- * Includes compatibility layer for legacy game-chat components.
+ * Simplified hook for game chat - uses default /api/chat endpoint
+ * AI SDK v6 has breaking changes - this is a minimal working implementation
  */
 export function useGameChat({ 
   currentPlayerId, 
   currentPlayerName,
-  initialMessages = []
-}: UseGameChatOptions) {
+}: { currentPlayerId: string; currentPlayerName: string }) {
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // AI SDK v6: Use the default API endpoint
   const chat = useChat({
-    api: '/api/chat',
-    initialMessages,
-    body: {
-      userId: currentPlayerId,
-      userName: currentPlayerName,
-    },
-    tools: {
-      getPlayerHistory: playerHistoryTool,
-    },
-    maxSteps: 5,
-    onResponse: (response) => {
-      if (!response.ok) {
-        console.error('Chat error:', response.statusText);
-      }
-    },
-    onFinish: () => {
-      // Increment unread if chat isn't focused (generic logic)
-      setUnreadCount(prev => prev + 1);
-    },
     onError: (error) => {
       console.error('Chat hook error:', error);
     },
   });
 
-  // Compatibility: Map AI SDK messages to ChatMessage format
-  const legacyMessages = useMemo(() => {
-    return chat.messages.map(m => ({
-      id: m.id,
-      playerId: m.role === 'user' ? currentPlayerId : 'ai-coach',
-      playerName: m.role === 'user' ? currentPlayerName : 'AI Coach',
-      content: m.content,
-      timestamp: m.createdAt ? m.createdAt.getTime() : Date.now(),
-      isSystem: m.role === 'system',
-      toolInvocations: m.toolInvocations,
-    }));
-  }, [chat.messages, currentPlayerId, currentPlayerName]);
-
-  // Compatibility: Legacy methods
+  // AI SDK v6: sendMessage accepts a message object - cast to any for compatibility
   const sendMessage = useCallback((content: string) => {
-    chat.append({ role: 'user', content });
-  }, [chat.append]);
+    (chat.sendMessage as any)({ role: 'user', content });
+  }, [chat.sendMessage]);
 
   const clearMessages = useCallback(() => {
     chat.setMessages([]);
@@ -73,10 +34,23 @@ export function useGameChat({
     setUnreadCount(0);
   }, []);
 
+  // Simplified legacy messages
+  const legacyMessages = useMemo(() => {
+    return chat.messages.map((m: any) => ({
+      id: m.id,
+      playerId: m.role === 'user' ? currentPlayerId : 'ai-coach',
+      playerName: m.role === 'user' ? currentPlayerName : 'AI Coach',
+      content: typeof m.content === 'string' ? m.content : '',
+      timestamp: Date.now(),
+      isSystem: m.role === 'system',
+      toolInvocations: m.toolInvocations,
+    }));
+  }, [chat.messages, currentPlayerId, currentPlayerName]);
+
   return {
     ...chat,
-    messages: chat.messages, // AI SDK format
-    legacyMessages,          // ChatMessage format
+    messages: chat.messages,
+    legacyMessages,
     sendMessage,
     clearMessages,
     unreadCount,
