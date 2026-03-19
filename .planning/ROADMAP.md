@@ -2,8 +2,8 @@
 
 ## Milestones
 
-- ✅ **v1.4 Draft/Sealed Limited Modes** — Phases 14-17 (shipped 2026-03-19)
-- 🚧 **v1.5 Meta & Strategy AI** — Phases 18-20 (planning)
+- ✅ **v1.5 Meta & Strategy AI** — Phases 18-20 (shipped 2026-03-19)
+- 🚧 **v1.6 TBD** — Future planning
 
 ---
 
@@ -71,11 +71,20 @@
 </details>
 
 <details>
-<summary>🚧 v1.5 Meta & Strategy AI — Planning</summary>
+<summary>✅ v1.5 Meta & Strategy AI — SHIPPED 2026-03-19</summary>
 
-- [ ] Phase 18: Meta Analysis Foundation
-- [ ] Phase 19: Matchup & Strategy Guides  
-- [ ] Phase 20: Advanced Optimization
+- [x] **Phase 18: Meta Analysis Foundation** ✅ (completed 2026-03-19)
+  **Plans:**
+  - [x] 18-01-PLAN.md — Meta deck analysis infrastructure ✅
+- [x] **Phase 19: Matchup & Strategy Guides** ✅ (completed 2026-03-19)
+  **Plans:**
+  - [x] 19-01-PLAN.md — Anti-meta recommendations ✅
+  - [x] 19-02-PLAN.md — Matchup guides ✅
+  - [x] 19-03-PLAN.md — Game phase strategy ✅
+- [x] **Phase 20: Advanced Optimization** ✅ (completed 2026-03-19)
+  **Plans:**
+  - [x] 20-01-PLAN.md — Custom Sideboard Plans (SIDE-03) ✅
+  - [x] 20-02-PLAN.md — Mana Curve Optimization (MANA-01, MANA-02, MANA-03) ✅
 
 </details>
 
@@ -233,12 +242,12 @@ Plans:
 | 15. Draft Core | 3-pack draft with timer | Complete | 4/4 | ✅ Complete | 2026-03-18 |
 | 16. AI Neighbors | Bot simulation, passing mechanics | 5 | 6/6 | ✅ Complete | 2026-03-18 |
 | 17. Play Integration | Launch AI game with limited deck | Complete | 3/3 | ✅ Complete | 2026-03-18 |
-| 18. Meta Analysis | Meta decks, health score, trends | 10 | TBD | 🔲 Planning | — |
-| 19. Matchup Guides | Strategy, matchups, game phases | 10 | TBD | 🔲 Pending | — |
-| 20. Optimization | Sideboards, mana curves | 6 | TBD | 🔲 Pending | — |
+| 18. Meta Analysis | Meta decks, health score, trends | Complete | 1/1 | ✅ Complete | 2026-03-19 |
+| 19. Matchup Guides | Strategy, matchups, game phases | Complete | 3/3 | ✅ Complete | 2026-03-19 |
+| 20. Optimization | Sideboards, mana curves | Complete | 2/2 | ✅ Complete | 2026-03-19 |
 
 ---
 
-**Current Status**: v1.5 STARTING — Planning phases 18-20
+**Current Status**: v1.5 COMPLETE — Meta & Strategy AI shipped
 
 _For archived milestones, see `.planning/milestones/`_
