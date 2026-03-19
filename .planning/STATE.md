@@ -38,8 +38,8 @@ progress:
 
 | Phase | Name | Requirements | Status |
 |-------|------|-------------|--------|
-| 21 | Pre-commit Hooks Setup | REQ-001 | Not Started |
-| 22 | Coverage Infrastructure | REQ-002 | Not Started |
+| 21 | Pre-commit Hooks Setup | REQ-001 | **Planned** (4 plans) |
+| 22 | Coverage Infrastructure | REQ-002 | ✅ Complete |
 | 23 | Test Utilities Library | REQ-003 | Not Started |
 | 24 | Integration Test Setup | REQ-004 | Not Started |
 | 25 | CI Quality Gates | REQ-005 | Not Started |
@@ -135,8 +135,8 @@ progress:
 
 ## Session Continuity
 
-- **Last Action**: v1.5 milestone completed (Phase 20)
-- **Next Step**: Phase 21 - Pre-commit Hooks Setup
+- **Last Action**: Phase 22 - Coverage Infrastructure completed
+- **Next Step**: Phase 23 - Test Utilities Library
 
 ## Decisions Made
 

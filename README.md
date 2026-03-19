@@ -3,7 +3,8 @@
 **Free open-source tabletop card game deck builder and AI-powered playtester**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen)](actions-url)
+[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen)](https://github.com/planar-nexus/planar-nexus/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)](https://github.com/planar-nexus/planar-nexus/actions/workflows/ci.yml)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
 
