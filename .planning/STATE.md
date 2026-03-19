@@ -1,26 +1,26 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Draft/Sealed Limited Modes
-status: ready-to-ship
-last_updated: "2026-03-18T18:45:00.000Z"
+milestone: v1.5
+milestone_name: Next Milestone
+status: ready-to-start
+last_updated: "2026-03-19T00:15:00.000Z"
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 17
-  completed_plans: 17
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # Project State: Planar Nexus
 
 ## Project Reference
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: v1.4 Draft/Sealed Limited Modes - READY TO SHIP
+- **Current Focus**: v1.4 COMPLETE - Ready for next milestone
 
 ## Current Position
-- **Milestone**: v1.4 COMPLETE
-- **Status**: All 4 phases complete (14, 15, 16, 17)
-- **Next**: Ship v1.4 release
+- **Milestone**: v1.4 COMPLETE ✅
+- **Status**: All 4 phases shipped (14, 15, 16, 17)
+- **Next**: Start v1.5 planning
 
 ## Milestone History
 
@@ -30,7 +30,8 @@ progress:
 | v1.1 | Polish & Stability | 2026-03-17 | 4-5 |
 | v1.2 | AI Intelligence | 2026-03-17 | 6-10 |
 | v1.3 | Deck Builder UX | 2026-03-18 | 11-13 |
-| v1.4 | Draft/Sealed | In Progress | 14-17 |
+| v1.4 | Draft/Sealed | 2026-03-19 | 14-17 |
+| v1.5 | TBD | - | - |
 
 ## Phase Summary
 
@@ -41,7 +42,7 @@ progress:
 | 16 | AI Neighbors | NEIB-01 ✅, NEIB-02 ✅, NEIB-03 ✅, NEIB-04 ✅, NEIB-05 ✅ | Complete |
 | 17 | Play Integration | LPLY-01 ✅, LPLY-02 ✅, LPLY-03 ✅ | Complete |
 
-## v1.4 Scope
+## v1.4 Scope (COMPLETE)
 
 ### Phase 14: Foundation
 - Set selection browser with card counts and release dates ✅
@@ -61,16 +62,20 @@ progress:
 - Draft completion and session persistence ✅ (15-04)
 
 ### Phase 16: AI Neighbors
-- 2-player draft table simulation
-- Heuristic bot picking (random/medium difficulty)
-- Visual indication of bot picking
-- Pack passing animations
-- Difficulty selection before draft
+- 2-player draft table simulation ✅
+- Heuristic bot picking (random/medium difficulty) ✅
+- Visual indication of bot picking ✅
+- Pack passing animations ✅
+- Difficulty selection before draft ✅
 
 ### Phase 17: Play Integration
 - Launch AI opponent from limited session ✅
 - Format validation before game start ✅
 - Return to session after game ends ✅
+
+## v1.5 Scope
+
+*To be determined - start new milestone to define scope*
 
 ## Requirements Coverage
 
@@ -79,16 +84,8 @@ progress:
 - **Unmapped**: 0 ✓
 
 ## Session Continuity
-- **Last Action**: Completed Phase 16 (AI Neighbors) - all plans complete
-- **Next Step**: v1.4 Release (build blocking issues remain - see below)
-- **Phase 16 (AI Neighbors)**: Complete with all 5 requirements (NEIB-01 through NEIB-05)
-
-## Build Status
-
-⚠️ **Blocking Issues**:
-- Build fails due to missing `ai/react` module
-- 40+ TypeScript errors (pre-existing, not from Phase 16)
-- These issues must be resolved before v1.4 can ship
+- **Last Action**: v1.4 milestone completed
+- **Next Step**: Start v1.5 planning
 
 ## Decisions Made
 - Pack-first drafting UX: cards stay face-down until user clicks to open

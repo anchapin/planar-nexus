@@ -1,6 +1,8 @@
 # Milestones
 
-## v1.4 Draft/Sealed Limited Modes (In Progress)
+## v1.4 Draft/Sealed Limited Modes (Shipped: 2026-03-19)
+
+**Status:** Complete
 
 **Phases completed:** 4 phases (Phase 14 Foundation ✅, Phase 15 Draft Core ✅, Phase 16 AI Neighbors ✅, Phase 17 Play Integration ✅)
 
