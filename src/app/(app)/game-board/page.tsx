@@ -22,6 +22,8 @@ import { useGameEmotes } from "@/hooks/use-game-emotes";
 import { cn } from "@/lib/utils";
 import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
 import { useGameEngine } from "@/hooks/use-game-engine";
+import { useAIWorker } from "@/hooks/use-ai-worker";
+import { AIThinkingIndicator } from "@/components/ai/AIThinkingIndicator";
 import type { CardInstanceId, GameAction, ActionType } from "@/lib/game-state/types";
 import { saveGameRecord, createGameRecord, type GameMode, type GameResult } from '@/lib/game-history';
 import { useAchievementTracking } from '@/hooks/use-achievement-tracking';
@@ -82,6 +84,11 @@ export default function GameBoardPage() {
   // Use player-2 as default for achievement tracking since this is a self-play game
   const { onGameEnd, trackCollectionAchievements } = useAchievementTracking("player-2");
 
+  const {
+    isThinking: isAIWorkerThinking,
+    analyzeState: analyzeStateViaWorker,
+  } = useAIWorker();
+
   // Get game mode from URL params on client side
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -117,7 +124,7 @@ export default function GameBoardPage() {
   });
 
   // Track an action and check for mistakes
-  const trackAction = React.useCallback((type: ActionType, data: any) => {
+  const trackAction = React.useCallback(async (type: ActionType, data: any) => {
     if (!engineState || !currentPlayerId) return;
 
     const action: GameAction = {
@@ -132,17 +139,29 @@ export default function GameBoardPage() {
     // Mistake detection: evaluate current state after action
     // Convert engine state to AI format for evaluation
     const aiState = engineToAIState(engineState);
-    const evaluation = evaluateGameState(aiState, currentPlayerId, 'hard');
     
-    // If the evaluation shows a poor position, flag it as a potential mistake
-    // A low total score relative to turn number suggests mistakes were made
-    const turnsPlayed = engineState.turn.turnNumber;
-    const expectedScore = turnsPlayed * 5; // Rough heuristic
-    if (evaluation.totalScore < expectedScore - 10) {
-      const mistakeMsg = `Potential mistake detected: ${type}. Score: ${evaluation.totalScore}. Recommendation: ${evaluation.recommendedActions[0] || 'Consider re-evaluating your strategy.'}`;
-      setMistakes(prev => [...prev, mistakeMsg]);
+    try {
+      // Offload heuristic evaluation to Web Worker
+      const evaluation = await analyzeStateViaWorker({
+        gameState: aiState,
+        playerId: currentPlayerId,
+        difficulty: 'hard'
+      });
+      
+      if (evaluation) {
+        // If the evaluation shows a poor position, flag it as a potential mistake
+        // A low total score relative to turn number suggests mistakes were made
+        const turnsPlayed = engineState.turn.turnNumber;
+        const expectedScore = turnsPlayed * 5; // Rough heuristic
+        if (evaluation.totalScore < expectedScore - 10) {
+          const mistakeMsg = `Potential mistake detected: ${type}. Score: ${evaluation.totalScore}. Recommendation: ${evaluation.recommendedActions[0] || 'Consider re-evaluating your strategy.'}`;
+          setMistakes(prev => [...prev, mistakeMsg]);
+        }
+      }
+    } catch (err) {
+      console.error('AI mistake detection failed:', err);
     }
-  }, [engineState, currentPlayerId]);
+  }, [engineState, currentPlayerId, analyzeStateViaWorker]);
 
   // Wrapped engine actions
   const advancePhase = () => {
@@ -630,6 +649,11 @@ export default function GameBoardPage() {
             >
               {isAnalyzing ? "Analyzing..." : "Get AI Suggestions"}
             </Button>
+            {(isAnalyzing || isAIWorkerThinking) && (
+              <div className="mt-2 flex justify-center">
+                <AIThinkingIndicator size="sm" label={isAnalyzing ? "Genkit Analyzing..." : "Heuristic Thinking..."} />
+              </div>
+            )}
             {aiAssistanceEnabled && (
               <p className="text-xs text-muted-foreground">
                 Get real-time hints and play recommendations during your game.

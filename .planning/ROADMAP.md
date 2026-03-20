@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.6 QA/QC Infrastructure** — Phases 21-26 (shipped 2026-03-19)
-- 🚧 **v1.7 Conversational AI Coach** — (Ready to start)
+- ✅ **v1.7 Conversational AI Coach** — Phases 27-30 (shipped 2026-03-20)
 
 ---
 
@@ -89,12 +89,14 @@
 </details>
 
 <details>
-<summary>🚧 v1.7 Conversational AI Coach — IN PROGRESS</summary>
+<summary>✅ v1.7 Conversational AI Coach — SHIPPED 2026-03-20</summary>
 
-- [ ] **Phase 27: Chat Interface Foundation** — Chat UI, message history, input field, typing indicator
-- [ ] **Phase 28: Natural Language Processing** — Intent recognition, card analysis, win condition identification
-- [ ] **Phase 29: Context Management** — Deck loading, conversation history, session persistence
-- [ ] **Phase 30: AI Flow Integration** — Genkit flow, streaming responses, error handling
+- [x] **Phase 27: Chat Interface Foundation** — Chat UI, message history, input field, typing indicator ✅ (completed 2026-03-20)
+- [x] **Phase 28: Natural Language Processing** — Intent recognition, card analysis, win condition identification ✅ (completed 2026-03-20)
+- [x] **Phase 29: Context Management** — Deck loading, conversation history, session persistence ✅ (completed 2026-03-20)
+      **Plans:**
+  - [x] 29-01-PLAN.md — Deck-specific chat history and context management ✅
+- [x] **Phase 30: AI Flow Integration** — Genkit flow, streaming responses, error handling ✅ (completed 2026-03-20)
 
 </details>
 
@@ -410,7 +412,10 @@ Plans:
 | 18. Meta Analysis    | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
 | 19. Matchup Guides   | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
 | 20. Optimization     | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
-| 27. Chat Interface   | Chat UI, message history, input, typing          | 6 reqs       | 1/1            | ⏳ Planned   | —          |
+| 28. NLP              | Intent recognition, card analysis, wincons       | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| 29. Context          | Deck-specific chat history, persistence          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| 30. AI Flow Integration | Genkit flow, streaming, error handling         | Complete     | 3/3            | ✅ Complete | 2026-03-20 |
+| 27. Chat Interface   | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
 
 ---
 
@@ -495,10 +500,106 @@ Plans:
 | 24. Integration      | MSW, server action tests, E2E flows              | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
 | 25. CI Gates         | Coverage threshold, commit lint, audit           | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
 | 26. Test Docs        | TESTING.md, patterns, decision guide             | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 27. Chat Interface   | Chat UI, message history, input, typing          | 6 reqs       | 1/1            | ⏳ Planned   | —          |
+| 27. Chat Interface   | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
 
 ---
 
-**Current Status**: v1.7 IN PROGRESS — Conversational AI Coach (Phase 27)
+**Current Status**: ✅ v1.7 Conversational AI Coach COMPLETE — Ready for v1.8 (Performance & Scale)
+
+---
+
+## v1.8: Performance & Scale
+
+### Phase 31: Search Engine Revolution
+
+**Goal**: High-performance local search using Orama and Web Workers
+
+**Depends on**: v1.7 completion
+
+**Requirements**: ORAMA-01, ORAMA-02, ORAMA-03
+
+**Success Criteria** (what must be TRUE):
+
+1. Orama is used for all card collection searching
+2. Search indexing and queries run in a Web Worker
+3. `useSearchWorker` hook provides reactive search results
+4. Search performance is <10ms for 100k+ cards
+
+**Plans**: 2 plans ✅
+
+### Phase 32: Off-Main-Thread Intelligence
+
+**Goal**: Move heuristic AI and deck analysis to Web Workers
+
+**Depends on**: Phase 31
+
+**Requirements**: WORKER-01, WORKER-02, WORKER-03, WORKER-04
+
+**Success Criteria** (what must be TRUE):
+
+1. Heuristic gameplay engine runs in a dedicated Web Worker
+2. AI "thinking" does not block UI interactions (60fps maintained)
+3. Genkit flows are optimized via selective pre-fetching
+4. Non-blocking AI status indicators are implemented
+
+**Plans**: TBD
+
+### Phase 33: High-Performance Rendering
+
+**Goal**: 2D grid virtualization and rendering optimizations
+
+**Depends on**: Phase 32
+
+**Requirements**: REND-01, REND-02, REND-03
+
+**Success Criteria** (what must be TRUE):
+
+1. 2D grid virtualization implemented for card displays
+2. CardArt lazy-loading and memory management optimized
+3. Main-thread scripting time reduced by 40%
+4. React.memo and localized state used effectively
+
+**Plans**: TBD
+
+### Phase 34: Scalable Storage & Backups
+
+**Goal**: Incremental backups and IndexedDB optimization
+
+**Depends on**: Phase 33
+
+**Requirements**: STOR-01, STOR-02, STOR-03
+
+**Success Criteria** (what must be TRUE):
+
+1. Incremental backup/restore logic implemented
+2. Client-side compression for large data exports
+3. IndexedDB queries and schema audited for performance
+
+**Plans**: TBD
+
+---
+
+## Progress Table
+
+| Phase                | Goal                                             | Requirements | Plans Complete | Status      | Completed  |
+| -------------------- | ------------------------------------------------ | ------------ | -------------- | ----------- | ---------- |
+| 14. Foundation       | Set selection, sealed core, limited deck builder | Complete     | 2026-03-18     | ✅ Complete | 2026-03-18 |
+| 15. Draft Core       | 3-pack draft with timer                          | Complete     | 4/4            | ✅ Complete | 2026-03-18 |
+| 16. AI Neighbors     | Bot simulation, passing mechanics                | 5            | 6/6            | ✅ Complete | 2026-03-18 |
+| 17. Play Integration | Launch AI game with limited deck                 | Complete     | 3/3            | ✅ Complete | 2026-03-18 |
+| 18. Meta Analysis    | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 19. Matchup Guides   | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
+| 20. Optimization     | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
+| 21. Pre-commit Hooks | Husky, lint-staged, quality checks               | Complete     | 4/4            | ✅ Complete | 2026-03-19 |
+| 22. Coverage         | Jest thresholds, CI coverage gate                | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 23. Test Utils       | @/test-utils, React helpers, mocks               | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 24. Integration      | MSW, server action tests, E2E flows              | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 25. CI Gates         | Coverage threshold, commit lint, audit           | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 26. Test Docs        | TESTING.md, patterns, decision guide             | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 27. Chat Interface   | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| 31. Search Revolution| Orama + Workers background search                | Complete     | 2/2            | ✅ Complete | 2026-03-20 |
+| 32. Worker Intel     | Off-main-thread heuristics                       | 3            | 0/0            | 🏗️ In Prog  |            |
+
+---
 
 _For archived milestones, see `.planning/milestones/`_

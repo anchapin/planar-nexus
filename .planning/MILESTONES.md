@@ -1,5 +1,20 @@
 # Milestones
 
+## v1.7 - Conversational AI Coach (Shipped: 2026-03-20)
+
+**Status:** Complete ✅
+
+**Phases completed:** 4 phases, 6 plans
+
+**Key accomplishments:**
+
+- **Phase 27 Chat Interface Foundation**: Core chat UI, message history, input handling, typing indicators, and session persistence.
+- **Phase 28 Natural Language Processing**: Intent recognition, card analysis, and win condition identification.
+- **Phase 29 Context Management**: Deck-specific chat history and context retention for follow-up questions.
+- **Phase 30 AI Flow Integration**: Genkit flow implementation with streaming responses and robust error handling.
+
+---
+
 ## v1.6 v1.6 (Shipped: 2026-03-19)
 
 **Phases completed:** 0 phases, 0 plans, 0 tasks
