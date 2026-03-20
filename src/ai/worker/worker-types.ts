@@ -10,6 +10,43 @@ export enum AIWorkerAction {
   EVALUATE_BOARD = 'EVALUATE_BOARD',
   QUICK_SCORE = 'QUICK_SCORE',
   DETECT_ARCHETYPE = 'DETECT_ARCHETYPE',
+  PREPARE_COACH_CONTEXT = 'PREPARE_COACH_CONTEXT',
+}
+
+/**
+ * Payload for preparing coach context.
+ */
+export interface CoachContextPayload {
+  deck?: unknown[];
+  gameState?: GameState;
+  playerId?: string;
+}
+
+/**
+ * Digested context optimized for LLM consumption.
+ */
+export interface DigestedCoachContext {
+  deckSummary?: {
+    totalCards: number;
+    typeCounts: Record<string, number>;
+    averageCmc: number;
+    keyCards: string[];
+    manaCurve: number[];
+    colors: string[];
+  };
+  gameSummary?: {
+    turn: number;
+    phase: string;
+    activePlayerId: string;
+    players: Array<{
+      id: string;
+      life: number;
+      handSize: number;
+      manaAvailable: number;
+      keyPermanents: string[];
+    }>;
+  };
+  timestamp: number;
 }
 
 /**
@@ -57,4 +94,9 @@ export interface AIWorkerAPI {
    * @param deck Array of card definitions or names.
    */
   detectArchetype(deck: unknown[]): Promise<string>;
+
+  /**
+   * Prepares a compact context for the AI coach.
+   */
+  prepareCoachContext(payload: CoachContextPayload): Promise<DigestedCoachContext>;
 }
