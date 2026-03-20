@@ -65,6 +65,7 @@
     "ai": "^6.0.116",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "comlink": "^4.4.2",
     "date-fns": "^3.6.0",
     "dexie": "^4.3.0",
     "dexie-react-hooks": "^1.1.7",
@@ -108,6 +109,7 @@
     "@types/testing-library__jest-dom": "^5.14.9",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
+    "@vitest/web-worker": "^4.1.0",
     "eslint": "^9.22.0",
     "eslint-config-next": "^16.1.6",
     "eslint-plugin-react": "^7.37.5",
@@ -122,6 +124,7 @@
     "prettier": "^3.8.1",
     "tailwindcss": "^3.4.1",
     "ts-jest": "^29.1.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5",
     "typescript-eslint": "^8.55.0",
     "vitest": "^4.1.0"
