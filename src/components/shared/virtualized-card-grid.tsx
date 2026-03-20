@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useImperativeHandle } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface VirtualizedCardGridProps<T> {
@@ -13,6 +13,10 @@ interface VirtualizedCardGridProps<T> {
   scrollElementRef?: React.RefObject<HTMLElement>;
   gap?: number;
   overscan?: number;
+}
+
+export interface VirtualizedCardGridHandle {
+  scrollToIndex: (index: number) => void;
 }
 
 /**
@@ -78,6 +82,14 @@ export const VirtualizedCardGrid = React.forwardRef<
 
     const virtualRows = virtualizer.getVirtualItems();
     const totalSize = virtualizer.getTotalSize();
+
+    // Expose scroll methods via imperative handle
+    useImperativeHandle(ref, () => ({
+      scrollToIndex: (index: number) => {
+        const rowIndex = Math.floor(index / responsiveColumns);
+        virtualizer.scrollToIndex(rowIndex);
+      },
+    }), [virtualizer, responsiveColumns]);
 
     // Handle scroll event
     const handleScroll = useCallback(() => {
