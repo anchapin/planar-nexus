@@ -24,7 +24,7 @@ export interface VirtualizedCardGridHandle {
  * Efficiently renders large lists of items in a responsive grid layout.
  */
 export const VirtualizedCardGrid = React.forwardRef<
-  HTMLDivElement,
+  VirtualizedCardGridHandle,
   VirtualizedCardGridProps<unknown>
 >(
   (
@@ -108,7 +108,7 @@ export const VirtualizedCardGrid = React.forwardRef<
 
     return (
       <div
-        ref={ref || containerRef}
+        ref={containerRef}
         className="w-full h-full overflow-auto"
       >
         <div
