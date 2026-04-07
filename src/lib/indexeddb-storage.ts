@@ -28,6 +28,30 @@ export interface StorageConfig {
 }
 
 /**
+ * Incremental backup data — only records changed since a given timestamp
+ */
+export interface IncrementalBackupData {
+  type: "incremental";
+  version: string;
+  since: string;
+  exportedAt: string;
+  decks: StoredDeck[];
+  savedGames: StoredGame[];
+  deletedRecords: Array<{ store: string; id: string }>;
+  checksum: string;
+}
+
+/**
+ * Backup manifest tracking full and incremental backup history
+ */
+export interface BackupManifest {
+  id: "backup-manifest";
+  lastFullBackupAt: string | null;
+  lastIncrementalBackupAt: string | null;
+  backupHistory: Array<{ type: "full" | "incremental"; exportedAt: string }>;
+}
+
+/**
  * Export data format for backups
  */
 export interface BackupData {
@@ -117,7 +141,7 @@ export interface StoredGame {
   /** Current phase */
   currentPhase: string;
   /** Game status */
-  status: 'not_started' | 'in_progress' | 'paused' | 'completed';
+  status: "not_started" | "in_progress" | "paused" | "completed";
   /** Winners */
   winners?: string[];
   /** Auto-save flag */
@@ -214,27 +238,27 @@ export class IndexedDBStorage {
         // Create object stores if they don't exist
         for (const storeName of this.config.stores) {
           if (!db.objectStoreNames.contains(storeName)) {
-            const store = db.createObjectStore(storeName, { keyPath: 'id' });
+            const store = db.createObjectStore(storeName, { keyPath: "id" });
 
             // Create indexes for common queries
-            if (storeName === 'decks') {
-              store.createIndex('name', 'name', { unique: false });
-              store.createIndex('format', 'format', { unique: false });
-              store.createIndex('createdAt', 'createdAt', { unique: false });
-              store.createIndex('updatedAt', 'updatedAt', { unique: false });
-            } else if (storeName === 'saved-games') {
-              store.createIndex('name', 'name', { unique: false });
-              store.createIndex('format', 'format', { unique: false });
-              store.createIndex('status', 'status', { unique: false });
-              store.createIndex('savedAt', 'savedAt', { unique: false });
-              store.createIndex('isAutoSave', 'isAutoSave', { unique: false });
-            } else if (storeName === 'usage-tracking') {
-              store.createIndex('provider', 'provider', { unique: false });
-              store.createIndex('timestamp', 'timestamp', { unique: false });
-            } else if (storeName === 'game-history') {
-              store.createIndex('date', 'date', { unique: false });
-              store.createIndex('result', 'result', { unique: false });
-              store.createIndex('mode', 'mode', { unique: false });
+            if (storeName === "decks") {
+              store.createIndex("name", "name", { unique: false });
+              store.createIndex("format", "format", { unique: false });
+              store.createIndex("createdAt", "createdAt", { unique: false });
+              store.createIndex("updatedAt", "updatedAt", { unique: false });
+            } else if (storeName === "saved-games") {
+              store.createIndex("name", "name", { unique: false });
+              store.createIndex("format", "format", { unique: false });
+              store.createIndex("status", "status", { unique: false });
+              store.createIndex("savedAt", "savedAt", { unique: false });
+              store.createIndex("isAutoSave", "isAutoSave", { unique: false });
+            } else if (storeName === "usage-tracking") {
+              store.createIndex("provider", "provider", { unique: false });
+              store.createIndex("timestamp", "timestamp", { unique: false });
+            } else if (storeName === "game-history") {
+              store.createIndex("date", "date", { unique: false });
+              store.createIndex("result", "result", { unique: false });
+              store.createIndex("mode", "mode", { unique: false });
             }
           }
         }
@@ -258,7 +282,7 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readonly');
+      const transaction = this.db!.transaction(storeName, "readonly");
       const store = transaction.objectStore(storeName);
       const request = store.get(key);
 
@@ -279,7 +303,7 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
+      const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
       const request = store.put(value);
 
@@ -300,7 +324,7 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readonly');
+      const transaction = this.db!.transaction(storeName, "readonly");
       const store = transaction.objectStore(storeName);
       const request = store.getAll();
 
@@ -317,11 +341,16 @@ export class IndexedDBStorage {
   /**
    * Set multiple items in a store
    */
-  async setAll<T>(storeName: string, values: (T & { id: string })[]): Promise<void> {
+  async setAll<T>(
+    storeName: string,
+    values: (T & { id: string })[],
+  ): Promise<void> {
     await this.ensureInitialized();
 
+    if (values.length === 0) return;
+
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
+      const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
 
       let completed = 0;
@@ -357,7 +386,7 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
+      const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
       const request = store.delete(key);
 
@@ -378,7 +407,7 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readwrite');
+      const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
       const request = store.clear();
 
@@ -399,7 +428,7 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readonly');
+      const transaction = this.db!.transaction(storeName, "readonly");
       const store = transaction.objectStore(storeName);
       const request = store.count();
 
@@ -420,12 +449,12 @@ export class IndexedDBStorage {
     storeName: string,
     indexName: string,
     value: IDBValidKey | IDBKeyRange,
-    count?: number
+    count?: number,
   ): Promise<T[]> {
     await this.ensureInitialized();
 
     return new Promise((resolve, reject) => {
-      const transaction = this.db!.transaction(storeName, 'readonly');
+      const transaction = this.db!.transaction(storeName, "readonly");
       const store = transaction.objectStore(storeName);
       const index = store.index(indexName);
 
@@ -458,33 +487,149 @@ export class IndexedDBStorage {
   }
 
   /**
+   * Get the backup manifest from preferences store
+   */
+  async getBackupManifest(): Promise<BackupManifest | null> {
+    return this.get<BackupManifest>("preferences", "backup-manifest");
+  }
+
+  /**
+   * Update the backup manifest after a backup operation
+   */
+  private async updateBackupManifest(
+    type: "full" | "incremental",
+  ): Promise<void> {
+    const existing = await this.getBackupManifest();
+    const now = new Date().toISOString();
+    const manifest: BackupManifest = existing ?? {
+      id: "backup-manifest",
+      lastFullBackupAt: null,
+      lastIncrementalBackupAt: null,
+      backupHistory: [],
+    };
+
+    if (type === "full") {
+      manifest.lastFullBackupAt = now;
+    } else {
+      manifest.lastIncrementalBackupAt = now;
+    }
+
+    manifest.backupHistory = [
+      ...manifest.backupHistory,
+      { type, exportedAt: now },
+    ].slice(-20);
+
+    await this.set("preferences", manifest as BackupManifest & { id: string });
+  }
+
+  /**
+   * Calculate checksum for incremental backup integrity
+   */
+  private async calculateIncrementalChecksum(
+    data: Omit<IncrementalBackupData, "checksum">,
+  ): Promise<string> {
+    const json = JSON.stringify(data);
+    const encoder = new TextEncoder();
+    const dataBuffer = encoder.encode(json);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  /**
+   * Export only records modified after the given timestamp
+   */
+  async exportIncrementalBackup(since: Date): Promise<IncrementalBackupData> {
+    const sinceISO = since.toISOString();
+
+    const changedDecks = await this.queryByIndex<StoredDeck>(
+      "decks",
+      "updatedAt",
+      IDBKeyRange.lowerBound(sinceISO, true),
+    );
+
+    const allGames = await this.getAll<StoredGame>("saved-games");
+    const changedGames = allGames.filter((g) => g.savedAt > since.getTime());
+
+    const partial: Omit<IncrementalBackupData, "checksum"> = {
+      type: "incremental",
+      version: "1.0.0",
+      since: sinceISO,
+      exportedAt: new Date().toISOString(),
+      decks: changedDecks,
+      savedGames: changedGames,
+      deletedRecords: [],
+    };
+
+    const checksum = await this.calculateIncrementalChecksum(partial);
+
+    await this.updateBackupManifest("incremental");
+
+    return { ...partial, checksum };
+  }
+
+  /**
+   * Merge records from an incremental backup without clearing existing data
+   */
+  async importIncrementalBackup(data: IncrementalBackupData): Promise<void> {
+    const { checksum, ...dataToVerify } = data;
+    const expected = await this.calculateIncrementalChecksum(dataToVerify);
+    if (expected !== checksum) {
+      throw new Error(
+        "Incremental backup integrity check failed: checksum mismatch",
+      );
+    }
+
+    for (const deck of data.decks) {
+      await this.set("decks", deck);
+    }
+
+    for (const game of data.savedGames) {
+      await this.set("saved-games", game);
+    }
+
+    for (const entry of data.deletedRecords) {
+      await this.delete(entry.store, entry.id);
+    }
+  }
+
+  /**
    * Export all user data as backup
    */
   async exportBackup(): Promise<BackupData> {
-    const decks = await this.getAll<StoredDeck>('decks');
-    const savedGames = await this.getAll<StoredGame>('saved-games');
-    const preferences = await this.getAll<Record<string, unknown>>('preferences');
-    const usageTracking = await this.getAll<UsageRecord>('usage-tracking');
-    const achievements = await this.getAll<PlayerAchievements>('achievements');
+    const decks = await this.getAll<StoredDeck>("decks");
+    const savedGames = await this.getAll<StoredGame>("saved-games");
+    const preferences =
+      await this.getAll<Record<string, unknown>>("preferences");
+    const usageTracking = await this.getAll<UsageRecord>("usage-tracking");
+    const achievements = await this.getAll<PlayerAchievements>("achievements");
 
     const backupData: BackupData = {
-      version: '1.0.0',
+      version: "1.0.0",
       exportedAt: new Date().toISOString(),
       decks,
       savedGames,
-      preferences: preferences.reduce((acc, pref) => {
-        if (pref && typeof pref === 'object' && 'id' in pref && pref.id) {
-          acc[pref.id as string] = pref as { id: string } & Record<string, unknown>;
-        }
-        return acc;
-      }, {} as Record<string, { id: string } & Record<string, unknown>>),
+      preferences: preferences.reduce(
+        (acc, pref) => {
+          if (pref && typeof pref === "object" && "id" in pref && pref.id) {
+            acc[pref.id as string] = pref as { id: string } & Record<
+              string,
+              unknown
+            >;
+          }
+          return acc;
+        },
+        {} as Record<string, { id: string } & Record<string, unknown>>,
+      ),
       usageTracking,
       achievements,
-      checksum: '',
+      checksum: "",
     };
 
     // Calculate checksum
     backupData.checksum = await this.calculateChecksum(backupData);
+
+    await this.updateBackupManifest("full");
 
     return backupData;
   }
@@ -496,39 +641,42 @@ export class IndexedDBStorage {
     // Verify checksum
     const checksum = await this.calculateChecksum(backupData);
     if (checksum !== backupData.checksum) {
-      throw new Error('Backup integrity check failed: checksum mismatch');
+      throw new Error("Backup integrity check failed: checksum mismatch");
     }
 
     // Import decks
     if (backupData.decks) {
-      await this.clear('decks');
-      await this.setAll('decks', backupData.decks);
+      await this.clear("decks");
+      await this.setAll("decks", backupData.decks);
     }
 
     // Import saved games
     if (backupData.savedGames) {
-      await this.clear('saved-games');
-      await this.setAll('saved-games', backupData.savedGames);
+      await this.clear("saved-games");
+      await this.setAll("saved-games", backupData.savedGames);
     }
 
     // Import preferences
     if (backupData.preferences) {
-      await this.clear('preferences');
+      await this.clear("preferences");
       for (const [key, value] of Object.entries(backupData.preferences)) {
-        await this.set('preferences', { id: key, ...value as Record<string, unknown> });
+        await this.set("preferences", {
+          id: key,
+          ...(value as Record<string, unknown>),
+        });
       }
     }
 
     // Import usage tracking
     if (backupData.usageTracking) {
-      await this.clear('usage-tracking');
-      await this.setAll('usage-tracking', backupData.usageTracking);
+      await this.clear("usage-tracking");
+      await this.setAll("usage-tracking", backupData.usageTracking);
     }
 
     // Import achievements
     if (backupData.achievements) {
-      await this.clear('achievements');
-      await this.setAll('achievements', backupData.achievements);
+      await this.clear("achievements");
+      await this.setAll("achievements", backupData.achievements);
     }
   }
 
@@ -537,15 +685,16 @@ export class IndexedDBStorage {
    */
   private async calculateChecksum(data: BackupData): Promise<string> {
     // Create a copy without the checksum field
-    const { checksum, ...dataToHash } = data;
-    const json = JSON.stringify(dataToHash);
+    const json = JSON.stringify(data, (key, value) =>
+      key === "checksum" ? undefined : value,
+    );
 
     // Use Web Crypto API for SHA-256 hash
     const encoder = new TextEncoder();
     const dataBuffer = encoder.encode(json);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   /**
@@ -567,8 +716,8 @@ export class IndexedDBStorage {
     }
 
     // Fallback: estimate based on IndexedDB size
-    const decks = await this.getAll('decks');
-    const savedGames = await this.getAll('saved-games');
+    const decks = await this.getAll("decks");
+    const savedGames = await this.getAll("saved-games");
     const json = JSON.stringify({ decks, savedGames });
     const usage = new Blob([json]).size;
 
@@ -608,9 +757,16 @@ export class IndexedDBStorage {
  * Default storage configuration for Planar Nexus
  */
 const DEFAULT_STORAGE_CONFIG: StorageConfig = {
-  dbName: 'PlanarNexusStorage',
+  dbName: "PlanarNexusStorage",
   version: 2,
-  stores: ['decks', 'saved-games', 'preferences', 'usage-tracking', 'achievements', 'game-history'],
+  stores: [
+    "decks",
+    "saved-games",
+    "preferences",
+    "usage-tracking",
+    "achievements",
+    "game-history",
+  ],
 };
 
 /**
@@ -626,7 +782,10 @@ export const indexedDBStorage = new IndexedDBStorage(DEFAULT_STORAGE_CONFIG);
  * Check if running in Tauri environment
  */
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && (window as { __TAURI__?: unknown }).__TAURI__ !== undefined;
+  return (
+    typeof window !== "undefined" &&
+    (window as { __TAURI__?: unknown }).__TAURI__ !== undefined
+  );
 }
 
 /**
@@ -641,20 +800,22 @@ export async function getStorage(): Promise<IndexedDBStorage> {
 /**
  * Migrate game history from localStorage to IndexedDB
  */
-export async function migrateGameHistoryToIndexedDB(storageInstance?: IndexedDBStorage): Promise<void> {
-  const storage = storageInstance || await getStorage();
-  const gameHistoryKey = 'planar-nexus-game-history';
+export async function migrateGameHistoryToIndexedDB(
+  storageInstance?: IndexedDBStorage,
+): Promise<void> {
+  const storage = storageInstance || (await getStorage());
+  const gameHistoryKey = "planar-nexus-game-history";
   const gameHistoryData = localStorage.getItem(gameHistoryKey);
 
   if (gameHistoryData) {
     try {
       const gameHistory = JSON.parse(gameHistoryData);
       if (Array.isArray(gameHistory)) {
-        await storage.setAll('game-history', gameHistory);
+        await storage.setAll("game-history", gameHistory);
         // localStorage.removeItem(gameHistoryKey);
       }
     } catch (error) {
-      console.error('Failed to migrate game history:', error);
+      console.error("Failed to migrate game history:", error);
     }
   }
 }
@@ -669,38 +830,38 @@ export async function migrateFromLocalStorage(): Promise<void> {
   await migrateGameHistoryToIndexedDB();
 
   // Migrate decks
-  const decksKey = 'planar_nexus_decks';
+  const decksKey = "planar_nexus_decks";
   const decksData = localStorage.getItem(decksKey);
   if (decksData) {
     try {
       const decks = JSON.parse(decksData);
       if (Array.isArray(decks)) {
-        await storage.setAll('decks', decks);
+        await storage.setAll("decks", decks);
         // Keep localStorage for now for backward compatibility
         // localStorage.removeItem(decksKey);
       }
     } catch (error) {
-      console.error('Failed to migrate decks:', error);
+      console.error("Failed to migrate decks:", error);
     }
   }
 
   // Migrate saved games
-  const savedGamesKey = 'planar_nexus_saved_games';
+  const savedGamesKey = "planar_nexus_saved_games";
   const savedGamesData = localStorage.getItem(savedGamesKey);
   if (savedGamesData) {
     try {
       const savedGames = JSON.parse(savedGamesData);
       if (Array.isArray(savedGames)) {
-        await storage.setAll('saved-games', savedGames);
+        await storage.setAll("saved-games", savedGames);
         // localStorage.removeItem(savedGamesKey);
       }
     } catch (error) {
-      console.error('Failed to migrate saved games:', error);
+      console.error("Failed to migrate saved games:", error);
     }
   }
 
   // Migrate usage tracking
-  const usageKey = 'planar_nexus_ai_usage';
+  const usageKey = "planar_nexus_ai_usage";
   const usageData = localStorage.getItem(usageKey);
   if (usageData) {
     try {
@@ -711,27 +872,27 @@ export async function migrateFromLocalStorage(): Promise<void> {
           ...record,
           id: `usage_${record.timestamp}_${index}`,
         }));
-        await storage.setAll('usage-tracking', recordsWithIds);
+        await storage.setAll("usage-tracking", recordsWithIds);
         // localStorage.removeItem(usageKey);
       }
     } catch (error) {
-      console.error('Failed to migrate usage tracking:', error);
+      console.error("Failed to migrate usage tracking:", error);
     }
   }
 
   // Migrate achievements
   const achievementsPattern = /^planar_nexus_achievements_/;
-  const achievementKeys = Object.keys(localStorage).filter(key =>
-    achievementsPattern.test(key)
+  const achievementKeys = Object.keys(localStorage).filter((key) =>
+    achievementsPattern.test(key),
   );
 
   for (const key of achievementKeys) {
     try {
-      const playerId = key.replace('planar_nexus_achievements_', '');
+      const playerId = key.replace("planar_nexus_achievements_", "");
       const data = localStorage.getItem(key);
       if (data) {
         const achievement = JSON.parse(data);
-        await storage.set('achievements', {
+        await storage.set("achievements", {
           id: playerId,
           ...achievement,
         });
@@ -742,17 +903,17 @@ export async function migrateFromLocalStorage(): Promise<void> {
     }
   }
 
-  console.log('Migration from localStorage to IndexedDB completed');
+  console.info("Migration from localStorage to IndexedDB completed");
 }
 
 /**
  * Format bytes to human-readable size
  */
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return "0 B";
 
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
