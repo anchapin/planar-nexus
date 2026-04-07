@@ -403,19 +403,19 @@ Plans:
 
 ## Progress Table
 
-| Phase                | Goal                                             | Requirements | Plans Complete | Status      | Completed  |
-| -------------------- | ------------------------------------------------ | ------------ | -------------- | ----------- | ---------- |
-| 14. Foundation       | Set selection, sealed core, limited deck builder | Complete     | 2026-03-18     | ✅ Complete | 2026-03-18 |
-| 15. Draft Core       | 3-pack draft with timer                          | Complete     | 4/4            | ✅ Complete | 2026-03-18 |
-| 16. AI Neighbors     | Bot simulation, passing mechanics                | 5            | 6/6            | ✅ Complete | 2026-03-18 |
-| 17. Play Integration | Launch AI game with limited deck                 | Complete     | 3/3            | ✅ Complete | 2026-03-18 |
-| 18. Meta Analysis    | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 19. Matchup Guides   | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
-| 20. Optimization     | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
-| 28. NLP              | Intent recognition, card analysis, wincons       | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
-| 29. Context          | Deck-specific chat history, persistence          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
-| 30. AI Flow Integration | Genkit flow, streaming, error handling         | Complete     | 3/3            | ✅ Complete | 2026-03-20 |
-| 27. Chat Interface   | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| Phase                   | Goal                                             | Requirements | Plans Complete | Status      | Completed  |
+| ----------------------- | ------------------------------------------------ | ------------ | -------------- | ----------- | ---------- |
+| 14. Foundation          | Set selection, sealed core, limited deck builder | Complete     | 2026-03-18     | ✅ Complete | 2026-03-18 |
+| 15. Draft Core          | 3-pack draft with timer                          | Complete     | 4/4            | ✅ Complete | 2026-03-18 |
+| 16. AI Neighbors        | Bot simulation, passing mechanics                | 5            | 6/6            | ✅ Complete | 2026-03-18 |
+| 17. Play Integration    | Launch AI game with limited deck                 | Complete     | 3/3            | ✅ Complete | 2026-03-18 |
+| 18. Meta Analysis       | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 19. Matchup Guides      | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
+| 20. Optimization        | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
+| 28. NLP                 | Intent recognition, card analysis, wincons       | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| 29. Context             | Deck-specific chat history, persistence          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| 30. AI Flow Integration | Genkit flow, streaming, error handling           | Complete     | 3/3            | ✅ Complete | 2026-03-20 |
+| 27. Chat Interface      | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
 
 ---
 
@@ -559,7 +559,16 @@ Plans:
 3. Main-thread scripting time reduced by 40%
 4. React.memo and localized state used effectively
 
-**Plans**: TBD
+**Plans**: 6 plans (planned)
+
+Plans:
+
+- [ ] 33-01-PLAN.md — VirtualizedCardGrid Shared Component (REND-01) ⏳
+- [ ] 33-02-PLAN.md — CardArt & CardItem Optimization (REND-02) ⏳
+- [ ] 33-03-PLAN.md — Virtualize Deck-Builder Card Search (Integration) ⏳
+- [ ] 33-04-PLAN.md — Virtualize Collection View (Integration) ⏳
+- [ ] 33-05-PLAN.md — Main-Thread Optimization & Scripting Reduction (REND-03) ⏳
+- [ ] 33-06-PLAN.md — Phase 33 Verification & Benchmarking ⏳
 
 ### Phase 34: Scalable Storage & Backups
 
@@ -575,30 +584,37 @@ Plans:
 2. Client-side compression for large data exports
 3. IndexedDB queries and schema audited for performance
 
-**Plans**: TBD
+**Plans**: 4 plans
+
+Plans:
+
+- [ ] 34-01-PLAN.md — Incremental Backup Logic (STOR-01)
+- [ ] 34-02-PLAN.md — Compression Layer (STOR-02)
+- [ ] 34-03-PLAN.md — IndexedDB Schema Audit & Optimization (STOR-03)
+- [ ] 34-04-PLAN.md — Integration & Human Verification
 
 ---
 
 ## Progress Table
 
-| Phase                | Goal                                             | Requirements | Plans Complete | Status      | Completed  |
-| -------------------- | ------------------------------------------------ | ------------ | -------------- | ----------- | ---------- |
-| 14. Foundation       | Set selection, sealed core, limited deck builder | Complete     | 2026-03-18     | ✅ Complete | 2026-03-18 |
-| 15. Draft Core       | 3-pack draft with timer                          | Complete     | 4/4            | ✅ Complete | 2026-03-18 |
-| 16. AI Neighbors     | Bot simulation, passing mechanics                | 5            | 6/6            | ✅ Complete | 2026-03-18 |
-| 17. Play Integration | Launch AI game with limited deck                 | Complete     | 3/3            | ✅ Complete | 2026-03-18 |
-| 18. Meta Analysis    | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 19. Matchup Guides   | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
-| 20. Optimization     | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
-| 21. Pre-commit Hooks | Husky, lint-staged, quality checks               | Complete     | 4/4            | ✅ Complete | 2026-03-19 |
-| 22. Coverage         | Jest thresholds, CI coverage gate                | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 23. Test Utils       | @/test-utils, React helpers, mocks               | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 24. Integration      | MSW, server action tests, E2E flows              | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 25. CI Gates         | Coverage threshold, commit lint, audit           | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 26. Test Docs        | TESTING.md, patterns, decision guide             | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
-| 27. Chat Interface   | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
-| 31. Search Revolution| Orama + Workers background search                | Complete     | 2/2            | ✅ Complete | 2026-03-20 |
-| 32. Worker Intel     | Off-main-thread heuristics                       | 3            | 0/0            | 🏗️ In Prog  |            |
+| Phase                 | Goal                                             | Requirements | Plans Complete | Status      | Completed  |
+| --------------------- | ------------------------------------------------ | ------------ | -------------- | ----------- | ---------- |
+| 14. Foundation        | Set selection, sealed core, limited deck builder | Complete     | 2026-03-18     | ✅ Complete | 2026-03-18 |
+| 15. Draft Core        | 3-pack draft with timer                          | Complete     | 4/4            | ✅ Complete | 2026-03-18 |
+| 16. AI Neighbors      | Bot simulation, passing mechanics                | 5            | 6/6            | ✅ Complete | 2026-03-18 |
+| 17. Play Integration  | Launch AI game with limited deck                 | Complete     | 3/3            | ✅ Complete | 2026-03-18 |
+| 18. Meta Analysis     | Meta decks, health score, trends                 | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 19. Matchup Guides    | Strategy, matchups, game phases                  | Complete     | 3/3            | ✅ Complete | 2026-03-19 |
+| 20. Optimization      | Sideboards, mana curves                          | Complete     | 2/2            | ✅ Complete | 2026-03-19 |
+| 21. Pre-commit Hooks  | Husky, lint-staged, quality checks               | Complete     | 4/4            | ✅ Complete | 2026-03-19 |
+| 22. Coverage          | Jest thresholds, CI coverage gate                | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 23. Test Utils        | @/test-utils, React helpers, mocks               | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 24. Integration       | MSW, server action tests, E2E flows              | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 25. CI Gates          | Coverage threshold, commit lint, audit           | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 26. Test Docs         | TESTING.md, patterns, decision guide             | Complete     | 1/1            | ✅ Complete | 2026-03-19 |
+| 27. Chat Interface    | Chat UI, message history, input, typing          | Complete     | 1/1            | ✅ Complete | 2026-03-20 |
+| 31. Search Revolution | Orama + Workers background search                | Complete     | 2/2            | ✅ Complete | 2026-03-20 |
+| 32. Worker Intel      | Off-main-thread heuristics                       | 3            | 0/0            | 🏗️ In Prog  |            |
 
 ---
 
