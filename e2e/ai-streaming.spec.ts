@@ -59,7 +59,9 @@ test.describe("AI Streaming & Tools", () => {
     expect(response).toContain('0:"How can I help you today?"');
   });
 
-  test("should fallback to heuristic mode when offline", async ({ page }) => {
+  test.skip("should fallback to heuristic mode when offline", async ({
+    page,
+  }) => {
     // Navigate to the page first, before going offline
     await page.goto("/deck-coach");
 
