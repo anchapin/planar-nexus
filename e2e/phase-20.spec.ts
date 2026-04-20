@@ -111,8 +111,8 @@ test.describe("Phase 20: Advanced Optimization", () => {
       page.getByRole("heading", { name: /create sideboard plan/i }),
     ).toBeVisible();
 
-    // Verify form fields exist - use SelectItem to verify format dropdown is visible
+    // Verify form fields exist - check for plan name and dropdown presence
     await expect(page.getByLabel(/plan name/i)).toBeVisible();
-    await expect(page.getByText("Format")).toBeVisible();
+    await expect(page.locator("label", { hasText: "Format" })).toBeVisible();
   });
 });
