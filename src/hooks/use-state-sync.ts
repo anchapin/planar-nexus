@@ -25,6 +25,9 @@ import {
   type HandshakePayload,
   DEFAULT_SYNC_CONFIG,
 } from '@/lib/game-state/deterministic-sync';
+import { logger } from '@/lib/logger';
+
+const syncLogger = logger.child('StateSync');
 
 /**
  * Configuration for state sync
@@ -195,22 +198,22 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
       }
     });
     
-    console.log('[StateSync] Initialized for peer:', localPeerId);
+    syncLogger.debug('Initialized for peer:', localPeerId);
   }, [fullConfig]);
   
   // Register a peer
   const registerPeer = useCallback((peerId: PeerId) => {
     if (!engineRef.current) {
-      console.warn('[StateSync] Engine not initialized');
+      syncLogger.warn('Engine not initialized');
       return;
     }
     
     engineRef.current.registerPeer(peerId);
-    console.log('[StateSync] Registered peer:', peerId);
+    syncLogger.debug('Registered peer:', peerId);
 
     // If we have game state, we could initiate handshake here
     if (gameStateRef.current) {
-      console.log('[StateSync] Initiating handshake with peer:', peerId);
+      syncLogger.debug('Initiating handshake with peer:', peerId);
       // In a real P2P scenario, we would send a handshake-init message
     }
   }, []);
@@ -227,7 +230,7 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
       return { ...prev, peerHashes: newPeerHashes };
     });
     
-    console.log('[StateSync] Unregistered peer:', peerId);
+    syncLogger.debug('Unregistered peer:', peerId);
   }, []);
   
   // Update local game state
@@ -248,7 +251,7 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
     
     // The action should already have been created with createAction
     // This is for tracking purposes
-    console.log('[StateSync] Recorded action:', action.sequenceNumber);
+    syncLogger.debug('Recorded action:', action.sequenceNumber);
   }, []);
   
   // Handle incoming sync message
@@ -344,7 +347,7 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
             handshakePayload,
             gameStateRef.current
           );
-          console.log('[StateSync] Handshake init from', message.senderId, success ? 'Success' : 'Failed');
+          syncLogger.debug('Handshake init from', message.senderId, success ? 'Success' : 'Failed');
         }
         break;
       }
@@ -364,21 +367,21 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
             handshakePayload,
             gameStateRef.current
           );
-          console.log('[StateSync] Handshake response from', message.senderId, success ? 'Success' : 'Failed');
+          syncLogger.debug('Handshake response from', message.senderId, success ? 'Success' : 'Failed');
         }
         break;
       }
       
       case 'sync-request': {
         // Peer is requesting sync - would send back action history
-        console.log('[StateSync] Sync request from:', message.senderId);
+        syncLogger.debug('Sync request from:', message.senderId);
         break;
       }
       
       case 'sync-response': {
         // Handle sync response with actions
         if (message.actions && message.actions.length > 0) {
-          console.log('[StateSync] Received sync response with', message.actions.length, 'actions');
+          syncLogger.debug('Received sync response with', message.actions.length, 'actions');
         }
         break;
       }
@@ -493,12 +496,12 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
   // Check for desync threshold
   useEffect(() => {
     if (status.consecutiveDesyncs >= fullConfig.desyncThreshold && desyncAlert) {
-      console.warn('[StateSync] Desync threshold reached:', status.consecutiveDesyncs);
+      syncLogger.warn('Desync threshold reached:', status.consecutiveDesyncs);
       
       // Auto-resolve if configured
       if (fullConfig.autoResolveConflicts && gameStateRef.current) {
         // Would need remote state to resolve - this is a placeholder
-        console.log('[StateSync] Auto-resolve enabled but remote state not available');
+        syncLogger.debug('Auto-resolve enabled but remote state not available');
       }
     }
   }, [status.consecutiveDesyncs, fullConfig.desyncThreshold, fullConfig.autoResolveConflicts, desyncAlert]);
@@ -508,7 +511,7 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
     if (!engineRef.current) return;
     
     // In a real P2P scenario, this would broadcast the message via WebRTC
-    console.log('[StateSync] Sending message:', message.type);
+    syncLogger.debug('Sending message:', message.type);
   }, []);
 
   return {

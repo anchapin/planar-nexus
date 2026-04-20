@@ -1,5 +1,5 @@
 import type { AIGameState as GameState } from '@/lib/game-state/types';
-import type { DetailedEvaluation } from '../game-state-evaluator';
+import type { DetailedEvaluation } from '@/ai/game-state-evaluator';
 
 /**
  * Actions that the AI Worker can perform.

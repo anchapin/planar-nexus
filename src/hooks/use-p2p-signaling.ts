@@ -20,6 +20,9 @@ import {
   deserializeSignalingData,
 } from '@/lib/p2p-signaling-client';
 import type { P2PMessage, P2PConnectionState } from '@/lib/webrtc-p2p';
+import { logger } from '@/lib/logger';
+
+const signalingLogger = logger.child('P2PSignaling');
 
 /**
  * Hook state
@@ -184,7 +187,7 @@ export function useP2PSignaling(
       const qrDataUrl = await client.generateQRCode();
       setQrCode(qrDataUrl);
 
-      console.log('[P2P Hook] Initialized as host:', client.getGameCode());
+      signalingLogger.debug('Initialized as host:', client.getGameCode());
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to initialize as host');
       setError(error);
@@ -230,7 +233,7 @@ export function useP2PSignaling(
       signalingClientRef.current = client;
       setGameCode(client.getGameCode());
 
-      console.log('[P2P Hook] Initialized as client:', client.getGameCode());
+      signalingLogger.debug('Initialized as client:', client.getGameCode());
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to initialize as client');
       setError(error);
@@ -374,7 +377,7 @@ export function useP2PSignaling(
     (message: P2PMessage): void => {
       const client = signalingClientRef.current;
       if (!client) {
-        console.warn('[P2P Hook] Cannot send message: client not initialized');
+        signalingLogger.warn('Cannot send message: client not initialized');
         return;
       }
 
