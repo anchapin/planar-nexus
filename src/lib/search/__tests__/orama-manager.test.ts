@@ -14,21 +14,23 @@ jest.mock("@orama/orama", () => {
   return {
     create: jest.fn().mockResolvedValue({}),
     insertMultiple: jest.fn().mockResolvedValue({}),
-    search: jest.fn().mockResolvedValue({
-      count: 1,
-      hits: [
-        {
-          document: {
-            id: testCards[0].id,
-            name: testCards[0].name,
-            text: "Test Text",
-            type: "Creature",
-            color: "W",
-            vector: new Array(384).fill(0.1),
+    search: jest.fn().mockImplementation(() =>
+      Promise.resolve({
+        count: 1,
+        hits: [
+          {
+            document: {
+              id: "test-002",
+              name: "Plains",
+              text: "Test Text",
+              type: "Creature",
+              color: "W",
+              vector: new Array(384).fill(0.1),
+            },
           },
-        },
-      ],
-    }),
+        ],
+      }),
+    ),
   };
 });
 
