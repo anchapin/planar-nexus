@@ -24,7 +24,7 @@ describe("AIThinkingIndicator", () => {
     const { container } = render(
       <AIThinkingIndicator className="custom-class" />,
     );
-    // @ts-expect-error className access on React element
+    // @ts-expect-error className on React element
     expect(container.firstChild?.className).toContain("custom-class");
   });
 });

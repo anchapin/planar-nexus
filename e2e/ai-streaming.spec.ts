@@ -59,6 +59,7 @@ test.describe("AI Streaming & Tools", () => {
     expect(response).toContain('0:"How can I help you today?"');
   });
 
+  // Skipped: Requires AI service that may not be available in CI
   test.skip("should fallback to heuristic mode when offline", async ({
     page,
   }) => {
@@ -74,6 +75,8 @@ test.describe("AI Streaming & Tools", () => {
     await page.context().setOffline(true);
 
     // Trigger deck review
+    await page.goto("/deck-coach");
+
     await page.fill(
       'textarea[placeholder*="1 Sol Ring"]',
       "1 Black Lotus\n1 Mox Ruby",

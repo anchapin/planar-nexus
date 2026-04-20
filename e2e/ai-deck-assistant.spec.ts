@@ -20,6 +20,7 @@ test.describe("AI Deck Assistant", () => {
     await expect(emptyState).toBeVisible();
   });
 
+  // Skipped: Requires AI service (Gemini) that may not be available in CI
   test.skip("should provide synergistic suggestions after adding cards", async ({
     page,
   }) => {
@@ -48,6 +49,7 @@ test.describe("AI Deck Assistant", () => {
     expect(suggestionCount).toBeGreaterThan(0);
   });
 
+  // Skipped: Requires AI service that may not be available in CI
   test.skip("should provide a streamed AI explanation", async ({ page }) => {
     // 1. Add a card to get suggestions
     const searchInput = page.getByTestId("card-search-input");
@@ -76,6 +78,7 @@ test.describe("AI Deck Assistant", () => {
     expect(text.length).toBeGreaterThan(0);
   });
 
+  // Skipped: Requires AI service that may not be available in CI
   test.skip("should show synergy badges on card search results", async ({
     page,
   }) => {

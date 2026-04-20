@@ -7,6 +7,7 @@ import { test, expect } from "@playwright/test";
  * and maintains 60fps responsiveness (no tasks > 16ms).
  */
 test.describe("AI Performance", () => {
+  // Skipped: Requires specific AI UI components that may not exist in expected locations
   test.skip("should maintain 60fps responsiveness during AI thinking", async ({
     page,
   }) => {

@@ -16,16 +16,15 @@ const mockPostMessage = jest.fn();
 let onMessageHandler: (event: any) => Promise<void>;
 
 describe("EmbeddingWorker", () => {
-  beforeAll(() => {
-    // Define self BEFORE require
-    // @ts-expect-error self mock for worker env
+  beforeAll(async () => {
+    // Define self BEFORE loading worker
+    // @ts-expect-error self mock in Node env
     global.self = {
       postMessage: mockPostMessage,
     };
 
     // Load the worker to attach the handler
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("../embedding-worker");
+    await import("../embedding-worker");
 
     // Capture the handler
     onMessageHandler = (global.self as any).onmessage;

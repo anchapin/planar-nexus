@@ -12,7 +12,6 @@ import { DraftPackView } from "./draft-pack-view";
 import type {
   DraftSession,
   DraftPack,
-  DraftCard as DraftCardType,
   PoolCard,
 } from "@/lib/limited/types";
 
@@ -244,12 +243,13 @@ export function trackHover(
  * @returns Pick handlers and derived state
  */
 export function useDraftPicker(
-  session: DraftSession,
+  session: DraftSession | null,
   setSession: (session: DraftSession) => void
 ) {
   // Pick a card
   const handlePickCard = useCallback(
     (cardId: string) => {
+      if (!session) return;
       setSession(pickCard(session, cardId));
     },
     [session, setSession]
@@ -257,12 +257,14 @@ export function useDraftPicker(
 
   // Open current pack
   const handleOpenPack = useCallback(() => {
+    if (!session) return;
     setSession(openCurrentPack(session));
   }, [session, setSession]);
 
   // Track hover
   const handleHoverCard = useCallback(
     (cardId: string | null) => {
+      if (!session) return;
       setSession(trackHover(session, cardId));
     },
     [session, setSession]
@@ -270,6 +272,7 @@ export function useDraftPicker(
 
   // Advance to next pack
   const handleAdvanceToNextPack = useCallback(() => {
+    if (!session) return;
     setSession(advanceToNextPack(session));
   }, [session, setSession]);
 
