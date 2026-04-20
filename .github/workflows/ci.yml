@@ -160,7 +160,7 @@ jobs:
         run: npm ci
       
       - name: Validate commit messages
-        run: npx commitlint --last 1 --verbose
+        run: npx commitlint --last --verbose
 
   security:
     name: Security Audit
