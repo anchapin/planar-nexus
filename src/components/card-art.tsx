@@ -2,26 +2,30 @@
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { resolveCardImageWithFallback, getCardBackImage } from '@/lib/card-image-resolver';
+import { resolveCardImageWithFallback, getCardBackImage, isCustomImagesEnabled } from '@/lib/card-image-resolver';
 import { useAutoStyledArtwork } from '@/hooks/use-procedural-artwork';
 
 /**
  * Card Art Display Component
- * 
+ *
  * Issue #288: Feature: Add card art display and high-res rendering
- * 
+ *
  * Provides:
- * - High-resolution card art display from Scryfall or local images
+ * - High-resolution card art display from local user-provided images (BYOI model)
+ * - Procedural artwork generation as fallback
  * - Lazy loading for performance optimization
  * - Fallback for missing images
  * - Multiple size variants
  * - Zoom/pan functionality for detailed view
+ *
+ * Note: Scryfall CDN images are never rendered directly. This component
+ * only displays local user-provided images or procedural artwork.
  */
 
 export interface CardArtProps {
   /** Card name for display and alt text */
   cardName: string;
-  /** Scryfall image URI (preferred) */
+  /** Image URI (only used when custom images are enabled via BYOI configuration) */
   imageUri?: string;
   /** Scryfall card object for local image resolution */
   scryfallCard?: {
@@ -246,18 +250,17 @@ export const CardArt = memo(function CardArt({
       return proceduralUrl;
     }
 
-    // If we have a direct Scryfall URI, use it
-    if (imageUri) {
-      // Scryfall provides different sizes via URL parameters
-      const sizeParam = config.scryfallSize;
-      // Handle different URI formats
-      if (imageUri.includes('scryfall')) {
-        return imageUri.replace('/normal/', `/${sizeParam}/`).replace('/large/', `/${sizeParam}/`);
-      }
+    // BYOI guard: Only use imageUri if custom images are enabled
+    // This prevents Scryfall CDN URLs from being rendered without user configuration
+    const customImagesEnabled = isCustomImagesEnabled();
+
+    if (imageUri && customImagesEnabled) {
+      // Only use imageUri if user has configured custom images
+      // This ensures we don't render Scryfall URLs by default
       return imageUri;
     }
 
-    // Try local image resolution
+    // Try local image resolution (respects BYOI - only returns local paths)
     if (scryfallCard) {
       return resolveCardImageWithFallback(scryfallCard, undefined, config.scryfallSize);
     }
