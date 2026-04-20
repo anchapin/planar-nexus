@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { oramaManager, SearchParams } from '../lib/search/orama-manager';
-import { backgroundIndexingManager, IndexingProgress } from '../lib/search/background-indexing';
+import { oramaManager, SearchParams } from '@/lib/search/orama-manager';
+import { backgroundIndexingManager, IndexingProgress } from '@/lib/search/background-indexing';
 import { Results } from '@orama/orama';
 
 export interface UseLocalSearchOptions extends SearchParams {
