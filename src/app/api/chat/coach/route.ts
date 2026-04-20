@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { coachFlow } from '@/ai/flows/genkit-coach-flow';
+import { NextRequest, NextResponse } from "next/server";
+import { coachFlow } from "@/ai/flows/genkit-coach-flow";
 
 /**
  * API Route for the Conversational AI Coach using Genkit.
@@ -10,7 +10,7 @@ import { coachFlow } from '@/ai/flows/genkit-coach-flow';
  * compatibility — when Genkit is re-added, this route will work as-is.
  */
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,8 +20,8 @@ export async function POST(request: NextRequest) {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, error: 'Invalid JSON body' },
-        { status: 400 }
+        { success: false, error: "Invalid JSON body" },
+        { status: 400 },
       );
     }
 
@@ -30,22 +30,25 @@ export async function POST(request: NextRequest) {
     // 2. Validate required fields
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json(
-        { success: false, error: 'Messages are required and must be an array' },
-        { status: 400 }
+        { success: false, error: "Messages are required and must be an array" },
+        { status: 400 },
       );
     }
 
     if (!deckCards && !digestedContext) {
       return NextResponse.json(
-        { success: false, error: 'Either deckCards or digestedContext is required' },
-        { status: 400 }
+        {
+          success: false,
+          error: "Either deckCards or digestedContext is required",
+        },
+        { status: 400 },
       );
     }
 
     if (!format) {
       return NextResponse.json(
-        { success: false, error: 'Format is required' },
-        { status: 400 }
+        { success: false, error: "Format is required" },
+        { status: 400 },
       );
     }
 
@@ -68,7 +71,9 @@ export async function POST(request: NextRequest) {
         try {
           for await (const chunk of stream) {
             if (chunk.content) {
-              const text = chunk.content.map((c: { text: string }) => c.text || '').join('');
+              const text = chunk.content
+                .map((c: { text: string }) => c.text || "")
+                .join("");
               if (text) {
                 controller.enqueue(encoder.encode(text));
               }
@@ -76,7 +81,7 @@ export async function POST(request: NextRequest) {
           }
           controller.close();
         } catch (error) {
-          console.error('Streaming error:', error);
+          console.error("Streaming error:", error);
           controller.error(error);
         }
       },
@@ -84,19 +89,18 @@ export async function POST(request: NextRequest) {
 
     return new Response(responseStream, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Transfer-Encoding': 'chunked',
+        "Content-Type": "text/plain; charset=utf-8",
+        "Transfer-Encoding": "chunked",
       },
     });
-
   } catch (error) {
-    console.error('Conversational Coach API error:', error);
+    console.error("Conversational Coach API error:", error);
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
+        error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

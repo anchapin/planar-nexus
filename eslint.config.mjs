@@ -24,10 +24,13 @@ const eslintConfig = [
     },
     rules: {
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_" },
+      ],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-empty-function": "warn", // Changed to warn for callback interfaces
-      "no-empty": ["error", { "allowEmptyCatch": false }],
+      "no-empty": ["error", { allowEmptyCatch: false }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
       // Prevent console.log in production code (use logger utility instead)
@@ -37,7 +40,8 @@ const eslintConfig = [
         "warn",
         {
           selector: "CallExpression[callee.name='fetch']",
-          message: "Use safeFetch or AI proxy client instead of direct fetch calls",
+          message:
+            "Use safeFetch or AI proxy client instead of direct fetch calls",
         },
       ],
     },
@@ -58,7 +62,14 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ["next-env.d.ts", ".next/**", "node_modules/**", "jest.setup.js"],
+    ignores: [
+      "next-env.d.ts",
+      ".next/**",
+      "node_modules/**",
+      "jest.setup.js",
+      "jest.config.js",
+      "commitlint.config.js",
+    ],
   },
 ];
 

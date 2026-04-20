@@ -9,8 +9,8 @@
  * AI deck review flow (src/ai/flows/ai-deck-coach-review.ts) are unaffected.
  */
 
-import type { z } from 'zod';
-import type { CoachFlowInputSchema } from '../types';
+import type { z } from "zod";
+import type { CoachFlowInputSchema } from "../types";
 
 type CoachFlowInput = z.infer<typeof CoachFlowInputSchema>;
 
@@ -18,11 +18,13 @@ type CoachFlowInput = z.infer<typeof CoachFlowInputSchema>;
  * Async generator that yields a single error message indicating the
  * Genkit-based coach is unavailable.
  */
-async function* generateUnavailableResponse(): AsyncGenerator<{ content: Array<{ text: string }> }> {
+async function* generateUnavailableResponse(): AsyncGenerator<{
+  content: Array<{ text: string }>;
+}> {
   yield {
     content: [
       {
-        text: 'The AI conversational coach is currently unavailable. The Genkit dependency has been removed from this project. Please use the heuristic deck coach for deck analysis instead.',
+        text: "The AI conversational coach is currently unavailable. The Genkit dependency has been removed from this project. Please use the heuristic deck coach for deck analysis instead.",
       },
     ],
   };

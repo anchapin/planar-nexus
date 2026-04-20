@@ -63,6 +63,9 @@ test.describe("AI Streaming & Tools", () => {
   test.skip("should fallback to heuristic mode when offline", async ({
     page,
   }) => {
+    // Navigate to the page first, before going offline
+    await page.goto("/deck-coach");
+
     // Mock API failure
     await page.route("**/api/ai-proxy", async (route) => {
       await route.abort("internetdisconnected");
@@ -73,6 +76,7 @@ test.describe("AI Streaming & Tools", () => {
 
     // Trigger deck review
     await page.goto("/deck-coach");
+
     await page.fill(
       'textarea[placeholder*="1 Sol Ring"]',
       "1 Black Lotus\n1 Mox Ruby",

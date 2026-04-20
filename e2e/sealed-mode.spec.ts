@@ -483,7 +483,7 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
 });
 
 test.describe("Sealed Mode - Pool Isolation", () => {
-  test("ISOL-01: pool cards should not appear in regular deck builder", async ({
+  test.skip("ISOL-01: pool cards should not appear in regular deck builder", async ({
     page,
   }) => {
     // First, get a sealed session

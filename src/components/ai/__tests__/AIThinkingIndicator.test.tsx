@@ -1,28 +1,30 @@
-import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { AIThinkingIndicator } from '../AIThinkingIndicator';
+import React from "react";
+import { render, screen } from "@testing-library/react";
+import { AIThinkingIndicator } from "../AIThinkingIndicator";
 
-describe('AIThinkingIndicator', () => {
-  it('renders correctly with default props', () => {
+describe("AIThinkingIndicator", () => {
+  it("renders correctly with default props", () => {
     render(<AIThinkingIndicator />);
-    expect(screen.getByTestId('ai-thinking-indicator')).toBeDefined();
-    expect(screen.getByText('AI Thinking...')).toBeDefined();
+    expect(screen.getByTestId("ai-thinking-indicator")).toBeDefined();
+    expect(screen.getByText("AI Thinking...")).toBeDefined();
   });
 
-  it('renders with custom label', () => {
+  it("renders with custom label", () => {
     render(<AIThinkingIndicator label="Processing..." />);
-    expect(screen.getByText('Processing...')).toBeDefined();
+    expect(screen.getByText("Processing...")).toBeDefined();
   });
 
-  it('renders without label when label is empty', () => {
+  it("renders without label when label is empty", () => {
     render(<AIThinkingIndicator label="" />);
-    const indicator = screen.getByTestId('ai-thinking-indicator');
-    expect(indicator.textContent).toBe('');
+    const indicator = screen.getByTestId("ai-thinking-indicator");
+    expect(indicator.textContent).toBe("");
   });
 
-  it('applies custom className', () => {
-    const { container } = render(<AIThinkingIndicator className="custom-class" />);
+  it("applies custom className", () => {
+    const { container } = render(
+      <AIThinkingIndicator className="custom-class" />,
+    );
     // @ts-expect-error className on React element
-    expect(container.firstChild?.className).toContain('custom-class');
+    expect(container.firstChild?.className).toContain("custom-class");
   });
 });

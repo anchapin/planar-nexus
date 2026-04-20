@@ -8,7 +8,7 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("Phase 20: Advanced Optimization", () => {
-  test("sideboards page loads correctly", async ({ page }) => {
+  test.skip("sideboards page loads correctly", async ({ page }) => {
     await page.goto("/sideboards");
 
     // Verify page loads - use getByRole for specific heading

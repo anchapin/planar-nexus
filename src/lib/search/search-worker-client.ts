@@ -7,8 +7,8 @@
  * search indexing is ready.
  */
 
-import type { MinimalCard } from '@/lib/card-database';
-import type { SearchResults } from './worker-types';
+import type { MinimalCard } from "@/lib/card-database";
+import type { SearchResults } from "./worker-types";
 
 interface SearchOptions {
   limit?: number;
@@ -17,8 +17,11 @@ interface SearchOptions {
 }
 
 class SearchWorkerClient {
-  async search(_query: string, _options?: SearchOptions): Promise<SearchResults> {
-    return { count: 0, hits: [], elapsed: { formatted: '0ms', raw: 0 } };
+  async search(
+    _query: string,
+    _options?: SearchOptions,
+  ): Promise<SearchResults> {
+    return { count: 0, hits: [], elapsed: { formatted: "0ms", raw: 0 } };
   }
 
   async indexCards(_cards: MinimalCard[]): Promise<number> {
