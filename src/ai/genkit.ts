@@ -7,11 +7,15 @@ interface GoogleAIPluginStub {
 }
 
 const googleAiPluginStub: GoogleAIPluginStub = {
-  name: 'google-ai',
-  configure: () => ({})
+  name: "google-ai",
+  configure: () => ({}),
 };
 
 export const googleAiPlugin = googleAiPluginStub;
 
-// Genkit stub removed - no longer functional
-export const ai = null;
+// Genkit stub - typed as nullable to allow conditional usage
+export interface GenkitAI {
+  generate: (params: Record<string, unknown>) => Promise<{ text: string }>;
+}
+
+export const ai: GenkitAI | null = null;
