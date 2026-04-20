@@ -1,5 +1,16 @@
 /**
  * Public lobby browser for discovering available games
+ *
+ * @deprecated This module uses server-dependent lobby browsing and is DEPRECATED.
+ * Public lobby browsing requires centralized servers which creates legal liability targets.
+ *
+ * Use serverless P2P direct connection instead:
+ * - Players exchange connection codes out-of-band (Discord, QR codes, etc.)
+ * - Use `p2p-direct-connection.ts` for QR code/manual code exchange
+ * - Use `p2p-signaling-client.ts` for client-side signaling
+ *
+ * See issue #641 for migration to legal/serverless P2P.
+ *
  * This is a prototype implementation using localStorage to simulate a public game registry
  * In production, this would connect to a signaling server or backend API
  */

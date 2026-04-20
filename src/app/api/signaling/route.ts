@@ -2,18 +2,22 @@
  * Signaling Server API Route
  * Issue #285: Implement signaling server for WebRTC handshake
  *
+ * @deprecated This server-dependent API route is DEPRECATED and NOT supported for production.
+ * Running centralized server infrastructure creates legal liability targets.
+ *
+ * Use serverless P2P instead:
+ * - Use `p2p-direct-connection.ts` for QR code/manual code exchange
+ * - Use `p2p-signaling-client.ts` for client-side signaling
+ * - Use `/multiplayer/p2p-host` and `/multiplayer/p2p-join` for UI
+ *
+ * See issue #641 for migration to legal/serverless P2P.
+ *
  * IMPORTANT: This API route requires a server and is NOT supported in static export mode.
  * For client-side only deployment, use the serverless P2P direct connection
  * implemented in `src/lib/p2p-direct-connection.ts` instead.
  *
  * This is a lightweight signaling server implemented as a Next.js API route
  * that enables WebRTC connections between players when a server is available.
- *
- * Features:
- * - Session establishment between peers
- * - Game code generation and lookup
- * - Minimal state (only for connection establishment)
- * - Offer/Answer/ICE candidate exchange
  *
  * Note: In static export mode (client-side only), this route will not function.
  * Use the QR code/manual code entry P2P system instead.
