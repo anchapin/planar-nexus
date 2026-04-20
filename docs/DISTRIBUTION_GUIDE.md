@@ -685,14 +685,14 @@ if (consent) {
 
 ### Magic: The Gathering Content
 
-**Important**: Planar Nexus is not affiliated with Wizards of the Coast.
+**WotC Fan Content Policy Disclaimer**: Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
 
 **To Stay Legally Safe**:
 - Don't host card images directly
 - Use Scryfall API for card data
 - Include proper disclaimers
 - Don't claim ownership of MTG content
-- Follow Wizards of the Coast's Fan Content Policy
+- Follow Wizards of the Coast's Fan Content Policy: https://company.wizards.com/en/legal/fancontentpolicy
 
 ### Open Source License
 
