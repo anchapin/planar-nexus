@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6
-milestone_name: QA/QC Infrastructure
-status: complete
-last_updated: "2026-03-19T17:19:00.000Z"
+milestone: v1.8
+milestone_name: Performance & Scale
+status: in-progress
+last_updated: "2026-03-20T12:00:00.000Z"
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 9
-  completed_plans: 9
+  total_phases: 34
+  completed_phases: 31
+  total_plans: 31
+  completed_plans: 31
 ---
 
 # Project State: Planar Nexus
@@ -16,25 +16,27 @@ progress:
 ## Project Reference
 
 - **Core Value**: Free open-source tabletop card game deck builder and tester with AI coaching.
-- **Current Focus**: v1.7 - (Next milestone TBD)
+- **Current Focus**: v1.8 - Performance & Scale (In Progress)
 
 ## Current Position
 
-- **Milestone**: v1.6 (QA/QC Infrastructure)
-- **Status**: ✅ Complete (All 6 phases done!)
-- **Next**: Ready to start v1.7
+- **Milestone**: v1.8 (Performance & Scale)
+- **Status**: 🏗️ In Progress
+- **Next**: Phase 32 - Off-Main-Thread Intelligence
 
 ## Milestone History
 
-| Version | Name                 | Shipped    | Phases |
-| ------- | -------------------- | ---------- | ------ |
-| v1.0    | MVP                  | 2026-03-12 | 1-3    |
-| v1.1    | Polish & Stability   | 2026-03-17 | 4-5    |
-| v1.2    | AI Intelligence      | 2026-03-17 | 6-10   |
-| v1.3    | Deck Builder UX      | 2026-03-18 | 11-13  |
-| v1.4    | Draft/Sealed         | 2026-03-19 | 14-17  |
-| v1.5    | Meta & Strategy AI   | 2026-03-19 | 18-20  |
-| v1.6    | QA/QC Infrastructure | 2026-03-19 | 21-26  |
+| Version | Name                    | Shipped    | Phases |
+| ------- | ----------------------- | ---------- | ------ |
+| v1.0    | MVP                     | 2026-03-12 | 1-3    |
+| v1.1    | Polish & Stability      | 2026-03-17 | 4-5    |
+| v1.2    | AI Intelligence         | 2026-03-17 | 6-10   |
+| v1.3    | Deck Builder UX         | 2026-03-18 | 11-13  |
+| v1.4    | Draft/Sealed            | 2026-03-19 | 14-17  |
+| v1.5    | Meta & Strategy AI      | 2026-03-19 | 18-20  |
+| v1.6    | QA/QC Infrastructure    | 2026-03-19 | 21-26  |
+| v1.7    | Conversational AI Coach | 2026-03-20 | 27-30  |
+| v1.8    | Performance & Scale     | TBD        | 31-34  |
 
 ## Phase Summary
 
@@ -46,124 +48,93 @@ progress:
 | 24    | Integration Test Setup  | REQ-004      | ✅ Complete (1 plan)  |
 | 25    | CI Quality Gates        | REQ-005      | ✅ Complete (1 plan)  |
 | 26    | Test Documentation      | REQ-006      | ✅ Complete (1 plan)  |
+| 27    | Chat Interface Foundation | CHAT-01-06  | ✅ Complete (1 plan)  |
+| 28    | Natural Language Processing | CHAT-07-10  | ✅ Complete (1 plan)  |
+| 29    | Context Management      | CHAT-05      | ✅ Complete (1 plan)  |
+| 30    | AI Flow Integration    | AI-FLOW-01-03 | ✅ Complete (3 plans) |
+| 31    | Search Engine Revolution | ORAMA-01-03  | ✅ Complete (2 plans) |
+| 32    | Off-Main-Thread Intelligence | WORKER-01-03 | 🏗️ In Progress       |
+| 33    | High-Performance Rendering | REND-01-03   | ⏳ Planned            |
+| 34    | Scalable Storage & Backups | STOR-01-03   | ⏳ Planned            |
 
-## v1.6 Scope (QA/QC Infrastructure)
+## v1.8 Scope (Performance & Scale)
+
+### Phase 31: Search Engine Revolution
+
+- Orama-powered Web Worker for background search ✅
+- Automated indexing from IndexedDB ✅
+- `useSearchWorker` hook for component integration ✅
+
+### Phase 32: Off-Main-Thread Intelligence
+
+- Refactor Heuristic Engine to run in a Web Worker 🏗️
+- Implement non-blocking AI "thinking" indicators 🏗️
+- Optimize Genkit flow latency via selective pre-fetching 🏗️
+
+## v1.7 Scope (Conversational AI Coach) ✅ COMPLETE
+
+### Phase 27: Chat Interface Foundation
+
+- Chat UI component in deck coach section
+- Message history display with user/AI distinction
+- Input field with send functionality
+
+### Phase 28: Natural Language Processing
+
+- Intent recognition for common deck questions
+- Card analysis integration
+- Win condition identification
+
+### Phase 29: Context Management
+
+- Deck context loading for each conversation
+- Conversation history for follow-up questions
+
+### Phase 30: AI Flow Integration
+
+- Genkit flow for conversational AI
+- Streaming responses for real-time feedback
+
+## v1.6 Scope (QA/QC Infrastructure) ✅ COMPLETE
 
 ### Phase 21: Pre-commit Hooks Setup
 
 - Husky git hooks installation and configuration
 - lint-staged for staged file processing
-- Pre-commit ESLint, Prettier, and TypeScript checks
 
 ### Phase 22: Coverage Infrastructure
 
 - Jest coverage thresholds configuration
 - CI coverage gate implementation
-- Multi-format coverage reports
 
 ### Phase 23: Test Utilities Library
 
 - @/test-utils directory and helpers
-- React component test helpers
 - Mock implementations for common dependencies
 
 ### Phase 24: Integration Test Setup
 
 - MSW (Mock Service Worker) configuration
-- Server action integration tests
 - Critical user flow integration tests
 
 ### Phase 25: CI Quality Gates
 
 - Coverage threshold gate in CI
 - Commit message linting
-- npm audit security scanning
 
 ### Phase 26: Test Documentation
 
 - TESTING.md documentation
 - Testing patterns and conventions
-- Unit vs integration vs E2E decision guide
-
-## v1.4 Scope (COMPLETE)
-
-### Phase 14: Foundation
-
-- Set selection browser with card counts and release dates ✅
-- Sealed pool opening (6 packs, all cards revealed) ✅
-- Pool filtering by color, type, CMC ✅
-- Limited deck builder with pool isolation ✅
-- 40-card minimum, 4-copy limit validation ✅
-- Pool persistence with session ID ✅
-
-### Phase 15: Draft Core
-
-- 3-pack draft with 14 cards each ✅ (15-01)
-- Face-down packs revealed on open ✅ (15-01)
-- Card selection to add to draft pool ✅ (15-02)
-- Pool always visible during picking ✅ (15-02)
-- Pick timer with visual warnings (green → yellow → red) ✅ (15-03)
-- Timer auto-pick or skip on expiration ✅ (15-03)
-- Draft completion and session persistence ✅ (15-04)
-
-### Phase 16: AI Neighbors
-
-- 2-player draft table simulation ✅
-- Heuristic bot picking (random/medium difficulty) ✅
-- Visual indication of bot picking ✅
-- Pack passing animations ✅
-- Difficulty selection before draft ✅
-
-### Phase 17: Play Integration
-
-- Launch AI opponent from limited session ✅
-- Format validation before game start ✅
-- Return to session after game ends ✅
-
-## v1.5 Scope (Planning)
-
-### Phase 18: Meta Analysis Foundation
-
-- Meta deck analysis (archetypes, win rates, inclusion rates) ✅
-- Format health score (diversity 0-100, color distribution) ✅
-- Meta trend tracking (rising/declining archetypes) ✅
-
-### Phase 19: Matchup & Strategy Guides
-
-- Anti-meta recommendations ✅
-- Matchup guides (pre-game strategy, mulligans) ✅
-- Game phase strategy (opening, mid-game, late-game) ✅
-
-### Phase 20: Advanced Optimization
-
-- Sideboard plans with in/out recommendations ✅
-- Mana curve optimization ✅
-- Color mana requirements analysis ✅
-
-## v1.5 Scope (COMPLETE)
-
-## Requirements Coverage
-
-- **Total v1.5 requirements**: 26
-- **Mapped to phases**: 26 ✓
-- **Unmapped**: 0 ✓
 
 ## Session Continuity
 
-- **Last Action**: Phase 26 - Test Documentation completed
-- **Next Step**: Phase 25 - CI Quality Gates (still pending)
+- **Last Action**: Phase 31 - Search Engine Revolution (Wave 2) completed
+- **Next Step**: Phase 31 - Advanced Filtering & Optimization (Wave 3)
 
 ## Decisions Made
 
-- Pack-first drafting UX: cards stay face-down until user clicks to open
-- Pool sidebar always visible during picking for easy reference
-- Pick logic as pure functions for testability
-- Timer color thresholds: green >15s, yellow ≤15s, red ≤5s
-- Skip dialog auto-skips after 5 seconds if no action taken
-
-### v1.6 QA/QC Infrastructure
-
-- Use Husky for git hooks management
-- lint-staged for staged file processing
-- Jest coverage thresholds: 70% lines, 70% functions, 70% statements, 60% branches
-- MSW for API mocking in integration tests
+- Use Orama as the primary search engine for large collections
+- Move search logic to a Web Worker to keep UI responsive
+- Fallback to Fuse.js in non-browser environments (tests, SSR)
+- `useSearchWorker` hook as the primary interface for components

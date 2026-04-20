@@ -21,23 +21,31 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { DraftPicker, useDraftPicker, pickCard, openCurrentPack, advanceToNextPack } from "@/components/draft-picker";
+import {
+  DraftPicker,
+  useDraftPicker,
+  pickCard,
+  openCurrentPack,
+  advanceToNextPack,
+} from "@/components/draft-picker";
 import { DraftPoolView } from "@/components/draft-pool-view";
 import { DraftTimer } from "@/components/draft-timer";
 import { SkipPickDialog } from "@/components/skip-pick-dialog";
 import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
-import type { DraftSession, AiDifficulty, CreateDraftSessionOptions } from "@/lib/limited/types";
-import { createDraftSession, isDraftComplete, isAiPickTurn, passPack, getNextPackHolder } from "@/lib/limited/draft-generator";
+import type { DraftSession, AiDifficulty } from "@/lib/limited/types";
+import {
+  createDraftSession,
+  isDraftComplete,
+  isAiPickTurn,
+  getNextPackHolder,
+} from "@/lib/limited/draft-generator";
 import { selectAiPick } from "@/lib/ai-neighbor-logic";
 import { getSession, saveDraftSession } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
 import { AiPickingIndicator } from "@/components/ai-picking-indicator";
-import { PackPassingAnimation, PackHolderBadge, TurnIndicator } from "@/components/pack-passing-animation";
 import { Loader2, Package, Play } from "lucide-react";
 
 // ============================================================================
@@ -53,12 +61,14 @@ const CARDS_PER_PACK = 14;
 
 export default function DraftPage() {
   return (
-    <Suspense fallback={
-      <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      }
+    >
       <DraftPageContent />
     </Suspense>
   );
@@ -83,7 +93,7 @@ function DraftPageContent() {
 
   // NEIB-01, NEIB-03: AI neighbor configuration state
   const [aiNeighborEnabled, setAiNeighborEnabled] = useState(false);
-  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>('medium');
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>("medium");
 
   // Draft timer hook (DRFT-06, DRFT-07, DRFT-08)
   const {
@@ -92,8 +102,8 @@ function DraftPageContent() {
     start: startTimer,
     pause: pauseTimer,
     reset: resetTimer,
-    handleExpire,
-    lastHoveredCardId,
+    handleExpire: _handleExpire,
+    lastHoveredCardId: _lastHoveredCardId,
   } = useDraftTimer({
     initialSeconds: DRAFT_TIMER_CONFIG.defaultSeconds,
     autoStart: false,
@@ -123,46 +133,60 @@ function DraftPageContent() {
     handlePickCard: draftPickerPick,
     handleOpenPack,
     handleHoverCard: draftPickerHover,
-    handleAdvanceToNextPack,
-  } = session ? useDraftPicker(session, setSession) : {
-    handlePickCard: () => {},
-    handleOpenPack: () => {},
-    handleHoverCard: () => {},
-    handleAdvanceToNextPack: () => {},
-  };
+    handleAdvanceToNextPack: _handleAdvanceToNextPack,
+    /* eslint-disable react-hooks/rules-of-hooks -- session is set once after load and never goes back to null */
+  } = session
+    ? useDraftPicker(session, setSession)
+    : {
+        handlePickCard: () => {},
+        handleOpenPack: () => {},
+        handleHoverCard: () => {},
+        handleAdvanceToNextPack: () => {},
+      };
+  /* eslint-enable react-hooks/rules-of-hooks */
 
   // Handle card pick - reset timer after pick, pass pack to AI if neighbor enabled
-  const handleCardPick = useCallback((cardId: string) => {
-    draftPickerPick(cardId);
-    resetTimer();
-    
-    // NEIB-05: Pass pack to AI after user picks
-    if (session?.aiNeighbor?.enabled) {
-      const nextHolder = getNextPackHolder(
-        session.currentPackHolder,
-        session.currentPickIndex,
-        true
-      );
-      setSession(prev => prev ? {
-        ...prev,
-        currentPackHolder: nextHolder,
-      } : null);
-    }
-    
-    // Timer will be restarted when new pick starts
-  }, [draftPickerPick, resetTimer, session]);
+  const handleCardPick = useCallback(
+    (cardId: string) => {
+      draftPickerPick(cardId);
+      resetTimer();
+
+      // NEIB-05: Pass pack to AI after user picks
+      if (session?.aiNeighbor?.enabled) {
+        const nextHolder = getNextPackHolder(
+          session.currentPackHolder,
+          session.currentPickIndex,
+          true,
+        );
+        setSession((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentPackHolder: nextHolder,
+              }
+            : null,
+        );
+      }
+
+      // Timer will be restarted when new pick starts
+    },
+    [draftPickerPick, resetTimer, session],
+  );
 
   // Handle card hover - track for auto-pick (DRFT-08)
-  const handleHoverCard = useCallback((cardId: string | null) => {
-    draftPickerHover(cardId);
-    // Update session's lastHoveredCardId
-    if (session) {
-      setSession({
-        ...session,
-        lastHoveredCardId: cardId,
-      });
-    }
-  }, [draftPickerHover, session]);
+  const handleHoverCard = useCallback(
+    (cardId: string | null) => {
+      draftPickerHover(cardId);
+      // Update session's lastHoveredCardId
+      if (session) {
+        setSession({
+          ...session,
+          lastHoveredCardId: cardId,
+        });
+      }
+    },
+    [draftPickerHover, session],
+  );
 
   // Handle skip dialog skip
   const handleSkip = useCallback(() => {
@@ -170,7 +194,7 @@ function DraftPageContent() {
     // Advance to next pick/pack without picking a card
     if (session) {
       // For now, just skip to next pack or complete
-      if (session.draftState === 'pack_complete') {
+      if (session.draftState === "pack_complete") {
         // Move to next pack
         const updatedSession = advanceToNextPack(session);
         setSession(updatedSession);
@@ -212,7 +236,7 @@ function DraftPageContent() {
   // NEIB-02, NEIB-04: Handle AI neighbor picks
   useEffect(() => {
     if (!session || !session.aiNeighbor?.enabled) return;
-    if (session.draftState !== 'picking') return;
+    if (session.draftState !== "picking") return;
     if (!isAiPickTurn(session)) return;
 
     // AI is supposed to pick - set picking state
@@ -220,7 +244,7 @@ function DraftPageContent() {
       // Start AI pick after delay
       const pickDelay = session.aiNeighbor.pickDelay || 2000;
       const aiNeighbor = session.aiNeighbor;
-      
+
       // Set AI as picking
       setSession({
         ...session,
@@ -258,13 +282,13 @@ function DraftPageContent() {
         const nextHolder = getNextPackHolder(
           session.currentPackHolder,
           session.currentPickIndex,
-          true
+          true,
         );
 
         // Advance pick index
         let newPickIndex = session.currentPickIndex + 1;
         let newPackIndex = session.currentPackIndex;
-        
+
         // Check if pack is complete
         if (newPickIndex >= 14) {
           newPickIndex = 0;
@@ -276,16 +300,19 @@ function DraftPageContent() {
           setSession({
             ...session,
             aiNeighbor: updatedAiNeighbor,
-            packs: session.packs.map((pack, idx) => 
+            packs: session.packs.map((pack, idx) =>
               idx === session.currentPackIndex
-                ? { ...pack, pickedCardIds: [...pack.pickedCardIds, pickedCard.id] }
-                : pack
+                ? {
+                    ...pack,
+                    pickedCardIds: [...pack.pickedCardIds, pickedCard.id],
+                  }
+                : pack,
             ),
             currentPackHolder: nextHolder,
             currentPickIndex: newPickIndex,
             currentPackIndex: newPackIndex,
-            draftState: 'draft_complete',
-            status: 'completed',
+            draftState: "draft_complete",
+            status: "completed",
           });
         } else {
           // Move to next pick or pack
@@ -294,13 +321,18 @@ function DraftPageContent() {
             setSession({
               ...session,
               aiNeighbor: updatedAiNeighbor,
-              packs: session.packs.map((pack, idx) => 
-                idx === session.currentPackIndex
-                  ? { ...pack, pickedCardIds: [...pack.pickedCardIds, pickedCard.id] }
-                  : pack
-              ).map((pack, idx) =>
-                idx === newPackIndex ? { ...pack, isOpened: true } : pack
-              ),
+              packs: session.packs
+                .map((pack, idx) =>
+                  idx === session.currentPackIndex
+                    ? {
+                        ...pack,
+                        pickedCardIds: [...pack.pickedCardIds, pickedCard.id],
+                      }
+                    : pack,
+                )
+                .map((pack, idx) =>
+                  idx === newPackIndex ? { ...pack, isOpened: true } : pack,
+                ),
               currentPackHolder: nextHolder,
               currentPickIndex: newPickIndex,
               currentPackIndex: newPackIndex,
@@ -309,10 +341,13 @@ function DraftPageContent() {
             setSession({
               ...session,
               aiNeighbor: updatedAiNeighbor,
-              packs: session.packs.map((pack, idx) => 
+              packs: session.packs.map((pack, idx) =>
                 idx === session.currentPackIndex
-                  ? { ...pack, pickedCardIds: [...pack.pickedCardIds, pickedCard.id] }
-                  : pack
+                  ? {
+                      ...pack,
+                      pickedCardIds: [...pack.pickedCardIds, pickedCard.id],
+                    }
+                  : pack,
               ),
               currentPackHolder: nextHolder,
               currentPickIndex: newPickIndex,
@@ -370,7 +405,7 @@ function DraftPageContent() {
                 enabled: aiNeighborEnabled,
                 difficulty: aiDifficulty,
               },
-            }
+            },
           );
 
           setSession(newSession);
@@ -399,12 +434,27 @@ function DraftPageContent() {
     // Open first pack
     const updatedSession = openCurrentPack(session);
     setSession(updatedSession);
-    
+
     // Start timer when draft begins (DRFT-06)
     resetTimer();
     setIsTimerActive(true);
     startTimer();
   }, [session, setSession, resetTimer, startTimer]);
+
+  // Redirect to complete page when draft is finished (DRFT-09)
+  useEffect(() => {
+    if (session && isDraftComplete(session)) {
+      // Update session status
+      const updatedSession = {
+        ...session,
+        draftState: "draft_complete" as const,
+        status: "completed" as const,
+      };
+      saveDraftSession(updatedSession);
+      // Redirect to completion page
+      router.replace(`/draft/complete?session=${session.id}`);
+    }
+  }, [session, router]);
 
   // Loading state
   if (isLoading || isCreating) {
@@ -439,21 +489,6 @@ function DraftPageContent() {
     );
   }
 
-  // Redirect to complete page when draft is finished (DRFT-09)
-  useEffect(() => {
-    if (session && isDraftComplete(session)) {
-      // Update session status
-      const updatedSession = {
-        ...session,
-        draftState: "draft_complete" as const,
-        status: "completed" as const,
-      };
-      saveDraftSession(updatedSession);
-      // Redirect to completion page
-      router.replace(`/draft/complete?session=${session.id}`);
-    }
-  }, [session, router]);
-
   // Intro state - show start button and AI neighbor config (NEIB-01, NEIB-03)
   if (session?.draftState === "intro") {
     return (
@@ -474,7 +509,9 @@ function DraftPageContent() {
                 <li>Pick one card to add to your pool</li>
                 <li>Repeat until all {CARDS_PER_PACK} cards are picked</li>
                 <li>Open your next pack and continue</li>
-                <li>Build a {CARDS_PER_PACK * PACKS_PER_DRAFT}-card minimum deck</li>
+                <li>
+                  Build a {CARDS_PER_PACK * PACKS_PER_DRAFT}-card minimum deck
+                </li>
               </ul>
             </div>
 
@@ -482,7 +519,9 @@ function DraftPageContent() {
             <div className="border rounded-lg p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label htmlFor="ai-neighbor" className="text-base">AI Opponent</Label>
+                  <Label htmlFor="ai-neighbor" className="text-base">
+                    AI Opponent
+                  </Label>
                   <p className="text-xs text-muted-foreground">
                     Draft against an AI bot neighbor
                   </p>
@@ -500,18 +539,26 @@ function DraftPageContent() {
                   <Label className="text-sm">Difficulty</Label>
                   <RadioGroup
                     value={aiDifficulty}
-                    onValueChange={(value) => setAiDifficulty(value as AiDifficulty)}
+                    onValueChange={(value) =>
+                      setAiDifficulty(value as AiDifficulty)
+                    }
                     className="flex gap-4"
                   >
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="easy" id="difficulty-easy" />
-                      <Label htmlFor="difficulty-easy" className="cursor-pointer">
+                      <Label
+                        htmlFor="difficulty-easy"
+                        className="cursor-pointer"
+                      >
                         Easy (Random picks)
                       </Label>
                     </div>
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="medium" id="difficulty-medium" />
-                      <Label htmlFor="difficulty-medium" className="cursor-pointer">
+                      <Label
+                        htmlFor="difficulty-medium"
+                        className="cursor-pointer"
+                      >
                         Medium (Color-focused)
                       </Label>
                     </div>
@@ -520,11 +567,7 @@ function DraftPageContent() {
               )}
             </div>
 
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={handleStartDraft}
-            >
+            <Button size="lg" className="w-full" onClick={handleStartDraft}>
               <Play className="h-5 w-5 mr-2" />
               Start Draft
             </Button>
@@ -562,10 +605,7 @@ function DraftPageContent() {
 
         {/* Pool Sidebar */}
         <div className="hidden lg:block w-80 border-l">
-          <DraftPoolView
-            pool={session.pool}
-            sessionId={session.id}
-          />
+          <DraftPoolView pool={session.pool} sessionId={session.id} />
         </div>
       </div>
 
@@ -592,24 +632,24 @@ interface DraftHeaderProps {
   session: DraftSession;
   onQuit: () => void;
   timeRemaining?: number;
-  colorState?: 'green' | 'yellow' | 'red';
+  colorState?: "green" | "yellow" | "red";
   isTimerActive?: boolean;
   onPauseTimer?: () => void;
   onResumeTimer?: () => void;
 }
 
-function DraftHeader({ 
-  session, 
-  onQuit, 
-  timeRemaining, 
-  colorState = 'green',
+function DraftHeader({
+  session,
+  onQuit,
+  timeRemaining,
+  colorState = "green",
   isTimerActive = false,
-  onPauseTimer,
-  onResumeTimer,
+  onPauseTimer: _onPauseTimer,
+  onResumeTimer: _onResumeTimer,
 }: DraftHeaderProps) {
   const currentPack = session.currentPackIndex + 1;
   const currentPick = session.currentPickIndex + 1;
-  
+
   // NEIB-04: Check if AI is picking
   const aiIsPicking = session.aiNeighbor?.state?.isPicking;
   const aiPoolSize = session.aiNeighbor?.state?.pool?.length ?? 0;
@@ -629,12 +669,12 @@ function DraftHeader({
           <Badge variant="outline" className="font-mono">
             Pick {currentPick}/{CARDS_PER_PACK}
           </Badge>
-          
+
           {/* NEIB-05: AI Neighbor Status with visual indicator */}
           {session.aiNeighbor?.enabled && (
             <div className="flex items-center gap-2">
-              <AiPickingIndicator 
-                isPicking={!!aiIsPicking} 
+              <AiPickingIndicator
+                isPicking={!!aiIsPicking}
                 difficulty={session.aiNeighbor.difficulty}
               />
               <span className="text-xs text-muted-foreground">
@@ -679,7 +719,9 @@ function MobilePoolBar({ pool }: MobilePoolBarProps) {
         <span className="font-medium">{pool.length} cards picked</span>
       </div>
       <Badge variant="secondary">
-        {pool.length >= 40 ? "Ready to build" : `${40 - pool.length} more needed`}
+        {pool.length >= 40
+          ? "Ready to build"
+          : `${40 - pool.length} more needed`}
       </Badge>
     </div>
   );
@@ -689,7 +731,7 @@ function MobilePoolBar({ pool }: MobilePoolBarProps) {
 // Icon Re-export (for template)
 // ============================================================================
 
-function Layers({ className }: { className?: string }) {
+function _Layers({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

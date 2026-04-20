@@ -5,6 +5,8 @@
  * to eliminate `any` types and improve type safety.
  */
 
+import { z } from 'zod';
+
 /** Basic card representation */
 export interface Card {
   name: string;
@@ -16,6 +18,65 @@ export interface Card {
   oracle_text?: string;
   mana_cost?: string;
 }
+
+/** Zod schema for ChatMessage */
+export const ChatMessageSchema = z.object({
+  id: z.string(),
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+  timestamp: z.number().optional(),
+});
+
+/** Zod schema for DeckCard */
+export const DeckCardSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  cmc: z.number(),
+  type_line: z.string(),
+  colors: z.array(z.string()),
+  color_identity: z.array(z.string()),
+  legalities: z.record(z.string()),
+  oracle_text: z.string().optional(),
+  mana_cost: z.string().optional(),
+  count: z.number(),
+});
+
+/** Zod schema for Digested Coach Context */
+export const DigestedCoachContextSchema = z.object({
+  deckSummary: z.object({
+    totalCards: z.number(),
+    typeCounts: z.record(z.number()),
+    averageCmc: z.number(),
+    keyCards: z.array(z.string()),
+    manaCurve: z.array(z.number()),
+    colors: z.array(z.string()),
+  }).optional(),
+  gameSummary: z.object({
+    turn: z.number(),
+    phase: z.string(),
+    activePlayerId: z.string(),
+    players: z.array(z.object({
+      id: z.string(),
+      life: z.number(),
+      handSize: z.number(),
+      manaAvailable: z.number(),
+      keyPermanents: z.array(z.string()),
+    })),
+  }).optional(),
+  timestamp: z.number(),
+});
+
+/** Zod schema for Coach Flow Input */
+export const CoachFlowInputSchema = z.object({
+  messages: z.array(ChatMessageSchema),
+  deckCards: z.array(DeckCardSchema).optional(),
+  digestedContext: DigestedCoachContextSchema.optional(),
+  format: z.string(),
+  archetype: z.string().optional(),
+  strategy: z.string().optional(),
+  provider: z.string().optional(),
+  modelId: z.string().optional(),
+});
 
 /** Game state representation */
 export interface GameState {
