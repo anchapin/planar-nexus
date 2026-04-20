@@ -36,25 +36,18 @@ export function getProceduralArtworkUrl(
 
 /**
  * Get artwork URL with fallback to procedural generation
+ *
+ * Note: This function only returns procedural artwork URLs.
+ * Scryfall image_uris are never returned to avoid CDN image display.
  */
 export function getArtworkWithFallback(
   card: MinimalCard,
   size: 'small' | 'normal' | 'large' = 'normal',
-  preferProcedural: boolean = false
+  _preferProcedural: boolean = false
 ): string {
-  // If we prefer procedural or have no image, use procedural
-  if (preferProcedural || !card.image_uris) {
-    return getProceduralArtworkUrl(card, size);
-  }
-
-  // Otherwise use the original image if available
-  const sizeMap = {
-    small: 'small',
-    normal: 'normal',
-    large: 'large',
-  };
-
-  return card.image_uris[sizeMap[size] as keyof typeof card.image_uris] || getProceduralArtworkUrl(card, size);
+  // Always use procedural artwork
+  // Scryfall image_uris are never returned to avoid CDN image display
+  return getProceduralArtworkUrl(card, size);
 }
 
 /**

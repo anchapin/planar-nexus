@@ -17,18 +17,18 @@ Magic: The Gathering, Magic, MTG, and all related characters and elements are tr
 
 All Magic: The Gathering card images, card text, and game rules are property of Wizards of the Coast. This project does not host any copyrighted materials.
 
-Card images are fetched from the Scryfall API, which provides access to card data. Card images themselves are hosted by Scryfall and remain the copyright of Wizards of the Coast.
+Card images may be displayed from user-provided local files (BYOI model) or generated procedurally. This project does not fetch or display card images from the Scryfall CDN.
 
-## Fair Use Statement
+## Wizards of the Coast Fan Content Policy
 
-This project is designed to emulate a Magic: The Gathering tabletop experience for personal, non-commercial use.
+This project operates as non-commercial fan content permitted under the Wizards of the Coast Fan Content Policy. The project does not claim a fair-use defense and does not assert that it is a substitute for, or transformative of, official Wizards of the Coast products.
 
 The project provides:
 - A digital game board for playing MTG-format games
 - Deck building and management tools
 - AI-assisted gameplay features
 
-This is non-commercial fan content created under the Wizards of the Coast Fan Content Policy.
+The Fan Content Policy is the primary legal basis for this project's operation. For details, see: https://company.wizards.com/en/legal/fancontentpolicy
 
 ## Wizards of the Coast IP Policy
 
@@ -47,9 +47,8 @@ This project uses the Scryfall API for card data, including:
 - Card search functionality
 - Oracle text and rules
 - Format legality information
-- Card images (via Scryfall's CDN)
 
-Scryfall is not affiliated with this project. Card images are owned by Wizards of the Coast and are provided by Scryfall under their terms of service.
+Scryfall is not affiliated with this project. Card data is provided by Scryfall under their terms of service.
 
 See: https://scryfall.com/docs/faq
 
@@ -68,6 +67,6 @@ If you have concerns about this project's compliance or have a legal inquiry, pl
 
 ---
 
-**Last Updated:** February 2026
+**Last Updated:** April 2026
 
 **This document is for informational purposes only and does not constitute legal advice.**
