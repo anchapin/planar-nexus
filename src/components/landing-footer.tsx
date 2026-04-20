@@ -7,22 +7,21 @@ export function LandingFooter() {
             <p className="font-medium text-foreground">Planar Nexus</p>
             <p>A generic card game platform</p>
           </div>
-          
+
           <div className="flex flex-col items-center md:items-end gap-1">
-            <p>Planar Nexus is a generic card game platform</p>
             <a
-              href="https://company.wizards.com/en/legal"
+              href="https://company.wizards.com/en/legal/fancontentpolicy"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
             >
-              Legal Notice
+              Wizards Fan Content Policy
             </a>
           </div>
         </div>
-        
+
         <div className="mt-4 pt-4 border-t text-center text-xs text-muted-foreground">
-          <p>This project is for educational and entertainment purposes only.</p>
+          <p>Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
         </div>
       </div>
     </footer>

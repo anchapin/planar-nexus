@@ -8,7 +8,7 @@
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
 
-> **Disclaimer**: Planar Nexus is not affiliated with, endorsed by, or connected to Wizards of the Coast, Magic: The Gathering, or any of their affiliates. All Magic: The Gathering content is trademarked and copyrighted by Wizards of the Coast. This project is provided for educational and entertainment purposes only.
+> **WotC Fan Content Policy Disclaimer**: Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
 
 ---
 
@@ -397,11 +397,11 @@ SOFTWARE.
 
 ## Legal Notices
 
-**Trademark Notice**: Magic: The Gathering, Magic, MTG, "Commander," "Legendary," and all related characters and elements are trademarks of Wizards of the Coast, LLC. This project is not affiliated with, endorsed by, or connected to Wizards of the Coast.
+**WotC Fan Content Policy Disclaimer**: Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
+
+**Trademark Notice**: Magic: The Gathering, Magic, MTG, and all related characters and elements are trademarks of Wizards of the Coast, LLC.
 
 **Copyright Notice**: All card images, text, and game rules are property of Wizards of the Coast. This project uses the Scryfall API for card data but does not host any copyrighted materials.
-
-**No Affiliation**: This project is an independent, non-commercial project created for educational and entertainment purposes.
 
 ---
 
