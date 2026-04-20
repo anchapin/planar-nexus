@@ -11,10 +11,10 @@ test.describe("Phase 20: Advanced Optimization", () => {
   test.skip("sideboards page loads correctly", async ({ page }) => {
     await page.goto("/sideboards");
 
-    // Verify page loads
-    await expect(page.locator("h1").first()).toContainText(
-      "My Sideboard Plans",
-    );
+    // Verify page loads - use getByRole for specific heading
+    await expect(
+      page.getByRole("heading", { name: "My Sideboard Plans" }),
+    ).toBeVisible();
 
     // Verify empty state shows
     await expect(page.getByText("No Sideboard Plans Yet")).toBeVisible();
@@ -29,9 +29,9 @@ test.describe("Phase 20: Advanced Optimization", () => {
     // Click on Mana Curve tab
     await page.getByRole("tab", { name: /mana curve/i }).click();
 
-    // Verify empty state message
+    // Verify empty state message - use exact text to avoid strict mode violations
     await expect(
-      page.getByText(/add cards to your deck/i).first(),
+      page.getByText("Add cards to your deck to see mana curve analysis"),
     ).toBeVisible();
   });
 
@@ -88,12 +88,9 @@ test.describe("Phase 20: Advanced Optimization", () => {
   test("deck coach mana curve tab exists", async ({ page }) => {
     await page.goto("/deck-coach");
 
-    // Verify page loads
+    // Verify page loads - use getByRole to avoid strict mode with multiple h1/h2
     await expect(
-      page
-        .locator("h1, h2")
-        .filter({ hasText: /deck coach/i })
-        .first(),
+      page.getByRole("heading", { name: /deck coach/i }),
     ).toBeVisible();
 
     // Verify analyze button exists
@@ -114,10 +111,8 @@ test.describe("Phase 20: Advanced Optimization", () => {
       page.getByRole("heading", { name: /create sideboard plan/i }),
     ).toBeVisible();
 
-    // Verify form fields exist
-    await expect(page.locator("#name")).toBeVisible();
-    await expect(
-      page.getByText("Format", { exact: false }).first(),
-    ).toBeVisible();
+    // Verify form fields exist - check for plan name and dropdown presence
+    await expect(page.getByLabel(/plan name/i)).toBeVisible();
+    await expect(page.locator("label", { hasText: "Format" })).toBeVisible();
   });
 });

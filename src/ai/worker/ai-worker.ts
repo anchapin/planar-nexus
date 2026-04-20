@@ -32,7 +32,6 @@ const aiWorker: AIWorkerAPI = {
   },
 
   async detectArchetype(deck: unknown[]) {
-    // Cast to DeckCard[] as expected by detectArchetype
     const result = detectArchetype(deck as DeckCard[]);
     return result.primary;
   },

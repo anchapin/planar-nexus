@@ -524,7 +524,9 @@ test.describe("Sealed Mode - Pool Isolation", () => {
       // Results should be from collection, not pool
       // Pool cards have different metadata - verify results don't have pool indicators
       const poolIndicator = page
-        .locator('[class*="pool"], text=/pool/i')
+        .locator('[class*="pool"]')
+        .first()
+        .or(page.getByText(/pool/i))
         .first();
 
       if (await poolIndicator.isVisible()) {

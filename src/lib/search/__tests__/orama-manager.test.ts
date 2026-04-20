@@ -1,6 +1,7 @@
 import { OramaManager } from "../orama-manager";
 import { db } from "../../db/local-intelligence-db";
 import { testCards } from "../../__fixtures__/test-cards";
+import { persist, restore } from "@orama/plugin-data-persistence";
 
 // Mock Orama persistence to avoid environment issues in Jest
 jest.mock("@orama/plugin-data-persistence", () => ({
@@ -10,26 +11,26 @@ jest.mock("@orama/plugin-data-persistence", () => ({
 
 // Mock @orama/orama
 jest.mock("@orama/orama", () => {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { testCards } = require("../../__fixtures__/test-cards");
   return {
     create: jest.fn().mockResolvedValue({}),
     insertMultiple: jest.fn().mockResolvedValue({}),
-    search: jest.fn().mockResolvedValue({
-      count: 1,
-      hits: [
-        {
-          document: {
-            id: testCards[0].id,
-            name: testCards[0].name,
-            text: "Test Text",
-            type: "Creature",
-            color: "W",
-            vector: new Array(384).fill(0.1),
+    search: jest.fn().mockImplementation(() =>
+      Promise.resolve({
+        count: 1,
+        hits: [
+          {
+            document: {
+              id: "test-002",
+              name: "Plains",
+              text: "Test Text",
+              type: "Creature",
+              color: "W",
+              vector: new Array(384).fill(0.1),
+            },
           },
-        },
-      ],
-    }),
+        ],
+      }),
+    ),
   };
 });
 
@@ -85,9 +86,6 @@ describe("OramaManager", () => {
   });
 
   it("should persist and restore the index", async () => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { persist, restore } = require("@orama/plugin-data-persistence");
-
     // Setup initial index
     await oramaManager.init();
     await oramaManager.saveIndex();

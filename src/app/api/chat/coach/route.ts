@@ -3,6 +3,11 @@ import { coachFlow } from "@/ai/flows/genkit-coach-flow";
 
 /**
  * API Route for the Conversational AI Coach using Genkit.
+ *
+ * NOTE: The Genkit dependency was removed in Issue #446. The coach flow
+ * is currently a stub that returns an unavailability message. This route
+ * still validates input and streams the stub response for forward
+ * compatibility — when Genkit is re-added, this route will work as-is.
  */
 
 export const dynamic = "force-dynamic";
@@ -47,20 +52,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Execute the Genkit coach flow with streaming
-    const stream: AsyncIterable<{ content?: Array<{ text?: string }> }> =
-      coachFlow.stream({
-        messages,
-        deckCards: deckCards || undefined,
-        digestedContext: digestedContext || undefined,
-        format,
-        archetype: body.archetype,
-        strategy: body.strategy,
-        provider: body.provider,
-        modelId: body.modelId,
-      });
+    // 3. Execute the coach flow (currently a stub — streams an unavailability message)
+    const stream = coachFlow.stream({
+      messages,
+      deckCards: deckCards || undefined,
+      digestedContext: digestedContext || undefined,
+      format,
+      archetype: body.archetype,
+      strategy: body.strategy,
+      provider: body.provider,
+      modelId: body.modelId,
+    });
 
-    // 4. Create a ReadableStream to pipe Genkit chunks to the client
+    // 4. Create a ReadableStream to pipe chunks to the client
     const responseStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
@@ -68,7 +72,7 @@ export async function POST(request: NextRequest) {
           for await (const chunk of stream) {
             if (chunk.content) {
               const text = chunk.content
-                .map((c: { text?: string }) => c.text || "")
+                .map((c: { text: string }) => c.text || "")
                 .join("");
               if (text) {
                 controller.enqueue(encoder.encode(text));

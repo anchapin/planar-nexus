@@ -15,6 +15,7 @@ import {
   migrateGameHistoryToIndexedDB,
 } from "../indexeddb-storage";
 import * as IndexedDBModule from "../indexeddb-storage";
+import fakeIndexedDB from "fake-indexeddb";
 
 describe("Game History IndexedDB Migration", () => {
   let storage: IndexedDBStorage;
@@ -24,8 +25,7 @@ describe("Game History IndexedDB Migration", () => {
     // Mock window if not available
     if (typeof window === "undefined") {
       (global as any).window = {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        indexedDB: require("fake-indexeddb"),
+        indexedDB: fakeIndexedDB,
         localStorage: {
           getItem: jest.fn(),
           setItem: jest.fn(),
