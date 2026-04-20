@@ -27,7 +27,7 @@ import type {
   AIHandCard as HandCard,
 } from '@/lib/game-state/types';
 import { callAIProxy } from '@/lib/ai-proxy-client';
-import { AIProvider } from '../providers/types';
+import { AIProvider } from '@/ai/providers/types';
 
 // Re-export for backward compatibility
 export type { GameState, PlayerState, Permanent, HandCard };

@@ -13,7 +13,10 @@ import {
   generateBlockingDecisions,
   type CombatAIConfig,
 } from './combat-decision-tree';
-import { GameState, PlayerState, Permanent } from '../game-state-evaluator';
+import { GameState, PlayerState, Permanent } from '@/ai/game-state-evaluator';
+import { logger } from '@/lib/logger';
+
+const combatExamplesLogger = logger.child('CombatExamples');
 
 /**
  * Create a sample game state for combat testing
@@ -150,27 +153,27 @@ function createCombatGameState(): GameState {
  * Example 1: Basic Attack Decisions
  */
 export function example1_BasicAttacks(): CombatPlan {
-  console.log('=== Example 1: Basic Attack Decisions ===\n');
+  combatExamplesLogger.debug('=== Example 1: Basic Attack Decisions ===\n');
 
   const gameState = createCombatGameState();
   const combatPlan = generateAttackDecisions(gameState, 'ai_player', 'medium');
 
-  console.log(`Strategy: ${combatPlan.strategy.toUpperCase()}`);
-  console.log(`Total Expected Value: ${combatPlan.totalExpectedValue.toFixed(2)}\n`);
+  combatExamplesLogger.debug(`Strategy: ${combatPlan.strategy.toUpperCase()}`);
+  combatExamplesLogger.debug(`Total Expected Value: ${combatPlan.totalExpectedValue.toFixed(2)}\n`);
 
-  console.log('Attack Decisions:');
+  combatExamplesLogger.debug('Attack Decisions:');
   if (combatPlan.attacks.length === 0) {
-    console.log('  No attacks - holding back creatures for defense');
+    combatExamplesLogger.debug('  No attacks - holding back creatures for defense');
   } else {
     combatPlan.attacks.forEach((attack, index) => {
-      console.log(`  ${index + 1}. ${attack.reasoning}`);
-      console.log(`     Expected Value: ${attack.expectedValue.toFixed(2)}`);
-      console.log(`     Risk Level: ${(attack.riskLevel * 100).toFixed(0)}%`);
-      console.log('');
+      combatExamplesLogger.debug(`  ${index + 1}. ${attack.reasoning}`);
+      combatExamplesLogger.debug(`     Expected Value: ${attack.expectedValue.toFixed(2)}`);
+      combatExamplesLogger.debug(`     Risk Level: ${(attack.riskLevel * 100).toFixed(0)}%`);
+      combatExamplesLogger.debug('');
     });
   }
 
-  console.log('');
+  combatExamplesLogger.debug('');
   return combatPlan;
 }
 
@@ -178,7 +181,7 @@ export function example1_BasicAttacks(): CombatPlan {
  * Example 2: Blocking Decisions
  */
 export function example2_BlockingDecisions(): CombatPlan {
-  console.log('=== Example 2: Blocking Decisions ===\n');
+  combatExamplesLogger.debug('=== Example 2: Blocking Decisions ===\n');
 
   const gameState = createCombatGameState();
 
@@ -200,33 +203,33 @@ export function example2_BlockingDecisions(): CombatPlan {
 
   const combatPlan = generateBlockingDecisions(gameState, 'ai_player', attackers, 'medium');
 
-  console.log('Opponent is attacking with:');
+  combatExamplesLogger.debug('Opponent is attacking with:');
   attackers.forEach((attacker) => {
-    console.log(`  - ${attacker.name} (${attacker.power}/${attacker.toughness})`);
+    combatExamplesLogger.debug(`  - ${attacker.name} (${attacker.power}/${attacker.toughness})`);
   });
-  console.log('');
+  combatExamplesLogger.debug('');
 
-  console.log('Blocking Decisions:');
+  combatExamplesLogger.debug('Blocking Decisions:');
   if (combatPlan.blocks.length === 0) {
-    console.log('  No blocks - taking the damage');
+    combatExamplesLogger.debug('  No blocks - taking the damage');
   } else {
     combatPlan.blocks.forEach((block, index) => {
       const blocker = gameState.players.ai_player.battlefield.find(
         (c) => c.id === block.blockerId
       );
       const attacker = attackers.find((a) => a.id === block.attackerId);
-      console.log(
+      combatExamplesLogger.debug(
         `  ${index + 1}. ${blocker?.name} blocks ${attacker?.name}: ${block.reasoning}`
       );
-      console.log(`     Expected Value: ${block.expectedValue.toFixed(2)}`);
+      combatExamplesLogger.debug(`     Expected Value: ${block.expectedValue.toFixed(2)}`);
       if (block.damageOrder !== undefined) {
-        console.log(`     Damage Order: ${block.damageOrder}`);
+        combatExamplesLogger.debug(`     Damage Order: ${block.damageOrder}`);
       }
-      console.log('');
+      combatExamplesLogger.debug('');
     });
   }
 
-  console.log('');
+  combatExamplesLogger.debug('');
   return combatPlan;
 }
 
@@ -234,7 +237,7 @@ export function example2_BlockingDecisions(): CombatPlan {
  * Example 3: Aggressive vs Defensive Strategy
  */
 export function example3_StrategyComparison(): void {
-  console.log('=== Example 3: Aggressive vs Defensive Strategy ===\n');
+  combatExamplesLogger.debug('=== Example 3: Aggressive vs Defensive Strategy ===\n');
 
   const gameState = createCombatGameState();
 
@@ -242,39 +245,39 @@ export function example3_StrategyComparison(): void {
   const defensiveState = JSON.parse(JSON.stringify(gameState));
   defensiveState.players.ai_player.life = 5;
 
-  console.log('Scenario A: AI at 5 life (should play defensively)');
+  combatExamplesLogger.debug('Scenario A: AI at 5 life (should play defensively)');
   const defensiveAI = new CombatDecisionTree(defensiveState, 'ai_player', 'medium');
   const defensivePlan = defensiveAI.generateAttackPlan();
 
-  console.log(`Strategy: ${defensivePlan.strategy.toUpperCase()}`);
-  console.log(`Attacks: ${defensivePlan.attacks.length}`);
+  combatExamplesLogger.debug(`Strategy: ${defensivePlan.strategy.toUpperCase()}`);
+  combatExamplesLogger.debug(`Attacks: ${defensivePlan.attacks.length}`);
   defensivePlan.attacks.forEach((attack) => {
-    console.log(`  - ${attack.reasoning}`);
+    combatExamplesLogger.debug(`  - ${attack.reasoning}`);
   });
-  console.log('');
+  combatExamplesLogger.debug('');
 
   // High life scenario (should be aggressive)
   const aggressiveState = JSON.parse(JSON.stringify(gameState));
   aggressiveState.players.ai_player.life = 20;
   aggressiveState.players.opponent.life = 8;
 
-  console.log('Scenario B: AI at 20 life, opponent at 8 (should play aggressively)');
+  combatExamplesLogger.debug('Scenario B: AI at 20 life, opponent at 8 (should play aggressively)');
   const aggressiveAI = new CombatDecisionTree(aggressiveState, 'ai_player', 'medium');
   const aggressivePlan = aggressiveAI.generateAttackPlan();
 
-  console.log(`Strategy: ${aggressivePlan.strategy.toUpperCase()}`);
-  console.log(`Attacks: ${aggressivePlan.attacks.length}`);
+  combatExamplesLogger.debug(`Strategy: ${aggressivePlan.strategy.toUpperCase()}`);
+  combatExamplesLogger.debug(`Attacks: ${aggressivePlan.attacks.length}`);
   aggressivePlan.attacks.forEach((attack) => {
-    console.log(`  - ${attack.reasoning}`);
+    combatExamplesLogger.debug(`  - ${attack.reasoning}`);
   });
-  console.log('');
+  combatExamplesLogger.debug('');
 }
 
 /**
  * Example 4: Evasion Creatures
  */
 export function example4_EvasionCreatures(): void {
-  console.log('=== Example 4: Evasion Creatures ===\n');
+  combatExamplesLogger.debug('=== Example 4: Evasion Creatures ===\n');
 
   const gameState: GameState = {
     players: {
@@ -353,28 +356,28 @@ export function example4_EvasionCreatures(): void {
 
   const combatPlan = generateAttackDecisions(gameState, 'ai_player', 'medium');
 
-  console.log('Board State:');
-  console.log("  AI: Serra Angel (4/4 flying), Hill Giant (4/4)");
-  console.log("  Opponent: Gray Ogre (2/2)");
-  console.log('');
+  combatExamplesLogger.debug('Board State:');
+  combatExamplesLogger.debug("  AI: Serra Angel (4/4 flying), Hill Giant (4/4)");
+  combatExamplesLogger.debug("  Opponent: Gray Ogre (2/2)");
+  combatExamplesLogger.debug('');
 
-  console.log('Attack Decisions:');
+  combatExamplesLogger.debug('Attack Decisions:');
   combatPlan.attacks.forEach((attack) => {
     const creature = gameState.players.ai_player.battlefield.find(
       (c) => c.id === attack.creatureId
     );
-    console.log(
+    combatExamplesLogger.debug(
       `  ✓ ${creature?.name}: ${attack.reasoning} (expected value: ${attack.expectedValue.toFixed(2)})`
     );
   });
-  console.log('');
+  combatExamplesLogger.debug('');
 }
 
 /**
  * Example 5: Combat Trades
  */
 export function example5_CombatTrades(): void {
-  console.log('=== Example 5: Evaluating Combat Trades ===\n');
+  combatExamplesLogger.debug('=== Example 5: Evaluating Combat Trades ===\n');
 
   const gameState: GameState = {
     players: {
@@ -441,33 +444,33 @@ export function example5_CombatTrades(): void {
 
   const combatPlan = generateAttackDecisions(gameState, 'ai_player', 'hard');
 
-  console.log('Board State:');
-  console.log("  AI: Grizzly Bears (2/2, 2 mana)");
-  console.log("  Opponent: Craw Wurm (6/4, 6 mana)");
-  console.log('');
+  combatExamplesLogger.debug('Board State:');
+  combatExamplesLogger.debug("  AI: Grizzly Bears (2/2, 2 mana)");
+  combatExamplesLogger.debug("  Opponent: Craw Wurm (6/4, 6 mana)");
+  combatExamplesLogger.debug('');
 
-  console.log('Analysis:');
-  console.log('  If AI attacks:');
-  console.log('    - Opponent can block with Craw Wurm');
-  console.log('    - Both creatures die (bad trade for AI - loses 2 mana, opp loses 6 mana)');
-  console.log('');
+  combatExamplesLogger.debug('Analysis:');
+  combatExamplesLogger.debug('  If AI attacks:');
+  combatExamplesLogger.debug('    - Opponent can block with Craw Wurm');
+  combatExamplesLogger.debug('    - Both creatures die (bad trade for AI - loses 2 mana, opp loses 6 mana)');
+  combatExamplesLogger.debug('');
 
   if (combatPlan.attacks.length > 0) {
     const attack = combatPlan.attacks[0];
-    console.log(`  Decision: ${attack.shouldAttack ? 'ATTACK' : 'HOLD BACK'}`);
-    console.log(`  Reasoning: ${attack.reasoning}`);
-    console.log(`  Expected Value: ${attack.expectedValue.toFixed(2)}`);
+    combatExamplesLogger.debug(`  Decision: ${attack.shouldAttack ? 'ATTACK' : 'HOLD BACK'}`);
+    combatExamplesLogger.debug(`  Reasoning: ${attack.reasoning}`);
+    combatExamplesLogger.debug(`  Expected Value: ${attack.expectedValue.toFixed(2)}`);
   } else {
-    console.log('  Decision: HOLD BACK (not worth attacking)');
+    combatExamplesLogger.debug('  Decision: HOLD BACK (not worth attacking)');
   }
-  console.log('');
+  combatExamplesLogger.debug('');
 }
 
 /**
  * Example 6: Multi-Blocking
  */
 export function example6_MultiBlocking(): void {
-  console.log('=== Example 6: Multi-Blocking with Menace ===\n');
+  combatExamplesLogger.debug('=== Example 6: Multi-Blocking with Menace ===\n');
 
   const gameState: GameState = {
     players: {
@@ -549,59 +552,59 @@ export function example6_MultiBlocking(): void {
 
   const combatPlan = generateBlockingDecisions(gameState, 'ai_player', attackers, 'hard');
 
-  console.log('Attacker: Bloodrage Brawler (4/3) with MENACE');
-  console.log('Available Blockers: Savannah Lions (2/1), Gray Ogre (2/2)');
-  console.log('');
+  combatExamplesLogger.debug('Attacker: Bloodrage Brawler (4/3) with MENACE');
+  combatExamplesLogger.debug('Available Blockers: Savannah Lions (2/1), Gray Ogre (2/2)');
+  combatExamplesLogger.debug('');
 
-  console.log('Blocking Decisions:');
+  combatExamplesLogger.debug('Blocking Decisions:');
   if (combatPlan.blocks.length === 0) {
-    console.log('  No blocks - taking 4 damage');
+    combatExamplesLogger.debug('  No blocks - taking 4 damage');
   } else {
     combatPlan.blocks.forEach((block) => {
       const blocker = gameState.players.ai_player.battlefield.find(
         (c) => c.id === block.blockerId
       );
-      console.log(
+      combatExamplesLogger.debug(
         `  ${blocker?.name}: ${block.reasoning} (expected value: ${block.expectedValue.toFixed(2)})`
       );
       if (block.damageOrder !== undefined) {
-        console.log(`    Damage Order: ${block.damageOrder}`);
+        combatExamplesLogger.debug(`    Damage Order: ${block.damageOrder}`);
       }
     });
   }
-  console.log('');
+  combatExamplesLogger.debug('');
 }
 
 /**
  * Example 7: Difficulty Level Comparison
  */
 export function example7_DifficultyComparison(): void {
-  console.log('=== Example 7: Difficulty Level Comparison ===\n');
+  combatExamplesLogger.debug('=== Example 7: Difficulty Level Comparison ===\n');
 
   const gameState = createCombatGameState();
 
   const difficulties: Array<'easy' | 'medium' | 'hard'> = ['easy', 'medium', 'hard'];
 
   difficulties.forEach((difficulty) => {
-    console.log(`${difficulty.toUpperCase()} Difficulty:`);
+    combatExamplesLogger.debug(`${difficulty.toUpperCase()} Difficulty:`);
     const plan = generateAttackDecisions(gameState, 'ai_player', difficulty);
 
-    console.log(`  Strategy: ${plan.strategy}`);
-    console.log(`  Attacks: ${plan.attacks.length}`);
-    console.log(`  Total Expected Value: ${plan.totalExpectedValue.toFixed(2)}`);
+    combatExamplesLogger.debug(`  Strategy: ${plan.strategy}`);
+    combatExamplesLogger.debug(`  Attacks: ${plan.attacks.length}`);
+    combatExamplesLogger.debug(`  Total Expected Value: ${plan.totalExpectedValue.toFixed(2)}`);
 
     if (plan.attacks.length > 0) {
-      console.log('  Attackers:');
+      combatExamplesLogger.debug('  Attackers:');
       plan.attacks.forEach((attack) => {
         const creature = gameState.players.ai_player.battlefield.find(
           (c) => c.id === attack.creatureId
         );
-        console.log(
+        combatExamplesLogger.debug(
           `    - ${creature?.name}: EV=${attack.expectedValue.toFixed(2)}, Risk=${(attack.riskLevel * 100).toFixed(0)}%`
         );
       });
     }
-    console.log('');
+    combatExamplesLogger.debug('');
   });
 }
 
@@ -609,7 +612,7 @@ export function example7_DifficultyComparison(): void {
  * Example 8: Custom Configuration
  */
 export function example8_CustomConfiguration(): void {
-  console.log('=== Example 8: Custom Combat AI Configuration ===\n');
+  combatExamplesLogger.debug('=== Example 8: Custom Combat AI Configuration ===\n');
 
   const gameState = createCombatGameState();
 
@@ -626,16 +629,16 @@ export function example8_CustomConfiguration(): void {
   aggressiveAI.setConfig(aggressiveConfig);
   const aggressivePlan = aggressiveAI.generateAttackPlan();
 
-  console.log('Aggressive Configuration:');
-  console.log(`  Strategy: ${aggressivePlan.strategy}`);
-  console.log(`  Attacks: ${aggressivePlan.attacks.length}`);
+  combatExamplesLogger.debug('Aggressive Configuration:');
+  combatExamplesLogger.debug(`  Strategy: ${aggressivePlan.strategy}`);
+  combatExamplesLogger.debug(`  Attacks: ${aggressivePlan.attacks.length}`);
   aggressivePlan.attacks.forEach((attack) => {
     const creature = gameState.players.ai_player.battlefield.find(
       (c) => c.id === attack.creatureId
     );
-    console.log(`    - ${creature?.name}`);
+    combatExamplesLogger.debug(`    - ${creature?.name}`);
   });
-  console.log('');
+  combatExamplesLogger.debug('');
 
   // Very defensive configuration
   const defensiveConfig: Partial<CombatAIConfig> = {
@@ -650,29 +653,29 @@ export function example8_CustomConfiguration(): void {
   defensiveAI.setConfig(defensiveConfig);
   const defensivePlan = defensiveAI.generateAttackPlan();
 
-  console.log('Defensive Configuration:');
-  console.log(`  Strategy: ${defensivePlan.strategy}`);
-  console.log(`  Attacks: ${defensivePlan.attacks.length}`);
+  combatExamplesLogger.debug('Defensive Configuration:');
+  combatExamplesLogger.debug(`  Strategy: ${defensivePlan.strategy}`);
+  combatExamplesLogger.debug(`  Attacks: ${defensivePlan.attacks.length}`);
   if (defensivePlan.attacks.length === 0) {
-    console.log('    - Holding back all creatures');
+    combatExamplesLogger.debug('    - Holding back all creatures');
   } else {
     defensivePlan.attacks.forEach((attack) => {
       const creature = gameState.players.ai_player.battlefield.find(
         (c) => c.id === attack.creatureId
       );
-      console.log(`    - ${creature?.name}`);
+      combatExamplesLogger.debug(`    - ${creature?.name}`);
     });
   }
-  console.log('');
+  combatExamplesLogger.debug('');
 }
 
 /**
  * Run all examples
  */
 export function runAllCombatExamples(): void {
-  console.log('\n╔════════════════════════════════════════════════════════════╗');
-  console.log('║        Combat AI Decision-Making - Usage Examples        ║');
-  console.log('╚════════════════════════════════════════════════════════════╝\n');
+  combatExamplesLogger.debug('\n╔════════════════════════════════════════════════════════════╗');
+  combatExamplesLogger.debug('║        Combat AI Decision-Making - Usage Examples        ║');
+  combatExamplesLogger.debug('╚════════════════════════════════════════════════════════════╝\n');
 
   example1_BasicAttacks();
   example2_BlockingDecisions();
@@ -683,9 +686,9 @@ export function runAllCombatExamples(): void {
   example7_DifficultyComparison();
   example8_CustomConfiguration();
 
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('All combat examples completed successfully!');
-  console.log('═══════════════════════════════════════════════════════════\n');
+  combatExamplesLogger.debug('═══════════════════════════════════════════════════════════');
+  combatExamplesLogger.debug('All combat examples completed successfully!');
+  combatExamplesLogger.debug('═══════════════════════════════════════════════════════════\n');
 }
 
 // Export examples for use in tests or other modules

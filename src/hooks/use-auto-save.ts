@@ -24,6 +24,7 @@ import {
   type AutoSaveConfig,
 } from '@/lib/auto-save-config';
 import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 
 /**
  * Auto-save status
@@ -139,15 +140,15 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
         try {
           await savedGamesManager.deleteGame(save.id);
         } catch (error) {
-          console.error(`Failed to delete auto-save ${save.id}:`, error);
+          logger.error(`Failed to delete auto-save ${save.id}`, error);
         }
       }
 
       if (savesToDelete.length > 0) {
-        console.log(`Cleaned up ${savesToDelete.length} old auto-saves`);
+        logger.debug(`Cleaned up ${savesToDelete.length} old auto-saves`);
       }
     } catch (error) {
-      console.error('Failed to cleanup auto-saves:', error);
+      logger.error('Failed to cleanup auto-saves:', error);
     }
   }, [config.autoCleanup, config.maxAutoSaves]);
 

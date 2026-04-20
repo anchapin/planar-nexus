@@ -28,6 +28,9 @@ import {
   type TimestampedAction,
 } from '@/lib/p2p-conflict-resolution';
 import { useConnectionHealth, type ConnectionHealth } from '@/hooks/use-connection-health';
+import { logger } from '@/lib/logger';
+
+const p2pLogger = logger.child('P2PConnection');
 
 export interface UseP2PConnectionOptions {
   playerId: string;
@@ -151,7 +154,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
           onConnectionStateChange: setConnectionState,
           onSignalingStateChange: setSignalingState,
           onMessage: (message) => {
-            console.log('[useP2PConnection] Received message:', message.type);
+            p2pLogger.debug('Received message:', message.type);
             
             // Handle handshake messages if enabled
             if (enableHandshake && handshakeSessionRef.current) {
@@ -160,7 +163,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
             }
           },
           onGameStateSync: (gameState) => {
-            console.log('[useP2PConnection] Received game state sync');
+            p2pLogger.debug('Received game state sync');
             
             // Verify checksum if handshake completed
             if (handshakeState === 'completed' && handshakeSessionRef.current) {
@@ -174,13 +177,13 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
             }
           },
           onChat: (chatMessage) => {
-            console.log('[useP2PConnection] Received chat:', chatMessage.text);
+            p2pLogger.debug('Received chat:', chatMessage.text);
           },
           onError: (err) => {
             setError(err.message);
           },
           onPlayerJoined: (playerId, playerName) => {
-            console.log('[useP2PConnection] Player joined:', playerName);
+            p2pLogger.debug('Player joined:', playerName);
             
             // Start handshake with new player
             if (enableHandshake && handshakeSessionRef.current) {
@@ -190,7 +193,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
             }
           },
           onPlayerLeft: (playerId) => {
-            console.log('[useP2PConnection] Player left:', playerId);
+            p2pLogger.debug('Player left:', playerId);
             
             // Cleanup handshake
             if (handshakeSessionRef.current) {
@@ -239,22 +242,22 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
             onConnectionStateChange: setConnectionState,
             onSignalingStateChange: setSignalingState,
             onMessage: (message) => {
-              console.log('[useP2PConnection] Received message:', message.type);
+              p2pLogger.debug('Received message:', message.type);
             },
             onGameStateSync: (gameState) => {
-              console.log('[useP2PConnection] Received game state sync');
+              p2pLogger.debug('Received game state sync');
             },
             onChat: (chatMessage) => {
-              console.log('[useP2PConnection] Received chat:', chatMessage.text);
+              p2pLogger.debug('Received chat:', chatMessage.text);
             },
             onError: (err) => {
               setError(err.message);
             },
             onPlayerJoined: (playerId, playerName) => {
-              console.log('[useP2PConnection] Player joined:', playerName);
+              p2pLogger.debug('Player joined:', playerName);
             },
             onPlayerLeft: (playerId) => {
-              console.log('[useP2PConnection] Player left:', playerId);
+              p2pLogger.debug('Player left:', playerId);
               
               // Cleanup handshake
               if (handshakeSessionRef.current) {
