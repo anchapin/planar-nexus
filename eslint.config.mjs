@@ -58,7 +58,7 @@ const eslintConfig = [
     },
   },
   {
-    ignores: ["next-env.d.ts", ".next/**", "node_modules/**", "jest.setup.js"],
+    ignores: ["next-env.d.ts", ".next/**", "node_modules/**", "jest.setup.js", "jest.config.js", "commitlint.config.js"],
   },
 ];
 
