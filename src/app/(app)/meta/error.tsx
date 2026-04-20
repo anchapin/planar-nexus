@@ -28,7 +28,7 @@ export default function MetaError({
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-          <Button onClick={reset">Try Again</Button>
+          <Button onClick={reset}>Try Again</Button>
           <Button variant="outline" asChild>
             <Link href="/dashboard">
               <Home className="mr-2 size-4" />
