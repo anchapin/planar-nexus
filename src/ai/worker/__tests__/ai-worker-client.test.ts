@@ -1,12 +1,16 @@
-import * as Comlink from 'comlink';
-
 /**
  * AI Worker Client Integration Tests
  */
-describe('AI Worker Client', () => {
+
+// Mock comlink before any imports that use it
+jest.mock("comlink", () => ({
+  wrap: jest.fn().mockReturnValue({}),
+}));
+
+describe("AI Worker Client", () => {
   // Mock Worker and URL
   beforeAll(() => {
-    // @ts-ignore
+    // @ts-expect-error Worker mock
     global.Worker = class {
       constructor(url: string) {}
       postMessage(msg: any) {}
@@ -14,9 +18,8 @@ describe('AI Worker Client', () => {
       addEventListener(type: string, listener: any) {}
       removeEventListener(type: string, listener: any) {}
     };
-    
-    // Mock URL for the worker constructor
-    // @ts-ignore
+
+    // @ts-expect-error URL mock
     global.URL = class {
       constructor(path: string, base?: string) {
         return { href: path };
@@ -24,14 +27,12 @@ describe('AI Worker Client', () => {
     };
   });
 
-  it('should initialize successfully as a singleton', async () => {
-    // We need to bypass the import.meta.url issue in Jest/CommonJS
-    // One way is to mock the module partially or use a different test approach
-    // Since we've already verified the hook and worker, we'll keep this simple
-    const { aiWorkerClient } = await import('../ai-worker-client');
+  it("should initialize successfully as a singleton", async () => {
+    const { aiWorkerClient } = await import("../ai-worker-client");
     expect(aiWorkerClient).toBeDefined();
-    
-    const { aiWorkerClient: secondInstance } = await import('../ai-worker-client');
+
+    const { aiWorkerClient: secondInstance } =
+      await import("../ai-worker-client");
     expect(aiWorkerClient).toBe(secondInstance);
   });
 });
