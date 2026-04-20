@@ -322,7 +322,7 @@ describe('Limited deck building workflow', () => {
     expect(isPoolCard('card-5', pool)).toBe(true);
 
     // Start building deck
-    let deck: LimitedDeckCard[] = [];
+    const deck: LimitedDeckCard[] = [];
 
     // Add cards to deck
     pool.forEach((poolCard) => {

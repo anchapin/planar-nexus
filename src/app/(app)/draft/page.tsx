@@ -21,8 +21,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -31,13 +29,12 @@ import { DraftPoolView } from "@/components/draft-pool-view";
 import { DraftTimer } from "@/components/draft-timer";
 import { SkipPickDialog } from "@/components/skip-pick-dialog";
 import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
-import type { DraftSession, AiDifficulty, CreateDraftSessionOptions } from "@/lib/limited/types";
-import { createDraftSession, isDraftComplete, isAiPickTurn, passPack, getNextPackHolder } from "@/lib/limited/draft-generator";
+import type { DraftSession, AiDifficulty } from "@/lib/limited/types";
+import { createDraftSession, isDraftComplete, isAiPickTurn, getNextPackHolder } from "@/lib/limited/draft-generator";
 import { selectAiPick } from "@/lib/ai-neighbor-logic";
 import { getSession, saveDraftSession } from "@/lib/limited/pool-storage";
 import { getSetDetails } from "@/lib/limited/set-service";
 import { AiPickingIndicator } from "@/components/ai-picking-indicator";
-import { PackPassingAnimation, PackHolderBadge, TurnIndicator } from "@/components/pack-passing-animation";
 import { Loader2, Package, Play } from "lucide-react";
 
 // ============================================================================
@@ -92,8 +89,6 @@ function DraftPageContent() {
     start: startTimer,
     pause: pauseTimer,
     reset: resetTimer,
-    handleExpire,
-    lastHoveredCardId,
   } = useDraftTimer({
     initialSeconds: DRAFT_TIMER_CONFIG.defaultSeconds,
     autoStart: false,
@@ -123,13 +118,7 @@ function DraftPageContent() {
     handlePickCard: draftPickerPick,
     handleOpenPack,
     handleHoverCard: draftPickerHover,
-    handleAdvanceToNextPack,
-  } = session ? useDraftPicker(session, setSession) : {
-    handlePickCard: () => {},
-    handleOpenPack: () => {},
-    handleHoverCard: () => {},
-    handleAdvanceToNextPack: () => {},
-  };
+  } = useDraftPicker(session, setSession);
 
   // Handle card pick - reset timer after pick, pass pack to AI if neighbor enabled
   const handleCardPick = useCallback((cardId: string) => {
@@ -390,7 +379,7 @@ function DraftPageContent() {
     }
 
     initSession();
-  }, [sessionId, setCode, router]);
+  }, [sessionId, setCode, router, aiNeighborEnabled, aiDifficulty]);
 
   // Start draft
   const handleStartDraft = useCallback(() => {
@@ -405,6 +394,19 @@ function DraftPageContent() {
     setIsTimerActive(true);
     startTimer();
   }, [session, setSession, resetTimer, startTimer]);
+
+  // Redirect to complete page when draft is finished (DRFT-09)
+  useEffect(() => {
+    if (session && isDraftComplete(session)) {
+      const updatedSession = {
+        ...session,
+        draftState: "draft_complete" as const,
+        status: "completed" as const,
+      };
+      saveDraftSession(updatedSession);
+      router.replace(`/draft/complete?session=${session.id}`);
+    }
+  }, [session, router]);
 
   // Loading state
   if (isLoading || isCreating) {
@@ -438,21 +440,6 @@ function DraftPageContent() {
       </div>
     );
   }
-
-  // Redirect to complete page when draft is finished (DRFT-09)
-  useEffect(() => {
-    if (session && isDraftComplete(session)) {
-      // Update session status
-      const updatedSession = {
-        ...session,
-        draftState: "draft_complete" as const,
-        status: "completed" as const,
-      };
-      saveDraftSession(updatedSession);
-      // Redirect to completion page
-      router.replace(`/draft/complete?session=${session.id}`);
-    }
-  }, [session, router]);
 
   // Intro state - show start button and AI neighbor config (NEIB-01, NEIB-03)
   if (session?.draftState === "intro") {
@@ -598,14 +585,12 @@ interface DraftHeaderProps {
   onResumeTimer?: () => void;
 }
 
-function DraftHeader({ 
-  session, 
-  onQuit, 
-  timeRemaining, 
+function DraftHeader({
+  session,
+  onQuit,
+  timeRemaining,
   colorState = 'green',
   isTimerActive = false,
-  onPauseTimer,
-  onResumeTimer,
 }: DraftHeaderProps) {
   const currentPack = session.currentPackIndex + 1;
   const currentPick = session.currentPickIndex + 1;
@@ -682,28 +667,5 @@ function MobilePoolBar({ pool }: MobilePoolBarProps) {
         {pool.length >= 40 ? "Ready to build" : `${40 - pool.length} more needed`}
       </Badge>
     </div>
-  );
-}
-
-// ============================================================================
-// Icon Re-export (for template)
-// ============================================================================
-
-function Layers({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <polygon points="12 2 2 7 12 12 22 7 12 2" />
-      <polyline points="2 17 12 22 22 17" />
-      <polyline points="2 12 12 17 22 12" />
-    </svg>
   );
 }

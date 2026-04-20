@@ -22,7 +22,7 @@ describe('AIThinkingIndicator', () => {
 
   it('applies custom className', () => {
     const { container } = render(<AIThinkingIndicator className="custom-class" />);
-    // @ts-ignore
+    // @ts-expect-error className on React element
     expect(container.firstChild?.className).toContain('custom-class');
   });
 });

@@ -1,6 +1,7 @@
 import { OramaManager } from '../orama-manager';
 import { db } from '../../db/local-intelligence-db';
 import { testCards } from '../../__fixtures__/test-cards';
+import { persist, restore } from '@orama/plugin-data-persistence';
 
 // Mock Orama persistence to avoid environment issues in Jest
 jest.mock('@orama/plugin-data-persistence', () => ({
@@ -10,7 +11,6 @@ jest.mock('@orama/plugin-data-persistence', () => ({
 
 // Mock @orama/orama
 jest.mock('@orama/orama', () => {
-  const { testCards } = require('../../__fixtures__/test-cards');
   return {
     create: jest.fn().mockResolvedValue({}),
     insertMultiple: jest.fn().mockResolvedValue({}),
@@ -84,8 +84,6 @@ describe('OramaManager', () => {
   });
 
   it('should persist and restore the index', async () => {
-    const { persist, restore } = require('@orama/plugin-data-persistence');
-    
     // Setup initial index
     await oramaManager.init();
     await oramaManager.saveIndex();
