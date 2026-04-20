@@ -1,7 +1,7 @@
 module.exports = {
   '*.{ts,tsx}': [
     'eslint --fix --max-warnings=0',
-    'tsc --noEmit --pretty',
+    () => 'tsc --noEmit --pretty',
     'prettier --write --ignore-unknown'
   ],
   '*.{js,jsx}': [
