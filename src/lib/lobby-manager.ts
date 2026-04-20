@@ -1,5 +1,16 @@
 /**
  * Client-side lobby state management
+ *
+ * @deprecated This module uses server-dependent lobby management and is DEPRECATED.
+ * Centralized lobby systems create legal liability targets.
+ *
+ * Use serverless P2P lobby management instead:
+ * - Use `p2p-direct-connection.ts` for QR code/manual code exchange
+ * - Use `p2p-signaling-client.ts` for client-side signaling
+ * - Use `/multiplayer/p2p-host` for P2P hosting UI
+ *
+ * See issue #641 for migration to legal/serverless P2P.
+ *
  * Handles local lobby state for hosting games before connecting to signaling server
  */
 

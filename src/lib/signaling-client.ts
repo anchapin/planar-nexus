@@ -1,7 +1,15 @@
 /**
  * Signaling Client
  * Issue #285: Implement signaling server for WebRTC handshake
- * 
+ *
+ * @deprecated This module uses server-dependent signaling and is NOT supported for production use.
+ * For legal/serverless P2P multiplayer, use the client-side P2P system instead:
+ * - Use `p2p-direct-connection.ts` for QR code/manual code exchange
+ * - Use `p2p-signaling-client.ts` for client-side signaling
+ * - Use `p2p-game-connection.ts` for full game connections
+ *
+ * See issue #641 for more information on the migration to serverless P2P.
+ *
  * Client-side module for communicating with the signaling server API.
  * Handles session creation, joining, and WebRTC offer/answer/ICE exchange.
  */

@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Gamepad2, Users, Clock } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Gamepad2, Users, Clock, Wifi, Shield, Share2, QrCode, MessageSquare } from "lucide-react";
 import Link from "next/link";
 
 export default function MultiplayerPage() {
@@ -10,7 +11,7 @@ export default function MultiplayerPage() {
       <header className="mb-6">
         <h1 className="font-headline text-3xl font-bold">Multiplayer</h1>
         <p className="text-muted-foreground mt-1">
-          Challenge others in multiplayer battles.
+          Challenge others in peer-to-peer multiplayer battles.
         </p>
       </header>
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -18,38 +19,33 @@ export default function MultiplayerPage() {
             <Card>
                 <CardHeader>
                     <CardTitle>Host a Game</CardTitle>
-                    <CardDescription>Create a new game lobby and invite your friends.</CardDescription>
+                    <CardDescription>Create a P2P game and share connection code with your opponent</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Link href="/multiplayer/host">
-                        <Button className="w-full">Create Lobby</Button>
-                    </Link>
-                </CardContent>
-            </Card>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Browse Games</CardTitle>
-                    <CardDescription>Find and join public games waiting for players.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <Link href="/multiplayer/browse">
-                        <Button variant="outline" className="w-full">
-                            <Gamepad2 className="w-4 h-4 mr-2" />
-                            Browse Public Games
+                    <Link href="/multiplayer/p2p-host">
+                        <Button className="w-full">
+                            <Wifi className="w-4 h-4 mr-2" />
+                            Create P2P Game
                         </Button>
                     </Link>
                 </CardContent>
             </Card>
             <Card>
                 <CardHeader>
-                    <CardTitle>Join with Code</CardTitle>
-                    <CardDescription>Have an invite code? Join a private game directly.</CardDescription>
+                    <CardTitle>Join a Game</CardTitle>
+                    <CardDescription>Enter a connection code to join your opponent's game</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Link href="/multiplayer/join">
+                    <Link href="/multiplayer/p2p-join">
+                        <Button variant="outline" className="w-full">
+                            <QrCode className="w-4 h-4 mr-2" />
+                            Scan QR Code
+                        </Button>
+                    </Link>
+                    <Link href="/multiplayer/p2p-join">
                         <Button variant="outline" className="w-full">
                             <Gamepad2 className="w-4 h-4 mr-2" />
-                            Join with Code
+                            Enter Code Manually
                         </Button>
                     </Link>
                 </CardContent>
@@ -58,57 +54,76 @@ export default function MultiplayerPage() {
         <div className="lg:col-span-2">
             <Card>
                 <CardHeader>
-                    <CardTitle>Getting Started</CardTitle>
-                    <CardDescription>Choose how you want to play</CardDescription>
+                    <CardTitle>Peer-to-Peer Multiplayer</CardTitle>
+                    <CardDescription>Direct connections without any server</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                    <div className="grid gap-4 md:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                         <div className="p-4 border rounded-lg bg-card">
                             <div className="flex items-center gap-2 mb-2">
-                                <Gamepad2 className="w-5 h-5 text-primary" />
-                                <h3 className="font-semibold">Host Game</h3>
+                                <Shield className="w-5 h-5 text-green-500" />
+                                <h3 className="font-semibold">Serverless</h3>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                                Create your own lobby and invite friends with a shareable code.
+                                Direct P2P connection via WebRTC. No central server, no data collection.
                             </p>
                         </div>
                         <div className="p-4 border rounded-lg bg-card">
                             <div className="flex items-center gap-2 mb-2">
-                                <Users className="w-5 h-5 text-primary" />
-                                <h3 className="font-semibold">Browse Games</h3>
+                                <Share2 className="w-5 h-5 text-primary" />
+                                <h3 className="font-semibold">Easy Sharing</h3>
                             </div>
                             <p className="text-sm text-muted-foreground">
-                                Find public games looking for players and join instantly.
-                            </p>
-                        </div>
-                        <div className="p-4 border rounded-lg bg-card">
-                            <div className="flex items-center gap-2 mb-2">
-                                <Clock className="w-5 h-5 text-primary" />
-                                <h3 className="font-semibold">Join with Code</h3>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                                Enter a game code from a friend to join their private lobby.
+                                Share connection codes via QR code, Discord, or any messaging app.
                             </p>
                         </div>
                     </div>
 
-                    <div className="border-t pt-6">
-                        <h3 className="font-semibold mb-4">Quick Stats</h3>
-                        <div className="grid grid-cols-3 gap-4 text-center">
-                            <div className="p-4 bg-muted/50 rounded-lg">
-                                <div className="text-2xl font-bold">Prototype</div>
-                                <div className="text-xs text-muted-foreground">Current Status</div>
+                    <Separator />
+
+                    <div>
+                        <h3 className="font-semibold mb-4">How to Connect</h3>
+                        <div className="space-y-4">
+                            <div className="flex gap-4">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">1</div>
+                                <div>
+                                    <h4 className="font-medium">Host Creates Game</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        Host creates a P2P game and generates a connection code
+                                    </p>
+                                </div>
                             </div>
-                            <div className="p-4 bg-muted/50 rounded-lg">
-                                <div className="text-2xl font-bold">Local</div>
-                                <div className="text-xs text-muted-foreground">Game Discovery</div>
+                            <div className="flex gap-4">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">2</div>
+                                <div>
+                                    <h4 className="font-medium">Share Connection Code</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        Host shares the QR code or connection string with opponent (Discord, text, etc.)
+                                    </p>
+                                </div>
                             </div>
-                            <div className="p-4 bg-muted/50 rounded-lg">
-                                <div className="text-2xl font-bold">Coming Soon</div>
-                                <div className="text-xs text-muted-foreground">P2P Networking</div>
+                            <div className="flex gap-4">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">3</div>
+                                <div>
+                                    <h4 className="font-medium">Opponent Joins</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        Opponent scans QR code or enters the connection code manually
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-4">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">4</div>
+                                <div>
+                                    <h4 className="font-medium">Direct Connection</h4>
+                                    <p className="text-sm text-muted-foreground">
+                                        WebRTC establishes direct P2P connection for game play
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    <Separator />
 
                     <div className="bg-muted/50 p-4 rounded-lg">
                         <h4 className="font-semibold mb-2">Supported Formats</h4>
@@ -124,10 +139,44 @@ export default function MultiplayerPage() {
                     </div>
                 </CardContent>
             </Card>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-                Note: Multiplayer functionality is a prototype. Game connection logic (P2P via WebRTC) is not implemented.
-                Public games are stored locally in your browser for demonstration purposes.
-            </p>
+
+            <Card className="mt-6">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5" />
+                        Sharing Tips
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="flex items-start gap-3">
+                        <QrCode className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                        <div>
+                            <h4 className="font-medium">QR Code</h4>
+                            <p className="text-sm text-muted-foreground">
+                                Best for in-person or screen sharing. Mobile users can scan directly.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <Share2 className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                        <div>
+                            <h4 className="font-medium">Copy & Paste</h4>
+                            <p className="text-sm text-muted-foreground">
+                                Copy the connection string and paste it into Discord, email, or any messaging app.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <Users className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                        <div>
+                            <h4 className="font-medium">Discord/Chat</h4>
+                            <p className="text-sm text-muted-foreground">
+                                The easiest way - send the code in any chat application.
+                            </p>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
       </main>
     </div>
