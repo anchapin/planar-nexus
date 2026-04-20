@@ -79,6 +79,7 @@ export const coachFlow = {
     const digestedText = digestedContext
       ? formatDigestedContextForLLM(digestedContext)
       : "";
+
     const systemPrompt = buildCoachSystemPrompt(
       format,
       deckListText,
