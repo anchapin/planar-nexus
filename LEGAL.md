@@ -1,10 +1,8 @@
 # Legal Notices
 
-## Disclaimer of Affiliation
+## WotC Fan Content Policy Disclaimer
 
-**Planar Nexus is not affiliated with, endorsed by, or connected to Wizards of the Coast, Magic: The Gathering, or any of their affiliates.**
-
-This project is an independent, non-commercial project created for educational and entertainment purposes only.
+**Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.**
 
 ## Trademark Notice
 
@@ -23,17 +21,14 @@ Card images are fetched from the Scryfall API, which provides access to card dat
 
 ## Fair Use Statement
 
-This project is designed to emulate a Magic: The Gathering tabletop experience for personal, non-commercial use. Similar projects like Cockatrice and XMage have operated for years under this model.
+This project is designed to emulate a Magic: The Gathering tabletop experience for personal, non-commercial use.
 
 The project provides:
 - A digital game board for playing MTG-format games
 - Deck building and management tools
 - AI-assisted gameplay features
 
-We believe this falls under fair use as it:
-- Is non-commercial in nature
-- Does not substitute for official MTG products
-- Is transformative in its purpose (a utility tool vs. a product)
+This is non-commercial fan content created under the Wizards of the Coast Fan Content Policy.
 
 ## Wizards of the Coast IP Policy
 
@@ -43,7 +38,7 @@ This project respects Wizards of the Coast's intellectual property rights. We en
 - Support the official game and its creators
 - Use this tool only for personal, educational purposes
 
-For more information, see: https://company Wizards.com/en/legal
+For more information, see: https://company.wizards.com/en/legal/fancontentpolicy
 
 ## Scryfall API Usage
 
