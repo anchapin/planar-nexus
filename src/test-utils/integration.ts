@@ -75,7 +75,6 @@ export function createMockCard(overrides: Partial<{
  */
 export async function startServer() {
   // Not needed for deck storage tests - IndexedDB is mocked via fake-indexeddb
-  console.log('Note: MSW server not needed for deck storage tests');
 }
 
 /**
@@ -95,6 +94,21 @@ export function resetHandlers() {
 /**
  * Use custom handlers for a specific test
  */
-export function useHandlers(...handlers: any[]) {
+export function useHandlers(..._handlers: Array<() => void>) {
   // Not needed for deck storage tests
 }
+
+/**
+ * Alias for createMockCard to match the barrel export name in index.ts.
+ */
+export const createMockScryfallCard = createMockCard;
+
+/**
+ * Alias for createMockDeck to match the barrel export name in index.ts.
+ */
+export const createMockDecklist = createMockDeck;
+
+/**
+ * Empty server handlers placeholder for barrel export compatibility.
+ */
+export const serverHandlers: Array<() => void> = [];

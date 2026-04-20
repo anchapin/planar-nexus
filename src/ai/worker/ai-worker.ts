@@ -2,7 +2,7 @@ import * as Comlink from 'comlink';
 import { evaluateGameState, quickScore } from '../game-state-evaluator';
 import { detectArchetype } from '../archetype-detector';
 import type { AIWorkerAPI, AnalyzeStatePayload, CoachContextPayload, DigestedCoachContext } from './worker-types';
-import type { DeckCard } from '@/types/card';
+import type { DeckCard } from '@/app/actions';
 
 /**
  * AI Web Worker Implementation
@@ -29,11 +29,11 @@ const aiWorker: AIWorkerAPI = {
   async detectArchetype(deck: unknown[]) {
     // Cast to DeckCard[] as expected by detectArchetype
     const result = detectArchetype(deck as DeckCard[]);
-    return result.archetype;
+    return result.primary;
   },
 
   async prepareCoachContext(payload: CoachContextPayload): Promise<DigestedCoachContext> {
-    const { deck, gameState, playerId } = payload;
+    const { deck, gameState } = payload;
     const cards = (deck as DeckCard[]) || [];
     
     const deckSummary = cards.length > 0 ? {
