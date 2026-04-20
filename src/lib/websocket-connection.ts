@@ -1,7 +1,17 @@
 /**
  * WebSocket Connection Manager
  * Issue #304: Add WebSocket fallback for non-P2P scenarios
- * 
+ *
+ * @deprecated This module uses server-dependent WebSocket and is DEPRECATED.
+ * Running centralized server infrastructure creates legal liability targets.
+ *
+ * Use serverless P2P WebRTC instead:
+ * - Use `p2p-direct-connection.ts` for QR code/manual code exchange
+ * - Use `p2p-signaling-client.ts` for client-side signaling
+ * - Use `p2p-game-connection.ts` for full game connections
+ *
+ * See issue #641 for migration to legal/serverless P2P.
+ *
  * This module provides WebSocket-based communication as a fallback
  * when WebRTC P2P connections cannot be established.
  */
