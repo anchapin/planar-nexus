@@ -1,15 +1,24 @@
-
 "use client";
 
 import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
-import { formatRules, getGameModeIdFromFormatName, type Format } from "@/lib/game-rules";
+import {
+  formatRules,
+  getGameModeIdFromFormatName,
+  type Format,
+} from "@/lib/game-rules";
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
@@ -26,27 +35,40 @@ export default function DeckBuilderPage() {
   const [format, setFormat] = useState<Format>("commander");
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
-  const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
+  const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>(
+    "saved-decks",
+    [],
+  );
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const searchInputRef = useRef<{ focus: () => void }>(null);
 
   const { toast } = useToast();
   const [isImporting, startImportTransition] = useTransition();
-  
+
   useEffect(() => {
     // If there is an active deck, check if it's "dirty"
     if (activeDeckId) {
-      const activeDeck = savedDecks.find(d => d.id === activeDeckId);
+      const activeDeck = savedDecks.find((d) => d.id === activeDeckId);
       if (activeDeck) {
         const isNameChanged = activeDeck.name !== deckName;
         const isFormatChanged = activeDeck.format !== format;
-        const isCardsChanged = JSON.stringify(activeDeck.cards.map(c => ({ id: c.id, count: c.count })).sort((a,b) => a.id.localeCompare(b.id))) !== JSON.stringify(deck.map(c => ({ id: c.id, count: c.count })).sort((a,b) => a.id.localeCompare(b.id)));
-        
+        const isCardsChanged =
+          JSON.stringify(
+            activeDeck.cards
+              .map((c) => ({ id: c.id, count: c.count }))
+              .sort((a, b) => a.id.localeCompare(b.id)),
+          ) !==
+          JSON.stringify(
+            deck
+              .map((c) => ({ id: c.id, count: c.count }))
+              .sort((a, b) => a.id.localeCompare(b.id)),
+          );
+
         setIsDeckSaved(!isNameChanged && !isFormatChanged && !isCardsChanged);
       }
     } else {
-        // New deck is never "saved"
-        setIsDeckSaved(false);
+      // New deck is never "saved"
+      setIsDeckSaved(false);
     }
   }, [deck, deckName, format, activeDeckId, savedDecks]);
 
@@ -54,23 +76,23 @@ export default function DeckBuilderPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl+S or Cmd+S to save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         saveDeck();
       }
       // Ctrl+F or Cmd+F to focus search
-      else if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      else if ((e.ctrlKey || e.metaKey) && e.key === "f") {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
       // Escape to close dialogs (handled by Dialog component, but we track state)
-      else if (e.key === 'Escape') {
+      else if (e.key === "Escape") {
         setIsImportDialogOpen(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []); // Empty deps - handlers are stable
 
   const handleDeckChange = (updater: (prevDeck: DeckCard[]) => DeckCard[]) => {
@@ -86,7 +108,7 @@ export default function DeckBuilderPage() {
   const handleFormatChange = (newFormat: Format) => {
     setFormat(newFormat);
     setIsDeckSaved(false);
-  }
+  };
 
   const addCardToDeck = (card: ScryfallCard) => {
     const gameModeId = getGameModeIdFromFormatName(format);
@@ -95,16 +117,20 @@ export default function DeckBuilderPage() {
     handleDeckChange((prevDeck) => {
       const existingCard = prevDeck.find((c) => c.id === card.id);
       const isBasicResource = card.type_line?.includes("Basic Resource");
-      
-      if (!isBasicResource && existingCard && existingCard.count >= rules.maxCopies) {
+
+      if (
+        !isBasicResource &&
+        existingCard &&
+        existingCard.count >= rules.maxCopies
+      ) {
         toast({
           variant: "destructive",
           title: "Card Limit Reached",
-          description: `You can only have ${rules.maxCopies} cop${rules.maxCopies > 1 ? 'ies' : 'y'} of "${card.name}" in a ${format} deck.`,
+          description: `You can only have ${rules.maxCopies} cop${rules.maxCopies > 1 ? "ies" : "y"} of "${card.name}" in a ${format} deck.`,
         });
         return prevDeck;
       }
-      
+
       const totalCards = prevDeck.reduce((sum, c) => sum + c.count, 0);
       if (rules.maxCards && totalCards >= rules.maxCards) {
         toast({
@@ -117,7 +143,7 @@ export default function DeckBuilderPage() {
 
       if (existingCard) {
         return prevDeck.map((c) =>
-          c.id === card.id ? { ...c, count: c.count + 1 } : c
+          c.id === card.id ? { ...c, count: c.count + 1 } : c,
         );
       } else {
         return [...prevDeck, { ...card, count: 1 }];
@@ -130,7 +156,7 @@ export default function DeckBuilderPage() {
       const existingCard = prevDeck.find((c) => c.id === cardId);
       if (existingCard && existingCard.count > 1) {
         return prevDeck.map((c) =>
-          c.id === cardId ? { ...c, count: c.count - 1 } : c
+          c.id === cardId ? { ...c, count: c.count - 1 } : c,
         );
       } else {
         return prevDeck.filter((c) => c.id !== cardId);
@@ -148,102 +174,113 @@ export default function DeckBuilderPage() {
     });
   };
 
-  const importDeck = (decklist: string, decklistFormat?: 'standard' | 'mtgo' | 'json') => {
+  const importDeck = (
+    decklist: string,
+    decklistFormat?: "standard" | "mtgo" | "json",
+  ) => {
     if (!decklist.trim()) {
-        toast({
-            variant: "destructive",
-            title: "Empty Decklist",
-            description: "Please paste a decklist to import.",
-        });
-        return;
+      toast({
+        variant: "destructive",
+        title: "Empty Decklist",
+        description: "Please paste a decklist to import.",
+      });
+      return;
     }
     setActiveDeckId(null);
     startImportTransition(async () => {
-        try {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, decklistFormat, format);
+      try {
+        const { found, notFound, illegal } = await importDecklistClient(
+          decklist,
+          decklistFormat,
+          format,
+        );
 
-            if (found.length > 0) {
-                setDeck(found);
-                toast({
-                    title: "Deck Imported Successfully",
-                    description: `${found.reduce((acc, card) => acc + card.count, 0)} cards have been added to your deck.`,
-                });
-            } else {
-                 toast({
-                    variant: "destructive",
-                    title: "Import Failed",
-                    description: "No cards from your list could be found.",
-                });
-            }
-
-            if (notFound.length > 0) {
-                toast({
-                    variant: "destructive",
-                    title: "Some cards not found",
-                    description: `The following cards could not be found: ${notFound.join(", ")}. They may be misspelled or not available.`,
-                });
-            }
-
-            if (illegal.length > 0) {
-                toast({
-                    variant: "destructive",
-                    title: "Illegal Cards Found",
-                    description: `The following cards are not legal in ${format}: ${illegal.join(", ")}.`,
-                });
-            }
-
-        } catch (error) {
-            console.error(error);
-            toast({
-                variant: "destructive",
-                title: "Import Error",
-                description: "An unexpected error occurred while importing the deck.",
-            });
+        if (found.length > 0) {
+          setDeck(found);
+          const totalFound = found.reduce((acc, card) => acc + card.count, 0);
+          toast({
+            title: "Deck Imported",
+            description: `Successfully added ${totalFound} cards.`,
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Import Failed",
+            description: "No cards from your list could be found or added.",
+          });
         }
+
+        if (notFound.length > 0) {
+          toast({
+            variant: "destructive",
+            title: "Cards Not Found",
+            description: `${notFound.length} cards were not found in your local database. You may need to update your database or check for typos. Missing: ${notFound.slice(0, 5).join(", ")}${notFound.length > 5 ? "..." : ""}`,
+          });
+        }
+
+        if (illegal.length > 0) {
+          toast({
+            title: "Illegal Cards Skipped",
+            description: `${illegal.length} cards are not legal in ${format} and were skipped. Illegal: ${illegal.slice(0, 5).join(", ")}${illegal.length > 5 ? "..." : ""}`,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        toast({
+          variant: "destructive",
+          title: "Import Error",
+          description: "An unexpected error occurred while importing the deck.",
+        });
+      }
     });
   };
 
   const exportDeck = () => {
     if (deck.length === 0) {
-        toast({
-            variant: "destructive",
-            title: "Empty Deck",
-            description: "There are no cards in your deck to export.",
-        });
-        return;
+      toast({
+        variant: "destructive",
+        title: "Empty Deck",
+        description: "There are no cards in your deck to export.",
+      });
+      return;
     }
     const decklist = deck
-      .map(card => `${card.count} ${card.name}`)
-      .join('\n');
-    
-    const blob = new Blob([decklist], { type: 'text/plain' });
+      .map((card) => `${card.count} ${card.name}`)
+      .join("\n");
+
+    const blob = new Blob([decklist], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${deckName.replace(/\s/g, '_')}.txt`;
+    a.download = `${deckName.replace(/\s/g, "_")}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast({
-        title: "Deck Exported",
-        description: "Your decklist has been downloaded.",
+      title: "Deck Exported",
+      description: "Your decklist has been downloaded.",
     });
   };
 
   const saveDeck = () => {
     if (deck.length === 0) {
-      toast({ variant: 'destructive', title: 'Cannot Save Empty Deck' });
+      toast({ variant: "destructive", title: "Cannot Save Empty Deck" });
       return;
     }
     const now = new Date().toISOString();
     if (activeDeckId) {
       // Update existing deck
-      const updatedDecks = savedDecks.map(d =>
-        d.id === activeDeckId ? { ...d, name: deckName, format, cards: deck, updatedAt: now } : d
+      const updatedDecks = savedDecks.map((d) =>
+        d.id === activeDeckId
+          ? { ...d, name: deckName, format, cards: deck, updatedAt: now }
+          : d,
       );
       setSavedDecks(updatedDecks);
-      toast({ title: 'Deck Updated', description: `"${deckName}" has been updated.` });
+      toast({
+        title: "Deck Updated",
+        description: `"${deckName}" has been updated.`,
+      });
     } else {
       // Create new deck
       const newDeck: SavedDeck = {
@@ -256,95 +293,125 @@ export default function DeckBuilderPage() {
       };
       setSavedDecks([...savedDecks, newDeck]);
       setActiveDeckId(newDeck.id);
-      toast({ title: 'Deck Saved', description: `"${deckName}" has been saved.` });
+      toast({
+        title: "Deck Saved",
+        description: `"${deckName}" has been saved.`,
+      });
     }
     setIsDeckSaved(true);
-  }
+  };
 
   const loadDeck = (deckToLoad: SavedDeck) => {
     setDeck(deckToLoad.cards);
     setDeckName(deckToLoad.name);
     setFormat(deckToLoad.format);
     setActiveDeckId(deckToLoad.id);
-    toast({ title: 'Deck Loaded', description: `Now editing "${deckToLoad.name}".` });
-  }
+    toast({
+      title: "Deck Loaded",
+      description: `Now editing "${deckToLoad.name}".`,
+    });
+  };
 
   const deleteDeck = (deckId: string) => {
-    setSavedDecks(savedDecks.filter(d => d.id !== deckId));
+    setSavedDecks(savedDecks.filter((d) => d.id !== deckId));
     if (activeDeckId === deckId) {
       clearDeck();
     }
-    toast({ title: 'Deck Deleted' });
-  }
+    toast({ title: "Deck Deleted" });
+  };
 
   return (
     <SynergyProvider deck={deck}>
       <div className="flex h-full min-h-svh w-full flex-col p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
-            <h1 className="font-headline text-3xl font-bold whitespace-nowrap">Deck Builder</h1>
+            <h1 className="font-headline text-3xl font-bold whitespace-nowrap">
+              Deck Builder
+            </h1>
             <div className="flex items-center gap-2">
-              <Label htmlFor="format-select" className="text-muted-foreground">Format</Label>
+              <Label htmlFor="format-select" className="text-muted-foreground">
+                Format
+              </Label>
               <Select value={format} onValueChange={handleFormatChange}>
-                  <SelectTrigger id="format-select" data-testid="format-select" className="w-40 capitalize">
-                      <SelectValue placeholder="Select format" />
-                  </SelectTrigger>
-                  <SelectContent>
-                      <SelectItem value="commander">Commander</SelectItem>
-                      <SelectItem value="standard">Standard</SelectItem>
-                      <SelectItem value="modern">Modern</SelectItem>
-                      <SelectItem value="pioneer">Pioneer</SelectItem>
-                      <SelectItem value="legacy">Legacy</SelectItem>
-                      <SelectItem value="vintage">Vintage</SelectItem>
-                      <SelectItem value="pauper">Pauper</SelectItem>
-                  </SelectContent>
+                <SelectTrigger
+                  id="format-select"
+                  data-testid="format-select"
+                  className="w-40 capitalize"
+                >
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="commander">Commander</SelectItem>
+                  <SelectItem value="standard">Standard</SelectItem>
+                  <SelectItem value="modern">Modern</SelectItem>
+                  <SelectItem value="pioneer">Pioneer</SelectItem>
+                  <SelectItem value="legacy">Legacy</SelectItem>
+                  <SelectItem value="vintage">Vintage</SelectItem>
+                  <SelectItem value="pauper">Pauper</SelectItem>
+                </SelectContent>
               </Select>
             </div>
           </div>
-          <ImportExportControls onImport={importDeck} onExport={exportDeck} onClear={clearDeck} onSave={saveDeck} isDeckSaved={isDeckSaved} isImporting={isImporting} />
+          <ImportExportControls
+            onImport={importDeck}
+            onExport={exportDeck}
+            onClear={clearDeck}
+            onSave={saveDeck}
+            isDeckSaved={isDeckSaved}
+            isImporting={isImporting}
+          />
         </div>
         <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-2">
-              <CardSearch ref={searchInputRef} onAddCard={addCardToDeck} />
+            <CardSearch ref={searchInputRef} onAddCard={addCardToDeck} />
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
-              <Tabs defaultValue="deck" className="w-full">
-                <TabsList className="w-full">
-                  <TabsTrigger value="deck" className="flex-1">Deck List</TabsTrigger>
-                  <TabsTrigger value="mana-curve" className="flex-1">Mana Curve</TabsTrigger>
-                </TabsList>
-                <TabsContent value="deck" className="mt-4">
-                  <DeckList 
-                    deck={deck} 
-                    deckName={deckName}
-                    onDeckNameChange={handleDeckNameChange}
-                    onRemoveCard={removeCardFromDeck} 
-                  />
-                </TabsContent>
-                <TabsContent value="mana-curve" className="mt-4">
-                  {deck.length > 0 ? (
-                    <ManaCurveAnalysis deck={deck} />
-                  ) : (
-                    <Card>
-                      <CardContent className="py-8 text-center text-muted-foreground">
-                        Add cards to your deck to see mana curve analysis
-                      </CardContent>
-                    </Card>
-                  )}
-                </TabsContent>
-              </Tabs>
+            <Tabs defaultValue="deck" className="w-full">
+              <TabsList className="w-full">
+                <TabsTrigger value="deck" className="flex-1">
+                  Deck List
+                </TabsTrigger>
+                <TabsTrigger value="mana-curve" className="flex-1">
+                  Mana Curve
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="deck" className="mt-4">
+                <DeckList
+                  deck={deck}
+                  deckName={deckName}
+                  onDeckNameChange={handleDeckNameChange}
+                  onRemoveCard={removeCardFromDeck}
+                />
+              </TabsContent>
+              <TabsContent value="mana-curve" className="mt-4">
+                {deck.length > 0 ? (
+                  <ManaCurveAnalysis deck={deck} />
+                ) : (
+                  <Card>
+                    <CardContent className="py-8 text-center text-muted-foreground">
+                      Add cards to your deck to see mana curve analysis
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
-              <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
-              <DeckStatsPanel deck={deck} />
-              <Card>
-                  <CardHeader className="py-4">
-                      <CardTitle className="text-lg">Saved Decks</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pb-4">
-                      <SavedDecksList savedDecks={savedDecks} onLoadDeck={loadDeck} onDeleteDeck={deleteDeck} activeDeckId={activeDeckId} />
-                  </CardContent>
-              </Card>
+            <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
+            <DeckStatsPanel deck={deck} />
+            <Card>
+              <CardHeader className="py-4">
+                <CardTitle className="text-lg">Saved Decks</CardTitle>
+              </CardHeader>
+              <CardContent className="pb-4">
+                <SavedDecksList
+                  savedDecks={savedDecks}
+                  onLoadDeck={loadDeck}
+                  onDeleteDeck={deleteDeck}
+                  activeDeckId={activeDeckId}
+                />
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

@@ -1,25 +1,30 @@
+#!/usr/bin/env tsx
+
 /**
- * @fileOverview Shared utilities for decklist parsing and card operations
+ * Verify that all cards in a decklist exist in your local card database.
  *
- * These functions are shared between client and server card operations
- * to eliminate code duplication and ensure consistent behavior.
+ * Usage:
+ *   npx tsx scripts/verify-deck-in-db.ts --deck="path/to/decklist.txt" --db="path/to/my-cards.json"
+ *
+ * Or paste a decklist directly:
+ *   npx tsx scripts/verify-deck-in-db.ts --db="./my-cards.json"
+ *   (then paste the decklist and press Ctrl+D)
  */
 
-import type { DeckCard } from "@/app/actions";
-import { type Format } from "@/lib/game-rules";
+import fs from "fs";
 
-/**
- * Decklist format types
- */
-export type DecklistFormat = "standard" | "mtgo" | "json";
+interface CardRecord {
+  name: string;
+  set: string;
+  [key: string]: unknown;
+}
 
-/**
- * Arena-to-paper name aliases from Through the Omenpaths (OM1)
- * Generated from Scryfall API
- * When Wizards does not have digital rights for Universes Beyond cards,
- * they rename them for Arena using Omenpaths flavor.
- * Scryfall stores the Arena name in printed_name and the paper name in name.
- */
+const args = process.argv.slice(2);
+const deckFile = args.find((arg) => arg.startsWith("--deck="))?.split("=")[1];
+const dbFile =
+  args.find((arg) => arg.startsWith("--db="))?.split("=")[1] ||
+  "./my-cards.json";
+
 const ARENA_NAME_ALIASES: Record<string, string> = {
   "A Most Helpful Weaver": "Origin of Spider-Man",
   "A Trail of Teacups": "Kraven's Last Hunt",
@@ -171,20 +176,13 @@ const ARENA_NAME_ALIASES: Record<string, string> = {
   "Zora, Spider Fancier": "Aunt May",
 };
 
-/**
- * Parse a single line from a decklist
- * Handles formats like "4 Lightning Bolt" or just "Lightning Bolt"
- */
-export function parseDecklistLine(
+function parseDecklistLine(
   line: string,
 ): { name: string; quantity: number } | null {
   const trimmedLine = line.trim();
   if (!trimmedLine) return null;
-
-  // Pattern for "Quantity Name" or just "Name"
   const match = trimmedLine.match(/^(?:(\d+)\s*x?\s*)?(.+)/);
   if (!match) return null;
-
   const skipHeaders = [
     "sideboard",
     "deck",
@@ -197,219 +195,135 @@ export function parseDecklistLine(
   if (!name || /^\/\//.test(name) || skipHeaders.includes(name.toLowerCase())) {
     return null;
   }
-
-  // Strip set codes and collector numbers like "Sol Ring (CMR) 632" or "Sol Ring [CMR] 632"
-  // This is common in Moxfield and Arena exports
   name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*\d+.*$/i, "").trim();
-
-  // Also handle cases without collector number like "Sol Ring (CMR)"
   name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*$/i, "").trim();
-
-  // Normalize DFC separators: some exports use "/" instead of " // "
-  // e.g., "Roaring Furnace/Steaming Sauna" -> "Roaring Furnace // Steaming Sauna"
   if (name.includes("/") && !name.includes(" // ")) {
     name = name.replace(/\s*\/\s*/g, " // ");
   }
-
-  // Translate Arena-only names to their paper equivalents
   if (ARENA_NAME_ALIASES[name]) {
     name = ARENA_NAME_ALIASES[name];
   }
-
   const count = parseInt(match[1] || "1", 10);
   return { name, quantity: count };
 }
 
-/**
- * Parse MTGO format line
- * MTGO format: "COUNT CARDNAME" (e.g., "4 Sol Ring" or "4x Sol Ring")
- */
-export function parseMTGOLine(
-  line: string,
-): { name: string; quantity: number } | null {
-  const trimmedLine = line.trim();
-  if (!trimmedLine) return null;
-
-  // MTGO format: "4 Sol Ring" or "4x Sol Ring"
-  const match = trimmedLine.match(/^(\d+)(?:x)?\s+(.+)/);
-  if (!match) return null;
-
-  let name = match[2]?.trim();
-  if (!name) return null;
-
-  // Strip set codes and collector numbers
-  name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*\d+.*$/i, "").trim();
-  name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*$/i, "").trim();
-
-  // Normalize DFC separators
-  if (name.includes("/") && !name.includes(" // ")) {
-    name = name.replace(/\s*\/\s*/g, " // ");
+function loadDatabase(path: string): Map<string, CardRecord[]> {
+  if (!fs.existsSync(path)) {
+    console.error(`Database file not found: ${path}`);
+    process.exit(1);
   }
 
-  // Translate Arena-only names to their paper equivalents
-  if (ARENA_NAME_ALIASES[name]) {
-    name = ARENA_NAME_ALIASES[name];
-  }
-
-  const count = parseInt(match[1], 10);
-  return { name, quantity: count };
-}
-
-/**
- * Parse JSON decklist
- */
-export function parseJSONDecklist(
-  json: string,
-): { name: string; quantity: number }[] {
-  try {
-    const data = JSON.parse(json);
-
-    // Handle different JSON structures
-    if (Array.isArray(data)) {
-      // Direct array: [{"name": "Sol Ring", "quantity": 4}]
-      return data
-        .filter((card) => card?.name && typeof card.quantity === "number")
-        .map((card) => ({ name: card.name, quantity: card.quantity }));
-    }
-
-    if (data?.cards && Array.isArray(data.cards)) {
-      // Object with cards array: {"cards": [...]}
-      return data.cards
-        .filter((card: any) => card?.name && typeof card.quantity === "number")
-        .map((card: any) => ({ name: card.name, quantity: card.quantity }));
-    }
-
-    return [];
-  } catch (error) {
-    return [];
-  }
-}
-
-/**
- * Split decklist into non-empty lines
- * @returns Array of non-empty lines
- */
-export function splitDecklist(decklist: string): string[] {
-  return decklist.split("\n").filter((line) => line.trim() !== "");
-}
-
-/**
- * Sanitize and aggregate card input for validation
- * @returns Map of normalized card names to aggregated quantities, plus any malformed inputs
- */
-export function sanitizeCardInput(
-  cards: Array<{ name: string; quantity: number }>,
-): {
-  cardMap: Map<string, { originalName: string; quantity: number }>;
-  malformedInputs: string[];
-} {
-  const cardRequestMap = new Map<
-    string,
-    { originalName: string; quantity: number }
-  >();
-  const malformedInputs: string[] = [];
+  const cards: CardRecord[] = JSON.parse(fs.readFileSync(path, "utf-8"));
+  const map = new Map<string, CardRecord[]>();
 
   for (const card of cards) {
-    if (
-      !card ||
-      typeof card.name !== "string" ||
-      card.name.trim() === "" ||
-      typeof card.quantity !== "number" ||
-      card.quantity <= 0
-    ) {
-      malformedInputs.push(card?.name || "Malformed Input");
-      continue;
-    }
-    const lowerCaseName = card.name.toLowerCase();
-    const existing = cardRequestMap.get(lowerCaseName);
-    if (existing) {
-      existing.quantity += card.quantity;
-    } else {
-      cardRequestMap.set(lowerCaseName, {
-        originalName: card.name,
-        quantity: card.quantity,
-      });
-    }
+    const lower = card.name.toLowerCase();
+    if (!map.has(lower)) map.set(lower, []);
+    map.get(lower)!.push(card);
   }
 
-  return { cardMap: cardRequestMap, malformedInputs };
+  return map;
 }
 
-/**
- * Aggregate cards by their ID to combine different prints of same card
- */
-export function aggregateCardsById<T extends { id: string; count: number }>(
-  cards: T[],
-): T[] {
-  return Array.from(
-    cards
-      .reduce((acc, card) => {
-        const existing = acc.get(card.id);
-        if (existing) {
-          existing.count += card.count;
-        } else {
-          acc.set(card.id, { ...card });
-        }
-        return acc;
-      }, new Map<string, T>())
-      .values(),
-  );
+function findCard(
+  db: Map<string, CardRecord[]>,
+  name: string,
+): CardRecord[] | null {
+  // Exact match
+  const exact = db.get(name.toLowerCase());
+  if (exact) return exact;
+
+  // DFC front-face match (e.g. "Serah Farron" matches "Serah Farron // Crystallized Serah")
+  for (const [key, cards] of db) {
+    if (key.includes(" // ")) {
+      const frontFace = key.split(" // ")[0].trim();
+      if (frontFace === name.toLowerCase()) {
+        return cards;
+      }
+    }
+  }
+
+  return null;
 }
 
-/**
- * Parse decklist string into card details with format detection
- * @returns Array of parsed card details
- */
-export function parseDecklist(
-  decklist: string,
-  format: DecklistFormat = "standard",
-): { name: string; quantity: number }[] {
-  if (format === "json") {
-    return parseJSONDecklist(decklist);
+function main() {
+  console.log(`Loading database: ${dbFile}`);
+  const db = loadDatabase(dbFile);
+  console.log(`Loaded ${db.size} unique card names.\n`);
+
+  let deckText: string;
+
+  if (deckFile) {
+    if (!fs.existsSync(deckFile)) {
+      console.error(`Deck file not found: ${deckFile}`);
+      process.exit(1);
+    }
+    deckText = fs.readFileSync(deckFile, "utf-8");
+  } else {
+    console.log(
+      "Reading decklist from stdin (paste your decklist, then press Ctrl+D):",
+    );
+    deckText = fs.readFileSync(0, "utf-8");
   }
 
-  const lines = splitDecklist(decklist);
-  if (lines.length === 0) {
-    return [];
-  }
-
-  const cardDetails: { name: string; quantity: number }[] = [];
-  const parseFn = format === "mtgo" ? parseMTGOLine : parseDecklistLine;
+  const lines = deckText.split("\n");
+  const deckCards: { name: string; quantity: number }[] = [];
 
   for (const line of lines) {
-    const parsed = parseFn(line);
-    if (parsed) {
-      cardDetails.push(parsed);
+    const parsed = parseDecklistLine(line);
+    if (parsed) deckCards.push(parsed);
+  }
+
+  const found: { name: string; quantity: number; prints: number }[] = [];
+  const missing: { name: string; quantity: number }[] = [];
+
+  for (const card of deckCards) {
+    const matches = findCard(db, card.name);
+    if (matches) {
+      found.push({
+        name: card.name,
+        quantity: card.quantity,
+        prints: matches.length,
+      });
+    } else {
+      missing.push(card);
     }
   }
 
-  return cardDetails;
-}
+  console.log("━".repeat(50));
+  console.log(`DECK VERIFICATION RESULTS`);
+  console.log(`Total unique cards in decklist: ${deckCards.length}`);
+  console.log(`Found in database: ${found.length}`);
+  console.log(`Missing from database: ${missing.length}`);
+  console.log("━".repeat(50));
 
-/**
- * Detect decklist format from content
- */
-export function detectDecklistFormat(decklist: string): DecklistFormat {
-  const trimmed = decklist.trim();
-
-  // Try JSON first
-  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-    try {
-      JSON.parse(trimmed);
-      return "json";
-    } catch {
-      // Not valid JSON, continue detection
+  if (found.length > 0) {
+    console.log("\n✅ FOUND CARDS:");
+    for (const card of found) {
+      const printInfo = card.prints > 1 ? ` (${card.prints} printings)` : "";
+      console.log(`  ${card.quantity}x ${card.name}${printInfo}`);
     }
   }
 
-  // Check for MTGO format (lines starting with number followed by card name)
-  const lines = splitDecklist(decklist);
-  const mtgoPattern = /^\d+x?\s+[A-Z]/i;
-  const mtgoLines = lines.filter((line) => mtgoPattern.test(line));
-
-  if (mtgoLines.length > lines.length * 0.5) {
-    return "mtgo";
+  if (missing.length > 0) {
+    console.log("\n❌ MISSING CARDS (not in database):");
+    for (const card of missing) {
+      console.log(`  ${card.quantity}x ${card.name}`);
+    }
+    console.log("\n💡 To fix missing cards:");
+    console.log("   1. Check if the card name is spelled correctly");
+    console.log(
+      "   2. The card might be from a very new set not yet on Scryfall",
+    );
+    console.log(
+      "   3. Try re-running: npx tsx scripts/fetch-cards-for-db.ts --format=standard",
+    );
+    console.log(
+      "   4. Or fetch a broader format: npx tsx scripts/fetch-cards-for-db.ts --format=modern --limit=30000",
+    );
   }
 
-  return "standard";
+  console.log("");
 }
+
+main();

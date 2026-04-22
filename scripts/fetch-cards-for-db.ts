@@ -2,18 +2,18 @@
 
 /**
  * Script to fetch cards from Scryfall API for user's personal card database
- * 
+ *
  * IMPORTANT: This script is for personal use only. Users should run this themselves
  * to create their own card database. Do not distribute pre-generated card data.
  *
  * Usage:
- *   npx tsx scripts/fetch-cards-for-db.ts --format commander --limit 1000 --output ./my-cards.json
+ *   npx tsx scripts/fetch-cards-for-db.ts --format=commander --limit=10001000 --output=./my-cards.json
  *
  * Then import the JSON file via the app's Database Management page.
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 interface ScryfallCard {
   id: string;
@@ -61,41 +61,53 @@ interface ScryfallCard {
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const format = args.find(arg => arg.startsWith('--format='))?.split('=')[1] || 'commander';
-const limit = parseInt(args.find(arg => arg.startsWith('--limit='))?.split('=')[1] || '500', 10);
-const outputFile = args.find(arg => arg.startsWith('--output='))?.split('=')[1] || './my-card-database.json';
+const format =
+  args.find((arg) => arg.startsWith("--format="))?.split("=")[1] || "commander";
+const limit = parseInt(
+  args.find((arg) => arg.startsWith("--limit="))?.split("=")[1] || "500",
+  10,
+);
+const outputFile =
+  args.find((arg) => arg.startsWith("--output="))?.split("=")[1] ||
+  "./my-cards.json";
 
 console.log(`\n🃏 Card Database Import Tool`);
 console.log(`================================`);
 console.log(`Format: ${format}`);
 console.log(`Limit: ${limit} cards`);
 console.log(`Output: ${outputFile}`);
-console.log(`\n⚠️  IMPORTANT: This is for personal use only. Do not distribute card data.`);
+console.log(
+  `\n⚠️  IMPORTANT: This is for personal use only. Do not distribute card data.`,
+);
 console.log(`\n📋 After running this script:`);
 console.log(`   1. Open Planar Nexus app`);
 console.log(`   2. Go to Settings → Database Management`);
 console.log(`   3. Click "Import Card Database"`);
 console.log(`   4. Select this JSON file: ${outputFile}\n`);
 
-async function fetchAllCards(format: string, limit: number): Promise<ScryfallCard[]> {
+async function fetchAllCards(
+  format: string,
+  limit: number,
+): Promise<ScryfallCard[]> {
   const allCards: ScryfallCard[] = [];
   let hasMore = true;
-  let nextPage: string | null = `https://api.scryfall.com/cards/search?q=f:${format}+game:paper`;
+  let nextPage: string | null =
+    `https://api.scryfall.com/cards/search?q=f:${format}+game:paper`;
 
   while (hasMore && allCards.length < limit) {
     console.log(`Fetching cards... (${allCards.length} fetched so far)`);
 
     try {
-      const response = await fetch(nextPage!) as Response;
+      const response = (await fetch(nextPage!)) as Response;
       if (!response.ok) {
         if (response.status === 404) {
-          console.log('No more cards found.');
+          console.log("No more cards found.");
           break;
         }
         throw new Error(`Scryfall API error: ${response.status}`);
       }
 
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
 
       if (data.data && Array.isArray(data.data)) {
         const cardsToAdd = data.data.slice(0, limit - allCards.length);
@@ -106,9 +118,9 @@ async function fetchAllCards(format: string, limit: number): Promise<ScryfallCar
       nextPage = data.next_page || null;
 
       // Rate limiting: wait 100ms between requests (Scryfall allows ~10 req/sec)
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     } catch (error) {
-      console.error('Error fetching cards:', error);
+      console.error("Error fetching cards:", error);
       break;
     }
   }
@@ -144,11 +156,11 @@ function normalizeCard(card: ScryfallCard): ScryfallCard {
 
 async function main() {
   try {
-    console.log('Starting card fetch...\n');
+    console.log("Starting card fetch...\n");
     const cards = await fetchAllCards(format, limit);
 
     if (cards.length === 0) {
-      console.log('No cards found. Exiting.');
+      console.log("No cards found. Exiting.");
       return;
     }
 
@@ -165,16 +177,17 @@ async function main() {
     }
 
     fs.writeFileSync(outputPath, JSON.stringify(normalizedCards, null, 2));
-    console.log(`\n✅ Successfully wrote ${normalizedCards.length} cards to ${outputPath}`);
+    console.log(
+      `\n✅ Successfully wrote ${normalizedCards.length} cards to ${outputPath}`,
+    );
     console.log(`\n📥 Next steps:`);
     console.log(`   1. Open Planar Nexus`);
     console.log(`   2. Navigate to Settings → Database Management`);
     console.log(`   3. Click "Import Card Database"`);
     console.log(`   4. Select: ${outputPath}`);
     console.log(`\n`);
-
   } catch (error) {
-    console.error('Error:', error);
+    console.error("Error:", error);
     process.exit(1);
   }
 }
