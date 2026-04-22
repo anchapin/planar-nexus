@@ -31,6 +31,7 @@
 Planar Nexus is a comprehensive digital tabletop card game experience built with Next.js 15, TypeScript, and Tauri. Build decks, get AI-powered coaching, play against AI opponents, and compete with friends online.
 
 **Key Highlights**:
+
 - **500+ card database** with offline support and instant fuzzy search
 - **18 deck archetype detection** with 70%+ confidence scoring
 - **24 synergy patterns** with actionable recommendations
@@ -43,6 +44,7 @@ Planar Nexus is a comprehensive digital tabletop card game experience built with
 ## Features
 
 ### Deck Builder
+
 - Search 500+ cards with instant fuzzy matching
 - Format validation for Commander, Standard, Modern, Legacy, and Vintage
 - Real-time mana curve and deck statistics
@@ -51,6 +53,7 @@ Planar Nexus is a comprehensive digital tabletop card game experience built with
 - Offline-capable with IndexedDB storage
 
 ### AI Deck Coach
+
 - Detects 18 deck archetypes (Aggro, Control, Combo, Tribal, etc.)
 - Identifies 24+ synergy patterns with scoring
 - Suggests missing synergy cards with impact levels
@@ -59,6 +62,7 @@ Planar Nexus is a comprehensive digital tabletop card game experience built with
 - Multiple AI providers: Gemini, Claude, OpenAI, Z.ai
 
 ### AI Opponent
+
 - 4 difficulty levels with distinct behavioral profiles:
   - **Easy**: 80% player win rate, beginner-friendly
   - **Medium**: 60% player win rate, balanced challenge
@@ -69,6 +73,7 @@ Planar Nexus is a comprehensive digital tabletop card game experience built with
 - Customizable AI themes (Aggro, Control, Combo)
 
 ### Multiplayer
+
 - Peer-to-peer WebRTC connections (no central server)
 - 1v1 and 4-player Commander formats
 - 2v2 teams mode
@@ -77,6 +82,7 @@ Planar Nexus is a comprehensive digital tabletop card game experience built with
 - Friends list and match history
 
 ### Visual Experience
+
 - High-resolution card art display
 - Attack/block animations
 - Spell casting effects and combat text
@@ -113,12 +119,12 @@ See [Development](#development) section below.
 
 ### System Requirements
 
-| Platform | Minimum Requirements |
-|----------|---------------------|
-| **Windows** | Windows 10+ (64-bit), 4GB RAM, 500MB disk space |
-| **macOS** | macOS 10.15+ (Catalina), 4GB RAM, 500MB disk space |
-| **Linux** | Ubuntu 22.04+ or equivalent, 4GB RAM, 500MB disk space |
-| **Web** | Modern browser (Chrome, Firefox, Safari, Edge) |
+| Platform    | Minimum Requirements                                   |
+| ----------- | ------------------------------------------------------ |
+| **Windows** | Windows 10+ (64-bit), 4GB RAM, 500MB disk space        |
+| **macOS**   | macOS 10.15+ (Catalina), 4GB RAM, 500MB disk space     |
+| **Linux**   | Ubuntu 22.04+ or equivalent, 4GB RAM, 500MB disk space |
+| **Web**     | Modern browser (Chrome, Firefox, Safari, Edge)         |
 
 ### Windows Installation
 
@@ -139,6 +145,7 @@ See [Development](#development) section below.
 ### Linux Installation
 
 **Debian/Ubuntu**:
+
 ```bash
 # Download the .deb file
 wget https://github.com/anchapin/planar-nexus/releases/download/v1.0.0/planar-nexus_1.0.0_amd64.deb
@@ -151,6 +158,7 @@ sudo dpkg -i planar-nexus_1.0.0_amd64.deb
 ```
 
 **AppImage** (works on most distributions):
+
 ```bash
 # Download the AppImage
 wget https://github.com/anchapin/planar-nexus/releases/download/v1.0.0/Planar-Nexus.AppImage
@@ -167,33 +175,37 @@ chmod +x Planar-Nexus.AppImage
 ## Screenshots
 
 ### Deck Builder
+
 ![Deck Builder](docs/screenshots/deck-builder.png)
-*Build and validate decks with instant card search and format checking*
+_Build and validate decks with instant card search and format checking_
 
 ### AI Coach Report
+
 ![AI Coach](docs/screenshots/ai-coach.png)
-*Get intelligent deck analysis with archetype detection and synergy suggestions*
+_Get intelligent deck analysis with archetype detection and synergy suggestions_
 
 ### AI Opponent Gameplay
+
 ![AI Opponent](docs/screenshots/ai-opponent.png)
-*Play against AI with 4 difficulty levels and distinct behavioral profiles*
+_Play against AI with 4 difficulty levels and distinct behavioral profiles_
 
 ### Multiplayer Lobby
+
 ![Multiplayer](docs/screenshots/multiplayer.png)
-*Create or join games with friends via P2P WebRTC connections*
+_Create or join games with friends via P2P WebRTC connections_
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [User Guide](docs/USER_GUIDE.md) | Complete guide to using Planar Nexus features |
-| [API Documentation](docs/API.md) | AI provider configuration and API reference |
-| [Contributing Guide](docs/CONTRIBUTING.md) | How to contribute code and documentation |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions |
-| [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Building and deploying for all platforms |
-| [Distribution Guide](docs/DISTRIBUTION_GUIDE.md) | Release management and distribution channels |
+| Document                                         | Description                                   |
+| ------------------------------------------------ | --------------------------------------------- |
+| [User Guide](docs/USER_GUIDE.md)                 | Complete guide to using Planar Nexus features |
+| [API Documentation](docs/API.md)                 | AI provider configuration and API reference   |
+| [Contributing Guide](docs/CONTRIBUTING.md)       | How to contribute code and documentation      |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)       | Common issues and solutions                   |
+| [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)     | Building and deploying for all platforms      |
+| [Distribution Guide](docs/DISTRIBUTION_GUIDE.md) | Release management and distribution channels  |
 
 ---
 
@@ -281,14 +293,15 @@ npm run test:watch
 
 The project enforces the following coverage thresholds:
 
-| Metric | Target |
-|--------|--------|
-| Lines | 70% |
-| Functions | 70% |
-| Statements | 70% |
-| Branches | 60% |
+| Metric     | Target |
+| ---------- | ------ |
+| Lines      | 70%    |
+| Functions  | 70%    |
+| Statements | 70%    |
+| Branches   | 60%    |
 
 Coverage reports are generated in:
+
 - `coverage/lcov-report/index.html` - HTML report
 - `coverage/lcov.info` - LCOV format for CI tools
 
@@ -341,7 +354,7 @@ Planar Nexus starts with an empty card database. Import cards for personal use:
 
 ```bash
 # Fetch 500 Commander-legal cards
-npx tsx scripts/fetch-cards-for-db.ts --format commander --limit 500
+npx tsx scripts/fetch-cards-for-db.ts --format=commander --limit=500
 
 # Import via UI: Settings → Database Management → Select JSON File
 ```
@@ -352,16 +365,16 @@ See [Card Database Import Guide](CARD_DATABASE_IMPORT.md) for details.
 
 ## Technology Stack
 
-| Category | Technology |
-|----------|------------|
-| **Frontend** | Next.js 15, React 19, TypeScript 5 |
-| **UI** | Shadcn/ui, Radix UI, Tailwind CSS |
-| **Backend** | Tauri 2, Rust |
-| **AI** | Genkit, Gemini, Claude, OpenAI, Z.ai |
-| **Database** | IndexedDB (client-side) |
-| **Networking** | WebRTC (PeerJS) |
-| **Testing** | Jest, Playwright |
-| **Build** | Turbopack, Next.js Build |
+| Category       | Technology                           |
+| -------------- | ------------------------------------ |
+| **Frontend**   | Next.js 15, React 19, TypeScript 5   |
+| **UI**         | Shadcn/ui, Radix UI, Tailwind CSS    |
+| **Backend**    | Tauri 2, Rust                        |
+| **AI**         | Genkit, Gemini, Claude, OpenAI, Z.ai |
+| **Database**   | IndexedDB (client-side)              |
+| **Networking** | WebRTC (PeerJS)                      |
+| **Testing**    | Jest, Playwright                     |
+| **Build**      | Turbopack, Next.js Build             |
 
 ---
 
