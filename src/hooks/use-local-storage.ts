@@ -28,6 +28,47 @@ export function useLocalStorage<T>(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Validate that a loaded value matches the expected type of initialValue
+  const validateLoadedValue = useCallback(
+    (loaded: unknown): T => {
+      // Arrays
+      if (Array.isArray(initialValue)) {
+        if (Array.isArray(loaded)) return loaded as T;
+        console.warn(
+          `Storage key "${key}" expected array but got ${typeof loaded}. Resetting to default.`,
+        );
+        return initialValue;
+      }
+      // Objects (non-null, non-array)
+      if (
+        initialValue !== null &&
+        typeof initialValue === "object" &&
+        !Array.isArray(initialValue)
+      ) {
+        if (
+          loaded !== null &&
+          typeof loaded === "object" &&
+          !Array.isArray(loaded)
+        ) {
+          return loaded as T;
+        }
+        console.warn(
+          `Storage key "${key}" expected object but got ${typeof loaded}. Resetting to default.`,
+        );
+        return initialValue;
+      }
+      // Primitives and null
+      if (typeof loaded === typeof initialValue) {
+        return loaded as T;
+      }
+      console.warn(
+        `Storage key "${key}" expected ${typeof initialValue} but got ${typeof loaded}. Resetting to default.`,
+      );
+      return initialValue;
+    },
+    [key, initialValue],
+  );
+
   // Initialize storage and load value
   useEffect(() => {
     let isMounted = true;
@@ -46,9 +87,10 @@ export function useLocalStorage<T>(
           );
 
           if (value !== null && isMounted) {
+            let parsed: unknown;
             // Handle arrays stored with the wrapped format (_type: 'array')
             if (value._type === "array" && Array.isArray(value.items)) {
-              setStoredValue(value.items as T);
+              parsed = value.items;
             } else if (value && typeof value === "object") {
               // Handle old broken array format: { id, 0: item1, 1: item2, ... }
               // where numeric keys were spread from an array into an object
@@ -59,17 +101,17 @@ export function useLocalStorage<T>(
                 numericKeys.length > 0 &&
                 numericKeys.length === keys.length
               ) {
-                const reconstructed = numericKeys
+                parsed = numericKeys
                   .sort((a, b) => parseInt(a) - parseInt(b))
                   .map((k) => rest[k]);
-                setStoredValue(reconstructed as T);
               } else {
                 // Regular object
-                setStoredValue(rest as T);
+                parsed = rest;
               }
             } else {
-              setStoredValue(value as T);
+              parsed = value;
             }
+            setStoredValue(validateLoadedValue(parsed));
           } else if (isMounted) {
             setStoredValue(initialValue);
           }
@@ -81,7 +123,8 @@ export function useLocalStorage<T>(
           );
           const item = window.localStorage.getItem(key);
           if (item && isMounted) {
-            setStoredValue(JSON.parse(item));
+            const parsed = JSON.parse(item);
+            setStoredValue(validateLoadedValue(parsed));
           } else if (isMounted) {
             setStoredValue(initialValue);
           }
@@ -104,7 +147,7 @@ export function useLocalStorage<T>(
     return () => {
       isMounted = false;
     };
-  }, [key, initialValue]);
+  }, [key, initialValue, validateLoadedValue]);
 
   // Save value when it changes
   const setValue: Dispatch<SetStateAction<T>> = useCallback(

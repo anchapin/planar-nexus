@@ -8,13 +8,25 @@
  * conversion functions to work with the engine's GameState format.
  */
 
-import type { GameState as EngineGameState, PlayerId, CardInstanceId, AIGameState } from '@/lib/game-state/types';
-import { Phase } from '@/lib/game-state/types';
-import { executeAIAction, type AIAction, getAvailableAttackers, getAIGameState } from './ai-action-executor';
-import { DIFFICULTY_CONFIGS, type DifficultyLevel } from './ai-difficulty';
-import { advancePhase as engineAdvancePhase } from '@/lib/game-state/turn-phases';
-import { drawCard as engineDrawCard } from '@/lib/game-state/game-state';
-import { engineToAIState } from '@/lib/game-state/serialization';
+import type {
+  GameState as EngineGameState,
+  PlayerId,
+  CardInstanceId,
+  AIGameState,
+} from "@/lib/game-state/types";
+import { Phase } from "@/lib/game-state/types";
+import {
+  executeAIAction,
+  type AIAction,
+  getAvailableAttackers,
+  getAIGameState,
+} from "./ai-action-executor";
+import { DIFFICULTY_CONFIGS, type DifficultyLevel } from "./ai-difficulty";
+import { advancePhase } from "@/lib/game-state/turn-phases";
+import { drawCard } from "@/lib/game-state/game-state";
+import { engineToAIState } from "@/lib/game-state/serialization";
+import { getMaxHandSize } from "@/lib/game-rules";
+import { discardCards } from "@/lib/game-state/keyword-actions";
 
 /**
  * AI Turn configuration
@@ -38,16 +50,32 @@ export interface AITurnResult {
 }
 
 /**
+ * Advance to the next phase and set priority to the AI player
+ */
+function advanceToNextPhase(
+  state: EngineGameState,
+  aiPlayerId: PlayerId,
+): EngineGameState {
+  const newTurn = advancePhase(state.turn);
+  return {
+    ...state,
+    turn: newTurn,
+    priorityPlayerId: aiPlayerId,
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
  * Run AI's complete turn
  */
 export async function runAITurn(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
+  config: AITurnConfig,
 ): Promise<AITurnResult> {
   const actionsTaken: AIAction[] = [];
   let currentState = gameState;
-  
+
   try {
     // Phase 1: Untap
     const untapResult = await runUntapPhase(currentState, aiPlayerId, config);
@@ -70,12 +98,23 @@ export async function runAITurn(
       currentState = drawResult.newState || currentState;
     }
 
+    // Advance from Draw to Pre-Combat Main
+    currentState = advanceToNextPhase(currentState, aiPlayerId);
+
     // Phase 4: Main Phase 1
-    const main1Result = await runMainPhase(currentState, aiPlayerId, config, 'precombat_main');
+    const main1Result = await runMainPhase(
+      currentState,
+      aiPlayerId,
+      config,
+      "precombat_main",
+    );
     if (main1Result.success) {
       actionsTaken.push(...main1Result.actions);
       currentState = main1Result.newState || currentState;
     }
+
+    // Advance to Combat
+    currentState = advanceToNextPhase(currentState, aiPlayerId);
 
     // Phase 5: Combat
     const combatResult = await runCombatPhase(currentState, aiPlayerId, config);
@@ -84,12 +123,23 @@ export async function runAITurn(
       currentState = combatResult.newState || currentState;
     }
 
+    // Advance to Post-Combat Main
+    currentState = advanceToNextPhase(currentState, aiPlayerId);
+
     // Phase 6: Main Phase 2
-    const main2Result = await runMainPhase(currentState, aiPlayerId, config, 'postcombat_main');
+    const main2Result = await runMainPhase(
+      currentState,
+      aiPlayerId,
+      config,
+      "postcombat_main",
+    );
     if (main2Result.success) {
       actionsTaken.push(...main2Result.actions);
       currentState = main2Result.newState || currentState;
     }
+
+    // Advance to End Phase
+    currentState = advanceToNextPhase(currentState, aiPlayerId);
 
     // Phase 7: End Phase
     const endResult = await runEndPhase(currentState, aiPlayerId, config);
@@ -98,17 +148,31 @@ export async function runAITurn(
       currentState = endResult.newState || currentState;
     }
 
+    // Advance to Cleanup Phase
+    currentState = advanceToNextPhase(currentState, aiPlayerId);
+
+    // Phase 8: Cleanup Phase (discard down to max hand size)
+    const cleanupResult = await runCleanupPhase(
+      currentState,
+      aiPlayerId,
+      config,
+    );
+    if (cleanupResult.success) {
+      actionsTaken.push(...cleanupResult.actions);
+      currentState = cleanupResult.newState || currentState;
+    }
+
     return {
       success: true,
       actionsTaken,
       finalState: currentState,
-      phase: 'complete',
+      phase: "complete",
     };
   } catch (error) {
     return {
       success: false,
       actionsTaken,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? error.message : "Unknown error",
       finalState: currentState,
     };
   }
@@ -120,8 +184,12 @@ export async function runAITurn(
 async function runUntapPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   // Untap all permanents automatically (game rules)
   const actions: AIAction[] = [];
   let currentState = gameState;
@@ -132,10 +200,18 @@ async function runUntapPhase(
       const card = currentState.cards.get(cardId);
       if (card && card.isTapped) {
         // Untap card
-        const result = await executeAIAction(currentState, { type: 'untap_card', cardId }, aiPlayerId);
+        const result = await executeAIAction(
+          currentState,
+          { type: "untap_card", cardId },
+          aiPlayerId,
+        );
         if (result.success && result.newState) {
           currentState = result.newState;
-          actions.push({ type: 'untap_card', cardId, reasoning: 'Untap during untap phase' });
+          actions.push({
+            type: "untap_card",
+            cardId,
+            reasoning: "Untap during untap phase",
+          });
           config.onCommentary?.(`${card.cardData.name} untaps`);
         }
       }
@@ -143,8 +219,7 @@ async function runUntapPhase(
   }
 
   // Advance to upkeep
-  const advancedTurn = engineAdvancePhase(currentState.turn);
-  currentState = { ...currentState, turn: advancedTurn };
+  currentState = advanceToNextPhase(currentState, aiPlayerId);
 
   return { success: true, actions, newState: currentState };
 }
@@ -155,12 +230,19 @@ async function runUntapPhase(
 async function runUpkeepPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  _config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  _config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   // Handle upkeep triggers (none for basic implementation)
   await delay(500);
-  
-  return { success: true, actions: [], newState: gameState };
+
+  // Advance to draw phase
+  const newState = advanceToNextPhase(gameState, aiPlayerId);
+
+  return { success: true, actions: [], newState };
 }
 
 /**
@@ -169,17 +251,21 @@ async function runUpkeepPhase(
 async function runDrawPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   // Draw card for turn
-  const newState = engineDrawCard(gameState, aiPlayerId);
+  const newState = drawCard(gameState, aiPlayerId);
 
-  config.onCommentary?.('Draws a card');
+  config.onCommentary?.("Draws a card");
 
   return {
     success: true,
-    actions: [{ type: 'no_action', reasoning: 'Drew card for turn' }],
-    newState
+    actions: [{ type: "no_action", reasoning: "Drew card for turn" }],
+    newState,
   };
 }
 
@@ -190,13 +276,21 @@ async function runMainPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
-  _phase: 'precombat_main' | 'postcombat_main'
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  _phase: "precombat_main" | "postcombat_main",
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   const actions: AIAction[] = [];
   let currentState = gameState;
-  
+
   // Step 1: Play land if available
-  const landResult = await playLandIfAvailable(currentState, aiPlayerId, config);
+  const landResult = await playLandIfAvailable(
+    currentState,
+    aiPlayerId,
+    config,
+  );
   if (landResult.success && landResult.action) {
     actions.push(landResult.action);
     currentState = landResult.newState || currentState;
@@ -232,42 +326,51 @@ async function runMainPhase(
 async function runCombatPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   const actions: AIAction[] = [];
   let currentState = gameState;
 
   // Convert to unified AI format for decision-making
   const aiState = engineToAIState(currentState);
-  
+
   // Use CombatDecisionTree for intelligent attack decisions
   // Import dynamically to avoid circular dependencies
-  const { CombatDecisionTree } = await import('./decision-making/combat-decision-tree');
-  const combatAI = new CombatDecisionTree(aiState, aiPlayerId, config.difficulty);
-  
+  const { CombatDecisionTree } =
+    await import("./decision-making/combat-decision-tree");
+  const combatAI = new CombatDecisionTree(
+    aiState,
+    aiPlayerId,
+    config.difficulty,
+  );
+
   // Generate attack plan using unified format
   const attackPlan = combatAI.generateAttackPlan();
-  
+
   // Execute attack decisions
   for (const attackDecision of attackPlan.attacks) {
-    if (attackDecision.shouldAttack && attackDecision.target !== 'none') {
+    if (attackDecision.shouldAttack && attackDecision.target !== "none") {
       const result = await executeAIAction(
         currentState,
         {
-          type: 'attack',
+          type: "attack",
           cardId: attackDecision.creatureId,
           targetId: attackDecision.target,
-          reasoning: attackDecision.reasoning
+          reasoning: attackDecision.reasoning,
         },
-        aiPlayerId
+        aiPlayerId,
       );
 
       if (result.success && result.newState) {
         currentState = result.newState;
         actions.push({
-          type: 'attack',
+          type: "attack",
           cardId: attackDecision.creatureId,
-          reasoning: attackDecision.reasoning
+          reasoning: attackDecision.reasoning,
         });
         const creature = currentState.cards.get(attackDecision.creatureId);
         if (creature) {
@@ -287,21 +390,83 @@ async function runCombatPhase(
 async function runEndPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
+  const actions: AIAction[] = [];
+  let currentState = gameState;
+
   // Pass priority and end turn
   const result = await executeAIAction(
-    gameState,
-    { type: 'pass_priority', reasoning: 'End of turn' },
-    aiPlayerId
+    currentState,
+    { type: "pass_priority", reasoning: "End of turn" },
+    aiPlayerId,
   );
 
-  config.onCommentary?.('Ends turn');
+  if (result.success && result.newState) {
+    currentState = result.newState;
+  }
+  actions.push({ type: "pass_priority", reasoning: "End of turn" });
+
+  config.onCommentary?.("Ends turn");
 
   return {
     success: result.success,
-    actions: [{ type: 'pass_priority', reasoning: 'End of turn' }],
-    newState: result.newState
+    actions,
+    newState: currentState,
+  };
+}
+
+/**
+ * Run cleanup phase - discard down to max hand size
+ */
+async function runCleanupPhase(
+  gameState: EngineGameState,
+  aiPlayerId: PlayerId,
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
+  const actions: AIAction[] = [];
+  let currentState = gameState;
+
+  // Get AI's hand
+  const handZone = currentState.zones.get(`${aiPlayerId}-hand`);
+  if (handZone) {
+    const maxHandSize = getMaxHandSize();
+    const currentHandSize = handZone.cardIds.length;
+
+    if (currentHandSize > maxHandSize) {
+      const cardsToDiscard = currentHandSize - maxHandSize;
+      const discardResult = discardCards(
+        currentState,
+        aiPlayerId,
+        cardsToDiscard,
+        true,
+      );
+
+      if (discardResult.success) {
+        currentState = discardResult.state;
+        actions.push({
+          type: "no_action",
+          reasoning: `Discarded ${cardsToDiscard} cards during cleanup (hand size: ${currentHandSize} -> ${maxHandSize})`,
+        });
+        config.onCommentary?.(
+          `Discards ${cardsToDiscard} cards to meet max hand size`,
+        );
+      }
+    }
+  }
+
+  return {
+    success: true,
+    actions,
+    newState: currentState,
   };
 }
 
@@ -311,24 +476,32 @@ async function runEndPhase(
 async function playLandIfAvailable(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; action?: AIAction; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  action?: AIAction;
+  newState?: EngineGameState;
+}> {
   // Get lands from hand
   const handZone = gameState.zones.get(`${aiPlayerId}-hand`);
   if (!handZone) return { success: false };
 
   for (const cardId of handZone.cardIds) {
     const card = gameState.cards.get(cardId);
-    if (card && card.cardData.type_line.toLowerCase().includes('land')) {
+    if (card && card.cardData.type_line.toLowerCase().includes("land")) {
       const result = await executeAIAction(
         gameState,
-        { type: 'play_land', cardId, reasoning: 'Play land for turn' },
-        aiPlayerId
+        { type: "play_land", cardId, reasoning: "Play land for turn" },
+        aiPlayerId,
       );
 
       if (result.success) {
         config.onCommentary?.(`Plays ${card.cardData.name}`);
-        return { success: true, action: { type: 'play_land', cardId }, newState: result.newState };
+        return {
+          success: true,
+          action: { type: "play_land", cardId },
+          newState: result.newState,
+        };
       }
     }
   }
@@ -342,21 +515,25 @@ async function playLandIfAvailable(
 async function castCreatures(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   const actions: AIAction[] = [];
   let currentState = gameState;
-  
+
   // Get creatures from hand
   const handZone = gameState.zones.get(`${aiPlayerId}-hand`);
   if (!handZone) return { success: true, actions: [] };
 
   // Sort creatures by CMC (cast cheaper first)
   const creatures: Array<{ cardId: CardInstanceId; cmc: number }> = [];
-  
+
   for (const cardId of handZone.cardIds) {
     const card = currentState.cards.get(cardId);
-    if (card && card.cardData.type_line.toLowerCase().includes('creature')) {
+    if (card && card.cardData.type_line.toLowerCase().includes("creature")) {
       creatures.push({ cardId, cmc: card.cardData.cmc });
     }
   }
@@ -374,13 +551,17 @@ async function castCreatures(
 
     const result = await executeAIAction(
       currentState,
-      { type: 'cast_spell', cardId, reasoning: `Cast creature (CMC ${cmc})` },
-      aiPlayerId
+      { type: "cast_spell", cardId, reasoning: `Cast creature (CMC ${cmc})` },
+      aiPlayerId,
     );
 
     if (result.success && result.newState) {
       currentState = result.newState;
-      actions.push({ type: 'cast_spell', cardId, reasoning: `Cast creature (CMC ${cmc})` });
+      actions.push({
+        type: "cast_spell",
+        cardId,
+        reasoning: `Cast creature (CMC ${cmc})`,
+      });
       const card = currentState.cards.get(cardId);
       if (card) {
         config.onCommentary?.(`Casts ${card.cardData.name}`);
@@ -397,8 +578,12 @@ async function castCreatures(
 async function castOtherSpells(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
-  config: AITurnConfig
-): Promise<{ success: boolean; actions: AIAction[]; newState?: EngineGameState }> {
+  config: AITurnConfig,
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
   const actions: AIAction[] = [];
   let currentState = gameState;
 
@@ -411,19 +596,23 @@ async function castOtherSpells(
     if (!card) continue;
 
     const typeLine = card.cardData.type_line.toLowerCase();
-    const isCreature = typeLine.includes('creature');
-    const isLand = typeLine.includes('land');
+    const isCreature = typeLine.includes("creature");
+    const isLand = typeLine.includes("land");
 
     if (!isCreature && !isLand) {
       const result = await executeAIAction(
         currentState,
-        { type: 'cast_spell', cardId, reasoning: `Cast ${card.cardData.name}` },
-        aiPlayerId
+        { type: "cast_spell", cardId, reasoning: `Cast ${card.cardData.name}` },
+        aiPlayerId,
       );
 
       if (result.success && result.newState) {
         currentState = result.newState;
-        actions.push({ type: 'cast_spell', cardId, reasoning: `Cast ${card.cardData.name}` });
+        actions.push({
+          type: "cast_spell",
+          cardId,
+          reasoning: `Cast ${card.cardData.name}`,
+        });
         config.onCommentary?.(`Casts ${card.cardData.name}`);
         await delay(config.delayMs);
       }
@@ -436,14 +625,17 @@ async function castOtherSpells(
 /**
  * Get opponent player ID
  */
-function getOpponentId(gameState: EngineGameState, playerId: PlayerId): PlayerId {
+function getOpponentId(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+): PlayerId {
   const playerIds = Array.from(gameState.players.keys());
-  return playerIds.find(id => id !== playerId) || playerId;
+  return playerIds.find((id) => id !== playerId) || playerId;
 }
 
 /**
  * Delay helper
  */
 function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -15,9 +15,17 @@ import {
   createCardInstance,
   isCreature,
   hasLethalDamage,
+  untapCard,
 } from "./card-instance";
 import { createPlayerZones, createSharedZones } from "./zones";
-import { createTurn, advancePhase, startNextTurn } from "./turn-phases";
+import {
+  createTurn,
+  advancePhase,
+  startNextTurn,
+  playerDrawsCard,
+} from "./turn-phases";
+import { resetLandPlays, emptyAllManaPools } from "./mana";
+import { resolveTopOfStack as resolveSpellStack } from "./spell-casting";
 
 /**
  * Generate a unique player ID
@@ -39,7 +47,7 @@ function generateGameId(): string {
 function createPlayer(
   name: string,
   startingLife: number = 20,
-  _isCommander: boolean = false
+  _isCommander: boolean = false,
 ): Player {
   const playerId = generatePlayerId();
 
@@ -82,8 +90,11 @@ function createPlayer(
 export function createInitialGameState(
   playerNames: string[],
   startingLife: number = 20,
-  isCommander: boolean = false
+  isCommander: boolean = false,
 ): GameState {
+  // Reset global singleton state to prevent leakage from previous games/tests
+  replacementEffectManager.reset();
+
   const gameId = generateGameId();
   const players = new Map<PlayerId, Player>();
   const zones = new Map<string, Zone>();
@@ -144,7 +155,7 @@ export function createInitialGameState(
 export function loadDeckForPlayer(
   state: GameState,
   playerId: PlayerId,
-  deckCards: ScryfallCard[]
+  deckCards: ScryfallCard[],
 ): GameState {
   const libraryCards: CardInstanceId[] = [];
   const updatedCards = new Map(state.cards);
@@ -268,8 +279,8 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   const consecutivePasses = state.consecutivePasses + 1;
 
   // Check if all players have passed
-  const allPassed = Array.from(state.players.values()).every(
-    (p) => p.hasPassedPriority
+  const allPassed = Array.from(updatedPlayers.values()).every(
+    (p) => p.hasPassedPriority,
   );
 
   if (allPassed && state.stack.length === 0) {
@@ -279,15 +290,14 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
 
   if (allPassed && state.stack.length > 0) {
     // All players passed - resolve top of stack
-    return resolveTopOfStack(state);
+    return resolveSpellStack(state);
   }
 
   // Pass priority to next player
   const currentPlayerIndex = Array.from(state.players.keys()).indexOf(
-    state.priorityPlayerId!
+    state.priorityPlayerId!,
   );
-  const nextPlayerIndex =
-    (currentPlayerIndex + 1) % state.players.size;
+  const nextPlayerIndex = (currentPlayerIndex + 1) % state.players.size;
   const nextPlayerId = Array.from(state.players.keys())[nextPlayerIndex];
 
   return {
@@ -306,40 +316,71 @@ function advanceToNextPhase(state: GameState): GameState {
   const nextPhase = advancePhase(state.turn);
 
   // Reset priority passes
-  const updatedPlayers = new Map(state.players);
+  let updatedPlayers = new Map(state.players);
   updatedPlayers.forEach((player) => {
     updatedPlayers.set(player.id, { ...player, hasPassedPriority: false });
   });
+
+  // Empty all mana pools at the end of each phase/step (CR 500.4)
+  let newState: GameState = {
+    ...state,
+    players: updatedPlayers,
+    consecutivePasses: 0,
+    lastModifiedAt: Date.now(),
+  };
+  newState = emptyAllManaPools(newState);
+  updatedPlayers = new Map(newState.players);
 
   // Check if turn is ending
   if (nextPhase.currentPhase === state.turn.currentPhase) {
     // Need to advance to next player's turn
     const currentPlayerIndex = Array.from(state.players.keys()).indexOf(
-      state.turn.activePlayerId
+      state.turn.activePlayerId,
     );
-    const nextPlayerIndex =
-      (currentPlayerIndex + 1) % state.players.size;
+    const nextPlayerIndex = (currentPlayerIndex + 1) % state.players.size;
     const nextPlayerId = Array.from(state.players.keys())[nextPlayerIndex];
 
     const newTurn = startNextTurn(state.turn, nextPlayerId, false);
 
+    // Untap all permanents controlled by the new active player
+    const battlefieldZoneKey = `${nextPlayerId}-battlefield`;
+    const battlefield = newState.zones.get(battlefieldZoneKey);
+    const updatedCards = new Map(newState.cards);
+    if (battlefield) {
+      for (const cardId of battlefield.cardIds) {
+        const card = updatedCards.get(cardId);
+        if (card && card.isTapped) {
+          updatedCards.set(cardId, untapCard(card));
+        }
+      }
+    }
+
+    // Reset land plays for all players at the start of a new turn
+    for (const playerId of updatedPlayers.keys()) {
+      const player = updatedPlayers.get(playerId)!;
+      updatedPlayers.set(playerId, { ...player, landsPlayedThisTurn: 0 });
+    }
+
     return {
-      ...state,
+      ...newState,
       turn: newTurn,
       players: updatedPlayers,
+      cards: updatedCards,
       priorityPlayerId: nextPlayerId,
-      consecutivePasses: 0,
-      lastModifiedAt: Date.now(),
     };
   }
 
+  // Draw a card when entering the draw step (unless it's the first turn of the game)
+  if (nextPhase.currentPhase === "draw" && playerDrawsCard(state.turn)) {
+    newState = drawCard(newState, state.turn.activePlayerId);
+    updatedPlayers = new Map(newState.players);
+  }
+
   return {
-    ...state,
+    ...newState,
     turn: nextPhase,
     players: updatedPlayers,
     priorityPlayerId: state.turn.activePlayerId,
-    consecutivePasses: 0,
-    lastModifiedAt: Date.now(),
   };
 }
 
@@ -441,7 +482,7 @@ export function checkStateBasedActions(state: GameState): GameState {
  */
 function checkWinCondition(state: GameState): GameState {
   const activePlayers = Array.from(state.players.values()).filter(
-    (p) => !p.hasLost
+    (p) => !p.hasLost,
   );
 
   if (activePlayers.length === 1) {
@@ -478,7 +519,7 @@ export function dealDamageToPlayer(
   playerId: PlayerId,
   damage: number,
   isCombatDamage: boolean = false,
-  sourceId?: CardInstanceId
+  sourceId?: CardInstanceId,
 ): GameState {
   const player = state.players.get(playerId);
 
@@ -500,7 +541,8 @@ export function dealDamageToPlayer(
     )[],
   };
 
-  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const processedEvent =
+    replacementEffectManager.processEvent(replacementEvent);
   const actualDamage = processedEvent.amount;
 
   if (actualDamage <= 0) return state;
@@ -527,7 +569,7 @@ export function gainLife(
   state: GameState,
   playerId: PlayerId,
   amount: number,
-  sourceId?: CardInstanceId
+  sourceId?: CardInstanceId,
 ): GameState {
   const player = state.players.get(playerId);
 
@@ -544,7 +586,8 @@ export function gainLife(
     amount: amount,
   };
 
-  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const processedEvent =
+    replacementEffectManager.processEvent(replacementEvent);
   const actualAmount = processedEvent.amount;
 
   if (actualAmount <= 0) return state;
@@ -595,35 +638,50 @@ export function concede(state: GameState, playerId: PlayerId): GameState {
 /**
  * Get a player's library zone
  */
-export function getPlayerLibrary(state: GameState, playerId: PlayerId): Zone | null {
+export function getPlayerLibrary(
+  state: GameState,
+  playerId: PlayerId,
+): Zone | null {
   return state.zones.get(`${playerId}-library`) || null;
 }
 
 /**
  * Get a player's hand zone
  */
-export function getPlayerHand(state: GameState, playerId: PlayerId): Zone | null {
+export function getPlayerHand(
+  state: GameState,
+  playerId: PlayerId,
+): Zone | null {
   return state.zones.get(`${playerId}-hand`) || null;
 }
 
 /**
  * Get a player's battlefield zone
  */
-export function getPlayerBattlefield(state: GameState, playerId: PlayerId): Zone | null {
+export function getPlayerBattlefield(
+  state: GameState,
+  playerId: PlayerId,
+): Zone | null {
   return state.zones.get(`${playerId}-battlefield`) || null;
 }
 
 /**
  * Get a player's graveyard zone
  */
-export function getPlayerGraveyard(state: GameState, playerId: PlayerId): Zone | null {
+export function getPlayerGraveyard(
+  state: GameState,
+  playerId: PlayerId,
+): Zone | null {
   return state.zones.get(`${playerId}-graveyard`) || null;
 }
 
 /**
  * Get a player's exile zone
  */
-export function getPlayerExile(state: GameState, playerId: PlayerId): Zone | null {
+export function getPlayerExile(
+  state: GameState,
+  playerId: PlayerId,
+): Zone | null {
   return state.zones.get(`${playerId}-exile`) || null;
 }
 
@@ -674,7 +732,7 @@ export function acceptDraw(state: GameState, playerId: PlayerId): GameState {
 
   // Check if there is an active draw offer from another player
   const hasDrawOffer = Array.from(state.players.values()).some(
-    (p) => p.id !== playerId && p.hasOfferedDraw
+    (p) => p.id !== playerId && p.hasOfferedDraw,
   );
 
   if (!hasDrawOffer) {
@@ -733,13 +791,13 @@ export function declineDraw(state: GameState, playerId: PlayerId): GameState {
  */
 export function canOfferDraw(state: GameState, playerId: PlayerId): boolean {
   if (state.status !== "in_progress") return false;
-  
+
   const player = state.players.get(playerId);
   if (!player || player.hasLost) return false;
-  
+
   // Can't offer draw if you already offered one
   if (player.hasOfferedDraw) return false;
-  
+
   return true;
 }
 
@@ -751,14 +809,14 @@ export function canOfferDraw(state: GameState, playerId: PlayerId): boolean {
  */
 export function canAcceptDraw(state: GameState, playerId: PlayerId): boolean {
   if (state.status !== "in_progress") return false;
-  
+
   const player = state.players.get(playerId);
   if (!player || player.hasLost) return false;
-  
+
   // Check if there's an offer from another player
   const hasOfferFromOthers = Array.from(state.players.values()).some(
-    (p) => p.id !== playerId && p.hasOfferedDraw
+    (p) => p.id !== playerId && p.hasOfferedDraw,
   );
-  
+
   return hasOfferFromOthers;
 }
