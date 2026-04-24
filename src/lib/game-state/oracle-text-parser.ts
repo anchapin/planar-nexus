@@ -940,8 +940,8 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "lifeGain" };
   }
 
-  // If we can't determine the trigger, return a generic one
-  return { event: "entersBattlefield" };
+  // If we can't determine the trigger, return null
+  return null;
 }
 
 /**

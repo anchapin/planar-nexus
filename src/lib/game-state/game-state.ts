@@ -24,7 +24,7 @@ import {
   startNextTurn,
   playerDrawsCard,
 } from "./turn-phases";
-import { resetLandPlays, emptyAllManaPools } from "./mana";
+import { emptyAllManaPools } from "./mana";
 import { resolveTopOfStack as resolveSpellStack } from "./spell-casting";
 
 /**
@@ -278,6 +278,13 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
 
   const consecutivePasses = state.consecutivePasses + 1;
 
+  const newState: GameState = {
+    ...state,
+    players: updatedPlayers,
+    consecutivePasses,
+    lastModifiedAt: Date.now(),
+  };
+
   // Check if all players have passed
   const allPassed = Array.from(updatedPlayers.values()).every(
     (p) => p.hasPassedPriority,
@@ -285,12 +292,12 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
 
   if (allPassed && state.stack.length === 0) {
     // All players passed with empty stack - advance phase
-    return advanceToNextPhase(state);
+    return advanceToNextPhase(newState);
   }
 
   if (allPassed && state.stack.length > 0) {
     // All players passed - resolve top of stack
-    return resolveSpellStack(state);
+    return resolveSpellStack(newState);
   }
 
   // Pass priority to next player
@@ -301,11 +308,8 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   const nextPlayerId = Array.from(state.players.keys())[nextPlayerIndex];
 
   return {
-    ...state,
-    players: updatedPlayers,
+    ...newState,
     priorityPlayerId: nextPlayerId,
-    consecutivePasses,
-    lastModifiedAt: Date.now(),
   };
 }
 
@@ -342,15 +346,28 @@ function advanceToNextPhase(state: GameState): GameState {
 
     const newTurn = startNextTurn(state.turn, nextPlayerId, false);
 
-    // Untap all permanents controlled by the new active player
+    // Untap all permanents and clear summoning sickness for the new active player
     const battlefieldZoneKey = `${nextPlayerId}-battlefield`;
     const battlefield = newState.zones.get(battlefieldZoneKey);
     const updatedCards = new Map(newState.cards);
     if (battlefield) {
       for (const cardId of battlefield.cardIds) {
         const card = updatedCards.get(cardId);
-        if (card && card.isTapped) {
-          updatedCards.set(cardId, untapCard(card));
+        if (card) {
+          let updatedCard = card;
+
+          // Untap if tapped
+          if (card.isTapped) {
+            updatedCard = untapCard(updatedCard);
+          }
+          // Clear summoning sickness at start of controller's turn (CR 302.3)
+          if (card.hasSummoningSickness) {
+            updatedCard = { ...updatedCard, hasSummoningSickness: false };
+          }
+
+          if (updatedCard !== card) {
+            updatedCards.set(cardId, updatedCard);
+          }
         }
       }
     }

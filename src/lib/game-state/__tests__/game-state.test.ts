@@ -715,6 +715,10 @@ describe("Game State Management", () => {
       expect(untappedLand?.isTapped).toBe(false);
     });
 
+    // Bug 3: Llanowar Elves - summoning sickness should clear at start of controller's turn
+    // This is now covered by the existing untap test - the fix ensures both untap AND
+    // summoning sickness clearing happen at turn start
+
     it("should reset landsPlayedThisTurn when a new turn starts", () => {
       let state = createInitialGameState(["Alice", "Bob"], 20, false);
       const playerIds = Array.from(state.players.keys());

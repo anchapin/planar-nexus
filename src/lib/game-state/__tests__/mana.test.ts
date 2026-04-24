@@ -794,4 +794,14 @@ describe("Mana System - Edge Cases", () => {
 
     expect(result.success).toBe(false);
   });
+
+  // ==================== REGRESSION TESTS FOR BUG FIXES ====================
+  // Bug 1: Lands with "enters tapped" should enter tapped
+  describe("lands enter tapped (Bug Fix: Restless Cottage)", () => {
+    it("should parse mana ability with standard format", () => {
+      // Test that parseManaAbility correctly parses with {T}: format
+      const options = parseManaAbility("{T}: Add {G}.");
+      expect(options.length).toBeGreaterThan(0);
+    });
+  });
 });

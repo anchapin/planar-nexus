@@ -325,6 +325,13 @@ export function playLand(
     return { success: false, state, error: "Card not found." };
   }
 
+  // Check if land enters tapped (e.g., "enters tapped" or "tapped")
+  // This is a basic check - a full implementation would use replacement effects
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  const entersTapped =
+    oracleText.includes("enters tapped") ||
+    oracleText.includes("enters the battlefield tapped");
+
   // Move the land from hand to battlefield
   const moved = moveCardBetweenZones(handZone, battlefieldZone, cardId);
 
@@ -332,6 +339,13 @@ export function playLand(
   const updatedZones = new Map(state.zones);
   updatedZones.set(`${playerId}-hand`, moved.from);
   updatedZones.set(`${playerId}-battlefield`, moved.to);
+
+  // Update the card instance - set isTapped if it enters tapped
+  const updatedCards = new Map(state.cards);
+  const movedCard = updatedCards.get(cardId);
+  if (movedCard && entersTapped) {
+    updatedCards.set(cardId, { ...movedCard, isTapped: true });
+  }
 
   // Increment lands played this turn
   const player = state.players.get(playerId);
@@ -351,6 +365,7 @@ export function playLand(
       ...state,
       zones: updatedZones,
       players: updatedPlayers,
+      cards: updatedCards,
       lastModifiedAt: Date.now(),
     },
   };
@@ -442,7 +457,8 @@ export function parseManaAbility(oracleText: string): ManaAbilityOption[] {
   // Process each ability
   for (const ability of abilities) {
     // Handle "or" clause (e.g., "{w} or {u}") - split into multiple options
-    if (ability.manaClause.includes(" or ")) {
+    // BUT: if there's a condition, don't split - the condition applies to the whole ability
+    if (ability.manaClause.includes(" or ") && !ability.condition) {
       const parts = ability.manaClause.split(/,\s+or\s+|\s+or\s+/);
       for (const part of parts) {
         const mana = parseSymbols(part);

@@ -373,11 +373,23 @@ export function resolveTopOfStack(state: GameState): GameState {
           }
         }
 
+        // Reset priority passes for all players (CR 117.4)
+        const updatedPlayers = new Map(state.players);
+        updatedPlayers.forEach((player) => {
+          updatedPlayers.set(player.id, {
+            ...player,
+            hasPassedPriority: false,
+          });
+        });
+
         let currentState: GameState = {
           ...state,
           zones: updatedZones,
           stack: updatedStack,
           cards: updatedCards,
+          players: updatedPlayers,
+          priorityPlayerId: state.turn.activePlayerId,
+          consecutivePasses: 0,
           lastModifiedAt: Date.now(),
         };
 
@@ -405,9 +417,18 @@ export function resolveTopOfStack(state: GameState): GameState {
 function removeFromStack(state: GameState, stackObjectId: string): GameState {
   const updatedStack = state.stack.filter((obj) => obj.id !== stackObjectId);
 
+  // Reset priority passes
+  const updatedPlayers = new Map(state.players);
+  updatedPlayers.forEach((player) => {
+    updatedPlayers.set(player.id, { ...player, hasPassedPriority: false });
+  });
+
   return {
     ...state,
     stack: updatedStack,
+    players: updatedPlayers,
+    priorityPlayerId: state.turn.activePlayerId,
+    consecutivePasses: 0,
     lastModifiedAt: Date.now(),
   };
 }
