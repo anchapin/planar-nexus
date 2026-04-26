@@ -10,56 +10,51 @@ const scryfallSets = JSON.parse(
 );
 
 export async function seedCardDatabase(page: Page) {
-  await page.evaluate((cards) => {
-    return new Promise<void>((resolve, reject) => {
-      const DB_NAME = "PlanarNexusCardDB";
-      const DB_VERSION = 2;
-      const STORE_NAME = "cards";
+  await page.addInitScript((cards) => {
+    const DB_NAME = "PlanarNexusCardDB";
+    const DB_VERSION = 2;
+    const STORE_NAME = "cards";
 
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
-          store.createIndex("name", "name", { unique: false });
-          store.createIndex("name_lower", "name_lower", { unique: false });
-        }
-      };
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        store.createIndex("name", "name", { unique: false });
+        store.createIndex("name_lower", "name_lower", { unique: false });
+      }
+    };
 
-      request.onsuccess = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        const transaction = db.transaction([STORE_NAME], "readwrite");
-        const store = transaction.objectStore(STORE_NAME);
+    request.onsuccess = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      const transaction = db.transaction([STORE_NAME], "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
 
-        store.clear();
+      store.clear();
 
-        cards.forEach((card: any) => {
-          store.put({
-            ...card,
-            name_lower: card.name.toLowerCase(),
-          });
+      cards.forEach((card: any) => {
+        store.put({
+          ...card,
+          name_lower: card.name.toLowerCase(),
         });
+      });
 
-        transaction.oncomplete = () => {
-          console.log("IndexedDB seeded with test cards");
-          (window as any).dbSeeded = true;
-          resolve();
-        };
-
-        transaction.onerror = () => {
-          reject(new Error("Transaction failed"));
-        };
+      transaction.oncomplete = () => {
+        console.log("IndexedDB seeded with test cards");
+        (window as any).dbSeeded = true;
       };
+    };
 
-      request.onerror = (event) => {
-        reject(
-          new Error(
-            `IndexedDB open failed: ${(event.target as IDBOpenDBRequest).error?.message}`,
-          ),
-        );
-      };
-    });
+    request.onerror = (event) => {
+      console.error(
+        "IndexedDB seed error:",
+        (event.target as IDBOpenDBRequest).error,
+      );
+      (window as any).dbSeedError = (
+        event.target as IDBOpenDBRequest
+      ).error?.message;
+    };
   }, testCards);
 }
 

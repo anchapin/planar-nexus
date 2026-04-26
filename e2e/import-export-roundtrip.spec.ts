@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { seedCardDatabase, waitForDbSeed } from "./test-utils";
+import { seedCardDatabase } from "./test-utils";
 
 // Run tests in CI but with longer timeouts and retries
 const testOptions =
@@ -22,7 +22,6 @@ test.describe("Import/Export Round Trip", () => {
 
     // Seed database after navigation (runs in page context)
     await seedCardDatabase(page);
-    await waitForDbSeed(page);
 
     // Clear any existing deck if needed
     const clearButton = page.getByTestId("clear-deck-button");
