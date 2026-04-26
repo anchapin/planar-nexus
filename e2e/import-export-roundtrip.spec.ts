@@ -65,24 +65,6 @@ test.describe("Import/Export Round Trip", () => {
     // Wait for import to complete and cards to appear in deck list
     await page.waitForTimeout(3000);
 
-    // Debug: check deck count
-    const deckCountText = await page.getByTestId("deck-count").textContent();
-    console.log("Deck count after import:", deckCountText);
-
-    // Verify the deck was actually populated before trying to export
-    const hasCards = await page
-      .getByTestId("deck-count")
-      .textContent()
-      .then((t) => t && /[1-9]/.test(t));
-    console.log("Deck has cards (1-9):", hasCards);
-    if (!hasCards) {
-      // Take a screenshot for debugging
-      await page.screenshot({ path: `/tmp/debug-deck-${Date.now()}.png` });
-      throw new Error(
-        `Import failed: deck count is "${deckCountText}" but expected [1-9] cards`,
-      );
-    }
-
     // 2. Export (as text)
     await page.getByTestId("export-deck-button").click();
 

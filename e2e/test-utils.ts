@@ -70,6 +70,27 @@ export async function waitForDbSeed(page: Page) {
   if (error) {
     throw new Error(`IndexedDB seeding failed: ${error}`);
   }
+
+  // Verify cards actually exist by doing a quick lookup
+  const cardCount = await page.evaluate(async () => {
+    return new Promise<number>((resolve, reject) => {
+      const request = indexedDB.open("PlanarNexusCardDB", 2);
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = db.transaction(["cards"], "readonly");
+        const store = transaction.objectStore("cards");
+        const countRequest = store.count();
+        countRequest.onsuccess = () => resolve(countRequest.result);
+        countRequest.onerror = () => reject(new Error("Count failed"));
+      };
+      request.onerror = () => reject(new Error("DB open failed"));
+    });
+  });
+
+  if (cardCount === 0) {
+    throw new Error(`IndexedDB seeded but card count is ${cardCount}`);
+  }
+  console.log(`Database verified: ${cardCount} cards found`);
 }
 
 export async function mockScryfallApi(page: Page) {
