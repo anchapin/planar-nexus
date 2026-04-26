@@ -94,9 +94,8 @@ test.describe("Import/Export Round Trip", () => {
     const textarea = page.getByTestId("import-textarea");
     await textarea.waitFor({ state: "visible", timeout: 10000 });
 
-    // Select JSON format via the tabs (use select instead of tab role since it's a select element)
-    const formatTabs = page.getByTestId("import-format-tabs");
-    await formatTabs.selectOption("json");
+    // Select JSON format via the tabs - click on the JSON tab trigger
+    await page.getByRole("tab", { name: /json/i }).click();
 
     const jsonDeck = JSON.stringify({
       cards: [
