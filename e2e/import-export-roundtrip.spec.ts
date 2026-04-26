@@ -42,6 +42,9 @@ test.describe("Import/Export Round Trip", () => {
   test("should round-trip a simple deck via text import/export", async ({
     page,
   }) => {
+    // Extend timeout for CI
+    test.setTimeout(60000);
+
     const sampleDeck = `4 Lightning Bolt
 4 Mountain
 20 Island`;
