@@ -281,6 +281,28 @@ function generateStarterDeck(deckId: string): ScryfallCard[] {
       deck.push(createCreatureCard("Wall of Omens", "{1}{W}", 0, 4, ["W"], i));
     for (let i = 0; i < 12; i++)
       deck.push(createCreatureCard("Serra Angel", "{3}{W}{W}", 4, 4, ["W"], i));
+  } else if (deckId === "starter-test") {
+    for (let i = 0; i < 10; i++) deck.push(createLandCard("Mountain", "R", i));
+    for (let i = 0; i < 10; i++) deck.push(createLandCard("Island", "U", i));
+    for (let i = 0; i < 10; i++) deck.push(createLandCard("Forest", "G", i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Goblin Guide", "{R}", 2, 2, ["R"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Memnite", "{0}", 1, 1, [], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Ward Beetle", "{1}{G}", 2, 3, ["G"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Cycling Drake", "{3}{U}", 2, 4, ["U"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Explore Ranger", "{1}{G}", 2, 2, ["G"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Convoke Angel", "{3}{W}", 3, 3, ["W"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Flashback Bolt", "{1}{R}", 2, 1, ["R"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Counterspell", "{U}{U}", 0, 0, ["U"], i));
+    for (let i = 0; i < 10; i++)
+      deck.push(createCreatureCard("Lightning Bolt", "{R}", 3, 0, ["R"], i));
   } else {
     // starter-midrange: 12 Swamp, 12 Forest
     for (let i = 0; i < 12; i++) deck.push(createLandCard("Swamp", "B", i));
