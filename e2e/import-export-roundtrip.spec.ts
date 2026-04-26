@@ -69,12 +69,19 @@ test.describe("Import/Export Round Trip", () => {
     const deckCountText = await page.getByTestId("deck-count").textContent();
     console.log("Deck count after import:", deckCountText);
 
-    // Debug: check if import dialog is still open
-    const importDialog = page.getByTestId("import-textarea");
-    const isImportDialogVisible = await importDialog
-      .isVisible()
-      .catch(() => false);
-    console.log("Import dialog still visible:", isImportDialogVisible);
+    // Verify the deck was actually populated before trying to export
+    const hasCards = await page
+      .getByTestId("deck-count")
+      .textContent()
+      .then((t) => t && /[1-9]/.test(t));
+    console.log("Deck has cards (1-9):", hasCards);
+    if (!hasCards) {
+      // Take a screenshot for debugging
+      await page.screenshot({ path: `/tmp/debug-deck-${Date.now()}.png` });
+      throw new Error(
+        `Import failed: deck count is "${deckCountText}" but expected [1-9] cards`,
+      );
+    }
 
     // 2. Export (as text)
     await page.getByTestId("export-deck-button").click();
