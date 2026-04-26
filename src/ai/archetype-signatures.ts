@@ -718,6 +718,159 @@ export const ARCHETYPE_SIGNATURES: ArchetypeSignature[] = [
       return score;
     },
   },
+
+  // === HYBRID ARCHETYPES (5) ===
+  // Blended archetypes for decks that don't fit pure categories
+  // Score thresholds tuned lower to catch hybrid decks
+  {
+    name: 'Midrange Pile',
+    category: 'midrange',
+    description: 'Flexibly reactive midrange with burn, removal, and threats',
+    minCreatureRatio: 0.3,
+    maxCreatureRatio: 0.55,
+    avgCmcRange: [2.5, 4.0],
+    cardPatterns: ['midrange pile', 'jund', 'bgx', 'burn', 'removal', 'terminate', 'lightning bolt', 'path to exile'],
+    scoreFunction: (deck, stats) => {
+      let score = 0;
+      const burn = countPatternMatches(deck, ['lightning bolt', 'lava spike', 'skewer', 'burst', 'chain lightning', 'flame slash']);
+      const removal = countPatternMatches(deck, ['terminate', 'path to exile', 'murder', 'doom blade', 'victim', 'decay']);
+      const flexSpells = burn + removal;
+      
+      if (flexSpells >= 8) score += 40;
+      else if (flexSpells >= 5) score += 25;
+      else if (flexSpells >= 3) score += 15;
+      
+      if (stats.creatureRatio >= 0.3 && stats.creatureRatio <= 0.55) score += 30;
+      
+      if (stats.avgCmc >= 2.5 && stats.avgCmc <= 4.0) score += 20;
+      
+      // Penalty for being too creature-heavy (suggests pure aggro/midrange)
+      if (stats.creatureRatio >= 0.55) score -= 10;
+      
+      return score;
+    },
+  },
+  {
+    name: 'Tempo-Control',
+    category: 'control',
+    description: 'Control shell with tempo elements and cheap interactive spells',
+    minCreatureRatio: 0.15,
+    maxCreatureRatio: 0.35,
+    avgCmcRange: [2.0, 3.5],
+    cardPatterns: ['tempo', 'mobile', 'snapcaster', 'spell queller', 'brazen borrower', 'mudora', 'counterspell', ' removal'],
+    scoreFunction: (deck, stats) => {
+      let score = 0;
+      const counters = countPatternMatches(deck, ['counterspell', 'force of will', 'mana drain', 'negate', 'dissolve', 'cancel', 'essence scatter']);
+      const tempo = countPatternMatches(deck, ['snapcaster', 'spell queller', 'brazen', 'borrower', 'mutagenic', 'temur', 'flash', 'bounce']);
+      const removal = countPatternMatches(deck, ['terminate', 'path', 'murder', 'doom', 'victim', 'decay', 'terminate']);
+      
+      if (counters >= 6) score += 25;
+      else if (counters >= 3) score += 15;
+      
+      if (tempo >= 6) score += 35;
+      else if (tempo >= 3) score += 20;
+      
+      if (removal >= 4) score += 15;
+      
+      if (stats.creatureRatio >= 0.15 && stats.creatureRatio <= 0.35) score += 20;
+      
+      if (stats.avgCmc >= 2.0 && stats.avgCmc <= 3.5) score += 15;
+      
+      return score;
+    },
+  },
+  {
+    name: 'Aggro-Midrange',
+    category: 'aggro',
+    description: 'Aggressive deck with higher curve and late-game options',
+    minCreatureRatio: 0.45,
+    maxCreatureRatio: 0.65,
+    avgCmcRange: [2.0, 3.5],
+    cardPatterns: ['aggro midrange', 'proactive', 'threat', 'finisher', 'topdeck', 'pump', 'burn', 'zoo', 'naya'],
+    scoreFunction: (deck, stats) => {
+      let score = 0;
+      const pumpBurn = countPatternMatches(deck, ['pump', 'giant growth', 'mutagenic', 'berserk', 'lightning bolt', 'chain lightning']);
+      const threats = countPatternMatches(deck, ['threat', 'finisher', 'titan', 'goyf', 'wurm', 'serra', 'archangle']);
+      
+      if (pumpBurn >= 6) score += 30;
+      else if (pumpBurn >= 3) score += 15;
+      
+      if (stats.creatureRatio >= 0.45) score += 35;
+      else if (stats.creatureRatio >= 0.35) score += 20;
+      
+      if (threats >= 4) score += 20;
+      
+      // Higher CMC than pure aggro
+      if (stats.avgCmc >= 2.0 && stats.avgCmc <= 3.5) score += 25;
+      
+      // But not as high as pure midrange
+      if (stats.avgCmc > 3.5) score -= 15;
+      
+      return score;
+    },
+  },
+  {
+    name: 'Control-Midrange',
+    category: 'control',
+    description: 'Control elements with midrange creature suite',
+    minCreatureRatio: 0.2,
+    maxCreatureRatio: 0.4,
+    avgCmcRange: [2.5, 4.0],
+    cardPatterns: ['control midrange', 'siege rhino', ' Reflector Mage', 'spell queller', 'courser', 'tracker'],
+    scoreFunction: (deck, stats) => {
+      let score = 0;
+      const cardDraw = countPatternMatches(deck, ['draw', 'concentrate', 'ancestral', 'brainstorm', 'ponder', 'preordain', 'divination']);
+      const sweeper = countPatternMatches(deck, ['wrath', 'damnation', 'toxic deluge', 'engineered', 'cleansing', 'aether', 'evacuate']);
+      const threats = countPatternMatches(deck, ['siege rhino', 'reflector', 'courser', 'tracker', 'gideon', 'colossus']);
+      
+      if (cardDraw >= 8) score += 25;
+      else if (cardDraw >= 4) score += 15;
+      
+      if (sweeper >= 3) score += 30;
+      else if (sweeper >= 2) score += 15;
+      
+      if (threats >= 4) score += 25;
+      else if (threats >= 2) score += 15;
+      
+      if (stats.creatureRatio >= 0.2 && stats.creatureRatio <= 0.4) score += 20;
+      
+      return score;
+    },
+  },
+  {
+    name: 'Jund-style',
+    category: 'midrange',
+    description: 'Black-Green-Red midrange with discard, removal, and burn',
+    minCreatureRatio: 0.3,
+    maxCreatureRatio: 0.5,
+    avgCmcRange: [2.5, 3.8],
+    cardPatterns: ['jund', 'bgxr', 'terminus', 'inquisition', 'thoughtseize', 'lightning bolt', 'terminate', 'goyf'],
+    scoreFunction: (deck, stats) => {
+      let score = 0;
+      const discard = countPatternMatches(deck, ['inquisition', 'thoughtseize', ' Collective', 'blightning']);
+      const burn = countPatternMatches(deck, ['lightning bolt', 'lava spike', 'terminate', 'flame slash']);
+      const bigThreats = countPatternMatches(deck, ['tarmogoyf', 'goyf', 'troll', 'scavenging', 'angry', 'hunted']);
+      
+      // Must have significant B presence for Jund (discard is key)
+      const blackCards = stats.colorDistribution['B'] || 0;
+      if (blackCards >= 8) score += 20;
+      else if (blackCards < 4) return score; // Not Jund without black
+      
+      if (discard >= 4) score += 30;
+      else if (discard >= 2) score += 15;
+      else return score; // Jund requires discard effects
+      
+      if (burn >= 4) score += 25;
+      else if (burn >= 2) score += 15;
+      
+      if (bigThreats >= 4) score += 30;
+      else if (bigThreats >= 2) score += 15;
+      
+      if (stats.creatureRatio >= 0.3 && stats.creatureRatio <= 0.5) score += 15;
+      
+      return score;
+    },
+  },
 ];
 
 /**

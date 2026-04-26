@@ -14,12 +14,15 @@ import type {
   StackObject,
   Target,
   WaitingChoice,
-  ChoiceOption
+  ChoiceOption,
 } from "./types";
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
 import { spendMana, getSpellManaCost } from "./mana";
 import { ValidationService } from "./validation-service";
+import { initializePlaneswalkerLoyalty } from "./card-instance";
+import { parseKicker } from "./oracle-text-parser";
+import { checkTriggeredAbilities } from "./abilities";
 
 /**
  * Generate a unique stack object ID
@@ -34,7 +37,7 @@ function generateStackObjectId(): string {
 export function canCastSpell(
   state: GameState,
   playerId: PlayerId,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): { canCast: boolean; reason?: string } {
   const player = state.players.get(playerId);
   if (!player) {
@@ -60,36 +63,47 @@ export function canCastSpell(
 
   // Check phase/timing restrictions
   const currentPhase = state.turn.currentPhase;
-  const isMainPhase = currentPhase === Phase.PRECOMBAT_MAIN || currentPhase === Phase.POSTCOMBAT_MAIN;
+  const isMainPhase =
+    currentPhase === Phase.PRECOMBAT_MAIN ||
+    currentPhase === Phase.POSTCOMBAT_MAIN;
   const stackIsEmpty = state.stack.length === 0;
   const isActivePlayer = state.turn.activePlayerId === playerId;
 
   // Check if it's an instant
   const typeLine = card.cardData.type_line?.toLowerCase() || "";
   const isInstant = typeLine.includes("instant");
-  
+
   // Check for cards that can be cast at any time (e.g., flash)
   // This must be checked BEFORE sorcery-speed restrictions since flash overrides them
   const oracleText = card.cardData.oracle_text || "";
   const hasFlash = oracleText.toLowerCase().includes("flash");
-  
+
   // If it's not an instant and doesn't have flash, apply sorcery-speed restrictions
   if (!isInstant && !hasFlash) {
     // Can only cast during main phase with empty stack
     if (!stackIsEmpty) {
-      return { canCast: false, reason: "Stack must be empty to cast sorcery-speed spells" };
+      return {
+        canCast: false,
+        reason: "Stack must be empty to cast sorcery-speed spells",
+      };
     }
-    
+
     if (!isMainPhase) {
-      return { canCast: false, reason: "Can only cast sorcery-speed spells during main phase" };
+      return {
+        canCast: false,
+        reason: "Can only cast sorcery-speed spells during main phase",
+      };
     }
-    
+
     // Can only cast on your own turn (never on opponent's turn)
     if (!isActivePlayer) {
-      return { canCast: false, reason: "Can only cast sorcery-speed spells during your turn" };
+      return {
+        canCast: false,
+        reason: "Can only cast sorcery-speed spells during your turn",
+      };
     }
   }
-  
+
   // Flash allows casting at any time - already checked above, but explicit return for clarity
   if (hasFlash) {
     return { canCast: true };
@@ -99,7 +113,11 @@ export function canCastSpell(
   if (card.cardData.layout === "split") {
     // Split cards can be cast as either half during main phase
     if (!isMainPhase || !stackIsEmpty) {
-      return { canCast: false, reason: "Split cards can only be cast during main phase with empty stack" };
+      return {
+        canCast: false,
+        reason:
+          "Split cards can only be cast during main phase with empty stack",
+      };
     }
   }
 
@@ -116,20 +134,25 @@ export function castSpell(
   cardId: CardInstanceId,
   targets: Target[] = [],
   chosenModes: string[] = [],
-  xValue: number = 0
+  xValue: number = 0,
+  isKicked: boolean = false,
 ): { success: boolean; state: GameState; error?: string } {
   // Create a game action for validation
   const action = {
     type: "cast_spell" as const,
     playerId,
     timestamp: Date.now(),
-    data: { cardId, targets, chosenModes, xValue },
+    data: { cardId, targets, chosenModes, xValue, isKicked },
   };
 
   // Validate the action before executing
   const validationResult = ValidationService.validateAction(state, action);
   if (!validationResult.isValid) {
-    return { success: false, state, error: validationResult.message || validationResult.reason };
+    return {
+      success: false,
+      state,
+      error: validationResult.message || validationResult.reason,
+    };
   }
 
   // Get the card
@@ -154,12 +177,25 @@ export function castSpell(
   const manaCost = getSpellManaCost(card.cardData);
 
   // Add X value to the cost if applicable
-  const totalGeneric = manaCost.generic + xValue;
-  const totalWhite = manaCost.white;
-  const totalBlue = manaCost.blue;
-  const totalBlack = manaCost.black;
-  const totalRed = manaCost.red;
-  const totalGreen = manaCost.green;
+  let totalGeneric = manaCost.generic + xValue;
+  let totalWhite = manaCost.white;
+  let totalBlue = manaCost.blue;
+  let totalBlack = manaCost.black;
+  let totalRed = manaCost.red;
+  let totalGreen = manaCost.green;
+
+  // Add kicker cost if spell is kicked
+  if (isKicked) {
+    const kickerInfo = parseKicker(card.cardData.oracle_text || "");
+    if (kickerInfo.hasKicker && kickerInfo.kickerCost) {
+      totalGeneric += kickerInfo.kickerCost.generic;
+      totalWhite += kickerInfo.kickerCost.white;
+      totalBlue += kickerInfo.kickerCost.blue;
+      totalBlack += kickerInfo.kickerCost.black;
+      totalRed += kickerInfo.kickerCost.red;
+      totalGreen += kickerInfo.kickerCost.green;
+    }
+  }
 
   // Check if player has enough mana to cast the spell
   const player = state.players.get(playerId);
@@ -170,7 +206,8 @@ export function castSpell(
   const pool = player.manaPool;
 
   // Calculate total colored mana available for generic payment
-  const totalColored = pool.white + pool.blue + pool.black + pool.red + pool.green;
+  const totalColored =
+    pool.white + pool.blue + pool.black + pool.red + pool.green;
   const availableForGeneric = pool.generic + totalColored + pool.colorless;
 
   if (
@@ -181,7 +218,11 @@ export function castSpell(
     pool.green < totalGreen ||
     availableForGeneric < totalGeneric
   ) {
-    return { success: false, state: state, error: "Not enough energy (mana) available." };
+    return {
+      success: false,
+      state: state,
+      error: "Not enough energy (mana) available.",
+    };
   }
 
   // Spend the mana
@@ -193,11 +234,11 @@ export function castSpell(
     green: totalGreen,
     generic: totalGeneric,
   });
-  
+
   if (!spendResult.success) {
     return { success: false, state, error: "Failed to spend energy (mana)." };
   }
-  
+
   // Use the state with mana already spent
   const currentState = spendResult.state;
 
@@ -219,7 +260,7 @@ export function castSpell(
 
   // Move card from hand to stack
   const moved = moveCardBetweenZones(handZone, stackZone, cardId);
-  
+
   // Update zones using the state with mana spent
   const updatedZones = new Map(currentState.zones);
   updatedZones.set(`${playerId}-hand`, moved.from);
@@ -244,7 +285,7 @@ export function castSpell(
   const playerIds = Array.from(currentState.players.keys());
   const currentIndex = playerIds.indexOf(activePlayerId);
   let nextIndex = (currentIndex + 1) % playerIds.length;
-  
+
   // Skip players who have lost
   while (playerIds.length > 1 && nextIndex !== currentIndex) {
     const nextPlayerId = playerIds[nextIndex];
@@ -272,16 +313,14 @@ export function castSpell(
 /**
  * Resolve the top object on the stack
  */
-export function resolveTopOfStack(
-  state: GameState
-): GameState {
+export function resolveTopOfStack(state: GameState): GameState {
   if (state.stack.length === 0) {
     return state;
   }
 
   // Get the top object (last one added resolves first - LIFO)
   const stackObject = state.stack[state.stack.length - 1];
-  
+
   // If it's countered, just remove it
   if (stackObject.isCountered) {
     return removeFromStack(state, stackObject.id);
@@ -293,7 +332,7 @@ export function resolveTopOfStack(
     if (card) {
       // Move card from stack to appropriate zone based on card type
       const typeLine = card.cardData.type_line?.toLowerCase() || "";
-      
+
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
         // Instants and sorceries go to graveyard
@@ -307,20 +346,63 @@ export function resolveTopOfStack(
       const destZone = state.zones.get(destinationZone);
 
       if (stackZone && destZone) {
-        const moved = moveCardBetweenZones(stackZone, destZone, stackObject.sourceCardId);
-        
+        const moved = moveCardBetweenZones(
+          stackZone,
+          destZone,
+          stackObject.sourceCardId,
+        );
+
         const updatedZones = new Map(state.zones);
         updatedZones.set("stack", moved.from);
         updatedZones.set(destinationZone, moved.to);
 
-        const updatedStack = state.stack.filter(obj => obj.id !== stackObject.id);
+        const updatedStack = state.stack.filter(
+          (obj) => obj.id !== stackObject.id,
+        );
 
-        return {
+        // Initialize loyalty counters for planeswalkers entering the battlefield
+        let updatedCards = state.cards;
+        if (!typeLine.includes("instant") && !typeLine.includes("sorcery")) {
+          const card = state.cards.get(stackObject.sourceCardId);
+          if (card) {
+            const initializedCard = initializePlaneswalkerLoyalty(card);
+            if (initializedCard !== card) {
+              updatedCards = new Map(state.cards);
+              updatedCards.set(stackObject.sourceCardId, initializedCard);
+            }
+          }
+        }
+
+        // Reset priority passes for all players (CR 117.4)
+        const updatedPlayers = new Map(state.players);
+        updatedPlayers.forEach((player) => {
+          updatedPlayers.set(player.id, {
+            ...player,
+            hasPassedPriority: false,
+          });
+        });
+
+        let currentState: GameState = {
           ...state,
           zones: updatedZones,
           stack: updatedStack,
+          cards: updatedCards,
+          players: updatedPlayers,
+          priorityPlayerId: state.turn.activePlayerId,
+          consecutivePasses: 0,
           lastModifiedAt: Date.now(),
         };
+
+        if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
+          // Instants and sorceries don't trigger ETB abilities
+        } else {
+          currentState = checkTriggeredAbilities(
+            currentState,
+            "entersBattlefield",
+          ).state;
+        }
+
+        return currentState;
       }
     }
   }
@@ -332,15 +414,21 @@ export function resolveTopOfStack(
 /**
  * Remove an object from the stack
  */
-function removeFromStack(
-  state: GameState,
-  stackObjectId: string
-): GameState {
-  const updatedStack = state.stack.filter(obj => obj.id !== stackObjectId);
+function removeFromStack(state: GameState, stackObjectId: string): GameState {
+  const updatedStack = state.stack.filter((obj) => obj.id !== stackObjectId);
+
+  // Reset priority passes
+  const updatedPlayers = new Map(state.players);
+  updatedPlayers.forEach((player) => {
+    updatedPlayers.set(player.id, { ...player, hasPassedPriority: false });
+  });
 
   return {
     ...state,
     stack: updatedStack,
+    players: updatedPlayers,
+    priorityPlayerId: state.turn.activePlayerId,
+    consecutivePasses: 0,
     lastModifiedAt: Date.now(),
   };
 }
@@ -356,14 +444,14 @@ export function canTarget(
   targetType: Target["type"],
   targetId: string,
   state: GameState,
-  _sourcePlayerId: PlayerId
+  _sourcePlayerId: PlayerId,
 ): boolean {
   switch (targetType) {
     case "card": {
       // Check if card exists
       const card = state.cards.get(targetId);
       if (!card) return false;
-      
+
       // Check if source player can see the card
       // (In reality, would check visibility rules)
       return true;
@@ -375,7 +463,7 @@ export function canTarget(
     }
     case "stack": {
       // Check if target stack object exists
-      return state.stack.some(obj => obj.id === targetId);
+      return state.stack.some((obj) => obj.id === targetId);
     }
     case "zone": {
       // Check if zone exists
@@ -395,7 +483,7 @@ export function createTargetingChoice(
   stackObjectId: string,
   spellName: string,
   targetType: Target["type"],
-  validTargets: ChoiceOption[]
+  validTargets: ChoiceOption[],
 ): WaitingChoice {
   return {
     type: "choose_targets",
@@ -417,14 +505,14 @@ export function createModeChoice(
   playerId: PlayerId,
   stackObjectId: string,
   spellName: string,
-  availableModes: string[]
+  availableModes: string[],
 ): WaitingChoice {
   return {
     type: "choose_mode",
     playerId,
     stackObjectId,
     prompt: `Choose mode for ${spellName}:`,
-    choices: availableModes.map(mode => ({
+    choices: availableModes.map((mode) => ({
       label: mode,
       value: mode,
       isValid: true,
@@ -443,7 +531,7 @@ export function createXValueChoice(
   playerId: PlayerId,
   stackObjectId: string,
   spellName: string,
-  maxX: number
+  maxX: number,
 ): WaitingChoice {
   const choices: ChoiceOption[] = [];
   for (let i = 0; i <= maxX; i++) {
@@ -472,7 +560,7 @@ export function createXValueChoice(
 export function getValidTargets(
   _stackObjectId: string,
   _state: GameState,
-  _playerId: PlayerId
+  _playerId: PlayerId,
 ): ChoiceOption[] {
   // For now, return empty array
   // In a full implementation, this would parse the spell's text
@@ -485,7 +573,7 @@ export function getValidTargets(
  */
 export function validateSpellTargets(
   stackObject: StackObject,
-  _state: GameState
+  _state: GameState,
 ): boolean {
   // If no targets required, spell is valid
   if (stackObject.targets.length === 0) {
@@ -506,7 +594,10 @@ export function validateSpellTargets(
  * Get the mana value of a spell from its card data
  * Uses the card-instance's getManaValue for accurate mana value calculation
  */
-export function getSpellManaValueFromCard(card: { mana_cost?: string; cmc?: number }): number {
+export function getSpellManaValueFromCard(card: {
+  mana_cost?: string;
+  cmc?: number;
+}): number {
   // Mana value is already available from card.cardData.cmc
   return card.cmc ?? 0;
 }

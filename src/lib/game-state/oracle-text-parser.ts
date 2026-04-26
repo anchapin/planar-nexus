@@ -943,7 +943,7 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "lifeGain" };
   }
 
-  // If we can't determine the trigger, return a generic one
+// If we can't determine the trigger, return a generic one
   return { event: "entersBattlefield" };
 }
 
@@ -1109,4 +1109,208 @@ export function getManaValue(cost: ParsedManaCost | null): number {
   total += cost.snow;
 
   return total;
+}
+
+/**
+ * Result of parsing modes from modal spell text
+ */
+export interface ParsedModes {
+  modeCount: 1 | 2 | 3 | 4;
+  modes: string[];
+}
+
+/**
+ * Parse modes from modal spell oracle text
+ * Handles patterns like:
+ * - "Choose one — [Effect A] / [Effect B]"
+ * - "Choose two — [Effect A] / [Effect B] / [Effect C]"
+ * - "Choose three — [A] / [B] / [C] / [D]"
+ * - Modes separated by newlines with bullet points (•)
+ */
+export function parseModes(oracleText: string): ParsedModes | null {
+  if (!oracleText) return null;
+
+  // Match em dash (—) or regular dash (-) after "choose X"
+  const chooseMatch = oracleText.match(
+    /choose\s+(one|two|three|four)\s*[—–-]/i,
+  );
+  if (!chooseMatch) return null;
+
+  const countMap: Record<string, 1 | 2 | 3 | 4> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+  };
+  const modeCount = countMap[chooseMatch[1].toLowerCase()];
+
+  // Find the dash character and get text after it
+  const dashIndex = oracleText.search(/[—–-]/i);
+  const afterDash = oracleText.substring(dashIndex + 1);
+
+  // Split by bullet points (•) first, then by slashes if needed
+  // This handles both "• Mode A\n• Mode B" and "Mode A / Mode B" formats
+  const rawParts = afterDash
+    .split("•")
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0);
+
+  // If we got multiple parts from bullet split, use those
+  // Otherwise fall back to slash splitting
+  let modeParts: string[];
+  if (rawParts.length > 1) {
+    modeParts = rawParts
+      .map((m) => m.replace(/^[/\s]+/, "").trim())
+      .filter((m) => m.length > 0);
+  } else {
+    modeParts = afterDash
+      .split("/")
+      .map((m) => m.trim())
+      .filter((m) => m.length > 0);
+  }
+
+  // Verify we have at least modeCount modes to choose from
+  if (modeParts.length < modeCount) {
+    return null;
+  }
+
+  return {
+    modeCount,
+    modes: modeParts,
+  };
+}
+
+/**
+ * Result of detecting X-cost spell
+ */
+export interface XCostInfo {
+  hasX: boolean;
+  maxX: number;
+  description: string;
+}
+
+/**
+ * Check if a card has an X cost and return info about it
+ * X cost is determined by {X} in mana_cost
+ * Max X is determined by available mana (returned as a suggestion)
+ */
+export function parseXCost(
+  card: ScryfallCard,
+  availableMana: number = 10,
+): XCostInfo {
+  const manaCost = parseManaCost(card.mana_cost || "");
+  if (!manaCost || manaCost.X === null) {
+    return { hasX: false, maxX: 0, description: "" };
+  }
+
+  // Parse the oracle text to find X value description
+  const oracleText = card.oracle_text || "";
+  let description = "Choose a value for X";
+
+  // Try to find context about what X does
+  const xMatch = oracleText.match(
+    /(?:create|deal|draw|put|add|remove|choose)\s+(?:x|a\s+x|x\s+[a-z]+)/i,
+  );
+  if (xMatch) {
+    description = `X: ${xMatch[0]}`;
+  }
+
+  // Max X is limited by available mana after paying other costs
+  const otherCosts = getManaValue(manaCost);
+  const maxX = Math.max(0, availableMana - otherCosts);
+
+  return {
+    hasX: true,
+    maxX,
+    description,
+  };
+}
+
+/**
+ * Result of parsing kicker cost
+ */
+export interface KickerInfo {
+  hasKicker: boolean;
+  isMultiKicker: boolean;
+  kickerCost: ParsedManaCost | null;
+  description: string;
+}
+
+/**
+ * Parse kicker cost from oracle text
+ * Handles patterns like:
+ * - "Kicker {2}{U}"
+ * - "Kicker {1}{R}"
+ * - "Multikicker {2}"
+ */
+export function parseKicker(oracleText: string): KickerInfo {
+  if (!oracleText) {
+    return {
+      hasKicker: false,
+      isMultiKicker: false,
+      kickerCost: null,
+      description: "",
+    };
+  }
+
+  // Match kicker or multikicker
+  const kickerMatch = oracleText.match(/kicker\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+  const multiKickerMatch = oracleText.match(
+    /multikicker\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+
+  if (!kickerMatch && !multiKickerMatch) {
+    return {
+      hasKicker: false,
+      isMultiKicker: false,
+      kickerCost: null,
+      description: "",
+    };
+  }
+
+  const isMultiKicker = !!multiKickerMatch;
+  const costString = isMultiKicker ? multiKickerMatch![1] : kickerMatch![1];
+  const kickerCost = parseManaCost(costString);
+
+  return {
+    hasKicker: true,
+    isMultiKicker,
+    kickerCost,
+    description: isMultiKicker
+      ? `Multikicker ${costString}`
+      : `Kicker ${costString}`,
+  };
+}
+
+/**
+ * Result of detecting Attraction mechanic
+ */
+export interface AttractionInfo {
+  hasAttraction: boolean;
+  spinResult: number;
+  description: string;
+}
+
+/**
+ * Check if a card has the Attraction mechanic
+ * Attraction cards trigger when you roll/spin a specific result and reveal cards
+ * from the top of your library until you match that result.
+ */
+export function parseAttraction(oracleText: string): AttractionInfo {
+  if (!oracleText) {
+    return { hasAttraction: false, spinResult: 0, description: "" };
+  }
+
+  // Check for Attraction keyword
+  const hasAttraction = oracleText.toLowerCase().includes("attraction");
+
+  if (!hasAttraction) {
+    return { hasAttraction: false, spinResult: 0, description: "" };
+  }
+
+  return {
+    hasAttraction: true,
+    spinResult: 0, // Will be determined by user action (spin/roll)
+    description: "Spin the Attraction die to reveal cards",
+  };
 }

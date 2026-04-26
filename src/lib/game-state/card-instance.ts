@@ -2,11 +2,7 @@
  * Card instance factory and utility functions
  */
 
-import type {
-  CardInstanceId,
-  CardInstance,
-  PlayerId,
-} from "./types";
+import type { CardInstanceId, CardInstance, PlayerId } from "./types";
 import type { ScryfallCard } from "@/app/actions";
 
 /**
@@ -23,7 +19,7 @@ export function createCardInstance(
   cardData: ScryfallCard,
   ownerId: PlayerId,
   controllerId: PlayerId,
-  options: Partial<CardInstance> = {}
+  options: Partial<CardInstance> = {},
 ): CardInstance {
   const id = options.id || generateCardInstanceId();
 
@@ -48,6 +44,7 @@ export function createCardInstance(
     attachedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
     attachedTimestamp: null,
+    chosenBasicLandType: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
   };
@@ -59,7 +56,7 @@ export function createCardInstance(
 export function createToken(
   tokenData: ScryfallCard,
   controllerId: PlayerId,
-  ownerId: PlayerId
+  ownerId: PlayerId,
 ): CardInstance {
   return createCardInstance(tokenData, ownerId, controllerId, {
     isToken: true,
@@ -72,7 +69,9 @@ export function createToken(
  * Planeswalkers enter with loyalty counters equal to their loyalty field
  * CR 306.5b
  */
-export function initializePlaneswalkerLoyalty(card: CardInstance): CardInstance {
+export function initializePlaneswalkerLoyalty(
+  card: CardInstance,
+): CardInstance {
   if (!isPlaneswalker(card)) {
     return card;
   }
@@ -89,7 +88,7 @@ export function initializePlaneswalkerLoyalty(card: CardInstance): CardInstance 
   }
 
   // Add loyalty counters
-  return addCounters(card, 'loyalty', loyaltyValue);
+  return addCounters(card, "loyalty", loyaltyValue);
 }
 
 /**
@@ -133,12 +132,12 @@ export function turnFaceUp(card: CardInstance): CardInstance {
 export function addCounters(
   card: CardInstance,
   counterType: string,
-  count: number
+  count: number,
 ): CardInstance {
   const existingCounter = card.counters.find((c) => c.type === counterType);
   const updatedCounters = existingCounter
     ? card.counters.map((c) =>
-        c.type === counterType ? { ...c, count: c.count + count } : c
+        c.type === counterType ? { ...c, count: c.count + count } : c,
       )
     : [...card.counters, { type: counterType, count }];
 
@@ -151,7 +150,7 @@ export function addCounters(
 export function removeCounters(
   card: CardInstance,
   counterType: string,
-  count: number
+  count: number,
 ): CardInstance {
   const existingCounter = card.counters.find((c) => c.type === counterType);
 
@@ -165,7 +164,7 @@ export function removeCounters(
     newCount === 0
       ? card.counters.filter((c) => c.type !== counterType)
       : card.counters.map((c) =>
-          c.type === counterType ? { ...c, count: newCount } : c
+          c.type === counterType ? { ...c, count: newCount } : c,
         );
 
   return { ...card, counters: updatedCounters };
@@ -190,7 +189,7 @@ export function resetDamage(card: CardInstance): CardInstance {
  */
 export function attachCard(
   card: CardInstance,
-  attachToId: CardInstanceId
+  attachToId: CardInstanceId,
 ): CardInstance {
   return {
     ...card,
@@ -215,7 +214,7 @@ export function detachCard(card: CardInstance): CardInstance {
  */
 export function changeController(
   card: CardInstance,
-  newControllerId: PlayerId
+  newControllerId: PlayerId,
 ): CardInstance {
   return {
     ...card,
@@ -327,7 +326,10 @@ export function getPower(card: CardInstance): number {
  */
 function getCurrentFaceData(card: CardInstance): ScryfallCard {
   if (card.cardData.card_faces && card.cardData.card_faces.length > 0) {
-    const faceIndex = Math.min(card.currentFaceIndex, card.cardData.card_faces.length - 1);
+    const faceIndex = Math.min(
+      card.currentFaceIndex,
+      card.cardData.card_faces.length - 1,
+    );
     return {
       ...card.cardData,
       power: card.cardData.card_faces[faceIndex].power,
@@ -457,7 +459,7 @@ export function transformCard(card: CardInstance): CardInstance {
  */
 export function setCardFace(
   card: CardInstance,
-  faceIndex: number
+  faceIndex: number,
 ): CardInstance {
   if (!isDoubleFaced(card)) {
     return card;
@@ -479,7 +481,7 @@ export function getCurrentFaceName(card: CardInstance): string {
   if (isDoubleFaced(card) && card.cardData.card_faces) {
     const faceIndex = Math.min(
       card.currentFaceIndex,
-      card.cardData.card_faces.length - 1
+      card.cardData.card_faces.length - 1,
     );
     return card.cardData.card_faces[faceIndex].name || card.cardData.name;
   }
@@ -505,7 +507,7 @@ export function phaseIn(card: CardInstance): CardInstance {
  */
 export function addPowerModifier(
   card: CardInstance,
-  amount: number
+  amount: number,
 ): CardInstance {
   return { ...card, powerModifier: card.powerModifier + amount };
 }
@@ -515,7 +517,7 @@ export function addPowerModifier(
  */
 export function addToughnessModifier(
   card: CardInstance,
-  amount: number
+  amount: number,
 ): CardInstance {
   return { ...card, toughnessModifier: card.toughnessModifier + amount };
 }
@@ -525,7 +527,7 @@ export function addToughnessModifier(
  */
 export function setPowerModifier(
   card: CardInstance,
-  value: number
+  value: number,
 ): CardInstance {
   return { ...card, powerModifier: value };
 }
@@ -535,7 +537,7 @@ export function setPowerModifier(
  */
 export function setToughnessModifier(
   card: CardInstance,
-  value: number
+  value: number,
 ): CardInstance {
   return { ...card, toughnessModifier: value };
 }
@@ -550,10 +552,7 @@ export function clearSummoningSickness(card: CardInstance): CardInstance {
 /**
  * Check if a card has a specific counter type
  */
-export function hasCounter(
-  card: CardInstance,
-  counterType: string
-): boolean {
+export function hasCounter(card: CardInstance, counterType: string): boolean {
   return card.counters.some((c) => c.type === counterType && c.count > 0);
 }
 
@@ -562,7 +561,7 @@ export function hasCounter(
  */
 export function getCounterCount(
   card: CardInstance,
-  counterType: string
+  counterType: string,
 ): number {
   const counter = card.counters.find((c) => c.type === counterType);
   return counter ? counter.count : 0;
@@ -590,98 +589,118 @@ export function hasAttachments(card: CardInstance): boolean {
  * Type guard to check if a value is a valid CardInstance
  */
 export function isCardInstance(value: unknown): value is CardInstance {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== "object" || value === null) return false;
   const card = value as Record<string, unknown>;
   return (
-    typeof card.id === 'string' &&
-    typeof card.oracleId === 'string' &&
-    typeof card.cardData === 'object' &&
+    typeof card.id === "string" &&
+    typeof card.oracleId === "string" &&
+    typeof card.cardData === "object" &&
     card.cardData !== null &&
-    typeof card.currentFaceIndex === 'number' &&
-    typeof card.isFaceDown === 'boolean' &&
-    typeof card.controllerId === 'string' &&
-    typeof card.ownerId === 'string' &&
-    typeof card.isTapped === 'boolean' &&
+    typeof card.currentFaceIndex === "number" &&
+    typeof card.isFaceDown === "boolean" &&
+    typeof card.controllerId === "string" &&
+    typeof card.ownerId === "string" &&
+    typeof card.isTapped === "boolean" &&
     Array.isArray(card.counters) &&
-    typeof card.damage === 'number' &&
-    typeof card.toughnessModifier === 'number' &&
-    typeof card.powerModifier === 'number' &&
-    (card.attachedToId === null || typeof card.attachedToId === 'string') &&
+    typeof card.damage === "number" &&
+    typeof card.toughnessModifier === "number" &&
+    typeof card.powerModifier === "number" &&
+    (card.attachedToId === null || typeof card.attachedToId === "string") &&
     Array.isArray(card.attachedCardIds) &&
-    typeof card.enteredBattlefieldTimestamp === 'number' &&
-    (card.attachedTimestamp === null || typeof card.attachedTimestamp === 'number') &&
-    typeof card.isToken === 'boolean'
+    typeof card.enteredBattlefieldTimestamp === "number" &&
+    (card.attachedTimestamp === null ||
+      typeof card.attachedTimestamp === "number") &&
+    typeof card.isToken === "boolean"
   );
 }
 
 /**
  * Type guard to check if a value is a valid Counter
  */
-export function isCounter(value: unknown): value is { type: string; count: number } {
-  if (typeof value !== 'object' || value === null) return false;
+export function isCounter(
+  value: unknown,
+): value is { type: string; count: number } {
+  if (typeof value !== "object" || value === null) return false;
   const counter = value as Record<string, unknown>;
-  return (
-    typeof counter.type === 'string' &&
-    typeof counter.count === 'number'
-  );
+  return typeof counter.type === "string" && typeof counter.count === "number";
 }
 
 /**
  * Type guard to check if a value is a valid PlayerId
  */
 export function isPlayerId(value: unknown): value is PlayerId {
-  return typeof value === 'string';
+  return typeof value === "string";
 }
 
 /**
  * Type guard to check if a value is a valid CardInstanceId
  */
 export function isCardInstanceId(value: unknown): value is CardInstanceId {
-  return typeof value === 'string';
+  return typeof value === "string";
 }
 
 /**
  * Type guard to check if a card is a creature type-safe wrapper
  */
-export function assertIsCreature(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+export function assertIsCreature(
+  card: CardInstance,
+): asserts card is CardInstance & { cardData: { type_line: string } } {
   if (!isCreature(card)) {
-    throw new Error(`Expected creature card, got: ${card.cardData.type_line || 'unknown'}`);
+    throw new Error(
+      `Expected creature card, got: ${card.cardData.type_line || "unknown"}`,
+    );
   }
 }
 
 /**
  * Type guard to check if a card is a land type-safe wrapper
  */
-export function assertIsLand(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+export function assertIsLand(
+  card: CardInstance,
+): asserts card is CardInstance & { cardData: { type_line: string } } {
   if (!isLand(card)) {
-    throw new Error(`Expected land card, got: ${card.cardData.type_line || 'unknown'}`);
+    throw new Error(
+      `Expected land card, got: ${card.cardData.type_line || "unknown"}`,
+    );
   }
 }
 
 /**
  * Type guard to check if a card is a planeswalker type-safe wrapper
  */
-export function assertIsPlaneswalker(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+export function assertIsPlaneswalker(
+  card: CardInstance,
+): asserts card is CardInstance & { cardData: { type_line: string } } {
   if (!isPlaneswalker(card)) {
-    throw new Error(`Expected planeswalker card, got: ${card.cardData.type_line || 'unknown'}`);
+    throw new Error(
+      `Expected planeswalker card, got: ${card.cardData.type_line || "unknown"}`,
+    );
   }
 }
 
 /**
  * Type guard to check if a card is an instant or sorcery type-safe wrapper
  */
-export function assertIsInstantOrSorcery(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+export function assertIsInstantOrSorcery(
+  card: CardInstance,
+): asserts card is CardInstance & { cardData: { type_line: string } } {
   if (!isInstantOrSorcery(card)) {
-    throw new Error(`Expected instant or sorcery card, got: ${card.cardData.type_line || 'unknown'}`);
+    throw new Error(
+      `Expected instant or sorcery card, got: ${card.cardData.type_line || "unknown"}`,
+    );
   }
 }
 
 /**
  * Type guard to check if a card is a permanent type-safe wrapper
  */
-export function assertIsPermanent(card: CardInstance): asserts card is CardInstance & { cardData: { type_line: string } } {
+export function assertIsPermanent(
+  card: CardInstance,
+): asserts card is CardInstance & { cardData: { type_line: string } } {
   if (!isPermanent(card)) {
-    throw new Error(`Expected permanent card, got: ${card.cardData.type_line || 'unknown'}`);
+    throw new Error(
+      `Expected permanent card, got: ${card.cardData.type_line || "unknown"}`,
+    );
   }
 }
 

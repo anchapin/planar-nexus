@@ -1,5 +1,5 @@
-import { MinimalCard } from '../card-database';
-import type { WorkerMessage, WorkerResponse } from './embedding-worker';
+import { MinimalCard } from "../card-database";
+import type { WorkerMessage, WorkerResponse } from "./embedding-worker";
 
 /**
  * Client for communicating with the embedding worker.
@@ -9,18 +9,26 @@ export class EmbeddingClient {
   private static instance: EmbeddingClient | null = null;
   private worker: Worker | null = null;
   private initializationPromise: Promise<void> | null = null;
-  private progressCallback: ((message: string, progress?: number) => void) | null = null;
+  private progressCallback:
+    | ((message: string, progress?: number) => void)
+    | null = null;
 
   private constructor() {
-    // Only initialized on client side
-    if (typeof window !== 'undefined') {
+    // Only initialize on client side with browser environment
+    if (typeof window !== "undefined" && typeof Worker !== "undefined") {
       try {
-        // Next.js/Webpack recommended way to load workers
-        this.worker = new Worker(new URL('./embedding-worker.ts', import.meta.url), {
-          type: 'module'
+        // Use dynamic import to avoid issues with import.meta during bundling
+        // The URL is resolved relative to this file's location
+        const workerPath =
+          typeof import.meta !== "undefined" && import.meta.url
+            ? new URL("./embedding-worker.ts", import.meta.url).href
+            : "./embedding-worker.ts";
+
+        this.worker = new Worker(workerPath, {
+          type: "module",
         });
       } catch (error) {
-        console.error('Failed to initialize Embedding Worker:', error);
+        console.error("Failed to initialize Embedding Worker:", error);
       }
     }
   }
@@ -47,25 +55,28 @@ export class EmbeddingClient {
    */
   async ensureModelLoaded(): Promise<void> {
     if (this.initializationPromise) return this.initializationPromise;
-    if (!this.worker) throw new Error('Worker not available (likely server-side or failed initialization)');
+    if (!this.worker)
+      throw new Error(
+        "Worker not available (likely server-side or failed initialization)",
+      );
 
     this.initializationPromise = new Promise((resolve, reject) => {
       const handler = (event: MessageEvent<WorkerResponse>) => {
         const response = event.data;
-        if (response.type === 'MODEL_LOADED') {
-          this.worker?.removeEventListener('message', handler);
+        if (response.type === "MODEL_LOADED") {
+          this.worker?.removeEventListener("message", handler);
           resolve();
-        } else if (response.type === 'PROGRESS') {
+        } else if (response.type === "PROGRESS") {
           this.progressCallback?.(response.message, response.progress);
-        } else if (response.type === 'ERROR') {
-          this.worker?.removeEventListener('message', handler);
+        } else if (response.type === "ERROR") {
+          this.worker?.removeEventListener("message", handler);
           this.initializationPromise = null; // Allow retry on error
           reject(new Error(response.error));
         }
       };
 
-      this.worker!.addEventListener('message', handler);
-      this.worker!.postMessage({ type: 'LOAD_MODEL' });
+      this.worker!.addEventListener("message", handler);
+      this.worker!.postMessage({ type: "LOAD_MODEL" });
     });
 
     return this.initializationPromise;
@@ -75,26 +86,28 @@ export class EmbeddingClient {
    * Generates embeddings for a batch of cards.
    * Automatically ensures the model is loaded first.
    */
-  async generateEmbeddings(cards: MinimalCard[]): Promise<Array<{ id: string; embedding: number[] }>> {
+  async generateEmbeddings(
+    cards: MinimalCard[],
+  ): Promise<Array<{ id: string; embedding: number[] }>> {
     await this.ensureModelLoaded();
-    if (!this.worker) throw new Error('Worker not available');
+    if (!this.worker) throw new Error("Worker not available");
 
     return new Promise((resolve, reject) => {
       const handler = (event: MessageEvent<WorkerResponse>) => {
         const response = event.data;
-        if (response.type === 'EMBEDDINGS_GENERATED') {
-          this.worker?.removeEventListener('message', handler);
+        if (response.type === "EMBEDDINGS_GENERATED") {
+          this.worker?.removeEventListener("message", handler);
           resolve(response.results);
-        } else if (response.type === 'PROGRESS') {
+        } else if (response.type === "PROGRESS") {
           this.progressCallback?.(response.message, response.progress);
-        } else if (response.type === 'ERROR') {
-          this.worker?.removeEventListener('message', handler);
+        } else if (response.type === "ERROR") {
+          this.worker?.removeEventListener("message", handler);
           reject(new Error(response.error));
         }
       };
 
-      this.worker!.addEventListener('message', handler);
-      this.worker!.postMessage({ type: 'GENERATE_EMBEDDINGS', cards });
+      this.worker!.addEventListener("message", handler);
+      this.worker!.postMessage({ type: "GENERATE_EMBEDDINGS", cards });
     });
   }
 }

@@ -1,9 +1,9 @@
-import * as Comlink from 'comlink';
-import type { AIWorkerAPI } from './worker-types';
+import * as Comlink from "comlink";
+import type { AIWorkerAPI } from "./worker-types";
 
 /**
  * Main Thread Client for AI Web Worker
- * 
+ *
  * Provides a clean RPC bridge for components to interact
  * with off-main-thread AI heuristics.
  */
@@ -13,7 +13,7 @@ class AIWorkerClient {
   private proxy: Comlink.Remote<AIWorkerAPI> | null = null;
 
   private constructor() {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       this.init();
     }
   }
@@ -33,30 +33,29 @@ class AIWorkerClient {
    */
   private init() {
     try {
-      // Note: We use a workaround for import.meta.url which can cause issues in Jest/CommonJS
-      // In the browser, we use the URL constructor for Vite/Webpack/Next.js compatibility
-      // In tests, we use a simple path or mock.
+      // Only initialize on client side with browser environment
+      if (typeof window === "undefined" || typeof Worker === "undefined") {
+        return;
+      }
+
       let workerUrl: string | URL;
-      
-      if (typeof window !== 'undefined' && (window as any).location) {
-        try {
-          // Use a dynamic property access to avoid static analysis syntax errors in Jest
-          const meta = (import.meta as any);
-          workerUrl = new URL('./ai-worker.ts', meta.url);
-        } catch (e) {
-          // Fallback if import.meta.url is not available
-          workerUrl = './ai-worker.ts';
-        }
+
+      // Use dynamic import to avoid issues with import.meta during bundling/SSR
+      // In browser, use URL constructor for proper path resolution
+      // In tests/SSR, use a simple path string
+      if (typeof import.meta !== "undefined" && import.meta.url) {
+        workerUrl = new URL("./ai-worker.ts", import.meta.url).href;
       } else {
-        workerUrl = './ai-worker.ts';
+        // Fallback for non-ESM environments
+        workerUrl = "./ai-worker.ts";
       }
 
       this.worker = new Worker(workerUrl, {
-        type: 'module',
+        type: "module",
       });
       this.proxy = Comlink.wrap<AIWorkerAPI>(this.worker);
     } catch (error) {
-      console.error('Failed to initialize AI Worker:', error);
+      console.error("Failed to initialize AI Worker:", error);
     }
   }
 

@@ -1,24 +1,24 @@
 /**
  * Game State Factory
- * 
+ *
  * Provides factory functions for creating consistent test game state data.
  */
 
-import type { 
-  CardInstance, 
-  Player, 
-  Zone, 
+import type {
+  CardInstance,
+  Player,
+  Zone,
   ZoneType,
   Counter,
   ScryfallCard,
-} from '@/lib/game-state/types';
-import { createCard } from './card';
+} from "@/lib/game-state/types";
+import { createCard } from "./card";
 
 /**
  * Default player ID
  */
-const DEFAULT_PLAYER_ID = 'player-1';
-const DEFAULT_OPPONENT_ID = 'player-2';
+const DEFAULT_PLAYER_ID = "player-1";
+const DEFAULT_OPPONENT_ID = "player-2";
 
 /**
  * Options for creating a game state
@@ -90,9 +90,9 @@ export interface CreateGameStateOptions {
  * Generate a unique ID
  */
 let idCounter = 0;
-function generateId(prefix: string = 'id'): string {
+function generateId(prefix: string = "id"): string {
   idCounter++;
-  return `${prefix}-${idCounter.toString().padStart(4, '0')}`;
+  return `${prefix}-${idCounter.toString().padStart(4, "0")}`;
 }
 
 /**
@@ -109,14 +109,14 @@ export function createCardInstance(
     isTapped?: boolean;
     hasSummoningSickness?: boolean;
     isToken?: boolean;
-  } = {}
+  } = {},
 ): CardInstance {
-  const id = generateId('card');
+  const id = generateId("card");
   const cardData = createCard({
-    name: options.name || 'Test Card',
+    name: options.name || "Test Card",
     power: options.power,
     toughness: options.toughness,
-    type_line: options.type_line || 'Creature',
+    type_line: options.type_line || "Creature",
   });
 
   return {
@@ -140,8 +140,9 @@ export function createCardInstance(
     attachedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
     attachedTimestamp: null,
+    chosenBasicLandType: null,
     isToken: options.isToken || false,
-    tokenData: options.isToken ? cardData as unknown as ScryfallCard : null,
+    tokenData: options.isToken ? (cardData as unknown as ScryfallCard) : null,
   };
 }
 
@@ -158,14 +159,14 @@ export function createCreature(
     isTapped?: boolean;
     hasSummoningSickness?: boolean;
     damage?: number;
-  } = {}
+  } = {},
 ): CardInstance {
   return createCardInstance({
     ...options,
-    name: options.name || 'Test Creature',
+    name: options.name || "Test Creature",
     power: String(options.power ?? 2),
     toughness: String(options.toughness ?? 2),
-    type_line: 'Creature — Bear',
+    type_line: "Creature — Bear",
   });
 }
 
@@ -178,12 +179,12 @@ export function createLandInstance(
     controllerId?: string;
     ownerId?: string;
     isTapped?: boolean;
-  } = {}
+  } = {},
 ): CardInstance {
   return createCardInstance({
     ...options,
-    name: options.name || 'Test Land',
-    type_line: 'Land',
+    name: options.name || "Test Land",
+    type_line: "Land",
   });
 }
 
@@ -199,11 +200,11 @@ export function createPlayer(
     poisonCounters?: number;
     landsPlayedThisTurn?: number;
     maxLandsPerTurn?: number;
-  } = {}
+  } = {},
 ): Player {
   return {
     id: options.id || DEFAULT_PLAYER_ID,
-    name: options.name || 'Player',
+    name: options.name || "Player",
     life: options.life ?? 40,
     poisonCounters: options.poisonCounters ?? 0,
     commanderDamage: new Map(),
@@ -240,8 +241,8 @@ export function createPlayer(
 export function createZone(
   type: ZoneType,
   playerId: string | null = null,
-  cardIds: CardInstance['id'][] = [],
-  isRevealed: boolean = false
+  cardIds: CardInstance["id"][] = [],
+  isRevealed: boolean = false,
 ): Zone {
   return {
     type,
@@ -269,56 +270,73 @@ export interface GameState {
 /**
  * Create a basic game state
  */
-export function createGameState(options: CreateGameStateOptions = {}): GameState {
+export function createGameState(
+  options: CreateGameStateOptions = {},
+): GameState {
   const playerId = options.playerId || DEFAULT_PLAYER_ID;
   const opponentId = options.opponentId || DEFAULT_OPPONENT_ID;
-  
+
   // Generate card IDs for zones
-  const playerHand = Array.from(
-    { length: options.playerHandSize ?? 7 }, 
-    () => generateId('card')
+  const playerHand = Array.from({ length: options.playerHandSize ?? 7 }, () =>
+    generateId("card"),
   );
   const opponentHand = Array.from(
-    { length: options.opponentHandSize ?? 7 }, 
-    () => generateId('card')
+    { length: options.opponentHandSize ?? 7 },
+    () => generateId("card"),
   );
   const playerLibrary = Array.from(
-    { length: options.playerLibrarySize ?? 20 }, 
-    () => generateId('card')
+    { length: options.playerLibrarySize ?? 20 },
+    () => generateId("card"),
   );
   const opponentLibrary = Array.from(
-    { length: options.opponentLibrarySize ?? 20 }, 
-    () => generateId('card')
+    { length: options.opponentLibrarySize ?? 20 },
+    () => generateId("card"),
   );
-  
+
   return {
     players: [
       createPlayer({
         id: playerId,
-        name: 'Player',
+        name: "Player",
         life: options.playerLife ?? 40,
       }),
       createPlayer({
         id: opponentId,
-        name: 'Opponent',
+        name: "Opponent",
         life: options.opponentLife ?? 40,
       }),
     ],
     zones: {
-      [`${playerId}-library`]: createZone('library', playerId, playerLibrary),
-      [`${playerId}-hand`]: createZone('hand', playerId, playerHand),
-      [`${playerId}-graveyard`]: createZone('graveyard', playerId, options.playerGraveyard?.map(c => c.id) ?? []),
-      [`${playerId}-battlefield`]: createZone('battlefield', playerId, options.battlefieldCards?.map(c => c.id) ?? []),
-      [`${opponentId}-library`]: createZone('library', opponentId, opponentLibrary),
-      [`${opponentId}-hand`]: createZone('hand', opponentId, opponentHand),
-      [`${opponentId}-graveyard`]: createZone('graveyard', opponentId, options.opponentGraveyard?.map(c => c.id) ?? []),
-      [`${opponentId}-battlefield`]: createZone('battlefield', opponentId, []),
-      stack: createZone('stack', null),
-      command: createZone('command', null),
+      [`${playerId}-library`]: createZone("library", playerId, playerLibrary),
+      [`${playerId}-hand`]: createZone("hand", playerId, playerHand),
+      [`${playerId}-graveyard`]: createZone(
+        "graveyard",
+        playerId,
+        options.playerGraveyard?.map((c) => c.id) ?? [],
+      ),
+      [`${playerId}-battlefield`]: createZone(
+        "battlefield",
+        playerId,
+        options.battlefieldCards?.map((c) => c.id) ?? [],
+      ),
+      [`${opponentId}-library`]: createZone(
+        "library",
+        opponentId,
+        opponentLibrary,
+      ),
+      [`${opponentId}-hand`]: createZone("hand", opponentId, opponentHand),
+      [`${opponentId}-graveyard`]: createZone(
+        "graveyard",
+        opponentId,
+        options.opponentGraveyard?.map((c) => c.id) ?? [],
+      ),
+      [`${opponentId}-battlefield`]: createZone("battlefield", opponentId, []),
+      stack: createZone("stack", null),
+      command: createZone("command", null),
     },
     turn: options.turn ?? 1,
-    phase: options.phase ?? 'precombat_main',
-    step: options.step ?? 'begin',
+    phase: options.phase ?? "precombat_main",
+    step: options.step ?? "begin",
     activePlayerId: options.activePlayerId ?? playerId,
     priorityPlayerId: playerId,
     stack: [],
@@ -328,11 +346,13 @@ export function createGameState(options: CreateGameStateOptions = {}): GameState
 /**
  * Create a game state during mulligan phase
  */
-export function createMulliganState(options: Partial<CreateGameStateOptions> = {}): GameState {
+export function createMulliganState(
+  options: Partial<CreateGameStateOptions> = {},
+): GameState {
   return createGameState({
     ...options,
-    phase: 'mulligan',
-    step: 'mulligan',
+    phase: "mulligan",
+    step: "mulligan",
     playerHandSize: options.playerHandSize ?? 7,
     opponentHandSize: options.opponentHandSize ?? 7,
   });
@@ -342,15 +362,15 @@ export function createMulliganState(options: Partial<CreateGameStateOptions> = {
  * Create a game state during combat phase
  */
 export function createCombatState(
-  options: Partial<CreateGameStateOptions> = {}
+  options: Partial<CreateGameStateOptions> = {},
 ): GameState {
   const playerId = options.playerId || DEFAULT_PLAYER_ID;
   const opponentId = options.opponentId || DEFAULT_OPPONENT_ID;
-  
+
   // Create some creatures on the battlefield
   const playerCreatures: CardInstance[] = [
     createCreature({
-      name: 'Player Bear',
+      name: "Player Bear",
       power: 2,
       toughness: 2,
       controllerId: playerId,
@@ -359,10 +379,10 @@ export function createCombatState(
       hasSummoningSickness: false,
     }),
   ];
-  
+
   const opponentCreatures: CardInstance[] = [
     createCreature({
-      name: 'Opponent Bear',
+      name: "Opponent Bear",
       power: 2,
       toughness: 2,
       controllerId: opponentId,
@@ -371,30 +391,29 @@ export function createCombatState(
       hasSummoningSickness: false,
     }),
   ];
-  
+
   return createGameState({
     ...options,
-    phase: 'combat',
-    step: 'combat_damage',
+    phase: "combat",
+    step: "combat_damage",
     playerHandSize: options.playerHandSize ?? 4,
     opponentHandSize: options.opponentHandSize ?? 5,
-    battlefieldCards: [
-      ...playerCreatures,
-      ...opponentCreatures,
-    ],
+    battlefieldCards: [...playerCreatures, ...opponentCreatures],
   });
 }
 
 /**
  * Create a game state during main phase
  */
-export function createMainPhaseState(options: Partial<CreateGameStateOptions> = {}): GameState {
+export function createMainPhaseState(
+  options: Partial<CreateGameStateOptions> = {},
+): GameState {
   const playerId = options.playerId || DEFAULT_PLAYER_ID;
-  
+
   return createGameState({
     ...options,
-    phase: 'precombat_main',
-    step: 'main',
+    phase: "precombat_main",
+    step: "main",
     playerHandSize: options.playerHandSize ?? 5,
     opponentHandSize: options.opponentHandSize ?? 6,
   });

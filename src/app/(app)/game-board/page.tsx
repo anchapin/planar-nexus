@@ -10,23 +10,59 @@ import { TurnTimer } from "@/components/turn-timer";
 import { DamageOverlay, useDamageEvents } from "@/components/damage-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PlayerCount, ZoneType } from "@/types/game";
-import { Swords, Eye, MessageCircle, Smile, Lightbulb, AlertTriangle, Zap, Trophy } from "lucide-react";
+import {
+  Swords,
+  Eye,
+  MessageCircle,
+  Smile,
+  Lightbulb,
+  AlertTriangle,
+  Zap,
+  Trophy,
+  ArrowRight,
+  Sparkles,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGameChat } from "@/hooks/use-game-chat";
 import { useGameEmotes } from "@/hooks/use-game-emotes";
 import { cn } from "@/lib/utils";
-import { analyzeCurrentGameState, getManaAdvice, evaluateBoardState } from "@/ai/flows/ai-gameplay-assistance";
+import {
+  analyzeCurrentGameState,
+  getManaAdvice,
+  evaluateBoardState,
+} from "@/ai/flows/ai-gameplay-assistance";
 import { useGameEngine } from "@/hooks/use-game-engine";
 import { useAIWorker } from "@/hooks/use-ai-worker";
 import { AIThinkingIndicator } from "@/components/ai/AIThinkingIndicator";
-import type { CardInstanceId, GameAction, ActionType } from "@/lib/game-state/types";
-import { saveGameRecord, createGameRecord, type GameMode, type GameResult } from '@/lib/game-history';
-import { useAchievementTracking } from '@/hooks/use-achievement-tracking';
+import type {
+  CardInstanceId,
+  GameAction,
+  ActionType,
+} from "@/lib/game-state/types";
+import {
+  saveGameRecord,
+  createGameRecord,
+  type GameMode,
+  type GameResult,
+} from "@/lib/game-history";
+import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
 import { summarizeGame } from "@/lib/game-summarizer";
 import { engineToAIState } from "@/lib/game-state/serialization";
@@ -35,12 +71,12 @@ import { engineToAIState } from "@/lib/game-state/serialization";
 interface SuggestedPlay {
   cardName: string;
   reasoning: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: "high" | "medium" | "low";
 }
 
 interface Warning {
   message: string;
-  type: 'danger' | 'warning' | 'caution' | 'info';
+  type: "danger" | "warning" | "caution" | "info";
   relatedCards?: string[];
 }
 
@@ -74,15 +110,20 @@ export default function GameBoardPage() {
   const [aiManaAdvice, setAiManaAdvice] = useState<AIManaAdvice | null>(null);
   const [aiBoardEval, setAiBoardEval] = useState<AIBoardEval | null>(null);
   const [showGameResult, setShowGameResult] = useState(false);
-  const [gameResult, setGameResult] = useState<{ result: GameResult; life: number; turns: number } | null>(null);
-  const [gameMode, setGameMode] = useState<GameMode>('self_play');
-  const [difficulty, setDifficulty] = useState('medium');
-  const [aiTheme, setAiTheme] = useState('aggressive');
+  const [gameResult, setGameResult] = useState<{
+    result: GameResult;
+    life: number;
+    turns: number;
+  } | null>(null);
+  const [gameMode, setGameMode] = useState<GameMode>("self_play");
+  const [difficulty, setDifficulty] = useState("medium");
+  const [aiTheme, setAiTheme] = useState("aggressive");
   const [actions, setActions] = useState<GameAction[]>([]);
   const [mistakes, setMistakes] = useState<string[]>([]);
   const { toast } = useToast();
   // Use player-2 as default for achievement tracking since this is a self-play game
-  const { onGameEnd, trackCollectionAchievements } = useAchievementTracking("player-2");
+  const { onGameEnd, trackCollectionAchievements } =
+    useAchievementTracking("player-2");
 
   const {
     isThinking: isAIWorkerThinking,
@@ -92,11 +133,11 @@ export default function GameBoardPage() {
   // Get game mode from URL params on client side
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const mode = params.get('mode') as GameMode;
+    const mode = params.get("mode") as GameMode;
     if (mode) setGameMode(mode);
-    const diff = params.get('difficulty');
+    const diff = params.get("difficulty");
     if (diff) setDifficulty(diff);
-    const theme = params.get('theme');
+    const theme = params.get("theme");
     if (theme) setAiTheme(theme);
   }, []);
 
@@ -124,78 +165,81 @@ export default function GameBoardPage() {
   });
 
   // Track an action and check for mistakes
-  const trackAction = React.useCallback(async (type: ActionType, data: any) => {
-    if (!engineState || !currentPlayerId) return;
+  const trackAction = React.useCallback(
+    async (type: ActionType, data: any) => {
+      if (!engineState || !currentPlayerId) return;
 
-    const action: GameAction = {
-      type,
-      playerId: currentPlayerId,
-      timestamp: Date.now(),
-      data,
-    };
-    
-    setActions(prev => [...prev, action]);
-
-    // Mistake detection: evaluate current state after action
-    // Convert engine state to AI format for evaluation
-    const aiState = engineToAIState(engineState);
-    
-    try {
-      // Offload heuristic evaluation to Web Worker
-      const evaluation = await analyzeStateViaWorker({
-        gameState: aiState,
+      const action: GameAction = {
+        type,
         playerId: currentPlayerId,
-        difficulty: 'hard'
-      });
-      
-      if (evaluation) {
-        // If the evaluation shows a poor position, flag it as a potential mistake
-        // A low total score relative to turn number suggests mistakes were made
-        const turnsPlayed = engineState.turn.turnNumber;
-        const expectedScore = turnsPlayed * 5; // Rough heuristic
-        if (evaluation.totalScore < expectedScore - 10) {
-          const mistakeMsg = `Potential mistake detected: ${type}. Score: ${evaluation.totalScore}. Recommendation: ${evaluation.recommendedActions[0] || 'Consider re-evaluating your strategy.'}`;
-          setMistakes(prev => [...prev, mistakeMsg]);
+        timestamp: Date.now(),
+        data,
+      };
+
+      setActions((prev) => [...prev, action]);
+
+      // Mistake detection: evaluate current state after action
+      // Convert engine state to AI format for evaluation
+      const aiState = engineToAIState(engineState);
+
+      try {
+        // Offload heuristic evaluation to Web Worker
+        const evaluation = await analyzeStateViaWorker({
+          gameState: aiState,
+          playerId: currentPlayerId,
+          difficulty: "hard",
+        });
+
+        if (evaluation) {
+          // If the evaluation shows a poor position, flag it as a potential mistake
+          // A low total score relative to turn number suggests mistakes were made
+          const turnsPlayed = engineState.turn.turnNumber;
+          const expectedScore = turnsPlayed * 5; // Rough heuristic
+          if (evaluation.totalScore < expectedScore - 10) {
+            const mistakeMsg = `Potential mistake detected: ${type}. Score: ${evaluation.totalScore}. Recommendation: ${evaluation.recommendedActions[0] || "Consider re-evaluating your strategy."}`;
+            setMistakes((prev) => [...prev, mistakeMsg]);
+          }
         }
+      } catch (err) {
+        console.error("AI mistake detection failed:", err);
       }
-    } catch (err) {
-      console.error('AI mistake detection failed:', err);
-    }
-  }, [engineState, currentPlayerId, analyzeStateViaWorker]);
+    },
+    [engineState, currentPlayerId, analyzeStateViaWorker],
+  );
 
   // Wrapped engine actions
   const advancePhase = () => {
-    trackAction('pass_priority', { reason: 'advance_phase' });
+    trackAction("pass_priority", { reason: "advance_phase" });
     engineAdvancePhase();
   };
 
   const nextTurn = () => {
-    trackAction('pass_priority', { reason: 'next_turn' });
+    trackAction("pass_priority", { reason: "next_turn" });
     engineNextTurn();
   };
 
   const passPriority = () => {
-    trackAction('pass_priority', {});
+    trackAction("pass_priority", {});
     enginePassPriority();
   };
 
   const playLand = (cardId: CardInstanceId) => {
-    trackAction('play_land', { cardId });
+    trackAction("play_land", { cardId });
     return enginePlayLand(cardId);
   };
 
   const tapCard = (cardId: CardInstanceId) => {
-    trackAction('tap_card', { cardId });
+    trackAction("tap_card", { cardId });
     engineTapCard(cardId);
   };
 
   const untapCard = (cardId: CardInstanceId) => {
-    trackAction('untap_card', { cardId });
+    trackAction("untap_card", { cardId });
     engineUntapCard(cardId);
   };
 
   const damagePlayer = (playerId: string, amount: number) => {
-    trackAction('deal_damage', { targetId: playerId, amount });
+    trackAction("deal_damage", { targetId: playerId, amount });
     engineDamagePlayer(playerId, amount);
   };
 
@@ -206,7 +250,9 @@ export default function GameBoardPage() {
   }, []);
 
   // Get current player info from engine
-  const currentPlayer = gameState?.players.find(p => p.id === currentPlayerId);
+  const currentPlayer = gameState?.players.find(
+    (p) => p.id === currentPlayerId,
+  );
   const currentPlayerName = currentPlayer?.name || "You";
 
   // Initialize chat
@@ -216,7 +262,7 @@ export default function GameBoardPage() {
     sendMessage,
     clearMessages,
     unreadCount,
-    markAsRead
+    markAsRead,
   } = useGameChat({
     currentPlayerId: currentPlayerId || "player-2",
     currentPlayerName,
@@ -240,9 +286,9 @@ export default function GameBoardPage() {
 
   const handleCardClick = (cardId: string, zone: ZoneType) => {
     // Tap/untap creature on battlefield
-    if (zone === 'battlefield') {
+    if (zone === "battlefield") {
       const card = engineState?.cards.get(cardId);
-      if (card?.cardData.type_line.includes('Creature')) {
+      if (card?.cardData.type_line.includes("Creature")) {
         if (card.isTapped) {
           untapCard(cardId);
           toast({
@@ -258,7 +304,7 @@ export default function GameBoardPage() {
         }
       }
     }
-    
+
     toast({
       title: "Card Selected",
       description: `Clicked ${cardId} in ${zone}`,
@@ -267,7 +313,7 @@ export default function GameBoardPage() {
 
   const handleZoneClick = (zone: ZoneType, playerId: string) => {
     if (!gameState) return;
-    
+
     const player = gameState.players.find((p) => p.id === playerId);
     let zoneData: unknown[] = [];
 
@@ -308,7 +354,7 @@ export default function GameBoardPage() {
 
   const handleDamagePlayer = (playerId: string, amount: number) => {
     damagePlayer(playerId, amount);
-    addDamage(amount, 'combat', playerId);
+    addDamage(amount, "combat", playerId);
   };
 
   const handleHealPlayer = (playerId: string, amount: number) => {
@@ -320,63 +366,11 @@ export default function GameBoardPage() {
     addHeal(amount, playerId);
   };
 
-  // Convert engine game state to format for AI analysis
-  const convertToGameState = () => {
-    if (!gameState) return null;
-
-    const playersMap: { [id: string]: any } = {};
-    gameState.players.forEach(p => {
-      playersMap[p.id] = {
-        id: p.id,
-        name: p.name,
-        life: p.lifeTotal,
-        poisonCounters: p.poisonCounters,
-        commanderDamage: p.commanderDamage,
-        hand: p.hand.map(c => ({
-          cardInstanceId: c.id,
-          name: c.card.name,
-          type: c.card.type_line,
-          manaValue: c.card.cmc,
-        })),
-        battlefield: p.battlefield.map(c => ({
-          id: c.id,
-          cardInstanceId: c.card.id,
-          name: c.card.name,
-          type: 'creature' as const,
-          controller: p.id,
-          tapped: c.tapped,
-          manaValue: c.card.cmc,
-        })),
-        graveyard: p.graveyard.map(c => c.card.id),
-        exile: p.exile.map(c => c.card.id),
-        library: p.library.length,
-        manaPool: { colorless: 1, white: 1, blue: 1, black: 0, red: 0, green: 0, generic: 0 },
-      };
-    });
-
-    return {
-      players: playersMap,
-      turnInfo: {
-        currentTurn: gameState.turnNumber,
-        currentPlayer: gameState.players[gameState.currentTurnPlayerIndex]?.id || "player-1",
-        phase: gameState.currentPhase,
-        priority: currentPlayerId || "player-1",
-      },
-      stack: [],
-      combat: {
-        inCombatPhase: false,
-        attackers: [],
-        blockers: {},
-      },
-    };
-  };
-
   // Handle AI assistance request
   const handleAIAssistance = () => {
-    if (!currentPlayer || !gameState) return;
+    if (!currentPlayer || !gameState || !engineState) return;
 
-    const analysisState = convertToGameState();
-    if (!analysisState) return;
+    const analysisState = engineToAIState(engineState);
 
     startAnalysis(async () => {
       try {
@@ -416,12 +410,12 @@ export default function GameBoardPage() {
   // Track game result when game ends
   const trackGameResult = (result: GameResult) => {
     if (!gameState) return;
-    
-    const player = gameState.players.find(p => p.id === currentPlayerId);
-    const opponent = gameState.players.find(p => p.id !== currentPlayerId);
-    
-    const playerDeck = 'Selected Deck'; // Would get from actual deck selection
-    
+
+    const player = gameState.players.find((p) => p.id === currentPlayerId);
+    const opponent = gameState.players.find((p) => p.id !== currentPlayerId);
+
+    const playerDeck = "Selected Deck"; // Would get from actual deck selection
+
     // Generate AI summary of the game
     const summary = summarizeGame(actions, result, playerDeck);
 
@@ -429,8 +423,8 @@ export default function GameBoardPage() {
       mode: gameMode,
       result,
       playerDeck,
-      opponentDeck: gameMode === 'vs_ai' ? `AI (${aiTheme})` : undefined,
-      difficulty: gameMode === 'vs_ai' ? difficulty : undefined,
+      opponentDeck: gameMode === "vs_ai" ? `AI (${aiTheme})` : undefined,
+      difficulty: gameMode === "vs_ai" ? difficulty : undefined,
       turns: gameState.turnNumber,
       playerLifeAtEnd: player?.lifeTotal || 0,
       opponentLifeAtEnd: opponent?.lifeTotal || 0,
@@ -439,17 +433,22 @@ export default function GameBoardPage() {
       mistakes,
       summary,
     });
-    
+
     saveGameRecord(record).catch(console.error);
-    
+
     // Track achievements for this game
-    onGameEnd({ gameState, won: result === 'win' });
-    
-    setGameResult({ result, life: player?.lifeTotal || 0, turns: gameState.turnNumber });
+    onGameEnd({ gameState, won: result === "win" });
+
+    setGameResult({
+      result,
+      life: player?.lifeTotal || 0,
+      turns: gameState.turnNumber,
+    });
     setShowGameResult(true);
-    
+
     toast({
-      title: result === 'win' ? 'Victory!' : result === 'loss' ? 'Defeat' : 'Draw',
+      title:
+        result === "win" ? "Victory!" : result === "loss" ? "Defeat" : "Draw",
       description: `Game saved to history after ${gameState.turnNumber} turns`,
     });
   };
@@ -457,21 +456,21 @@ export default function GameBoardPage() {
   // Check for game end conditions
   useEffect(() => {
     if (!gameState || !isGameStarted) return;
-    
+
     // Check if any player has 0 or less life
-    const losingPlayer = gameState.players.find(p => p.lifeTotal <= 0);
+    const losingPlayer = gameState.players.find((p) => p.lifeTotal <= 0);
     if (losingPlayer) {
-      const winner = gameState.players.find(p => p.id !== losingPlayer.id);
+      const winner = gameState.players.find((p) => p.id !== losingPlayer.id);
       if (winner?.id === currentPlayerId) {
-        trackGameResult('win');
-      } else if (gameMode === 'self_play') {
+        trackGameResult("win");
+      } else if (gameMode === "self_play") {
         // In self-play, player controls both sides
-        trackGameResult('win');
+        trackGameResult("win");
       } else {
-        trackGameResult('loss');
+        trackGameResult("loss");
       }
     }
-  }, [gameState?.players.map(p => p.lifeTotal).join(','), isGameStarted]);
+  }, [gameState?.players.map((p) => p.lifeTotal).join(","), isGameStarted]);
 
   return (
     <div className="flex h-screen bg-background">
@@ -488,6 +487,25 @@ export default function GameBoardPage() {
             </p>
           </div>
 
+          {/* Redirect banner to new single-player experience */}
+          <div className="bg-primary/5 border border-primary/20 rounded-md p-3">
+            <p className="text-xs text-primary font-medium flex items-start gap-2">
+              <Sparkles className="h-4 w-4 shrink-0" />
+              <span>
+                Looking for a better experience? Try the new Single Player mode
+                with deck selection, mulligans, and a guided tutorial.
+              </span>
+            </p>
+            <Button
+              variant="link"
+              size="sm"
+              className="h-6 px-0 text-xs mt-1"
+              onClick={() => (window.location.href = "/single-player")}
+            >
+              Go to Single Player <ArrowRight className="h-3 w-3 ml-1" />
+            </Button>
+          </div>
+
           <Separator />
 
           {/* Configuration */}
@@ -498,7 +516,9 @@ export default function GameBoardPage() {
               <Label htmlFor="player-count">Player Count</Label>
               <Select
                 value={playerCount.toString()}
-                onValueChange={(value) => setPlayerCount(Number(value) as PlayerCount)}
+                onValueChange={(value) =>
+                  setPlayerCount(Number(value) as PlayerCount)
+                }
                 disabled={isGameStarted}
               >
                 <SelectTrigger id="player-count">
@@ -514,12 +534,17 @@ export default function GameBoardPage() {
             <Button onClick={nextTurn} className="w-full" variant="default">
               Next Turn
             </Button>
-            
+
             <Button onClick={advancePhase} className="w-full" variant="outline">
               Advance Phase
             </Button>
-            
-            <Button onClick={passPriority} className="w-full" variant="ghost" size="sm">
+
+            <Button
+              onClick={passPriority}
+              className="w-full"
+              variant="ghost"
+              size="sm"
+            >
               Pass Priority
             </Button>
           </div>
@@ -531,12 +556,24 @@ export default function GameBoardPage() {
             <h2 className="font-semibold text-sm">Players</h2>
 
             {gameState?.players.map((player, idx) => (
-              <Card key={player.id} className={player.id === currentPlayerId ? "border-primary/50" : ""} role="region" aria-labelledby={`player-${player.id}-label`}>
+              <Card
+                key={player.id}
+                className={
+                  player.id === currentPlayerId ? "border-primary/50" : ""
+                }
+                role="region"
+                aria-labelledby={`player-${player.id}-label`}
+              >
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center justify-between" id={`player-${player.id}-label`}>
+                  <CardTitle
+                    className="text-sm flex items-center justify-between"
+                    id={`player-${player.id}-label`}
+                  >
                     {player.name}
                     {player.isCurrentTurn && (
-                      <span className="text-xs text-primary animate-pulse">Active</span>
+                      <span className="text-xs text-primary animate-pulse">
+                        Active
+                      </span>
                     )}
                     {player.hasPriority && (
                       <span className="text-xs text-green-500">Priority</span>
@@ -545,7 +582,12 @@ export default function GameBoardPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl font-mono font-bold" aria-label={`${player.name} has ${player.lifeTotal} life`}>{player.lifeTotal}</span>
+                    <span
+                      className="text-2xl font-mono font-bold"
+                      aria-label={`${player.name} has ${player.lifeTotal} life`}
+                    >
+                      {player.lifeTotal}
+                    </span>
                     <div className="flex gap-1">
                       <Button
                         size="sm"
@@ -597,7 +639,9 @@ export default function GameBoardPage() {
 
           {/* Timer Toggle */}
           <div className="flex items-center justify-between">
-            <Label htmlFor="timer-toggle" className="text-sm">Turn Timer</Label>
+            <Label htmlFor="timer-toggle" className="text-sm">
+              Turn Timer
+            </Label>
             <input
               type="checkbox"
               id="timer-toggle"
@@ -628,7 +672,9 @@ export default function GameBoardPage() {
               AI Assistance
             </h2>
             <div className="flex items-center justify-between">
-              <Label htmlFor="ai-toggle" className="text-xs">Enable AI Hints</Label>
+              <Label htmlFor="ai-toggle" className="text-xs">
+                Enable AI Hints
+              </Label>
               <input
                 type="checkbox"
                 id="ai-toggle"
@@ -651,7 +697,14 @@ export default function GameBoardPage() {
             </Button>
             {(isAnalyzing || isAIWorkerThinking) && (
               <div className="mt-2 flex justify-center">
-                <AIThinkingIndicator size="sm" label={isAnalyzing ? "Genkit Analyzing..." : "Heuristic Thinking..."} />
+                <AIThinkingIndicator
+                  size="sm"
+                  label={
+                    isAnalyzing
+                      ? "Genkit Analyzing..."
+                      : "Heuristic Thinking..."
+                  }
+                />
               </div>
             )}
             {aiAssistanceEnabled && (
@@ -687,7 +740,10 @@ export default function GameBoardPage() {
             </h2>
             <p className="text-xs text-muted-foreground">
               {gameState ? (
-                <>Turn {gameState.turnNumber} - {gameState.currentPhase.replace('_', ' ')}</>
+                <>
+                  Turn {gameState.turnNumber} -{" "}
+                  {gameState.currentPhase.replace("_", " ")}
+                </>
               ) : (
                 <>Initializing game...</>
               )}
@@ -708,8 +764,14 @@ export default function GameBoardPage() {
             <ul className="space-y-1 list-disc list-inside">
               <li>Players: {gameState?.players.length || 0}</li>
               <li>Turn: {gameState?.turnNumber || 0}</li>
-              <li>Phase: {gameState?.currentPhase || 'N/A'}</li>
-              <li>Priority: {currentPlayerId ? gameState?.players.find(p => p.id === currentPlayerId)?.name : 'N/A'}</li>
+              <li>Phase: {gameState?.currentPhase || "N/A"}</li>
+              <li>
+                Priority:{" "}
+                {currentPlayerId
+                  ? gameState?.players.find((p) => p.id === currentPlayerId)
+                      ?.name
+                  : "N/A"}
+              </li>
             </ul>
           </div>
         </div>
@@ -726,7 +788,7 @@ export default function GameBoardPage() {
             onZoneClick={handleZoneClick}
           />
         )}
-        
+
         {/* Floating Chat Panel */}
         <div className="absolute bottom-4 right-4 w-80 z-10">
           {chatOpen ? (
@@ -743,31 +805,42 @@ export default function GameBoardPage() {
               size="icon"
               className="relative bg-card/90"
               onClick={() => setChatOpen(true)}
-              aria-label={`Open chat ${unreadCount > 0 ? `(${unreadCount} unread messages)` : ''}`}
+              aria-label={`Open chat ${unreadCount > 0 ? `(${unreadCount} unread messages)` : ""}`}
             >
               <MessageCircle className="w-4 h-4" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center" aria-hidden="true">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+                <span
+                  className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center"
+                  aria-hidden="true"
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </Button>
           )}
         </div>
-        
+
         {/* Floating Emote Feed */}
         <div className="absolute top-4 right-4 z-10">
           {emotes.length > 0 && (
-            <EmoteFeed emotes={emotes} className="bg-card/90 p-2 rounded-lg shadow-lg" />
+            <EmoteFeed
+              emotes={emotes}
+              className="bg-card/90 p-2 rounded-lg shadow-lg"
+            />
           )}
         </div>
-        
+
         {/* Damage Indicators Overlay */}
         <DamageOverlay events={damageEvents} className="pointer-events-none" />
-        
+
         {/* Floating AI Assistance Panel */}
         {(aiAnalysis || aiManaAdvice || aiBoardEval) && aiAssistanceEnabled && (
-          <Card className="absolute top-4 left-4 w-72 max-h-[60vh] overflow-y-auto z-10 shadow-lg bg-card/95" role="complementary" aria-label="AI Game Suggestions" aria-live="polite">
+          <Card
+            className="absolute top-4 left-4 w-72 max-h-[60vh] overflow-y-auto z-10 shadow-lg bg-card/95"
+            role="complementary"
+            aria-label="AI Game Suggestions"
+            aria-live="polite"
+          >
             <CardHeader className="pb-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 <Lightbulb className="h-4 w-4 text-yellow-500" />
@@ -780,82 +853,111 @@ export default function GameBoardPage() {
                 <div className="p-2 rounded bg-muted">
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-semibold">Win Chance:</span>
-                    <span className={cn(
-                      "font-bold",
-                      (aiBoardEval.playerWinChance ?? 0) >= 60 ? "text-green-500" :
-                      (aiBoardEval.playerWinChance ?? 0) >= 40 ? "text-yellow-500" : "text-red-500"
-                    )}>
+                    <span
+                      className={cn(
+                        "font-bold",
+                        (aiBoardEval.playerWinChance ?? 0) >= 60
+                          ? "text-green-500"
+                          : (aiBoardEval.playerWinChance ?? 0) >= 40
+                            ? "text-yellow-500"
+                            : "text-red-500",
+                      )}
+                    >
                       {aiBoardEval.playerWinChance ?? 0}%
                     </span>
                   </div>
                   <div className="text-muted-foreground">
-                    Board: {aiBoardEval.boardAdvantage?.replace('_', ' ')}
+                    Board: {aiBoardEval.boardAdvantage?.replace("_", " ")}
                   </div>
                 </div>
               )}
-              
+
               {/* Suggested Plays */}
-              {aiAnalysis?.suggestedPlays && aiAnalysis.suggestedPlays.length > 0 && (
-                <div>
-                  <div className="font-semibold mb-1 flex items-center gap-1">
-                    <Zap className="h-3 w-3" /> Suggested Plays:
-                  </div>
-                  {aiAnalysis.suggestedPlays.slice(0, 3).map((play, idx) => (
-                    <div key={idx} className={cn(
-                      "p-2 rounded mb-1",
-                      play.priority === 'high' ? 'bg-green-50 border-l-2 border-green-500' :
-                      play.priority === 'medium' ? 'bg-yellow-50 border-l-2 border-yellow-500' :
-                      'bg-gray-50'
-                    )}>
-                      <div className="font-medium">{play.cardName}</div>
-                      <div className="text-muted-foreground text-[10px]">{play.reasoning}</div>
+              {aiAnalysis?.suggestedPlays &&
+                aiAnalysis.suggestedPlays.length > 0 && (
+                  <div>
+                    <div className="font-semibold mb-1 flex items-center gap-1">
+                      <Zap className="h-3 w-3" /> Suggested Plays:
                     </div>
-                  ))}
-                </div>
-              )}
-              
+                    {aiAnalysis.suggestedPlays.slice(0, 3).map((play, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          "p-2 rounded mb-1",
+                          play.priority === "high"
+                            ? "bg-green-50 border-l-2 border-green-500"
+                            : play.priority === "medium"
+                              ? "bg-yellow-50 border-l-2 border-yellow-500"
+                              : "bg-gray-50",
+                        )}
+                      >
+                        <div className="font-medium">{play.cardName}</div>
+                        <div className="text-muted-foreground text-[10px]">
+                          {play.reasoning}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
               {/* Warnings */}
               {aiAnalysis?.warnings && aiAnalysis.warnings.length > 0 && (
                 <div>
                   <div className="font-semibold mb-1 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3 text-amber-500" /> Warnings:
+                    <AlertTriangle className="h-3 w-3 text-amber-500" />{" "}
+                    Warnings:
                   </div>
                   {aiAnalysis.warnings.slice(0, 2).map((warning, idx) => (
-                    <div key={idx} className={cn(
-                      "p-2 rounded mb-1 text-[10px]",
-                      warning.type === 'danger' ? 'bg-red-50 text-red-700' :
-                      'bg-amber-50 text-amber-700'
-                    )}>
+                    <div
+                      key={idx}
+                      className={cn(
+                        "p-2 rounded mb-1 text-[10px]",
+                        warning.type === "danger"
+                          ? "bg-red-50 text-red-700"
+                          : "bg-amber-50 text-amber-700",
+                      )}
+                    >
                       {warning.message}
                     </div>
                   ))}
                 </div>
               )}
-              
+
               {/* Mana Advice */}
-              {aiManaAdvice?.suggestions && aiManaAdvice.suggestions.length > 0 && (
-                <div>
-                  <div className="font-semibold mb-1">Mana Usage:</div>
-                  {aiManaAdvice.suggestions.slice(0, 2).map((suggestion, idx) => (
-                    <div key={idx} className="p-2 rounded bg-blue-50 mb-1">
-                      <div className="font-medium">{suggestion.action}</div>
-                      <div className="text-muted-foreground text-[10px]">{suggestion.reasoning}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
+              {aiManaAdvice?.suggestions &&
+                aiManaAdvice.suggestions.length > 0 && (
+                  <div>
+                    <div className="font-semibold mb-1">Mana Usage:</div>
+                    {aiManaAdvice.suggestions
+                      .slice(0, 2)
+                      .map((suggestion, idx) => (
+                        <div key={idx} className="p-2 rounded bg-blue-50 mb-1">
+                          <div className="font-medium">{suggestion.action}</div>
+                          <div className="text-muted-foreground text-[10px]">
+                            {suggestion.reasoning}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+
               {/* Strategic Advice */}
-              {aiAnalysis?.strategicAdvice && aiAnalysis.strategicAdvice.length > 0 && (
-                <div className="pt-2 border-t">
-                  <div className="font-semibold mb-1">Strategic Advice:</div>
-                  {aiAnalysis.strategicAdvice.slice(0, 2).map((advice: string, idx: number) => (
-                    <div key={idx} className="text-muted-foreground text-[10px] mb-1">
-                      • {advice}
-                    </div>
-                  ))}
-                </div>
-              )}
+              {aiAnalysis?.strategicAdvice &&
+                aiAnalysis.strategicAdvice.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <div className="font-semibold mb-1">Strategic Advice:</div>
+                    {aiAnalysis.strategicAdvice
+                      .slice(0, 2)
+                      .map((advice: string, idx: number) => (
+                        <div
+                          key={idx}
+                          className="text-muted-foreground text-[10px] mb-1"
+                        >
+                          • {advice}
+                        </div>
+                      ))}
+                  </div>
+                )}
             </CardContent>
           </Card>
         )}
@@ -866,8 +968,14 @@ export default function GameBoardPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Trophy className={`h-6 w-6 ${gameResult?.result === 'win' ? 'text-yellow-500' : 'text-gray-500'}`} />
-              {gameResult?.result === 'win' ? 'Victory!' : gameResult?.result === 'loss' ? 'Defeat' : 'Draw'}
+              <Trophy
+                className={`h-6 w-6 ${gameResult?.result === "win" ? "text-yellow-500" : "text-gray-500"}`}
+              />
+              {gameResult?.result === "win"
+                ? "Victory!"
+                : gameResult?.result === "loss"
+                  ? "Defeat"
+                  : "Draw"}
             </DialogTitle>
             <DialogDescription>
               Game completed after {gameResult?.turns} turns
@@ -879,24 +987,35 @@ export default function GameBoardPage() {
                 <CardContent className="pt-6">
                   <div className="text-center">
                     <div className="text-3xl font-bold">{gameResult?.life}</div>
-                    <div className="text-sm text-muted-foreground">Your Life</div>
+                    <div className="text-sm text-muted-foreground">
+                      Your Life
+                    </div>
                   </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="pt-6">
                   <div className="text-center">
-                    <div className="text-3xl font-bold">{gameResult?.turns}</div>
+                    <div className="text-3xl font-bold">
+                      {gameResult?.turns}
+                    </div>
                     <div className="text-sm text-muted-foreground">Turns</div>
                   </div>
                 </CardContent>
               </Card>
             </div>
             <div className="flex gap-2">
-              <Button className="flex-1" onClick={() => window.location.href = '/single-player'}>
+              <Button
+                className="flex-1"
+                onClick={() => (window.location.href = "/single-player")}
+              >
                 Play Again
               </Button>
-              <Button variant="outline" className="flex-1" onClick={() => window.location.href = '/game-history'}>
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => (window.location.href = "/game-history")}
+              >
                 View History
               </Button>
             </div>

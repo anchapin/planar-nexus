@@ -10,10 +10,11 @@
  * - Session persistence across page refresh
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, mockScryfallApi } from "./test-utils";
 
 test.describe("Sealed Mode - Set Browser", () => {
   test.beforeEach(async ({ page }) => {
+    await mockScryfallApi(page);
     await page.goto("/set-browser");
   });
 

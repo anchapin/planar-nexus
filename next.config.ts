@@ -1,50 +1,43 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Static export for client-side only deployment
-  // Now that all Server Actions have been removed, we can use static export
   // Note: Disabled for now - causes issues with use client pages
   // output: 'export',
-
-  // Disable ESLint during build for faster builds
-  // Linting should be run separately in CI/CD
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
 
   // Configure image optimization
   images: {
     unoptimized: true,
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'placehold.co',
-        port: '',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "placehold.co",
+        port: "",
+        pathname: "/**",
       },
       {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-        port: '',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "images.unsplash.com",
+        port: "",
+        pathname: "/**",
       },
       {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-        port: '',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "picsum.photos",
+        port: "",
+        pathname: "/**",
       },
       {
-        protocol: 'https',
-        hostname: 'cards.scryfall.io',
-        port: '',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "cards.scryfall.io",
+        port: "",
+        pathname: "/**",
       },
       {
-        protocol: 'https',
-        hostname: 'img.scryfall.com',
-        port: '',
-        pathname: '/**',
+        protocol: "https",
+        hostname: "img.scryfall.com",
+        port: "",
+        pathname: "/**",
       },
     ],
   },
@@ -53,7 +46,7 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
 
   // Set base path for deployment
-  basePath: '',
+  basePath: "",
 };
 
 export default nextConfig;

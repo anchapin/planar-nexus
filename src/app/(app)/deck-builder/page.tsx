@@ -35,10 +35,12 @@ export default function DeckBuilderPage() {
   const [format, setFormat] = useState<Format>("commander");
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
-  const [savedDecks, setSavedDecks] = useLocalStorage<SavedDeck[]>(
+  const [savedDecksRaw, setSavedDecks] = useLocalStorage<SavedDeck[]>(
     "saved-decks",
     [],
   );
+  // Defensive: ensure savedDecks is always an array (guards against corrupted storage)
+  const savedDecks = Array.isArray(savedDecksRaw) ? savedDecksRaw : [];
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const searchInputRef = useRef<{ focus: () => void }>(null);
 
