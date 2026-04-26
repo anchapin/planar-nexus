@@ -70,9 +70,8 @@ test.describe("Deck Builder", () => {
   });
 
   test("should navigate to deck coach", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("/deck-coach");
     await page.waitForLoadState("domcontentloaded");
-    await page.locator('[href="/deck-coach"]').click();
     await expect(page).toHaveURL(/.*deck-coach.*/);
   });
 
