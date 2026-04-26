@@ -16,11 +16,19 @@
  * This suite focuses on verifying Standard mechanic cards render correctly.
  */
 
-import { test, expect, seedCardDatabase, waitForDbSeed, Page } from "./test-utils";
+import {
+  test,
+  expect,
+  seedCardDatabase,
+  seedRandom,
+  waitForDbSeed,
+  Page,
+} from "./test-utils";
 
 test.describe("Standard Mechanics E2E", () => {
   test.beforeEach(async ({ page }) => {
     await seedCardDatabase(page);
+    await seedRandom(page);
     await page.goto("/single-player");
     await waitForDbSeed(page);
   });
@@ -43,9 +51,13 @@ test.describe("Standard Mechanics E2E", () => {
       const skipTourButton = page.getByRole("button", { name: "Skip Tour" });
       await skipTourButton.waitFor({ state: "visible", timeout: 5000 });
       await skipTourButton.click();
-    } catch (e) {}
+    } catch (_e) {
+      /* skip tour */
+    }
 
-    await page.locator("div.fixed.inset-0.bg-black\\/40").waitFor({ state: "hidden", timeout: 10000 });
+    await page
+      .locator("div.fixed.inset-0.bg-black\\/40")
+      .waitFor({ state: "hidden", timeout: 10000 });
   }
 
   test.describe("Opening Hand Contains Standard Mechanic Cards", () => {
@@ -54,7 +66,9 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      const wardCard = page.locator('[data-testid*="hand-card-ward-beetle"]').first();
+      const wardCard = page
+        .locator('[data-testid*="hand-card-ward-beetle"]')
+        .first();
       await expect(wardCard).toBeVisible({ timeout: 20000 });
     });
 
@@ -63,7 +77,9 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      const cyclingCard = page.locator('[data-testid*="hand-card-cycling-drake"]').first();
+      const cyclingCard = page
+        .locator('[data-testid*="hand-card-cycling-drake"]')
+        .first();
       await expect(cyclingCard).toBeVisible({ timeout: 20000 });
     });
 
@@ -72,7 +88,9 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      const flashbackCard = page.locator('[data-testid*="hand-card-flashback-bolt"]').first();
+      const flashbackCard = page
+        .locator('[data-testid*="hand-card-flashback-bolt"]')
+        .first();
       await expect(flashbackCard).toBeVisible({ timeout: 20000 });
     });
 
@@ -81,7 +99,9 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      const exploreCard = page.locator('[data-testid*="hand-card-explore-ranger"]').first();
+      const exploreCard = page
+        .locator('[data-testid*="hand-card-explore-ranger"]')
+        .first();
       await expect(exploreCard).toBeVisible({ timeout: 20000 });
     });
 
@@ -90,23 +110,39 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      await expect(page.locator('[data-testid*="hand-card-mountain"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-forest"]').first()).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-mountain"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-forest"]').first(),
+      ).toBeVisible({ timeout: 20000 });
     });
   });
 
   test.describe("Interacting with Standard Mechanic Cards", () => {
-    test("should display multiple Standard mechanic cards in hand", async ({ page }) => {
+    test("should display multiple Standard mechanic cards in hand", async ({
+      page,
+    }) => {
       await page.getByRole("tab", { name: "Play against AI" }).click();
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
       // Verify multiple mechanic cards are visible
-      await expect(page.locator('[data-testid*="hand-card-ward-beetle"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-explore-ranger"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-cycling-drake"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-flashback-bolt"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-convoke-angel"]').first()).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-ward-beetle"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-explore-ranger"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-cycling-drake"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-flashback-bolt"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-convoke-angel"]').first(),
+      ).toBeVisible({ timeout: 20000 });
     });
 
     test("should allow playing a basic land from hand", async ({ page }) => {
@@ -121,7 +157,9 @@ test.describe("Standard Mechanics E2E", () => {
       await page.waitForTimeout(500);
 
       // Verify land appears on battlefield
-      const forestOnBattlefield = page.locator('[data-testid*="battlefield-card-forest"]').first();
+      const forestOnBattlefield = page
+        .locator('[data-testid*="battlefield-card-forest"]')
+        .first();
       await expect(forestOnBattlefield).toBeVisible({ timeout: 25000 });
     });
 
@@ -130,18 +168,24 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      const mountain = page.locator('[data-testid*="hand-card-mountain"]').first();
+      const mountain = page
+        .locator('[data-testid*="hand-card-mountain"]')
+        .first();
       await expect(mountain).toBeVisible({ timeout: 20000 });
       await mountain.click();
       await page.waitForTimeout(500);
 
-      const mountainOnBattlefield = page.locator('[data-testid*="battlefield-card-mountain"]').first();
+      const mountainOnBattlefield = page
+        .locator('[data-testid*="battlefield-card-mountain"]')
+        .first();
       await expect(mountainOnBattlefield).toBeVisible({ timeout: 25000 });
     });
   });
 
   test.describe("Mechanic Functionality Tests", () => {
-    test("Ward: targeting a Ward creature shows ward warning", async ({ page }) => {
+    test("Ward: targeting a Ward creature shows ward warning", async ({
+      page,
+    }) => {
       await page.getByRole("tab", { name: "Play against AI" }).click();
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
@@ -149,7 +193,9 @@ test.describe("Standard Mechanics E2E", () => {
       const passBtn = page.getByTestId("pass-priority-button");
 
       // Play Ward Beetle to battlefield (costs {0})
-      const wardCard = page.locator('[data-testid*="hand-card-ward-beetle"]').first();
+      const wardCard = page
+        .locator('[data-testid*="hand-card-ward-beetle"]')
+        .first();
       await expect(wardCard).toBeVisible({ timeout: 20000 });
       await wardCard.click();
       await page.waitForTimeout(500);
@@ -160,11 +206,15 @@ test.describe("Standard Mechanics E2E", () => {
       await page.waitForTimeout(500);
 
       // Verify on battlefield
-      const wardOnBf = page.locator('[data-testid*="battlefield-card-ward-beetle"]').first();
+      const wardOnBf = page
+        .locator('[data-testid*="battlefield-card-ward-beetle"]')
+        .first();
       await expect(wardOnBf).toBeVisible({ timeout: 25000 });
 
       // Cast Flashback Bolt targeting Ward Beetle (costs {0})
-      const flashbackBolt = page.locator('[data-testid*="hand-card-flashback-bolt"]').first();
+      const flashbackBolt = page
+        .locator('[data-testid*="hand-card-flashback-bolt"]')
+        .first();
       await expect(flashbackBolt).toBeVisible({ timeout: 20000 });
       await flashbackBolt.click();
       await page.waitForTimeout(500);
@@ -174,7 +224,9 @@ test.describe("Standard Mechanics E2E", () => {
       await page.waitForTimeout(500);
 
       // Should see ward toast
-      await expect(page.getByText(/Ward/i).first()).toBeVisible({ timeout: 15000 });
+      await expect(page.getByText(/Ward/i).first()).toBeVisible({
+        timeout: 15000,
+      });
     });
 
     test("Cycling Drake: can be played to battlefield", async ({ page }) => {
@@ -184,7 +236,9 @@ test.describe("Standard Mechanics E2E", () => {
 
       const passBtn = page.getByTestId("pass-priority-button");
 
-      const cyclingDrake = page.locator('[data-testid*="hand-card-cycling-drake"]').first();
+      const cyclingDrake = page
+        .locator('[data-testid*="hand-card-cycling-drake"]')
+        .first();
       await expect(cyclingDrake).toBeVisible({ timeout: 20000 });
       await cyclingDrake.click();
       await page.waitForTimeout(500);
@@ -194,11 +248,15 @@ test.describe("Standard Mechanics E2E", () => {
       await passBtn.click();
       await page.waitForTimeout(500);
 
-      const drakeOnBf = page.locator('[data-testid*="battlefield-card-cycling-drake"]').first();
+      const drakeOnBf = page
+        .locator('[data-testid*="battlefield-card-cycling-drake"]')
+        .first();
       await expect(drakeOnBf).toBeVisible({ timeout: 25000 });
     });
 
-    test.fixme("Cycling: discard Cycling Drake to draw a card", async ({ page }) => {
+    test.fixme("Cycling: discard Cycling Drake to draw a card", async ({
+      page,
+    }) => {
       // When cycling is fully implemented:
       // 1. Click Cycling Drake in hand
       // 2. Choose "Cycle" option
@@ -208,12 +266,16 @@ test.describe("Standard Mechanics E2E", () => {
       await selectTestDeck(page);
       await startGameAndKeepHand(page);
 
-      const cyclingDrake = page.locator('[data-testid*="hand-card-cycling-drake"]').first();
+      const cyclingDrake = page
+        .locator('[data-testid*="hand-card-cycling-drake"]')
+        .first();
       await expect(cyclingDrake).toBeVisible({ timeout: 20000 });
       await cyclingDrake.click();
 
       // Expect cycle option to appear
-      await expect(page.getByText(/Cycle/i).first()).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/Cycle/i).first()).toBeVisible({
+        timeout: 5000,
+      });
     });
 
     test("Flashback Bolt: can be cast from hand", async ({ page }) => {
@@ -223,7 +285,9 @@ test.describe("Standard Mechanics E2E", () => {
       await startGameAndKeepHand(page);
 
       // Play lands to have mana
-      const mountain = page.locator('[data-testid*="hand-card-mountain"]').first();
+      const mountain = page
+        .locator('[data-testid*="hand-card-mountain"]')
+        .first();
       if (await mountain.isVisible().catch(() => false)) {
         await mountain.click();
         await page.waitForTimeout(500);
@@ -236,19 +300,28 @@ test.describe("Standard Mechanics E2E", () => {
       }
 
       // Cast Flashback Bolt targeting opponent
-      const flashbackBolt = page.locator('[data-testid*="hand-card-flashback-bolt"]').first();
+      const flashbackBolt = page
+        .locator('[data-testid*="hand-card-flashback-bolt"]')
+        .first();
       await expect(flashbackBolt).toBeVisible({ timeout: 20000 });
       await flashbackBolt.click();
       await page.waitForTimeout(500);
 
-      const opponentArea = page.locator('div[data-testid*="player-area-ai"]').first();
+      const opponentArea = page
+        .locator('div[data-testid*="player-area-ai"]')
+        .first();
       await expect(opponentArea).toBeVisible({ timeout: 10000 });
       await opponentArea.click();
 
       // Check for cast toast or stack
       await expect(async () => {
-        const toastVisible = await page.getByText(/cast|stack|spell/i, { exact: false }).first().isVisible();
-        const stackVisible = await page.getByTestId("stack-display").isVisible();
+        const toastVisible = await page
+          .getByText(/cast|stack|spell/i, { exact: false })
+          .first()
+          .isVisible();
+        const stackVisible = await page
+          .getByTestId("stack-display")
+          .isVisible();
         expect(toastVisible || stackVisible).toBeTruthy();
       }).toPass({ timeout: 15000 });
     });
@@ -268,7 +341,9 @@ test.describe("Standard Mechanics E2E", () => {
 
       const passBtn = page.getByTestId("pass-priority-button");
 
-      const exploreRanger = page.locator('[data-testid*="hand-card-explore-ranger"]').first();
+      const exploreRanger = page
+        .locator('[data-testid*="hand-card-explore-ranger"]')
+        .first();
       await expect(exploreRanger).toBeVisible({ timeout: 20000 });
       await exploreRanger.click();
       await page.waitForTimeout(500);
@@ -278,11 +353,15 @@ test.describe("Standard Mechanics E2E", () => {
       await passBtn.click();
       await page.waitForTimeout(500);
 
-      const rangerOnBf = page.locator('[data-testid*="battlefield-card-explore-ranger"]').first();
+      const rangerOnBf = page
+        .locator('[data-testid*="battlefield-card-explore-ranger"]')
+        .first();
       await expect(rangerOnBf).toBeVisible({ timeout: 25000 });
     });
 
-    test.fixme("Explore: reveal top card, play land or +1/+1 counter", async ({ page }) => {
+    test.fixme("Explore: reveal top card, play land or +1/+1 counter", async ({
+      page,
+    }) => {
       // When explore is fully implemented:
       // 1. Play Explore Ranger
       // 2. Explore trigger fires
@@ -297,7 +376,9 @@ test.describe("Standard Mechanics E2E", () => {
 
       const passBtn = page.getByTestId("pass-priority-button");
 
-      const convokeAngel = page.locator('[data-testid*="hand-card-convoke-angel"]').first();
+      const convokeAngel = page
+        .locator('[data-testid*="hand-card-convoke-angel"]')
+        .first();
       await expect(convokeAngel).toBeVisible({ timeout: 20000 });
       await convokeAngel.click();
       await page.waitForTimeout(500);
@@ -307,11 +388,15 @@ test.describe("Standard Mechanics E2E", () => {
       await passBtn.click();
       await page.waitForTimeout(500);
 
-      const angelOnBf = page.locator('[data-testid*="battlefield-card-convoke-angel"]').first();
+      const angelOnBf = page
+        .locator('[data-testid*="battlefield-card-convoke-angel"]')
+        .first();
       await expect(angelOnBf).toBeVisible({ timeout: 25000 });
     });
 
-    test.fixme("Convoke: tap creatures to reduce mana cost", async ({ page }) => {
+    test.fixme("Convoke: tap creatures to reduce mana cost", async ({
+      page,
+    }) => {
       // When convoke is fully implemented:
       // 1. Have creatures on battlefield
       // 2. Cast Convoke Angel
@@ -321,7 +406,9 @@ test.describe("Standard Mechanics E2E", () => {
   });
 
   test.describe("Standard Mechanics in Self-Play Mode", () => {
-    test("should show multiple Standard mechanic cards in self-play opening hand", async ({ page }) => {
+    test("should show multiple Standard mechanic cards in self-play opening hand", async ({
+      page,
+    }) => {
       await page.getByRole("tab", { name: "Self Play" }).click();
       const selfDeckSelect = page.locator("#self-play-deck");
       await selfDeckSelect.click();
@@ -338,16 +425,30 @@ test.describe("Standard Mechanics E2E", () => {
         const skipTourButton = page.getByRole("button", { name: "Skip Tour" });
         await skipTourButton.waitFor({ state: "visible", timeout: 5000 });
         await skipTourButton.click();
-      } catch (e) {}
+      } catch (_e) {
+        /* skip tour */
+      }
 
-      await page.locator("div.fixed.inset-0.bg-black\\/40").waitFor({ state: "hidden", timeout: 10000 });
+      await page
+        .locator("div.fixed.inset-0.bg-black\\/40")
+        .waitFor({ state: "hidden", timeout: 10000 });
 
       // Verify multiple mechanic cards are visible in the opening hand
-      await expect(page.locator('[data-testid*="hand-card-ward-beetle"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-cycling-drake"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-explore-ranger"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-flashback-bolt"]').first()).toBeVisible({ timeout: 20000 });
-      await expect(page.locator('[data-testid*="hand-card-convoke-angel"]').first()).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-ward-beetle"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-cycling-drake"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-explore-ranger"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-flashback-bolt"]').first(),
+      ).toBeVisible({ timeout: 20000 });
+      await expect(
+        page.locator('[data-testid*="hand-card-convoke-angel"]').first(),
+      ).toBeVisible({ timeout: 20000 });
     });
   });
 });
