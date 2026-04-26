@@ -3344,7 +3344,11 @@ function GameBoardContent() {
                 <Shuffle className="h-4 w-4" />
                 Mulligan
               </Button>
-              <Button onClick={handleKeepHand} className="gap-1">
+              <Button
+                onClick={handleKeepHand}
+                className="gap-1"
+                data-testid="keep-hand-button"
+              >
                 <CheckCircle2 className="h-4 w-4" />
                 Keep Hand
               </Button>
