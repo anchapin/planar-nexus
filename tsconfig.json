@@ -39,6 +39,10 @@
     "src-tauri/target",
     "e2e",
     "scripts",
-    "**/__tests__/**"
+    "src/lib/__tests__",
+    "src/lib/game-state/__tests__",
+    "src/ai/__tests__",
+    "src/hooks/__tests__",
+    "src/app/**/__tests__"
   ]
 }
