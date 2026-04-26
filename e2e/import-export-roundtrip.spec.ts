@@ -6,7 +6,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { seedCardDatabase } from "./test-utils";
+import { seedCardDatabase, waitForDbSeed } from "./test-utils";
 
 // Run tests in CI but with longer timeouts and retries
 const testOptions =
@@ -16,12 +16,11 @@ const testOptions =
 
 test.describe("Import/Export Round Trip", () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to deck builder first
+    // Seed database before navigation so IndexedDB is ready when app initializes
+    await seedCardDatabase(page);
     await page.goto("/deck-builder");
     await page.waitForLoadState("networkidle");
-
-    // Seed database after navigation (runs in page context)
-    await seedCardDatabase(page);
+    await waitForDbSeed(page);
 
     // Clear any existing deck if needed
     const clearButton = page.getByTestId("clear-deck-button");
