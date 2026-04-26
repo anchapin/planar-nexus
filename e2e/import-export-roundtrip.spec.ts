@@ -54,22 +54,29 @@ test.describe("Import/Export Round Trip", () => {
 
     // 1. Import
     await page.getByTestId("import-deck-button").click();
+    // Wait for dialog to be fully visible before filling textarea
     const textarea = page.getByTestId("import-textarea");
+    await textarea.waitFor({ state: "visible", timeout: 10000 });
     await textarea.fill(sampleDeck);
     await page.getByTestId("confirm-import-button").click();
+
+    // Wait for import to complete and cards to appear in deck list
+    await page.waitForTimeout(2000);
 
     // 2. Export (as text)
     await page.getByTestId("export-deck-button").click();
 
-    // Note: Since we can't easily capture the downloaded text file content in E2E
-    // without complex setup, we'll verify the "Copy to Clipboard" path exists
-    // which generates the same text content.
-    await expect(page.getByTestId("export-text-button")).toBeVisible();
+    // Wait for export dialog to be visible
+    await expect(page.getByTestId("export-text-button")).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByTestId("export-copy-button")).toBeVisible();
 
     // 3. Verify card count in UI matches
     // The deck list should show these cards
-    await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible();
+    await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByTestId("deck-item-mountain")).toBeVisible();
     await expect(page.getByTestId("deck-item-island")).toBeVisible();
   });
@@ -83,9 +90,13 @@ test.describe("Import/Export Round Trip", () => {
     // 1. Import JSON
     await page.getByTestId("import-deck-button").click();
 
-    // Select JSON format
+    // Wait for import dialog to be visible
+    const textarea = page.getByTestId("import-textarea");
+    await textarea.waitFor({ state: "visible", timeout: 10000 });
+
+    // Select JSON format via the tabs (use select instead of tab role since it's a select element)
     const formatTabs = page.getByTestId("import-format-tabs");
-    await formatTabs.getByRole("tab", { name: /json/i }).click();
+    await formatTabs.selectOption("json");
 
     const jsonDeck = JSON.stringify({
       cards: [
@@ -95,10 +106,11 @@ test.describe("Import/Export Round Trip", () => {
       ],
     });
 
-    await page.getByTestId("import-textarea").fill(jsonDeck);
+    await textarea.fill(jsonDeck);
     await page.getByTestId("confirm-import-button").click();
 
     // Wait for import to complete - deck count should update
+    await page.waitForTimeout(2000);
     await expect(page.getByTestId("deck-count")).toContainText(/[1-9] cards?/);
 
     // 2. Export JSON
@@ -107,7 +119,9 @@ test.describe("Import/Export Round Trip", () => {
 
     // 3. Verify results
     // Check if cards are in the deck list
-    await expect(page.getByTestId("deck-item-sol-ring")).toBeVisible();
+    await expect(page.getByTestId("deck-item-sol-ring")).toBeVisible({
+      timeout: 10000,
+    });
     await expect(page.getByTestId("deck-item-arcane-signet")).toBeVisible();
     await expect(page.getByTestId("deck-item-command-tower")).toBeVisible();
   });
@@ -121,110 +135,74 @@ test.describe("Import/Export Round Trip", () => {
     await formatSelect.click();
     await page.getByRole("option", { name: /commander/i }).click();
 
-    // 1. Add some cards manually first
-    const searchInput = page.getByTestId("card-search-input");
-    const deckCount = page.getByTestId("deck-count");
+    // Wait for page to settle
+    await page.waitForTimeout(1000);
 
-    // Initial count
-    const initialText = await deckCount.textContent();
-    const initialCount = parseInt(initialText?.match(/\d+/)?.[0] || "0");
+    // 1. Import a simple deck via the import dialog
+    await page.getByTestId("import-deck-button").click();
 
-    await searchInput.fill("Lightning Bolt");
-    const boltResult = page.getByTestId("card-result-lightning-bolt");
-    await expect(boltResult).toBeVisible({ timeout: 10000 });
-    await boltResult.click();
+    // Wait for import dialog to be fully visible
+    const textarea = page.getByTestId("import-textarea");
+    await textarea.waitFor({ state: "visible", timeout: 10000 });
 
-    // Wait for deck count to increase
-    await expect(async () => {
-      const currentText = await deckCount.textContent();
-      const currentCount = parseInt(currentText?.match(/\d+/)?.[0] || "0");
-      expect(currentCount).toBeGreaterThan(initialCount);
-    }).toPass({ timeout: 10000 });
+    const sampleDeck = `1 Lightning Bolt
+1 Sol Ring`;
 
-    // Now verify the item itself
+    await textarea.fill(sampleDeck);
+    await page.getByTestId("confirm-import-button").click();
+
+    // Wait for import to complete
+    await page.waitForTimeout(2000);
+
+    // Verify cards are in the deck
     await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible({
-      timeout: 5000,
+      timeout: 10000,
     });
-
-    await searchInput.clear();
-    await searchInput.fill("Sol Ring");
-    const solRingResult = page.getByTestId("card-result-sol-ring");
-    await expect(solRingResult).toBeVisible({ timeout: 10000 });
-
-    const countAfterBoltText = await deckCount.textContent();
-    const countAfterBolt = parseInt(
-      countAfterBoltText?.match(/\d+/)?.[0] || "0",
-    );
-
-    await solRingResult.click();
-
-    // Wait for deck count to increase again
-    await expect(async () => {
-      const currentText = await deckCount.textContent();
-      const currentCount = parseInt(currentText?.match(/\d+/)?.[0] || "0");
-      expect(currentCount).toBeGreaterThan(countAfterBolt);
-    }).toPass({ timeout: 10000 });
-
     await expect(page.getByTestId("deck-item-sol-ring")).toBeVisible({
-      timeout: 5000,
+      timeout: 10000,
     });
 
     // 2. Export to clipboard
-    // Use copy button which triggers clipboard API
     await page.getByTestId("export-deck-button").click();
 
-    // Wait for dialog to open
-    await page.waitForTimeout(300);
+    // Wait for dialog to open and be visible
+    await page.waitForTimeout(500);
 
     // Click copy to clipboard button
     const copyButton = page.getByTestId("export-copy-button");
-    await expect(copyButton).toBeVisible();
+    await expect(copyButton).toBeVisible({ timeout: 10000 });
     await copyButton.click();
 
-    // Wait briefly for clipboard operation to complete
+    // Wait briefly for clipboard operation
     await page.waitForTimeout(500);
 
-    // Close the export dialog/overlay before trying to clear the deck
-    // For Radix UI dialogs, we need to click outside or wait for close
+    // Press Escape to close the dialog
     await page.keyboard.press("Escape");
     await page.waitForTimeout(500);
 
-    // If dialog is still open, click on the overlay backdrop to close it
-    const overlay = page.locator('[data-state="open"][class*="fixed inset-0"]');
-    if (await overlay.isVisible().catch(() => false)) {
-      await page.mouse.click(10, 10); // Click in top-left corner to dismiss
-      await page.waitForTimeout(300);
-    }
-
     // 3. Clear deck
     await page.getByTestId("clear-deck-button").click();
+    await page.waitForTimeout(300);
     await page.getByTestId("confirm-clear-button").click();
     await expect(page.getByTestId("deck-count")).toContainText("0 cards");
 
-    // 4. Import from clipboard - use the Paste from Clipboard button
-    // which handles clipboard access in the browser context
+    // 4. Import from clipboard
     await page.getByTestId("import-deck-button").click();
 
     // Wait for dialog to open
-    await page.waitForTimeout(500);
+    await textarea.waitFor({ state: "visible", timeout: 10000 });
 
-    // Click the "Paste from Clipboard" button which handles clipboard access
+    // Click the "Paste from Clipboard" button
     const pasteButton = page.getByTestId("paste-deck-button");
-    await expect(pasteButton).toBeVisible();
+    await expect(pasteButton).toBeVisible({ timeout: 5000 });
     await pasteButton.click();
 
-    // Wait for the paste to complete
+    // Wait for paste to complete
     await page.waitForTimeout(1000);
 
-    // The textarea should now have the content
-    const textarea = page.getByTestId("import-textarea");
+    // The textarea should now have content
     const textareaValue = await textarea.inputValue();
-
-    // Verify clipboard content - if empty, use a fallback
-    if (!textareaValue || textareaValue.length === 0) {
-      // Fallback: manually fill with expected content
-      await textarea.fill("1 Lightning Bolt\n1 Sol Ring");
-    }
+    expect(textareaValue.length).toBeGreaterThan(0);
 
     await page.getByTestId("confirm-import-button").click();
 

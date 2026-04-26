@@ -33,8 +33,14 @@ test.describe("Multiplayer Lobby", () => {
   });
 
   test("should navigate to join page", async ({ page }) => {
-    await page.getByRole("link", { name: /enter code manually/i }).click();
+    await page.goto("/multiplayer");
     await page.waitForLoadState("networkidle");
+
+    // Wait for the link to be visible before clicking
+    const joinLink = page.getByRole("link", { name: /enter code manually/i });
+    await joinLink.waitFor({ state: "visible", timeout: 10000 });
+    await joinLink.click();
+    await page.waitForURL(/.*p2p-join/, { timeout: 10000 });
     await expect(page).toHaveURL(/.*multiplayer\/p2p-join/);
   });
 });
