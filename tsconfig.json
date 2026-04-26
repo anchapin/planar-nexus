@@ -38,6 +38,7 @@
     "node_modules",
     "src-tauri/target",
     "e2e",
-    "scripts"
+    "scripts",
+    "src/**/__tests__"
   ]
 }
