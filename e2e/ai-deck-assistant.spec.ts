@@ -17,7 +17,7 @@ test.describe("AI Deck Assistant", () => {
 
     // Initial state should prompt to add cards
     const emptyState = page.locator(
-      "text=Add cards to your deck to get AI suggestions",
+      "text=Add cards to your deck to get AI suggestions.",
     );
     await expect(emptyState).toBeVisible();
   });
