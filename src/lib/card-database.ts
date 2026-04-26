@@ -5,8 +5,8 @@
  * and Fuse.js for fuzzy search capabilities. Designed for use in Tauri/PWA offline mode.
  */
 
-import Fuse from 'fuse.js';
-import type { IFuseOptions } from 'fuse.js';
+import Fuse from "fuse.js";
+import type { IFuseOptions } from "fuse.js";
 
 // Minimal card data for offline use (subset of Scryfall data)
 
@@ -15,9 +15,9 @@ import type { IFuseOptions } from 'fuse.js';
  */
 export const FUSE_SEARCH_OPTIONS: IFuseOptions<MinimalCard> = {
   keys: [
-    { name: 'name', weight: 0.7 },
-    { name: 'type_line', weight: 0.2 },
-    { name: 'oracle_text', weight: 0.1 },
+    { name: "name", weight: 0.7 },
+    { name: "type_line", weight: 0.2 },
+    { name: "oracle_text", weight: 0.1 },
   ],
   threshold: 0.3, // Lower = more strict matching
   distance: 100,
@@ -80,12 +80,12 @@ export interface CardDatabaseOptions {
 }
 
 // IndexedDB configuration
-const DB_NAME = 'PlanarNexusCardDB';
+const DB_NAME = "PlanarNexusCardDB";
 const DB_VERSION = 2; // Incremented for image cache store
-const STORE_NAME = 'cards';
-const INDEX_NAME = 'name';
-const LEGALITY_INDEX_NAME = 'format_legality';
-const IMAGE_STORE_NAME = 'card_images';
+const STORE_NAME = "cards";
+const INDEX_NAME = "name";
+const LEGALITY_INDEX_NAME = "format_legality";
+const IMAGE_STORE_NAME = "card_images";
 
 // Database state
 let db: IDBDatabase | null = null;
@@ -112,19 +112,25 @@ async function openDatabase(): Promise<IDBDatabase> {
 
       // Create object store for cards
       if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const cardStore = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+        const cardStore = database.createObjectStore(STORE_NAME, {
+          keyPath: "id",
+        });
 
         // Create indexes for fast lookups
-        cardStore.createIndex(INDEX_NAME, 'name', { unique: false });
-        cardStore.createIndex('name_lower', 'name_lower', { unique: false });
+        cardStore.createIndex(INDEX_NAME, "name", { unique: false });
+        cardStore.createIndex("name_lower", "name_lower", { unique: false });
 
         // Compound index for format legality queries
-        cardStore.createIndex(LEGALITY_INDEX_NAME, ['legalities.format', 'legalities.status'], { unique: false });
+        cardStore.createIndex(
+          LEGALITY_INDEX_NAME,
+          ["legalities.format", "legalities.status"],
+          { unique: false },
+        );
       }
 
       // Create object store for card images (added in version 2)
       if (!database.objectStoreNames.contains(IMAGE_STORE_NAME)) {
-        database.createObjectStore(IMAGE_STORE_NAME, { keyPath: 'cardId' });
+        database.createObjectStore(IMAGE_STORE_NAME, { keyPath: "cardId" });
       }
     };
   });
@@ -156,7 +162,7 @@ export async function initializeCardDatabase(): Promise<void> {
 
       isInitialized = true;
     } catch (error) {
-      console.error('Failed to initialize card database:', error);
+      console.error("Failed to initialize card database:", error);
       throw error;
     }
   })();
@@ -175,9 +181,9 @@ function initializeFuzzySearch(cards: MinimalCard[]): void {
  * Populate database with cards
  */
 async function populateDatabase(cards: MinimalCard[]): Promise<void> {
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
-  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const transaction = db.transaction([STORE_NAME], "readwrite");
   const store = transaction.objectStore(STORE_NAME);
 
   return new Promise((resolve, reject) => {
@@ -197,11 +203,11 @@ async function populateDatabase(cards: MinimalCard[]): Promise<void> {
  * Get the total number of cards in the database
  */
 async function getCardCount(): Promise<number> {
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const countRequest = store.count();
 
@@ -214,11 +220,11 @@ async function getCardCount(): Promise<number> {
  * Get all cards from database
  */
 async function getAllCardsFromDB(): Promise<MinimalCard[]> {
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.getAll();
 
@@ -232,7 +238,7 @@ async function getAllCardsFromDB(): Promise<MinimalCard[]> {
  */
 export async function searchCardsOffline(
   query: string,
-  options?: CardDatabaseOptions
+  options?: CardDatabaseOptions,
 ): Promise<MinimalCard[]> {
   if (!isInitialized) {
     await initializeCardDatabase();
@@ -250,7 +256,9 @@ export async function searchCardsOffline(
   let cards = results.map((result) => result.item);
 
   if (options?.format) {
-    cards = cards.filter((card) => card.legalities[options.format!] === 'legal');
+    cards = cards.filter(
+      (card) => card.legalities[options.format!] === "legal",
+    );
   }
 
   return cards.slice(0, maxCards);
@@ -259,7 +267,9 @@ export async function searchCardsOffline(
 /**
  * Get card by exact name
  */
-export async function getCardByName(name: string): Promise<MinimalCard | undefined> {
+export async function getCardByName(
+  name: string,
+): Promise<MinimalCard | undefined> {
   if (!isInitialized) {
     await initializeCardDatabase();
   }
@@ -268,26 +278,38 @@ export async function getCardByName(name: string): Promise<MinimalCard | undefin
 
   const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
-    
+
     // Try name_lower index first if it exists, otherwise use name index
     let index;
     try {
-      index = store.index('name_lower');
+      index = store.index("name_lower");
     } catch {
       index = store.index(INDEX_NAME);
     }
-    
+
     const request = index.getAll(name.toLowerCase());
 
     request.onsuccess = () => {
       const cards = request.result || [];
       // Find exact match (case-insensitive)
-      const exactMatch = cards.find((card) =>
-        card.name.toLowerCase() === name.toLowerCase()
+      let match = cards.find(
+        (card) => card.name.toLowerCase() === name.toLowerCase(),
       );
-      resolve(exactMatch);
+
+      // If no exact match, try matching the front face of DFCs (e.g. "Serah Farron" matches "Serah Farron // Crystallized Serah")
+      if (!match) {
+        match = cards.find((card) => {
+          if (card.name.includes(" // ")) {
+            const frontFace = card.name.split(" // ")[0].trim().toLowerCase();
+            return frontFace === name.toLowerCase();
+          }
+          return false;
+        });
+      }
+
+      resolve(match);
     };
     request.onerror = () => reject(request.error);
   });
@@ -296,7 +318,9 @@ export async function getCardByName(name: string): Promise<MinimalCard | undefin
 /**
  * Get card by ID
  */
-export async function getCardById(id: string): Promise<MinimalCard | undefined> {
+export async function getCardById(
+  id: string,
+): Promise<MinimalCard | undefined> {
   if (!isInitialized) {
     await initializeCardDatabase();
   }
@@ -305,7 +329,7 @@ export async function getCardById(id: string): Promise<MinimalCard | undefined> 
 
   const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readonly');
+    const transaction = database.transaction([STORE_NAME], "readonly");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(id);
 
@@ -317,10 +341,13 @@ export async function getCardById(id: string): Promise<MinimalCard | undefined> 
 /**
  * Check if a card is legal in a format
  */
-export async function isCardLegal(cardName: string, format: string): Promise<boolean> {
+export async function isCardLegal(
+  cardName: string,
+  format: string,
+): Promise<boolean> {
   const card = await getCardByName(cardName);
   if (!card || !card.legalities) return false;
-  return card.legalities[format] === 'legal';
+  return card.legalities[format] === "legal";
 }
 
 /**
@@ -328,7 +355,7 @@ export async function isCardLegal(cardName: string, format: string): Promise<boo
  */
 export async function validateDeckOffline(
   cards: Array<{ name: string; quantity: number }>,
-  format: string
+  format: string,
 ): Promise<{ valid: boolean; illegalCards: string[]; issues: string[] }> {
   if (!isInitialized) {
     await initializeCardDatabase();
@@ -344,7 +371,7 @@ export async function validateDeckOffline(
       continue;
     }
 
-    if (dbCard.legalities[format] !== 'legal') {
+    if (dbCard.legalities[format] !== "legal") {
       illegalCards.push(card.name);
     }
   }
@@ -359,7 +386,10 @@ export async function validateDeckOffline(
 /**
  * Get database status
  */
-export async function getDatabaseStatus(): Promise<{ loaded: boolean; cardCount: number }> {
+export async function getDatabaseStatus(): Promise<{
+  loaded: boolean;
+  cardCount: number;
+}> {
   if (!isInitialized) {
     return { loaded: false, cardCount: 0 };
   }
@@ -379,10 +409,10 @@ export async function addCard(card: MinimalCard): Promise<void> {
     await initializeCardDatabase();
   }
 
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readwrite');
+    const transaction = db!.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.put({
       ...card,
@@ -409,9 +439,9 @@ export async function addCards(cards: MinimalCard[]): Promise<void> {
     await initializeCardDatabase();
   }
 
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
-  const transaction = db.transaction([STORE_NAME], 'readwrite');
+  const transaction = db.transaction([STORE_NAME], "readwrite");
   const store = transaction.objectStore(STORE_NAME);
 
   return new Promise((resolve, reject) => {
@@ -440,11 +470,11 @@ export async function clearDatabase(): Promise<void> {
     await initializeCardDatabase();
   }
 
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   const database = db;
   return new Promise((resolve, reject) => {
-    const transaction = database.transaction([STORE_NAME], 'readwrite');
+    const transaction = database.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
     const request = store.clear();
 
@@ -476,11 +506,15 @@ export async function getAllCards(): Promise<MinimalCard[]> {
 /**
  * Cache a card image
  */
-export async function cacheCardImage(cardId: string, imageUrl: string, imageData: Blob): Promise<void> {
-  if (!db) throw new Error('Database not initialized');
+export async function cacheCardImage(
+  cardId: string,
+  imageUrl: string,
+  imageData: Blob,
+): Promise<void> {
+  if (!db) throw new Error("Database not initialized");
 
   return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readwrite');
+    const transaction = db!.transaction([IMAGE_STORE_NAME], "readwrite");
     const store = transaction.objectStore(IMAGE_STORE_NAME);
     const request = store.put({
       cardId,
@@ -497,11 +531,13 @@ export async function cacheCardImage(cardId: string, imageUrl: string, imageData
 /**
  * Get cached card image
  */
-export async function getCachedImage(cardId: string): Promise<{ imageUrl: string; imageData: Blob } | null> {
-  if (!db) throw new Error('Database not initialized');
+export async function getCachedImage(
+  cardId: string,
+): Promise<{ imageUrl: string; imageData: Blob } | null> {
+  if (!db) throw new Error("Database not initialized");
 
   return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readonly');
+    const transaction = db!.transaction([IMAGE_STORE_NAME], "readonly");
     const store = transaction.objectStore(IMAGE_STORE_NAME);
     const request = store.get(cardId);
 
@@ -521,10 +557,10 @@ export async function getCachedImage(cardId: string): Promise<{ imageUrl: string
  * Get cached image count
  */
 export async function getImageCount(): Promise<number> {
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readonly');
+    const transaction = db!.transaction([IMAGE_STORE_NAME], "readonly");
     const store = transaction.objectStore(IMAGE_STORE_NAME);
     const request = store.count();
 
@@ -537,10 +573,10 @@ export async function getImageCount(): Promise<number> {
  * Clear image cache
  */
 export async function clearImageCache(): Promise<void> {
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([IMAGE_STORE_NAME], 'readwrite');
+    const transaction = db!.transaction([IMAGE_STORE_NAME], "readwrite");
     const store = transaction.objectStore(IMAGE_STORE_NAME);
     const request = store.clear();
 
@@ -558,20 +594,23 @@ export async function clearImageCache(): Promise<void> {
 /**
  * Import cards from a JSON array (for user-provided card database)
  */
-export async function importCardsFromJSON(cards: MinimalCard[], onProgress?: (count: number, total: number) => void): Promise<void> {
+export async function importCardsFromJSON(
+  cards: MinimalCard[],
+  onProgress?: (count: number, total: number) => void,
+): Promise<void> {
   if (!isInitialized) {
     await initializeCardDatabase();
   }
 
-  if (!db) throw new Error('Database not initialized');
+  if (!db) throw new Error("Database not initialized");
 
   const batchSize = 100;
   let imported = 0;
 
   for (let i = 0; i < cards.length; i += batchSize) {
     const batch = cards.slice(i, i + batchSize);
-    
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
+
+    const transaction = db.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
 
     await new Promise<void>((resolve, reject) => {
@@ -598,22 +637,32 @@ export async function importCardsFromJSON(cards: MinimalCard[], onProgress?: (co
 /**
  * Import cards from a JSON file (browser environment)
  */
-export async function importCardsFromFile(file: File, onProgress?: (count: number, total: number) => Promise<void>): Promise<{ count: number; errors: string[] }> {
+export async function importCardsFromFile(
+  file: File,
+  onProgress?: (count: number, total: number) => Promise<void>,
+): Promise<{ count: number; errors: string[] }> {
   const errors: string[] = [];
-  
+
   try {
     const text = await file.text();
     const cards = JSON.parse(text) as MinimalCard[];
-    
+
     if (!Array.isArray(cards)) {
-      throw new Error('Invalid format: expected an array of cards');
+      throw new Error("Invalid format: expected an array of cards");
     }
 
     // Validate card structure
     const validCards: MinimalCard[] = [];
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i];
-      if (!card.id || !card.name || !card.cmc || !card.type_line || !card.colors || !card.legalities) {
+      if (
+        !card.id ||
+        !card.name ||
+        typeof card.cmc !== "number" ||
+        !card.type_line ||
+        !Array.isArray(card.colors) ||
+        !card.legalities
+      ) {
         errors.push(`Card ${i + 1}: Missing required fields`);
         continue;
       }

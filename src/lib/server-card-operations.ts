@@ -5,10 +5,14 @@
  * They require the database to be initialized with card data.
  */
 
-import type { MinimalCard } from './card-database';
-import { searchCardsOffline, getCardByName, initializeCardDatabase } from './card-database';
-import { type Format } from '@/lib/game-rules';
-import { sanitizeCardInput } from './decklist-utils';
+import type { MinimalCard } from "./card-database";
+import {
+  searchCardsOffline,
+  getCardByName,
+  initializeCardDatabase,
+} from "./card-database";
+import { type Format } from "@/lib/game-rules";
+import { sanitizeCardInput, parseDecklist } from "./decklist-utils";
 
 // Type definitions for card operations (server-side compatibility)
 export interface ServerDeckCard extends MinimalCard {
@@ -30,7 +34,7 @@ async function initializeServerCardOperations(): Promise<void> {
     await initializeCardDatabase();
     isInitialized = true;
   } catch (error) {
-    console.error('Failed to initialize server-side card operations:', error);
+    console.error("Failed to initialize server-side card operations:", error);
     throw error;
   }
 }
@@ -41,7 +45,7 @@ async function initializeServerCardOperations(): Promise<void> {
  */
 export async function validateCardLegality(
   cards: { name: string; quantity: number }[],
-  format: Format
+  format: Format,
 ): Promise<{ found: ServerDeckCard[]; notFound: string[]; illegal: string[] }> {
   await initializeServerCardOperations();
 
@@ -64,9 +68,12 @@ export async function validateCardLegality(
     const cardInDb = await getCardByName(requestDetails.originalName);
 
     if (cardInDb) {
-      const isLegal = cardInDb.legalities?.[format] === 'legal';
+      const isLegal = cardInDb.legalities?.[format] === "legal";
       if (isLegal) {
-        found.push({ ...cardInDb, count: requestDetails.quantity } as ServerDeckCard);
+        found.push({
+          ...cardInDb,
+          count: requestDetails.quantity,
+        } as ServerDeckCard);
       } else {
         illegal.push(requestDetails.originalName);
       }
@@ -85,43 +92,36 @@ export async function validateCardLegality(
  */
 export async function importDecklist(
   decklist: string,
-  format?: Format
+  format?: Format,
 ): Promise<{ found: ServerDeckCard[]; notFound: string[]; illegal: string[] }> {
-  const lines = decklist.split('\n').filter(line => line.trim() !== '');
-  if (lines.length === 0) {
-    return { found: [], notFound: [], illegal: [] };
-  }
-
-  const cardDetails: { name: string; quantity: number }[] = [];
-
-  for (const line of lines) {
-    const match = line.trim().match(/^(?:(\d+)\s*x?\s*)?(.+)/);
-    if (match) {
-      const name = match[2]?.trim();
-      const count = parseInt(match[1] || '1', 10);
-      if (name && !/^\/\//.test(name) && name.toLowerCase() !== 'sideboard') {
-        cardDetails.push({ name, quantity: count });
-      }
-    }
-  }
+  const cardDetails = parseDecklist(decklist, "standard");
 
   if (cardDetails.length === 0) {
-    return { found: [], notFound: lines, illegal: [] };
+    return {
+      found: [],
+      notFound: decklist.split("\n").filter((l) => l.trim()),
+      illegal: [],
+    };
   }
 
-  const { found, notFound, illegal } = await validateCardLegality(cardDetails, format || 'commander');
+  const { found, notFound, illegal } = await validateCardLegality(
+    cardDetails,
+    format || "commander",
+  );
 
   // Aggregate found cards by their ID to combine different prints of same card
   const aggregatedFound = Array.from(
-    found.reduce((acc, card) => {
-      const existing = acc.get(card.id);
-      if (existing) {
-        existing.count += card.count;
-      } else {
-        acc.set(card.id, { ...card });
-      }
-      return acc;
-    }, new Map<string, ServerDeckCard>()).values()
+    found
+      .reduce((acc, card) => {
+        const existing = acc.get(card.id);
+        if (existing) {
+          existing.count += card.count;
+        } else {
+          acc.set(card.id, { ...card });
+        }
+        return acc;
+      }, new Map<string, ServerDeckCard>())
+      .values(),
   );
 
   return { found: aggregatedFound, notFound, illegal };
@@ -132,22 +132,21 @@ export async function importDecklist(
  */
 export async function searchCards(
   query: string,
-  options?: { format?: string; maxCards?: number }
+  options?: { format?: string; maxCards?: number },
 ): Promise<ServerDeckCard[]> {
   await initializeServerCardOperations();
-  
+
   // Convert string format to Format type if it exists in game-rules
   const searchOptions = {
     format: options?.format,
-    maxCards: options?.maxCards
+    maxCards: options?.maxCards,
   };
-  
+
   const results = await searchCardsOffline(query, searchOptions);
-  
+
   // Map to ServerDeckCard format (add count: 1 as default for search results)
-  return results.map(card => ({
+  return results.map((card) => ({
     ...card,
-    count: 1
+    count: 1,
   })) as ServerDeckCard[];
 }
-
