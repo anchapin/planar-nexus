@@ -1,0 +1,63 @@
+{
+  "object": "list",
+  "has_more": false,
+  "data": [
+    {
+      "id": "m21-set-id",
+      "object": "set",
+      "code": "m21",
+      "mtgo_code": "m21",
+      "arena_code": "m21",
+      "tcgplayer_id": 2080,
+      "name": "Core Set 2021",
+      "uri": "https://api.scryfall.com/sets/m21",
+      "scryfall_uri": "https://scryfall.com/sets/m21",
+      "search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Am21&unique=prints",
+      "released_at": "2020-07-03",
+      "set_type": "core",
+      "card_count": 274,
+      "digital": false,
+      "foil_only": false,
+      "nonfoil_only": false,
+      "icon_svg_uri": "https://svgs.scryfall.io/sets/m21.svg"
+    },
+    {
+      "id": "znr-set-id",
+      "object": "set",
+      "code": "znr",
+      "mtgo_code": "znr",
+      "arena_code": "znr",
+      "tcgplayer_id": 2085,
+      "name": "Zendikar Rising",
+      "uri": "https://api.scryfall.com/sets/znr",
+      "scryfall_uri": "https://scryfall.com/sets/znr",
+      "search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Aznr&unique=prints",
+      "released_at": "2020-09-25",
+      "set_type": "expansion",
+      "card_count": 280,
+      "digital": false,
+      "foil_only": false,
+      "nonfoil_only": false,
+      "icon_svg_uri": "https://svgs.scryfall.io/sets/znr.svg"
+    },
+    {
+      "id": "khm-set-id",
+      "object": "set",
+      "code": "khm",
+      "mtgo_code": "khm",
+      "arena_code": "khm",
+      "tcgplayer_id": 2154,
+      "name": "Kaldheim",
+      "uri": "https://api.scryfall.com/sets/khm",
+      "scryfall_uri": "https://scryfall.com/sets/khm",
+      "search_uri": "https://api.scryfall.com/cards/search?order=set&q=e%3Akhm&unique=prints",
+      "released_at": "2021-02-05",
+      "set_type": "expansion",
+      "card_count": 285,
+      "digital": false,
+      "foil_only": false,
+      "nonfoil_only": false,
+      "icon_svg_uri": "https://svgs.scryfall.io/sets/khm.svg"
+    }
+  ]
+}
