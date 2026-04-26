@@ -181,6 +181,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
                   displayCards.map((card: ZoneCard, idx: number) => (
                     <div
                       key={card.id || idx}
+                      data-testid={`battlefield-card-${card.card.name.toLowerCase().replace(/\s+/g, "-")}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onCardClick?.(card.id, zone);
@@ -407,7 +408,10 @@ function PlayerArea({
   );
 
   return (
-    <div className="flex flex-col gap-2 h-full">
+    <div
+      className="flex flex-col gap-2 h-full"
+      data-testid={`player-area-${player.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+    >
       <PlayerInfo
         player={player}
         isCurrentTurn={isCurrentTurn}
