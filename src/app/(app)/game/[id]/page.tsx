@@ -758,7 +758,13 @@ async function getOrCreateActiveGame(
       ? generateAIDeck(aiTheme || "aggressive", difficulty)
       : generateSimpleDeck();
 
-  let updatedState = loadDeckForPlayer(gameState, player.id, playerDeck);
+  const shouldShuffle = deckId !== "starter-test";
+  let updatedState = loadDeckForPlayer(
+    gameState,
+    player.id,
+    playerDeck,
+    shouldShuffle,
+  );
   updatedState = loadDeckForPlayer(updatedState, opponent.id, opponentDeck);
 
   // Note: We don't call startGame here anymore - mulligan is handled in the component

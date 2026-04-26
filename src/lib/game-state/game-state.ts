@@ -156,6 +156,7 @@ export function loadDeckForPlayer(
   state: GameState,
   playerId: PlayerId,
   deckCards: ScryfallCard[],
+  shuffle = true,
 ): GameState {
   const libraryCards: CardInstanceId[] = [];
   const updatedCards = new Map(state.cards);
@@ -176,13 +177,18 @@ export function loadDeckForPlayer(
   }
 
   // Shuffle library
-  const shuffled = [...libraryCards];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  const libraryCardIds = shuffle ? [...libraryCards] : libraryCards;
+  if (shuffle) {
+    for (let i = libraryCardIds.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [libraryCardIds[i], libraryCardIds[j]] = [
+        libraryCardIds[j],
+        libraryCardIds[i],
+      ];
+    }
   }
 
-  const updatedLibrary = { ...library, cardIds: shuffled };
+  const updatedLibrary = { ...library, cardIds: libraryCardIds };
 
   const updatedZones = new Map(state.zones);
   updatedZones.set(libraryZoneKey, updatedLibrary);

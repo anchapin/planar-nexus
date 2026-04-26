@@ -113,17 +113,6 @@ export async function mockScryfallApi(page: Page) {
   });
 }
 
-export async function seedRandom(page: Page) {
-  await page.addInitScript(() => {
-    let seed = 1;
-    Math.random = () => {
-      seed = (seed * 16807) % 2147483647;
-      return (seed - 1) / 2147483646;
-    };
-    (window as any).__testRandomSeeded = true;
-  });
-}
-
 export const test = base.extend({});
 
 export { expect };

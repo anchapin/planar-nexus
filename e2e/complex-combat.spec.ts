@@ -2,7 +2,6 @@ import {
   test,
   expect,
   seedCardDatabase,
-  seedRandom,
   waitForDbSeed,
   Page,
 } from "./test-utils";
@@ -10,7 +9,6 @@ import {
 test.describe("Complex Combat E2E", () => {
   test.beforeEach(async ({ page }) => {
     await seedCardDatabase(page);
-    await seedRandom(page);
     await page.goto("/single-player");
     await waitForDbSeed(page);
   });
