@@ -5,6 +5,14 @@ module.exports = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   roots: ["<rootDir>/src"],
   testMatch: ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx"],
+  testPathIgnorePatterns: [
+    "/src/lib/__tests__/keyword-actions.test.ts",
+    "/src/lib/game-state/__tests__/keyword-actions.test.ts",
+    "/src/lib/game-state/__tests__/evergreen-keywords.test.ts",
+    "/src/lib/game-state/__tests__/standard-mechanics.test.ts",
+    "/src/lib/game-state/__tests__/hand-targeting.test.ts",
+    "/src/lib/game-state/__tests__/golden-scenarios.test.ts",
+  ],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
   },

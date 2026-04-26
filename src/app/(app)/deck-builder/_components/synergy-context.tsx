@@ -1,8 +1,18 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+  useRef,
+} from "react";
 import { type DeckCard, type ScryfallCard } from "@/app/actions";
-import { type WorkerMessage, type WorkerResponse } from "@/lib/ai/embedding-worker";
+import {
+  type WorkerMessage,
+  type WorkerResponse,
+} from "@/lib/ai/embedding-worker";
 import { oramaManager } from "@/lib/search/orama-manager";
 import { getCardById } from "@/lib/card-database";
 
@@ -19,7 +29,9 @@ interface SynergyContextValue {
   error: string | null;
 }
 
-const SynergyContext = createContext<SynergyContextValue | undefined>(undefined);
+const SynergyContext = createContext<SynergyContextValue | undefined>(
+  undefined,
+);
 
 /**
  * SynergyProvider manages the deck's synergy state by:
@@ -27,26 +39,37 @@ const SynergyContext = createContext<SynergyContextValue | undefined>(undefined)
  * 2. Generating a composite deck vector via a Web Worker.
  * 3. Querying the Orama vector search engine for synergistic candidates.
  */
-export function SynergyProvider({ 
-  children, 
-  deck 
-}: { 
-  children: React.ReactNode; 
-  deck: DeckCard[]; 
+export function SynergyProvider({
+  children,
+  deck,
+}: {
+  children: React.ReactNode;
+  deck: DeckCard[];
 }) {
-  const [synergyData, setSynergyData] = useState<Map<string, SynergyResult>>(new Map());
+  const [synergyData, setSynergyData] = useState<Map<string, SynergyResult>>(
+    new Map(),
+  );
   const [topSuggestions, setTopSuggestions] = useState<ScryfallCard[]>([]);
   const [isCalculating, setIsCalculating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const workerRef = useRef<Worker | null>(null);
 
   // Initialize worker once
   useEffect(() => {
-    // In Next.js, we use the URL constructor for web workers
-    const worker = new Worker(new URL("../../../../lib/ai/embedding-worker.ts", import.meta.url));
+    // Only create worker in browser environment with Worker support
+    if (typeof Worker === "undefined") return;
+
+    // Use dynamic URL resolution to avoid SSR/bundling issues
+    const workerPath =
+      typeof import.meta !== "undefined" && import.meta.url
+        ? new URL("../../../../lib/ai/embedding-worker.ts", import.meta.url)
+            .href
+        : "/_next/static/chunks/embedding-worker.ts"; // Fallback path
+
+    const worker = new Worker(workerPath);
     workerRef.current = worker;
-    
+
     worker.postMessage({ type: "LOAD_MODEL" });
 
     return () => {
@@ -57,7 +80,7 @@ export function SynergyProvider({
   // Debounced deck update to prevent excessive computation while typing/editing
   useEffect(() => {
     if (!workerRef.current) return;
-    
+
     if (deck.length === 0) {
       setSynergyData(new Map());
       setTopSuggestions([]);
@@ -67,7 +90,7 @@ export function SynergyProvider({
     const timer = setTimeout(() => {
       setIsCalculating(true);
       setError(null);
-      
+
       // Request embeddings for the current deck
       // The worker will return individual embeddings which we'll average
       workerRef.current?.postMessage({
@@ -90,38 +113,41 @@ export function SynergyProvider({
       if (response.type === "EMBEDDINGS_GENERATED") {
         try {
           // 1. Calculate composite deck vector (mean of all card embeddings)
-          const embeddings = response.results.map(r => r.embedding);
+          const embeddings = response.results.map((r) => r.embedding);
           if (embeddings.length === 0) {
             setIsCalculating(false);
             return;
           }
-          
+
           const vectorDim = embeddings[0].length;
           const deckVector = new Array(vectorDim).fill(0);
-          
+
           for (const emb of embeddings) {
             for (let i = 0; i < vectorDim; i++) {
               deckVector[i] += emb[i];
             }
           }
-          
+
           for (let i = 0; i < vectorDim; i++) {
             deckVector[i] /= embeddings.length;
           }
 
           // 2. Query Orama for synergistic cards using the deck vector
-          const searchResults = await oramaManager.searchByVector(deckVector, 40);
+          const searchResults = await oramaManager.searchByVector(
+            deckVector,
+            40,
+          );
 
           // 3. Process results: map scores and fetch full card data for suggestions
-          const deckCardIds = new Set(deck.map(c => c.id));
+          const deckCardIds = new Set(deck.map((c) => c.id));
           const newSynergyData = new Map<string, SynergyResult>();
           const suggestionIds: string[] = [];
 
           searchResults.hits.forEach((hit) => {
             const cardId = hit.id;
             // Orama score for vector search is usually the similarity
-            const score = hit.score; 
-            
+            const score = hit.score;
+
             let confidence: "high" | "medium" | "low" = "low";
             if (score > 0.8) confidence = "high";
             else if (score > 0.6) confidence = "medium";
@@ -135,7 +161,7 @@ export function SynergyProvider({
 
           // Fetch full card objects for suggestions
           const fullSuggestions = await Promise.all(
-            suggestionIds.map(id => getCardById(id))
+            suggestionIds.map((id) => getCardById(id)),
           );
 
           setSynergyData(newSynergyData);
@@ -143,7 +169,9 @@ export function SynergyProvider({
           setIsCalculating(false);
         } catch (err) {
           console.error("Synergy calculation error:", err);
-          setError(err instanceof Error ? err.message : "Failed to calculate synergy");
+          setError(
+            err instanceof Error ? err.message : "Failed to calculate synergy",
+          );
           setIsCalculating(false);
         }
       } else if (response.type === "ERROR") {
@@ -156,17 +184,18 @@ export function SynergyProvider({
     return () => worker.removeEventListener("message", handleMessage);
   }, [deck]);
 
-  const value = useMemo(() => ({
-    synergyData,
-    topSuggestions,
-    isCalculating,
-    error
-  }), [synergyData, topSuggestions, isCalculating, error]);
+  const value = useMemo(
+    () => ({
+      synergyData,
+      topSuggestions,
+      isCalculating,
+      error,
+    }),
+    [synergyData, topSuggestions, isCalculating, error],
+  );
 
   return (
-    <SynergyContext.Provider value={value}>
-      {children}
-    </SynergyContext.Provider>
+    <SynergyContext.Provider value={value}>{children}</SynergyContext.Provider>
   );
 }
 

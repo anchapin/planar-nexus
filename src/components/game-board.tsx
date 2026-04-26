@@ -6,8 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -15,9 +20,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PlayerState, PlayerCount, ZoneType, TeamState, CardState } from "@/types/game";
+import {
+  PlayerState,
+  PlayerCount,
+  ZoneType,
+  TeamState,
+  CardState,
+} from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
-import { DamageOverlay, useDamageEvents, DamageEvent } from "@/components/damage-indicator";
+import Image from "next/image";
+import {
+  DamageOverlay,
+  useDamageEvents,
+  DamageEvent,
+} from "@/components/damage-indicator";
 import {
   Skull,
   Ban,
@@ -30,7 +46,7 @@ import {
   Crown,
   Flag,
   Handshake,
-  X
+  X,
 } from "lucide-react";
 
 // Performance optimization constants
@@ -88,7 +104,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
   size = "default",
   onCardClick,
   onZoneClick,
-  playerId
+  playerId,
 }: {
   zone: ZoneType;
   title: string;
@@ -103,7 +119,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
   const sizeClasses = {
     small: "h-16 min-h-16",
     default: "h-24 min-h-24",
-    large: "h-32 min-h-32"
+    large: "h-32 min-h-32",
   };
 
   const handleClick = useCallback(() => {
@@ -125,18 +141,21 @@ const ZoneDisplay = memo(function ZoneDisplay({
     return 0;
   }, [zone, count]);
 
-  const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(() => ({
-    battlefield: null,
-    hand: <Hand className="h-3 w-3" />,
-    graveyard: <Skull className="h-3 w-3" />,
-    exile: <Ban className="h-3 w-3" />,
-    library: <Library className="h-3 w-3" />,
-    commandZone: <Crown className="h-3 w-3" />,
-    companion: <Crown className="h-3 w-3" />,
-    stack: null,
-    sideboard: null,
-    anticipate: null,
-  }), []);
+  const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(
+    () => ({
+      battlefield: null,
+      hand: <Hand className="h-3 w-3" />,
+      graveyard: <Skull className="h-3 w-3" />,
+      exile: <Ban className="h-3 w-3" />,
+      library: <Library className="h-3 w-3" />,
+      commandZone: <Crown className="h-3 w-3" />,
+      companion: <Crown className="h-3 w-3" />,
+      stack: null,
+      sideboard: null,
+      anticipate: null,
+    }),
+    [],
+  );
 
   return (
     <TooltipProvider>
@@ -158,16 +177,43 @@ const ZoneDisplay = memo(function ZoneDisplay({
           >
             {count > 0 && (
               <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
-                {zone === "battlefield" && displayCards.map((card: ZoneCard, idx: number) => (
-                  <div
-                    key={card.id || idx}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCardClick?.(card.id, zone);
-                    }}
-                    className="w-10 h-14 bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 rounded hover:from-primary/40 hover:scale-105 transition-all cursor-pointer"
-                  />
-                ))}
+                {zone === "battlefield" &&
+                  displayCards.map((card: ZoneCard, idx: number) => (
+                    <div
+                      key={card.id || idx}
+                      data-testid={`battlefield-card-${card.card.name.toLowerCase().replace(/\s+/g, "-")}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCardClick?.(card.id, zone);
+                      }}
+                      className="relative w-10 h-14 sm:w-12 sm:h-16 md:w-14 md:h-20 rounded overflow-hidden border border-primary/30 hover:scale-[2.5] hover:z-20 hover:shadow-2xl transition-all duration-200 cursor-pointer group"
+                      title={card.card.name}
+                    >
+                      {card.card.image_uris?.normal ? (
+                        <Image
+                          src={card.card.image_uris.normal}
+                          alt={card.card.name}
+                          fill
+                          sizes="80px"
+                          className="object-cover rounded"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                          <span className="text-[8px] text-center leading-tight px-0.5 line-clamp-2">
+                            {card.card.name}
+                          </span>
+                        </div>
+                      )}
+                      {card.tapped && (
+                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                          <span className="text-[8px] text-white font-bold rotate-45">
+                            TAPPED
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 {zone === "battlefield" && remainingCount > 0 && (
                   <div className="absolute bottom-1 right-1 bg-primary/80 text-primary-foreground text-xs px-1.5 py-0.5 rounded">
                     +{remainingCount} more
@@ -189,7 +235,9 @@ const ZoneDisplay = memo(function ZoneDisplay({
           </button>
         </TooltipTrigger>
         <TooltipContent>
-          <p>{title}: {count}</p>
+          <p>
+            {title}: {count}
+          </p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -217,12 +265,14 @@ const PlayerInfo = memo(function PlayerInfo({
 
   // Get player names for commander damage targets
   const getPlayerName = (playerId: string) => {
-    const targetPlayer = otherPlayers.find(p => p.id === playerId);
-    return targetPlayer?.name || 'Unknown';
+    const targetPlayer = otherPlayers.find((p) => p.id === playerId);
+    return targetPlayer?.name || "Unknown";
   };
 
   // Check if any commander damage is fatal (21+ damage)
-  const hasFatalCommanderDamage = commanderDamageEntries.some(([, damage]) => damage >= 21);
+  const hasFatalCommanderDamage = commanderDamageEntries.some(
+    ([, damage]) => damage >= 21,
+  );
 
   return (
     <div className={`flex items-center gap-2 ${isVertical ? "flex-col" : ""}`}>
@@ -232,14 +282,21 @@ const PlayerInfo = memo(function PlayerInfo({
           <span className="font-medium">{player.name}</span>
         </div>
       </div>
-      <Separator orientation={isVertical ? "horizontal" : "vertical"} className="h-6" />
+      <Separator
+        orientation={isVertical ? "horizontal" : "vertical"}
+        className="h-6"
+      />
       <div className="flex items-center gap-3 flex-wrap justify-center">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger>
               <div className="flex items-center gap-1 text-sm">
-                <Heart className={`h-4 w-4 ${hasFatalCommanderDamage ? 'text-red-600 animate-pulse' : 'text-red-500'}`} />
-                <span className={`font-mono font-bold ${hasFatalCommanderDamage ? 'text-red-600' : ''}`}>
+                <Heart
+                  className={`h-4 w-4 ${hasFatalCommanderDamage ? "text-red-600 animate-pulse" : "text-red-500"}`}
+                />
+                <span
+                  className={`font-mono font-bold ${hasFatalCommanderDamage ? "text-red-600" : ""}`}
+                >
                   {player.lifeTotal}
                 </span>
               </div>
@@ -247,14 +304,14 @@ const PlayerInfo = memo(function PlayerInfo({
             <TooltipContent>Life Total</TooltipContent>
           </Tooltip>
         </TooltipProvider>
-        
+
         {player.poisonCounters >= 10 && (
           <Badge variant="destructive" className="text-xs">
             <PoisonIcon className="h-3 w-3 mr-1" />
             {player.poisonCounters} Poison
           </Badge>
         )}
-        
+
         {/* Issue #24: Commander damage per opponent display */}
         {commanderDamageEntries.length > 0 && (
           <TooltipProvider>
@@ -262,9 +319,9 @@ const PlayerInfo = memo(function PlayerInfo({
               <TooltipTrigger>
                 <div className="flex items-center gap-1 flex-wrap justify-center">
                   {commanderDamageEntries.map(([targetId, damage]) => (
-                    <Badge 
-                      key={targetId} 
-                      variant={damage >= 21 ? "destructive" : "outline"} 
+                    <Badge
+                      key={targetId}
+                      variant={damage >= 21 ? "destructive" : "outline"}
                       className="text-xs"
                     >
                       {getPlayerName(targetId)}: {damage}
@@ -291,19 +348,35 @@ const PlayerInfo = memo(function PlayerInfo({
   );
 });
 
-function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick, orientation = "horizontal", allPlayers = [] }: PlayerAreaProps & { allPlayers?: PlayerState[] }) {
+function PlayerArea({
+  player,
+  isCurrentTurn,
+  position,
+  onCardClick,
+  onZoneClick,
+  orientation = "horizontal",
+  allPlayers = [],
+}: PlayerAreaProps & { allPlayers?: PlayerState[] }) {
   const isBottom = position === "bottom";
   const isVertical = orientation === "vertical";
-  const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>([]);
+  const [selectedHandCards, setSelectedHandCards] = React.useState<string[]>(
+    [],
+  );
 
   // Memoize handlers to prevent unnecessary re-renders
-  const handleZoneClick = useCallback((zone: ZoneType) => {
-    onZoneClick?.(zone, player.id);
-  }, [onZoneClick, player.id]);
+  const handleZoneClick = useCallback(
+    (zone: ZoneType) => {
+      onZoneClick?.(zone, player.id);
+    },
+    [onZoneClick, player.id],
+  );
 
-  const handleCardClick = useCallback((cardId: string, zone: ZoneType) => {
-    onCardClick?.(cardId, zone);
-  }, [onCardClick]);
+  const handleCardClick = useCallback(
+    (cardId: string, zone: ZoneType) => {
+      onCardClick?.(cardId, zone);
+    },
+    [onCardClick],
+  );
 
   // Local ZoneDisplay wrapper for backward compatibility
   const ZoneDisplayLocal = ({
@@ -312,7 +385,7 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
     count,
     cards,
     bgColor = "bg-muted/50",
-    size = "default"
+    size = "default",
   }: {
     zone: ZoneType;
     title: string;
@@ -335,8 +408,16 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
   );
 
   return (
-    <div className={`flex flex-col gap-2 ${isVertical ? "h-full" : ""}`}>
-      <PlayerInfo player={player} isCurrentTurn={isCurrentTurn} isVertical={isVertical} otherPlayers={allPlayers.filter(p => p.id !== player.id)} />
+    <div
+      className="flex flex-col gap-2 h-full"
+      data-testid={`player-area-${player.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+    >
+      <PlayerInfo
+        player={player}
+        isCurrentTurn={isCurrentTurn}
+        isVertical={isVertical}
+        otherPlayers={allPlayers.filter((p) => p.id !== player.id)}
+      />
 
       {/* Command Zone - always visible for Commander format */}
       {player.commandZone.length > 0 && (
@@ -389,30 +470,40 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
           />
         </div>
       ) : (
-        <div className={`grid ${isBottom ? "grid-rows-[auto_1fr_auto]" : "grid-rows-[auto_1fr_auto]"} gap-2 flex-1 min-h-0`}>
-          {isBottom ? (
-            <div className="bg-primary/5 border border-primary/20 rounded-md p-2">
-              <HandDisplay
+        <div
+          className={`grid ${isBottom ? "grid-rows-[1fr_auto_auto]" : "grid-rows-[auto_auto_1fr]"} gap-2 flex-1 min-h-0`}
+        >
+          <div className={isBottom ? "row-start-3" : ""}>
+            {isBottom ? (
+              <div
+                className="bg-primary/5 border border-primary/20 rounded-md p-2"
+                data-tutorial="your-hand"
+              >
+                <HandDisplay
+                  cards={player.hand}
+                  isCurrentPlayer={true}
+                  onCardSelect={setSelectedHandCards}
+                  onCardClick={(cardId) => onCardClick?.(cardId, "hand")}
+                  selectedCardIds={selectedHandCards}
+                  className="min-h-[140px]"
+                />
+              </div>
+            ) : (
+              <ZoneDisplayLocal
+                zone="hand"
+                title="Hand"
+                count={player.hand.length}
                 cards={player.hand}
-                isCurrentPlayer={true}
-                onCardSelect={setSelectedHandCards}
-                onCardClick={(cardId) => onCardClick?.(cardId, "hand")}
-                selectedCardIds={selectedHandCards}
-                className="min-h-[140px]"
+                bgColor="bg-primary/10"
+                size="small"
               />
-            </div>
-          ) : (
-            <ZoneDisplayLocal
-              zone="hand"
-              title="Hand"
-              count={player.hand.length}
-              cards={player.hand}
-              bgColor="bg-primary/10"
-              size="small"
-            />
-          )}
+            )}
+          </div>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div
+            className={`grid grid-cols-4 gap-2 ${isBottom ? "row-start-2" : ""}`}
+            data-tutorial={isBottom ? "zones" : undefined}
+          >
             <ZoneDisplayLocal
               zone="library"
               title="Draw Pile"
@@ -449,25 +540,27 @@ function PlayerArea({ player, isCurrentTurn, position, onCardClick, onZoneClick,
             )}
           </div>
 
-          <ZoneDisplayLocal
-            zone="battlefield"
-            title="Game Board"
-            count={player.battlefield.length}
-            cards={player.battlefield}
-            bgColor="bg-green-500/10"
-            size="large"
-          />
+          <div className={isBottom ? "row-start-1" : ""}>
+            <ZoneDisplayLocal
+              zone="battlefield"
+              title="Game Board"
+              count={player.battlefield.length}
+              cards={player.battlefield}
+              bgColor="bg-green-500/10"
+              size="large"
+            />
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-export function GameBoard({ 
-  players, 
-  playerCount, 
-  currentTurnIndex, 
-  onCardClick, 
+export function GameBoard({
+  players,
+  playerCount,
+  currentTurnIndex,
+  onCardClick,
   onZoneClick,
   onConcede,
   onOfferDraw,
@@ -480,14 +573,16 @@ export function GameBoard({
   onDamageEventComplete,
 }: GameBoardProps) {
   const currentPlayer = players[currentTurnIndex];
-  
+
   // Dialog states
   const [showConcedeDialog, setShowConcedeDialog] = React.useState(false);
 
   // Internal damage events state if not provided externally
   const internalDamageEvents = useDamageEvents({ maxEvents: 15 });
-  const activeDamageEvents = damageEvents.length > 0 ? damageEvents : internalDamageEvents.events;
-  const handleDamageEventComplete = onDamageEventComplete || internalDamageEvents.clearEvents;
+  const activeDamageEvents =
+    damageEvents.length > 0 ? damageEvents : internalDamageEvents.events;
+  const handleDamageEventComplete =
+    onDamageEventComplete || internalDamageEvents.clearEvents;
 
   // Layout strategy based on player count
   const renderLayout = () => {
@@ -626,24 +721,24 @@ export function GameBoard({
   };
 
   return (
-    <div 
+    <div
       className="w-full h-full p-4 bg-background"
       role="application"
       aria-label="Game Board"
     >
       {/* Screen reader announcements */}
-      <div 
-        role="status" 
-        aria-live="polite" 
-        aria-atomic="true" 
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
         className="sr-only"
       >
         {currentPlayer && `It is ${currentPlayer.name}'s turn`}
       </div>
-      
+
       {/* Skip to main content link for keyboard users */}
-      <a 
-        href="#game-board-main" 
+      <a
+        href="#game-board-main"
         className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md"
       >
         Skip to game board
@@ -658,16 +753,16 @@ export function GameBoard({
               <Handshake className="h-4 w-4" />
               <span className="text-sm font-medium">Draw offer pending</span>
               <div className="flex gap-1 ml-2">
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="secondary"
                   onClick={onAcceptDraw}
                   className="h-7 px-2"
                 >
                   Accept
                 </Button>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   variant="ghost"
                   onClick={onDeclineDraw}
                   className="h-7 px-2"
@@ -730,9 +825,9 @@ export function GameBoard({
       {renderLayout()}
 
       {/* Damage Indicators Overlay */}
-      <DamageOverlay 
-        events={activeDamageEvents} 
-        onEventComplete={handleDamageEventComplete} 
+      <DamageOverlay
+        events={activeDamageEvents}
+        onEventComplete={handleDamageEventComplete}
       />
 
       {/* Concede Confirmation Dialog */}
@@ -741,15 +836,19 @@ export function GameBoard({
           <DialogHeader>
             <DialogTitle>Concede Game?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to concede? You will lose the game immediately.
+              Are you sure you want to concede? You will lose the game
+              immediately.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConcedeDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowConcedeDialog(false)}
+            >
               Cancel
             </Button>
-            <Button 
-              variant="destructive" 
+            <Button
+              variant="destructive"
               onClick={() => {
                 onConcede?.();
                 setShowConcedeDialog(false);

@@ -1,9 +1,9 @@
 /**
  * Keyword Actions System
- * 
+ *
  * Implements standard MTG keyword actions as described in the Comprehensive Rules.
  * Reference: CR 701 - Keyword Actions
- * 
+ *
  * Keyword actions include:
  * - Destroy (with regeneration/indestructible handling)
  * - Exile (with face-up/face-down options)
@@ -22,15 +22,16 @@ import type {
   PlayerId,
   Zone,
   ScryfallCard,
-} from './types';
+} from "./types";
 import {
   createToken,
   getToughness,
   addCounters,
   removeCounters,
   hasCounter,
-} from './card-instance';
-import { replacementEffectManager } from './replacement-effects';
+  initializePlaneswalkerLoyalty,
+} from "./card-instance";
+import { replacementEffectManager } from "./replacement-effects";
 
 /**
  * Result of a keyword action
@@ -52,12 +53,11 @@ export interface KeywordActionResult {
  * Check if a card has indestructible
  */
 export function hasIndestructible(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || '';
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
   const keywords = card.cardData.keywords || [];
-  
+
   return (
-    keywords.includes('Indestructible') ||
-    oracleText.includes('indestructible')
+    keywords.includes("Indestructible") || oracleText.includes("indestructible")
   );
 }
 
@@ -65,8 +65,8 @@ export function hasIndestructible(card: CardInstance): boolean {
  * Check if a card can be regenerated (has regenerate ability)
  */
 export function canBeRegenerated(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || '';
-  return oracleText.includes('regenerate');
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  return oracleText.includes("regenerate");
 }
 
 /**
@@ -76,15 +76,15 @@ export function canBeRegenerated(card: CardInstance): boolean {
 export function destroyCard(
   state: GameState,
   cardId: CardInstanceId,
-  ignoreIndestructible: boolean = false
+  ignoreIndestructible: boolean = false,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
@@ -100,21 +100,22 @@ export function destroyCard(
 
   // Check for replacement effects (e.g., "If a creature would be destroyed, exile it instead")
   const replacementEvent = {
-    type: 'destroy' as const,
+    type: "destroy" as const,
     amount: 0,
     timestamp: Date.now(),
     targetId: cardId,
   };
-  
-  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
-  
-  if (processedEvent.type === 'exile') {
+
+  const processedEvent =
+    replacementEffectManager.processEvent(replacementEvent);
+
+  if (processedEvent.type === "exile") {
     // Replacement effect changed destroy to exile
     return exileCard(state, cardId);
   }
 
   // Move card to graveyard
-  return moveCardToZone(state, cardId, 'graveyard');
+  return moveCardToZone(state, cardId, "graveyard");
 }
 
 /**
@@ -124,15 +125,15 @@ export function destroyCard(
 export function exileCard(
   state: GameState,
   cardId: CardInstanceId,
-  faceDown: boolean = false
+  faceDown: boolean = false,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
@@ -140,7 +141,7 @@ export function exileCard(
   // Find the card's current zone
   let currentZone: Zone | null = null;
   let currentZoneKey: string | null = null;
-  
+
   for (const [zoneKey, zone] of state.zones) {
     if (zone.cardIds.includes(cardId)) {
       currentZone = zone;
@@ -153,23 +154,23 @@ export function exileCard(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} is not in any zone`,
     };
   }
 
   // Determine exile zone (player's exile or shared exile)
-  const exileZoneKey = card.controllerId 
-    ? `${card.controllerId}-exile` 
-    : 'exile';
-  
+  const exileZoneKey = card.controllerId
+    ? `${card.controllerId}-exile`
+    : "exile";
+
   const exileZone = state.zones.get(exileZoneKey);
-  
+
   if (!exileZone) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Exile zone not found`,
     };
   }
@@ -185,7 +186,7 @@ export function exileCard(
   // Update zones
   const updatedCurrentZone = {
     ...currentZone,
-    cardIds: currentZone.cardIds.filter(id => id !== cardId),
+    cardIds: currentZone.cardIds.filter((id) => id !== cardId),
   };
 
   const updatedExileZone = {
@@ -200,7 +201,7 @@ export function exileCard(
   const updatedCards = new Map(state.cards);
   updatedCards.set(cardId, updatedCard);
 
-  const faceDownText = faceDown ? ' face down' : '';
+  const faceDownText = faceDown ? " face down" : "";
 
   return {
     success: true,
@@ -221,21 +222,21 @@ export function exileCard(
  */
 export function sacrificeCard(
   state: GameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
 
   // Move to graveyard (sacrificed cards go to owner's graveyard)
-  return moveCardToZone(state, cardId, 'graveyard');
+  return moveCardToZone(state, cardId, "graveyard");
 }
 
 /**
@@ -245,15 +246,15 @@ export function sacrificeCard(
 export function drawCards(
   state: GameState,
   playerId: PlayerId,
-  count: number = 1
+  count: number = 1,
 ): KeywordActionResult {
   const player = state.players.get(playerId);
-  
+
   if (!player) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Player ${playerId} not found`,
     };
   }
@@ -265,19 +266,20 @@ export function drawCards(
   for (let i = 0; i < count; i++) {
     // Check for replacement effects
     const replacementEvent = {
-      type: 'draw_card' as const,
+      type: "draw_card" as const,
       timestamp: Date.now(),
       targetId: playerId,
       amount: 1,
     };
-    
-    const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+
+    const processedEvent =
+      replacementEffectManager.processEvent(replacementEvent);
     const drawAmount = processedEvent.amount;
-    
+
     // Draw each card
     for (let j = 0; j < drawAmount; j++) {
       const result = drawSingleCard(currentState, playerId);
-      
+
       if (result.success) {
         currentState = result.state;
         if (result.affectedCards) {
@@ -291,7 +293,7 @@ export function drawCards(
   return {
     success: cardsDrawn > 0,
     state: currentState,
-    description: `Drew ${cardsDrawn} card${cardsDrawn !== 1 ? 's' : ''} for ${player.name}`,
+    description: `Drew ${cardsDrawn} card${cardsDrawn !== 1 ? "s" : ""} for ${player.name}`,
     affectedCards: drawnCardIds,
   };
 }
@@ -301,7 +303,7 @@ export function drawCards(
  */
 function drawSingleCard(
   state: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): KeywordActionResult {
   const libraryZoneKey = `${playerId}-library`;
   const handZoneKey = `${playerId}-hand`;
@@ -313,7 +315,7 @@ function drawSingleCard(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Library or hand zone not found for player`,
     };
   }
@@ -353,7 +355,7 @@ function drawSingleCard(
       zones: updatedZones,
       lastModifiedAt: Date.now(),
     },
-    description: card ? `Drew ${card.cardData.name}` : 'Drew a card',
+    description: card ? `Drew ${card.cardData.name}` : "Drew a card",
     affectedCards: cardId ? [cardId] : [],
   };
 }
@@ -365,7 +367,7 @@ export function discardCards(
   state: GameState,
   playerId: PlayerId,
   count: number = 1,
-  random: boolean = false
+  random: boolean = false,
 ): KeywordActionResult {
   const player = state.players.get(playerId);
   const handZoneKey = `${playerId}-hand`;
@@ -375,7 +377,7 @@ export function discardCards(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Player ${playerId} not found`,
     };
   }
@@ -384,7 +386,7 @@ export function discardCards(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Hand zone not found for player`,
     };
   }
@@ -412,7 +414,7 @@ export function discardCards(
   const discardedCards: CardInstanceId[] = [];
 
   for (const cardId of cardsToDiscard) {
-    const result = moveCardToZone(state, cardId, 'graveyard');
+    const result = moveCardToZone(state, cardId, "graveyard");
     if (result.success) {
       state = result.state;
       if (result.affectedCards) {
@@ -424,7 +426,7 @@ export function discardCards(
   return {
     success: discardedCards.length > 0,
     state,
-    description: `Discarded ${discardedCards.length} card${discardedCards.length !== 1 ? 's' : ''} from ${player.name}'s hand`,
+    description: `Discarded ${discardedCards.length} card${discardedCards.length !== 1 ? "s" : ""} from ${player.name}'s hand`,
     affectedCards: discardedCards,
   };
 }
@@ -437,15 +439,15 @@ export function createTokenCard(
   tokenData: ScryfallCard,
   controllerId: PlayerId,
   ownerId: PlayerId,
-  count: number = 1
+  count: number = 1,
 ): KeywordActionResult {
   const player = state.players.get(controllerId);
-  
+
   if (!player) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Player ${controllerId} not found`,
     };
   }
@@ -457,7 +459,7 @@ export function createTokenCard(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Battlefield zone not found`,
     };
   }
@@ -487,7 +489,7 @@ export function createTokenCard(
       zones: updatedZones,
       lastModifiedAt: Date.now(),
     },
-    description: `Created ${count} ${tokenData.name} token${count !== 1 ? 's' : ''}`,
+    description: `Created ${count} ${tokenData.name} token${count !== 1 ? "s" : ""}`,
     affectedCards: tokenIds,
   };
 }
@@ -497,15 +499,15 @@ export function createTokenCard(
  */
 export function counterSpell(
   state: GameState,
-  stackObjectId: string
+  stackObjectId: string,
 ): KeywordActionResult {
-  const stackIndex = state.stack.findIndex(s => s.id === stackObjectId);
-  
+  const stackIndex = state.stack.findIndex((s) => s.id === stackObjectId);
+
   if (stackIndex === -1) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Stack object ${stackObjectId} not found`,
     };
   }
@@ -541,15 +543,15 @@ export function counterSpell(
  */
 export function regenerateCard(
   state: GameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
@@ -557,7 +559,7 @@ export function regenerateCard(
   // Check if the card has regenerate ability
   // In a full implementation, this would check if the ability was activated
   // For now, we allow regeneration if the card could theoretically have it
-  
+
   // Remove all damage
   const updatedCard = {
     ...card,
@@ -568,8 +570,8 @@ export function regenerateCard(
   // Add regeneration shield counter (using a special counter type)
   const updatedCardWithShield = addCounters(
     updatedCard,
-    'regeneration-shield',
-    1
+    "regeneration-shield",
+    1,
   );
 
   const updatedCards = new Map(state.cards);
@@ -593,18 +595,18 @@ export function regenerateCard(
  */
 export function consumeRegenerationShield(
   state: GameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): { hasShield: boolean; state: GameState } {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return { hasShield: false, state };
   }
 
-  if (hasCounter(card, 'regeneration-shield')) {
+  if (hasCounter(card, "regeneration-shield")) {
     // Remove one regeneration shield
-    const updatedCard = removeCounters(card, 'regeneration-shield', 1);
-    
+    const updatedCard = removeCounters(card, "regeneration-shield", 1);
+
     const updatedCards = new Map(state.cards);
     updatedCards.set(cardId, updatedCard);
 
@@ -627,15 +629,15 @@ export function consumeRegenerationShield(
 export function moveCardToZone(
   state: GameState,
   cardId: CardInstanceId,
-  targetZoneType: 'graveyard' | 'exile' | 'hand' | 'library' | 'battlefield'
+  targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
@@ -643,7 +645,7 @@ export function moveCardToZone(
   // Find current zone
   let currentZone: Zone | null = null;
   let currentZoneKey: string | null = null;
-  
+
   for (const [zoneKey, zone] of state.zones) {
     if (zone.cardIds.includes(cardId)) {
       currentZone = zone;
@@ -656,53 +658,51 @@ export function moveCardToZone(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} is not in any zone`,
     };
   }
 
   // Determine target zone
   let targetZoneKey: string;
-  
-  if (targetZoneType === 'library') {
+
+  if (targetZoneType === "library") {
     // Libraries are always player's own
     targetZoneKey = `${card.ownerId}-library`;
-  } else if (targetZoneType === 'graveyard') {
+  } else if (targetZoneType === "graveyard") {
     // Graveyards are owner's
     targetZoneKey = `${card.ownerId}-graveyard`;
-  } else if (targetZoneType === 'exile') {
+  } else if (targetZoneType === "exile") {
     // Exile can be controller's or shared
-    targetZoneKey = card.controllerId 
-      ? `${card.controllerId}-exile` 
-      : 'exile';
-  } else if (targetZoneType === 'hand') {
+    targetZoneKey = card.controllerId ? `${card.controllerId}-exile` : "exile";
+  } else if (targetZoneType === "hand") {
     targetZoneKey = `${card.controllerId}-hand`;
-  } else if (targetZoneType === 'battlefield') {
+  } else if (targetZoneType === "battlefield") {
     targetZoneKey = `${card.controllerId}-battlefield`;
   } else {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Invalid target zone: ${targetZoneType}`,
     };
   }
 
   const targetZone = state.zones.get(targetZoneKey);
-  
+
   if (!targetZone) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Target zone ${targetZoneKey} not found`,
     };
   }
 
   // Handle special cases
   let updatedCard = { ...card };
-  
-  if (targetZoneType === 'graveyard' || targetZoneType === 'library') {
+
+  if (targetZoneType === "graveyard" || targetZoneType === "library") {
     // Reset certain states when moving to graveyard or library
     updatedCard = {
       ...card,
@@ -713,19 +713,21 @@ export function moveCardToZone(
       damage: 0,
       counters: [], // Remove counters
     };
-  } else if (targetZoneType === 'battlefield') {
+  } else if (targetZoneType === "battlefield") {
     // Set summoning sickness for permanents entering battlefield
     updatedCard = {
       ...card,
       hasSummoningSickness: true,
       enteredBattlefieldTimestamp: Date.now(),
     };
+    // Initialize loyalty counters for planeswalkers (CR 306.5b)
+    updatedCard = initializePlaneswalkerLoyalty(updatedCard);
   }
 
   // Update zones
   const updatedCurrentZone = {
     ...currentZone,
-    cardIds: currentZone.cardIds.filter(id => id !== cardId),
+    cardIds: currentZone.cardIds.filter((id) => id !== cardId),
   };
 
   const updatedTargetZone = {
@@ -741,11 +743,11 @@ export function moveCardToZone(
   updatedCards.set(cardId, updatedCard);
 
   const zoneNames: Record<string, string> = {
-    graveyard: 'graveyard',
-    exile: 'exile',
-    hand: 'hand',
-    library: 'library',
-    battlefield: 'battlefield',
+    graveyard: "graveyard",
+    exile: "exile",
+    hand: "hand",
+    library: "library",
+    battlefield: "battlefield",
   };
 
   return {
@@ -769,31 +771,35 @@ export function dealDamageToCard(
   cardId: CardInstanceId,
   damage: number,
   isCombatDamage: boolean = false,
-  sourceId?: CardInstanceId
+  sourceId?: CardInstanceId,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
 
   // Check for prevention effects
   const replacementEvent = {
-    type: 'damage' as const,
+    type: "damage" as const,
     timestamp: Date.now(),
     sourceId,
     targetId: cardId,
     amount: damage,
     isCombatDamage,
-    damageTypes: (isCombatDamage ? ['combat'] : ['noncombat']) as ('combat' | 'noncombat')[],
+    damageTypes: (isCombatDamage ? ["combat"] : ["noncombat"]) as (
+      | "combat"
+      | "noncombat"
+    )[],
   };
 
-  const processedEvent = replacementEffectManager.processEvent(replacementEvent);
+  const processedEvent =
+    replacementEffectManager.processEvent(replacementEvent);
   const actualDamage = processedEvent.amount;
 
   // Apply damage
@@ -807,9 +813,12 @@ export function dealDamageToCard(
   if (sourceId) {
     const sourceCard = state.cards.get(sourceId);
     if (sourceCard) {
-      const sourceOracleText = sourceCard.cardData.oracle_text?.toLowerCase() || '';
+      const sourceOracleText =
+        sourceCard.cardData.oracle_text?.toLowerCase() || "";
       const sourceKeywords = sourceCard.cardData.keywords || [];
-      const sourceHasDeathtouch = sourceKeywords.includes('Deathtouch') || sourceOracleText.includes('deathtouch');
+      const sourceHasDeathtouch =
+        sourceKeywords.includes("Deathtouch") ||
+        sourceOracleText.includes("deathtouch");
 
       if (sourceHasDeathtouch && actualDamage > 0) {
         // With deathtouch, any amount of damage is lethal
@@ -825,7 +834,7 @@ export function dealDamageToCard(
   const updatedCards = new Map(state.cards);
   updatedCards.set(cardId, updatedCard);
 
-  const damageType = isCombatDamage ? 'combat damage' : 'damage';
+  const damageType = isCombatDamage ? "combat damage" : "damage";
 
   return {
     success: true,
@@ -846,21 +855,21 @@ export function addCounterToCard(
   state: GameState,
   cardId: CardInstanceId,
   counterType: string,
-  count: number = 1
+  count: number = 1,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
 
   const updatedCard = addCounters(card, counterType, count);
-  
+
   const updatedCards = new Map(state.cards);
   updatedCards.set(cardId, updatedCard);
 
@@ -871,7 +880,7 @@ export function addCounterToCard(
       cards: updatedCards,
       lastModifiedAt: Date.now(),
     },
-    description: `Added ${count} ${counterType} counter${count !== 1 ? 's' : ''} to ${card.cardData.name}`,
+    description: `Added ${count} ${counterType} counter${count !== 1 ? "s" : ""} to ${card.cardData.name}`,
     affectedCards: [cardId],
   };
 }
@@ -883,21 +892,21 @@ export function removeCounterFromCard(
   state: GameState,
   cardId: CardInstanceId,
   counterType: string,
-  count: number = 1
+  count: number = 1,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
 
   const updatedCard = removeCounters(card, counterType, count);
-  
+
   const updatedCards = new Map(state.cards);
   updatedCards.set(cardId, updatedCard);
 
@@ -908,7 +917,7 @@ export function removeCounterFromCard(
       cards: updatedCards,
       lastModifiedAt: Date.now(),
     },
-    description: `Removed ${count} ${counterType} counter${count !== 1 ? 's' : ''} from ${card.cardData.name}`,
+    description: `Removed ${count} ${counterType} counter${count !== 1 ? "s" : ""} from ${card.cardData.name}`,
     affectedCards: [cardId],
   };
 }
@@ -918,15 +927,15 @@ export function removeCounterFromCard(
  */
 export function tapCardAction(
   state: GameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
@@ -964,15 +973,15 @@ export function tapCardAction(
  */
 export function untapCardAction(
   state: GameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
-  
+
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: `Card ${cardId} not found`,
     };
   }
@@ -1003,4 +1012,39 @@ export function untapCardAction(
     description: `Untapped ${card.cardData.name}`,
     affectedCards: [cardId],
   };
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function hasCycling(card: any): boolean {
+  return false;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function hasLandcycling(card: any, landType?: string): boolean {
+  return false;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function getCyclingCost(card: any): number | null {
+  return null;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function canCycleCard(state: any, playerId: any, card: any): boolean {
+  return false;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function cycleCard(state: any, playerId: any, cardId: any): any {
+  return { success: false, error: "not implemented" };
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function parseCyclingCost(text: any): number | null {
+  return null;
+}
+
+/** @deprecated Stub - hand filter not yet implemented */
+export function getHandFilterForCard(cardName: string): any {
+  return null;
 }

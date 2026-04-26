@@ -2,7 +2,7 @@
  * State-Based Actions System
  * Implements MTG state-based actions (SBAs) as defined in Comprehensive Rules 704.
  * SBAs are checked continuously and performed automatically.
- * 
+ *
  * Issue #267: State-based actions (SBA) system for the MTG rules engine
  */
 
@@ -11,23 +11,23 @@ import type {
   CardInstance,
   CardInstanceId,
   PlayerId,
-} from './types';
+} from "./types";
 import {
   isCreature,
   isPlaneswalker,
   getToughness,
   hasLethalDamage,
-} from './card-instance';
-import { destroyCard, exileCard } from './keyword-actions';
-import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from './commander-damage';
+} from "./card-instance";
+import { destroyCard, exileCard } from "./keyword-actions";
+import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from "./commander-damage";
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
-  return card.cardData.type_line?.toLowerCase().includes('aura') ?? false;
+  return card.cardData.type_line?.toLowerCase().includes("aura") ?? false;
 }
 
 function isEquipment(card: CardInstance): boolean {
-  return card.cardData.type_line?.toLowerCase().includes('equipment') ?? false;
+  return card.cardData.type_line?.toLowerCase().includes("equipment") ?? false;
 }
 
 /**
@@ -47,7 +47,9 @@ export interface StateBasedActionResult {
  * Called after any game event that could trigger SBAs
  * Issue #15: Handle state-based actions
  */
-export function checkStateBasedActions(state: GameState): StateBasedActionResult {
+export function checkStateBasedActions(
+  state: GameState,
+): StateBasedActionResult {
   let updatedState = { ...state };
   const descriptions: string[] = [];
   let actionsPerformed = false;
@@ -61,7 +63,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         players: new Map(updatedState.players).set(playerId, {
           ...player,
           hasLost: true,
-          lossReason: 'Life total reached 0 or less',
+          lossReason: "Life total reached 0 or less",
         }),
       };
       descriptions.push(`${player.name} loses the game (0 or less life)`);
@@ -75,7 +77,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         players: new Map(updatedState.players).set(playerId, {
           ...player,
           hasLost: true,
-          lossReason: 'Accumulated 10 or more poison counters',
+          lossReason: "Accumulated 10 or more poison counters",
         }),
       };
       descriptions.push(`${player.name} loses the game (10+ poison counters)`);
@@ -96,7 +98,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
     for (const [commanderId, damage] of player.commanderDamage) {
       if (damage >= DEFAULT_COMMANDER_DAMAGE_THRESHOLD) {
         const commander = updatedState.cards.get(commanderId);
-        const commanderName = commander?.cardData.name || 'Commander';
+        const commanderName = commander?.cardData.name || "Commander";
         updatedState = {
           ...updatedState,
           players: new Map(updatedState.players).set(playerId, {
@@ -105,7 +107,9 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
             lossReason: `${commanderName} has dealt ${damage} commander damage (21+)`,
           }),
         };
-        descriptions.push(`${player.name} loses the game (${commanderName} dealt ${damage} commander damage)`);
+        descriptions.push(
+          `${player.name} loses the game (${commanderName} dealt ${damage} commander damage)`,
+        );
         actionsPerformed = true;
         break; // Only need to mark once per player
       }
@@ -120,118 +124,158 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
   for (const card of cardsToCheck) {
     // Find the card's current zone
     let currentZoneKey: string | null = null;
+    let isOnBattlefield = false;
     for (const [zoneKey, zone] of updatedState.zones) {
       if (zone.cardIds.includes(card.id)) {
         currentZoneKey = zoneKey;
+        if (zoneKey.includes("battlefield")) {
+          isOnBattlefield = true;
+        }
         break;
       }
     }
 
     if (!currentZoneKey) continue;
 
-    // SBA 704.5f: A creature with lethal damage is destroyed
-    if (isCreature(card) && hasLethalDamage(card)) {
-      if (!cardsToDestroy.includes(card.id)) {
-        cardsToDestroy.push(card.id);
-        descriptions.push(`${card.cardData.name} is destroyed (lethal damage)`);
-        actionsPerformed = true;
-      }
-    }
-
-    // SBA 704.5g: A creature with toughness 0 or less is destroyed
-    if (isCreature(card)) {
-      const toughness = getToughness(card);
-      if (toughness <= 0) {
+    // SBAs 704.5f–704.5n only apply to permanents on the battlefield
+    if (isOnBattlefield) {
+      // SBA 704.5f: A creature with lethal damage is destroyed
+      if (isCreature(card) && hasLethalDamage(card)) {
         if (!cardsToDestroy.includes(card.id)) {
           cardsToDestroy.push(card.id);
+          descriptions.push(
+            `${card.cardData.name} is destroyed (lethal damage)`,
+          );
+          actionsPerformed = true;
         }
-        descriptions.push(`${card.cardData.name} is destroyed (toughness 0 or less)`);
-        actionsPerformed = true;
       }
-    }
 
-    // SBA 704.5i: A planeswalker with 0 loyalty is exiled
-    // Planeswalkers enter with loyalty counters equal to their loyalty field (CR 306.5b)
-    if (isPlaneswalker(card)) {
-      const loyaltyCounters = card.counters?.find(c => c.type === 'loyalty');
-      const loyalty = loyaltyCounters?.count ?? 0;
-      if (loyalty <= 0) {
-        if (!cardsToExile.includes(card.id)) {
-          cardsToExile.push(card.id);
+      // SBA 704.5g: A creature with toughness 0 or less is destroyed
+      if (isCreature(card)) {
+        const toughness = getToughness(card);
+        if (toughness <= 0) {
+          if (!cardsToDestroy.includes(card.id)) {
+            cardsToDestroy.push(card.id);
+          }
+          descriptions.push(
+            `${card.cardData.name} is destroyed (toughness 0 or less)`,
+          );
+          actionsPerformed = true;
         }
-        descriptions.push(`${card.cardData.name} is exiled (0 loyalty)`);
-        actionsPerformed = true;
       }
-    }
 
-    // SBA 704.5m: An Aura attached to an illegal object is put into its owner's graveyard
-    if (isAura(card) && card.attachedToId) {
-      const attachedTo = updatedState.cards.get(card.attachedToId);
-      // Check if the target still exists and is on the battlefield
-      let attachedToOnBattlefield = false;
-      if (attachedTo) {
-        for (const [zoneKey, zone] of updatedState.zones) {
-          if (zoneKey.includes('battlefield') && zone.cardIds.includes(card.attachedToId!)) {
-            attachedToOnBattlefield = true;
-            break;
+      // SBA 704.5i: A planeswalker with 0 loyalty is exiled
+      // Planeswalkers enter with loyalty counters equal to their loyalty field (CR 306.5b)
+      if (isPlaneswalker(card)) {
+        const loyaltyCounters = card.counters?.find(
+          (c) => c.type === "loyalty",
+        );
+        const loyalty = loyaltyCounters?.count ?? 0;
+        if (loyalty <= 0) {
+          if (!cardsToExile.includes(card.id)) {
+            cardsToExile.push(card.id);
+          }
+          descriptions.push(`${card.cardData.name} is exiled (0 loyalty)`);
+          actionsPerformed = true;
+        }
+      }
+
+      // SBA 704.5m: An Aura attached to an illegal object is put into its owner's graveyard
+      if (isAura(card) && card.attachedToId) {
+        const attachedTo = updatedState.cards.get(card.attachedToId);
+        // Check if the target still exists and is on the battlefield
+        let attachedToOnBattlefield = false;
+        if (attachedTo) {
+          for (const [zoneKey, zone] of updatedState.zones) {
+            if (
+              zoneKey.includes("battlefield") &&
+              zone.cardIds.includes(card.attachedToId!)
+            ) {
+              attachedToOnBattlefield = true;
+              break;
+            }
           }
         }
-      }
-      if (!attachedToOnBattlefield) {
-        // Aura's target is gone - put aura in graveyard
-        if (!cardsToDestroy.includes(card.id)) {
-          cardsToDestroy.push(card.id);
+        if (!attachedToOnBattlefield) {
+          // Aura's target is gone - put aura in graveyard
+          if (!cardsToDestroy.includes(card.id)) {
+            cardsToDestroy.push(card.id);
+          }
+          descriptions.push(
+            `${card.cardData.name} is destroyed (enchanting nothing)`,
+          );
+          actionsPerformed = true;
         }
-        descriptions.push(`${card.cardData.name} is destroyed (enchanting nothing)`);
-        actionsPerformed = true;
       }
-    }
 
-    // SBA 704.5n: An Equipment or Fortification attached to an illegal object is put in the graveyard
-    // Equipment can only be attached to a creature on the battlefield
-    if (isEquipment(card) && card.attachedToId) {
-      const attachedTo = updatedState.cards.get(card.attachedToId);
-      // Check if the attached object is on the battlefield
-      let attachedToOnBattlefield = false;
-      if (attachedTo) {
-        for (const [zoneKey, zone] of updatedState.zones) {
-          if (zoneKey.includes('battlefield') && zone.cardIds.includes(card.attachedToId!)) {
-            attachedToOnBattlefield = true;
-            break;
+      // SBA 704.5n: An Equipment or Fortification attached to an illegal object is put in the graveyard
+      // Equipment can only be attached to a creature on the battlefield
+      if (isEquipment(card) && card.attachedToId) {
+        const attachedTo = updatedState.cards.get(card.attachedToId);
+        // Check if the attached object is on the battlefield
+        let attachedToOnBattlefield = false;
+        if (attachedTo) {
+          for (const [zoneKey, zone] of updatedState.zones) {
+            if (
+              zoneKey.includes("battlefield") &&
+              zone.cardIds.includes(card.attachedToId!)
+            ) {
+              attachedToOnBattlefield = true;
+              break;
+            }
           }
         }
-      }
-      // Equipment becomes unattached if the attached permanent leaves the battlefield
-      // or if it's attached to a non-creature permanent
-      if (!attachedToOnBattlefield || (attachedTo && !isCreature(attachedTo))) {
-        if (!cardsToDestroy.includes(card.id)) {
-          cardsToDestroy.push(card.id);
+        // Equipment becomes unattached if the attached permanent leaves the battlefield
+        // or if it's attached to a non-creature permanent
+        if (
+          !attachedToOnBattlefield ||
+          (attachedTo && !isCreature(attachedTo))
+        ) {
+          if (!cardsToDestroy.includes(card.id)) {
+            cardsToDestroy.push(card.id);
+          }
+          const reason = !attachedToOnBattlefield
+            ? "attached permanent left battlefield"
+            : "attached to non-creature";
+          descriptions.push(`${card.cardData.name} is destroyed (${reason})`);
+          actionsPerformed = true;
         }
-        const reason = !attachedToOnBattlefield ? 'attached permanent left battlefield' : 'attached to non-creature';
-        descriptions.push(`${card.cardData.name} is destroyed (${reason})`);
-        actionsPerformed = true;
       }
     }
 
     // SBA 704.5q: If a permanent has both +1/+1 and -1/-1 counters, remove N of each
     // where N is the smaller of the two counts
-    const plusOneCounters = card.counters.find(c => c.type === '+1/+1');
-    const minusOneCounters = card.counters.find(c => c.type === '-1/-1');
-    if (plusOneCounters && minusOneCounters && plusOneCounters.count > 0 && minusOneCounters.count > 0) {
-      const removeCount = Math.min(plusOneCounters.count, minusOneCounters.count);
-      const updatedCard = { ...card };
-      updatedCard.counters = updatedCard.counters.map(c => {
-        if (c.type === '+1/+1') {
-          return { ...c, count: c.count - removeCount };
-        }
-        if (c.type === '-1/-1') {
-          return { ...c, count: c.count - removeCount };
-        }
-        return c;
-      }).filter(c => c.count > 0);
-      updatedState.cards.set(card.id, updatedCard);
-      descriptions.push(`${card.cardData.name}: Removed ${removeCount} +1/+1 and ${removeCount} -1/-1 counters`);
-      actionsPerformed = true;
+    if (isOnBattlefield) {
+      const plusOneCounters = card.counters.find((c) => c.type === "+1/+1");
+      const minusOneCounters = card.counters.find((c) => c.type === "-1/-1");
+      if (
+        plusOneCounters &&
+        minusOneCounters &&
+        plusOneCounters.count > 0 &&
+        minusOneCounters.count > 0
+      ) {
+        const removeCount = Math.min(
+          plusOneCounters.count,
+          minusOneCounters.count,
+        );
+        const updatedCard = { ...card };
+        updatedCard.counters = updatedCard.counters
+          .map((c) => {
+            if (c.type === "+1/+1") {
+              return { ...c, count: c.count - removeCount };
+            }
+            if (c.type === "-1/-1") {
+              return { ...c, count: c.count - removeCount };
+            }
+            return c;
+          })
+          .filter((c) => c.count > 0);
+        updatedState.cards.set(card.id, updatedCard);
+        descriptions.push(
+          `${card.cardData.name}: Removed ${removeCount} +1/+1 and ${removeCount} -1/-1 counters`,
+        );
+        actionsPerformed = true;
+      }
     }
   }
 
@@ -257,16 +301,17 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
 
   // Check for legendary rule (SBA 704.5j)
   // Two legendary permanents with the same name - keep one, destroy the rest
-  const legendaryPermanents = cardsToCheck.filter(card => {
+  const legendaryPermanents = cardsToCheck.filter((card) => {
     // Check if card is on battlefield by looking in zones
     let isOnBattlefield = false;
     for (const [zoneKey, zone] of updatedState.zones) {
-      if (zoneKey.includes('battlefield') && zone.cardIds.includes(card.id)) {
+      if (zoneKey.includes("battlefield") && zone.cardIds.includes(card.id)) {
         isOnBattlefield = true;
         break;
       }
     }
-    const isLegendary = card.cardData.type_line?.toLowerCase().includes('legendary') ?? false;
+    const isLegendary =
+      card.cardData.type_line?.toLowerCase().includes("legendary") ?? false;
     return isOnBattlefield && isLegendary;
   });
 
@@ -286,7 +331,9 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         if (destroyResult.success) {
           updatedState = destroyResult.state;
           const card = updatedState.cards.get(cardIds[i]);
-          descriptions.push(`Destroyed ${card?.cardData.name} (legendary rule)`);
+          descriptions.push(
+            `Destroyed ${card?.cardData.name} (legendary rule)`,
+          );
           actionsPerformed = true;
         }
       }
@@ -295,11 +342,24 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
 
   // Check for world rule (SBA 704.5k)
   // Two world permanents exist - destroy the older one
-  const worldPermanents = cardsToCheck.filter(card => {
-    return card.cardData.type_line?.toLowerCase().includes('world') ?? false;
+  const worldPermanents = cardsToCheck.filter((card) => {
+    let isOnBattlefield = false;
+    for (const [zoneKey, zone] of updatedState.zones) {
+      if (zoneKey.includes("battlefield") && zone.cardIds.includes(card.id)) {
+        isOnBattlefield = true;
+        break;
+      }
+    }
+    return (
+      isOnBattlefield &&
+      (card.cardData.type_line?.toLowerCase().includes("world") ?? false)
+    );
   });
 
-  const worldNameGroups = new Map<string, { card: CardInstance; timestamp: number }[]>();
+  const worldNameGroups = new Map<
+    string,
+    { card: CardInstance; timestamp: number }[]
+  >();
   for (const card of worldPermanents) {
     const name = card.cardData.name.toLowerCase();
     const existing = worldNameGroups.get(name) || [];
@@ -315,7 +375,9 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         const destroyResult = destroyCard(updatedState, cards[i].card.id);
         if (destroyResult.success) {
           updatedState = destroyResult.state;
-          descriptions.push(`Destroyed ${cards[i].card.cardData.name} (world rule)`);
+          descriptions.push(
+            `Destroyed ${cards[i].card.cardData.name} (world rule)`,
+          );
           actionsPerformed = true;
         }
       }
@@ -325,11 +387,11 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
   // Check for planeswalker uniqueness (SBA 704.5j variant)
   // A player can only control one planeswalker of each type
   // Only check planeswalkers on the battlefield
-  const planeswalkers = cardsToCheck.filter(card => {
+  const planeswalkers = cardsToCheck.filter((card) => {
     // Check if card is on battlefield by looking in zones
     let isOnBattlefield = false;
     for (const [zoneKey, zone] of updatedState.zones) {
-      if (zoneKey.includes('battlefield') && zone.cardIds.includes(card.id)) {
+      if (zoneKey.includes("battlefield") && zone.cardIds.includes(card.id)) {
         isOnBattlefield = true;
         break;
       }
@@ -340,9 +402,9 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
 
   for (const pw of planeswalkers) {
     // Extract planeswalker type from type line (e.g., "Jace" from "Legendary Planeswalker - Jace")
-    const typeLine = pw.cardData.type_line || '';
+    const typeLine = pw.cardData.type_line || "";
     // Handle both em dash and regular hyphen
-    const pwType = typeLine.replace(/Legendary Planeswalker [-—] /i, '').trim();
+    const pwType = typeLine.replace(/Legendary Planeswalker [-—] /i, "").trim();
 
     const existing = pwTypeGroups.get(pwType) || [];
     existing.push(pw.id);
@@ -357,7 +419,9 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
         if (destroyResult.success) {
           updatedState = destroyResult.state;
           const card = updatedState.cards.get(cardIds[i]);
-          descriptions.push(`Destroyed ${card?.cardData.name} (planeswalker uniqueness)`);
+          descriptions.push(
+            `Destroyed ${card?.cardData.name} (planeswalker uniqueness)`,
+          );
           actionsPerformed = true;
         }
       }
@@ -367,7 +431,7 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
   // Check win condition after all SBAs
   // Always check win condition in case players were already marked as lost
   updatedState = checkWinCondition(updatedState);
-  if (updatedState.status === 'completed' && state.status !== 'completed') {
+  if (updatedState.status === "completed" && state.status !== "completed") {
     actionsPerformed = true;
   }
 
@@ -383,15 +447,15 @@ export function checkStateBasedActions(state: GameState): StateBasedActionResult
  */
 function checkWinCondition(state: GameState): GameState {
   const activePlayers = Array.from(state.players.values()).filter(
-    (p) => !p.hasLost
+    (p) => !p.hasLost,
   );
 
   if (activePlayers.length === 1) {
     return {
       ...state,
-      status: 'completed' as const,
+      status: "completed" as const,
       winners: [activePlayers[0].id],
-      endReason: 'All other players have lost the game',
+      endReason: "All other players have lost the game",
       lastModifiedAt: Date.now(),
     };
   }
@@ -400,9 +464,9 @@ function checkWinCondition(state: GameState): GameState {
     // Draw game
     return {
       ...state,
-      status: 'completed' as const,
+      status: "completed" as const,
       winners: [],
-      endReason: 'All players lost the game simultaneously',
+      endReason: "All players lost the game simultaneously",
       lastModifiedAt: Date.now(),
     };
   }
@@ -425,14 +489,18 @@ export function canDraw(state: GameState, playerId: PlayerId): boolean {
  */
 export function drawWithSBAChecking(
   state: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): { success: boolean; state: GameState; description: string } {
   const libraryKey = `${playerId}-library`;
   const library = state.zones.get(libraryKey);
   const player = state.players.get(playerId);
 
   if (!library || !player) {
-    return { success: false, state, description: 'Player or library not found' };
+    return {
+      success: false,
+      state,
+      description: "Player or library not found",
+    };
   }
 
   if (library.cardIds.length === 0) {
@@ -442,10 +510,10 @@ export function drawWithSBAChecking(
       players: new Map(state.players).set(playerId, {
         ...player,
         hasLost: true,
-        lossReason: 'Attempted to draw from empty library',
+        lossReason: "Attempted to draw from empty library",
       }),
     };
-    
+
     return {
       success: false,
       state: checkWinCondition(updatedState),
@@ -454,5 +522,5 @@ export function drawWithSBAChecking(
   }
 
   // Normal draw - handled by drawCards in keyword-actions
-  return { success: true, state, description: 'Draw available' };
+  return { success: true, state, description: "Draw available" };
 }

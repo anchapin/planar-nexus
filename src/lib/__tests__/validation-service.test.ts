@@ -3,22 +3,22 @@ import {
   type Player,
   type CardInstance,
   Phase,
-} from '@/lib/game-state/types';
-import { ValidationService } from '@/lib/validation-service';
-import { ScryfallCard } from '@/app/actions';
+} from "@/lib/game-state/types";
+import { ValidationService } from "@/lib/validation-service";
+import { ScryfallCard } from "@/app/actions";
 
-describe('ValidationService', () => {
+describe("ValidationService", () => {
   let gameState: GameState;
   let playerId: string;
   let cardId: string;
 
   beforeEach(() => {
-    playerId = 'player1';
-    cardId = 'card1';
+    playerId = "player1";
+    cardId = "card1";
 
     const player: Player = {
       id: playerId,
-      name: 'Player 1',
+      name: "Player 1",
       life: 20,
       poisonCounters: 0,
       commanderDamage: new Map(),
@@ -50,12 +50,12 @@ describe('ValidationService', () => {
 
     const card: CardInstance = {
       id: cardId,
-      oracleId: 'oracle1',
+      oracleId: "oracle1",
       cardData: {
-        name: 'Plains',
-        type_line: 'Basic Land — Plains',
+        name: "Plains",
+        type_line: "Basic Land — Plains",
         cmc: 0,
-        oracle_text: '({T}: Add {W}.)',
+        oracle_text: "({T}: Add {W}.)",
       } as any as ScryfallCard,
       currentFaceIndex: 0,
       isFaceDown: false,
@@ -74,29 +74,36 @@ describe('ValidationService', () => {
       attachedCardIds: [],
       enteredBattlefieldTimestamp: 0,
       attachedTimestamp: null,
+      chosenBasicLandType: null,
       isToken: false,
       tokenData: null,
     };
 
     gameState = {
-      gameId: 'game1',
+      gameId: "game1",
       players: new Map([[playerId, player]]),
       cards: new Map([[cardId, card]]),
       zones: new Map([
-        [`${playerId}-hand`, {
-          type: 'hand',
-          playerId: playerId,
-          cardIds: [cardId],
-          isRevealed: false,
-          visibleTo: [playerId],
-        }],
-        [`${playerId}-battlefield`, {
-          type: 'battlefield',
-          playerId: playerId,
-          cardIds: [],
-          isRevealed: true,
-          visibleTo: [],
-        }]
+        [
+          `${playerId}-hand`,
+          {
+            type: "hand",
+            playerId: playerId,
+            cardIds: [cardId],
+            isRevealed: false,
+            visibleTo: [playerId],
+          },
+        ],
+        [
+          `${playerId}-battlefield`,
+          {
+            type: "battlefield",
+            playerId: playerId,
+            cardIds: [],
+            isRevealed: true,
+            visibleTo: [],
+          },
+        ],
       ]),
       stack: [],
       turn: {
@@ -116,123 +123,143 @@ describe('ValidationService', () => {
       waitingChoice: null,
       priorityPlayerId: playerId,
       consecutivePasses: 0,
-      status: 'in_progress',
+      status: "in_progress",
       winners: [],
       endReason: null,
-      format: 'standard',
+      format: "standard",
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
     };
   });
 
-  describe('canPlayLand', () => {
-    it('should allow playing a land when all conditions are met', () => {
+  describe("canPlayLand", () => {
+    it("should allow playing a land when all conditions are met", () => {
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(true);
     });
 
-    it('should not allow playing a land when it is not the player\'s turn', () => {
-      gameState.turn.activePlayerId = 'player2';
+    it("should not allow playing a land when it is not the player's turn", () => {
+      gameState.turn.activePlayerId = "player2";
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('It is not your turn.');
+      expect(result.reason).toBe("It is not your turn.");
     });
 
-    it('should not allow playing a land when the player does not have priority', () => {
-      gameState.priorityPlayerId = 'player2';
+    it("should not allow playing a land when the player does not have priority", () => {
+      gameState.priorityPlayerId = "player2";
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('You do not have priority.');
+      expect(result.reason).toBe("You do not have priority.");
     });
 
-    it('should not allow playing a land outside of main phases', () => {
+    it("should not allow playing a land outside of main phases", () => {
       gameState.turn.currentPhase = Phase.BEGIN_COMBAT;
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('Lands can only be played during main phases.');
+      expect(result.reason).toBe(
+        "Lands can only be played during main phases.",
+      );
     });
 
-    it('should not allow playing a land when the stack is not empty', () => {
+    it("should not allow playing a land when the stack is not empty", () => {
       gameState.stack.push({} as any);
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('You can only play a land when the stack is empty.');
+      expect(result.reason).toBe(
+        "You can only play a land when the stack is empty.",
+      );
     });
 
-    it('should not allow playing a land if already played the limit for the turn', () => {
+    it("should not allow playing a land if already played the limit for the turn", () => {
       const player = gameState.players.get(playerId)!;
       player.landsPlayedThisTurn = 1;
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('Already played a land this turn.');
+      expect(result.reason).toBe("Already played a land this turn.");
     });
 
-    it('should not allow playing a land if card is not in hand', () => {
+    it("should not allow playing a land if card is not in hand", () => {
       gameState.zones.get(`${playerId}-hand`)!.cardIds = [];
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('Card not in hand.');
+      expect(result.reason).toBe("Card not in hand.");
     });
   });
 
-  describe('canCastSpell', () => {
+  describe("canCastSpell", () => {
     beforeEach(() => {
       const card = gameState.cards.get(cardId)!;
       card.cardData = {
-        name: 'Shock',
-        type_line: 'Instant',
+        name: "Shock",
+        type_line: "Instant",
         cmc: 1,
-        oracle_text: 'Shock deals 2 damage to any target.',
+        oracle_text: "Shock deals 2 damage to any target.",
       } as any;
     });
 
-    it('should allow casting an instant with enough mana', () => {
+    it("should allow casting an instant with enough mana", () => {
       const player = gameState.players.get(playerId)!;
       player.manaPool.red = 1;
-      const result = ValidationService.canCastSpell(gameState, playerId, cardId);
+      const result = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
       expect(result.isValid).toBe(true);
     });
 
-    it('should not allow casting a spell without enough mana', () => {
-      const result = ValidationService.canCastSpell(gameState, playerId, cardId);
+    it("should not allow casting a spell without enough mana", () => {
+      const result = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('Not enough mana.');
+      expect(result.reason).toBe("Not enough mana.");
     });
 
-    it('should allow casting a sorcery-speed spell during main phase with empty stack', () => {
+    it("should allow casting a sorcery-speed spell during main phase with empty stack", () => {
       const card = gameState.cards.get(cardId)!;
-      card.cardData.type_line = 'Sorcery';
+      card.cardData.type_line = "Sorcery";
       const player = gameState.players.get(playerId)!;
       player.manaPool.generic = 1;
-      
-      const result = ValidationService.canCastSpell(gameState, playerId, cardId);
+
+      const result = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
       expect(result.isValid).toBe(true);
     });
 
-    it('should not allow casting a sorcery-speed spell during combat', () => {
+    it("should not allow casting a sorcery-speed spell during combat", () => {
       const card = gameState.cards.get(cardId)!;
-      card.cardData.type_line = 'Sorcery';
+      card.cardData.type_line = "Sorcery";
       const player = gameState.players.get(playerId)!;
       player.manaPool.generic = 1;
       gameState.turn.currentPhase = Phase.BEGIN_COMBAT;
-      
-      const result = ValidationService.canCastSpell(gameState, playerId, cardId);
+
+      const result = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('Not a main phase.');
+      expect(result.reason).toBe("Not a main phase.");
     });
   });
 
-  describe('canPassPriority', () => {
-    it('should allow passing priority when player has it', () => {
+  describe("canPassPriority", () => {
+    it("should allow passing priority when player has it", () => {
       const result = ValidationService.canPassPriority(gameState, playerId);
       expect(result.isValid).toBe(true);
     });
 
-    it('should not allow passing priority when player does not have it', () => {
-      gameState.priorityPlayerId = 'player2';
+    it("should not allow passing priority when player does not have it", () => {
+      gameState.priorityPlayerId = "player2";
       const result = ValidationService.canPassPriority(gameState, playerId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe('You do not have priority.');
+      expect(result.reason).toBe("You do not have priority.");
     });
   });
 });

@@ -80,6 +80,10 @@ export interface CardInstance {
   /** When this card became attached to its current attachment */
   attachedTimestamp: number | null;
 
+  // Land-specific
+  /** For lands like Multiversal Passage - the chosen basic land type this land is */
+  chosenBasicLandType: string | null;
+
   // Token-specific
   /** Whether this is a token */
   isToken: boolean;
@@ -456,7 +460,12 @@ export interface GameAction {
  */
 export type ActionData =
   | { cardId: CardInstanceId; targetId?: string | PlayerId } // cast_spell, play_land, activate_ability
-  | { attackers: Array<{ cardId: CardInstanceId; defenderId: PlayerId | CardInstanceId }> } // declare_attackers
+  | {
+      attackers: Array<{
+        cardId: CardInstanceId;
+        defenderId: PlayerId | CardInstanceId;
+      }>;
+    } // declare_attackers
   | { blockers: Array<{ cardId: CardInstanceId; attackerId: CardInstanceId }> } // declare_blockers
   | { amount: number; targetId: string | PlayerId; sourceId?: CardInstanceId } // deal_damage, gain_life
   | { counterType: string; amount: number; cardId: CardInstanceId } // add_counter, remove_counter
@@ -516,7 +525,13 @@ export interface AIPermanent {
   /** Card name */
   name: string;
   /** Permanent type */
-  type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker' | 'other';
+  type:
+    | "creature"
+    | "land"
+    | "artifact"
+    | "enchantment"
+    | "planeswalker"
+    | "other";
   /** Controller player ID */
   controller: PlayerId;
   /** Whether the permanent is tapped */
@@ -600,7 +615,7 @@ export interface AITurnInfo {
   /** ID of the active player */
   currentPlayer: PlayerId;
   /** Current phase (simplified for AI) */
-  phase: 'beginning' | 'precombat_main' | 'combat' | 'postcombat_main' | 'end';
+  phase: "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end";
   /** Current step within phase */
   step?: string;
   /** Player who currently has priority */
@@ -618,7 +633,7 @@ export interface AIStackObject {
   /** Controller player ID */
   controller: PlayerId;
   /** Object type */
-  type: 'spell' | 'ability';
+  type: "spell" | "ability";
   /** Target IDs */
   targets?: string[];
   /** Name of the spell/ability */
@@ -645,14 +660,16 @@ export interface AICombatState {
     hasDoubleStrike: boolean;
   }[];
   /** Blocking creatures - Map from attacker ID to blockers */
-  blockers: { [attackerId: string]: {
-    cardInstanceId: string;
-    attackerId: string;
-    damageToDeal: number;
-    blockerOrder: number;
-    hasFirstStrike: boolean;
-    hasDoubleStrike: boolean;
-  }[] };
+  blockers: {
+    [attackerId: string]: {
+      cardInstanceId: string;
+      attackerId: string;
+      damageToDeal: number;
+      blockerOrder: number;
+      hasFirstStrike: boolean;
+      hasDoubleStrike: boolean;
+    }[];
+  };
 }
 
 /**
@@ -686,18 +703,18 @@ export type UnifiedGameState = AIGameState;
 /**
  * Phase mapping from engine to AI format
  */
-export const PHASE_MAPPING: Record<Phase, AITurnInfo['phase']> = {
-  [Phase.UNTAP]: 'beginning',
-  [Phase.UPKEEP]: 'beginning',
-  [Phase.DRAW]: 'beginning',
-  [Phase.PRECOMBAT_MAIN]: 'precombat_main',
-  [Phase.BEGIN_COMBAT]: 'combat',
-  [Phase.DECLARE_ATTACKERS]: 'combat',
-  [Phase.DECLARE_BLOCKERS]: 'combat',
-  [Phase.COMBAT_DAMAGE_FIRST_STRIKE]: 'combat',
-  [Phase.COMBAT_DAMAGE]: 'combat',
-  [Phase.END_COMBAT]: 'combat',
-  [Phase.POSTCOMBAT_MAIN]: 'postcombat_main',
-  [Phase.END]: 'end',
-  [Phase.CLEANUP]: 'end',
+export const PHASE_MAPPING: Record<Phase, AITurnInfo["phase"]> = {
+  [Phase.UNTAP]: "beginning",
+  [Phase.UPKEEP]: "beginning",
+  [Phase.DRAW]: "beginning",
+  [Phase.PRECOMBAT_MAIN]: "precombat_main",
+  [Phase.BEGIN_COMBAT]: "combat",
+  [Phase.DECLARE_ATTACKERS]: "combat",
+  [Phase.DECLARE_BLOCKERS]: "combat",
+  [Phase.COMBAT_DAMAGE_FIRST_STRIKE]: "combat",
+  [Phase.COMBAT_DAMAGE]: "combat",
+  [Phase.END_COMBAT]: "combat",
+  [Phase.POSTCOMBAT_MAIN]: "postcombat_main",
+  [Phase.END]: "end",
+  [Phase.CLEANUP]: "end",
 };

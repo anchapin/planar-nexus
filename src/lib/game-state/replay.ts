@@ -1,8 +1,8 @@
 /**
  * @fileOverview Replay system for recording and replaying games
- * 
+ *
  * Issue #32: Phase 2.3: Create in-memory replay system
- * 
+ *
  * Provides:
  * - Recording game actions
  * - Storing action sequence
@@ -11,7 +11,8 @@
  * - Export replay file
  */
 
-import type { GameState, GameAction, ActionType, PlayerId } from './types';
+import type { GameState, GameAction, ActionType, PlayerId } from "./types";
+import { mapReplacer, mapReviver } from "./state-serialization";
 
 /**
  * A recorded action in the replay
@@ -84,12 +85,12 @@ export interface ReplayPlayer {
 /**
  * Replay events for external listeners
  */
-export type ReplayEventType = 
-  | 'playback_started'
-  | 'playback_paused'
-  | 'playback_position_changed'
-  | 'playback_ended'
-  | 'action_added';
+export type ReplayEventType =
+  | "playback_started"
+  | "playback_paused"
+  | "playback_position_changed"
+  | "playback_ended"
+  | "action_added";
 
 export interface ReplayEvent {
   type: ReplayEventType;
@@ -118,10 +119,10 @@ export class ReplaySystem {
     format: string,
     playerNames: string[],
     startingLife: number = 20,
-    isCommander: boolean = false
+    isCommander: boolean = false,
   ): Replay {
     const now = Date.now();
-    
+
     this.replay = {
       id: `replay-${now}-${Math.random().toString(36).substr(2, 9)}`,
       metadata: {
@@ -141,7 +142,7 @@ export class ReplaySystem {
     this.sequenceCounter = 0;
 
     this.emitEvent({
-      type: 'playback_started',
+      type: "playback_started",
       replayId: this.replay.id,
       timestamp: now,
     });
@@ -155,14 +156,14 @@ export class ReplaySystem {
   recordAction(
     action: GameAction,
     resultingState: GameState,
-    description: string
+    description: string,
   ): ReplayAction {
     if (!this.replay) {
-      throw new Error('No active replay. Call createReplay() first.');
+      throw new Error("No active replay. Call createReplay() first.");
     }
 
     this.sequenceCounter++;
-    
+
     const replayAction: ReplayAction = {
       sequenceNumber: this.sequenceCounter,
       action,
@@ -176,14 +177,14 @@ export class ReplaySystem {
     this.replay.lastModifiedAt = Date.now();
 
     // Update game end info if game is completed
-    if (resultingState.status === 'completed') {
+    if (resultingState.status === "completed") {
       this.replay.metadata.winners = resultingState.winners;
       this.replay.metadata.gameEndDate = Date.now();
       this.replay.metadata.endReason = resultingState.endReason || undefined;
     }
 
     this.emitEvent({
-      type: 'action_added',
+      type: "action_added",
       replayId: this.replay.id,
       position: this.replay.totalActions - 1,
       timestamp: Date.now(),
@@ -228,12 +229,15 @@ export class ReplaySystem {
    */
   setPosition(position: number): GameState | null {
     if (!this.replay) return null;
-    
-    const validPosition = Math.max(0, Math.min(position, this.replay.actions.length - 1));
+
+    const validPosition = Math.max(
+      0,
+      Math.min(position, this.replay.actions.length - 1),
+    );
     this.replay.currentPosition = validPosition;
 
     this.emitEvent({
-      type: 'playback_position_changed',
+      type: "playback_position_changed",
       replayId: this.replay.id,
       position: validPosition,
       timestamp: Date.now(),
@@ -278,10 +282,10 @@ export class ReplaySystem {
    */
   jumpToTurn(turnNumber: number): GameState | null {
     if (!this.replay) return null;
-    
+
     // Find the first action of the specified turn
     const targetPosition = this.replay.actions.findIndex(
-      action => action.resultingState.turn.turnNumber === turnNumber
+      (action) => action.resultingState.turn.turnNumber === turnNumber,
     );
 
     if (targetPosition === -1) return null;
@@ -323,10 +327,10 @@ export class ReplaySystem {
    */
   exportToJSON(): string {
     if (!this.replay) {
-      throw new Error('No active replay to export');
+      throw new Error("No active replay to export");
     }
 
-    return JSON.stringify(this.replay, null, 2);
+    return JSON.stringify(this.replay, mapReplacer, 2);
   }
 
   /**
@@ -334,7 +338,7 @@ export class ReplaySystem {
    */
   exportToBlob(): Blob {
     const json = this.exportToJSON();
-    return new Blob([json], { type: 'application/json' });
+    return new Blob([json], { type: "application/json" });
   }
 
   /**
@@ -342,10 +346,10 @@ export class ReplaySystem {
    */
   exportToFile(filename?: string): void {
     if (!this.replay) return;
-    
+
     const blob = this.exportToBlob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = filename || `replay-${this.replay.id}.json`;
     document.body.appendChild(a);
@@ -358,7 +362,7 @@ export class ReplaySystem {
    * Import replay from JSON string
    */
   importFromJSON(json: string): Replay {
-    const imported = JSON.parse(json) as Replay;
+    const imported = JSON.parse(json, mapReviver) as Replay;
     this.replay = imported;
     this.sequenceCounter = imported.totalActions;
     return imported;
@@ -401,7 +405,7 @@ export class ReplaySystem {
   close(): void {
     if (this.replay) {
       this.emitEvent({
-        type: 'playback_ended',
+        type: "playback_ended",
         replayId: this.replay.id,
         timestamp: Date.now(),
       });
@@ -414,7 +418,7 @@ export class ReplaySystem {
    * Emit event to all listeners
    */
   private emitEvent(event: ReplayEvent): void {
-    this.listeners.forEach(listener => listener(event));
+    this.listeners.forEach((listener) => listener(event));
   }
 }
 
@@ -427,7 +431,7 @@ export const replaySystem = new ReplaySystem();
 export function createGameAction(
   type: ActionType,
   playerId: PlayerId,
-  data: Record<string, unknown> = {}
+  data: Record<string, unknown> = {},
 ): GameAction {
   return {
     type,
@@ -445,39 +449,39 @@ export function describeAction(action: GameAction, playerName: string): string {
   const actionData = data as Record<string, unknown>;
 
   switch (type) {
-    case 'cast_spell':
-      return `${playerName} cast ${(actionData.cardName as string) || 'a spell'}`;
-    case 'activate_ability':
-      return `${playerName} activated ${(actionData.abilityName as string) || 'an ability'}`;
-    case 'play_land':
+    case "cast_spell":
+      return `${playerName} cast ${(actionData.cardName as string) || "a spell"}`;
+    case "activate_ability":
+      return `${playerName} activated ${(actionData.abilityName as string) || "an ability"}`;
+    case "play_land":
       return `${playerName} played a land`;
-    case 'draw_card':
+    case "draw_card":
       return `${playerName} drew a card`;
-    case 'discard_card':
-      return `${playerName} discarded ${(actionData.cardName as string) || 'a card'}`;
-    case 'declare_attackers':
+    case "discard_card":
+      return `${playerName} discarded ${(actionData.cardName as string) || "a card"}`;
+    case "declare_attackers":
       return `${playerName} declared attackers`;
-    case 'declare_blockers':
+    case "declare_blockers":
       return `${playerName} declared blockers`;
-    case 'tap_card':
-      return `${playerName} tapped ${(actionData.cardName as string) || 'a card'}`;
-    case 'untap_card':
-      return `${playerName} untapped ${(actionData.cardName as string) || 'a card'}`;
-    case 'destroy_card':
-      return `${(actionData.cardName as string) || 'A card'} was destroyed`;
-    case 'exile_card':
-      return `${(actionData.cardName as string) || 'A card'} was exiled`;
-    case 'gain_life':
+    case "tap_card":
+      return `${playerName} tapped ${(actionData.cardName as string) || "a card"}`;
+    case "untap_card":
+      return `${playerName} untapped ${(actionData.cardName as string) || "a card"}`;
+    case "destroy_card":
+      return `${(actionData.cardName as string) || "A card"} was destroyed`;
+    case "exile_card":
+      return `${(actionData.cardName as string) || "A card"} was exiled`;
+    case "gain_life":
       return `${playerName} gained ${(actionData.amount as number) || 0} life`;
-    case 'lose_life':
+    case "lose_life":
       return `${playerName} lost ${(actionData.amount as number) || 0} life`;
-    case 'deal_damage':
-      return `${playerName} dealt ${(actionData.amount as number) || 0} damage to ${(actionData.target as string) || 'target'}`;
-    case 'mulligan':
+    case "deal_damage":
+      return `${playerName} dealt ${(actionData.amount as number) || 0} damage to ${(actionData.target as string) || "target"}`;
+    case "mulligan":
       return `${playerName} took a mulligan`;
-    case 'concede':
+    case "concede":
       return `${playerName} conceded the game`;
-    case 'pass_priority':
+    case "pass_priority":
       return `${playerName} passed priority`;
     default:
       return `${playerName} performed action: ${type}`;

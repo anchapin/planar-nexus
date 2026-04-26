@@ -5,13 +5,13 @@ import { CardState } from "@/types/game";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Hand,
-  SortAsc,
-  Layers,
-  X
-} from "lucide-react";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Hand, SortAsc, Layers, X } from "lucide-react";
 import Image from "next/image";
 
 export type HandSortOption = "name" | "manaCost" | "type" | "color";
@@ -41,7 +41,7 @@ function CardDisplay({
   isSelectable,
   onClick,
   showManaCost = true,
-  showType = true
+  showType = true,
 }: CardDisplayProps) {
   const { card: scryfallCard } = card;
   const manaCost = scryfallCard.mana_cost || "";
@@ -62,7 +62,7 @@ function CardDisplay({
       <Badge
         key={color}
         variant="outline"
-        className={`${style.bg} text-xs px-1.5 py-0 h-4 border-${color === 'B' ? 'gray' : color.toLowerCase()}-500/30`}
+        className={`${style.bg} text-xs px-1.5 py-0 h-4 border-${color === "B" ? "gray" : color.toLowerCase()}-500/30`}
       >
         {style.text}
       </Badge>
@@ -78,13 +78,14 @@ function CardDisplay({
             disabled={!isSelectable}
             className={`
               relative aspect-[5/7] w-full min-w-[70px] max-w-[100px] sm:min-w-[80px] sm:max-w-[120px] md:min-w-[100px] md:max-w-[140px] lg:max-w-[160px]
-              transform transition-all duration-200
-              hover:scale-105 hover:-translate-y-1
+              transform transition-all duration-200 ease-out
+              hover:scale-[1.35] hover:-translate-y-4 hover:z-20 hover:shadow-2xl
               focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background
               ${isSelectable ? "cursor-pointer" : "cursor-default"}
               ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" : ""}
               touch-manipulation min-h-[60px] sm:min-h-[80px] md:min-h-[100px]
             `}
+            data-testid={`hand-card-${card.card.name.toLowerCase().replace(/\s+/g, "-")}`}
             aria-label={`Card: ${card.card.name}${isSelected ? ", selected" : ""}`}
             aria-pressed={isSelectable ? isSelected : undefined}
             role={isSelectable ? "checkbox" : "img"}
@@ -96,13 +97,15 @@ function CardDisplay({
               }
             }}
           >
-            {scryfallCard.image_uris?.large || scryfallCard.image_uris?.normal ? (
+            {scryfallCard.image_uris?.large ||
+            scryfallCard.image_uris?.normal ? (
               <Image
-                src={scryfallCard.image_uris?.normal || ''}
+                src={scryfallCard.image_uris?.normal || ""}
                 alt={scryfallCard.name}
                 fill
                 sizes="(max-width: 120px) 100vw, 120px"
-                className="rounded-lg object-cover shadow-md" loading="lazy"
+                className="rounded-lg object-cover shadow-md"
+                loading="lazy"
               />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30 p-2 shadow-md">
@@ -110,7 +113,9 @@ function CardDisplay({
                   {scryfallCard.name}
                 </p>
                 {showManaCost && manaCost && (
-                  <p className="mt-1 text-xs text-muted-foreground">{manaCost}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {manaCost}
+                  </p>
                 )}
               </div>
             )}
@@ -123,11 +128,14 @@ function CardDisplay({
             )}
 
             {/* Mana cost overlay */}
-            {showManaCost && manaCost && scryfallCard.image_uris?.large || scryfallCard.image_uris?.normal && (
-              <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5">
-                <span className="text-xs font-mono text-white">{manaCost}</span>
-              </div>
-            )}
+            {(showManaCost && manaCost && scryfallCard.image_uris?.large) ||
+              (scryfallCard.image_uris?.normal && (
+                <div className="absolute bottom-1 left-1 rounded bg-black/70 px-1.5 py-0.5">
+                  <span className="text-xs font-mono text-white">
+                    {manaCost}
+                  </span>
+                </div>
+              ))}
 
             {/* Type indicator */}
             {showType && (
@@ -140,7 +148,9 @@ function CardDisplay({
         <TooltipContent side="top" className="max-w-xs">
           <div className="space-y-1">
             <p className="font-semibold">{scryfallCard.name}</p>
-            {typeLine && <p className="text-xs text-muted-foreground">{typeLine}</p>}
+            {typeLine && (
+              <p className="text-xs text-muted-foreground">{typeLine}</p>
+            )}
             {manaCost && <p className="text-xs">{manaCost}</p>}
           </div>
         </TooltipContent>
@@ -170,11 +180,14 @@ export function HandDisplay({
   onCardSelect,
   onCardClick,
   selectedCardIds = [],
-  className = ""
+  className = "",
 }: HandDisplayProps) {
   const [sortOption, setSortOption] = React.useState<HandSortOption>("name");
-  const [displayMode, setDisplayMode] = React.useState<HandDisplayMode>("overlapping");
-  const [internalSelection, setInternalSelection] = React.useState<Set<string>>(new Set(selectedCardIds));
+  const [displayMode, setDisplayMode] =
+    React.useState<HandDisplayMode>("overlapping");
+  const [internalSelection, setInternalSelection] = React.useState<Set<string>>(
+    new Set(selectedCardIds),
+  );
 
   // Update internal selection when external selection changes
   React.useEffect(() => {
@@ -184,31 +197,34 @@ export function HandDisplay({
   // Sort cards based on current sort option
   const sortedCards = React.useMemo(() => {
     const sorted = [...cards];
-    
+
     // Define sort functions outside switch to avoid lexical declarations in case blocks
-    const sortByName = (a: CardState, b: CardState) => a.card.name.localeCompare(b.card.name);
-    
+    const sortByName = (a: CardState, b: CardState) =>
+      a.card.name.localeCompare(b.card.name);
+
     const sortByManaCost = (a: CardState, b: CardState) => {
       const cmcA = a.card.cmc ?? 0;
       const cmcB = b.card.cmc ?? 0;
       return cmcA - cmcB;
     };
-    
+
     const sortByType = (a: CardState, b: CardState) => {
       const typeLineA = a.card.type_line ?? "";
       const typeLineB = b.card.type_line ?? "";
       return typeLineA.localeCompare(typeLineB);
     };
-    
+
     const sortByColor = (a: CardState, b: CardState) => {
       const colorOrder = ["W", "U", "B", "R", "G"];
       const colorsA = a.card.colors ?? [];
       const colorsB = b.card.colors ?? [];
-      const colorIndexA = colorsA.length > 0 ? colorOrder.indexOf(colorsA[0]) : 999;
-      const colorIndexB = colorsB.length > 0 ? colorOrder.indexOf(colorsB[0]) : 999;
+      const colorIndexA =
+        colorsA.length > 0 ? colorOrder.indexOf(colorsA[0]) : 999;
+      const colorIndexB =
+        colorsB.length > 0 ? colorOrder.indexOf(colorsB[0]) : 999;
       return colorIndexA - colorIndexB;
     };
-    
+
     sorted.sort((a, b) => {
       switch (sortOption) {
         case "name":
@@ -295,7 +311,12 @@ export function HandDisplay({
                     size="sm"
                     className="h-7 w-7 p-0"
                     onClick={() => {
-                      const options: HandSortOption[] = ["name", "manaCost", "type", "color"];
+                      const options: HandSortOption[] = [
+                        "name",
+                        "manaCost",
+                        "type",
+                        "color",
+                      ];
                       const currentIndex = options.indexOf(sortOption);
                       const nextIndex = (currentIndex + 1) % options.length;
                       setSortOption(options[nextIndex]);
@@ -318,13 +339,22 @@ export function HandDisplay({
                     variant="ghost"
                     size="sm"
                     className="h-7 w-7 p-0"
-                    onClick={() => setDisplayMode(displayMode === "overlapping" ? "spread" : "overlapping")}
+                    onClick={() =>
+                      setDisplayMode(
+                        displayMode === "overlapping"
+                          ? "spread"
+                          : "overlapping",
+                      )
+                    }
                   >
                     <Layers className="h-3.5 w-3.5" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Display: {displayMode === "overlapping" ? "Overlapping" : "Spread"}</p>
+                  <p>
+                    Display:{" "}
+                    {displayMode === "overlapping" ? "Overlapping" : "Spread"}
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -354,7 +384,9 @@ export function HandDisplay({
       </div>
 
       {/* Card display area */}
-      <ScrollArea className={`w-full ${displayMode === "overlapping" ? "overflow-x-auto" : ""}`}>
+      <ScrollArea
+        className={`w-full ${displayMode === "overlapping" ? "overflow-x-auto" : ""}`}
+      >
         <div
           className={`
             flex gap-2 p-1
