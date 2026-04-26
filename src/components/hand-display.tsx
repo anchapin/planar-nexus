@@ -85,6 +85,7 @@ function CardDisplay({
               ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" : ""}
               touch-manipulation min-h-[60px] sm:min-h-[80px] md:min-h-[100px]
             `}
+            data-testid={`hand-card-${card.card.name.toLowerCase().replace(/\s+/g, "-")}`}
             aria-label={`Card: ${card.card.name}${isSelected ? ", selected" : ""}`}
             aria-pressed={isSelectable ? isSelected : undefined}
             role={isSelectable ? "checkbox" : "img"}
