@@ -69,10 +69,12 @@ export function ImportExportControls({
   const [importUrl, setImportUrl] = useState("");
   const [activeTab, setActiveTab] = useState<"text" | "url">("text");
   const [isUrlImporting, setIsUrlImporting] = useState(false);
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const handleImportClick = () => {
     onImport(importText, importFormat);
+    setIsImportDialogOpen(false);
   };
 
   const handlePasteFromClipboard = async () => {
@@ -282,7 +284,9 @@ export function ImportExportControls({
       </Button>
 
       <Dialog
+        open={isImportDialogOpen}
         onOpenChange={(open) => {
+          setIsImportDialogOpen(open);
           if (!open) {
             setImportText("");
             setImportUrl("");
@@ -291,7 +295,12 @@ export function ImportExportControls({
         }}
       >
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm" data-testid="import-deck-button">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="import-deck-button"
+            onClick={() => setIsImportDialogOpen(true)}
+          >
             <Upload className="mr-2" />
             Import
           </Button>
@@ -413,17 +422,15 @@ export function ImportExportControls({
           </Tabs>
 
           <DialogFooter>
-            <DialogClose asChild>
-              <Button
-                type="button"
-                onClick={handleImportClick}
-                disabled={isImporting}
-                data-testid="confirm-import-button"
-              >
-                {isImporting && <Loader2 className="mr-2 animate-spin" />}
-                {isImporting ? "Importing..." : "Import"}
-              </Button>
-            </DialogClose>
+            <Button
+              type="button"
+              onClick={handleImportClick}
+              disabled={isImporting}
+              data-testid="confirm-import-button"
+            >
+              {isImporting && <Loader2 className="mr-2 animate-spin" />}
+              {isImporting ? "Importing..." : "Import"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
