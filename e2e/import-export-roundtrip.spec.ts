@@ -63,7 +63,18 @@ test.describe("Import/Export Round Trip", () => {
     await page.getByTestId("confirm-import-button").click();
 
     // Wait for import to complete and cards to appear in deck list
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
+
+    // Debug: check deck count
+    const deckCountText = await page.getByTestId("deck-count").textContent();
+    console.log("Deck count after import:", deckCountText);
+
+    // Debug: check if import dialog is still open
+    const importDialog = page.getByTestId("import-textarea");
+    const isImportDialogVisible = await importDialog
+      .isVisible()
+      .catch(() => false);
+    console.log("Import dialog still visible:", isImportDialogVisible);
 
     // 2. Export (as text)
     await page.getByTestId("export-deck-button").click();
