@@ -823,9 +823,12 @@ export function parseTriggeredAbilities(
   const sentences = oracleText.split(/\.\s*/);
 
   for (const sentence of sentences) {
+    if (!sentence.trim()) continue;
+
     // Look for triggered ability keywords
-    const whenMatch = sentence.match(/\b(when|whenever)\s+(.+?),?\s+(.+)/i);
-    const atMatch = sentence.match(/\bat\s+(?:the\s+)?(.+?),?\s+(.+)/i);
+    // The trigger text is everything between "when/whenever" and the comma before the effect
+    const whenMatch = sentence.match(/\b(when|whenever)\s+(.+?),?\s*,\s*(.+)/i);
+    const atMatch = sentence.match(/\bat\s+(?:the\s+)?(.+?),?\s*,\s*(.+)/i);
 
     if (whenMatch) {
       const [, , triggerText, effectText] = whenMatch;
@@ -940,8 +943,8 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "lifeGain" };
   }
 
-  // If we can't determine the trigger, return null
-  return null;
+// If we can't determine the trigger, return a generic one
+  return { event: "entersBattlefield" };
 }
 
 /**
