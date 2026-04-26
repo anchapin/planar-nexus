@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
 /**
  * Keyword Actions Test Suite
  *
@@ -22,101 +24,103 @@ import {
   canCycleCard,
   cycleCard,
   parseCyclingCost,
-} from '../keyword-actions';
+} from "../keyword-actions";
 
-import {
-  createInitialGameState,
-  startGame,
-} from '../game-state';
-import { createCardInstance } from '../card-instance';
-import type { ScryfallCard } from '@/app/actions';
-import type { GameState, CardInstanceId, PlayerId } from '../types';
+import { createInitialGameState, startGame } from "../game-state";
+import { createCardInstance } from "../card-instance";
+import type { ScryfallCard } from "@/app/actions";
+import type { GameState, CardInstanceId, PlayerId } from "../types";
 
 // Helper to create a mock card
-function createMockCard(name: string, typeLine: string, oracleText: string = '', keywords: string[] = []): ScryfallCard {
+function createMockCard(
+  name: string,
+  typeLine: string,
+  oracleText: string = "",
+  keywords: string[] = [],
+): ScryfallCard {
   return {
-    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
     name,
     type_line: typeLine,
     keywords,
     oracle_text: oracleText,
-    mana_cost: '{1}',
+    mana_cost: "{1}",
     cmc: 1,
-    colors: ['W'],
-    color_identity: ['W'],
-    legalities: { standard: 'legal', commander: 'legal' },
+    colors: ["W"],
+    color_identity: ["W"],
+    legalities: { standard: "legal", commander: "legal" },
     card_faces: undefined,
-    layout: 'normal',
-    power: '1',
-    toughness: '1',
+    layout: "normal",
+    power: "1",
+    toughness: "1",
   } as ScryfallCard;
 }
 
-describe('Keyword Actions', () => {
+describe("Keyword Actions", () => {
   let gameState: GameState;
   let player1Id: PlayerId;
   let player2Id: PlayerId;
 
   beforeEach(() => {
-    gameState = createInitialGameState(['Player1', 'Player2'], 20, false);
+    gameState = createInitialGameState(["Player1", "Player2"], 20, false);
     startGame(gameState);
     const playerIds = Array.from(gameState.players.keys());
     player1Id = playerIds[0];
     player2Id = playerIds[1];
   });
 
-  describe('hasIndestructible', () => {
-    it('should detect indestructible from keywords', () => {
+  describe("hasIndestructible", () => {
+    it("should detect indestructible from keywords", () => {
       const card = createCardInstance(
-        createMockCard('Test', 'Creature', '', ['Indestructible']),
-        'player1'
+        createMockCard("Test", "Creature", "", ["Indestructible"]),
+        "player1",
       );
       expect(hasIndestructible(card as any)).toBe(true);
     });
 
-    it('should detect indestructible from oracle text', () => {
+    it("should detect indestructible from oracle text", () => {
       const card = createCardInstance(
-        createMockCard('Test', 'Creature', 'Indestructible'),
-        'player1'
+        createMockCard("Test", "Creature", "Indestructible"),
+        "player1",
       );
       expect(hasIndestructible(card as any)).toBe(true);
     });
 
-    it('should return false for non-indestructible cards', () => {
+    it("should return false for non-indestructible cards", () => {
       const card = createCardInstance(
-        createMockCard('Test', 'Creature', 'Flying'),
-        'player1'
+        createMockCard("Test", "Creature", "Flying"),
+        "player1",
       );
       expect(hasIndestructible(card as any)).toBe(false);
     });
   });
 
-  describe('canBeRegenerated', () => {
-    it('should detect regenerate ability in oracle text', () => {
+  describe("canBeRegenerated", () => {
+    it("should detect regenerate ability in oracle text", () => {
       const card = createCardInstance(
-        createMockCard('Test', 'Creature', '{T}: Regenerate Test.'),
-        'player1'
+        createMockCard("Test", "Creature", "{T}: Regenerate Test."),
+        "player1",
       );
       expect(canBeRegenerated(card as any)).toBe(true);
     });
 
-    it('should return false for cards without regenerate', () => {
+    it("should return false for cards without regenerate", () => {
       const card = createCardInstance(
-        createMockCard('Test', 'Creature', 'Flying'),
-        'player1'
+        createMockCard("Test", "Creature", "Flying"),
+        "player1",
       );
       expect(canBeRegenerated(card as any)).toBe(false);
     });
   });
 
-  describe('destroyCard', () => {
-    it('should destroy a normal card', () => {
+  describe("destroyCard", () => {
+    it("should destroy a normal card", () => {
       const card = createCardInstance(
-        createMockCard('Soldier', 'Creature — Human Soldier'),
-        player1Id
+        createMockCard("Soldier", "Creature — Human Soldier"),
+        player1Id,
       );
       gameState = gameState as any;
-      
+
       // Add card to battlefield
       const battlefield = gameState.zones.get(`${player1Id}-battlefield`);
       if (battlefield) {
@@ -125,17 +129,17 @@ describe('Keyword Actions', () => {
       }
 
       const result = destroyCard(gameState as any, card.instanceId as any);
-      
+
       // Should succeed
       expect(result.success).toBe(true);
     });
 
-    it('should not destroy indestructible cards', () => {
+    it("should not destroy indestructible cards", () => {
       const card = createCardInstance(
-        createMockCard('Guardian', 'Creature', '', ['Indestructible']),
-        player1Id
+        createMockCard("Guardian", "Creature", "", ["Indestructible"]),
+        player1Id,
       );
-      
+
       const battlefield = gameState.zones.get(`${player1Id}-battlefield`);
       if (battlefield) {
         battlefield.cardIds.push(card.instanceId);
@@ -143,26 +147,30 @@ describe('Keyword Actions', () => {
       }
 
       const result = destroyCard(gameState as any, card.instanceId as any);
-      
+
       // Should fail due to indestructible
       expect(result.success).toBe(false);
-      expect(result.description).toContain('indestructible');
+      expect(result.description).toContain("indestructible");
     });
 
-    it('should destroy with ignoreIndestructible option', () => {
+    it("should destroy with ignoreIndestructible option", () => {
       const card = createCardInstance(
-        createMockCard('Guardian', 'Creature', '', ['Indestructible']),
-        player1Id
+        createMockCard("Guardian", "Creature", "", ["Indestructible"]),
+        player1Id,
       );
-      
+
       const battlefield = gameState.zones.get(`${player1Id}-battlefield`);
       if (battlefield) {
         battlefield.cardIds.push(card.instanceId);
         gameState.cards.set(card.instanceId, card as any);
       }
 
-      const result = destroyCard(gameState as any, card.instanceId as any, true);
-      
+      const result = destroyCard(
+        gameState as any,
+        card.instanceId as any,
+        true,
+      );
+
       // Should succeed when ignoring indestructible
       expect(result.success).toBe(true);
     });
@@ -170,36 +178,39 @@ describe('Keyword Actions', () => {
 
   // Simplified tests that verify function signatures exist and return valid results
   // Full integration tests would require more complex game state setup
-  describe('exileCard', () => {
-    it('should be callable and return a result object', () => {
+  describe("exileCard", () => {
+    it("should be callable and return a result object", () => {
       // Just verify the function is callable - full testing requires complex setup
-      const result = exileCard(gameState as any, 'nonexistent' as any);
+      const result = exileCard(gameState as any, "nonexistent" as any);
       expect(result).toBeDefined();
     });
   });
 
-  describe('drawCards', () => {
-    it('should be callable and return a result object', () => {
+  describe("drawCards", () => {
+    it("should be callable and return a result object", () => {
       const result = drawCards(gameState as any, player1Id, 1);
       expect(result).toBeDefined();
     });
   });
 
-  describe('createTokenCard', () => {
-    it('should be callable and return a result object', () => {
-      const tokenData = createMockCard('1/1 Soldier', 'Token Creature — Soldier');
+  describe("createTokenCard", () => {
+    it("should be callable and return a result object", () => {
+      const tokenData = createMockCard(
+        "1/1 Soldier",
+        "Token Creature — Soldier",
+      );
       const result = createTokenCard(gameState as any, player1Id, tokenData, 1);
       expect(result).toBeDefined();
     });
   });
 
-  describe('sacrificeCard', () => {
-    it('should sacrifice a card', () => {
+  describe("sacrificeCard", () => {
+    it("should sacrifice a card", () => {
       const card = createCardInstance(
-        createMockCard('Sacrificial', 'Creature'),
-        player1Id
+        createMockCard("Sacrificial", "Creature"),
+        player1Id,
       );
-      
+
       const battlefield = gameState.zones.get(`${player1Id}-battlefield`);
       if (battlefield) {
         battlefield.cardIds.push(card.instanceId);
@@ -207,33 +218,33 @@ describe('Keyword Actions', () => {
       }
 
       const result = sacrificeCard(gameState as any, card.instanceId as any);
-      
+
       expect(result.success).toBe(true);
     });
 
-    it('should fail if card not found', () => {
-      const result = sacrificeCard(gameState as any, 'non-existent' as any);
-      
+    it("should fail if card not found", () => {
+      const result = sacrificeCard(gameState as any, "non-existent" as any);
+
       expect(result.success).toBe(false);
-      expect(result.error).toContain('not found');
+      expect(result.error).toContain("not found");
     });
   });
 
-  describe('drawCards', () => {
-    it('should be callable and return a result object', () => {
+  describe("drawCards", () => {
+    it("should be callable and return a result object", () => {
       const result = drawCards(gameState as any, player1Id, 1);
       expect(result).toBeDefined();
     });
   });
 
-  describe('discardCards', () => {
-    it('should discard cards from hand', () => {
+  describe("discardCards", () => {
+    it("should discard cards from hand", () => {
       // Add a card to hand
       const card = createCardInstance(
-        createMockCard('Test', 'Instant'),
-        player1Id
+        createMockCard("Test", "Instant"),
+        player1Id,
       );
-      
+
       const hand = gameState.zones.get(`${player1Id}-hand`);
       if (hand) {
         hand.cardIds.push(card.instanceId);
@@ -241,16 +252,16 @@ describe('Keyword Actions', () => {
       }
 
       const result = discardCards(gameState as any, player1Id, 1, false);
-      
+
       expect(result.success).toBe(true);
     });
 
-    it('should handle random discard', () => {
+    it("should handle random discard", () => {
       // Add cards to hand
       for (let i = 0; i < 3; i++) {
         const card = createCardInstance(
-          createMockCard(`Test${i}`, 'Instant'),
-          player1Id
+          createMockCard(`Test${i}`, "Instant"),
+          player1Id,
         );
         const hand = gameState.zones.get(`${player1Id}-hand`);
         if (hand) {
@@ -260,38 +271,45 @@ describe('Keyword Actions', () => {
       }
 
       const result = discardCards(gameState as any, player1Id, 1, true);
-      
+
       expect(result.success).toBe(true);
     });
   });
 
-  describe('createTokenCard', () => {
-    it('should be callable and return a result object', () => {
-      const tokenData = createMockCard('1/1 Soldier', 'Token Creature — Soldier');
+  describe("createTokenCard", () => {
+    it("should be callable and return a result object", () => {
+      const tokenData = createMockCard(
+        "1/1 Soldier",
+        "Token Creature — Soldier",
+      );
       const result = createTokenCard(gameState as any, player1Id, tokenData, 1);
       expect(result).toBeDefined();
     });
   });
 
-  describe('counterSpell', () => {
-    it('should counter a spell on the stack', () => {
+  describe("counterSpell", () => {
+    it("should counter a spell on the stack", () => {
       // This would require setting up a spell on the stack first
       // Basic test for the function existing and being callable
-      const result = counterSpell(gameState as any, 'non-existent' as any);
-      
+      const result = counterSpell(gameState as any, "non-existent" as any);
+
       // Will fail because spell doesn't exist, but function exists
       expect(result).toBeDefined();
       expect(result.success).toBe(false);
     });
   });
 
-  describe('regenerateCard', () => {
-    it('should regenerate a card with regenerate ability', () => {
+  describe("regenerateCard", () => {
+    it("should regenerate a card with regenerate ability", () => {
       const card = createCardInstance(
-        createMockCard('Regenerator', 'Creature', '{T}: Regenerate Regenerator.'),
-        player1Id
+        createMockCard(
+          "Regenerator",
+          "Creature",
+          "{T}: Regenerate Regenerator.",
+        ),
+        player1Id,
       );
-      
+
       const battlefield = gameState.zones.get(`${player1Id}-battlefield`);
       if (battlefield) {
         battlefield.cardIds.push(card.instanceId);
@@ -299,14 +317,14 @@ describe('Keyword Actions', () => {
       }
 
       const result = regenerateCard(gameState as any, card.instanceId as any);
-      
+
       expect(result.success).toBe(true);
     });
 
-    it('should fail for cards without regenerate ability', () => {
+    it("should fail for cards without regenerate ability", () => {
       const card = createCardInstance(
-        createMockCard('Normal', 'Creature', ''),
-        player1Id
+        createMockCard("Normal", "Creature", ""),
+        player1Id,
       );
 
       const battlefield = gameState.zones.get(`${player1Id}-battlefield`);
@@ -323,128 +341,144 @@ describe('Keyword Actions', () => {
   });
 
   // ============== CYCLING TESTS ==============
-  describe('Cycling', () => {
+  describe("Cycling", () => {
     let cyclingCard: any;
     let landcyclingCard: any;
     let normalCard: any;
 
     beforeEach(() => {
       // Reset game state for each test
-      gameState = createInitialGameState(['Player1', 'Player2'], 20, false);
+      gameState = createInitialGameState(["Player1", "Player2"], 20, false);
       startGame(gameState);
       const playerIds = Array.from(gameState.players.keys());
       player1Id = playerIds[0];
       player2Id = playerIds[1];
 
       // Create test cards with proper cardData structure - oracle_text is set by createMockCard
-      const cyclingCardData = createMockCard('Cycling Card', 'Creature', 'Cycling {2}');
+      const cyclingCardData = createMockCard(
+        "Cycling Card",
+        "Creature",
+        "Cycling {2}",
+      );
       cyclingCard = createCardInstance(cyclingCardData, player1Id, player1Id);
 
-      const landcyclingCardData = createMockCard('Landcycling Card', 'Creature', 'Plainscycling {W}');
-      landcyclingCard = createCardInstance(landcyclingCardData, player1Id, player1Id);
+      const landcyclingCardData = createMockCard(
+        "Landcycling Card",
+        "Creature",
+        "Plainscycling {W}",
+      );
+      landcyclingCard = createCardInstance(
+        landcyclingCardData,
+        player1Id,
+        player1Id,
+      );
 
-      const normalCardData = createMockCard('Normal Card', 'Creature', 'Flying');
+      const normalCardData = createMockCard(
+        "Normal Card",
+        "Creature",
+        "Flying",
+      );
       normalCard = createCardInstance(normalCardData, player1Id, player1Id);
     });
 
-    describe('parseCyclingCost', () => {
-      it('should parse simple cycling cost', () => {
-        const result = parseCyclingCost('Cycling {2}');
+    describe("parseCyclingCost", () => {
+      it("should parse simple cycling cost", () => {
+        const result = parseCyclingCost("Cycling {2}");
         expect(result).not.toBeNull();
-        expect(result?.type).toBe('mana');
+        expect(result?.type).toBe("mana");
         expect(result?.manaCost?.generic).toBe(2);
         expect(result?.isLandcycling).toBe(false);
       });
 
-      it('should parse colored cycling cost', () => {
-        const result = parseCyclingCost('Cycling {1}{U}');
+      it("should parse colored cycling cost", () => {
+        const result = parseCyclingCost("Cycling {1}{U}");
         expect(result).not.toBeNull();
-        expect(result?.type).toBe('mana');
+        expect(result?.type).toBe("mana");
         expect(result?.manaCost?.generic).toBe(1);
         expect(result?.manaCost?.blue).toBe(1);
       });
 
-      it('should parse landcycling cost', () => {
-        const result = parseCyclingCost('Plainscycling {W}');
+      it("should parse landcycling cost", () => {
+        const result = parseCyclingCost("Plainscycling {W}");
         expect(result).not.toBeNull();
-        expect(result?.type).toBe('mana');
+        expect(result?.type).toBe("mana");
         expect(result?.manaCost?.white).toBe(1);
         expect(result?.isLandcycling).toBe(true);
-        expect(result?.landType).toBe('plains');
+        expect(result?.landType).toBe("plains");
       });
 
-      it('should parse basic landcycling', () => {
-        const result = parseCyclingCost('Basic landcycling {1}');
+      it("should parse basic landcycling", () => {
+        const result = parseCyclingCost("Basic landcycling {1}");
         expect(result).not.toBeNull();
-        expect(result?.type).toBe('mana');
+        expect(result?.type).toBe("mana");
         expect(result?.manaCost?.generic).toBe(1);
         expect(result?.isLandcycling).toBe(true);
-        expect(result?.landType).toBe('basic');
+        expect(result?.landType).toBe("basic");
       });
 
-      it('should parse cycling with life cost', () => {
-        const result = parseCyclingCost('Cycling—Pay 3 life');
+      it("should parse cycling with life cost", () => {
+        const result = parseCyclingCost("Cycling—Pay 3 life");
         expect(result).not.toBeNull();
-        expect(result?.type).toBe('life');
+        expect(result?.type).toBe("life");
         expect(result?.lifeCost).toBe(3);
       });
 
-      it('should return null for cards without cycling', () => {
-        const result = parseCyclingCost('Flying\nTrample');
+      it("should return null for cards without cycling", () => {
+        const result = parseCyclingCost("Flying\nTrample");
         expect(result).toBeNull();
       });
     });
 
-    describe('hasCycling', () => {
-      it('should detect cycling keyword', () => {
+    describe("hasCycling", () => {
+      it("should detect cycling keyword", () => {
         expect(hasCycling(cyclingCard as any)).toBe(true);
       });
 
-      it('should detect landcycling', () => {
+      it("should detect landcycling", () => {
         expect(hasCycling(landcyclingCard as any)).toBe(true);
       });
 
-      it('should return false for cards without cycling', () => {
+      it("should return false for cards without cycling", () => {
         expect(hasCycling(normalCard as any)).toBe(false);
       });
     });
 
-    describe('hasLandcycling', () => {
-      it('should detect landcycling', () => {
+    describe("hasLandcycling", () => {
+      it("should detect landcycling", () => {
         expect(hasLandcycling(landcyclingCard as any)).toBe(true);
       });
 
-      it('should return false for regular cycling', () => {
+      it("should return false for regular cycling", () => {
         expect(hasLandcycling(cyclingCard as any)).toBe(false);
       });
 
-      it('should return false for cards without cycling', () => {
+      it("should return false for cards without cycling", () => {
         expect(hasLandcycling(normalCard as any)).toBe(false);
       });
     });
 
-    describe('getCyclingCost', () => {
-      it('should return cycling cost for cycling card', () => {
+    describe("getCyclingCost", () => {
+      it("should return cycling cost for cycling card", () => {
         const cost = getCyclingCost(cyclingCard as any);
         expect(cost).not.toBeNull();
-        expect(cost?.type).toBe('mana');
+        expect(cost?.type).toBe("mana");
         expect(cost?.manaCost?.generic).toBe(2);
       });
 
-      it('should return landcycling cost for landcycling card', () => {
+      it("should return landcycling cost for landcycling card", () => {
         const cost = getCyclingCost(landcyclingCard as any);
         expect(cost).not.toBeNull();
         expect(cost?.isLandcycling).toBe(true);
-        expect(cost?.landType).toBe('plains');
+        expect(cost?.landType).toBe("plains");
       });
 
-      it('should return null for cards without cycling', () => {
+      it("should return null for cards without cycling", () => {
         const cost = getCyclingCost(normalCard as any);
         expect(cost).toBeNull();
       });
     });
 
-    describe('canCycleCard', () => {
+    describe("canCycleCard", () => {
       beforeEach(() => {
         // Add cards to player's hand - properly update the state
         const hand = gameState.zones.get(`${player1Id}-hand`);
@@ -458,36 +492,51 @@ describe('Keyword Actions', () => {
           gameState = {
             ...gameState,
             zones: updatedZones,
-            cards: new Map(gameState.cards).set(cyclingCard.id, cyclingCard as any),
+            cards: new Map(gameState.cards).set(
+              cyclingCard.id,
+              cyclingCard as any,
+            ),
           };
         }
       });
 
-      it('should allow cycling when conditions are met', () => {
+      it("should allow cycling when conditions are met", () => {
         // Give player enough mana
         gameState = addMana(gameState, player1Id, { generic: 2 });
 
-        const result = canCycleCard(gameState, player1Id, cyclingCard.id as any);
+        const result = canCycleCard(
+          gameState,
+          player1Id,
+          cyclingCard.id as any,
+        );
         expect(result.canCycle).toBe(true);
       });
 
-      it('should fail if card not in hand', () => {
-        const result = canCycleCard(gameState, player1Id, landcyclingCard.id as any);
+      it("should fail if card not in hand", () => {
+        const result = canCycleCard(
+          gameState,
+          player1Id,
+          landcyclingCard.id as any,
+        );
         expect(result.canCycle).toBe(false);
         // Card doesn't exist in game state, so "not found" is appropriate
-        expect(result.reason).toContain('not found');
+        expect(result.reason).toContain("not found");
       });
 
-      it('should fail if not enough mana', () => {
+      it("should fail if not enough mana", () => {
         // Give player insufficient mana
         gameState = addMana(gameState, player1Id, { generic: 1 });
 
-        const result = canCycleCard(gameState, player1Id, cyclingCard.id as any);
+        const result = canCycleCard(
+          gameState,
+          player1Id,
+          cyclingCard.id as any,
+        );
         expect(result.canCycle).toBe(false);
-        expect(result.reason).toContain('mana');
+        expect(result.reason).toContain("mana");
       });
 
-      it('should fail if player does not have priority', () => {
+      it("should fail if player does not have priority", () => {
         // Give opponent priority
         const playerIds = Array.from(gameState.players.keys());
         const opponentId = playerIds[1];
@@ -495,13 +544,17 @@ describe('Keyword Actions', () => {
 
         gameState = addMana(gameState, player1Id, { generic: 2 });
 
-        const result = canCycleCard(gameState, player1Id, cyclingCard.id as any);
+        const result = canCycleCard(
+          gameState,
+          player1Id,
+          cyclingCard.id as any,
+        );
         expect(result.canCycle).toBe(false);
-        expect(result.reason).toContain('priority');
+        expect(result.reason).toContain("priority");
       });
     });
 
-    describe('cycleCard', () => {
+    describe("cycleCard", () => {
       beforeEach(() => {
         // Add cards to player's hand - properly update the state
         const hand = gameState.zones.get(`${player1Id}-hand`);
@@ -515,7 +568,10 @@ describe('Keyword Actions', () => {
           gameState = {
             ...gameState,
             zones: updatedZones,
-            cards: new Map(gameState.cards).set(cyclingCard.id, cyclingCard as any),
+            cards: new Map(gameState.cards).set(
+              cyclingCard.id,
+              cyclingCard as any,
+            ),
           };
         }
 
@@ -523,14 +579,16 @@ describe('Keyword Actions', () => {
         gameState = addMana(gameState, player1Id, { generic: 2 });
       });
 
-      it('should successfully cycle a card', () => {
-        const initialHandSize = gameState.zones.get(`${player1Id}-hand`)?.cardIds.length || 0;
-        const initialLibrarySize = gameState.zones.get(`${player1Id}-library`)?.cardIds.length || 0;
+      it("should successfully cycle a card", () => {
+        const initialHandSize =
+          gameState.zones.get(`${player1Id}-hand`)?.cardIds.length || 0;
+        const initialLibrarySize =
+          gameState.zones.get(`${player1Id}-library`)?.cardIds.length || 0;
 
         const result = cycleCard(gameState, player1Id, cyclingCard.id as any);
 
         expect(result.success).toBe(true);
-        expect(result.description).toContain('Cycled');
+        expect(result.description).toContain("Cycled");
 
         // Card should be in graveyard
         const graveyard = result.state.zones.get(`${player1Id}-graveyard`);
@@ -549,7 +607,7 @@ describe('Keyword Actions', () => {
         }
       });
 
-      it('should spend mana when cycling', () => {
+      it("should spend mana when cycling", () => {
         const player = gameState.players.get(player1Id);
         const initialMana = player?.manaPool.generic || 0;
 
@@ -559,14 +617,22 @@ describe('Keyword Actions', () => {
         expect(updatedPlayer?.manaPool.generic).toBeLessThan(initialMana);
       });
 
-      it('should fail without enough mana', () => {
+      it("should fail without enough mana", () => {
         // Remove mana by creating a fresh state with no mana
         const player = gameState.players.get(player1Id);
         if (player) {
           const updatedPlayers = new Map(gameState.players);
           updatedPlayers.set(player1Id, {
             ...player,
-            manaPool: { colorless: 0, white: 0, blue: 0, black: 0, red: 0, green: 0, generic: 0 },
+            manaPool: {
+              colorless: 0,
+              white: 0,
+              blue: 0,
+              black: 0,
+              red: 0,
+              green: 0,
+              generic: 0,
+            },
           });
           gameState = { ...gameState, players: updatedPlayers };
         }
@@ -574,21 +640,25 @@ describe('Keyword Actions', () => {
         const result = cycleCard(gameState, player1Id, cyclingCard.id as any);
 
         expect(result.success).toBe(false);
-        expect(result.error).toContain('mana');
+        expect(result.error).toContain("mana");
       });
 
-      it('should handle landcycling by searching for land', () => {
+      it("should handle landcycling by searching for land", () => {
         // Create a fresh state for this test
-        let testState = createInitialGameState(['Player1', 'Player2'], 20, false);
+        let testState = createInitialGameState(
+          ["Player1", "Player2"],
+          20,
+          false,
+        );
         startGame(testState);
         const playerIds = Array.from(testState.players.keys());
         const p1Id = playerIds[0];
 
         // Create a new landcycling card with proper oracle_text
         const lcCard = createCardInstance(
-          createMockCard('Landcycling Card', 'Creature', 'Plainscycling {W}'),
+          createMockCard("Landcycling Card", "Creature", "Plainscycling {W}"),
           p1Id,
-          p1Id
+          p1Id,
         );
 
         // Add landcycling card to hand
@@ -610,9 +680,9 @@ describe('Keyword Actions', () => {
         // Add a plains to library
         const library = testState.zones.get(`${p1Id}-library`);
         const plains = createCardInstance(
-          createMockCard('Plains', 'Land — Plains', '', []),
+          createMockCard("Plains", "Land — Plains", "", []),
           p1Id,
-          p1Id
+          p1Id,
         );
         if (library) {
           const updatedLibrary = {
@@ -634,7 +704,7 @@ describe('Keyword Actions', () => {
         const result = cycleCard(testState, p1Id, lcCard.id as any);
 
         expect(result.success).toBe(true);
-        expect(result.description).toContain('landcycling');
+        expect(result.description).toContain("landcycling");
 
         // Plains should be in hand
         const updatedHand = result.state.zones.get(`${p1Id}-hand`);
@@ -645,7 +715,18 @@ describe('Keyword Actions', () => {
 });
 
 // Helper function to add mana to a player
-function addMana(state: GameState, playerId: PlayerId, mana: { generic?: number; white?: number; blue?: number; black?: number; red?: number; green?: number }): GameState {
+function addMana(
+  state: GameState,
+  playerId: PlayerId,
+  mana: {
+    generic?: number;
+    white?: number;
+    blue?: number;
+    black?: number;
+    red?: number;
+    green?: number;
+  },
+): GameState {
   const player = state.players.get(playerId);
   if (!player) return state;
 

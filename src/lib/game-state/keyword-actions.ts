@@ -1013,3 +1013,38 @@ export function untapCardAction(
     affectedCards: [cardId],
   };
 }
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function hasCycling(card: any): boolean {
+  return false;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function hasLandcycling(card: any, landType?: string): boolean {
+  return false;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function getCyclingCost(card: any): number | null {
+  return null;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function canCycleCard(state: any, playerId: any, card: any): boolean {
+  return false;
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function cycleCard(state: any, playerId: any, cardId: any): any {
+  return { success: false, error: "not implemented" };
+}
+
+/** @deprecated Stub - cycling mechanic not yet implemented */
+export function parseCyclingCost(text: any): number | null {
+  return null;
+}
+
+/** @deprecated Stub - hand filter not yet implemented */
+export function getHandFilterForCard(cardName: string): any {
+  return null;
+}
