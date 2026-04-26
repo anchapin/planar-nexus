@@ -39,6 +39,6 @@
     "src-tauri/target",
     "e2e",
     "scripts",
-    "src/**/__tests__"
+    "**/__tests__/**"
   ]
 }
