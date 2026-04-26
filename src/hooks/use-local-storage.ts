@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect, Dispatch, SetStateAction, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  Dispatch,
+  SetStateAction,
+  useCallback,
+} from "react";
 import { indexedDBStorage } from "@/lib/indexeddb-storage";
 
 /**
@@ -16,7 +22,7 @@ import { indexedDBStorage } from "@/lib/indexeddb-storage";
  */
 export function useLocalStorage<T>(
   key: string,
-  initialValue: T
+  initialValue: T,
 ): [T, Dispatch<SetStateAction<T>>, { loading: boolean; error: Error | null }] {
   const [storedValue, setStoredValue] = useState<T>(initialValue);
   const [loading, setLoading] = useState(true);
@@ -34,16 +40,45 @@ export function useLocalStorage<T>(
         // Try IndexedDB first
         try {
           await indexedDBStorage.initialize();
-          const value = await indexedDBStorage.get<T>('preferences', key);
+          const value = await indexedDBStorage.get<Record<string, unknown>>(
+            "preferences",
+            key,
+          );
 
           if (value !== null && isMounted) {
-            setStoredValue(value);
+            // Handle arrays stored with the wrapped format (_type: 'array')
+            if (value._type === "array" && Array.isArray(value.items)) {
+              setStoredValue(value.items as T);
+            } else if (value && typeof value === "object") {
+              // Handle old broken array format: { id, 0: item1, 1: item2, ... }
+              // where numeric keys were spread from an array into an object
+              const { id, _type, ...rest } = value;
+              const keys = Object.keys(rest);
+              const numericKeys = keys.filter((k) => /^\d+$/.test(k));
+              if (
+                numericKeys.length > 0 &&
+                numericKeys.length === keys.length
+              ) {
+                const reconstructed = numericKeys
+                  .sort((a, b) => parseInt(a) - parseInt(b))
+                  .map((k) => rest[k]);
+                setStoredValue(reconstructed as T);
+              } else {
+                // Regular object
+                setStoredValue(rest as T);
+              }
+            } else {
+              setStoredValue(value as T);
+            }
           } else if (isMounted) {
             setStoredValue(initialValue);
           }
         } catch (dbError) {
           // Fallback to localStorage
-          console.warn(`IndexedDB not available, using localStorage for "${key}":`, dbError);
+          console.warn(
+            `IndexedDB not available, using localStorage for "${key}":`,
+            dbError,
+          );
           const item = window.localStorage.getItem(key);
           if (item && isMounted) {
             setStoredValue(JSON.parse(item));
@@ -76,18 +111,31 @@ export function useLocalStorage<T>(
     async (value) => {
       try {
         setError(null);
-        const valueToStore = value instanceof Function ? value(storedValue) : value;
+        const valueToStore =
+          value instanceof Function ? value(storedValue) : value;
         setStoredValue(valueToStore);
 
         // Try IndexedDB first
         try {
-          await indexedDBStorage.set('preferences', {
-            id: key,
-            ...valueToStore,
-          } as T & { id: string });
+          if (Array.isArray(valueToStore)) {
+            // Store arrays in a wrapped format so they don't get spread into objects
+            await indexedDBStorage.set("preferences", {
+              id: key,
+              _type: "array",
+              items: valueToStore,
+            } as unknown as T & { id: string });
+          } else {
+            await indexedDBStorage.set("preferences", {
+              id: key,
+              ...valueToStore,
+            } as T & { id: string });
+          }
         } catch (dbError) {
           // Fallback to localStorage
-          console.warn(`IndexedDB not available, using localStorage for "${key}":`, dbError);
+          console.warn(
+            `IndexedDB not available, using localStorage for "${key}":`,
+            dbError,
+          );
           window.localStorage.setItem(key, JSON.stringify(valueToStore));
         }
       } catch (err) {
@@ -95,7 +143,7 @@ export function useLocalStorage<T>(
         setError(err instanceof Error ? err : new Error(String(err)));
       }
     },
-    [key, storedValue]
+    [key, storedValue],
   );
 
   return [storedValue, setValue, { loading, error }];
@@ -109,7 +157,7 @@ export function useLocalStorage<T>(
  */
 export function useSimpleLocalStorage<T>(
   key: string,
-  initialValue: T
+  initialValue: T,
 ): [T, Dispatch<SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(initialValue);
 
@@ -128,7 +176,8 @@ export function useSimpleLocalStorage<T>(
 
   const setValue: Dispatch<SetStateAction<T>> = (value) => {
     try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
+      const valueToStore =
+        value instanceof Function ? value(storedValue) : value;
       setStoredValue(valueToStore);
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
@@ -174,7 +223,7 @@ export function useIndexedDBStatus(): {
           setInitialized(true);
         }
       } catch (error) {
-        console.error('IndexedDB initialization failed:', error);
+        console.error("IndexedDB initialization failed:", error);
         if (isMounted) {
           setAvailable(false);
           setInitialized(false);

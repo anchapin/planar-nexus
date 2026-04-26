@@ -1,18 +1,41 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Download, Upload, Trash2, Database, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { getDatabaseStats, clearDatabase, clearImageCache, importCardsFromFile } from '@/lib/card-database';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import {
+  Download,
+  Upload,
+  Trash2,
+  Database,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+} from "lucide-react";
+import {
+  getDatabaseStats,
+  clearDatabase,
+  clearImageCache,
+  importCardsFromFile,
+} from "@/lib/card-database";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DatabaseManagementPage() {
   const { toast } = useToast();
-  const [stats, setStats] = useState<{ cardCount: number; imageCount: number; isInitialized: boolean } | null>(null);
+  const [stats, setStats] = useState<{
+    cardCount: number;
+    imageCount: number;
+    isInitialized: boolean;
+  } | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [isClearing, setIsClearing] = useState(false);
@@ -27,7 +50,7 @@ export default function DatabaseManagementPage() {
       const dbStats = await getDatabaseStats();
       setStats(dbStats);
     } catch (error) {
-      console.error('Failed to load database stats:', error);
+      console.error("Failed to load database stats:", error);
     } finally {
       setIsLoading(false);
     }
@@ -37,11 +60,11 @@ export default function DatabaseManagementPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.json')) {
+    if (!file.name.endsWith(".json")) {
       toast({
-        title: 'Invalid file type',
-        description: 'Please select a JSON file',
-        variant: 'destructive',
+        title: "Invalid file type",
+        description: "Please select a JSON file",
+        variant: "destructive",
       });
       return;
     }
@@ -54,37 +77,42 @@ export default function DatabaseManagementPage() {
         const progress = Math.round((count / total) * 100);
         setImportProgress(progress);
         // Yield to UI
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
       });
 
       toast({
-        title: 'Import successful',
-        description: `Imported ${result.count} cards${result.errors.length > 0 ? ` with ${result.errors.length} errors` : ''}`,
+        title: "Import successful",
+        description: `Imported ${result.count} cards${result.errors.length > 0 ? ` with ${result.errors.length} errors` : ""}`,
       });
 
       if (result.errors.length > 0) {
-        console.warn('Import errors:', result.errors);
+        console.warn("Import errors:", result.errors);
       }
 
       // Reload stats
       await loadStats();
     } catch (error) {
-      console.error('Import failed:', error);
+      console.error("Import failed:", error);
       toast({
-        title: 'Import failed',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
-        variant: 'destructive',
+        title: "Import failed",
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
       });
     } finally {
       setIsImporting(false);
       setImportProgress(0);
       // Reset file input
-      event.target.value = '';
+      event.target.value = "";
     }
   }
 
   async function handleClearDatabase() {
-    if (!confirm('Are you sure you want to clear the entire card database? This cannot be undone.')) {
+    if (
+      !confirm(
+        "Are you sure you want to clear the entire card database? This cannot be undone.",
+      )
+    ) {
       return;
     }
 
@@ -92,19 +120,20 @@ export default function DatabaseManagementPage() {
     try {
       await clearDatabase();
       await clearImageCache();
-      
+
       toast({
-        title: 'Database cleared',
-        description: 'All card data has been removed',
+        title: "Database cleared",
+        description: "All card data has been removed",
       });
 
       await loadStats();
     } catch (error) {
-      console.error('Failed to clear database:', error);
+      console.error("Failed to clear database:", error);
       toast({
-        title: 'Failed to clear database',
-        description: error instanceof Error ? error.message : 'Unknown error occurred',
-        variant: 'destructive',
+        title: "Failed to clear database",
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
       });
     } finally {
       setIsClearing(false);
@@ -112,12 +141,12 @@ export default function DatabaseManagementPage() {
   }
 
   async function handleDownloadScript() {
-    const scriptUrl = '/scripts/fetch-cards-for-db.ts';
-    window.open(scriptUrl, '_blank');
-    
+    const scriptUrl = "/scripts/fetch-cards-for-db.ts";
+    window.open(scriptUrl, "_blank");
+
     toast({
-      title: 'Script location',
-      description: 'Opening scripts folder in new tab',
+      title: "Script location",
+      description: "Opening scripts folder in new tab",
     });
   }
 
@@ -141,8 +170,9 @@ export default function DatabaseManagementPage() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Planar Nexus starts with an empty database to avoid legal issues. 
-          Use the script below to fetch cards from Scryfall for personal use, then import them here.
+          Planar Nexus starts with an empty database to avoid legal issues. Use
+          the script below to fetch cards from Scryfall for personal use, then
+          import them here.
         </AlertDescription>
       </Alert>
 
@@ -153,9 +183,7 @@ export default function DatabaseManagementPage() {
             <Database className="h-5 w-5" />
             Database Status
           </CardTitle>
-          <CardDescription>
-            Current database statistics
-          </CardDescription>
+          <CardDescription>Current database statistics</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-3">
@@ -217,7 +245,7 @@ export default function DatabaseManagementPage() {
               >
                 <span>
                   <Upload className="mr-2 h-4 w-4" />
-                  {isImporting ? 'Importing...' : 'Select JSON File'}
+                  {isImporting ? "Importing..." : "Select JSON File"}
                 </span>
               </Button>
             </label>
@@ -268,7 +296,10 @@ export default function DatabaseManagementPage() {
             Run this script to fetch cards from Scryfall API for personal use:
           </p>
           <pre className="p-4 bg-muted rounded-md overflow-x-auto text-sm">
-            <code>npx tsx scripts/fetch-cards-for-db.ts --format commander --limit 500 --output ./my-cards.json</code>
+            <code>
+              npx tsx scripts/fetch-cards-for-db.ts --format=commander
+              --limit=500 --output=./my-cards.json
+            </code>
           </pre>
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleDownloadScript}>
@@ -279,7 +310,8 @@ export default function DatabaseManagementPage() {
           <Alert className="bg-amber-50">
             <AlertCircle className="h-4 w-4 text-amber-600" />
             <AlertDescription className="text-amber-800">
-              <strong>Important:</strong> This script is for personal use only. Do not distribute pre-generated card data.
+              <strong>Important:</strong> This script is for personal use only.
+              Do not distribute pre-generated card data.
             </AlertDescription>
           </Alert>
         </CardContent>
@@ -292,9 +324,7 @@ export default function DatabaseManagementPage() {
             <Trash2 className="h-5 w-5" />
             Danger Zone
           </CardTitle>
-          <CardDescription>
-            Irreversible actions
-          </CardDescription>
+          <CardDescription>Irreversible actions</CardDescription>
         </CardHeader>
         <CardContent>
           <Button
@@ -303,10 +333,11 @@ export default function DatabaseManagementPage() {
             disabled={isClearing || stats?.cardCount === 0}
           >
             <Trash2 className="mr-2 h-4 w-4" />
-            {isClearing ? 'Clearing...' : 'Clear Entire Database'}
+            {isClearing ? "Clearing..." : "Clear Entire Database"}
           </Button>
           <p className="mt-2 text-sm text-muted-foreground">
-            This will remove all {stats?.cardCount ?? 0} cards and cached images. This cannot be undone.
+            This will remove all {stats?.cardCount ?? 0} cards and cached
+            images. This cannot be undone.
           </p>
         </CardContent>
       </Card>

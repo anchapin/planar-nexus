@@ -27,6 +27,7 @@ venv/
 # misc
 .DS_Store
 *.pem
+*.json
 
 # debug
 npm-debug.log*
