@@ -53,6 +53,12 @@ const STARTER_DECKS: StarterDeck[] = [
     description: "Green Creatures - balanced threats",
     type: "starter",
   },
+  {
+    id: "starter-test",
+    name: "Starter Test",
+    description: "Test deck for E2E scenarios",
+    type: "starter",
+  },
 ];
 
 type DeckOption = StarterDeck | SavedDeck;
@@ -193,7 +199,11 @@ export default function SinglePlayerPage() {
                         </SelectItem>
                       ) : (
                         allDecks.map((deck) => (
-                          <SelectItem key={deck.id} value={deck.id}>
+                          <SelectItem
+                            key={deck.id}
+                            value={deck.id}
+                            data-testid={`deck-option-${deck.id}`}
+                          >
                             {getDeckLabel(deck)}
                           </SelectItem>
                         ))
@@ -342,7 +352,11 @@ export default function SinglePlayerPage() {
                         </SelectItem>
                       ) : (
                         allDecks.map((deck) => (
-                          <SelectItem key={deck.id} value={deck.id}>
+                          <SelectItem
+                            key={deck.id}
+                            value={deck.id}
+                            data-testid={`deck-option-${deck.id}`}
+                          >
                             {getDeckLabel(deck)}
                           </SelectItem>
                         ))
