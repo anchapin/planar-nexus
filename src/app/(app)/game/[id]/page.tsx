@@ -295,7 +295,7 @@ function generateStarterDeck(deckId: string): ScryfallCard[] {
     for (let i = 0; i < 10; i++)
       deck.push(createCreatureCard("Lightning Bolt", "{R}", 3, 0, ["R"], i));
     // Test-specific cards last (opening hand = last 7 of array, drawn from end)
-    // Arrange so last 7 cards are: Forest, Island, Mountain, Ward Beetle, Cycling Drake, Flashback Bolt, Convoke Angel
+    // Arrange so last 7 cards are: Forest, Mountain, Ward Beetle, Cycling Drake, Explore Ranger, Flashback Bolt, Convoke Angel
     for (let i = 0; i < 9; i++)
       deck.push(createCreatureCard("Ward Beetle", "{1}{G}", 2, 3, ["G"], i));
     for (let i = 0; i < 9; i++)
@@ -306,12 +306,12 @@ function generateStarterDeck(deckId: string): ScryfallCard[] {
       deck.push(createCreatureCard("Convoke Angel", "{3}{W}", 3, 3, ["W"], i));
     for (let i = 0; i < 9; i++)
       deck.push(createCreatureCard("Flashback Bolt", "{1}{R}", 2, 1, ["R"], i));
-    // Ensure opening hand: Forest, Island, Mountain, Ward Beetle, Cycling Drake, Flashback Bolt, Convoke Angel
+    // Ensure opening hand (drawn last = end of array): Forest, Mountain, Ward Beetle, Cycling Drake, Explore Ranger, Flashback Bolt, Convoke Angel
     deck.push(createLandCard("Forest", "G", 99));
-    deck.push(createLandCard("Island", "U", 99));
     deck.push(createLandCard("Mountain", "R", 99));
     deck.push(createCreatureCard("Ward Beetle", "{1}{G}", 2, 3, ["G"], 99));
     deck.push(createCreatureCard("Cycling Drake", "{3}{U}", 2, 4, ["U"], 99));
+    deck.push(createCreatureCard("Explore Ranger", "{1}{G}", 2, 2, ["G"], 99));
     deck.push(createCreatureCard("Flashback Bolt", "{1}{R}", 2, 1, ["R"], 99));
     deck.push(createCreatureCard("Convoke Angel", "{3}{W}", 3, 3, ["W"], 99));
   } else {
