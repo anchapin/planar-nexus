@@ -19,15 +19,34 @@ import {
  */
 function normalizeScores(scores: Array<{ name: string; score: number; category: string }>): Array<{ name: string; score: number; category: string }> {
   if (scores.length === 0) return [];
-  
+
   const maxScore = Math.max(...scores.map(s => s.score), 1);
   const minScore = Math.min(...scores.map(s => s.score));
   const range = maxScore - minScore || 1;
-  
+
   return scores.map(s => ({
     ...s,
     score: Math.round(((s.score - minScore) / range) * 100),
   }));
+}
+
+/**
+ * Calculate hybrid blend percentage
+ * Returns 1.0 for pure primary, 0.5 for perfectly hybrid, approaches 1.0 as secondary diminishes
+ */
+function calculateHybridBlend(
+  primaryScore: number,
+  secondaryScore: number | undefined
+): number {
+  if (!secondaryScore || secondaryScore === 0) {
+    return 1.0; // Pure primary archetype
+  }
+
+  // Calculate blend: 1.0 when primary dominates, 0.5 when equal
+  const totalScore = primaryScore + secondaryScore;
+  if (totalScore === 0) return 1.0;
+
+  return Math.min(1.0, Math.max(0.0, primaryScore / totalScore));
 }
 
 /**
@@ -130,8 +149,9 @@ export function detectArchetype(deck: DeckCard[]): ArchetypeResult {
     confidence,
     allScores: normalizedScores,
   };
-  
+
   // Add secondary if significant (within 30 points)
+  let secondaryScore = 0;
   if (secondary && secondary.score >= primary.score - 30 && secondary.score > 0) {
     result.secondary = secondary.name;
     result.secondaryConfidence = calculateConfidence(
@@ -139,8 +159,12 @@ export function detectArchetype(deck: DeckCard[]): ArchetypeResult {
       normalizedScores[2]?.score || 0,
       normalizedScores.slice(1)
     );
+    secondaryScore = secondary.score;
   }
-  
+
+  // Calculate hybrid blend percentage
+  result.hybridBlend = calculateHybridBlend(primary.score, secondaryScore);
+
   return result;
 }
 

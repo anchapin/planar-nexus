@@ -71,6 +71,8 @@ export interface ArchetypeResult {
   secondaryConfidence?: number;
   /** All archetype scores */
   allScores: Array<{ name: string; score: number; category: string }>;
+  /** Hybrid blend percentage (0-1) - 1 = pure, 0.5 = perfectly hybrid, 0 = no blend */
+  hybridBlend?: number;
 }
 
 /**

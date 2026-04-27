@@ -24,6 +24,7 @@ import type {
 import { evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
 import { callAIProxy } from '@/lib/ai-proxy-client';
 import { AIProvider } from './providers/types';
+import { getCounterspellProbability, getStackContentType } from './counterspell-frequency-model';
 
 // Re-export GameState for backward compatibility
 export type { GameState };
@@ -159,6 +160,7 @@ export interface CounterspellFactors {
   canBeRecurred: boolean;
   hasBackup: boolean; // Do we have other answers?
   opponentHasCounterspell: boolean; // Will they counter our counter?
+  opponentCounterspellProbability: number; // Data-driven probability (0-1)
 }
 
 /**
@@ -760,6 +762,14 @@ export class StackInteractionAI {
   ): CounterspellFactors {
     const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
 
+    // Get opponent archetype for frequency model lookup
+    const opponentArchetype = this.getOpponentArchetype();
+    const opponentMana = this.getOpponentManaAvailable();
+    const stackContentType = getStackContentType(
+      this.assessActionThreat(context, currentEvaluation),
+      context.currentAction.manaValue
+    );
+
     return {
       threatLevel: this.assessActionThreat(context, currentEvaluation),
       cardAdvantageImpact: this.calculateCounterspellCardAdvantage(context),
@@ -769,6 +779,11 @@ export class StackInteractionAI {
       canBeRecurred: this.canCounterspellBeRecurred(counterspell),
       hasBackup: this.hasBackupCounterspells(context),
       opponentHasCounterspell: this.likelyOpponentCounterspell(context),
+      opponentCounterspellProbability: getCounterspellProbability(
+        opponentArchetype,
+        opponentMana,
+        stackContentType
+      ),
     };
   }
 
@@ -793,9 +808,11 @@ export class StackInteractionAI {
     // Win condition disruption is critical
     score += factors.winConditionDisruption * 2.5;
 
-    // Penalty if opponent can counter our counterspell
-    if (factors.opponentHasCounterspell && !factors.hasBackup) {
-      score -= 2.0;
+    // Penalty based on opponent's counterspell probability (data-driven)
+    // Higher probability = higher risk of getting countered back
+    const opponentRisk = factors.opponentCounterspellProbability;
+    if (opponentRisk > 0.5 && !factors.hasBackup) {
+      score -= opponentRisk * 2.0;
     }
 
     // Bonus if we have backup
@@ -820,8 +837,8 @@ export class StackInteractionAI {
     if (factors.threatLevel < 0.4) {
       reasons.push('threat is low');
     }
-    if (factors.opponentHasCounterspell && !factors.hasBackup) {
-      reasons.push('opponent likely has counterspell');
+    if (factors.opponentCounterspellProbability > 0.5 && !factors.hasBackup) {
+      reasons.push(`opponent counterspell probability (${(factors.opponentCounterspellProbability * 100).toFixed(0)}%) is high`);
     }
     if (factors.cardAdvantageImpact < 0) {
       reasons.push('card disadvantage');
@@ -1175,20 +1192,46 @@ export class StackInteractionAI {
    * Check if opponent likely has a counterspell
    */
   private likelyOpponentCounterspell(_context: StackContext): boolean {
+    const opponentArchetype = this.getOpponentArchetype();
+    const opponentMana = this.getOpponentManaAvailable();
+    const threatLevel = this.assessActionThreat(
+      _context,
+      evaluateGameState(this.gameState, this.playerId, 'medium')
+    );
+
+    const probability = getCounterspellProbability(
+      opponentArchetype,
+      opponentMana,
+      getStackContentType(threatLevel, _context.currentAction.manaValue)
+    );
+
+    // Consider opponent likely to have counterspell if probability > 50%
+    return probability > 0.5;
+  }
+
+  /**
+   * Get opponent's archetype (simplified - in real game would use archetype detection)
+   */
+  private getOpponentArchetype(): string {
+    // For now, return a conservative default
+    // In a real implementation, this would analyze opponent's deck/playstyle
+    return 'Good Stuff'; // Midrange is conservative default
+  }
+
+  /**
+   * Get opponent's available mana
+   */
+  private getOpponentManaAvailable(): number {
     const opponents = Object.values(this.gameState.players).filter(
       (p) => p.id !== this.playerId
     );
 
-    for (const opponent of opponents) {
-      // Check if opponent has cards in hand (uncertain what they are)
-      if (opponent.hand.length > 2) {
-        // In real game, we'd have more info here
-        // For now, assume some chance
-        return true;
-      }
-    }
+    if (opponents.length === 0) return 0;
 
-    return false;
+    // Get mana from first opponent
+    const opponent = opponents[0];
+    const manaPool = (opponent as any).manaPool || {};
+    return Object.values(manaPool).reduce((sum: number, val: any) => sum + (val || 0), 0);
   }
 
   /**

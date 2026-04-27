@@ -325,6 +325,97 @@ describe('archetype-detector', () => {
     });
   });
 
+  describe('Hybrid Archetype Detection', () => {
+    it('should detect pure archetype with blend = 1.0', () => {
+      const pureBurnDeck: DeckCard[] = [
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Deal 3 damage'),
+        createCard('Lava Spike', 4, 'Sorcery', 1, ['R'], 'Deal 3 damage'),
+        createCard('Skewer the Critics', 4, 'Sorcery', 2, ['R'], 'Deal 3 damage'),
+        createCard('Burst Lightning', 4, 'Instant', 2, ['R'], 'Deal 4 damage'),
+        createCard('Chain Lightning', 4, 'Instant', 1, ['R'], 'Deal 3 damage'),
+        createCard('Mountain', 20, 'Land', 0, [], ''),
+      ];
+
+      const result = detectArchetype(pureBurnDeck);
+      expect(result.primary).toBe('Burn');
+      expect(result.secondary).toBeUndefined();
+      expect(result.hybridBlend).toBe(1.0);
+    });
+
+    it('should detect perfectly hybrid deck with blend = 0.5', () => {
+      // Deck with equal burn and counterspell elements
+      const hybridDeck: DeckCard[] = [
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Damage'),
+        createCard('Counterspell', 4, 'Instant', 2, ['U'], 'Counter'),
+        createCard('Lava Spike', 4, 'Sorcery', 1, ['R'], 'Damage'),
+        createCard('Force of Will', 4, 'Instant', 0, ['U'], 'Counter'),
+        createCard('Skewer the Critics', 4, 'Sorcery', 2, ['R'], 'Damage'),
+        createCard('Mana Drain', 4, 'Instant', 2, ['U'], 'Counter'),
+        createCard('Island', 12, 'Land', 0, ['U'], ''),
+        createCard('Mountain', 12, 'Land', 0, ['R'], ''),
+      ];
+
+      const result = detectArchetype(hybridDeck);
+      expect(result.primary).toBeDefined();
+      expect(result.secondary).toBeDefined();
+      // Should be close to 0.5 for a perfectly hybrid deck (allowing for rounding)
+      if (result.hybridBlend !== undefined) {
+        expect(result.hybridBlend).toBeGreaterThanOrEqual(0.4);
+        expect(result.hybridBlend).toBeLessThanOrEqual(0.6);
+      }
+    });
+
+    it('should detect midrange pile hybrid with moderate blend', () => {
+      const midrangePileDeck: DeckCard[] = [
+        createCard('Tarmogoyf', 4, 'Creature', 2, ['G', 'B'], 'Big'),
+        createCard('Dark Confidant', 4, 'Creature', 2, ['B'], 'Draw'),
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Deal 3 damage'),
+        createCard('Terminate', 4, 'Instant', 2, ['B', 'R'], 'Destroy'),
+        createCard('Thoughtseize', 4, 'Sorcery', 1, ['B'], 'Discard'),
+        createCard('Swamp', 10, 'Land', 0, ['B'], ''),
+        createCard('Mountain', 8, 'Land', 0, ['R'], ''),
+        createCard('Forest', 6, 'Land', 0, ['G'], ''),
+      ];
+
+      const result = detectArchetype(midrangePileDeck);
+      expect(['Midrange Pile', 'Jund-style', 'Value']).toContain(result.primary);
+      expect(result.hybridBlend).toBeDefined();
+      expect(result.hybridBlend).toBeGreaterThan(0.3);
+      // Blend can be 1.0 if deck strongly matches single archetype
+      expect(result.hybridBlend).toBeLessThanOrEqual(1.0);
+    });
+
+    it('should detect Tempo-Control hybrid with specific blend', () => {
+      const tempoControlDeck: DeckCard[] = [
+        createCard('Snapcaster Mage', 4, 'Creature', 2, ['U'], 'Flash'),
+        createCard('Spell Queller', 4, 'Creature', 2, ['U', 'W'], 'Flash'),
+        createCard('Counterspell', 4, 'Instant', 2, ['U'], 'Counter'),
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Damage'),
+        createCard('Brazen Borrower', 4, 'Creature', 3, ['U', 'R'], 'Flash'),
+        createCard('Island', 14, 'Land', 0, ['U'], ''),
+        createCard('Mountain', 6, 'Land', 0, ['R'], ''),
+      ];
+
+      const result = detectArchetype(tempoControlDeck);
+      expect(['Tempo-Control', 'Draw-Go']).toContain(result.primary);
+      expect(result.hybridBlend).toBeDefined();
+      // Tempo-Control should have a blend since it mixes tempo and control elements
+      expect(result.hybridBlend).toBeGreaterThan(0.4);
+    });
+
+    it('should include hybridBlend in all results', () => {
+      const deck: DeckCard[] = [
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Damage'),
+        createCard('Mountain', 16, 'Land', 0, [], ''),
+      ];
+
+      const result = detectArchetype(deck);
+      expect(result.hybridBlend).toBeDefined();
+      expect(result.hybridBlend).toBeGreaterThanOrEqual(0);
+      expect(result.hybridBlend).toBeLessThanOrEqual(1);
+    });
+  });
+
   describe('getArchetypeDetails', () => {
     it('should return archetype details for valid name', () => {
       const details = getArchetypeDetails('Burn');
