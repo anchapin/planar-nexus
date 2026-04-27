@@ -1,0 +1,7 @@
+I'll start by checking my memory for relevant context, then investigate both stale tasks.
+[mcp__SynaBun__recall] {'query': 'watchdog triage heartbeat stale agent task'}
+I found relevant context about task failures - backend agents have a 0% success rate with primary failure being "agent death without completion signals". Now let me investigate the two stale tasks.
+[Bash] {'command': 'ls -la /home/alex/Projects/planar-nexus/.sdd/worktrees/', 'description': 'List available worktrees'}
+[Bash] {'command': 'ls -la /home/alex/Projects/planar-nexus/.sdd/runtime/heartbeats/ 2>/dev/null | head -20', 'description': 'Check current heartbeat files'}
+[Bash] {'command': 'cat /home/alex/Projects/planar-nexus/.sdd/runtime/heartbeats/backend-e7af51d8.json 2>/dev/null', 'description': 'Check heartbeat for task
+[Bash] {'command': 'cat /home/alex/Projects/planar-nexus/.sdd/runtime/heartbeats/backend-d2768d64.json 2>/dev/null', 'description': 'Check heartbeat for task
