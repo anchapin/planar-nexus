@@ -1,0 +1,47 @@
+I'll start by recalling relevant memory and understanding the project structure for these tasks.
+[mcp__SynaBun__recall] {'queries': '["GH#684 test fixtures video analysis", "GH#678 sideboard recommendation engine", "Planar Nexus game state serialization", "AI Coach matc
+[mcp__plugin_context-mode_context-mode__ctx_batch_execute] {'commands': '[{"label": "Project Structure", "command": "find . -type f -name \'*.ts\' -o -name \'*.tsx\' | grep -E \'(test|fixture|coach|sideboard)\
+[mcp__SynaBun__recall] {'query': 'GH#684 test fixtures video analysis'}
+[mcp__SynaBun__recall] {'query': 'GH#678 sideboard recommendation engine'}
+[mcp__plugin_context-mode_context-mode__ctx_batch_execute] {'commands': '[{"label": "Game State Types", "command": "find . -type f -name \'*.ts\' -path \'*/lib/*\' | xargs grep -l \'interface GameState\\\\|typ
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/game-state/types.ts'}
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/components/meta/sideboard/SideboardPlanEditor.tsx'}
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/app/api/chat/coach/route.ts'}
+[mcp__plugin_context-mode_context-mode__ctx_search] {'queries': '["test fixture template", "game state serialization", "match coverage transcripts", "sideboard recommendation logic"]'}
+Let me explore the existing test patterns and sideboard infrastructure more deeply.
+[mcp__plugin_context-mode_context-mode__ctx_batch_execute] {'commands': '[{"label": "Existing Test Patterns", "command": "cat src/lib/game-state/__tests__/replacement-effects.test.ts 2>/dev/null | head -100"},
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-plans.ts'}
+I'll implement both tasks. Let me start with the quick win (GH#678) then move to the more complex GH#684.
+[TodoWrite] {'todos': [{'id': 'gh678-1', 'task': 'Create sideboard recommendation database and types', 'status': 'in_progress'}, {'id': 'gh678-2', 'task': 'Implem
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-recommendation.ts', 'content': '/**\n * Sideboard Re
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/__tests__/sideboard-recommendation.test.ts', 'content': "/**\n
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/transcript-parser.ts', 'content': '/**\n * Match Coverage Tran
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/__tests__/transcript-parser.test.ts', 'content': '/**\n * Test
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/game-state-serialization.ts', 'content': "/**\n * Game State S
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/generate-test-fixture.ts', 'content': '#!/usr/bin/env ts-node\
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/scripts/generate-test-fixture.ts', 'content': '#!/usr/bin/env node\n\n
+[Bash] {'command': 'chmod +x /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/scripts/generate-test-fixture.ts', 'description': 'Make test fi
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/__tests__/game-state-serialization.test.ts', 'content': "/**\n
+[Write] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/__tests__/fixture-generator.test.ts', 'content': "/**\n * Test
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/sideboard-recommen
+[Edit] {'replace_all': False, 'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-recommendation.ts', 'old_strin
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/sideboard-recommen
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-recommendation.ts', 'limit': 50, 'offset': 60}
+[Edit] {'replace_all': False, 'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-recommendation.ts', 'old_strin
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/sideboard-recommen
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-recommendation.ts', 'limit': 50, 'offset': 30}
+[Edit] {'replace_all': False, 'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/sideboard-recommendation.ts', 'old_strin
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/sideboard-recommen
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/transcript-parser.
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/game-state-seriali
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/fixture-generator.
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/generate-test-fixture.ts', 'limit': 30, 'offset': 240}
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/generate-test-fixture.ts', 'limit': 20, 'offset': 290}
+[Read] {'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/generate-test-fixture.ts', 'limit': 20, 'offset': 300}
+[Edit] {'replace_all': False, 'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/generate-test-fixture.ts', 'old_string':
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/fixture-generator.
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/fixture-generator.
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/fixture-generator.
+[Edit] {'replace_all': False, 'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/game-state-serialization.ts', 'old_strin
+[mcp__plugin_context-mode_context-mode__ctx_execute] {'language': 'shell', 'code': 'cd /home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64 && npm test -- src/lib/__tests__/game-state-seriali
+[Edit] {'replace_all': False, 'file_path': '/home/alex/Projects/planar-nexus/.sdd/worktrees/backend-d2768d64/src/lib/__tests__/game-state-serialization.test.
