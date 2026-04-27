@@ -43,3 +43,6 @@ I need to fix 3 test failures. Let me address them:
 [Bash] {'command': 'npm test -- --testPathPattern=archetype-detector.test.ts --testPathPattern=counterspell-frequency-model.test.ts --testPathPattern=stack-i
 All tests pass! Now let me commit the changes:
 [Bash] {'command': 'git add -A && git diff --staged --stat', 'description': 'Stage all changes and show diff summary'}
+[Bash] {'command': 'git commit -m "$(cat <<\'EOF\'\nfeat: Add hybrid archetype nuance and data-driven counterspell model\n\nTask 1 (GH#681): Add hybrid arche
+[Bash] {'command': 'curl -s -w \'\\n%{http_code}\' --retry 3 --retry-delay 2 --retry-connrefused -X POST http://127.0.0.1:8052/tasks/2744e4000a10/complete -H
+[Bash] {'command': 'curl -s -w \'\\n%{http_code}\' --retry 3 --retry-delay 2 --retry-connrefused -X POST http://127.0.0.1:8052/tasks/361dad91594c/complete -H
