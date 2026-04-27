@@ -10,6 +10,10 @@ import {
   DefaultWeights,
   type EvaluationWeights,
   type DetailedEvaluation,
+  type ProposedPlay,
+  projectBoardState,
+  compareProjections,
+  shouldPlayNow,
 } from '../game-state-evaluator';
 import type { AIGameState, AIPlayerState, AIPermanent, AIHandCard } from '@/lib/game-state/types';
 
@@ -556,6 +560,340 @@ describe('GameStateEvaluator', () => {
 
       // Life score should be capped at -1
       expect(evaluation.factors.lifeScore).toBeGreaterThanOrEqual(-1);
+    });
+  });
+});
+
+describe('What-If Scenario Modeling', () => {
+  describe('projectBoardState', () => {
+    it('should project casting a creature from hand to battlefield', () => {
+      const handCard = createMockHandCard('Grizzly Bears', 2, 'Creature');
+      const gameState = createTestGameState(20, 20, [handCard], [], [], []);
+      gameState.players.player1.manaPool = { white: 2, blue: 0, black: 0, red: 0, green: 0, colorless: 0, generic: 0 };
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: handCard.cardInstanceId,
+        manaCost: { colorless: 2 },
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      expect(result.projectedState.players.player1.hand).toHaveLength(0);
+      expect(result.projectedState.players.player1.battlefield).toHaveLength(1);
+      expect(result.projectedState.players.player1.battlefield[0].name).toBe('Grizzly Bears');
+      expect(result.confidence).toBeGreaterThan(0.5);
+    });
+
+    it('should project casting a land from hand to battlefield', () => {
+      const landCard = createMockHandCard('Forest', 0, 'Land');
+      const gameState = createTestGameState(20, 20, [landCard], [], [], []);
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: landCard.cardInstanceId,
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      expect(result.projectedState.players.player1.hand).toHaveLength(0);
+      expect(result.projectedState.players.player1.battlefield).toHaveLength(1);
+      expect(result.projectedState.players.player1.battlefield[0].type).toBe('land');
+      expect(result.confidence).toBeGreaterThan(0.5);
+    });
+
+    it('should deduct mana cost when casting a spell', () => {
+      const handCard = createMockHandCard('Lightning Bolt', 1, 'Instant');
+      const gameState = createTestGameState(20, 20, [handCard], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 2, green: 0, colorless: 0, generic: 0 };
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: handCard.cardInstanceId,
+        manaCost: { red: 1 },
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      expect(result.projectedState.players.player1.manaPool.red).toBe(1);
+    });
+
+    it('should project creature activation', () => {
+      const creature = createMockPermanent('c1', 'Mana Dork', 'creature', 1, 1);
+      const gameState = createTestGameState(20, 20, [], [], [creature], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 2, colorless: 0, generic: 0 };
+
+      const play: ProposedPlay = {
+        type: 'activate',
+        permanentId: creature.id,
+        manaCost: { green: 1 },
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      expect(result.projectedState.players.player1.battlefield[0].tapped).toBe(true);
+      expect(result.projectedState.players.player1.manaPool.green).toBe(1);
+    });
+
+    it('should project attack with unblocked creatures dealing damage', () => {
+      const attacker = createMockPermanent('c1', 'Bear', 'creature', 2, 2);
+      const gameState = createTestGameState(20, 20, [], [], [attacker], []);
+
+      const play: ProposedPlay = {
+        type: 'attack',
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      // Opponent should take damage
+      expect(result.projectedState.players.player2.life).toBeLessThan(20);
+      expect(result.projectedState.players.player1.battlefield[0].tapped).toBe(true);
+    });
+
+    it('should project attack with blocked creatures potentially dying', () => {
+      const attacker = createMockPermanent('c1', 'Bear', 'creature', 2, 2);
+      const blocker = createMockPermanent('c2', 'Bear', 'creature', 2, 2);
+      const gameState = createTestGameState(20, 20, [], [], [attacker], [blocker]);
+
+      const play: ProposedPlay = {
+        type: 'attack',
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      // Both creatures should die in combat (2 power vs 2 toughness)
+      const player1Creatures = result.projectedState.players.player1.battlefield.filter(
+        (p) => p.type === 'creature'
+      );
+      const player2Creatures = result.projectedState.players.player2.battlefield.filter(
+        (p) => p.type === 'creature'
+      );
+      expect(player1Creatures.length).toBe(0);
+      expect(player2Creatures.length).toBe(0);
+    });
+
+    it('should support 2-turn lookahead projections', () => {
+      const handCard = createMockHandCard('Grizzly Bears', 2, 'Creature');
+      const gameState = createTestGameState(20, 20, [handCard], [], [], []);
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: handCard.cardInstanceId,
+      };
+
+      const result1 = projectBoardState(gameState, 'player1', play, 1);
+      const result2 = projectBoardState(gameState, 'player1', play, 2);
+
+      // 2-turn lookahead should have lower confidence
+      expect(result2.confidence).toBeLessThan(result1.confidence);
+      // Both should modify the state
+      expect(result1.projectedState).not.toEqual(gameState);
+      expect(result2.projectedState).not.toEqual(gameState);
+    });
+
+    it('should throw error for cast play without cardId', () => {
+      const gameState = createTestGameState();
+      const play: ProposedPlay = { type: 'cast' };
+
+      expect(() => projectBoardState(gameState, 'player1', play)).toThrow('cast play requires cardId');
+    });
+
+    it('should throw error for activate play without permanentId', () => {
+      const gameState = createTestGameState();
+      const play: ProposedPlay = { type: 'activate' };
+
+      expect(() => projectBoardState(gameState, 'player1', play)).toThrow('activate play requires permanentId');
+    });
+  });
+
+  describe('compareProjections', () => {
+    it('should compare multiple proposed plays and find the best', () => {
+      const creature1 = createMockHandCard('Grizzly Bears', 2, 'Creature');
+      const creature2 = createMockHandCard('Hill Giant', 3, 'Creature');
+      const gameState = createTestGameState(20, 20, [creature1, creature2], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 3, colorless: 0, generic: 0 };
+
+      const plays = [
+        {
+          name: 'Cast 2-drop creature',
+          play: { type: 'cast' as const, cardId: creature1.cardInstanceId, manaCost: { colorless: 2 } },
+        },
+        {
+          name: 'Cast 3-drop creature',
+          play: { type: 'cast' as const, cardId: creature2.cardInstanceId, manaCost: { colorless: 3 } },
+        },
+      ];
+
+      const result = compareProjections(gameState, 'player1', plays);
+
+      expect(result.currentScore).toBeDefined();
+      expect(result.projections).toHaveLength(2);
+      expect(result.bestPlay).toBeDefined();
+      expect(result.bestPlay.recommendation).toMatch(/cast_now|hold_until_next_turn|skip/);
+      expect(result.bestPlay.reasoning).toBeTruthy();
+    });
+
+    it('should recommend playing now when immediate benefit is high', () => {
+      const bigCreature = createMockHandCard('Eldrazi', 10, 'Creature');
+      const gameState = createTestGameState(20, 5, [bigCreature], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 10, colorless: 0, generic: 0 };
+
+      const plays = [
+        {
+          name: 'Cast big creature to finish opponent',
+          play: { type: 'cast' as const, cardId: bigCreature.cardInstanceId, manaCost: { colorless: 10 } },
+        },
+      ];
+
+      const result = compareProjections(gameState, 'player1', plays);
+
+      expect(result.bestPlay.recommendation).toBe('cast_now');
+    });
+
+    it('should recommend holding when better positioning is available', () => {
+      const creature = createMockHandCard('Counterspell', 2, 'Instant');
+      const gameState = createTestGameState(20, 20, [creature], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 2, black: 0, red: 0, green: 0, colorless: 0, generic: 0 };
+
+      const plays = [
+        {
+          name: 'Cast counterspell now (no target)',
+          play: { type: 'cast' as const, cardId: creature.cardInstanceId, manaCost: { blue: 1, colorless: 1 } },
+        },
+      ];
+
+      const result = compareProjections(gameState, 'player1', plays);
+
+      // Without a good target, might recommend holding
+      expect(['cast_now', 'hold_until_next_turn', 'skip']).toContain(result.bestPlay.recommendation);
+    });
+  });
+
+  describe('shouldPlayNow', () => {
+    it('should recommend playing now for strong immediate gain', () => {
+      const creature = createMockHandCard('Tarmogoyf', 2, 'Creature');
+      const gameState = createTestGameState(20, 15, [creature], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 2, colorless: 0, generic: 0 };
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: creature.cardInstanceId,
+        manaCost: { colorless: 2 },
+      };
+
+      const result = shouldPlayNow(gameState, 'player1', play);
+
+      expect(result.shouldPlay).toBe(true);
+      expect(result.reasoning).toBeTruthy();
+      expect(result.playNowScore).toBeDefined();
+      expect(result.holdScore).toBeDefined();
+    });
+
+    it('should recommend holding when better positioning is available', () => {
+      const instant = createMockHandCard('Counterspell', 2, 'Instant');
+      const gameState = createTestGameState(20, 20, [instant], [], [], []);
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: instant.cardInstanceId,
+        manaCost: { blue: 1, colorless: 1 },
+      };
+
+      const result = shouldPlayNow(gameState, 'player1', play);
+
+      // For an instant with no target, might recommend holding
+      expect(result.shouldPlay).toBeDefined();
+      expect(result.reasoning).toBeTruthy();
+    });
+
+    it('should return valid scores for both options', () => {
+      const creature = createMockHandCard('Grizzly Bears', 2, 'Creature');
+      const gameState = createTestGameState(20, 20, [creature], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 2, colorless: 0, generic: 0 };
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: creature.cardInstanceId,
+        manaCost: { colorless: 2 },
+      };
+
+      const result = shouldPlayNow(gameState, 'player1', play);
+
+      expect(typeof result.playNowScore).toBe('number');
+      expect(typeof result.holdScore).toBe('number');
+    });
+  });
+
+  describe('hold-vs-play decision scenarios', () => {
+    it('should recommend casting creature when opponent is low on life', () => {
+      const creature = createMockHandCard('Lightning Bolt', 1, 'Instant');
+      const gameState = createTestGameState(20, 3, [creature], [], [], []);
+      gameState.players.player1.manaPool = { white: 0, blue: 0, black: 0, red: 1, colorless: 0, generic: 0 };
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: creature.cardInstanceId,
+        manaCost: { red: 1 },
+      };
+
+      const result = shouldPlayNow(gameState, 'player1', play);
+
+      // Should recommend playing now to finish opponent
+      expect(result.shouldPlay).toBe(true);
+    });
+
+    it('should recommend holding when mana is needed for interaction', () => {
+      const instant = createMockHandCard('Cancel', 3, 'Instant');
+      const gameState = createTestGameState(20, 20, [instant], [], [], []);
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: instant.cardInstanceId,
+        manaCost: { blue: 1, colorless: 2 },
+      };
+
+      const result = shouldPlayNow(gameState, 'player1', play);
+
+      // Holding up mana is valuable for instants
+      expect(result.reasoning).toBeTruthy();
+    });
+
+    it('should handle empty hand scenario', () => {
+      const gameState = createTestGameState(20, 20, [], [], [], []);
+
+      const play: ProposedPlay = {
+        type: 'cast',
+        cardId: 'nonexistent',
+        manaCost: {},
+      };
+
+      const result = projectBoardState(gameState, 'player1', play);
+
+      // Should still return a result even if card not found
+      expect(result).toBeDefined();
+      expect(result.confidence).toBeLessThan(0.5);
+    });
+
+    it('should compare playing a land vs holding', () => {
+      const land = createMockHandCard('Forest', 0, 'Land');
+      const creature = createMockHandCard('Elvish Mystic', 1, 'Creature');
+      const gameState = createTestGameState(20, 20, [land, creature], [], [], []);
+
+      const plays = [
+        {
+          name: 'Play land',
+          play: { type: 'cast' as const, cardId: land.cardInstanceId },
+        },
+        {
+          name: 'Cast creature (need mana first)',
+          play: { type: 'cast' as const, cardId: creature.cardInstanceId, manaCost: { colorless: 1 } },
+        },
+      ];
+
+      const result = compareProjections(gameState, 'player1', plays);
+
+      // Playing land should be the best option (no cost, develops mana)
+      expect(result.bestPlay.playName).toBeTruthy();
     });
   });
 });

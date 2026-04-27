@@ -25,7 +25,16 @@ import type {
 } from '@/lib/game-state/types';
 
 // Re-export for backward compatibility
-export type { GameState, PlayerState, Permanent, HandCard, TurnInfo };
+export type {
+  GameState,
+  PlayerState,
+  Permanent,
+  HandCard,
+  TurnInfo,
+  ProposedPlay,
+  ProjectionResult,
+  ProjectionComparison,
+};
 
 /**
  * Represents a threat assessment for a permanent
@@ -45,6 +54,45 @@ export interface OpportunityAssessment {
   value: number;
   risk: number;
   requiredResources: string[];
+}
+
+/**
+ * Represents a proposed play action for projection
+ */
+export interface ProposedPlay {
+  type: 'cast' | 'activate' | 'attack' | 'pass';
+  cardId?: string;
+  permanentId?: string;
+  targets?: string[];
+  manaCost?: { [color: string]: number };
+}
+
+/**
+ * Result of a board state projection
+ */
+export interface ProjectionResult {
+  projectedState: GameState;
+  projectedScore: number;
+  deltaScore: number; // Change from current state
+  confidence: number; // 0-1, higher = more predictable outcome
+}
+
+/**
+ * Comparison of multiple projections
+ */
+export interface ProjectionComparison {
+  currentScore: number;
+  projections: {
+    playName: string;
+    result: ProjectionResult;
+  }[];
+  bestPlay: {
+    playName: string;
+    score: number;
+    deltaScore: number;
+    recommendation: 'cast_now' | 'hold_until_next_turn' | 'skip';
+    reasoning: string;
+  };
 }
 
 /**
@@ -237,6 +285,377 @@ export class GameStateEvaluator {
    */
   getWeights(): EvaluationWeights {
     return { ...this.weights };
+  }
+
+  /**
+   * Project board state after a proposed play (1-2 turn lookahead)
+   * Returns the projected state and evaluation score
+   *
+   * This is a lightweight projection for quick decision making.
+   * It does not fully simulate all game rules - it approximates the
+   * most likely outcome based on the proposed action.
+   */
+  projectBoardState(proposedPlay: ProposedPlay, lookaheadTurns: 1 | 2 = 1): ProjectionResult {
+    // Deep clone the game state for projection
+    const projectedState: GameState = JSON.parse(JSON.stringify(this.gameState));
+    const player = projectedState.players[this.evaluatingPlayerId];
+
+    let confidence = 0.8; // Default confidence for simple projections
+
+    switch (proposedPlay.type) {
+      case 'cast':
+        if (!proposedPlay.cardId) {
+          throw new Error('cast play requires cardId');
+        }
+        confidence = this.applyCastProjection(projectedState, player, proposedPlay);
+        break;
+
+      case 'activate':
+        if (!proposedPlay.permanentId) {
+          throw new Error('activate play requires permanentId');
+        }
+        confidence = this.applyActivationProjection(projectedState, player, proposedPlay);
+        break;
+
+      case 'attack':
+        confidence = this.applyAttackProjection(projectedState, player, proposedPlay);
+        break;
+
+      case 'pass':
+        confidence = 0.95; // Passing is highly predictable
+        break;
+
+      default:
+        throw new Error(`Unknown play type: ${(proposedPlay as ProposedPlay).type}`);
+    }
+
+    // Apply lookahead: opponent response and next turn basics
+    if (lookaheadTurns >= 2) {
+      this.applyLookaheadProjection(projectedState, player);
+      confidence *= 0.85; // Reduce confidence with more lookahead
+    }
+
+    // Evaluate the projected state
+    const projectedEvaluator = new GameStateEvaluator(
+      projectedState,
+      this.evaluatingPlayerId,
+      this.getDifficultyFromWeights()
+    );
+    const projectedEvaluation = projectedEvaluator.evaluate();
+    const currentEvaluation = this.evaluate();
+    const deltaScore = projectedEvaluation.totalScore - currentEvaluation.totalScore;
+
+    return {
+      projectedState,
+      projectedScore: projectedEvaluation.totalScore,
+      deltaScore,
+      confidence: Math.max(0.1, Math.min(1.0, confidence)),
+    };
+  }
+
+  /**
+   * Compare multiple proposed plays to find the best option
+   * Includes analysis of whether to play now or hold until next turn
+   */
+  comparePlays(proposedPlays: { name: string; play: ProposedPlay }[]): ProjectionComparison {
+    const currentEvaluation = this.evaluate();
+    const projections = proposedPlays.map(({ name, play }) => {
+      const result = this.projectBoardState(play, 1);
+      return {
+        playName: name,
+        result,
+      };
+    });
+
+    // Find the best immediate play
+    const bestImmediate = projections.reduce((best, current) =>
+      current.result.deltaScore > best.result.deltaScore ? current : best
+    );
+
+    // Evaluate holding until next turn (pass priority)
+    const holdResult = this.projectBoardState({ type: 'pass' }, 2);
+    const holdScore = holdResult.projectedScore;
+
+    // Make recommendation based on comparing immediate vs hold
+    let recommendation: 'cast_now' | 'hold_until_next_turn' | 'skip';
+    let reasoning = '';
+
+    if (bestImmediate.result.deltaScore > 0.5) {
+      // Strong immediate benefit
+      recommendation = 'cast_now';
+      reasoning = `Strong immediate gain (${bestImmediate.result.deltaScore.toFixed(2)}) outweighs waiting.`;
+    } else if (holdScore > bestImmediate.result.projectedScore + 0.3) {
+      // Holding is significantly better
+      recommendation = 'hold_until_next_turn';
+      reasoning = 'Waiting until next turn provides better positioning.';
+    } else if (bestImmediate.result.deltaScore > 0) {
+      // Slight benefit to playing now
+      recommendation = 'cast_now';
+      reasoning = `Moderate immediate benefit (${bestImmediate.result.deltaScore.toFixed(2)}).`;
+    } else {
+      // No clear benefit
+      recommendation = 'skip';
+      reasoning = 'No clear advantage to playing now or holding.';
+    }
+
+    return {
+      currentScore: currentEvaluation.totalScore,
+      projections,
+      bestPlay: {
+        playName: bestImmediate.playName,
+        score: bestImmediate.result.projectedScore,
+        deltaScore: bestImmediate.result.deltaScore,
+        recommendation,
+        reasoning,
+      },
+    };
+  }
+
+  /**
+   * Helper: Get difficulty level from current weights
+   */
+  private getDifficultyFromWeights(): 'easy' | 'medium' | 'hard' | 'expert' {
+    const w = this.weights;
+    if (w.lifeScore >= 1.4) return 'easy';
+    if (w.lifeScore <= 0.7) return 'expert';
+    if (w.lifeScore <= 0.9) return 'hard';
+    return 'medium';
+  }
+
+  /**
+   * Apply cast projection - move card from hand to battlefield
+   */
+  private applyCastProjection(
+    state: GameState,
+    player: PlayerState,
+    play: ProposedPlay
+  ): number {
+    // Handle both id and cardInstanceId for compatibility
+    const cardIndex = player.hand.findIndex(
+      (c) => (c as any).id === play.cardId || (c as any).cardInstanceId === play.cardId
+    );
+    if (cardIndex === -1) return 0.3; // Low confidence if card not found
+
+    const card = player.hand[cardIndex];
+
+    // Deduct mana cost
+    if (play.manaCost) {
+      for (const [color, amount] of Object.entries(play.manaCost)) {
+        player.manaPool[color] = Math.max(0, (player.manaPool[color] || 0) - amount);
+      }
+    }
+
+    // Remove from hand
+    player.hand.splice(cardIndex, 1);
+
+    // Add to battlefield
+    if (card.type.toLowerCase().includes('land')) {
+      player.battlefield.push({
+        id: card.id,
+        name: card.name,
+        type: 'land',
+        tapped: false,
+        controller: this.evaluatingPlayerId,
+      });
+    } else if (card.type.toLowerCase().includes('creature')) {
+      player.battlefield.push({
+        id: card.id,
+        name: card.name,
+        type: 'creature',
+        power: card.power || 0,
+        toughness: card.toughness || 0,
+        tapped: false, // Summoning sickness not modeled for simplicity
+        controller: this.evaluatingPlayerId,
+      });
+    } else {
+      // Other permanents
+      player.battlefield.push({
+        id: card.id,
+        name: card.name,
+        type: card.type.toLowerCase() as any,
+        tapped: false,
+        controller: this.evaluatingPlayerId,
+      });
+    }
+
+    return 0.85; // High confidence for cast projections
+  }
+
+  /**
+   * Apply activation projection - activate an ability
+   */
+  private applyActivationProjection(
+    state: GameState,
+    player: PlayerState,
+    play: ProposedPlay
+  ): number {
+    const permanent = player.battlefield.find((p) => p.id === play.permanentId);
+    if (!permanent) return 0.2;
+
+    // Deduct mana cost
+    if (play.manaCost) {
+      for (const [color, amount] of Object.entries(play.manaCost)) {
+        player.manaPool[color] = Math.max(0, (player.manaPool[color] || 0) - amount);
+      }
+    }
+
+    // Tap the permanent (typical for activations)
+    permanent.tapped = true;
+
+    // Simple effect modeling - if it's a creature, might gain value
+    if (permanent.type === 'creature') {
+      // Assume some positive effect (e.g., +1/+1 counter)
+      permanent.power = (permanent.power || 0) + 1;
+      permanent.toughness = (permanent.toughness || 0) + 1;
+    }
+
+    return 0.6; // Medium confidence for activations
+  }
+
+  /**
+   * Apply attack projection - simulate combat
+   */
+  private applyAttackProjection(
+    state: GameState,
+    player: PlayerState,
+    play: ProposedPlay
+  ): number {
+    const attackers = player.battlefield.filter(
+      (p) => p.type === 'creature' && !p.tapped
+    );
+
+    if (attackers.length === 0) return 0.9;
+
+    const opponents = this.getOpponentsFromState(state);
+    if (opponents.length === 0) return 0.9;
+
+    const opponent = opponents[0]; // Simplified: single opponent
+    const blockers = opponent.battlefield.filter(
+      (p) => p.type === 'creature' && !p.tapped
+    );
+
+    // Simple combat simulation
+    let totalDamage = 0;
+    let damageToAttacker = 0;
+
+    // Assign blockers (greedy: block largest attackers first)
+    const sortedAttackers = [...attackers].sort(
+      (a, b) => (b.power || 0) - (a.power || 0)
+    );
+    const sortedBlockers = [...blockers].sort(
+      (a, b) => (b.power || 0) - (a.power || 0)
+    );
+
+    for (let i = 0; i < Math.min(sortedAttackers.length, sortedBlockers.length); i++) {
+      const attacker = sortedAttackers[i];
+      const blocker = sortedBlockers[i];
+      const attackerPower = attacker.power || 0;
+      const attackerToughness = attacker.toughness || 0;
+      const blockerPower = blocker.power || 0;
+      const blockerToughness = blocker.toughness || 0;
+
+      // Both deal damage to each other
+      damageToAttacker += blockerPower;
+      if (attackerPower >= blockerToughness) {
+        // Blocker would die
+        const blockerIndex = opponent.battlefield.findIndex((p) => p.id === blocker.id);
+        if (blockerIndex !== -1) {
+          opponent.battlefield.splice(blockerIndex, 1);
+        }
+      }
+      if (blockerPower >= attackerToughness) {
+        // Attacker would die
+        const attackerIndex = player.battlefield.findIndex((p) => p.id === attacker.id);
+        if (attackerIndex !== -1) {
+          player.battlefield.splice(attackerIndex, 1);
+        }
+      }
+    }
+
+    // Unblocked creatures deal damage to opponent
+    for (let i = sortedBlockers.length; i < sortedAttackers.length; i++) {
+      totalDamage += sortedAttackers[i].power || 0;
+      sortedAttackers[i].tapped = true;
+    }
+
+    // Apply damage to opponent
+    opponent.life = Math.max(0, opponent.life - totalDamage);
+
+    return 0.7; // Medium-high confidence for attacks
+  }
+
+  /**
+   * Apply 2-turn lookahead projection
+   * Simulates opponent turn and our next turn basics
+   */
+  private applyLookaheadProjection(state: GameState, player: PlayerState): void {
+    const opponents = this.getOpponentsFromState(state);
+    if (opponents.length === 0) return;
+
+    const opponent = opponents[0];
+
+    // Opponent draws a card
+    if (opponent.library > 0) {
+      opponent.library--;
+      opponent.hand.push({
+        id: `projected-${Date.now()}`,
+        name: 'Projected Card',
+        type: 'unknown',
+        manaValue: 2,
+        power: 0,
+        toughness: 0,
+      });
+    }
+
+    // Opponent lands (if they have lands in hand)
+    const landInHand = opponent.hand.findIndex((c) => c.type === 'land');
+    if (landInHand !== -1) {
+      opponent.hand.splice(landInHand, 1);
+      opponent.battlefield.push({
+        id: `projected-land-${Date.now()}`,
+        name: 'Land',
+        type: 'land',
+        tapped: false,
+        controller: opponent.id,
+      });
+    }
+
+    // Opponent attacks with untapped creatures
+    const opponentAttackers = opponent.battlefield.filter(
+      (p) => p.type === 'creature' && !p.tapped
+    );
+    let opponentDamage = 0;
+    for (const creature of opponentAttackers) {
+      opponentDamage += creature.power || 0;
+      creature.tapped = true;
+    }
+    player.life = Math.max(0, player.life - opponentDamage);
+
+    // Our next turn: draw a card
+    if (player.library > 0) {
+      player.library--;
+      player.hand.push({
+        id: `projected-ours-${Date.now()}`,
+        name: 'Projected Card',
+        type: 'unknown',
+        manaValue: 2,
+        power: 0,
+        toughness: 0,
+      });
+    }
+
+    // Reset turn info
+    state.turnInfo.turn++;
+    state.turnInfo.currentPlayer = this.evaluatingPlayerId;
+  }
+
+  /**
+   * Get opponents from a projected state
+   */
+  private getOpponentsFromState(state: GameState): PlayerState[] {
+    return Object.values(state.players).filter(
+      (p) => p.id !== this.evaluatingPlayerId
+    );
   }
 
   /**
@@ -915,4 +1334,74 @@ export function quickScore(
 ): number {
   const evaluation = evaluateGameState(gameState, playerId, difficulty);
   return evaluation.totalScore;
+}
+
+/**
+ * Project board state after a proposed play
+ * Convenience function for quick projection without creating evaluator instance
+ */
+export function projectBoardState(
+  gameState: GameState,
+  playerId: string,
+  proposedPlay: ProposedPlay,
+  lookaheadTurns: 1 | 2 = 1,
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+): ProjectionResult {
+  const evaluator = new GameStateEvaluator(gameState, playerId, difficulty);
+  return evaluator.projectBoardState(proposedPlay, lookaheadTurns);
+}
+
+/**
+ * Compare multiple proposed plays to find the best option
+ * Includes analysis of whether to play now or hold until next turn
+ */
+export function compareProjections(
+  gameState: GameState,
+  playerId: string,
+  proposedPlays: { name: string; play: ProposedPlay }[],
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+): ProjectionComparison {
+  const evaluator = new GameStateEvaluator(gameState, playerId, difficulty);
+  return evaluator.comparePlays(proposedPlays);
+}
+
+/**
+ * Decide whether to play a card now or hold until next turn
+ * Returns true if playing now is better than holding
+ */
+export function shouldPlayNow(
+  gameState: GameState,
+  playerId: string,
+  proposedPlay: ProposedPlay,
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+): {
+  shouldPlay: boolean;
+  playNowScore: number;
+  holdScore: number;
+  reasoning: string;
+} {
+  const evaluator = new GameStateEvaluator(gameState, playerId, difficulty);
+
+  const playNowResult = evaluator.projectBoardState(proposedPlay, 1);
+  const holdResult = evaluator.projectBoardState({ type: 'pass' }, 2);
+
+  const shouldPlay = playNowResult.projectedScore > holdResult.projectedScore + 0.2;
+
+  let reasoning = '';
+  if (playNowResult.deltaScore > 0.5) {
+    reasoning = 'Strong immediate gain from casting now.';
+  } else if (holdResult.projectedScore > playNowResult.projectedScore + 0.3) {
+    reasoning = 'Better to hold and play next turn.';
+  } else if (shouldPlay) {
+    reasoning = 'Slight advantage to playing now.';
+  } else {
+    reasoning = 'Holding provides better positioning.';
+  }
+
+  return {
+    shouldPlay,
+    playNowScore: playNowResult.projectedScore,
+    holdScore: holdResult.projectedScore,
+    reasoning,
+  };
 }

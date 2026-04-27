@@ -25,7 +25,8 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   
   // Number of workers (parallel processes)
-  workers: process.env.CI ? 1 : undefined,
+  // Use 2 workers in CI to speed up E2E tests while maintaining stability
+  workers: process.env.CI ? 2 : undefined,
   
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
