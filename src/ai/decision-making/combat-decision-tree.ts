@@ -581,10 +581,26 @@ export class CombatDecisionTree {
       const blockerPower = blocker.power || 0;
       const blockerToughness = blocker.toughness || 0;
 
-      // Check if attacker dies
-      const attackerDies = blockerPower >= attackerToughness;
+      // Check for indestructible - indestructible creatures can't be destroyed by damage
+      const attackerHasIndestructible = attacker.keywords?.includes('indestructible') || false;
+      const blockerHasIndestructible = blocker.keywords?.includes('indestructible') || false;
+
+      // Check for deathtouch - deathtouch creatures destroy any creature they deal damage to
+      const attackerHasDeathtouch = attacker.keywords?.includes('deathtouch') || false;
+      const blockerHasDeathtouch = blocker.keywords?.includes('deathtouch') || false;
+
+      // Check if attacker dies (blocker's damage is lethal, unless attacker is indestructible)
+      const attackerDies = !attackerHasIndestructible && (blockerPower >= attackerToughness);
+
       // Check if blocker dies
-      const blockerDies = attackerPower >= blockerToughness;
+      // Deathtouch: any damage kills the blocker
+      // Normal: damage >= toughness, unless blocker is indestructible
+      let blockerDies = false;
+      if (attackerHasDeathtouch && attackerPower > 0) {
+        blockerDies = !blockerHasIndestructible;
+      } else {
+        blockerDies = !blockerHasIndestructible && (attackerPower >= blockerToughness);
+      }
 
       // Trade = both die
       const trades = attackerDies && blockerDies;
@@ -605,6 +621,8 @@ export class CombatDecisionTree {
     const power = creature.power || 0;
     const toughness = creature.toughness || 0;
     const hasTrample = creature.keywords?.includes('trample') || false;
+    const hasDeathtouch = creature.keywords?.includes('deathtouch') || false;
+    const hasIndestructible = creature.keywords?.includes('indestructible') || false;
 
     // Base value = damage dealt
     let damageDealt = power;
@@ -626,17 +644,33 @@ export class CombatDecisionTree {
         return worst || block;
       }, blocks[0]);
 
-      creatureDies = worstBlock.trades || worstBlock.blocker.power! >= toughness;
+      const blockerPower = worstBlock.blocker.power || 0;
+      const blockerHasIndestructible = worstBlock.blocker.keywords?.includes('indestructible') || false;
+
+      // Check if attacker dies (unless indestructible)
+      creatureDies = !hasIndestructible && (worstBlock.trades || blockerPower >= toughness);
       blockerDies = worstBlock.dies;
 
       // Calculate damage through
       if (hasTrample && blockerDies) {
-        const excessDamage = power - (worstBlock.blocker.toughness || 0);
+        // Trample: excess damage goes to player
+        // Deathtouch + Trample: with deathtouch, only 1 damage needs to be assigned to kill blocker
+        let damageToBlocker = worstBlock.blocker.toughness || 0;
+        if (hasDeathtouch && !blockerHasIndestructible) {
+          damageToBlocker = 1; // Deathtouch needs only 1 damage to kill
+        }
+        const excessDamage = power - damageToBlocker;
         damageDealt = Math.max(0, excessDamage);
       } else if (!creatureDies) {
         damageDealt = power;
       } else {
         damageDealt = 0;
+      }
+
+      // Deathtouch bonus: if we have deathtouch and blocked, we kill the blocker
+      // (unless they're indestructible)
+      if (hasDeathtouch && !blockerHasIndestructible && power > 0) {
+        blockerDies = true;
       }
     }
 
@@ -773,18 +807,51 @@ export class CombatDecisionTree {
     const attackerPower = attacker.power || 0;
     const attackerToughness = attacker.toughness || 0;
 
+    // Check for special keywords
+    const attackerHasDeathtouch = attacker.keywords?.includes('deathtouch') || false;
+    const attackerHasIndestructible = attacker.keywords?.includes('indestructible') || false;
+
     // Sort blockers by effectiveness
     const sortedBlockers = [...availableBlockers].sort((a, b) => {
+      const aHasIndestructible = a.keywords?.includes('indestructible') || false;
+      const bHasIndestructible = b.keywords?.includes('indestructible') || false;
+
       // Prefer blockers that can kill the attacker
-      const aKills = (a.power || 0) >= attackerToughness;
-      const bKills = (b.power || 0) >= attackerToughness;
+      // Deathtouch: any damage kills, so if attacker has deathtouch, blockers that survive are prioritized
+      // Indestructible: indestructible attacker can't be killed by damage alone
+      let aKills = false;
+      let bKills = false;
+
+      if (attackerHasIndestructible) {
+        // Indestructible attacker can't be killed by damage
+        aKills = false;
+        bKills = false;
+      } else if (attackerHasDeathtouch) {
+        // Deathtouch attacker kills any blocker it deals damage to, but we can't kill it
+        aKills = false;
+        bKills = false;
+      } else {
+        aKills = (a.power || 0) >= attackerToughness;
+        bKills = (b.power || 0) >= attackerToughness;
+      }
 
       if (aKills && !bKills) return -1;
       if (!aKills && bKills) return 1;
 
       // Prefer blockers that survive
-      const aSurvives = attackerPower < (a.toughness || 0);
-      const bSurvives = attackerPower < (b.toughness || 0);
+      // Deathtouch: if attacker has deathtouch, blocker dies from any damage
+      // Indestructible: if blocker is indestructible, it survives damage
+      let aSurvives = false;
+      let bSurvives = false;
+
+      if (attackerHasDeathtouch) {
+        // Deathtouch kills any blocker, unless blocker is indestructible
+        aSurvives = aHasIndestructible;
+        bSurvives = bHasIndestructible;
+      } else {
+        aSurvives = attackerPower < (a.toughness || 0) || aHasIndestructible;
+        bSurvives = attackerPower < (b.toughness || 0) || bHasIndestructible;
+      }
 
       if (aSurvives && !bSurvives) return -1;
       if (!aSurvives && bSurvives) return 1;
@@ -800,9 +867,20 @@ export class CombatDecisionTree {
     const bestBlocker = sortedBlockers[0];
     const blockerPower = bestBlocker.power || 0;
     const blockerToughness = bestBlocker.toughness || 0;
+    const blockerHasIndestructible = bestBlocker.keywords?.includes('indestructible') || false;
 
-    const attackerDies = blockerPower >= attackerToughness;
-    const blockerDies = attackerPower >= blockerToughness;
+    // Check if attacker dies
+    const attackerDies = !attackerHasIndestructible && (blockerPower >= attackerToughness);
+
+    // Check if blocker dies
+    let blockerDies = false;
+    if (attackerHasDeathtouch && attackerPower > 0) {
+      // Deathtouch: any damage kills the blocker
+      blockerDies = !blockerHasIndestructible;
+    } else {
+      // Normal: damage >= toughness, unless blocker is indestructible
+      blockerDies = !blockerHasIndestructible && (attackerPower >= blockerToughness);
+    }
 
     // Calculate block value
     let blockValue = 0;
@@ -810,6 +888,10 @@ export class CombatDecisionTree {
     if (attackerDies && !blockerDies) {
       // Great block - kill attacker for free
       blockValue = 0.8;
+      // Bonus for indestructible blocker (guaranteed survival)
+      if (blockerHasIndestructible) {
+        blockValue = 0.9;
+      }
     } else if (attackerDies && blockerDies) {
       // Trade - check mana values
       const attackerValue = attacker.manaValue || 0;
@@ -836,9 +918,19 @@ export class CombatDecisionTree {
       }
     } else {
       // Blocker survives but attacker doesn't die
-      // Only worth it if preventing significant damage
+      // This is especially valuable with indestructible blockers
       const lifeSaved = attackerPower;
       blockValue = lifeSaved / 20 - 0.3;
+
+      // Bonus for indestructible blocker - can block repeatedly
+      if (blockerHasIndestructible) {
+        blockValue += 0.3;
+      }
+
+      // Bonus for deathtouch blocker - can kill big threats
+      if (bestBlocker.keywords?.includes('deathtouch')) {
+        blockValue += 0.4;
+      }
     }
 
     // Adjust for first strike

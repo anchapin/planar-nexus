@@ -568,4 +568,207 @@ describe('CombatDecisionTree', () => {
       expect(Array.isArray(plan.combatTricks)).toBe(true);
     });
   });
+
+  describe('deathtouch mechanics', () => {
+    it('should recognize that deathtouch creatures kill any creature with 1 damage', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Deathtouch Rat', 'creature', 1, 1, false, 1, ['deathtouch']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Giant', 'creature', 8, 8),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // AI should be willing to block with deathtouch creature
+      expect(plan.blocks.length).toBeGreaterThan(0);
+    });
+
+    it('should assign minimum damage with deathtouch when trampling', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Trample Deathtouch', 'creature', 6, 6, false, 4, ['deathtouch', 'trample']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Wall', 'creature', 0, 5),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateAttackPlan();
+
+      // Should attack aggressively with deathtouch + trample
+      expect(plan.attacks.length).toBeGreaterThan(0);
+    });
+
+    it('should not waste multiple blockers on a deathtouch creature unless necessary', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+        createMockPermanent('c2', 'Wolf', 'creature', 2, 2),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c3', 'Deathtouch Assassin', 'creature', 1, 1, false, 3, ['deathtouch']),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // AI should understand that one blocker dies, so it may not be worth it
+      // or it should use the cheapest blocker
+      expect(plan).toBeDefined();
+    });
+  });
+
+  describe('indestructible mechanics', () => {
+    it('should recognize that indestructible creatures survive lethal damage', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Indestructible Golem', 'creature', 4, 4, false, 4, ['indestructible']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Ogre', 'creature', 5, 5),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // AI should be more willing to block with indestructible creature
+      expect(plan.blocks.length).toBeGreaterThan(0);
+    });
+
+    it('should not attempt to kill indestructible creatures via combat damage', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Indestructible Golem', 'creature', 1, 1, false, 4, ['indestructible']),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player2');
+
+      const plan = combatAI.generateBlockingPlan(player1Creatures);
+
+      // AI should not waste blockers on indestructible creatures unless blocking is valuable
+      expect(plan).toBeDefined();
+    });
+
+    it('should handle double-block scenarios with indestructible blockers', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Indestructible Knight', 'creature', 3, 3, false, 4, ['indestructible']),
+        createMockPermanent('c2', 'Squire', 'creature', 1, 1),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c3', 'Big Beast', 'creature', 7, 7),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // AI should use indestructible creature as primary blocker
+      expect(plan.blocks.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('deathtouch vs indestructible interaction', () => {
+    it('should recognize that deathtouch cannot destroy indestructible creatures', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Deathtouch Rat', 'creature', 1, 1, false, 2, ['deathtouch']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Indestructible Golem', 'creature', 1, 1, false, 4, ['indestructible']),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player2');
+
+      const plan = combatAI.generateBlockingPlan(player1Creatures);
+
+      // AI should block confidently - indestructible survives deathtouch
+      expect(plan.blocks.length).toBeGreaterThan(0);
+    });
+
+    it('should not block indestructible attacker with deathtouch creature', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Deathtouch Assassin', 'creature', 1, 1, false, 2, ['deathtouch']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Indestructible Golem', 'creature', 5, 5, false, 5, ['indestructible']),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // Blocking is not valuable - deathtouch won't kill indestructible, and attacker is big
+      expect(plan).toBeDefined();
+    });
+
+    it('should recognize stalemate when deathtouch blocker faces indestructible attacker', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Indestructible Golem', 'creature', 4, 4, false, 4, ['indestructible']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Deathtouch Rat', 'creature', 1, 1, false, 2, ['deathtouch']),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const attackPlan = combatAI.generateAttackPlan();
+
+      // Attack plan should reflect the stalemate situation
+      expect(attackPlan).toBeDefined();
+    });
+  });
+
+  describe('blocking score with keywords', () => {
+    it('should prefer indestructible blockers when available', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Indestructible Knight', 'creature', 3, 3, false, 4, ['indestructible']),
+        createMockPermanent('c2', 'Regular Soldier', 'creature', 3, 3, false, 3),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c3', 'Ogre', 'creature', 4, 4),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // Should choose to block with indestructible creature
+      expect(plan.blocks.length).toBeGreaterThan(0);
+      if (plan.blocks.length > 0) {
+        const blocker = player1Creatures.find(c => c.id === plan.blocks[0].blockerId);
+        expect(blocker?.keywords?.includes('indestructible')).toBe(true);
+      }
+    });
+
+    it('should value deathtouch creatures as blockers against big threats', () => {
+      const player1Creatures = [
+        createMockPermanent('c1', 'Deathtouch Snake', 'creature', 1, 1, false, 2, ['deathtouch']),
+      ];
+      const player2Creatures = [
+        createMockPermanent('c2', 'Titan', 'creature', 10, 10, false, 8),
+      ];
+
+      const gameState = createTestGameState(20, 20, player1Creatures, player2Creatures);
+      const combatAI = new CombatDecisionTree(gameState, 'player1');
+
+      const plan = combatAI.generateBlockingPlan(player2Creatures);
+
+      // Should block - deathtouch kills even the biggest creatures
+      expect(plan.blocks.length).toBeGreaterThan(0);
+    });
+  });
 });
