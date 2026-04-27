@@ -24,6 +24,7 @@ import type {
 import { evaluateGameState, ThreatAssessment, DetailedEvaluation } from './game-state-evaluator';
 import { callAIProxy } from '@/lib/ai-proxy-client';
 import { AIProvider } from './providers/types';
+import { analyzeStackDependencies, getRecommendedResponse } from './stack-dependency-analyzer';
 
 // Re-export GameState for backward compatibility
 export type { GameState };
@@ -289,6 +290,41 @@ export class StackInteractionAI {
    */
   evaluateResponse(context: StackContext): ResponseDecision {
     const currentEvaluation = evaluateGameState(this.gameState, this.playerId, 'medium');
+
+    // Analyze stack dependencies for complex scenarios
+    const stackActions = [
+      context.currentAction,
+      ...context.actionsAbove,
+    ];
+    const dependencyAnalysis = analyzeStackDependencies(stackActions);
+
+    // Get recommendation from dependency analysis
+    const depRecommendation = getRecommendedResponse(context, dependencyAnalysis);
+
+    // If dependency analysis has a strong recommendation, use it
+    if (depRecommendation.shouldRespond && depRecommendation.responseStrategy !== 'pass') {
+      const validResponses = this.getValidResponses(context);
+
+      // Find a response that matches the recommendation
+      let targetResponse: AvailableResponse | undefined;
+      if (depRecommendation.targetActionId) {
+        targetResponse = validResponses.find(r =>
+          r.effect.targets.includes(depRecommendation.targetActionId!)
+        );
+      }
+
+      if (targetResponse) {
+        return {
+          shouldRespond: true,
+          action: 'respond',
+          responseCardId: targetResponse.cardId,
+          targetActionId: depRecommendation.targetActionId,
+          reasoning: depRecommendation.reasoning,
+          confidence: 0.85, // High confidence from dependency analysis
+          expectedValue: this.calculateDependencyValue(dependencyAnalysis, depRecommendation),
+        };
+      }
+    }
 
     // Evaluate the threat level of the current action
     const threatLevel = this.assessActionThreat(context, currentEvaluation);
@@ -1457,6 +1493,29 @@ export class StackInteractionAI {
     }
 
     return Math.min(1, Math.max(0, score));
+  }
+
+  /**
+   * Calculate expected value from dependency-based recommendation
+   */
+  private calculateDependencyValue(
+    dependencyAnalysis: any,
+    recommendation: any
+  ): number {
+    let value = 0.5;
+
+    // High risk threats are more valuable to address
+    const highRiskCount = dependencyAnalysis.riskAnalysis.filter(
+      (r: any) => r.riskLevel === 'high'
+    ).length;
+    value += highRiskCount * 0.2;
+
+    // Protecting our actions is valuable
+    if (recommendation.responseStrategy === 'protect_own') {
+      value += 0.3;
+    }
+
+    return Math.min(1, value);
   }
 }
 
