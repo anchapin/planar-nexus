@@ -28,7 +28,7 @@ export default defineConfig({
   workers: process.env.CI ? 4 : undefined,
 
   // Exclude flaky import-export-roundtrip tests in CI until underlying race conditions are fixed
-  grep: process.env.CI ? invert ? ["import-export-roundtrip"] : undefined,
+  grepInvert: process.env.CI ? /import-export-roundtrip/ : undefined,
   
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
