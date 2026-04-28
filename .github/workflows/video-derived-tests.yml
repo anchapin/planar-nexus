@@ -1,0 +1,201 @@
+name: Video-Derived Tests
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/lib/game-state/**'
+      - 'src/lib/__fixtures__/**'
+      - 'scripts/generate-test-fixture.ts'
+      - '.github/workflows/video-derived-tests.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/lib/game-state/**'
+      - 'src/lib/__fixtures__/**'
+      - 'scripts/generate-test-fixture.ts'
+      - '.github/workflows/video-derived-tests.yml'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  BASELINE_COVERAGE: 70
+
+jobs:
+  video-derived-tests:
+    name: Video-Derived Game State Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate test fixtures from video states
+        run: |
+          if [ -f scripts/generate-test-fixture.ts ]; then
+            echo "Running test fixture generation..."
+            npx tsx scripts/generate-test-fixture.ts --fixtures-dir src/lib/__fixtures__/video-derived
+          else
+            echo "No fixture generation script found, skipping..."
+            echo "VIDEO_FIXTURES_COUNT=0" >> $GITHUB_ENV
+          fi
+
+      - name: Count generated test fixtures
+        id: count-fixtures
+        run: |
+          if [ -d src/lib/__fixtures__/video-derived ]; then
+            count=$(find src/lib/__fixtures__/video-derived -name "*.json" -type f | wc -l)
+            echo "VIDEO_FIXTURES_COUNT=$count" >> $GITHUB_ENV
+            echo "Found $count video-derived test fixtures"
+          else
+            echo "VIDEO_FIXTURES_COUNT=0" >> $GITHUB_ENV
+            echo "No video-derived fixtures directory found"
+          fi
+
+      - name: Run video-derived Jest tests
+        if: env.VIDEO_FIXTURES_COUNT > 0
+        run: |
+          echo "Running $VIDEO_FIXTURES_COUNT video-derived tests..."
+          npm test -- --testPathPattern=video-derived --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MW
+
+      - name: Generate coverage report
+        if: env.VIDEO_FIXTURES_COUNT > 0
+        run: |
+          npm test -- --testPathPattern=video-derived --coverage --coverageReporters=json --coverageReporters=text --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MW
+
+      - name: Calculate coverage delta
+        id: coverage-delta
+        if: env.VIDEO_FIXTURES_COUNT > 0
+        run: |
+          if [ -f coverage/coverage-final.json ]; then
+            total_lines=$(cat coverage/coverage-final.json | grep -o '"total".*"lines".*{[^}]*' | grep -o '"pct":[0-9.]*' | cut -d: -f2)
+            delta=$(echo "$total_lines - $BASELINE_COVERAGE" | bc)
+            echo "COVERAGE_PERCENTAGE=$total_lines" >> $GITHUB_ENV
+            echo "COVERAGE_DELTA=$delta" >> $GITHUB_ENV
+            echo "Coverage: $total_lines% (baseline: $BASELINE_COVERAGE%, delta: $delta%)"
+          else
+            echo "COVERAGE_PERCENTAGE=0" >> $GITHUB_ENV
+            echo "COVERAGE_DELTA=-$BASELINE_COVERAGE" >> $GITHUB_ENV
+            echo "No coverage report generated"
+          fi
+
+      - name: Upload coverage artifacts
+        if: env.VIDEO_FIXTURES_COUNT > 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-derived-coverage
+          path: coverage/
+          retention-days: 30
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && env.VIDEO_FIXTURES_COUNT > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const count = process.env.VIDEO_FIXTURES_COUNT;
+            const coverage = process.env.COVERAGE_PERCENTAGE || 'N/A';
+            const delta = process.env.COVERAGE_DELTA || 'N/A';
+            const baseline = process.env.BASELINE_COVERAGE;
+
+            const body = `## Video-Derived Test Results
+
+            - **Test Fixtures**: ${count}
+            - **Coverage**: ${coverage}% (baseline: ${baseline}%, delta: ${delta}%)
+            - **Status**: ✅ All tests passing
+
+            Generated from video-derived game state fixtures.`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Create issue on failure
+        if: failure() && env.VIDEO_FIXTURES_COUNT > 0
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const count = process.env.VIDEO_FIXTURES_COUNT;
+            const runUrl = context.payload.repository.html_url + '/actions/runs/' + context.runId;
+
+            const title = `Video-derived test failure in ${context.ref}`;
+            const body = `Video-derived game state tests failed.
+
+            - **Test Fixtures**: ${count}
+            - **Run URL**: ${runUrl}
+            - **Branch**: ${context.ref}
+            - **Commit**: ${context.sha}
+
+            Please investigate the failure and fix the underlying game state logic.`;
+
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body,
+              labels: ['bug', 'tests', 'video-derived']
+            });
+
+      - name: Check coverage threshold
+        if: env.VIDEO_FIXTURES_COUNT > 0
+        run: |
+          if [ -n "$COVERAGE_PERCENTAGE" ]; then
+            if (( $(echo "$COVERAGE_PERCENTAGE < $BASELINE_COVERAGE" | bc -l) )); then
+              echo "Warning: Coverage ($COVERAGE_PERCENTAGE%) is below baseline ($BASELINE_COVERAGE%)"
+              echo "Delta: $COVERAGE_DELTA%"
+            fi
+          fi
+
+  update-readme-badge:
+    name: Update Coverage Badge
+    runs-on: ubuntu-latest
+    needs: [video-derived-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: video-derived-coverage
+          path: coverage/
+
+      - name: Update README badge
+        run: |
+          if [ -f coverage/coverage-summary.json ]; then
+            total_lines=$(cat coverage/coverage-summary.json | grep -o '"total".*"lines".*{[^}]*' | grep -o '"pct":[0-9.]*' | cut -d: -f2)
+            fixture_count=$(find src/lib/__fixtures__/video-derived -name "*.json" -type f 2>/dev/null | wc -l || echo "0")
+
+            # Update the coverage badge in README.md
+            sed -i "s/\[!\[Video-Derived Tests\].*\]/[![Video-Derived Tests](https:\/\/img.shields.io\/badge\/video_derived-${fixture_count}_fixtures-blue)](https:\/\/github.com\/planar-nexus\/planar-nexus\/actions\/workflows\/video-derived-tests.yml)/g" README.md
+
+            git add README.md
+            git diff --quiet && git diff --staged --quiet || git commit -m "chore: update video-derived test badge [skip ci]"
+            git push
+          fi
