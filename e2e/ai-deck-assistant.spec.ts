@@ -1,11 +1,13 @@
-import { test, expect, seedCardDatabase, waitForDbSeed } from "./test-utils";
+import { test, expect, seedCardDatabase } from "./test-utils";
 
 test.describe("AI Deck Assistant", () => {
   test.beforeEach(async ({ page }) => {
-    // Seed the database with test cards before each test
-    await seedCardDatabase(page);
+    // Navigate to deck builder first
     await page.goto("/deck-builder");
-    await waitForDbSeed(page);
+    await page.waitForLoadState("networkidle");
+
+    // Seed the database with test cards (runs in page context)
+    await seedCardDatabase(page);
   });
 
   test("should display initial state of AI Assistant", async ({ page }) => {
@@ -15,7 +17,7 @@ test.describe("AI Deck Assistant", () => {
 
     // Initial state should prompt to add cards
     const emptyState = page.locator(
-      "text=Add cards to your deck to get AI suggestions",
+      "text=Add cards to your deck to get AI suggestions.",
     );
     await expect(emptyState).toBeVisible();
   });
