@@ -117,7 +117,7 @@ function loadFixtures(fixturesDir: string): TestFixture[] {
 function generateTestFile(fixture: TestFixture): string {
   const { id, name, description, expectedBehaviors } = fixture;
 
-  const behaviorTests = expectedBehaviors.map((behavior, index) => {
+  const behaviorTests = expectedBehaviors?.map((behavior, index) => {
     const testName = behavior.replace(/[^a-zA-Z0-9]/g, '_');
     return `
   it('validates behavior: ${behavior}', () => {
@@ -126,7 +126,7 @@ function generateTestFile(fixture: TestFixture): string {
     // ${behavior}
     expect(fixture.gameState).toBeDefined();
   });`;
-  }).join('\n');
+  })?.join('\n') || '';
 
   return `/**
  * Video-Derived Test Fixture: ${name}
