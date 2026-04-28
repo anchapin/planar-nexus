@@ -153,7 +153,7 @@ export const SYNERGY_DATABASE: SynergyEntry[] = [
     ],
   },
 
-  // === TRIBAL SYNERGIES (4) ===
+  // === TRIBAL SYNERGIES (7) ===
   {
     id: 'dragon-tribal',
     name: 'Dragon Tribal',
@@ -269,6 +269,111 @@ export const SYNERGY_DATABASE: SynergyEntry[] = [
           const zombies = countPattern(deck, ['zombie', 'lich', 'skeleton', 'undead']);
           const recursion = countPattern(deck, ['graveyard', 'recur', 'return', 'reanimate']);
           return zombies >= 8 && recursion < 4;
+        },
+      },
+    ],
+  },
+  {
+    id: 'vampire-tribal',
+    name: 'Vampire Tribal',
+    type: 'tribal',
+    cards: ['Vampire'],
+    bonusCards: ['Bloodlord', 'Bloodghast', 'Blood Artist', 'Edgar Markov', 'Sorin'],
+    score: 7,
+    description: 'Vampire tribal with life drain and card advantage',
+    example: 'Edgar Markov + Blood Artist + Bloodghast',
+    minimumCards: 10,
+    missingSuggestions: [
+      {
+        missing: 'Vampire lords',
+        description: 'Your vampires need lords to maximize their power',
+        suggestion: ['Edgar Markov', 'Bloodlord of Vaasgoth', 'Stromkirk Captain'],
+        impact: 'high',
+        condition: (deck) => {
+          const vampires = countPattern(deck, ['vampire']);
+          const lords = countPattern(deck, ['edgar', 'bloodlord', 'stromkirk', 'captain', 'sorin']);
+          return vampires >= 8 && lords < 2;
+        },
+      },
+      {
+        missing: 'Life drain payoffs',
+        description: 'Your vampires could benefit from life drain synergies',
+        suggestion: ['Blood Artist', 'Zulaport Cutthroat', 'Syr Konrad, the Grim'],
+        impact: 'medium',
+        condition: (deck) => {
+          const vampires = countPattern(deck, ['vampire']);
+          const drain = countPattern(deck, ['life drain', 'blood artist', 'zulaport', 'whenever a creature dies']);
+          return vampires >= 8 && drain < 3;
+        },
+      },
+    ],
+  },
+  {
+    id: 'merfolk-tribal',
+    name: 'Merfolk Tribal',
+    type: 'tribal',
+    cards: ['Merfolk'],
+    bonusCards: ['Lord', 'Master', 'Reejerey', 'Coralhelm', 'Seer'],
+    score: 8,
+    description: 'Merfolk tribal with lords and unblockable threats',
+    example: 'Master of the Pearl Trident + Lord of Atlantis + Merfolk',
+    minimumCards: 10,
+    missingSuggestions: [
+      {
+        missing: 'Merfolk lords',
+        description: 'Your merfolk need lords to maximize their power',
+        suggestion: ['Master of the Pearl Trident', 'Lord of Atlantis', 'Merrow Reejerey'],
+        impact: 'high',
+        condition: (deck) => {
+          const merfolk = countPattern(deck, ['merfolk']);
+          const lords = countPattern(deck, ['master of the pearl', 'lord of atlantis', 'reejerey', 'coralhelm']);
+          return merfolk >= 8 && lords < 2;
+        },
+      },
+      {
+        missing: 'Island walk support',
+        description: 'Your merfolk could benefit from island walk enablers',
+        suggestion: ['Lord of Atlantis', 'Spreading Seas', 'Jace, the Mind Sculptor'],
+        impact: 'medium',
+        condition: (deck) => {
+          const merfolk = countPattern(deck, ['merfolk']);
+          const islandwalk = countPattern(deck, ['islandwalk', 'spreading seas', 'can\'t be blocked']);
+          return merfolk >= 8 && islandwalk < 3;
+        },
+      },
+    ],
+  },
+  {
+    id: 'human-tribal',
+    name: 'Human Tribal',
+    type: 'tribal',
+    cards: ['Human'],
+    bonusCards: ['Thalia', 'Kessig', 'Champion', 'Lieutenant', 'Captain'],
+    score: 7,
+    description: 'Human tribal with anthem effects and tempo disruption',
+    example: 'Thalia, Guardian of Thraben + Human champions',
+    minimumCards: 12,
+    missingSuggestions: [
+      {
+        missing: 'Human lords',
+        description: 'Your humans need lords to maximize their power',
+        suggestion: ['Thalia\'s Lieutenant', 'Kessig Malcontents', 'Champion of the Parish'],
+        impact: 'high',
+        condition: (deck) => {
+          const humans = countPattern(deck, ['human']);
+          const lords = countPattern(deck, ['thalia', 'kessig', 'champion', 'lieutenant', 'captain']);
+          return humans >= 10 && lords < 2;
+        },
+      },
+      {
+        missing: 'Tempo disruption',
+        description: 'Your humans could benefit from tempo disruption spells',
+        suggestion: ['Thalia, Guardian of Thraben', 'Meddling Mage', 'Leonin Arbiter'],
+        impact: 'medium',
+        condition: (deck) => {
+          const humans = countPattern(deck, ['human']);
+          const disruption = countPattern(deck, ['thalia', 'meddling', 'arbiter', 'counter target', 'tax']);
+          return humans >= 10 && disruption < 3;
         },
       },
     ],

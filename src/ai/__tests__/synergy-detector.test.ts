@@ -3,7 +3,15 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { detectSynergies, getSynergyByName, getSynergiesByCategory, SYNERGY_SIGNATURES } from '../synergy-detector';
+import {
+  detectSynergies,
+  getSynergyByName,
+  getSynergiesByCategory,
+  SYNERGY_SIGNATURES,
+  detectTribalAffiliation,
+  identifyOffTribeCards,
+  getTribalRecommendations,
+} from '../synergy-detector';
 import type { DeckCard } from '@/app/actions';
 
 describe('synergy-detector', () => {
@@ -311,6 +319,223 @@ describe('synergy-detector', () => {
       const endTime = Date.now();
 
       expect(endTime - startTime).toBeLessThan(100);
+    });
+  });
+
+  describe('Tribal Synergy Detection', () => {
+    it('should detect Vampire tribal synergy', () => {
+      const vampireDeck: DeckCard[] = [
+        createCard('Bloodghast', 4, 'Creature', 2, ['B', 'R'], 'Vampire'),
+        createCard('Vampire Nighthawk', 4, 'Creature', 3, ['B'], 'Vampire Flying Lifelink Deathtouch'),
+        createCard('Gatekeeper of Malakir', 4, 'Creature', 3, ['B'], 'Vampire'),
+        createCard('Blood Baron of Vizkopa', 2, 'Creature', 5, ['W', 'B'], 'Vampire'),
+        createCard('Edgar Markov', 1, 'Creature', 4, ['W', 'B', 'R'], 'Vampire Lord'),
+        createCard('Blood Artist', 4, 'Creature', 2, ['B'], 'Vampire'),
+        createCard('Swamp', 15, 'Land', 0, [], ''),
+        createCard('Plains', 10, 'Land', 0, [], ''),
+        createCard('Mountain', 5, 'Land', 0, [], ''),
+      ];
+
+      const result = detectSynergies(vampireDeck);
+      const vampireSynergy = result.find(s => s.name === 'Vampire Tribal');
+
+      expect(vampireSynergy).toBeDefined();
+      expect(vampireSynergy!.score).toBeGreaterThan(40);
+      expect(vampireSynergy!.cards.length).toBeGreaterThan(0);
+    });
+
+    it('should detect Merfolk tribal synergy', () => {
+      const merfolkDeck: DeckCard[] = [
+        createCard('Cursecatcher', 4, 'Creature', 1, ['U'], 'Merfolk'),
+        createCard('Silvergill Adept', 4, 'Creature', 2, ['U'], 'Merfolk'),
+        createCard('Master of the Pearl Trident', 4, 'Creature', 2, ['U'], 'Merfolk Lord'),
+        createCard('Lord of Atlantis', 4, 'Creature', 2, ['U'], 'Merfolk Lord'),
+        createCard('Merrow Reejerey', 4, 'Creature', 3, ['U'], 'Merfolk'),
+        createCard('Spreading Seas', 4, 'Enchantment', 2, ['U'], 'Enchantment'),
+        createCard('Island', 20, 'Land', 0, [], ''),
+      ];
+
+      const result = detectSynergies(merfolkDeck);
+      const merfolkSynergy = result.find(s => s.name === 'Merfolk Tribal');
+
+      expect(merfolkSynergy).toBeDefined();
+      expect(merfolkSynergy!.score).toBeGreaterThan(50);
+      expect(merfolkSynergy!.cards.length).toBeGreaterThan(0);
+    });
+
+    it('should detect Human tribal synergy', () => {
+      const humanDeck: DeckCard[] = [
+        createCard('Champion of the Parish', 4, 'Creature', 1, ['W'], 'Human'),
+        createCard('Thalia\'s Lieutenant', 4, 'Creature', 2, ['W'], 'Human'),
+        createCard('Kessig Malcontents', 4, 'Creature', 3, ['R'], 'Human'),
+        createCard('Reflector Mage', 4, 'Creature', 3, ['W', 'U'], 'Human'),
+        createCard('Thalia, Guardian of Thraben', 4, 'Creature', 2, ['W'], 'Human First Strike'),
+        createCard('Blessed Alliance', 2, 'Instant', 3, ['W'], 'Instant'),
+        createCard('Plains', 14, 'Land', 0, [], ''),
+        createCard('Island', 6, 'Land', 0, [], ''),
+        createCard('Mountain', 8, 'Land', 0, [], ''),
+      ];
+
+      const result = detectSynergies(humanDeck);
+      const humanSynergy = result.find(s => s.name === 'Human Tribal');
+
+      expect(humanSynergy).toBeDefined();
+      expect(humanSynergy!.score).toBeGreaterThan(40);
+      expect(humanSynergy!.cards.length).toBeGreaterThan(0);
+    });
+
+    it('should include tribal info in synergy results for tribal decks', () => {
+      const elvesDeck: DeckCard[] = [
+        createCard('Llanowar Elves', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Mystic', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Heritage Druid', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Archdruid', 4, 'Creature', 3, ['G'], 'Elf Lord'),
+        createCard('Ezuri, Renegade Leader', 2, 'Creature', 3, ['G'], 'Elf Lord'),
+        createCard('Forest', 20, 'Land', 0, [], ''),
+      ];
+
+      const result = detectSynergies(elvesDeck);
+      const elvesSynergy = result.find(s => s.name === 'Elves Tribal');
+
+      expect(elvesSynergy).toBeDefined();
+      expect(elvesSynergy!.tribalInfo).toBeDefined();
+      expect(elvesSynergy!.tribalInfo!.tribe).toBe('elves');
+      expect(elvesSynergy!.tribalInfo!.tribeMemberCount).toBeGreaterThan(0);
+      expect(elvesSynergy!.tribalInfo!.tribalDensity).toBeGreaterThan(0);
+      expect(Array.isArray(elvesSynergy!.tribalInfo!.offTribeCards)).toBe(true);
+      expect(Array.isArray(elvesSynergy!.tribalInfo!.recommendations)).toBe(true);
+    });
+  });
+
+  describe('detectTribalAffiliation', () => {
+    it('should detect elves as dominant tribe', () => {
+      const elvesDeck: DeckCard[] = [
+        createCard('Llanowar Elves', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Mystic', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Heritage Druid', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Archdruid', 4, 'Creature', 3, ['G'], 'Elf Lord'),
+        createCard('Forest', 20, 'Land', 0, [], ''),
+      ];
+
+      const affiliation = detectTribalAffiliation(elvesDeck);
+
+      expect(affiliation.tribe).toBe('elves');
+      expect(affiliation.memberCount).toBe(16);
+      expect(affiliation.density).toBeGreaterThan(80);
+    });
+
+    it('should detect no tribe for mixed creature deck', () => {
+      const mixedDeck: DeckCard[] = [
+        createCard('Goblin Guide', 2, 'Creature', 1, ['R'], 'Goblin'),
+        createCard('Llanowar Elves', 2, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Zombie', 2, 'Creature', 1, ['B'], 'Zombie'),
+        createCard('Forest', 10, 'Land', 0, [], ''),
+        createCard('Mountain', 10, 'Land', 0, [], ''),
+        createCard('Swamp', 10, 'Land', 0, [], ''),
+      ];
+
+      const affiliation = detectTribalAffiliation(mixedDeck);
+
+      expect(affiliation.tribe).toBeNull();
+      expect(affiliation.memberCount).toBe(0);
+    });
+
+    it('should detect vampires as dominant tribe', () => {
+      const vampireDeck: DeckCard[] = [
+        createCard('Bloodghast', 4, 'Creature', 2, ['B', 'R'], 'Vampire'),
+        createCard('Vampire Nighthawk', 4, 'Creature', 3, ['B'], 'Vampire Flying Lifelink Deathtouch'),
+        createCard('Gatekeeper of Malakir', 4, 'Creature', 3, ['B'], 'Vampire'),
+        createCard('Swamp', 15, 'Land', 0, [], ''),
+        createCard('Mountain', 5, 'Land', 0, [], ''),
+      ];
+
+      const affiliation = detectTribalAffiliation(vampireDeck);
+
+      expect(affiliation.tribe).toBe('vampires');
+      expect(affiliation.memberCount).toBe(12);
+      expect(affiliation.density).toBeGreaterThan(80);
+    });
+  });
+
+  describe('identifyOffTribeCards', () => {
+    it('should identify off-tribe cards in elf deck', () => {
+      const elfDeck: DeckCard[] = [
+        createCard('Llanowar Elves', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Mystic', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Goblin Guide', 2, 'Creature', 1, ['R'], 'Goblin'),
+        createCard('Tarmogoyf', 2, 'Creature', 2, ['G'], 'Creature'),
+        createCard('Forest', 20, 'Land', 0, [], ''),
+      ];
+
+      const offTribeCards = identifyOffTribeCards(elfDeck, 'elves');
+
+      expect(offTribeCards).toContain('Goblin Guide');
+      expect(offTribeCards).toContain('Tarmogoyf');
+      expect(offTribeCards).not.toContain('Llanowar Elves');
+      expect(offTribeCards).not.toContain('Elvish Mystic');
+    });
+
+    it('should return empty array for pure elf deck', () => {
+      const pureElfDeck: DeckCard[] = [
+        createCard('Llanowar Elves', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Mystic', 4, 'Creature', 1, ['G'], 'Elf Druid'),
+        createCard('Elvish Archdruid', 4, 'Creature', 3, ['G'], 'Elf Lord'),
+        createCard('Forest', 20, 'Land', 0, [], ''),
+      ];
+
+      const offTribeCards = identifyOffTribeCards(pureElfDeck, 'elves');
+
+      expect(offTribeCards).toEqual([]);
+    });
+  });
+
+  describe('getTribalRecommendations', () => {
+    it('should provide recommendations for off-tribe cards', () => {
+      const recommendations = getTribalRecommendations('elves', 10, 8);
+
+      expect(recommendations).toBeInstanceOf(Array);
+      expect(recommendations.length).toBeGreaterThan(0);
+      expect(recommendations.some(r => r.includes('off-tribe'))).toBe(true);
+    });
+
+    it('should provide tribe-specific recommendations for elves', () => {
+      const recommendations = getTribalRecommendations('elves', 15, 2);
+
+      expect(recommendations).toBeInstanceOf(Array);
+      expect(recommendations.length).toBeGreaterThan(0);
+      expect(recommendations.some(r => r.includes('Elvish Archdruid') || r.includes('Ezuri'))).toBe(true);
+    });
+
+    it('should provide tribe-specific recommendations for goblins', () => {
+      const recommendations = getTribalRecommendations('goblins', 12, 3);
+
+      expect(recommendations).toBeInstanceOf(Array);
+      expect(recommendations.length).toBeGreaterThan(0);
+      expect(recommendations.some(r => r.includes('Goblin Warchief') || r.includes('Muxus'))).toBe(true);
+    });
+
+    it('should provide tribe-specific recommendations for vampires', () => {
+      const recommendations = getTribalRecommendations('vampires', 10, 2);
+
+      expect(recommendations).toBeInstanceOf(Array);
+      expect(recommendations.length).toBeGreaterThan(0);
+      expect(recommendations.some(r => r.includes('Edgar') || r.includes('Bloodlord'))).toBe(true);
+    });
+
+    it('should provide tribe-specific recommendations for merfolk', () => {
+      const recommendations = getTribalRecommendations('merfolk', 10, 2);
+
+      expect(recommendations).toBeInstanceOf(Array);
+      expect(recommendations.length).toBeGreaterThan(0);
+      expect(recommendations.some(r => r.includes('Master of the Pearl') || r.includes('Lord of Atlantis'))).toBe(true);
+    });
+
+    it('should provide tribe-specific recommendations for humans', () => {
+      const recommendations = getTribalRecommendations('humans', 12, 3);
+
+      expect(recommendations).toBeInstanceOf(Array);
+      expect(recommendations.length).toBeGreaterThan(0);
+      expect(recommendations.some(r => r.includes('Thalia') || r.includes('Kessig'))).toBe(true);
     });
   });
 });

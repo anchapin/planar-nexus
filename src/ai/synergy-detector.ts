@@ -24,6 +24,24 @@ export interface SynergyResult {
   category: string;
   /** Synergy ID for reference */
   id?: string;
+  /** Tribal information (if applicable) */
+  tribalInfo?: TribalSynergyInfo;
+}
+
+/**
+ * Tribal synergy information
+ */
+export interface TribalSynergyInfo {
+  /** Tribe name */
+  tribe: string;
+  /** Count of tribe members in deck */
+  tribeMemberCount: number;
+  /** Cards that are off-tribe (don't belong to the tribe) */
+  offTribeCards: string[];
+  /** Percentage of deck that is on-tribe */
+  tribalDensity: number;
+  /** Recommended tribal enhancements */
+  recommendations: string[];
 }
 
 /**
@@ -68,13 +86,13 @@ export interface SynergySignature {
 function countMatchingCards(deck: DeckCard[], patterns: string[]): { count: number; cards: string[] } {
   const matchedCards: string[] = [];
   let count = 0;
-  
+
   for (const card of deck) {
     const name = card.name.toLowerCase();
     const text = (card.oracle_text || '').toLowerCase();
     const type = (card.type_line || '').toLowerCase();
     const combined = `${name} ${text} ${type}`;
-    
+
     for (const pattern of patterns) {
       if (combined.includes(pattern.toLowerCase())) {
         count += card.count;
@@ -85,15 +103,147 @@ function countMatchingCards(deck: DeckCard[], patterns: string[]): { count: numb
       }
     }
   }
-  
+
   return { count, cards: matchedCards };
+}
+
+/**
+ * Tribal patterns for tribe detection
+ */
+const TRIBAL_PATTERNS: Record<string, string[]> = {
+  elves: ['elf', 'elvish'],
+  goblins: ['goblin'],
+  zombies: ['zombie', 'lich', 'skeleton', 'undead'],
+  dragons: ['dragon', 'drake', 'wyrm'],
+  vampires: ['vampire'],
+  merfolk: ['merfolk'],
+  humans: ['human'],
+};
+
+/**
+ * Detect which tribe a deck is focused on
+ */
+export function detectTribalAffiliation(deck: DeckCard[]): { tribe: string | null; memberCount: number; density: number } {
+  const tribeScores: Record<string, { count: number; cards: string[] }> = {};
+
+  // Initialize tribe scores
+  for (const [tribe, patterns] of Object.entries(TRIBAL_PATTERNS)) {
+    const result = countMatchingCards(deck, patterns);
+    tribeScores[tribe] = { count: result.count, cards: result.cards };
+  }
+
+  // Find the dominant tribe
+  let dominantTribe: string | null = null;
+  let maxCount = 0;
+
+  for (const [tribe, data] of Object.entries(tribeScores)) {
+    if (data.count > maxCount) {
+      maxCount = data.count;
+      dominantTribe = tribe;
+    }
+  }
+
+  // Calculate tribal density (percentage of creature cards that belong to the tribe)
+  const totalCreatures = deck.filter(c => c.type_line?.toLowerCase().includes('creature')).reduce((sum, c) => sum + c.count, 0);
+  const density = totalCreatures > 0 ? (maxCount / totalCreatures) * 100 : 0;
+
+  // Only return a tribe if it has at least 5 members and decent density
+  if (maxCount >= 5 && density >= 30) {
+    return { tribe: dominantTribe, memberCount: maxCount, density };
+  }
+
+  return { tribe: null, memberCount: 0, density: 0 };
+}
+
+/**
+ * Identify off-tribe cards in a tribal deck
+ */
+export function identifyOffTribeCards(deck: DeckCard[], tribe: string): string[] {
+  const patterns = TRIBAL_PATTERNS[tribe];
+  if (!patterns) return [];
+
+  const offTribeCards: string[] = [];
+
+  for (const card of deck) {
+    // Skip lands and non-creatures
+    if (!card.type_line?.toLowerCase().includes('creature')) continue;
+
+    const name = card.name.toLowerCase();
+    const text = (card.oracle_text || '').toLowerCase();
+    const type = (card.type_line || '').toLowerCase();
+    const combined = `${name} ${text} ${type}`;
+
+    // Check if card belongs to the tribe
+    const isTribeMember = patterns.some(pattern => combined.includes(pattern.toLowerCase()));
+
+    if (!isTribeMember) {
+      if (!offTribeCards.includes(card.name)) {
+        offTribeCards.push(card.name);
+      }
+    }
+  }
+
+  return offTribeCards;
+}
+
+/**
+ * Get tribal enhancement recommendations
+ */
+export function getTribalRecommendations(tribe: string, tribeMemberCount: number, offTribeCardCount: number): string[] {
+  const recommendations: string[] = [];
+
+  if (offTribeCardCount > 5) {
+    recommendations.push(`Consider replacing ${Math.min(offTribeCardCount, 8)} off-tribe creatures with additional ${tribe} to strengthen your tribal synergy`);
+  }
+
+  if (tribeMemberCount >= 10 && tribeMemberCount < 15) {
+    recommendations.push(`You have a solid ${tribe} foundation. Adding 3-5 more ${tribe} creatures would maximize tribal synergy`);
+  }
+
+  if (tribeMemberCount >= 15) {
+    recommendations.push(`Excellent ${tribe} density! Focus on tribal lords and payoff cards to maximize your advantage`);
+  }
+
+  // Tribe-specific recommendations
+  switch (tribe) {
+    case 'elves':
+      recommendations.push('Consider Elvish Archdruid or Ezuri, Renegade Leader as tribal lords');
+      recommendations.push('Craterhoof Behemoth is a powerful finisher for elf decks');
+      break;
+    case 'goblins':
+      recommendations.push('Consider Goblin Warchief or Muxus, Goblin Grandee as tribal lords');
+      recommendations.push('Goblin Matron can help you find key goblins when needed');
+      break;
+    case 'zombies':
+      recommendations.push('Consider Cemetery Reaper or Relentless Dead for graveyard recursion');
+      recommendations.push('Lord of the Accursed can give your zombies menace for evasion');
+      break;
+    case 'dragons':
+      recommendations.push('Consider Dragonlord Kolaghan or Dragonlord Ojutai as tribal lords');
+      recommendations.push('Ensure you have enough ramp to cast your dragons on time');
+      break;
+    case 'vampires':
+      recommendations.push('Consider Edgar Markov or Bloodlord of Vaasgoth as tribal lords');
+      recommendations.push('Blood Artist provides value whenever creatures die');
+      break;
+    case 'merfolk':
+      recommendations.push('Consider Master of the Pearl Trident or Lord of Atlantis as tribal lords');
+      recommendations.push('Spreading Seas can give your merfolk unblockable attacks');
+      break;
+    case 'humans':
+      recommendations.push('Consider Thalia\'s Lieutenant or Kessig Malcontents as tribal payoffs');
+      recommendations.push('Thalia, Guardian of Thraben provides tempo disruption');
+      break;
+  }
+
+  return recommendations;
 }
 
 /**
  * Synergy signatures database - 20 synergies across categories
  */
 export const SYNERGY_SIGNATURES: SynergySignature[] = [
-  // === TRIBAL SYNERGIES (4) ===
+  // === TRIBAL SYNERGIES (7) ===
   {
     name: 'Elves Tribal',
     category: 'tribal',
@@ -104,16 +254,16 @@ export const SYNERGY_SIGNATURES: SynergySignature[] = [
     scoreFunction: (deck) => {
       const { count, cards } = countMatchingCards(deck, ['elf', 'elvish']);
       const { count: bonusCount } = countMatchingCards(deck, ['heritage druid', 'wirewood', 'ezuri', 'craterhoof', 'imperator', 'archdruid', 'lord']);
-      
+
       let score = 0;
       if (count >= 20) score = 95;
       else if (count >= 15) score = 85;
       else if (count >= 10) score = 70;
       else if (count >= 6) score = 50;
       else score = Math.min(40, count * 6);
-      
+
       score = Math.min(100, score + bonusCount * 3);
-      
+
       return { name: 'Elves Tribal', score, cards, description: 'Elf tribal synergy', category: 'tribal' };
     },
   },
@@ -127,16 +277,16 @@ export const SYNERGY_SIGNATURES: SynergySignature[] = [
     scoreFunction: (deck) => {
       const { count, cards } = countMatchingCards(deck, ['goblin']);
       const { count: bonusCount } = countMatchingCards(deck, ['krenko', 'muxus', 'warren', 'king', 'warlord', 'chieftain', 'matron', 'boss']);
-      
+
       let score = 0;
       if (count >= 20) score = 95;
       else if (count >= 15) score = 85;
       else if (count >= 10) score = 70;
       else if (count >= 6) score = 50;
       else score = Math.min(40, count * 6);
-      
+
       score = Math.min(100, score + bonusCount * 3);
-      
+
       return { name: 'Goblin Tribal', score, cards, description: 'Goblin tribal synergy', category: 'tribal' };
     },
   },
@@ -150,16 +300,16 @@ export const SYNERGY_SIGNATURES: SynergySignature[] = [
     scoreFunction: (deck) => {
       const { count, cards } = countMatchingCards(deck, ['zombie', 'lich', 'skeleton', 'undead']);
       const { count: bonusCount } = countMatchingCards(deck, ['graveyard', 'recur', 'reanimate', 'return', 'rise', 'death', 'necro']);
-      
+
       let score = 0;
       if (count >= 18) score = 95;
       else if (count >= 12) score = 80;
       else if (count >= 8) score = 60;
       else if (count >= 4) score = 40;
       else score = Math.min(30, count * 5);
-      
+
       score = Math.min(100, score + bonusCount * 2);
-      
+
       return { name: 'Zombie Tribal', score, cards, description: 'Zombie tribal with graveyard synergy', category: 'tribal' };
     },
   },
@@ -173,17 +323,86 @@ export const SYNERGY_SIGNATURES: SynergySignature[] = [
     scoreFunction: (deck) => {
       const { count, cards } = countMatchingCards(deck, ['dragon', 'drake', 'wyrm']);
       const { count: bonusCount } = countMatchingCards(deck, ['ramp', 'mana', 'accelerate', 'cultivate', 'signet', 'stone', 'kolaghan', 'atarka']);
-      
+
       let score = 0;
       if (count >= 12) score = 95;
       else if (count >= 8) score = 80;
       else if (count >= 5) score = 60;
       else if (count >= 3) score = 40;
       else score = Math.min(30, count * 5);
-      
+
       score = Math.min(100, score + bonusCount * 2);
-      
+
       return { name: 'Dragon Tribal', score, cards, description: 'Dragon tribal with ramp', category: 'tribal' };
+    },
+  },
+  {
+    name: 'Vampire Tribal',
+    category: 'tribal',
+    description: 'Vampire creatures with life drain and card advantage',
+    requiredCards: ['vampire'],
+    bonusCards: ['bloodlord', 'bloodghast', 'blood artist', 'edgar', 'sorin'],
+    minimumCards: 10,
+    scoreFunction: (deck) => {
+      const { count, cards } = countMatchingCards(deck, ['vampire']);
+      const { count: bonusCount } = countMatchingCards(deck, ['bloodlord', 'bloodghast', 'blood artist', 'edgar', 'sorin', 'captain']);
+
+      let score = 0;
+      if (count >= 18) score = 90;
+      else if (count >= 12) score = 75;
+      else if (count >= 8) score = 55;
+      else if (count >= 5) score = 35;
+      else score = Math.min(25, count * 5);
+
+      score = Math.min(100, score + bonusCount * 3);
+
+      return { name: 'Vampire Tribal', score, cards, description: 'Vampire tribal with life drain', category: 'tribal' };
+    },
+  },
+  {
+    name: 'Merfolk Tribal',
+    category: 'tribal',
+    description: 'Merfolk creatures with lords and unblockable threats',
+    requiredCards: ['merfolk'],
+    bonusCards: ['lord', 'master', 'reejerey', 'coralhelm', 'seer'],
+    minimumCards: 10,
+    scoreFunction: (deck) => {
+      const { count, cards } = countMatchingCards(deck, ['merfolk']);
+      const { count: bonusCount } = countMatchingCards(deck, ['master of the pearl', 'lord of atlantis', 'reejerey', 'coralhelm', 'seer']);
+
+      let score = 0;
+      if (count >= 18) score = 90;
+      else if (count >= 12) score = 75;
+      else if (count >= 8) score = 55;
+      else if (count >= 5) score = 35;
+      else score = Math.min(25, count * 5);
+
+      score = Math.min(100, score + bonusCount * 3);
+
+      return { name: 'Merfolk Tribal', score, cards, description: 'Merfolk tribal with islandwalk', category: 'tribal' };
+    },
+  },
+  {
+    name: 'Human Tribal',
+    category: 'tribal',
+    description: 'Human creatures with anthem effects and tempo disruption',
+    requiredCards: ['human'],
+    bonusCards: ['thalia', 'kessig', 'champion', 'lieutenant', 'captain'],
+    minimumCards: 12,
+    scoreFunction: (deck) => {
+      const { count, cards } = countMatchingCards(deck, ['human']);
+      const { count: bonusCount } = countMatchingCards(deck, ['thalia', 'kessig', 'champion', 'lieutenant', 'captain']);
+
+      let score = 0;
+      if (count >= 20) score = 90;
+      else if (count >= 14) score = 75;
+      else if (count >= 10) score = 60;
+      else if (count >= 6) score = 40;
+      else score = Math.min(30, count * 5);
+
+      score = Math.min(100, score + bonusCount * 2);
+
+      return { name: 'Human Tribal', score, cards, description: 'Human tribal with anthems', category: 'tribal' };
     },
   },
 
@@ -573,7 +792,7 @@ export const SYNERGY_SIGNATURES: SynergySignature[] = [
 
 /**
  * Detect synergies in a deck
- * 
+ *
  * @param deck - Array of cards in the deck
  * @param minScore - Minimum score threshold (0-100)
  * @param maxResults - Maximum number of synergies to return
@@ -585,20 +804,55 @@ export function detectSynergies(
   maxResults: number = 10
 ): SynergyResult[] {
   if (deck.length === 0) return [];
-  
+
   const results: SynergyResult[] = [];
-  
+
+  // Detect tribal affiliation first
+  const tribalAffiliation = detectTribalAffiliation(deck);
+
   for (const signature of SYNERGY_SIGNATURES) {
     try {
       const result = signature.scoreFunction(deck);
-      
+
       // Check minimum cards requirement
       const cardCount = result.cards.length;
       if (cardCount < signature.minimumCards) {
         // Reduce score proportionally
         result.score = Math.floor(result.score * (cardCount / signature.minimumCards));
       }
-      
+
+      // Add tribal information for tribal synergies
+      if (signature.category === 'tribal' && tribalAffiliation.tribe) {
+        const tribeName = signature.name.toLowerCase().split(' ')[0]; // Extract "Elves" from "Elves Tribal"
+        const tribeMap: Record<string, string> = {
+          'elves': 'elves',
+          'goblins': 'goblins',
+          'zombies': 'zombies',
+          'dragons': 'dragons',
+          'vampires': 'vampires',
+          'merfolk': 'merfolk',
+          'humans': 'humans',
+        };
+
+        const tribeKey = tribeMap[tribeName];
+        if (tribeKey && tribalAffiliation.tribe === tribeKey) {
+          const offTribeCards = identifyOffTribeCards(deck, tribalAffiliation.tribe);
+          const recommendations = getTribalRecommendations(
+            tribalAffiliation.tribe,
+            tribalAffiliation.memberCount,
+            offTribeCards.length
+          );
+
+          result.tribalInfo = {
+            tribe: tribalAffiliation.tribe,
+            tribeMemberCount: tribalAffiliation.memberCount,
+            offTribeCards,
+            tribalDensity: tribalAffiliation.density,
+            recommendations,
+          };
+        }
+      }
+
       if (result.score >= minScore) {
         results.push(result);
       }
@@ -606,10 +860,10 @@ export function detectSynergies(
       console.error(`Error detecting synergy ${signature.name}:`, error);
     }
   }
-  
+
   // Sort by score descending
   results.sort((a, b) => b.score - a.score);
-  
+
   // Return top results
   return results.slice(0, maxResults);
 }
@@ -774,6 +1028,87 @@ function getArchetypeSpecificMissingSynergies(deck: DeckCard[], archetype: strin
         description: 'Your elf army needs a finisher to close out games.',
         suggestion: 'Craterhoof Behemoth, Ezuri Renegade Leader',
         impact: 'high',
+      });
+    }
+  }
+
+  // Vampire Tribal specific suggestions
+  if (archetype.toLowerCase().includes('vampire')) {
+    const vampires = countPattern(deck, ['vampire']);
+    const lords = countPattern(deck, ['edgar', 'bloodlord', 'stromkirk', 'captain', 'sorin']);
+    const drain = countPattern(deck, ['life drain', 'blood artist', 'zulaport', 'whenever a creature dies']);
+
+    if (vampires >= 8 && lords < 2) {
+      missing.push({
+        synergy: 'Vampire Tribal',
+        missing: 'Vampire lords',
+        description: `You have ${vampires} vampires but only ${lords} lords. Add more lords to buff your vampires.`,
+        suggestion: 'Edgar Markov, Bloodlord of Vaasgoth, Stromkirk Captain',
+        impact: 'high',
+      });
+    }
+
+    if (vampires >= 8 && drain < 3) {
+      missing.push({
+        synergy: 'Vampire Tribal',
+        missing: 'Life drain payoffs',
+        description: 'Your vampires could benefit from life drain synergies.',
+        suggestion: 'Blood Artist, Zulaport Cutthroat, Syr Konrad, the Grim',
+        impact: 'medium',
+      });
+    }
+  }
+
+  // Merfolk Tribal specific suggestions
+  if (archetype.toLowerCase().includes('merfolk')) {
+    const merfolk = countPattern(deck, ['merfolk']);
+    const lords = countPattern(deck, ['master of the pearl', 'lord of atlantis', 'reejerey', 'coralhelm']);
+    const islandwalk = countPattern(deck, ['islandwalk', 'spreading seas', 'can\'t be blocked']);
+
+    if (merfolk >= 8 && lords < 2) {
+      missing.push({
+        synergy: 'Merfolk Tribal',
+        missing: 'Merfolk lords',
+        description: `You have ${merfolk} merfolk but only ${lords} lords. Add more lords to buff your merfolk.`,
+        suggestion: 'Master of the Pearl Trident, Lord of Atlantis, Merrow Reejerey',
+        impact: 'high',
+      });
+    }
+
+    if (merfolk >= 8 && islandwalk < 3) {
+      missing.push({
+        synergy: 'Merfolk Tribal',
+        missing: 'Island walk support',
+        description: 'Your merfolk could benefit from island walk enablers.',
+        suggestion: 'Lord of Atlantis, Spreading Seas, Jace, the Mind Sculptor',
+        impact: 'medium',
+      });
+    }
+  }
+
+  // Human Tribal specific suggestions
+  if (archetype.toLowerCase().includes('human')) {
+    const humans = countPattern(deck, ['human']);
+    const lords = countPattern(deck, ['thalia', 'kessig', 'champion', 'lieutenant', 'captain']);
+    const disruption = countPattern(deck, ['thalia', 'meddling', 'arbiter', 'counter target', 'tax']);
+
+    if (humans >= 10 && lords < 2) {
+      missing.push({
+        synergy: 'Human Tribal',
+        missing: 'Human lords',
+        description: `You have ${humans} humans but only ${lords} lords. Add more lords to buff your humans.`,
+        suggestion: 'Thalia\'s Lieutenant, Kessig Malcontents, Champion of the Parish',
+        impact: 'high',
+      });
+    }
+
+    if (humans >= 10 && disruption < 3) {
+      missing.push({
+        synergy: 'Human Tribal',
+        missing: 'Tempo disruption',
+        description: 'Your humans could benefit from tempo disruption spells.',
+        suggestion: 'Thalia, Guardian of Thraben, Meddling Mage, Leonin Arbiter',
+        impact: 'medium',
       });
     }
   }
