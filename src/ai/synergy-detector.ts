@@ -26,6 +26,8 @@ export interface SynergyResult {
   id?: string;
   /** Tribal information (if applicable) */
   tribalInfo?: TribalSynergyInfo;
+  /** Total count of cards (with multiplicity) */
+  totalCount?: number;
 }
 
 /**
@@ -379,7 +381,7 @@ export const SYNERGY_SIGNATURES: SynergySignature[] = [
 
       score = Math.min(100, score + bonusCount * 3);
 
-      return { name: 'Merfolk Tribal', score, cards, description: 'Merfolk tribal with islandwalk', category: 'tribal' };
+      return { name: 'Merfolk Tribal', score, cards, description: 'Merfolk tribal with islandwalk', category: 'tribal', totalCount: count };
     },
   },
   {
@@ -814,8 +816,8 @@ export function detectSynergies(
     try {
       const result = signature.scoreFunction(deck);
 
-      // Check minimum cards requirement
-      const cardCount = result.cards.length;
+      // Check minimum cards requirement (use total count with multiplicity, not unique names)
+      const cardCount = result.totalCount ?? result.cards.length;
       if (cardCount < signature.minimumCards) {
         // Reduce score proportionally
         result.score = Math.floor(result.score * (cardCount / signature.minimumCards));
