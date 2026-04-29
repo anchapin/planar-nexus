@@ -48,7 +48,10 @@ export function useSideboardRecommender(
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [playerArch, setPlayerArch] = useState(
-    options.playerArchetype ?? ''
+  options.playerArchetype ?? ''
+  );
+  const [opponentArch, setOpponentArch] = useState(
+    options.opponentArchetype ?? ''
   );
 
   const availableMatchups = useMemo(
