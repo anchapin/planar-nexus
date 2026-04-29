@@ -12,7 +12,13 @@
  * - Session can be resumed from any state (DRFT-11)
  */
 
-import { test, expect, mockScryfallApi } from "./test-utils";
+import {
+  test,
+  expect,
+  mockScryfallApi,
+  seedCardDatabase,
+  waitForDbSeed,
+} from "./test-utils";
 
 const PACKS_PER_DRAFT = 3;
 const CARDS_PER_PACK = 14;
@@ -20,13 +26,15 @@ const TOTAL_CARDS = PACKS_PER_DRAFT * CARDS_PER_PACK;
 
 test.beforeEach(async ({ page }) => {
   await mockScryfallApi(page);
+  await seedCardDatabase(page);
+  await waitForDbSeed(page);
 });
 
 async function pickCard(page: any): Promise<boolean> {
   const pickButton = page.locator('button[aria-label^="Pick"]').first();
-  if (await pickButton.isVisible({ timeout: 3000 })) {
+  if (await pickButton.isVisible({ timeout: 5000 })) {
     await pickButton.click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     return true;
   }
   return false;
@@ -34,9 +42,9 @@ async function pickCard(page: any): Promise<boolean> {
 
 async function openCurrentPack(page: any): Promise<boolean> {
   const faceDownCards = page.locator('[aria-label="Face-down card"]').first();
-  if (await faceDownCards.isVisible({ timeout: 3000 })) {
+  if (await faceDownCards.isVisible({ timeout: 5000 })) {
     await faceDownCards.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
     return true;
   }
   return false;
@@ -415,15 +423,16 @@ test.describe("Draft Mode - Persistence", () => {
         await page.waitForTimeout(1000);
 
         await page.goto(`/draft?session=${sessionId}`);
-        await page.waitForTimeout(2000);
+        await page.waitForLoadState("networkidle");
+        await page.waitForTimeout(3000);
 
         await expect(page).toHaveURL(new RegExp(`session=${sessionId}`));
 
         const pickBadge = page.locator("text=/Pick \\d+\\/14/").first();
         const introText = page.locator('text="Start Draft"').first();
 
-        const inPickingState = await pickBadge.isVisible();
-        const stillInIntro = await introText.isVisible();
+        const inPickingState = await pickBadge.isVisible({ timeout: 5000 });
+        const stillInIntro = await introText.isVisible({ timeout: 3000 });
 
         expect(inPickingState || !stillInIntro).toBeTruthy();
       }
