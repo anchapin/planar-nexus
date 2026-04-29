@@ -137,9 +137,44 @@ export interface StackOrderDecision {
  */
 export interface ResourceDecision {
   useNow: boolean;
-  holdFor: "end_step" | "opponent_turn" | "better_threat" | "nothing";
+  holdFor: "end_step" | "opponent_turn" | "better_threat" | "bluff" | "nothing";
   manaToReserve: { [color: string]: number };
   reasoning: string;
+}
+
+/**
+ * Deck archetype classification for bluffing decisions
+ */
+export type DeckArchetype =
+  | "control"
+  | "tempo"
+  | "aggro"
+  | "midrange"
+  | "combo"
+  | "unknown";
+
+/**
+ * Opponent behavioral history for bluffing decisions
+ */
+export interface OpponentHistory {
+  /** Number of times opponent hesitated after AI held mana open */
+  hesitationCount: number;
+  /** Whether opponent has been previously baited into passing */
+  wasBaited: boolean;
+  /** Opponent's average plays per turn (lower = more cautious) */
+  avgPlaysPerTurn: number;
+  /** Whether opponent is known to play around open mana */
+  playsAroundOpenMana: boolean;
+}
+
+/**
+ * Bluff hold decision result
+ */
+export interface BluffHoldDecision {
+  shouldBluff: boolean;
+  reasoning: string;
+  bluffStrength: number;
+  isGenuineHold: boolean;
 }
 
 /**
@@ -1278,12 +1313,26 @@ export class StackInteractionAI {
       }
     }
 
+    const bluffDecision = this.shouldBluffHoldMana(context, currentEvaluation);
+
     let holdFor: ResourceDecision["holdFor"] = "nothing";
     let reasoning = "Use mana now - no better opportunity identified";
 
     if (holdForBetterThreat) {
       holdFor = "better_threat";
       reasoning = "Hold mana for a more threatening action expected soon";
+    } else if (bluffDecision.shouldBluff && !bluffDecision.isGenuineHold) {
+      holdFor = "bluff";
+      reasoning = bluffDecision.reasoning;
+      if (bluffDecision.bluffStrength > 0.5) {
+        const bestInstant = this.findBestInstantResponse(
+          instantSpeedResponses,
+          context,
+        );
+        if (bestInstant) {
+          manaToReserve = { ...bestInstant.manaCost };
+        }
+      }
     } else if (holdForEndStep) {
       holdFor = "end_step";
       reasoning = "Hold mana for end step to play around opponent's turn";
@@ -1643,12 +1692,22 @@ export class StackInteractionAI {
     waitForBetter: boolean;
     reasoning: string;
   } {
-    // Check if we have instant-speed options
     const instantOptions = context.availableResponses.filter(
       (r) => r.type === "instant" || r.type === "flash",
     );
 
     if (instantOptions.length === 0) {
+      const bluffDecision = this.shouldBluffHoldMana(
+        context,
+        currentEvaluation,
+      );
+      if (bluffDecision.shouldBluff) {
+        return {
+          holdMana: true,
+          waitForBetter: false,
+          reasoning: bluffDecision.reasoning,
+        };
+      }
       return {
         holdMana: false,
         waitForBetter: false,
@@ -1656,7 +1715,6 @@ export class StackInteractionAI {
       };
     }
 
-    // We're winning, might not need to respond
     if (currentEvaluation.totalScore > 2.0) {
       return {
         holdMana: false,
@@ -1665,7 +1723,6 @@ export class StackInteractionAI {
       };
     }
 
-    // Opponent's turn and we have interaction - hold
     if (!context.isMyTurn && instantOptions.length > 0) {
       return {
         holdMana: true,
@@ -1674,11 +1731,203 @@ export class StackInteractionAI {
       };
     }
 
+    const bluffDecision = this.shouldBluffHoldMana(context, currentEvaluation);
+    if (bluffDecision.shouldBluff && !bluffDecision.isGenuineHold) {
+      return {
+        holdMana: true,
+        waitForBetter: false,
+        reasoning: bluffDecision.reasoning,
+      };
+    }
+
     return {
       holdMana: false,
       waitForBetter: false,
       reasoning: "No clear benefit to holding mana",
     };
+  }
+
+  shouldBluffHoldMana(
+    context: StackContext,
+    currentEvaluation: DetailedEvaluation,
+    opponentHistory?: OpponentHistory,
+  ): BluffHoldDecision {
+    const totalMana = Object.values(context.availableMana).reduce(
+      (sum, m) => sum + m,
+      0,
+    );
+
+    if (totalMana < 2) {
+      return {
+        shouldBluff: false,
+        reasoning: "Insufficient mana open to bluff",
+        bluffStrength: 0,
+        isGenuineHold: false,
+      };
+    }
+
+    const phase = this.gameState.turnInfo?.phase;
+    if (phase === "end" || phase === "combat") {
+      return {
+        shouldBluff: false,
+        reasoning: "Bluffing not appropriate in this phase",
+        bluffStrength: 0,
+        isGenuineHold: false,
+      };
+    }
+
+    if (currentEvaluation.factors.lifeScore < -1.0) {
+      return {
+        shouldBluff: false,
+        reasoning: "Too low on life to bluff - need actual interaction",
+        bluffStrength: 0,
+        isGenuineHold: false,
+      };
+    }
+
+    if (this.gameState.turnInfo && this.gameState.turnInfo.currentTurn <= 3) {
+      return {
+        shouldBluff: false,
+        reasoning: "Too early in the game for effective bluffing",
+        bluffStrength: 0,
+        isGenuineHold: false,
+      };
+    }
+
+    if (currentEvaluation.totalScore < -2.0) {
+      return {
+        shouldBluff: false,
+        reasoning: "Too far behind - need to develop board not bluff",
+        bluffStrength: 0,
+        isGenuineHold: false,
+      };
+    }
+
+    const immediateThreats = currentEvaluation.threats.filter(
+      (t: ThreatAssessment) => t.urgency === "immediate",
+    );
+    if (immediateThreats.length > 0) {
+      return {
+        shouldBluff: true,
+        reasoning: "Holding mana against immediate threats",
+        bluffStrength: 0.2,
+        isGenuineHold: true,
+      };
+    }
+
+    const archetype = this.detectArchetype(currentEvaluation);
+    const archetypeBonus =
+      archetype === "control" ? 0.3 : archetype === "tempo" ? 0.2 : 0;
+
+    let bluffStrength = 0.1;
+
+    bluffStrength += Math.min(0.3, totalMana * 0.04);
+
+    if (currentEvaluation.totalScore > 0.5) {
+      bluffStrength += 0.2;
+    }
+
+    if (currentEvaluation.totalScore < -0.5) {
+      bluffStrength -= 0.15;
+    }
+
+    const instantResponses = context.availableResponses.filter(
+      (r) => r.type === "instant" || r.type === "flash",
+    );
+    if (instantResponses.length > 0) {
+      bluffStrength += 0.15;
+    }
+
+    const player = this.gameState.players[this.playerId];
+    const handSize = player ? player.hand.length : 0;
+    bluffStrength += Math.min(0.2, handSize * 0.04);
+
+    bluffStrength += archetypeBonus;
+
+    if (opponentHistory) {
+      if (opponentHistory.playsAroundOpenMana) {
+        bluffStrength += 0.25;
+      }
+      if (opponentHistory.hesitationCount > 2) {
+        bluffStrength += 0.15;
+      }
+      if (opponentHistory.avgPlaysPerTurn < 1.5) {
+        bluffStrength += 0.1;
+      }
+    }
+
+    bluffStrength = Math.min(1, Math.max(0, bluffStrength));
+
+    const threshold = opponentHistory?.wasBaited ? 0.45 : 0.35;
+    const shouldBluff = bluffStrength >= threshold;
+
+    if (shouldBluff) {
+      const isGenuineHold = instantResponses.length > 0 && bluffStrength < 0.5;
+      const reasons: string[] = [];
+      if (archetype === "control") reasons.push("control archetype pressure");
+      if (archetype === "tempo") reasons.push("tempo disruption");
+      if (totalMana >= 4) reasons.push("significant mana open");
+      if (currentEvaluation.totalScore > 0.5)
+        reasons.push("favorable board state");
+      if (opponentHistory?.playsAroundOpenMana)
+        reasons.push("opponent respects open mana");
+
+      return {
+        shouldBluff: true,
+        reasoning: isGenuineHold
+          ? "Holding mana with legitimate interaction options"
+          : `Bluffing with open mana: ${reasons.join(", ")}`,
+        bluffStrength,
+        isGenuineHold,
+      };
+    }
+
+    return {
+      shouldBluff: false,
+      reasoning: "Conditions not favorable for bluffing",
+      bluffStrength,
+      isGenuineHold: false,
+    };
+  }
+
+  /**
+   * Detect deck archetype from game state evaluation patterns
+   */
+  private detectArchetype(
+    currentEvaluation: DetailedEvaluation,
+  ): DeckArchetype {
+    const factors = currentEvaluation.factors;
+
+    if (
+      factors.cardAdvantage > 0.5 &&
+      factors.tempoAdvantage < 0 &&
+      factors.creatureCount < 3
+    ) {
+      return "control";
+    }
+
+    if (
+      factors.tempoAdvantage > 0.3 &&
+      factors.cardAdvantage < 0.3 &&
+      factors.creatureCount >= 1 &&
+      factors.creatureCount <= 4
+    ) {
+      return "tempo";
+    }
+
+    if (factors.creatureCount >= 5 && factors.tempoAdvantage > 0) {
+      return "aggro";
+    }
+
+    if (factors.creatureCount >= 3 && factors.cardAdvantage >= 0) {
+      return "midrange";
+    }
+
+    if (factors.winConditionProgress > 0.5) {
+      return "combo";
+    }
+
+    return "unknown";
   }
 
   /**
@@ -2274,4 +2523,19 @@ export function manageResponseResources(
 ): ResourceDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   return ai.manageResources(context);
+}
+
+/**
+ * Convenience function to evaluate a bluff hold decision
+ */
+export function shouldBluffHoldMana(
+  gameState: GameState,
+  playerId: string,
+  context: StackContext,
+  opponentHistory?: OpponentHistory,
+  difficulty: "easy" | "medium" | "hard" = "medium",
+): BluffHoldDecision {
+  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const currentEvaluation = evaluateGameState(gameState, playerId, "medium");
+  return ai.shouldBluffHoldMana(context, currentEvaluation, opponentHistory);
 }
