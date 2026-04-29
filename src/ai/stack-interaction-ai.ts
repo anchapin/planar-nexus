@@ -30,6 +30,7 @@ import {
   evaluateTriggerChain,
   shouldCounterToPreventTriggers,
   getHighestValueChain,
+  getTriggerChainSummary,
 } from "./trigger-chain-evaluator";
 import type {
   TriggerChain,
@@ -38,15 +39,6 @@ import type {
 } from "./trigger-chain-evaluator";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "./providers/types";
-import {
-  evaluateTriggerChain,
-  getTriggerChainSummary,
-  shouldCounterToPreventTriggers,
-  getHighestValueChain,
-  TriggerChain,
-  CascadeContext,
-  BoardPermanent,
-} from "./trigger-chain-evaluator";
 import {
   getCounterspellProbability,
   classifyManaTier,
@@ -1446,7 +1438,10 @@ export class StackInteractionAI {
    * Use this when you need to account for downstream triggered abilities.
    */
   assessActionThreatWithTriggers(context: StackContext): number {
-    const baseThreat = this.assessActionThreat(context, evaluateGameState(this.gameState, this.playerId, "medium"));
+    const baseThreat = this.assessActionThreat(
+      context,
+      evaluateGameState(this.gameState, this.playerId, "medium"),
+    );
     const triggerResult = this.evaluateTriggerChains(context);
     return Math.min(1, baseThreat + triggerResult.cascadeThreatBonus);
   }
@@ -2283,7 +2278,29 @@ export class StackInteractionAI {
    * Used for frequency table lookups.
    */
   private detectOpponentArchetype(
-    opponent: { battlefield: Array<{ type: string; tapped: boolean; id: string; name: string; cardInstanceId: string; controller: string; power?: number }>; hand: Array<{ cardInstanceId: string; name: string; type: string; manaValue: number }>; graveyard: unknown[]; exile: unknown[]; library: number; life: number; poisonCounters: number; commanderDamage: Record<string, number> } & { manaPool?: Record<string, unknown> },
+    opponent: {
+      battlefield: Array<{
+        type: string;
+        tapped: boolean;
+        id: string;
+        name: string;
+        cardInstanceId: string;
+        controller: string;
+        power?: number;
+      }>;
+      hand: Array<{
+        cardInstanceId: string;
+        name: string;
+        type: string;
+        manaValue: number;
+      }>;
+      graveyard: unknown[];
+      exile: unknown[];
+      library: number;
+      life: number;
+      poisonCounters: number;
+      commanderDamage: Record<string, number>;
+    } & { manaPool?: Record<string, unknown> },
   ): DeckArchetype {
     const creatures = opponent.battlefield.filter((p) => p.type === "creature");
     const lands = opponent.battlefield.filter((p) => p.type === "land");
@@ -2292,7 +2309,8 @@ export class StackInteractionAI {
     );
 
     if (creatures.length >= 4 && lands.length <= 3) return "aggro";
-    if (nonCreatureNonLand.length >= 2 && creatures.length <= 1) return "control";
+    if (nonCreatureNonLand.length >= 2 && creatures.length <= 1)
+      return "control";
     if (creatures.length >= 2 && nonCreatureNonLand.length >= 1) return "tempo";
     if (creatures.length >= 2 && creatures.length <= 4) return "midrange";
     if (nonCreatureNonLand.length >= 3) return "combo";
@@ -2470,12 +2488,18 @@ export class StackInteractionAI {
       )?.life,
     };
 
-    const chains = evaluateTriggerChain(cascadeCtx.stackItem, cascadeCtx.battlefield);
+    const chains = evaluateTriggerChain(
+      cascadeCtx.stackItem,
+      cascadeCtx.battlefield,
+    );
     const summary = getTriggerChainSummary(chains);
     const shouldCounterToPrevent = shouldCounterToPreventTriggers(chains);
     const highestValueChain = getHighestValueChain(chains);
 
-    const cascadeThreatBonus = chains.reduce((sum, c) => sum + c.totalValue * 0.1, 0);
+    const cascadeThreatBonus = chains.reduce(
+      (sum, c) => sum + c.totalValue * 0.1,
+      0,
+    );
 
     return {
       chains,
@@ -2647,105 +2671,6 @@ export class StackInteractionAI {
     }
 
     return Math.min(1, Math.max(0, score));
-  }
-
-  evaluateTriggerChains(context: StackContext): {
-    chains: TriggerChain[];
-    summary: string;
-    shouldCounterToPrevent: boolean;
-  } {
-    const stackItem: CascadeContext["stackItem"] = {
-      id: context.currentAction.id,
-      cardId: context.currentAction.cardId,
-      name: context.currentAction.name,
-      manaValue: context.currentAction.manaValue,
-      controller: context.currentAction.controller,
-      type: context.currentAction.type,
-      colors: context.currentAction.colors,
-      targets: context.currentAction.targets,
-    };
-
-    const board: BoardPermanent[] = [];
-
-    for (const [pid, player] of Object.entries(this.gameState.players)) {
-      if (player.battlefield) {
-        for (const perm of player.battlefield) {
-          const permType = perm.type as string;
-          const boardType = (
-            [
-              "creature",
-              "land",
-              "artifact",
-              "enchantment",
-              "planeswalker",
-            ] as const
-          ).includes(permType as any)
-            ? (permType as BoardPermanent["type"])
-            : undefined;
-          if (!boardType) continue;
-          board.push({
-            id: perm.id || perm.cardInstanceId,
-            cardId: perm.id || perm.cardInstanceId,
-            name: perm.name,
-            type: boardType,
-            controller: perm.controller || pid,
-            oracleText: (perm as unknown as Record<string, unknown>)
-              .oracleText as string | undefined,
-          });
-        }
-      }
-    }
-
-    const chains = evaluateTriggerChain(stackItem, board);
-    const shouldCounter = shouldCounterToPreventTriggers(
-      chains,
-      context.currentAction.controller === this.playerId ? 0 : 4.0,
-    );
-
-    const highChain = getHighestValueChain(chains);
-    let summary: string;
-    if (chains.length === 0) {
-      summary = "No trigger chains detected";
-    } else {
-      summary = `Detected ${chains.length} trigger chain(s)`;
-      if (highChain) {
-        summary += ` (highest value: ${highChain.totalValue.toFixed(1)} - ${highChain.steps.map((s) => s.ability.sourceName).join(" → ")})`;
-      }
-    }
-
-    return { chains, summary, shouldCounterToPrevent: shouldCounter };
-  }
-
-  assessActionThreatWithTriggers(context: StackContext): number {
-    const currentEvaluation = evaluateGameState(
-      this.gameState,
-      this.playerId,
-      "medium",
-    );
-
-    const baseThreat = this.assessActionThreat(context, currentEvaluation);
-
-    const { chains, shouldCounterToPrevent } =
-      this.evaluateTriggerChains(context);
-
-    if (chains.length === 0) {
-      return baseThreat;
-    }
-
-    const highChain = getHighestValueChain(chains);
-    const cascadeThreatBonus = Math.min(
-      0.5,
-      (highChain?.totalValue || 0) * 0.1,
-    );
-
-    const opponentController =
-      context.currentAction.controller !== this.playerId;
-    if (!opponentController) {
-      return baseThreat;
-    }
-
-    const adjustedThreat = baseThreat + cascadeThreatBonus;
-    return Math.min(1, adjustedThreat);
   }
 }
 

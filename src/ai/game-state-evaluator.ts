@@ -1134,8 +1134,7 @@ export class GameStateEvaluator {
     player: PlayerState,
     opponents: PlayerState[],
   ): number {
-    const isCurrentPlayer =
-      this.gameState.turnInfo.currentPlayer === player.id;
+    const isCurrentPlayer = this.gameState.turnInfo.currentPlayer === player.id;
 
     const playerBoardValue = this.computeBoardValue(player);
     const avgOpponentBoardValue =
@@ -1145,10 +1144,8 @@ export class GameStateEvaluator {
         : 0;
 
     const currentDelta = playerBoardValue - avgOpponentBoardValue;
-    const opponentUntapBonus =
-      this.estimateOpponentUntapPotential(opponents);
-    const projectedOpponentValue =
-      avgOpponentBoardValue + opponentUntapBonus;
+    const opponentUntapBonus = this.estimateOpponentUntapPotential(opponents);
+    const projectedOpponentValue = avgOpponentBoardValue + opponentUntapBonus;
 
     if (!isCurrentPlayer) {
       return this.normalizeSwing(
@@ -1156,8 +1153,7 @@ export class GameStateEvaluator {
       );
     }
 
-    const playerDevelopPotential =
-      this.estimatePlayerDevelopPotential(player);
+    const playerDevelopPotential = this.estimatePlayerDevelopPotential(player);
     const projectedPlayerValue = playerBoardValue + playerDevelopPotential;
     const projectedSwing = projectedPlayerValue - projectedOpponentValue;
 
@@ -1194,9 +1190,7 @@ export class GameStateEvaluator {
     return value;
   }
 
-  private estimateOpponentUntapPotential(
-    opponents: PlayerState[],
-  ): number {
+  private estimateOpponentUntapPotential(opponents: PlayerState[]): number {
     let potential = 0;
 
     for (const opp of opponents) {
@@ -1212,9 +1206,7 @@ export class GameStateEvaluator {
       ).length;
       potential += untapLands * 0.4;
 
-      const highCmcInHand = opp.hand.filter(
-        (c) => c.manaValue >= 4,
-      ).length;
+      const highCmcInHand = opp.hand.filter((c) => c.manaValue >= 4).length;
       potential += highCmcInHand * 0.5;
     }
 
@@ -1224,9 +1216,7 @@ export class GameStateEvaluator {
   private estimatePlayerDevelopPotential(player: PlayerState): number {
     let potential = 0;
 
-    const landsInHand = player.hand.filter(
-      (c) => c.type === "Land",
-    ).length;
+    const landsInHand = player.hand.filter((c) => c.type === "Land").length;
     const landsPlayed = player.landsPlayedThisTurn ?? 0;
     if (landsPlayed === 0 && landsInHand > 0) {
       potential += 0.8;
@@ -1243,14 +1233,10 @@ export class GameStateEvaluator {
     potential += castableInHand * 0.4;
 
     const untappedCreatures = player.battlefield.filter(
-      (p) =>
-        p.type === "creature" && !p.tapped && !p.summoningSickness,
+      (p) => p.type === "creature" && !p.tapped && !p.summoningSickness,
     );
     potential +=
-      untappedCreatures.reduce(
-        (sum, c) => sum + (c.power ?? 0),
-        0,
-      ) * 0.2;
+      untappedCreatures.reduce((sum, c) => sum + (c.power ?? 0), 0) * 0.2;
 
     return potential;
   }

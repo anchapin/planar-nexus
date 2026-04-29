@@ -71,10 +71,7 @@ export class LookaheadEngine {
    * @param aiPlayerId - The AI player's ID
    * @returns Lookahead evaluation result
    */
-  evaluate(
-    gameState: AIGameState,
-    aiPlayerId: string,
-  ): LookaheadResult {
+  evaluate(gameState: AIGameState, aiPlayerId: string): LookaheadResult {
     if (!this.config.enabled) {
       return this.noLookaheadResult();
     }
@@ -91,9 +88,11 @@ export class LookaheadEngine {
 
     const boardScore = this.evaluateProjections(projections, aiPlayerId);
 
-    const heuristicModifier = match.aggressionModifier * this.config.heuristicWeight;
+    const heuristicModifier =
+      match.aggressionModifier * this.config.heuristicWeight;
     const boardModifier = this.computeBoardScoreModifier(boardScore);
-    const combinedModifier = heuristicModifier + boardModifier * (1 - this.config.heuristicWeight);
+    const combinedModifier =
+      heuristicModifier + boardModifier * (1 - this.config.heuristicWeight);
 
     const lethal = projections.find((p) => p.hasLethal);
     const opponentLethal = projections.find((p) => p.opponentHasLethal);
@@ -136,12 +135,13 @@ export class LookaheadEngine {
       };
     }
 
-    const bestMatch = matches.reduce((best, h) => {
-      const relevance = this.computeHeuristicRelevance(h, signature);
-      return relevance > best.relevance
-        ? { heuristic: h, relevance }
-        : best;
-    }, { heuristic: matches[0], relevance: 0 });
+    const bestMatch = matches.reduce(
+      (best, h) => {
+        const relevance = this.computeHeuristicRelevance(h, signature);
+        return relevance > best.relevance ? { heuristic: h, relevance } : best;
+      },
+      { heuristic: matches[0], relevance: 0 },
+    );
 
     return {
       heuristic: bestMatch.heuristic,
@@ -178,20 +178,41 @@ export class LookaheadEngine {
     }
 
     maxScore += 0.5;
-    if (hs.opponentCreatures.length === 0 && current.opponentCreatures.length === 0) {
+    if (
+      hs.opponentCreatures.length === 0 &&
+      current.opponentCreatures.length === 0
+    ) {
       score += 0.5;
     } else {
-      const diff = Math.abs(hs.opponentCreatures.length - current.opponentCreatures.length);
+      const diff = Math.abs(
+        hs.opponentCreatures.length - current.opponentCreatures.length,
+      );
       score += Math.max(0, 0.5 - diff * 0.15);
     }
 
     const aiPower = current.aiCreatures.reduce((s, c) => s + c.power, 0);
     const oppPower = current.opponentCreatures.reduce((s, c) => s + c.power, 0);
-    const aiLife = current.aiLifeBucket === "critical" ? 3 : current.aiLifeBucket === "low" ? 8 : current.aiLifeBucket === "mid" ? 13 : 20;
-    const oppLife = current.opponentLifeBucket === "critical" ? 3 : current.opponentLifeBucket === "low" ? 8 : current.opponentLifeBucket === "mid" ? 13 : 20;
+    const aiLife =
+      current.aiLifeBucket === "critical"
+        ? 3
+        : current.aiLifeBucket === "low"
+          ? 8
+          : current.aiLifeBucket === "mid"
+            ? 13
+            : 20;
+    const oppLife =
+      current.opponentLifeBucket === "critical"
+        ? 3
+        : current.opponentLifeBucket === "low"
+          ? 8
+          : current.opponentLifeBucket === "mid"
+            ? 13
+            : 20;
 
-    const turnsToKillOpponent = oppLife > 0 ? Math.ceil(oppLife / Math.max(aiPower, 1)) : 99;
-    const turnsForOpponentToKill = aiLife > 0 ? Math.ceil(aiLife / Math.max(oppPower, 1)) : 99;
+    const turnsToKillOpponent =
+      oppLife > 0 ? Math.ceil(oppLife / Math.max(aiPower, 1)) : 99;
+    const turnsForOpponentToKill =
+      aiLife > 0 ? Math.ceil(aiLife / Math.max(oppPower, 1)) : 99;
 
     maxScore += 0.5;
     if (turnsToKillOpponent <= 2 && turnsForOpponentToKill > 2) {
@@ -288,7 +309,7 @@ export class LookaheadEngine {
     turn: number,
     branch: number,
   ): number {
-    const blockedRatio = 0.3 + (branch * 0.2);
+    const blockedRatio = 0.3 + branch * 0.2;
     const blocked = oppBlockers.length > 0 ? blockedRatio : 0;
     const unblockedDamage = aiPower * (1 - blocked);
     return Math.round(unblockedDamage * turn);
@@ -303,7 +324,7 @@ export class LookaheadEngine {
     turn: number,
     branch: number,
   ): number {
-    const blockRatio = 0.2 + (branch * 0.15);
+    const blockRatio = 0.2 + branch * 0.15;
     const blocked = aiBlockers.length > 0 ? blockRatio : 0;
     const unblockedDamage = oppPower * (1 - blocked);
     return Math.round(unblockedDamage * turn);
@@ -321,7 +342,9 @@ export class LookaheadEngine {
     const tradeChance = 0.1 + branch * 0.1;
     const trades = Math.min(aiCreatures.length, oppCreatures.length);
     const expectedTrades = trades * tradeChance * turn;
-    return Math.round((aiCreatures.length - oppCreatures.length - expectedTrades) * turn * 0.5);
+    return Math.round(
+      (aiCreatures.length - oppCreatures.length - expectedTrades) * turn * 0.5,
+    );
   }
 
   /**

@@ -35,6 +35,11 @@ import {
   type BlockPrediction,
 } from "./block-prediction";
 import {
+  estimateCombatTrickProbability,
+  calculateCombatTrickDiscount,
+  type OpponentManaState,
+} from "./combat-trick-probability";
+import {
   LookaheadEngine,
   HeuristicTable,
   type LookaheadResult,
@@ -241,7 +246,6 @@ export class CombatDecisionTree {
   private config: CombatAIConfig;
   private heuristicTable: HeuristicTable;
   private lookaheadEngine: LookaheadEngine;
-
   constructor(
     gameState: GameState,
     aiPlayerId: string,
@@ -546,6 +550,44 @@ export class CombatDecisionTree {
 
     const adjustedValue = bestTargetValue + evasionBonus - creatureValuePenalty;
 
+    let trickDiscountedValue = adjustedValue;
+    if (this.config.useCombatTricks) {
+      const opponent = opponents[0];
+      const opponentMana: OpponentManaState = opponent.manaPool
+        ? {
+            white: opponent.manaPool.white || 0,
+            blue: opponent.manaPool.blue || 0,
+            black: opponent.manaPool.black || 0,
+            red: opponent.manaPool.red || 0,
+            green: opponent.manaPool.green || 0,
+            colorless: opponent.manaPool.colorless || 0,
+          }
+        : {
+            white: 0,
+            blue: 0,
+            black: 0,
+            red: 0,
+            green: 0,
+            colorless: 0,
+          };
+
+      const trickEstimate = estimateCombatTrickProbability(
+        opponentMana,
+        this.config.opponentArchetype,
+        opponent.hand?.length,
+        this.gameState.turnInfo?.currentTurn,
+      );
+
+      if (trickEstimate.probability > 0) {
+        const { discountedEV } = calculateCombatTrickDiscount(
+          trickEstimate,
+          adjustedValue,
+          creature.toughness,
+        );
+        trickDiscountedValue = discountedEV;
+      }
+    }
+
     if (blockPrediction) {
       const opponent = opponents[0];
       const predictedEV = integrateBlockPredictionIntoEV(
@@ -555,6 +597,44 @@ export class CombatDecisionTree {
         opponent.battlefield,
         opponent.life,
       );
+
+      let finalEV = predictedEV;
+      if (this.config.useCombatTricks) {
+        const opponentMana: OpponentManaState = opponent.manaPool
+          ? {
+              white: opponent.manaPool.white || 0,
+              blue: opponent.manaPool.blue || 0,
+              black: opponent.manaPool.black || 0,
+              red: opponent.manaPool.red || 0,
+              green: opponent.manaPool.green || 0,
+              colorless: opponent.manaPool.colorless || 0,
+            }
+          : {
+              white: 0,
+              blue: 0,
+              black: 0,
+              red: 0,
+              green: 0,
+              colorless: 0,
+            };
+
+        const trickEstimate = estimateCombatTrickProbability(
+          opponentMana,
+          this.config.opponentArchetype,
+          opponent.hand?.length,
+          this.gameState.turnInfo?.currentTurn,
+        );
+
+        if (trickEstimate.probability > 0) {
+          const { discountedEV } = calculateCombatTrickDiscount(
+            trickEstimate,
+            predictedEV,
+            creature.toughness,
+          );
+          finalEV = discountedEV;
+        }
+      }
+
       return this.buildAttackDecision(
         creature,
         opponents,
@@ -562,15 +642,15 @@ export class CombatDecisionTree {
         attackThreshold,
         evasionBonus,
         creatureValuePenalty,
-        predictedEV,
+        finalEV,
         opponentAnalyses,
       );
     }
 
-    if (adjustedValue >= attackThreshold) {
+    if (trickDiscountedValue >= attackThreshold) {
       shouldAttack = true;
       target = bestTarget!;
-      expectedValue = Math.max(0, Math.min(1, adjustedValue));
+      expectedValue = Math.max(0, Math.min(1, trickDiscountedValue));
       reasoning = this.generateAttackReasoning(
         creature,
         bestTarget!,
@@ -580,7 +660,7 @@ export class CombatDecisionTree {
       riskLevel = this.calculateAttackRisk(creature, opponentAnalyses);
     } else {
       shouldAttack = false;
-      reasoning = this.generateHoldReasoning(creature, bestTargetValue);
+      reasoning = this.generateHoldReasoning(creature, trickDiscountedValue);
     }
 
     return this.buildAttackDecisionFromValues(
@@ -1676,10 +1756,7 @@ export class CombatDecisionTree {
         decision.shouldAttack = true;
       }
 
-      if (
-        lookaheadResult.opponentLethalRisk &&
-        decision.expectedValue < 0.5
-      ) {
+      if (lookaheadResult.opponentLethalRisk && decision.expectedValue < 0.5) {
         decision.expectedValue -= 0.15;
         if (decision.expectedValue < 0.2) {
           decision.shouldAttack = false;

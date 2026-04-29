@@ -20,7 +20,11 @@ import type {
   BoardStateSignature,
   AttackLineHeuristic,
 } from "../decision-making/lookahead/types";
-import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state/types";
+import type {
+  AIGameState,
+  AIPlayerState,
+  AIPermanent,
+} from "@/lib/game-state/types";
 
 function createMockPlayerState(
   id: string,
@@ -84,8 +88,16 @@ function createTestGameState(
 ): AIGameState {
   return {
     players: {
-      player1: createMockPlayerState("player1", player1Life, player1Battlefield),
-      player2: createMockPlayerState("player2", player2Life, player2Battlefield),
+      player1: createMockPlayerState(
+        "player1",
+        player1Life,
+        player1Battlefield,
+      ),
+      player2: createMockPlayerState(
+        "player2",
+        player2Life,
+        player2Battlefield,
+      ),
     },
     turnInfo: {
       currentTurn: 5,
@@ -190,7 +202,9 @@ describe("Board State Signature", () => {
       };
       const sig2: BoardStateSignature = {
         aiCreatures: [],
-        opponentCreatures: [{ power: 1, toughness: 1, keywords: [], manaValue: 1 }],
+        opponentCreatures: [
+          { power: 1, toughness: 1, keywords: [], manaValue: 1 },
+        ],
         aiLifeBucket: "critical",
         opponentLifeBucket: "mid",
         aiHandSize: 0,
@@ -202,16 +216,18 @@ describe("Board State Signature", () => {
     });
 
     it("should give high similarity for similar life buckets and creature counts", () => {
-      const gameState1 = createTestGameState(14, 9, [
-        createMockPermanent("c1", "Bear", "creature", 2, 2),
-      ], [
-        createMockPermanent("c2", "Goblin", "creature", 1, 1),
-      ]);
-      const gameState2 = createTestGameState(12, 8, [
-        createMockPermanent("c3", "Knight", "creature", 2, 3),
-      ], [
-        createMockPermanent("c4", "Imp", "creature", 1, 1),
-      ]);
+      const gameState1 = createTestGameState(
+        14,
+        9,
+        [createMockPermanent("c1", "Bear", "creature", 2, 2)],
+        [createMockPermanent("c2", "Goblin", "creature", 1, 1)],
+      );
+      const gameState2 = createTestGameState(
+        12,
+        8,
+        [createMockPermanent("c3", "Knight", "creature", 2, 3)],
+        [createMockPermanent("c4", "Imp", "creature", 1, 1)],
+      );
 
       const sig1 = createBoardStateSignature(gameState1, "player1");
       const sig2 = createBoardStateSignature(gameState2, "player1");
@@ -427,7 +443,9 @@ describe("LookaheadEngine", () => {
       description: "Always be aggressive",
       signature: {
         aiCreatures: [{ power: 5, toughness: 5, keywords: [], manaValue: 5 }],
-        opponentCreatures: [{ power: 1, toughness: 1, keywords: [], manaValue: 1 }],
+        opponentCreatures: [
+          { power: 1, toughness: 1, keywords: [], manaValue: 1 },
+        ],
         aiLifeBucket: "high",
         opponentLifeBucket: "high",
         aiHandSize: 5,

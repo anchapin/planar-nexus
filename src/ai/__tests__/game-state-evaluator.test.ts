@@ -1742,8 +1742,6 @@ describe("compareHoldVsPlay", () => {
   });
 });
 
-
-
 describe("tempoSwingScore", () => {
   it("should include tempoSwingScore in the evaluation factors", () => {
     const gameState = createTestGameState();
@@ -1758,10 +1756,21 @@ describe("tempoSwingScore", () => {
 
   it("should return near-zero swing when boards are symmetric", () => {
     const creature = createMockPermanent(
-      "c1", "Grizzly Bears", "creature", 2, 2, false, 2,
+      "c1",
+      "Grizzly Bears",
+      "creature",
+      2,
+      2,
+      false,
+      2,
     );
     const gameState = createTestGameState(
-      20, 20, [], [], [creature], [creature],
+      20,
+      20,
+      [],
+      [],
+      [creature],
+      [creature],
     );
     const evaluator = new GameStateEvaluator(gameState, "player1");
     const evaluation = evaluator.evaluate();
@@ -1770,11 +1779,15 @@ describe("tempoSwingScore", () => {
 
   it("should detect positive swing when player has untapped threats and opponent has none", () => {
     const playerCreature = createMockPermanent(
-      "pc1", "Tarmogoyf", "creature", 4, 5, false, 2,
+      "pc1",
+      "Tarmogoyf",
+      "creature",
+      4,
+      5,
+      false,
+      2,
     );
-    const gameState = createTestGameState(
-      20, 20, [], [], [playerCreature], [],
-    );
+    const gameState = createTestGameState(20, 20, [], [], [playerCreature], []);
     const evaluator = new GameStateEvaluator(gameState, "player1");
     const evaluation = evaluator.evaluate();
     expect(evaluation.factors.tempoSwingScore).toBeGreaterThan(0);
@@ -1782,10 +1795,21 @@ describe("tempoSwingScore", () => {
 
   it("should detect negative swing when opponent has large tapped creatures that will untap", () => {
     const opponentCreature = createMockPermanent(
-      "oc1", "Inferno Titan", "creature", 6, 6, true, 6,
+      "oc1",
+      "Inferno Titan",
+      "creature",
+      6,
+      6,
+      true,
+      6,
     );
     const gameState = createTestGameState(
-      20, 20, [], [], [], [opponentCreature],
+      20,
+      20,
+      [],
+      [],
+      [],
+      [opponentCreature],
     );
     const evaluator = new GameStateEvaluator(gameState, "player1");
     const evaluation = evaluator.evaluate();
@@ -1794,7 +1818,13 @@ describe("tempoSwingScore", () => {
 
   it("should detect large positive swing after Wrath of God scenario", () => {
     const playerCreature = createMockPermanent(
-      "pc1", "Snapcaster Mage", "creature", 2, 1, false, 2,
+      "pc1",
+      "Snapcaster Mage",
+      "creature",
+      2,
+      1,
+      false,
+      2,
     );
     const opponentCreatures = [
       createMockPermanent("oc1", "Elite Vanguard", "creature", 2, 1, false, 1),
@@ -1802,7 +1832,12 @@ describe("tempoSwingScore", () => {
       createMockPermanent("oc3", "Wilt-Leaf Liege", "creature", 4, 4, false, 4),
     ];
     const gameState = createTestGameState(
-      20, 20, [], [], [playerCreature], opponentCreatures,
+      20,
+      20,
+      [],
+      [],
+      [playerCreature],
+      opponentCreatures,
     );
     const evaluator = new GameStateEvaluator(gameState, "player1");
     const evaluation = evaluator.evaluate();
@@ -1811,16 +1846,38 @@ describe("tempoSwingScore", () => {
 
   it("should detect tempo swing from Counterspell on a bomb scenario", () => {
     const opponentBomb = createMockPermanent(
-      "oc1", "Primeval Titan", "creature", 6, 6, true, 8,
+      "oc1",
+      "Primeval Titan",
+      "creature",
+      6,
+      6,
+      true,
+      8,
     );
     const opponentSmall = createMockPermanent(
-      "oc2", "Runeclaw Bear", "creature", 2, 2, false, 2,
+      "oc2",
+      "Runeclaw Bear",
+      "creature",
+      2,
+      2,
+      false,
+      2,
     );
     const stateWithBomb = createTestGameState(
-      20, 20, [], [], [opponentSmall], [opponentBomb],
+      20,
+      20,
+      [],
+      [],
+      [opponentSmall],
+      [opponentBomb],
     );
     const stateWithSmall = createTestGameState(
-      20, 20, [], [], [opponentSmall], [opponentSmall],
+      20,
+      20,
+      [],
+      [],
+      [opponentSmall],
+      [opponentSmall],
     );
     const evalWithBomb = new GameStateEvaluator(stateWithBomb, "player1");
     const evalWithSmall = new GameStateEvaluator(stateWithSmall, "player1");
@@ -1831,12 +1888,29 @@ describe("tempoSwingScore", () => {
 
   it("should apply higher tempoSwingScore weight for expert difficulty than easy", () => {
     const gameState = createTestGameState(
-      20, 20, [], [],
+      20,
+      20,
+      [],
+      [],
       [createMockPermanent("pc1", "Ragavan", "creature", 2, 1, false, 1)],
-      [createMockPermanent("oc1", "Birds of Paradise", "creature", 0, 1, true, 1)],
+      [
+        createMockPermanent(
+          "oc1",
+          "Birds of Paradise",
+          "creature",
+          0,
+          1,
+          true,
+          1,
+        ),
+      ],
     );
     const easyEvaluator = new GameStateEvaluator(gameState, "player1", "easy");
-    const expertEvaluator = new GameStateEvaluator(gameState, "player1", "expert");
+    const expertEvaluator = new GameStateEvaluator(
+      gameState,
+      "player1",
+      "expert",
+    );
     const easyWeights = easyEvaluator.getWeights();
     const expertWeights = expertEvaluator.getWeights();
     expect(expertWeights.tempoSwingScore).toBeGreaterThan(
@@ -1844,20 +1918,42 @@ describe("tempoSwingScore", () => {
     );
     const easyEval = easyEvaluator.evaluate();
     const expertEval = expertEvaluator.evaluate();
-    const easyContrib = easyEval.factors.tempoSwingScore * easyWeights.tempoSwingScore;
-    const expertContrib = expertEval.factors.tempoSwingScore * expertWeights.tempoSwingScore;
+    const easyContrib =
+      easyEval.factors.tempoSwingScore * easyWeights.tempoSwingScore;
+    const expertContrib =
+      expertEval.factors.tempoSwingScore * expertWeights.tempoSwingScore;
     expect(Math.abs(expertContrib)).toBeGreaterThan(Math.abs(easyContrib));
   });
 
   it("should respect tempoSwingScore weight for aggro archetype", () => {
     const gameState = createTestGameState(
-      20, 20, [], [],
-      [createMockPermanent("pc1", "Monastery Swiftspear", "creature", 2, 1, false, 1)],
+      20,
+      20,
+      [],
+      [],
+      [
+        createMockPermanent(
+          "pc1",
+          "Monastery Swiftspear",
+          "creature",
+          2,
+          1,
+          false,
+          1,
+        ),
+      ],
       [],
     );
-    const baseEvaluator = new GameStateEvaluator(gameState, "player1", "medium");
+    const baseEvaluator = new GameStateEvaluator(
+      gameState,
+      "player1",
+      "medium",
+    );
     const aggroEvaluator = new GameStateEvaluator(
-      gameState, "player1", "medium", "aggro",
+      gameState,
+      "player1",
+      "medium",
+      "aggro",
     );
     expect(aggroEvaluator.getWeights().tempoSwingScore).toBeGreaterThan(
       baseEvaluator.getWeights().tempoSwingScore,
@@ -1873,7 +1969,11 @@ describe("tempoSwingScore", () => {
 
   it("should include tempoSwingScore in all archetype weights", () => {
     for (const archetype of [
-      "aggro", "control", "combo", "midrange", "ramp",
+      "aggro",
+      "control",
+      "combo",
+      "midrange",
+      "ramp",
     ] as const) {
       expect(ArchetypeWeights[archetype]).toHaveProperty("tempoSwingScore");
       expect(typeof ArchetypeWeights[archetype].tempoSwingScore).toBe("number");

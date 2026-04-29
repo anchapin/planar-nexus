@@ -235,17 +235,26 @@ export class HeuristicTable {
     const aiPowerSum = current.aiCreatures.reduce((s, c) => s + c.power, 0);
     const hsTotalPower = hs.aiCreatures.reduce((s, c) => s + c.power, 0);
     if (hsTotalPower > 0) {
-      const ratio = Math.min(aiPowerSum, hsTotalPower) / Math.max(aiPowerSum, hsTotalPower);
+      const ratio =
+        Math.min(aiPowerSum, hsTotalPower) / Math.max(aiPowerSum, hsTotalPower);
       score += 0.5 * ratio;
     } else {
       score += 0.25;
     }
 
     maxScore += 0.5;
-    const oppPowerSum = current.opponentCreatures.reduce((s, c) => s + c.power, 0);
-    const hsOppTotalPower = hs.opponentCreatures.reduce((s, c) => s + c.power, 0);
+    const oppPowerSum = current.opponentCreatures.reduce(
+      (s, c) => s + c.power,
+      0,
+    );
+    const hsOppTotalPower = hs.opponentCreatures.reduce(
+      (s, c) => s + c.power,
+      0,
+    );
     if (hsOppTotalPower > 0) {
-      const ratio = Math.min(oppPowerSum, hsOppTotalPower) / Math.max(oppPowerSum, hsOppTotalPower);
+      const ratio =
+        Math.min(oppPowerSum, hsOppTotalPower) /
+        Math.max(oppPowerSum, hsOppTotalPower);
       score += 0.5 * ratio;
     } else {
       score += 0.25;

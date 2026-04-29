@@ -12,7 +12,11 @@ import type {
 } from "../trigger-chain-evaluator";
 
 function makePermanent(
-  overrides: Partial<BoardPermanent> & { id: string; name: string; controller: string },
+  overrides: Partial<BoardPermanent> & {
+    id: string;
+    name: string;
+    controller: string;
+  },
 ): BoardPermanent {
   return {
     cardId: overrides.id,
@@ -22,7 +26,10 @@ function makePermanent(
 }
 
 function makeStackItem(
-  overrides: Partial<CascadeContext["stackItem"]> & { id: string; name: string },
+  overrides: Partial<CascadeContext["stackItem"]> & {
+    id: string;
+    name: string;
+  },
 ): CascadeContext["stackItem"] {
   return {
     cardId: overrides.id,
@@ -137,8 +144,7 @@ describe("trigger-chain-evaluator", () => {
           name: "Soul Warden",
           controller: "player1",
           type: "creature",
-          oracleText:
-            "Whenever another creature enters, you gain 1 life.",
+          oracleText: "Whenever another creature enters, you gain 1 life.",
         }),
         makePermanent({
           id: "panharmonicon",
@@ -199,8 +205,7 @@ describe("trigger-chain-evaluator", () => {
           name: "Wall of Omens",
           controller: "player1",
           type: "enchantment",
-          oracleText:
-            "When Wall of Omens enters the battlefield, draw a card.",
+          oracleText: "When Wall of Omens enters the battlefield, draw a card.",
         }),
       ];
 
@@ -232,8 +237,7 @@ describe("trigger-chain-evaluator", () => {
           name: "Soul Warden",
           controller: "player1",
           type: "creature",
-          oracleText:
-            "Whenever another creature enters, you gain 1 life.",
+          oracleText: "Whenever another creature enters, you gain 1 life.",
         }),
       ];
 
@@ -261,8 +265,7 @@ describe("trigger-chain-evaluator", () => {
           name: "Impact Tremors",
           controller: "player1",
           type: "enchantment",
-          oracleText:
-            "Whenever a creature enters, deal 1 damage.",
+          oracleText: "Whenever a creature enters, deal 1 damage.",
         }),
       ];
 
@@ -457,8 +460,8 @@ describe("trigger-chain-evaluator", () => {
       });
 
       const chains = evaluateTriggerChain(stackItem, []);
-      const cascadeChain = chains.find((c) =>
-        c.steps[0]?.ability.triggerType === "cascade",
+      const cascadeChain = chains.find(
+        (c) => c.steps[0]?.ability.triggerType === "cascade",
       );
 
       expect(cascadeChain).toBeDefined();

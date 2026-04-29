@@ -72,7 +72,9 @@ export function createBoardStateSignature(
     aiLifeBucket: bucketLife(aiPlayer?.life ?? 20),
     opponentLifeBucket: bucketLife(opponent?.life ?? 20),
     aiHandSize: aiPlayer?.hand.length ?? 0,
-    opponentHandEstimate: opponent ? opponent.library + opponent.hand.length : 0,
+    opponentHandEstimate: opponent
+      ? opponent.library + opponent.hand.length
+      : 0,
   };
 }
 
@@ -109,7 +111,9 @@ export function computeSignatureSimilarity(
 
   maxScore += 1;
   score +=
-    a.aiHandSize === b.aiHandSize ? 1 : Math.max(0, 1 - Math.abs(a.aiHandSize - b.aiHandSize) / 3);
+    a.aiHandSize === b.aiHandSize
+      ? 1
+      : Math.max(0, 1 - Math.abs(a.aiHandSize - b.aiHandSize) / 3);
 
   return maxScore > 0 ? score / maxScore : 0;
 }
