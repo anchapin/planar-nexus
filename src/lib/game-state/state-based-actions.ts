@@ -18,6 +18,7 @@ import {
   getToughness,
   hasLethalDamage,
 } from "./card-instance";
+import { hasIndestructible } from "./keyword-actions";
 import { destroyCard, exileCard } from "./keyword-actions";
 import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from "./commander-damage";
 
@@ -140,7 +141,12 @@ export function checkStateBasedActions(
     // SBAs 704.5f–704.5n only apply to permanents on the battlefield
     if (isOnBattlefield) {
       // SBA 704.5f: A creature with lethal damage is destroyed
-      if (isCreature(card) && hasLethalDamage(card)) {
+      // Indestructible creatures are not destroyed by lethal damage (CR 702.12)
+      if (
+        isCreature(card) &&
+        hasLethalDamage(card) &&
+        !hasIndestructible(card)
+      ) {
         if (!cardsToDestroy.includes(card.id)) {
           cardsToDestroy.push(card.id);
           descriptions.push(
