@@ -1,24 +1,23 @@
 /**
  * Activated and Triggered Abilities System
- * 
+ *
  * This module implements the ability system for Magic: The Gathering,
  * including activated abilities, triggered abilities, and loyalty abilities.
- * 
+ *
  * Reference: CR 112 - Abilities, CR 113 - Abilities, CR 603 - Triggered Abilities
- * 
+ *
  * Issue #10: Phase 1.2: Implement activated and triggered abilities
  */
 
-import type {
-  GameState,
-  PlayerId,
-  CardInstanceId,
-  StackObject,
-} from './types';
-import { Phase } from './types';
-import { parseOracleText, ParsedActivatedAbility, ParsedTriggeredAbility } from './oracle-text-parser';
-import { spendMana } from './mana';
-import { destroyCard, discardCards } from './keyword-actions';
+import type { GameState, PlayerId, CardInstanceId, StackObject } from "./types";
+import { Phase } from "./types";
+import {
+  parseOracleText,
+  ParsedActivatedAbility,
+  ParsedTriggeredAbility,
+} from "./oracle-text-parser";
+import { spendMana } from "./mana";
+import { destroyCard, discardCards } from "./keyword-actions";
 
 /**
  * Result of activating an ability
@@ -68,11 +67,11 @@ function generateTriggeredAbilityId(): string {
  */
 export function hasActivatedAbilities(card: { oracle_text?: string }): boolean {
   if (!card.oracle_text) return false;
-  return card.oracle_text.includes(':');
+  return card.oracle_text.includes(":");
 }
 
 // Card data interface for parsing - extends ScryfallCard with optional fields
-import type { ScryfallCard } from '@/app/actions';
+import type { ScryfallCard } from "@/app/actions";
 
 // Use ScryfallCard directly for parsing since parseOracleText requires it
 type CardDataForParsing = ScryfallCard;
@@ -80,7 +79,9 @@ type CardDataForParsing = ScryfallCard;
 /**
  * Parse a card's activated abilities
  */
-export function getActivatedAbilities(card: CardDataForParsing): ParsedActivatedAbility[] {
+export function getActivatedAbilities(
+  card: CardDataForParsing,
+): ParsedActivatedAbility[] {
   if (!card.oracle_text) return [];
   return parseOracleText(card).activatedAbilities;
 }
@@ -91,13 +92,17 @@ export function getActivatedAbilities(card: CardDataForParsing): ParsedActivated
 export function hasTriggeredAbilities(card: { oracle_text?: string }): boolean {
   if (!card.oracle_text) return false;
   const text = card.oracle_text.toLowerCase();
-  return text.includes('when ') || text.includes('whenever ') || text.includes('at ');
+  return (
+    text.includes("when ") || text.includes("whenever ") || text.includes("at ")
+  );
 }
 
 /**
  * Parse a card's triggered abilities
  */
-export function getTriggeredAbilities(card: CardDataForParsing): ParsedTriggeredAbility[] {
+export function getTriggeredAbilities(
+  card: CardDataForParsing,
+): ParsedTriggeredAbility[] {
   if (!card.oracle_text) return [];
   return parseOracleText(card).triggeredAbilities;
 }
@@ -109,33 +114,33 @@ export function canActivateAbility(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-  abilityIndex: number
+  abilityIndex: number,
 ): { canActivate: boolean; reason?: string } {
   const card = state.cards.get(cardId);
   if (!card) {
-    return { canActivate: false, reason: 'Card not found' };
+    return { canActivate: false, reason: "Card not found" };
   }
 
   // Check if player controls the card
   if (card.controllerId !== playerId) {
-    return { canActivate: false, reason: 'You do not control this card' };
+    return { canActivate: false, reason: "You do not control this card" };
   }
 
   // Check if player has priority
   if (state.priorityPlayerId !== playerId) {
-    return { canActivate: false, reason: 'You do not have priority' };
+    return { canActivate: false, reason: "You do not have priority" };
   }
 
   // Check if card is on the battlefield
   const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
   if (!battlefieldZone || !battlefieldZone.cardIds.includes(cardId)) {
-    return { canActivate: false, reason: 'Card is not on the battlefield' };
+    return { canActivate: false, reason: "Card is not on the battlefield" };
   }
 
   // Check for summoning sickness (unless the ability has no tap cost)
   const abilities = getActivatedAbilities(card.cardData);
   const ability = abilities[abilityIndex];
-  
+
   if (ability && !ability.costs.tap && card.hasSummoningSickness) {
     // Some abilities can be activated despite summoning sickness
     // This would need more sophisticated checking
@@ -155,15 +160,15 @@ export function activateAbility(
   playerId: PlayerId,
   cardId: CardInstanceId,
   abilityIndex: number,
-  targets: { type: string; targetId: string }[] = []
+  targets: { type: string; targetId: string }[] = [],
 ): ActivateAbilityResult {
   const card = state.cards.get(cardId);
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
-      error: 'Card not found',
+      description: "",
+      error: "Card not found",
     };
   }
 
@@ -173,7 +178,7 @@ export function activateAbility(
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: canActivate.reason,
     };
   }
@@ -186,8 +191,8 @@ export function activateAbility(
     return {
       success: false,
       state,
-      description: '',
-      error: 'Ability not found',
+      description: "",
+      error: "Ability not found",
     };
   }
 
@@ -224,8 +229,8 @@ export function activateAbility(
       return {
         success: false,
         state: currentState,
-        description: '',
-        error: 'Not enough mana',
+        description: "",
+        error: "Not enough mana",
       };
     }
     currentState = manaResult.state;
@@ -238,8 +243,8 @@ export function activateAbility(
       return {
         success: false,
         state: currentState,
-        description: '',
-        error: 'Not enough life',
+        description: "",
+        error: "Not enough life",
       };
     }
     const updatedPlayer = {
@@ -272,32 +277,32 @@ export function activateAbility(
   }
 
   // Create stack object for the ability
-  const stackZone = currentState.zones.get('stack');
+  const stackZone = currentState.zones.get("stack");
   if (!stackZone) {
     return {
       success: false,
       state: currentState,
-      description: '',
-      error: 'Stack zone not found',
+      description: "",
+      error: "Stack zone not found",
     };
   }
 
   // Move card to stack (for abilities that go on stack)
   const battlefieldZone = currentState.zones.get(`${playerId}-battlefield`);
-  
+
   let cardMovedState = currentState;
   if (battlefieldZone && battlefieldZone.cardIds.includes(cardId)) {
     // Create stack object directly without moving the card
     const stackObject: StackObject = {
       id: generateAbilityId(),
-      type: 'ability',
+      type: "ability",
       sourceCardId: cardId,
       controllerId: playerId,
       name: `${card.cardData.name} ability`,
       text: ability.effect,
       manaCost: card.cardData.mana_cost ?? null,
-      targets: targets.map(t => ({
-        type: t.type as 'card' | 'player' | 'zone',
+      targets: targets.map((t) => ({
+        type: t.type as "card" | "player" | "zone",
         targetId: t.targetId,
         isValid: true,
       })),
@@ -308,7 +313,7 @@ export function activateAbility(
     };
 
     const updatedStack = [...cardMovedState.stack, stackObject];
-    
+
     cardMovedState = {
       ...cardMovedState,
       stack: updatedStack,
@@ -356,12 +361,14 @@ export interface LoyaltyAbility {
 /**
  * Get loyalty abilities for a planeswalker card
  */
-export function getLoyaltyAbilities(card: { oracle_text?: string }): LoyaltyAbility[] {
+export function getLoyaltyAbilities(card: {
+  oracle_text?: string;
+}): LoyaltyAbility[] {
   if (!card.oracle_text) return [];
-  
+
   const abilities: LoyaltyAbility[] = [];
-  const lines = card.oracle_text.split('\n');
-  
+  const lines = card.oracle_text.split("\n");
+
   for (const line of lines) {
     // Match patterns like "+1: Draw a card" or "-3: Destroy target creature"
     const match = line.match(/^([+-]\d+):\s*(.+)/);
@@ -372,7 +379,7 @@ export function getLoyaltyAbilities(card: { oracle_text?: string }): LoyaltyAbil
       });
     }
   }
-  
+
   return abilities;
 }
 
@@ -383,58 +390,73 @@ export function canActivateLoyaltyAbility(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-  abilityCost: number
+  abilityCost: number,
 ): { canActivate: boolean; reason?: string } {
   const card = state.cards.get(cardId);
   if (!card) {
-    return { canActivate: false, reason: 'Card not found' };
+    return { canActivate: false, reason: "Card not found" };
   }
 
   // Check if card is a planeswalker
-  const typeLine = card.cardData.type_line?.toLowerCase() || '';
-  if (!typeLine.includes('planeswalker')) {
-    return { canActivate: false, reason: 'Card is not a planeswalker' };
+  const typeLine = card.cardData.type_line?.toLowerCase() || "";
+  if (!typeLine.includes("planeswalker")) {
+    return { canActivate: false, reason: "Card is not a planeswalker" };
   }
 
   // Check if player controls the planeswalker
   if (card.controllerId !== playerId) {
-    return { canActivate: false, reason: 'You do not control this planeswalker' };
+    return {
+      canActivate: false,
+      reason: "You do not control this planeswalker",
+    };
   }
 
   // Check if player has priority
   if (state.priorityPlayerId !== playerId) {
-    return { canActivate: false, reason: 'You do not have priority' };
+    return { canActivate: false, reason: "You do not have priority" };
   }
 
   // Check if card is on the battlefield
   const battlefieldZone = state.zones.get(`${playerId}-battlefield`);
   if (!battlefieldZone || !battlefieldZone.cardIds.includes(cardId)) {
-    return { canActivate: false, reason: 'Planeswalker is not on the battlefield' };
+    return {
+      canActivate: false,
+      reason: "Planeswalker is not on the battlefield",
+    };
   }
 
   // Check if ability is being activated at a valid time
   const currentPhase = state.turn.currentPhase;
-  if (currentPhase !== Phase.PRECOMBAT_MAIN && currentPhase !== Phase.POSTCOMBAT_MAIN) {
-    return { canActivate: false, reason: 'Can only activate loyalty abilities during main phases' };
+  if (
+    currentPhase !== Phase.PRECOMBAT_MAIN &&
+    currentPhase !== Phase.POSTCOMBAT_MAIN
+  ) {
+    return {
+      canActivate: false,
+      reason: "Can only activate loyalty abilities during main phases",
+    };
   }
 
   // Check if stack is empty
   if (state.stack.length > 0) {
-    return { canActivate: false, reason: 'Stack must be empty to activate loyalty abilities' };
+    return {
+      canActivate: false,
+      reason: "Stack must be empty to activate loyalty abilities",
+    };
   }
 
   // Get current loyalty counter
-  const loyaltyCounter = card.counters?.find(c => c.type === 'loyalty');
+  const loyaltyCounter = card.counters?.find((c) => c.type === "loyalty");
   const currentLoyalty = loyaltyCounter?.count || 0;
 
   // Check if player has enough loyalty (for costs > 0, need at least that many counters)
   if (abilityCost > 0 && currentLoyalty < abilityCost) {
-    return { canActivate: false, reason: 'Not enough loyalty counters' };
+    return { canActivate: false, reason: "Not enough loyalty counters" };
   }
 
   // For negative costs (like -3), we need at least 3 loyalty to remove
   if (abilityCost < 0 && currentLoyalty < Math.abs(abilityCost)) {
-    return { canActivate: false, reason: 'Not enough loyalty counters' };
+    return { canActivate: false, reason: "Not enough loyalty counters" };
   }
 
   return { canActivate: true };
@@ -447,15 +469,15 @@ export function activateLoyaltyAbility(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-  abilityIndex: number
+  abilityIndex: number,
 ): ActivateAbilityResult {
   const card = state.cards.get(cardId);
   if (!card) {
     return {
       success: false,
       state,
-      description: '',
-      error: 'Card not found',
+      description: "",
+      error: "Card not found",
     };
   }
 
@@ -466,18 +488,23 @@ export function activateLoyaltyAbility(
     return {
       success: false,
       state,
-      description: '',
-      error: 'Loyalty ability not found',
+      description: "",
+      error: "Loyalty ability not found",
     };
   }
 
   // Check if can activate
-  const canActivate = canActivateLoyaltyAbility(state, playerId, cardId, ability.cost);
+  const canActivate = canActivateLoyaltyAbility(
+    state,
+    playerId,
+    cardId,
+    ability.cost,
+  );
   if (!canActivate.canActivate) {
     return {
       success: false,
       state,
-      description: '',
+      description: "",
       error: canActivate.reason,
     };
   }
@@ -485,14 +512,15 @@ export function activateLoyaltyAbility(
   let currentState = state;
 
   // Update loyalty counter
-  const loyaltyCounter = card.counters?.find(c => c.type === 'loyalty');
+  const loyaltyCounter = card.counters?.find((c) => c.type === "loyalty");
   const currentLoyalty = loyaltyCounter?.count || 0;
   const newLoyalty = currentLoyalty + ability.cost;
 
   // Remove existing loyalty counter and add new one
-  const updatedCounters = card.counters?.filter(c => c.type !== 'loyalty') || [];
+  const updatedCounters =
+    card.counters?.filter((c) => c.type !== "loyalty") || [];
   if (newLoyalty > 0) {
-    updatedCounters.push({ type: 'loyalty', count: newLoyalty });
+    updatedCounters.push({ type: "loyalty", count: newLoyalty });
   }
 
   const updatedCard = {
@@ -510,7 +538,7 @@ export function activateLoyaltyAbility(
 
   // Execute the effect based on ability.effect
   // This would parse the effect text and apply it
-  const effectDescription = `Activated ${card.cardData.name} loyalty ability (${ability.cost >= 0 ? '+' : ''}${ability.cost}: ${ability.effect})`;
+  const effectDescription = `Activated ${card.cardData.name} loyalty ability (${ability.cost >= 0 ? "+" : ""}${ability.cost}: ${ability.effect})`;
 
   // Pass priority after activating loyalty ability
   const playerIds = Array.from(currentState.players.keys());
@@ -533,7 +561,17 @@ export function activateLoyaltyAbility(
  */
 export function checkTriggeredAbilities(
   state: GameState,
-  event: 'entersBattlefield' | 'leavesBattlefield' | 'damageDealt' | 'dies' | 'attacked' | 'phaseChange' | 'drawCard'
+  event:
+    | "entersBattlefield"
+    | "leavesBattlefield"
+    | "damageDealt"
+    | "dies"
+    | "attacked"
+    | "phaseChange"
+    | "drawCard"
+    | "cast"
+    | "lifeGain"
+    | "lifeLost",
 ): TriggeredAbilityResult {
   const triggeredAbilities: TriggeredAbilityInstance[] = [];
 
@@ -542,7 +580,7 @@ export function checkTriggeredAbilities(
     // Skip if card is not on battlefield
     let isOnBattlefield = false;
     for (const [zoneKey, zone] of state.zones) {
-      if (zoneKey.includes('battlefield') && zone.cardIds.includes(cardId)) {
+      if (zoneKey.includes("battlefield") && zone.cardIds.includes(cardId)) {
         isOnBattlefield = true;
         break;
       }
@@ -556,27 +594,42 @@ export function checkTriggeredAbilities(
 
       // Check if the trigger condition matches the event
       switch (event) {
-        case 'entersBattlefield':
-          shouldTrigger = ability.trigger.event === 'entersBattlefield';
+        case "entersBattlefield":
+          shouldTrigger = ability.trigger.event === "entersBattlefield";
           break;
-        case 'leavesBattlefield':
-          shouldTrigger = ability.trigger.event === 'leavesBattlefield' || ability.trigger.event === 'dies';
+        case "leavesBattlefield":
+          shouldTrigger =
+            ability.trigger.event === "leavesBattlefield" ||
+            ability.trigger.event === "dies";
           break;
-        case 'damageDealt':
-          shouldTrigger = ability.trigger.event === 'damageDealt';
+        case "damageDealt":
+          shouldTrigger = ability.trigger.event === "damageDealt";
           break;
-        case 'dies':
-          shouldTrigger = ability.trigger.event === 'dies';
+        case "dies":
+          shouldTrigger = ability.trigger.event === "dies";
           break;
-        case 'attacked':
-          shouldTrigger = ability.trigger.event === 'attacked';
+        case "attacked":
+          shouldTrigger = ability.trigger.event === "attacked";
           break;
-        case 'phaseChange':
-          shouldTrigger = ability.trigger.event === 'phaseEnds' || ability.trigger.event === 'turnEnds' || 
-                         ability.trigger.event === 'upkeep';
+        case "phaseChange":
+          shouldTrigger =
+            ability.trigger.event === "phaseEnds" ||
+            ability.trigger.event === "turnEnds" ||
+            ability.trigger.event === "upkeep";
           break;
-        case 'drawCard':
-          shouldTrigger = ability.trigger.event === 'drawStep' || ability.trigger.event === 'lifeGain';
+        case "drawCard":
+          shouldTrigger = ability.trigger.event === "drawStep";
+          break;
+        case "cast":
+          shouldTrigger =
+            ability.trigger.event === "cast" ||
+            ability.trigger.event === "spellCast";
+          break;
+        case "lifeGain":
+          shouldTrigger = ability.trigger.event === "lifeGain";
+          break;
+        case "lifeLost":
+          shouldTrigger = ability.trigger.event === "lifeLost";
           break;
       }
 
@@ -603,7 +656,7 @@ export function checkTriggeredAbilities(
     // Create stack object for the triggered ability
     const stackObject: StackObject = {
       id: trigger.id,
-      type: 'ability',
+      type: "ability",
       sourceCardId: trigger.sourceCardId,
       controllerId: card.controllerId,
       name: `${card.cardData.name} triggered ability`,

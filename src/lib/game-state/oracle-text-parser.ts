@@ -895,8 +895,8 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "damageDealt" };
   }
 
-  // Attacks
-  if (text.includes("attacks")) {
+  // Attacks (covers "attacks", "you attack", "a creature attacks")
+  if (text.includes("attack")) {
     return { event: "attacked" };
   }
 
@@ -905,8 +905,8 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "blocked" };
   }
 
-  // Is cast / is spell
-  if (text.includes("is cast") || text.includes("is played")) {
+  // Is cast / is spell (covers "is cast", "is played", "cast a spell")
+  if (text.includes("cast") || text.includes("is played")) {
     return { event: "cast" };
   }
 
@@ -938,12 +938,38 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "counterAdded" };
   }
 
-  // Life gain
-  if (text.includes("gain life")) {
+  // Life gain (covers "gain life", "gains life", "you gain life")
+  if (text.includes("gain life") || text.includes("gains life")) {
     return { event: "lifeGain" };
   }
 
-// If we can't determine the trigger, return a generic one
+  // Life lost
+  if (text.includes("lose life") || text.includes("loses life")) {
+    return { event: "lifeLost" };
+  }
+
+  // Spell cast
+  if (text.includes("a spell is cast") || text.includes("spell cast")) {
+    return { event: "spellCast" };
+  }
+
+  // Ability activated
+  if (
+    text.includes("activated an ability") ||
+    text.includes("ability is activated")
+  ) {
+    return { event: "abilityActivated" };
+  }
+
+  // Card put into graveyard
+  if (
+    text.includes("put into a graveyard") ||
+    text.includes("is put into a graveyard")
+  ) {
+    return { event: "dies" };
+  }
+
+  // If we can't determine the trigger, return a generic one
   return { event: "entersBattlefield" };
 }
 
