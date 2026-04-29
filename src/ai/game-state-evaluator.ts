@@ -39,6 +39,14 @@ export type {
   StackObject,
 };
 
+export type DeckArchetype =
+  | "aggro"
+  | "control"
+  | "combo"
+  | "midrange"
+  | "ramp"
+  | "unknown";
+
 /**
  * Represents a threat assessment for a permanent
  */
@@ -204,6 +212,190 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
 };
 
 /**
+ * Per-archetype scoring weight multipliers calibrated from expert gameplay data.
+ *
+ * Each archetype gets a multiplier applied on top of the difficulty-level weights.
+ * Values > 1 amplify a factor, < 1 dampen it. These reflect how expert players
+ * of each archetype actually weight strategic factors differently.
+ *
+ * Calibration sources: competitive tournament data, deck archetype analysis,
+ * and expert player behavioral patterns (Brainstorm doc §5.2.1).
+ */
+export const ArchetypeWeights: Record<
+  Exclude<DeckArchetype, "unknown">,
+  EvaluationWeights
+> = {
+  aggro: {
+    lifeScore: 0.4,
+    poisonScore: 3.0,
+    cardAdvantage: 0.3,
+    handQuality: 0.5,
+    libraryDepth: 0.1,
+    creaturePower: 2.5,
+    creatureToughness: 1.0,
+    creatureCount: 2.0,
+    permanentAdvantage: 0.8,
+    manaAvailable: 1.8,
+    tempoAdvantage: 2.2,
+    commanderDamageWeight: 3.0,
+    commanderPresence: 0.5,
+    cardSelection: 0.4,
+    graveyardValue: 0.3,
+    synergy: 0.5,
+    winConditionProgress: 3.0,
+    inevitability: 0.3,
+    stackPressureScore: 0.5,
+    castedSequenceScore: 1.8,
+  },
+  control: {
+    lifeScore: 1.2,
+    poisonScore: 8.0,
+    cardAdvantage: 2.5,
+    handQuality: 1.8,
+    libraryDepth: 0.8,
+    creaturePower: 0.6,
+    creatureToughness: 0.8,
+    creatureCount: 0.4,
+    permanentAdvantage: 1.5,
+    manaAvailable: 2.0,
+    tempoAdvantage: 0.8,
+    commanderDamageWeight: 1.5,
+    commanderPresence: 1.2,
+    cardSelection: 2.5,
+    graveyardValue: 1.2,
+    synergy: 0.8,
+    winConditionProgress: 1.5,
+    inevitability: 3.0,
+    stackPressureScore: 3.0,
+    castedSequenceScore: 0.6,
+  },
+  combo: {
+    lifeScore: 0.6,
+    poisonScore: 5.0,
+    cardAdvantage: 2.0,
+    handQuality: 2.5,
+    libraryDepth: 1.2,
+    creaturePower: 0.3,
+    creatureToughness: 0.3,
+    creatureCount: 0.2,
+    permanentAdvantage: 1.0,
+    manaAvailable: 2.5,
+    tempoAdvantage: 1.0,
+    commanderDamageWeight: 1.0,
+    commanderPresence: 0.5,
+    cardSelection: 2.0,
+    graveyardValue: 2.0,
+    synergy: 2.5,
+    winConditionProgress: 3.5,
+    inevitability: 1.5,
+    stackPressureScore: 2.0,
+    castedSequenceScore: 0.4,
+  },
+  midrange: {
+    lifeScore: 0.9,
+    poisonScore: 6.0,
+    cardAdvantage: 1.5,
+    handQuality: 1.2,
+    libraryDepth: 0.5,
+    creaturePower: 1.8,
+    creatureToughness: 1.5,
+    creatureCount: 1.5,
+    permanentAdvantage: 2.0,
+    manaAvailable: 1.2,
+    tempoAdvantage: 1.2,
+    commanderDamageWeight: 2.5,
+    commanderPresence: 1.5,
+    cardSelection: 1.2,
+    graveyardValue: 0.8,
+    synergy: 1.5,
+    winConditionProgress: 2.0,
+    inevitability: 2.0,
+    stackPressureScore: 1.2,
+    castedSequenceScore: 1.0,
+  },
+  ramp: {
+    lifeScore: 0.7,
+    poisonScore: 5.0,
+    cardAdvantage: 1.0,
+    handQuality: 0.8,
+    libraryDepth: 0.6,
+    creaturePower: 1.2,
+    creatureToughness: 1.0,
+    creatureCount: 0.8,
+    permanentAdvantage: 1.5,
+    manaAvailable: 2.8,
+    tempoAdvantage: 1.5,
+    commanderDamageWeight: 2.0,
+    commanderPresence: 2.0,
+    cardSelection: 0.8,
+    graveyardValue: 0.5,
+    synergy: 1.0,
+    winConditionProgress: 2.5,
+    inevitability: 2.5,
+    stackPressureScore: 0.8,
+    castedSequenceScore: 0.8,
+  },
+};
+
+function classifyArchetypeName(archetypeName: string): DeckArchetype {
+  const lower = archetypeName.toLowerCase();
+  if (
+    lower.includes("burn") ||
+    lower.includes("zoo") ||
+    lower.includes("sligh") ||
+    lower.includes("aggro")
+  ) {
+    return "aggro";
+  }
+  if (
+    lower.includes("stax") ||
+    lower.includes("prison") ||
+    lower.includes("control")
+  ) {
+    return "control";
+  }
+  if (
+    lower.includes("storm") ||
+    lower.includes("reanimator") ||
+    lower.includes("infinite") ||
+    lower.includes("combo")
+  ) {
+    return "combo";
+  }
+  if (
+    lower.includes("elves") ||
+    lower.includes("goblins") ||
+    lower.includes("ramp") ||
+    lower.includes("lands")
+  ) {
+    return "ramp";
+  }
+  if (
+    lower.includes("midrange") ||
+    lower.includes("good stuff") ||
+    lower.includes("rock") ||
+    lower.includes("value") ||
+    lower.includes("superfriends") ||
+    lower.includes("dragons") ||
+    lower.includes("zombies")
+  ) {
+    return "midrange";
+  }
+  return "unknown";
+}
+
+function mergeWeights(
+  base: EvaluationWeights,
+  archetype: EvaluationWeights,
+): EvaluationWeights {
+  const merged = { ...base };
+  for (const key of Object.keys(base) as (keyof EvaluationWeights)[]) {
+    (merged as Record<string, number>)[key] = base[key] * archetype[key];
+  }
+  return merged;
+}
+
+/**
  * Detailed evaluation result showing scores for each factor
  */
 export interface DetailedEvaluation {
@@ -242,15 +434,34 @@ export class GameStateEvaluator {
   private weights: EvaluationWeights;
   private evaluatingPlayerId: string;
   private gameState: GameState;
+  private archetype: DeckArchetype;
 
   constructor(
     gameState: GameState,
     evaluatingPlayerId: string,
     difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
+    archetype?: DeckArchetype,
   ) {
     this.gameState = gameState;
     this.evaluatingPlayerId = evaluatingPlayerId;
-    this.weights = DefaultWeights[difficulty];
+    this.archetype = archetype ?? "unknown";
+
+    const baseWeights = DefaultWeights[difficulty];
+    if (
+      this.archetype !== "unknown" &&
+      ArchetypeWeights[this.archetype as Exclude<DeckArchetype, "unknown">]
+    ) {
+      this.weights = mergeWeights(
+        baseWeights,
+        ArchetypeWeights[this.archetype as Exclude<DeckArchetype, "unknown">],
+      );
+    } else {
+      this.weights = { ...baseWeights };
+    }
+  }
+
+  getArchetype(): DeckArchetype {
+    return this.archetype;
   }
 
   /**
@@ -1104,35 +1315,41 @@ export function evaluateGameState(
   gameState: GameState,
   playerId: string,
   difficulty: "easy" | "medium" | "hard" = "medium",
+  archetype?: DeckArchetype,
 ): DetailedEvaluation {
-  const evaluator = new GameStateEvaluator(gameState, playerId, difficulty);
+  const evaluator = new GameStateEvaluator(
+    gameState,
+    playerId,
+    difficulty,
+    archetype,
+  );
   return evaluator.evaluate();
 }
 
-/**
- * Compare two game states to see which is better for a player
- * Returns positive if state2 is better than state1
- */
 export function compareGameStates(
   state1: GameState,
   state2: GameState,
   playerId: string,
   difficulty: "easy" | "medium" | "hard" = "medium",
+  archetype?: DeckArchetype,
 ): number {
-  const eval1 = evaluateGameState(state1, playerId, difficulty);
-  const eval2 = evaluateGameState(state2, playerId, difficulty);
+  const eval1 = evaluateGameState(state1, playerId, difficulty, archetype);
+  const eval2 = evaluateGameState(state2, playerId, difficulty, archetype);
   return eval2.totalScore - eval1.totalScore;
 }
 
-/**
- * Get a quick heuristic score for a game state (lighter weight evaluation)
- */
 export function quickScore(
   gameState: GameState,
   playerId: string,
   difficulty: "easy" | "medium" | "hard" = "medium",
+  archetype?: DeckArchetype,
 ): number {
-  const evaluation = evaluateGameState(gameState, playerId, difficulty);
+  const evaluation = evaluateGameState(
+    gameState,
+    playerId,
+    difficulty,
+    archetype,
+  );
   return evaluation.totalScore;
 }
 
@@ -1274,13 +1491,24 @@ export function compareHoldVsPlay(
   play: ProposedPlay,
   player_id: string,
   difficulty: "easy" | "medium" | "hard" = "medium",
+  archetype?: DeckArchetype,
 ): ProjectionResult {
   const played_state = projectBoardState(current_state, play);
   const played_next_turn = advanceOneTurn(played_state, player_id);
-  const play_now_score = quickScore(played_next_turn, player_id, difficulty);
+  const play_now_score = quickScore(
+    played_next_turn,
+    player_id,
+    difficulty,
+    archetype,
+  );
 
   const held_next_turn = advanceOneTurn(current_state, player_id);
-  const hold_score = quickScore(held_next_turn, player_id, difficulty);
+  const hold_score = quickScore(
+    held_next_turn,
+    player_id,
+    difficulty,
+    archetype,
+  );
 
   const score_delta = play_now_score - hold_score;
 
