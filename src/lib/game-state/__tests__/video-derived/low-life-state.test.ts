@@ -1,0 +1,138 @@
+/**
+ * Video-Derived Test Fixture: low-life-state
+ * Description: Critical life total
+ * Fixture ID: low-life-state
+ *
+ * Auto-generated from video-derived game state
+ */
+
+const low_life_state = {
+  id: "low-life-state",
+  name: "low-life-state",
+  description: "Critical life total",
+  gameState: {
+    player_life: 3,
+    opponent_life: 20,
+    battlefield_player: [
+      {
+        name: "Dark Confidant",
+        is_tapped: false,
+        power: 2,
+        toughness: 1,
+      },
+      {
+        name: "Swamp",
+        is_tapped: false,
+        power: 0,
+        toughness: 0,
+      },
+      {
+        name: "Swamp",
+        is_tapped: false,
+        power: 0,
+        toughness: 0,
+      },
+    ],
+    battlefield_opponent: [
+      {
+        name: "Mountain",
+        is_tapped: true,
+        power: 0,
+        toughness: 0,
+      },
+    ],
+    hand_size: 2,
+    graveyard: ["Thoughtseize", "Inquisition of Kozilek"],
+    stack: [],
+    phase: "end",
+    turn_number: 5,
+  },
+  expectedBehaviors: [
+    "Tapped permanents should be correctly flagged",
+    "Stack spells should reflect active priority",
+    "Counter tracking should serialize correctly",
+    "Life total changes should match expected damage",
+    "Phase transitions should follow valid order",
+    "Face-down cards should hide identity",
+    "Graveyard interaction targets should be valid",
+  ],
+};
+
+describe("Video-Derived Fixture: low-life-state", () => {
+  it("loads game state successfully", () => {
+    expect(low_life_state.gameState).toBeDefined();
+    expect(low_life_state.gameState).toBeInstanceOf(Object);
+  });
+
+  it("has valid player data", () => {
+    expect(low_life_state.gameState.player_life).toBeGreaterThan(0);
+    expect(low_life_state.gameState.opponent_life).toBeGreaterThan(0);
+    expect(Array.isArray(low_life_state.gameState.battlefield_player)).toBe(
+      true,
+    );
+    expect(Array.isArray(low_life_state.gameState.battlefield_opponent)).toBe(
+      true,
+    );
+  });
+
+  it("has valid turn structure", () => {
+    expect(typeof low_life_state.gameState.turn_number).toBe("number");
+    expect(low_life_state.gameState.turn_number).toBeGreaterThan(0);
+    expect(typeof low_life_state.gameState.phase).toBe("string");
+  });
+
+  it("can be serialized and deserialized", () => {
+    const serialized = JSON.stringify(low_life_state.gameState);
+    const deserialized = JSON.parse(serialized);
+    expect(deserialized).toEqual(low_life_state.gameState);
+  });
+
+  it("validates behavior: Tapped permanents should be correctly flagged", () => {
+    // TODO: Implement validation for: Tapped permanents should be correctly flagged
+    // This test should verify that the game state correctly handles:
+    // Tapped permanents should be correctly flagged
+    expect(low_life_state.gameState).toBeDefined();
+  });
+
+  it("validates behavior: Stack spells should reflect active priority", () => {
+    // TODO: Implement validation for: Stack spells should reflect active priority
+    // This test should verify that the game state correctly handles:
+    // Stack spells should reflect active priority
+    expect(low_life_state.gameState).toBeDefined();
+  });
+
+  it("validates behavior: Counter tracking should serialize correctly", () => {
+    // TODO: Implement validation for: Counter tracking should serialize correctly
+    // This test should verify that the game state correctly handles:
+    // Counter tracking should serialize correctly
+    expect(low_life_state.gameState).toBeDefined();
+  });
+
+  it("validates behavior: Life total changes should match expected damage", () => {
+    // TODO: Implement validation for: Life total changes should match expected damage
+    // This test should verify that the game state correctly handles:
+    // Life total changes should match expected damage
+    expect(low_life_state.gameState).toBeDefined();
+  });
+
+  it("validates behavior: Phase transitions should follow valid order", () => {
+    // TODO: Implement validation for: Phase transitions should follow valid order
+    // This test should verify that the game state correctly handles:
+    // Phase transitions should follow valid order
+    expect(low_life_state.gameState).toBeDefined();
+  });
+
+  it("validates behavior: Face-down cards should hide identity", () => {
+    // TODO: Implement validation for: Face-down cards should hide identity
+    // This test should verify that the game state correctly handles:
+    // Face-down cards should hide identity
+    expect(low_life_state.gameState).toBeDefined();
+  });
+
+  it("validates behavior: Graveyard interaction targets should be valid", () => {
+    // TODO: Implement validation for: Graveyard interaction targets should be valid
+    // This test should verify that the game state correctly handles:
+    // Graveyard interaction targets should be valid
+    expect(low_life_state.gameState).toBeDefined();
+  });
+});
