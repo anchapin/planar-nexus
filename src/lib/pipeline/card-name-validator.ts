@@ -3,13 +3,13 @@ import type { RecognizedBoardState } from "./board-state-vision-types";
 const COMMON_CORRECTIONS: Record<string, string> = {
   "sol ring": "Sol Ring",
   "lightning bolt": "Lightning Bolt",
-  "counterspell": "Counterspell",
+  counterspell: "Counterspell",
   "dark ritual": "Dark Ritual",
-  "forest": "Forest",
-  "island": "Island",
-  "mountain": "Mountain",
-  "plains": "Plains",
-  "swamp": "Swamp",
+  forest: "Forest",
+  island: "Island",
+  mountain: "Mountain",
+  plains: "Plains",
+  swamp: "Swamp",
   "unknown card": "Unknown Card",
 };
 
@@ -41,7 +41,7 @@ function findBestMatch(
   const threshold = 3;
 
   for (const [normalizedName] of database) {
-    const dist = levenshteinDistance(normalized, normalized);
+    const dist = levenshteinDistance(normalized, normalizedName);
     if (dist < bestDistance && dist <= threshold) {
       bestDistance = dist;
       bestMatch = normalizedName;
@@ -66,8 +66,7 @@ function levenshteinDistance(a: string, b: string): number {
       if (a[i - 1] === b[j - 1]) {
         dp[i][j] = dp[i - 1][j - 1];
       } else {
-        dp[i][j] =
-          1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+        dp[i][j] = 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
       }
     }
   }
@@ -127,7 +126,7 @@ export function validateCardNames(
       const commonCorrection = COMMON_CORRECTIONS[normalizeForMatch(name)];
       results.push({
         name,
-        valid: isKnownCard ? (commonCorrection !== undefined) : false,
+        valid: isKnownCard ? commonCorrection !== undefined : false,
         suggestion: commonCorrection,
       });
     }
