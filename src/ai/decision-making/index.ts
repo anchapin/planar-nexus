@@ -14,9 +14,16 @@ export {
   type BlockDecision,
   type CombatPlan,
   type CombatTrick,
-} from './combat-decision-tree';
+} from "./combat-decision-tree";
 
 export {
-  runAllCombatExamples,
-  combatExamples,
-} from './combat-examples';
+  predictOpponentBlocks,
+  integrateBlockPredictionIntoEV,
+  getArchetypeWeights,
+  type OpponentArchetype,
+  type BlockPrediction,
+  type BlockPredictionResult,
+  type ArchetypeBlockWeights,
+} from "./block-prediction";
+
+export { runAllCombatExamples, combatExamples } from "./combat-examples";
