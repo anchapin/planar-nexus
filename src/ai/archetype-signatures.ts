@@ -58,6 +58,18 @@ export interface DeckStats {
 }
 
 /**
+ * Hybrid archetype result describing a blend of two parent archetypes
+ */
+export interface HybridArchetype {
+  /** Primary parent archetype */
+  primary: string;
+  /** Secondary parent archetype */
+  secondary: string;
+  /** Blend ratio from 0-1 where 0.5 = equal split, leaning toward primary */
+  hybridBlend: number;
+}
+
+/**
  * Archetype detection result
  */
 export interface ArchetypeResult {
@@ -71,6 +83,8 @@ export interface ArchetypeResult {
   secondaryConfidence?: number;
   /** All archetype scores */
   allScores: Array<{ name: string; score: number; category: string }>;
+  /** Detected hybrid archetype blends (when primary/secondary scores are close) */
+  hybridArchetypes?: HybridArchetype[];
 }
 
 /**

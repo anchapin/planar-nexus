@@ -11,8 +11,35 @@ import {
   ArchetypeSignature,
   ArchetypeResult,
   DeckStats,
+  HybridArchetype,
   calculateDeckStats,
 } from './archetype-signatures';
+
+const HYBRID_BLEND_THRESHOLD = 40;
+
+function detectHybridArchetypes(
+  normalizedScores: Array<{ name: string; score: number; category: string }>
+): HybridArchetype[] {
+  if (normalizedScores.length < 2) return [];
+
+  const primary = normalizedScores[0];
+  const secondaries: typeof normalizedScores = [];
+
+  for (let i = 1; i < normalizedScores.length; i++) {
+    const candidate = normalizedScores[i];
+    if (candidate.score > 0 && primary.score - candidate.score <= HYBRID_BLEND_THRESHOLD) {
+      secondaries.push(candidate);
+    }
+  }
+
+  if (secondaries.length === 0) return [];
+
+  return secondaries.map(sec => ({
+    primary: primary.name,
+    secondary: sec.name,
+    hybridBlend: Math.round((sec.score / (primary.score + sec.score)) * 100) / 100,
+  }));
+}
 
 /**
  * Normalize scores to 0-100 scale
@@ -140,7 +167,12 @@ export function detectArchetype(deck: DeckCard[]): ArchetypeResult {
       normalizedScores.slice(1)
     );
   }
-  
+
+  const hybrids = detectHybridArchetypes(normalizedScores);
+  if (hybrids.length > 0) {
+    result.hybridArchetypes = hybrids;
+  }
+
   return result;
 }
 
