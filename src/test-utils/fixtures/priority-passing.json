@@ -1,0 +1,15 @@
+{
+  "description": "Game state after multiple priority passes",
+  "category": "game_flow",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "passPriority:3"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "consecutivePasses", "operator": "toBeGreaterThan", "value": 0 },
+    { "path": "priorityPlayerId", "operator": "toBeDefined" }
+  ]
+}

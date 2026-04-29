@@ -1,0 +1,19 @@
+{
+  "description": "Game state after tapping lands and spending mana",
+  "category": "mana",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "addManaPlayer0:white:3", "addManaPlayer0:red:2", "addManaPlayer0:colorless:1"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "players[0].manaPool.white", "operator": "toBe", "value": 3 },
+    { "path": "players[0].manaPool.red", "operator": "toBe", "value": 2 },
+    { "path": "players[0].manaPool.colorless", "operator": "toBe", "value": 1 },
+    { "path": "players[0].manaPool.blue", "operator": "toBe", "value": 0 },
+    { "path": "players[0].manaPool.black", "operator": "toBe", "value": 0 },
+    { "path": "players[0].manaPool.green", "operator": "toBe", "value": 0 }
+  ]
+}

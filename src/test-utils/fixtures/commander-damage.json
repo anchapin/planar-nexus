@@ -1,0 +1,17 @@
+{
+  "description": "Game state with commander damage tracking",
+  "category": "life_and_damage",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 40,
+    "isCommander": true,
+    "actions": ["startGame", "addCommanderDamage:player0FromPlayer1:7", "addCommanderDamage:player1FromPlayer0:12"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "players[0].life", "operator": "toBe", "value": 40 },
+    { "path": "players[1].life", "operator": "toBe", "value": 40 },
+    { "path": "players[0].hasLost", "operator": "toBe", "value": false },
+    { "path": "players[1].hasLost", "operator": "toBe", "value": false }
+  ]
+}

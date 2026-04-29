@@ -1,0 +1,16 @@
+{
+  "description": "Verify state survives JSON serialization round-trip with Maps",
+  "category": "serialization",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": true,
+    "actions": ["startGame", "addCommanderDamage:player0FromPlayer1:5", "addManaPlayer1:white:2"]
+  },
+  "assertions": [
+    { "path": "players[0].life", "operator": "toBe", "value": 20 },
+    { "path": "players[1].life", "operator": "toBe", "value": 20 },
+    { "path": "players[1].manaPool.white", "operator": "toBe", "value": 2 },
+    { "path": "zones.size", "operator": "toBeGreaterThan", "value": 0 }
+  ]
+}

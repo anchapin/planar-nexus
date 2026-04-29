@@ -1,0 +1,16 @@
+{
+  "description": "Game state after advancing through draw phase",
+  "category": "game_flow",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "advanceToDrawPhase"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "turn.turnNumber", "operator": "toBe", "value": 1 },
+    { "path": "turn.currentPhase", "operator": "toBe", "value": "draw" },
+    { "path": "turn.isFirstTurn", "operator": "toBe", "value": true }
+  ]
+}

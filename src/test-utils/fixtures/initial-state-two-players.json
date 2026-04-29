@@ -1,0 +1,19 @@
+{
+  "description": "Fresh 2-player standard game before starting",
+  "category": "initialization",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false
+  },
+  "assertions": [
+    { "path": "players.size", "operator": "toBe", "value": 2 },
+    { "path": "status", "operator": "toBe", "value": "not_started" },
+    { "path": "turn.turnNumber", "operator": "toBe", "value": 1 },
+    { "path": "stack.length", "operator": "toBe", "value": 0 },
+    { "path": "combat.inCombatPhase", "operator": "toBe", "value": false },
+    { "path": "cards.size", "operator": "toBe", "value": 0 },
+    { "path": "winners.length", "operator": "toBe", "value": 0 },
+    { "path": "format", "operator": "toBe", "value": "standard" }
+  ]
+}

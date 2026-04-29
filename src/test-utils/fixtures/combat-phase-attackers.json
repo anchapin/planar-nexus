@@ -1,0 +1,16 @@
+{
+  "description": "Game state during combat with declared attackers",
+  "category": "combat",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "advanceToDeclareAttackers", "declareSingleAttacker"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "combat.inCombatPhase", "operator": "toBe", "value": true },
+    { "path": "turn.currentPhase", "operator": "toBe", "value": "declare_attackers" },
+    { "path": "combat.remainingCombatPhases", "operator": "toBe", "value": 0 }
+  ]
+}
