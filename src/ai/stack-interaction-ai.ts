@@ -26,17 +26,19 @@ import {
   ThreatAssessment,
   DetailedEvaluation,
 } from "./game-state-evaluator";
-import { callAIProxy } from "@/lib/ai-proxy-client";
-import { AIProvider } from "./providers/types";
 import {
   evaluateTriggerChain,
-  getTriggerChainSummary,
   shouldCounterToPreventTriggers,
   getHighestValueChain,
-  TriggerChain,
-  CascadeContext,
-  BoardPermanent,
+  getTriggerChainSummary,
 } from "./trigger-chain-evaluator";
+import type {
+  TriggerChain,
+  BoardPermanent,
+  CascadeContext,
+} from "./trigger-chain-evaluator";
+import { callAIProxy } from "@/lib/ai-proxy-client";
+import { AIProvider } from "./providers/types";
 import {
   getCounterspellProbability,
   classifyManaTier,
@@ -1436,7 +1438,10 @@ export class StackInteractionAI {
    * Use this when you need to account for downstream triggered abilities.
    */
   assessActionThreatWithTriggers(context: StackContext): number {
-    const baseThreat = this.assessActionThreat(context, evaluateGameState(this.gameState, this.playerId, "medium"));
+    const baseThreat = this.assessActionThreat(
+      context,
+      evaluateGameState(this.gameState, this.playerId, "medium"),
+    );
     const triggerResult = this.evaluateTriggerChains(context);
     return Math.min(1, baseThreat + triggerResult.cascadeThreatBonus);
   }
@@ -2273,7 +2278,29 @@ export class StackInteractionAI {
    * Used for frequency table lookups.
    */
   private detectOpponentArchetype(
-    opponent: { battlefield: Array<{ type: string; tapped: boolean; id: string; name: string; cardInstanceId: string; controller: string; power?: number }>; hand: Array<{ cardInstanceId: string; name: string; type: string; manaValue: number }>; graveyard: unknown[]; exile: unknown[]; library: number; life: number; poisonCounters: number; commanderDamage: Record<string, number> } & { manaPool?: Record<string, unknown> },
+    opponent: {
+      battlefield: Array<{
+        type: string;
+        tapped: boolean;
+        id: string;
+        name: string;
+        cardInstanceId: string;
+        controller: string;
+        power?: number;
+      }>;
+      hand: Array<{
+        cardInstanceId: string;
+        name: string;
+        type: string;
+        manaValue: number;
+      }>;
+      graveyard: unknown[];
+      exile: unknown[];
+      library: number;
+      life: number;
+      poisonCounters: number;
+      commanderDamage: Record<string, number>;
+    } & { manaPool?: Record<string, unknown> },
   ): DeckArchetype {
     const creatures = opponent.battlefield.filter((p) => p.type === "creature");
     const lands = opponent.battlefield.filter((p) => p.type === "land");
@@ -2282,7 +2309,8 @@ export class StackInteractionAI {
     );
 
     if (creatures.length >= 4 && lands.length <= 3) return "aggro";
-    if (nonCreatureNonLand.length >= 2 && creatures.length <= 1) return "control";
+    if (nonCreatureNonLand.length >= 2 && creatures.length <= 1)
+      return "control";
     if (creatures.length >= 2 && nonCreatureNonLand.length >= 1) return "tempo";
     if (creatures.length >= 2 && creatures.length <= 4) return "midrange";
     if (nonCreatureNonLand.length >= 3) return "combo";
@@ -2460,12 +2488,18 @@ export class StackInteractionAI {
       )?.life,
     };
 
-    const chains = evaluateTriggerChain(cascadeCtx.stackItem, cascadeCtx.battlefield);
+    const chains = evaluateTriggerChain(
+      cascadeCtx.stackItem,
+      cascadeCtx.battlefield,
+    );
     const summary = getTriggerChainSummary(chains);
     const shouldCounterToPrevent = shouldCounterToPreventTriggers(chains);
     const highestValueChain = getHighestValueChain(chains);
 
-    const cascadeThreatBonus = chains.reduce((sum, c) => sum + c.totalValue * 0.1, 0);
+    const cascadeThreatBonus = chains.reduce(
+      (sum, c) => sum + c.totalValue * 0.1,
+      0,
+    );
 
     return {
       chains,

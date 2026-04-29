@@ -109,6 +109,9 @@ export interface EvaluationWeights {
 
   // Mana sequencing
   castedSequenceScore: number;
+
+  // Tempo swing magnitude
+  tempoSwingScore: number;
 }
 
 /**
@@ -139,6 +142,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     inevitability: 0.3,
     stackPressureScore: 0.3,
     castedSequenceScore: 0.2,
+    tempoSwingScore: 0.1,
   },
   medium: {
     // Medium AI: Balanced evaluation, understands basics
@@ -162,6 +166,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     inevitability: 0.8,
     stackPressureScore: 1.0,
     castedSequenceScore: 0.5,
+    tempoSwingScore: 0.3,
   },
   hard: {
     // Hard AI: Values strategic advantage and tempo
@@ -185,6 +190,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     inevitability: 1.5,
     stackPressureScore: 1.5,
     castedSequenceScore: 0.8,
+    tempoSwingScore: 0.6,
   },
   expert: {
     // Expert AI: Near-optimal weight distribution
@@ -208,6 +214,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     inevitability: 2.5,
     stackPressureScore: 2.0,
     castedSequenceScore: 1.2,
+    tempoSwingScore: 1.0,
   },
 };
 
@@ -246,6 +253,7 @@ export const ArchetypeWeights: Record<
     inevitability: 0.3,
     stackPressureScore: 0.5,
     castedSequenceScore: 1.8,
+    tempoSwingScore: 1.5,
   },
   control: {
     lifeScore: 1.2,
@@ -268,6 +276,7 @@ export const ArchetypeWeights: Record<
     inevitability: 3.0,
     stackPressureScore: 3.0,
     castedSequenceScore: 0.6,
+    tempoSwingScore: 1.2,
   },
   combo: {
     lifeScore: 0.6,
@@ -290,6 +299,7 @@ export const ArchetypeWeights: Record<
     inevitability: 1.5,
     stackPressureScore: 2.0,
     castedSequenceScore: 0.4,
+    tempoSwingScore: 0.8,
   },
   midrange: {
     lifeScore: 0.9,
@@ -312,6 +322,7 @@ export const ArchetypeWeights: Record<
     inevitability: 2.0,
     stackPressureScore: 1.2,
     castedSequenceScore: 1.0,
+    tempoSwingScore: 0.9,
   },
   ramp: {
     lifeScore: 0.7,
@@ -334,6 +345,7 @@ export const ArchetypeWeights: Record<
     inevitability: 2.5,
     stackPressureScore: 0.8,
     castedSequenceScore: 0.8,
+    tempoSwingScore: 1.2,
   },
 };
 
@@ -421,6 +433,7 @@ export interface DetailedEvaluation {
     inevitability: number;
     stackPressureScore: number;
     castedSequenceScore: number;
+    tempoSwingScore: number;
   };
   threats: ThreatAssessment[];
   opportunities: OpportunityAssessment[];
@@ -509,6 +522,7 @@ export class GameStateEvaluator {
       inevitability: this.evaluateInevitability(player, opponents),
       stackPressureScore: this.evaluateStackPressureScore(player, opponents),
       castedSequenceScore: this.evaluateCastedSequenceScore(player),
+      tempoSwingScore: this.evaluateTempoSwingMagnitude(player, opponents),
     };
 
     const totalScore = this.calculateTotalScore(factors);
@@ -563,7 +577,8 @@ export class GameStateEvaluator {
       factors.winConditionProgress * this.weights.winConditionProgress +
       factors.inevitability * this.weights.inevitability +
       factors.stackPressureScore * this.weights.stackPressureScore +
-      factors.castedSequenceScore * this.weights.castedSequenceScore
+      factors.castedSequenceScore * this.weights.castedSequenceScore +
+      factors.tempoSwingScore * this.weights.tempoSwingScore
     );
   }
 
@@ -1113,6 +1128,123 @@ export class GameStateEvaluator {
     const curveBonus = computeCurveConformance(player.hand) * 0.3;
 
     return Math.max(-1, Math.min(1, recommendation.score + curveBonus));
+  }
+
+  private evaluateTempoSwingMagnitude(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
+    const isCurrentPlayer = this.gameState.turnInfo.currentPlayer === player.id;
+
+    const playerBoardValue = this.computeBoardValue(player);
+    const avgOpponentBoardValue =
+      opponents.length > 0
+        ? opponents.reduce((sum, opp) => sum + this.computeBoardValue(opp), 0) /
+          opponents.length
+        : 0;
+
+    const currentDelta = playerBoardValue - avgOpponentBoardValue;
+    const opponentUntapBonus = this.estimateOpponentUntapPotential(opponents);
+    const projectedOpponentValue = avgOpponentBoardValue + opponentUntapBonus;
+
+    if (!isCurrentPlayer) {
+      return this.normalizeSwing(
+        projectedOpponentValue - currentDelta - currentDelta,
+      );
+    }
+
+    const playerDevelopPotential = this.estimatePlayerDevelopPotential(player);
+    const projectedPlayerValue = playerBoardValue + playerDevelopPotential;
+    const projectedSwing = projectedPlayerValue - projectedOpponentValue;
+
+    return this.normalizeSwing(projectedSwing - currentDelta);
+  }
+
+  private computeBoardValue(player: PlayerState): number {
+    let value = 0;
+
+    for (const perm of player.battlefield) {
+      if (perm.type === "creature") {
+        const power = perm.power ?? 0;
+        const toughness = perm.toughness ?? 0;
+        if (!perm.tapped) {
+          value += power * 1.0 + toughness * 0.5;
+        } else {
+          value += toughness * 0.3;
+        }
+      } else if (perm.type === "land") {
+        value += perm.tapped ? 0.5 : 1.0;
+      } else if (perm.type === "planeswalker") {
+        value += (perm.loyalty ?? 0) * 0.4;
+      } else {
+        value += (perm.manaValue ?? 1) * 0.3;
+      }
+    }
+
+    const handValue = player.hand.reduce(
+      (sum, card) => sum + card.manaValue * 0.3,
+      0,
+    );
+    value += handValue;
+
+    return value;
+  }
+
+  private estimateOpponentUntapPotential(opponents: PlayerState[]): number {
+    let potential = 0;
+
+    for (const opp of opponents) {
+      const tappedCreatures = opp.battlefield.filter(
+        (p) => p.type === "creature" && p.tapped,
+      );
+      for (const cr of tappedCreatures) {
+        potential += (cr.power ?? 0) * 0.8 + (cr.toughness ?? 0) * 0.3;
+      }
+
+      const untapLands = opp.battlefield.filter(
+        (p) => p.type === "land" && p.tapped,
+      ).length;
+      potential += untapLands * 0.4;
+
+      const highCmcInHand = opp.hand.filter((c) => c.manaValue >= 4).length;
+      potential += highCmcInHand * 0.5;
+    }
+
+    return potential;
+  }
+
+  private estimatePlayerDevelopPotential(player: PlayerState): number {
+    let potential = 0;
+
+    const landsInHand = player.hand.filter((c) => c.type === "Land").length;
+    const landsPlayed = player.landsPlayedThisTurn ?? 0;
+    if (landsPlayed === 0 && landsInHand > 0) {
+      potential += 0.8;
+    }
+
+    const castableInHand = player.hand.filter((c) => {
+      if (c.type === "Land") return false;
+      const totalMana = Object.values(player.manaPool).reduce(
+        (sum, amount) => sum + amount,
+        0,
+      );
+      return totalMana >= c.manaValue;
+    }).length;
+    potential += castableInHand * 0.4;
+
+    const untappedCreatures = player.battlefield.filter(
+      (p) => p.type === "creature" && !p.tapped && !p.summoningSickness,
+    );
+    potential +=
+      untappedCreatures.reduce((sum, c) => sum + (c.power ?? 0), 0) * 0.2;
+
+    return potential;
+  }
+
+  private normalizeSwing(rawSwing: number): number {
+    const NORMALIZATION_FACTOR = 10;
+    const normalized = rawSwing / NORMALIZATION_FACTOR;
+    return Math.max(-1, Math.min(1, normalized));
   }
 
   private assessThreats(
