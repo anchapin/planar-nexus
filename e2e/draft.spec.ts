@@ -12,13 +12,7 @@
  * - Session can be resumed from any state (DRFT-11)
  */
 
-import {
-  test,
-  expect,
-  mockScryfallApi,
-  seedCardDatabase,
-  waitForDbSeed,
-} from "./test-utils";
+import { test, expect, mockScryfallApi, seedCardDatabase } from "./test-utils";
 
 const PACKS_PER_DRAFT = 3;
 const CARDS_PER_PACK = 14;
@@ -27,8 +21,20 @@ const TOTAL_CARDS = PACKS_PER_DRAFT * CARDS_PER_PACK;
 test.beforeEach(async ({ page }) => {
   await mockScryfallApi(page);
   await seedCardDatabase(page);
-  await waitForDbSeed(page);
 });
+
+async function waitForSeed(page: any): Promise<void> {
+  await page.waitForFunction(
+    () =>
+      (window as any).dbSeeded === true ||
+      (window as any).dbSeedError !== undefined,
+    { timeout: 15000 },
+  );
+  const error = await page.evaluate(() => (window as any).dbSeedError);
+  if (error) {
+    throw new Error(`IndexedDB seeding failed: ${error}`);
+  }
+}
 
 async function pickCard(page: any): Promise<boolean> {
   const pickButton = page.locator('button[aria-label^="Pick"]').first();
@@ -78,6 +84,7 @@ test.describe("Draft Mode - Initialization", () => {
   }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
@@ -116,6 +123,7 @@ test.describe("Draft Mode - Initialization", () => {
   test("DRFT-02: Draft shows intro card with pack info", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const introCard = page.locator("text=/Draft.*packs|3 packs/i").first();
@@ -147,6 +155,7 @@ test.describe("Draft Mode - UI Elements", () => {
   test("Should show draft header", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const header = page.locator("h1, h2").filter({ hasText: /Draft/i }).first();
@@ -167,6 +176,7 @@ test.describe("Draft Mode - UI Elements", () => {
   test("Should display intro card with pack count", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const packText = page.locator(`text="${PACKS_PER_DRAFT} packs"`);
@@ -249,6 +259,7 @@ test.describe("Draft Mode - Draft Flow (Full)", () => {
   test("DRFT-09: Complete draft flow - pick all 42 cards", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
@@ -294,6 +305,7 @@ test.describe("Draft Mode - Card Interaction", () => {
   test("DRFT-03: Can open pack and see cards", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
@@ -324,6 +336,7 @@ test.describe("Draft Mode - Card Interaction", () => {
   test("DRFT-04: Picking a card updates pick counter", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
@@ -361,6 +374,7 @@ test.describe("Draft Mode - Persistence", () => {
   test("DRFT-10: Pool persists across page refresh", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
@@ -402,6 +416,7 @@ test.describe("Draft Mode - Persistence", () => {
   test("DRFT-11: Session can be resumed from URL", async ({ page }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
@@ -449,6 +464,7 @@ test.describe("Draft Mode - Persistence", () => {
   }) => {
     await page.goto("/draft?set=m21");
     await page.waitForLoadState("networkidle");
+    await waitForSeed(page);
     await page.waitForTimeout(3000);
 
     const startButton = page
