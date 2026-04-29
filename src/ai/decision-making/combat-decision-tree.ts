@@ -39,12 +39,6 @@ import {
   calculateCombatTrickDiscount,
   type OpponentManaState,
 } from "./combat-trick-probability";
-import {
-  LookaheadEngine,
-  HeuristicTable,
-  type LookaheadResult,
-  type LookaheadConfig,
-} from "./lookahead";
 
 // Re-export for backward compatibility
 export type { GameState, PlayerState, Permanent, HandCard };
@@ -179,10 +173,6 @@ export interface CombatAIConfig {
   useBlockPrediction: boolean;
   /** Estimated opponent archetype for block prediction */
   opponentArchetype: OpponentArchetype;
-  /** Whether to use multi-turn lookahead planning */
-  useLookahead: boolean;
-  /** Configuration for the lookahead engine */
-  lookaheadConfig?: Partial<LookaheadConfig>;
 }
 
 /**
@@ -200,7 +190,6 @@ export const DefaultCombatConfigs: Record<
     useCombatTricks: false,
     useBlockPrediction: false,
     opponentArchetype: "unknown",
-    useLookahead: false,
   },
   medium: {
     aggression: 0.5,
@@ -210,8 +199,6 @@ export const DefaultCombatConfigs: Record<
     useCombatTricks: true,
     useBlockPrediction: true,
     opponentArchetype: "unknown",
-    useLookahead: true,
-    lookaheadConfig: { maxDepth: 2 },
   },
   hard: {
     aggression: 0.7,
@@ -221,8 +208,6 @@ export const DefaultCombatConfigs: Record<
     useCombatTricks: true,
     useBlockPrediction: true,
     opponentArchetype: "unknown",
-    useLookahead: true,
-    lookaheadConfig: { maxDepth: 3, heuristicWeight: 0.5 },
   },
   expert: {
     aggression: 0.85,
@@ -232,8 +217,6 @@ export const DefaultCombatConfigs: Record<
     useCombatTricks: true,
     useBlockPrediction: true,
     opponentArchetype: "unknown",
-    useLookahead: true,
-    lookaheadConfig: { maxDepth: 4, heuristicWeight: 0.6, branchingFactor: 4 },
   },
 };
 
@@ -244,9 +227,6 @@ export class CombatDecisionTree {
   private gameState: GameState;
   private aiPlayerId: string;
   private config: CombatAIConfig;
-  private heuristicTable: HeuristicTable;
-  private lookaheadEngine: LookaheadEngine;
-
   constructor(
     gameState: GameState,
     aiPlayerId: string,
@@ -255,11 +235,6 @@ export class CombatDecisionTree {
     this.gameState = gameState;
     this.aiPlayerId = aiPlayerId;
     this.config = DefaultCombatConfigs[difficulty];
-    this.heuristicTable = new HeuristicTable();
-    this.lookaheadEngine = new LookaheadEngine(
-      this.heuristicTable,
-      this.config.lookaheadConfig,
-    );
   }
 
   /**
@@ -311,21 +286,6 @@ export class CombatDecisionTree {
     const combatTricks = this.config.useCombatTricks
       ? this.evaluateCombatTricks(aiPlayer, attackDecisions)
       : [];
-
-    // Apply multi-turn lookahead adjustments
-    if (this.config.useLookahead && attackDecisions.length > 0) {
-      this.lookaheadEngine.setConfig({
-        ...this.config.lookaheadConfig,
-        enabled: true,
-      });
-      const lookaheadResult = this.lookaheadEngine.evaluate(
-        this.gameState,
-        this.aiPlayerId,
-      );
-      if (lookaheadResult.evaluated) {
-        this.applyLookaheadAdjustments(attackDecisions, lookaheadResult);
-      }
-    }
 
     return {
       attacks: attackDecisions,
@@ -1723,63 +1683,6 @@ export class CombatDecisionTree {
   private getOpponents(): PlayerState[] {
     return Object.values(this.gameState.players).filter(
       (p) => p.id !== this.aiPlayerId,
-    );
-  }
-
-  /**
-   * Apply multi-turn lookahead adjustments to attack decisions.
-   * Modifies expected values and may flip shouldAttack based on
-   * projected future board states and heuristic matches.
-   */
-  private applyLookaheadAdjustments(
-    attackDecisions: AttackDecision[],
-    lookaheadResult: LookaheadResult,
-  ): void {
-    const modifier = lookaheadResult.aggressionModifier;
-
-    for (const decision of attackDecisions) {
-      decision.expectedValue = Math.max(
-        0,
-        Math.min(1, decision.expectedValue + modifier * 0.3),
-      );
-
-      if (lookaheadResult.holdBack.includes(decision.creatureId)) {
-        decision.expectedValue -= 0.2;
-        if (decision.expectedValue < 0.3) {
-          decision.shouldAttack = false;
-          decision.target = "none";
-        }
-      }
-
-      if (
-        lookaheadResult.priorityAttackers.length > 0 &&
-        lookaheadResult.priorityAttackers.includes(decision.creatureId)
-      ) {
-        decision.expectedValue += 0.15;
-        decision.shouldAttack = true;
-      }
-
-      if (
-        lookaheadResult.opponentLethalRisk &&
-        decision.expectedValue < 0.5
-      ) {
-        decision.expectedValue -= 0.15;
-        if (decision.expectedValue < 0.2) {
-          decision.shouldAttack = false;
-          decision.target = "none";
-        }
-      }
-    }
-  }
-
-  /**
-   * Set a custom heuristic table (for testing or custom configurations).
-   */
-  setHeuristicTable(table: HeuristicTable): void {
-    this.heuristicTable = table;
-    this.lookaheadEngine = new LookaheadEngine(
-      this.heuristicTable,
-      this.config.lookaheadConfig,
     );
   }
 
