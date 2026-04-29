@@ -312,6 +312,29 @@ export interface StackDependencyAnalysis {
   summary: string;
 }
 
+export type ResolutionPriority =
+  | "critical"
+  | "high"
+  | "medium"
+  | "low"
+  | "irrelevant";
+
+export interface DependencyChain {
+  chain: string[];
+  types: DependencyType[];
+  total_strength: number;
+  involves_counterwar: boolean;
+}
+
+export interface ResolutionAdvice {
+  itemId: string;
+  priority: ResolutionPriority;
+  shouldCounter: boolean;
+  shouldAllow: boolean;
+  reasoning: string;
+  dependencies_affected: string[];
+}
+
 export function analyzeStackDependencies(
   stack: StackAction[],
 ): StackDependencyAnalysis {
@@ -677,6 +700,252 @@ function generateAnalysisSummary(
     `${items.reduce((s, i) => s + i.dependencies.length + i.dependents.length, 0) / 2} total dependency relationship(s)`,
   );
   return parts.join(" - ");
+}
+
+export class StackDependencyAnalyzer {
+  private analysis: StackDependencyAnalysis;
+
+  constructor(stack: StackAction[]) {
+    this.analysis = analyzeStackDependencies(stack);
+  }
+
+  getAnalysis(): StackDependencyAnalysis {
+    return this.analysis;
+  }
+
+  getDependencyChains(): DependencyChain[] {
+    const chains: DependencyChain[] = [];
+    const adj = new Map<
+      string,
+      { target: string; type: DependencyType; strength: number }[]
+    >();
+
+    for (const dep of this.analysis.dependency_graph) {
+      if (!adj.has(dep.source_id)) adj.set(dep.source_id, []);
+      adj.get(dep.source_id)!.push({
+        target: dep.target_id,
+        type: dep.type,
+        strength: dep.strength,
+      });
+      if (!adj.has(dep.target_id)) adj.set(dep.target_id, []);
+      adj.get(dep.target_id)!.push({
+        target: dep.source_id,
+        type: dep.type,
+        strength: dep.strength,
+      });
+    }
+
+    const visited = new Set<string>();
+
+    for (const startId of this.analysis.resolution_order) {
+      if (visited.has(startId)) continue;
+      const chain = this.buildChain(startId, adj, visited);
+      if (chain.chain.length >= 2) {
+        chains.push(chain);
+        for (const id of chain.chain) visited.add(id);
+      }
+    }
+
+    return chains.sort((a, b) => b.total_strength - a.total_strength);
+  }
+
+  private buildChain(
+    start: string,
+    adj: Map<
+      string,
+      { target: string; type: DependencyType; strength: number }[]
+    >,
+    globalVisited: Set<string>,
+  ): DependencyChain {
+    const chain: string[] = [start];
+    const types: DependencyType[] = [];
+    let totalStrength = 0;
+    let involvesCounterwar = false;
+    const localVisited = new Set<string>([start]);
+    const current = start;
+
+    const neighbors = adj.get(current) || [];
+    for (const edge of neighbors) {
+      if (!localVisited.has(edge.target) && !globalVisited.has(edge.target)) {
+        chain.push(edge.target);
+        types.push(edge.type);
+        totalStrength += edge.strength;
+        if (edge.type === "counters") involvesCounterwar = true;
+
+        const nextNeighbors = adj.get(edge.target) || [];
+        for (const next of nextNeighbors) {
+          if (
+            !localVisited.has(next.target) &&
+            !globalVisited.has(next.target)
+          ) {
+            chain.push(next.target);
+            types.push(next.type);
+            totalStrength += next.strength;
+            if (next.type === "counters") involvesCounterwar = true;
+            break;
+          }
+        }
+        break;
+      }
+    }
+
+    return {
+      chain,
+      types,
+      total_strength: totalStrength,
+      involves_counterwar: involvesCounterwar,
+    };
+  }
+
+  getResolutionAdvice(): ResolutionAdvice[] {
+    return this.analysis.items.map((item) => {
+      const { action, priority, reason } = this.evaluateItem(item);
+      return {
+        itemId: item.action.id,
+        priority,
+        shouldCounter: action === "counter",
+        shouldAllow: action === "allow",
+        reasoning: reason,
+        dependencies_affected: [
+          ...item.dependencies.map((d) => d.target_id),
+          ...item.dependents.map((d) => d.source_id),
+        ],
+      };
+    });
+  }
+
+  private evaluateItem(item: StackItemAnalysis): {
+    action: "counter" | "allow" | "monitor";
+    priority: ResolutionPriority;
+    reason: string;
+  } {
+    if (item.critical_path) {
+      const counterDeps = item.dependencies.filter(
+        (d) => d.type === "counters",
+      );
+      const counterDependents = item.dependents.filter(
+        (d) => d.type === "counters",
+      );
+
+      if (counterDeps.length > 0 && counterDependents.length > 0) {
+        return {
+          action: "counter",
+          priority: "critical",
+          reason:
+            "Counterwar escalation point - countering this resolves the chain",
+        };
+      }
+
+      if (counterDeps.length > 0) {
+        return {
+          action: "counter",
+          priority: "high",
+          reason: "This item is being countered and sits on critical path",
+        };
+      }
+    }
+
+    const preventsDeps = item.dependencies.filter((d) => d.type === "prevents");
+    if (preventsDeps.length > 0 && item.resolution_impact > 0.4) {
+      return {
+        action: "counter",
+        priority: "high",
+        reason: "Preventing a high-impact item from being removed",
+      };
+    }
+
+    if (this.shouldAllowToPreventWorse(item)) {
+      return {
+        action: "allow",
+        priority: "medium",
+        reason: "Allowing this to resolve blocks a worse outcome below",
+      };
+    }
+
+    if (item.resolution_impact > 0.6) {
+      return {
+        action: "monitor",
+        priority: "high",
+        reason: "High resolution impact - monitor for responses",
+      };
+    }
+
+    if (item.resolution_impact > 0.3) {
+      return {
+        action: "monitor",
+        priority: "medium",
+        reason: "Moderate impact item",
+      };
+    }
+
+    if (item.dependencies.length === 0 && item.dependents.length === 0) {
+      return {
+        action: "allow",
+        priority: "low",
+        reason: "No dependencies - safe to resolve",
+      };
+    }
+
+    return {
+      action: "monitor",
+      priority: "medium",
+      reason: "Standard monitoring",
+    };
+  }
+
+  private shouldAllowToPreventWorse(item: StackItemAnalysis): boolean {
+    const preventsDeps = item.dependents.filter(
+      (d) => d.type === "prevents" && d.strength >= 0.5,
+    );
+    if (preventsDeps.length === 0) return false;
+
+    const itemsBelow = this.analysis.items.filter(
+      (i) => i.position < item.position,
+    );
+    const threatBelow = itemsBelow.some(
+      (i) =>
+        i.dependencies.some(
+          (d) => d.type === "prevents" || d.type === "targets",
+        ) && i.resolution_impact > 0.4,
+    );
+
+    return threatBelow;
+  }
+
+  findCounterwarEscalation(): {
+    isCounterwar: boolean;
+    depth: number;
+    recommendedAction: string;
+  } {
+    const counters = this.analysis.items.filter((i) =>
+      i.action.name.toLowerCase().includes("counter"),
+    );
+    if (counters.length < 2) {
+      return { isCounterwar: false, depth: 0, recommendedAction: "none" };
+    }
+
+    const counterDeps = this.analysis.dependency_graph.filter(
+      (d) => d.type === "counters",
+    );
+    const uniqueCounterItems = new Set(counterDeps.map((d) => d.source_id));
+
+    if (uniqueCounterItems.size >= 2) {
+      return {
+        isCounterwar: true,
+        depth: uniqueCounterItems.size,
+        recommendedAction:
+          uniqueCounterItems.size >= 3
+            ? "resolve_original_and_hold"
+            : "recounter_top",
+      };
+    }
+
+    return {
+      isCounterwar: true,
+      depth: counters.length,
+      recommendedAction: "evaluate_mana_efficiency",
+    };
+  }
 }
 
 /**
