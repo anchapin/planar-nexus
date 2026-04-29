@@ -14,6 +14,7 @@
 
 import { evaluateGameState, quickScore, GameState } from '@/ai/game-state-evaluator';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
+import { analyzeMulligan } from '@/ai/mulligan-advisor';
 import type { Card, GameEvaluation, ManaBreakdown } from '@/ai/types';
 import type { PlayerState as EvaluatorPlayerState, Permanent } from '@/ai/game-state-evaluator';
 
@@ -645,6 +646,28 @@ function generateKeyFactors(evaluation: GameEvaluation): string[] {
   }
 
   return factors;
+}
+
+/**
+ * Analyze opening hand for mulligan decision.
+ * Issue #677: Mulligan advisor integration.
+ */
+export function getMulliganAdvice(
+  hand: Card[],
+  options?: {
+    archetype?: string;
+    format?: 'limited' | 'constructed';
+    gameNumber?: number;
+    onThePlay?: boolean;
+  }
+) {
+  return analyzeMulligan({
+    hand,
+    archetype: options?.archetype,
+    format: options?.format,
+    gameNumber: options?.gameNumber,
+    onThePlay: options?.onThePlay,
+  });
 }
 
 function generateBoardRecommendations(evaluation: GameEvaluation, score: number): string[] {

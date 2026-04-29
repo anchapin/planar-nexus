@@ -67,3 +67,17 @@ export {
   type AIDifficultyConfig,
   type DifficultyLevel,
 } from './ai-difficulty';
+
+// Mulligan Advisor
+export {
+  analyzeMulligan,
+  getMatchingExpertRecords,
+  KEEP_SHIP_DATABASE,
+  type MulliganDecision,
+  type MulliganInput,
+  type MulliganAdvice,
+  type HandAnalysis,
+  type ExpertKeepShipRecord,
+  type GameFormat as MulliganFormat,
+  type ArchetypeCategory as MulliganArchetypeCategory,
+} from './mulligan-advisor';
