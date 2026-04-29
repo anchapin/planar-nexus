@@ -86,6 +86,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       inevitability: 0.3, // Low: doesn't plan for long game
       stackPressureScore: 0.1, // Low: ignores stack dynamics
       castedSequenceScore: 0.1, // Low: ignores mana sequencing
+      tempoSwingScore: 0.1, // Low: ignores tempo swings
     },
     useLookahead: false,
     blunderChance: 0.25,
@@ -121,6 +122,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       inevitability: 0.8, // Moderate: plans ahead somewhat
       stackPressureScore: 0.5, // Moderate: basic stack awareness
       castedSequenceScore: 0.3, // Moderate: basic sequencing
+      tempoSwingScore: 0.3, // Moderate: basic tempo swing awareness
     },
     useLookahead: true,
     blunderChance: 0.1,
@@ -155,6 +157,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       inevitability: 1.5, // High: plans for long game
       stackPressureScore: 1.0, // High: exploits stack windows
       castedSequenceScore: 0.6, // High: optimizes sequencing
+      tempoSwingScore: 0.6, // High: anticipates tempo swings
     },
     useLookahead: true,
     blunderChance: 0.05,
@@ -190,6 +193,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       inevitability: 2.5, // Maximum: unbeatable in long games
       stackPressureScore: 2.0, // Maximum: master of stack manipulation
       castedSequenceScore: 1.0, // Maximum: perfect mana sequencing
+      tempoSwingScore: 1.0, // Maximum: perfectly predicts tempo swings
     },
     useLookahead: true,
     blunderChance: 0.02,

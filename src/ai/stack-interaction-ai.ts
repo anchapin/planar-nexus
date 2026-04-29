@@ -26,6 +26,12 @@ import {
   ThreatAssessment,
   DetailedEvaluation,
 } from "./game-state-evaluator";
+import {
+  evaluateTriggerChain,
+  shouldCounterToPreventTriggers,
+  getHighestValueChain,
+} from "./trigger-chain-evaluator";
+import type { TriggerChain, BoardPermanent, CascadeContext } from "./trigger-chain-evaluator";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "./providers/types";
 
@@ -2482,6 +2488,84 @@ export class StackInteractionAI {
     }
 
     return Math.min(1, Math.max(0, score));
+  }
+
+  evaluateTriggerChains(context: StackContext): {
+    chains: TriggerChain[];
+    summary: string;
+    shouldCounterToPrevent: boolean;
+  } {
+    const stackItem: CascadeContext["stackItem"] = {
+      id: context.currentAction.id,
+      name: context.currentAction.name,
+      manaValue: context.currentAction.manaValue,
+      controller: context.currentAction.controller,
+      type: context.currentAction.type || "spell",
+      colors: context.currentAction.colors || [],
+      targets: context.currentAction.targets,
+    };
+
+    const board: BoardPermanent[] = [];
+
+    for (const [pid, player] of Object.entries(this.gameState.players)) {
+      if (player.battlefield) {
+        for (const perm of player.battlefield) {
+          board.push({
+            id: perm.id || perm.cardInstanceId,
+            name: perm.name,
+            type: perm.type,
+            controller: perm.controller || pid,
+            oracleText: (perm as Record<string, unknown>).oracleText as string | undefined,
+          });
+        }
+      }
+    }
+
+    const chains = evaluateTriggerChain(stackItem, board);
+    const shouldCounter = shouldCounterToPreventTriggers(
+      chains,
+      context.currentAction.controller === this.playerId,
+    );
+
+    const highChain = getHighestValueChain(chains);
+    let summary: string;
+    if (chains.length === 0) {
+      summary = "No trigger chains detected";
+    } else {
+      summary = `Detected ${chains.length} trigger chain(s)`;
+      if (highChain) {
+        summary += ` (highest value: ${highChain.totalValue.toFixed(1)} - ${highChain.steps.map(s => s.ability.abilityName).join(" → ")})`;
+      }
+    }
+
+    return { chains, summary, shouldCounterToPrevent: shouldCounter };
+  }
+
+  assessActionThreatWithTriggers(context: StackContext): number {
+    const currentEvaluation = evaluateGameState(
+      this.gameState,
+      this.playerId,
+      "medium",
+    );
+
+    const baseThreat = this.assessActionThreat(context, currentEvaluation);
+
+    const { chains, shouldCounterToPrevent } = this.evaluateTriggerChains(context);
+
+    if (chains.length === 0) {
+      return baseThreat;
+    }
+
+    const highChain = getHighestValueChain(chains);
+    const cascadeThreatBonus = Math.min(0.5, (highChain?.totalValue || 0) * 0.1);
+
+    const opponentController = context.currentAction.controller !== this.playerId;
+    if (!opponentController) {
+      return baseThreat;
+    }
+
+    const adjustedThreat = baseThreat + cascadeThreatBonus;
+    return Math.min(1, adjustedThreat);
   }
 }
 
