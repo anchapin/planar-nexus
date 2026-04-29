@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useState, useMemo, useCallback } from 'react';
-import type { MagicFormat } from '@/lib/meta';
-import type { MatchupSideboardGuide } from '@/lib/sideboard-recommender';
+import { useState, useMemo, useCallback } from "react";
+import type { MagicFormat } from "@/lib/meta";
+import type { MatchupSideboardGuide } from "@/lib/sideboard-recommender";
 import {
   getSideboardRecommendation,
   getAvailableMatchups,
@@ -10,7 +10,7 @@ import {
   searchSideboardRecommendations,
   getHighConfidenceSwaps,
   getUniqueRecommendedCards,
-} from '@/lib/sideboard-recommender';
+} from "@/lib/sideboard-recommender";
 
 interface UseSideboardRecommenderOptions {
   format?: MagicFormat;
@@ -24,7 +24,10 @@ interface UseSideboardRecommenderReturn {
   availableMatchups: ReturnType<typeof getAvailableMatchups>;
   matchupPlans: MatchupSideboardGuide[];
   searchResults: MatchupSideboardGuide[];
-  uniqueCards: Map<string, { cardName: string; count: number; reasons: string[] }>;
+  uniqueCards: Map<
+    string,
+    { cardName: string; count: number; reasons: string[] }
+  >;
   isLoading: boolean;
   error: string | null;
   getPlayerArchetypes: () => string[];
@@ -32,36 +35,35 @@ interface UseSideboardRecommenderReturn {
   fetchRecommendation: (
     player: string,
     opponent: string,
-    sideboard?: string[]
+    sideboard?: string[],
   ) => void;
   search: (query: string) => void;
 }
 
 export function useSideboardRecommender(
-  options: UseSideboardRecommenderOptions = {}
+  options: UseSideboardRecommenderOptions = {},
 ): UseSideboardRecommenderReturn {
-  const { format: formatOption = 'standard' } = options;
+  const { format: formatOption = "standard" } = options;
 
   const [recommendation, setRecommendation] =
     useState<MatchupSideboardGuide | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [playerArch, setPlayerArch] = useState(
-    options.playerArchetype ?? ''
+  const [searchQuery, setSearchQuery] = useState("");
+  const [playerArch, setPlayerArch] = useState(options.playerArchetype ?? "");
+  const [opponentArch, setOpponentArch] = useState(
+    options.opponentArchetype ?? "",
   );
 
   const availableMatchups = useMemo(
     () => getAvailableMatchups(formatOption),
-    [formatOption]
+    [formatOption],
   );
 
   const matchupPlans = useMemo(
     () =>
-      playerArch
-        ? getMatchupSideboardPlans(playerArch, formatOption)
-        : [],
-    [playerArch, formatOption]
+      playerArch ? getMatchupSideboardPlans(playerArch, formatOption) : [],
+    [playerArch, formatOption],
   );
 
   const searchResults = useMemo(
@@ -69,7 +71,7 @@ export function useSideboardRecommender(
       searchQuery
         ? searchSideboardRecommendations(formatOption, searchQuery)
         : [],
-    [searchQuery, formatOption]
+    [searchQuery, formatOption],
   );
 
   const uniqueCards = useMemo(
@@ -77,15 +79,11 @@ export function useSideboardRecommender(
       playerArch
         ? getUniqueRecommendedCards(formatOption, playerArch)
         : new Map(),
-    [playerArch, formatOption]
+    [playerArch, formatOption],
   );
 
   const fetchRecommendation = useCallback(
-    (
-      player: string,
-      opponent: string,
-      sideboard: string[] = []
-    ) => {
+    (player: string, opponent: string, sideboard: string[] = []) => {
       setIsLoading(true);
       setError(null);
       setPlayerArch(player);
@@ -96,23 +94,23 @@ export function useSideboardRecommender(
           player,
           opponent,
           formatOption,
-          sideboard
+          sideboard,
         );
         if (!result) {
           setError(
-            `No sideboard data for ${player} vs ${opponent} in ${formatOption}`
+            `No sideboard data for ${player} vs ${opponent} in ${formatOption}`,
           );
         }
         setRecommendation(result);
       } catch (e) {
         setError(
-          e instanceof Error ? e.message : 'Failed to get recommendation'
+          e instanceof Error ? e.message : "Failed to get recommendation",
         );
       } finally {
         setIsLoading(false);
       }
     },
-    [formatOption]
+    [formatOption],
   );
 
   const search = useCallback((query: string) => {
@@ -137,7 +135,7 @@ export function useSideboardRecommender(
       }
       return Array.from(seen).sort();
     },
-    [availableMatchups]
+    [availableMatchups],
   );
 
   return {
@@ -155,9 +153,14 @@ export function useSideboardRecommender(
   };
 }
 
-export function useHighConfidenceSwaps(
-  guide: MatchupSideboardGuide | null
-): { bringIn: typeof guide extends null ? never : NonNullable<typeof guide>['bringIn']; takeOut: typeof guide extends null ? never : NonNullable<typeof guide>['takeOut'] } {
+export function useHighConfidenceSwaps(guide: MatchupSideboardGuide | null): {
+  bringIn: typeof guide extends null
+    ? never
+    : NonNullable<typeof guide>["bringIn"];
+  takeOut: typeof guide extends null
+    ? never
+    : NonNullable<typeof guide>["takeOut"];
+} {
   return useMemo(() => {
     if (!guide) return { bringIn: [], takeOut: [] };
     return getHighConfidenceSwaps(guide);
