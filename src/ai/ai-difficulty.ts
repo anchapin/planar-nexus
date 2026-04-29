@@ -85,6 +85,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       winConditionProgress: 0.5, // Low: slow to close games
       inevitability: 0.3, // Low: doesn't plan for long game
       stackPressureScore: 0.1, // Low: ignores stack dynamics
+      castedSequenceScore: 0.1, // Low: ignores mana sequencing
     },
     useLookahead: false,
     blunderChance: 0.25,
@@ -119,6 +120,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       winConditionProgress: 1.5, // Moderate: pushes win conditions
       inevitability: 0.8, // Moderate: plans ahead somewhat
       stackPressureScore: 0.5, // Moderate: basic stack awareness
+      castedSequenceScore: 0.3, // Moderate: basic sequencing
     },
     useLookahead: true,
     blunderChance: 0.1,
@@ -152,6 +154,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       winConditionProgress: 2.5, // High: aggressively pursues wins
       inevitability: 1.5, // High: plans for long game
       stackPressureScore: 1.0, // High: exploits stack windows
+      castedSequenceScore: 0.6, // High: optimizes sequencing
     },
     useLookahead: true,
     blunderChance: 0.05,
@@ -186,6 +189,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
       winConditionProgress: 4.0, // Maximum: closes games efficiently
       inevitability: 2.5, // Maximum: unbeatable in long games
       stackPressureScore: 2.0, // Maximum: master of stack manipulation
+      castedSequenceScore: 1.0, // Maximum: perfect mana sequencing
     },
     useLookahead: true,
     blunderChance: 0.02,
