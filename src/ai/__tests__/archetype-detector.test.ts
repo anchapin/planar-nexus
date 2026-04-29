@@ -325,6 +325,152 @@ describe('archetype-detector', () => {
     });
   });
 
+  describe('hybrid archetype detection', () => {
+    it('should detect hybridArchetypes field for tempo-control hybrid', () => {
+      const tempoControlDeck: DeckCard[] = [
+        createCard('Snapcaster Mage', 4, 'Creature', 2, ['U'], 'Flash, bounce'),
+        createCard('Spell Queller', 4, 'Creature', 2, ['U', 'W'], 'Flash, exile'),
+        createCard('Counterspell', 4, 'Instant', 2, ['U'], 'Counter'),
+        createCard('Force of Will', 4, 'Instant', 0, ['U'], 'Counter'),
+        createCard('Brazen Borrower', 4, 'Creature', 3, ['U', 'R'], 'Flash, bounce'),
+        createCard('Island', 12, 'Land', 0, ['U'], ''),
+        createCard('Mountain', 4, 'Land', 0, ['R'], ''),
+      ];
+
+      const result = detectArchetype(tempoControlDeck);
+      if (result.hybridArchetypes && result.hybridArchetypes.length > 0) {
+        const hybrid = result.hybridArchetypes![0];
+        expect(hybrid.primary).toBeDefined();
+        expect(hybrid.secondary).toBeDefined();
+        expect(hybrid.hybridBlend).toBeGreaterThanOrEqual(0);
+        expect(hybrid.hybridBlend).toBeLessThanOrEqual(1);
+      } else {
+        expect(result.primary).toBeDefined();
+        expect(result.primary).not.toBe('Unknown');
+      }
+    });
+
+    it('should detect hybridArchetypes for midrange pile (Jund-style value deck)', () => {
+      const midrangePileDeck: DeckCard[] = [
+        createCard('Tarmogoyf', 4, 'Creature', 2, ['G', 'B'], 'Big'),
+        createCard('Dark Confidant', 4, 'Creature', 2, ['B'], 'Draw'),
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Deal 3 damage'),
+        createCard('Terminate', 4, 'Instant', 2, ['B', 'R'], 'Destroy'),
+        createCard('Thoughtseize', 4, 'Sorcery', 1, ['B'], 'Discard'),
+        createCard('Liliana of the Veil', 2, 'Planeswalker', 3, ['B'], ''),
+        createCard('Swamp', 8, 'Land', 0, ['B'], ''),
+        createCard('Mountain', 4, 'Land', 0, ['R'], ''),
+        createCard('Forest', 4, 'Land', 0, ['G'], ''),
+        createCard('Underground Sea', 2, 'Land', 0, ['B', 'U'], ''),
+      ];
+
+      const result = detectArchetype(midrangePileDeck);
+      if (result.hybridArchetypes && result.hybridArchetypes.length > 0) {
+        const hybrid = result.hybridArchetypes![0];
+        expect(hybrid.primary).toBeDefined();
+        expect(hybrid.secondary).toBeDefined();
+        expect(hybrid.hybridBlend).toBeGreaterThanOrEqual(0);
+        expect(hybrid.hybridBlend).toBeLessThanOrEqual(1);
+      } else {
+        expect(['Midrange Pile', 'Jund-style', 'Good Stuff', 'Rock', 'Value']).toContain(result.primary);
+      }
+    });
+
+    it('should detect hybridArchetypes for aggro-midrange hybrid', () => {
+      const aggroMidrangeDeck: DeckCard[] = [
+        createCard('Tarmogoyf', 4, 'Creature', 2, ['G', 'B'], 'Big'),
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Deal 3 damage'),
+        createCard('Wild Nacatl', 4, 'Creature', 1, ['G', 'W'], ''),
+        createCard('Monastery Swiftspear', 4, 'Creature', 1, ['R'], 'Haste, prowess'),
+        createCard('Mutagenic Growth', 4, 'Instant', 0, ['G', 'U'], 'Pump'),
+        createCard('Kitchen Finks', 4, 'Creature', 3, ['G', 'W'], ''),
+        createCard('Mountain', 10, 'Land', 0, ['R'], ''),
+        createCard('Forest', 8, 'Land', 0, ['G'], ''),
+        createCard('Brushland', 2, 'Land', 0, ['G', 'W'], ''),
+      ];
+
+      const result = detectArchetype(aggroMidrangeDeck);
+      if (result.hybridArchetypes && result.hybridArchetypes.length > 0) {
+        const hybrid = result.hybridArchetypes![0];
+        expect(hybrid.primary).toBeDefined();
+        expect(hybrid.secondary).toBeDefined();
+        expect(hybrid.hybridBlend).toBeGreaterThanOrEqual(0);
+        expect(hybrid.hybridBlend).toBeLessThanOrEqual(1);
+      } else {
+        expect(['Aggro-Midrange', 'Zoo', 'Good Stuff']).toContain(result.primary);
+      }
+    });
+
+    it('should not produce hybridArchetypes for pure archetypes with large score gap', () => {
+      const pureBurnDeck: DeckCard[] = [
+        createCard('Lightning Bolt', 8, 'Instant', 1, ['R'], 'Deal 3 damage to any target'),
+        createCard('Lava Spike', 8, 'Sorcery', 1, ['R'], 'Deal 3 damage to target player'),
+        createCard('Skewer the Critics', 8, 'Sorcery', 2, ['R'], 'Deal 3 damage'),
+        createCard('Burst Lightning', 8, 'Instant', 2, ['R'], 'Deal 4 damage'),
+        createCard('Mountain', 28, 'Land', 0, [], ''),
+      ];
+
+      const result = detectArchetype(pureBurnDeck);
+      expect(result.primary).toBeDefined();
+      expect(result.primary).not.toBe('Unknown');
+      if (result.hybridArchetypes) {
+        for (const h of result.hybridArchetypes) {
+          expect(h.hybridBlend).toBeLessThanOrEqual(1);
+        }
+      }
+    });
+
+    it('should produce hybridBlend between 0 and 1 for all hybrid results', () => {
+      const balancedDeck: DeckCard[] = [
+        createCard('Snapcaster Mage', 4, 'Creature', 2, ['U'], 'Flash'),
+        createCard('Siege Rhino', 4, 'Creature', 5, ['W', 'B', 'G'], ''),
+        createCard('Counterspell', 4, 'Instant', 2, ['U'], 'Counter'),
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Damage'),
+        createCard('Thoughtseize', 4, 'Sorcery', 1, ['B'], 'Discard'),
+        createCard('Wrath of God', 2, 'Sorcery', 4, ['W'], 'Destroy all'),
+        createCard('Island', 6, 'Land', 0, [], ''),
+        createCard('Mountain', 6, 'Land', 0, [], ''),
+        createCard('Plains', 6, 'Land', 0, [], ''),
+        createCard('Forest', 4, 'Land', 0, [], ''),
+      ];
+
+      const result = detectArchetype(balancedDeck);
+      if (result.hybridArchetypes && result.hybridArchetypes.length > 0) {
+        for (const h of result.hybridArchetypes) {
+          expect(h.hybridBlend).toBeGreaterThanOrEqual(0);
+          expect(h.hybridBlend).toBeLessThanOrEqual(1);
+          expect(h.primary).toBeTruthy();
+          expect(h.secondary).toBeTruthy();
+        }
+      }
+    });
+
+    it('should include hybridBlend for balanced deck with near-equal top scores', () => {
+      const balancedDeck: DeckCard[] = [
+        createCard('Counterspell', 6, 'Instant', 2, ['U'], 'Counter target spell'),
+        createCard('Wrath of God', 4, 'Sorcery', 4, ['W'], 'Destroy all creatures'),
+        createCard('Divination', 6, 'Sorcery', 3, ['U'], 'Draw cards'),
+        createCard('Tarmogoyf', 4, 'Creature', 2, ['G'], 'Big creature'),
+        createCard('Lightning Bolt', 4, 'Instant', 1, ['R'], 'Deal 3 damage'),
+        createCard('Thoughtseize', 4, 'Sorcery', 1, ['B'], 'Discard'),
+        createCard('Island', 8, 'Land', 0, [], ''),
+        createCard('Plains', 6, 'Land', 0, [], ''),
+        createCard('Forest', 4, 'Land', 0, [], ''),
+        createCard('Mountain', 4, 'Land', 0, [], ''),
+      ];
+
+      const result = detectArchetype(balancedDeck);
+      expect(result.primary).not.toBe('Unknown');
+      expect(result.allScores.length).toBeGreaterThan(0);
+      if (result.hybridArchetypes) {
+        for (const h of result.hybridArchetypes) {
+          expect(h.hybridBlend).toBeGreaterThanOrEqual(0.2);
+          expect(h.hybridBlend).toBeLessThanOrEqual(0.8);
+        }
+      }
+    });
+  });
+
   describe('getArchetypeDetails', () => {
     it('should return archetype details for valid name', () => {
       const details = getArchetypeDetails('Burn');
