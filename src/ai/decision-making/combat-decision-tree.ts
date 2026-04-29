@@ -25,9 +25,9 @@ import type {
   AIPlayerState as PlayerState,
   AIPermanent as Permanent,
   AIHandCard as HandCard,
-} from '@/lib/game-state/types';
-import { callAIProxy } from '@/lib/ai-proxy-client';
-import { AIProvider } from '@/ai/providers/types';
+} from "@/lib/game-state/types";
+import { callAIProxy } from "@/lib/ai-proxy-client";
+import { AIProvider } from "@/ai/providers/types";
 
 // Re-export for backward compatibility
 export type { GameState, PlayerState, Permanent, HandCard };
@@ -51,17 +51,17 @@ export interface CombatCardData {
 /**
  * Combat trick types
  */
-export type CombatTrickType = 
-  | 'pump' 
-  | 'combat_damage' 
-  | 'destroy' 
-  | 'exile' 
-  | 'damage_redirect'
-  | 'toughness_boost'
-  | 'power_boost'
-  | 'indestructible'
-  | 'lifelink'
-  | 'trample';
+export type CombatTrickType =
+  | "pump"
+  | "combat_damage"
+  | "destroy"
+  | "exile"
+  | "damage_redirect"
+  | "toughness_boost"
+  | "power_boost"
+  | "indestructible"
+  | "lifelink"
+  | "trample";
 
 /**
  * Parsed combat trick information
@@ -85,7 +85,7 @@ export interface AttackDecision {
   /** Whether to attack with this creature */
   shouldAttack: boolean;
   /** Target to attack (player ID or 'none' to hold back) */
-  target: string | 'none';
+  target: string | "none";
   /** Reasoning for this decision */
   reasoning: string;
   /** Expected value of this attack (0-1 scale) */
@@ -119,7 +119,7 @@ export interface CombatPlan {
   /** Blocking decisions */
   blocks: BlockDecision[];
   /** Overall combat strategy */
-  strategy: 'aggressive' | 'moderate' | 'defensive';
+  strategy: "aggressive" | "moderate" | "defensive";
   /** Total expected value of all combat decisions */
   totalExpectedValue: number;
   /** Recommended combat tricks (pump spells, etc.) */
@@ -135,7 +135,7 @@ export interface CombatTrick {
   /** Name of the trick */
   name: string;
   /** When to use the trick */
-  timing: 'before_attackers' | 'before_blockers' | 'after_blockers' | 'damage';
+  timing: "before_attackers" | "before_blockers" | "after_blockers" | "damage";
   /** Target creature ID */
   targetId?: string;
   /** Expected value of using the trick */
@@ -164,7 +164,7 @@ export interface CombatAIConfig {
  * Default configurations for different difficulty levels
  */
 export const DefaultCombatConfigs: Record<
-  'easy' | 'medium' | 'hard' | 'expert',
+  "easy" | "medium" | "hard" | "expert",
   CombatAIConfig
 > = {
   easy: {
@@ -208,7 +208,7 @@ export class CombatDecisionTree {
   constructor(
     gameState: GameState,
     aiPlayerId: string,
-    difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+    difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
   ) {
     this.gameState = gameState;
     this.aiPlayerId = aiPlayerId;
@@ -260,36 +260,41 @@ export class CombatDecisionTree {
    * Generate attack decisions using AI via proxy
    */
   async generateAttackPlanAI(
-    provider: AIProvider = 'zaic', 
-    model?: string
+    provider: AIProvider = "zaic",
+    model?: string,
   ): Promise<CombatPlan> {
     try {
       const response = await callAIProxy<CombatPlan>({
         provider,
-        endpoint: 'chat/completions',
-        model: model || 'default',
+        endpoint: "chat/completions",
+        model: model || "default",
         body: {
           messages: [
-            { 
-              role: 'system', 
-              content: 'You are a Magic: The Gathering AI. Generate an attack plan for the current game state.' 
+            {
+              role: "system",
+              content:
+                "You are a Magic: The Gathering AI. Generate an attack plan for the current game state.",
             },
-            { 
-              role: 'user', 
-              content: JSON.stringify({ gameState: this.gameState, aiPlayerId: this.aiPlayerId, config: this.config }) 
-            }
+            {
+              role: "user",
+              content: JSON.stringify({
+                gameState: this.gameState,
+                aiPlayerId: this.aiPlayerId,
+                config: this.config,
+              }),
+            },
           ],
-          response_format: { type: 'json_object' }
-        }
+          response_format: { type: "json_object" },
+        },
       });
 
       if (response.success && response.data) {
         return response.data;
       }
-      
+
       return this.generateAttackPlan();
     } catch (error) {
-      console.error('AI attack plan generation failed:', error);
+      console.error("AI attack plan generation failed:", error);
       return this.generateAttackPlan();
     }
   }
@@ -315,7 +320,7 @@ export class CombatDecisionTree {
     return {
       attacks: [],
       blocks: blockDecisions,
-      strategy: 'defensive',
+      strategy: "defensive",
       totalExpectedValue: this.calculateTotalBlockValue(blockDecisions),
       combatTricks: [],
     };
@@ -327,10 +332,10 @@ export class CombatDecisionTree {
   private getAttackableCreatures(player: PlayerState): Permanent[] {
     return player.battlefield.filter(
       (p) =>
-        p.type === 'creature' &&
+        p.type === "creature" &&
         !p.tapped &&
         (p.power || 0) > 0 &&
-        !this.hasSummoningSickness(p)
+        !this.hasSummoningSickness(p),
     );
   }
 
@@ -338,9 +343,7 @@ export class CombatDecisionTree {
    * Get all creatures that can block
    */
   private getBlockingCreatures(player: PlayerState): Permanent[] {
-    return player.battlefield.filter(
-      (p) => p.type === 'creature' && !p.tapped
-    );
+    return player.battlefield.filter((p) => p.type === "creature" && !p.tapped);
   }
 
   /**
@@ -350,8 +353,11 @@ export class CombatDecisionTree {
     // In a real implementation, this would check when the creature entered
     // For now, creatures have summoning sickness only if explicitly marked
     // or if they lack haste and have a summoningSickness flag
-    if ('summoningSickness' in creature && creature.summoningSickness === true) {
-      return !creature.keywords?.includes('haste');
+    if (
+      "summoningSickness" in creature &&
+      creature.summoningSickness === true
+    ) {
+      return !creature.keywords?.includes("haste");
     }
     // By default, assume creatures can attack (they've been on battlefield)
     return false;
@@ -362,43 +368,44 @@ export class CombatDecisionTree {
    */
   private determineCombatStrategy(
     aiPlayer: PlayerState,
-    opponents: PlayerState[]
-  ): 'aggressive' | 'moderate' | 'defensive' {
+    opponents: PlayerState[],
+  ): "aggressive" | "moderate" | "defensive" {
     const minOpponentLife = Math.min(...opponents.map((o) => o.life));
     const lifeTotal = aiPlayer.life;
     const creatureCount = aiPlayer.battlefield.filter(
-      (p: Permanent) => p.type === 'creature'
+      (p: Permanent) => p.type === "creature",
     ).length;
     const avgOpponentCreatures =
       opponents.reduce(
-        (sum, o) => sum + o.battlefield.filter((p) => p.type === 'creature').length,
-        0
+        (sum, o) =>
+          sum + o.battlefield.filter((p) => p.type === "creature").length,
+        0,
       ) / opponents.length;
 
     // Low life: play defensively
     if (lifeTotal <= this.config.lifeThreshold) {
-      return 'defensive';
+      return "defensive";
     }
 
     // Opponent low life: be aggressive
     if (minOpponentLife <= 10) {
-      return 'aggressive';
+      return "aggressive";
     }
 
     // Board advantage: be moderate to aggressive
     if (creatureCount > avgOpponentCreatures + 1) {
-      return this.config.aggression > 0.6 ? 'aggressive' : 'moderate';
+      return this.config.aggression > 0.6 ? "aggressive" : "moderate";
     }
 
     // Board disadvantage: play defensively
     if (creatureCount < avgOpponentCreatures - 1) {
-      return 'defensive';
+      return "defensive";
     }
 
     // Even board: use configured aggression
-    if (this.config.aggression > 0.6) return 'aggressive';
-    if (this.config.aggression < 0.4) return 'defensive';
-    return 'moderate';
+    if (this.config.aggression > 0.6) return "aggressive";
+    if (this.config.aggression < 0.4) return "defensive";
+    return "moderate";
   }
 
   /**
@@ -407,11 +414,11 @@ export class CombatDecisionTree {
   private evaluateAttacker(
     creature: Permanent,
     opponents: PlayerState[],
-    strategy: 'aggressive' | 'moderate' | 'defensive'
+    strategy: "aggressive" | "moderate" | "defensive",
   ): AttackDecision {
     let shouldAttack = false;
-    let target: string | 'none' = 'none';
-    let reasoning = '';
+    let target: string | "none" = "none";
+    let reasoning = "";
     let expectedValue = 0;
     let riskLevel = 0;
 
@@ -426,7 +433,9 @@ export class CombatDecisionTree {
         opponent,
         potentialBlockers,
         canBlock,
-        blocks: canBlock ? this.simulateBlocks(creature, potentialBlockers) : [],
+        blocks: canBlock
+          ? this.simulateBlocks(creature, potentialBlockers)
+          : [],
       };
     });
 
@@ -439,7 +448,7 @@ export class CombatDecisionTree {
         creature,
         analysis.opponent,
         analysis.blocks,
-        strategy
+        strategy,
       );
 
       if (targetValue > bestTargetValue) {
@@ -450,11 +459,7 @@ export class CombatDecisionTree {
 
     // Decide whether to attack
     const attackThreshold =
-      strategy === 'aggressive'
-        ? 0.3
-        : strategy === 'moderate'
-        ? 0.5
-        : 0.7;
+      strategy === "aggressive" ? 0.3 : strategy === "moderate" ? 0.5 : 0.7;
 
     // Adjust for evasion (creatures with evasion are safer to attack with)
     const evasionBonus = hasEvasion ? 0.2 : 0;
@@ -473,7 +478,7 @@ export class CombatDecisionTree {
         creature,
         bestTarget!,
         expectedValue,
-        hasEvasion
+        hasEvasion,
       );
       riskLevel = this.calculateAttackRisk(creature, opponentAnalyses);
     } else {
@@ -496,20 +501,21 @@ export class CombatDecisionTree {
    */
   private hasEvasion(creature: Permanent): boolean {
     const evasionKeywords = [
-      'flying',
-      'menace',
-      'intimidate',
-      'fear',
-      'unblockable',
-      'shadow',
-      'skulk',
-      'prowl',
-      'wither',
-      'trample',
+      "flying",
+      "menace",
+      "intimidate",
+      "fear",
+      "unblockable",
+      "shadow",
+      "skulk",
+      "prowl",
+      "wither",
+      "trample",
     ];
     return (
-      creature.keywords?.some((k) => evasionKeywords.includes(k.toLowerCase())) ||
-      false
+      creature.keywords?.some((k) =>
+        evasionKeywords.includes(k.toLowerCase()),
+      ) || false
     );
   }
 
@@ -518,10 +524,10 @@ export class CombatDecisionTree {
    */
   private getPotentialBlockers(
     opponent: PlayerState,
-    attacker: Permanent
+    attacker: Permanent,
   ): Permanent[] {
     return opponent.battlefield.filter((blocker) => {
-      if (blocker.type !== 'creature' || blocker.tapped) {
+      if (blocker.type !== "creature" || blocker.tapped) {
         return false;
       }
 
@@ -538,22 +544,25 @@ export class CombatDecisionTree {
     const blockerKeywords = blocker.keywords || [];
 
     // Flying
-    if (attackerKeywords.includes('flying') && !blockerKeywords.includes('flying')) {
+    if (
+      attackerKeywords.includes("flying") &&
+      !blockerKeywords.includes("flying")
+    ) {
       // Can't block unless blocker has reach
-      if (!blockerKeywords.includes('reach')) {
+      if (!blockerKeywords.includes("reach")) {
         return false;
       }
     }
 
     // Menace - need 2+ blockers
-    if (attackerKeywords.includes('menace')) {
+    if (attackerKeywords.includes("menace")) {
       // This is handled at the block assignment level
     }
 
     // Intimidate/fear
     if (
-      attackerKeywords.includes('intimidate') ||
-      attackerKeywords.includes('fear')
+      attackerKeywords.includes("intimidate") ||
+      attackerKeywords.includes("fear")
     ) {
       // Can only be blocked by artifact creatures and/or creatures that share a color
       // This is a simplified check
@@ -561,7 +570,7 @@ export class CombatDecisionTree {
     }
 
     // Unblockable
-    if (attackerKeywords.includes('unblockable')) {
+    if (attackerKeywords.includes("unblockable")) {
       return false;
     }
 
@@ -573,21 +582,37 @@ export class CombatDecisionTree {
    */
   private simulateBlocks(
     attacker: Permanent,
-    potentialBlockers: Permanent[]
+    potentialBlockers: Permanent[],
   ): Array<{ blocker: Permanent; trades: boolean; dies: boolean }> {
+    const attackerHasDeathtouch =
+      attacker.keywords?.includes("deathtouch") || false;
+    const attackerIsIndestructible =
+      attacker.keywords?.includes("indestructible") || false;
+
     return potentialBlockers.map((blocker) => {
       const attackerPower = attacker.power || 0;
       const attackerToughness = attacker.toughness || 0;
       const blockerPower = blocker.power || 0;
       const blockerToughness = blocker.toughness || 0;
+      const blockerIsIndestructible =
+        blocker.keywords?.includes("indestructible") || false;
+      const blockerHasDeathtouch =
+        blocker.keywords?.includes("deathtouch") || false;
 
-      // Check if attacker dies
-      const attackerDies = blockerPower >= attackerToughness;
-      // Check if blocker dies
-      const blockerDies = attackerPower >= blockerToughness;
+      // Deathtouch: any nonzero damage is lethal (CR 702.2b)
+      const attackerDies = blockerHasDeathtouch
+        ? blockerPower > 0
+        : blockerPower >= attackerToughness;
 
-      // Trade = both die
-      const trades = attackerDies && blockerDies;
+      // Deathtouch: any nonzero damage is lethal; Indestructible: cannot be destroyed by damage
+      const blockerDies =
+        !blockerIsIndestructible &&
+        (attackerHasDeathtouch
+          ? attackerPower > 0
+          : attackerPower >= blockerToughness);
+
+      // Indestructible creatures can never die from combat damage alone
+      const trades = attackerDies && !attackerIsIndestructible && blockerDies;
 
       return { blocker, trades, dies: blockerDies };
     });
@@ -600,11 +625,14 @@ export class CombatDecisionTree {
     creature: Permanent,
     opponent: PlayerState,
     blocks: Array<{ blocker: Permanent; trades: boolean; dies: boolean }>,
-    strategy: 'aggressive' | 'moderate' | 'defensive'
+    strategy: "aggressive" | "moderate" | "defensive",
   ): number {
     const power = creature.power || 0;
     const toughness = creature.toughness || 0;
-    const hasTrample = creature.keywords?.includes('trample') || false;
+    const hasTrample = creature.keywords?.includes("trample") || false;
+    const hasDeathtouch = creature.keywords?.includes("deathtouch") || false;
+    const isIndestructible =
+      creature.keywords?.includes("indestructible") || false;
 
     // Base value = damage dealt
     let damageDealt = power;
@@ -626,7 +654,9 @@ export class CombatDecisionTree {
         return worst || block;
       }, blocks[0]);
 
-      creatureDies = worstBlock.trades || worstBlock.blocker.power! >= toughness;
+      creatureDies = isIndestructible
+        ? false
+        : worstBlock.trades || worstBlock.blocker.power! >= toughness;
       blockerDies = worstBlock.dies;
 
       // Calculate damage through
@@ -634,7 +664,13 @@ export class CombatDecisionTree {
         const excessDamage = power - (worstBlock.blocker.toughness || 0);
         damageDealt = Math.max(0, excessDamage);
       } else if (!creatureDies) {
-        damageDealt = power;
+        // Deathtouch attacker only needs 1 damage to kill a blocker, so assign minimum
+        // and the rest tramples through (or is just wasted if no trample)
+        if (hasDeathtouch && hasTrample && blockerDies) {
+          damageDealt = power - 1; // Only 1 damage needed per blocker
+        } else {
+          damageDealt = power;
+        }
       } else {
         damageDealt = 0;
       }
@@ -676,9 +712,9 @@ export class CombatDecisionTree {
     }
 
     // Strategy modifiers
-    if (strategy === 'aggressive') {
+    if (strategy === "aggressive") {
       value += 0.1; // More willing to attack
-    } else if (strategy === 'defensive') {
+    } else if (strategy === "defensive") {
       value -= 0.2; // More cautious
     }
 
@@ -695,7 +731,7 @@ export class CombatDecisionTree {
       potentialBlockers: Permanent[];
       canBlock: boolean;
       blocks: Array<{ blocker: Permanent; trades: boolean; dies: boolean }>;
-    }>
+    }>,
   ): number {
     let maxRisk = 0;
 
@@ -721,24 +757,24 @@ export class CombatDecisionTree {
     creature: Permanent,
     targetId: string,
     expectedValue: number,
-    hasEvasion: boolean
+    hasEvasion: boolean,
   ): string {
     const power = creature.power || 0;
     const reasons: string[] = [];
 
     if (hasEvasion) {
-      reasons.push('has evasion');
+      reasons.push("has evasion");
     }
 
     if (expectedValue > 0.7) {
-      reasons.push('high value attack');
+      reasons.push("high value attack");
     } else if (expectedValue > 0.4) {
-      reasons.push('good attack opportunity');
+      reasons.push("good attack opportunity");
     } else {
-      reasons.push('worthwhile attack');
+      reasons.push("worthwhile attack");
     }
 
-    return `${creature.name} (${power} power) - ${reasons.join(', ')}`;
+    return `${creature.name} (${power} power) - ${reasons.join(", ")}`;
   }
 
   /**
@@ -762,7 +798,7 @@ export class CombatDecisionTree {
    */
   private evaluateBlocksForAttacker(
     attacker: Permanent,
-    availableBlockers: Permanent[]
+    availableBlockers: Permanent[],
   ): BlockDecision[] {
     const blocks: BlockDecision[] = [];
 
@@ -772,19 +808,39 @@ export class CombatDecisionTree {
 
     const attackerPower = attacker.power || 0;
     const attackerToughness = attacker.toughness || 0;
+    const attackerHasDeathtouch =
+      attacker.keywords?.includes("deathtouch") || false;
+    const attackerIsIndestructible =
+      attacker.keywords?.includes("indestructible") || false;
 
     // Sort blockers by effectiveness
     const sortedBlockers = [...availableBlockers].sort((a, b) => {
-      // Prefer blockers that can kill the attacker
-      const aKills = (a.power || 0) >= attackerToughness;
-      const bKills = (b.power || 0) >= attackerToughness;
+      // Deathtouch: any nonzero power kills; Indestructible attacker: can't kill it
+      const aHasDeathtouch = a.keywords?.includes("deathtouch") || false;
+      const bHasDeathtouch = b.keywords?.includes("deathtouch") || false;
+      const aKills =
+        !attackerIsIndestructible &&
+        (aHasDeathtouch
+          ? (a.power || 0) > 0
+          : (a.power || 0) >= attackerToughness);
+      const bKills =
+        !attackerIsIndestructible &&
+        (bHasDeathtouch
+          ? (b.power || 0) > 0
+          : (b.power || 0) >= attackerToughness);
 
       if (aKills && !bKills) return -1;
       if (!aKills && bKills) return 1;
 
-      // Prefer blockers that survive
-      const aSurvives = attackerPower < (a.toughness || 0);
-      const bSurvives = attackerPower < (b.toughness || 0);
+      // Prefer blockers that survive (deathtouch attacker kills any blocker, indestructible blockers always survive)
+      const aIsIndestructible = a.keywords?.includes("indestructible") || false;
+      const bIsIndestructible = b.keywords?.includes("indestructible") || false;
+      const aSurvives =
+        aIsIndestructible ||
+        (!attackerHasDeathtouch && attackerPower < (a.toughness || 0));
+      const bSurvives =
+        bIsIndestructible ||
+        (!attackerHasDeathtouch && attackerPower < (b.toughness || 0));
 
       if (aSurvives && !bSurvives) return -1;
       if (!aSurvives && bSurvives) return 1;
@@ -800,9 +856,22 @@ export class CombatDecisionTree {
     const bestBlocker = sortedBlockers[0];
     const blockerPower = bestBlocker.power || 0;
     const blockerToughness = bestBlocker.toughness || 0;
+    const blockerHasDeathtouch =
+      bestBlocker.keywords?.includes("deathtouch") || false;
+    const blockerIsIndestructible =
+      bestBlocker.keywords?.includes("indestructible") || false;
 
-    const attackerDies = blockerPower >= attackerToughness;
-    const blockerDies = attackerPower >= blockerToughness;
+    // Deathtouch: any nonzero damage is lethal; Indestructible: immune to destruction by damage
+    const attackerDies =
+      !attackerIsIndestructible &&
+      (blockerHasDeathtouch
+        ? blockerPower > 0
+        : blockerPower >= attackerToughness);
+    const blockerDies =
+      !blockerIsIndestructible &&
+      (attackerHasDeathtouch
+        ? attackerPower > 0
+        : attackerPower >= blockerToughness);
 
     // Calculate block value
     let blockValue = 0;
@@ -842,16 +911,49 @@ export class CombatDecisionTree {
     }
 
     // Adjust for first strike
-    if (attacker.keywords?.includes('first strike') ||
-        attacker.keywords?.includes('double strike')) {
+    if (
+      attacker.keywords?.includes("first strike") ||
+      attacker.keywords?.includes("double strike")
+    ) {
       // First strike makes blocking worse for us
       blockValue -= 0.2;
     }
 
-    if (bestBlocker.keywords?.includes('first strike') ||
-        bestBlocker.keywords?.includes('double strike')) {
-      // First strike makes blocking better for us
+    if (
+      bestBlocker.keywords?.includes("first strike") ||
+      bestBlocker.keywords?.includes("double strike")
+    ) {
       blockValue += 0.2;
+    }
+
+    // Deathtouch blocker is extremely effective — guarantees kill on any attack
+    if (
+      blockerHasDeathtouch &&
+      blockerPower > 0 &&
+      !attackerIsIndestructible &&
+      !attackerDies
+    ) {
+      blockValue += 0.3;
+    }
+
+    // Indestructible blocker is very safe — never dies to combat damage
+    if (blockerIsIndestructible && blockerDies) {
+      blockValue += 0.4; // Override chump-block penalty
+    }
+
+    // Don't block an indestructible attacker unless we have deathtouch or can survive
+    if (attackerIsIndestructible && !blockerHasDeathtouch) {
+      if (blockerDies) {
+        blockValue -= 0.6; // Strongly discourage losing a blocker to indestructible
+      }
+    }
+
+    // Deathtouch attacker kills even 1-toughness blockers — prefer cheap blockers
+    if (attackerHasDeathtouch && attackerPower > 0 && blockerDies) {
+      const blockerValue = bestBlocker.manaValue || 0;
+      if (blockerValue >= 3) {
+        blockValue -= 0.3; // Don't sacrifice expensive creatures to deathtouch
+      }
     }
 
     // Decide whether to block
@@ -864,14 +966,14 @@ export class CombatDecisionTree {
           attacker,
           attackerDies,
           blockerDies,
-          blockValue
+          blockValue,
         ),
         expectedValue: Math.max(0, Math.min(1, blockValue)),
       });
     }
 
     // Consider multi-block for menace
-    if (attacker.keywords?.includes('menace') && sortedBlockers.length >= 2) {
+    if (attacker.keywords?.includes("menace") && sortedBlockers.length >= 2) {
       const secondBestBlocker = sortedBlockers[1];
       const secondBlockValue = blockValue * 0.6; // Reduced value for second blocker
 
@@ -936,7 +1038,7 @@ export class CombatDecisionTree {
     attacker: Permanent,
     attackerDies: boolean,
     blockerDies: boolean,
-    _value: number
+    _value: number,
   ): string {
     if (attackerDies && !blockerDies) {
       return `${blocker.name} kills ${attacker.name} and survives`;
@@ -966,13 +1068,13 @@ export class CombatDecisionTree {
    */
   private evaluateCombatTricks(
     aiPlayer: PlayerState,
-    attacks: AttackDecision[]
+    attacks: AttackDecision[],
   ): CombatTrick[] {
     const tricks: CombatTrick[] = [];
 
     // Get combat-relevant cards from hand
-    const combatCards = aiPlayer.hand.filter((card: HandCard) => 
-      this.isCombatTrickCard(card)
+    const combatCards = aiPlayer.hand.filter((card: HandCard) =>
+      this.isCombatTrickCard(card),
     );
 
     // Evaluate each combat card for potential use
@@ -991,26 +1093,35 @@ export class CombatDecisionTree {
    */
   private isCombatTrickCard(card: HandCard): boolean {
     const typeLower = card.type.toLowerCase();
-    
+
     // Instant-speed combat tricks
-    const combatTypes = ['instant'];
+    const combatTypes = ["instant"];
     const combatKeywords = [
-      'pump', 'fight', 'damage', 'destroy', 'exile', 
-      'gain', 'trample', 'flying', 'lifelink', 'deathtouch'
+      "pump",
+      "fight",
+      "damage",
+      "destroy",
+      "exile",
+      "gain",
+      "trample",
+      "flying",
+      "lifelink",
+      "deathtouch",
     ];
-    
+
     // Check type
-    const isCombatType = combatTypes.some(t => typeLower.includes(t));
-    
+    const isCombatType = combatTypes.some((t) => typeLower.includes(t));
+
     // Check name for common pump/trick patterns
     const nameLower = card.name.toLowerCase();
-    const isCombatName = combatKeywords.some(k => nameLower.includes(k)) ||
-      nameLower.includes('strike') ||
-      nameLower.includes('bolt') ||
-      nameLower.includes('slash') ||
-      nameLower.includes('pierce') ||
-      nameLower.includes('blast');
-    
+    const isCombatName =
+      combatKeywords.some((k) => nameLower.includes(k)) ||
+      nameLower.includes("strike") ||
+      nameLower.includes("bolt") ||
+      nameLower.includes("slash") ||
+      nameLower.includes("pierce") ||
+      nameLower.includes("blast");
+
     return isCombatType || isCombatName;
   }
 
@@ -1020,20 +1131,24 @@ export class CombatDecisionTree {
   private analyzeCombatTrick(
     card: HandCard,
     attacks: AttackDecision[],
-    aiPlayer: PlayerState
+    aiPlayer: PlayerState,
   ): CombatTrick | null {
     // Parse the card to understand its effect
     const parsed = this.parseCombatTrick(card);
-    
+
     if (!parsed) return null;
 
     // Find best targets for this trick
     const targetAnalysis = this.findTrickTargets(parsed, attacks, aiPlayer);
-    
+
     if (!targetAnalysis) return null;
 
     // Calculate expected value
-    const expectedValue = this.calculateTrickValue(parsed, targetAnalysis, aiPlayer);
+    const expectedValue = this.calculateTrickValue(
+      parsed,
+      targetAnalysis,
+      aiPlayer,
+    );
 
     // Determine best timing
     const timing = this.determineTrickTiming(parsed, attacks);
@@ -1052,12 +1167,12 @@ export class CombatDecisionTree {
    * Parse a card's oracle text to understand its combat effect
    */
   private parseCombatTrick(card: HandCard): ParsedCombatTrick | null {
-    const oracleText = (card as { oracleText?: string }).oracleText || '';
+    const oracleText = (card as { oracleText?: string }).oracleText || "";
     const textLower = oracleText.toLowerCase();
-    
+
     // Initialize parsed result
     const parsed: ParsedCombatTrick = {
-      type: 'pump',
+      type: "pump",
       powerBoost: 0,
       toughnessBoost: 0,
       grantsKeyword: [],
@@ -1086,45 +1201,51 @@ export class CombatDecisionTree {
     }
 
     // Check for keywords
-    if (textLower.includes('trample')) parsed.grantsKeyword.push('trample');
-    if (textLower.includes('flying')) parsed.grantsKeyword.push('flying');
-    if (textLower.includes('lifelink')) parsed.grantsKeyword.push('lifelink');
-    if (textLower.includes('deathtouch')) parsed.grantsKeyword.push('deathtouch');
-    if (textLower.includes('first strike')) parsed.grantsKeyword.push('first strike');
-    if (textLower.includes('double strike')) parsed.grantsKeyword.push('double strike');
-    if (textLower.includes('indestructible')) parsed.grantsKeyword.push('indestructible');
+    if (textLower.includes("trample")) parsed.grantsKeyword.push("trample");
+    if (textLower.includes("flying")) parsed.grantsKeyword.push("flying");
+    if (textLower.includes("lifelink")) parsed.grantsKeyword.push("lifelink");
+    if (textLower.includes("deathtouch"))
+      parsed.grantsKeyword.push("deathtouch");
+    if (textLower.includes("first strike"))
+      parsed.grantsKeyword.push("first strike");
+    if (textLower.includes("double strike"))
+      parsed.grantsKeyword.push("double strike");
+    if (textLower.includes("indestructible"))
+      parsed.grantsKeyword.push("indestructible");
 
     // Check for damage/destroy effects
     const damageMatch = textLower.match(/deals (\d+) damage/);
-    if (damageMatch && !textLower.includes('prevent')) {
-      parsed.type = 'combat_damage';
+    if (damageMatch && !textLower.includes("prevent")) {
+      parsed.type = "combat_damage";
       parsed.powerBoost = parseInt(damageMatch[1]); // Use as effective power boost
     }
 
-    if (textLower.includes('destroy') && textLower.includes('creature')) {
+    if (textLower.includes("destroy") && textLower.includes("creature")) {
       parsed.destroyTarget = true;
-      parsed.type = 'destroy';
+      parsed.type = "destroy";
     }
 
-    if (textLower.includes('exile') && textLower.includes('creature')) {
+    if (textLower.includes("exile") && textLower.includes("creature")) {
       parsed.exileTarget = true;
-      parsed.type = 'exile';
+      parsed.type = "exile";
     }
 
     // Check for prevention
     const preventMatch = textLower.match(/prevent (\d+) damage/);
     if (preventMatch) {
       parsed.damagePrevention = parseInt(preventMatch[1]);
-      parsed.type = 'toughness_boost';
+      parsed.type = "toughness_boost";
     }
 
     // If no effect found, return null
-    if (parsed.powerBoost === 0 && 
-        parsed.toughnessBoost === 0 && 
-        parsed.grantsKeyword.length === 0 &&
-        !parsed.destroyTarget &&
-        !parsed.exileTarget &&
-        parsed.damagePrevention === 0) {
+    if (
+      parsed.powerBoost === 0 &&
+      parsed.toughnessBoost === 0 &&
+      parsed.grantsKeyword.length === 0 &&
+      !parsed.destroyTarget &&
+      !parsed.exileTarget &&
+      parsed.damagePrevention === 0
+    ) {
       return null;
     }
 
@@ -1137,27 +1258,37 @@ export class CombatDecisionTree {
   private findTrickTargets(
     parsed: ParsedCombatTrick,
     attacks: AttackDecision[],
-    _aiPlayer: PlayerState
-  ): { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number } | null {
+    _aiPlayer: PlayerState,
+  ): {
+    targetId: string;
+    targetType: "attacker" | "blocker" | "none";
+    value: number;
+  } | null {
     // For destroy/exile effects, find valuable targets
     if (parsed.destroyTarget || parsed.exileTarget) {
-      const opponentCreatures = this.getOpponents()
-        .flatMap(opp => opp.battlefield.filter(p => p.type === 'creature'));
-      
+      const opponentCreatures = this.getOpponents().flatMap((opp) =>
+        opp.battlefield.filter((p) => p.type === "creature"),
+      );
+
       if (opponentCreatures.length === 0) return null;
 
       // Find most valuable creature to destroy
-      const bestTarget = opponentCreatures.reduce((best, creature) => {
-        const value = (creature.manaValue || 0) + (creature.power || 0) * 0.5;
-        const bestValue = best ? ((best.manaValue || 0) + (best.power || 0) * 0.5) : 0;
-        return value > bestValue ? creature : best;
-      }, null as Permanent | null);
+      const bestTarget = opponentCreatures.reduce(
+        (best, creature) => {
+          const value = (creature.manaValue || 0) + (creature.power || 0) * 0.5;
+          const bestValue = best
+            ? (best.manaValue || 0) + (best.power || 0) * 0.5
+            : 0;
+          return value > bestValue ? creature : best;
+        },
+        null as Permanent | null,
+      );
 
       if (!bestTarget) return null;
 
       return {
         targetId: bestTarget.id,
-        targetType: 'blocker',
+        targetType: "blocker",
         value: (bestTarget.manaValue || 0) + (bestTarget.power || 0),
       };
     }
@@ -1165,10 +1296,10 @@ export class CombatDecisionTree {
     // For pump effects, find best attacker to boost
     if (attacks.length > 0) {
       // Prioritize attackers that would die without boost
-      const vulnerableAttackers = attacks.filter(attack => {
+      const vulnerableAttackers = attacks.filter((attack) => {
         const creature = this.findCreatureById(attack.creatureId);
         if (!creature) return false;
-        
+
         // Check if creature would die in combat without boost
         return attack.riskLevel > 0.5;
       });
@@ -1181,7 +1312,7 @@ export class CombatDecisionTree {
 
         return {
           targetId: best.creatureId,
-          targetType: 'attacker',
+          targetType: "attacker",
           value: best.expectedValue,
         };
       }
@@ -1193,7 +1324,7 @@ export class CombatDecisionTree {
 
       return {
         targetId: bestAttack.creatureId,
-        targetType: 'attacker',
+        targetType: "attacker",
         value: bestAttack.expectedValue,
       };
     }
@@ -1206,8 +1337,12 @@ export class CombatDecisionTree {
    */
   private calculateTrickValue(
     parsed: ParsedCombatTrick,
-    target: { targetId: string; targetType: 'attacker' | 'blocker' | 'none'; value: number },
-    __aiPlayer: PlayerState
+    target: {
+      targetId: string;
+      targetType: "attacker" | "blocker" | "none";
+      value: number;
+    },
+    __aiPlayer: PlayerState,
   ): number {
     let value = 0;
 
@@ -1222,10 +1357,12 @@ export class CombatDecisionTree {
       // Check if this saves a creature from death
       const targetCreature = this.findCreatureById(target.targetId);
       if (targetCreature) {
-        const wouldDieWithout = (targetCreature.power || 0) < (targetCreature.toughness || 0);
-        const wouldLiveWith = (targetCreature.power || 0) + parsed.powerBoost >= 
-                             (targetCreature.toughness || 0) + parsed.toughnessBoost;
-        
+        const wouldDieWithout =
+          (targetCreature.power || 0) < (targetCreature.toughness || 0);
+        const wouldLiveWith =
+          (targetCreature.power || 0) + parsed.powerBoost >=
+          (targetCreature.toughness || 0) + parsed.toughnessBoost;
+
         if (wouldDieWithout && wouldLiveWith) {
           value += 0.5; // Saved our creature
         } else if (!wouldDieWithout) {
@@ -1235,14 +1372,14 @@ export class CombatDecisionTree {
     }
 
     // Value from keyword grants
-    if (parsed.grantsKeyword.includes('lifelink')) {
+    if (parsed.grantsKeyword.includes("lifelink")) {
       // Lifelink is very valuable
       value += 0.2;
     }
-    if (parsed.grantsKeyword.includes('trample')) {
+    if (parsed.grantsKeyword.includes("trample")) {
       value += 0.15;
     }
-    if (parsed.grantsKeyword.includes('indestructible')) {
+    if (parsed.grantsKeyword.includes("indestructible")) {
       value += 0.4;
     }
 
@@ -1258,22 +1395,22 @@ export class CombatDecisionTree {
    */
   private determineTrickTiming(
     parsed: ParsedCombatTrick,
-    attacks: AttackDecision[]
-  ): 'before_attackers' | 'before_blockers' | 'after_blockers' | 'damage' {
+    attacks: AttackDecision[],
+  ): "before_attackers" | "before_blockers" | "after_blockers" | "damage" {
     // Destroy/exile effects: wait until blockers to see what needs killing
     if (parsed.destroyTarget || parsed.exileTarget) {
-      return 'before_blockers';
+      return "before_blockers";
     }
 
-    // Pump effects: either before attackers (to force through) 
+    // Pump effects: either before attackers (to force through)
     // or after blockers (to save)
     if (attacks.length > 0 && parsed.powerBoost > parsed.toughnessBoost) {
       // Offensive pump: use before attackers to force damage through
-      return 'before_attackers';
+      return "before_attackers";
     }
 
     // Defensive pump: use after blockers to save creatures
-    return 'after_blockers';
+    return "after_blockers";
   }
 
   /**
@@ -1282,10 +1419,10 @@ export class CombatDecisionTree {
   private generateTrickReasoning(
     cardName: string,
     parsed: ParsedCombatTrick,
-    target: { targetId: string; targetType: string; value: number }
+    target: { targetId: string; targetType: string; value: number },
   ): string {
     const targetCreature = this.findCreatureById(target.targetId);
-    const targetName = targetCreature?.name || 'target';
+    const targetName = targetCreature?.name || "target";
 
     if (parsed.destroyTarget) {
       return `Use ${cardName} to destroy ${targetName} (high value target)`;
@@ -1296,11 +1433,12 @@ export class CombatDecisionTree {
     if (parsed.powerBoost > 0 || parsed.toughnessBoost > 0) {
       const boosts = [];
       if (parsed.powerBoost > 0) boosts.push(`+${parsed.powerBoost} power`);
-      if (parsed.toughnessBoost > 0) boosts.push(`+${parsed.toughnessBoost} toughness`);
-      return `Use ${cardName} to give ${targetName} ${boosts.join('/')}`;
+      if (parsed.toughnessBoost > 0)
+        boosts.push(`+${parsed.toughnessBoost} toughness`);
+      return `Use ${cardName} to give ${targetName} ${boosts.join("/")}`;
     }
     if (parsed.grantsKeyword.length > 0) {
-      return `Use ${cardName} to give ${targetName} ${parsed.grantsKeyword.join(', ')}`;
+      return `Use ${cardName} to give ${targetName} ${parsed.grantsKeyword.join(", ")}`;
     }
 
     return `Use ${cardName} during combat`;
@@ -1311,7 +1449,10 @@ export class CombatDecisionTree {
    */
   private calculateTotalExpectedValue(attacks: AttackDecision[]): number {
     if (attacks.length === 0) return 0;
-    return attacks.reduce((sum, attack) => sum + attack.expectedValue, 0) / attacks.length;
+    return (
+      attacks.reduce((sum, attack) => sum + attack.expectedValue, 0) /
+      attacks.length
+    );
   }
 
   /**
@@ -1319,7 +1460,10 @@ export class CombatDecisionTree {
    */
   private calculateTotalBlockValue(blocks: BlockDecision[]): number {
     if (blocks.length === 0) return 0;
-    return blocks.reduce((sum, block) => sum + block.expectedValue, 0) / blocks.length;
+    return (
+      blocks.reduce((sum, block) => sum + block.expectedValue, 0) /
+      blocks.length
+    );
   }
 
   /**
@@ -1327,7 +1471,7 @@ export class CombatDecisionTree {
    */
   private getOpponents(): PlayerState[] {
     return Object.values(this.gameState.players).filter(
-      (p) => p.id !== this.aiPlayerId
+      (p) => p.id !== this.aiPlayerId,
     );
   }
 
@@ -1338,20 +1482,35 @@ export class CombatDecisionTree {
   evaluateTrade(
     blockingCreature: Permanent,
     attackingCreature: Permanent,
-    context: { attackers: Permanent[]; blockers: Permanent[] }
+    context: { attackers: Permanent[]; blockers: Permanent[] },
   ): number {
     let tradeValue = 0;
 
-    // Calculate card advantage
     const blockerValue = blockingCreature.manaValue || 1;
     const attackerValue = attackingCreature.manaValue || 1;
 
-    // Positive if we're trading up (attacker is more expensive)
+    const attackerHasDeathtouch =
+      attackingCreature.keywords?.includes("deathtouch") || false;
+    const attackerIsIndestructible =
+      attackingCreature.keywords?.includes("indestructible") || false;
+    const blockerHasDeathtouch =
+      blockingCreature.keywords?.includes("deathtouch") || false;
+    const blockerIsIndestructible =
+      blockingCreature.keywords?.includes("indestructible") || false;
+
     tradeValue += (attackerValue - blockerValue) * 0.3;
 
-    // Check for 2-for-1 potential
-    const willKillBlocker = (attackingCreature.power || 0) >= (blockingCreature.toughness || 0);
-    const willKillAttacker = (blockingCreature.power || 0) >= (attackingCreature.toughness || 0);
+    // Deathtouch: any nonzero damage is lethal; Indestructible: immune to damage destruction
+    const willKillBlocker =
+      !blockerIsIndestructible &&
+      (attackerHasDeathtouch
+        ? (attackingCreature.power || 0) > 0
+        : (attackingCreature.power || 0) >= (blockingCreature.toughness || 0));
+    const willKillAttacker =
+      !attackerIsIndestructible &&
+      (blockerHasDeathtouch
+        ? (blockingCreature.power || 0) > 0
+        : (blockingCreature.power || 0) >= (attackingCreature.toughness || 0));
 
     if (willKillBlocker && willKillAttacker) {
       // 1-for-1 trade - neutral
@@ -1387,30 +1546,42 @@ export class CombatDecisionTree {
    */
   private hasETBValue(creature: Permanent): boolean {
     // Simplified check - in real implementation would check oracle text
-    const name = creature.name?.toLowerCase() || '';
+    const name = creature.name?.toLowerCase() || "";
     const keywords = creature.keywords || [];
-    
+
     // Common ETB patterns
-    const etbKeywords = ['deathrattle', 'entersthebattlefield', 'etb'];
-    const etbNames = ['draw', 'scry', 'create', 'token', 'destroy', 'exile', 'counter'];
-    
-    return etbKeywords.some(k => keywords.includes(k)) ||
-           etbNames.some(n => name.includes(n));
+    const etbKeywords = ["deathrattle", "entersthebattlefield", "etb"];
+    const etbNames = [
+      "draw",
+      "scry",
+      "create",
+      "token",
+      "destroy",
+      "exile",
+      "counter",
+    ];
+
+    return (
+      etbKeywords.some((k) => keywords.includes(k)) ||
+      etbNames.some((n) => name.includes(n))
+    );
   }
 
   /**
    * Check if creature has leave-the-battlefield value
    */
   private hasLTBValue(creature: Permanent): boolean {
-    const name = creature.name?.toLowerCase() || '';
+    const name = creature.name?.toLowerCase() || "";
     const keywords = creature.keywords || [];
-    
+
     // Common LTB patterns
-    const ltbKeywords = ['deathrattle', 'leavesthebattlefield', 'ltb'];
-    const ltbNames = ['when', 'dies', 'leave', 'sacrifice'];
-    
-    return ltbKeywords.some(k => keywords.includes(k)) ||
-           ltbNames.some(n => name.includes(n));
+    const ltbKeywords = ["deathrattle", "leavesthebattlefield", "ltb"];
+    const ltbNames = ["when", "dies", "leave", "sacrifice"];
+
+    return (
+      ltbKeywords.some((k) => keywords.includes(k)) ||
+      ltbNames.some((n) => name.includes(n))
+    );
   }
 
   /**
@@ -1420,35 +1591,64 @@ export class CombatDecisionTree {
   shouldMultiBlock(
     attacker: Permanent,
     availableBlockers: Permanent[],
-    context: { attackers: Permanent[]; blockers: Permanent[] }
-  ): { shouldMultiBlock: boolean; selectedBlockers: Permanent[]; reasoning: string } {
+    context: { attackers: Permanent[]; blockers: Permanent[] },
+  ): {
+    shouldMultiBlock: boolean;
+    selectedBlockers: Permanent[];
+    reasoning: string;
+  } {
     const attackers = context.attackers;
-    
+
     // Don't multi-block if we only have 1 creature
     if (availableBlockers.length < 2) {
-      return { shouldMultiBlock: false, selectedBlockers: [], reasoning: 'Insufficient blockers' };
+      return {
+        shouldMultiBlock: false,
+        selectedBlockers: [],
+        reasoning: "Insufficient blockers",
+      };
+    }
+
+    // Don't multi-block deathtouch creatures — a single blocker is sufficient
+    // since any nonzero damage from deathtouch is lethal
+    if (attacker.keywords?.includes("deathtouch")) {
+      return {
+        shouldMultiBlock: false,
+        selectedBlockers: [],
+        reasoning: "Single blocker sufficient vs deathtouch",
+      };
+    }
+
+    // Don't multi-block indestructible creatures — we can't kill them via damage
+    if (attacker.keywords?.includes("indestructible")) {
+      return {
+        shouldMultiBlock: false,
+        selectedBlockers: [],
+        reasoning: "Cannot kill indestructible via combat damage",
+      };
     }
 
     // High threat attacker - more likely to multi-block
     const threatLevel = this.evaluateAttackerThreat(attacker);
-    
+
     // Expert aggressively multi-blocks high-threat creatures
-    const multiBlockThreshold = this.config.cardAdvantageWeight >= 2.0 ? 0.4 : 0.6;
+    const multiBlockThreshold =
+      this.config.cardAdvantageWeight >= 2.0 ? 0.4 : 0.6;
 
     if (threatLevel < multiBlockThreshold) {
-      return { 
-        shouldMultiBlock: false, 
-        selectedBlockers: [], 
-        reasoning: `Attacker threat level ${threatLevel.toFixed(2)} below threshold` 
+      return {
+        shouldMultiBlock: false,
+        selectedBlockers: [],
+        reasoning: `Attacker threat level ${threatLevel.toFixed(2)} below threshold`,
       };
     }
 
     // Check if attacker has trample - good reason to multi-block
-    const hasTrample = attacker.keywords?.includes('trample');
-    
+    const hasTrample = attacker.keywords?.includes("trample");
+
     // Check if we're at low life - protect ourselves
     const aiPlayer = this.gameState.players[this.aiPlayerId];
-    const atLowLife = aiPlayer && aiPlayer.life <= (this.config.lifeThreshold || 10);
+    const atLowLife =
+      aiPlayer && aiPlayer.life <= (this.config.lifeThreshold || 10);
 
     // Select best 2 blockers
     const sortedBlockers = [...availableBlockers].sort((a, b) => {
@@ -1457,16 +1657,16 @@ export class CombatDecisionTree {
     });
 
     const selectedBlockers = sortedBlockers.slice(0, 2);
-    
-    let reasoning = `Multi-blocking with ${selectedBlockers.map(b => b.name).join(', ')}`;
-    if (hasTrample) reasoning += ' (trample prevention)';
-    if (atLowLife) reasoning += ' (low life protection)';
+
+    let reasoning = `Multi-blocking with ${selectedBlockers.map((b) => b.name).join(", ")}`;
+    if (hasTrample) reasoning += " (trample prevention)";
+    if (atLowLife) reasoning += " (low life protection)";
     reasoning += ` [threat: ${threatLevel.toFixed(2)}]`;
 
     return {
       shouldMultiBlock: true,
       selectedBlockers,
-      reasoning
+      reasoning,
     };
   }
 
@@ -1482,10 +1682,10 @@ export class CombatDecisionTree {
 
     // Keywords add threat
     const keywords = attacker.keywords || [];
-    if (keywords.includes('flying')) threat += 0.15;
-    if (keywords.includes('trample')) threat += 0.15;
-    if (keywords.includes('lifelink')) threat += 0.1;
-    if (keywords.includes('.double_strike')) threat += 0.15;
+    if (keywords.includes("flying")) threat += 0.15;
+    if (keywords.includes("trample")) threat += 0.15;
+    if (keywords.includes("lifelink")) threat += 0.1;
+    if (keywords.includes(".double_strike")) threat += 0.15;
 
     // High mana value = more threatening
     const manaValue = attacker.manaValue || 0;
@@ -1501,7 +1701,7 @@ export class CombatDecisionTree {
 export function generateAttackDecisions(
   gameState: GameState,
   aiPlayerId: string,
-  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+  difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
 ): CombatPlan {
   const ai = new CombatDecisionTree(gameState, aiPlayerId, difficulty);
   return ai.generateAttackPlan();
@@ -1514,7 +1714,7 @@ export function generateBlockingDecisions(
   gameState: GameState,
   aiPlayerId: string,
   attackers: Permanent[],
-  difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+  difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
 ): CombatPlan {
   const ai = new CombatDecisionTree(gameState, aiPlayerId, difficulty);
   return ai.generateBlockingPlan(attackers);
