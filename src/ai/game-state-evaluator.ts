@@ -916,3 +916,149 @@ export function quickScore(
   const evaluation = evaluateGameState(gameState, playerId, difficulty);
   return evaluation.totalScore;
 }
+
+export interface ProposedPlay {
+  card: HandCard;
+  type: 'cast_creature' | 'cast_instant' | 'cast_sorcery' | 'play_land';
+  manaCost: number;
+  producedPermanent?: {
+    type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker';
+    power?: number;
+    toughness?: number;
+    loyalty?: number;
+  };
+}
+
+export interface ProjectionResult {
+  playNowScore: number;
+  holdScore: number;
+  recommendation: 'play' | 'hold';
+  scoreDelta: number;
+}
+
+function deepCloneState(state: GameState): GameState {
+  const cloned_players: { [playerId: string]: PlayerState } = {};
+  for (const [id, p] of Object.entries(state.players)) {
+    cloned_players[id] = {
+      ...p,
+      hand: [...p.hand],
+      battlefield: p.battlefield.map((perm) => ({ ...perm })),
+      graveyard: [...p.graveyard],
+      exile: [...p.exile],
+      manaPool: { ...p.manaPool },
+      commanderDamage: { ...p.commanderDamage },
+    };
+  }
+  return {
+    ...state,
+    players: cloned_players,
+    stack: state.stack.map((s) => ({ ...s })),
+    turnInfo: { ...state.turnInfo },
+  };
+}
+
+export function projectBoardState(
+  current_state: GameState,
+  play: ProposedPlay
+): GameState {
+  const projected = deepCloneState(current_state);
+  const player_id = Object.keys(projected.players)[0];
+  const player = projected.players[player_id];
+
+  const card_index = player.hand.findIndex(
+    (c) => c.cardInstanceId === play.card.cardInstanceId
+  );
+  if (card_index !== -1) {
+    player.hand.splice(card_index, 1);
+  }
+
+  if (play.type === 'play_land') {
+    const new_permanent: Permanent = {
+      cardInstanceId: `proj-land-${play.card.cardInstanceId}`,
+      id: `proj-land-${play.card.cardInstanceId}`,
+      name: play.card.name,
+      type: 'land',
+      controller: player_id,
+      tapped: false,
+      manaValue: play.card.manaValue,
+    };
+    player.battlefield.push(new_permanent);
+    player.landsPlayedThisTurn = (player.landsPlayedThisTurn || 0) + 1;
+  } else if (play.producedPermanent) {
+    const new_permanent: Permanent = {
+      cardInstanceId: `proj-${play.card.cardInstanceId}`,
+      id: `proj-${play.card.cardInstanceId}`,
+      name: play.card.name,
+      type: play.producedPermanent.type,
+      controller: player_id,
+      tapped: false,
+      manaValue: play.card.manaValue,
+      power: play.producedPermanent.power,
+      toughness: play.producedPermanent.toughness,
+      loyalty: play.producedPermanent.loyalty,
+      summoningSickness: play.producedPermanent.type === 'creature',
+    };
+    player.battlefield.push(new_permanent);
+  } else {
+    player.graveyard.push(play.card.cardInstanceId);
+  }
+
+  const generic = Math.min(play.manaCost, player.manaPool.generic || 0);
+  player.manaPool.generic -= generic;
+  const remaining = play.manaCost - generic;
+  const colors = ['white', 'blue', 'black', 'red', 'green'] as const;
+  for (const color of colors) {
+    const deduction = Math.min(remaining, player.manaPool[color] || 0);
+    (player.manaPool as Record<string, number>)[color] -= deduction;
+  }
+
+  return projected;
+}
+
+function advanceOneTurn(state: GameState, player_id: string): GameState {
+  const projected = deepCloneState(state);
+  const opponent_ids = Object.keys(projected.players).filter((id) => id !== player_id);
+  const next_player = opponent_ids[0] || player_id;
+
+  projected.turnInfo.currentTurn += 1;
+  projected.turnInfo.currentPlayer = next_player;
+  projected.turnInfo.priority = next_player;
+  projected.turnInfo.phase = 'precombat_main';
+
+  for (const id of Object.keys(projected.players)) {
+    const p = projected.players[id];
+    p.library = Math.max(0, p.library - 1);
+    for (const perm of p.battlefield) {
+      if (perm.controller === id) {
+        perm.tapped = false;
+        perm.summoningSickness = false;
+      }
+    }
+    p.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 0, colorless: 0, generic: 0 };
+  }
+
+  return projected;
+}
+
+export function compareHoldVsPlay(
+  current_state: GameState,
+  play: ProposedPlay,
+  player_id: string,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+): ProjectionResult {
+  const played_state = projectBoardState(current_state, play);
+  const played_next_turn = advanceOneTurn(played_state, player_id);
+  const play_now_score = quickScore(played_next_turn, player_id, difficulty);
+
+  const held_next_turn = advanceOneTurn(current_state, player_id);
+  const hold_score = quickScore(held_next_turn, player_id, difficulty);
+
+  const score_delta = play_now_score - hold_score;
+
+  return {
+    playNowScore: play_now_score,
+    holdScore: hold_score,
+    recommendation: score_delta >= 0 ? 'play' : 'hold',
+    scoreDelta: score_delta,
+  };
+}
