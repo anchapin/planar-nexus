@@ -23,10 +23,21 @@ import type {
   AIHandCard as HandCard,
   AITurnInfo as TurnInfo,
   AIStackObject as StackObject,
-} from '@/lib/game-state/types';
+} from "@/lib/game-state/types";
+import {
+  getSequencingRecommendation,
+  computeCurveConformance,
+} from "./mana-sequencing";
 
 // Re-export for backward compatibility
-export type { GameState, PlayerState, Permanent, HandCard, TurnInfo, StackObject };
+export type {
+  GameState,
+  PlayerState,
+  Permanent,
+  HandCard,
+  TurnInfo,
+  StackObject,
+};
 
 /**
  * Represents a threat assessment for a permanent
@@ -35,7 +46,7 @@ export interface ThreatAssessment {
   permanentId: string;
   threatLevel: number; // 0-1 scale
   reason: string;
-  urgency: 'immediate' | 'soon' | 'eventual' | 'low';
+  urgency: "immediate" | "soon" | "eventual" | "low";
 }
 
 /**
@@ -87,6 +98,9 @@ export interface EvaluationWeights {
 
   // Stack interaction
   stackPressureScore: number;
+
+  // Mana sequencing
+  castedSequenceScore: number;
 }
 
 /**
@@ -116,6 +130,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     winConditionProgress: 0.5,
     inevitability: 0.3,
     stackPressureScore: 0.3,
+    castedSequenceScore: 0.2,
   },
   medium: {
     // Medium AI: Balanced evaluation, understands basics
@@ -138,6 +153,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     winConditionProgress: 1.5,
     inevitability: 0.8,
     stackPressureScore: 1.0,
+    castedSequenceScore: 0.5,
   },
   hard: {
     // Hard AI: Values strategic advantage and tempo
@@ -160,6 +176,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     winConditionProgress: 2.5,
     inevitability: 1.5,
     stackPressureScore: 1.5,
+    castedSequenceScore: 0.8,
   },
   expert: {
     // Expert AI: Near-optimal weight distribution
@@ -182,6 +199,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     winConditionProgress: 4.0,
     inevitability: 2.5,
     stackPressureScore: 2.0,
+    castedSequenceScore: 1.2,
   },
 };
 
@@ -210,6 +228,7 @@ export interface DetailedEvaluation {
     winConditionProgress: number;
     inevitability: number;
     stackPressureScore: number;
+    castedSequenceScore: number;
   };
   threats: ThreatAssessment[];
   opportunities: OpportunityAssessment[];
@@ -227,7 +246,7 @@ export class GameStateEvaluator {
   constructor(
     gameState: GameState,
     evaluatingPlayerId: string,
-    difficulty: 'easy' | 'medium' | 'hard' | 'expert' = 'medium'
+    difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
   ) {
     this.gameState = gameState;
     this.evaluatingPlayerId = evaluatingPlayerId;
@@ -272,16 +291,24 @@ export class GameStateEvaluator {
       cardSelection: this.evaluateCardSelection(player),
       graveyardValue: this.evaluateGraveyardValue(player),
       synergy: this.evaluateSynergy(player),
-      winConditionProgress: this.evaluateWinConditionProgress(player, opponents),
+      winConditionProgress: this.evaluateWinConditionProgress(
+        player,
+        opponents,
+      ),
       inevitability: this.evaluateInevitability(player, opponents),
       stackPressureScore: this.evaluateStackPressureScore(player, opponents),
+      castedSequenceScore: this.evaluateCastedSequenceScore(player),
     };
 
     const totalScore = this.calculateTotalScore(factors);
 
     const threats = this.assessThreats(player, opponents);
     const opportunities = this.identifyOpportunities(player, opponents);
-    const recommendedActions = this.generateRecommendations(factors, threats, opportunities);
+    const recommendedActions = this.generateRecommendations(
+      factors,
+      threats,
+      opportunities,
+    );
 
     return {
       totalScore,
@@ -297,14 +324,14 @@ export class GameStateEvaluator {
    */
   private getOpponents(): PlayerState[] {
     return Object.values(this.gameState.players).filter(
-      (p) => p.id !== this.evaluatingPlayerId
+      (p) => p.id !== this.evaluatingPlayerId,
     );
   }
 
   /**
    * Calculate total score from all factors
    */
-  private calculateTotalScore(factors: DetailedEvaluation['factors']): number {
+  private calculateTotalScore(factors: DetailedEvaluation["factors"]): number {
     return (
       factors.lifeScore * this.weights.lifeScore +
       factors.poisonScore * this.weights.poisonScore +
@@ -324,7 +351,8 @@ export class GameStateEvaluator {
       factors.synergy * this.weights.synergy +
       factors.winConditionProgress * this.weights.winConditionProgress +
       factors.inevitability * this.weights.inevitability +
-      factors.stackPressureScore * this.weights.stackPressureScore
+      factors.stackPressureScore * this.weights.stackPressureScore +
+      factors.castedSequenceScore * this.weights.castedSequenceScore
     );
   }
 
@@ -332,7 +360,10 @@ export class GameStateEvaluator {
    * Evaluate life total score
    * Returns normalized score (-1 to 1, positive is good)
    */
-  private evaluateLifeScore(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateLifeScore(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const avgOpponentLife =
       opponents.reduce((sum, opp) => sum + opp.life, 0) / opponents.length;
     const lifeDiff = player.life - avgOpponentLife;
@@ -354,14 +385,18 @@ export class GameStateEvaluator {
    * Evaluate card advantage
    * Compares hand size + battlefield cards vs opponents
    */
-  private evaluateCardAdvantage(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateCardAdvantage(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const playerResources =
       player.hand.length + player.battlefield.length + player.graveyard.length;
 
     const avgOpponentResources =
       opponents.reduce(
-        (sum, opp) => sum + opp.hand.length + opp.battlefield.length + opp.graveyard.length,
-        0
+        (sum, opp) =>
+          sum + opp.hand.length + opp.battlefield.length + opp.graveyard.length,
+        0,
       ) / opponents.length;
 
     const advantageDiff = playerResources - avgOpponentResources;
@@ -378,14 +413,15 @@ export class GameStateEvaluator {
 
     // Calculate average mana value (lower is generally better early game)
     const avgManaValue =
-      player.hand.reduce((sum, card) => sum + card.manaValue, 0) / player.hand.length;
+      player.hand.reduce((sum, card) => sum + card.manaValue, 0) /
+      player.hand.length;
 
     // Ideal hand curve depends on turn, but 2-3 is generally good
     const curveScore = 1 - Math.abs(avgManaValue - 2.5) / 3;
 
     // Bonus for having lands/mana sources
-    const hasManaSources = player.hand.some(
-      (card) => card.type.toLowerCase().includes('land')
+    const hasManaSources = player.hand.some((card) =>
+      card.type.toLowerCase().includes("land"),
     );
 
     return curveScore * (hasManaSources ? 1 : 0.5);
@@ -405,16 +441,22 @@ export class GameStateEvaluator {
   /**
    * Evaluate creature power on battlefield
    */
-  private evaluateCreaturePower(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateCreaturePower(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const playerCreatures = player.battlefield.filter(
-      (p) => p.type === 'creature' && !p.tapped
+      (p) => p.type === "creature" && !p.tapped,
     );
-    const playerPower = playerCreatures.reduce((sum, c) => sum + (c.power || 0), 0);
+    const playerPower = playerCreatures.reduce(
+      (sum, c) => sum + (c.power || 0),
+      0,
+    );
 
     const avgOpponentPower =
       opponents.reduce((sum, opp) => {
         const oppCreatures = opp.battlefield.filter(
-          (p) => p.type === 'creature' && !p.tapped
+          (p) => p.type === "creature" && !p.tapped,
         );
         return sum + oppCreatures.reduce((s, c) => s + (c.power || 0), 0);
       }, 0) / opponents.length;
@@ -428,19 +470,22 @@ export class GameStateEvaluator {
   /**
    * Evaluate creature toughness on battlefield
    */
-  private evaluateCreatureToughness(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateCreatureToughness(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const playerCreatures = player.battlefield.filter(
-      (p) => p.type === 'creature' && !p.tapped
+      (p) => p.type === "creature" && !p.tapped,
     );
     const playerToughness = playerCreatures.reduce(
       (sum, c) => sum + (c.toughness || 0),
-      0
+      0,
     );
 
     const avgOpponentToughness =
       opponents.reduce((sum, opp) => {
         const oppCreatures = opp.battlefield.filter(
-          (p) => p.type === 'creature' && !p.tapped
+          (p) => p.type === "creature" && !p.tapped,
         );
         return sum + oppCreatures.reduce((s, c) => s + (c.toughness || 0), 0);
       }, 0) / opponents.length;
@@ -454,13 +499,19 @@ export class GameStateEvaluator {
   /**
    * Evaluate creature count advantage
    */
-  private evaluateCreatureCount(player: PlayerState, opponents: PlayerState[]): number {
-    const playerCreatures = player.battlefield.filter((p) => p.type === 'creature').length;
+  private evaluateCreatureCount(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
+    const playerCreatures = player.battlefield.filter(
+      (p) => p.type === "creature",
+    ).length;
 
     const avgOpponentCreatures =
       opponents.reduce(
-        (sum, opp) => sum + opp.battlefield.filter((p) => p.type === 'creature').length,
-        0
+        (sum, opp) =>
+          sum + opp.battlefield.filter((p) => p.type === "creature").length,
+        0,
       ) / opponents.length;
 
     const countDiff = playerCreatures - avgOpponentCreatures;
@@ -472,11 +523,15 @@ export class GameStateEvaluator {
   /**
    * Evaluate overall permanent advantage
    */
-  private evaluatePermanentAdvantage(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluatePermanentAdvantage(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const playerPermanents = player.battlefield.length;
 
     const avgOpponentPermanents =
-      opponents.reduce((sum, opp) => sum + opp.battlefield.length, 0) / opponents.length;
+      opponents.reduce((sum, opp) => sum + opp.battlefield.length, 0) /
+      opponents.length;
 
     const permanentDiff = playerPermanents - avgOpponentPermanents;
 
@@ -488,7 +543,10 @@ export class GameStateEvaluator {
    * Evaluate available mana
    */
   private evaluateManaAvailable(player: PlayerState): number {
-    const totalMana = Object.values(player.manaPool).reduce((sum, amount) => sum + amount, 0);
+    const totalMana = Object.values(player.manaPool).reduce(
+      (sum, amount) => sum + amount,
+      0,
+    );
 
     // Having unused mana is inefficient, but having mana available is good
     // Normalize: 3-5 mana is ideal
@@ -500,7 +558,10 @@ export class GameStateEvaluator {
   /**
    * Evaluate tempo advantage based on turn and phase
    */
-  private evaluateTempoAdvantage(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateTempoAdvantage(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const isCurrentPlayer = this.gameState.turnInfo.currentPlayer === player.id;
     const hasPriority = this.gameState.turnInfo.priority === player.id;
 
@@ -511,14 +572,15 @@ export class GameStateEvaluator {
 
     // Check if we have more untapped lands/opportunities than opponents
     const playerUntappedLands = player.battlefield.filter(
-      (p) => p.type === 'land' && !p.tapped
+      (p) => p.type === "land" && !p.tapped,
     ).length;
 
     const avgOpponentUntappedLands =
       opponents.reduce(
         (sum, opp) =>
-          sum + opp.battlefield.filter((p) => p.type === 'land' && !p.tapped).length,
-        0
+          sum +
+          opp.battlefield.filter((p) => p.type === "land" && !p.tapped).length,
+        0,
       ) / opponents.length;
 
     if (playerUntappedLands > avgOpponentUntappedLands) {
@@ -531,21 +593,28 @@ export class GameStateEvaluator {
   /**
    * Evaluate commander damage (Commander format)
    */
-  private evaluateCommanderDamage(player: PlayerState, opponents: PlayerState[]): number {
-    if (!player.commanderDamage || Object.keys(player.commanderDamage).length === 0) {
+  private evaluateCommanderDamage(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
+    if (
+      !player.commanderDamage ||
+      Object.keys(player.commanderDamage).length === 0
+    ) {
       return 0;
     }
 
     // Check if we're dealing commander damage
-    const damageDealt = Object.values(player.commanderDamage).reduce((sum, dmg) => sum + dmg, 0);
+    const damageDealt = Object.values(player.commanderDamage).reduce(
+      (sum, dmg) => sum + dmg,
+      0,
+    );
 
     // Check if we're taking commander damage
-    const damageTaken =
-      opponents.reduce(
-        (sum, opp) =>
-          sum + (opp.commanderDamage?.[player.id] || 0),
-        0
-      );
+    const damageTaken = opponents.reduce(
+      (sum, opp) => sum + (opp.commanderDamage?.[player.id] || 0),
+      0,
+    );
 
     // 21 commander damage is lethal
     return (damageDealt - damageTaken) / 21;
@@ -564,7 +633,7 @@ export class GameStateEvaluator {
     const commanderOnBattlefield = player.battlefield.some(
       (p) =>
         (commanderZone.commander && p.id === commanderZone.commander.id) ||
-        (commanderZone.partner && p.id === commanderZone.partner.id)
+        (commanderZone.partner && p.id === commanderZone.partner.id),
     );
 
     return commanderOnBattlefield ? 1 : 0;
@@ -580,7 +649,7 @@ export class GameStateEvaluator {
 
     for (const card of player.hand) {
       // Bonus for interactive cards (instants, flash)
-      if (card.type.toLowerCase().includes('instant')) {
+      if (card.type.toLowerCase().includes("instant")) {
         qualityScore += 0.2;
       }
 
@@ -617,9 +686,9 @@ export class GameStateEvaluator {
     let synergyScore = 0;
 
     // Check for creature synergy (lords, tribal, etc.)
-    const creatures = player.battlefield.filter((p) => p.type === 'creature');
+    const creatures = player.battlefield.filter((p) => p.type === "creature");
     const handCreatures = player.hand.filter((card) =>
-      card.type.toLowerCase().includes('creature')
+      card.type.toLowerCase().includes("creature"),
     );
 
     // Bonus for having creatures that can work together
@@ -628,11 +697,11 @@ export class GameStateEvaluator {
     }
 
     // Check for mana ramp synergy
-    const lands = player.battlefield.filter((p) => p.type === 'land');
+    const lands = player.battlefield.filter((p) => p.type === "land");
     const manaRampInHand = player.hand.some(
       (card) =>
-        card.name.toLowerCase().includes('ramp') ||
-        card.name.toLowerCase().includes('mana')
+        card.name.toLowerCase().includes("ramp") ||
+        card.name.toLowerCase().includes("mana"),
     );
 
     if (lands.length >= 3 && manaRampInHand) {
@@ -645,7 +714,10 @@ export class GameStateEvaluator {
   /**
    * Evaluate progress toward win conditions
    */
-  private evaluateWinConditionProgress(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateWinConditionProgress(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     let progress = 0;
 
     // Aggro strategy: low opponent life
@@ -659,7 +731,9 @@ export class GameStateEvaluator {
     if (minOpponentLibrary <= 10) progress += 0.4;
 
     // Poison strategy: high poison counters on opponent
-    const maxOpponentPoison = Math.max(...opponents.map((opp) => opp.poisonCounters));
+    const maxOpponentPoison = Math.max(
+      ...opponents.map((opp) => opp.poisonCounters),
+    );
     if (maxOpponentPoison >= 5) progress += 0.5;
     if (maxOpponentPoison >= 8) progress += 0.3;
 
@@ -676,7 +750,10 @@ export class GameStateEvaluator {
   /**
    * Evaluate inevitability (likelihood of winning if game goes long)
    */
-  private evaluateInevitability(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateInevitability(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     let inevitability = 0;
 
     // Card advantage leads to inevitability
@@ -696,7 +773,9 @@ export class GameStateEvaluator {
     }
 
     // Planeswalkers generate inevitability
-    const planeswalkers = player.battlefield.filter((p) => p.type === 'planeswalker');
+    const planeswalkers = player.battlefield.filter(
+      (p) => p.type === "planeswalker",
+    );
     if (planeswalkers.length > 0) {
       inevitability += 0.3 * planeswalkers.length;
     }
@@ -709,23 +788,28 @@ export class GameStateEvaluator {
    * Positive when the AI has responses, negative when opponents have open mana
    * and instant-speed answers
    */
-  private evaluateStackPressureScore(player: PlayerState, opponents: PlayerState[]): number {
+  private evaluateStackPressureScore(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): number {
     const stack = this.gameState.stack || [];
 
     if (stack.length === 0) {
       const opponentOpenMana = opponents.reduce((sum, opp) => {
         const oppMana = Object.values(opp.manaPool).reduce((s, m) => s + m, 0);
-        const untappedLands = opp.battlefield.filter((p) => p.type === 'land' && !p.tapped).length;
+        const untappedLands = opp.battlefield.filter(
+          (p) => p.type === "land" && !p.tapped,
+        ).length;
         return sum + Math.max(oppMana, untappedLands);
       }, 0);
 
       const hasInstants = player.hand.some((card) =>
-        card.type.toLowerCase().includes('instant')
+        card.type.toLowerCase().includes("instant"),
       );
       const hasFlashCreatures = player.hand.some(
         (card) =>
-          card.type.toLowerCase().includes('creature') &&
-          card.keywords?.some((kw) => kw.toLowerCase() === 'flash')
+          card.type.toLowerCase().includes("creature") &&
+          card.keywords?.some((kw) => kw.toLowerCase() === "flash"),
       );
 
       if (hasInstants || hasFlashCreatures) {
@@ -739,11 +823,11 @@ export class GameStateEvaluator {
       return 0;
     }
 
-    const opponentStackItems = stack.filter(
-      (item) => opponents.some((opp) => opp.id === item.controller)
+    const opponentStackItems = stack.filter((item) =>
+      opponents.some((opp) => opp.id === item.controller),
     );
     const playerStackItems = stack.filter(
-      (item) => item.controller === this.evaluatingPlayerId
+      (item) => item.controller === this.evaluatingPlayerId,
     );
 
     let score = 0;
@@ -752,20 +836,23 @@ export class GameStateEvaluator {
       score -= 0.3;
       const hasCounterspells = player.hand.some(
         (card) =>
-          card.type.toLowerCase().includes('instant') &&
-          card.name.toLowerCase().includes('counter')
+          card.type.toLowerCase().includes("instant") &&
+          card.name.toLowerCase().includes("counter"),
       );
       if (hasCounterspells) score += 0.2;
     }
 
     if (opponentStackItems.length > 0) {
-      const playerOpenMana = Object.values(player.manaPool).reduce((s, m) => s + m, 0);
+      const playerOpenMana = Object.values(player.manaPool).reduce(
+        (s, m) => s + m,
+        0,
+      );
       const untappedLands = player.battlefield.filter(
-        (p) => p.type === 'land' && !p.tapped
+        (p) => p.type === "land" && !p.tapped,
       ).length;
       const availableMana = Math.max(playerOpenMana, untappedLands);
       const hasInstants = player.hand.some((card) =>
-        card.type.toLowerCase().includes('instant')
+        card.type.toLowerCase().includes("instant"),
       );
 
       if (hasInstants && availableMana >= 2) {
@@ -781,39 +868,79 @@ export class GameStateEvaluator {
   /**
    * Assess threats from opponents' battlefield
    */
-  private assessThreats(player: PlayerState, opponents: PlayerState[]): ThreatAssessment[] {
+  private evaluateCastedSequenceScore(player: PlayerState): number {
+    const turnNumber = this.gameState.turnInfo.currentTurn;
+    if (turnNumber > 6) {
+      return computeCurveConformance(player.hand) * 0.5;
+    }
+
+    const totalMana = Object.values(player.manaPool).reduce(
+      (sum, amount) => sum + amount,
+      0,
+    );
+    const untappedLands = player.battlefield.filter(
+      (p) => p.type === "land" && !p.tapped,
+    ).length;
+    const tappedLands = player.battlefield.filter(
+      (p) => p.type === "land" && p.tapped,
+    ).length;
+    const hasChecklands = player.battlefield.some(
+      (p) =>
+        p.type === "land" &&
+        p.keywords?.some((kw) => kw.toLowerCase() === "enters-tapped"),
+    );
+
+    const recommendation = getSequencingRecommendation(
+      player.hand,
+      totalMana,
+      untappedLands,
+      turnNumber,
+      hasChecklands,
+      tappedLands,
+    );
+
+    const curveBonus = computeCurveConformance(player.hand) * 0.3;
+
+    return Math.max(-1, Math.min(1, recommendation.score + curveBonus));
+  }
+
+  private assessThreats(
+    player: PlayerState,
+    opponents: PlayerState[],
+  ): ThreatAssessment[] {
     const threats: ThreatAssessment[] = [];
 
     for (const opponent of opponents) {
       for (const permanent of opponent.battlefield) {
         let threatLevel = 0;
-        let reason = '';
-        let urgency: ThreatAssessment['urgency'] = 'low';
+        let reason = "";
+        let urgency: ThreatAssessment["urgency"] = "low";
 
-        if (permanent.type === 'creature') {
+        if (permanent.type === "creature") {
           // Untapped creatures are threats
           if (!permanent.tapped) {
             const power = permanent.power || 0;
             threatLevel = Math.min(1, power / 10);
             reason = `${power} power creature can attack`;
-            urgency = power >= 5 ? 'immediate' : power >= 3 ? 'soon' : 'eventual';
+            urgency =
+              power >= 5 ? "immediate" : power >= 3 ? "soon" : "eventual";
           }
-        } else if (permanent.type === 'planeswalker') {
+        } else if (permanent.type === "planeswalker") {
           // Planeswalkers are major threats
           const loyalty = permanent.loyalty || 0;
           threatLevel = 0.7;
           reason = `Planeswalker with ${loyalty} loyalty`;
-          urgency = loyalty >= 5 ? 'immediate' : 'soon';
-        } else if (permanent.type === 'enchantment') {
+          urgency = loyalty >= 5 ? "immediate" : "soon";
+        } else if (permanent.type === "enchantment") {
           // Enchantures can be problematic
           threatLevel = 0.5;
-          reason = 'Active enchantment';
-          urgency = 'eventual';
-        } else if (permanent.type === 'artifact') {
+          reason = "Active enchantment";
+          urgency = "eventual";
+        } else if (permanent.type === "artifact") {
           // Artifacts vary in threat level
           threatLevel = 0.4;
-          reason = 'Active artifact';
-          urgency = 'eventual';
+          reason = "Active artifact";
+          urgency = "eventual";
         }
 
         if (threatLevel > 0) {
@@ -843,29 +970,34 @@ export class GameStateEvaluator {
    */
   private identifyOpportunities(
     player: PlayerState,
-    opponents: PlayerState[]
+    opponents: PlayerState[],
   ): OpportunityAssessment[] {
     const opportunities: OpportunityAssessment[] = [];
 
     // Opportunity: Cast creatures if ahead on board
     const creaturesInHand = player.hand.filter((card) =>
-      card.type.toLowerCase().includes('creature')
+      card.type.toLowerCase().includes("creature"),
     );
     const opponentCreatures = opponents.reduce(
       (sum, opp) =>
-        sum + opp.battlefield.filter((p) => p.type === 'creature' && !p.tapped).length,
-      0
+        sum +
+        opp.battlefield.filter((p) => p.type === "creature" && !p.tapped)
+          .length,
+      0,
     );
     const ourUntappedCreatures = player.battlefield.filter(
-      (p) => p.type === 'creature' && !p.tapped
+      (p) => p.type === "creature" && !p.tapped,
     ).length;
 
-    if (creaturesInHand.length > 0 && ourUntappedCreatures > opponentCreatures) {
+    if (
+      creaturesInHand.length > 0 &&
+      ourUntappedCreatures > opponentCreatures
+    ) {
       opportunities.push({
-        description: 'Cast creature to maintain board advantage',
+        description: "Cast creature to maintain board advantage",
         value: 0.6,
         risk: 0.2,
-        requiredResources: ['mana'],
+        requiredResources: ["mana"],
       });
     }
 
@@ -873,37 +1005,39 @@ export class GameStateEvaluator {
     const minOpponentLife = Math.min(...opponents.map((opp) => opp.life));
     if (ourUntappedCreatures > 0 && minOpponentLife <= 15) {
       opportunities.push({
-        description: 'Attack for lethal damage',
+        description: "Attack for lethal damage",
         value: 0.9,
         risk: 0.3,
-        requiredResources: ['creatures'],
+        requiredResources: ["creatures"],
       });
     }
 
     // Opportunity: Hold up mana for interaction
     const instantsInHand = player.hand.filter((card) =>
-      card.type.toLowerCase().includes('instant')
+      card.type.toLowerCase().includes("instant"),
     );
     if (instantsInHand.length > 0) {
       opportunities.push({
-        description: 'Hold mana for instant-speed interaction',
+        description: "Hold mana for instant-speed interaction",
         value: 0.5,
         risk: 0.1,
-        requiredResources: ['mana'],
+        requiredResources: ["mana"],
       });
     }
 
     // Opportunity: Develop mana base
     const landsInHand = player.hand.filter((card) =>
-      card.type.toLowerCase().includes('land')
+      card.type.toLowerCase().includes("land"),
     );
-    const landsOnBattlefield = player.battlefield.filter((p) => p.type === 'land').length;
+    const landsOnBattlefield = player.battlefield.filter(
+      (p) => p.type === "land",
+    ).length;
     if (landsInHand.length > 0 && landsOnBattlefield < 5) {
       opportunities.push({
-        description: 'Play land to develop mana',
+        description: "Play land to develop mana",
         value: 0.7,
         risk: 0.0,
-        requiredResources: ['land-drop'],
+        requiredResources: ["land-drop"],
       });
     }
 
@@ -914,49 +1048,49 @@ export class GameStateEvaluator {
    * Generate recommended actions based on evaluation
    */
   private generateRecommendations(
-    factors: DetailedEvaluation['factors'],
+    factors: DetailedEvaluation["factors"],
     threats: ThreatAssessment[],
-    opportunities: OpportunityAssessment[]
+    opportunities: OpportunityAssessment[],
   ): string[] {
     const recommendations: string[] = [];
 
     // Address threats
-    const immediateThreats = threats.filter((t) => t.urgency === 'immediate');
+    const immediateThreats = threats.filter((t) => t.urgency === "immediate");
     if (immediateThreats.length > 0) {
       recommendations.push(
         `Deal with ${immediateThreats.length} immediate threat(s): ${immediateThreats
           .slice(0, 2)
           .map((t) => t.reason)
-          .join(', ')}`
+          .join(", ")}`,
       );
     }
 
     // Address life loss
     if (factors.lifeScore < -0.5) {
-      recommendations.push('Prioritize defense and life gain');
+      recommendations.push("Prioritize defense and life gain");
     }
 
     // Address card disadvantage
     if (factors.cardAdvantage < -0.5) {
-      recommendations.push('Find card draw or selection effects');
+      recommendations.push("Find card draw or selection effects");
     }
 
     // Address board disadvantage
     if (factors.creatureCount < -0.5 || factors.creaturePower < -0.5) {
-      recommendations.push('Develop board presence with creatures');
+      recommendations.push("Develop board presence with creatures");
     }
 
     // Capitalize on opportunities
     if (opportunities.length > 0) {
       const bestOpportunity = opportunities.reduce((prev, current) =>
-        prev.value > current.value ? prev : current
+        prev.value > current.value ? prev : current,
       );
       recommendations.push(`Consider: ${bestOpportunity.description}`);
     }
 
     // Push toward win condition
     if (factors.winConditionProgress > 0.7) {
-      recommendations.push('Close out the game - win condition is near');
+      recommendations.push("Close out the game - win condition is near");
     }
 
     return recommendations;
@@ -969,7 +1103,7 @@ export class GameStateEvaluator {
 export function evaluateGameState(
   gameState: GameState,
   playerId: string,
-  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  difficulty: "easy" | "medium" | "hard" = "medium",
 ): DetailedEvaluation {
   const evaluator = new GameStateEvaluator(gameState, playerId, difficulty);
   return evaluator.evaluate();
@@ -983,7 +1117,7 @@ export function compareGameStates(
   state1: GameState,
   state2: GameState,
   playerId: string,
-  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  difficulty: "easy" | "medium" | "hard" = "medium",
 ): number {
   const eval1 = evaluateGameState(state1, playerId, difficulty);
   const eval2 = evaluateGameState(state2, playerId, difficulty);
@@ -996,7 +1130,7 @@ export function compareGameStates(
 export function quickScore(
   gameState: GameState,
   playerId: string,
-  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  difficulty: "easy" | "medium" | "hard" = "medium",
 ): number {
   const evaluation = evaluateGameState(gameState, playerId, difficulty);
   return evaluation.totalScore;
@@ -1004,10 +1138,10 @@ export function quickScore(
 
 export interface ProposedPlay {
   card: HandCard;
-  type: 'cast_creature' | 'cast_instant' | 'cast_sorcery' | 'play_land';
+  type: "cast_creature" | "cast_instant" | "cast_sorcery" | "play_land";
   manaCost: number;
   producedPermanent?: {
-    type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker';
+    type: "creature" | "land" | "artifact" | "enchantment" | "planeswalker";
     power?: number;
     toughness?: number;
     loyalty?: number;
@@ -1017,7 +1151,7 @@ export interface ProposedPlay {
 export interface ProjectionResult {
   playNowScore: number;
   holdScore: number;
-  recommendation: 'play' | 'hold';
+  recommendation: "play" | "hold";
   scoreDelta: number;
 }
 
@@ -1044,25 +1178,25 @@ function deepCloneState(state: GameState): GameState {
 
 export function projectBoardState(
   current_state: GameState,
-  play: ProposedPlay
+  play: ProposedPlay,
 ): GameState {
   const projected = deepCloneState(current_state);
   const player_id = Object.keys(projected.players)[0];
   const player = projected.players[player_id];
 
   const card_index = player.hand.findIndex(
-    (c) => c.cardInstanceId === play.card.cardInstanceId
+    (c) => c.cardInstanceId === play.card.cardInstanceId,
   );
   if (card_index !== -1) {
     player.hand.splice(card_index, 1);
   }
 
-  if (play.type === 'play_land') {
+  if (play.type === "play_land") {
     const new_permanent: Permanent = {
       cardInstanceId: `proj-land-${play.card.cardInstanceId}`,
       id: `proj-land-${play.card.cardInstanceId}`,
       name: play.card.name,
-      type: 'land',
+      type: "land",
       controller: player_id,
       tapped: false,
       manaValue: play.card.manaValue,
@@ -1081,7 +1215,7 @@ export function projectBoardState(
       power: play.producedPermanent.power,
       toughness: play.producedPermanent.toughness,
       loyalty: play.producedPermanent.loyalty,
-      summoningSickness: play.producedPermanent.type === 'creature',
+      summoningSickness: play.producedPermanent.type === "creature",
     };
     player.battlefield.push(new_permanent);
   } else {
@@ -1091,7 +1225,7 @@ export function projectBoardState(
   const generic = Math.min(play.manaCost, player.manaPool.generic || 0);
   player.manaPool.generic -= generic;
   const remaining = play.manaCost - generic;
-  const colors = ['white', 'blue', 'black', 'red', 'green'] as const;
+  const colors = ["white", "blue", "black", "red", "green"] as const;
   for (const color of colors) {
     const deduction = Math.min(remaining, player.manaPool[color] || 0);
     (player.manaPool as Record<string, number>)[color] -= deduction;
@@ -1102,13 +1236,15 @@ export function projectBoardState(
 
 function advanceOneTurn(state: GameState, player_id: string): GameState {
   const projected = deepCloneState(state);
-  const opponent_ids = Object.keys(projected.players).filter((id) => id !== player_id);
+  const opponent_ids = Object.keys(projected.players).filter(
+    (id) => id !== player_id,
+  );
   const next_player = opponent_ids[0] || player_id;
 
   projected.turnInfo.currentTurn += 1;
   projected.turnInfo.currentPlayer = next_player;
   projected.turnInfo.priority = next_player;
-  projected.turnInfo.phase = 'precombat_main';
+  projected.turnInfo.phase = "precombat_main";
 
   for (const id of Object.keys(projected.players)) {
     const p = projected.players[id];
@@ -1119,7 +1255,15 @@ function advanceOneTurn(state: GameState, player_id: string): GameState {
         perm.summoningSickness = false;
       }
     }
-    p.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 0, colorless: 0, generic: 0 };
+    p.manaPool = {
+      white: 0,
+      blue: 0,
+      black: 0,
+      red: 0,
+      green: 0,
+      colorless: 0,
+      generic: 0,
+    };
   }
 
   return projected;
@@ -1129,7 +1273,7 @@ export function compareHoldVsPlay(
   current_state: GameState,
   play: ProposedPlay,
   player_id: string,
-  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+  difficulty: "easy" | "medium" | "hard" = "medium",
 ): ProjectionResult {
   const played_state = projectBoardState(current_state, play);
   const played_next_turn = advanceOneTurn(played_state, player_id);
@@ -1143,7 +1287,7 @@ export function compareHoldVsPlay(
   return {
     playNowScore: play_now_score,
     holdScore: hold_score,
-    recommendation: score_delta >= 0 ? 'play' : 'hold',
+    recommendation: score_delta >= 0 ? "play" : "hold",
     scoreDelta: score_delta,
   };
 }

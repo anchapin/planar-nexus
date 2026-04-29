@@ -825,6 +825,19 @@ describe("GameStateEvaluator", () => {
       }
     });
 
+    it("should include castedSequenceScore in default weights for all difficulties", () => {
+      const difficulties: Array<"easy" | "medium" | "hard" | "expert"> = [
+        "easy",
+        "medium",
+        "hard",
+        "expert",
+      ];
+
+      for (const diff of difficulties) {
+        expect(DefaultWeights[diff].castedSequenceScore).toBeGreaterThan(0);
+      }
+    });
+
     it("should include stackPressureScore in evaluation factors", () => {
       const gameState = createTestGameState();
       const evaluator = new GameStateEvaluator(gameState, "player1");
@@ -892,6 +905,326 @@ describe("GameStateEvaluator", () => {
       const scoreWithStack = evaluatorWithStack.evaluate().totalScore;
 
       expect(scoreWithStack).not.toBe(scoreNoStack);
+    });
+  });
+
+  describe("castedSequenceScore", () => {
+    it("should be included in evaluation factors", () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, "player1");
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors).toHaveProperty("castedSequenceScore");
+      expect(typeof evaluation.factors.castedSequenceScore).toBe("number");
+    });
+
+    it("should reward 1-drop into 2-drop on turn 2 over empty board", () => {
+      const hand = [
+        createMockHandCard("Savannah Lions", 1, "Creature"),
+        createMockHandCard("Grizzly Bears", 2, "Creature"),
+        createMockHandCard("Plains", 0, "Land"),
+        createMockHandCard("Forest", 0, "Land"),
+      ];
+
+      const gameState = createTestGameState(20, 20, hand, []);
+      gameState.turnInfo.currentTurn = 2;
+      gameState.players.player1.manaPool = {
+        white: 1,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 1,
+        colorless: 0,
+        generic: 0,
+      };
+      gameState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Plains",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+
+      const evaluator = new GameStateEvaluator(gameState, "player1");
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.castedSequenceScore).toBeGreaterThan(0);
+    });
+
+    it("should penalize holding for a 3-drop when 1-drop and 2-drop are available on turn 3", () => {
+      const goodHand = [
+        createMockHandCard("Savannah Lions", 1, "Creature"),
+        createMockHandCard("Grizzly Bears", 2, "Creature"),
+      ];
+
+      const holdHand = [createMockHandCard("Centaur", 3, "Creature")];
+
+      const goodState = createTestGameState(20, 20, goodHand, []);
+      goodState.turnInfo.currentTurn = 3;
+      goodState.players.player1.manaPool = {
+        white: 0,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 3,
+        colorless: 0,
+        generic: 0,
+      };
+      goodState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-3",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+
+      const holdState = createTestGameState(20, 20, holdHand, []);
+      holdState.turnInfo.currentTurn = 3;
+      holdState.players.player1.manaPool = {
+        white: 0,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 3,
+        colorless: 0,
+        generic: 0,
+      };
+      holdState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-3",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+
+      const goodEval = new GameStateEvaluator(goodState, "player1");
+      const holdEval = new GameStateEvaluator(holdState, "player1");
+
+      expect(goodEval.evaluate().factors.castedSequenceScore).toBeGreaterThan(
+        holdEval.evaluate().factors.castedSequenceScore,
+      );
+    });
+
+    it("should penalize tapped lands in early turns", () => {
+      const untappedHand = [createMockHandCard("Bear", 2, "Creature")];
+      const tappedHand = [createMockHandCard("Bear", 2, "Creature")];
+
+      const untappedState = createTestGameState(20, 20, untappedHand, []);
+      untappedState.turnInfo.currentTurn = 2;
+      untappedState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+      untappedState.players.player1.manaPool = {
+        white: 0,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 2,
+        colorless: 0,
+        generic: 0,
+      };
+
+      const tappedState = createTestGameState(20, 20, tappedHand, []);
+      tappedState.turnInfo.currentTurn = 2;
+      tappedState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Guildgate",
+          "land",
+          undefined,
+          undefined,
+          true,
+        ),
+      ];
+      tappedState.players.player1.manaPool = {
+        white: 0,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 1,
+        colorless: 0,
+        generic: 0,
+      };
+
+      const untappedEval = new GameStateEvaluator(untappedState, "player1");
+      const tappedEval = new GameStateEvaluator(tappedState, "player1");
+
+      expect(
+        untappedEval.evaluate().factors.castedSequenceScore,
+      ).toBeGreaterThan(tappedEval.evaluate().factors.castedSequenceScore);
+    });
+
+    it("should factor into totalScore calculation", () => {
+      const hand = [
+        createMockHandCard("Savannah Lions", 1, "Creature"),
+        createMockHandCard("Grizzly Bears", 2, "Creature"),
+      ];
+
+      const gameState = createTestGameState(20, 20, hand, []);
+      gameState.turnInfo.currentTurn = 3;
+      gameState.players.player1.manaPool = {
+        white: 0,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 3,
+        colorless: 0,
+        generic: 0,
+      };
+      gameState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-3",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+
+      const evaluatorWithSeq = new GameStateEvaluator(gameState, "player1");
+      const scoreWithSeq = evaluatorWithSeq.evaluate().totalScore;
+
+      const evaluatorNoSeq = new GameStateEvaluator(gameState, "player1");
+      evaluatorNoSeq.setWeights({ castedSequenceScore: 0 });
+      const scoreNoSeq = evaluatorNoSeq.evaluate().totalScore;
+
+      expect(scoreWithSeq).not.toBe(scoreNoSeq);
+    });
+
+    it("should be less significant on later turns", () => {
+      const hand = [createMockHandCard("Bear", 2, "Creature")];
+
+      const earlyState = createTestGameState(20, 20, hand, []);
+      earlyState.turnInfo.currentTurn = 2;
+      earlyState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+
+      const lateState = createTestGameState(20, 20, hand, []);
+      lateState.turnInfo.currentTurn = 7;
+      lateState.players.player1.battlefield = [
+        createMockPermanent(
+          "land-1",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+        createMockPermanent(
+          "land-2",
+          "Forest",
+          "land",
+          undefined,
+          undefined,
+          false,
+        ),
+      ];
+
+      const earlyEval = new GameStateEvaluator(earlyState, "player1");
+      const lateEval = new GameStateEvaluator(lateState, "player1");
+
+      expect(
+        Math.abs(earlyEval.evaluate().factors.castedSequenceScore),
+      ).toBeGreaterThanOrEqual(
+        Math.abs(lateEval.evaluate().factors.castedSequenceScore),
+      );
     });
   });
 });
