@@ -7,7 +7,7 @@ import {
 } from "../transcript-pipeline";
 import { DEFAULT_PIPELINE_CONFIG } from "../types";
 import type { TranscriptSegment, ExtractedEdgeCase } from "../types";
-import rulesEdgeCases from "../data/rules-edge-cases.json";
+import rulesEdgeCases from "../data/rules-edge-cases";
 
 function createMockSegment(
   overrides: Partial<TranscriptSegment> = {},
