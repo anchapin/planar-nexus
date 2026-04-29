@@ -6,8 +6,6 @@
  * Auto-generated from video-derived game state
  */
 
-import { GameState } from '../game-state';
-import { createGameState } from '../examples';
 
 const fixture = {
   id: 'topdeck-mode',
@@ -85,17 +83,16 @@ describe('Video-Derived Fixture: topdeck-mode', () => {
   });
 
   it('has valid player data', () => {
-    if (fixture.gameState.players) {
-      expect(Array.isArray(fixture.gameState.players)).toBe(true);
-      expect(fixture.gameState.players.length).toBeGreaterThan(0);
-    }
+    expect(fixture.gameState.player_life).toBeGreaterThan(0);
+    expect(fixture.gameState.opponent_life).toBeGreaterThan(0);
+    expect(Array.isArray(fixture.gameState.battlefield_player)).toBe(true);
+    expect(Array.isArray(fixture.gameState.battlefield_opponent)).toBe(true);
   });
 
   it('has valid turn structure', () => {
-    if (fixture.gameState.turn) {
-      expect(fixture.gameState.turn).toHaveProperty('phase');
-      expect(fixture.gameState.turn).toHaveProperty('player');
-    }
+    expect(typeof fixture.gameState.turn_number).toBe('number');
+    expect(fixture.gameState.turn_number).toBeGreaterThan(0);
+    expect(typeof fixture.gameState.phase).toBe('string');
   });
 
   it('can be serialized and deserialized', () => {
