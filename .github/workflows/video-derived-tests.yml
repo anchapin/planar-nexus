@@ -48,7 +48,7 @@ jobs:
         run: |
           if [ -f scripts/generate-test-fixture.ts ]; then
             echo "Running test fixture generation..."
-            npx tsx scripts/generate-test-fixture.ts --fixtures-dir src/lib/__fixtures__/video-derived
+            npx ts-node scripts/generate-test-fixture.ts --fixtures-dir src/lib/__fixtures__/video-derived
           else
             echo "No fixture generation script found, skipping..."
             echo "VIDEO_FIXTURES_COUNT=0" >> $GITHUB_ENV

@@ -9,8 +9,8 @@
  *   npx ts-node scripts/generate-test-fixture.ts --fixtures-dir path/to/fixtures
  */
 
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface TestFixture {
   id: string;
@@ -27,8 +27,8 @@ interface TestGenerationOptions {
 }
 
 const DEFAULT_OPTIONS: TestGenerationOptions = {
-  fixturesDir: "src/lib/__fixtures__/video-derived",
-  outputDir: "src/lib/game-state/__tests__/video-derived",
+  fixturesDir: 'src/lib/__fixtures__/video-derived',
+  outputDir: 'src/lib/game-state/__tests__/video-derived',
   dryRun: false,
 };
 
@@ -43,15 +43,15 @@ function parseArgs(): TestGenerationOptions {
     const arg = args[i];
     const nextArg = args[i + 1];
 
-    if (arg === "--fixtures-dir" && nextArg) {
+    if (arg === '--fixtures-dir' && nextArg) {
       options.fixturesDir = nextArg;
       i++;
-    } else if (arg === "--output-dir" && nextArg) {
+    } else if (arg === '--output-dir' && nextArg) {
       options.outputDir = nextArg;
       i++;
-    } else if (arg === "--dry-run") {
+    } else if (arg === '--dry-run') {
       options.dryRun = true;
-    } else if (arg === "--help") {
+    } else if (arg === '--help') {
       console.log(`
 Usage: npx ts-node scripts/generate-test-fixture.ts [options]
 
@@ -85,16 +85,16 @@ function loadFixtures(fixturesDir: string): TestFixture[] {
   const files = fs.readdirSync(fixturesDir);
 
   for (const file of files) {
-    if (!file.endsWith(".json")) continue;
+    if (!file.endsWith('.json')) continue;
 
     const filePath = path.join(fixturesDir, file);
     try {
-      const content = fs.readFileSync(filePath, "utf-8");
+      const content = fs.readFileSync(filePath, 'utf-8');
       const data = JSON.parse(content);
 
       // Normalize fixture data
       const fixture: TestFixture = {
-        id: data.id || path.basename(file, ".json"),
+        id: data.id || path.basename(file, '.json'),
         name: data.name || `Video-derived fixture from ${file}`,
         description: data.description,
         gameState: data.gameState || data,
@@ -117,23 +117,20 @@ function loadFixtures(fixturesDir: string): TestFixture[] {
 function generateTestFile(fixture: TestFixture): string {
   const { id, name, description, expectedBehaviors } = fixture;
 
-  const behaviorTests =
-    expectedBehaviors
-      ?.map((behavior, index) => {
-        const testName = behavior.replace(/[^a-zA-Z0-9]/g, "_");
-        return `
+  const behaviorTests = expectedBehaviors?.map((behavior, index) => {
+    const testName = behavior.replace(/[^a-zA-Z0-9]/g, '_');
+    return `
   it('validates behavior: ${behavior}', () => {
     // TODO: Implement validation for: ${behavior}
     // This test should verify that the game state correctly handles:
     // ${behavior}
     expect(fixture.gameState).toBeDefined();
   });`;
-      })
-      ?.join("\n") || "";
+  })?.join('\n') || '';
 
   return `/**
  * Video-Derived Test Fixture: ${name}
- * ${description ? `Description: ${description}` : ""}
+ * ${description ? `Description: ${description}` : ''}
  * Fixture ID: ${id}
  *
  * Auto-generated from video-derived game state
@@ -145,7 +142,7 @@ import { createGameState } from '../examples';
 const fixture = {
   id: '${id}',
   name: '${name}',
-  ${description ? `description: '${description}',` : ""}
+  ${description ? `description: '${description}',` : ''}
   gameState: ${JSON.stringify(fixture.gameState, null, 2)},
   expectedBehaviors: ${JSON.stringify(expectedBehaviors, null, 2)},
 };
@@ -193,7 +190,7 @@ function writeTestFile(outputDir: string, fixture: TestFixture): void {
   const filePath = path.join(outputDir, fileName);
   const content = generateTestFile(fixture);
 
-  fs.writeFileSync(filePath, content, "utf-8");
+  fs.writeFileSync(filePath, content, 'utf-8');
   console.log(`Generated test file: ${filePath}`);
 }
 
@@ -203,7 +200,7 @@ function writeTestFile(outputDir: string, fixture: TestFixture): void {
 function main(): void {
   const options = parseArgs();
 
-  console.log("=== Video-Derived Test Fixture Generator ===");
+  console.log('=== Video-Derived Test Fixture Generator ===');
   console.log(`Fixtures directory: ${options.fixturesDir}`);
   console.log(`Output directory: ${options.outputDir}`);
   console.log(`Dry run: ${options.dryRun}`);
@@ -212,7 +209,7 @@ function main(): void {
   const fixtures = loadFixtures(options.fixturesDir);
 
   if (fixtures.length === 0) {
-    console.log("No fixtures found. Exiting.");
+    console.log('No fixtures found. Exiting.');
     return;
   }
 
@@ -237,6 +234,8 @@ function main(): void {
   console.log(`  npm test -- --testPathPattern=video-derived`);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
 
 export { parseArgs, loadFixtures, generateTestFile, writeTestFile };
