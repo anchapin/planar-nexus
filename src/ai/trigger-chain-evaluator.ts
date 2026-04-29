@@ -34,7 +34,21 @@ export interface TriggeredAbility {
   readonly controller: string;
   readonly triggerType: TriggerType;
   readonly triggerText: string;
-  readonly effectType: "draw" | "damage" | "token" | "buff" | "debuff" | "counter" | "search" | "life_gain" | "life_loss" | "exile" | "destroy" | "copy" | "ramp" | "other";
+  readonly effectType:
+    | "draw"
+    | "damage"
+    | "token"
+    | "buff"
+    | "debuff"
+    | "counter"
+    | "search"
+    | "life_gain"
+    | "life_loss"
+    | "exile"
+    | "destroy"
+    | "copy"
+    | "ramp"
+    | "other";
   readonly effectValue: number;
   readonly manaCostToActivate?: number;
   readonly isOptional: boolean;
@@ -64,7 +78,12 @@ export interface BoardPermanent {
   readonly cardId: string;
   readonly name: string;
   readonly controller: string;
-  readonly type: "creature" | "enchantment" | "artifact" | "planeswalker" | "land";
+  readonly type:
+    | "creature"
+    | "enchantment"
+    | "artifact"
+    | "planeswalker"
+    | "land";
   readonly keywords?: string[];
   readonly manaValue?: number;
   readonly power?: number;
@@ -103,7 +122,9 @@ interface TriggerPattern {
 
 const TRIGGER_PATTERNS: TriggerPattern[] = [
   {
-    namePatterns: [/\b(?:panharmonicon|strionic resonator|mirrorworks| Flameshadow Conjuring)\b/i],
+    namePatterns: [
+      /\b(?:panharmonicon|strionic resonator|mirrorworks| Flameshadow Conjuring)\b/i,
+    ],
     textPatterns: [/whenever.*enters.*under your control.*instead/i],
     triggerType: "etb",
     effectType: "copy",
@@ -124,35 +145,45 @@ const TRIGGER_PATTERNS: TriggerPattern[] = [
     baseValue: 3,
   },
   {
-    namePatterns: [/\b(?:ravager of the fells| blood artist| zulaport cutthroat| forgemaster mephit| pawn of ulamog| solemn simulacrum )\b/i],
+    namePatterns: [
+      /\b(?:ravager of the fells| blood artist| zulaport cutthroat| forgemaster mephit| pawn of ulamog| solemn simulacrum )\b/i,
+    ],
     textPatterns: [/when.*(?:another|a).*(?:dies|put into a graveyard)/i],
     triggerType: "death_trigger",
     effectType: "life_loss",
     baseValue: 2,
   },
   {
-    namePatterns: [/\b(?:blood artist| zulaport cutthroat| butcher ghoul| piper of the swarm )\b/i],
+    namePatterns: [
+      /\b(?:blood artist| zulaport cutthroat| butcher ghoul| piper of the swarm )\b/i,
+    ],
     textPatterns: [/whenever.*(?:another|a).*(?:dies|put into.*graveyard)/i],
     triggerType: "death_trigger",
     effectType: "life_gain",
     baseValue: 2,
   },
   {
-    namePatterns: [/\b(?:land tax| knight of the white orchid| dowsing device )\b/i],
+    namePatterns: [
+      /\b(?:land tax| knight of the white orchid| dowsing device )\b/i,
+    ],
     textPatterns: [/at the beginning of.*upkeep.*search/i],
     triggerType: "generic",
     effectType: "search",
     baseValue: 3,
   },
   {
-    namePatterns: [/\b(?:soul warden| soul's attendant| suture priest| anointed procession| verdant calamity )\b/i],
+    namePatterns: [
+      /\b(?:soul warden| soul's attendant| suture priest| anointed procession| verdant calamity )\b/i,
+    ],
     textPatterns: [/whenever.*(?:enters|a creature enters)/i],
     triggerType: "etb",
     effectType: "life_gain",
     baseValue: 1,
   },
   {
-    namePatterns: [/\b(?:grim haruspex| bone miser| wall of omens| tracker| oracle of mul daya )\b/i],
+    namePatterns: [
+      /\b(?:grim haruspex| bone miser| wall of omens| tracker| oracle of mul daya )\b/i,
+    ],
     textPatterns: [/whenever.*(?:enters|a creature enters)/i],
     triggerType: "etb",
     effectType: "draw",
@@ -166,7 +197,9 @@ const TRIGGER_PATTERNS: TriggerPattern[] = [
     baseValue: 2,
   },
   {
-    namePatterns: [/\b(?:torrential gearhulk| grove of the guardian| ambush commander )\b/i],
+    namePatterns: [
+      /\b(?:torrential gearhulk| grove of the guardian| ambush commander )\b/i,
+    ],
     textPatterns: [/when.*enters.*create.*token/i],
     triggerType: "etb",
     effectType: "token",
@@ -187,14 +220,18 @@ const TRIGGER_PATTERNS: TriggerPattern[] = [
     baseValue: 1,
   },
   {
-    namePatterns: [/\b(?:country|down|mountain|island|swamp|forest|plains)rush\b/i],
+    namePatterns: [
+      /\b(?:country|down|mountain|island|swamp|forest|plains)rush\b/i,
+    ],
     textPatterns: [/whenever.*(?:cast|you cast).*(?:search)/i],
     triggerType: "cast_trigger",
     effectType: "search",
     baseValue: 3,
   },
   {
-    namePatterns: [/\b(?:electrostatic field| purphoros| impact tremors| warstorm surge )\b/i],
+    namePatterns: [
+      /\b(?:electrostatic field| purphoros| impact tremors| warstorm surge )\b/i,
+    ],
     textPatterns: [/whenever.*(?:you cast|a player casts).*creature spell/i],
     triggerType: "cast_trigger",
     effectType: "damage",
@@ -208,7 +245,9 @@ const TRIGGER_PATTERNS: TriggerPattern[] = [
     baseValue: 4,
   },
   {
-    namePatterns: [/\b(?:knight of the white orchid| dredge| sunscorch regent )\b/i],
+    namePatterns: [
+      /\b(?:knight of the white orchid| dredge| sunscorch regent )\b/i,
+    ],
     textPatterns: [/at the beginning of.*combat.*(?:trigger|ability)/i],
     triggerType: "attack_trigger",
     effectType: "buff",
@@ -254,9 +293,7 @@ function matchesTriggerPattern(
   return false;
 }
 
-function classifyTrigger(
-  permanent: BoardPermanent,
-): TriggerPattern | null {
+function classifyTrigger(permanent: BoardPermanent): TriggerPattern | null {
   for (const pattern of TRIGGER_PATTERNS) {
     if (matchesTriggerPattern(permanent, pattern)) {
       return pattern;
@@ -282,36 +319,77 @@ function detectETBFromText(oracleText: string): {
 } | null {
   const lower = oracleText.toLowerCase();
   if (lower.includes("when") && lower.includes("enters the battlefield")) {
-    if (lower.includes("draw")) return { triggerType: "etb", effectType: "draw", baseValue: 3 };
-    if (lower.includes("damage")) return { triggerType: "etb", effectType: "damage", baseValue: 3 };
-    if (lower.includes("token")) return { triggerType: "etb", effectType: "token", baseValue: 2 };
-    if (lower.includes("exile")) return { triggerType: "etb", effectType: "exile", baseValue: 4 };
-    if (lower.includes("destroy")) return { triggerType: "etb", effectType: "destroy", baseValue: 4 };
-    if (lower.includes("gain") && lower.includes("life")) return { triggerType: "etb", effectType: "life_gain", baseValue: 1 };
-    if (lower.includes("search")) return { triggerType: "etb", effectType: "search", baseValue: 4 };
-    if (lower.includes("counter")) return { triggerType: "etb", effectType: "counter", baseValue: 5 };
-    if (lower.includes("copy") || lower.includes("create a copy")) return { triggerType: "etb", effectType: "copy", baseValue: 3 };
-    if (lower.includes("scry")) return { triggerType: "etb", effectType: "search", baseValue: 2 };
-    if (lower.includes("ramp") || lower.includes("tap") || lower.includes("untap")) return { triggerType: "etb", effectType: "ramp", baseValue: 2 };
+    if (lower.includes("draw"))
+      return { triggerType: "etb", effectType: "draw", baseValue: 3 };
+    if (lower.includes("damage"))
+      return { triggerType: "etb", effectType: "damage", baseValue: 3 };
+    if (lower.includes("token"))
+      return { triggerType: "etb", effectType: "token", baseValue: 2 };
+    if (lower.includes("exile"))
+      return { triggerType: "etb", effectType: "exile", baseValue: 4 };
+    if (lower.includes("destroy"))
+      return { triggerType: "etb", effectType: "destroy", baseValue: 4 };
+    if (lower.includes("gain") && lower.includes("life"))
+      return { triggerType: "etb", effectType: "life_gain", baseValue: 1 };
+    if (lower.includes("search"))
+      return { triggerType: "etb", effectType: "search", baseValue: 4 };
+    if (lower.includes("counter"))
+      return { triggerType: "etb", effectType: "counter", baseValue: 5 };
+    if (lower.includes("copy") || lower.includes("create a copy"))
+      return { triggerType: "etb", effectType: "copy", baseValue: 3 };
+    if (lower.includes("scry"))
+      return { triggerType: "etb", effectType: "search", baseValue: 2 };
+    if (
+      lower.includes("ramp") ||
+      lower.includes("tap") ||
+      lower.includes("untap")
+    )
+      return { triggerType: "etb", effectType: "ramp", baseValue: 2 };
     return { triggerType: "etb", effectType: "other", baseValue: 2 };
   }
   if (lower.includes("whenever") && lower.includes("enters")) {
-    if (lower.includes("draw")) return { triggerType: "etb", effectType: "draw", baseValue: 3 };
-    if (lower.includes("damage")) return { triggerType: "etb", effectType: "damage", baseValue: 2 };
-    if (lower.includes("gain") && lower.includes("life")) return { triggerType: "etb", effectType: "life_gain", baseValue: 1 };
+    if (lower.includes("draw"))
+      return { triggerType: "etb", effectType: "draw", baseValue: 3 };
+    if (lower.includes("damage"))
+      return { triggerType: "etb", effectType: "damage", baseValue: 2 };
+    if (lower.includes("gain") && lower.includes("life"))
+      return { triggerType: "etb", effectType: "life_gain", baseValue: 1 };
     return { triggerType: "etb", effectType: "other", baseValue: 1 };
   }
   if (lower.includes("whenever") && lower.includes("cast")) {
-    if (lower.includes("damage")) return { triggerType: "cast_trigger", effectType: "damage", baseValue: 2 };
-    if (lower.includes("draw")) return { triggerType: "cast_trigger", effectType: "draw", baseValue: 2 };
-    if (lower.includes("token")) return { triggerType: "cast_trigger", effectType: "token", baseValue: 2 };
-    if (lower.includes("life")) return { triggerType: "cast_trigger", effectType: "life_gain", baseValue: 1 };
+    if (lower.includes("damage"))
+      return {
+        triggerType: "cast_trigger",
+        effectType: "damage",
+        baseValue: 2,
+      };
+    if (lower.includes("draw"))
+      return { triggerType: "cast_trigger", effectType: "draw", baseValue: 2 };
+    if (lower.includes("token"))
+      return { triggerType: "cast_trigger", effectType: "token", baseValue: 2 };
+    if (lower.includes("life"))
+      return {
+        triggerType: "cast_trigger",
+        effectType: "life_gain",
+        baseValue: 1,
+      };
     return { triggerType: "cast_trigger", effectType: "other", baseValue: 1 };
   }
   if (lower.includes("when") && lower.includes("dies")) {
-    if (lower.includes("draw")) return { triggerType: "death_trigger", effectType: "draw", baseValue: 2 };
-    if (lower.includes("damage")) return { triggerType: "death_trigger", effectType: "damage", baseValue: 2 };
-    if (lower.includes("sacrifice") || lower.includes("exile")) return { triggerType: "death_trigger", effectType: "exile", baseValue: 3 };
+    if (lower.includes("draw"))
+      return { triggerType: "death_trigger", effectType: "draw", baseValue: 2 };
+    if (lower.includes("damage"))
+      return {
+        triggerType: "death_trigger",
+        effectType: "damage",
+        baseValue: 2,
+      };
+    if (lower.includes("sacrifice") || lower.includes("exile"))
+      return {
+        triggerType: "death_trigger",
+        effectType: "exile",
+        baseValue: 3,
+      };
     return { triggerType: "death_trigger", effectType: "other", baseValue: 1 };
   }
   return null;
@@ -334,11 +412,14 @@ function buildTriggeredAbility(
     sourceName: permanent.name,
     controller: permanent.controller,
     triggerType,
-    triggerText: pattern?.textPatterns[0]?.source ?? oracleText ? "detected from oracle text" : "detected from pattern",
+    triggerText:
+      pattern?.textPatterns[0]?.source ??
+      (oracleAnalysis ? "detected from oracle text" : "detected from pattern"),
     effectType,
     effectValue,
     isOptional: true,
-    copiesWithPanharmonicon: permanent.type === "creature" || permanent.type === "artifact",
+    copiesWithPanharmonicon:
+      permanent.type === "creature" || permanent.type === "artifact",
   };
 }
 
@@ -355,9 +436,9 @@ function collectETBTriggers(
   battlefield: BoardPermanent[],
   stackItem: CascadeContext["stackItem"],
 ): TriggeredAbility[] {
-  const isCreature = stackItem.type === "spell" && (
-    stackItem.colors === undefined || stackItem.colors.length > 0
-  );
+  const isCreature =
+    stackItem.type === "spell" &&
+    (stackItem.colors === undefined || stackItem.colors.length > 0);
   const triggers: TriggeredAbility[] = [];
 
   for (const permanent of battlefield) {
@@ -378,18 +459,25 @@ function collectETBTriggers(
     if (triggerType === "cast_trigger") {
       const isOpponentSpell = permanent.controller !== stackItem.controller;
       const matchesController =
-        !isOpponentSpell || stackItem.targets?.some(
-          (t) => t.playerId === permanent.controller,
-        );
+        !isOpponentSpell ||
+        stackItem.targets?.some((t) => t.playerId === permanent.controller);
       if (matchesController) {
-        const ability = buildTriggeredAbility(permanent, pattern, oracleAnalysis);
+        const ability = buildTriggeredAbility(
+          permanent,
+          pattern,
+          oracleAnalysis,
+        );
         if (ability) triggers.push(ability);
       }
     }
 
     if (triggerType === "draw_trigger" || triggerType === "generic") {
       if (pattern && permanent.controller === stackItem.controller) {
-        const ability = buildTriggeredAbility(permanent, pattern, oracleAnalysis);
+        const ability = buildTriggeredAbility(
+          permanent,
+          pattern,
+          oracleAnalysis,
+        );
         if (ability) triggers.push(ability);
       }
     }
@@ -404,7 +492,9 @@ function buildChainFromTrigger(
   depth: number,
   doublerCount: number,
 ): TriggerChainStep {
-  const multiplier = trigger.copiesWithPanharmonicon ? Math.max(1, doublerCount) : 1;
+  const multiplier = trigger.copiesWithPanharmonicon
+    ? Math.max(1, doublerCount)
+    : 1;
   const effectiveValue = trigger.effectValue * multiplier;
 
   const multiAbility: TriggeredAbility = {
@@ -427,7 +517,11 @@ function expandChainWithSecondaryTriggers(
   maxDepth: number,
 ): TriggerChainStep[] {
   if (step.depth >= maxDepth) return [];
-  if (step.ability.effectType !== "token" && step.ability.effectType !== "draw" && step.ability.effectType !== "search") {
+  if (
+    step.ability.effectType !== "token" &&
+    step.ability.effectType !== "draw" &&
+    step.ability.effectType !== "search"
+  ) {
     return [];
   }
 
@@ -456,9 +550,10 @@ function expandChainWithSecondaryTriggers(
           isOptional: true,
         });
       }
-    }
-
-    if (triggerType === "death_trigger" && step.ability.effectType === "destroy") {
+    } else if (
+      triggerType === "death_trigger" &&
+      (step.ability.effectType as string) === "destroy"
+    ) {
       const ability = buildTriggeredAbility(permanent, pattern, oracleAnalysis);
       if (ability) {
         visitedIds.add(permanent.id);
@@ -527,7 +622,10 @@ function generateCascadeChain(
   );
 
   const allSteps = [step, ...secondarySteps];
-  const totalValue = allSteps.reduce((sum, s) => sum + s.ability.effectValue, 0);
+  const totalValue = allSteps.reduce(
+    (sum, s) => sum + s.ability.effectValue,
+    0,
+  );
 
   return {
     originStackItem: stackItem.id,
@@ -562,12 +660,7 @@ export function evaluateTriggerChain(
     if (visitedIds.has(trigger.sourceCardId)) continue;
     visitedIds.add(trigger.sourceCardId);
 
-    const step = buildChainFromTrigger(
-      trigger,
-      stackItem.id,
-      0,
-      doublerCount,
-    );
+    const step = buildChainFromTrigger(trigger, stackItem.id, 0, doublerCount);
 
     const secondarySteps = expandChainWithSecondaryTriggers(
       step,
@@ -577,14 +670,20 @@ export function evaluateTriggerChain(
     );
 
     const allSteps = [step, ...secondarySteps];
-    const totalValue = allSteps.reduce((sum, s) => sum + s.ability.effectValue, 0);
+    const totalValue = allSteps.reduce(
+      (sum, s) => sum + s.ability.effectValue,
+      0,
+    );
     const totalManaCost = allSteps.reduce(
       (sum, s) => sum + (s.ability.manaCostToActivate ?? 0),
       0,
     );
 
     const effectDescriptions = allSteps
-      .map((s) => `${s.ability.sourceName}: ${s.ability.effectType} (${s.ability.effectValue})`)
+      .map(
+        (s) =>
+          `${s.ability.sourceName}: ${s.ability.effectType} (${s.ability.effectValue})`,
+      )
       .join(" -> ");
 
     chains.push({
@@ -630,7 +729,9 @@ export function shouldCounterToPreventTriggers(
   return totalValue >= threshold;
 }
 
-export function getHighestValueChain(chains: TriggerChain[]): TriggerChain | null {
+export function getHighestValueChain(
+  chains: TriggerChain[],
+): TriggerChain | null {
   if (chains.length === 0) return null;
   return chains.reduce((best, current) =>
     current.totalValue > best.totalValue ? current : best,
