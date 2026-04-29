@@ -22,10 +22,11 @@ import type {
   AIPermanent as Permanent,
   AIHandCard as HandCard,
   AITurnInfo as TurnInfo,
+  AIStackObject as StackObject,
 } from '@/lib/game-state/types';
 
 // Re-export for backward compatibility
-export type { GameState, PlayerState, Permanent, HandCard, TurnInfo };
+export type { GameState, PlayerState, Permanent, HandCard, TurnInfo, StackObject };
 
 /**
  * Represents a threat assessment for a permanent
@@ -83,6 +84,9 @@ export interface EvaluationWeights {
   // Win conditions
   winConditionProgress: number;
   inevitability: number;
+
+  // Stack interaction
+  stackPressureScore: number;
 }
 
 /**
@@ -111,6 +115,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 0.1,
     winConditionProgress: 0.5,
     inevitability: 0.3,
+    stackPressureScore: 0.3,
   },
   medium: {
     // Medium AI: Balanced evaluation, understands basics
@@ -132,6 +137,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 0.3,
     winConditionProgress: 1.5,
     inevitability: 0.8,
+    stackPressureScore: 1.0,
   },
   hard: {
     // Hard AI: Values strategic advantage and tempo
@@ -153,6 +159,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 0.7,
     winConditionProgress: 2.5,
     inevitability: 1.5,
+    stackPressureScore: 1.5,
   },
   expert: {
     // Expert AI: Near-optimal weight distribution
@@ -174,6 +181,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 1.0,
     winConditionProgress: 4.0,
     inevitability: 2.5,
+    stackPressureScore: 2.0,
   },
 };
 
@@ -201,6 +209,7 @@ export interface DetailedEvaluation {
     synergy: number;
     winConditionProgress: number;
     inevitability: number;
+    stackPressureScore: number;
   };
   threats: ThreatAssessment[];
   opportunities: OpportunityAssessment[];
@@ -265,6 +274,7 @@ export class GameStateEvaluator {
       synergy: this.evaluateSynergy(player),
       winConditionProgress: this.evaluateWinConditionProgress(player, opponents),
       inevitability: this.evaluateInevitability(player, opponents),
+      stackPressureScore: this.evaluateStackPressureScore(player, opponents),
     };
 
     const totalScore = this.calculateTotalScore(factors);
@@ -313,7 +323,8 @@ export class GameStateEvaluator {
       factors.graveyardValue * this.weights.graveyardValue +
       factors.synergy * this.weights.synergy +
       factors.winConditionProgress * this.weights.winConditionProgress +
-      factors.inevitability * this.weights.inevitability
+      factors.inevitability * this.weights.inevitability +
+      factors.stackPressureScore * this.weights.stackPressureScore
     );
   }
 
@@ -691,6 +702,80 @@ export class GameStateEvaluator {
     }
 
     return Math.min(1, inevitability);
+  }
+
+  /**
+   * Evaluate stack pressure score
+   * Positive when the AI has responses, negative when opponents have open mana
+   * and instant-speed answers
+   */
+  private evaluateStackPressureScore(player: PlayerState, opponents: PlayerState[]): number {
+    const stack = this.gameState.stack || [];
+
+    if (stack.length === 0) {
+      const opponentOpenMana = opponents.reduce((sum, opp) => {
+        const oppMana = Object.values(opp.manaPool).reduce((s, m) => s + m, 0);
+        const untappedLands = opp.battlefield.filter((p) => p.type === 'land' && !p.tapped).length;
+        return sum + Math.max(oppMana, untappedLands);
+      }, 0);
+
+      const hasInstants = player.hand.some((card) =>
+        card.type.toLowerCase().includes('instant')
+      );
+      const hasFlashCreatures = player.hand.some(
+        (card) =>
+          card.type.toLowerCase().includes('creature') &&
+          card.keywords?.some((kw) => kw.toLowerCase() === 'flash')
+      );
+
+      if (hasInstants || hasFlashCreatures) {
+        if (opponentOpenMana >= 2) return 0.2;
+        if (opponentOpenMana === 0) return 0.5;
+      }
+
+      if (opponentOpenMana >= 2) return -0.3;
+      if (opponentOpenMana >= 4) return -0.5;
+
+      return 0;
+    }
+
+    const opponentStackItems = stack.filter(
+      (item) => opponents.some((opp) => opp.id === item.controller)
+    );
+    const playerStackItems = stack.filter(
+      (item) => item.controller === this.evaluatingPlayerId
+    );
+
+    let score = 0;
+
+    if (playerStackItems.length > 0) {
+      score -= 0.3;
+      const hasCounterspells = player.hand.some(
+        (card) =>
+          card.type.toLowerCase().includes('instant') &&
+          card.name.toLowerCase().includes('counter')
+      );
+      if (hasCounterspells) score += 0.2;
+    }
+
+    if (opponentStackItems.length > 0) {
+      const playerOpenMana = Object.values(player.manaPool).reduce((s, m) => s + m, 0);
+      const untappedLands = player.battlefield.filter(
+        (p) => p.type === 'land' && !p.tapped
+      ).length;
+      const availableMana = Math.max(playerOpenMana, untappedLands);
+      const hasInstants = player.hand.some((card) =>
+        card.type.toLowerCase().includes('instant')
+      );
+
+      if (hasInstants && availableMana >= 2) {
+        score += 0.3;
+      } else if (hasInstants) {
+        score += 0.1;
+      }
+    }
+
+    return Math.max(-1, Math.min(1, score));
   }
 
   /**

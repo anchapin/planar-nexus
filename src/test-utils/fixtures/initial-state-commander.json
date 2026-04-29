@@ -1,0 +1,18 @@
+{
+  "description": "Fresh 2-player commander game",
+  "category": "initialization",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 40,
+    "isCommander": true
+  },
+  "assertions": [
+    { "path": "players.size", "operator": "toBe", "value": 2 },
+    { "path": "format", "operator": "toBe", "value": "standard" },
+    { "path": "status", "operator": "toBe", "value": "not_started" },
+    { "path": "players[0].life", "operator": "toBe", "value": 40 },
+    { "path": "players[1].life", "operator": "toBe", "value": 40 },
+    { "path": "players[0].poisonCounters", "operator": "toBe", "value": 0 },
+    { "path": "players[1].poisonCounters", "operator": "toBe", "value": 0 }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "description": "Game state after dealing damage and gaining life",
+  "category": "life_and_damage",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "dealDamageToPlayer0:5", "gainLifePlayer0:3"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "players[0].life", "operator": "toBe", "value": 18 },
+    { "path": "players[1].life", "operator": "toBe", "value": 20 }
+  ]
+}

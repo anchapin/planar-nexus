@@ -1,0 +1,16 @@
+{
+  "description": "Game state tracking lands played per turn",
+  "category": "game_flow",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "incrementLandsPlayedPlayer0:1"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "players[0].landsPlayedThisTurn", "operator": "toBe", "value": 1 },
+    { "path": "players[0].maxLandsPerTurn", "operator": "toBe", "value": 1 },
+    { "path": "players[1].landsPlayedThisTurn", "operator": "toBe", "value": 0 }
+  ]
+}

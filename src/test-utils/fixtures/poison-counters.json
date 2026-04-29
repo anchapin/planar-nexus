@@ -1,0 +1,17 @@
+{
+  "description": "Game state with poison counters on a player",
+  "category": "life_and_damage",
+  "setup": {
+    "playerNames": ["Alice", "Bob"],
+    "startingLife": 20,
+    "isCommander": false,
+    "actions": ["startGame", "addPoisonPlayer0:8"]
+  },
+  "assertions": [
+    { "path": "status", "operator": "toBe", "value": "in_progress" },
+    { "path": "players[0].poisonCounters", "operator": "toBe", "value": 8 },
+    { "path": "players[1].poisonCounters", "operator": "toBe", "value": 0 },
+    { "path": "players[0].hasLost", "operator": "toBe", "value": false },
+    { "path": "players[1].hasLost", "operator": "toBe", "value": false }
+  ]
+}

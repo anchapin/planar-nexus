@@ -1514,9 +1514,7 @@ export class StackInteractionAI {
   /**
    * Find a permanent by ID
    */
-  private findPermanent(
-    permanentId: string,
-  ): {
+  private findPermanent(permanentId: string): {
     id: string;
     controller: string;
     type: string;
