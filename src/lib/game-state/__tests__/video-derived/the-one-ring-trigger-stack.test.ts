@@ -7,7 +7,7 @@
  */
 
 
-const fixture = {
+const the_one_ring_trigger_stack = {
   id: 'the-one-ring-trigger-stack',
   name: 'the-one-ring-trigger-stack',
   description: 'One Ring triggers',
@@ -65,27 +65,27 @@ const fixture = {
 
 describe('Video-Derived Fixture: the-one-ring-trigger-stack', () => {
   it('loads game state successfully', () => {
-    expect(fixture.gameState).toBeDefined();
-    expect(fixture.gameState).toBeInstanceOf(Object);
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeInstanceOf(Object);
   });
 
   it('has valid player data', () => {
-    expect(fixture.gameState.player_life).toBeGreaterThan(0);
-    expect(fixture.gameState.opponent_life).toBeGreaterThan(0);
-    expect(Array.isArray(fixture.gameState.battlefield_player)).toBe(true);
-    expect(Array.isArray(fixture.gameState.battlefield_opponent)).toBe(true);
+    expect(the_one_ring_trigger_stack.gameState.player_life).toBeGreaterThan(0);
+    expect(the_one_ring_trigger_stack.gameState.opponent_life).toBeGreaterThan(0);
+    expect(Array.isArray(the_one_ring_trigger_stack.gameState.battlefield_player)).toBe(true);
+    expect(Array.isArray(the_one_ring_trigger_stack.gameState.battlefield_opponent)).toBe(true);
   });
 
   it('has valid turn structure', () => {
-    expect(typeof fixture.gameState.turn_number).toBe('number');
-    expect(fixture.gameState.turn_number).toBeGreaterThan(0);
-    expect(typeof fixture.gameState.phase).toBe('string');
+    expect(typeof the_one_ring_trigger_stack.gameState.turn_number).toBe('number');
+    expect(the_one_ring_trigger_stack.gameState.turn_number).toBeGreaterThan(0);
+    expect(typeof the_one_ring_trigger_stack.gameState.phase).toBe('string');
   });
 
   it('can be serialized and deserialized', () => {
-    const serialized = JSON.stringify(fixture.gameState);
+    const serialized = JSON.stringify(the_one_ring_trigger_stack.gameState);
     const deserialized = JSON.parse(serialized);
-    expect(deserialized).toEqual(fixture.gameState);
+    expect(deserialized).toEqual(the_one_ring_trigger_stack.gameState);
   });
 
 
@@ -93,55 +93,55 @@ describe('Video-Derived Fixture: the-one-ring-trigger-stack', () => {
     // TODO: Implement validation for: The One Ring protection should prevent damage
     // This test should verify that the game state correctly handles:
     // The One Ring protection should prevent damage
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Sheoldred triggers should fire on each upkeep', () => {
     // TODO: Implement validation for: Sheoldred triggers should fire on each upkeep
     // This test should verify that the game state correctly handles:
     // Sheoldred triggers should fire on each upkeep
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Orcish Bowmasters should ping on non-creature cast', () => {
     // TODO: Implement validation for: Orcish Bowmasters should ping on non-creature cast
     // This test should verify that the game state correctly handles:
     // Orcish Bowmasters should ping on non-creature cast
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Multi-blocker damage should follow assignment order', () => {
     // TODO: Implement validation for: Multi-blocker damage should follow assignment order
     // This test should verify that the game state correctly handles:
     // Multi-blocker damage should follow assignment order
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: End-step timing windows should be enforced', () => {
     // TODO: Implement validation for: End-step timing windows should be enforced
     // This test should verify that the game state correctly handles:
     // End-step timing windows should be enforced
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Priority should pass correctly between players', () => {
     // TODO: Implement validation for: Priority should pass correctly between players
     // This test should verify that the game state correctly handles:
     // Priority should pass correctly between players
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Replacement effects should chain correctly', () => {
     // TODO: Implement validation for: Replacement effects should chain correctly
     // This test should verify that the game state correctly handles:
     // Replacement effects should chain correctly
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Late-game state should be internally consistent', () => {
     // TODO: Implement validation for: Late-game state should be internally consistent
     // This test should verify that the game state correctly handles:
     // Late-game state should be internally consistent
-    expect(fixture.gameState).toBeDefined();
+    expect(the_one_ring_trigger_stack.gameState).toBeDefined();
   });
 });

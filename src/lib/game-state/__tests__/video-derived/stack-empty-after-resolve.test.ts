@@ -7,7 +7,7 @@
  */
 
 
-const fixture = {
+const stack_empty_after_resolve = {
   id: 'stack-empty-after-resolve',
   name: 'stack-empty-after-resolve',
   description: 'Stack clear after resolve',
@@ -52,27 +52,27 @@ const fixture = {
 
 describe('Video-Derived Fixture: stack-empty-after-resolve', () => {
   it('loads game state successfully', () => {
-    expect(fixture.gameState).toBeDefined();
-    expect(fixture.gameState).toBeInstanceOf(Object);
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeInstanceOf(Object);
   });
 
   it('has valid player data', () => {
-    expect(fixture.gameState.player_life).toBeGreaterThan(0);
-    expect(fixture.gameState.opponent_life).toBeGreaterThan(0);
-    expect(Array.isArray(fixture.gameState.battlefield_player)).toBe(true);
-    expect(Array.isArray(fixture.gameState.battlefield_opponent)).toBe(true);
+    expect(stack_empty_after_resolve.gameState.player_life).toBeGreaterThan(0);
+    expect(stack_empty_after_resolve.gameState.opponent_life).toBeGreaterThan(0);
+    expect(Array.isArray(stack_empty_after_resolve.gameState.battlefield_player)).toBe(true);
+    expect(Array.isArray(stack_empty_after_resolve.gameState.battlefield_opponent)).toBe(true);
   });
 
   it('has valid turn structure', () => {
-    expect(typeof fixture.gameState.turn_number).toBe('number');
-    expect(fixture.gameState.turn_number).toBeGreaterThan(0);
-    expect(typeof fixture.gameState.phase).toBe('string');
+    expect(typeof stack_empty_after_resolve.gameState.turn_number).toBe('number');
+    expect(stack_empty_after_resolve.gameState.turn_number).toBeGreaterThan(0);
+    expect(typeof stack_empty_after_resolve.gameState.phase).toBe('string');
   });
 
   it('can be serialized and deserialized', () => {
-    const serialized = JSON.stringify(fixture.gameState);
+    const serialized = JSON.stringify(stack_empty_after_resolve.gameState);
     const deserialized = JSON.parse(serialized);
-    expect(deserialized).toEqual(fixture.gameState);
+    expect(deserialized).toEqual(stack_empty_after_resolve.gameState);
   });
 
 
@@ -80,55 +80,55 @@ describe('Video-Derived Fixture: stack-empty-after-resolve', () => {
     // TODO: Implement validation for: Game state should serialize without errors
     // This test should verify that the game state correctly handles:
     // Game state should serialize without errors
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Player life totals should be valid integers', () => {
     // TODO: Implement validation for: Player life totals should be valid integers
     // This test should verify that the game state correctly handles:
     // Player life totals should be valid integers
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Battlefield arrays should contain valid card entries', () => {
     // TODO: Implement validation for: Battlefield arrays should contain valid card entries
     // This test should verify that the game state correctly handles:
     // Battlefield arrays should contain valid card entries
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Hand size should be a non-negative integer', () => {
     // TODO: Implement validation for: Hand size should be a non-negative integer
     // This test should verify that the game state correctly handles:
     // Hand size should be a non-negative integer
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Phase should be a recognized game phase string', () => {
     // TODO: Implement validation for: Phase should be a recognized game phase string
     // This test should verify that the game state correctly handles:
     // Phase should be a recognized game phase string
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Turn number should be a positive integer', () => {
     // TODO: Implement validation for: Turn number should be a positive integer
     // This test should verify that the game state correctly handles:
     // Turn number should be a positive integer
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Graveyard should contain card name strings', () => {
     // TODO: Implement validation for: Graveyard should contain card name strings
     // This test should verify that the game state correctly handles:
     // Graveyard should contain card name strings
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 
   it('validates behavior: Stack should contain spell name strings or be empty', () => {
     // TODO: Implement validation for: Stack should contain spell name strings or be empty
     // This test should verify that the game state correctly handles:
     // Stack should contain spell name strings or be empty
-    expect(fixture.gameState).toBeDefined();
+    expect(stack_empty_after_resolve.gameState).toBeDefined();
   });
 });

@@ -7,7 +7,7 @@
  */
 
 
-const fixture = {
+const combat_damage_on_stack = {
   id: 'combat-damage-on-stack',
   name: 'combat-damage-on-stack',
   description: 'Combat damage on stack',
@@ -55,27 +55,27 @@ const fixture = {
 
 describe('Video-Derived Fixture: combat-damage-on-stack', () => {
   it('loads game state successfully', () => {
-    expect(fixture.gameState).toBeDefined();
-    expect(fixture.gameState).toBeInstanceOf(Object);
+    expect(combat_damage_on_stack.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeInstanceOf(Object);
   });
 
   it('has valid player data', () => {
-    expect(fixture.gameState.player_life).toBeGreaterThan(0);
-    expect(fixture.gameState.opponent_life).toBeGreaterThan(0);
-    expect(Array.isArray(fixture.gameState.battlefield_player)).toBe(true);
-    expect(Array.isArray(fixture.gameState.battlefield_opponent)).toBe(true);
+    expect(combat_damage_on_stack.gameState.player_life).toBeGreaterThan(0);
+    expect(combat_damage_on_stack.gameState.opponent_life).toBeGreaterThan(0);
+    expect(Array.isArray(combat_damage_on_stack.gameState.battlefield_player)).toBe(true);
+    expect(Array.isArray(combat_damage_on_stack.gameState.battlefield_opponent)).toBe(true);
   });
 
   it('has valid turn structure', () => {
-    expect(typeof fixture.gameState.turn_number).toBe('number');
-    expect(fixture.gameState.turn_number).toBeGreaterThan(0);
-    expect(typeof fixture.gameState.phase).toBe('string');
+    expect(typeof combat_damage_on_stack.gameState.turn_number).toBe('number');
+    expect(combat_damage_on_stack.gameState.turn_number).toBeGreaterThan(0);
+    expect(typeof combat_damage_on_stack.gameState.phase).toBe('string');
   });
 
   it('can be serialized and deserialized', () => {
-    const serialized = JSON.stringify(fixture.gameState);
+    const serialized = JSON.stringify(combat_damage_on_stack.gameState);
     const deserialized = JSON.parse(serialized);
-    expect(deserialized).toEqual(fixture.gameState);
+    expect(deserialized).toEqual(combat_damage_on_stack.gameState);
   });
 
 
@@ -83,48 +83,48 @@ describe('Video-Derived Fixture: combat-damage-on-stack', () => {
     // TODO: Implement validation for: Tapped permanents should be correctly flagged
     // This test should verify that the game state correctly handles:
     // Tapped permanents should be correctly flagged
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Stack spells should reflect active priority', () => {
     // TODO: Implement validation for: Stack spells should reflect active priority
     // This test should verify that the game state correctly handles:
     // Stack spells should reflect active priority
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Counter tracking should serialize correctly', () => {
     // TODO: Implement validation for: Counter tracking should serialize correctly
     // This test should verify that the game state correctly handles:
     // Counter tracking should serialize correctly
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Life total changes should match expected damage', () => {
     // TODO: Implement validation for: Life total changes should match expected damage
     // This test should verify that the game state correctly handles:
     // Life total changes should match expected damage
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Phase transitions should follow valid order', () => {
     // TODO: Implement validation for: Phase transitions should follow valid order
     // This test should verify that the game state correctly handles:
     // Phase transitions should follow valid order
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Face-down cards should hide identity', () => {
     // TODO: Implement validation for: Face-down cards should hide identity
     // This test should verify that the game state correctly handles:
     // Face-down cards should hide identity
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 
   it('validates behavior: Graveyard interaction targets should be valid', () => {
     // TODO: Implement validation for: Graveyard interaction targets should be valid
     // This test should verify that the game state correctly handles:
     // Graveyard interaction targets should be valid
-    expect(fixture.gameState).toBeDefined();
+    expect(combat_damage_on_stack.gameState).toBeDefined();
   });
 });

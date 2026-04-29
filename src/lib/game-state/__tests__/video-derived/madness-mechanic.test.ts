@@ -7,7 +7,7 @@
  */
 
 
-const fixture = {
+const madness_mechanic = {
   id: 'madness-mechanic',
   name: 'madness-mechanic',
   description: 'Madness from discard',
@@ -59,27 +59,27 @@ const fixture = {
 
 describe('Video-Derived Fixture: madness-mechanic', () => {
   it('loads game state successfully', () => {
-    expect(fixture.gameState).toBeDefined();
-    expect(fixture.gameState).toBeInstanceOf(Object);
+    expect(madness_mechanic.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeInstanceOf(Object);
   });
 
   it('has valid player data', () => {
-    expect(fixture.gameState.player_life).toBeGreaterThan(0);
-    expect(fixture.gameState.opponent_life).toBeGreaterThan(0);
-    expect(Array.isArray(fixture.gameState.battlefield_player)).toBe(true);
-    expect(Array.isArray(fixture.gameState.battlefield_opponent)).toBe(true);
+    expect(madness_mechanic.gameState.player_life).toBeGreaterThan(0);
+    expect(madness_mechanic.gameState.opponent_life).toBeGreaterThan(0);
+    expect(Array.isArray(madness_mechanic.gameState.battlefield_player)).toBe(true);
+    expect(Array.isArray(madness_mechanic.gameState.battlefield_opponent)).toBe(true);
   });
 
   it('has valid turn structure', () => {
-    expect(typeof fixture.gameState.turn_number).toBe('number');
-    expect(fixture.gameState.turn_number).toBeGreaterThan(0);
-    expect(typeof fixture.gameState.phase).toBe('string');
+    expect(typeof madness_mechanic.gameState.turn_number).toBe('number');
+    expect(madness_mechanic.gameState.turn_number).toBeGreaterThan(0);
+    expect(typeof madness_mechanic.gameState.phase).toBe('string');
   });
 
   it('can be serialized and deserialized', () => {
-    const serialized = JSON.stringify(fixture.gameState);
+    const serialized = JSON.stringify(madness_mechanic.gameState);
     const deserialized = JSON.parse(serialized);
-    expect(deserialized).toEqual(fixture.gameState);
+    expect(deserialized).toEqual(madness_mechanic.gameState);
   });
 
 
@@ -87,48 +87,48 @@ describe('Video-Derived Fixture: madness-mechanic', () => {
     // TODO: Implement validation for: Complex combat should resolve damage correctly
     // This test should verify that the game state correctly handles:
     // Complex combat should resolve damage correctly
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 
   it('validates behavior: Multiple stack items should resolve in order', () => {
     // TODO: Implement validation for: Multiple stack items should resolve in order
     // This test should verify that the game state correctly handles:
     // Multiple stack items should resolve in order
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 
   it('validates behavior: Commander damage should accumulate', () => {
     // TODO: Implement validation for: Commander damage should accumulate
     // This test should verify that the game state correctly handles:
     // Commander damage should accumulate
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 
   it('validates behavior: Land count should match turn constraints', () => {
     // TODO: Implement validation for: Land count should match turn constraints
     // This test should verify that the game state correctly handles:
     // Land count should match turn constraints
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 
   it('validates behavior: Board wipe should clear creature types only', () => {
     // TODO: Implement validation for: Board wipe should clear creature types only
     // This test should verify that the game state correctly handles:
     // Board wipe should clear creature types only
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 
   it('validates behavior: Mana availability should match untapped lands', () => {
     // TODO: Implement validation for: Mana availability should match untapped lands
     // This test should verify that the game state correctly handles:
     // Mana availability should match untapped lands
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 
   it('validates behavior: Proliferate should increment all counter types', () => {
     // TODO: Implement validation for: Proliferate should increment all counter types
     // This test should verify that the game state correctly handles:
     // Proliferate should increment all counter types
-    expect(fixture.gameState).toBeDefined();
+    expect(madness_mechanic.gameState).toBeDefined();
   });
 });
