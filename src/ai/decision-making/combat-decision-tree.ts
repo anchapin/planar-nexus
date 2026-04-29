@@ -28,6 +28,12 @@ import type {
 } from "@/lib/game-state/types";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "@/ai/providers/types";
+import {
+  predictOpponentBlocks,
+  integrateBlockPredictionIntoEV,
+  type OpponentArchetype,
+  type BlockPrediction,
+} from "./block-prediction";
 
 // Re-export for backward compatibility
 export type { GameState, PlayerState, Permanent, HandCard };
@@ -158,6 +164,10 @@ export interface CombatAIConfig {
   cardAdvantageWeight: number;
   /** Whether to consider combat tricks */
   useCombatTricks: boolean;
+  /** Whether to use predictive block modeling */
+  useBlockPrediction: boolean;
+  /** Estimated opponent archetype for block prediction */
+  opponentArchetype: OpponentArchetype;
 }
 
 /**
@@ -173,6 +183,8 @@ export const DefaultCombatConfigs: Record<
     lifeThreshold: 15,
     cardAdvantageWeight: 0.5,
     useCombatTricks: false,
+    useBlockPrediction: false,
+    opponentArchetype: "unknown",
   },
   medium: {
     aggression: 0.5,
@@ -180,6 +192,8 @@ export const DefaultCombatConfigs: Record<
     lifeThreshold: 10,
     cardAdvantageWeight: 1.0,
     useCombatTricks: true,
+    useBlockPrediction: true,
+    opponentArchetype: "unknown",
   },
   hard: {
     aggression: 0.7,
@@ -187,6 +201,8 @@ export const DefaultCombatConfigs: Record<
     lifeThreshold: 7,
     cardAdvantageWeight: 1.5,
     useCombatTricks: true,
+    useBlockPrediction: true,
+    opponentArchetype: "unknown",
   },
   expert: {
     aggression: 0.85,
@@ -194,6 +210,8 @@ export const DefaultCombatConfigs: Record<
     lifeThreshold: 5,
     cardAdvantageWeight: 2.0,
     useCombatTricks: true,
+    useBlockPrediction: true,
+    opponentArchetype: "unknown",
   },
 };
 
@@ -232,11 +250,29 @@ export class CombatDecisionTree {
     const attackableCreatures = this.getAttackableCreatures(aiPlayer);
     const attackDecisions: AttackDecision[] = [];
 
-    // Determine overall strategy
     const strategy = this.determineCombatStrategy(aiPlayer, opponents);
 
+    let blockPredictions: Map<string, BlockPrediction> | null = null;
+    if (this.config.useBlockPrediction && opponents.length > 0) {
+      const opponent = opponents[0];
+      const result = predictOpponentBlocks(
+        attackableCreatures,
+        opponent.battlefield,
+        opponent.life,
+        this.config.opponentArchetype,
+      );
+      blockPredictions = new Map(
+        result.predictions.map((p) => [p.attackerId, p]),
+      );
+    }
+
     for (const creature of attackableCreatures) {
-      const decision = this.evaluateAttacker(creature, opponents, strategy);
+      const decision = this.evaluateAttacker(
+        creature,
+        opponents,
+        strategy,
+        blockPredictions?.get(creature.id) ?? null,
+      );
       if (decision.shouldAttack) {
         attackDecisions.push(decision);
       }
@@ -415,6 +451,7 @@ export class CombatDecisionTree {
     creature: Permanent,
     opponents: PlayerState[],
     strategy: "aggressive" | "moderate" | "defensive",
+    blockPrediction: BlockPrediction | null = null,
   ): AttackDecision {
     let shouldAttack = false;
     let target: string | "none" = "none";
@@ -470,6 +507,27 @@ export class CombatDecisionTree {
 
     const adjustedValue = bestTargetValue + evasionBonus - creatureValuePenalty;
 
+    if (blockPrediction) {
+      const opponent = opponents[0];
+      const predictedEV = integrateBlockPredictionIntoEV(
+        adjustedValue,
+        blockPrediction,
+        creature,
+        opponent.battlefield,
+        opponent.life,
+      );
+      return this.buildAttackDecision(
+        creature,
+        opponents,
+        strategy,
+        attackThreshold,
+        evasionBonus,
+        creatureValuePenalty,
+        predictedEV,
+        opponentAnalyses,
+      );
+    }
+
     if (adjustedValue >= attackThreshold) {
       shouldAttack = true;
       target = bestTarget!;
@@ -486,6 +544,79 @@ export class CombatDecisionTree {
       reasoning = this.generateHoldReasoning(creature, bestTargetValue);
     }
 
+    return this.buildAttackDecisionFromValues(
+      creature,
+      shouldAttack,
+      target,
+      reasoning,
+      expectedValue,
+      riskLevel,
+    );
+  }
+
+  private buildAttackDecision(
+    creature: Permanent,
+    opponents: PlayerState[],
+    strategy: "aggressive" | "moderate" | "defensive",
+    attackThreshold: number,
+    evasionBonus: number,
+    creatureValuePenalty: number,
+    predictedEV: number,
+    opponentAnalyses: Array<{
+      opponent: PlayerState;
+      potentialBlockers: Permanent[];
+      canBlock: boolean;
+      blocks: Array<{ blocker: Permanent; trades: boolean; dies: boolean }>;
+    }>,
+  ): AttackDecision {
+    let bestTargetId = opponents[0]?.id ?? "none";
+    let bestTargetValue = -Infinity;
+    for (const analysis of opponentAnalyses) {
+      const targetValue = this.evaluateAttackTarget(
+        creature,
+        analysis.opponent,
+        analysis.blocks,
+        strategy,
+      );
+      if (targetValue > bestTargetValue) {
+        bestTargetValue = targetValue;
+        bestTargetId = analysis.opponent.id;
+      }
+    }
+
+    const hasEvasion = evasionBonus > 0;
+    const expectedValue = Math.max(0, Math.min(1, predictedEV));
+    const shouldAttack = predictedEV >= attackThreshold;
+    const riskLevel = shouldAttack
+      ? this.calculateAttackRisk(creature, opponentAnalyses)
+      : 0;
+    const reasoning = shouldAttack
+      ? this.generateAttackReasoning(
+          creature,
+          bestTargetId,
+          expectedValue,
+          hasEvasion,
+        )
+      : this.generateHoldReasoning(creature, bestTargetValue);
+
+    return this.buildAttackDecisionFromValues(
+      creature,
+      shouldAttack,
+      shouldAttack ? bestTargetId : "none",
+      reasoning,
+      expectedValue,
+      riskLevel,
+    );
+  }
+
+  private buildAttackDecisionFromValues(
+    creature: Permanent,
+    shouldAttack: boolean,
+    target: string | "none",
+    reasoning: string,
+    expectedValue: number,
+    riskLevel: number,
+  ): AttackDecision {
     return {
       creatureId: creature.id,
       shouldAttack,
