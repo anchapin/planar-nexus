@@ -38,6 +38,32 @@ import type {
 } from "./trigger-chain-evaluator";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "./providers/types";
+import {
+  evaluateTriggerChain,
+  getTriggerChainSummary,
+  shouldCounterToPreventTriggers,
+  getHighestValueChain,
+  TriggerChain,
+  CascadeContext,
+  BoardPermanent,
+} from "./trigger-chain-evaluator";
+import {
+  getCounterspellProbability,
+  classifyManaTier,
+  classifyStackPressure,
+} from "./counterspell-frequency-model";
+export {
+  getCounterspellProbability,
+  isOpponentLikelyToCounterspell,
+  classifyManaTier,
+  classifyStackPressure,
+} from "./counterspell-frequency-model";
+export type {
+  CounterspellFrequencyRecord,
+  CounterspellProbabilityResult,
+  ManaTier,
+  StackPressure,
+} from "./counterspell-frequency-model";
 
 // Re-export GameState for backward compatibility
 export type { GameState };
@@ -1416,6 +1442,16 @@ export class StackInteractionAI {
   }
 
   /**
+   * Assess threat including cascade/trigger-chain evaluation.
+   * Use this when you need to account for downstream triggered abilities.
+   */
+  assessActionThreatWithTriggers(context: StackContext): number {
+    const baseThreat = this.assessActionThreat(context, evaluateGameState(this.gameState, this.playerId, "medium"));
+    const triggerResult = this.evaluateTriggerChains(context);
+    return Math.min(1, baseThreat + triggerResult.cascadeThreatBonus);
+  }
+
+  /**
    * Get valid responses available in context
    */
   private getValidResponses(context: StackContext): AvailableResponse[] {
@@ -2190,23 +2226,78 @@ export class StackInteractionAI {
   }
 
   /**
-   * Check if opponent likely has a counterspell
+   * Check if opponent likely has a counterspell using the frequency model.
+   *
+   * Uses the data-driven frequency table from counterspell-frequency-model.ts
+   * instead of generic heuristic checks. Factors in opponent archetype,
+   * available mana, and stack pressure to produce a probability estimate.
    */
-  private likelyOpponentCounterspell(_context: StackContext): boolean {
+  private likelyOpponentCounterspell(context: StackContext): boolean {
     const opponents = Object.values(this.gameState.players).filter(
       (p) => p.id !== this.playerId,
     );
 
     for (const opponent of opponents) {
-      // Check if opponent has cards in hand (uncertain what they are)
-      if (opponent.hand.length > 2) {
-        // In real game, we'd have more info here
-        // For now, assume some chance
-        return true;
+      if (opponent.hand.length === 0) continue;
+
+      const archetype = this.detectOpponentArchetype(opponent);
+
+      const manaMap: Record<string, number> = {};
+      if (opponent.manaPool) {
+        for (const [color, amount] of Object.entries(opponent.manaPool)) {
+          manaMap[color] = amount as number;
+        }
       }
+      const untappedLands = opponent.battlefield.filter(
+        (p) => p.type === "land" && !p.tapped,
+      ).length;
+      if (!manaMap["colorless"]) manaMap["colorless"] = 0;
+      manaMap["colorless"] += untappedLands;
+
+      const stackActions = context.actionsAbove.map((a) => ({
+        id: a.id,
+        cardId: a.cardId || "",
+        name: a.name,
+        controller: a.controller,
+        type: a.type as "spell" | "ability",
+        manaValue: a.manaValue || 0,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+      }));
+
+      const result = getCounterspellProbability(
+        archetype,
+        manaMap,
+        stackActions,
+        context.currentAction,
+      );
+
+      if (result.probability >= 0.3) return true;
     }
 
     return false;
+  }
+
+  /**
+   * Detect opponent's deck archetype from available game state cues.
+   * Used for frequency table lookups.
+   */
+  private detectOpponentArchetype(
+    opponent: { battlefield: Array<{ type: string; tapped: boolean; id: string; name: string; cardInstanceId: string; controller: string; power?: number }>; hand: Array<{ cardInstanceId: string; name: string; type: string; manaValue: number }>; graveyard: unknown[]; exile: unknown[]; library: number; life: number; poisonCounters: number; commanderDamage: Record<string, number> } & { manaPool?: Record<string, unknown> },
+  ): DeckArchetype {
+    const creatures = opponent.battlefield.filter((p) => p.type === "creature");
+    const lands = opponent.battlefield.filter((p) => p.type === "land");
+    const nonCreatureNonLand = opponent.battlefield.filter(
+      (p) => p.type !== "creature" && p.type !== "land",
+    );
+
+    if (creatures.length >= 4 && lands.length <= 3) return "aggro";
+    if (nonCreatureNonLand.length >= 2 && creatures.length <= 1) return "control";
+    if (creatures.length >= 2 && nonCreatureNonLand.length >= 1) return "tempo";
+    if (creatures.length >= 2 && creatures.length <= 4) return "midrange";
+    if (nonCreatureNonLand.length >= 3) return "combo";
+
+    return "unknown";
   }
 
   /**
@@ -2329,6 +2420,70 @@ export class StackInteractionAI {
     // Sort by effect value
     instants.sort((a, b) => b.effect.value - a.effect.value);
     return instants[0];
+  }
+
+  /**
+   * Evaluate trigger chains that would result from a stack item resolving.
+   * Accounts for ETB effects, "whenever you cast" triggers, Cascade keyword,
+   * Panharmonicon-style doubling, and secondary cascaded triggers.
+   */
+  evaluateTriggerChains(context: StackContext): {
+    chains: TriggerChain[];
+    summary: string;
+    shouldCounterToPrevent: boolean;
+    highestValueChain: TriggerChain | null;
+    cascadeThreatBonus: number;
+  } {
+    const boardPermanents: BoardPermanent[] = [];
+    for (const [playerId, player] of Object.entries(this.gameState.players)) {
+      for (const permanent of player.battlefield) {
+        boardPermanents.push({
+          id: permanent.id,
+          cardId: permanent.cardInstanceId,
+          name: permanent.name,
+          controller: permanent.controller,
+          type: permanent.type as BoardPermanent["type"],
+          keywords: permanent.keywords,
+          manaValue: (permanent as any).manaValue,
+          power: permanent.power,
+          toughness: (permanent as any).toughness,
+          oracleText: (permanent as any).oracleText,
+        });
+      }
+    }
+
+    const cascadeCtx: CascadeContext = {
+      stackItem: {
+        id: context.currentAction.id,
+        cardId: context.currentAction.cardId,
+        name: context.currentAction.name,
+        controller: context.currentAction.controller,
+        type: context.currentAction.type,
+        manaValue: context.currentAction.manaValue,
+        colors: context.currentAction.colors,
+        targets: context.currentAction.targets,
+      },
+      battlefield: boardPermanents,
+      ownLife: this.gameState.players[this.playerId]?.life,
+      opponentLife: Object.values(this.gameState.players).find(
+        (p) => p.id !== this.playerId,
+      )?.life,
+    };
+
+    const chains = evaluateTriggerChain(cascadeCtx.stackItem, cascadeCtx.battlefield);
+    const summary = getTriggerChainSummary(chains);
+    const shouldCounterToPrevent = shouldCounterToPreventTriggers(chains);
+    const highestValueChain = getHighestValueChain(chains);
+
+    const cascadeThreatBonus = chains.reduce((sum, c) => sum + c.totalValue * 0.1, 0);
+
+    return {
+      chains,
+      summary,
+      shouldCounterToPrevent,
+      highestValueChain,
+      cascadeThreatBonus: Math.min(0.5, cascadeThreatBonus),
+    };
   }
 
   /**
