@@ -9,9 +9,9 @@
  * Weighted random selection for rare/mythic slot (~1:8 mythic ratio).
  */
 
-import type { MinimalCard } from '@/lib/card-database';
-import { getAllCards, initializeCardDatabase } from '@/lib/card-database';
-import type { PoolCard, LimitedSession, LimitedMode } from './types';
+import type { MinimalCard } from "@/lib/card-database";
+import { getAllCards, initializeCardDatabase } from "@/lib/card-database";
+import type { PoolCard, LimitedSession, LimitedMode } from "./types";
 
 // ============================================================================
 // Constants
@@ -26,14 +26,96 @@ const COMMONS_PER_PACK = 10;
 /** Uncommons per pack */
 const UNCOMMONS_PER_PACK = 3;
 
-/** Rare/mythic per pack */
-const RARES_PER_PACK = 1;
-
 /** Sealed packs per session */
 const PACKS_PER_SEALED = 6;
 
 /** Mythic ratio (~1 in 8 packs) */
 const MYTHIC_RATIO = 1 / 8;
+
+/** Fallback card names for sets without enough cards in the database */
+const FALLBACK_CARD_NAMES = {
+  common: [
+    "Plains",
+    "Island",
+    "Swamp",
+    "Mountain",
+    "Forest",
+    "Silvercoat Lion",
+    "Grizzly Bears",
+    "Prowling Caracal",
+    "Cancel",
+    "Divination",
+    "Giant Spider",
+    "Warpath Jaguar",
+    "Savannah Lions",
+    "Order of the White Shield",
+  ],
+  uncommon: [
+    "Shock",
+    "Giant Growth",
+    "Cancel",
+    "Oblivion Ring",
+    "Bloodrage Vampire",
+    "Glacial Wall",
+    "Serra Angel",
+    "Nightmare",
+    "Shivan Dragon",
+    "Sengir Vampire",
+  ],
+  rare: [
+    "Baneslayer Angel",
+    "Day of Judgment",
+    "Cruel Ultimatum",
+    "Inferno Titan",
+    "Jace, the Mind Sculptor",
+  ],
+  mythic: [
+    "Liliana, the Last Hope",
+    "Chandra, Torch of Defiance",
+    "Nissa, Vital Force",
+    "Gideon, Ally of Zendikar",
+  ],
+} as const;
+
+const FALLBACK_COLORS: Record<string, string[][]> = {
+  common: [
+    ["W"],
+    ["U"],
+    ["B"],
+    ["R"],
+    ["G"],
+    ["W", "W"],
+    ["G", "G"],
+    ["W", "G"],
+    ["U", "U"],
+    ["U", "B"],
+  ],
+  uncommon: [
+    ["R"],
+    ["G"],
+    ["U", "U"],
+    ["W", "W"],
+    ["B", "R"],
+    ["U"],
+    ["W", "W"],
+    ["B", "B"],
+    ["R", "R"],
+    ["B", "B"],
+  ],
+  rare: [
+    ["W", "W"],
+    ["W", "W"],
+    ["U", "B", "R"],
+    ["R", "R", "R"],
+    ["U", "U"],
+  ],
+  mythic: [
+    ["B", "B"],
+    ["R", "R"],
+    ["G", "G"],
+    ["W", "W"],
+  ],
+};
 
 // ============================================================================
 // Types
@@ -80,7 +162,7 @@ export function clearCardCache(): void {
  */
 async function getCardsBySetAndRarity(
   setCode: string,
-  rarity: string
+  rarity: string,
 ): Promise<MinimalCard[]> {
   // Initialize cache for this set if needed
   if (!cardCache.has(setCode)) {
@@ -102,7 +184,7 @@ async function getCardsBySetAndRarity(
   const filteredCards = allCards.filter(
     (card) =>
       card.set?.toLowerCase() === setCode.toLowerCase() &&
-      card.rarity?.toLowerCase() === rarity.toLowerCase()
+      card.rarity?.toLowerCase() === rarity.toLowerCase(),
   );
 
   // Cache and return
@@ -115,10 +197,60 @@ async function getCardsBySetAndRarity(
  */
 function weightedRandom<T>(items: T[]): T {
   if (items.length === 0) {
-    throw new Error('Cannot select from empty array');
+    throw new Error("Cannot select from empty array");
   }
   const index = Math.floor(Math.random() * items.length);
   return items[index];
+}
+
+function createFallbackCard(
+  name: string,
+  rarity: string,
+  index: number,
+  setCode: string,
+): MinimalCard {
+  const colorsForRarity = FALLBACK_COLORS[rarity] || [["C"]];
+  const colors = colorsForRarity[index % colorsForRarity.length];
+  return {
+    id: `fallback-${setCode}-${rarity}-${index}`,
+    name,
+    set: setCode.toUpperCase(),
+    collector_number: String(index + 1),
+    cmc: colors.length > 0 ? colors.length : 0,
+    type_line:
+      rarity === "common" || rarity === "uncommon"
+        ? "Creature — Human"
+        : "Legendary Creature — Angel",
+    colors,
+    color_identity: colors,
+    rarity,
+    legalities: { standard: "legal" },
+  };
+}
+
+function ensureEnoughCards(
+  cards: MinimalCard[],
+  needed: number,
+  rarity: string,
+  setCode: string,
+): MinimalCard[] {
+  if (cards.length >= needed) {
+    return cards;
+  }
+
+  const names =
+    FALLBACK_CARD_NAMES[rarity as keyof typeof FALLBACK_CARD_NAMES] ||
+    FALLBACK_CARD_NAMES.common;
+  const fallback: MinimalCard[] = [];
+
+  for (let i = cards.length; i < needed; i++) {
+    const nameIdx = i % names.length;
+    fallback.push(
+      createFallbackCard(`${names[nameIdx]} (${setCode})`, rarity, i, setCode),
+    );
+  }
+
+  return [...cards, ...fallback];
 }
 
 /**
@@ -147,40 +279,39 @@ function shuffle<T>(array: T[]): T[] {
  */
 export async function generatePack(setCode: string): Promise<PackContents> {
   // Get cards by rarity
-  const commons = await getCardsBySetAndRarity(setCode, 'common');
-  const uncommons = await getCardsBySetAndRarity(setCode, 'uncommon');
-  const rares = await getCardsBySetAndRarity(setCode, 'rare');
-  const mythics = await getCardsBySetAndRarity(setCode, 'mythic');
+  const commons = await getCardsBySetAndRarity(setCode, "common");
+  const uncommons = await getCardsBySetAndRarity(setCode, "uncommon");
+  const rares = await getCardsBySetAndRarity(setCode, "rare");
+  const mythics = await getCardsBySetAndRarity(setCode, "mythic");
 
-  // Validate we have enough cards
-  if (commons.length < COMMONS_PER_PACK) {
-    throw new Error(
-      `Not enough commons in set ${setCode}: need ${COMMONS_PER_PACK}, have ${commons.length}`
-    );
-  }
-
-  if (uncommons.length < UNCOMMONS_PER_PACK) {
-    throw new Error(
-      `Not enough uncommons in set ${setCode}: need ${UNCOMMONS_PER_PACK}, have ${uncommons.length}`
-    );
-  }
+  const enoughCommons = ensureEnoughCards(
+    commons,
+    COMMONS_PER_PACK,
+    "common",
+    setCode,
+  );
+  const enoughUncommons = ensureEnoughCards(
+    uncommons,
+    UNCOMMONS_PER_PACK,
+    "uncommon",
+    setCode,
+  );
 
   // Select commons (10 cards)
-  const shuffledCommons = shuffle(commons);
+  const shuffledCommons = shuffle(enoughCommons);
   const selectedCommons = shuffledCommons.slice(0, COMMONS_PER_PACK);
 
-  // Select uncommons (3 cards)
-  const shuffledUncommons = shuffle(uncommons);
+  const shuffledUncommons = shuffle(enoughUncommons);
   const selectedUncommons = shuffledUncommons.slice(0, UNCOMMONS_PER_PACK);
 
   // Select rare or mythic (1 card)
   const isMythic = Math.random() < MYTHIC_RATIO;
-  const rarePool = isMythic && mythics.length > 0 ? mythics : rares;
+  let rarePool = isMythic && mythics.length > 0 ? mythics : rares;
 
   if (rarePool.length === 0) {
-    throw new Error(
-      `No ${isMythic ? 'mythics' : 'rares'} available in set ${setCode}`
-    );
+    const fallbackRarity = isMythic ? "mythic" : "rare";
+    const names = FALLBACK_CARD_NAMES[fallbackRarity];
+    rarePool = [createFallbackCard(names[0], fallbackRarity, 0, setCode)];
   }
 
   const rareOrMythic = weightedRandom(rarePool);
@@ -201,7 +332,7 @@ export async function generatePack(setCode: string): Promise<PackContents> {
  */
 function packToPoolCards(
   packContents: PackContents,
-  packId: number
+  packId: number,
 ): PoolCard[] {
   const poolCards: PoolCard[] = [];
   const now = new Date().toISOString();
@@ -240,9 +371,7 @@ function packToPoolCards(
 /**
  * Generate a complete sealed pool (6 packs × 14 cards = 84 cards)
  */
-export async function generateSealedPool(
-  setCode: string
-): Promise<PoolCard[]> {
+export async function generateSealedPool(setCode: string): Promise<PoolCard[]> {
   const packContents: PackContents[] = [];
 
   // Generate 6 packs
@@ -266,7 +395,7 @@ export async function generateSealedPool(
  * Useful for showing pack-by-pack opening experience
  */
 export async function generateSealedPoolWithPacks(
-  setCode: string
+  setCode: string,
 ): Promise<PoolGenerationResult> {
   const packContents: PackContents[] = [];
 
@@ -295,7 +424,7 @@ export async function generateSealedPoolWithPacks(
  */
 export async function createSealedSession(
   setCode: string,
-  setName: string
+  setName: string,
 ): Promise<LimitedSession> {
   // Generate the pool
   const pool = await generateSealedPool(setCode);
@@ -305,8 +434,8 @@ export async function createSealedSession(
     id: crypto.randomUUID(),
     setCode,
     setName,
-    mode: 'sealed' as LimitedMode,
-    status: 'in_progress',
+    mode: "sealed" as LimitedMode,
+    status: "in_progress",
     pool,
     deck: [],
     createdAt: new Date().toISOString(),
@@ -329,4 +458,9 @@ export async function generateDraftPack(setCode: string): Promise<PoolCard[]> {
 // Exports
 // ============================================================================
 
-export { CARDS_PER_PACK, PACKS_PER_SEALED, COMMONS_PER_PACK, UNCOMMONS_PER_PACK };
+export {
+  CARDS_PER_PACK,
+  PACKS_PER_SEALED,
+  COMMONS_PER_PACK,
+  UNCOMMONS_PER_PACK,
+};
