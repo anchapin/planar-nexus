@@ -10,6 +10,9 @@ import {
   DefaultWeights,
   type EvaluationWeights,
   type DetailedEvaluation,
+  projectBoardState,
+  compareHoldVsPlay,
+  type ProposedPlay,
 } from '../game-state-evaluator';
 import type { AIGameState, AIPlayerState, AIPermanent, AIHandCard } from '@/lib/game-state/types';
 
@@ -557,5 +560,391 @@ describe('GameStateEvaluator', () => {
       // Life score should be capped at -1
       expect(evaluation.factors.lifeScore).toBeGreaterThanOrEqual(-1);
     });
+  });
+
+  describe('stackPressureScore', () => {
+    it('should be zero with empty stack and no open mana', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.stackPressureScore).toBe(0);
+    });
+
+    it('should score lower when opponent has 2+ mana open on their turn vs tapped out', () => {
+      const tappedOutHand: AIHandCard[] = [];
+      const tappedOutBattlefield: AIPermanent[] = [
+        createMockPermanent('land-1', 'Island', 'land', undefined, undefined, true),
+      ];
+
+      const openManaBattlefield: AIPermanent[] = [
+        createMockPermanent('land-2', 'Island', 'land', undefined, undefined, false),
+        createMockPermanent('land-3', 'Island', 'land', undefined, undefined, false),
+      ];
+
+      const tappedOutState = createTestGameState(
+        20, 20,
+        tappedOutHand, tappedOutHand,
+        tappedOutBattlefield, tappedOutBattlefield
+      );
+      tappedOutState.turnInfo.currentPlayer = 'player2';
+
+      const openManaState = createTestGameState(
+        20, 20,
+        tappedOutHand, tappedOutHand,
+        tappedOutBattlefield, openManaBattlefield
+      );
+      openManaState.turnInfo.currentPlayer = 'player2';
+
+      const evaluatorTapped = new GameStateEvaluator(tappedOutState, 'player1');
+      const evaluatorOpen = new GameStateEvaluator(openManaState, 'player1');
+
+      expect(evaluatorOpen.evaluate().factors.stackPressureScore).toBeLessThan(
+        evaluatorTapped.evaluate().factors.stackPressureScore
+      );
+    });
+
+    it('should score positively when player has instants and opponents have open mana', () => {
+      const playerHand = [
+        createMockHandCard('Counterspell', 2, 'Instant'),
+      ];
+      const oppBattlefield = [
+        createMockPermanent('land-1', 'Island', 'land', undefined, undefined, false),
+        createMockPermanent('land-2', 'Island', 'land', undefined, undefined, false),
+      ];
+
+      const gameState = createTestGameState(
+        20, 20,
+        playerHand, [],
+        [], oppBattlefield
+      );
+
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.stackPressureScore).toBeGreaterThan(0);
+    });
+
+    it('should score positively when player has responses on the stack', () => {
+      const playerHand = [
+        createMockHandCard('Counterspell', 2, 'Instant'),
+      ];
+      const untappedLands = [
+        createMockPermanent('land-1', 'Island', 'land', undefined, undefined, false),
+        createMockPermanent('land-2', 'Island', 'land', undefined, undefined, false),
+      ];
+
+      const gameState = createTestGameState(
+        20, 20,
+        playerHand, [],
+        untappedLands, []
+      );
+      gameState.stack = [
+        {
+          id: 'stack-1',
+          cardInstanceId: 'card-1',
+          controller: 'player2',
+          type: 'spell',
+          name: 'Lightning Bolt',
+          manaValue: 1,
+          targets: ['player1'],
+        },
+      ];
+
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.stackPressureScore).toBeGreaterThan(0);
+    });
+
+    it('should include stackPressureScore in default weights for all difficulties', () => {
+      const difficulties: Array<'easy' | 'medium' | 'hard' | 'expert'> = ['easy', 'medium', 'hard', 'expert'];
+
+      for (const diff of difficulties) {
+        expect(DefaultWeights[diff].stackPressureScore).toBeGreaterThan(0);
+      }
+    });
+
+    it('should include stackPressureScore in evaluation factors', () => {
+      const gameState = createTestGameState();
+      const evaluator = new GameStateEvaluator(gameState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors).toHaveProperty('stackPressureScore');
+      expect(typeof evaluation.factors.stackPressureScore).toBe('number');
+    });
+
+    it('should score higher with flash creatures and no opponent mana', () => {
+      const playerHand: AIHandCard[] = [
+        {
+          cardInstanceId: 'hand-vendilion-clique',
+          name: 'Vendilion Clique',
+          manaValue: 3,
+          type: 'Creature',
+          colors: ['blue'],
+          keywords: ['flash', 'flying'],
+        },
+      ];
+
+      const noManaState = createTestGameState(20, 20, playerHand, [], [], []);
+
+      const evaluator = new GameStateEvaluator(noManaState, 'player1');
+      const evaluation = evaluator.evaluate();
+
+      expect(evaluation.factors.stackPressureScore).toBeGreaterThan(0);
+    });
+
+    it('should be included in totalScore calculation', () => {
+      const playerHand = [
+        createMockHandCard('Counterspell', 2, 'Instant'),
+      ];
+      const oppBattlefield = [
+        createMockPermanent('land-1', 'Island', 'land', undefined, undefined, false),
+        createMockPermanent('land-2', 'Island', 'land', undefined, undefined, false),
+      ];
+
+      const gameState = createTestGameState(
+        20, 20,
+        playerHand, [],
+        [], oppBattlefield
+      );
+
+      const evaluatorNormal = new GameStateEvaluator(gameState, 'player1');
+      evaluatorNormal.setWeights({ stackPressureScore: 0 });
+      const scoreNoStack = evaluatorNormal.evaluate().totalScore;
+
+      const evaluatorWithStack = new GameStateEvaluator(gameState, 'player1');
+      const scoreWithStack = evaluatorWithStack.evaluate().totalScore;
+
+      expect(scoreWithStack).not.toBe(scoreNoStack);
+    });
+  });
+});
+
+describe('projectBoardState', () => {
+  it('should remove a creature card from hand and add it to battlefield', () => {
+    const hand_card = createMockHandCard('Grizzly Bears', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [hand_card], []);
+
+    const play: ProposedPlay = {
+      card: hand_card,
+      type: 'cast_creature',
+      manaCost: 2,
+      producedPermanent: { type: 'creature', power: 2, toughness: 2 },
+    };
+
+    const projected = projectBoardState(game_state, play);
+
+    expect(projected.players.player1.hand).toHaveLength(0);
+    expect(projected.players.player1.battlefield).toHaveLength(1);
+    expect(projected.players.player1.battlefield[0].name).toBe('Grizzly Bears');
+    expect(projected.players.player1.battlefield[0].power).toBe(2);
+  });
+
+  it('should add land to battlefield and track land drop', () => {
+    const land_card = createMockHandCard('Forest', 0, 'Land');
+    const game_state = createTestGameState(20, 20, [land_card], []);
+
+    const play: ProposedPlay = {
+      card: land_card,
+      type: 'play_land',
+      manaCost: 0,
+      producedPermanent: { type: 'land' },
+    };
+
+    const projected = projectBoardState(game_state, play);
+
+    expect(projected.players.player1.hand).toHaveLength(0);
+    expect(projected.players.player1.battlefield).toHaveLength(1);
+    expect(projected.players.player1.battlefield[0].type).toBe('land');
+    expect(projected.players.player1.landsPlayedThisTurn).toBe(1);
+  });
+
+  it('should send instants to graveyard after casting', () => {
+    const instant_card = createMockHandCard('Lightning Bolt', 1, 'Instant');
+    const game_state = createTestGameState(20, 20, [instant_card], []);
+
+    const play: ProposedPlay = {
+      card: instant_card,
+      type: 'cast_instant',
+      manaCost: 1,
+    };
+
+    const projected = projectBoardState(game_state, play);
+
+    expect(projected.players.player1.hand).toHaveLength(0);
+    expect(projected.players.player1.battlefield).toHaveLength(0);
+    expect(projected.players.player1.graveyard).toHaveLength(1);
+  });
+
+  it('should not mutate the original game state', () => {
+    const hand_card = createMockHandCard('Bear', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [hand_card], []);
+
+    const play: ProposedPlay = {
+      card: hand_card,
+      type: 'cast_creature',
+      manaCost: 2,
+      producedPermanent: { type: 'creature', power: 2, toughness: 2 },
+    };
+
+    projectBoardState(game_state, play);
+
+    expect(game_state.players.player1.hand).toHaveLength(1);
+    expect(game_state.players.player1.battlefield).toHaveLength(0);
+  });
+
+  it('should deduct mana cost from mana pool', () => {
+    const hand_card = createMockHandCard('Bear', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [hand_card], []);
+    game_state.players.player1.manaPool = {
+      white: 0, blue: 0, black: 0, red: 0, green: 2, colorless: 0, generic: 0,
+    };
+
+    const play: ProposedPlay = {
+      card: hand_card,
+      type: 'cast_creature',
+      manaCost: 2,
+      producedPermanent: { type: 'creature', power: 2, toughness: 2 },
+    };
+
+    const projected = projectBoardState(game_state, play);
+
+    expect((projected.players.player1.manaPool as Record<string, number>).green).toBe(0);
+  });
+});
+
+describe('compareHoldVsPlay', () => {
+  it('scenario 1: should recommend playing a creature when board is empty (develop board)', () => {
+    const hand_card = createMockHandCard('Grizzly Bears', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [hand_card], []);
+    game_state.players.player1.manaPool = {
+      white: 0, blue: 0, black: 0, red: 0, green: 2, colorless: 0, generic: 0,
+    };
+
+    const play: ProposedPlay = {
+      card: hand_card,
+      type: 'cast_creature',
+      manaCost: 2,
+      producedPermanent: { type: 'creature', power: 2, toughness: 2 },
+    };
+
+    const result = compareHoldVsPlay(game_state, play, 'player1');
+
+    expect(result.recommendation).toBe('play');
+    expect(result.playNowScore).toBeGreaterThan(result.holdScore);
+  });
+
+  it('scenario 2: should recommend playing a land to develop mana base', () => {
+    const land_card = createMockHandCard('Forest', 0, 'Land');
+    const hand_card = createMockHandCard('Bear', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [land_card, hand_card], []);
+
+    const play: ProposedPlay = {
+      card: land_card,
+      type: 'play_land',
+      manaCost: 0,
+      producedPermanent: { type: 'land' },
+    };
+
+    const result = compareHoldVsPlay(game_state, play, 'player1');
+
+    expect(result.recommendation).toBe('play');
+  });
+
+  it('scenario 3: should recommend holding removal when opponent has no creatures', () => {
+    const removal = createMockHandCard('Path to Exile', 1, 'Instant');
+    const game_state = createTestGameState(20, 20, [removal], []);
+
+    const play: ProposedPlay = {
+      card: removal,
+      type: 'cast_instant',
+      manaCost: 1,
+    };
+
+    const result = compareHoldVsPlay(game_state, play, 'player1');
+
+    expect(result.recommendation).toBe('hold');
+    expect(result.holdScore).toBeGreaterThanOrEqual(result.playNowScore);
+  });
+
+  it('scenario 4: should recommend playing a big creature when behind on board', () => {
+    const big_creature = createMockHandCard('Inferno Titan', 6, 'Creature');
+    const opponent_creatures = [
+      createMockPermanent('c1', 'Bear', 'creature', 2, 2),
+      createMockPermanent('c2', 'Ogre', 'creature', 3, 3),
+      createMockPermanent('c3', 'Giant', 'creature', 4, 4),
+    ];
+    const game_state = createTestGameState(20, 20, [big_creature], [], [], opponent_creatures);
+    game_state.players.player1.manaPool = {
+      white: 0, blue: 0, black: 0, red: 6, colorless: 0, generic: 0,
+    };
+
+    const play: ProposedPlay = {
+      card: big_creature,
+      type: 'cast_creature',
+      manaCost: 6,
+      producedPermanent: { type: 'creature', power: 6, toughness: 6 },
+    };
+
+    const result = compareHoldVsPlay(game_state, play, 'player1');
+
+    expect(result.recommendation).toBe('play');
+    expect(result.scoreDelta).toBeGreaterThan(0);
+  });
+
+  it('scenario 5: should recommend holding a sorcery with no board impact when board is empty', () => {
+    const sorcery = createMockHandCard('Divination', 3, 'Sorcery');
+    const game_state = createTestGameState(20, 20, [sorcery], []);
+
+    const play: ProposedPlay = {
+      card: sorcery,
+      type: 'cast_sorcery',
+      manaCost: 3,
+    };
+
+    const result = compareHoldVsPlay(game_state, play, 'player1');
+
+    expect(result.recommendation).toBe('hold');
+    expect(result.holdScore).toBeGreaterThanOrEqual(result.playNowScore);
+  });
+
+  it('should return both scores and scoreDelta', () => {
+    const hand_card = createMockHandCard('Bear', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [hand_card], []);
+
+    const play: ProposedPlay = {
+      card: hand_card,
+      type: 'cast_creature',
+      manaCost: 2,
+      producedPermanent: { type: 'creature', power: 2, toughness: 2 },
+    };
+
+    const result = compareHoldVsPlay(game_state, play, 'player1');
+
+    expect(result).toHaveProperty('playNowScore');
+    expect(result).toHaveProperty('holdScore');
+    expect(result).toHaveProperty('recommendation');
+    expect(result).toHaveProperty('scoreDelta');
+    expect(typeof result.playNowScore).toBe('number');
+    expect(typeof result.holdScore).toBe('number');
+    expect(result.scoreDelta).toBeCloseTo(result.playNowScore - result.holdScore);
+  });
+
+  it('should respect difficulty when computing scores', () => {
+    const hand_card = createMockHandCard('Bear', 2, 'Creature');
+    const game_state = createTestGameState(20, 20, [hand_card], []);
+
+    const play: ProposedPlay = {
+      card: hand_card,
+      type: 'cast_creature',
+      manaCost: 2,
+      producedPermanent: { type: 'creature', power: 2, toughness: 2 },
+    };
+
+    const easy_result = compareHoldVsPlay(game_state, play, 'player1', 'easy');
+    const hard_result = compareHoldVsPlay(game_state, play, 'player1', 'hard');
+
+    expect(easy_result.playNowScore).not.toBe(hard_result.playNowScore);
   });
 });

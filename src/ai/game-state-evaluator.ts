@@ -22,10 +22,11 @@ import type {
   AIPermanent as Permanent,
   AIHandCard as HandCard,
   AITurnInfo as TurnInfo,
+  AIStackObject as StackObject,
 } from '@/lib/game-state/types';
 
 // Re-export for backward compatibility
-export type { GameState, PlayerState, Permanent, HandCard, TurnInfo };
+export type { GameState, PlayerState, Permanent, HandCard, TurnInfo, StackObject };
 
 /**
  * Represents a threat assessment for a permanent
@@ -83,6 +84,9 @@ export interface EvaluationWeights {
   // Win conditions
   winConditionProgress: number;
   inevitability: number;
+
+  // Stack interaction
+  stackPressureScore: number;
 }
 
 /**
@@ -111,6 +115,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 0.1,
     winConditionProgress: 0.5,
     inevitability: 0.3,
+    stackPressureScore: 0.3,
   },
   medium: {
     // Medium AI: Balanced evaluation, understands basics
@@ -132,6 +137,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 0.3,
     winConditionProgress: 1.5,
     inevitability: 0.8,
+    stackPressureScore: 1.0,
   },
   hard: {
     // Hard AI: Values strategic advantage and tempo
@@ -153,6 +159,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 0.7,
     winConditionProgress: 2.5,
     inevitability: 1.5,
+    stackPressureScore: 1.5,
   },
   expert: {
     // Expert AI: Near-optimal weight distribution
@@ -174,6 +181,7 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     synergy: 1.0,
     winConditionProgress: 4.0,
     inevitability: 2.5,
+    stackPressureScore: 2.0,
   },
 };
 
@@ -201,6 +209,7 @@ export interface DetailedEvaluation {
     synergy: number;
     winConditionProgress: number;
     inevitability: number;
+    stackPressureScore: number;
   };
   threats: ThreatAssessment[];
   opportunities: OpportunityAssessment[];
@@ -265,6 +274,7 @@ export class GameStateEvaluator {
       synergy: this.evaluateSynergy(player),
       winConditionProgress: this.evaluateWinConditionProgress(player, opponents),
       inevitability: this.evaluateInevitability(player, opponents),
+      stackPressureScore: this.evaluateStackPressureScore(player, opponents),
     };
 
     const totalScore = this.calculateTotalScore(factors);
@@ -313,7 +323,8 @@ export class GameStateEvaluator {
       factors.graveyardValue * this.weights.graveyardValue +
       factors.synergy * this.weights.synergy +
       factors.winConditionProgress * this.weights.winConditionProgress +
-      factors.inevitability * this.weights.inevitability
+      factors.inevitability * this.weights.inevitability +
+      factors.stackPressureScore * this.weights.stackPressureScore
     );
   }
 
@@ -694,6 +705,80 @@ export class GameStateEvaluator {
   }
 
   /**
+   * Evaluate stack pressure score
+   * Positive when the AI has responses, negative when opponents have open mana
+   * and instant-speed answers
+   */
+  private evaluateStackPressureScore(player: PlayerState, opponents: PlayerState[]): number {
+    const stack = this.gameState.stack || [];
+
+    if (stack.length === 0) {
+      const opponentOpenMana = opponents.reduce((sum, opp) => {
+        const oppMana = Object.values(opp.manaPool).reduce((s, m) => s + m, 0);
+        const untappedLands = opp.battlefield.filter((p) => p.type === 'land' && !p.tapped).length;
+        return sum + Math.max(oppMana, untappedLands);
+      }, 0);
+
+      const hasInstants = player.hand.some((card) =>
+        card.type.toLowerCase().includes('instant')
+      );
+      const hasFlashCreatures = player.hand.some(
+        (card) =>
+          card.type.toLowerCase().includes('creature') &&
+          card.keywords?.some((kw) => kw.toLowerCase() === 'flash')
+      );
+
+      if (hasInstants || hasFlashCreatures) {
+        if (opponentOpenMana >= 2) return 0.2;
+        if (opponentOpenMana === 0) return 0.5;
+      }
+
+      if (opponentOpenMana >= 2) return -0.3;
+      if (opponentOpenMana >= 4) return -0.5;
+
+      return 0;
+    }
+
+    const opponentStackItems = stack.filter(
+      (item) => opponents.some((opp) => opp.id === item.controller)
+    );
+    const playerStackItems = stack.filter(
+      (item) => item.controller === this.evaluatingPlayerId
+    );
+
+    let score = 0;
+
+    if (playerStackItems.length > 0) {
+      score -= 0.3;
+      const hasCounterspells = player.hand.some(
+        (card) =>
+          card.type.toLowerCase().includes('instant') &&
+          card.name.toLowerCase().includes('counter')
+      );
+      if (hasCounterspells) score += 0.2;
+    }
+
+    if (opponentStackItems.length > 0) {
+      const playerOpenMana = Object.values(player.manaPool).reduce((s, m) => s + m, 0);
+      const untappedLands = player.battlefield.filter(
+        (p) => p.type === 'land' && !p.tapped
+      ).length;
+      const availableMana = Math.max(playerOpenMana, untappedLands);
+      const hasInstants = player.hand.some((card) =>
+        card.type.toLowerCase().includes('instant')
+      );
+
+      if (hasInstants && availableMana >= 2) {
+        score += 0.3;
+      } else if (hasInstants) {
+        score += 0.1;
+      }
+    }
+
+    return Math.max(-1, Math.min(1, score));
+  }
+
+  /**
    * Assess threats from opponents' battlefield
    */
   private assessThreats(player: PlayerState, opponents: PlayerState[]): ThreatAssessment[] {
@@ -915,4 +1000,150 @@ export function quickScore(
 ): number {
   const evaluation = evaluateGameState(gameState, playerId, difficulty);
   return evaluation.totalScore;
+}
+
+export interface ProposedPlay {
+  card: HandCard;
+  type: 'cast_creature' | 'cast_instant' | 'cast_sorcery' | 'play_land';
+  manaCost: number;
+  producedPermanent?: {
+    type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker';
+    power?: number;
+    toughness?: number;
+    loyalty?: number;
+  };
+}
+
+export interface ProjectionResult {
+  playNowScore: number;
+  holdScore: number;
+  recommendation: 'play' | 'hold';
+  scoreDelta: number;
+}
+
+function deepCloneState(state: GameState): GameState {
+  const cloned_players: { [playerId: string]: PlayerState } = {};
+  for (const [id, p] of Object.entries(state.players)) {
+    cloned_players[id] = {
+      ...p,
+      hand: [...p.hand],
+      battlefield: p.battlefield.map((perm) => ({ ...perm })),
+      graveyard: [...p.graveyard],
+      exile: [...p.exile],
+      manaPool: { ...p.manaPool },
+      commanderDamage: { ...p.commanderDamage },
+    };
+  }
+  return {
+    ...state,
+    players: cloned_players,
+    stack: state.stack.map((s) => ({ ...s })),
+    turnInfo: { ...state.turnInfo },
+  };
+}
+
+export function projectBoardState(
+  current_state: GameState,
+  play: ProposedPlay
+): GameState {
+  const projected = deepCloneState(current_state);
+  const player_id = Object.keys(projected.players)[0];
+  const player = projected.players[player_id];
+
+  const card_index = player.hand.findIndex(
+    (c) => c.cardInstanceId === play.card.cardInstanceId
+  );
+  if (card_index !== -1) {
+    player.hand.splice(card_index, 1);
+  }
+
+  if (play.type === 'play_land') {
+    const new_permanent: Permanent = {
+      cardInstanceId: `proj-land-${play.card.cardInstanceId}`,
+      id: `proj-land-${play.card.cardInstanceId}`,
+      name: play.card.name,
+      type: 'land',
+      controller: player_id,
+      tapped: false,
+      manaValue: play.card.manaValue,
+    };
+    player.battlefield.push(new_permanent);
+    player.landsPlayedThisTurn = (player.landsPlayedThisTurn || 0) + 1;
+  } else if (play.producedPermanent) {
+    const new_permanent: Permanent = {
+      cardInstanceId: `proj-${play.card.cardInstanceId}`,
+      id: `proj-${play.card.cardInstanceId}`,
+      name: play.card.name,
+      type: play.producedPermanent.type,
+      controller: player_id,
+      tapped: false,
+      manaValue: play.card.manaValue,
+      power: play.producedPermanent.power,
+      toughness: play.producedPermanent.toughness,
+      loyalty: play.producedPermanent.loyalty,
+      summoningSickness: play.producedPermanent.type === 'creature',
+    };
+    player.battlefield.push(new_permanent);
+  } else {
+    player.graveyard.push(play.card.cardInstanceId);
+  }
+
+  const generic = Math.min(play.manaCost, player.manaPool.generic || 0);
+  player.manaPool.generic -= generic;
+  const remaining = play.manaCost - generic;
+  const colors = ['white', 'blue', 'black', 'red', 'green'] as const;
+  for (const color of colors) {
+    const deduction = Math.min(remaining, player.manaPool[color] || 0);
+    (player.manaPool as Record<string, number>)[color] -= deduction;
+  }
+
+  return projected;
+}
+
+function advanceOneTurn(state: GameState, player_id: string): GameState {
+  const projected = deepCloneState(state);
+  const opponent_ids = Object.keys(projected.players).filter((id) => id !== player_id);
+  const next_player = opponent_ids[0] || player_id;
+
+  projected.turnInfo.currentTurn += 1;
+  projected.turnInfo.currentPlayer = next_player;
+  projected.turnInfo.priority = next_player;
+  projected.turnInfo.phase = 'precombat_main';
+
+  for (const id of Object.keys(projected.players)) {
+    const p = projected.players[id];
+    p.library = Math.max(0, p.library - 1);
+    for (const perm of p.battlefield) {
+      if (perm.controller === id) {
+        perm.tapped = false;
+        perm.summoningSickness = false;
+      }
+    }
+    p.manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 0, colorless: 0, generic: 0 };
+  }
+
+  return projected;
+}
+
+export function compareHoldVsPlay(
+  current_state: GameState,
+  play: ProposedPlay,
+  player_id: string,
+  difficulty: 'easy' | 'medium' | 'hard' = 'medium'
+): ProjectionResult {
+  const played_state = projectBoardState(current_state, play);
+  const played_next_turn = advanceOneTurn(played_state, player_id);
+  const play_now_score = quickScore(played_next_turn, player_id, difficulty);
+
+  const held_next_turn = advanceOneTurn(current_state, player_id);
+  const hold_score = quickScore(held_next_turn, player_id, difficulty);
+
+  const score_delta = play_now_score - hold_score;
+
+  return {
+    playNowScore: play_now_score,
+    holdScore: hold_score,
+    recommendation: score_delta >= 0 ? 'play' : 'hold',
+    scoreDelta: score_delta,
+  };
 }
