@@ -12,40 +12,40 @@
  * 5. Test with protection effects on target
  */
 
-import {
-  createInitialGameState,
-  startGame,
-} from '../game-state';
+import { createInitialGameState, startGame } from "../game-state";
 import {
   createCardInstance,
   initializePlaneswalkerLoyalty,
-} from '../card-instance';
-import { dealDamageToPlayer } from '../game-state';
-import { dealDamageToCard } from '../keyword-actions';
-import { checkStateBasedActions } from '../state-based-actions';
-import { activateLoyaltyAbility, canActivateLoyaltyAbility } from '../abilities';
-import { Phase } from '../types';
-import type { ScryfallCard, GameState, PlayerId } from '../types';
+} from "../card-instance";
+import { dealDamageToPlayer } from "../game-state";
+import { dealDamageToCard } from "../keyword-actions";
+import { checkStateBasedActions } from "../state-based-actions";
+import {
+  activateLoyaltyAbility,
+  canActivateLoyaltyAbility,
+} from "../abilities";
+import { Phase } from "../types";
+import type { ScryfallCard, GameState, PlayerId } from "../types";
 
 function createMockPlaneswalker(
   name: string,
   loyalty: number,
-  oracleText: string = ''
+  oracleText: string = "",
 ): ScryfallCard {
   return {
-    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
     name,
-    type_line: `Planeswalker — ${name.split(' ')[0]}`,
+    type_line: `Planeswalker — ${name.split(" ")[0]}`,
     loyalty: loyalty.toString(),
     keywords: [],
     oracle_text: oracleText,
-    mana_cost: '{3}',
+    mana_cost: "{3}",
     cmc: 4,
-    colors: ['U'],
-    color_identity: ['U'],
-    legalities: { standard: 'legal', commander: 'legal' },
+    colors: ["U"],
+    color_identity: ["U"],
+    legalities: { standard: "legal", commander: "legal" },
     card_faces: undefined,
-    layout: 'normal',
+    layout: "normal",
   } as ScryfallCard;
 }
 
@@ -53,38 +53,42 @@ function createMockCreature(
   name: string,
   power: number,
   toughness: number,
-  keywords: string[] = []
+  keywords: string[] = [],
 ): ScryfallCard {
   return {
-    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
     name,
-    type_line: 'Creature — Test',
+    type_line: "Creature — Test",
     power: power.toString(),
     toughness: toughness.toString(),
     keywords,
-    oracle_text: keywords.join(' '),
-    mana_cost: '{1}',
+    oracle_text: keywords.join(" "),
+    mana_cost: "{1}",
     cmc: 2,
-    colors: ['R'],
-    color_identity: ['R'],
-    legalities: { standard: 'legal', commander: 'legal' },
+    colors: ["R"],
+    color_identity: ["R"],
+    legalities: { standard: "legal", commander: "legal" },
     card_faces: undefined,
-    layout: 'normal',
+    layout: "normal",
   } as ScryfallCard;
 }
 
-describe('Planeswalker Loyalty Abilities', () => {
-  describe('JC-005: Planeswalker Loyalty Response', () => {
-    it('a planeswalker with 2 loyalty should survive Shock if +1 ability resolves first', () => {
-      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+describe("Planeswalker Loyalty Abilities", () => {
+  describe("JC-005: Planeswalker Loyalty Response", () => {
+    it("a planeswalker with 2 loyalty should survive Shock if +1 ability resolves first", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
       const aliceId = playerIds[0];
 
-      const pwData = createMockPlaneswalker('Test Planeswalker', 3, '+1: Draw a card.');
+      const pwData = createMockPlaneswalker(
+        "Test Planeswalker",
+        3,
+        "+1: Draw a card.",
+      );
       const planeswalker = createCardInstance(pwData, aliceId, aliceId);
-      planeswalker.counters = [{ type: 'loyalty', count: 2 }];
+      planeswalker.counters = [{ type: "loyalty", count: 2 }];
 
       state.cards.set(planeswalker.id, planeswalker);
       const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
@@ -101,16 +105,20 @@ describe('Planeswalker Loyalty Abilities', () => {
     });
   });
 
-  describe('Planeswalker SBA - 0 Loyalty Exile (CR 704.5i)', () => {
-    it('should exile a planeswalker with 0 loyalty', () => {
-      let state = createInitialGameState(['Alice'], 20, false);
+  describe("Planeswalker SBA - 0 Loyalty Exile (CR 704.5i)", () => {
+    it("should exile a planeswalker with 0 loyalty", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
-      const pwData = createMockPlaneswalker('Test Planeswalker', 3);
-      const planeswalker = createCardInstance(pwData, playerIds[0], playerIds[0]);
+      const pwData = createMockPlaneswalker("Test Planeswalker", 3);
+      const planeswalker = createCardInstance(
+        pwData,
+        playerIds[0],
+        playerIds[0],
+      );
 
-      planeswalker.counters = [{ type: 'loyalty', count: 0 }];
+      planeswalker.counters = [{ type: "loyalty", count: 0 }];
 
       const battlefield = state.zones.get(`${playerIds[0]}-battlefield`)!;
       state.cards.set(planeswalker.id, planeswalker);
@@ -126,15 +134,19 @@ describe('Planeswalker Loyalty Abilities', () => {
       expect(exile.cardIds).toContain(planeswalker.id);
     });
 
-    it('should not exile a planeswalker with loyalty > 0', () => {
-      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+    it("should not exile a planeswalker with loyalty > 0", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
-      const pwData = createMockPlaneswalker('Test Planeswalker', 3);
-      const planeswalker = createCardInstance(pwData, playerIds[0], playerIds[0]);
+      const pwData = createMockPlaneswalker("Test Planeswalker", 3);
+      const planeswalker = createCardInstance(
+        pwData,
+        playerIds[0],
+        playerIds[0],
+      );
 
-      planeswalker.counters = [{ type: 'loyalty', count: 1 }];
+      planeswalker.counters = [{ type: "loyalty", count: 1 }];
 
       const battlefield = state.zones.get(`${playerIds[0]}-battlefield`)!;
       state.cards.set(planeswalker.id, planeswalker);
@@ -146,26 +158,30 @@ describe('Planeswalker Loyalty Abilities', () => {
       const result = checkStateBasedActions(state);
 
       expect(result.actionsPerformed).toBe(false);
-      const battlefieldAfter = result.state.zones.get(`${playerIds[0]}-battlefield`)!;
+      const battlefieldAfter = result.state.zones.get(
+        `${playerIds[0]}-battlefield`,
+      )!;
       expect(battlefieldAfter.cardIds).toContain(planeswalker.id);
     });
   });
 
-  describe('Planeswalker Loyalty Initialization', () => {
-    it('should initialize planeswalker with loyalty counters', () => {
-      const pwData = createMockPlaneswalker('Test Planeswalker', 4);
-      const planeswalker = createCardInstance(pwData, 'player1', 'player1');
+  describe("Planeswalker Loyalty Initialization", () => {
+    it("should initialize planeswalker with loyalty counters", () => {
+      const pwData = createMockPlaneswalker("Test Planeswalker", 4);
+      const planeswalker = createCardInstance(pwData, "player1", "player1");
 
       const initialized = initializePlaneswalkerLoyalty(planeswalker);
 
-      const loyaltyCounter = initialized.counters?.find(c => c.type === 'loyalty');
+      const loyaltyCounter = initialized.counters?.find(
+        (c) => c.type === "loyalty",
+      );
       expect(loyaltyCounter).toBeDefined();
       expect(loyaltyCounter?.count).toBe(4);
     });
 
-    it('should not modify non-planeswalker cards', () => {
-      const creatureData = createMockCreature('Test Creature', 3, 3);
-      const creature = createCardInstance(creatureData, 'player1', 'player1');
+    it("should not modify non-planeswalker cards", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
 
       const result = initializePlaneswalkerLoyalty(creature);
 
@@ -173,10 +189,10 @@ describe('Planeswalker Loyalty Abilities', () => {
       expect(result.counters).toEqual([]);
     });
 
-    it('should handle planeswalkers without loyalty field', () => {
-      const pwData = createMockPlaneswalker('Test Planeswalker', 0);
+    it("should handle planeswalkers without loyalty field", () => {
+      const pwData = createMockPlaneswalker("Test Planeswalker", 0);
       delete (pwData as Partial<ScryfallCard>).loyalty;
-      const planeswalker = createCardInstance(pwData, 'player1', 'player1');
+      const planeswalker = createCardInstance(pwData, "player1", "player1");
 
       const result = initializePlaneswalkerLoyalty(planeswalker);
 
@@ -184,23 +200,27 @@ describe('Planeswalker Loyalty Abilities', () => {
     });
   });
 
-  describe('Loyalty Ability Activation', () => {
+  describe("Loyalty Ability Activation", () => {
     let state: GameState;
     let aliceId: PlayerId;
     let bobId: PlayerId;
     let planeswalkerId: string;
 
     beforeEach(() => {
-      state = createInitialGameState(['Alice', 'Bob'], 20, false);
+      state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
       aliceId = playerIds[0];
       bobId = playerIds[1];
 
-      const pwData = createMockPlaneswalker('Jace, the Perfected Mind', 3, '+1: Draw a card. -3: Deal damage.');
+      const pwData = createMockPlaneswalker(
+        "Jace, the Perfected Mind",
+        3,
+        "+1: Draw a card.\n-3: Deal damage.",
+      );
       const planeswalker = createCardInstance(pwData, aliceId, aliceId);
-      planeswalker.counters = [{ type: 'loyalty', count: 3 }];
+      planeswalker.counters = [{ type: "loyalty", count: 3 }];
       planeswalkerId = planeswalker.id;
       state.cards.set(planeswalkerId, planeswalker);
 
@@ -217,49 +237,59 @@ describe('Planeswalker Loyalty Abilities', () => {
       };
     });
 
-    it('should allow loyalty activation during main phase with empty stack', () => {
-      const result = canActivateLoyaltyAbility(state, aliceId, planeswalkerId, 1);
+    it("should allow loyalty activation during main phase with empty stack", () => {
+      const result = canActivateLoyaltyAbility(
+        state,
+        aliceId,
+        planeswalkerId,
+        1,
+      );
       expect(result.canActivate).toBe(true);
     });
 
-    it('should deny activation when card is not a planeswalker', () => {
-      const creatureData = createMockCreature('Test Creature', 3, 3);
+    it("should deny activation when card is not a planeswalker", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
       const creature = createCardInstance(creatureData, aliceId, aliceId);
       state.cards.set(creature.id, creature);
 
       const result = canActivateLoyaltyAbility(state, aliceId, creature.id, 1);
       expect(result.canActivate).toBe(false);
-      expect(result.reason).toBe('Card is not a planeswalker');
+      expect(result.reason).toBe("Card is not a planeswalker");
     });
 
-    it('should deny activation when player does not control planeswalker', () => {
+    it("should deny activation when player does not control planeswalker", () => {
       const result = canActivateLoyaltyAbility(state, bobId, planeswalkerId, 1);
       expect(result.canActivate).toBe(false);
-      expect(result.reason).toBe('You do not control this planeswalker');
+      expect(result.reason).toBe("You do not control this planeswalker");
     });
 
-    it('should deny activation when not main phase', () => {
+    it("should deny activation when not main phase", () => {
       state = {
         ...state,
         turn: { ...state.turn, currentPhase: Phase.BEGIN_COMBAT },
       };
 
-      const result = canActivateLoyaltyAbility(state, aliceId, planeswalkerId, 1);
+      const result = canActivateLoyaltyAbility(
+        state,
+        aliceId,
+        planeswalkerId,
+        1,
+      );
       expect(result.canActivate).toBe(false);
-      expect(result.reason).toContain('main phases');
+      expect(result.reason).toContain("main phases");
     });
 
-    it('should deny activation when stack is not empty', () => {
+    it("should deny activation when stack is not empty", () => {
       state = {
         ...state,
         stack: [
           {
-            id: 'test-spell',
-            type: 'spell' as const,
-            sourceCardId: 'test',
+            id: "test-spell",
+            type: "spell" as const,
+            sourceCardId: "test",
             controllerId: bobId,
-            name: 'Test',
-            text: '',
+            name: "Test",
+            text: "",
             manaCost: null,
             targets: [],
             chosenModes: [],
@@ -270,45 +300,55 @@ describe('Planeswalker Loyalty Abilities', () => {
         ],
       };
 
-      const result = canActivateLoyaltyAbility(state, aliceId, planeswalkerId, 1);
+      const result = canActivateLoyaltyAbility(
+        state,
+        aliceId,
+        planeswalkerId,
+        1,
+      );
       expect(result.canActivate).toBe(false);
-      expect(result.reason).toContain('Stack must be empty');
+      expect(result.reason).toContain("Stack must be empty");
     });
 
-    it('should deny activation when not enough loyalty counters', () => {
-      const result = canActivateLoyaltyAbility(state, aliceId, planeswalkerId, -4);
+    it("should deny activation when not enough loyalty counters", () => {
+      const result = canActivateLoyaltyAbility(
+        state,
+        aliceId,
+        planeswalkerId,
+        -4,
+      );
       expect(result.canActivate).toBe(false);
-      expect(result.reason).toContain('Not enough loyalty');
+      expect(result.reason).toContain("Not enough loyalty");
     });
 
-    it('should successfully activate loyalty ability and update counters', () => {
-      const result = activateLoyaltyAbility(state, aliceId, planeswalkerId, 1);
+    it("should successfully activate loyalty ability and update counters", () => {
+      const result = activateLoyaltyAbility(state, aliceId, planeswalkerId, 0);
 
       expect(result.success).toBe(true);
       const card = result.state.cards.get(planeswalkerId);
-      const loyaltyCounter = card?.counters?.find((c) => c.type === 'loyalty');
+      const loyaltyCounter = card?.counters?.find((c) => c.type === "loyalty");
       expect(loyaltyCounter?.count).toBe(4);
     });
 
-    it('should fail when planeswalker not found', () => {
-      const result = activateLoyaltyAbility(state, aliceId, 'non-existent', 1);
+    it("should fail when planeswalker not found", () => {
+      const result = activateLoyaltyAbility(state, aliceId, "non-existent", 1);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Card not found');
+      expect(result.error).toBe("Card not found");
     });
   });
 
-  describe('Damage to Planeswalker reduces loyalty (CR 119.3c)', () => {
-    it('should reduce planeswalker loyalty when dealt damage', () => {
-      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+  describe("Damage to Planeswalker reduces loyalty (CR 119.3c)", () => {
+    it("should reduce planeswalker loyalty when dealt damage", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
       const aliceId = playerIds[0];
 
-      const pwData = createMockPlaneswalker('Chandra, Torch of Defiance', 4);
+      const pwData = createMockPlaneswalker("Chandra, Torch of Defiance", 4);
       const planeswalker = createCardInstance(pwData, aliceId, aliceId);
-      planeswalker.counters = [{ type: 'loyalty', count: 4 }];
+      planeswalker.counters = [{ type: "loyalty", count: 4 }];
       const planeswalkerId = planeswalker.id;
 
       state.cards.set(planeswalkerId, planeswalker);
@@ -321,21 +361,23 @@ describe('Planeswalker Loyalty Abilities', () => {
       const result = dealDamageToCard(state, planeswalkerId, 2, true);
 
       const damagedPw = result.state.cards.get(planeswalkerId);
-      const loyaltyCounter = damagedPw?.counters?.find((c) => c.type === 'loyalty');
+      const loyaltyCounter = damagedPw?.counters?.find(
+        (c) => c.type === "loyalty",
+      );
 
       expect(loyaltyCounter?.count).toBe(2);
     });
 
-    it('should exile planeswalker when damage reduces loyalty to 0', () => {
-      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+    it("should exile planeswalker when damage reduces loyalty to 0", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
       const aliceId = playerIds[0];
 
-      const pwData = createMockPlaneswalker('Kaya, Intangible Slayer', 3);
+      const pwData = createMockPlaneswalker("Kaya, Intangible Slayer", 3);
       const planeswalker = createCardInstance(pwData, aliceId, aliceId);
-      planeswalker.counters = [{ type: 'loyalty', count: 3 }];
+      planeswalker.counters = [{ type: "loyalty", count: 3 }];
       const planeswalkerId = planeswalker.id;
 
       state.cards.set(planeswalkerId, planeswalker);
@@ -354,9 +396,9 @@ describe('Planeswalker Loyalty Abilities', () => {
     });
   });
 
-  describe('Chandra, Torch of Defiance abilities', () => {
-    it('should track loyalty correctly for Chandra', () => {
-      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+  describe("Chandra, Torch of Defiance abilities", () => {
+    it("should track loyalty correctly for Chandra", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
@@ -364,12 +406,12 @@ describe('Planeswalker Loyalty Abilities', () => {
       const bobId = playerIds[1];
 
       const chandraData = createMockPlaneswalker(
-        'Chandra, Torch of Defiance',
+        "Chandra, Torch of Defiance",
         4,
-        '+1: Deal 2 damage to each opponent. -2: Deal 4 damage to target creature. 0: Exile target creature.'
+        "+1: Deal 2 damage to each opponent.\n-2: Deal 4 damage to target creature.\n0: Exile target creature.",
       );
       const chandra = createCardInstance(chandraData, aliceId, aliceId);
-      chandra.counters = [{ type: 'loyalty', count: 4 }];
+      chandra.counters = [{ type: "loyalty", count: 4 }];
       const chandraId = chandra.id;
 
       state.cards.set(chandraId, chandra);
@@ -385,28 +427,35 @@ describe('Planeswalker Loyalty Abilities', () => {
         turn: { ...state.turn, currentPhase: Phase.PRECOMBAT_MAIN },
       };
 
-      const activationResult = activateLoyaltyAbility(state, aliceId, chandraId, 1);
+      const activationResult = activateLoyaltyAbility(
+        state,
+        aliceId,
+        chandraId,
+        0,
+      );
 
       expect(activationResult.success).toBe(true);
 
       const updatedChandra = activationResult.state.cards.get(chandraId);
-      const loyaltyCounter = updatedChandra?.counters?.find((c) => c.type === 'loyalty');
-      expect(loyaltyCounter?.count).toBe(6);
+      const loyaltyCounter = updatedChandra?.counters?.find(
+        (c) => c.type === "loyalty",
+      );
+      expect(loyaltyCounter?.count).toBe(5);
     });
   });
 
-  describe('Planeswalker as valid damage target', () => {
-    it('should allow creatures to attack planeswalkers', () => {
-      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+  describe("Planeswalker as valid damage target", () => {
+    it("should allow creatures to attack planeswalkers", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys()) as PlayerId[];
       const aliceId = playerIds[0];
       const bobId = playerIds[1];
 
-      const pwData = createMockPlaneswalker('Nahiri, the Unforgiving', 3);
+      const pwData = createMockPlaneswalker("Nahiri, the Unforgiving", 3);
       const planeswalker = createCardInstance(pwData, aliceId, aliceId);
-      planeswalker.counters = [{ type: 'loyalty', count: 3 }];
+      planeswalker.counters = [{ type: "loyalty", count: 3 }];
       const planeswalkerId = planeswalker.id;
 
       state.cards.set(planeswalkerId, planeswalker);
@@ -416,7 +465,7 @@ describe('Planeswalker Loyalty Abilities', () => {
         cardIds: [...battlefield.cardIds, planeswalkerId],
       });
 
-      const creatureData = createMockCreature('Grizzly Bears', 2, 2);
+      const creatureData = createMockCreature("Grizzly Bears", 2, 2);
       const creature = createCardInstance(creatureData, bobId, bobId);
       creature.hasSummoningSickness = false;
       const creatureId = creature.id;
@@ -428,10 +477,18 @@ describe('Planeswalker Loyalty Abilities', () => {
         cardIds: [...bobBattlefield.cardIds, creatureId],
       });
 
-      const damageResult = dealDamageToCard(state, planeswalkerId, 2, true, creatureId);
+      const damageResult = dealDamageToCard(
+        state,
+        planeswalkerId,
+        2,
+        true,
+        creatureId,
+      );
 
       const damagedPw = damageResult.state.cards.get(planeswalkerId);
-      const loyaltyCounter = damagedPw?.counters?.find((c) => c.type === 'loyalty');
+      const loyaltyCounter = damagedPw?.counters?.find(
+        (c) => c.type === "loyalty",
+      );
       expect(loyaltyCounter?.count).toBe(1);
     });
   });
