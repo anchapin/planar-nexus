@@ -194,7 +194,7 @@ describe('Damage Spells Target Validation', () => {
       const result1 = addCardToBattlefield(state, pwData, bobId, bobId);
       state = result1.state;
       const planeswalkerId = result1.cardId;
-      let damageResult = dealDamageToCard(state, planeswalkerId, 3, false);
+      const damageResult = dealDamageToCard(state, planeswalkerId, 3, false);
       state = damageResult.state;
       const planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage = planeswalker?.counters.find(c => c.type === 'loyalty')?.count ?? 0;
@@ -229,7 +229,7 @@ describe('Damage Spells Target Validation', () => {
       const result1 = addCardToBattlefield(state, creatureData, bobId, bobId);
       state = result1.state;
       const creatureId = result1.cardId;
-      let damageResult = dealDamageToCard(state, creatureId, 2, false);
+      const damageResult = dealDamageToCard(state, creatureId, 2, false);
       state = damageResult.state;
       const creature = state.cards.get(creatureId);
       expect(creature?.damage).toBe(2);
@@ -247,7 +247,7 @@ describe('Damage Spells Target Validation', () => {
       const result1 = addCardToBattlefield(state, pwData, bobId, bobId);
       state = result1.state;
       const planeswalkerId = result1.cardId;
-      let damageResult = dealDamageToCard(state, planeswalkerId, 2, false);
+      const damageResult = dealDamageToCard(state, planeswalkerId, 2, false);
       state = damageResult.state;
       const planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage = planeswalker?.counters.find(c => c.type === 'loyalty')?.count ?? 0;
@@ -266,7 +266,7 @@ describe('Damage Spells Target Validation', () => {
       const result1 = addCardToBattlefield(state, creatureData, bobId, bobId);
       state = result1.state;
       const creatureId = result1.cardId;
-      let damageResult = dealDamageToCard(state, creatureId, 4, false);
+      const damageResult = dealDamageToCard(state, creatureId, 4, false);
       state = damageResult.state;
       const creature = state.cards.get(creatureId);
       expect(creature?.damage).toBe(4);
@@ -285,7 +285,7 @@ describe('Damage Spells Target Validation', () => {
       const result1 = addCardToBattlefield(state, pwData, bobId, bobId);
       state = result1.state;
       const planeswalkerId = result1.cardId;
-      let damageResult = dealDamageToCard(state, planeswalkerId, 4, false);
+      const damageResult = dealDamageToCard(state, planeswalkerId, 4, false);
       state = damageResult.state;
       const planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage = planeswalker?.counters.find(c => c.type === 'loyalty')?.count ?? 0;
@@ -309,7 +309,7 @@ describe('Damage Spells Target Validation', () => {
       const result2 = addCardToBattlefield(state, largeCreatureData, bobId, bobId);
       state = result2.state;
       const largeCreatureId = result2.cardId;
-      let damageResult = dealDamageToCard(state, largeCreatureId, 1, false, deathtouchId);
+      const damageResult = dealDamageToCard(state, largeCreatureId, 1, false, deathtouchId);
       state = damageResult.state;
       const sbaResult = checkStateBasedActions(state);
       expect(sbaResult.actionsPerformed).toBe(true);
@@ -382,7 +382,7 @@ describe('Damage Spells Target Validation', () => {
       const artifactCreatureCard = state.cards.get(artifactCreatureId);
       expect(artifactCreatureCard?.cardData.type_line).toContain('Artifact');
       expect(artifactCreatureCard?.cardData.type_line).toContain('Creature');
-      let damageResult = dealDamageToCard(state, artifactCreatureId, 2, false);
+      const damageResult = dealDamageToCard(state, artifactCreatureId, 2, false);
       state = damageResult.state;
       const artifactCreature = state.cards.get(artifactCreatureId);
       expect(artifactCreature?.damage).toBe(2);

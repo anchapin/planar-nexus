@@ -681,24 +681,7 @@ export function resolveWaitingChoice(
   }
 
   if (type === "choose_cards" && typeof selectedValue === "string") {
-    const { completeHandTargeting } = require("./hand-targeting");
-
-    const castingPlayerId = playerId;
-    const opponentId = Array.from(state.players.keys()).find(
-      (pid) => pid !== castingPlayerId && !state.players.get(pid)?.hasLost
-    );
-
-    if (!opponentId) {
-      return { success: false, state, error: "No opponent found" };
-    }
-
-    const result = completeHandTargeting(state, castingPlayerId, opponentId, selectedValue, stackObjectId || "");
-
-    if (!result.success) {
-      return { success: false, state, error: result.error };
-    }
-
-    return { success: true, state: result.state };
+    return { success: false, state, error: "Hand targeting not yet implemented" };
   }
 
   return { success: false, state, error: `Unsupported waiting choice type: ${type}` };
