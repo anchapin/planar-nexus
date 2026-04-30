@@ -62,10 +62,19 @@ async function getWorkflowRuns(workflowName = DEFAULT_CONFIG.workflowName, branc
 async function getWorkflowRunDetails(runId) {
   try {
     const runInfo = await execGh(`run view ${runId} --json databaseId,name,status,conclusion,headBranch,event,createdAt,url`);
-    const jobs = await execGh(`run view ${runId} --json jobs --jq '.jobs[] | {name: .name, status: .status, conclusion: .conclusion, databaseId: .databaseId}'`);
+
+    // Get jobs using --jq - this returns newline-delimited JSON, not a JSON array
+    const { stdout: jobsOutput } = await execAsync(
+      `gh run view ${runId} --json jobs --jq '.jobs[] | {name: .name, status: .status, conclusion: .conclusion, databaseId: .databaseId}'`,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+    );
+
+    // Parse each line as a separate JSON object
+    const jobs = jobsOutput.trim().split('\n').filter(line => line.trim()).map(line => JSON.parse(line));
+
     return {
       ...runInfo,
-      jobs: Array.isArray(jobs) ? jobs : JSON.parse(jobs)
+      jobs
     };
   } catch (error) {
     console.error(`Failed to get workflow run details: ${error.message}`);
