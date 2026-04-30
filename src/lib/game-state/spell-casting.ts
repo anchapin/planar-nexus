@@ -349,7 +349,10 @@ export function resolveTopOfStack(state: GameState): GameState {
           if (zoneKey.includes("battlefield")) {
             for (const cId of zone.cardIds) {
               const c = updatedState.cards.get(cId);
-              if (c && c.cardData.type_line?.toLowerCase().includes("creature")) {
+              if (
+                c &&
+                c.cardData.type_line?.toLowerCase().includes("creature")
+              ) {
                 allCreatureIds.push(cId);
               }
             }
@@ -365,13 +368,21 @@ export function resolveTopOfStack(state: GameState): GameState {
 
         // Move sweeper to graveyard
         const stackZone = updatedState.zones.get("stack");
-        const graveZone = updatedState.zones.get(`${card.controllerId}-graveyard`);
+        const graveZone = updatedState.zones.get(
+          `${card.controllerId}-graveyard`,
+        );
         if (stackZone && graveZone) {
-          const moved = moveCardBetweenZones(stackZone, graveZone, stackObject.sourceCardId);
+          const moved = moveCardBetweenZones(
+            stackZone,
+            graveZone,
+            stackObject.sourceCardId,
+          );
           const updatedZones = new Map(updatedState.zones);
           updatedZones.set("stack", moved.from);
           updatedZones.set(`${card.controllerId}-graveyard`, moved.to);
-          const updatedStack = updatedState.stack.filter((o) => o.id !== stackObject.id);
+          const updatedStack = updatedState.stack.filter(
+            (o) => o.id !== stackObject.id,
+          );
 
           return {
             ...updatedState,
@@ -645,14 +656,18 @@ export function validateSpellTargets(
 export function resolveWaitingChoice(
   state: GameState,
   playerId: PlayerId,
-  selectedValue: string | number | boolean
+  selectedValue: string | number | boolean,
 ): { success: boolean; state: GameState; error?: string } {
   if (!state.waitingChoice) {
     return { success: false, state, error: "No waiting choice to resolve" };
   }
 
   if (state.waitingChoice.playerId !== playerId) {
-    return { success: false, state, error: "Not this player's turn to make a choice" };
+    return {
+      success: false,
+      state,
+      error: "Not this player's turn to make a choice",
+    };
   }
 
   const { type, stackObjectId } = state.waitingChoice;
@@ -673,7 +688,7 @@ export function resolveWaitingChoice(
       stack: state.stack.map((obj) =>
         obj.id === stackObjectId
           ? { ...obj, variableValues: newVariableValues }
-          : obj
+          : obj,
       ),
     };
 
@@ -681,27 +696,18 @@ export function resolveWaitingChoice(
   }
 
   if (type === "choose_cards" && typeof selectedValue === "string") {
-    const { completeHandTargeting } = require("./hand-targeting");
-
-    const castingPlayerId = playerId;
-    const opponentId = Array.from(state.players.keys()).find(
-      (pid) => pid !== castingPlayerId && !state.players.get(pid)?.hasLost
-    );
-
-    if (!opponentId) {
-      return { success: false, state, error: "No opponent found" };
-    }
-
-    const result = completeHandTargeting(state, castingPlayerId, opponentId, selectedValue, stackObjectId || "");
-
-    if (!result.success) {
-      return { success: false, state, error: result.error };
-    }
-
-    return { success: true, state: result.state };
+    return {
+      success: false,
+      state,
+      error: "Hand targeting not yet implemented",
+    };
   }
 
-  return { success: false, state, error: `Unsupported waiting choice type: ${type}` };
+  return {
+    success: false,
+    state,
+    error: `Unsupported waiting choice type: ${type}`,
+  };
 }
 
 /**
