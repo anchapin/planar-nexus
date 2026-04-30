@@ -39,7 +39,7 @@ export function ConnectionStatusIndicator({
       return <RefreshCw className="w-4 h-4 animate-spin" />;
     }
 
-    // eslint-disable-next-line no-fallthrough
+     
     switch (health.connectionQuality) {
       case 'excellent':
       case 'good':

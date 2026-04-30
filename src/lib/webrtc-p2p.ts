@@ -235,7 +235,7 @@ export class WebRTCConnection {
     });
 
     // Set default event handlers
-    // eslint-disable-next-line @typescript-eslint/no-empty-function
+     
     const defaultEvents: P2PEvents = {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       onConnectionStateChange: () => {},

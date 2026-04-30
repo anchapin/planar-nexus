@@ -209,7 +209,7 @@ export function getConnectionStatusMessage(health: ConnectionHealth): string {
   switch (health.state) {
     case 'connected':
       // All connection qualities under 'connected' state return the same message
-      // eslint-disable-next-line no-fallthrough
+       
       switch (health.connectionQuality) {
         case 'excellent':
         case 'good':

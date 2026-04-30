@@ -278,7 +278,7 @@ describe('Damage Spells Target Validation', () => {
       const planeswalkerId = result1.cardId;
       
       // Deal 3 damage (expected to reduce loyalty to 0 and trigger exile)
-      let damageResult = dealDamageToCard(state, planeswalkerId, 3, false);
+      const damageResult = dealDamageToCard(state, planeswalkerId, 3, false);
       state = damageResult.state;
       
       // Due to implementation gap, loyalty is not reduced - planeswalker stays at 3 loyalty
@@ -290,7 +290,7 @@ describe('Damage Spells Target Validation', () => {
       expect(loyaltyAfterDamage).toBe(3); // Gap: loyalty not reduced to 0
       
       // Run SBAs - planeswalker should NOT be exiled (due to gap)
-      let sbaResult = checkStateBasedActions(state);
+      const sbaResult = checkStateBasedActions(state);
       
       // Due to gap, planeswalker is not exiled (loyalty still 3)
       const battlefield = sbaResult.state.zones.get(`${bobId}-battlefield`)!;
@@ -332,7 +332,7 @@ describe('Damage Spells Target Validation', () => {
       const creatureId = result1.cardId;
       
       // Deal 2 damage
-      let damageResult = dealDamageToCard(state, creatureId, 2, false);
+      const damageResult = dealDamageToCard(state, creatureId, 2, false);
       state = damageResult.state;
       
       // Check creature has 2 damage
@@ -363,7 +363,7 @@ describe('Damage Spells Target Validation', () => {
       const planeswalkerId = result1.cardId;
       
       // Deal 2 damage
-      let damageResult = dealDamageToCard(state, planeswalkerId, 2, false);
+      const damageResult = dealDamageToCard(state, planeswalkerId, 2, false);
       state = damageResult.state;
       
       const planeswalker = state.cards.get(planeswalkerId);
@@ -390,7 +390,7 @@ describe('Damage Spells Target Validation', () => {
       const creatureId = result1.cardId;
       
       // Deal 4 damage (lethal for 2/2)
-      let damageResult = dealDamageToCard(state, creatureId, 4, false);
+      const damageResult = dealDamageToCard(state, creatureId, 4, false);
       state = damageResult.state;
       
       // Check damage marked
@@ -422,7 +422,7 @@ describe('Damage Spells Target Validation', () => {
       const planeswalkerId = result1.cardId;
       
       // Deal 4 damage
-      let damageResult = dealDamageToCard(state, planeswalkerId, 4, false);
+      const damageResult = dealDamageToCard(state, planeswalkerId, 4, false);
       state = damageResult.state;
       
       const planeswalker = state.cards.get(planeswalkerId);
@@ -456,7 +456,7 @@ describe('Damage Spells Target Validation', () => {
       const largeCreatureId = result2.cardId;
       
       // Deal 1 damage from deathtouch source (should be lethal due to deathtouch)
-      let damageResult = dealDamageToCard(state, largeCreatureId, 1, false, deathtouchId);
+      const damageResult = dealDamageToCard(state, largeCreatureId, 1, false, deathtouchId);
       state = damageResult.state;
       
       // Run SBAs - creature should be destroyed despite only 1 damage
@@ -582,7 +582,7 @@ describe('Damage Spells Target Validation', () => {
       
       // Artifact creatures CAN be targeted by damage spells
       // Deal 2 damage to it
-      let damageResult = dealDamageToCard(state, artifactCreatureId, 2, false);
+      const damageResult = dealDamageToCard(state, artifactCreatureId, 2, false);
       state = damageResult.state;
       
       const artifactCreature = state.cards.get(artifactCreatureId);
