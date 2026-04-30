@@ -464,7 +464,7 @@ async function processBatchPr(prs, options) {
       result.success = true;
       result.processed = prs.length;
       result.succeeded = prs.length;
-      result.prsProcessed = prs;
+      result.prsProcessed = prs.map(pr => ({ ...pr, status: 'dry-run' }));
       return result;
     }
 
