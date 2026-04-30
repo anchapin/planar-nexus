@@ -294,7 +294,10 @@ async function runPreflightChecks(options) {
 
     // Check gh CLI availability
     try {
-      await execGh('--version');
+      const { stdout } = await execAsync(`gh --version`, { encoding: 'utf8' });
+      if (!stdout.includes('gh version')) {
+        return { success: false, reason: 'GitHub CLI (gh) not available' };
+      }
     } catch (error) {
       return { success: false, reason: 'GitHub CLI (gh) not available' };
     }
