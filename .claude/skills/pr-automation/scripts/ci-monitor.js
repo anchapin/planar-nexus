@@ -191,7 +191,8 @@ async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.required
     const missingJobs = [];
 
     for (const jobName of requiredJobs) {
-      const job = runDetails.jobs.find(j => j.name === jobName);
+      const normalizedJobName = jobName.toLowerCase().replace(/\s+/g, '');
+      const job = runDetails.jobs.find(j => j.name.toLowerCase().replace(/\s+/g, '') === normalizedJobName);
 
       if (!job) {
         missingJobs.push(jobName);
