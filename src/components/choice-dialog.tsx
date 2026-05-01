@@ -14,15 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Hand,
-  Check,
-  X,
-  AlertCircle,
-  Target,
-  Eye,
-  Hash,
-} from "lucide-react";
+import { Hand, Check, X, AlertCircle, Target, Eye, Hash } from "lucide-react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import type { CardState } from "@/types/game";
@@ -60,7 +52,8 @@ export function XValueChoiceDialog({
 }: XValueChoiceDialogProps) {
   const [selectedValue, setSelectedValue] = React.useState<number | null>(null);
 
-  const canConfirm = selectedValue !== null && selectedValue >= minX && selectedValue <= maxX;
+  const canConfirm =
+    selectedValue !== null && selectedValue >= minX && selectedValue <= maxX;
 
   const handleValueClick = (value: number) => {
     setSelectedValue(value);
@@ -103,9 +96,7 @@ export function XValueChoiceDialog({
             <Hash className="h-5 w-5 text-primary" />
             {sourceCardName}
           </DialogTitle>
-          <DialogDescription className="text-base">
-            {prompt}
-          </DialogDescription>
+          <DialogDescription className="text-base">{prompt}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -125,7 +116,7 @@ export function XValueChoiceDialog({
                     "h-12 rounded-lg text-lg font-bold transition-all",
                     isSelected
                       ? "bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2"
-                      : "bg-muted hover:bg-muted/80 text-foreground"
+                      : "bg-muted hover:bg-muted/80 text-foreground",
                   )}
                 >
                   {value}
@@ -183,11 +174,14 @@ export function useXValueChoiceDialog() {
     setIsOpen(true);
   }, []);
 
-  const handleConfirm = React.useCallback((value: number) => {
-    pendingChoice?.onConfirm?.(value);
-    setIsOpen(false);
-    setPendingChoice(null);
-  }, [pendingChoice]);
+  const handleConfirm = React.useCallback(
+    (value: number) => {
+      pendingChoice?.onConfirm?.(value);
+      setIsOpen(false);
+      setPendingChoice(null);
+    },
+    [pendingChoice],
+  );
 
   const handleCancel = React.useCallback(() => {
     pendingChoice?.onCancel?.();
@@ -195,9 +189,12 @@ export function useXValueChoiceDialog() {
     setPendingChoice(null);
   }, [pendingChoice]);
 
-  const handleSelect = React.useCallback((value: number) => {
-    pendingChoice?.onSelect?.(value);
-  }, [pendingChoice]);
+  const handleSelect = React.useCallback(
+    (value: number) => {
+      pendingChoice?.onSelect?.(value);
+    },
+    [pendingChoice],
+  );
 
   const close = React.useCallback(() => {
     setIsOpen(false);
@@ -285,11 +282,17 @@ export function CardChoiceDialog({
   onConfirm,
   onCancel,
 }: CardChoiceDialogProps) {
-  const [selectedCardId, setSelectedCardId] = React.useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = React.useState<string | null>(
+    null,
+  );
 
-  const validTargetSet = React.useMemo(() => new Set(validTargetIds), [validTargetIds]);
+  const validTargetSet = React.useMemo(
+    () => new Set(validTargetIds),
+    [validTargetIds],
+  );
 
-  const canConfirm = selectedCardId !== null && validTargetSet.has(selectedCardId);
+  const canConfirm =
+    selectedCardId !== null && validTargetSet.has(selectedCardId);
 
   const handleCardClick = (cardId: string) => {
     if (!validTargetSet.has(cardId)) return;
@@ -345,7 +348,7 @@ export function CardChoiceDialog({
           isValid
             ? "border-primary hover:border-primary/70 hover:scale-105"
             : "border-muted opacity-60 cursor-not-allowed",
-          isSelected && isValid && "ring-4 ring-primary ring-offset-2"
+          isSelected && isValid && "ring-4 ring-primary ring-offset-2",
         )}
         onClick={() => handleCardClick(card.id)}
       >
@@ -384,7 +387,9 @@ export function CardChoiceDialog({
         )}
 
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-          <p className="text-white text-xs font-medium truncate">{card.card.name}</p>
+          <p className="text-white text-xs font-medium truncate">
+            {card.card.name}
+          </p>
           <p className="text-white/70 text-[10px] truncate">
             {card.card.type_line}
           </p>
@@ -401,9 +406,7 @@ export function CardChoiceDialog({
             <Eye className="h-5 w-5 text-primary" />
             {sourceCardName}
           </DialogTitle>
-          <DialogDescription className="text-base">
-            {prompt}
-          </DialogDescription>
+          <DialogDescription className="text-base">{prompt}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 flex-1 overflow-hidden">
@@ -444,7 +447,8 @@ export function CardChoiceDialog({
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg p-4">
               <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <p className="text-sm">
-                No valid targets in opponent&apos;s hand. You must still confirm.
+                No valid targets in opponent&apos;s hand. You must still
+                confirm.
               </p>
             </div>
           )}
@@ -452,7 +456,8 @@ export function CardChoiceDialog({
           {selectedCardId && validTargetSet.has(selectedCardId) && (
             <div className="bg-primary/10 rounded-lg p-3">
               <p className="text-sm font-medium text-primary">
-                Selected: {opponentHand.find((c) => c.id === selectedCardId)?.card.name}
+                Selected:{" "}
+                {opponentHand.find((c) => c.id === selectedCardId)?.card.name}
               </p>
             </div>
           )}
@@ -496,11 +501,14 @@ export function useCardChoiceDialog() {
     setIsOpen(true);
   }, []);
 
-  const handleConfirm = React.useCallback((cardId: string) => {
-    pendingChoice?.onConfirm?.(cardId);
-    setIsOpen(false);
-    setPendingChoice(null);
-  }, [pendingChoice]);
+  const handleConfirm = React.useCallback(
+    (cardId: string) => {
+      pendingChoice?.onConfirm?.(cardId);
+      setIsOpen(false);
+      setPendingChoice(null);
+    },
+    [pendingChoice],
+  );
 
   const handleCancel = React.useCallback(() => {
     pendingChoice?.onCancel?.();
@@ -508,9 +516,12 @@ export function useCardChoiceDialog() {
     setPendingChoice(null);
   }, [pendingChoice]);
 
-  const handleSelect = React.useCallback((cardId: string) => {
-    pendingChoice?.onSelect?.(cardId);
-  }, [pendingChoice]);
+  const handleSelect = React.useCallback(
+    (cardId: string) => {
+      pendingChoice?.onSelect?.(cardId);
+    },
+    [pendingChoice],
+  );
 
   const close = React.useCallback(() => {
     setIsOpen(false);
@@ -546,3 +557,238 @@ export function useCardChoiceDialog() {
 }
 
 export default CardChoiceDialog;
+
+// ============================================================================
+// Mode Choice Dialog (Modal Spells)
+// ============================================================================
+
+export interface ModeChoiceOption {
+  label: string;
+  value: string | number;
+  isValid: boolean;
+}
+
+export interface ModeChoiceDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  prompt: string;
+  sourceCardName: string;
+  modes: ModeChoiceOption[];
+  minChoices: number;
+  maxChoices: number;
+  onSelect: (modeValue: string | number) => void;
+  onConfirm: (modeValue: string | number) => void;
+  onCancel: () => void;
+}
+
+export function ModeChoiceDialog({
+  open,
+  onOpenChange,
+  prompt,
+  sourceCardName,
+  modes,
+  minChoices,
+  maxChoices,
+  onSelect,
+  onConfirm,
+  onCancel,
+}: ModeChoiceDialogProps) {
+  const [selectedMode, setSelectedMode] = React.useState<
+    string | number | null
+  >(null);
+
+  const canConfirm =
+    selectedMode !== null &&
+    modes.some((m) => m.value === selectedMode && m.isValid);
+
+  const handleModeClick = (mode: ModeChoiceOption) => {
+    if (!mode.isValid) return;
+    setSelectedMode(mode.value);
+    onSelect(mode.value);
+  };
+
+  const handleConfirm = () => {
+    if (selectedMode !== null && canConfirm) {
+      onConfirm(selectedMode);
+      setSelectedMode(null);
+      onOpenChange(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setSelectedMode(null);
+    onCancel();
+    onOpenChange(false);
+  };
+
+  React.useEffect(() => {
+    if (open) {
+      setSelectedMode(null);
+    }
+  }, [open]);
+
+  const selectedModeData = modes.find((m) => m.value === selectedMode);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-primary" />
+            {sourceCardName}
+          </DialogTitle>
+          <DialogDescription className="text-base">{prompt}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <AlertCircle className="h-4 w-4" />
+            <span>
+              Choose a mode (
+              {minChoices === maxChoices
+                ? minChoices
+                : `${minChoices}-${maxChoices}`}
+              )
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {modes.map((mode, index) => {
+              const isSelected = selectedMode === mode.value;
+              return (
+                <button
+                  key={index}
+                  onClick={() => handleModeClick(mode)}
+                  disabled={!mode.isValid}
+                  className={cn(
+                    "w-full p-4 rounded-lg text-left transition-all",
+                    mode.isValid
+                      ? "border-2 border-border hover:border-primary/70 hover:bg-primary/5 cursor-pointer"
+                      : "border border-muted opacity-50 cursor-not-allowed bg-muted/30",
+                    isSelected &&
+                      mode.isValid &&
+                      "border-primary bg-primary/10 ring-2 ring-primary ring-offset-2",
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={cn(
+                        "w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5",
+                        isSelected && mode.isValid
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-muted-foreground/30",
+                      )}
+                    >
+                      {isSelected && mode.isValid && (
+                        <Check className="h-4 w-4" />
+                      )}
+                    </div>
+                    <span
+                      className={cn(
+                        "text-sm",
+                        !mode.isValid && "text-muted-foreground",
+                      )}
+                    >
+                      {mode.label}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedModeData && (
+            <div className="bg-primary/10 rounded-lg p-3">
+              <p className="text-sm font-medium text-primary">
+                Selected: {selectedModeData.label}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="flex-row justify-between sm:justify-between">
+          <Button variant="outline" onClick={handleCancel}>
+            <X className="h-4 w-4 mr-1" />
+            Cancel
+          </Button>
+          <Button onClick={handleConfirm} disabled={!canConfirm}>
+            <Check className="h-4 w-4 mr-1" />
+            Confirm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function useModeChoiceDialog() {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [pendingChoice, setPendingChoice] = React.useState<{
+    prompt: string;
+    sourceCardName: string;
+    modes: ModeChoiceOption[];
+    minChoices: number;
+    maxChoices: number;
+    stackObjectId: string;
+    onSelect?: (modeValue: string | number) => void;
+    onConfirm?: (modeValue: string | number) => void;
+    onCancel?: () => void;
+  } | null>(null);
+
+  const showChoice = React.useCallback((config: typeof pendingChoice) => {
+    setPendingChoice(config);
+    setIsOpen(true);
+  }, []);
+
+  const handleConfirm = React.useCallback(
+    (modeValue: string | number) => {
+      pendingChoice?.onConfirm?.(modeValue);
+      setIsOpen(false);
+      setPendingChoice(null);
+    },
+    [pendingChoice],
+  );
+
+  const handleCancel = React.useCallback(() => {
+    pendingChoice?.onCancel?.();
+    setIsOpen(false);
+    setPendingChoice(null);
+  }, [pendingChoice]);
+
+  const handleSelect = React.useCallback(
+    (modeValue: string | number) => {
+      pendingChoice?.onSelect?.(modeValue);
+    },
+    [pendingChoice],
+  );
+
+  const close = React.useCallback(() => {
+    setIsOpen(false);
+    setPendingChoice(null);
+  }, []);
+
+  return {
+    isOpen,
+    setIsOpen,
+    pendingChoice,
+    showChoice,
+    handleConfirm,
+    handleCancel,
+    handleSelect,
+    close,
+    ModeChoiceDialog: pendingChoice ? (
+      <ModeChoiceDialog
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        prompt={pendingChoice.prompt}
+        sourceCardName={pendingChoice.sourceCardName}
+        modes={pendingChoice.modes}
+        minChoices={pendingChoice.minChoices}
+        maxChoices={pendingChoice.maxChoices}
+        onSelect={handleSelect}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+      />
+    ) : null,
+  };
+}

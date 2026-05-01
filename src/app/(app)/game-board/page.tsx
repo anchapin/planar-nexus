@@ -62,7 +62,10 @@ import {
   type GameMode,
   type GameResult,
 } from "@/lib/game-history";
-import { XValueChoiceDialog } from "@/components/choice-dialog";
+import {
+  XValueChoiceDialog,
+  ModeChoiceDialog,
+} from "@/components/choice-dialog";
 import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
 import { summarizeGame } from "@/lib/game-summarizer";
@@ -127,6 +130,15 @@ export default function GameBoardPage() {
     sourceCardName: string;
     minX: number;
     maxX: number;
+    stackObjectId: string;
+  } | null>(null);
+  const [showModeDialog, setShowModeDialog] = useState(false);
+  const [modeChoiceData, setModeChoiceData] = useState<{
+    prompt: string;
+    sourceCardName: string;
+    modes: Array<{ label: string; value: string | number; isValid: boolean }>;
+    minChoices: number;
+    maxChoices: number;
     stackObjectId: string;
   } | null>(null);
   const { toast } = useToast();
@@ -300,6 +312,46 @@ export default function GameBoardPage() {
       stackObjectId: choice.stackObjectId || "",
     });
     setShowXValueDialog(true);
+  }, [engineState?.waitingChoice]);
+
+  // Handle mode choices (modal spells)
+  useEffect(() => {
+    if (!engineState?.waitingChoice) {
+      return;
+    }
+
+    const choice = engineState.waitingChoice;
+    if (choice.type !== "choose_mode") {
+      return;
+    }
+
+    // Get source card name from stack object
+    let sourceCardName = "Card";
+    if (choice.stackObjectId) {
+      const stackObj = engineState.stack.find(
+        (s) => s.id === choice.stackObjectId,
+      );
+      if (stackObj?.sourceCardId) {
+        const sourceCard = engineState.cards.get(stackObj.sourceCardId);
+        if (sourceCard) {
+          sourceCardName = sourceCard.cardData.name;
+        }
+      }
+    }
+
+    setModeChoiceData({
+      prompt: choice.prompt,
+      sourceCardName,
+      modes: choice.choices.map((c: any) => ({
+        label: c.label,
+        value: c.value,
+        isValid: c.isValid,
+      })),
+      minChoices: choice.minChoices,
+      maxChoices: choice.maxChoices,
+      stackObjectId: choice.stackObjectId || "",
+    });
+    setShowModeDialog(true);
   }, [engineState?.waitingChoice]);
 
   // Get current player info from engine
@@ -1099,6 +1151,34 @@ export default function GameBoardPage() {
           onCancel={() => {
             setShowXValueDialog(false);
             setXValueChoiceData(null);
+          }}
+        />
+      )}
+
+      {/* Mode Choice Dialog for modal spells */}
+      {modeChoiceData && (
+        <ModeChoiceDialog
+          open={showModeDialog}
+          onOpenChange={(open) => {
+            setShowModeDialog(open);
+            if (!open) {
+              setModeChoiceData(null);
+            }
+          }}
+          prompt={modeChoiceData.prompt}
+          sourceCardName={modeChoiceData.sourceCardName}
+          modes={modeChoiceData.modes}
+          minChoices={modeChoiceData.minChoices}
+          maxChoices={modeChoiceData.maxChoices}
+          onSelect={() => {}}
+          onConfirm={(value) => {
+            resolveWaitingChoice(value);
+            setShowModeDialog(false);
+            setModeChoiceData(null);
+          }}
+          onCancel={() => {
+            setShowModeDialog(false);
+            setModeChoiceData(null);
           }}
         />
       )}
