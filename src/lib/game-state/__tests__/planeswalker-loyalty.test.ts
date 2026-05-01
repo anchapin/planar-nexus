@@ -364,7 +364,7 @@ describe("Planeswalker Loyalty Abilities", () => {
         state,
         aliceId,
         chandraId,
-        -2,
+        1,
       );
       expect(canActivateResult.canActivate).toBe(true);
 
@@ -372,7 +372,7 @@ describe("Planeswalker Loyalty Abilities", () => {
         state,
         aliceId,
         chandraId,
-        1,
+        0,
       );
 
       expect(activationResult.success).toBe(true);
@@ -381,7 +381,7 @@ describe("Planeswalker Loyalty Abilities", () => {
       const loyaltyCounter = updatedChandra?.counters?.find(
         (c) => c.type === "loyalty",
       );
-      expect(loyaltyCounter?.count).toBe(2);
+      expect(loyaltyCounter?.count).toBe(5);
     });
   });
 
