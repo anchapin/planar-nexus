@@ -5,15 +5,15 @@
  * Main entry point for PR review, fixing, CI monitoring, and merging
  */
 
-const { exec } = require('child_process');
-const { promisify } = require('util');
+const { exec } = require("child_process");
+const { promisify } = require("util");
 const execAsync = promisify(exec);
 
 // Import modules
-const ciMonitor = require('./ci-monitor');
-const conflictHandler = require('./conflict-handler');
-const reviewIntegration = require('./review-integration');
-const batchManager = require('./batch-manager');
+const ciMonitor = require("./ci-monitor");
+const conflictHandler = require("./conflict-handler");
+const reviewIntegration = require("./review-integration");
+const batchManager = require("./batch-manager");
 
 /**
  * Execute gh CLI command
@@ -21,11 +21,11 @@ const batchManager = require('./batch-manager');
 async function execGh(command) {
   try {
     const { stdout, stderr } = await execAsync(`gh ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
     });
 
-    if (stderr && !stderr.includes('warning:')) {
+    if (stderr && !stderr.includes("warning:")) {
       console.warn(`GH Warning: ${stderr}`);
     }
 
@@ -46,21 +46,21 @@ async function execGh(command) {
 async function execGit(command) {
   try {
     const { stdout, stderr } = await execAsync(`git ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
     });
 
     return {
       success: true,
       stdout: stdout.trim(),
-      stderr: stderr.trim()
+      stderr: stderr.trim(),
     };
   } catch (error) {
     return {
       success: false,
-      stdout: error.stdout?.trim() || '',
-      stderr: error.stderr?.trim() || '',
-      message: error.message
+      stdout: error.stdout?.trim() || "",
+      stderr: error.stderr?.trim() || "",
+      message: error.message,
     };
   }
 }
@@ -81,53 +81,97 @@ function parseArguments() {
     confirmMerges: false,
     noAutoMerge: false,
     requireApproval: false,
-    mergeMethod: 'squash',
+    mergeMethod: "squash",
     verbose: false,
     noRollback: false,
     force: false,
     ciTimeout: 1800000,
     ciPollInterval: 30000,
-    requiredJobs: ['lint', 'typecheck', 'build'],
+    requiredJobs: ["lint", "typecheck", "build"],
     prFilter: null,
     maxAge: null,
     minAge: null,
     excludePrs: [],
-    fallbackThreshold: 3
+    fallbackThreshold: 3,
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     switch (arg) {
-      case '--max-parallel': options.maxParallel = parseInt(args[++i]); break;
-      case '--batch-size': options.batchSize = parseInt(args[++i]); break;
-      case '--dry-run': options.dryRun = true; break;
-      case '--interactive': options.interactive = true; break;
-      case '--no-batch': options.noBatch = true; break;
-      case '--no-review': options.noReview = true; break;
-      case '--no-simplify': options.noSimplify = true; break;
-      case '--confirm-merges': options.confirmMerges = true; break;
-      case '--no-auto-merge': options.noAutoMerge = true; break;
-      case '--require-approval': options.requireApproval = true; break;
-      case '--merge-method': options.mergeMethod = args[++i]; break;
-      case '--verbose': options.verbose = true; break;
-      case '--no-rollback': options.noRollback = true; break;
-      case '--force': options.force = true; break;
-      case '--ci-timeout': options.ciTimeout = parseDuration(args[++i]); break;
-      case '--ci-poll-interval': options.ciPollInterval = parseDuration(args[++i]); break;
-      case '--required-jobs': options.requiredJobs = args[++i].split(','); break;
-      case '--pr-filter': options.prFilter = args[++i]; break;
-      case '--max-age': options.maxAge = parseDuration(args[++i]); break;
-      case '--min-age': options.minAge = parseDuration(args[++i]); break;
-      case '--exclude-prs': options.excludePrs = args[++i].split(',').map(n => parseInt(n)); break;
-      case '--fallback-threshold': options.fallbackThreshold = parseInt(args[++i]); break;
-      case '--help':
-      case '-h':
+      case "--max-parallel":
+        options.maxParallel = parseInt(args[++i]);
+        break;
+      case "--batch-size":
+        options.batchSize = parseInt(args[++i]);
+        break;
+      case "--dry-run":
+        options.dryRun = true;
+        break;
+      case "--interactive":
+        options.interactive = true;
+        break;
+      case "--no-batch":
+        options.noBatch = true;
+        break;
+      case "--no-review":
+        options.noReview = true;
+        break;
+      case "--no-simplify":
+        options.noSimplify = true;
+        break;
+      case "--confirm-merges":
+        options.confirmMerges = true;
+        break;
+      case "--no-auto-merge":
+        options.noAutoMerge = true;
+        break;
+      case "--require-approval":
+        options.requireApproval = true;
+        break;
+      case "--merge-method":
+        options.mergeMethod = args[++i];
+        break;
+      case "--verbose":
+        options.verbose = true;
+        break;
+      case "--no-rollback":
+        options.noRollback = true;
+        break;
+      case "--force":
+        options.force = true;
+        break;
+      case "--ci-timeout":
+        options.ciTimeout = parseDuration(args[++i]);
+        break;
+      case "--ci-poll-interval":
+        options.ciPollInterval = parseDuration(args[++i]);
+        break;
+      case "--required-jobs":
+        options.requiredJobs = args[++i].split(",");
+        break;
+      case "--pr-filter":
+        options.prFilter = args[++i];
+        break;
+      case "--max-age":
+        options.maxAge = parseDuration(args[++i]);
+        break;
+      case "--min-age":
+        options.minAge = parseDuration(args[++i]);
+        break;
+      case "--exclude-prs":
+        options.excludePrs = args[++i].split(",").map((n) => parseInt(n));
+        break;
+      case "--fallback-threshold":
+        options.fallbackThreshold = parseInt(args[++i]);
+        break;
+      case "--help":
+      case "-h":
         printHelp();
         process.exit(0);
         break;
       default:
         console.error(`Unknown option: ${arg}`);
-        console.error('Use --help for usage information');
+        console.error("Use --help for usage information");
         process.exit(1);
     }
   }
@@ -146,11 +190,16 @@ function parseDuration(duration) {
   const unit = match[2];
 
   switch (unit) {
-    case 's': return value * 1000;
-    case 'm': return value * 60 * 1000;
-    case 'h': return value * 60 * 60 * 1000;
-    case 'd': return value * 24 * 60 * 60 * 1000;
-    default: throw new Error(`Unknown duration unit: ${unit}`);
+    case "s":
+      return value * 1000;
+    case "m":
+      return value * 60 * 1000;
+    case "h":
+      return value * 60 * 60 * 1000;
+    case "d":
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      throw new Error(`Unknown duration unit: ${unit}`);
   }
 }
 
@@ -217,14 +266,14 @@ EXAMPLES:
  * Main entry point
  */
 async function main() {
-  console.log('🚀 PR Automation Skill Started');
-  console.log('=================================\n');
+  console.log("🚀 PR Automation Skill Started");
+  console.log("=================================\n");
 
   const options = parseArguments();
 
   if (options.verbose) {
-    console.log('Options:', JSON.stringify(options, null, 2));
-    console.log('');
+    console.log("Options:", JSON.stringify(options, null, 2));
+    console.log("");
   }
 
   // Perform pre-flight checks
@@ -234,29 +283,29 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('✓ Preflight checks passed\n');
+  console.log("✓ Preflight checks passed\n");
 
   // Discover open PRs
   const prs = await discoverOpenPrs(options);
   console.log(`Found ${prs.length} open PR(s)\n`);
 
   if (prs.length === 0) {
-    console.log('No PRs to process');
+    console.log("No PRs to process");
     process.exit(0);
   }
 
   // Display PRs
-  console.log('PRs to process:');
-  prs.forEach(pr => {
+  console.log("PRs to process:");
+  prs.forEach((pr) => {
     console.log(`  #${pr.number}: ${pr.title} (${pr.headRefName})`);
   });
-  console.log('');
+  console.log("");
 
   // Interactive mode confirmation
   if (options.interactive) {
-    const shouldProceed = await promptConfirm('Proceed with PR automation?');
+    const shouldProceed = await promptConfirm("Proceed with PR automation?");
     if (!shouldProceed) {
-      console.log('Aborted by user');
+      console.log("Aborted by user");
       process.exit(0);
     }
   }
@@ -271,7 +320,7 @@ async function main() {
 
   // Cleanup
   if (!options.noRollback && !options.dryRun) {
-    console.log('\nCleaning up...');
+    console.log("\nCleaning up...");
     await batchManager.cleanupBatchBranches();
   }
 
@@ -283,38 +332,42 @@ async function main() {
  * Run pre-flight checks
  */
 async function runPreflightChecks(options) {
-  console.log('Running pre-flight checks...');
+  console.log("Running pre-flight checks...");
 
   try {
     // Check git repository
-    const gitResult = await execGit('rev-parse --git-dir');
+    const gitResult = await execGit("rev-parse --git-dir");
     if (!gitResult.success) {
-      return { success: false, reason: 'Not a git repository' };
+      return { success: false, reason: "Not a git repository" };
     }
 
     // Check gh CLI availability
     try {
-      await execGh('--version');
+      const { stdout } = await execAsync(`gh --version`, { encoding: "utf8" });
+      if (!stdout.includes("gh version")) {
+        return { success: false, reason: "GitHub CLI (gh) not available" };
+      }
     } catch (error) {
-      return { success: false, reason: 'GitHub CLI (gh) not available' };
+      return { success: false, reason: "GitHub CLI (gh) not available" };
     }
 
     // Check current branch
-    const currentBranch = (await execGit('rev-parse --abbrev-ref HEAD')).stdout;
-    if (currentBranch !== 'main') {
+    const currentBranch = (await execGit("rev-parse --abbrev-ref HEAD")).stdout;
+    if (currentBranch !== "main") {
       console.warn(`⚠️  Not on main branch (currently on ${currentBranch})`);
     }
 
     // Check for uncommitted changes
-    const statusResult = await execGit('status --porcelain');
+    const statusResult = await execGit("status --porcelain");
     if (statusResult.stdout.trim()) {
       if (!options.force) {
         return {
           success: false,
-          reason: 'Working directory has uncommitted changes. Use --force to proceed.'
+          reason:
+            "Working directory has uncommitted changes. Use --force to proceed.",
         };
       } else {
-        console.warn('⚠️  Proceeding with uncommitted changes (--force)');
+        console.warn("⚠️  Proceeding with uncommitted changes (--force)");
       }
     }
 
@@ -324,10 +377,9 @@ async function runPreflightChecks(options) {
         git: true,
         ghCli: true,
         branch: currentBranch,
-        cleanWorkingDir: statusResult.stdout.trim().length === 0
-      }
+        cleanWorkingDir: statusResult.stdout.trim().length === 0,
+      },
     };
-
   } catch (error) {
     return { success: false, reason: error.message };
   }
@@ -337,10 +389,11 @@ async function runPreflightChecks(options) {
  * Discover open PRs
  */
 async function discoverOpenPrs(options) {
-  console.log('Discovering open PRs...');
+  console.log("Discovering open PRs...");
 
   try {
-    let command = 'pr list --state open --json number,title,headRefName,author,createdAt,labels';
+    let command =
+      "pr list --state open --json number,title,headRefName,author,createdAt,labels";
 
     if (options.prFilter) {
       command += ` --label "${options.prFilter}"`;
@@ -353,14 +406,14 @@ async function discoverOpenPrs(options) {
     const now = Date.now();
 
     if (options.maxAge) {
-      filteredPrs = filteredPrs.filter(pr => {
+      filteredPrs = filteredPrs.filter((pr) => {
         const prAge = now - new Date(pr.createdAt).getTime();
         return prAge <= options.maxAge;
       });
     }
 
     if (options.minAge) {
-      filteredPrs = filteredPrs.filter(pr => {
+      filteredPrs = filteredPrs.filter((pr) => {
         const prAge = now - new Date(pr.createdAt).getTime();
         return prAge >= options.minAge;
       });
@@ -368,11 +421,12 @@ async function discoverOpenPrs(options) {
 
     // Exclude specific PRs
     if (options.excludePrs.length > 0) {
-      filteredPrs = filteredPrs.filter(pr => !options.excludePrs.includes(pr.number));
+      filteredPrs = filteredPrs.filter(
+        (pr) => !options.excludePrs.includes(pr.number),
+      );
     }
 
     return filteredPrs;
-
   } catch (error) {
     console.error(`Failed to discover PRs: ${error.message}`);
     return [];
@@ -383,25 +437,25 @@ async function discoverOpenPrs(options) {
  * Process PRs using hybrid strategy
  */
 async function processPrsHybrid(prs, options) {
-  console.log('Starting hybrid PR processing...\n');
+  console.log("Starting hybrid PR processing...\n");
 
   const result = {
     success: true,
-    strategyUsed: 'none',
+    strategyUsed: "none",
     processed: 0,
     succeeded: 0,
     failed: 0,
     prsProcessed: [],
-    errors: []
+    errors: [],
   };
 
   // Try batch approach first
   if (!options.noBatch && prs.length > 1) {
-    console.log('📦 Attempting batch PR approach...\n');
+    console.log("📦 Attempting batch PR approach...\n");
     const batchResult = await processBatchPr(prs, options);
 
     if (batchResult.success) {
-      result.strategyUsed = 'batch';
+      result.strategyUsed = "batch";
       result.processed = batchResult.processed;
       result.succeeded = batchResult.succeeded;
       result.failed = batchResult.failed;
@@ -409,16 +463,16 @@ async function processPrsHybrid(prs, options) {
       return result;
     } else {
       console.log(`⚠️  Batch approach failed: ${batchResult.reason}`);
-      console.log('Falling back to individual processing...\n');
+      console.log("Falling back to individual processing...\n");
       await batchManager.cleanupBatchBranches();
     }
   }
 
   // Fall back to individual processing
-  console.log('🔄 Processing PRs individually...\n');
+  console.log("🔄 Processing PRs individually...\n");
   const individualResult = await processPrsIndividually(prs, options);
 
-  result.strategyUsed = 'individual';
+  result.strategyUsed = "individual";
   result.processed = individualResult.processed;
   result.succeeded = individualResult.succeeded;
   result.failed = individualResult.failed;
@@ -438,18 +492,18 @@ async function processBatchPr(prs, options) {
     succeeded: 0,
     failed: 0,
     prsProcessed: [],
-    reason: ''
+    reason: "",
   };
 
   try {
     console.log(`Creating batch PR with ${prs.length} PR(s)...`);
     const batchPrResult = await batchManager.createBatchPr(prs, {
       dryRun: options.dryRun,
-      batchSize: options.batchSize
+      batchSize: options.batchSize,
     });
 
     if (!batchPrResult.success) {
-      result.reason = batchPrResult.reason || 'Failed to create batch PR';
+      result.reason = batchPrResult.reason || "Failed to create batch PR";
       return result;
     }
 
@@ -457,17 +511,17 @@ async function processBatchPr(prs, options) {
     console.log(`✓ Batch PR created: #${batchPrNumber}\n`);
 
     if (options.dryRun) {
-      console.log('[DRY RUN] Skipping review and CI checks');
+      console.log("[DRY RUN] Skipping review and CI checks");
       result.success = true;
       result.processed = prs.length;
       result.succeeded = prs.length;
-      result.prsProcessed = prs;
+      result.prsProcessed = prs.map((pr) => ({ ...pr, status: "dry-run" }));
       return result;
     }
 
     // Run review on batch PR
     if (!options.noReview) {
-      console.log('Running code review on batch PR...');
+      console.log("Running code review on batch PR...");
       const reviewResult = await runBatchReview(batchPrNumber, options);
       if (!reviewResult.success) {
         result.reason = `Review failed: ${reviewResult.reason}`;
@@ -476,14 +530,16 @@ async function processBatchPr(prs, options) {
     }
 
     // Monitor CI for batch PR
-    console.log('Monitoring CI for batch PR...');
+    console.log("Monitoring CI for batch PR...");
     const ciResult = await ciMonitor.monitorPrCI(batchPrNumber, {
       requiredJobs: options.requiredJobs,
       pollInterval: options.ciPollInterval,
       timeout: options.ciTimeout,
       onProgress: (runDetails, elapsed, pollCount) => {
-        console.log(`  Status: ${runDetails.status} (${formatDuration(elapsed)} elapsed, ${pollCount} polls)`);
-      }
+        console.log(
+          `  Status: ${runDetails.status} (${formatDuration(elapsed)} elapsed, ${pollCount} polls)`,
+        );
+      },
     });
 
     if (!ciResult.valid) {
@@ -491,37 +547,45 @@ async function processBatchPr(prs, options) {
       return result;
     }
 
-    console.log('✓ All CI checks passed\n');
+    console.log("✓ All CI checks passed\n");
 
     // Merge batch PR
     if (!options.noAutoMerge) {
-      console.log('Merging batch PR...');
-      const mergeResult = await mergePr(batchPrNumber, options.mergeMethod, options);
+      console.log("Merging batch PR...");
+      const mergeResult = await mergePr(
+        batchPrNumber,
+        options.mergeMethod,
+        options,
+      );
       if (!mergeResult.success) {
         result.reason = `Merge failed: ${mergeResult.reason}`;
         return result;
       }
-      console.log('✓ Batch PR merged\n');
+      console.log("✓ Batch PR merged\n");
     }
 
     // Merge individual source PRs
-    console.log('Merging individual source PRs...');
+    console.log("Merging individual source PRs...");
     for (const pr of prs) {
-      const mergeResult = await mergePr(pr.number, options.mergeMethod, options);
+      const mergeResult = await mergePr(
+        pr.number,
+        options.mergeMethod,
+        options,
+      );
       if (mergeResult.success) {
         result.succeeded++;
         result.prsProcessed.push({
           number: pr.number,
           title: pr.title,
-          status: 'merged'
+          status: "merged",
         });
       } else {
         result.failed++;
         result.prsProcessed.push({
           number: pr.number,
           title: pr.title,
-          status: 'failed',
-          error: mergeResult.reason
+          status: "failed",
+          error: mergeResult.reason,
         });
       }
       result.processed++;
@@ -529,7 +593,6 @@ async function processBatchPr(prs, options) {
 
     result.success = result.failed === 0;
     return result;
-
   } catch (error) {
     result.reason = error.message;
     return result;
@@ -546,41 +609,45 @@ async function processPrsIndividually(prs, options) {
     succeeded: 0,
     failed: 0,
     prsProcessed: [],
-    errors: []
+    errors: [],
   };
 
   console.log(`Processing ${prs.length} PR(s) individually...\n`);
 
   for (const pr of prs) {
     console.log(`\nProcessing PR #${pr.number}: ${pr.title}`);
-    console.log('='.repeat(50));
+    console.log("=".repeat(50));
 
     const prResult = await processIndividualPr(pr, options);
 
     result.prsProcessed.push({
       number: pr.number,
       title: pr.title,
-      ...prResult
+      ...prResult,
     });
 
-    if (prResult.status === 'merged') {
+    if (prResult.status === "merged") {
       result.succeeded++;
-    } else if (prResult.status === 'failed') {
+    } else if (prResult.status === "failed") {
       result.failed++;
       result.success = false;
       if (prResult.error) {
         result.errors.push({
           prNumber: pr.number,
-          error: prResult.error
+          error: prResult.error,
         });
       }
     }
 
     result.processed++;
-    console.log(`\nProgress: ${result.processed}/${prs.length} PR(s) processed`);
+    console.log(
+      `\nProgress: ${result.processed}/${prs.length} PR(s) processed`,
+    );
   }
 
-  console.log(`\n✓ Completed processing: ${result.succeeded} merged, ${result.failed} failed`);
+  console.log(
+    `\n✓ Completed processing: ${result.succeeded} merged, ${result.failed} failed`,
+  );
 
   return result;
 }
@@ -590,45 +657,50 @@ async function processPrsIndividually(prs, options) {
  */
 async function processIndividualPr(pr, options) {
   const result = {
-    status: 'pending',
-    error: null
+    status: "pending",
+    error: null,
   };
 
   try {
     if (options.dryRun) {
-      console.log('[DRY RUN] Would process PR');
-      return { status: 'dry-run' };
+      console.log("[DRY RUN] Would process PR");
+      return { status: "dry-run" };
     }
 
     // Step 1: Check for merge conflicts
-    console.log('Checking for merge conflicts...');
-    const conflictResult = await conflictHandler.detectMergeConflicts(pr.headRefName, 'main');
+    console.log("Checking for merge conflicts...");
+    const conflictResult = await conflictHandler.detectMergeConflicts(
+      pr.headRefName,
+      "main",
+    );
 
     if (conflictResult.hasConflicts) {
-      console.warn(`⚠️  Merge conflicts detected in ${conflictResult.conflictFiles.length} file(s)`);
+      console.warn(
+        `⚠️  Merge conflicts detected in ${conflictResult.conflictFiles.length} file(s)`,
+      );
       console.log(`Severity: ${conflictResult.severity}`);
 
       const resolutionResult = await conflictHandler.resolveConflicts(
         pr.headRefName,
-        'main',
-        { autoResolve: true }
+        "main",
+        { autoResolve: true },
       );
 
       if (!resolutionResult.success || resolutionResult.requiresManual) {
-        console.error('✗ Cannot automatically resolve conflicts');
+        console.error("✗ Cannot automatically resolve conflicts");
         return {
-          status: 'failed',
-          error: 'Merge conflicts require manual resolution',
+          status: "failed",
+          error: "Merge conflicts require manual resolution",
           severity: conflictResult.severity,
-          conflictFiles: conflictResult.conflictFiles
+          conflictFiles: conflictResult.conflictFiles,
         };
       }
     }
-    console.log('✓ No conflicts or conflicts resolved');
+    console.log("✓ No conflicts or conflicts resolved");
 
     // Step 2: Run code review
     if (!options.noReview) {
-      console.log('\nRunning code review...');
+      console.log("\nRunning code review...");
       const reviewResult = await runPrReview(pr.number, options);
       if (!reviewResult.success) {
         console.warn(`⚠️  Review had issues: ${reviewResult.reason}`);
@@ -637,60 +709,65 @@ async function processIndividualPr(pr, options) {
 
     // Step 3: Apply fixes
     if (!options.noReview) {
-      console.log('\nApplying automated fixes...');
+      console.log("\nApplying automated fixes...");
       const fixResult = await reviewIntegration.applyFixes(pr.number, []);
       if (!fixResult.success) {
         console.warn(`⚠️  Fix application had issues: ${fixResult.error}`);
       } else if (fixResult.total > 0) {
         console.log(`✓ Applied ${fixResult.total} automated fix(es)`);
       } else {
-        console.log('✓ No fixes needed');
+        console.log("✓ No fixes needed");
       }
     }
 
     // Step 4: Monitor CI
-    console.log('\nMonitoring CI checks...');
+    console.log("\nMonitoring CI checks...");
     const ciResult = await ciMonitor.monitorPrCI(pr.number, {
       requiredJobs: options.requiredJobs,
       pollInterval: options.ciPollInterval,
       timeout: options.ciTimeout,
       onProgress: (runDetails, elapsed, pollCount) => {
-        console.log(`  CI Status: ${runDetails.status} (${formatDuration(elapsed)} elapsed)`);
-      }
+        console.log(
+          `  CI Status: ${runDetails.status} (${formatDuration(elapsed)} elapsed)`,
+        );
+      },
     });
 
     if (!ciResult.valid) {
       console.error(`✗ CI checks failed: ${ciResult.reason}`);
       return {
-        status: 'failed',
+        status: "failed",
         error: `CI checks failed: ${ciResult.reason}`,
-        ciResult
+        ciResult,
       };
     }
-    console.log('✓ All CI checks passed');
+    console.log("✓ All CI checks passed");
 
     // Step 5: Merge PR
     if (!options.noAutoMerge) {
-      console.log('\nMerging PR...');
-      const mergeResult = await mergePr(pr.number, options.mergeMethod, options);
+      console.log("\nMerging PR...");
+      const mergeResult = await mergePr(
+        pr.number,
+        options.mergeMethod,
+        options,
+      );
 
       if (!mergeResult.success) {
         console.error(`✗ Merge failed: ${mergeResult.reason}`);
         return {
-          status: 'failed',
-          error: mergeResult.reason
+          status: "failed",
+          error: mergeResult.reason,
         };
       }
-      console.log('✓ PR merged successfully');
+      console.log("✓ PR merged successfully");
     }
 
-    return { status: options.noAutoMerge ? 'ready' : 'merged' };
-
+    return { status: options.noAutoMerge ? "ready" : "merged" };
   } catch (error) {
     console.error(`✗ Error processing PR: ${error.message}`);
     return {
-      status: 'failed',
-      error: error.message
+      status: "failed",
+      error: error.message,
     };
   }
 }
@@ -701,9 +778,12 @@ async function processIndividualPr(pr, options) {
 async function runBatchReview(prNumber, options) {
   try {
     if (options.noSimplify) {
-      console.log('Skipping simplify skill (--no-simplify)');
+      console.log("Skipping simplify skill (--no-simplify)");
     } else {
-      const simplifyResult = await reviewIntegration.runSimplifyReview(prNumber, []);
+      const simplifyResult = await reviewIntegration.runSimplifyReview(
+        prNumber,
+        [],
+      );
       if (!simplifyResult.success) {
         console.warn(`Simplify review had issues: ${simplifyResult.error}`);
       }
@@ -719,13 +799,12 @@ async function runBatchReview(prNumber, options) {
 
     return {
       success: true,
-      prChecks
+      prChecks,
     };
-
   } catch (error) {
     return {
       success: false,
-      reason: error.message
+      reason: error.message,
     };
   }
 }
@@ -736,11 +815,16 @@ async function runBatchReview(prNumber, options) {
 async function runPrReview(prNumber, options) {
   try {
     if (options.noSimplify) {
-      console.log('Skipping simplify skill (--no-simplify)');
+      console.log("Skipping simplify skill (--no-simplify)");
     } else {
-      const simplifyResult = await reviewIntegration.runSimplifyReview(prNumber, []);
+      const simplifyResult = await reviewIntegration.runSimplifyReview(
+        prNumber,
+        [],
+      );
       if (simplifyResult.success) {
-        console.log(`✓ Simplify review completed: ${simplifyResult.reviewSummary.filesReviewed} files reviewed`);
+        console.log(
+          `✓ Simplify review completed: ${simplifyResult.reviewSummary.filesReviewed} files reviewed`,
+        );
         for (const rec of simplifyResult.reviewSummary.recommendations) {
           console.log(`  - ${rec}`);
         }
@@ -753,7 +837,7 @@ async function runPrReview(prNumber, options) {
     console.log(`✓ PR checks: ${prChecks.summary}`);
 
     if (!prChecks.passed) {
-      console.warn('Failed checks:');
+      console.warn("Failed checks:");
       for (const check of prChecks.failedChecks) {
         console.warn(`  - ${check.name}: ${check.reason}`);
       }
@@ -761,13 +845,12 @@ async function runPrReview(prNumber, options) {
 
     return {
       success: true,
-      prChecks
+      prChecks,
     };
-
   } catch (error) {
     return {
       success: false,
-      reason: error.message
+      reason: error.message,
     };
   }
 }
@@ -779,10 +862,10 @@ async function mergePr(prNumber, mergeMethod, options) {
   try {
     if (options.requireApproval) {
       const prData = await execGh(`pr view ${prNumber} --json reviewDecision`);
-      if (prData.reviewDecision !== 'APPROVED') {
+      if (prData.reviewDecision !== "APPROVED") {
         return {
           success: false,
-          reason: `PR not approved (reviewDecision: ${prData.reviewDecision})`
+          reason: `PR not approved (reviewDecision: ${prData.reviewDecision})`,
         };
       }
     }
@@ -792,30 +875,29 @@ async function mergePr(prNumber, mergeMethod, options) {
       if (!shouldMerge) {
         return {
           success: false,
-          reason: 'Merge cancelled by user'
+          reason: "Merge cancelled by user",
         };
       }
     }
 
     const command = `pr merge ${prNumber} --${mergeMethod} --delete-branch`;
     const { stdout, stderr } = await execAsync(`gh ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
     });
 
-    if (stderr && !stderr.includes('warning:')) {
+    if (stderr && !stderr.includes("warning:")) {
       console.warn(`Merge warning: ${stderr}`);
     }
 
     return {
       success: true,
-      message: stdout.trim()
+      message: stdout.trim(),
     };
-
   } catch (error) {
     return {
       success: false,
-      reason: error.message
+      reason: error.message,
     };
   }
 }
@@ -824,69 +906,70 @@ async function mergePr(prNumber, mergeMethod, options) {
  * Generate summary report
  */
 async function generateSummaryReport(result, duration, options) {
-  console.log('\n');
-  console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║                  PR AUTOMATION SUMMARY                    ║');
-  console.log('╚════════════════════════════════════════════════════════════╝');
-  console.log('');
+  console.log("\n");
+  console.log("╔════════════════════════════════════════════════════════════╗");
+  console.log("║                  PR AUTOMATION SUMMARY                    ║");
+  console.log("╚════════════════════════════════════════════════════════════╝");
+  console.log("");
 
   console.log(`Strategy: ${result.strategyUsed.toUpperCase()}`);
   console.log(`Duration: ${formatDuration(duration)}`);
-  console.log(`Mode: ${options.dryRun ? 'DRY RUN' : 'LIVE'}`);
-  console.log('');
+  console.log(`Mode: ${options.dryRun ? "DRY RUN" : "LIVE"}`);
+  console.log("");
 
   console.log(`Processed: ${result.processed} PR(s)`);
   console.log(`Succeeded: ${result.succeeded} PR(s)`);
   console.log(`Failed: ${result.failed} PR(s)`);
-  console.log('');
+  console.log("");
 
   if (result.prsProcessed.length > 0) {
-    console.log('Details:');
-    result.prsProcessed.forEach(pr => {
-      const statusIcon = {
-        'merged': '✓',
-        'ready': '→',
-        'failed': '✗',
-        'dry-run': '○'
-      }[pr.status] || '?';
+    console.log("Details:");
+    result.prsProcessed.forEach((pr) => {
+      const statusIcon =
+        {
+          merged: "✓",
+          ready: "→",
+          failed: "✗",
+          "dry-run": "○",
+        }[pr.status] || "?";
 
       console.log(`  ${statusIcon} #${pr.number}: ${pr.title}`);
       console.log(`     Status: ${pr.status.toUpperCase()}`);
       if (pr.error) {
         console.log(`     Error: ${pr.error}`);
       }
-      console.log('');
+      console.log("");
     });
   }
 
   if (result.errors.length > 0) {
-    console.log('Errors:');
-    result.errors.forEach(err => {
+    console.log("Errors:");
+    result.errors.forEach((err) => {
       console.log(`  - PR #${err.prNumber}: ${err.error}`);
     });
-    console.log('');
+    console.log("");
   }
 
-  console.log('╔════════════════════════════════════════════════════════════╗');
-  console.log('║                   PROCESSING COMPLETE                     ║');
-  console.log('╚════════════════════════════════════════════════════════════╝');
-  console.log('');
+  console.log("╔════════════════════════════════════════════════════════════╗");
+  console.log("║                   PROCESSING COMPLETE                     ║");
+  console.log("╚════════════════════════════════════════════════════════════╝");
+  console.log("");
 }
 
 /**
  * Prompt user for confirmation
  */
 async function promptConfirm(message) {
-  const readline = require('readline');
+  const readline = require("readline");
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout
+    output: process.stdout,
   });
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     rl.question(`${message} [y/N]: `, (answer) => {
       rl.close();
-      resolve(answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes');
+      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
     });
   });
 }
@@ -910,8 +993,8 @@ function formatDuration(ms) {
 
 // Run main function
 if (require.main === module) {
-  main().catch(error => {
-    console.error('Fatal error:', error);
+  main().catch((error) => {
+    console.error("Fatal error:", error);
     process.exit(1);
   });
 }
@@ -927,5 +1010,5 @@ module.exports = {
   processPrsIndividually,
   processIndividualPr,
   mergePr,
-  generateSummaryReport
+  generateSummaryReport,
 };

@@ -808,6 +808,27 @@ export function dealDamageToCard(
     damage: card.damage + actualDamage,
   };
 
+  // Planeswalker damage reduces loyalty (CR 119.3c)
+  const isPlaneswalker = card.cardData.type_line
+    ?.toLowerCase()
+    .includes("planeswalker");
+  if (isPlaneswalker) {
+    const loyaltyCounter = updatedCard.counters?.find(
+      (c) => c.type === "loyalty",
+    );
+    if (loyaltyCounter) {
+      const currentLoyalty = loyaltyCounter.count || 0;
+      const newLoyalty = currentLoyalty - actualDamage;
+      updatedCard = {
+        ...updatedCard,
+        counters:
+          updatedCard.counters
+            ?.filter((c) => c.type !== "loyalty")
+            .concat([{ type: "loyalty", count: newLoyalty }]) || [],
+      };
+    }
+  }
+
   // Check for deathtouch on the source - lethal damage is 1 or more
   // CR 702.2b: Any nonzero amount of combat damage assigned by a source with deathtouch is considered lethal damage
   if (sourceId) {
