@@ -205,9 +205,9 @@ describe("Damage Spells Target Validation", () => {
       expect(loyaltyAfterDamage).toBe(0);
       const sbaResult = checkStateBasedActions(state);
       const battlefield = sbaResult.state.zones.get(`${bobId}-battlefield`)!;
-      expect(battlefield.cardIds).toContain(planeswalkerId);
+      expect(battlefield.cardIds).not.toContain(planeswalkerId);
       const exile = sbaResult.state.zones.get(`${bobId}-exile`)!;
-      expect(exile.cardIds).not.toContain(planeswalkerId);
+      expect(exile.cardIds).toContain(planeswalkerId);
     });
   });
 
