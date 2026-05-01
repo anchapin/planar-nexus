@@ -24,12 +24,68 @@ import { initializePlaneswalkerLoyalty } from "./card-instance";
 import { parseKicker } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
 import { completeHandTargeting } from "./hand-targeting";
+import { destroyCard } from "./keyword-actions";
 
 /**
  * Generate a unique stack object ID
  */
 function generateStackObjectId(): string {
   return `stack-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Check if oracle text represents a board sweeper effect (destroy all creatures)
+ */
+export function isBoardSweeper(oracleText: string): boolean {
+  const lowerText = oracleText.toLowerCase();
+  return (
+    lowerText.includes("destroy all creatures") ||
+    (lowerText.includes("destroy") &&
+      lowerText.includes("creatures") &&
+      lowerText.includes("all"))
+  );
+}
+
+/**
+ * Check if a board sweeper effect destroys indestructible creatures
+ * Cards with "can't be regenerated" or "can't be regenerated" wording
+ * destroy indestructible creatures (they would be regenerated otherwise)
+ */
+export function destroysIndestructibleCreatures(oracleText: string): boolean {
+  const lowerText = oracleText.toLowerCase();
+  return lowerText.includes("can't be regenerated");
+}
+
+/**
+ * Execute a board sweeper effect, destroying all creatures
+ */
+function executeBoardSweeper(
+  state: GameState,
+  sourceCardId: CardInstanceId,
+  ignoreIndestructible: boolean = false,
+): GameState {
+  let currentState = state;
+  const sourceCard = state.cards.get(sourceCardId);
+  if (!sourceCard) return state;
+
+  for (const [zoneKey, zone] of state.zones) {
+    if (!zoneKey.includes("battlefield")) continue;
+
+    for (const cardId of zone.cardIds) {
+      const card = currentState.cards.get(cardId);
+      if (!card) continue;
+
+      const typeLine = card.cardData.type_line?.toLowerCase() || "";
+      if (!typeLine.includes("creature")) continue;
+
+      const result = destroyCard(currentState, cardId, ignoreIndestructible);
+      if (result.success) {
+        currentState = result.state;
+      }
+    }
+  }
+
+  return currentState;
 }
 
 /**
@@ -327,12 +383,100 @@ export function resolveTopOfStack(state: GameState): GameState {
     return removeFromStack(state, stackObject.id);
   }
 
+  // Check if this is a board sweeper spell
+  if (stackObject.type === "spell" && stackObject.sourceCardId) {
+    const sourceCard = state.cards.get(stackObject.sourceCardId);
+    if (sourceCard) {
+      const oracleText = sourceCard.cardData.oracle_text || "";
+      if (isBoardSweeper(oracleText)) {
+        const ignoreIndestructible =
+          destroysIndestructibleCreatures(oracleText);
+        const stateAfterSweeper = executeBoardSweeper(
+          state,
+          stackObject.sourceCardId,
+          ignoreIndestructible,
+        );
+        const updatedStack = stateAfterSweeper.stack.filter(
+          (obj) => obj.id !== stackObject.id,
+        );
+        return {
+          ...stateAfterSweeper,
+          stack: updatedStack,
+          consecutivePasses: 0,
+          lastModifiedAt: Date.now(),
+        };
+      }
+    }
+  }
+
   // Get the card
   if (stackObject.sourceCardId) {
     const card = state.cards.get(stackObject.sourceCardId);
     if (card) {
       // Move card from stack to appropriate zone based on card type
       const typeLine = card.cardData.type_line?.toLowerCase() || "";
+
+      const oracleText = (card.cardData.oracle_text || "").toLowerCase();
+
+      // Check if this is a board sweeper (destroy all creatures)
+      const isBoardSweeper =
+        typeLine.includes("sorcery") &&
+        oracleText.includes("destroy") &&
+        oracleText.includes("all creatures");
+
+      if (isBoardSweeper) {
+        // Execute board sweeper effect
+        let updatedState = { ...state };
+        const allCreatureIds: CardInstanceId[] = [];
+
+        for (const [zoneKey, zone] of updatedState.zones) {
+          if (zoneKey.includes("battlefield")) {
+            for (const cId of zone.cardIds) {
+              const c = updatedState.cards.get(cId);
+              if (
+                c &&
+                c.cardData.type_line?.toLowerCase().includes("creature")
+              ) {
+                allCreatureIds.push(cId);
+              }
+            }
+          }
+        }
+
+        for (const creatureId of allCreatureIds) {
+          const result = destroyCard(updatedState, creatureId);
+          if (result.success) {
+            updatedState = result.state;
+          }
+        }
+
+        // Move sweeper to graveyard
+        const stackZone = updatedState.zones.get("stack");
+        const graveZone = updatedState.zones.get(
+          `${card.controllerId}-graveyard`,
+        );
+        if (stackZone && graveZone) {
+          const moved = moveCardBetweenZones(
+            stackZone,
+            graveZone,
+            stackObject.sourceCardId,
+          );
+          const updatedZones = new Map(updatedState.zones);
+          updatedZones.set("stack", moved.from);
+          updatedZones.set(`${card.controllerId}-graveyard`, moved.to);
+          const updatedStack = updatedState.stack.filter(
+            (o) => o.id !== stackObject.id,
+          );
+
+          return {
+            ...updatedState,
+            zones: updatedZones,
+            stack: updatedStack,
+            priorityPlayerId: updatedState.turn.activePlayerId,
+            lastModifiedAt: Date.now(),
+          };
+        }
+      }
 
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {

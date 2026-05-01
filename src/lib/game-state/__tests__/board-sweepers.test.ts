@@ -11,10 +11,7 @@
  * Reference: CR 608 - Handling Spells and Abilities
  */
 
-import {
-  destroyCard,
-  hasIndestructible,
-} from "../keyword-actions";
+import { destroyCard, hasIndestructible } from "../keyword-actions";
 import {
   createInitialGameState,
   startGame,
@@ -61,7 +58,17 @@ function createBoardSweeper(
   oracleText: string,
   colors: string[] = ["W"],
 ): ScryfallCard {
-  return createMockCard(name, "Sorcery", oracleText, [], undefined, undefined, manaCost, cmc, colors);
+  return createMockCard(
+    name,
+    "Sorcery",
+    oracleText,
+    [],
+    undefined,
+    undefined,
+    manaCost,
+    cmc,
+    colors,
+  );
 }
 
 describe("Board Sweepers", () => {
@@ -109,7 +116,10 @@ describe("Board Sweepers", () => {
       if (zoneKey.includes("battlefield")) {
         for (const cardId of zone.cardIds) {
           const card = state.cards.get(cardId);
-          if (card && card.cardData.type_line?.toLowerCase().includes("creature")) {
+          if (
+            card &&
+            card.cardData.type_line?.toLowerCase().includes("creature")
+          ) {
             creatureIds.push(cardId);
           }
         }
@@ -118,7 +128,11 @@ describe("Board Sweepers", () => {
     return creatureIds;
   }
 
-  function addManaToPlayer(state: GameState, playerId: PlayerId, amount: number = 10): GameState {
+  function addManaToPlayer(
+    state: GameState,
+    playerId: PlayerId,
+    amount: number = 10,
+  ): GameState {
     const player = state.players.get(playerId);
     if (!player) return state;
 
@@ -141,7 +155,13 @@ describe("Board Sweepers", () => {
 
   describe("destroyCard function", () => {
     it("should destroy a creature on the battlefield", () => {
-      const creatureId = addCreatureToBattlefield(gameState, "Test Creature", 2, 2, player1Id);
+      const creatureId = addCreatureToBattlefield(
+        gameState,
+        "Test Creature",
+        2,
+        2,
+        player1Id,
+      );
       const initialCreatures = getAllBattlefieldCreatures(gameState);
       expect(initialCreatures).toContain(creatureId);
 
@@ -196,14 +216,18 @@ describe("Board Sweepers", () => {
       addCreatureToBattlefield(gameState, "Llanowar Elves", 1, 1, player1Id);
       addCreatureToBattlefield(gameState, "Mogg", 1, 1, player2Id);
 
-      const initialP1Creatures = getAllBattlefieldCreatures(gameState).filter(id => {
-        const card = gameState.cards.get(id);
-        return card?.controllerId === player1Id;
-      });
-      const initialP2Creatures = getAllBattlefieldCreatures(gameState).filter(id => {
-        const card = gameState.cards.get(id);
-        return card?.controllerId === player2Id;
-      });
+      const initialP1Creatures = getAllBattlefieldCreatures(gameState).filter(
+        (id) => {
+          const card = gameState.cards.get(id);
+          return card?.controllerId === player1Id;
+        },
+      );
+      const initialP2Creatures = getAllBattlefieldCreatures(gameState).filter(
+        (id) => {
+          const card = gameState.cards.get(id);
+          return card?.controllerId === player2Id;
+        },
+      );
       expect(initialP1Creatures.length).toBe(2);
       expect(initialP2Creatures.length).toBe(1);
 
@@ -221,7 +245,14 @@ describe("Board Sweepers", () => {
         hand.cardIds.push(wrathCard.instanceId);
       }
 
-      const castResult = castSpell(gameState, player1Id, wrathCard.instanceId, [], [], 0);
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        wrathCard.instanceId,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const stateWithStack = castResult.state;
@@ -253,7 +284,14 @@ describe("Board Sweepers", () => {
         hand.cardIds.push(verdictCard.instanceId);
       }
 
-      const castResult = castSpell(gameState, player1Id, verdictCard.instanceId, [], [], 0);
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        verdictCard.instanceId,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
@@ -264,7 +302,13 @@ describe("Board Sweepers", () => {
     it("should destroy all creatures including indestructible (Wrath effect)", () => {
       gameState = addManaToPlayer(gameState, player1Id, 10);
 
-      const normalCreature = addCreatureToBattlefield(gameState, "Grizzly Bears", 2, 2, player1Id);
+      const normalCreature = addCreatureToBattlefield(
+        gameState,
+        "Grizzly Bears",
+        2,
+        2,
+        player1Id,
+      );
       const indestructibleCreature = addCreatureToBattlefield(
         gameState,
         "Archangel",
@@ -288,7 +332,14 @@ describe("Board Sweepers", () => {
         hand.cardIds.push(wrathCard.instanceId);
       }
 
-      const castResult = castSpell(gameState, player1Id, wrathCard.instanceId, [], [], 0);
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        wrathCard.instanceId,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
@@ -302,10 +353,22 @@ describe("Board Sweepers", () => {
       gameState = addManaToPlayer(gameState, player2Id, 10);
 
       for (let i = 0; i < 3; i++) {
-        addCreatureToBattlefield(gameState, `P1 Creature ${i}`, 2, 2, player1Id);
+        addCreatureToBattlefield(
+          gameState,
+          `P1 Creature ${i}`,
+          2,
+          2,
+          player1Id,
+        );
       }
       for (let i = 0; i < 4; i++) {
-        addCreatureToBattlefield(gameState, `P2 Creature ${i}`, 1, 2, player2Id);
+        addCreatureToBattlefield(
+          gameState,
+          `P2 Creature ${i}`,
+          1,
+          2,
+          player2Id,
+        );
       }
 
       const initialCreatures = getAllBattlefieldCreatures(gameState);
@@ -325,7 +388,14 @@ describe("Board Sweepers", () => {
         hand.cardIds.push(sunfallCard.instanceId);
       }
 
-      const castResult = castSpell(gameState, player1Id, sunfallCard.instanceId, [], [], 0);
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        sunfallCard.instanceId,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
@@ -336,19 +406,40 @@ describe("Board Sweepers", () => {
 
   describe("hasIndestructible helper", () => {
     it("should detect indestructible from keywords", () => {
-      const cardData = createMockCard("Test", "Creature", "", ["Indestructible"], "1", "1");
+      const cardData = createMockCard(
+        "Test",
+        "Creature",
+        "",
+        ["Indestructible"],
+        "1",
+        "1",
+      );
       const card = createCardInstance(cardData, player1Id, player1Id);
       expect(hasIndestructible(card as any)).toBe(true);
     });
 
     it("should detect indestructible from oracle text", () => {
-      const cardData = createMockCard("Test", "Creature", "Indestructible", [], "1", "1");
+      const cardData = createMockCard(
+        "Test",
+        "Creature",
+        "Indestructible",
+        [],
+        "1",
+        "1",
+      );
       const card = createCardInstance(cardData, player1Id, player1Id);
       expect(hasIndestructible(card as any)).toBe(true);
     });
 
     it("should return false for creatures without indestructible", () => {
-      const cardData = createMockCard("Test", "Creature", "Flying", [], "1", "1");
+      const cardData = createMockCard(
+        "Test",
+        "Creature",
+        "Flying",
+        [],
+        "1",
+        "1",
+      );
       const card = createCardInstance(cardData, player1Id, player1Id);
       expect(hasIndestructible(card as any)).toBe(false);
     });

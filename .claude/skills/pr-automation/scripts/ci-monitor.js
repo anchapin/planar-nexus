@@ -43,6 +43,26 @@ async function execGh(command) {
 }
 
 /**
+ * Execute gh CLI command that returns non-JSON output (e.g., using --jq)
+ */
+async function execGhRaw(command) {
+  try {
+    const { stdout, stderr } = await execAsync(`gh ${command}`, {
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+    });
+
+    if (stderr && !stderr.includes('warning:')) {
+      console.warn(`GH Warning: ${stderr}`);
+    }
+
+    return stdout.trim();
+  } catch (error) {
+    throw new Error(`GH command failed: ${error.message}`);
+  }
+}
+
+/**
  * Get workflow runs for a specific workflow and branch
  */
 async function getWorkflowRuns(workflowName = DEFAULT_CONFIG.workflowName, branch = null, limit = 10) {

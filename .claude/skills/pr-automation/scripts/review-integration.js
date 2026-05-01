@@ -35,6 +35,26 @@ async function execGh(command) {
 }
 
 /**
+ * Execute gh CLI command that returns non-JSON output (e.g., using --jq)
+ */
+async function execGhRaw(command) {
+  try {
+    const { stdout, stderr } = await execAsync(`gh ${command}`, {
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024
+    });
+
+    if (stderr && !stderr.includes('warning:')) {
+      console.warn(`GH Warning: ${stderr}`);
+    }
+
+    return stdout.trim();
+  } catch (error) {
+    throw new Error(`GH command failed: ${error.message}`);
+  }
+}
+
+/**
  * Execute git command
  */
 async function execGit(command) {
@@ -64,8 +84,13 @@ async function execGit(command) {
  */
 async function getPrChangedFiles(prNumber) {
   try {
-    const prData = await execGh(`pr view ${prNumber} --json files --jq '.files[].path'`);
-    return Array.isArray(prData) ? prData : JSON.parse(prData);
+    const prData = await execGhRaw(`pr view ${prNumber} --json files --jq '.files[].path'`);
+    if (!prData) return [];
+    try {
+      return JSON.parse(prData);
+    } catch {
+      return prData.split('\n').filter(Boolean);
+    }
   } catch (error) {
     console.error(`Failed to get PR files: ${error.message}`);
     return [];
