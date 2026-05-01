@@ -23,7 +23,7 @@ import {
   checkStateBasedActions,
 } from "@/lib/game-state/game-state";
 import { playLand as enginePlayLand, canPlayLand as engineCanPlayLand } from "@/lib/game-state/mana";
-import { castSpell as engineCastSpell, canCastSpell as engineCanCastSpell } from "@/lib/game-state/spell-casting";
+import { castSpell as engineCastSpell, canCastSpell as engineCanCastSpell, resolveWaitingChoice as engineResolveWaitingChoice } from "@/lib/game-state/spell-casting";
 import { declareAttackers as engineDeclareAttackers, declareBlockers as engineDeclareBlockers } from "@/lib/game-state/combat";
 import { advancePhase, startNextTurn } from "@/lib/game-state/turn-phases";
 import { dealDamageToPlayer, gainLife } from "@/lib/game-state/game-state";
@@ -218,6 +218,7 @@ export interface UseGameEngineReturn {
   drawCard: (playerId: PlayerId) => void;
   canPlayLand: (playerId: PlayerId) => boolean;
   canCastSpell: (playerId: PlayerId, cardId: CardInstanceId) => boolean;
+  resolveWaitingChoice: (selectedValue: string | number | boolean) => { success: boolean; state: EngineGameState | null; error?: string };
 }
 
 /**
@@ -633,5 +634,14 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
     drawCard: drawCardAction,
     canPlayLand: canPlayLandCheck,
     canCastSpell: canCastSpellCheck,
+    resolveWaitingChoice: (selectedValue: string | number | boolean) => {
+      if (!engineStateRef.current) return { success: false, state: engineStateRef.current, error: "Game not initialized" };
+      const result = engineResolveWaitingChoice(engineStateRef.current, currentPlayerId ?? "", selectedValue);
+      if (result.success) {
+        setEngineState(result.state);
+        engineStateRef.current = result.state;
+      }
+      return result;
+    },
   };
 }

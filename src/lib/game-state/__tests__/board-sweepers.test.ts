@@ -15,13 +15,10 @@ import {
   destroyCard,
   hasIndestructible,
 } from "../keyword-actions";
-import {
-  createInitialGameState,
-  startGame,
-  castSpell,
-  resolveTopOfStack,
-} from "../game-state";
+import { createInitialGameState, startGame } from "../game-state";
+import { castSpell, resolveTopOfStack } from "../spell-casting";
 import { createCardInstance } from "../card-instance";
+import { addMana } from "../mana";
 import type { ScryfallCard } from "@/app/actions";
 import type { GameState, CardInstanceId, PlayerId } from "../types";
 
@@ -94,13 +91,13 @@ describe("Board Sweepers", () => {
       toughness.toString(),
     );
     const card = createCardInstance(cardData, controllerId, controllerId);
-    state.cards.set(card.instanceId, card as any);
+    state.cards.set(card.id, card as any);
 
     const battlefield = state.zones.get(`${controllerId}-battlefield`);
     if (battlefield) {
-      battlefield.cardIds.push(card.instanceId);
+      battlefield.cardIds.push(card.id);
     }
-    return card.instanceId;
+    return card.id;
   }
 
   function getAllBattlefieldCreatures(state: GameState): CardInstanceId[] {
@@ -116,27 +113,6 @@ describe("Board Sweepers", () => {
       }
     }
     return creatureIds;
-  }
-
-  function addManaToPlayer(state: GameState, playerId: PlayerId, amount: number = 10): GameState {
-    const player = state.players.get(playerId);
-    if (!player) return state;
-
-    const updatedPlayers = new Map(state.players);
-    updatedPlayers.set(playerId, {
-      ...player,
-      manaPool: {
-        generic: amount,
-        colorless: amount,
-        white: 0,
-        blue: 0,
-        black: 0,
-        red: 0,
-        green: 0,
-      },
-    });
-
-    return { ...state, players: updatedPlayers };
   }
 
   describe("destroyCard function", () => {
@@ -190,22 +166,14 @@ describe("Board Sweepers", () => {
 
   describe("Board Sweeper Scenarios", () => {
     it("should destroy all creatures when Wrath of God resolves", () => {
-      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
 
       addCreatureToBattlefield(gameState, "Grizzly Bears", 2, 2, player1Id);
       addCreatureToBattlefield(gameState, "Llanowar Elves", 1, 1, player1Id);
       addCreatureToBattlefield(gameState, "Mogg", 1, 1, player2Id);
 
-      const initialP1Creatures = getAllBattlefieldCreatures(gameState).filter(id => {
-        const card = gameState.cards.get(id);
-        return card?.controllerId === player1Id;
-      });
-      const initialP2Creatures = getAllBattlefieldCreatures(gameState).filter(id => {
-        const card = gameState.cards.get(id);
-        return card?.controllerId === player2Id;
-      });
-      expect(initialP1Creatures.length).toBe(2);
-      expect(initialP2Creatures.length).toBe(1);
+      const initialCreatures = getAllBattlefieldCreatures(gameState);
+      expect(initialCreatures.length).toBe(3);
 
       const wrathData = createBoardSweeper(
         "Wrath of God",
@@ -214,14 +182,18 @@ describe("Board Sweepers", () => {
         "Destroy all creatures. They can't be regenerated.",
       );
       const wrathCard = createCardInstance(wrathData, player1Id, player1Id);
-      gameState.cards.set(wrathCard.instanceId, wrathCard as any);
+      gameState.cards.set(wrathCard.id, wrathCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
       if (hand) {
-        hand.cardIds.push(wrathCard.instanceId);
+        hand.cardIds.push(wrathCard.id);
       }
 
-      const castResult = castSpell(gameState, player1Id, wrathCard.instanceId, [], [], 0);
+      gameState.priorityPlayerId = player1Id;
+      gameState.turn.activePlayerId = player1Id;
+      gameState.turn.currentPhase = "precombat_main";
+
+      const castResult = castSpell(gameState, player1Id, wrathCard.id, [], [], 0);
       expect(castResult.success).toBe(true);
 
       const stateWithStack = castResult.state;
@@ -234,7 +206,7 @@ describe("Board Sweepers", () => {
     });
 
     it("should destroy all creatures when Supreme Verdict resolves", () => {
-      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
 
       addCreatureToBattlefield(gameState, "Snapcaster Mage", 2, 1, player1Id);
       addCreatureToBattlefield(gameState, "Serra Angel", 4, 4, player2Id);
@@ -246,14 +218,18 @@ describe("Board Sweepers", () => {
         "Destroy all creatures. This spell can't be countered.",
       );
       const verdictCard = createCardInstance(verdictData, player1Id, player1Id);
-      gameState.cards.set(verdictCard.instanceId, verdictCard as any);
+      gameState.cards.set(verdictCard.id, verdictCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
       if (hand) {
-        hand.cardIds.push(verdictCard.instanceId);
+        hand.cardIds.push(verdictCard.id);
       }
 
-      const castResult = castSpell(gameState, player1Id, verdictCard.instanceId, [], [], 0);
+      gameState.priorityPlayerId = player1Id;
+      gameState.turn.activePlayerId = player1Id;
+      gameState.turn.currentPhase = "precombat_main";
+
+      const castResult = castSpell(gameState, player1Id, verdictCard.id, [], [], 0);
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
@@ -261,11 +237,11 @@ describe("Board Sweepers", () => {
       expect(finalCreatures.length).toBe(0);
     });
 
-    it("should destroy all creatures including indestructible (Wrath effect)", () => {
-      gameState = addManaToPlayer(gameState, player1Id, 10);
+    it("should not destroy indestructible creatures with Wrath (per CR 702.12b)", () => {
+      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
 
-      const normalCreature = addCreatureToBattlefield(gameState, "Grizzly Bears", 2, 2, player1Id);
-      const indestructibleCreature = addCreatureToBattlefield(
+      addCreatureToBattlefield(gameState, "Grizzly Bears", 2, 2, player1Id);
+      addCreatureToBattlefield(
         gameState,
         "Archangel",
         5,
@@ -281,25 +257,30 @@ describe("Board Sweepers", () => {
         "Destroy all creatures. They can't be regenerated.",
       );
       const wrathCard = createCardInstance(wrathData, player1Id, player1Id);
-      gameState.cards.set(wrathCard.instanceId, wrathCard as any);
+      gameState.cards.set(wrathCard.id, wrathCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
       if (hand) {
-        hand.cardIds.push(wrathCard.instanceId);
+        hand.cardIds.push(wrathCard.id);
       }
 
-      const castResult = castSpell(gameState, player1Id, wrathCard.instanceId, [], [], 0);
+      gameState.priorityPlayerId = player1Id;
+      gameState.turn.activePlayerId = player1Id;
+      gameState.turn.currentPhase = "precombat_main";
+
+      const castResult = castSpell(gameState, player1Id, wrathCard.id, [], [], 0);
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
       const finalCreatures = getAllBattlefieldCreatures(resolvedState);
 
-      expect(finalCreatures.length).toBe(0);
+      // Wrath destroys non-indestructible creatures but indestructible survives (CR 702.12b)
+      expect(finalCreatures.length).toBe(1);
     });
 
     it("should handle multiple creatures from multiple players", () => {
-      gameState = addManaToPlayer(gameState, player1Id, 10);
-      gameState = addManaToPlayer(gameState, player2Id, 10);
+      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
+      gameState = addMana(gameState, player2Id, { generic: 10 });
 
       for (let i = 0; i < 3; i++) {
         addCreatureToBattlefield(gameState, `P1 Creature ${i}`, 2, 2, player1Id);
@@ -318,14 +299,18 @@ describe("Board Sweepers", () => {
         "Destroy all creatures.",
       );
       const sunfallCard = createCardInstance(sunfallData, player1Id, player1Id);
-      gameState.cards.set(sunfallCard.instanceId, sunfallCard as any);
+      gameState.cards.set(sunfallCard.id, sunfallCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
       if (hand) {
-        hand.cardIds.push(sunfallCard.instanceId);
+        hand.cardIds.push(sunfallCard.id);
       }
 
-      const castResult = castSpell(gameState, player1Id, sunfallCard.instanceId, [], [], 0);
+      gameState.priorityPlayerId = player1Id;
+      gameState.turn.activePlayerId = player1Id;
+      gameState.turn.currentPhase = "precombat_main";
+
+      const castResult = castSpell(gameState, player1Id, sunfallCard.id, [], [], 0);
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);

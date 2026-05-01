@@ -62,6 +62,7 @@ import {
   type GameMode,
   type GameResult,
 } from "@/lib/game-history";
+import { XValueChoiceDialog } from "@/components/choice-dialog";
 import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
 import { summarizeGame } from "@/lib/game-summarizer";
@@ -120,6 +121,14 @@ export default function GameBoardPage() {
   const [aiTheme, setAiTheme] = useState("aggressive");
   const [actions, setActions] = useState<GameAction[]>([]);
   const [mistakes, setMistakes] = useState<string[]>([]);
+  const [showXValueDialog, setShowXValueDialog] = useState(false);
+  const [xValueChoiceData, setXValueChoiceData] = useState<{
+    prompt: string;
+    sourceCardName: string;
+    minX: number;
+    maxX: number;
+    stackObjectId: string;
+  } | null>(null);
   const { toast } = useToast();
   // Use player-2 as default for achievement tracking since this is a self-play game
   const { onGameEnd, trackCollectionAchievements } =
@@ -157,6 +166,7 @@ export default function GameBoardPage() {
     untapCard: engineUntapCard,
     damagePlayer: engineDamagePlayer,
     canPlayLand,
+    resolveWaitingChoice,
   } = useGameEngine({
     playerNames: ["Opponent", "You"],
     startingLife: 20,
@@ -248,6 +258,49 @@ export default function GameBoardPage() {
     initializeGame();
     startGame();
   }, []);
+
+  // Handle X value choices (variable mana cost spells)
+  useEffect(() => {
+    if (!engineState?.waitingChoice) {
+      return;
+    }
+
+    const choice = engineState.waitingChoice;
+    if (choice.type !== "choose_value") {
+      return;
+    }
+
+    // Extract min and max X from choices
+    const values = choice.choices
+      .filter((c: any) => c.isValid)
+      .map((c: any) => c.value as number);
+
+    const minX = values.length > 0 ? Math.min(...values) : 0;
+    const maxX = values.length > 0 ? Math.max(...values) : 0;
+
+    // Get source card name from stack object
+    let sourceCardName = "Card";
+    if (choice.stackObjectId) {
+      const stackObj = engineState.stack.find(
+        (s) => s.id === choice.stackObjectId,
+      );
+      if (stackObj?.sourceCardId) {
+        const sourceCard = engineState.cards.get(stackObj.sourceCardId);
+        if (sourceCard) {
+          sourceCardName = sourceCard.cardData.name;
+        }
+      }
+    }
+
+    setXValueChoiceData({
+      prompt: choice.prompt,
+      sourceCardName,
+      minX,
+      maxX,
+      stackObjectId: choice.stackObjectId || "",
+    });
+    setShowXValueDialog(true);
+  }, [engineState?.waitingChoice]);
 
   // Get current player info from engine
   const currentPlayer = gameState?.players.find(
@@ -1022,6 +1075,33 @@ export default function GameBoardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* X Value Choice Dialog for variable mana cost spells */}
+      {xValueChoiceData && (
+        <XValueChoiceDialog
+          open={showXValueDialog}
+          onOpenChange={(open) => {
+            setShowXValueDialog(open);
+            if (!open) {
+              setXValueChoiceData(null);
+            }
+          }}
+          prompt={xValueChoiceData.prompt}
+          sourceCardName={xValueChoiceData.sourceCardName}
+          minX={xValueChoiceData.minX}
+          maxX={xValueChoiceData.maxX}
+          onSelect={() => {}}
+          onConfirm={(value) => {
+            resolveWaitingChoice(value);
+            setShowXValueDialog(false);
+            setXValueChoiceData(null);
+          }}
+          onCancel={() => {
+            setShowXValueDialog(false);
+            setXValueChoiceData(null);
+          }}
+        />
+      )}
     </div>
   );
 }

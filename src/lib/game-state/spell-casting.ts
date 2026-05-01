@@ -23,6 +23,7 @@ import { ValidationService } from "./validation-service";
 import { initializePlaneswalkerLoyalty } from "./card-instance";
 import { parseKicker } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
+import { destroyCard } from "./keyword-actions";
 
 /**
  * Generate a unique stack object ID
@@ -330,15 +331,73 @@ export function resolveTopOfStack(state: GameState): GameState {
   if (stackObject.sourceCardId) {
     const card = state.cards.get(stackObject.sourceCardId);
     if (card) {
-      // Move card from stack to appropriate zone based on card type
       const typeLine = card.cardData.type_line?.toLowerCase() || "";
+      const oracleText = (card.cardData.oracle_text || "").toLowerCase();
+
+      // Check if this is a board sweeper (destroy all creatures)
+      const isBoardSweeper =
+        typeLine.includes("sorcery") &&
+        oracleText.includes("destroy") &&
+        oracleText.includes("all creatures");
+
+      if (isBoardSweeper) {
+        // Execute board sweeper effect
+        let updatedState = { ...state };
+        const allCreatureIds: CardInstanceId[] = [];
+
+        for (const [zoneKey, zone] of updatedState.zones) {
+          if (zoneKey.includes("battlefield")) {
+            for (const cId of zone.cardIds) {
+              const c = updatedState.cards.get(cId);
+              if (
+                c &&
+                c.cardData.type_line?.toLowerCase().includes("creature")
+              ) {
+                allCreatureIds.push(cId);
+              }
+            }
+          }
+        }
+
+        for (const creatureId of allCreatureIds) {
+          const result = destroyCard(updatedState, creatureId);
+          if (result.success) {
+            updatedState = result.state;
+          }
+        }
+
+        // Move sweeper to graveyard
+        const stackZone = updatedState.zones.get("stack");
+        const graveZone = updatedState.zones.get(
+          `${card.controllerId}-graveyard`,
+        );
+        if (stackZone && graveZone) {
+          const moved = moveCardBetweenZones(
+            stackZone,
+            graveZone,
+            stackObject.sourceCardId,
+          );
+          const updatedZones = new Map(updatedState.zones);
+          updatedZones.set("stack", moved.from);
+          updatedZones.set(`${card.controllerId}-graveyard`, moved.to);
+          const updatedStack = updatedState.stack.filter(
+            (o) => o.id !== stackObject.id,
+          );
+
+          return {
+            ...updatedState,
+            zones: updatedZones,
+            stack: updatedStack,
+            priorityPlayerId: updatedState.turn.activePlayerId,
+            lastModifiedAt: Date.now(),
+          };
+        }
+      }
 
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
-        // Instants and sorceries go to graveyard
         destinationZone = `${card.controllerId}-graveyard`;
       } else {
-        // Permanents go to battlefield
         destinationZone = `${card.controllerId}-battlefield`;
       }
 
@@ -588,6 +647,67 @@ export function validateSpellTargets(
   }
 
   return true;
+}
+
+/**
+ * Resolve a waiting choice made by the player
+ * Called when player selects cards/options in a choice dialog
+ */
+export function resolveWaitingChoice(
+  state: GameState,
+  playerId: PlayerId,
+  selectedValue: string | number | boolean,
+): { success: boolean; state: GameState; error?: string } {
+  if (!state.waitingChoice) {
+    return { success: false, state, error: "No waiting choice to resolve" };
+  }
+
+  if (state.waitingChoice.playerId !== playerId) {
+    return {
+      success: false,
+      state,
+      error: "Not this player's turn to make a choice",
+    };
+  }
+
+  const { type, stackObjectId } = state.waitingChoice;
+
+  if (type === "choose_value" && typeof selectedValue === "number") {
+    const stackObj = state.stack.find((s) => s.id === stackObjectId);
+
+    if (!stackObj) {
+      return { success: false, state, error: "Stack object not found" };
+    }
+
+    const newVariableValues = new Map(stackObj.variableValues);
+    newVariableValues.set("X", selectedValue);
+
+    const newState = {
+      ...state,
+      waitingChoice: null,
+      stack: state.stack.map((obj) =>
+        obj.id === stackObjectId
+          ? { ...obj, variableValues: newVariableValues }
+          : obj,
+      ),
+    };
+
+    return { success: true, state: newState };
+  }
+
+  if (type === "choose_cards" && typeof selectedValue === "string") {
+    return {
+      success: false,
+      state,
+      error: "Hand targeting not yet implemented",
+    };
+  }
+
+  return {
+    success: false,
+    state,
+    error: `Unsupported waiting choice type: ${type}`,
+  };
 }
 
 /**

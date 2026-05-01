@@ -2,20 +2,24 @@
  * WebRTC P2P Connection Manager
  * Issue #57: Phase 4.1: Implement WebRTC for peer-to-peer connections
  * Issue #286: Add NAT traversal and STUN/TURN server support
- * 
+ *
  * This module provides WebRTC support for direct player-to-player connections,
  * enabling multiplayer games without a central server.
  */
 
-import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
-import type { GameState, Phase, PlayerId } from './game-state/types';
+import {
+  serializeGameState,
+  deserializeGameState,
+  type SerializedGameState,
+} from "./game-state/serialization";
+import type { GameState, Phase, PlayerId } from "./game-state/types";
 import {
   ICEConfigurationManager,
   ICEConnectionMonitor,
   ICECandidateFilter,
   type ICEConfigOptions,
   getGlobalICEManager,
-} from './ice-config';
+} from "./ice-config";
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -23,36 +27,36 @@ import {
  */
 export const DEFAULT_RTC_CONFIG: RTCConfiguration = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
   ],
 };
 
 /**
  * Connection state
  */
-export type P2PConnectionState = 
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'failed';
+export type P2PConnectionState =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "failed";
 
 /**
  * Message types for P2P communication
  */
-export type P2PMessageType = 
-  | 'game-state-sync'
-  | 'game-action'
-  | 'player-action'
-  | 'chat'
-  | 'emote'
-  | 'ping'
-  | 'pong'
-  | 'connection-request'
-  | 'connection-accept'
-  | 'error';
+export type P2PMessageType =
+  | "game-state-sync"
+  | "game-action"
+  | "player-action"
+  | "chat"
+  | "emote"
+  | "ping"
+  | "pong"
+  | "connection-request"
+  | "connection-accept"
+  | "error";
 
 /**
  * Base P2P message
@@ -68,7 +72,7 @@ export interface P2PMessage {
  * Game state sync message
  */
 export interface GameStateSyncMessage extends P2PMessage {
-  type: 'game-state-sync';
+  type: "game-state-sync";
   payload: {
     gameState: SerializedGameState;
     isFullSync: boolean;
@@ -79,7 +83,7 @@ export interface GameStateSyncMessage extends P2PMessage {
  * Player action message
  */
 export interface PlayerActionMessage extends P2PMessage {
-  type: 'player-action';
+  type: "player-action";
   payload: {
     action: string;
     data: unknown;
@@ -90,7 +94,7 @@ export interface PlayerActionMessage extends P2PMessage {
  * Chat message
  */
 export interface ChatMessage extends P2PMessage {
-  type: 'chat';
+  type: "chat";
   payload: {
     text: string;
   };
@@ -100,7 +104,7 @@ export interface ChatMessage extends P2PMessage {
  * Emote message
  */
 export interface EmoteMessage extends P2PMessage {
-  type: 'emote';
+  type: "emote";
   payload: {
     emote: string;
   };
@@ -110,7 +114,7 @@ export interface EmoteMessage extends P2PMessage {
  * Connection request message
  */
 export interface ConnectionRequestMessage extends P2PMessage {
-  type: 'connection-request';
+  type: "connection-request";
   payload: {
     playerName: string;
     gameCode: string;
@@ -122,7 +126,7 @@ export interface ConnectionRequestMessage extends P2PMessage {
  * Connection accept message
  */
 export interface ConnectionAcceptMessage extends P2PMessage {
-  type: 'connection-accept';
+  type: "connection-accept";
   payload: {
     playerName: string;
     playerId: string;
@@ -133,7 +137,7 @@ export interface ConnectionAcceptMessage extends P2PMessage {
  * Error message
  */
 export interface ErrorMessage extends P2PMessage {
-  type: 'error';
+  type: "error";
   payload: {
     code: string;
     message: string;
@@ -197,7 +201,7 @@ export class WebRTCConnection {
   private gameCode: string | undefined;
   private rtcConfig: RTCConfiguration;
   private peers: Map<string, PeerInfo> = new Map();
-  private connectionState: P2PConnectionState = 'disconnected';
+  private connectionState: P2PConnectionState = "disconnected";
   private events: P2PEvents;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
@@ -216,17 +220,17 @@ export class WebRTCConnection {
     this.gameCode = options.gameCode;
     this.enableICEMonitoring = options.enableICEMonitoring ?? true;
     this.fallbackToRelay = options.fallbackToRelay ?? true;
-    
+
     // Initialize ICE configuration
     if (options.iceConfig) {
       this.iceManager = new ICEConfigurationManager(options.iceConfig);
     } else {
       this.iceManager = getGlobalICEManager();
     }
-    
+
     // Use provided rtcConfig or get from ICE manager
     this.rtcConfig = options.rtcConfig || this.iceManager.getRTCConfiguration();
-    
+
     // Initialize candidate filter
     this.iceCandidateFilter = new ICECandidateFilter({
       allowIPv6: options.iceConfig?.enableIPv6 ?? true,
@@ -235,7 +239,7 @@ export class WebRTCConnection {
     });
 
     // Set default event handlers
-     
+
     const defaultEvents: P2PEvents = {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       onConnectionStateChange: () => {},
@@ -267,80 +271,85 @@ export class WebRTCConnection {
    */
   async initialize(): Promise<void> {
     try {
-      this.updateConnectionState('connecting');
-      
+      this.updateConnectionState("connecting");
+
       this.peerConnection = new RTCPeerConnection(this.rtcConfig);
-      
+
       // Set up ICE candidate handling with filtering
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           // Filter candidate based on configuration
-          const filteredCandidate = this.iceCandidateFilter.filter(event.candidate);
+          const filteredCandidate = this.iceCandidateFilter.filter(
+            event.candidate,
+          );
           if (filteredCandidate) {
             this.handleICECandidate(filteredCandidate);
           }
         }
       };
-      
+
       // Set up connection state change handler
       this.peerConnection.onconnectionstatechange = () => {
         this.handleConnectionStateChange();
       };
-      
+
       // Set up ICE connection state change
       this.peerConnection.oniceconnectionstatechange = () => {
         this.handleICEConnectionStateChange();
       };
-      
+
       // Set up ICE monitoring if enabled
       if (this.enableICEMonitoring) {
         this.iceMonitor = new ICEConnectionMonitor({
           onStateChange: (state) => {
-            console.log('[WebRTC] ICE monitor state:', state);
+            console.log("[WebRTC] ICE monitor state:", state);
           },
           onFailed: () => {
             this.handleICEFailure();
           },
           onConnected: () => {
-            console.log('[WebRTC] ICE connection established');
+            console.log("[WebRTC] ICE connection established");
           },
           onDisconnected: () => {
-            console.log('[WebRTC] ICE connection lost, attempting recovery');
+            console.log("[WebRTC] ICE connection lost, attempting recovery");
           },
           failureTimeoutMs: 30000,
         });
         this.iceMonitor.attach(this.peerConnection);
       }
-      
+
       // If host, create data channel for receiving
       if (this.isHost) {
         this.setupDataChannel();
       }
-      
-      console.log('[WebRTC] Initialized as', this.isHost ? 'host' : 'client');
-      console.log('[WebRTC] ICE servers configured:', this.rtcConfig.iceServers?.length || 0);
+
+      console.log("[WebRTC] Initialized as", this.isHost ? "host" : "client");
+      console.log(
+        "[WebRTC] ICE servers configured:",
+        this.rtcConfig.iceServers?.length || 0,
+      );
     } catch (error) {
-      console.error('[WebRTC] Failed to initialize:', error);
-      this.updateConnectionState('failed');
+      console.error("[WebRTC] Failed to initialize:", error);
+      this.updateConnectionState("failed");
       throw error;
     }
   }
-  
+
   /**
    * Handle ICE connection failure with optional fallback
    */
   private handleICEFailure(): void {
-    console.log('[WebRTC] ICE connection failed');
-    
+    console.log("[WebRTC] ICE connection failed");
+
     // If fallback to relay is enabled and TURN servers are available
     if (this.fallbackToRelay && this.iceManager.hasTurnServers()) {
-      console.log('[WebRTC] Attempting fallback to TURN relay');
+      console.log("[WebRTC] Attempting fallback to TURN relay");
       this.attemptRelayFallback();
     } else {
       this.handleConnectionFailure();
     }
   }
-  
+
   /**
    * Attempt to reconnect using TURN relay only
    */
@@ -350,44 +359,43 @@ export class WebRTCConnection {
       if (this.peerConnection) {
         this.peerConnection.close();
       }
-      
+
       // Create new configuration with relay-only mode
       const relayConfig = this.iceManager.getRTCConfiguration();
-      relayConfig.iceTransportPolicy = 'relay';
-      
-      console.log('[WebRTC] Creating new connection with relay-only mode');
-      
+      relayConfig.iceTransportPolicy = "relay";
+
+      console.log("[WebRTC] Creating new connection with relay-only mode");
+
       // Create new peer connection with relay config
       this.peerConnection = new RTCPeerConnection(relayConfig);
-      
+
       // Re-attach event handlers
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           this.handleICECandidate(event.candidate);
         }
       };
-      
+
       this.peerConnection.onconnectionstatechange = () => {
         this.handleConnectionStateChange();
       };
-      
+
       this.peerConnection.oniceconnectionstatechange = () => {
         this.handleICEConnectionStateChange();
       };
-      
+
       if (this.iceMonitor && this.peerConnection) {
         this.iceMonitor.attach(this.peerConnection);
       }
-      
+
       if (this.isHost) {
         this.setupDataChannel();
       }
-      
+
       // Notify that reconnection is being attempted
-      this.updateConnectionState('reconnecting');
-      
+      this.updateConnectionState("reconnecting");
     } catch (error) {
-      console.error('[WebRTC] Relay fallback failed:', error);
+      console.error("[WebRTC] Relay fallback failed:", error);
       this.handleConnectionFailure();
     }
   }
@@ -397,29 +405,33 @@ export class WebRTCConnection {
    */
   async createOffer(): Promise<RTCSessionDescriptionInit> {
     if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+      throw new Error("Peer connection not initialized");
     }
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
-    
-    console.log('[WebRTC] Created offer');
+
+    console.log("[WebRTC] Created offer");
     return offer;
   }
 
   /**
    * Handle an incoming offer from a joining player
    */
-  async handleOffer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
+  async handleOffer(
+    offer: RTCSessionDescriptionInit,
+  ): Promise<RTCSessionDescriptionInit> {
     if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+      throw new Error("Peer connection not initialized");
     }
 
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    await this.peerConnection.setRemoteDescription(
+      new RTCSessionDescription(offer),
+    );
     const answer = await this.peerConnection.createAnswer();
     await this.peerConnection.setLocalDescription(answer);
-    
-    console.log('[WebRTC] Handled offer and created answer');
+
+    console.log("[WebRTC] Handled offer and created answer");
     return answer;
   }
 
@@ -428,11 +440,13 @@ export class WebRTCConnection {
    */
   async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
     if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+      throw new Error("Peer connection not initialized");
     }
 
-    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    console.log('[WebRTC] Handled answer');
+    await this.peerConnection.setRemoteDescription(
+      new RTCSessionDescription(answer),
+    );
+    console.log("[WebRTC] Handled answer");
   }
 
   /**
@@ -444,7 +458,7 @@ export class WebRTCConnection {
     }
 
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    console.log('[WebRTC] Added ICE candidate');
+    console.log("[WebRTC] Added ICE candidate");
   }
 
   /**
@@ -453,7 +467,7 @@ export class WebRTCConnection {
   private handleICECandidate(candidate: RTCIceCandidate): void {
     // In a full implementation, this would send the candidate via a signaling server
     // or via an alternative channel (like QR code or manual paste)
-    console.log('[WebRTC] ICE candidate:', candidate.candidate);
+    console.log("[WebRTC] ICE candidate:", candidate.candidate);
   }
 
   /**
@@ -465,7 +479,7 @@ export class WebRTCConnection {
     // If host, create a data channel to listen for incoming connections
     if (this.isHost) {
       this.peerConnection.ondatachannel = (event) => {
-        console.log('[WebRTC] Received data channel');
+        console.log("[WebRTC] Received data channel");
         this.dataChannel = event.channel;
         this.setupDataChannelEvents();
       };
@@ -477,16 +491,16 @@ export class WebRTCConnection {
    */
   async connectToPeer(): Promise<void> {
     if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+      throw new Error("Peer connection not initialized");
     }
 
     // Create data channel for sending
-    this.dataChannel = this.peerConnection.createDataChannel('game', {
+    this.dataChannel = this.peerConnection.createDataChannel("game", {
       ordered: true,
     });
-    
+
     this.setupDataChannelEvents();
-    console.log('[WebRTC] Created data channel as client');
+    console.log("[WebRTC] Created data channel as client");
   }
 
   /**
@@ -496,42 +510,43 @@ export class WebRTCConnection {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-      console.log('[WebRTC] Data channel opened');
-      this.updateConnectionState('connected');
+      console.log("[WebRTC] Data channel opened");
+      this.updateConnectionState("connected");
       this.startPingInterval();
     };
 
     this.dataChannel.onclose = () => {
-      console.log('[WebRTC] Data channel closed');
+      console.log("[WebRTC] Data channel closed");
       this.handleDisconnection();
     };
 
     this.dataChannel.onerror = (event) => {
-      console.error('[WebRTC] Data channel error:', event);
+      console.error("[WebRTC] Data channel error:", event);
 
       let errorToReport: Error;
 
       const underlyingError =
-        (event as ErrorEvent).error ??
-        (event as { error?: Error })?.error;
+        (event as ErrorEvent).error ?? (event as { error?: Error })?.error;
 
       if (underlyingError instanceof Error) {
         errorToReport = underlyingError;
       } else if (underlyingError !== undefined) {
         // Preserve non-Error details as the cause where supported
-        errorToReport = new Error('Data channel error', { cause: underlyingError });
+        errorToReport = new Error("Data channel error", {
+          cause: underlyingError,
+        });
       } else if (event instanceof Error) {
         errorToReport = event;
       } else {
-        errorToReport = new Error('Data channel error', { cause: event });
+        errorToReport = new Error("Data channel error", { cause: event });
       }
 
-      this.events.onError(errorToReport, '');
+      this.events.onError(errorToReport, "");
     };
 
     this.dataChannel.onmessage = (event) => {
-      if (typeof event.data !== 'string') {
-        console.warn('[WebRTC] Received non-string message, ignoring');
+      if (typeof event.data !== "string") {
+        console.warn("[WebRTC] Received non-string message, ignoring");
         return;
       }
       this.handleMessage(event.data);
@@ -544,40 +559,40 @@ export class WebRTCConnection {
   private handleMessage(data: string): void {
     try {
       const message: P2PMessage = JSON.parse(data);
-      
+
       switch (message.type) {
-        case 'game-state-sync':
+        case "game-state-sync":
           this.handleGameStateSync(message as GameStateSyncMessage);
           break;
-        case 'player-action':
+        case "player-action":
           this.handlePlayerAction(message as PlayerActionMessage);
           break;
-        case 'chat':
+        case "chat":
           this.handleChat(message as ChatMessage);
           break;
-        case 'emote':
+        case "emote":
           this.handleEmote(message as EmoteMessage);
           break;
-        case 'ping':
+        case "ping":
           this.sendPong();
           break;
-        case 'pong':
+        case "pong":
           // Connection is alive
           break;
-        case 'connection-request':
+        case "connection-request":
           this.handleConnectionRequest(message as ConnectionRequestMessage);
           break;
-        case 'connection-accept':
+        case "connection-accept":
           this.handleConnectionAccept(message as ConnectionAcceptMessage);
           break;
-        case 'error':
+        case "error":
           this.handleErrorMessage(message as ErrorMessage);
           break;
       }
-      
-      this.events.onMessage(message, '');
+
+      this.events.onMessage(message, "");
     } catch (error) {
-      console.error('[WebRTC] Failed to parse message:', error);
+      console.error("[WebRTC] Failed to parse message:", error);
     }
   }
 
@@ -586,8 +601,11 @@ export class WebRTCConnection {
    */
   private handleGameStateSync(message: GameStateSyncMessage): void {
     const baseState = this.createBaseEngineState();
-    const gameState = deserializeGameState(message.payload.gameState, baseState);
-    this.events.onGameStateSync(gameState, '');
+    const gameState = deserializeGameState(
+      message.payload.gameState,
+      baseState,
+    );
+    this.events.onGameStateSync(gameState, "");
   }
 
   /**
@@ -595,14 +613,14 @@ export class WebRTCConnection {
    */
   private createBaseEngineState(): any {
     return {
-      gameId: '',
+      gameId: "",
       players: new Map(),
       cards: new Map(),
       zones: new Map(),
       stack: [],
-      turn: { 
-        activePlayerId: '' as PlayerId, 
-        currentPhase: 'precombat_main' as Phase, 
+      turn: {
+        activePlayerId: "" as PlayerId,
+        currentPhase: "precombat_main" as Phase,
         turnNumber: 1,
         extraTurns: 0,
         isFirstTurn: true,
@@ -612,10 +630,10 @@ export class WebRTCConnection {
       waitingChoice: null,
       priorityPlayerId: null,
       consecutivePasses: 0,
-      status: 'not_started',
+      status: "not_started",
       winners: [],
       endReason: null,
-      format: 'commander',
+      format: "commander",
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
     };
@@ -625,7 +643,11 @@ export class WebRTCConnection {
    * Handle player action message
    */
   private handlePlayerAction(message: PlayerActionMessage): void {
-    this.events.onPlayerAction(message.payload.action, message.payload.data, message.senderId);
+    this.events.onPlayerAction(
+      message.payload.action,
+      message.payload.data,
+      message.senderId,
+    );
   }
 
   /**
@@ -648,15 +670,18 @@ export class WebRTCConnection {
   private handleConnectionRequest(message: ConnectionRequestMessage): void {
     // In a full implementation, host would validate the game code
     // and accept/reject the connection
-    console.log('[WebRTC] Connection request from:', message.payload.playerName);
+    console.log(
+      "[WebRTC] Connection request from:",
+      message.payload.playerName,
+    );
   }
 
   /**
    * Handle connection accept
    */
   private handleConnectionAccept(message: ConnectionAcceptMessage): void {
-    console.log('[WebRTC] Connection accepted:', message.payload.playerName);
-    this.updateConnectionState('connected');
+    console.log("[WebRTC] Connection accepted:", message.payload.playerName);
+    this.updateConnectionState("connected");
   }
 
   /**
@@ -673,23 +698,23 @@ export class WebRTCConnection {
     if (!this.peerConnection) return;
 
     const state = this.peerConnection.connectionState;
-    console.log('[WebRTC] Connection state:', state);
+    console.log("[WebRTC] Connection state:", state);
 
     switch (state) {
-      case 'connected':
-        this.updateConnectionState('connected');
+      case "connected":
+        this.updateConnectionState("connected");
         this.reconnectAttempts = 0;
         this.startPingInterval();
         break;
-      case 'disconnected':
+      case "disconnected":
         this.handleDisconnection();
         break;
-      case 'failed':
+      case "failed":
         this.handleConnectionFailure();
         break;
-      case 'new':
-      case 'connecting':
-        this.updateConnectionState('connecting');
+      case "new":
+      case "connecting":
+        this.updateConnectionState("connecting");
         break;
     }
   }
@@ -701,9 +726,9 @@ export class WebRTCConnection {
     if (!this.peerConnection) return;
 
     const state = this.peerConnection.iceConnectionState;
-    console.log('[WebRTC] ICE connection state:', state);
+    console.log("[WebRTC] ICE connection state:", state);
 
-    if (state === 'disconnected' || state === 'failed') {
+    if (state === "disconnected" || state === "failed") {
       this.handleDisconnection();
     }
   }
@@ -712,12 +737,15 @@ export class WebRTCConnection {
    * Handle disconnection
    */
   private handleDisconnection(): void {
-    console.log('[WebRTC] Disconnected');
-    this.updateConnectionState('disconnected');
+    console.log("[WebRTC] Disconnected");
+    this.updateConnectionState("disconnected");
     this.stopPingInterval();
-    
+
     // Attempt reconnection if not exceeded max attempts
-    if (this.reconnectAttempts < this.maxReconnectAttempts && this.connectionState !== 'failed') {
+    if (
+      this.reconnectAttempts < this.maxReconnectAttempts &&
+      this.connectionState !== "failed"
+    ) {
       this.attemptReconnection();
     }
   }
@@ -726,10 +754,10 @@ export class WebRTCConnection {
    * Handle connection failure
    */
   private handleConnectionFailure(): void {
-    console.log('[WebRTC] Connection failed');
-    this.updateConnectionState('failed');
+    console.log("[WebRTC] Connection failed");
+    this.updateConnectionState("failed");
     this.stopPingInterval();
-    this.events.onError(new Error('Connection failed'), '');
+    this.events.onError(new Error("Connection failed"), "");
   }
 
   /**
@@ -737,9 +765,11 @@ export class WebRTCConnection {
    */
   private async attemptReconnection(): Promise<void> {
     this.reconnectAttempts++;
-    this.updateConnectionState('reconnecting');
-    console.log(`[WebRTC] Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-    
+    this.updateConnectionState("reconnecting");
+    console.log(
+      `[WebRTC] Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
+    );
+
     // In a full implementation, this would re-establish the connection
     // using stored offer/answer or generating new ones
   }
@@ -749,7 +779,7 @@ export class WebRTCConnection {
    */
   private updateConnectionState(state: P2PConnectionState): void {
     this.connectionState = state;
-    this.events.onConnectionStateChange(state, '');
+    this.events.onConnectionStateChange(state, "");
   }
 
   /**
@@ -777,7 +807,7 @@ export class WebRTCConnection {
    */
   private sendPing(): void {
     this.send({
-      type: 'ping',
+      type: "ping",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: null,
@@ -789,7 +819,7 @@ export class WebRTCConnection {
    */
   private sendPong(): void {
     this.send({
-      type: 'pong',
+      type: "pong",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: null,
@@ -800,8 +830,8 @@ export class WebRTCConnection {
    * Send a message through the data channel
    */
   send(message: P2PMessage): void {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.warn('[WebRTC] Data channel not ready');
+    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+      console.warn("[WebRTC] Data channel not ready");
       return;
     }
 
@@ -815,7 +845,7 @@ export class WebRTCConnection {
     const serializedState = serializeGameState(gameState);
 
     this.send({
-      type: 'game-state-sync',
+      type: "game-state-sync",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: {
@@ -830,7 +860,7 @@ export class WebRTCConnection {
    */
   sendPlayerAction(action: string, data: unknown): void {
     this.send({
-      type: 'player-action',
+      type: "player-action",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: {
@@ -845,7 +875,7 @@ export class WebRTCConnection {
    */
   sendChat(text: string): void {
     this.send({
-      type: 'chat',
+      type: "chat",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: {
@@ -859,7 +889,7 @@ export class WebRTCConnection {
    */
   sendEmote(emote: string): void {
     this.send({
-      type: 'emote',
+      type: "emote",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: {
@@ -873,7 +903,7 @@ export class WebRTCConnection {
    */
   sendConnectionRequest(gameCode: string): void {
     this.send({
-      type: 'connection-request',
+      type: "connection-request",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: {
@@ -889,7 +919,7 @@ export class WebRTCConnection {
    */
   sendConnectionAccept(playerId: string): void {
     this.send({
-      type: 'connection-accept',
+      type: "connection-accept",
       senderId: this.localPlayerId,
       timestamp: Date.now(),
       payload: {
@@ -917,7 +947,7 @@ export class WebRTCConnection {
    * Check if connected
    */
   isConnected(): boolean {
-    return this.connectionState === 'connected';
+    return this.connectionState === "connected";
   }
 
   /**
@@ -925,30 +955,30 @@ export class WebRTCConnection {
    */
   close(): void {
     this.stopPingInterval();
-    
+
     // Clean up ICE monitor
     if (this.iceMonitor) {
       this.iceMonitor.detach();
       this.iceMonitor = null;
     }
-    
+
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
     }
-    
+
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
     }
-    
+
     this.peers.clear();
     this.pendingCandidates = [];
-    this.updateConnectionState('disconnected');
-    
-    console.log('[WebRTC] Connection closed');
+    this.updateConnectionState("disconnected");
+
+    console.log("[WebRTC] Connection closed");
   }
-  
+
   /**
    * Get ICE connection statistics
    */
@@ -956,29 +986,29 @@ export class WebRTCConnection {
     if (!this.peerConnection) {
       return null;
     }
-    
+
     try {
       return await this.peerConnection.getStats();
     } catch (error) {
-      console.error('[WebRTC] Failed to get stats:', error);
+      console.error("[WebRTC] Failed to get stats:", error);
       return null;
     }
   }
-  
+
   /**
    * Get the current ICE connection state
    */
   getICEConnectionState(): RTCIceConnectionState | null {
     return this.peerConnection?.iceConnectionState || null;
   }
-  
+
   /**
    * Get the ICE configuration manager
    */
   getICEManager(): ICEConfigurationManager {
     return this.iceManager;
   }
-  
+
   /**
    * Check if TURN servers are configured
    */
@@ -991,19 +1021,21 @@ export class WebRTCConnection {
  * Generate a short game code for P2P connection
  */
 export function generateGameCode(length: number = 6): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding confusing characters
-  let code = '';
-  
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excluding confusing characters
+  let code = "";
+
   for (let i = 0; i < length; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  
+
   return code;
 }
 
 /**
  * Create a new P2P connection
  */
-export function createP2PConnection(options: P2PConnectionOptions): WebRTCConnection {
+export function createP2PConnection(
+  options: P2PConnectionOptions,
+): WebRTCConnection {
   return new WebRTCConnection(options);
 }

@@ -69,6 +69,7 @@ const eslintConfig = [
       "jest.setup.js",
       "jest.config.js",
       "commitlint.config.js",
+      ".claude/skills/pr-automation/**",
     ],
   },
 ];
