@@ -660,6 +660,131 @@ describe("Board Sweepers", () => {
     });
   });
 
+  describe("Cleansing Nova", () => {
+    it("should destroy all creatures in creature-only mode", () => {
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
+
+      const bearResult = addCreatureToBattlefield(
+        gameState,
+        "Grizzly Bears",
+        2,
+        2,
+        player1Id,
+      );
+      gameState = bearResult.state;
+
+      const angelResult = addCreatureToBattlefield(
+        gameState,
+        "Serra Angel",
+        4,
+        4,
+        player2Id,
+      );
+      gameState = angelResult.state;
+
+      const allCreatures = getAllBattlefieldCreatures(gameState);
+      expect(allCreatures.length).toBe(2);
+
+      const novaData = createBoardSweeper(
+        "Cleansing Nova",
+        "{3}{W}",
+        5,
+        "Choose one —\n• Destroy all creatures.\n• Exile all nonland permanents.",
+      );
+      const novaCard = createCardInstance(novaData, player1Id, player1Id);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(novaCard.id, novaCard as any);
+      const hand = gameState.zones.get(`${player1Id}-hand`);
+      if (!hand) throw new Error("Hand not found");
+      const updatedHand = { ...hand, cardIds: [...hand.cardIds, novaCard.id] };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        novaCard.id,
+        [],
+        [],
+        0,
+      );
+      expect(castResult.success).toBe(true);
+
+      const resolvedState = resolveTopOfStack(castResult.state);
+      const finalCreatures = getAllBattlefieldCreatures(resolvedState);
+      expect(finalCreatures.length).toBe(0);
+    });
+  });
+
+  describe("Farewell", () => {
+    it("should destroy all creatures in creature mode", () => {
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
+
+      const bearResult = addCreatureToBattlefield(
+        gameState,
+        "Grizzly Bears",
+        2,
+        2,
+        player1Id,
+      );
+      gameState = bearResult.state;
+
+      const elfResult = addCreatureToBattlefield(
+        gameState,
+        "Llanowar Elves",
+        1,
+        1,
+        player2Id,
+      );
+      gameState = elfResult.state;
+
+      const allCreatures = getAllBattlefieldCreatures(gameState);
+      expect(allCreatures.length).toBe(2);
+
+      const farewellData = createBoardSweeper(
+        "Farewell",
+        "{3}{W}{W}",
+        6,
+        "Choose two —\n• Destroy all creatures.\n• Destroy all artifacts.\n• Destroy all enchantments.\n• Exile all cards from all graveyards.",
+      );
+      const farewellCard = createCardInstance(
+        farewellData,
+        player1Id,
+        player1Id,
+      );
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(farewellCard.id, farewellCard as any);
+      const hand = gameState.zones.get(`${player1Id}-hand`);
+      if (!hand) throw new Error("Hand not found");
+      const updatedHand = {
+        ...hand,
+        cardIds: [...hand.cardIds, farewellCard.id],
+      };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        farewellCard.id,
+        [],
+        [],
+        0,
+      );
+      expect(castResult.success).toBe(true);
+
+      const resolvedState = resolveTopOfStack(castResult.state);
+      const finalCreatures = getAllBattlefieldCreatures(resolvedState);
+      expect(finalCreatures.length).toBe(0);
+    });
+  });
+
   describe("Supreme Verdict 'can't be countered' behavior", () => {
     it("should resolve Supreme Verdict even when spell would normally be countered", () => {
       gameState = addManaToPlayer(gameState, player1Id, 10);
