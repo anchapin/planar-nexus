@@ -23,7 +23,6 @@ import { ValidationService } from "./validation-service";
 import { initializePlaneswalkerLoyalty } from "./card-instance";
 import { parseKicker } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
-import { completeHandTargeting } from "./hand-targeting";
 import { destroyCard } from "./keyword-actions";
 
 /**
@@ -31,61 +30,6 @@ import { destroyCard } from "./keyword-actions";
  */
 function generateStackObjectId(): string {
   return `stack-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-/**
- * Check if oracle text represents a board sweeper effect (destroy all creatures)
- */
-export function isBoardSweeper(oracleText: string): boolean {
-  const lowerText = oracleText.toLowerCase();
-  return (
-    lowerText.includes("destroy all creatures") ||
-    (lowerText.includes("destroy") &&
-      lowerText.includes("creatures") &&
-      lowerText.includes("all"))
-  );
-}
-
-/**
- * Check if a board sweeper effect destroys indestructible creatures
- * Cards with "can't be regenerated" or "can't be regenerated" wording
- * destroy indestructible creatures (they would be regenerated otherwise)
- */
-export function destroysIndestructibleCreatures(oracleText: string): boolean {
-  const lowerText = oracleText.toLowerCase();
-  return lowerText.includes("can't be regenerated");
-}
-
-/**
- * Execute a board sweeper effect, destroying all creatures
- */
-function executeBoardSweeper(
-  state: GameState,
-  sourceCardId: CardInstanceId,
-  ignoreIndestructible: boolean = false,
-): GameState {
-  let currentState = state;
-  const sourceCard = state.cards.get(sourceCardId);
-  if (!sourceCard) return state;
-
-  for (const [zoneKey, zone] of state.zones) {
-    if (!zoneKey.includes("battlefield")) continue;
-
-    for (const cardId of zone.cardIds) {
-      const card = currentState.cards.get(cardId);
-      if (!card) continue;
-
-      const typeLine = card.cardData.type_line?.toLowerCase() || "";
-      if (!typeLine.includes("creature")) continue;
-
-      const result = destroyCard(currentState, cardId, ignoreIndestructible);
-      if (result.success) {
-        currentState = result.state;
-      }
-    }
-  }
-
-  return currentState;
 }
 
 /**
@@ -383,39 +327,11 @@ export function resolveTopOfStack(state: GameState): GameState {
     return removeFromStack(state, stackObject.id);
   }
 
-  // Check if this is a board sweeper spell
-  if (stackObject.type === "spell" && stackObject.sourceCardId) {
-    const sourceCard = state.cards.get(stackObject.sourceCardId);
-    if (sourceCard) {
-      const oracleText = sourceCard.cardData.oracle_text || "";
-      if (isBoardSweeper(oracleText)) {
-        const ignoreIndestructible =
-          destroysIndestructibleCreatures(oracleText);
-        const stateAfterSweeper = executeBoardSweeper(
-          state,
-          stackObject.sourceCardId,
-          ignoreIndestructible,
-        );
-        const updatedStack = stateAfterSweeper.stack.filter(
-          (obj) => obj.id !== stackObject.id,
-        );
-        return {
-          ...stateAfterSweeper,
-          stack: updatedStack,
-          consecutivePasses: 0,
-          lastModifiedAt: Date.now(),
-        };
-      }
-    }
-  }
-
   // Get the card
   if (stackObject.sourceCardId) {
     const card = state.cards.get(stackObject.sourceCardId);
     if (card) {
-      // Move card from stack to appropriate zone based on card type
       const typeLine = card.cardData.type_line?.toLowerCase() || "";
-
       const oracleText = (card.cardData.oracle_text || "").toLowerCase();
 
       // Check if this is a board sweeper (destroy all creatures)
@@ -480,10 +396,8 @@ export function resolveTopOfStack(state: GameState): GameState {
 
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
-        // Instants and sorceries go to graveyard
         destinationZone = `${card.controllerId}-graveyard`;
       } else {
-        // Permanents go to battlefield
         destinationZone = `${card.controllerId}-battlefield`;
       }
 
@@ -782,36 +696,11 @@ export function resolveWaitingChoice(
   }
 
   if (type === "choose_cards" && typeof selectedValue === "string") {
-    const castingPlayerId = playerId;
-    const opponentId = Array.from(state.players.keys()).find(
-      (pid) => pid !== castingPlayerId && !state.players.get(pid)?.hasLost,
-    );
-
-    if (!opponentId) {
-      return { success: false, state, error: "No opponent found" };
-    }
-
-    const result = completeHandTargeting(
+    return {
+      success: false,
       state,
-      castingPlayerId,
-      opponentId,
-      selectedValue,
-      stackObjectId || "",
-    );
-
-    if (!result.success) {
-      return { success: false, state, error: result.error };
-    }
-
-    if (!result.state) {
-      return {
-        success: false,
-        state,
-        error: "completeHandTargeting returned no state",
-      };
-    }
-
-    return { success: true, state: result.state };
+      error: "Hand targeting not yet implemented",
+    };
   }
 
   if (type === "choose_mode") {

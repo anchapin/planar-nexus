@@ -3,8 +3,8 @@
  * Integrates with simplify skill and provides custom PR-specific checks
  */
 
-const { exec } = require('child_process');
-const { promisify } = require('util');
+const { exec } = require("child_process");
+const { promisify } = require("util");
 const execAsync = promisify(exec);
 
 /**
@@ -13,11 +13,11 @@ const execAsync = promisify(exec);
 async function execGh(command) {
   try {
     const { stdout, stderr } = await execAsync(`gh ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
     });
 
-    if (stderr && !stderr.includes('warning:')) {
+    if (stderr && !stderr.includes("warning:")) {
       console.warn(`GH Warning: ${stderr}`);
     }
 
@@ -40,11 +40,11 @@ async function execGh(command) {
 async function execGhRaw(command) {
   try {
     const { stdout, stderr } = await execAsync(`gh ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
     });
 
-    if (stderr && !stderr.includes('warning:')) {
+    if (stderr && !stderr.includes("warning:")) {
       console.warn(`GH Warning: ${stderr}`);
     }
 
@@ -60,21 +60,21 @@ async function execGhRaw(command) {
 async function execGit(command) {
   try {
     const { stdout, stderr } = await execAsync(`git ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
     });
 
     return {
       success: true,
       stdout: stdout.trim(),
-      stderr: stderr.trim()
+      stderr: stderr.trim(),
     };
   } catch (error) {
     return {
       success: false,
-      stdout: error.stdout?.trim() || '',
-      stderr: error.stderr?.trim() || '',
-      message: error.message
+      stdout: error.stdout?.trim() || "",
+      stderr: error.stderr?.trim() || "",
+      message: error.message,
     };
   }
 }
@@ -84,12 +84,14 @@ async function execGit(command) {
  */
 async function getPrChangedFiles(prNumber) {
   try {
-    const prData = await execGhRaw(`pr view ${prNumber} --json files --jq '.files[].path'`);
+    const prData = await execGhRaw(
+      `pr view ${prNumber} --json files --jq '.files[].path'`,
+    );
     if (!prData) return [];
     try {
       return JSON.parse(prData);
     } catch {
-      return prData.split('\n').filter(Boolean);
+      return prData.split("\n").filter(Boolean);
     }
   } catch (error) {
     console.error(`Failed to get PR files: ${error.message}`);
@@ -105,18 +107,21 @@ async function runEslint(files) {
     return [];
   }
 
-  const jsFiles = files.filter(f => /\.(js|jsx|ts|tsx)$/.test(f));
+  const jsFiles = files.filter((f) => /\.(js|jsx|ts|tsx)$/.test(f));
   if (jsFiles.length === 0) {
     return [];
   }
 
   try {
-    const { stdout, stderr } = await execAsync(`npx eslint ${jsFiles.join(' ')} --format json`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024
-    });
+    const { stdout, stderr } = await execAsync(
+      `npx eslint ${jsFiles.join(" ")} --format json`,
+      {
+        encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024,
+      },
+    );
 
-    if (stderr && !stderr.includes('warning:')) {
+    if (stderr && !stderr.includes("warning:")) {
       console.warn(`ESLint stderr: ${stderr}`);
     }
 
@@ -131,7 +136,7 @@ async function runEslint(files) {
           column: message.column,
           ruleId: message.ruleId,
           severity: message.severity,
-          message: message.message
+          message: message.message,
         });
       }
     }
@@ -158,7 +163,7 @@ function generateRecommendations(eslintIssues, typeErrors) {
   }
 
   if (recommendations.length === 0) {
-    recommendations.push('No major issues found. Code quality looks good!');
+    recommendations.push("No major issues found. Code quality looks good!");
   }
 
   return recommendations;
@@ -172,7 +177,9 @@ async function runSimplifyReview(prNumber, filesChanged) {
 
   try {
     // Get PR data
-    const prData = await execGh(`pr view ${prNumber} --json title,body,headRefName,headRefOid`);
+    const prData = await execGh(
+      `pr view ${prNumber} --json title,body,headRefName,headRefOid`,
+    );
 
     // Check out the PR branch
     console.log(`Checking out branch ${prData.headRefName}...`);
@@ -183,7 +190,9 @@ async function runSimplifyReview(prNumber, filesChanged) {
 
     const checkoutBranch = await execGit(`checkout ${prData.headRefName}`);
     if (!checkoutBranch.success) {
-      throw new Error(`Failed to checkout PR branch: ${checkoutBranch.message}`);
+      throw new Error(
+        `Failed to checkout PR branch: ${checkoutBranch.message}`,
+      );
     }
 
     // Focus on changed files
@@ -202,19 +211,18 @@ async function runSimplifyReview(prNumber, filesChanged) {
       issuesFound: eslintIssues.length,
       eslintIssues,
       typeErrors: [],
-      recommendations: generateRecommendations(eslintIssues, [])
+      recommendations: generateRecommendations(eslintIssues, []),
     };
 
     return {
       success: true,
-      reviewSummary
+      reviewSummary,
     };
-
   } catch (error) {
     console.error(`Simplify review failed: ${error.message}`);
     return {
       success: false,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -226,46 +234,47 @@ async function validatePrDescription(prNumber) {
   try {
     const prData = await execGh(`pr view ${prNumber} --json title,body`);
 
-    const title = prData.title || '';
-    const body = prData.body || '';
+    const title = prData.title || "";
+    const body = prData.body || "";
 
     // Check title length and format
     if (title.length < 10) {
       return {
         passed: false,
-        reason: 'Title is too short (minimum 10 characters)'
+        reason: "Title is too short (minimum 10 characters)",
       };
     }
 
     // Check body for common sections
     const hasDescription = body.length > 50;
-    const hasChanges = body.toLowerCase().includes('change') || body.toLowerCase().includes('fix');
-    const hasTesting = body.toLowerCase().includes('test');
+    const hasChanges =
+      body.toLowerCase().includes("change") ||
+      body.toLowerCase().includes("fix");
+    const hasTesting = body.toLowerCase().includes("test");
 
     if (!hasDescription) {
       return {
         passed: false,
-        reason: 'PR description is too short'
+        reason: "PR description is too short",
       };
     }
 
     if (!hasChanges && !hasTesting) {
       return {
         passed: false,
-        reason: 'PR description should explain what changes were made'
+        reason: "PR description should explain what changes were made",
       };
     }
 
     return {
       passed: true,
-      reason: 'PR description is well-formatted'
+      reason: "PR description is well-formatted",
     };
-
   } catch (error) {
     console.error(`Failed to validate PR description: ${error.message}`);
     return {
       passed: false,
-      reason: `Failed to validate: ${error.message}`
+      reason: `Failed to validate: ${error.message}`,
     };
   }
 }
@@ -275,13 +284,15 @@ async function validatePrDescription(prNumber) {
  */
 async function validateCommitMessages(prNumber) {
   try {
-    const commits = await execGh(`api repos/{owner}/{repo}/pulls/${prNumber}/commits`);
+    const commits = await execGh(
+      `api repos/{owner}/{repo}/pulls/${prNumber}/commits`,
+    );
     const commitData = Array.isArray(commits) ? commits : [];
     const issues = [];
 
     for (const commit of commitData) {
-      const message = commit.commit?.message || '';
-      const firstLine = message.split('\n')[0];
+      const message = commit.commit?.message || "";
+      const firstLine = message.split("\n")[0];
 
       // Check for common commit message patterns
       if (firstLine.length > 72) {
@@ -296,21 +307,20 @@ async function validateCommitMessages(prNumber) {
     if (issues.length === 0) {
       return {
         passed: true,
-        reason: 'All commit messages follow conventions'
+        reason: "All commit messages follow conventions",
       };
     }
 
     return {
       passed: false,
       reason: `Found ${issues.length} commit message issues`,
-      issues
+      issues,
     };
-
   } catch (error) {
     console.error(`Failed to validate commit messages: ${error.message}`);
     return {
       passed: false,
-      reason: `Failed to validate: ${error.message}`
+      reason: `Failed to validate: ${error.message}`,
     };
   }
 }
@@ -321,27 +331,30 @@ async function validateCommitMessages(prNumber) {
 async function checkForTests(prNumber) {
   try {
     const files = await getPrChangedFiles(prNumber);
-    const testFiles = files.filter(f =>
-      f.includes('test') || f.includes('spec') || f.includes('.test.') || f.includes('.spec.')
+    const testFiles = files.filter(
+      (f) =>
+        f.includes("test") ||
+        f.includes("spec") ||
+        f.includes(".test.") ||
+        f.includes(".spec."),
     );
 
     if (testFiles.length === 0) {
       return {
         passed: false,
-        reason: 'No test files included in PR'
+        reason: "No test files included in PR",
       };
     }
 
     return {
       passed: true,
-      reason: `Found ${testFiles.length} test file(s)`
+      reason: `Found ${testFiles.length} test file(s)`,
     };
-
   } catch (error) {
     console.error(`Failed to check for tests: ${error.message}`);
     return {
       passed: false,
-      reason: `Failed to check: ${error.message}`
+      reason: `Failed to check: ${error.message}`,
     };
   }
 }
@@ -352,23 +365,23 @@ async function checkForTests(prNumber) {
 async function checkDocumentation(prNumber) {
   try {
     const files = await getPrChangedFiles(prNumber);
-    const docFiles = files.filter(f =>
-      f.endsWith('.md') || f.includes('README') || f.includes('doc/')
+    const docFiles = files.filter(
+      (f) => f.endsWith(".md") || f.includes("README") || f.includes("doc/"),
     );
 
     // This is optional, so we don't fail on this
     return {
       passed: true, // Always pass since docs are optional
-      reason: docFiles.length > 0
-        ? `Found ${docFiles.length} documentation file(s)`
-        : 'No documentation updates (optional)'
+      reason:
+        docFiles.length > 0
+          ? `Found ${docFiles.length} documentation file(s)`
+          : "No documentation updates (optional)",
     };
-
   } catch (error) {
     console.error(`Failed to check documentation: ${error.message}`);
     return {
       passed: true,
-      reason: `Failed to check: ${error.message}`
+      reason: `Failed to check: ${error.message}`,
     };
   }
 }
@@ -383,10 +396,10 @@ async function runPrSpecificChecks(prNumber) {
     description: await validatePrDescription(prNumber),
     commitMessages: await validateCommitMessages(prNumber),
     hasTests: await checkForTests(prNumber),
-    documentation: await checkDocumentation(prNumber)
+    documentation: await checkDocumentation(prNumber),
   };
 
-  const passed = Object.values(checks).every(check => check.passed);
+  const passed = Object.values(checks).every((check) => check.passed);
   const failedChecks = Object.entries(checks)
     .filter(([_, check]) => !check.passed)
     .map(([name, check]) => ({ name, reason: check.reason }));
@@ -395,7 +408,7 @@ async function runPrSpecificChecks(prNumber) {
     passed,
     checks,
     failedChecks,
-    summary: `PR checks ${passed ? 'passed' : 'failed'} (${Object.keys(checks).length} checks)`
+    summary: `PR checks ${passed ? "passed" : "failed"} (${Object.keys(checks).length} checks)`,
   };
 }
 
@@ -405,7 +418,7 @@ async function runPrSpecificChecks(prNumber) {
 async function runLintFixes(prNumber) {
   try {
     const files = await getPrChangedFiles(prNumber);
-    const jsFiles = files.filter(f => /\.(js|jsx|ts|tsx)$/.test(f));
+    const jsFiles = files.filter((f) => /\.(js|jsx|ts|tsx)$/.test(f));
 
     if (jsFiles.length === 0) {
       return { applied: 0, failed: 0 };
@@ -413,21 +426,22 @@ async function runLintFixes(prNumber) {
 
     console.log(`Running eslint --fix on ${jsFiles.length} file(s)...`);
     const { stdout, stderr } = await execAsync(
-      `npx eslint ${jsFiles.join(' ')} --fix`,
+      `npx eslint ${jsFiles.join(" ")} --fix`,
       {
-        encoding: 'utf8',
-        maxBuffer: 10 * 1024 * 1024
-      }
+        encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024,
+      },
     );
 
     // Count how many files were modified
-    const statusResult = await execGit('status --porcelain');
-    const modifiedFiles = statusResult.stdout.split('\n').filter(line => line.trim()).length;
+    const statusResult = await execGit("status --porcelain");
+    const modifiedFiles = statusResult.stdout
+      .split("\n")
+      .filter((line) => line.trim()).length;
 
     console.log(`✓ ESLint fixed ${modifiedFiles} file(s)`);
 
     return { applied: modifiedFiles, failed: 0 };
-
   } catch (error) {
     console.error(`ESLint fix failed: ${error.message}`);
     return { applied: 0, failed: 1 };
@@ -438,7 +452,7 @@ async function runLintFixes(prNumber) {
  * Run type fixes (placeholder)
  */
 async function runTypeFixes(prNumber) {
-  console.log('TypeScript check complete (no auto-fixes available)');
+  console.log("TypeScript check complete (no auto-fixes available)");
   return { applied: 0, failed: 0 };
 }
 
@@ -451,7 +465,7 @@ async function applyFixes(prNumber, fixes) {
   const results = {
     lintFixes: { applied: 0, failed: 0 },
     typeFixes: { applied: 0, failed: 0 },
-    total: 0
+    total: 0,
   };
 
   try {
@@ -477,7 +491,7 @@ async function applyFixes(prNumber, fixes) {
     if (results.total > 0) {
       console.log(`Committing ${results.total} automated fix(es)...`);
       const commitResult = await execGit(
-        `commit -am "Automated fixes via PR automation" --allow-empty`
+        `commit -am "Automated fixes via PR automation" --allow-empty`,
       );
 
       if (commitResult.success) {
@@ -490,7 +504,7 @@ async function applyFixes(prNumber, fixes) {
           return {
             success: true,
             ...results,
-            pushed: true
+            pushed: true,
           };
         } else {
           console.error(`✗ Failed to push fixes: ${pushResult.message}`);
@@ -498,7 +512,7 @@ async function applyFixes(prNumber, fixes) {
             success: false,
             ...results,
             pushed: false,
-            error: pushResult.message
+            error: pushResult.message,
           };
         }
       } else {
@@ -507,7 +521,7 @@ async function applyFixes(prNumber, fixes) {
           success: false,
           ...results,
           pushed: false,
-          error: commitResult.message
+          error: commitResult.message,
         };
       }
     } else {
@@ -515,16 +529,15 @@ async function applyFixes(prNumber, fixes) {
       return {
         success: true,
         ...results,
-        pushed: false
+        pushed: false,
       };
     }
-
   } catch (error) {
     console.error(`Failed to apply fixes: ${error.message}`);
     return {
       success: false,
       ...results,
-      error: error.message
+      error: error.message,
     };
   }
 }
@@ -541,5 +554,5 @@ module.exports = {
   checkForTests,
   checkDocumentation,
   getPrChangedFiles,
-  runEslint
+  runEslint,
 };
