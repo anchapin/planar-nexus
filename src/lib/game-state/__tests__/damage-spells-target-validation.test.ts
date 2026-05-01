@@ -184,7 +184,7 @@ describe("Damage Spells Target Validation", () => {
       planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage =
         planeswalker?.counters.find((c) => c.type === "loyalty")?.count ?? 0;
-      expect(loyaltyAfterDamage).toBe(5);
+      expect(loyaltyAfterDamage).toBe(2);
       expect(planeswalker?.damage).toBe(3);
     });
 
@@ -202,12 +202,12 @@ describe("Damage Spells Target Validation", () => {
       const planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage =
         planeswalker?.counters.find((c) => c.type === "loyalty")?.count ?? 0;
-      expect(loyaltyAfterDamage).toBe(3);
+      expect(loyaltyAfterDamage).toBe(0);
       const sbaResult = checkStateBasedActions(state);
       const battlefield = sbaResult.state.zones.get(`${bobId}-battlefield`)!;
-      expect(battlefield.cardIds).toContain(planeswalkerId);
+      expect(battlefield.cardIds).not.toContain(planeswalkerId);
       const exile = sbaResult.state.zones.get(`${bobId}-exile`)!;
-      expect(exile.cardIds).not.toContain(planeswalkerId);
+      expect(exile.cardIds).toContain(planeswalkerId);
     });
   });
 
@@ -256,7 +256,7 @@ describe("Damage Spells Target Validation", () => {
       const planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage =
         planeswalker?.counters.find((c) => c.type === "loyalty")?.count ?? 0;
-      expect(loyaltyAfterDamage).toBe(4);
+      expect(loyaltyAfterDamage).toBe(2);
       expect(planeswalker?.damage).toBe(2);
     });
   });
@@ -295,7 +295,7 @@ describe("Damage Spells Target Validation", () => {
       const planeswalker = state.cards.get(planeswalkerId);
       const loyaltyAfterDamage =
         planeswalker?.counters.find((c) => c.type === "loyalty")?.count ?? 0;
-      expect(loyaltyAfterDamage).toBe(6);
+      expect(loyaltyAfterDamage).toBe(2);
       expect(planeswalker?.damage).toBe(4);
     });
   });
