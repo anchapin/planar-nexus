@@ -723,6 +723,26 @@ export function resolveWaitingChoice(
     return { success: true, state: newState };
   }
 
+  if (type === "choose_mode") {
+    const stackObj = state.stack.find((s) => s.id === stackObjectId);
+
+    if (!stackObj) {
+      return { success: false, state, error: "Stack object not found" };
+    }
+
+    const newState = {
+      ...state,
+      waitingChoice: null,
+      stack: state.stack.map((obj) =>
+        obj.id === stackObjectId
+          ? { ...obj, chosenModes: [String(selectedValue)] }
+          : obj,
+      ),
+    };
+
+    return { success: true, state: newState };
+  }
+
   return {
     success: false,
     state,
