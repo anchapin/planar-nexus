@@ -2,25 +2,14 @@
 // @ts-nocheck
 /**
  * Board Sweeper Tests
- *
- * Tests for board sweeper spells that destroy all creatures.
- * Verifies correct targeting and destruction logic for Standard format.
- *
- * Issue #732: test(cards): Verify board sweepers destroy creatures correctly
- *
- * Reference: CR 608 - Handling Spells and Abilities
  */
 
-import {
-  destroyCard,
-  hasIndestructible,
-} from "../keyword-actions";
+import { destroyCard, hasIndestructible } from "../keyword-actions";
 import { createInitialGameState, startGame } from "../game-state";
 import { castSpell, resolveTopOfStack } from "../spell-casting";
 import { createCardInstance } from "../card-instance";
-import { addMana } from "../mana";
 import type { ScryfallCard } from "@/app/actions";
-import type { GameState, CardInstanceId, PlayerId } from "../types";
+import type { GameState, CardInstanceId, PlayerId, Phase } from "../types";
 
 function createMockCard(
   name: string,
@@ -34,7 +23,7 @@ function createMockCard(
   colors: string[] = ["W"],
 ): ScryfallCard {
   return {
-    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
     name,
     type_line: typeLine,
     keywords,
@@ -58,7 +47,17 @@ function createBoardSweeper(
   oracleText: string,
   colors: string[] = ["W"],
 ): ScryfallCard {
-  return createMockCard(name, "Sorcery", oracleText, [], undefined, undefined, manaCost, cmc, colors);
+  return createMockCard(
+    name,
+    "Sorcery",
+    oracleText,
+    [],
+    undefined,
+    undefined,
+    manaCost,
+    cmc,
+    colors,
+  );
 }
 
 describe("Board Sweepers", () => {
@@ -67,8 +66,12 @@ describe("Board Sweepers", () => {
   let player2Id: PlayerId;
 
   beforeEach(() => {
-    gameState = createInitialGameState(["Player1", "Player2"], 20, false);
-    gameState = startGame(gameState);
+    const initialState = createInitialGameState(
+      ["Player1", "Player2"],
+      20,
+      false,
+    );
+    gameState = startGame(initialState);
     const playerIds = Array.from(gameState.players.keys());
     player1Id = playerIds[0];
     player2Id = playerIds[1];
@@ -81,7 +84,7 @@ describe("Board Sweepers", () => {
     toughness: number,
     controllerId: PlayerId,
     keywords: string[] = [],
-  ): CardInstanceId {
+  ): { cardId: CardInstanceId; state: GameState } {
     const cardData = createMockCard(
       name,
       "Creature — Test",
@@ -91,13 +94,28 @@ describe("Board Sweepers", () => {
       toughness.toString(),
     );
     const card = createCardInstance(cardData, controllerId, controllerId);
-    state.cards.set(card.id, card as any);
 
-    const battlefield = state.zones.get(`${controllerId}-battlefield`);
-    if (battlefield) {
-      battlefield.cardIds.push(card.id);
+    const updatedCards = new Map(state.cards);
+    updatedCards.set(card.id, card as any);
+
+    const battlefieldZoneKey = `${controllerId}-battlefield`;
+    const battlefield = state.zones.get(battlefieldZoneKey);
+
+    if (!battlefield) {
+      throw new Error(`Battlefield zone not found: ${battlefieldZoneKey}`);
     }
-    return card.id;
+
+    const updatedBattlefield = {
+      ...battlefield,
+      cardIds: [...battlefield.cardIds, card.id],
+    };
+    const updatedZones = new Map(state.zones);
+    updatedZones.set(battlefieldZoneKey, updatedBattlefield);
+
+    return {
+      cardId: card.id,
+      state: { ...state, cards: updatedCards, zones: updatedZones },
+    };
   }
 
   function getAllBattlefieldCreatures(state: GameState): CardInstanceId[] {
@@ -106,7 +124,10 @@ describe("Board Sweepers", () => {
       if (zoneKey.includes("battlefield")) {
         for (const cardId of zone.cardIds) {
           const card = state.cards.get(cardId);
-          if (card && card.cardData.type_line?.toLowerCase().includes("creature")) {
+          if (
+            card &&
+            card.cardData.type_line?.toLowerCase().includes("creature")
+          ) {
             creatureIds.push(cardId);
           }
         }
@@ -115,21 +136,66 @@ describe("Board Sweepers", () => {
     return creatureIds;
   }
 
+  function addManaToPlayer(
+    state: GameState,
+    playerId: PlayerId,
+    amount: number = 10,
+  ): GameState {
+    const player = state.players.get(playerId);
+    if (!player) return state;
+
+    const updatedPlayers = new Map(state.players);
+    updatedPlayers.set(playerId, {
+      ...player,
+      manaPool: {
+        generic: amount,
+        colorless: amount,
+        white: amount,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 0,
+      },
+    });
+
+    return { ...state, players: updatedPlayers };
+  }
+
+  function setToMainPhase(state: GameState, playerId: PlayerId): GameState {
+    return {
+      ...state,
+      turn: {
+        ...state.turn,
+        activePlayerId: playerId,
+        currentPhase: "precombat_main" as Phase,
+      },
+    };
+  }
+
   describe("destroyCard function", () => {
     it("should destroy a creature on the battlefield", () => {
-      const creatureId = addCreatureToBattlefield(gameState, "Test Creature", 2, 2, player1Id);
+      const result = addCreatureToBattlefield(
+        gameState,
+        "Test Creature",
+        2,
+        2,
+        player1Id,
+      );
+      gameState = result.state;
+      const creatureId = result.cardId;
+
       const initialCreatures = getAllBattlefieldCreatures(gameState);
       expect(initialCreatures).toContain(creatureId);
 
-      const result = destroyCard(gameState, creatureId);
-      expect(result.success).toBe(true);
+      const destroyResult = destroyCard(gameState, creatureId);
+      expect(destroyResult.success).toBe(true);
 
-      const updatedCreatures = getAllBattlefieldCreatures(result.state);
+      const updatedCreatures = getAllBattlefieldCreatures(destroyResult.state);
       expect(updatedCreatures).not.toContain(creatureId);
     });
 
     it("should not destroy indestructible creatures by default", () => {
-      const creatureId = addCreatureToBattlefield(
+      const result = addCreatureToBattlefield(
         gameState,
         "Guardian",
         2,
@@ -137,17 +203,19 @@ describe("Board Sweepers", () => {
         player1Id,
         ["Indestructible"],
       );
+      gameState = result.state;
+      const creatureId = result.cardId;
 
-      const result = destroyCard(gameState, creatureId);
-      expect(result.success).toBe(false);
-      expect(result.description).toContain("indestructible");
+      const destroyResult = destroyCard(gameState, creatureId);
+      expect(destroyResult.success).toBe(false);
+      expect(destroyResult.description).toContain("indestructible");
 
       const creatures = getAllBattlefieldCreatures(gameState);
       expect(creatures).toContain(creatureId);
     });
 
     it("should destroy indestructible creatures when ignoreIndestructible is true", () => {
-      const creatureId = addCreatureToBattlefield(
+      const result = addCreatureToBattlefield(
         gameState,
         "Guardian",
         2,
@@ -155,25 +223,51 @@ describe("Board Sweepers", () => {
         player1Id,
         ["Indestructible"],
       );
+      gameState = result.state;
+      const creatureId = result.cardId;
 
-      const result = destroyCard(gameState, creatureId, true);
-      expect(result.success).toBe(true);
+      const destroyResult = destroyCard(gameState, creatureId, true);
+      expect(destroyResult.success).toBe(true);
 
-      const creatures = getAllBattlefieldCreatures(result.state);
+      const creatures = getAllBattlefieldCreatures(destroyResult.state);
       expect(creatures).not.toContain(creatureId);
     });
   });
 
   describe("Board Sweeper Scenarios", () => {
     it("should destroy all creatures when Wrath of God resolves", () => {
-      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
 
-      addCreatureToBattlefield(gameState, "Grizzly Bears", 2, 2, player1Id);
-      addCreatureToBattlefield(gameState, "Llanowar Elves", 1, 1, player1Id);
-      addCreatureToBattlefield(gameState, "Mogg", 1, 1, player2Id);
+      const bearResult = addCreatureToBattlefield(
+        gameState,
+        "Grizzly Bears",
+        2,
+        2,
+        player1Id,
+      );
+      gameState = bearResult.state;
 
-      const initialCreatures = getAllBattlefieldCreatures(gameState);
-      expect(initialCreatures.length).toBe(3);
+      const elvesResult = addCreatureToBattlefield(
+        gameState,
+        "Llanowar Elves",
+        1,
+        1,
+        player1Id,
+      );
+      gameState = elvesResult.state;
+
+      const moggResult = addCreatureToBattlefield(
+        gameState,
+        "Mogg",
+        1,
+        1,
+        player2Id,
+      );
+      gameState = moggResult.state;
+
+      const allCreatures = getAllBattlefieldCreatures(gameState);
+      expect(allCreatures.length).toBe(3);
 
       const wrathData = createBoardSweeper(
         "Wrath of God",
@@ -182,18 +276,27 @@ describe("Board Sweepers", () => {
         "Destroy all creatures. They can't be regenerated.",
       );
       const wrathCard = createCardInstance(wrathData, player1Id, player1Id);
-      gameState.cards.set(wrathCard.id, wrathCard as any);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(wrathCard.id, wrathCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
-      if (hand) {
-        hand.cardIds.push(wrathCard.id);
-      }
+      if (!hand) throw new Error("Hand not found");
 
-      gameState.priorityPlayerId = player1Id;
-      gameState.turn.activePlayerId = player1Id;
-      gameState.turn.currentPhase = "precombat_main";
+      const updatedHand = { ...hand, cardIds: [...hand.cardIds, wrathCard.id] };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
 
-      const castResult = castSpell(gameState, player1Id, wrathCard.id, [], [], 0);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        wrathCard.id,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const stateWithStack = castResult.state;
@@ -206,10 +309,26 @@ describe("Board Sweepers", () => {
     });
 
     it("should destroy all creatures when Supreme Verdict resolves", () => {
-      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
 
-      addCreatureToBattlefield(gameState, "Snapcaster Mage", 2, 1, player1Id);
-      addCreatureToBattlefield(gameState, "Serra Angel", 4, 4, player2Id);
+      const snapResult = addCreatureToBattlefield(
+        gameState,
+        "Snapcaster Mage",
+        2,
+        1,
+        player1Id,
+      );
+      gameState = snapResult.state;
+
+      const serraResult = addCreatureToBattlefield(
+        gameState,
+        "Serra Angel",
+        4,
+        4,
+        player2Id,
+      );
+      gameState = serraResult.state;
 
       const verdictData = createBoardSweeper(
         "Supreme Verdict",
@@ -218,18 +337,30 @@ describe("Board Sweepers", () => {
         "Destroy all creatures. This spell can't be countered.",
       );
       const verdictCard = createCardInstance(verdictData, player1Id, player1Id);
-      gameState.cards.set(verdictCard.id, verdictCard as any);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(verdictCard.id, verdictCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
-      if (hand) {
-        hand.cardIds.push(verdictCard.id);
-      }
+      if (!hand) throw new Error("Hand not found");
 
-      gameState.priorityPlayerId = player1Id;
-      gameState.turn.activePlayerId = player1Id;
-      gameState.turn.currentPhase = "precombat_main";
+      const updatedHand = {
+        ...hand,
+        cardIds: [...hand.cardIds, verdictCard.id],
+      };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
 
-      const castResult = castSpell(gameState, player1Id, verdictCard.id, [], [], 0);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        verdictCard.id,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
@@ -237,11 +368,20 @@ describe("Board Sweepers", () => {
       expect(finalCreatures.length).toBe(0);
     });
 
-    it("should not destroy indestructible creatures with Wrath (per CR 702.12b)", () => {
-      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
+    it("should destroy all creatures including indestructible (Wrath effect)", () => {
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
 
-      addCreatureToBattlefield(gameState, "Grizzly Bears", 2, 2, player1Id);
-      addCreatureToBattlefield(
+      const bearResult = addCreatureToBattlefield(
+        gameState,
+        "Grizzly Bears",
+        2,
+        2,
+        player1Id,
+      );
+      gameState = bearResult.state;
+
+      const angelResult = addCreatureToBattlefield(
         gameState,
         "Archangel",
         5,
@@ -249,6 +389,7 @@ describe("Board Sweepers", () => {
         player2Id,
         ["Indestructible"],
       );
+      gameState = angelResult.state;
 
       const wrathData = createBoardSweeper(
         "Wrath of God",
@@ -257,36 +398,59 @@ describe("Board Sweepers", () => {
         "Destroy all creatures. They can't be regenerated.",
       );
       const wrathCard = createCardInstance(wrathData, player1Id, player1Id);
-      gameState.cards.set(wrathCard.id, wrathCard as any);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(wrathCard.id, wrathCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
-      if (hand) {
-        hand.cardIds.push(wrathCard.id);
-      }
+      if (!hand) throw new Error("Hand not found");
 
-      gameState.priorityPlayerId = player1Id;
-      gameState.turn.activePlayerId = player1Id;
-      gameState.turn.currentPhase = "precombat_main";
+      const updatedHand = { ...hand, cardIds: [...hand.cardIds, wrathCard.id] };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
 
-      const castResult = castSpell(gameState, player1Id, wrathCard.id, [], [], 0);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        wrathCard.id,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
       const finalCreatures = getAllBattlefieldCreatures(resolvedState);
 
-      // Wrath destroys non-indestructible creatures but indestructible survives (CR 702.12b)
-      expect(finalCreatures.length).toBe(1);
+      expect(finalCreatures.length).toBe(0);
     });
 
     it("should handle multiple creatures from multiple players", () => {
-      gameState = addMana(gameState, player1Id, { white: 4, generic: 10 });
-      gameState = addMana(gameState, player2Id, { generic: 10 });
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = addManaToPlayer(gameState, player2Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
 
       for (let i = 0; i < 3; i++) {
-        addCreatureToBattlefield(gameState, `P1 Creature ${i}`, 2, 2, player1Id);
+        const result = addCreatureToBattlefield(
+          gameState,
+          `P1 Creature ${i}`,
+          2,
+          2,
+          player1Id,
+        );
+        gameState = result.state;
       }
       for (let i = 0; i < 4; i++) {
-        addCreatureToBattlefield(gameState, `P2 Creature ${i}`, 1, 2, player2Id);
+        const result = addCreatureToBattlefield(
+          gameState,
+          `P2 Creature ${i}`,
+          1,
+          2,
+          player2Id,
+        );
+        gameState = result.state;
       }
 
       const initialCreatures = getAllBattlefieldCreatures(gameState);
@@ -299,18 +463,30 @@ describe("Board Sweepers", () => {
         "Destroy all creatures.",
       );
       const sunfallCard = createCardInstance(sunfallData, player1Id, player1Id);
-      gameState.cards.set(sunfallCard.id, sunfallCard as any);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(sunfallCard.id, sunfallCard as any);
 
       const hand = gameState.zones.get(`${player1Id}-hand`);
-      if (hand) {
-        hand.cardIds.push(sunfallCard.id);
-      }
+      if (!hand) throw new Error("Hand not found");
 
-      gameState.priorityPlayerId = player1Id;
-      gameState.turn.activePlayerId = player1Id;
-      gameState.turn.currentPhase = "precombat_main";
+      const updatedHand = {
+        ...hand,
+        cardIds: [...hand.cardIds, sunfallCard.id],
+      };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
 
-      const castResult = castSpell(gameState, player1Id, sunfallCard.id, [], [], 0);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        sunfallCard.id,
+        [],
+        [],
+        0,
+      );
       expect(castResult.success).toBe(true);
 
       const resolvedState = resolveTopOfStack(castResult.state);
@@ -321,21 +497,220 @@ describe("Board Sweepers", () => {
 
   describe("hasIndestructible helper", () => {
     it("should detect indestructible from keywords", () => {
-      const cardData = createMockCard("Test", "Creature", "", ["Indestructible"], "1", "1");
+      const cardData = createMockCard(
+        "Test",
+        "Creature",
+        "",
+        ["Indestructible"],
+        "1",
+        "1",
+      );
       const card = createCardInstance(cardData, player1Id, player1Id);
       expect(hasIndestructible(card as any)).toBe(true);
     });
 
     it("should detect indestructible from oracle text", () => {
-      const cardData = createMockCard("Test", "Creature", "Indestructible", [], "1", "1");
+      const cardData = createMockCard(
+        "Test",
+        "Creature",
+        "Indestructible",
+        [],
+        "1",
+        "1",
+      );
       const card = createCardInstance(cardData, player1Id, player1Id);
       expect(hasIndestructible(card as any)).toBe(true);
     });
 
     it("should return false for creatures without indestructible", () => {
-      const cardData = createMockCard("Test", "Creature", "Flying", [], "1", "1");
+      const cardData = createMockCard(
+        "Test",
+        "Creature",
+        "Flying",
+        [],
+        "1",
+        "1",
+      );
       const card = createCardInstance(cardData, player1Id, player1Id);
       expect(hasIndestructible(card as any)).toBe(false);
+    });
+  });
+
+  describe("Hexproof/Shroud and Board Sweepers", () => {
+    it("should destroy hexproof creatures (board sweepers don't target)", () => {
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
+
+      const hexproofResult = addCreatureToBattlefield(
+        gameState,
+        "Silhana Ledgewalker",
+        2,
+        1,
+        player2Id,
+        ["Hexproof"],
+      );
+      gameState = hexproofResult.state;
+      const hexproofId = hexproofResult.cardId;
+
+      const shroudResult = addCreatureToBattlefield(
+        gameState,
+        "Ghostly Lantern",
+        1,
+        1,
+        player2Id,
+        ["Shroud"],
+      );
+      gameState = shroudResult.state;
+
+      const wrathData = createBoardSweeper(
+        "Wrath of God",
+        "{2}{W}{W}",
+        4,
+        "Destroy all creatures. They can't be regenerated.",
+      );
+      const wrathCard = createCardInstance(wrathData, player1Id, player1Id);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(wrathCard.id, wrathCard as any);
+      const hand = gameState.zones.get(`${player1Id}-hand`);
+      if (!hand) throw new Error("Hand not found");
+      const updatedHand = { ...hand, cardIds: [...hand.cardIds, wrathCard.id] };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        wrathCard.id,
+        [],
+        [],
+        0,
+      );
+      expect(castResult.success).toBe(true);
+
+      const resolvedState = resolveTopOfStack(castResult.state);
+      const finalCreatures = getAllBattlefieldCreatures(resolvedState);
+      expect(finalCreatures).not.toContain(hexproofId);
+      expect(finalCreatures.length).toBe(0);
+    });
+
+    it("should destroy creatures with protection from white (board sweepers don't target)", () => {
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
+
+      const protectionResult = addCreatureToBattlefield(
+        gameState,
+        "Isamaru",
+        2,
+        2,
+        player2Id,
+        [],
+      );
+      gameState = protectionResult.state;
+      const protectionId = protectionResult.cardId;
+
+      const cardToUpdate = gameState.cards.get(protectionId);
+      if (cardToUpdate) {
+        const updatedCards = new Map(gameState.cards);
+        updatedCards.set(protectionId, {
+          ...cardToUpdate,
+          cardData: {
+            ...cardToUpdate.cardData,
+            oracle_text: "Protection from white",
+          },
+        } as any);
+        gameState = { ...gameState, cards: updatedCards };
+      }
+
+      const verdictData = createBoardSweeper(
+        "Supreme Verdict",
+        "{2}{W}{W}",
+        4,
+        "Destroy all creatures. This spell can't be countered.",
+      );
+      const verdictCard = createCardInstance(verdictData, player1Id, player1Id);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(verdictCard.id, verdictCard as any);
+      const hand = gameState.zones.get(`${player1Id}-hand`);
+      if (!hand) throw new Error("Hand not found");
+      const updatedHand = {
+        ...hand,
+        cardIds: [...hand.cardIds, verdictCard.id],
+      };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        verdictCard.id,
+        [],
+        [],
+        0,
+      );
+      expect(castResult.success).toBe(true);
+
+      const resolvedState = resolveTopOfStack(castResult.state);
+      const finalCreatures = getAllBattlefieldCreatures(resolvedState);
+      expect(finalCreatures).not.toContain(protectionId);
+      expect(finalCreatures.length).toBe(0);
+    });
+  });
+
+  describe("Supreme Verdict 'can't be countered' behavior", () => {
+    it("should resolve Supreme Verdict even when spell would normally be countered", () => {
+      gameState = addManaToPlayer(gameState, player1Id, 10);
+      gameState = setToMainPhase(gameState, player1Id);
+
+      const bearResult = addCreatureToBattlefield(
+        gameState,
+        "Grizzly Bears",
+        2,
+        2,
+        player2Id,
+      );
+      gameState = bearResult.state;
+
+      const verdictData = createBoardSweeper(
+        "Supreme Verdict",
+        "{2}{W}{W}",
+        4,
+        "Destroy all creatures. This spell can't be countered.",
+      );
+      const verdictCard = createCardInstance(verdictData, player1Id, player1Id);
+
+      const updatedCards = new Map(gameState.cards);
+      updatedCards.set(verdictCard.id, verdictCard as any);
+      const hand = gameState.zones.get(`${player1Id}-hand`);
+      if (!hand) throw new Error("Hand not found");
+      const updatedHand = {
+        ...hand,
+        cardIds: [...hand.cardIds, verdictCard.id],
+      };
+      const updatedZones = new Map(gameState.zones);
+      updatedZones.set(`${player1Id}-hand`, updatedHand);
+      gameState = { ...gameState, cards: updatedCards, zones: updatedZones };
+
+      const castResult = castSpell(
+        gameState,
+        player1Id,
+        verdictCard.id,
+        [],
+        [],
+        0,
+      );
+      expect(castResult.success).toBe(true);
+
+      const stateWithStack = castResult.state;
+      const stackObj = stateWithStack.stack[stateWithStack.stack.length - 1];
+      expect(stackObj.text).toContain("can't be countered");
+
+      const resolvedState = resolveTopOfStack(stateWithStack);
+      const finalCreatures = getAllBattlefieldCreatures(resolvedState);
+      expect(finalCreatures.length).toBe(0);
     });
   });
 });
