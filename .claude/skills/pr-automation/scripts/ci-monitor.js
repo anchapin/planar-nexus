@@ -3,16 +3,16 @@
  * Handles GitHub Actions workflow status monitoring and validation
  */
 
-const { exec } = require('child_process');
-const { promisify } = require('util');
+const { exec } = require("child_process");
+const { promisify } = require("util");
 const execAsync = promisify(exec);
 
 // Default configuration
 const DEFAULT_CONFIG = {
   pollInterval: 30000, // 30 seconds
-  timeout: 1800000,    // 30 minutes
-  workflowName: 'CI',
-  requiredJobs: ['lint', 'typecheck', 'build']
+  timeout: 1800000, // 30 minutes
+  workflowName: "CI",
+  requiredJobs: ["lint", "typecheck", "build"],
 };
 
 /**
@@ -21,11 +21,11 @@ const DEFAULT_CONFIG = {
 async function execGh(command) {
   try {
     const { stdout, stderr } = await execAsync(`gh ${command}`, {
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
 
-    if (stderr && !stderr.includes('warning:')) {
+    if (stderr && !stderr.includes("warning:")) {
       console.warn(`GH Warning: ${stderr}`);
     }
 
@@ -43,11 +43,35 @@ async function execGh(command) {
 }
 
 /**
+ * Execute gh CLI command that returns non-JSON output (e.g., using --jq)
+ */
+async function execGhRaw(command) {
+  try {
+    const { stdout, stderr } = await execAsync(`gh ${command}`, {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    });
+
+    if (stderr && !stderr.includes("warning:")) {
+      console.warn(`GH Warning: ${stderr}`);
+    }
+
+    return stdout.trim();
+  } catch (error) {
+    throw new Error(`GH command failed: ${error.message}`);
+  }
+}
+
+/**
  * Get workflow runs for a specific workflow and branch
  */
-async function getWorkflowRuns(workflowName = DEFAULT_CONFIG.workflowName, branch = null, limit = 10) {
+async function getWorkflowRuns(
+  workflowName = DEFAULT_CONFIG.workflowName,
+  branch = null,
+  limit = 10,
+) {
   try {
-    const filters = branch ? `--branch ${branch}` : '';
+    const filters = branch ? `--branch ${branch}` : "";
     const command = `run list --workflow="${workflowName}" --json databaseId,name,status,conclusion,headBranch,event,createdAt,url --limit ${limit} ${filters}`;
     return await execGh(command);
   } catch (error) {
@@ -61,11 +85,26 @@ async function getWorkflowRuns(workflowName = DEFAULT_CONFIG.workflowName, branc
  */
 async function getWorkflowRunDetails(runId) {
   try {
-    const runInfo = await execGh(`run view ${runId} --json databaseId,name,status,conclusion,headBranch,event,createdAt,url`);
-    const jobs = await execGh(`run view ${runId} --json jobs --jq '.jobs[] | {name: .name, status: .status, conclusion: .conclusion, databaseId: .databaseId}'`);
+    const runInfo = await execGh(
+      `run view ${runId} --json databaseId,name,status,conclusion,headBranch,event,createdAt,url`,
+    );
+
+    // Get jobs using --jq - this returns newline-delimited JSON, not a JSON array
+    const { stdout: jobsOutput } = await execAsync(
+      `gh run view ${runId} --json jobs --jq '.jobs[] | {name: .name, status: .status, conclusion: .conclusion, databaseId: .databaseId}'`,
+      { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 },
+    );
+
+    // Parse each line as a separate JSON object
+    const jobs = jobsOutput
+      .trim()
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line));
+
     return {
       ...runInfo,
-      jobs: Array.isArray(jobs) ? jobs : JSON.parse(jobs)
+      jobs,
     };
   } catch (error) {
     console.error(`Failed to get workflow run details: ${error.message}`);
@@ -77,14 +116,16 @@ async function getWorkflowRunDetails(runId) {
  * Check if a workflow run is complete
  */
 function isWorkflowComplete(runDetails) {
-  return runDetails.status === 'completed';
+  return runDetails.status === "completed";
 }
 
 /**
  * Check if a workflow run was successful
  */
 function isWorkflowSuccessful(runDetails) {
-  return runDetails.status === 'completed' && runDetails.conclusion === 'success';
+  return (
+    runDetails.status === "completed" && runDetails.conclusion === "success"
+  );
 }
 
 /**
@@ -95,7 +136,7 @@ async function waitForWorkflowCompletion(runId, options = {}) {
     pollInterval: options.pollInterval || DEFAULT_CONFIG.pollInterval,
     timeout: options.timeout || DEFAULT_CONFIG.timeout,
     onProgress: options.onProgress || null,
-    ...options
+    ...options,
   };
 
   const startTime = Date.now();
@@ -109,7 +150,9 @@ async function waitForWorkflowCompletion(runId, options = {}) {
 
     // Check timeout
     if (elapsed > config.timeout) {
-      throw new Error(`Workflow run ${runId} timed out after ${formatDuration(elapsed)}`);
+      throw new Error(
+        `Workflow run ${runId} timed out after ${formatDuration(elapsed)}`,
+      );
     }
 
     // Get current status
@@ -122,12 +165,16 @@ async function waitForWorkflowCompletion(runId, options = {}) {
 
     // Check if complete
     if (isWorkflowComplete(runDetails)) {
-      console.log(`Workflow run ${runId} completed in ${formatDuration(elapsed)} (${pollCount} polls)`);
+      console.log(
+        `Workflow run ${runId} completed in ${formatDuration(elapsed)} (${pollCount} polls)`,
+      );
       return runDetails;
     }
 
     // Wait before next poll
-    console.log(`Workflow status: ${runDetails.status} (${formatDuration(elapsed)} elapsed)...`);
+    console.log(
+      `Workflow status: ${runDetails.status} (${formatDuration(elapsed)} elapsed)...`,
+    );
     await sleep(config.pollInterval);
   }
 }
@@ -139,26 +186,33 @@ async function pollWorkflowStatus(runId, timeout, interval, callback) {
   return waitForWorkflowCompletion(runId, {
     timeout,
     pollInterval: interval,
-    onProgress: callback
+    onProgress: callback,
   });
 }
 
 /**
  * Validate that required CI jobs passed for a PR
  */
-async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.requiredJobs) {
+async function validateCiChecks(
+  prNumber,
+  requiredJobs = DEFAULT_CONFIG.requiredJobs,
+) {
   try {
     // Get the latest workflow run for the PR's branch
     const prData = await execGh(`pr view ${prNumber} --json headRefName`);
     const branchName = prData.headRefName;
 
-    const runs = await getWorkflowRuns(DEFAULT_CONFIG.workflowName, branchName, 1);
+    const runs = await getWorkflowRuns(
+      DEFAULT_CONFIG.workflowName,
+      branchName,
+      1,
+    );
 
     if (!runs || runs.length === 0) {
       return {
         valid: false,
-        reason: 'No CI workflow runs found for this PR',
-        jobs: {}
+        reason: "No CI workflow runs found for this PR",
+        jobs: {},
       };
     }
 
@@ -169,9 +223,9 @@ async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.required
     if (!isWorkflowComplete(runDetails)) {
       return {
         valid: false,
-        reason: 'CI workflow is still running',
+        reason: "CI workflow is still running",
         status: runDetails.status,
-        jobs: {}
+        jobs: {},
       };
     }
 
@@ -182,25 +236,29 @@ async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.required
     const missingJobs = [];
 
     for (const jobName of requiredJobs) {
-      const job = runDetails.jobs.find(j => j.name === jobName);
+      const normalizedJobName = jobName.toLowerCase().replace(/\s+/g, "");
+      const job = runDetails.jobs.find(
+        (j) => j.name.toLowerCase().replace(/\s+/g, "") === normalizedJobName,
+      );
 
       if (!job) {
         missingJobs.push(jobName);
         jobResults[jobName] = {
           found: false,
-          status: 'missing',
-          conclusion: null
+          status: "missing",
+          conclusion: null,
         };
         allPassed = false;
         continue;
       }
 
-      const jobPassed = job.status === 'completed' && job.conclusion === 'success';
+      const jobPassed =
+        job.status === "completed" && job.conclusion === "success";
       jobResults[jobName] = {
         found: true,
         status: job.status,
         conclusion: job.conclusion,
-        passed: jobPassed
+        passed: jobPassed,
       };
 
       if (!jobPassed) {
@@ -210,12 +268,12 @@ async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.required
     }
 
     if (!allPassed) {
-      let reason = 'CI checks failed';
+      let reason = "CI checks failed";
       if (missingJobs.length > 0) {
-        reason += `. Missing jobs: ${missingJobs.join(', ')}`;
+        reason += `. Missing jobs: ${missingJobs.join(", ")}`;
       }
       if (failedJobs.length > 0) {
-        reason += `. Failed jobs: ${failedJobs.join(', ')}`;
+        reason += `. Failed jobs: ${failedJobs.join(", ")}`;
       }
 
       return {
@@ -223,25 +281,26 @@ async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.required
         reason,
         status: runDetails.status,
         conclusion: runDetails.conclusion,
-        jobs: jobResults
+        jobs: jobResults,
       };
     }
 
     // All checks passed
     return {
       valid: true,
-      reason: 'All CI checks passed',
+      reason: "All CI checks passed",
       status: runDetails.status,
       conclusion: runDetails.conclusion,
-      jobs: jobResults
+      jobs: jobResults,
     };
-
   } catch (error) {
-    console.error(`Failed to validate CI checks for PR ${prNumber}: ${error.message}`);
+    console.error(
+      `Failed to validate CI checks for PR ${prNumber}: ${error.message}`,
+    );
     return {
       valid: false,
       reason: `Failed to validate CI checks: ${error.message}`,
-      jobs: {}
+      jobs: {},
     };
   }
 }
@@ -249,7 +308,10 @@ async function validateCiChecks(prNumber, requiredJobs = DEFAULT_CONFIG.required
 /**
  * Get the latest workflow run for a branch
  */
-async function getLatestWorkflowRun(branchName, workflowName = DEFAULT_CONFIG.workflowName) {
+async function getLatestWorkflowRun(
+  branchName,
+  workflowName = DEFAULT_CONFIG.workflowName,
+) {
   const runs = await getWorkflowRuns(workflowName, branchName, 1);
   return runs && runs.length > 0 ? runs[0] : null;
 }
@@ -264,7 +326,7 @@ async function monitorPrCI(prNumber, options = {}) {
       pollInterval: options.pollInterval || DEFAULT_CONFIG.pollInterval,
       timeout: options.timeout || DEFAULT_CONFIG.timeout,
       onProgress: options.onProgress || null,
-      ...options
+      ...options,
     };
 
     console.log(`Monitoring CI for PR ${prNumber}...`);
@@ -279,13 +341,15 @@ async function monitorPrCI(prNumber, options = {}) {
     if (!latestRun) {
       return {
         valid: false,
-        reason: 'No CI workflow runs found for this PR'
+        reason: "No CI workflow runs found for this PR",
       };
     }
 
     // If already complete, return immediately
     if (isWorkflowComplete(latestRun)) {
-      console.log(`CI for PR ${prNumber} already complete: ${latestRun.conclusion}`);
+      console.log(
+        `CI for PR ${prNumber} already complete: ${latestRun.conclusion}`,
+      );
       return await validateCiChecks(prNumber, config.requiredJobs);
     }
 
@@ -293,17 +357,16 @@ async function monitorPrCI(prNumber, options = {}) {
     const runDetails = await waitForWorkflowCompletion(latestRun.databaseId, {
       pollInterval: config.pollInterval,
       timeout: config.timeout,
-      onProgress: config.onProgress
+      onProgress: config.onProgress,
     });
 
     // Validate results
     return await validateCiChecks(prNumber, config.requiredJobs);
-
   } catch (error) {
     console.error(`Failed to monitor CI for PR ${prNumber}: ${error.message}`);
     return {
       valid: false,
-      reason: `CI monitoring failed: ${error.message}`
+      reason: `CI monitoring failed: ${error.message}`,
     };
   }
 }
@@ -329,7 +392,7 @@ function formatDuration(ms) {
  * Sleep for specified duration
  */
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Export functions
@@ -343,5 +406,5 @@ module.exports = {
   monitorPrCI,
   isWorkflowComplete,
   isWorkflowSuccessful,
-  DEFAULT_CONFIG
+  DEFAULT_CONFIG,
 };

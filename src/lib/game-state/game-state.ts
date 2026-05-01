@@ -25,7 +25,13 @@ import {
   playerDrawsCard,
 } from "./turn-phases";
 import { emptyAllManaPools } from "./mana";
-import { resolveTopOfStack as resolveSpellStack } from "./spell-casting";
+import {
+  resolveTopOfStack as resolveSpellStack,
+  castSpell,
+  resolveTopOfStack,
+} from "./spell-casting";
+
+export { castSpell, resolveTopOfStack };
 
 /**
  * Generate a unique player ID
@@ -407,10 +413,7 @@ function advanceToNextPhase(state: GameState): GameState {
   };
 }
 
-/**
- * Resolve the top object on the stack
- */
-function resolveTopOfStack(state: GameState): GameState {
+function resolveStackTop(state: GameState): GameState {
   if (state.stack.length === 0) {
     return state;
   }
