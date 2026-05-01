@@ -1,6 +1,6 @@
 /**
  * Game Engine Hook
- * 
+ *
  * This hook provides integration between the React UI and the game state engine.
  * It manages the game state, processes actions, and handles turn progression.
  */
@@ -8,7 +8,11 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { GameState as EngineGameState, PlayerId, CardInstanceId } from "@/lib/game-state/types";
+import type {
+  GameState as EngineGameState,
+  PlayerId,
+  CardInstanceId,
+} from "@/lib/game-state/types";
 import { Phase } from "@/lib/game-state/types";
 import {
   createInitialGameState as engineCreateInitialGameState,
@@ -22,25 +26,49 @@ import {
   declineDraw as engineDeclineDraw,
   checkStateBasedActions,
 } from "@/lib/game-state/game-state";
-import { playLand as enginePlayLand, canPlayLand as engineCanPlayLand } from "@/lib/game-state/mana";
-import { castSpell as engineCastSpell, canCastSpell as engineCanCastSpell } from "@/lib/game-state/spell-casting";
-import { declareAttackers as engineDeclareAttackers, declareBlockers as engineDeclareBlockers } from "@/lib/game-state/combat";
+import {
+  playLand as enginePlayLand,
+  canPlayLand as engineCanPlayLand,
+} from "@/lib/game-state/mana";
+import {
+  castSpell as engineCastSpell,
+  canCastSpell as engineCanCastSpell,
+  resolveWaitingChoice as engineResolveWaitingChoice,
+} from "@/lib/game-state/spell-casting";
+import {
+  declareAttackers as engineDeclareAttackers,
+  declareBlockers as engineDeclareBlockers,
+} from "@/lib/game-state/combat";
 import { advancePhase, startNextTurn } from "@/lib/game-state/turn-phases";
 import { dealDamageToPlayer, gainLife } from "@/lib/game-state/game-state";
-import { tapCardAction, untapCardAction } from "@/lib/game-state/keyword-actions";
+import {
+  tapCardAction,
+  untapCardAction,
+} from "@/lib/game-state/keyword-actions";
 
 // UI-facing types (compatible with existing UI)
-import type { PlayerState, CardState, ZoneType, GameState as UIGameState } from "@/types/game";
+import type {
+  PlayerState,
+  CardState,
+  ZoneType,
+  GameState as UIGameState,
+} from "@/types/game";
 import type { ScryfallCard } from "@/app/actions";
 
 /**
  * Convert engine GameState to UI PlayerState
  */
-function convertEnginePlayerToUI(engineState: EngineGameState, playerId: PlayerId): PlayerState | null {
+function convertEnginePlayerToUI(
+  engineState: EngineGameState,
+  playerId: PlayerId,
+): PlayerState | null {
   const player = engineState.players.get(playerId);
   if (!player) return null;
 
-  const convertCard = (cardId: CardInstanceId, zone: ZoneType): CardState | null => {
+  const convertCard = (
+    cardId: CardInstanceId,
+    zone: ZoneType,
+  ): CardState | null => {
     const card = engineState.cards.get(cardId);
     if (!card) return null;
     return {
@@ -52,7 +80,9 @@ function convertEnginePlayerToUI(engineState: EngineGameState, playerId: PlayerI
       faceDown: card.isFaceDown || false,
       counters: card.counters.reduce((sum, c) => sum + c.count, 0),
       power: card.cardData.power ? parseInt(card.cardData.power) : undefined,
-      toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : undefined,
+      toughness: card.cardData.toughness
+        ? parseInt(card.cardData.toughness)
+        : undefined,
     };
   };
 
@@ -119,7 +149,7 @@ function convertEnginePlayerToUI(engineState: EngineGameState, playerId: PlayerI
  */
 function convertEngineToUI(engineState: EngineGameState): UIGameState {
   const players: PlayerState[] = [];
-  
+
   engineState.players.forEach((player, playerId) => {
     const uiPlayer = convertEnginePlayerToUI(engineState, playerId);
     if (uiPlayer) {
@@ -135,11 +165,14 @@ function convertEngineToUI(engineState: EngineGameState): UIGameState {
   });
 
   const currentTurnPlayerIndex = players.findIndex(
-    p => p.id === engineState.turn.activePlayerId
+    (p) => p.id === engineState.turn.activePlayerId,
   );
 
   // Convert engine phase to UI phase
-  const phaseMap: Record<string, "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end"> = {
+  const phaseMap: Record<
+    string,
+    "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end"
+  > = {
     [Phase.UNTAP]: "beginning",
     [Phase.UPKEEP]: "beginning",
     [Phase.DRAW]: "beginning",
@@ -160,7 +193,8 @@ function convertEngineToUI(engineState: EngineGameState): UIGameState {
     format: "commander",
     playerCount: players.length === 2 ? 2 : 4,
     players,
-    currentTurnPlayerIndex: currentTurnPlayerIndex >= 0 ? currentTurnPlayerIndex : 0,
+    currentTurnPlayerIndex:
+      currentTurnPlayerIndex >= 0 ? currentTurnPlayerIndex : 0,
     currentPhase: phaseMap[engineState.turn.currentPhase] || "precombat_main",
     turnNumber: engineState.turn.turnNumber,
     stack: [], // Stack cards would need conversion
@@ -183,47 +217,70 @@ export interface UseGameEngineReturn {
   engineState: EngineGameState | null;
   isGameStarted: boolean;
   currentPlayerId: PlayerId | null;
-  
+
   // Game lifecycle
   initializeGame: () => void;
   startGame: () => void;
   resetGame: () => void;
-  
+
   // Turn management
   advancePhase: () => void;
   nextTurn: () => void;
   passPriority: () => void;
-  
+
   // Card actions
   playLand: (cardId: CardInstanceId) => { success: boolean; error?: string };
-  castSpell: (cardId: CardInstanceId, targets?: Array<{ type: string; targetId: string }>) => { success: boolean; error?: string };
+  castSpell: (
+    cardId: CardInstanceId,
+    targets?: Array<{ type: string; targetId: string }>,
+  ) => { success: boolean; error?: string };
   tapCard: (cardId: CardInstanceId) => void;
   untapCard: (cardId: CardInstanceId) => void;
-  
+
   // Combat
-  declareAttackers: (attackers: Array<{ cardId: CardInstanceId; defenderId: string }>) => { success: boolean; error?: string };
-  declareBlockers: (blockers: Map<CardInstanceId, CardInstanceId[]>) => { success: boolean; error?: string };
-  
+  declareAttackers: (
+    attackers: Array<{ cardId: CardInstanceId; defenderId: string }>,
+  ) => { success: boolean; error?: string };
+  declareBlockers: (blockers: Map<CardInstanceId, CardInstanceId[]>) => {
+    success: boolean;
+    error?: string;
+  };
+
   // Life management
-  damagePlayer: (playerId: PlayerId, amount: number, sourceId?: CardInstanceId) => void;
-  healPlayer: (playerId: PlayerId, amount: number, sourceId?: CardInstanceId) => void;
-  
+  damagePlayer: (
+    playerId: PlayerId,
+    amount: number,
+    sourceId?: CardInstanceId,
+  ) => void;
+  healPlayer: (
+    playerId: PlayerId,
+    amount: number,
+    sourceId?: CardInstanceId,
+  ) => void;
+
   // Game end
   concede: (playerId: PlayerId) => void;
   offerDraw: (playerId: PlayerId) => void;
   acceptDraw: (playerId: PlayerId) => void;
   declineDraw: (playerId: PlayerId) => void;
-  
+
   // Utility
   drawCard: (playerId: PlayerId) => void;
   canPlayLand: (playerId: PlayerId) => boolean;
   canCastSpell: (playerId: PlayerId, cardId: CardInstanceId) => boolean;
+  resolveWaitingChoice: (selectedValue: string | number | boolean) => {
+    success: boolean;
+    state?: EngineGameState;
+    error?: string;
+  };
 }
 
 /**
  * Main game engine hook
  */
-export function useGameEngine(options: UseGameEngineOptions): UseGameEngineReturn {
+export function useGameEngine(
+  options: UseGameEngineOptions,
+): UseGameEngineReturn {
   const {
     playerNames,
     startingLife = 20,
@@ -234,16 +291,22 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   // Engine state
   const [engineState, setEngineState] = useState<EngineGameState | null>(null);
   const [isGameStarted, setIsGameStarted] = useState(false);
-  
+
   // Ref for storing state to avoid stale closures in callbacks
   const engineStateRef = useRef<EngineGameState | null>(null);
-  
+
   // Store deck options in refs for use in callbacks
-  const deckOptionsRef = useRef({ playerDeck: options.playerDeck, opponentDeck: options.opponentDeck });
+  const deckOptionsRef = useRef({
+    playerDeck: options.playerDeck,
+    opponentDeck: options.opponentDeck,
+  });
   useEffect(() => {
-    deckOptionsRef.current = { playerDeck: options.playerDeck, opponentDeck: options.opponentDeck };
+    deckOptionsRef.current = {
+      playerDeck: options.playerDeck,
+      opponentDeck: options.opponentDeck,
+    };
   }, [options.playerDeck, options.opponentDeck]);
-  
+
   // Update ref when state changes
   useEffect(() => {
     engineStateRef.current = engineState;
@@ -256,35 +319,49 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   /**
    * Initialize a new game
    */
-  const initializeGame = useCallback(( decks?: { playerDeck?: ScryfallCard[]; opponentDeck?: ScryfallCard[] } ) => {
-    const decksToUse = decks || deckOptionsRef.current;
-    let newState = engineCreateInitialGameState(playerNames, startingLife, isCommander);
-    
-    // Load player deck if provided (Phase 17 - Limited deck support)
-    if (decksToUse.playerDeck && decksToUse.playerDeck.length > 0) {
-      const playerId = Array.from(newState.players.keys())[0];
-      newState = loadDeckForPlayer(newState, playerId, decksToUse.playerDeck);
-    }
-    
-    // Load opponent deck if provided
-    if (decksToUse.opponentDeck && decksToUse.opponentDeck.length > 0) {
-      const playerIds = Array.from(newState.players.keys());
-      if (playerIds.length > 1) {
-        const opponentId = playerIds[1];
-        newState = loadDeckForPlayer(newState, opponentId, decksToUse.opponentDeck);
+  const initializeGame = useCallback(
+    (decks?: {
+      playerDeck?: ScryfallCard[];
+      opponentDeck?: ScryfallCard[];
+    }) => {
+      const decksToUse = decks || deckOptionsRef.current;
+      let newState = engineCreateInitialGameState(
+        playerNames,
+        startingLife,
+        isCommander,
+      );
+
+      // Load player deck if provided (Phase 17 - Limited deck support)
+      if (decksToUse.playerDeck && decksToUse.playerDeck.length > 0) {
+        const playerId = Array.from(newState.players.keys())[0];
+        newState = loadDeckForPlayer(newState, playerId, decksToUse.playerDeck);
       }
-    }
-    
-    setEngineState(newState);
-    engineStateRef.current = newState;
-  }, [playerNames, startingLife, isCommander]);
+
+      // Load opponent deck if provided
+      if (decksToUse.opponentDeck && decksToUse.opponentDeck.length > 0) {
+        const playerIds = Array.from(newState.players.keys());
+        if (playerIds.length > 1) {
+          const opponentId = playerIds[1];
+          newState = loadDeckForPlayer(
+            newState,
+            opponentId,
+            decksToUse.opponentDeck,
+          );
+        }
+      }
+
+      setEngineState(newState);
+      engineStateRef.current = newState;
+    },
+    [playerNames, startingLife, isCommander],
+  );
 
   /**
    * Start the game (draw opening hands, etc.)
    */
   const startGame = useCallback(() => {
     if (!engineStateRef.current) return;
-    
+
     const newState = engineStartGame(engineStateRef.current);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -305,17 +382,17 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const advancePhaseAction = useCallback(() => {
     if (!engineStateRef.current) return;
-    
+
     const currentTurn = engineStateRef.current.turn;
     const newTurn = advancePhase(currentTurn);
-    
+
     const newState: EngineGameState = {
       ...engineStateRef.current,
       turn: newTurn,
       priorityPlayerId: newTurn.activePlayerId,
       lastModifiedAt: Date.now(),
     };
-    
+
     setEngineState(newState);
     engineStateRef.current = newState;
   }, []);
@@ -325,14 +402,20 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const nextTurn = useCallback(() => {
     if (!engineStateRef.current) return;
-    
+
     const playerIds = Array.from(engineStateRef.current.players.keys());
-    const currentIndex = playerIds.indexOf(engineStateRef.current.turn.activePlayerId);
+    const currentIndex = playerIds.indexOf(
+      engineStateRef.current.turn.activePlayerId,
+    );
     const nextIndex = (currentIndex + 1) % playerIds.length;
     const nextPlayerId = playerIds[nextIndex];
-    
-    const newTurn = startNextTurn(engineStateRef.current.turn, nextPlayerId, false);
-    
+
+    const newTurn = startNextTurn(
+      engineStateRef.current.turn,
+      nextPlayerId,
+      false,
+    );
+
     // Reset lands played for the new active player
     const updatedPlayers = new Map(engineStateRef.current.players);
     const player = updatedPlayers.get(nextPlayerId);
@@ -343,7 +426,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
         hasPassedPriority: false,
       });
     }
-    
+
     const newState: EngineGameState = {
       ...engineStateRef.current,
       turn: newTurn,
@@ -351,7 +434,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
       priorityPlayerId: nextPlayerId,
       lastModifiedAt: Date.now(),
     };
-    
+
     setEngineState(newState);
     engineStateRef.current = newState;
   }, []);
@@ -361,7 +444,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const passPriorityAction = useCallback(() => {
     if (!engineStateRef.current || !currentPlayerId) return;
-    
+
     const newState = passPriority(engineStateRef.current, currentPlayerId);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -370,56 +453,70 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   /**
    * Play a land
    */
-  const playLandAction = useCallback((cardId: CardInstanceId) => {
-    if (!engineStateRef.current || !currentPlayerId) {
-      return { success: false, error: "Game not initialized or no priority" };
-    }
-    
-    const result = enginePlayLand(engineStateRef.current, currentPlayerId, cardId);
-    
-    if (result.success) {
-      setEngineState(result.state);
-      engineStateRef.current = result.state;
-    }
-    
-    return result;
-  }, [currentPlayerId]);
+  const playLandAction = useCallback(
+    (cardId: CardInstanceId) => {
+      if (!engineStateRef.current || !currentPlayerId) {
+        return { success: false, error: "Game not initialized or no priority" };
+      }
+
+      const result = enginePlayLand(
+        engineStateRef.current,
+        currentPlayerId,
+        cardId,
+      );
+
+      if (result.success) {
+        setEngineState(result.state);
+        engineStateRef.current = result.state;
+      }
+
+      return result;
+    },
+    [currentPlayerId],
+  );
 
   /**
    * Cast a spell
    */
-  const castSpellAction = useCallback((
-    cardId: CardInstanceId,
-    targets?: Array<{ type: string; targetId: string }>
-  ) => {
-    if (!engineStateRef.current || !currentPlayerId) {
-      return { success: false, error: "Game not initialized or no priority" };
-    }
-    
-    const result = engineCastSpell(
-      engineStateRef.current,
-      currentPlayerId,
-      cardId,
-      targets?.map(t => ({ type: t.type as "card" | "player" | "stack" | "zone", targetId: t.targetId, isValid: true })) || []
-    );
-    
-    if (result.success) {
-      setEngineState(result.state);
-      engineStateRef.current = result.state;
-    }
-    
-    return result;
-  }, [currentPlayerId]);
+  const castSpellAction = useCallback(
+    (
+      cardId: CardInstanceId,
+      targets?: Array<{ type: string; targetId: string }>,
+    ) => {
+      if (!engineStateRef.current || !currentPlayerId) {
+        return { success: false, error: "Game not initialized or no priority" };
+      }
+
+      const result = engineCastSpell(
+        engineStateRef.current,
+        currentPlayerId,
+        cardId,
+        targets?.map((t) => ({
+          type: t.type as "card" | "player" | "stack" | "zone",
+          targetId: t.targetId,
+          isValid: true,
+        })) || [],
+      );
+
+      if (result.success) {
+        setEngineState(result.state);
+        engineStateRef.current = result.state;
+      }
+
+      return result;
+    },
+    [currentPlayerId],
+  );
 
   /**
    * Tap a card
    */
   const tapCardActionHook = useCallback((cardId: CardInstanceId) => {
     if (!engineStateRef.current) return;
-    
+
     const card = engineStateRef.current.cards.get(cardId);
     if (!card) return;
-    
+
     const result = tapCardAction(engineStateRef.current, cardId);
     if (result.success) {
       setEngineState(result.state);
@@ -432,10 +529,10 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const untapCardActionHook = useCallback((cardId: CardInstanceId) => {
     if (!engineStateRef.current) return;
-    
+
     const card = engineStateRef.current.cards.get(cardId);
     if (!card) return;
-    
+
     const result = untapCardAction(engineStateRef.current, cardId);
     if (result.success) {
       setEngineState(result.state);
@@ -446,79 +543,90 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   /**
    * Declare attackers
    */
-  const declareAttackersAction = useCallback((
-    attackers: Array<{ cardId: CardInstanceId; defenderId: string }>
-  ) => {
-    if (!engineStateRef.current) {
-      return { success: false, error: "Game not initialized" };
-    }
-    
-    const result = engineDeclareAttackers(engineStateRef.current, attackers);
-    
-    if (result.success) {
-      setEngineState(result.state);
-      engineStateRef.current = result.state;
-    }
-    
-    return result;
-  }, []);
+  const declareAttackersAction = useCallback(
+    (attackers: Array<{ cardId: CardInstanceId; defenderId: string }>) => {
+      if (!engineStateRef.current) {
+        return { success: false, error: "Game not initialized" };
+      }
+
+      const result = engineDeclareAttackers(engineStateRef.current, attackers);
+
+      if (result.success) {
+        setEngineState(result.state);
+        engineStateRef.current = result.state;
+      }
+
+      return result;
+    },
+    [],
+  );
 
   /**
    * Declare blockers
    */
-  const declareBlockersAction = useCallback((
-    blockers: Map<CardInstanceId, CardInstanceId[]>
-  ) => {
-    if (!engineStateRef.current) {
-      return { success: false, error: "Game not initialized" };
-    }
-    
-    const result = engineDeclareBlockers(engineStateRef.current, blockers);
-    
-    if (result.success) {
-      setEngineState(result.state);
-      engineStateRef.current = result.state;
-    }
-    
-    return result;
-  }, []);
+  const declareBlockersAction = useCallback(
+    (blockers: Map<CardInstanceId, CardInstanceId[]>) => {
+      if (!engineStateRef.current) {
+        return { success: false, error: "Game not initialized" };
+      }
+
+      const result = engineDeclareBlockers(engineStateRef.current, blockers);
+
+      if (result.success) {
+        setEngineState(result.state);
+        engineStateRef.current = result.state;
+      }
+
+      return result;
+    },
+    [],
+  );
 
   /**
    * Deal damage to a player
    */
-  const damagePlayerAction = useCallback((
-    playerId: PlayerId,
-    amount: number,
-    sourceId?: CardInstanceId
-  ) => {
-    if (!engineStateRef.current) return;
-    
-    const newState = dealDamageToPlayer(engineStateRef.current, playerId, amount, false, sourceId);
-    setEngineState(newState);
-    engineStateRef.current = newState;
-  }, []);
+  const damagePlayerAction = useCallback(
+    (playerId: PlayerId, amount: number, sourceId?: CardInstanceId) => {
+      if (!engineStateRef.current) return;
+
+      const newState = dealDamageToPlayer(
+        engineStateRef.current,
+        playerId,
+        amount,
+        false,
+        sourceId,
+      );
+      setEngineState(newState);
+      engineStateRef.current = newState;
+    },
+    [],
+  );
 
   /**
    * Heal a player
    */
-  const healPlayerAction = useCallback((
-    playerId: PlayerId,
-    amount: number,
-    sourceId?: CardInstanceId
-  ) => {
-    if (!engineStateRef.current) return;
-    
-    const newState = gainLife(engineStateRef.current, playerId, amount, sourceId);
-    setEngineState(newState);
-    engineStateRef.current = newState;
-  }, []);
+  const healPlayerAction = useCallback(
+    (playerId: PlayerId, amount: number, sourceId?: CardInstanceId) => {
+      if (!engineStateRef.current) return;
+
+      const newState = gainLife(
+        engineStateRef.current,
+        playerId,
+        amount,
+        sourceId,
+      );
+      setEngineState(newState);
+      engineStateRef.current = newState;
+    },
+    [],
+  );
 
   /**
    * Concede the game
    */
   const concedeAction = useCallback((playerId: PlayerId) => {
     if (!engineStateRef.current) return;
-    
+
     const newState = engineConcede(engineStateRef.current, playerId);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -529,7 +637,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const offerDrawAction = useCallback((playerId: PlayerId) => {
     if (!engineStateRef.current) return;
-    
+
     const newState = engineOfferDraw(engineStateRef.current, playerId);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -540,7 +648,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const acceptDrawAction = useCallback((playerId: PlayerId) => {
     if (!engineStateRef.current) return;
-    
+
     const newState = engineAcceptDraw(engineStateRef.current, playerId);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -551,7 +659,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const declineDrawAction = useCallback((playerId: PlayerId) => {
     if (!engineStateRef.current) return;
-    
+
     const newState = engineDeclineDraw(engineStateRef.current, playerId);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -562,7 +670,7 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
    */
   const drawCardAction = useCallback((playerId: PlayerId) => {
     if (!engineStateRef.current) return;
-    
+
     const newState = engineDrawCard(engineStateRef.current, playerId);
     setEngineState(newState);
     engineStateRef.current = newState;
@@ -579,11 +687,18 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
   /**
    * Check if a player can cast a spell
    */
-  const canCastSpellCheck = useCallback((playerId: PlayerId, cardId: CardInstanceId) => {
-    if (!engineStateRef.current) return false;
-    const result = engineCanCastSpell(engineStateRef.current, playerId, cardId);
-    return result.canCast;
-  }, []);
+  const canCastSpellCheck = useCallback(
+    (playerId: PlayerId, cardId: CardInstanceId) => {
+      if (!engineStateRef.current) return false;
+      const result = engineCanCastSpell(
+        engineStateRef.current,
+        playerId,
+        cardId,
+      );
+      return result.canCast;
+    },
+    [],
+  );
 
   // Auto-start game if requested
   useEffect(() => {
@@ -598,40 +713,54 @@ export function useGameEngine(options: UseGameEngineOptions): UseGameEngineRetur
     engineState,
     isGameStarted,
     currentPlayerId,
-    
+
     // Game lifecycle
     initializeGame,
     startGame,
     resetGame,
-    
+
     // Turn management
     advancePhase: advancePhaseAction,
     nextTurn,
     passPriority: passPriorityAction,
-    
+
     // Card actions
     playLand: playLandAction,
     castSpell: castSpellAction,
     tapCard: tapCardActionHook,
     untapCard: untapCardActionHook,
-    
+
     // Combat
     declareAttackers: declareAttackersAction,
     declareBlockers: declareBlockersAction,
-    
+
     // Life management
     damagePlayer: damagePlayerAction,
     healPlayer: healPlayerAction,
-    
+
     // Game end
     concede: concedeAction,
     offerDraw: offerDrawAction,
     acceptDraw: acceptDrawAction,
     declineDraw: declineDrawAction,
-    
+
     // Utility
     drawCard: drawCardAction,
     canPlayLand: canPlayLandCheck,
     canCastSpell: canCastSpellCheck,
+    resolveWaitingChoice: (selectedValue: string | number | boolean) => {
+      if (!engineStateRef.current)
+        return { success: false, error: "Game not initialized" };
+      const result = engineResolveWaitingChoice(
+        engineStateRef.current,
+        currentPlayerId ?? "",
+        selectedValue,
+      );
+      if (result.success) {
+        setEngineState(result.state);
+        engineStateRef.current = result.state;
+      }
+      return result;
+    },
   };
 }

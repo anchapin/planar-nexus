@@ -23,6 +23,7 @@ import { ValidationService } from "./validation-service";
 import { initializePlaneswalkerLoyalty } from "./card-instance";
 import { parseKicker } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
+import { completeHandTargeting } from "./hand-targeting";
 
 /**
  * Generate a unique stack object ID
@@ -588,6 +589,92 @@ export function validateSpellTargets(
   }
 
   return true;
+}
+
+/**
+ * Resolve a waiting choice made by the player
+ * Called when player selects cards/options in a choice dialog
+ */
+export function resolveWaitingChoice(
+  state: GameState,
+  playerId: PlayerId,
+  selectedValue: string | number | boolean,
+): { success: boolean; state: GameState; error?: string } {
+  if (!state.waitingChoice) {
+    return { success: false, state, error: "No waiting choice to resolve" };
+  }
+
+  if (state.waitingChoice.playerId !== playerId) {
+    return {
+      success: false,
+      state,
+      error: "Not this player's turn to make a choice",
+    };
+  }
+
+  const { type, stackObjectId } = state.waitingChoice;
+
+  if (type === "choose_value" && typeof selectedValue === "number") {
+    const stackObj = state.stack.find((s) => s.id === stackObjectId);
+
+    if (!stackObj) {
+      return { success: false, state, error: "Stack object not found" };
+    }
+
+    const newVariableValues = new Map(stackObj.variableValues);
+    newVariableValues.set("X", selectedValue);
+
+    const newState = {
+      ...state,
+      waitingChoice: null,
+      stack: state.stack.map((obj) =>
+        obj.id === stackObjectId
+          ? { ...obj, variableValues: newVariableValues }
+          : obj,
+      ),
+    };
+
+    return { success: true, state: newState };
+  }
+
+  if (type === "choose_cards" && typeof selectedValue === "string") {
+    const castingPlayerId = playerId;
+    const opponentId = Array.from(state.players.keys()).find(
+      (pid) => pid !== castingPlayerId && !state.players.get(pid)?.hasLost,
+    );
+
+    if (!opponentId) {
+      return { success: false, state, error: "No opponent found" };
+    }
+
+    const result = completeHandTargeting(
+      state,
+      castingPlayerId,
+      opponentId,
+      selectedValue,
+      stackObjectId || "",
+    );
+
+    if (!result.success) {
+      return { success: false, state, error: result.error };
+    }
+
+    if (!result.state) {
+      return {
+        success: false,
+        state,
+        error: "completeHandTargeting returned no state",
+      };
+    }
+
+    return { success: true, state: result.state };
+  }
+
+  return {
+    success: false,
+    state,
+    error: `Unsupported waiting choice type: ${type}`,
+  };
 }
 
 /**
