@@ -107,16 +107,58 @@ export interface Counter {
  * Note: Zone type names use MTG terminology internally for backward compatibility.
  * Use translateZone() from terminology-translation.ts for user-facing display.
  */
-export type ZoneType =
-  | "library"
-  | "hand"
-  | "battlefield"
-  | "graveyard"
-  | "exile"
-  | "stack"
-  | "command"
-  | "sideboard"
-  | "anticipate";
+export enum ZoneType {
+  LIBRARY = "library",
+  HAND = "hand",
+  BATTLEFIELD = "battlefield",
+  GRAVEYARD = "graveyard",
+  STACK = "stack",
+  EXILE = "exile",
+  COMMAND = "command",
+  SIDEBOARD = "sideboard",
+  ANTICIPATE = "anticipate",
+}
+
+/**
+ * Get the zone key for a player's zone
+ */
+export function getZoneKey(playerId: PlayerId, zone: ZoneType): string {
+  if (zone === ZoneType.STACK) {
+    return ZoneType.STACK;
+  }
+  return `${playerId}-${zone}`;
+}
+
+/**
+ * Parse a zone key and return the playerId and zone
+ */
+export function parseZoneKey(zoneKey: string): {
+  playerId: PlayerId | null;
+  zone: ZoneType;
+} {
+  if (zoneKey === ZoneType.STACK) {
+    return { playerId: null, zone: ZoneType.STACK };
+  }
+  const parts = zoneKey.split("-");
+  const zone = parts.pop() as ZoneType;
+  const playerId = parts.join("-") as PlayerId;
+  return { playerId, zone };
+}
+
+/**
+ * Check if a card is on the battlefield
+ */
+export function isOnBattlefield(
+  state: GameState,
+  cardId: CardInstanceId,
+): boolean {
+  for (const zone of state.zones.values()) {
+    if (zone.type === ZoneType.BATTLEFIELD && zone.cardIds.includes(cardId)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * A specific location containing cards

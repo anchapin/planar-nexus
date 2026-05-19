@@ -3,6 +3,7 @@ import {
   type Player,
   type CardInstance,
   Phase,
+  ZoneType,
 } from "@/lib/game-state/types";
 import { ValidationService } from "@/lib/validation-service";
 import { ScryfallCard } from "@/app/actions";
@@ -87,7 +88,7 @@ describe("ValidationService", () => {
         [
           `${playerId}-hand`,
           {
-            type: "hand",
+            type: ZoneType.HAND,
             playerId: playerId,
             cardIds: [cardId],
             isRevealed: false,
@@ -97,7 +98,7 @@ describe("ValidationService", () => {
         [
           `${playerId}-battlefield`,
           {
-            type: "battlefield",
+            type: ZoneType.BATTLEFIELD,
             playerId: playerId,
             cardIds: [],
             isRevealed: true,
