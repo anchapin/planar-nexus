@@ -824,7 +824,7 @@ function PhaseTracker({
   const currentIndex = phases.findIndex((p) => p.key === currentPhase);
 
   return (
-    <div className="flex items-center gap-1 px-4 py-1.5 bg-background/80 border-b overflow-x-auto">
+    <div className="flex items-center justify-center gap-1.5 px-4 py-1 bg-background/80 border-b overflow-x-auto no-scrollbar">
       {phases.map((phase, idx) => {
         const isCurrent = idx === currentIndex;
         const isPast = idx < currentIndex;
@@ -832,22 +832,16 @@ function PhaseTracker({
           <Fragment key={phase.key}>
             <div
               className={`
-                px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap transition-colors
-                ${isCurrent ? "bg-primary text-primary-foreground" : ""}
-                ${isPast ? "text-muted-foreground/60" : "text-muted-foreground"}
+                flex items-center justify-center transition-all duration-200
+                ${isCurrent ? "px-2 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-bold ring-1 ring-primary ring-offset-1 ring-offset-background" : "w-1.5 h-1.5 rounded-full"}
+                ${isPast ? "bg-primary/40" : "bg-muted-foreground/30"}
               `}
-              title={
-                isCurrent
-                  ? "Current phase — you can take actions here"
-                  : phase.label
-              }
+              title={phase.label}
             >
-              {phase.label}
+              {isCurrent && phase.label}
             </div>
-            {idx < phases.length - 1 && (
-              <ChevronRight
-                className={`h-3 w-3 flex-shrink-0 ${isPast ? "text-muted-foreground/30" : "text-muted-foreground/50"}`}
-              />
+            {idx < phases.length - 1 && idx !== currentIndex && idx !== currentIndex - 1 && (
+              <div className={`h-[1px] w-1 ${isPast ? "bg-primary/20" : "bg-muted/20"}`} />
             )}
           </Fragment>
         );
@@ -1625,7 +1619,21 @@ function GameBoardContent() {
 
           // Check for shockland-style ETB choice
           if (hasShocklandChoice(card)) {
-            setShocklandChoice({ cardId, cardName: card.cardData.name });
+            // Validate if land can even be played first
+            const validation = ValidationService.canPlayLand(
+              gameState,
+              player.id,
+              cardId,
+            );
+            if (validation.isValid) {
+              setShocklandChoice({ cardId, cardName: card.cardData.name });
+            } else {
+              toast({
+                title: "Cannot play land",
+                description: validation.message || "You cannot play a land right now.",
+                variant: "destructive",
+              });
+            }
             return;
           }
 
@@ -2201,7 +2209,13 @@ function GameBoardContent() {
     );
     if (!player) return;
 
-    const result = playLand(gameState, player.id, shocklandChoice.cardId);
+    const result = playLand(
+      gameState,
+      player.id,
+      shocklandChoice.cardId,
+      undefined,
+      true, // Enters tapped
+    );
     if (result.success) {
       // Update the card with the chosen basic land type if applicable
       let newState = result.state;
@@ -2216,15 +2230,18 @@ function GameBoardContent() {
           newState = { ...newState, cards: updatedCards };
         }
       }
-      // Tap the land
-      const tapResult = tapCard(newState, shocklandChoice.cardId);
-      newState = tapResult.success ? tapResult.state : newState;
       newState = checkStateBasedActions(newState).state;
       setGameState(newState);
       await saveActiveGame(newState);
       toast({
         title: "Land played",
         description: `${shocklandChoice.cardName} entered tapped.`,
+      });
+    } else {
+      toast({
+        title: "Error playing land",
+        description: result.error || "Could not play land.",
+        variant: "destructive",
       });
     }
     setShocklandChoice(null);
@@ -2239,7 +2256,13 @@ function GameBoardContent() {
     );
     if (!player) return;
 
-    const result = playLand(gameState, player.id, shocklandChoice.cardId);
+    const result = playLand(
+      gameState,
+      player.id,
+      shocklandChoice.cardId,
+      undefined,
+      false, // Enters UNtapped
+    );
     if (result.success) {
       // Update the card with the chosen basic land type if applicable
       let newState = result.state;
@@ -2267,6 +2290,12 @@ function GameBoardContent() {
       toast({
         title: "Land played",
         description: `${shocklandChoice.cardName} entered untapped. You paid 2 life.`,
+      });
+    } else {
+      toast({
+        title: "Error playing land",
+        description: result.error || "Could not play land.",
+        variant: "destructive",
       });
     }
     setShocklandChoice(null);
@@ -3025,40 +3054,39 @@ function GameBoardContent() {
         className="flex-shrink-0 bg-background/95 backdrop-blur border-b"
         data-tutorial="phase-info"
       >
-        <div className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between px-4 py-2">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
               onClick={() => router.push("/single-player")}
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div>
-              <h1 className="font-headline text-lg font-bold">
-                Single Player Game
+              <h1 className="font-headline text-sm font-bold leading-tight">
+                Single Player
               </h1>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Badge variant="outline">Game {gameId}</Badge>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground leading-none">
+                <Badge variant="outline" className="text-[9px] h-3.5 px-1 py-0 font-normal">Game {gameId?.substring(0, 8)}</Badge>
                 <span>Turn {gameState.turn.turnNumber}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <div className="text-right">
-              <div className="text-sm font-medium flex items-center gap-2">
-                {currentPlayer?.name}&apos;s Turn
+              <div className="text-xs font-medium flex items-center gap-2">
+                {currentPlayer?.name}
                 {isAIThinking && (
-                  <Badge variant="secondary" className="animate-pulse">
+                  <Badge variant="secondary" className="animate-pulse text-[9px] h-3.5 px-1 py-0">
                     AI Thinking...
                   </Badge>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground capitalize">
-                {gameState.turn.currentPhase.replace("_", " ")}
-              </div>
             </div>
-            <Badge variant={mode === "ai" ? "default" : "secondary"}>
+            <Badge variant={mode === "ai" ? "default" : "secondary"} className="text-[10px] h-4 px-1.5 py-0 font-normal">
               {mode === "ai" ? `vs AI (${difficulty})` : "Self Play"}
             </Badge>
           </div>
@@ -3078,7 +3106,7 @@ function GameBoardContent() {
         className="flex-1 min-h-0 overflow-hidden"
         data-tutorial="battlefield"
       >
-        <div className="h-full w-full p-4">
+        <div className="h-full w-full">
           <GameBoard
             players={sortedPlayers}
             playerCount={gameState.players.size as PlayerCount}

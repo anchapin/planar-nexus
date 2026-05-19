@@ -284,6 +284,7 @@ export function playLand(
   playerId: PlayerId,
   cardId: CardInstanceId,
   modeId?: string,
+  entersTappedOverride?: boolean,
 ): { success: boolean; state: GameState; error?: string } {
   // Create a game action for validation
   const action = {
@@ -328,9 +329,14 @@ export function playLand(
   // Check if land enters tapped (e.g., "enters tapped" or "tapped")
   // This is a basic check - a full implementation would use replacement effects
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  const entersTapped =
+  let entersTapped =
     oracleText.includes("enters tapped") ||
     oracleText.includes("enters the battlefield tapped");
+
+  // Apply override if provided
+  if (entersTappedOverride !== undefined) {
+    entersTapped = entersTappedOverride;
+  }
 
   // Move the land from hand to battlefield
   const moved = moveCardBetweenZones(handZone, battlefieldZone, cardId);
@@ -343,8 +349,8 @@ export function playLand(
   // Update the card instance - set isTapped if it enters tapped
   const updatedCards = new Map(state.cards);
   const movedCard = updatedCards.get(cardId);
-  if (movedCard && entersTapped) {
-    updatedCards.set(cardId, { ...movedCard, isTapped: true });
+  if (movedCard) {
+    updatedCards.set(cardId, { ...movedCard, isTapped: entersTapped });
   }
 
   // Increment lands played this turn

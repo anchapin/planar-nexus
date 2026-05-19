@@ -117,9 +117,9 @@ const ZoneDisplay = memo(function ZoneDisplay({
   playerId: string;
 }) {
   const sizeClasses = {
-    small: "h-16 min-h-16",
-    default: "h-24 min-h-24",
-    large: "h-32 min-h-32",
+    small: "h-12 min-h-[48px]",
+    default: "h-16 min-h-[64px]",
+    large: "h-24 min-h-[96px]",
   };
 
   const handleClick = useCallback(() => {
@@ -186,7 +186,7 @@ const ZoneDisplay = memo(function ZoneDisplay({
                         e.stopPropagation();
                         onCardClick?.(card.id, zone);
                       }}
-                      className="relative w-10 h-14 sm:w-12 sm:h-16 md:w-14 md:h-20 rounded overflow-hidden border border-primary/30 hover:scale-[2.5] hover:z-20 hover:shadow-2xl transition-all duration-200 cursor-pointer group"
+                      className="relative w-10 h-14 sm:w-12 sm:h-16 md:w-14 md:h-20 rounded overflow-hidden border border-primary/30 hover:scale-[3] hover:z-50 hover:shadow-2xl transition-all duration-300 cursor-pointer group"
                       title={card.card.name}
                     >
                       {card.card.image_uris?.normal ? (
@@ -275,24 +275,24 @@ const PlayerInfo = memo(function PlayerInfo({
   );
 
   return (
-    <div className={`flex items-center gap-2 ${isVertical ? "flex-col" : ""}`}>
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 text-sm">
-          <User className="h-4 w-4" />
-          <span className="font-medium">{player.name}</span>
+    <div className={`flex items-center gap-1.5 ${isVertical ? "flex-col" : ""}`}>
+      <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 text-xs">
+          <User className="h-3 w-3" />
+          <span className="font-semibold">{player.name}</span>
         </div>
       </div>
       <Separator
         orientation={isVertical ? "horizontal" : "vertical"}
-        className="h-6"
+        className="h-4"
       />
-      <div className="flex items-center gap-3 flex-wrap justify-center">
-        <TooltipProvider>
+      <div className="flex items-center gap-2 flex-wrap justify-center">
+        <TooltipProvider delayDuration={100}>
           <Tooltip>
             <TooltipTrigger>
-              <div className="flex items-center gap-1 text-sm">
+              <div className="flex items-center gap-1 text-xs">
                 <Heart
-                  className={`h-4 w-4 ${hasFatalCommanderDamage ? "text-red-600 animate-pulse" : "text-red-500"}`}
+                  className={`h-3 w-3 ${hasFatalCommanderDamage ? "text-red-600 animate-pulse" : "text-red-500"}`}
                 />
                 <span
                   className={`font-mono font-bold ${hasFatalCommanderDamage ? "text-red-600" : ""}`}
@@ -301,7 +301,7 @@ const PlayerInfo = memo(function PlayerInfo({
                 </span>
               </div>
             </TooltipTrigger>
-            <TooltipContent>Life Total</TooltipContent>
+            <TooltipContent>Life Total: {player.lifeTotal}</TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
@@ -471,12 +471,12 @@ function PlayerArea({
         </div>
       ) : (
         <div
-          className={`grid ${isBottom ? "grid-rows-[1fr_auto_auto]" : "grid-rows-[auto_auto_1fr]"} gap-2 flex-1 min-h-0`}
+          className={`grid ${isBottom ? "grid-rows-[1fr_auto_auto]" : "grid-rows-[auto_auto_1fr]"} gap-1.5 flex-1 min-h-0`}
         >
-          <div className={isBottom ? "row-start-3" : ""}>
+          <div className={`${isBottom ? "row-start-3 z-10 overflow-visible" : "z-0"}`}>
             {isBottom ? (
               <div
-                className="bg-primary/5 border border-primary/20 rounded-md p-2"
+                className="bg-primary/5 border border-primary/20 rounded-md p-1.5 overflow-visible"
                 data-tutorial="your-hand"
               >
                 <HandDisplay
@@ -485,7 +485,7 @@ function PlayerArea({
                   onCardSelect={setSelectedHandCards}
                   onCardClick={(cardId) => onCardClick?.(cardId, "hand")}
                   selectedCardIds={selectedHandCards}
-                  className="min-h-[140px]"
+                  className="min-h-[120px]"
                 />
               </div>
             ) : (
@@ -501,7 +501,7 @@ function PlayerArea({
           </div>
 
           <div
-            className={`grid grid-cols-4 gap-2 ${isBottom ? "row-start-2" : ""}`}
+            className={`grid grid-cols-4 gap-1.5 ${isBottom ? "row-start-2 z-0" : "z-0"}`}
             data-tutorial={isBottom ? "zones" : undefined}
           >
             <ZoneDisplayLocal
@@ -591,9 +591,9 @@ export function GameBoard({
       const bottomPlayer = players[1];
 
       return (
-        <div className="grid grid-rows-[1fr_auto_1fr] gap-4 h-full">
-          <Card className="border-border/50">
-            <CardContent className="p-4 h-full">
+        <div className="grid grid-rows-[1fr_auto_1fr] gap-1.5 h-full min-h-0 overflow-visible">
+          <Card className="border-border/50 flex flex-col min-h-0">
+            <CardContent className="p-2 flex-1 min-h-0">
               <PlayerArea
                 player={topPlayer}
                 isCurrentTurn={currentTurnIndex === 0}
@@ -614,8 +614,8 @@ export function GameBoard({
             </Badge>
           </div>
 
-          <Card className="border-2 border-primary/20">
-            <CardContent className="p-4 h-full">
+          <Card className="border-2 border-primary/20 flex flex-col min-h-0">
+            <CardContent className="p-2 flex-1 min-h-0">
               <PlayerArea
                 player={bottomPlayer}
                 isCurrentTurn={currentTurnIndex === 1}
@@ -639,9 +639,9 @@ export function GameBoard({
       const bottomPlayer = players[3];
 
       return (
-        <div className="grid grid-cols-[200px_1fr_200px] grid-rows-[1fr_1fr] gap-2 h-full">
-          <Card className="col-start-2 col-span-1 border-border/50">
-            <CardContent className="p-3 h-full">
+        <div className="grid grid-cols-[200px_1fr_200px] grid-rows-[1fr_1fr] gap-1.5 h-full min-h-0">
+          <Card className="col-start-2 col-span-1 border-border/50 flex flex-col min-h-0">
+            <CardContent className="p-2 flex-1 min-h-0">
               <PlayerArea
                 player={topPlayer}
                 isCurrentTurn={currentTurnIndex === 0}
@@ -655,8 +655,8 @@ export function GameBoard({
             </CardContent>
           </Card>
 
-          <Card className="row-start-2 row-span-2 col-start-1 border-border/50">
-            <CardContent className="p-3 h-full">
+          <Card className="row-start-2 row-span-2 col-start-1 border-border/50 flex flex-col min-h-0">
+            <CardContent className="p-2 flex-1 min-h-0">
               <PlayerArea
                 player={leftPlayer}
                 isCurrentTurn={currentTurnIndex === 1}
@@ -670,22 +670,22 @@ export function GameBoard({
             </CardContent>
           </Card>
 
-          <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-border/30 bg-muted/30">
-            <CardContent className="p-4 h-full flex items-center justify-center">
-              <div className="text-center space-y-2">
-                <Badge variant="outline" className="px-4 py-2 text-sm">
+          <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-border/30 bg-muted/30 flex flex-col min-h-0 overflow-hidden">
+            <CardContent className="p-2 h-full flex items-center justify-center">
+              <div className="text-center space-y-1">
+                <Badge variant="outline" className="px-3 py-1 text-xs">
                   <Swords className="h-3 w-3 mr-2" />
                   {currentPlayer?.name}'s Turn
                 </Badge>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-[10px] text-muted-foreground">
                   Spell Chain: 0 items
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="row-start-2 row-span-2 col-start-3 border-border/50">
-            <CardContent className="p-3 h-full">
+          <Card className="row-start-2 row-span-2 col-start-3 border-border/50 flex flex-col min-h-0">
+            <CardContent className="p-2 flex-1 min-h-0">
               <PlayerArea
                 player={rightPlayer}
                 isCurrentTurn={currentTurnIndex === 2}
@@ -699,8 +699,8 @@ export function GameBoard({
             </CardContent>
           </Card>
 
-          <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-2 border-primary/20">
-            <CardContent className="p-3 h-full">
+          <Card className="row-start-2 row-span-1 col-start-2 col-span-1 border-2 border-primary/20 flex flex-col min-h-0">
+            <CardContent className="p-2 flex-1 min-h-0">
               <PlayerArea
                 player={bottomPlayer}
                 isCurrentTurn={currentTurnIndex === 3}
@@ -722,7 +722,7 @@ export function GameBoard({
 
   return (
     <div
-      className="w-full h-full p-4 bg-background"
+      className="w-full h-full p-1 bg-background overflow-visible"
       role="application"
       aria-label="Game Board"
     >

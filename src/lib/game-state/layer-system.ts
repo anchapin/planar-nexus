@@ -216,9 +216,75 @@ export class LayerSystem {
   /**
    * Add dependency between effects (CR 613.7)
    * @param dependency - The dependency relationship
+   * @returns true if dependency was added, false if it would create a cycle
    */
-  addDependency(dependency: EffectDependency): void {
+  addDependency(dependency: EffectDependency): boolean {
+    // CR 613.7c: If adding this dependency would create a circular loop, no effect applies
+    if (this.wouldCreateCycle(dependency.effectId, dependency.dependsOnId)) {
+      console.warn(
+        `[LayerSystem] Rejected dependency ${dependency.effectId} -> ${dependency.dependsOnId}: would create cycle (CR 613.7c)`
+      );
+      return false;
+    }
     this.dependencies.push(dependency);
+    // Re-sort effects to account for the new dependency
+    this.sortEffects();
+    return true;
+  }
+
+  /**
+   * Check if adding a dependency would create a cycle using DFS (CR 613.7c)
+   * @param effectId - The effect that would depend on another
+   * @param dependsOnId - The effect it would depend on
+   * @returns true if adding the dependency would create a cycle
+   */
+  wouldCreateCycle(effectId: string, dependsOnId: string): boolean {
+    // Self-referential dependency is a cycle
+    if (effectId === dependsOnId) {
+      return true;
+    }
+
+    // Build adjacency list from existing dependencies
+    const adjacencyList = new Map<string, string[]>();
+    
+    for (const dep of this.dependencies) {
+      if (!adjacencyList.has(dep.effectId)) {
+        adjacencyList.set(dep.effectId, []);
+      }
+      adjacencyList.get(dep.effectId)!.push(dep.dependsOnId);
+    }
+
+    // If we're adding edge: effectId -> dependsOnId
+    // We need to check if there's already a path from dependsOnId to effectId
+    // If so, adding this edge would create a cycle
+    
+    // DFS from dependsOnId to see if we can reach effectId
+    const visited = new Set<string>();
+    const stack = [dependsOnId];
+    
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      
+      if (current === effectId) {
+        // Found a path from dependsOnId back to effectId
+        // Adding effectId -> dependsOnId would complete a cycle
+        return true;
+      }
+      
+      if (visited.has(current)) {
+        continue;
+      }
+      visited.add(current);
+      
+      const neighbors = adjacencyList.get(current) || [];
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+          stack.push(neighbor);
+        }
+      }
+    }
+    
+    return false;
   }
 
   /**

@@ -870,6 +870,173 @@ describe('Layer System', () => {
     });
   });
 
+  describe('Dependency Cycle Detection (CR 613.7c)', () => {
+    it('should detect direct cycle: A depends on B, B depends on A', () => {
+      const effectA = createPowerToughnessModifyEffect('sourceA', 'player1', 1, 1, 'Effect A');
+      const effectB = createPowerToughnessModifyEffect('sourceB', 'player1', 2, 2, 'Effect B');
+
+      layerSystem.registerEffect(effectA);
+      layerSystem.registerEffect(effectB);
+
+      // A depends on B (valid)
+      const dep1 = layerSystem.addDependency({
+        effectId: effectA.id,
+        dependsOnId: effectB.id,
+        dependencyType: 'after',
+      });
+      expect(dep1).toBe(true);
+      expect(layerSystem.getDependencies()).toHaveLength(1);
+
+      // B depends on A - this would create a cycle
+      const dep2 = layerSystem.addDependency({
+        effectId: effectB.id,
+        dependsOnId: effectA.id,
+        dependencyType: 'after',
+      });
+      expect(dep2).toBe(false); // Should be rejected
+      expect(layerSystem.getDependencies()).toHaveLength(1); // No new dependency added
+    });
+
+    it('should detect transitive cycle: A depends on B, B depends on C, C depends on A', () => {
+      const effectA = createPowerToughnessModifyEffect('sourceA', 'player1', 1, 1, 'Effect A');
+      const effectB = createPowerToughnessModifyEffect('sourceB', 'player1', 2, 2, 'Effect B');
+      const effectC = createPowerToughnessModifyEffect('sourceC', 'player1', 3, 3, 'Effect C');
+
+      layerSystem.registerEffect(effectA);
+      layerSystem.registerEffect(effectB);
+      layerSystem.registerEffect(effectC);
+
+      // A depends on B
+      layerSystem.addDependency({
+        effectId: effectA.id,
+        dependsOnId: effectB.id,
+        dependencyType: 'after',
+      });
+
+      // B depends on C
+      layerSystem.addDependency({
+        effectId: effectB.id,
+        dependsOnId: effectC.id,
+        dependencyType: 'after',
+      });
+
+      // C depends on A - would create transitive cycle A -> B -> C -> A
+      const result = layerSystem.addDependency({
+        effectId: effectC.id,
+        dependsOnId: effectA.id,
+        dependencyType: 'after',
+      });
+      expect(result).toBe(false);
+      expect(layerSystem.getDependencies()).toHaveLength(2); // Only first two deps added
+    });
+
+    it('should allow valid dependency with no cycle', () => {
+      const effectA = createPowerToughnessModifyEffect('sourceA', 'player1', 1, 1, 'Effect A');
+      const effectB = createPowerToughnessModifyEffect('sourceB', 'player1', 2, 2, 'Effect B');
+      const effectC = createPowerToughnessModifyEffect('sourceC', 'player1', 3, 3, 'Effect C');
+
+      layerSystem.registerEffect(effectA);
+      layerSystem.registerEffect(effectB);
+      layerSystem.registerEffect(effectC);
+
+      // A depends on B
+      const dep1 = layerSystem.addDependency({
+        effectId: effectA.id,
+        dependsOnId: effectB.id,
+        dependencyType: 'after',
+      });
+      expect(dep1).toBe(true);
+
+      // B depends on C (valid - no cycle)
+      const dep2 = layerSystem.addDependency({
+        effectId: effectB.id,
+        dependsOnId: effectC.id,
+        dependencyType: 'after',
+      });
+      expect(dep2).toBe(true);
+
+      // A depends on C (valid - no cycle, forms chain not loop)
+      const dep3 = layerSystem.addDependency({
+        effectId: effectA.id,
+        dependsOnId: effectC.id,
+        dependencyType: 'after',
+      });
+      expect(dep3).toBe(true);
+
+      expect(layerSystem.getDependencies()).toHaveLength(3);
+    });
+
+    it('should reject self-referential dependency (A depends on A)', () => {
+      const effectA = createPowerToughnessModifyEffect('sourceA', 'player1', 1, 1, 'Effect A');
+      layerSystem.registerEffect(effectA);
+
+      // A depends on A - self reference is a cycle
+      const result = layerSystem.addDependency({
+        effectId: effectA.id,
+        dependsOnId: effectA.id,
+        dependencyType: 'after',
+      });
+      expect(result).toBe(false);
+      expect(layerSystem.getDependencies()).toHaveLength(0);
+    });
+
+    it('should detect cycle in longer chain: A->B->C->D->A', () => {
+      const effectA = createPowerToughnessModifyEffect('sourceA', 'player1', 1, 1, 'Effect A');
+      const effectB = createPowerToughnessModifyEffect('sourceB', 'player1', 2, 2, 'Effect B');
+      const effectC = createPowerToughnessModifyEffect('sourceC', 'player1', 3, 3, 'Effect C');
+      const effectD = createPowerToughnessModifyEffect('sourceD', 'player1', 4, 4, 'Effect D');
+
+      layerSystem.registerEffect(effectA);
+      layerSystem.registerEffect(effectB);
+      layerSystem.registerEffect(effectC);
+      layerSystem.registerEffect(effectD);
+
+      // A -> B -> C -> D
+      layerSystem.addDependency({ effectId: effectA.id, dependsOnId: effectB.id, dependencyType: 'after' });
+      layerSystem.addDependency({ effectId: effectB.id, dependsOnId: effectC.id, dependencyType: 'after' });
+      layerSystem.addDependency({ effectId: effectC.id, dependsOnId: effectD.id, dependencyType: 'after' });
+
+      // D -> A would complete cycle
+      const result = layerSystem.addDependency({
+        effectId: effectD.id,
+        dependsOnId: effectA.id,
+        dependencyType: 'after',
+      });
+      expect(result).toBe(false);
+    });
+
+    it('should correctly sort effects when cycle is rejected', () => {
+      const effectA = createPowerToughnessModifyEffect('sourceA', 'player1', 1, 1, 'Effect A');
+      const effectB = createPowerToughnessModifyEffect('sourceB', 'player1', 2, 2, 'Effect B');
+
+      layerSystem.registerEffect(effectA);
+      layerSystem.registerEffect(effectB);
+
+      // Set same timestamp to test dependency ordering
+      effectA.timestamp = 1000;
+      effectB.timestamp = 1000;
+
+      // A depends on B (valid)
+      layerSystem.addDependency({
+        effectId: effectA.id,
+        dependsOnId: effectB.id,
+        dependencyType: 'after',
+      });
+
+      // Try to add cycle - should fail
+      layerSystem.addDependency({
+        effectId: effectB.id,
+        dependsOnId: effectA.id,
+        dependencyType: 'after',
+      });
+
+      const effects = layerSystem.getEffects();
+      // A should still come first because of valid dependency
+      expect(effects[0].id).toBe(effectB.id); // B comes first (no dependency)
+      expect(effects[1].id).toBe(effectA.id); // A comes second (depends on B)
+    });
+  });
+
   describe('Effect Removal', () => {
     it('should remove effects from a source', () => {
       const creatureData = createMockCreature('Test Creature', 3, 3);

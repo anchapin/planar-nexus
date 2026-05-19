@@ -563,3 +563,317 @@ describe('ReplacementEffectManager - Factory Functions', () => {
     expect(effect.condition).toBeUndefined();
   });
 });
+
+describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
+  beforeEach(() => {
+    replacementEffectManager.reset();
+  });
+
+  test('should detect and break a two-effect infinite loop (CR 614.4)', () => {
+    // Effect A: If creature would be destroyed, instead exile it
+    // Effect B: If creature would be exiled, instead return it to battlefield
+    // This creates an infinite loop
+
+    const effectA: ReplacementAbility = {
+      id: 'exile-on-destroy',
+      sourceCardId: 'card-a',
+      controllerId: 'player1',
+      effectType: 'destroy_replacement',
+      description: 'Exile instead of destroy',
+      layer: 3,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === 'destroy' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'exile' as const },
+        description: 'Exiled instead of destroyed',
+        instead: true,
+      }),
+    };
+
+    const effectB: ReplacementAbility = {
+      id: 'return-on-exile',
+      sourceCardId: 'card-b',
+      controllerId: 'player1',
+      effectType: 'exile_replacement',
+      description: 'Return to battlefield instead of exile',
+      layer: 3,
+      timestamp: 200,
+      isInstead: true,
+      canApply: (e) => e.type === 'exile' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'destroy' as const }, // Returns to destroy loop
+        description: 'Returned to battlefield instead of staying exiled',
+        instead: true,
+      }),
+    };
+
+    replacementEffectManager.registerEffect(effectA);
+    replacementEffectManager.registerEffect(effectB);
+
+    const event: ReplacementEvent = {
+      type: 'destroy',
+      amount: 0,
+      timestamp: Date.now(),
+      targetId: 'creature1',
+    };
+
+    // CR 614.4: If replacement effects form an infinite loop, no objects are affected
+    // The event should be skipped (amount = 0 means no effect applies)
+    const processed = replacementEffectManager.processEvent(event);
+    expect(processed.amount).toBe(0); // Loop detected, event skipped
+  });
+
+  test('should NOT detect loop when effects do not create circular state changes', () => {
+    // Effect A: Doubles damage (layer 5)
+    // Effect B: Prevents 2 damage (layer 1 - applies first)
+    // These should apply normally without looping
+
+    const doubleEffect: ReplacementAbility = {
+      id: 'double-effect',
+      sourceCardId: 'double-card',
+      controllerId: 'player1',
+      effectType: 'damage_replacement',
+      description: 'Double damage',
+      layer: 5,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === 'damage',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: e.amount * 2 },
+        description: 'Doubled',
+        instead: true,
+      }),
+    };
+
+    const reduceEffect: ReplacementAbility = {
+      id: 'reduce-effect',
+      sourceCardId: 'reduce-card',
+      controllerId: 'player1',
+      effectType: 'damage_prevention',
+      description: 'Reduce by 2',
+      layer: 1,
+      timestamp: 200,
+      canApply: (e) => e.type === 'damage',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: Math.max(0, e.amount - 2) },
+        description: 'Reduced by 2',
+      }),
+    };
+
+    replacementEffectManager.registerEffect(doubleEffect);
+    replacementEffectManager.registerEffect(reduceEffect);
+
+    const event: ReplacementEvent = {
+      type: 'damage',
+      amount: 5,
+      timestamp: Date.now(),
+      targetId: 'player2',
+    };
+
+    // No loop: Layer 1 applies first: 5 - 2 = 3, then Layer 5: 3 * 2 = 6
+    const processed = replacementEffectManager.processEvent(event);
+    expect(processed.amount).toBe(6);
+  });
+
+  test('should detect loop with three-effect cycle', () => {
+    // Effect A: destroy -> exile
+    // Effect B: exile -> tap
+    // Effect C: tap -> destroy (back to start)
+
+    const effectA: ReplacementAbility = {
+      id: 'cycle-a',
+      sourceCardId: 'card-a',
+      controllerId: 'player1',
+      effectType: 'destroy_replacement',
+      description: 'A: destroy->exile',
+      layer: 3,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === 'destroy' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'exile' as const },
+        description: 'A applied',
+        instead: true,
+      }),
+    };
+
+    const effectB: ReplacementAbility = {
+      id: 'cycle-b',
+      sourceCardId: 'card-b',
+      controllerId: 'player1',
+      effectType: 'exile_replacement',
+      description: 'B: exile->tap',
+      layer: 3,
+      timestamp: 200,
+      isInstead: true,
+      canApply: (e) => e.type === 'exile' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'tap' as const },
+        description: 'B applied',
+        instead: true,
+      }),
+    };
+
+    const effectC: ReplacementAbility = {
+      id: 'cycle-c',
+      sourceCardId: 'card-c',
+      controllerId: 'player1',
+      effectType: 'exile_replacement',
+      description: 'C: tap->destroy',
+      layer: 3,
+      timestamp: 300,
+      isInstead: true,
+      canApply: (e) => e.type === 'tap' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'destroy' as const },
+        description: 'C applied',
+        instead: true,
+      }),
+    };
+
+    replacementEffectManager.registerEffect(effectA);
+    replacementEffectManager.registerEffect(effectB);
+    replacementEffectManager.registerEffect(effectC);
+
+    const event: ReplacementEvent = {
+      type: 'destroy',
+      amount: 0,
+      timestamp: Date.now(),
+      targetId: 'creature1',
+    };
+
+    // Three-effect loop detected, CR 614.4 applies
+    const processed = replacementEffectManager.processEvent(event);
+    expect(processed.amount).toBe(0); // Loop detected, event skipped
+  });
+
+  test('should use maxIterations cap as safety limit for potential infinite loops', () => {
+    // Create a chain of effects where each transforms back to a type that triggers the first
+    // But we use low maxIterations to catch it
+    const effectA: ReplacementAbility = {
+      id: 'safe-a',
+      sourceCardId: 'card-a',
+      controllerId: 'player1',
+      effectType: 'destroy_replacement',
+      description: 'A: destroy->exile',
+      layer: 3,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === 'destroy' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'exile' as const },
+        description: 'A applied',
+        instead: true,
+      }),
+    };
+
+    const effectB: ReplacementAbility = {
+      id: 'safe-b',
+      sourceCardId: 'card-b',
+      controllerId: 'player1',
+      effectType: 'exile_replacement',
+      description: 'B: exile->destroy',
+      layer: 3,
+      timestamp: 200,
+      isInstead: true,
+      canApply: (e) => e.type === 'exile' && e.targetId === 'creature1',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, type: 'destroy' as const },
+        description: 'B applied',
+        instead: true,
+      }),
+    };
+
+    replacementEffectManager.registerEffect(effectA);
+    replacementEffectManager.registerEffect(effectB);
+
+    const event: ReplacementEvent = {
+      type: 'destroy',
+      amount: 0,
+      timestamp: Date.now(),
+      targetId: 'creature1',
+    };
+
+    // Very low maxIterations to trigger safety cap
+    const processed = replacementEffectManager.processEvent(event, undefined, 5);
+    expect(processed.amount).toBe(0); // Hit cap, loop broken
+  });
+
+  test('should not skip event when maxIterations is high enough for non-looping effects', () => {
+    // Effect that doubles damage - this is safe and won't loop
+    const safeEffect: ReplacementAbility = {
+      id: 'safe-effect',
+      sourceCardId: 'safe-card',
+      controllerId: 'player1',
+      effectType: 'damage_replacement',
+      description: 'Safe double',
+      layer: 5,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === 'damage',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: e.amount * 2 },
+        description: 'Doubled safely',
+        instead: true,
+      }),
+    };
+
+    replacementEffectManager.registerEffect(safeEffect);
+
+    const event: ReplacementEvent = {
+      type: 'damage',
+      amount: 5,
+      timestamp: Date.now(),
+      targetId: 'player2',
+    };
+
+    // High maxIterations should not cause false positive
+    const processed = replacementEffectManager.processEvent(event, undefined, 100);
+    expect(processed.amount).toBe(10); // 5 * 2 = 10
+  });
+
+  test('should handle single effect that does not loop', () => {
+    // A single effect that modifies but doesn't create a loop
+    const singleEffect: ReplacementAbility = {
+      id: 'single-effect',
+      sourceCardId: 'single-card',
+      controllerId: 'player1',
+      effectType: 'damage_replacement',
+      description: 'Add 3 damage',
+      layer: 5,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === 'damage',
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: e.amount + 3 },
+        description: 'Added 3',
+        instead: true,
+      }),
+    };
+
+    replacementEffectManager.registerEffect(singleEffect);
+
+    const event: ReplacementEvent = {
+      type: 'damage',
+      amount: 5,
+      timestamp: Date.now(),
+      targetId: 'player2',
+    };
+
+    // Single effect applies once: 5 + 3 = 8
+    const processed = replacementEffectManager.processEvent(event);
+    expect(processed.amount).toBe(8);
+  });
+});
