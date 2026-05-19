@@ -29,6 +29,14 @@ venv/
 *.pem
 *.json
 
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+nohup.out
+
 # debug
 npm-debug.log*
 yarn-debug.log*

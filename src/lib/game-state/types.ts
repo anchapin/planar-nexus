@@ -7,7 +7,7 @@
  * via the translation layer (see terminology-translation.ts).
  */
 
-import { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/app/actions";
 
 // Re-export ScryfallCard for use in other game-state modules
 export type { ScryfallCard } from "@/app/actions";
