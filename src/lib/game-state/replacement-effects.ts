@@ -227,18 +227,49 @@ export class ReplacementEffectManager {
   processEvent(
     event: ReplacementEvent,
     apnapOrder?: APNAPOrder,
+    maxIterations: number = 100,
   ): ReplacementEvent {
     let currentEvent = { ...event };
     const appliedEffectIds = new Set<string>();
+    const eventTypeHistory: ReplacementEventType[] = [];
+    let iterations = 0;
     let possibleEffects = this.getApplicableEffects(currentEvent);
 
-    while (possibleEffects.length > 0) {
+    // CR 614.4: If replacement effects would create an infinite loop,
+    // no effect of the replacement effect chain applies.
+    // Detect cycles by checking if applying an effect would return us to
+    // an event type we've already seen in this chain.
+    while (possibleEffects.length > 0 && iterations < maxIterations) {
+      iterations++;
+
+      // Detect loop: check if any effect would change the event type back
+      // to one we've already processed (creating a cycle)
+      const loopDetected = this.wouldCreateLoop(
+        possibleEffects,
+        currentEvent,
+        eventTypeHistory,
+      );
+
+      if (loopDetected) {
+        // CR 614.4: No effects in this chain apply
+        console.warn(
+          `[ReplacementEffectManager] CR 614.4 loop detected after ${iterations} iterations. ` +
+            `Event type history: ${eventTypeHistory.join(" -> ")}. ` +
+            `Skipping all effects.`,
+        );
+        currentEvent.amount = 0;
+        break;
+      }
+
       const effectToApply = this.chooseBestEffect(
         possibleEffects,
         currentEvent,
         apnapOrder,
       );
       if (!effectToApply) break;
+
+      // Record current event type before applying effect
+      eventTypeHistory.push(currentEvent.type);
 
       const result = effectToApply.apply(currentEvent);
       if (result.modified && result.modifiedEvent) {
@@ -254,6 +285,14 @@ export class ReplacementEffectManager {
       );
     }
 
+    if (iterations >= maxIterations) {
+      console.warn(
+        `[ReplacementEffectManager] Max iterations (${maxIterations}) reached in replacement effect processing. ` +
+          `Event type history: ${eventTypeHistory.join(" -> ")}. ` +
+          `This may indicate an undetected loop.`,
+      );
+    }
+
     if (
       currentEvent.type === "damage" &&
       currentEvent.amount > 0 &&
@@ -266,6 +305,46 @@ export class ReplacementEffectManager {
       if (prevented > 0) currentEvent.amount -= prevented;
     }
     return currentEvent;
+  }
+
+  /**
+   * CR 614.4: Detect if applying any of the possible effects would create
+   * an infinite replacement loop.
+   *
+   * A loop occurs when an effect changes the event type to one that
+   * already exists in our event type history, creating a cycle.
+   *
+   * Example: destroy -> exile -> destroy (loop back to destroy)
+   *
+   * Note: Effects that don't change the event type (e.g., damage doubling)
+   * do NOT create loops - only actual type changes cause loops.
+   */
+  private wouldCreateLoop(
+    possibleEffects: ReplacementAbility[],
+    currentEvent: ReplacementEvent,
+    eventTypeHistory: ReplacementEventType[],
+  ): boolean {
+    if (eventTypeHistory.length === 0) return false;
+
+    const currentType = currentEvent.type;
+
+    for (const effect of possibleEffects) {
+      // Simulate what this effect would do
+      const result = effect.apply(currentEvent);
+
+      if (result.modified && result.modifiedEvent) {
+        const newType = result.modifiedEvent.type;
+
+        // Only a loop if the event type actually CHANGES to something already seen.
+        // Effects that modify amount but don't change type (e.g., double damage)
+        // do NOT create loops per CR 614.4.
+        if (newType !== currentType && eventTypeHistory.includes(newType)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private getApplicableEffects(event: ReplacementEvent): ReplacementAbility[] {
