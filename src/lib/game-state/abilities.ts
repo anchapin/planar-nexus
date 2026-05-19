@@ -10,7 +10,7 @@
  */
 
 import type { GameState, PlayerId, CardInstanceId, StackObject } from "./types";
-import { Phase } from "./types";
+import { Phase, ZoneType, isOnBattlefield } from "./types";
 import {
   parseOracleText,
   ParsedActivatedAbility,
@@ -46,6 +46,11 @@ export interface TriggeredAbilityInstance {
   triggerCondition: string;
   effect: string;
   timestamp: number;
+  /**
+   * Timestamp of the source card in its zone (CR 603.3b)
+   * Used for ordering abilities with the same trigger timestamp
+   */
+  sourceCardTimestamp: number;
 }
 
 /**
@@ -577,15 +582,8 @@ export function checkTriggeredAbilities(
 
   // Check each card on the battlefield for triggered abilities
   for (const [cardId, card] of state.cards) {
-    // Skip if card is not on battlefield
-    let isOnBattlefield = false;
-    for (const [zoneKey, zone] of state.zones) {
-      if (zoneKey.includes("battlefield") && zone.cardIds.includes(cardId)) {
-        isOnBattlefield = true;
-        break;
-      }
-    }
-    if (!isOnBattlefield) continue;
+    // Skip if card is not on battlefield using helper
+    if (!isOnBattlefield(state, cardId)) continue;
 
     const abilities = getTriggeredAbilities(card.cardData);
 
@@ -634,12 +632,14 @@ export function checkTriggeredAbilities(
       }
 
       if (shouldTrigger) {
+        const sourceCardTimestamp = card.enteredBattlefieldTimestamp;
         triggeredAbilities.push({
           id: generateTriggeredAbilityId(),
           sourceCardId: cardId,
           triggerCondition: ability.trigger.event,
           effect: ability.effect,
           timestamp: Date.now(),
+          sourceCardTimestamp,
         });
       }
     }
@@ -648,6 +648,36 @@ export function checkTriggeredAbilities(
   // For now, triggered abilities go on the stack
   // In a full implementation, they would be queued and put on stack at the appropriate time
   let currentState = state;
+
+  // Sort triggered abilities according to CR 603.3:
+  // 603.3a: Abilities that trigger at the same time are put on the stack in APNAP order
+  // 603.3b: Abilities with the same timestamp are ordered by the cards timestamp in the zone
+  // 603.3c: For continuous triggers, check the game state at the moment of the trigger
+  triggeredAbilities.sort((a, b) => {
+    // First: earlier timestamp resolves first (lower timestamp = earlier)
+    if (a.timestamp !== b.timestamp) {
+      return a.timestamp - b.timestamp;
+    }
+
+    // Second: APNAP order - active player's abilities resolve first
+    const aCard = state.cards.get(a.sourceCardId);
+    const bCard = state.cards.get(b.sourceCardId);
+    if (!aCard || !bCard) return 0;
+
+    const activePlayerId = state.turn.activePlayerId;
+    const aIsActive = aCard.controllerId === activePlayerId;
+    const bIsActive = bCard.controllerId === activePlayerId;
+
+    if (aIsActive && !bIsActive) return -1; // Active player first
+    if (!aIsActive && bIsActive) return 1; // Inactive player after active
+
+    // Third: same controller, order by source card's timestamp in zone
+    if (a.sourceCardTimestamp !== b.sourceCardTimestamp) {
+      return a.sourceCardTimestamp - b.sourceCardTimestamp;
+    }
+
+    return 0;
+  });
 
   for (const trigger of triggeredAbilities) {
     const card = state.cards.get(trigger.sourceCardId);

@@ -12,6 +12,7 @@ import type {
   CardInstanceId,
   PlayerId,
 } from "./types";
+import { ZoneType, isOnBattlefield, parseZoneKey } from "./types";
 import {
   isCreature,
   isPlaneswalker,
@@ -87,7 +88,7 @@ export function checkStateBasedActions(
 
     // SBA 704.5c: A player attempting to draw from an empty library loses the game
     // This is tracked separately - for now, we check if library is empty
-    const libraryKey = `${playerId}-library`;
+    const libraryKey = `${playerId}-${ZoneType.LIBRARY}`;
     const library = updatedState.zones.get(libraryKey);
     if (library && library.cardIds.length === 0) {
       // Player will lose on their next draw attempt
@@ -125,12 +126,13 @@ export function checkStateBasedActions(
   for (const card of cardsToCheck) {
     // Find the card's current zone
     let currentZoneKey: string | null = null;
-    let isOnBattlefield = false;
+    let isOnBf = false;
     for (const [zoneKey, zone] of updatedState.zones) {
       if (zone.cardIds.includes(card.id)) {
         currentZoneKey = zoneKey;
-        if (zoneKey.includes("battlefield")) {
-          isOnBattlefield = true;
+        const parsed = parseZoneKey(zoneKey);
+        if (parsed.zone === ZoneType.BATTLEFIELD) {
+          isOnBf = true;
         }
         break;
       }
@@ -139,7 +141,7 @@ export function checkStateBasedActions(
     if (!currentZoneKey) continue;
 
     // SBAs 704.5f–704.5n only apply to permanents on the battlefield
-    if (isOnBattlefield) {
+    if (isOnBf) {
       // SBA 704.5f: A creature with lethal damage is destroyed
       // Indestructible creatures are not destroyed by lethal damage (CR 702.12)
       if (
@@ -190,19 +192,19 @@ export function checkStateBasedActions(
       if (isAura(card) && card.attachedToId) {
         const attachedTo = updatedState.cards.get(card.attachedToId);
         // Check if the target still exists and is on the battlefield
-        let attachedToOnBattlefield = false;
+        let attachedToOnBf = false;
         if (attachedTo) {
           for (const [zoneKey, zone] of updatedState.zones) {
-            if (
-              zoneKey.includes("battlefield") &&
-              zone.cardIds.includes(card.attachedToId!)
-            ) {
-              attachedToOnBattlefield = true;
+            if (zone.cardIds.includes(card.attachedToId!)) {
+              const parsed = parseZoneKey(zoneKey);
+              if (parsed.zone === ZoneType.BATTLEFIELD) {
+                attachedToOnBf = true;
+              }
               break;
             }
           }
         }
-        if (!attachedToOnBattlefield) {
+        if (!attachedToOnBf) {
           // Aura's target is gone - put aura in graveyard
           if (!cardsToDestroy.includes(card.id)) {
             cardsToDestroy.push(card.id);
@@ -219,28 +221,25 @@ export function checkStateBasedActions(
       if (isEquipment(card) && card.attachedToId) {
         const attachedTo = updatedState.cards.get(card.attachedToId);
         // Check if the attached object is on the battlefield
-        let attachedToOnBattlefield = false;
+        let attachedToOnBf = false;
         if (attachedTo) {
           for (const [zoneKey, zone] of updatedState.zones) {
-            if (
-              zoneKey.includes("battlefield") &&
-              zone.cardIds.includes(card.attachedToId!)
-            ) {
-              attachedToOnBattlefield = true;
+            if (zone.cardIds.includes(card.attachedToId!)) {
+              const parsed = parseZoneKey(zoneKey);
+              if (parsed.zone === ZoneType.BATTLEFIELD) {
+                attachedToOnBf = true;
+              }
               break;
             }
           }
         }
         // Equipment becomes unattached if the attached permanent leaves the battlefield
         // or if it's attached to a non-creature permanent
-        if (
-          !attachedToOnBattlefield ||
-          (attachedTo && !isCreature(attachedTo))
-        ) {
+        if (!attachedToOnBf || (attachedTo && !isCreature(attachedTo))) {
           if (!cardsToDestroy.includes(card.id)) {
             cardsToDestroy.push(card.id);
           }
-          const reason = !attachedToOnBattlefield
+          const reason = !attachedToOnBf
             ? "attached permanent left battlefield"
             : "attached to non-creature";
           descriptions.push(`${card.cardData.name} is destroyed (${reason})`);
@@ -251,7 +250,7 @@ export function checkStateBasedActions(
 
     // SBA 704.5q: If a permanent has both +1/+1 and -1/-1 counters, remove N of each
     // where N is the smaller of the two counts
-    if (isOnBattlefield) {
+    if (isOnBf) {
       const plusOneCounters = card.counters.find((c) => c.type === "+1/+1");
       const minusOneCounters = card.counters.find((c) => c.type === "-1/-1");
       if (
@@ -308,17 +307,11 @@ export function checkStateBasedActions(
   // Check for legendary rule (SBA 704.5j)
   // Two legendary permanents with the same name - keep one, destroy the rest
   const legendaryPermanents = cardsToCheck.filter((card) => {
-    // Check if card is on battlefield by looking in zones
-    let isOnBattlefield = false;
-    for (const [zoneKey, zone] of updatedState.zones) {
-      if (zoneKey.includes("battlefield") && zone.cardIds.includes(card.id)) {
-        isOnBattlefield = true;
-        break;
-      }
-    }
+    // Check if card is on battlefield using the helper
+    const isOnBf = isOnBattlefield(updatedState, card.id);
     const isLegendary =
       card.cardData.type_line?.toLowerCase().includes("legendary") ?? false;
-    return isOnBattlefield && isLegendary;
+    return isOnBf && isLegendary;
   });
 
   const nameGroups = new Map<string, CardInstanceId[]>();
@@ -349,15 +342,9 @@ export function checkStateBasedActions(
   // Check for world rule (SBA 704.5k)
   // Two world permanents exist - destroy the older one
   const worldPermanents = cardsToCheck.filter((card) => {
-    let isOnBattlefield = false;
-    for (const [zoneKey, zone] of updatedState.zones) {
-      if (zoneKey.includes("battlefield") && zone.cardIds.includes(card.id)) {
-        isOnBattlefield = true;
-        break;
-      }
-    }
+    const isOnBf = isOnBattlefield(updatedState, card.id);
     return (
-      isOnBattlefield &&
+      isOnBf &&
       (card.cardData.type_line?.toLowerCase().includes("world") ?? false)
     );
   });
@@ -394,15 +381,9 @@ export function checkStateBasedActions(
   // A player can only control one planeswalker of each type
   // Only check planeswalkers on the battlefield
   const planeswalkers = cardsToCheck.filter((card) => {
-    // Check if card is on battlefield by looking in zones
-    let isOnBattlefield = false;
-    for (const [zoneKey, zone] of updatedState.zones) {
-      if (zoneKey.includes("battlefield") && zone.cardIds.includes(card.id)) {
-        isOnBattlefield = true;
-        break;
-      }
-    }
-    return isOnBattlefield && isPlaneswalker(card);
+    // Check if card is on battlefield using the helper
+    const isOnBf = isOnBattlefield(updatedState, card.id);
+    return isOnBf && isPlaneswalker(card);
   });
   const pwTypeGroups = new Map<string, CardInstanceId[]>();
 

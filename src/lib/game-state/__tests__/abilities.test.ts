@@ -670,4 +670,77 @@ describe("Abilities System - checkTriggeredAbilities", () => {
     const result = checkTriggeredAbilities(state, "entersBattlefield");
     expect(result.abilities.length).toBe(0);
   });
+
+  it("should order triggers by APNAP order - active player first (CR 603.3a)", () => {
+    const playerIds = Array.from(state.players.keys());
+    const bobId = playerIds[1];
+
+    // Alice is active player (from startGame)
+    state.turn.activePlayerId = aliceId;
+
+    // Place card for Bob (inactive player) - will be after active
+    const bobCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "bob-trigger",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      bobId,
+    );
+
+    // Place card for Alice (active player) - will be first
+    const aliceCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "alice-trigger",
+        oracle_text: "When this creature enters the battlefield, gain 1 life.",
+      }),
+      aliceId,
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(2);
+    // Active player (Alice) should be first
+    expect(result.abilities[0].sourceCardId).toBe(aliceCardId);
+    expect(result.abilities[1].sourceCardId).toBe(bobCardId);
+  });
+
+  it("should order same-controller triggers by sourceCardTimestamp (CR 603.3b)", () => {
+    // Place first card (earlier timestamp)
+    const card1 = placeCardOnBattlefield(
+      createMockCard({
+        id: "first-trigger",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      aliceId,
+    );
+
+    // Place second card (later timestamp)
+    const card2 = placeCardOnBattlefield(
+      createMockCard({
+        id: "second-trigger",
+        oracle_text: "When this creature enters the battlefield, gain 1 life.",
+      }),
+      aliceId,
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(2);
+    // Earlier timestamp (first card) should resolve first
+    expect(result.abilities[0].sourceCardId).toBe(card1);
+    expect(result.abilities[1].sourceCardId).toBe(card2);
+  });
+
+  it("should include sourceCardTimestamp in TriggeredAbilityInstance", () => {
+    const cardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "timestamp-test",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      aliceId,
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(1);
+    expect(result.abilities[0].sourceCardTimestamp).toBeDefined();
+    expect(typeof result.abilities[0].sourceCardTimestamp).toBe("number");
+  });
 });

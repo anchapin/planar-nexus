@@ -15,54 +15,54 @@ import {
   createDrawReplacementEffect,
   createDestroyReplacementEffect,
   createAsThoughEffect,
-} from '../replacement-effects';
-import type { GameState } from '../types';
+} from "../replacement-effects";
+import type { GameState } from "../types";
 
-describe('ReplacementEffectManager - APNAP Ordering', () => {
+describe("ReplacementEffectManager - APNAP Ordering", () => {
   beforeEach(() => {
     replacementEffectManager.reset();
   });
 
-  test('should apply effects in APNAP order', () => {
+  test("should apply effects in APNAP order", () => {
     // Player1 is active player, Player2 is non-active
     const apnapOrder: APNAPOrder = {
-      activePlayerId: 'player1',
-      playerOrder: ['player1', 'player2'],
+      activePlayerId: "player1",
+      playerOrder: ["player1", "player2"],
     };
 
     // Both players have effects that double damage
     const p1Effect: ReplacementAbility = {
-      id: 'p1-double',
-      sourceCardId: 'p1-card',
-      controllerId: 'player1',
-      effectType: 'damage_replacement',
-      description: 'P1 doubles damage',
+      id: "p1-double",
+      sourceCardId: "p1-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "P1 doubles damage",
       layer: 5,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount * 2 },
-        description: 'P1 doubled',
+        description: "P1 doubled",
         instead: true,
       }),
     };
 
     const p2Effect: ReplacementAbility = {
-      id: 'p2-double',
-      sourceCardId: 'p2-card',
-      controllerId: 'player2',
-      effectType: 'damage_replacement',
-      description: 'P2 doubles damage',
+      id: "p2-double",
+      sourceCardId: "p2-card",
+      controllerId: "player2",
+      effectType: "damage_replacement",
+      description: "P2 doubles damage",
       layer: 5,
       timestamp: 200,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount * 2 },
-        description: 'P2 doubled',
+        description: "P2 doubled",
         instead: true,
       }),
     };
@@ -71,10 +71,10 @@ describe('ReplacementEffectManager - APNAP Ordering', () => {
     replacementEffectManager.registerEffect(p2Effect);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 3,
       timestamp: Date.now(),
-      targetId: 'player2', // Affected player is P2
+      targetId: "player2", // Affected player is P2
     };
 
     // P2's effect should apply first (affected player chooses)
@@ -84,47 +84,47 @@ describe('ReplacementEffectManager - APNAP Ordering', () => {
     expect(processed.amount).toBe(12);
   });
 
-  test('should prioritize self-replacement effects', () => {
+  test("should prioritize self-replacement effects", () => {
     const apnapOrder: APNAPOrder = {
-      activePlayerId: 'player1',
-      playerOrder: ['player1', 'player2'],
+      activePlayerId: "player1",
+      playerOrder: ["player1", "player2"],
     };
 
     // Self-replacement effect (e.g., "If this creature would deal damage...")
     const selfEffect: ReplacementAbility = {
-      id: 'self-replace',
-      sourceCardId: 'self-card',
-      controllerId: 'player1',
-      effectType: 'damage_replacement',
-      description: 'Self replacement',
+      id: "self-replace",
+      sourceCardId: "self-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "Self replacement",
       layer: 5,
       timestamp: 300,
       isSelfReplacement: true,
       isInstead: true,
-      canApply: (e) => e.type === 'damage' && e.sourceId === 'self-card',
+      canApply: (e) => e.type === "damage" && e.sourceId === "self-card",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount + 5 },
-        description: 'Self added 5',
+        description: "Self added 5",
         instead: true,
       }),
     };
 
     // Regular effect
     const regularEffect: ReplacementAbility = {
-      id: 'regular',
-      sourceCardId: 'regular-card',
-      controllerId: 'player2',
-      effectType: 'damage_replacement',
-      description: 'Regular replacement',
+      id: "regular",
+      sourceCardId: "regular-card",
+      controllerId: "player2",
+      effectType: "damage_replacement",
+      description: "Regular replacement",
       layer: 5,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount * 2 },
-        description: 'Regular doubled',
+        description: "Regular doubled",
         instead: true,
       }),
     };
@@ -133,11 +133,11 @@ describe('ReplacementEffectManager - APNAP Ordering', () => {
     replacementEffectManager.registerEffect(regularEffect);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 3,
       timestamp: Date.now(),
-      sourceId: 'self-card',
-      targetId: 'player2',
+      sourceId: "self-card",
+      targetId: "player2",
     };
 
     // Self-replacement applies first: 3 + 5 = 8
@@ -146,38 +146,38 @@ describe('ReplacementEffectManager - APNAP Ordering', () => {
     expect(processed.amount).toBe(16);
   });
 
-  test('should handle layer ordering within same controller', () => {
+  test("should handle layer ordering within same controller", () => {
     // Lower layer applies first
     const layer1Effect: ReplacementAbility = {
-      id: 'layer1',
-      sourceCardId: 'card1',
-      controllerId: 'player1',
-      effectType: 'damage_prevention',
-      description: 'Layer 1',
+      id: "layer1",
+      sourceCardId: "card1",
+      controllerId: "player1",
+      effectType: "damage_prevention",
+      description: "Layer 1",
       layer: 1,
       timestamp: 100,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: Math.max(0, e.amount - 2) },
-        description: 'Prevented 2',
+        description: "Prevented 2",
       }),
     };
 
     const layer5Effect: ReplacementAbility = {
-      id: 'layer5',
-      sourceCardId: 'card2',
-      controllerId: 'player1',
-      effectType: 'damage_replacement',
-      description: 'Layer 5',
+      id: "layer5",
+      sourceCardId: "card2",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "Layer 5",
       layer: 5,
       timestamp: 200,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount * 2 },
-        description: 'Doubled',
+        description: "Doubled",
         instead: true,
       }),
     };
@@ -186,10 +186,10 @@ describe('ReplacementEffectManager - APNAP Ordering', () => {
     replacementEffectManager.registerEffect(layer5Effect);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 5,
       timestamp: Date.now(),
-      targetId: 'player2',
+      targetId: "player2",
     };
 
     // Layer 1 applies first: 5 - 2 = 3
@@ -199,115 +199,172 @@ describe('ReplacementEffectManager - APNAP Ordering', () => {
   });
 });
 
-describe('ReplacementEffectManager - As Though Effects', () => {
+describe("ReplacementEffectManager - As Though Effects", () => {
   beforeEach(() => {
     replacementEffectManager.reset();
   });
 
-  test('should register and check as though effects', () => {
+  test("should register and check as though effects", () => {
     const mockGameState = { players: new Map() } as GameState;
-    
+
     const flashEffect = createAsThoughEffect(
-      'veiled-source',
-      'player1',
-      'cast_flash',
-      'You may cast spells as though they had flash'
+      "veiled-source",
+      "player1",
+      "cast_flash",
+      "You may cast spells as though they had flash",
     );
 
     replacementEffectManager.registerAsThoughEffect(flashEffect);
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState)).toBe(true);
-    expect(replacementEffectManager.checkAsThoughEffect('player2', 'cast_flash', mockGameState)).toBe(false);
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'attack_haste', mockGameState)).toBe(false);
+    expect(
+      replacementEffectManager.checkAsThoughEffect(
+        "player1",
+        "cast_flash",
+        mockGameState,
+      ),
+    ).toBe(true);
+    expect(
+      replacementEffectManager.checkAsThoughEffect(
+        "player2",
+        "cast_flash",
+        mockGameState,
+      ),
+    ).toBe(false);
+    expect(
+      replacementEffectManager.checkAsThoughEffect(
+        "player1",
+        "attack_haste",
+        mockGameState,
+      ),
+    ).toBe(false);
   });
 
-  test('should handle conditional as though effects', () => {
+  test("should handle conditional as though effects", () => {
     const mockGameState = { players: new Map() } as GameState;
-    
+
     // Effect that only applies when player has 10+ life
     const conditionalEffect = createAsThoughEffect(
-      'conditional-source',
-      'player1',
-      'attack_haste',
-      'Creatures can attack as though they had haste if you have 10+ life',
+      "conditional-source",
+      "player1",
+      "attack_haste",
+      "Creatures can attack as though they had haste if you have 10+ life",
       (_state, _playerId) => {
         // Simplified condition check
         return true;
-      }
+      },
     );
 
     replacementEffectManager.registerAsThoughEffect(conditionalEffect);
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'attack_haste', mockGameState)).toBe(true);
+    expect(
+      replacementEffectManager.checkAsThoughEffect(
+        "player1",
+        "attack_haste",
+        mockGameState,
+      ),
+    ).toBe(true);
   });
 
-  test('should get all as though effects for a player', () => {
+  test("should get all as though effects for a player", () => {
     const mockGameState = { players: new Map() } as GameState;
-    
+
     replacementEffectManager.registerAsThoughEffect(
-      createAsThoughEffect('source1', 'player1', 'cast_flash', 'Flash effect')
+      createAsThoughEffect("source1", "player1", "cast_flash", "Flash effect"),
     );
     replacementEffectManager.registerAsThoughEffect(
-      createAsThoughEffect('source2', 'player1', 'attack_haste', 'Haste effect')
+      createAsThoughEffect(
+        "source2",
+        "player1",
+        "attack_haste",
+        "Haste effect",
+      ),
     );
     replacementEffectManager.registerAsThoughEffect(
-      createAsThoughEffect('source3', 'player2', 'block_flying', 'Flying block effect')
+      createAsThoughEffect(
+        "source3",
+        "player2",
+        "block_flying",
+        "Flying block effect",
+      ),
     );
 
-    const p1Effects = replacementEffectManager.getAsThoughEffects('player1', mockGameState);
+    const p1Effects = replacementEffectManager.getAsThoughEffects(
+      "player1",
+      mockGameState,
+    );
     expect(p1Effects).toHaveLength(2);
-    expect(p1Effects.map(e => e.asThoughType)).toContain('cast_flash');
-    expect(p1Effects.map(e => e.asThoughType)).toContain('attack_haste');
+    expect(p1Effects.map((e) => e.asThoughType)).toContain("cast_flash");
+    expect(p1Effects.map((e) => e.asThoughType)).toContain("attack_haste");
 
-    const p2Effects = replacementEffectManager.getAsThoughEffects('player2', mockGameState);
+    const p2Effects = replacementEffectManager.getAsThoughEffects(
+      "player2",
+      mockGameState,
+    );
     expect(p2Effects).toHaveLength(1);
-    expect(p2Effects[0].asThoughType).toBe('block_flying');
+    expect(p2Effects[0].asThoughType).toBe("block_flying");
   });
 
-  test('should remove as though effects when source leaves battlefield', () => {
+  test("should remove as though effects when source leaves battlefield", () => {
     const mockGameState = { players: new Map() } as GameState;
-    
+
     replacementEffectManager.registerAsThoughEffect(
-      createAsThoughEffect('temporary-source', 'player1', 'cast_flash', 'Temporary flash')
+      createAsThoughEffect(
+        "temporary-source",
+        "player1",
+        "cast_flash",
+        "Temporary flash",
+      ),
     );
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState)).toBe(true);
+    expect(
+      replacementEffectManager.checkAsThoughEffect(
+        "player1",
+        "cast_flash",
+        mockGameState,
+      ),
+    ).toBe(true);
 
-    replacementEffectManager.removeEffectsFromSource('temporary-source');
+    replacementEffectManager.removeEffectsFromSource("temporary-source");
 
-    expect(replacementEffectManager.checkAsThoughEffect('player1', 'cast_flash', mockGameState)).toBe(false);
+    expect(
+      replacementEffectManager.checkAsThoughEffect(
+        "player1",
+        "cast_flash",
+        mockGameState,
+      ),
+    ).toBe(false);
   });
 });
 
-describe('ReplacementEffectManager - Complex Scenarios', () => {
+describe("ReplacementEffectManager - Complex Scenarios", () => {
   beforeEach(() => {
     replacementEffectManager.reset();
   });
 
-  test('should handle Furnace of Rath + prevention shield interaction', () => {
+  test("should handle Furnace of Rath + prevention shield interaction", () => {
     // Furnace of Rath: If damage would be dealt, deal twice that much instead
     const furnaceEffect = createDamageReplacementEffect(
-      'furnace',
-      'player1',
-      'Furnace of Rath doubles damage',
+      "furnace",
+      "player1",
+      "Furnace of Rath doubles damage",
       (amount) => amount * 2,
-      5
+      5,
     );
 
     replacementEffectManager.registerEffect(furnaceEffect);
 
     // Target has prevention shield
-    replacementEffectManager.addPreventionShield('player2', {
-      sourceId: 'fog',
+    replacementEffectManager.addPreventionShield("player2", {
+      sourceId: "fog",
       amount: 3,
-      controllerId: 'player2',
+      controllerId: "player2",
     });
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 2,
       timestamp: Date.now(),
-      targetId: 'player2',
+      targetId: "player2",
     };
 
     // Furnace doubles: 2 * 2 = 4
@@ -316,26 +373,26 @@ describe('ReplacementEffectManager - Complex Scenarios', () => {
     expect(processed.amount).toBe(1);
 
     // Shield should be depleted
-    const shields = replacementEffectManager.getPreventionShields('player2');
+    const shields = replacementEffectManager.getPreventionShields("player2");
     expect(shields).toHaveLength(0);
   });
 
-  test('should handle Alhammarret\'s Archive life gain doubling', () => {
+  test("should handle Alhammarret's Archive life gain doubling", () => {
     const archiveEffect = createLifeGainReplacementEffect(
-      'archive',
-      'player1',
-      'Alhammarret\'s Archive doubles life gain',
+      "archive",
+      "player1",
+      "Alhammarret's Archive doubles life gain",
       (amount) => amount * 2,
-      (targetId) => targetId === 'player1'
+      (targetId) => targetId === "player1",
     );
 
     replacementEffectManager.registerEffect(archiveEffect);
 
     const event: ReplacementEvent = {
-      type: 'life_gain',
+      type: "life_gain",
       amount: 5,
       timestamp: Date.now(),
-      targetId: 'player1',
+      targetId: "player1",
     };
 
     const processed = replacementEffectManager.processEvent(event);
@@ -343,123 +400,125 @@ describe('ReplacementEffectManager - Complex Scenarios', () => {
 
     // Should not apply to other players
     const otherEvent: ReplacementEvent = {
-      type: 'life_gain',
+      type: "life_gain",
       amount: 5,
       timestamp: Date.now(),
-      targetId: 'player2',
+      targetId: "player2",
     };
 
     const otherProcessed = replacementEffectManager.processEvent(otherEvent);
     expect(otherProcessed.amount).toBe(5);
   });
 
-  test('should handle multiple prevention shields depleting correctly', () => {
-    replacementEffectManager.addPreventionShield('player1', {
-      sourceId: 'shield1',
+  test("should handle multiple prevention shields depleting correctly", () => {
+    replacementEffectManager.addPreventionShield("player1", {
+      sourceId: "shield1",
       amount: 2,
-      controllerId: 'player1',
+      controllerId: "player1",
     });
-    replacementEffectManager.addPreventionShield('player1', {
-      sourceId: 'shield2',
+    replacementEffectManager.addPreventionShield("player1", {
+      sourceId: "shield2",
       amount: 3,
-      controllerId: 'player1',
+      controllerId: "player1",
     });
 
     // First damage: 4 damage, should use both shields (2 + 2 from second)
     const event1: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 4,
       timestamp: Date.now(),
-      targetId: 'player1',
+      targetId: "player1",
     };
 
     const processed1 = replacementEffectManager.processEvent(event1);
     expect(processed1.amount).toBe(0);
 
     // Second shield should have 1 remaining
-    const shields = replacementEffectManager.getPreventionShields('player1');
+    const shields = replacementEffectManager.getPreventionShields("player1");
     expect(shields).toHaveLength(1);
     expect(shields[0].amount).toBe(1);
 
     // Second damage: 2 damage, should use remaining 1 from shield2
     const event2: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 2,
       timestamp: Date.now() + 1000,
-      targetId: 'player1',
+      targetId: "player1",
     };
 
     const processed2 = replacementEffectManager.processEvent(event2);
     expect(processed2.amount).toBe(1);
 
     // All shields should be depleted
-    expect(replacementEffectManager.getPreventionShields('player1')).toHaveLength(0);
+    expect(
+      replacementEffectManager.getPreventionShields("player1"),
+    ).toHaveLength(0);
   });
 
-  test('should handle draw replacement effects', () => {
+  test("should handle draw replacement effects", () => {
     const drawEffect = createDrawReplacementEffect(
-      'nefarox',
-      'player1',
-      'Nefarox draw replacement',
-      (amount) => amount + 1 // Draw one additional card
+      "nefarox",
+      "player1",
+      "Nefarox draw replacement",
+      (amount) => amount + 1, // Draw one additional card
     );
 
     replacementEffectManager.registerEffect(drawEffect);
 
     const event: ReplacementEvent = {
-      type: 'draw_card',
+      type: "draw_card",
       amount: 1,
       timestamp: Date.now(),
-      targetId: 'player1',
+      targetId: "player1",
     };
 
     const processed = replacementEffectManager.processEvent(event);
     expect(processed.amount).toBe(2);
   });
 
-  test('should handle destroy replacement (regeneration)', () => {
+  test("should handle destroy replacement (regeneration)", () => {
     const regenEffect = createDestroyReplacementEffect(
-      'regeneration-shield',
-      'player1',
-      'Regeneration shield',
+      "regeneration-shield",
+      "player1",
+      "Regeneration shield",
       (event) => ({
         ...event,
-        type: 'tap', // Instead of dying, creature taps
+        type: "tap", // Instead of dying, creature taps
         amount: 0,
       }),
-      (targetId) => targetId === 'creature1'
+      (targetId) => targetId === "creature1",
     );
 
     replacementEffectManager.registerEffect(regenEffect);
 
     const event: ReplacementEvent = {
-      type: 'destroy',
+      type: "destroy",
       amount: 0,
       timestamp: Date.now(),
-      targetId: 'creature1',
+      targetId: "creature1",
     };
 
     const processed = replacementEffectManager.processEvent(event);
-    expect(processed.type).toBe('tap');
+    expect(processed.type).toBe("tap");
     expect(processed.amount).toBe(0);
   });
 
-  test('should handle life loss replacement', () => {
+  test("should handle life loss replacement", () => {
     const lossEffect = createLifeLossReplacementEffect(
-      'loss-reducer',
-      'player1',
-      'Half life loss',
+      "loss-reducer",
+      "player1",
+      "Half life loss",
       (amount) => Math.ceil(amount / 2),
-      (targetId) => targetId === 'player1'
+      (targetId) => targetId === "player1",
     );
 
     replacementEffectManager.registerEffect(lossEffect);
 
     const event: ReplacementEvent = {
-      type: 'life_loss',
+      type: "life_loss",
       amount: 7,
       timestamp: Date.now(),
-      targetId: 'player1',
+      targetId: "player1",
     };
 
     const processed = replacementEffectManager.processEvent(event);
@@ -467,69 +526,82 @@ describe('ReplacementEffectManager - Complex Scenarios', () => {
   });
 });
 
-describe('ReplacementEffectManager - APNAP Order Creation', () => {
+describe("ReplacementEffectManager - APNAP Order Creation", () => {
   beforeEach(() => {
     replacementEffectManager.reset();
   });
 
-  test('should create correct APNAP order', () => {
-    const allPlayers = ['player1', 'player2', 'player3', 'player4'];
-    
+  test("should create correct APNAP order", () => {
+    const allPlayers = ["player1", "player2", "player3", "player4"];
+
     // Player2 is active
-    const order = replacementEffectManager.createAPNAPOrder('player2', allPlayers);
-    
-    expect(order.activePlayerId).toBe('player2');
-    expect(order.playerOrder).toEqual(['player2', 'player3', 'player4', 'player1']);
+    const order = replacementEffectManager.createAPNAPOrder(
+      "player2",
+      allPlayers,
+    );
+
+    expect(order.activePlayerId).toBe("player2");
+    expect(order.playerOrder).toEqual([
+      "player2",
+      "player3",
+      "player4",
+      "player1",
+    ]);
   });
 
-  test('should handle single player', () => {
-    const order = replacementEffectManager.createAPNAPOrder('player1', ['player1']);
-    expect(order.playerOrder).toEqual(['player1']);
+  test("should handle single player", () => {
+    const order = replacementEffectManager.createAPNAPOrder("player1", [
+      "player1",
+    ]);
+    expect(order.playerOrder).toEqual(["player1"]);
   });
 
-  test('should handle unknown active player', () => {
-    const allPlayers = ['player1', 'player2'];
-    const order = replacementEffectManager.createAPNAPOrder('unknown', allPlayers);
+  test("should handle unknown active player", () => {
+    const allPlayers = ["player1", "player2"];
+    const order = replacementEffectManager.createAPNAPOrder(
+      "unknown",
+      allPlayers,
+    );
     expect(order.playerOrder).toEqual(allPlayers);
   });
 });
 
-describe('ReplacementEffectManager - Factory Functions', () => {
+describe("ReplacementEffectManager - Factory Functions", () => {
   beforeEach(() => {
     replacementEffectManager.reset();
   });
 
-  test('createPreventionShield should create both ability and shield', () => {
+  test("createPreventionShield should create both ability and shield", () => {
     const { ability, shield } = createPreventionShield(
-      'source',
-      'player1',
-      'player2',
+      "source",
+      "player1",
+      "player2",
       5,
-      'Prevent 5 damage',
-      'until_end_of_turn',
-      ['combat']
+      "Prevent 5 damage",
+      "until_end_of_turn",
+      ["combat"],
     );
 
     expect(ability.id).toMatch(/prevent-source-\d+/);
-    expect(ability.effectType).toBe('damage_prevention');
+    expect(ability.effectType).toBe("damage_prevention");
     expect(ability.layer).toBe(1);
     expect(ability.preventionAmount).toBe(5);
 
-    expect(shield.sourceId).toBe('source');
+    expect(shield.sourceId).toBe("source");
     expect(shield.amount).toBe(5);
-    expect(shield.damageTypes).toEqual(['combat']);
-    expect(shield.controllerId).toBe('player1');
+    expect(shield.damageTypes).toEqual(["combat"]);
+    expect(shield.controllerId).toBe("player1");
     expect(shield.expiresAt).toBeDefined();
   });
 
-  test('createDamageReplacementEffect should create correct effect', () => {
+  test("createDamageReplacementEffect should create correct effect", () => {
     const effect = createDamageReplacementEffect(
-      'furnace',
-      'player1',
-      'Double damage',
+      "furnace",
+      "player1",
+      "Double damage",
       (amount) => amount * 2,
       5,
-      true
+      true,
     );
 
     expect(effect.isSelfReplacement).toBe(true);
@@ -537,7 +609,7 @@ describe('ReplacementEffectManager - Factory Functions', () => {
     expect(effect.layer).toBe(5);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 3,
       timestamp: Date.now(),
     };
@@ -548,64 +620,64 @@ describe('ReplacementEffectManager - Factory Functions', () => {
     expect(result.instead).toBe(true);
   });
 
-  test('createAsThoughEffect should create correct effect', () => {
+  test("createAsThoughEffect should create correct effect", () => {
     const effect = createAsThoughEffect(
-      'source',
-      'player1',
-      'cast_flash',
-      'Flash effect',
+      "source",
+      "player1",
+      "cast_flash",
+      "Flash effect",
       undefined,
-      'permanent'
+      "permanent",
     );
 
-    expect(effect.asThoughType).toBe('cast_flash');
-    expect(effect.duration).toBe('permanent');
+    expect(effect.asThoughType).toBe("cast_flash");
+    expect(effect.duration).toBe("permanent");
     expect(effect.condition).toBeUndefined();
   });
 });
 
-describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
+describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
   beforeEach(() => {
     replacementEffectManager.reset();
   });
 
-  test('should detect and break a two-effect infinite loop (CR 614.4)', () => {
+  test("should detect and break a two-effect infinite loop (CR 614.4)", () => {
     // Effect A: If creature would be destroyed, instead exile it
     // Effect B: If creature would be exiled, instead return it to battlefield
     // This creates an infinite loop
 
     const effectA: ReplacementAbility = {
-      id: 'exile-on-destroy',
-      sourceCardId: 'card-a',
-      controllerId: 'player1',
-      effectType: 'destroy_replacement',
-      description: 'Exile instead of destroy',
+      id: "exile-on-destroy",
+      sourceCardId: "card-a",
+      controllerId: "player1",
+      effectType: "destroy_replacement",
+      description: "Exile instead of destroy",
       layer: 3,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'destroy' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "destroy" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'exile' as const },
-        description: 'Exiled instead of destroyed',
+        modifiedEvent: { ...e, type: "exile" as const },
+        description: "Exiled instead of destroyed",
         instead: true,
       }),
     };
 
     const effectB: ReplacementAbility = {
-      id: 'return-on-exile',
-      sourceCardId: 'card-b',
-      controllerId: 'player1',
-      effectType: 'exile_replacement',
-      description: 'Return to battlefield instead of exile',
+      id: "return-on-exile",
+      sourceCardId: "card-b",
+      controllerId: "player1",
+      effectType: "exile_replacement",
+      description: "Return to battlefield instead of exile",
       layer: 3,
       timestamp: 200,
       isInstead: true,
-      canApply: (e) => e.type === 'exile' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "exile" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'destroy' as const }, // Returns to destroy loop
-        description: 'Returned to battlefield instead of staying exiled',
+        modifiedEvent: { ...e, type: "destroy" as const }, // Returns to destroy loop
+        description: "Returned to battlefield instead of staying exiled",
         instead: true,
       }),
     };
@@ -614,10 +686,10 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     replacementEffectManager.registerEffect(effectB);
 
     const event: ReplacementEvent = {
-      type: 'destroy',
+      type: "destroy",
       amount: 0,
       timestamp: Date.now(),
-      targetId: 'creature1',
+      targetId: "creature1",
     };
 
     // CR 614.4: If replacement effects form an infinite loop, no objects are affected
@@ -626,42 +698,42 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     expect(processed.amount).toBe(0); // Loop detected, event skipped
   });
 
-  test('should NOT detect loop when effects do not create circular state changes', () => {
+  test("should NOT detect loop when effects do not create circular state changes", () => {
     // Effect A: Doubles damage (layer 5)
     // Effect B: Prevents 2 damage (layer 1 - applies first)
     // These should apply normally without looping
 
     const doubleEffect: ReplacementAbility = {
-      id: 'double-effect',
-      sourceCardId: 'double-card',
-      controllerId: 'player1',
-      effectType: 'damage_replacement',
-      description: 'Double damage',
+      id: "double-effect",
+      sourceCardId: "double-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "Double damage",
       layer: 5,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount * 2 },
-        description: 'Doubled',
+        description: "Doubled",
         instead: true,
       }),
     };
 
     const reduceEffect: ReplacementAbility = {
-      id: 'reduce-effect',
-      sourceCardId: 'reduce-card',
-      controllerId: 'player1',
-      effectType: 'damage_prevention',
-      description: 'Reduce by 2',
+      id: "reduce-effect",
+      sourceCardId: "reduce-card",
+      controllerId: "player1",
+      effectType: "damage_prevention",
+      description: "Reduce by 2",
       layer: 1,
       timestamp: 200,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: Math.max(0, e.amount - 2) },
-        description: 'Reduced by 2',
+        description: "Reduced by 2",
       }),
     };
 
@@ -669,10 +741,10 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     replacementEffectManager.registerEffect(reduceEffect);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 5,
       timestamp: Date.now(),
-      targetId: 'player2',
+      targetId: "player2",
     };
 
     // No loop: Layer 1 applies first: 5 - 2 = 3, then Layer 5: 3 * 2 = 6
@@ -680,61 +752,61 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     expect(processed.amount).toBe(6);
   });
 
-  test('should detect loop with three-effect cycle', () => {
+  test("should detect loop with three-effect cycle", () => {
     // Effect A: destroy -> exile
     // Effect B: exile -> tap
     // Effect C: tap -> destroy (back to start)
 
     const effectA: ReplacementAbility = {
-      id: 'cycle-a',
-      sourceCardId: 'card-a',
-      controllerId: 'player1',
-      effectType: 'destroy_replacement',
-      description: 'A: destroy->exile',
+      id: "cycle-a",
+      sourceCardId: "card-a",
+      controllerId: "player1",
+      effectType: "destroy_replacement",
+      description: "A: destroy->exile",
       layer: 3,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'destroy' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "destroy" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'exile' as const },
-        description: 'A applied',
+        modifiedEvent: { ...e, type: "exile" as const },
+        description: "A applied",
         instead: true,
       }),
     };
 
     const effectB: ReplacementAbility = {
-      id: 'cycle-b',
-      sourceCardId: 'card-b',
-      controllerId: 'player1',
-      effectType: 'exile_replacement',
-      description: 'B: exile->tap',
+      id: "cycle-b",
+      sourceCardId: "card-b",
+      controllerId: "player1",
+      effectType: "exile_replacement",
+      description: "B: exile->tap",
       layer: 3,
       timestamp: 200,
       isInstead: true,
-      canApply: (e) => e.type === 'exile' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "exile" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'tap' as const },
-        description: 'B applied',
+        modifiedEvent: { ...e, type: "tap" as const },
+        description: "B applied",
         instead: true,
       }),
     };
 
     const effectC: ReplacementAbility = {
-      id: 'cycle-c',
-      sourceCardId: 'card-c',
-      controllerId: 'player1',
-      effectType: 'exile_replacement',
-      description: 'C: tap->destroy',
+      id: "cycle-c",
+      sourceCardId: "card-c",
+      controllerId: "player1",
+      effectType: "exile_replacement",
+      description: "C: tap->destroy",
       layer: 3,
       timestamp: 300,
       isInstead: true,
-      canApply: (e) => e.type === 'tap' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "tap" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'destroy' as const },
-        description: 'C applied',
+        modifiedEvent: { ...e, type: "destroy" as const },
+        description: "C applied",
         instead: true,
       }),
     };
@@ -744,10 +816,10 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     replacementEffectManager.registerEffect(effectC);
 
     const event: ReplacementEvent = {
-      type: 'destroy',
+      type: "destroy",
       amount: 0,
       timestamp: Date.now(),
-      targetId: 'creature1',
+      targetId: "creature1",
     };
 
     // Three-effect loop detected, CR 614.4 applies
@@ -755,41 +827,41 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     expect(processed.amount).toBe(0); // Loop detected, event skipped
   });
 
-  test('should use maxIterations cap as safety limit for potential infinite loops', () => {
+  test("should use maxIterations cap as safety limit for potential infinite loops", () => {
     // Create a chain of effects where each transforms back to a type that triggers the first
     // But we use low maxIterations to catch it
     const effectA: ReplacementAbility = {
-      id: 'safe-a',
-      sourceCardId: 'card-a',
-      controllerId: 'player1',
-      effectType: 'destroy_replacement',
-      description: 'A: destroy->exile',
+      id: "safe-a",
+      sourceCardId: "card-a",
+      controllerId: "player1",
+      effectType: "destroy_replacement",
+      description: "A: destroy->exile",
       layer: 3,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'destroy' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "destroy" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'exile' as const },
-        description: 'A applied',
+        modifiedEvent: { ...e, type: "exile" as const },
+        description: "A applied",
         instead: true,
       }),
     };
 
     const effectB: ReplacementAbility = {
-      id: 'safe-b',
-      sourceCardId: 'card-b',
-      controllerId: 'player1',
-      effectType: 'exile_replacement',
-      description: 'B: exile->destroy',
+      id: "safe-b",
+      sourceCardId: "card-b",
+      controllerId: "player1",
+      effectType: "exile_replacement",
+      description: "B: exile->destroy",
       layer: 3,
       timestamp: 200,
       isInstead: true,
-      canApply: (e) => e.type === 'exile' && e.targetId === 'creature1',
+      canApply: (e) => e.type === "exile" && e.targetId === "creature1",
       apply: (e) => ({
         modified: true,
-        modifiedEvent: { ...e, type: 'destroy' as const },
-        description: 'B applied',
+        modifiedEvent: { ...e, type: "destroy" as const },
+        description: "B applied",
         instead: true,
       }),
     };
@@ -798,33 +870,33 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     replacementEffectManager.registerEffect(effectB);
 
     const event: ReplacementEvent = {
-      type: 'destroy',
+      type: "destroy",
       amount: 0,
       timestamp: Date.now(),
-      targetId: 'creature1',
+      targetId: "creature1",
     };
 
     // Very low maxIterations to trigger safety cap
-    const processed = replacementEffectManager.processEvent(event, undefined, 5);
+    const processed = replacementEffectManager.processEvent(event, undefined);
     expect(processed.amount).toBe(0); // Hit cap, loop broken
   });
 
-  test('should not skip event when maxIterations is high enough for non-looping effects', () => {
+  test("should not skip event when maxIterations is high enough for non-looping effects", () => {
     // Effect that doubles damage - this is safe and won't loop
     const safeEffect: ReplacementAbility = {
-      id: 'safe-effect',
-      sourceCardId: 'safe-card',
-      controllerId: 'player1',
-      effectType: 'damage_replacement',
-      description: 'Safe double',
+      id: "safe-effect",
+      sourceCardId: "safe-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "Safe double",
       layer: 5,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount * 2 },
-        description: 'Doubled safely',
+        description: "Doubled safely",
         instead: true,
       }),
     };
@@ -832,33 +904,33 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     replacementEffectManager.registerEffect(safeEffect);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 5,
       timestamp: Date.now(),
-      targetId: 'player2',
+      targetId: "player2",
     };
 
     // High maxIterations should not cause false positive
-    const processed = replacementEffectManager.processEvent(event, undefined, 100);
+    const processed = replacementEffectManager.processEvent(event, undefined);
     expect(processed.amount).toBe(10); // 5 * 2 = 10
   });
 
-  test('should handle single effect that does not loop', () => {
+  test("should handle single effect that does not loop", () => {
     // A single effect that modifies but doesn't create a loop
     const singleEffect: ReplacementAbility = {
-      id: 'single-effect',
-      sourceCardId: 'single-card',
-      controllerId: 'player1',
-      effectType: 'damage_replacement',
-      description: 'Add 3 damage',
+      id: "single-effect",
+      sourceCardId: "single-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "Add 3 damage",
       layer: 5,
       timestamp: 100,
       isInstead: true,
-      canApply: (e) => e.type === 'damage',
+      canApply: (e) => e.type === "damage",
       apply: (e) => ({
         modified: true,
         modifiedEvent: { ...e, amount: e.amount + 3 },
-        description: 'Added 3',
+        description: "Added 3",
         instead: true,
       }),
     };
@@ -866,10 +938,10 @@ describe('ReplacementEffectManager - CR 614.4 Loop Detection', () => {
     replacementEffectManager.registerEffect(singleEffect);
 
     const event: ReplacementEvent = {
-      type: 'damage',
+      type: "damage",
       amount: 5,
       timestamp: Date.now(),
-      targetId: 'player2',
+      targetId: "player2",
     };
 
     // Single effect applies once: 5 + 3 = 8

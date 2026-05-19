@@ -16,7 +16,7 @@ import type {
   WaitingChoice,
   ChoiceOption,
 } from "./types";
-import { Phase } from "./types";
+import { Phase, ZoneType } from "./types";
 import { moveCardBetweenZones } from "./zones";
 import { spendMana, getSpellManaCost } from "./mana";
 import { ValidationService } from "./validation-service";
@@ -69,7 +69,7 @@ function executeBoardSweeper(
   if (!sourceCard) return state;
 
   for (const [zoneKey, zone] of state.zones) {
-    if (!zoneKey.includes("battlefield")) continue;
+    if (zone.type !== ZoneType.BATTLEFIELD) continue;
 
     for (const cardId of zone.cardIds) {
       const card = currentState.cards.get(cardId);
@@ -430,7 +430,7 @@ export function resolveTopOfStack(state: GameState): GameState {
         const allCreatureIds: CardInstanceId[] = [];
 
         for (const [zoneKey, zone] of updatedState.zones) {
-          if (zoneKey.includes("battlefield")) {
+          if (zone.type === ZoneType.BATTLEFIELD) {
             for (const cId of zone.cardIds) {
               const c = updatedState.cards.get(cId);
               if (
