@@ -116,18 +116,6 @@ export interface ReplacementResult {
   skipEvent?: boolean;
 }
 
-/**
- * Tracks a state signature for loop detection.
- * CR 614.4: If replacement effects form an infinite loop, no objects are affected.
- */
-interface StateSignature {
-  eventType: ReplacementEventType;
-  sourceId?: CardInstanceId;
-  targetId?: CardInstanceId | PlayerId;
-  amount: number;
-  effectIds: string[]; // Chain of effect IDs that led to this state
-}
-
 export interface PreventionShield {
   sourceId: CardInstanceId;
   amount: number;
@@ -239,48 +227,12 @@ export class ReplacementEffectManager {
   processEvent(
     event: ReplacementEvent,
     apnapOrder?: APNAPOrder,
-    maxIterations: number = 100,
   ): ReplacementEvent {
     let currentEvent = { ...event };
     const appliedEffectIds = new Set<string>();
-    // Track state signatures for loop detection (CR 614.4)
-    const stateHistory: StateSignature[] = [];
     let possibleEffects = this.getApplicableEffects(currentEvent);
-    let iterationCount = 0;
 
-    while (possibleEffects.length > 0 && iterationCount < maxIterations) {
-      iterationCount++;
-
-      // CR 614.4 loop detection: check if applying more effects would
-      // return to a previously seen state (identical event signature with same effect chain)
-      const currentSignature: StateSignature = {
-        eventType: currentEvent.type,
-        sourceId: currentEvent.sourceId,
-        targetId: currentEvent.targetId,
-        amount: currentEvent.amount,
-        effectIds: Array.from(appliedEffectIds),
-      };
-
-      // Check if we've seen this exact state before (loop detected)
-      const isLoop = stateHistory.some(
-        (sig) =>
-          sig.eventType === currentSignature.eventType &&
-          sig.sourceId === currentSignature.sourceId &&
-          sig.targetId === currentSignature.targetId &&
-          sig.amount === currentSignature.amount &&
-          // The key check: the same set of effects has been applied
-          this.arraysEqual(sig.effectIds, currentSignature.effectIds),
-      );
-
-      if (isLoop) {
-        // CR 614.4: If replacement effects form an infinite loop, no objects are affected.
-        // Return the original event unmodified (skip all effects in the loop)
-        return { ...event, amount: event.amount > 0 ? 0 : event.amount };
-      }
-
-      // Record this state before applying next effect
-      stateHistory.push(currentSignature);
-
+    while (possibleEffects.length > 0) {
       const effectToApply = this.chooseBestEffect(
         possibleEffects,
         currentEvent,
@@ -300,11 +252,6 @@ export class ReplacementEffectManager {
       possibleEffects = this.getApplicableEffects(currentEvent).filter(
         (e) => !appliedEffectIds.has(e.id),
       );
-    }
-
-    // Safety: if we hit max iterations, treat as loop (CR 614.4)
-    if (iterationCount >= maxIterations) {
-      return { ...event, amount: event.amount > 0 ? 0 : event.amount };
     }
 
     if (
@@ -369,13 +316,6 @@ export class ReplacementEffectManager {
       untap: [],
     };
     return mapping[eventType]?.includes(effectType) || false;
-  }
-
-  private arraysEqual(a: string[], b: string[]): boolean {
-    if (a.length !== b.length) return false;
-    const sortedA = [...a].sort();
-    const sortedB = [...b].sort();
-    return sortedA.every((val, idx) => val === sortedB[idx]);
   }
 
   checkAsThoughEffect(
