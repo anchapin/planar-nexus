@@ -30,6 +30,7 @@ import {
   castSpell,
   resolveTopOfStack,
 } from "./spell-casting";
+import { checkStateBasedActions as checkSBAs } from "./state-based-actions";
 
 export { castSpell, resolveTopOfStack };
 
@@ -304,7 +305,13 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
 
   if (allPassed && state.stack.length === 0) {
     // All players passed with empty stack - advance phase
-    return advanceToNextPhase(newState);
+    // SBA 704.5j: Check SBAs before phase transition
+    const sbaResult = checkSBAs(newState);
+    const stateAfterSBA = sbaResult.state;
+    if (stateAfterSBA.status === "completed") {
+      return stateAfterSBA;
+    }
+    return advanceToNextPhase(stateAfterSBA);
   }
 
   if (allPassed && state.stack.length > 0) {
@@ -319,8 +326,18 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   const nextPlayerIndex = (currentPlayerIndex + 1) % state.players.size;
   const nextPlayerId = Array.from(state.players.keys())[nextPlayerIndex];
 
+  // SBA 704.5j: State-based actions are checked whenever a player would receive priority
+  // Check SBAs before passing priority to next player
+  const sbaResult = checkSBAs(newState);
+  let afterSBAState = sbaResult.state;
+
+  // If game ended from SBAs, return the ended state
+  if (afterSBAState.status === "completed") {
+    return afterSBAState;
+  }
+
   return {
-    ...newState,
+    ...afterSBAState,
     priorityPlayerId: nextPlayerId,
   };
 }
