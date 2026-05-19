@@ -14,6 +14,7 @@ import {
   createInitialGameState,
   startGame,
   dealDamageToPlayer,
+  passPriority,
 } from '../game-state';
 import {
   createCardInstance,
@@ -1210,6 +1211,102 @@ describe('State-Based Actions', () => {
       // Creature should also be destroyed
       const graveyard = result.state.zones.get(`${aliceId}-graveyard`)!;
       expect(graveyard.cardIds).toContain(creature.id);
+    });
+  });
+
+  describe('SBA Integration with Priority Loop (CR 704.5j)', () => {
+    it('should trigger SBA when creature has lethal damage after priority pass', () => {
+      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Create a creature for Alice with lethal damage
+      const creatureData = createMockCreature('Test Creature', 2, 2);
+      const creature = createCardInstance(creatureData, aliceId, aliceId);
+
+      // Add creature to battlefield with lethal damage
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      creature.damage = 2; // Lethal damage
+      state.cards.set(creature.id, creature);
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...battlefield,
+        cardIds: [creature.id],
+      });
+
+      // Manually set priority to Alice
+      state = { ...state, priorityPlayerId: aliceId };
+
+      // Pass priority through the loop - this should trigger SBA checking
+      // First pass from Alice
+      state = passPriority(state, aliceId);
+
+      // At this point, SBAs should have been checked and creature should be destroyed
+      const graveyardAfter = state.zones.get(`${aliceId}-graveyard`)!;
+      expect(graveyardAfter.cardIds).toContain(creature.id);
+    });
+
+    it('should trigger SBA when player life reaches 0 after both players pass', () => {
+      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Set Alice's life to 0 (SBA 704.5a: player with 0 or less life loses)
+      const alice = state.players.get(aliceId)!;
+      state.players.set(aliceId, { ...alice, life: 0 });
+
+      // Both players pass priority consecutively to trigger allPassed
+      // First pass
+      state = passPriority(state, bobId);
+      // Second pass (now from Alice) - this should trigger allPassed and SBA check
+      state = passPriority(state, aliceId);
+
+      // Alice should have lost due to SBA 704.5a
+      const updatedAlice = state.players.get(aliceId);
+      expect(updatedAlice?.hasLost).toBe(true);
+    });
+
+    it('should trigger multiple SBAs in correct order after priority pass', () => {
+      let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Create two legendary creatures with same name (legendary rule SBA)
+      const creatureData1 = createMockCreature('Duplicated Legend', 2, 2, [], true);
+      const creatureData2 = createMockCreature('Duplicated Legend', 2, 2, [], true);
+      const creature1 = createCardInstance(creatureData1, aliceId, aliceId);
+      const creature2 = createCardInstance(creatureData2, aliceId, aliceId);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      state.cards.set(creature1.id, creature1);
+      state.cards.set(creature2.id, creature2);
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...battlefield,
+        cardIds: [creature1.id, creature2.id],
+      });
+
+      // Manually set priority to Alice
+      state = { ...state, priorityPlayerId: aliceId };
+
+      // Pass priority - legendary rule SBA should trigger
+      state = passPriority(state, aliceId);
+
+      // One legendary should be destroyed (legendary rule SBA 704.5j)
+      const battlefieldAfter = state.zones.get(`${aliceId}-battlefield`)!;
+      const graveyardAfter = state.zones.get(`${aliceId}-graveyard`)!;
+
+      // Only one creature should remain on battlefield
+      expect(battlefieldAfter.cardIds.length).toBe(1);
+      // One should be in graveyard
+      expect(graveyardAfter.cardIds.length).toBe(1);
     });
   });
 });
