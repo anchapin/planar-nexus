@@ -39,13 +39,13 @@ export function AppSidebar() {
   return (
     <>
       <SidebarHeader className="border-b border-sidebar-border">
-          <div className="flex w-full items-center gap-2">
+          <div className="flex w-full items-center gap-2 px-2 py-1">
           <Swords className="size-8 text-primary shrink-0" />
-          <h1 className="font-headline text-lg md:text-xl font-bold text-foreground truncate">
+          <h1 className="font-headline text-lg md:text-xl font-bold text-foreground truncate group-data-[collapsible=icon]:hidden">
             Planar Nexus
           </h1>
           <div className="grow" />
-          <SidebarTrigger className="md:hidden" />
+          <SidebarTrigger />
         </div>
       </SidebarHeader>
       <SidebarContent className="p-2">
@@ -76,7 +76,10 @@ export function AppSidebar() {
                 <span className="font-semibold text-foreground truncate">Player One</span>
                 <span className="text-xs text-sidebar-foreground hidden md:block">#54321</span>
             </div>
-            <Button variant="ghost" size="icon" className="ml-auto size-7 shrink-0">
+            <Button variant="ghost" size="icon" className="ml-auto size-7 shrink-0" title="Keyboard Shortcuts">
+                <MousePointer className="size-4" />
+            </Button>
+            <Button variant="ghost" size="icon" className="size-7 shrink-0" title="Community">
                 <Users className="size-4" />
             </Button>
         </div>

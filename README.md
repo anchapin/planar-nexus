@@ -245,15 +245,14 @@ npm install
 ### Development Server
 
 ```bash
+# Install dependencies
+npm install
+
 # Start development server (runs on port 9002)
 npm run dev
-
-# Start AI development UI (Genkit)
-npm run genkit:dev
-
-# Start AI development with hot-reload
-npm run genkit:watch
 ```
+
+> **Note**: AI deck coaching uses a heuristic-based system (no external AI service required). For full AI features, see the [AI Configuration Guide](docs/API.md).
 
 ### Build Commands
 
@@ -426,5 +425,5 @@ SOFTWARE.
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: March 12, 2026
+**Version**: 0.1.0  
+**Last Updated**: May 1, 2026

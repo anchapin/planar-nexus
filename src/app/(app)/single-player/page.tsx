@@ -158,10 +158,10 @@ export default function SinglePlayerPage() {
   };
 
   return (
-    <div className="flex-1 p-4 md:p-6">
-      <header className="mb-6">
+    <div className="flex-1 p-3 md:p-4">
+      <header className="mb-4">
         <h1 className="font-headline text-3xl font-bold">Single Player</h1>
-        <p className="text-muted-foreground mt-1">
+        <p className="text-muted-foreground text-sm mt-0.5">
           Hone your skills and test your decks against AI or practice on your
           own.
         </p>
@@ -175,68 +175,54 @@ export default function SinglePlayerPage() {
 
           <TabsContent value="play-ai">
             <Card>
-              <CardHeader>
-                <CardTitle>Configure AI Opponent</CardTitle>
-                <CardDescription>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-xl">Configure AI Opponent</CardTitle>
+                <CardDescription className="text-xs">
                   Set up your AI opponent&apos;s deck theme and difficulty
                   level.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="deck-select">Your Deck</Label>
-                  <Select
-                    value={selectedDeckId || ""}
-                    onValueChange={(value) => setSelectedDeckId(value)}
-                  >
-                    <SelectTrigger id="deck-select">
-                      <SelectValue placeholder="Select a deck" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allDecks.length === 0 ? (
-                        <SelectItem value="no-decks" disabled>
-                          No decks available
-                        </SelectItem>
-                      ) : (
-                        allDecks.map((deck) => (
-                          <SelectItem
-                            key={deck.id}
-                            value={deck.id}
-                            data-testid={`deck-option-${deck.id}`}
-                          >
-                            {getDeckLabel(deck)}
+              <CardContent className="space-y-2.5 p-4 pt-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="deck-select" className="text-xs">Your Deck</Label>
+                    <Select
+                      value={selectedDeckId || ""}
+                      onValueChange={(value) => setSelectedDeckId(value)}
+                    >
+                      <SelectTrigger id="deck-select" className="h-9">
+                        <SelectValue placeholder="Select a deck" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allDecks.length === 0 ? (
+                          <SelectItem value="no-decks" disabled>
+                            No decks available
                           </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {!selectedDeckId && (
-                    <p className="text-xs text-amber-600 flex items-center gap-1">
-                      <Info className="h-3 w-3" />
-                      Select a deck to continue
-                    </p>
-                  )}
-                  {selectedDeck && isCustomDeck(selectedDeck) && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" />
-                      Using custom deck: {selectedDeck.name} (
-                      {selectedDeck.cards.reduce((s, c) => s + c.count, 0)}{" "}
-                      cards)
-                    </p>
-                  )}
-                </div>
+                        ) : (
+                          allDecks.map((deck) => (
+                            <SelectItem
+                              key={deck.id}
+                              value={deck.id}
+                              data-testid={`deck-option-${deck.id}`}
+                            >
+                              {getDeckLabel(deck)}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="ai-theme">AI Deck Theme</Label>
-                  <Input
-                    id="ai-theme"
-                    placeholder="e.g., 'token generation', 'mill', 'aggro'"
-                    value={aiTheme}
-                    onChange={(e) => setAiTheme(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    The AI will generate a deck based on this theme
-                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="ai-theme" className="text-xs">AI Deck Theme</Label>
+                    <Input
+                      id="ai-theme"
+                      className="h-9"
+                      placeholder="e.g., 'aggro', 'mill'"
+                      value={aiTheme}
+                      onChange={(e) => setAiTheme(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -258,7 +244,7 @@ export default function SinglePlayerPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="bg-muted p-3 rounded-md flex items-start gap-3 mt-2">
+                  <div className="bg-muted p-2 rounded-md flex items-start gap-2 mt-1.5">
                     <Info className="h-5 w-5 text-blue-500 shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <div className="flex items-center justify-between">
@@ -279,12 +265,12 @@ export default function SinglePlayerPage() {
                       <p className="text-xs text-muted-foreground mt-1">
                         {DIFFICULTY_CONFIGS[difficulty].description}
                       </p>
-                      <div className="grid grid-cols-3 gap-2 mt-2">
-                        <div className="text-[10px] bg-background px-2 py-1 rounded">
+                      <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+                        <div className="text-[9px] bg-background px-1.5 py-0.5 rounded">
                           <span className="font-medium">Lookahead:</span>{" "}
                           {DIFFICULTY_CONFIGS[difficulty].lookaheadDepth} ply
                         </div>
-                        <div className="text-[10px] bg-background px-2 py-1 rounded">
+                        <div className="text-[9px] bg-background px-1.5 py-0.5 rounded">
                           <span className="font-medium">Randomness:</span>{" "}
                           {(
                             DIFFICULTY_CONFIGS[difficulty].randomnessFactor *
@@ -292,7 +278,7 @@ export default function SinglePlayerPage() {
                           ).toFixed(0)}
                           %
                         </div>
-                        <div className="text-[10px] bg-background px-2 py-1 rounded">
+                        <div className="text-[9px] bg-background px-1.5 py-0.5 rounded">
                           <span className="font-medium">Blunder Rate:</span>{" "}
                           {(
                             DIFFICULTY_CONFIGS[difficulty].blunderChance * 100
@@ -300,7 +286,7 @@ export default function SinglePlayerPage() {
                           %
                         </div>
                       </div>
-                      <div className="mt-2 text-[10px] text-muted-foreground">
+                      <div className="mt-1.5 text-[9px] leading-tight text-muted-foreground">
                         {difficulty === "easy" &&
                           "AI prioritizes survival but ignores card advantage and tempo. Makes frequent mistakes."}
                         {difficulty === "medium" &&
@@ -328,15 +314,15 @@ export default function SinglePlayerPage() {
 
           <TabsContent value="self-play">
             <Card>
-              <CardHeader>
-                <CardTitle>Self Play (Goldfish)</CardTitle>
-                <CardDescription>
+              <CardHeader className="py-3 px-4">
+                <CardTitle className="text-xl">Self Play (Goldfish)</CardTitle>
+                <CardDescription className="text-xs">
                   Start a game where you control all actions. Perfect for
                   testing combos and practicing your opening hands.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
+              <CardContent className="space-y-3 p-4 pt-0">
+                <div className="space-y-1.5">
                   <Label htmlFor="self-play-deck">Your Deck</Label>
                   <Select
                     value={selectedDeckId || ""}
@@ -373,9 +359,9 @@ export default function SinglePlayerPage() {
                   )}
                 </div>
 
-                <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
-                  <p className="text-sm text-amber-800 flex items-start gap-2">
-                    <BookOpen className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-2">
+                  <p className="text-[11px] text-amber-800 flex items-start gap-2 leading-snug">
+                    <BookOpen className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                     <span>
                       In Self Play mode, you control both sides. This is great
                       for testing how your deck performs, practicing combos, or
@@ -384,7 +370,7 @@ export default function SinglePlayerPage() {
                   </p>
                 </div>
 
-                <p className="text-sm text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground leading-snug">
                   You&apos;ll be taken to a game board where you can play both
                   sides, draw cards, and test your deck&apos;s performance.
                 </p>
