@@ -59,6 +59,10 @@ export interface TriggeredAbilityResult {
 export interface TriggeredAbilityInstance {
   id: string;
   sourceCardId: CardInstanceId;
+  /**
+   * The player who controls the card and whose trigger fired (CR 603.3)
+   */
+  triggeringPlayerId: PlayerId;
   triggerCondition: string;
   effect: string;
   timestamp: number;
@@ -649,6 +653,7 @@ export function detectTriggeredAbilities(
         triggeredAbilities.push({
           id: generateTriggeredAbilityId(),
           sourceCardId: cardId,
+          triggeringPlayerId: card.controllerId,
           triggerCondition: ability.trigger.event,
           effect: ability.effect,
           timestamp: Date.now(),
@@ -660,22 +665,48 @@ export function detectTriggeredAbilities(
 
   // Sort triggered abilities according to CR 603.3:
   // 603.3a: Abilities that trigger at the same time are put on the stack in APNAP order
+  //         Active player puts their abilities on stack first (in any order they choose)
+  //         Non-active players follow in turn order
   // 603.3b: Abilities with the same timestamp are ordered by the cards timestamp in the zone
   triggeredAbilities.sort((a, b) => {
-    // CR 603.3: Abilities that trigger at the same time are put on the stack in APNAP order
-    // First: APNAP order - active player's abilities resolve first
-    const aCard = state.cards.get(a.sourceCardId);
-    const bCard = state.cards.get(b.sourceCardId);
-    if (!aCard || !bCard) return 0;
-
     const activePlayerId = state.turn.activePlayerId;
-    const aIsActive = aCard.controllerId === activePlayerId;
-    const bIsActive = bCard.controllerId === activePlayerId;
+    const playerIds = Array.from(state.players.keys());
 
-    if (aIsActive && !bIsActive) return -1; // Active player first
-    if (!aIsActive && bIsActive) return 1; // Inactive player after active
+    // Check if a or b is the active player
+    const aIsActive = a.triggeringPlayerId === activePlayerId;
+    const bIsActive = b.triggeringPlayerId === activePlayerId;
 
-    // Second: same controller, order by source card's timestamp in zone (CR 603.3b)
+    // Active player abilities go first (CR 603.3a)
+    if (aIsActive && !bIsActive) return -1;
+    if (!aIsActive && bIsActive) return 1;
+
+    // Both are active player's abilities - use sourceCardTimestamp (CR 603.3b)
+    if (aIsActive && bIsActive) {
+      if (a.sourceCardTimestamp !== b.sourceCardTimestamp) {
+        return a.sourceCardTimestamp - b.sourceCardTimestamp;
+      }
+      return 0;
+    }
+
+    // Both are non-active players - use turn order (CR 603.3a)
+    // Get turn order position for non-active players
+    const activeIndex = playerIds.indexOf(activePlayerId);
+    const aPosition =
+      (playerIds.indexOf(a.triggeringPlayerId) -
+        activeIndex +
+        playerIds.length) %
+      playerIds.length;
+    const bPosition =
+      (playerIds.indexOf(b.triggeringPlayerId) -
+        activeIndex +
+        playerIds.length) %
+      playerIds.length;
+
+    if (aPosition !== bPosition) {
+      return aPosition - bPosition;
+    }
+
+    // Same non-active player - use sourceCardTimestamp (CR 603.3b)
     if (a.sourceCardTimestamp !== b.sourceCardTimestamp) {
       return a.sourceCardTimestamp - b.sourceCardTimestamp;
     }

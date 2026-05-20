@@ -743,4 +743,137 @@ describe("Abilities System - checkTriggeredAbilities", () => {
     expect(result.abilities[0].sourceCardTimestamp).toBeDefined();
     expect(typeof result.abilities[0].sourceCardTimestamp).toBe("number");
   });
+
+  it("should track triggeringPlayerId for each triggered ability", () => {
+    const playerIds = Array.from(state.players.keys());
+    const bobId = playerIds[1];
+
+    // Place card for Bob
+    const bobCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "bob-etb-trigger",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      bobId,
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(1);
+    expect(result.abilities[0].triggeringPlayerId).toBe(bobId);
+    expect(result.abilities[0].sourceCardId).toBe(bobCardId);
+  });
+
+  it("should order non-active players by turn order after active player (CR 603.3a)", () => {
+    // Create 3-player game
+    state = createInitialGameState(["Alice", "Bob", "Carol"], 20, false);
+    state = startGame(state);
+    const playerIds = Array.from(state.players.keys());
+    const bobId = playerIds[1];
+    const carolId = playerIds[2];
+
+    // Set Alice as active player
+    state.turn.activePlayerId = playerIds[0];
+
+    // Place cards for Bob and Carol (non-active players)
+    const bobCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "bob-trigger",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      bobId,
+    );
+
+    const carolCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "carol-trigger",
+        oracle_text: "When this creature enters the battlefield, gain 1 life.",
+      }),
+      carolId,
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(2);
+    // Bob (next in turn order after active) should be before Carol
+    expect(result.abilities[0].sourceCardId).toBe(bobCardId);
+    expect(result.abilities[1].sourceCardId).toBe(carolCardId);
+  });
+
+  it("should order multiple triggers from same player by sourceCardTimestamp (CR 603.3b)", () => {
+    const playerIds = Array.from(state.players.keys());
+    const bobId = playerIds[1];
+
+    // Set Bob as active player so we test non-active player ordering with same controller
+    state.turn.activePlayerId = bobId;
+
+    // Place first card for Alice (earlier timestamp, non-active player)
+    const card1 = placeCardOnBattlefield(
+      createMockCard({
+        id: "alice-trigger-1",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      playerIds[0], // Alice
+    );
+
+    // Place second card for Alice (later timestamp, same controller)
+    const card2 = placeCardOnBattlefield(
+      createMockCard({
+        id: "alice-trigger-2",
+        oracle_text: "When this creature enters the battlefield, gain 1 life.",
+      }),
+      playerIds[0], // Alice
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(2);
+    // Both are Alice's (non-active) triggers, should be ordered by timestamp
+    expect(result.abilities[0].sourceCardId).toBe(card1);
+    expect(result.abilities[1].sourceCardId).toBe(card2);
+  });
+
+  it("should handle 3+ player scenario with mixed APNAP ordering", () => {
+    // Create 3-player game
+    state = createInitialGameState(["Alice", "Bob", "Carol"], 20, false);
+    state = startGame(state);
+    const playerIds = Array.from(state.players.keys());
+    const bobId = playerIds[1];
+    const carolId = playerIds[2];
+
+    // Set Bob as active player
+    state.turn.activePlayerId = bobId;
+
+    // Place card for Alice (non-active, after Carol in turn order from Bob)
+    const aliceCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "alice-trigger",
+        oracle_text: "When this creature enters the battlefield, draw a card.",
+      }),
+      playerIds[0], // Alice
+    );
+
+    // Place card for Bob (active player)
+    const bobCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "bob-trigger",
+        oracle_text: "When this creature enters the battlefield, gain 1 life.",
+      }),
+      bobId,
+    );
+
+    // Place card for Carol (non-active, before Alice in turn order from Bob)
+    const carolCardId = placeCardOnBattlefield(
+      createMockCard({
+        id: "carol-trigger",
+        oracle_text: "When this creature enters the battlefield, scry 1.",
+      }),
+      carolId,
+    );
+
+    const result = checkTriggeredAbilities(state, "entersBattlefield");
+    expect(result.abilities.length).toBe(3);
+    // Turn order from Bob: Bob -> Carol -> Alice
+    // Order should be: Bob (active), then Carol (next), then Alice (last)
+    expect(result.abilities[0].sourceCardId).toBe(bobCardId);
+    expect(result.abilities[1].sourceCardId).toBe(carolCardId);
+    expect(result.abilities[2].sourceCardId).toBe(aliceCardId);
+  });
 });
