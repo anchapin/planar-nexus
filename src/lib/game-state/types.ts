@@ -352,6 +352,108 @@ export interface StackObject {
 }
 
 /**
+ * A choice that can be made for a stack item
+ * Used in target selection and other decision points
+ */
+export interface Choice {
+  /** Unique identifier for this choice */
+  id: string;
+  /** Type of choice */
+  type: "target" | "mode" | "value" | "payment" | "yes_no";
+  /** Description of the choice */
+  label: string;
+  /** Available options for this choice */
+  options: ChoiceOption[];
+  /** Whether this choice is required */
+  isRequired: boolean;
+  /** Minimum number of selections required */
+  minSelections: number;
+  /** Maximum number of selections allowed */
+  maxSelections: number;
+}
+
+/**
+ * A mode for modal spells (e.g., "Deal 3 damage" or "Draw 2 cards")
+ */
+export interface Mode {
+  /** Unique identifier for this mode */
+  id: string;
+  /** Description of what this mode does */
+  label: string;
+  /** Oracle text for this mode */
+  text: string;
+  /** Mana cost for this specific mode (if different from base) */
+  manaCost?: string;
+  /** Whether this mode has been selected */
+  isSelected: boolean;
+}
+
+/**
+ * An alternative cost that can be paid instead of the normal cost
+ * Examples: Flashback, Escape, Affinity, Landfall
+ */
+export interface AlternativeCost {
+  /** Unique identifier for this alternative cost */
+  id: string;
+  /** Name of the alternative cost (e.g., "Flashback", "Escape") */
+  name: string;
+  /** Description of how to use this alternative cost */
+  description: string;
+  /** Additional cost that must be paid (e.g., "Exile this from your graveyard") */
+  additionalCost?: string;
+  /** Whether this alternative cost is currently active/available */
+  isAvailable: boolean;
+  /** Timestamps or restrictions for when this cost can be used */
+  restrictions?: string[];
+}
+
+/**
+ * Represents the target selection state for a stack item
+ * Includes both the selected targets and available choices
+ */
+export interface TargetSelection {
+  /** Currently selected targets */
+  targets: Target[];
+  /** Available choices for target selection */
+  choices: Choice[];
+  /** Whether target selection is complete */
+  isComplete: boolean;
+}
+
+/**
+ * A spell or ability on the stack with full targeting and cost information
+ * This is the primary type used for stack-based mechanics
+ */
+export interface StackItem {
+  /** Unique identifier for this stack item */
+  id: StackObjectId;
+  /** Type of stack object (spell or ability) */
+  type: "spell" | "ability";
+  /** ID of the card that created this stack item (null for abilities without a card source) */
+  sourceCardId: CardInstanceId | null;
+  /** Controller of this stack item */
+  controllerId: PlayerId;
+  /** Display name */
+  name: string;
+  /** Oracle text of the spell/ability */
+  text: string;
+  /** Mana cost as a string (e.g., "{2}{U}{R}") */
+  manaCost: string | null;
+  /** Target selection state */
+  targetSelection: TargetSelection;
+  /** Modes for modal spells (e.g., choose one of three modes) */
+  modes: Mode[];
+  /** Alternative costs that can be used (e.g., Flashback, Escape) */
+  alternativeCosts: AlternativeCost[];
+  /** X value for X-spells (null if not an X-spell or value not yet chosen) */
+  xValue: number | null;
+  /** Whether this has been countered */
+  isCountered: boolean;
+  /** Timestamp when added to the stack */
+  timestamp: number;
+}
+
+/**
  * A target for a spell or ability
  */
 export interface Target {
