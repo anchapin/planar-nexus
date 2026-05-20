@@ -10,7 +10,7 @@
 import {
   tapCardAction as tapCard,
   untapCardAction as untapCard,
-} from './keyword-actions';
+} from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
 
 // Export everything from game-state modules
@@ -23,7 +23,12 @@ export {
   isPlaneswalker,
   isPermanent,
 } from "./card-instance";
-export { moveCardBetweenZones, createZone, createPlayerZones, createSharedZones } from "./zones";
+export {
+  moveCardBetweenZones,
+  createZone,
+  createPlayerZones,
+  createSharedZones,
+} from "./zones";
 export * from "./turn-phases";
 export * from "./game-state";
 export * from "./state-hash";
@@ -43,9 +48,9 @@ export * from "./state-based-actions";
 export * from "./oracle-text-parser";
 export * from "./mana";
 export * from "./spell-casting";
-export * from "./abilities"
-export * from "./evergreen-keywords"
-export * from './replacement-examples';
+export * from "./abilities";
+export { getEffectivePower, getEffectiveToughness } from "./layer-system";
+export * from "./replacement-examples";
 export * from "./terminology-translation";
 
 // Local exports for common functions with consistent naming

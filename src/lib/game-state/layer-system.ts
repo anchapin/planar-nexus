@@ -21,7 +21,7 @@
  * @module layer-system
  */
 
-import { CardInstance, CardInstanceId, PlayerId } from './types';
+import { CardInstance, CardInstanceId, PlayerId } from "./types";
 
 /**
  * Layer types in order of application (CR 613.1)
@@ -48,15 +48,15 @@ export enum Layer {
  */
 export enum PowerToughnessSublayer {
   /** 7a: Characteristic-defining abilities (CR 613.8a) */
-  CHARACTERISTIC_DEFINING = '7a',
+  CHARACTERISTIC_DEFINING = "7a",
   /** 7b: Effects that set P/T to a specific value (CR 613.8b) */
-  SET = '7b',
+  SET = "7b",
   /** 7c: Effects from counters (CR 613.8c) */
-  COUNTERS = '7c',
+  COUNTERS = "7c",
   /** 7d: Effects that switch power and toughness (CR 613.8d) */
-  SWITCH = '7d',
+  SWITCH = "7d",
   /** 7e: All other P/T modifying effects (CR 613.8e) */
-  MODIFY = '7e',
+  MODIFY = "7e",
 }
 
 /**
@@ -90,21 +90,21 @@ export interface ContinuousEffect {
 /**
  * Types of continuous effects
  */
-export type ContinuousEffectType = 
-  | 'copy'
-  | 'control_change'
-  | 'text_change'
-  | 'type_change'
-  | 'color_change'
-  | 'ability_grant'
-  | 'ability_remove'
-  | 'power_set'
-  | 'power_modify'
-  | 'toughness_set'
-  | 'toughness_modify'
-  | 'power_toughness_switch'
-  | 'characteristic_defining'
-  | 'counter';
+export type ContinuousEffectType =
+  | "copy"
+  | "control_change"
+  | "text_change"
+  | "type_change"
+  | "color_change"
+  | "ability_grant"
+  | "ability_remove"
+  | "power_set"
+  | "power_modify"
+  | "toughness_set"
+  | "toughness_modify"
+  | "power_toughness_switch"
+  | "characteristic_defining"
+  | "counter";
 
 /**
  * Characteristic-defining ability (CDA) - applies in Layer 7a
@@ -134,7 +134,7 @@ export interface EffectDependency {
   /** The effect it depends on */
   dependsOnId: string;
   /** Type of dependency */
-  dependencyType: 'after' | 'before' | 'same_layer';
+  dependencyType: "after" | "before" | "same_layer";
 }
 
 /**
@@ -198,7 +198,7 @@ export class LayerSystem {
    * @param sourceCardId - The ID of the source card
    */
   removeEffectsFromSource(sourceCardId: CardInstanceId): void {
-    this.effects = this.effects.filter(e => e.sourceCardId !== sourceCardId);
+    this.effects = this.effects.filter((e) => e.sourceCardId !== sourceCardId);
     // Also clear overrides from this source
     // In a full implementation, we'd track which effect created which override
     // For now, overrides are cleared when effects are removed via clearOverrides()
@@ -222,7 +222,7 @@ export class LayerSystem {
     // CR 613.7c: If adding this dependency would create a circular loop, no effect applies
     if (this.wouldCreateCycle(dependency.effectId, dependency.dependsOnId)) {
       console.warn(
-        `[LayerSystem] Rejected dependency ${dependency.effectId} -> ${dependency.dependsOnId}: would create cycle (CR 613.7c)`
+        `[LayerSystem] Rejected dependency ${dependency.effectId} -> ${dependency.dependsOnId}: would create cycle (CR 613.7c)`,
       );
       return false;
     }
@@ -246,7 +246,7 @@ export class LayerSystem {
 
     // Build adjacency list from existing dependencies
     const adjacencyList = new Map<string, string[]>();
-    
+
     for (const dep of this.dependencies) {
       if (!adjacencyList.has(dep.effectId)) {
         adjacencyList.set(dep.effectId, []);
@@ -257,25 +257,25 @@ export class LayerSystem {
     // If we're adding edge: effectId -> dependsOnId
     // We need to check if there's already a path from dependsOnId to effectId
     // If so, adding this edge would create a cycle
-    
+
     // DFS from dependsOnId to see if we can reach effectId
     const visited = new Set<string>();
     const stack = [dependsOnId];
-    
+
     while (stack.length > 0) {
       const current = stack.pop()!;
-      
+
       if (current === effectId) {
         // Found a path from dependsOnId back to effectId
         // Adding effectId -> dependsOnId would complete a cycle
         return true;
       }
-      
+
       if (visited.has(current)) {
         continue;
       }
       visited.add(current);
-      
+
       const neighbors = adjacencyList.get(current) || [];
       for (const neighbor of neighbors) {
         if (!visited.has(neighbor)) {
@@ -283,7 +283,7 @@ export class LayerSystem {
         }
       }
     }
-    
+
     return false;
   }
 
@@ -293,7 +293,7 @@ export class LayerSystem {
    */
   removeDependencies(effectId: string): void {
     this.dependencies = this.dependencies.filter(
-      d => d.effectId !== effectId && d.dependsOnId !== effectId
+      (d) => d.effectId !== effectId && d.dependsOnId !== effectId,
     );
   }
 
@@ -322,7 +322,7 @@ export class LayerSystem {
    * @param otherEffect - The potential dependency
    */
   dependsOn(effect: ContinuousEffect, otherEffect: ContinuousEffect): boolean {
-    const dependency = this.dependencies.find(d => d.effectId === effect.id);
+    const dependency = this.dependencies.find((d) => d.effectId === effect.id);
     if (!dependency) return false;
     return dependency.dependsOnId === otherEffect.id;
   }
@@ -390,12 +390,13 @@ export class LayerSystem {
     let result = { ...card };
 
     // Get effects for this layer
-    const layerEffects = this.effects.filter(e => e.layer === layer);
+    const layerEffects = this.effects.filter((e) => e.layer === layer);
 
     // For Layer 7, also filter by sublayer
-    const sortedEffects = layer === Layer.POWER_TOUGHNESS
-      ? this.sortLayer7Effects(layerEffects)
-      : layerEffects;
+    const sortedEffects =
+      layer === Layer.POWER_TOUGHNESS
+        ? this.sortLayer7Effects(layerEffects)
+        : layerEffects;
 
     for (const effect of sortedEffects) {
       if (effect.canApply(result)) {
@@ -452,18 +453,25 @@ export class LayerSystem {
     const { power, toughness } = this.calculateEffectivePT(card, modified);
 
     return {
-      name: modified.isFaceDown && modified.tokenData
-        ? modified.tokenData.name
-        : cardData.name,
-      types: overrides.types || cardData.type_line?.split(' — ')[0]?.split(' ') || [],
-      subtypes: overrides.subtypes || cardData.type_line?.split(' — ')[1]?.split(' ') || [],
+      name:
+        modified.isFaceDown && modified.tokenData
+          ? modified.tokenData.name
+          : cardData.name,
+      types:
+        overrides.types ||
+        cardData.type_line?.split(" — ")[0]?.split(" ") ||
+        [],
+      subtypes:
+        overrides.subtypes ||
+        cardData.type_line?.split(" — ")[1]?.split(" ") ||
+        [],
       supertypes: overrides.supertypes || [],
-      text: overrides.text || cardData.oracle_text || '',
-      manaCost: cardData.mana_cost || '',
+      text: overrides.text || cardData.oracle_text || "",
+      manaCost: cardData.mana_cost || "",
       color: this.getEffectiveColor(card),
       power,
       toughness,
-      oracleText: overrides.text || cardData.oracle_text || '',
+      oracleText: overrides.text || cardData.oracle_text || "",
       grantedAbilities: overrides.grantedAbilities || [],
       removedAbilities: overrides.removedAbilities || [],
     };
@@ -472,7 +480,10 @@ export class LayerSystem {
   /**
    * Calculate effective power and toughness considering Layer 7 sublayers
    */
-  private calculateEffectivePT(card: CardInstance, modified: CardInstance): { power: number | null, toughness: number | null } {
+  private calculateEffectivePT(
+    card: CardInstance,
+    modified: CardInstance,
+  ): { power: number | null; toughness: number | null } {
     const overrides = this.getOverrides(card.id);
     const cardData = modified.cardData;
 
@@ -482,7 +493,7 @@ export class LayerSystem {
 
     if (cardData.power) {
       const powerStr = cardData.power;
-      if (powerStr === '*' || powerStr.includes('*')) {
+      if (powerStr === "*" || powerStr.includes("*")) {
         basePower = 0; // Variable P/T, would need CDA evaluation
       } else {
         basePower = parseInt(powerStr, 10) || 0;
@@ -491,7 +502,7 @@ export class LayerSystem {
 
     if (cardData.toughness) {
       const toughnessStr = cardData.toughness;
-      if (toughnessStr === '*' || toughnessStr.includes('*')) {
+      if (toughnessStr === "*" || toughnessStr.includes("*")) {
         baseToughness = 0;
       } else {
         baseToughness = parseInt(toughnessStr, 10) || 0;
@@ -499,13 +510,19 @@ export class LayerSystem {
     }
 
     // Layer 7b: P/T setting effects override base values
-    let power = overrides.powerSet !== undefined ? overrides.powerSet : basePower;
-    let toughness = overrides.toughnessSet !== undefined ? overrides.toughnessSet : baseToughness;
+    let power =
+      overrides.powerSet !== undefined ? overrides.powerSet : basePower;
+    let toughness =
+      overrides.toughnessSet !== undefined
+        ? overrides.toughnessSet
+        : baseToughness;
 
     // Layer 7c: Effects from counters (CR 613.8c)
     // +1/+1 and -1/-1 counters are applied in this sublayer
-    const plusOneCounters = card.counters.find(c => c.type === '+1/+1')?.count || 0;
-    const minusOneCounters = card.counters.find(c => c.type === '-1/-1')?.count || 0;
+    const plusOneCounters =
+      card.counters.find((c) => c.type === "+1/+1")?.count || 0;
+    const minusOneCounters =
+      card.counters.find((c) => c.type === "-1/-1")?.count || 0;
     // Per CR 704.5q, +1/+1 and -1/-1 counters cancel each other out
     // The net effect is applied in Layer 7c
     const netCounterBonus = plusOneCounters - minusOneCounters;
@@ -545,12 +562,14 @@ export class LayerSystem {
 
     // Apply color-changing effects (Layer 5)
     const colorEffects = this.effects.filter(
-      e => e.layer === Layer.COLOR_CHANGING && e.canApply(modified)
+      (e) => e.layer === Layer.COLOR_CHANGING && e.canApply(modified),
     );
 
     for (const effect of colorEffects) {
       if (effect.canApply(modified)) {
-        const result = effect.apply(modified) as CardInstanceWithEffectiveColors;
+        const result = effect.apply(
+          modified,
+        ) as CardInstanceWithEffectiveColors;
         // The effect should set colors directly via _effectiveColors
         if (result._effectiveColors) {
           colors = result._effectiveColors;
@@ -598,14 +617,14 @@ export function createCopyEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   copiedCardId: CardInstanceId,
-  description: string
+  description: string,
 ): ContinuousEffect {
   return {
     id: `copy-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.COPY_EFFECTS,
-    effectType: 'copy',
+    effectType: "copy",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -627,14 +646,14 @@ export function createControlChangeEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   newControllerId: PlayerId,
-  description: string
+  description: string,
 ): ContinuousEffect {
   return {
     id: `control-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.CONTROL_CHANGING,
-    effectType: 'control_change',
+    effectType: "control_change",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -656,14 +675,14 @@ export function createTextChangeEffect(
   newText: string,
   description: string,
   _addTypes?: boolean,
-  _layerSystemInstance?: LayerSystem
+  _layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `text-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.TEXT_CHANGING,
-    effectType: 'text_change',
+    effectType: "text_change",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -689,14 +708,14 @@ export function createTypeChangeEffect(
   supertypes: string[] = [],
   description: string,
   addTypes: boolean = false, // If true, adds to existing types; if false, replaces
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `type-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.TYPE_CHANGING,
-    effectType: 'type_change',
+    effectType: "type_change",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -708,8 +727,12 @@ export function createTypeChangeEffect(
       if (addTypes) {
         // Add to existing types
         overrides.types = [...new Set([...(overrides.types || []), ...types])];
-        overrides.subtypes = [...new Set([...(overrides.subtypes || []), ...subtypes])];
-        overrides.supertypes = [...new Set([...(overrides.supertypes || []), ...supertypes])];
+        overrides.subtypes = [
+          ...new Set([...(overrides.subtypes || []), ...subtypes]),
+        ];
+        overrides.supertypes = [
+          ...new Set([...(overrides.supertypes || []), ...supertypes]),
+        ];
       } else {
         // Replace types
         overrides.types = types;
@@ -732,14 +755,14 @@ export function createColorChangeEffect(
   colors: string[],
   description: string,
   addColors: boolean = false, // If true, adds to existing colors; if false, replaces
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `color-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.COLOR_CHANGING,
-    effectType: 'color_change',
+    effectType: "color_change",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -749,7 +772,9 @@ export function createColorChangeEffect(
       const overrides = ls.getOverrides(card.id);
 
       if (addColors) {
-        overrides.colors = [...new Set([...(overrides.colors || []), ...colors])];
+        overrides.colors = [
+          ...new Set([...(overrides.colors || []), ...colors]),
+        ];
       } else {
         overrides.colors = colors;
       }
@@ -768,14 +793,14 @@ export function createAbilityGrantEffect(
   controllerId: PlayerId,
   ability: string,
   description: string,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `ability-grant-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.ABILITY,
-    effectType: 'ability_grant',
+    effectType: "ability_grant",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -806,14 +831,14 @@ export function createAbilityRemoveEffect(
   ability: string,
   description: string,
   removeAll: boolean = false,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `ability-remove-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
     layer: Layer.ABILITY,
-    effectType: 'ability_remove',
+    effectType: "ability_remove",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -824,7 +849,7 @@ export function createAbilityRemoveEffect(
 
       if (removeAll) {
         // Mark that all abilities should be removed
-        overrides.removedAbilities = ['*'];
+        overrides.removedAbilities = ["*"];
       } else {
         if (!overrides.removedAbilities) {
           overrides.removedAbilities = [];
@@ -849,7 +874,7 @@ export function createPowerToughnessSetEffect(
   power: number,
   toughness: number,
   description: string,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `pt-set-${sourceCardId}-${Date.now()}`,
@@ -857,7 +882,7 @@ export function createPowerToughnessSetEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.SET,
-    effectType: 'power_set',
+    effectType: "power_set",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -880,7 +905,7 @@ export function createPowerSetEffect(
   controllerId: PlayerId,
   power: number,
   description: string,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `p-set-${sourceCardId}-${Date.now()}`,
@@ -888,7 +913,7 @@ export function createPowerSetEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.SET,
-    effectType: 'power_set',
+    effectType: "power_set",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -910,7 +935,7 @@ export function createToughnessSetEffect(
   controllerId: PlayerId,
   toughness: number,
   description: string,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `t-set-${sourceCardId}-${Date.now()}`,
@@ -918,7 +943,7 @@ export function createToughnessSetEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.SET,
-    effectType: 'toughness_set',
+    effectType: "toughness_set",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -941,7 +966,7 @@ export function createPowerToughnessModifyEffect(
   controllerId: PlayerId,
   powerDelta: number,
   toughnessDelta: number,
-  description: string
+  description: string,
 ): ContinuousEffect {
   return {
     id: `pt-mod-${sourceCardId}-${Date.now()}`,
@@ -949,7 +974,7 @@ export function createPowerToughnessModifyEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.MODIFY,
-    effectType: 'power_modify',
+    effectType: "power_modify",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -969,7 +994,7 @@ export function createPowerModifyEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   powerDelta: number,
-  description: string
+  description: string,
 ): ContinuousEffect {
   return {
     id: `p-mod-${sourceCardId}-${Date.now()}`,
@@ -977,7 +1002,7 @@ export function createPowerModifyEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.MODIFY,
-    effectType: 'power_modify',
+    effectType: "power_modify",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -996,7 +1021,7 @@ export function createToughnessModifyEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   toughnessDelta: number,
-  description: string
+  description: string,
 ): ContinuousEffect {
   return {
     id: `t-mod-${sourceCardId}-${Date.now()}`,
@@ -1004,7 +1029,7 @@ export function createToughnessModifyEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.MODIFY,
-    effectType: 'toughness_modify',
+    effectType: "toughness_modify",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -1024,7 +1049,7 @@ export function createPowerToughnessSwitchEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   description: string,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `pt-switch-${sourceCardId}-${Date.now()}`,
@@ -1032,7 +1057,7 @@ export function createPowerToughnessSwitchEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.SWITCH,
-    effectType: 'power_toughness_switch',
+    effectType: "power_toughness_switch",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -1055,7 +1080,7 @@ export function createCharacteristicDefiningAbility(
   controllerId: PlayerId,
   cda: CharacteristicDefiningAbility,
   description: string,
-  layerSystemInstance?: LayerSystem
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `cda-${sourceCardId}-${Date.now()}`,
@@ -1063,7 +1088,7 @@ export function createCharacteristicDefiningAbility(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.CHARACTERISTIC_DEFINING,
-    effectType: 'characteristic_defining',
+    effectType: "characteristic_defining",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -1072,10 +1097,10 @@ export function createCharacteristicDefiningAbility(
       const ls = layerSystemInstance || getLayerSystemInstance();
       const overrides = ls.getOverrides(card.id);
 
-      if (typeof cda.power === 'number') {
+      if (typeof cda.power === "number") {
         overrides.powerSet = cda.power;
       }
-      if (typeof cda.toughness === 'number') {
+      if (typeof cda.toughness === "number") {
         overrides.toughnessSet = cda.toughness;
       }
       if (cda.color) {
@@ -1090,7 +1115,6 @@ export function createCharacteristicDefiningAbility(
   };
 }
 
-
 /**
  * Create a counter effect (Layer 7c - CR 613.8c)
  * Handles +1/+1 and -1/-1 counters that modify P/T
@@ -1100,10 +1124,10 @@ export function createCharacteristicDefiningAbility(
 export function createCounterEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  _counterType: '+1/+1' | '-1/-1' | string,
+  _counterType: "+1/+1" | "-1/-1" | string,
   _count: number,
   description: string,
-  _layerSystemInstance?: LayerSystem
+  _layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `counter-${sourceCardId}-${Date.now()}`,
@@ -1111,7 +1135,7 @@ export function createCounterEffect(
     controllerId,
     layer: Layer.POWER_TOUGHNESS,
     sublayer: PowerToughnessSublayer.COUNTERS,
-    effectType: 'counter',
+    effectType: "counter",
     description,
     timestamp: Date.now(),
     priority: 0,
@@ -1123,6 +1147,38 @@ export function createCounterEffect(
       return { ...card };
     },
   };
+}
+
+/**
+ * Get the effective power of a card after all layer effects have been applied.
+ * This should be used for combat damage calculation per CR 506-510.
+ *
+ * @param card - The card instance
+ * @param layerSystem - The layer system instance to use
+ * @returns The effective power after layer 7 effects are resolved
+ */
+export function getEffectivePower(
+  card: CardInstance,
+  layerSystem: LayerSystem,
+): number {
+  const characteristics = layerSystem.getEffectiveCharacteristics(card);
+  return characteristics.power ?? 0;
+}
+
+/**
+ * Get the effective toughness of a card after all layer effects have been applied.
+ * This should be used for combat damage calculation per CR 506-510.
+ *
+ * @param card - The card instance
+ * @param layerSystem - The layer system instance to use
+ * @returns The effective toughness after layer 7 effects are resolved
+ */
+export function getEffectiveToughness(
+  card: CardInstance,
+  layerSystem: LayerSystem,
+): number {
+  const characteristics = layerSystem.getEffectiveCharacteristics(card);
+  return characteristics.toughness ?? 0;
 }
 
 // ============================================================
