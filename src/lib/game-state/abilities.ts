@@ -654,12 +654,8 @@ export function checkTriggeredAbilities(
   // 603.3b: Abilities with the same timestamp are ordered by the cards timestamp in the zone
   // 603.3c: For continuous triggers, check the game state at the moment of the trigger
   triggeredAbilities.sort((a, b) => {
-    // First: earlier timestamp resolves first (lower timestamp = earlier)
-    if (a.timestamp !== b.timestamp) {
-      return a.timestamp - b.timestamp;
-    }
-
-    // Second: APNAP order - active player's abilities resolve first
+    // CR 603.3: Abilities that trigger at the same time are put on the stack in APNAP order
+    // First: APNAP order - active player's abilities resolve first
     const aCard = state.cards.get(a.sourceCardId);
     const bCard = state.cards.get(b.sourceCardId);
     if (!aCard || !bCard) return 0;
@@ -671,7 +667,7 @@ export function checkTriggeredAbilities(
     if (aIsActive && !bIsActive) return -1; // Active player first
     if (!aIsActive && bIsActive) return 1; // Inactive player after active
 
-    // Third: same controller, order by source card's timestamp in zone
+    // Second: same controller, order by source card's timestamp in zone (CR 603.3b)
     if (a.sourceCardTimestamp !== b.sourceCardTimestamp) {
       return a.sourceCardTimestamp - b.sourceCardTimestamp;
     }
