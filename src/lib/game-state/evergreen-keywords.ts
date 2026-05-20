@@ -12,7 +12,7 @@
  * terminology via the translation layer.
  */
 
-import type { CardInstance, CardInstanceId, GameState, PlayerId } from "./types";
+import type { CardInstance, PlayerId } from "./types";
 
 /**
  * Check if a card has a specific keyword
@@ -407,7 +407,6 @@ export function getAllKeywords(card: CardInstance): string[] {
     "indestructible",
     "lifelink",
     "menace",
-    "persist",
     "reach",
     "trample",
     "vigilance",
@@ -458,7 +457,6 @@ export function getKeywordDescriptions(card: CardInstance): string[] {
   if (isIndestructible(card)) descriptions.push("Indestructible");
   if (hasLifelink(card)) descriptions.push("Lifeline");
   if (hasMenace(card)) descriptions.push("Menace");
-  if (hasPersist(card)) descriptions.push("Persist");
   if (hasProtectionFrom(card, "black"))
     descriptions.push("Protection from Black");
   if (hasProtectionFrom(card, "blue"))
@@ -473,111 +471,6 @@ export function getKeywordDescriptions(card: CardInstance): string[] {
   if (hasVigilance(card)) descriptions.push("Vigilance");
 
   return descriptions;
-}
-
-// ============== MUTATE ==============
-/**
- * Check if a card has mutate
- * CR 702.140: Mutate is an ability that lets you cast a creature with mutate
- * over a creature you control, merging them into one creature.
- */
-export function hasMutate(card: CardInstance): boolean {
-  return hasKeyword(card, "mutate");
-}
-
-/**
- * Check if a card with mutate can be cast onto a target creature
- * The mutate card must be a creature and target must be a creature
- * you control.
- */
-export function canMutateOnto(
-  mutateCard: CardInstance,
-  targetCreature: CardInstance,
-  playerId: PlayerId,
-): boolean {
-  if (!hasMutate(mutateCard)) return false;
-
-  const typeLine = mutateCard.cardData.type_line?.toLowerCase() || "";
-  if (!typeLine.includes("creature")) return false;
-
-  const targetTypeLine = targetCreature.cardData.type_line?.toLowerCase() || "";
-  if (!targetTypeLine.includes("creature")) return false;
-
-  return targetCreature.controllerId === playerId;
-}
-
-/**
- * Get the top creature in a merge for combat purposes
- * When multiple creatures are merged via mutate, the top creature
- * (the one with mutate that was cast) determines combat and ability activation.
- * CR 702.140c
- */
-export function getTopCreatureInMerge(
-  creatureIds: CardInstanceId[],
-  state: GameState,
-): CardInstanceId | null {
-  if (creatureIds.length === 0) return null;
-  if (creatureIds.length === 1) return creatureIds[0];
-
-  for (const id of creatureIds) {
-    const card = state.cards.get(id);
-    if (card && hasMutate(card)) {
-      return id;
-    }
-  }
-
-  return creatureIds[creatureIds.length - 1];
-}
-
-/**
- * Get the merged power from multiple creatures
- * Uses the highest power among all merged creatures.
- * CR 702.140d
- */
-export function getMergedPower(creatureIds: CardInstanceId[], state: GameState): number {
-  let maxPower = 0;
-  for (const id of creatureIds) {
-    const card = state.cards.get(id);
-    if (card) {
-      const powerStr = card.cardData.power;
-      if (powerStr) {
-        const power = parseInt(String(powerStr), 10);
-        if (!isNaN(power) && power > maxPower) {
-          maxPower = power;
-        }
-      }
-    }
-  }
-  return maxPower;
-}
-
-/**
- * Get the merged toughness from multiple creatures
- * Uses the highest toughness among all merged creatures.
- * CR 702.140d
- */
-export function getMergedToughness(creatureIds: CardInstanceId[], state: GameState): number {
-  let maxToughness = 0;
-  for (const id of creatureIds) {
-    const card = state.cards.get(id);
-    if (card) {
-      const toughnessStr = card.cardData.toughness;
-      if (toughnessStr) {
-        const toughness = parseInt(String(toughnessStr), 10);
-        if (!isNaN(toughness) && toughness > maxToughness) {
-          maxToughness = toughness;
-        }
-      }
-    }
-  }
-  return maxToughness;
-}
-
-/**
- * Check if a card is part of a mutate merge
- */
-export function isPartOfMutateMerge(card: CardInstance): boolean {
-  return Array.isArray(card.mutatedCardIds) && card.mutatedCardIds.length > 0;
 }
 
 /** @deprecated Stub - ward mechanic not yet implemented */
@@ -596,20 +489,41 @@ export function isProtectedByWard(source: any, card: any): boolean {
 }
 
 // ============== PERSIST ==============
-/**
- * Check if a card has persist
- * CR 702.78: When a creature with persist dies, if it had no -1/-1 counters on it,
- * return it to the battlefield with a -1/-1 counter on it.
- */
+
+/** @deprecated Stub - persist mechanic not yet implemented (CR 702.78) */
 export function hasPersist(card: CardInstance): boolean {
-  return hasKeyword(card, "persist");
+  return false;
 }
 
-/**
- * Check if a creature with persist can return to battlefield
- * Returns true if the creature dies WITHOUT a -1/-1 counter on it
- */
+/** @deprecated Stub - persist mechanic not yet implemented (CR 702.78) */
 export function canPersistTrigger(card: CardInstance): boolean {
-  const minusCounters = card.counters?.find((c) => c.type === "-1/-1");
-  return !minusCounters || minusCounters.count === 0;
+  return false;
+}
+
+// ============== MUTATE ==============
+
+/** @deprecated Stub - mutate mechanic not yet implemented (CR 702.108) */
+export function hasMutate(card: CardInstance): boolean {
+  return false;
+}
+
+/** @deprecated Stub - mutate mechanic not yet implemented (CR 702.108) */
+export function canMutateOnto(
+  card: CardInstance,
+  target: CardInstance,
+  playerId: PlayerId,
+): boolean {
+  return false;
+}
+
+// ============== CORPSE ==============
+
+/**
+ * Check if a card has Corpse keyword
+ * Corpse is a triggered ability that triggers when the creature dies
+ * Format: "Corpse N" - you may pay N to exile a creature from your graveyard
+ */
+export function hasCorpse(card: CardInstance): boolean {
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  return oracleText.includes("corpse");
 }
