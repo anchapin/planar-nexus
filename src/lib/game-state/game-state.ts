@@ -31,6 +31,10 @@ import {
   resolveTopOfStack,
 } from "./spell-casting";
 import { ReplacementEffectManager } from "./replacement-effects";
+import {
+  checkStateBasedActions as checkSBAs,
+  type StateBasedActionResult,
+} from "./state-based-actions";
 
 export { castSpell, resolveTopOfStack };
 
@@ -304,14 +308,19 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
     (p) => p.hasPassedPriority,
   );
 
-  if (allPassed && state.stack.length === 0) {
+  // Check state-based actions after each priority pass
+  // SBAs must be checked before advancing phase or passing to next player
+  const sbaResult = checkSBAs(newState);
+  let stateAfterSBA = sbaResult.state;
+
+  if (allPassed && stateAfterSBA.stack.length === 0) {
     // All players passed with empty stack - advance phase
-    return advanceToNextPhase(newState);
+    return advanceToNextPhase(stateAfterSBA);
   }
 
-  if (allPassed && state.stack.length > 0) {
+  if (allPassed && stateAfterSBA.stack.length > 0) {
     // All players passed - resolve top of stack
-    return resolveSpellStack(newState);
+    return resolveSpellStack(stateAfterSBA);
   }
 
   // Pass priority to next player
@@ -322,7 +331,7 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   const nextPlayerId = Array.from(state.players.keys())[nextPlayerIndex];
 
   return {
-    ...newState,
+    ...stateAfterSBA,
     priorityPlayerId: nextPlayerId,
   };
 }
