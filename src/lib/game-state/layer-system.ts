@@ -60,6 +60,85 @@ export enum PowerToughnessSublayer {
 }
 
 /**
+ * CR 613.8 Layer 7 sublayer dependency graph
+ *
+ * Dependencies per CR 613.8 (earlier sublayer depends on later ones):
+ * - 7a (CDA) depends on 7b, 7c, 7d, 7e (must apply before them, later effects can modify it)
+ * - 7b (Set P/T) depends on 7c, 7d, 7e (must apply before them)
+ * - 7c (Counters) depends on 7d, 7e (must apply before them)
+ * - 7d (Switch P/T) depends on 7e (must apply before it)
+ * - 7e (Modify P/T) depends on nothing
+ *
+ * In dependency graph terms: earlier -> later (earlier can reach later)
+ * This creates a partial order: 7a -> 7b -> 7c -> 7d -> 7e
+ */
+export const LAYER_7_SUBLAYER_DEPENDENCIES: ReadonlyMap<
+  PowerToughnessSublayer,
+  PowerToughnessSublayer[]
+> = new Map([
+  [PowerToughnessSublayer.CHARACTERISTIC_DEFINING, []], // 7a depends on nothing in our model
+  [PowerToughnessSublayer.SET, []], // 7b depends on nothing
+  [PowerToughnessSublayer.COUNTERS, []], // 7c depends on nothing
+  [PowerToughnessSublayer.SWITCH, []], // 7d depends on nothing
+  [PowerToughnessSublayer.MODIFY, []], // 7e depends on nothing
+]);
+
+/**
+ * Get the sublayers that a given sublayer depends on (CR 613.8)
+ * A sublayer "depends on" sublayers that apply after it (later in order).
+ * This is the reverse of the application order.
+ */
+export function getSublayerDependencies(
+  sublayer: PowerToughnessSublayer,
+): PowerToughnessSublayer[] {
+  const sublayerOrder = [
+    PowerToughnessSublayer.CHARACTERISTIC_DEFINING, // 7a - applies first
+    PowerToughnessSublayer.SET, // 7b - applies second
+    PowerToughnessSublayer.COUNTERS, // 7c - applies third
+    PowerToughnessSublayer.SWITCH, // 7d - applies fourth
+    PowerToughnessSublayer.MODIFY, // 7e - applies last
+  ];
+
+  const sublayerIndex = sublayerOrder.indexOf(sublayer);
+
+  // 7e (last) and invalid sublayers depend on nothing
+  if (sublayerIndex >= sublayerOrder.length - 1) {
+    return [];
+  }
+
+  // This sublayer depends on all sublayers that come AFTER it (higher index)
+  // because those apply later and can modify the result
+  return sublayerOrder.slice(sublayerIndex + 1);
+}
+
+/**
+ * Get the sublayers that must apply before a given sublayer (reverse dependencies)
+ * These are the sublayers that depend on this one.
+ */
+export function getSublayersDependingOn(
+  sublayer: PowerToughnessSublayer,
+): PowerToughnessSublayer[] {
+  const sublayerOrder = [
+    PowerToughnessSublayer.CHARACTERISTIC_DEFINING, // 7a - applies first
+    PowerToughnessSublayer.SET, // 7b - applies second
+    PowerToughnessSublayer.COUNTERS, // 7c - applies third
+    PowerToughnessSublayer.SWITCH, // 7d - applies fourth
+    PowerToughnessSublayer.MODIFY, // 7e - applies last
+  ];
+
+  const sublayerIndex = sublayerOrder.indexOf(sublayer);
+
+  // 7a (first) or invalid - nothing depends on it (everything else is later)
+  if (sublayerIndex <= 0) {
+    return [];
+  }
+
+  // All sublayers that come BEFORE this one (lower index) depend on it
+  // because this sublayer applies later and can modify their results
+  return sublayerOrder.slice(0, sublayerIndex);
+}
+
+/**
  * A continuous effect that applies to a card
  */
 export interface ContinuousEffect {
@@ -219,10 +298,15 @@ export class LayerSystem {
    * @returns true if dependency was added, false if it would create a cycle
    */
   addDependency(dependency: EffectDependency): boolean {
-    // CR 613.7c: If adding this dependency would create a circular loop, no effect applies
-    if (this.wouldCreateCycle(dependency.effectId, dependency.dependsOnId)) {
+    // Use enhanced cycle detection that considers Layer 7 sublayers
+    if (
+      this.wouldCreateCycleWithSublayers(
+        dependency.effectId,
+        dependency.dependsOnId,
+      )
+    ) {
       console.warn(
-        `[LayerSystem] Rejected dependency ${dependency.effectId} -> ${dependency.dependsOnId}: would create cycle (CR 613.7c)`,
+        `[LayerSystem] Rejected dependency ${dependency.effectId} -> ${dependency.dependsOnId}: would create cycle (CR 613.7c/613.8)`,
       );
       return false;
     }
@@ -230,6 +314,62 @@ export class LayerSystem {
     // Re-sort effects to account for the new dependency
     this.sortEffects();
     return true;
+  }
+
+  /**
+   * Check if adding a dependency between Layer 7 sublayers would create a cycle
+   * considering both explicit dependencies and the implicit sublayer ordering (CR 613.8)
+   *
+   * The implicit sublayer ordering creates a partial order:
+   * 7a -> 7b -> 7c -> 7d -> 7e
+   * (7a applies first, then 7b, etc.)
+   *
+   * This means if we have effects in different sublayers:
+   * - An effect in an earlier sublayer (e.g., 7a) depending on one in a later sublayer (e.g., 7e)
+   *   would NOT create a cycle via sublayer ordering alone.
+   * - But two effects in the SAME sublayer creating mutual dependencies WOULD create a cycle.
+   *
+   * @param effectId - The effect that would depend on another
+   * @param dependsOnId - The effect it would depend on
+   * @returns true if adding the dependency would create a cycle
+   */
+  wouldCreateCycleWithSublayers(
+    effectId: string,
+    dependsOnId: string,
+  ): boolean {
+    // Self-referential dependency is a cycle
+    if (effectId === dependsOnId) {
+      return true;
+    }
+
+    const effect = this.effects.find((e) => e.id === effectId);
+    const dependsOn = this.effects.find((e) => e.id === dependsOnId);
+
+    // If either effect is not found, fall back to basic cycle check
+    if (!effect || !dependsOn) {
+      return this.wouldCreateCycle(effectId, dependsOnId);
+    }
+
+    // If both effects are in Layer 7, we need to check for same-sublayer cycles
+    if (
+      effect.layer === Layer.POWER_TOUGHNESS &&
+      dependsOn.layer === Layer.POWER_TOUGHNESS
+    ) {
+      // Same sublayer: mutual dependency is a cycle
+      if (effect.sublayer === dependsOn.sublayer) {
+        // Check if the dependency already exists in the opposite direction
+        const existingReverseDep = this.dependencies.find(
+          (d) => d.effectId === dependsOnId && d.dependsOnId === effectId,
+        );
+        if (existingReverseDep) {
+          // Mutual dependency in same sublayer - cycle
+          return true;
+        }
+      }
+    }
+
+    // For different sublayers or non-Layer-7 effects, use standard cycle detection
+    return this.wouldCreateCycle(effectId, dependsOnId);
   }
 
   /**
