@@ -407,6 +407,7 @@ export function getAllKeywords(card: CardInstance): string[] {
     "indestructible",
     "lifelink",
     "menace",
+    "persist",
     "reach",
     "trample",
     "vigilance",
@@ -457,6 +458,7 @@ export function getKeywordDescriptions(card: CardInstance): string[] {
   if (isIndestructible(card)) descriptions.push("Indestructible");
   if (hasLifelink(card)) descriptions.push("Lifeline");
   if (hasMenace(card)) descriptions.push("Menace");
+  if (hasPersist(card)) descriptions.push("Persist");
   if (hasProtectionFrom(card, "black"))
     descriptions.push("Protection from Black");
   if (hasProtectionFrom(card, "blue"))
@@ -486,4 +488,23 @@ export function getWardCost(card: any): number | null {
 /** @deprecated Stub - ward mechanic not yet implemented */
 export function isProtectedByWard(source: any, card: any): boolean {
   return false;
+}
+
+// ============== PERSIST ==============
+/**
+ * Check if a card has persist
+ * CR 702.78: When a creature with persist dies, if it had no -1/-1 counters on it,
+ * return it to the battlefield with a -1/-1 counter on it.
+ */
+export function hasPersist(card: CardInstance): boolean {
+  return hasKeyword(card, "persist");
+}
+
+/**
+ * Check if a creature with persist can return to battlefield
+ * Returns true if the creature dies WITHOUT a -1/-1 counter on it
+ */
+export function canPersistTrigger(card: CardInstance): boolean {
+  const minusCounters = card.counters?.find((c) => c.type === "-1/-1");
+  return !minusCounters || minusCounters.count === 0;
 }
