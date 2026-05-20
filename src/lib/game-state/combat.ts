@@ -5,6 +5,7 @@
  */
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
+import { Phase } from "./types";
 import { isCreature, getPower, getToughness } from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
@@ -410,11 +411,29 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     };
   }
 
+  const currentPhase = state.turn.currentPhase;
+  const isFirstStrikeStep = currentPhase === Phase.COMBAT_DAMAGE_FIRST_STRIKE;
+
   let updatedState = { ...state };
   const damageEvents: string[] = [];
 
-  // Process each attacker
-  for (const attacker of state.combat.attackers) {
+  // Determine which attackers should deal damage this step
+  // CR 702.4b: Double strike creatures deal damage in BOTH steps
+  // In first strike step: creatures with first strike OR double strike deal damage
+  // In regular damage step: surviving creatures with double strike OR regular creatures deal damage
+  const attackersDealingDamage = state.combat.attackers.filter((attacker) => {
+    if (isFirstStrikeStep) {
+      // First strike step: only first strike or double strike
+      return attacker.hasFirstStrike || attacker.hasDoubleStrike;
+    } else {
+      // Regular damage step: only double strike OR no first strike
+      // Exclude creatures that died in first strike step (they won't be on battlefield)
+      return !attacker.hasFirstStrike || attacker.hasDoubleStrike;
+    }
+  });
+
+  // Process each attacker that should deal damage this step
+  for (const attacker of attackersDealingDamage) {
     const attackerCard = updatedState.cards.get(attacker.cardId);
     if (!attackerCard) continue;
 
@@ -428,20 +447,15 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     // Check if attacker is blocked
     if (!assignedBlockers || assignedBlockers.length === 0) {
       // Unblocked - damage goes to defender
-      // Check for double strike - deals damage twice
-      const attackerHasDoubleStrike =
-        attackerCard.cardData.keywords?.includes("Double Strike") ||
-        attackerCard.cardData.oracle_text
-          ?.toLowerCase()
-          .includes("double strike");
-
-      const damageMultiplier = attackerHasDoubleStrike ? 2 : 1;
-      const totalDamage = attackerPower * damageMultiplier;
+      // In first strike step, double striker deals full damage once
+      // In regular step, double striker deals full damage again
+      // Only unblocked attackers deal full damage (no multiplier in separate steps)
+      const damage = attackerPower;
 
       if (attacker.isAttackingPlaneswalker) {
         // Damage to planeswalker would need planeswalker damage handling
         damageEvents.push(
-          `${attackerCard.cardData.name} deals ${totalDamage} to planeswalker`,
+          `${attackerCard.cardData.name} deals ${damage} to planeswalker`,
         );
       } else {
         // Damage to player
@@ -470,7 +484,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             // Infect converts damage to poison - no life loss occurs (CR 702.93)
             let updatedDefender = {
               ...defender,
-              poisonCounters: defender.poisonCounters + totalDamage,
+              poisonCounters: defender.poisonCounters + damage,
             };
 
             // If creature also has toxic, add toxic poison as well (CR 702.94)
@@ -492,11 +506,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
 
             if (attackerToxicLevel > 0) {
               damageEvents.push(
-                `${attackerCard.cardData.name} deals ${totalDamage} poison to ${defender.name} and ${attackerToxicLevel} toxic poison`,
+                `${attackerCard.cardData.name} deals ${damage} poison to ${defender.name} and ${attackerToxicLevel} toxic poison`,
               );
             } else {
               damageEvents.push(
-                `${attackerCard.cardData.name} deals ${totalDamage} poison to ${defender.name}`,
+                `${attackerCard.cardData.name} deals ${damage} poison to ${defender.name}`,
               );
             }
           } else {
@@ -507,7 +521,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                 attacker.defenderId as PlayerId,
                 {
                   ...defender,
-                  life: Math.max(0, defender.life - totalDamage),
+                  life: Math.max(0, defender.life - damage),
                 },
               ),
             };
@@ -530,11 +544,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                 ),
               };
               damageEvents.push(
-                `${attackerCard.cardData.name} deals ${totalDamage} to ${defender.name} and ${attackerToxicLevel} toxic poison`,
+                `${attackerCard.cardData.name} deals ${damage} to ${defender.name} and ${attackerToxicLevel} toxic poison`,
               );
             } else {
               damageEvents.push(
-                `${attackerCard.cardData.name} deals ${totalDamage} to ${defender.name}`,
+                `${attackerCard.cardData.name} deals ${damage} to ${defender.name}`,
               );
             }
           }
@@ -545,7 +559,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
               updatedState,
               attacker.cardId,
               attacker.defenderId as PlayerId,
-              attackerPower,
+              damage,
             );
             if (commanderDamageResult.success) {
               updatedState = commanderDamageResult.state;
@@ -569,23 +583,23 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                   attackerCard.controllerId!,
                   {
                     ...attackerController,
-                    life: attackerController.life + attackerPower,
+                    life: attackerController.life + damage,
                   },
                 ),
               };
             }
             damageEvents.push(
-              `${attackerCard.cardData.name} deals ${attackerPower} to ${defender.name} and controller gains ${attackerPower} life`,
+              `${attackerCard.cardData.name} deals ${damage} to ${defender.name} and controller gains ${damage} life`,
             );
           } else {
             damageEvents.push(
-              `${attackerCard.cardData.name} deals ${attackerPower} to ${defender.name}`,
+              `${attackerCard.cardData.name} deals ${damage} to ${defender.name}`,
             );
           }
         }
       }
     } else {
-      // Blocked - damage is assigned to blockers and blockers deal damage back
+      // Blocked - damage is assigned to blockers
       let remainingDamage = attackerPower;
 
       // Sort blockers by order
@@ -593,17 +607,6 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         (a, b) => a.blockerOrder - b.blockerOrder,
       );
 
-      // First, handle first strike damage if applicable
-      const attackerHasFirstStrike =
-        attackerCard.cardData.keywords?.includes("First Strike") ||
-        attackerCard.cardData.oracle_text
-          ?.toLowerCase()
-          .includes("first strike");
-      const attackerHasDoubleStrike =
-        attackerCard.cardData.keywords?.includes("Double Strike") ||
-        attackerCard.cardData.oracle_text
-          ?.toLowerCase()
-          .includes("double strike");
       const attackerHasDeathtouch =
         attackerCard.cardData.keywords?.includes("Deathtouch") ||
         attackerCard.cardData.oracle_text?.toLowerCase().includes("deathtouch");
@@ -723,21 +726,43 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
       }
 
       // Now deal damage from blockers to attacker
-      // In normal combat, blockers deal damage simultaneously with attackers
-      // But if attacker has first strike, blockers only deal damage if they survived the first strike step
+      // CR 702.4b: Blockers with first strike deal damage in first strike step
+      // CR 702.4b: Blockers with double strike deal damage in BOTH steps
+      // In regular step: Only surviving blockers deal damage
       for (const blocker of sortedBlockers) {
         const blockerCard = updatedState.cards.get(blocker.cardId);
         if (!blockerCard) continue;
 
-        // If attacker has first strike (but not double strike), check if blocker died in first strike step
-        // Blockers with lethal damage from first strike don't deal damage back
-        if (attackerHasFirstStrike && !attackerHasDoubleStrike) {
-          if (
-            blockerCard.damage >=
-            getEffectiveToughness(blockerCard, layerSystem)
-          ) {
+        // Check if this blocker should deal damage in the current step
+        const blockerHasFirstStrike =
+          blocker.hasFirstStrike ||
+          blockerCard.cardData.keywords?.includes("First Strike") ||
+          blockerCard.cardData.oracle_text
+            ?.toLowerCase()
+            .includes("first strike");
+        const blockerHasDoubleStrike =
+          blocker.hasDoubleStrike ||
+          blockerCard.cardData.keywords?.includes("Double Strike") ||
+          blockerCard.cardData.oracle_text
+            ?.toLowerCase()
+            .includes("double strike");
+
+        if (isFirstStrikeStep) {
+          // First strike step: only blockers with first strike or double strike
+          if (!blockerHasFirstStrike && !blockerHasDoubleStrike) {
             continue;
           }
+        } else {
+          // Regular damage step: blockers with only first strike don't get a second attack
+          // (they already dealt damage in first strike step)
+          // Double strikers that survived can deal again
+          if (blockerHasFirstStrike && !blockerHasDoubleStrike) {
+            continue;
+          }
+          // Note: We don't check for lethal damage here because in regular combat
+          // damage step, creatures deal damage simultaneously and then SBA checks
+          // for destruction. A creature with lethal damage marked can still deal
+          // damage in the regular step (CR 702.4 - no first strike rules).
         }
 
         const blockerPower = getEffectivePower(blockerCard, layerSystem);
@@ -769,13 +794,25 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     damageEvents.push(desc);
   }
 
-  // Clear combat state
-  const clearedCombat = {
-    ...updatedState.combat,
-    inCombatPhase: false,
-    attackers: [],
-    blockers: new Map(),
-  };
+  // Only clear combat state after the regular combat damage step
+  // In first strike step, keep combat state intact for the second pass
+  let clearedCombat;
+  if (isFirstStrikeStep) {
+    // First strike step complete - keep combat state for regular damage step
+    clearedCombat = {
+      ...updatedState.combat,
+      attackers: state.combat.attackers, // Keep attackers for second pass
+      blockers: state.combat.blockers, // Keep blockers for second pass
+    };
+  } else {
+    // Regular damage step complete - clear combat state
+    clearedCombat = {
+      ...updatedState.combat,
+      inCombatPhase: false,
+      attackers: [],
+      blockers: new Map(),
+    };
+  }
 
   return {
     success: true,

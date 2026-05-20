@@ -904,19 +904,47 @@ describe("Combat System - Damage Resolution", () => {
         blockerAssignments,
       );
 
-      // Resolve combat
-      const result = resolveCombatDamage(blockResult.state);
+      // First combat damage step (first strike) - first striker deals damage
+      const stateFirstStrike = {
+        ...blockResult.state,
+        turn: {
+          ...blockResult.state.turn,
+          currentPhase: Phase.COMBAT_DAMAGE_FIRST_STRIKE,
+        },
+      };
+      const resultFirstStrike = resolveCombatDamage(stateFirstStrike);
+      expect(resultFirstStrike.success).toBe(true);
+
+      // In first strike step, attacker deals damage to blocker
+      // After SBA, blocker should be dead (went to graveyard)
+      const bobGraveyardAfterFirstStrike = resultFirstStrike.state.zones.get(
+        `${bobId}-graveyard`,
+      )!;
+      const aliceBattlefieldAfterFirstStrike =
+        resultFirstStrike.state.zones.get(`${aliceId}-battlefield`)!;
+
+      // Blocker should be dead (destroyed by first strike damage)
+      expect(bobGraveyardAfterFirstStrike.cardIds).toContain(blockerId);
+      // Attacker should survive
+      expect(aliceBattlefieldAfterFirstStrike.cardIds).toContain(attackerId);
+
+      // Second combat damage step (regular) - attacker deals no additional damage
+      // (already dealt damage in first strike, blocker is dead)
+      const stateRegularDamage = {
+        ...resultFirstStrike.state,
+        turn: {
+          ...resultFirstStrike.state.turn,
+          currentPhase: Phase.COMBAT_DAMAGE,
+        },
+      };
+      const result = resolveCombatDamage(stateRegularDamage);
       expect(result.success).toBe(true);
 
-      // First striker deals damage first, blocker dies before dealing damage
-      // Attacker should survive
+      // Attacker should still survive (blocker couldn't deal damage back in first strike step)
       const aliceBattlefieldAfter = result.state.zones.get(
         `${aliceId}-battlefield`,
       )!;
-      const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
-
       expect(aliceBattlefieldAfter.cardIds).toContain(attackerId);
-      expect(bobGraveyard.cardIds).toContain(blockerId);
     });
 
     it("should handle double strike correctly", () => {
@@ -942,8 +970,30 @@ describe("Combat System - Damage Resolution", () => {
       ]);
       const stateWithAttackers = attackResult.state;
 
-      // Resolve combat
-      const result = resolveCombatDamage(stateWithAttackers);
+      // First combat damage step - double striker deals first strike damage
+      const stateFirstStrike = {
+        ...stateWithAttackers,
+        turn: {
+          ...stateWithAttackers.turn,
+          currentPhase: Phase.COMBAT_DAMAGE_FIRST_STRIKE,
+        },
+      };
+      const resultFirstStrike = resolveCombatDamage(stateFirstStrike);
+      expect(resultFirstStrike.success).toBe(true);
+
+      // Double striker should have dealt 2 damage in first strike step
+      const bobAfterFirstStrike = resultFirstStrike.state.players.get(bobId)!;
+      expect(bobAfterFirstStrike.life).toBe(18); // 20 - 2 = 18
+
+      // Second combat damage step - double striker deals regular damage
+      const stateRegularDamage = {
+        ...resultFirstStrike.state,
+        turn: {
+          ...resultFirstStrike.state.turn,
+          currentPhase: Phase.COMBAT_DAMAGE,
+        },
+      };
+      const result = resolveCombatDamage(stateRegularDamage);
       expect(result.success).toBe(true);
 
       // Double strike deals damage twice: 2 + 2 = 4
