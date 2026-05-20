@@ -31,7 +31,11 @@ import {
   hasCounter,
   initializePlaneswalkerLoyalty,
 } from "./card-instance";
-import { hasPersist, canPersistTrigger } from "./evergreen-keywords";
+import {
+  hasPersist,
+  canPersistTrigger,
+  shouldPreventDamageToTarget,
+} from "./evergreen-keywords";
 
 /**
  * Result of a keyword action
@@ -790,6 +794,19 @@ export function dealDamageToCard(
       description: "",
       error: `Card ${cardId} not found`,
     };
+  }
+
+  // CR 702.16C: Check if damage should be prevented due to protection
+  // Protection from a color prevents all damage from sources of that color
+  if (sourceId) {
+    const source = state.cards.get(sourceId);
+    if (source && shouldPreventDamageToTarget(card, source)) {
+      return {
+        success: true,
+        state,
+        description: `Damage prevented by protection from ${card.cardData.oracle_text?.match(/protection from (\w+)/)?.[1] || "color"}`,
+      };
+    }
   }
 
   // Check for prevention effects
