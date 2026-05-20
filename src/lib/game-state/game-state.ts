@@ -311,7 +311,7 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   // Check state-based actions after each priority pass
   // SBAs must be checked before advancing phase or passing to next player
   const sbaResult = checkSBAs(newState);
-  let stateAfterSBA = sbaResult.state;
+  const stateAfterSBA = sbaResult.state;
 
   if (allPassed && stateAfterSBA.stack.length === 0) {
     // All players passed with empty stack - advance phase

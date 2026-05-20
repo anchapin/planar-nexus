@@ -7,6 +7,7 @@ import {
 } from "@/lib/game-state/types";
 import { ValidationService } from "@/lib/validation-service";
 import { ScryfallCard } from "@/app/actions";
+import { ReplacementEffectManager } from "@/lib/game-state/replacement-effects";
 
 describe("ValidationService", () => {
   let gameState: GameState;
@@ -136,6 +137,7 @@ describe("ValidationService", () => {
       format: "standard",
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
+      replacementEffectManager: new ReplacementEffectManager(),
     };
   });
 
