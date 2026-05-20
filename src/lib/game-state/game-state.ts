@@ -329,7 +329,7 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   // SBA 704.5j: State-based actions are checked whenever a player would receive priority
   // Check SBAs before passing priority to next player
   const sbaResult = checkSBAs(newState);
-  let afterSBAState = sbaResult.state;
+  const afterSBAState = sbaResult.state;
 
   // If game ended from SBAs, return the ended state
   if (afterSBAState.status === "completed") {

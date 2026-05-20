@@ -834,7 +834,7 @@ export function handlePersist(
   };
 
   // Update the card with -1/-1 counter and battlefield state
-  let updatedCard: CardInstance = {
+  const updatedCard: CardInstance = {
     ...card,
     counters: [{ type: "-1/-1", count: 1 }],
     hasSummoningSickness: true,

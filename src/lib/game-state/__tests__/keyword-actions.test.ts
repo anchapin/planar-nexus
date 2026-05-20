@@ -774,7 +774,7 @@ describe("Keyword Actions", () => {
         updatedCards.set(targetCreature.id, targetCreature);
         updatedCards.set(mutateCreature.id, mutateCreature);
 
-        var testStateWithCreatures = {
+        const testStateWithCreatures = {
           ...testState,
           zones: updatedZones,
           cards: updatedCards,
@@ -863,7 +863,7 @@ describe("Keyword Actions", () => {
         updatedCards.set(mutateCreature.id, mutateCreature);
         updatedCards.set(targetCreature.id, targetCreature);
 
-        var testStateWithOpponentCreatures = {
+        const testStateWithOpponentCreatures = {
           ...testState,
           zones: updatedZones,
           cards: updatedCards,
