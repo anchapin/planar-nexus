@@ -220,25 +220,13 @@ describe("ReplacementEffectManager - As Though Effects", () => {
     rem.registerAsThoughEffect(flashEffect);
 
     expect(
-      rem.checkAsThoughEffect(
-        "player1",
-        "cast_flash",
-        mockGameState,
-      ),
+      rem.checkAsThoughEffect("player1", "cast_flash", mockGameState),
     ).toBe(true);
     expect(
-      rem.checkAsThoughEffect(
-        "player2",
-        "cast_flash",
-        mockGameState,
-      ),
+      rem.checkAsThoughEffect("player2", "cast_flash", mockGameState),
     ).toBe(false);
     expect(
-      rem.checkAsThoughEffect(
-        "player1",
-        "attack_haste",
-        mockGameState,
-      ),
+      rem.checkAsThoughEffect("player1", "attack_haste", mockGameState),
     ).toBe(false);
   });
 
@@ -260,11 +248,7 @@ describe("ReplacementEffectManager - As Though Effects", () => {
     rem.registerAsThoughEffect(conditionalEffect);
 
     expect(
-      rem.checkAsThoughEffect(
-        "player1",
-        "attack_haste",
-        mockGameState,
-      ),
+      rem.checkAsThoughEffect("player1", "attack_haste", mockGameState),
     ).toBe(true);
   });
 
@@ -291,18 +275,12 @@ describe("ReplacementEffectManager - As Though Effects", () => {
       ),
     );
 
-    const p1Effects = rem.getAsThoughEffects(
-      "player1",
-      mockGameState,
-    );
+    const p1Effects = rem.getAsThoughEffects("player1", mockGameState);
     expect(p1Effects).toHaveLength(2);
     expect(p1Effects.map((e) => e.asThoughType)).toContain("cast_flash");
     expect(p1Effects.map((e) => e.asThoughType)).toContain("attack_haste");
 
-    const p2Effects = rem.getAsThoughEffects(
-      "player2",
-      mockGameState,
-    );
+    const p2Effects = rem.getAsThoughEffects("player2", mockGameState);
     expect(p2Effects).toHaveLength(1);
     expect(p2Effects[0].asThoughType).toBe("block_flying");
   });
@@ -320,21 +298,13 @@ describe("ReplacementEffectManager - As Though Effects", () => {
     );
 
     expect(
-      rem.checkAsThoughEffect(
-        "player1",
-        "cast_flash",
-        mockGameState,
-      ),
+      rem.checkAsThoughEffect("player1", "cast_flash", mockGameState),
     ).toBe(true);
 
     rem.removeEffectsFromSource("temporary-source");
 
     expect(
-      rem.checkAsThoughEffect(
-        "player1",
-        "cast_flash",
-        mockGameState,
-      ),
+      rem.checkAsThoughEffect("player1", "cast_flash", mockGameState),
     ).toBe(false);
   });
 });
@@ -453,9 +423,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
     expect(processed2.amount).toBe(1);
 
     // All shields should be depleted
-    expect(
-      rem.getPreventionShields("player1"),
-    ).toHaveLength(0);
+    expect(rem.getPreventionShields("player1")).toHaveLength(0);
   });
 
   test("should handle draw replacement effects", () => {
@@ -538,10 +506,7 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
     const allPlayers = ["player1", "player2", "player3", "player4"];
 
     // Player2 is active
-    const order = rem.createAPNAPOrder(
-      "player2",
-      allPlayers,
-    );
+    const order = rem.createAPNAPOrder("player2", allPlayers);
 
     expect(order.activePlayerId).toBe("player2");
     expect(order.playerOrder).toEqual([
@@ -553,19 +518,208 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
   });
 
   test("should handle single player", () => {
-    const order = rem.createAPNAPOrder("player1", [
-      "player1",
-    ]);
+    const order = rem.createAPNAPOrder("player1", ["player1"]);
     expect(order.playerOrder).toEqual(["player1"]);
   });
 
   test("should handle unknown active player", () => {
     const allPlayers = ["player1", "player2"];
-    const order = rem.createAPNAPOrder(
-      "unknown",
-      allPlayers,
-    );
+    const order = rem.createAPNAPOrder("unknown", allPlayers);
     expect(order.playerOrder).toEqual(allPlayers);
+  });
+
+  test("should apply multiplayer APNAP ordering with 4 players", () => {
+    // 4-player game: P1(active) -> P2 -> P3 -> P4
+    const apnapOrder: APNAPOrder = {
+      activePlayerId: "player1",
+      playerOrder: ["player1", "player2", "player3", "player4"],
+    };
+
+    // Each player has an effect that doubles damage
+    const effects: ReplacementAbility[] = [
+      {
+        id: "p1-double",
+        sourceCardId: "p1-card",
+        controllerId: "player1",
+        effectType: "damage_replacement",
+        description: "P1 doubles damage",
+        layer: 5,
+        timestamp: 100,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P1 doubled",
+          instead: true,
+        }),
+      },
+      {
+        id: "p2-double",
+        sourceCardId: "p2-card",
+        controllerId: "player2",
+        effectType: "damage_replacement",
+        description: "P2 doubles damage",
+        layer: 5,
+        timestamp: 200,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P2 doubled",
+          instead: true,
+        }),
+      },
+      {
+        id: "p3-double",
+        sourceCardId: "p3-card",
+        controllerId: "player3",
+        effectType: "damage_replacement",
+        description: "P3 doubles damage",
+        layer: 5,
+        timestamp: 300,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P3 doubled",
+          instead: true,
+        }),
+      },
+      {
+        id: "p4-double",
+        sourceCardId: "p4-card",
+        controllerId: "player4",
+        effectType: "damage_replacement",
+        description: "P4 doubles damage",
+        layer: 5,
+        timestamp: 400,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P4 doubled",
+          instead: true,
+        }),
+      },
+    ];
+
+    effects.forEach((e) => rem.registerEffect(e));
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 2,
+      timestamp: Date.now(),
+      targetId: "player3",
+    };
+
+    // APNAP order: P1 -> P2 -> P3 -> P4
+    // P1 doubles: 2 * 2 = 4
+    // P2 doubles: 4 * 2 = 8
+    // P3 doubles: 8 * 2 = 16
+    // P4 doubles: 16 * 2 = 32
+    const processed = rem.processEvent(event, apnapOrder);
+    expect(processed.amount).toBe(32);
+  });
+
+  test("should apply APNAP ordering with different active player", () => {
+    // Same 4 players, but P3 is active
+    const apnapOrder: APNAPOrder = {
+      activePlayerId: "player3",
+      playerOrder: ["player3", "player4", "player1", "player2"],
+    };
+
+    // Each player has an effect that doubles damage
+    const effects: ReplacementAbility[] = [
+      {
+        id: "p1-double",
+        sourceCardId: "p1-card",
+        controllerId: "player1",
+        effectType: "damage_replacement",
+        description: "P1 doubles damage",
+        layer: 5,
+        timestamp: 100,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P1 doubled",
+          instead: true,
+        }),
+      },
+      {
+        id: "p2-double",
+        sourceCardId: "p2-card",
+        controllerId: "player2",
+        effectType: "damage_replacement",
+        description: "P2 doubles damage",
+        layer: 5,
+        timestamp: 200,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P2 doubled",
+          instead: true,
+        }),
+      },
+      {
+        id: "p3-double",
+        sourceCardId: "p3-card",
+        controllerId: "player3",
+        effectType: "damage_replacement",
+        description: "P3 doubles damage",
+        layer: 5,
+        timestamp: 300,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P3 doubled",
+          instead: true,
+        }),
+      },
+      {
+        id: "p4-double",
+        sourceCardId: "p4-card",
+        controllerId: "player4",
+        effectType: "damage_replacement",
+        description: "P4 doubles damage",
+        layer: 5,
+        timestamp: 400,
+        isInstead: true,
+        canApply: (e) => e.type === "damage",
+        apply: (e) => ({
+          modified: true,
+          modifiedEvent: { ...e, amount: e.amount * 2 },
+          description: "P4 doubled",
+          instead: true,
+        }),
+      },
+    ];
+
+    effects.forEach((e) => rem.registerEffect(e));
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 1,
+      timestamp: Date.now(),
+      targetId: "player1",
+    };
+
+    // APNAP order: P3 -> P4 -> P1 -> P2
+    // P3 doubles: 1 * 2 = 2
+    // P4 doubles: 2 * 2 = 4
+    // P1 doubles: 4 * 2 = 8
+    // P2 doubles: 8 * 2 = 16
+    const processed = rem.processEvent(event, apnapOrder);
+    expect(processed.amount).toBe(16);
   });
 });
 

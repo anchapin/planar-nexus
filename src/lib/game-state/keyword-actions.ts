@@ -106,8 +106,12 @@ export function destroyCard(
     targetId: cardId,
   };
 
-  const processedEvent =
-    state.replacementEffectManager.processEvent(replacementEvent);
+  const rem = state.replacementEffectManager;
+  const apnapOrder = rem.createAPNAPOrder(
+    state.turn.activePlayerId,
+    Array.from(state.players.keys()),
+  );
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
 
   if (processedEvent.type === "exile") {
     // Replacement effect changed destroy to exile
@@ -272,8 +276,12 @@ export function drawCards(
       amount: 1,
     };
 
-    const processedEvent =
-      state.replacementEffectManager.processEvent(replacementEvent);
+    const rem = currentState.replacementEffectManager;
+    const apnapOrder = rem.createAPNAPOrder(
+      currentState.turn.activePlayerId,
+      Array.from(currentState.players.keys()),
+    );
+    const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
     const drawAmount = processedEvent.amount;
 
     // Draw each card
@@ -798,8 +806,12 @@ export function dealDamageToCard(
     )[],
   };
 
-  const processedEvent =
-    state.replacementEffectManager.processEvent(replacementEvent);
+  const rem = state.replacementEffectManager;
+  const apnapOrder = rem.createAPNAPOrder(
+    state.turn.activePlayerId,
+    Array.from(state.players.keys()),
+  );
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
   const actualDamage = processedEvent.amount;
 
   // Apply damage

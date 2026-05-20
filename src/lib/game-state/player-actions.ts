@@ -1,5 +1,5 @@
-
-import type { GameState, PlayerId, CardInstanceId } from './types';
+import type { GameState, PlayerId, CardInstanceId } from "./types";
+import { ReplacementEffectManager } from "./replacement-effects";
 
 /**
  * Apply damage to a player
@@ -31,8 +31,12 @@ export function dealDamageToPlayer(
     )[],
   };
 
-  const processedEvent =
-    state.replacementEffectManager.processEvent(replacementEvent);
+  const rem = state.replacementEffectManager;
+  const apnapOrder = rem.createAPNAPOrder(
+    state.turn.activePlayerId,
+    Array.from(state.players.keys()),
+  );
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
   const actualDamage = processedEvent.amount;
 
   if (actualDamage <= 0) return state;
@@ -109,8 +113,12 @@ export function gainLife(
     amount: amount,
   };
 
-  const processedEvent =
-    state.replacementEffectManager.processEvent(replacementEvent);
+  const rem = state.replacementEffectManager;
+  const apnapOrder = rem.createAPNAPOrder(
+    state.turn.activePlayerId,
+    Array.from(state.players.keys()),
+  );
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
   const actualAmount = processedEvent.amount;
 
   if (actualAmount <= 0) return state;
