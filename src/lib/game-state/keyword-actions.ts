@@ -1035,6 +1035,206 @@ export function untapCardAction(
   };
 }
 
+/**
+ * Merge two creatures via mutate
+ * CR 702.140: When a mutate spell resolves, it merges with the target creature.
+ * The result is a single creature with combat abilities from the top (mutate) creature.
+ *
+ * @param state - Current game state
+ * @param mutateSpellCardId - The mutate creature card being merged onto target
+ * @param targetCreatureId - The target creature to merge onto
+ * @returns KeywordActionResult with updated state
+ */
+export function mergeWithMutate(
+  state: GameState,
+  mutateSpellCardId: CardInstanceId,
+  targetCreatureId: CardInstanceId,
+): KeywordActionResult {
+  const mutateCard = state.cards.get(mutateSpellCardId);
+  const targetCard = state.cards.get(targetCreatureId);
+
+  if (!mutateCard) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Mutate card ${mutateSpellCardId} not found`,
+    };
+  }
+
+  if (!targetCard) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Target creature ${targetCreatureId} not found`,
+    };
+  }
+
+  const mutateTypeLine = mutateCard.cardData.type_line?.toLowerCase() || "";
+  const targetTypeLine = targetCard.cardData.type_line?.toLowerCase() || "";
+
+  if (!mutateTypeLine.includes("creature")) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: "Mutate card is not a creature",
+    };
+  }
+
+  if (!targetTypeLine.includes("creature")) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: "Target is not a creature",
+    };
+  }
+
+  if (mutateCard.controllerId !== targetCard.controllerId) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: "Can only mutate onto creatures you control",
+    };
+  }
+
+  const updatedCards = new Map(state.cards);
+
+  const targetWithMutation = {
+    ...targetCard,
+    mutatedCardIds: [...(targetCard.mutatedCardIds || []), mutateSpellCardId],
+  };
+
+  const mutateWithAttachment = {
+    ...mutateCard,
+    attachedToId: targetCreatureId,
+  };
+
+  updatedCards.set(targetCreatureId, targetWithMutation);
+  updatedCards.set(mutateSpellCardId, mutateWithAttachment);
+
+  const sourceName = mutateCard.cardData.name;
+  const targetName = targetCard.cardData.name;
+
+  return {
+    success: true,
+    state: {
+      ...state,
+      cards: updatedCards,
+      lastModifiedAt: Date.now(),
+    },
+    description: `${sourceName} merged with ${targetName} via mutate`,
+    affectedCards: [mutateSpellCardId, targetCreatureId],
+  };
+}
+
+/**
+ * Unmerge creatures that were merged via mutate
+ * CR 702.140g: A merged creature can be unmerged by paying the unmerge cost
+ *
+ * @param state - Current game state
+ * @param topCreatureId - The top creature (with mutate ability) in the merge
+ * @returns KeywordActionResult with updated state
+ */
+export function unmergeMutate(
+  state: GameState,
+  topCreatureId: CardInstanceId,
+): KeywordActionResult {
+  const topCard = state.cards.get(topCreatureId);
+
+  if (!topCard) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Card ${topCreatureId} not found`,
+    };
+  }
+
+  if (!topCard.attachedToId) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: "Card is not part of a mutate merge",
+    };
+  }
+
+  const updatedCards = new Map(state.cards);
+
+  const baseCreatureId = topCard.attachedToId;
+  const baseCreature = state.cards.get(baseCreatureId);
+
+  if (baseCreature) {
+    const unmergedBase = {
+      ...baseCreature,
+      mutatedCardIds: (baseCreature.mutatedCardIds || []).filter(
+        (id) => id !== topCreatureId,
+      ),
+    };
+    updatedCards.set(baseCreatureId, unmergedBase);
+  }
+
+  const unmergedMutate = {
+    ...topCard,
+    attachedToId: null,
+  };
+  updatedCards.set(topCreatureId, unmergedMutate);
+
+  const topName = topCard.cardData.name;
+  const baseName = baseCreature?.cardData.name || "creature";
+
+  return {
+    success: true,
+    state: {
+      ...state,
+      cards: updatedCards,
+      lastModifiedAt: Date.now(),
+    },
+    description: `${topName} unmerged from ${baseName}`,
+    affectedCards: [topCreatureId, baseCreatureId],
+  };
+}
+
+/**
+ * Get all card IDs that are part of a mutate merge
+ *
+ * @param state - Current game state
+ * @param baseCreatureId - Any card ID in the merge
+ * @returns Array of all card IDs in the merge
+ */
+export function getMergeCreatures(
+  state: GameState,
+  baseCreatureId: CardInstanceId,
+): CardInstanceId[] {
+  const baseCard = state.cards.get(baseCreatureId);
+  if (!baseCard) return [];
+
+  const allIds = new Set<CardInstanceId>();
+
+  if (baseCard.mutatedCardIds && baseCard.mutatedCardIds.length > 0) {
+    for (const id of baseCard.mutatedCardIds) {
+      allIds.add(id);
+    }
+  }
+
+  if (baseCard.attachedToId) {
+    allIds.add(baseCard.attachedToId);
+    const parentCard = state.cards.get(baseCard.attachedToId);
+    if (parentCard && parentCard.mutatedCardIds) {
+      for (const id of parentCard.mutatedCardIds) {
+        allIds.add(id);
+      }
+    }
+  }
+
+  allIds.add(baseCreatureId);
+  return Array.from(allIds);
+}
+
 /** @deprecated Stub - cycling mechanic not yet implemented */
 export function hasCycling(card: any): boolean {
   return false;

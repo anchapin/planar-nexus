@@ -42,6 +42,7 @@ export function createCardInstance(
     powerModifier: 0,
     attachedToId: null,
     attachedCardIds: [],
+    mutatedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
     attachedTimestamp: null,
     chosenBasicLandType: null,
