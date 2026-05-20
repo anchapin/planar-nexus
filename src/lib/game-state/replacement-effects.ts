@@ -657,4 +657,4 @@ export function createAsThoughEffect(
   };
 }
 
-export const replacementEffectManager = new ReplacementEffectManager();
+export class ReplacementEffectManager {

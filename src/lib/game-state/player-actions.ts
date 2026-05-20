@@ -1,6 +1,5 @@
 
 import type { GameState, PlayerId, CardInstanceId } from './types';
-import { replacementEffectManager } from './replacement-effects';
 
 /**
  * Apply damage to a player
@@ -33,7 +32,7 @@ export function dealDamageToPlayer(
   };
 
   const processedEvent =
-    replacementEffectManager.processEvent(replacementEvent);
+    state.replacementEffectManager.processEvent(replacementEvent);
   const actualDamage = processedEvent.amount;
 
   if (actualDamage <= 0) return state;
@@ -111,7 +110,7 @@ export function gainLife(
   };
 
   const processedEvent =
-    replacementEffectManager.processEvent(replacementEvent);
+    state.replacementEffectManager.processEvent(replacementEvent);
   const actualAmount = processedEvent.amount;
 
   if (actualAmount <= 0) return state;

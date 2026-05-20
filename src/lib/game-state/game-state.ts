@@ -30,7 +30,7 @@ import {
   castSpell,
   resolveTopOfStack,
 } from "./spell-casting";
-import { checkStateBasedActions as checkSBAs } from "./state-based-actions";
+import { ReplacementEffectManager } from "./replacement-effects";
 
 export { castSpell, resolveTopOfStack };
 
@@ -99,8 +99,8 @@ export function createInitialGameState(
   startingLife: number = 20,
   isCommander: boolean = false,
 ): GameState {
-  // Reset global singleton state to prevent leakage from previous games/tests
-  replacementEffectManager.reset();
+  // Create a new replacement effect manager for this game instance
+  const rem = new ReplacementEffectManager();
 
   const gameId = generateGameId();
   const players = new Map<PlayerId, Player>();
@@ -151,6 +151,7 @@ export function createInitialGameState(
     format: "standard",
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
+    replacementEffectManager: rem,
   };
 }
 
@@ -305,13 +306,7 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
 
   if (allPassed && state.stack.length === 0) {
     // All players passed with empty stack - advance phase
-    // SBA 704.5j: Check SBAs before phase transition
-    const sbaResult = checkSBAs(newState);
-    const stateAfterSBA = sbaResult.state;
-    if (stateAfterSBA.status === "completed") {
-      return stateAfterSBA;
-    }
-    return advanceToNextPhase(stateAfterSBA);
+    return advanceToNextPhase(newState);
   }
 
   if (allPassed && state.stack.length > 0) {
@@ -326,18 +321,8 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   const nextPlayerIndex = (currentPlayerIndex + 1) % state.players.size;
   const nextPlayerId = Array.from(state.players.keys())[nextPlayerIndex];
 
-  // SBA 704.5j: State-based actions are checked whenever a player would receive priority
-  // Check SBAs before passing priority to next player
-  const sbaResult = checkSBAs(newState);
-  const afterSBAState = sbaResult.state;
-
-  // If game ended from SBAs, return the ended state
-  if (afterSBAState.status === "completed") {
-    return afterSBAState;
-  }
-
   return {
-    ...afterSBAState,
+    ...newState,
     priorityPlayerId: nextPlayerId,
   };
 }
@@ -552,8 +537,6 @@ function checkWinCondition(state: GameState): GameState {
   return state;
 }
 
-import { replacementEffectManager } from "./replacement-effects";
-
 /**
  * Apply damage to a player
  */
@@ -585,7 +568,7 @@ export function dealDamageToPlayer(
   };
 
   const processedEvent =
-    replacementEffectManager.processEvent(replacementEvent);
+    state.replacementEffectManager.processEvent(replacementEvent);
   const actualDamage = processedEvent.amount;
 
   if (actualDamage <= 0) return state;
@@ -630,7 +613,7 @@ export function gainLife(
   };
 
   const processedEvent =
-    replacementEffectManager.processEvent(replacementEvent);
+    state.replacementEffectManager.processEvent(replacementEvent);
   const actualAmount = processedEvent.amount;
 
   if (actualAmount <= 0) return state;

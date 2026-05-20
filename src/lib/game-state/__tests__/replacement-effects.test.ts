@@ -4,7 +4,7 @@
  */
 
 import {
-  replacementEffectManager,
+  ReplacementEffectManager,
   ReplacementAbility,
   ReplacementEvent,
   APNAPOrder,
@@ -19,8 +19,10 @@ import {
 import type { GameState } from "../types";
 
 describe("ReplacementEffectManager - APNAP Ordering", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    replacementEffectManager.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should apply effects in APNAP order", () => {
@@ -67,8 +69,8 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(p1Effect);
-    replacementEffectManager.registerEffect(p2Effect);
+    rem.registerEffect(p1Effect);
+    rem.registerEffect(p2Effect);
 
     const event: ReplacementEvent = {
       type: "damage",
@@ -80,7 +82,7 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
     // P2's effect should apply first (affected player chooses)
     // Then P1's effect applies
     // 3 * 2 (P2) = 6, then 6 * 2 (P1) = 12
-    const processed = replacementEffectManager.processEvent(event, apnapOrder);
+    const processed = rem.processEvent(event, apnapOrder);
     expect(processed.amount).toBe(12);
   });
 
@@ -129,8 +131,8 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(selfEffect);
-    replacementEffectManager.registerEffect(regularEffect);
+    rem.registerEffect(selfEffect);
+    rem.registerEffect(regularEffect);
 
     const event: ReplacementEvent = {
       type: "damage",
@@ -142,7 +144,7 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
 
     // Self-replacement applies first: 3 + 5 = 8
     // Then regular: 8 * 2 = 16
-    const processed = replacementEffectManager.processEvent(event, apnapOrder);
+    const processed = rem.processEvent(event, apnapOrder);
     expect(processed.amount).toBe(16);
   });
 
@@ -182,8 +184,8 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(layer1Effect);
-    replacementEffectManager.registerEffect(layer5Effect);
+    rem.registerEffect(layer1Effect);
+    rem.registerEffect(layer5Effect);
 
     const event: ReplacementEvent = {
       type: "damage",
@@ -194,14 +196,14 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
 
     // Layer 1 applies first: 5 - 2 = 3
     // Layer 5 applies second: 3 * 2 = 6
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(6);
   });
 });
 
 describe("ReplacementEffectManager - As Though Effects", () => {
   beforeEach(() => {
-    replacementEffectManager.reset();
+    rem.reset();
   });
 
   test("should register and check as though effects", () => {
@@ -214,24 +216,24 @@ describe("ReplacementEffectManager - As Though Effects", () => {
       "You may cast spells as though they had flash",
     );
 
-    replacementEffectManager.registerAsThoughEffect(flashEffect);
+    rem.registerAsThoughEffect(flashEffect);
 
     expect(
-      replacementEffectManager.checkAsThoughEffect(
+      rem.checkAsThoughEffect(
         "player1",
         "cast_flash",
         mockGameState,
       ),
     ).toBe(true);
     expect(
-      replacementEffectManager.checkAsThoughEffect(
+      rem.checkAsThoughEffect(
         "player2",
         "cast_flash",
         mockGameState,
       ),
     ).toBe(false);
     expect(
-      replacementEffectManager.checkAsThoughEffect(
+      rem.checkAsThoughEffect(
         "player1",
         "attack_haste",
         mockGameState,
@@ -254,10 +256,10 @@ describe("ReplacementEffectManager - As Though Effects", () => {
       },
     );
 
-    replacementEffectManager.registerAsThoughEffect(conditionalEffect);
+    rem.registerAsThoughEffect(conditionalEffect);
 
     expect(
-      replacementEffectManager.checkAsThoughEffect(
+      rem.checkAsThoughEffect(
         "player1",
         "attack_haste",
         mockGameState,
@@ -268,10 +270,10 @@ describe("ReplacementEffectManager - As Though Effects", () => {
   test("should get all as though effects for a player", () => {
     const mockGameState = { players: new Map() } as GameState;
 
-    replacementEffectManager.registerAsThoughEffect(
+    rem.registerAsThoughEffect(
       createAsThoughEffect("source1", "player1", "cast_flash", "Flash effect"),
     );
-    replacementEffectManager.registerAsThoughEffect(
+    rem.registerAsThoughEffect(
       createAsThoughEffect(
         "source2",
         "player1",
@@ -279,7 +281,7 @@ describe("ReplacementEffectManager - As Though Effects", () => {
         "Haste effect",
       ),
     );
-    replacementEffectManager.registerAsThoughEffect(
+    rem.registerAsThoughEffect(
       createAsThoughEffect(
         "source3",
         "player2",
@@ -288,7 +290,7 @@ describe("ReplacementEffectManager - As Though Effects", () => {
       ),
     );
 
-    const p1Effects = replacementEffectManager.getAsThoughEffects(
+    const p1Effects = rem.getAsThoughEffects(
       "player1",
       mockGameState,
     );
@@ -296,7 +298,7 @@ describe("ReplacementEffectManager - As Though Effects", () => {
     expect(p1Effects.map((e) => e.asThoughType)).toContain("cast_flash");
     expect(p1Effects.map((e) => e.asThoughType)).toContain("attack_haste");
 
-    const p2Effects = replacementEffectManager.getAsThoughEffects(
+    const p2Effects = rem.getAsThoughEffects(
       "player2",
       mockGameState,
     );
@@ -307,7 +309,7 @@ describe("ReplacementEffectManager - As Though Effects", () => {
   test("should remove as though effects when source leaves battlefield", () => {
     const mockGameState = { players: new Map() } as GameState;
 
-    replacementEffectManager.registerAsThoughEffect(
+    rem.registerAsThoughEffect(
       createAsThoughEffect(
         "temporary-source",
         "player1",
@@ -317,17 +319,17 @@ describe("ReplacementEffectManager - As Though Effects", () => {
     );
 
     expect(
-      replacementEffectManager.checkAsThoughEffect(
+      rem.checkAsThoughEffect(
         "player1",
         "cast_flash",
         mockGameState,
       ),
     ).toBe(true);
 
-    replacementEffectManager.removeEffectsFromSource("temporary-source");
+    rem.removeEffectsFromSource("temporary-source");
 
     expect(
-      replacementEffectManager.checkAsThoughEffect(
+      rem.checkAsThoughEffect(
         "player1",
         "cast_flash",
         mockGameState,
@@ -338,7 +340,7 @@ describe("ReplacementEffectManager - As Though Effects", () => {
 
 describe("ReplacementEffectManager - Complex Scenarios", () => {
   beforeEach(() => {
-    replacementEffectManager.reset();
+    rem.reset();
   });
 
   test("should handle Furnace of Rath + prevention shield interaction", () => {
@@ -351,10 +353,10 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       5,
     );
 
-    replacementEffectManager.registerEffect(furnaceEffect);
+    rem.registerEffect(furnaceEffect);
 
     // Target has prevention shield
-    replacementEffectManager.addPreventionShield("player2", {
+    rem.addPreventionShield("player2", {
       sourceId: "fog",
       amount: 3,
       controllerId: "player2",
@@ -369,11 +371,11 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
 
     // Furnace doubles: 2 * 2 = 4
     // Prevention shield prevents 3: 4 - 3 = 1
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(1);
 
     // Shield should be depleted
-    const shields = replacementEffectManager.getPreventionShields("player2");
+    const shields = rem.getPreventionShields("player2");
     expect(shields).toHaveLength(0);
   });
 
@@ -386,7 +388,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       (targetId) => targetId === "player1",
     );
 
-    replacementEffectManager.registerEffect(archiveEffect);
+    rem.registerEffect(archiveEffect);
 
     const event: ReplacementEvent = {
       type: "life_gain",
@@ -395,7 +397,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "player1",
     };
 
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(10);
 
     // Should not apply to other players
@@ -406,17 +408,17 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "player2",
     };
 
-    const otherProcessed = replacementEffectManager.processEvent(otherEvent);
+    const otherProcessed = rem.processEvent(otherEvent);
     expect(otherProcessed.amount).toBe(5);
   });
 
   test("should handle multiple prevention shields depleting correctly", () => {
-    replacementEffectManager.addPreventionShield("player1", {
+    rem.addPreventionShield("player1", {
       sourceId: "shield1",
       amount: 2,
       controllerId: "player1",
     });
-    replacementEffectManager.addPreventionShield("player1", {
+    rem.addPreventionShield("player1", {
       sourceId: "shield2",
       amount: 3,
       controllerId: "player1",
@@ -430,11 +432,11 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "player1",
     };
 
-    const processed1 = replacementEffectManager.processEvent(event1);
+    const processed1 = rem.processEvent(event1);
     expect(processed1.amount).toBe(0);
 
     // Second shield should have 1 remaining
-    const shields = replacementEffectManager.getPreventionShields("player1");
+    const shields = rem.getPreventionShields("player1");
     expect(shields).toHaveLength(1);
     expect(shields[0].amount).toBe(1);
 
@@ -446,12 +448,12 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "player1",
     };
 
-    const processed2 = replacementEffectManager.processEvent(event2);
+    const processed2 = rem.processEvent(event2);
     expect(processed2.amount).toBe(1);
 
     // All shields should be depleted
     expect(
-      replacementEffectManager.getPreventionShields("player1"),
+      rem.getPreventionShields("player1"),
     ).toHaveLength(0);
   });
 
@@ -463,7 +465,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       (amount) => amount + 1, // Draw one additional card
     );
 
-    replacementEffectManager.registerEffect(drawEffect);
+    rem.registerEffect(drawEffect);
 
     const event: ReplacementEvent = {
       type: "draw_card",
@@ -472,7 +474,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "player1",
     };
 
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(2);
   });
 
@@ -489,7 +491,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       (targetId) => targetId === "creature1",
     );
 
-    replacementEffectManager.registerEffect(regenEffect);
+    rem.registerEffect(regenEffect);
 
     const event: ReplacementEvent = {
       type: "destroy",
@@ -498,7 +500,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "creature1",
     };
 
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.type).toBe("tap");
     expect(processed.amount).toBe(0);
   });
@@ -512,7 +514,7 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       (targetId) => targetId === "player1",
     );
 
-    replacementEffectManager.registerEffect(lossEffect);
+    rem.registerEffect(lossEffect);
 
     const event: ReplacementEvent = {
       type: "life_loss",
@@ -521,21 +523,21 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
       targetId: "player1",
     };
 
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(4); // ceil(7/2) = 4
   });
 });
 
 describe("ReplacementEffectManager - APNAP Order Creation", () => {
   beforeEach(() => {
-    replacementEffectManager.reset();
+    rem.reset();
   });
 
   test("should create correct APNAP order", () => {
     const allPlayers = ["player1", "player2", "player3", "player4"];
 
     // Player2 is active
-    const order = replacementEffectManager.createAPNAPOrder(
+    const order = rem.createAPNAPOrder(
       "player2",
       allPlayers,
     );
@@ -550,7 +552,7 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
   });
 
   test("should handle single player", () => {
-    const order = replacementEffectManager.createAPNAPOrder("player1", [
+    const order = rem.createAPNAPOrder("player1", [
       "player1",
     ]);
     expect(order.playerOrder).toEqual(["player1"]);
@@ -558,7 +560,7 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
 
   test("should handle unknown active player", () => {
     const allPlayers = ["player1", "player2"];
-    const order = replacementEffectManager.createAPNAPOrder(
+    const order = rem.createAPNAPOrder(
       "unknown",
       allPlayers,
     );
@@ -568,7 +570,7 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
 
 describe("ReplacementEffectManager - Factory Functions", () => {
   beforeEach(() => {
-    replacementEffectManager.reset();
+    rem.reset();
   });
 
   test("createPreventionShield should create both ability and shield", () => {
@@ -638,7 +640,7 @@ describe("ReplacementEffectManager - Factory Functions", () => {
 
 describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
   beforeEach(() => {
-    replacementEffectManager.reset();
+    rem.reset();
   });
 
   test("should detect and break a two-effect infinite loop (CR 614.4)", () => {
@@ -682,8 +684,8 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(effectA);
-    replacementEffectManager.registerEffect(effectB);
+    rem.registerEffect(effectA);
+    rem.registerEffect(effectB);
 
     const event: ReplacementEvent = {
       type: "destroy",
@@ -694,7 +696,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
 
     // CR 614.4: If replacement effects form an infinite loop, no objects are affected
     // The event should be skipped (amount = 0 means no effect applies)
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(0); // Loop detected, event skipped
   });
 
@@ -737,8 +739,8 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(doubleEffect);
-    replacementEffectManager.registerEffect(reduceEffect);
+    rem.registerEffect(doubleEffect);
+    rem.registerEffect(reduceEffect);
 
     const event: ReplacementEvent = {
       type: "damage",
@@ -748,7 +750,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
     };
 
     // No loop: Layer 1 applies first: 5 - 2 = 3, then Layer 5: 3 * 2 = 6
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(6);
   });
 
@@ -811,9 +813,9 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(effectA);
-    replacementEffectManager.registerEffect(effectB);
-    replacementEffectManager.registerEffect(effectC);
+    rem.registerEffect(effectA);
+    rem.registerEffect(effectB);
+    rem.registerEffect(effectC);
 
     const event: ReplacementEvent = {
       type: "destroy",
@@ -823,7 +825,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
     };
 
     // Three-effect loop detected, CR 614.4 applies
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(0); // Loop detected, event skipped
   });
 
@@ -866,8 +868,8 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(effectA);
-    replacementEffectManager.registerEffect(effectB);
+    rem.registerEffect(effectA);
+    rem.registerEffect(effectB);
 
     const event: ReplacementEvent = {
       type: "destroy",
@@ -877,7 +879,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
     };
 
     // Very low maxIterations to trigger safety cap
-    const processed = replacementEffectManager.processEvent(event, undefined);
+    const processed = rem.processEvent(event, undefined);
     expect(processed.amount).toBe(0); // Hit cap, loop broken
   });
 
@@ -901,7 +903,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(safeEffect);
+    rem.registerEffect(safeEffect);
 
     const event: ReplacementEvent = {
       type: "damage",
@@ -911,7 +913,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
     };
 
     // High maxIterations should not cause false positive
-    const processed = replacementEffectManager.processEvent(event, undefined);
+    const processed = rem.processEvent(event, undefined);
     expect(processed.amount).toBe(10); // 5 * 2 = 10
   });
 
@@ -935,7 +937,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
       }),
     };
 
-    replacementEffectManager.registerEffect(singleEffect);
+    rem.registerEffect(singleEffect);
 
     const event: ReplacementEvent = {
       type: "damage",
@@ -945,7 +947,7 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
     };
 
     // Single effect applies once: 5 + 3 = 8
-    const processed = replacementEffectManager.processEvent(event);
+    const processed = rem.processEvent(event);
     expect(processed.amount).toBe(8);
   });
 });
