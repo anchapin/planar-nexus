@@ -20,6 +20,22 @@ import { spendMana } from "./mana";
 import { destroyCard, discardCards } from "./keyword-actions";
 
 /**
+ * Event types that can trigger triggered abilities (CR 603.2)
+ * Used by detectTriggeredAbilities and checkTriggeredAbilities
+ */
+export type TriggerEvent =
+  | "entersBattlefield"
+  | "leavesBattlefield"
+  | "damageDealt"
+  | "dies"
+  | "attacked"
+  | "phaseChange"
+  | "drawCard"
+  | "cast"
+  | "lifeGain"
+  | "lifeLost";
+
+/**
  * Result of activating an ability
  */
 export interface ActivateAbilityResult {
@@ -573,17 +589,7 @@ export function activateLoyaltyAbility(
  */
 export function detectTriggeredAbilities(
   state: GameState,
-  event:
-    | "entersBattlefield"
-    | "leavesBattlefield"
-    | "damageDealt"
-    | "dies"
-    | "attacked"
-    | "phaseChange"
-    | "drawCard"
-    | "cast"
-    | "lifeGain"
-    | "lifeLost",
+  event: TriggerEvent,
 ): TriggeredAbilityInstance[] {
   const triggeredAbilities: TriggeredAbilityInstance[] = [];
 
@@ -688,21 +694,13 @@ export function detectTriggeredAbilities(
  * Check for triggered abilities and put them on the stack
  * This should be called after any game event (e.g., card enters battlefield, damage is dealt)
  *
- * @deprecated Use detectTriggeredAbilities() for detection only, then put on stack manually
+ * @deprecated Use detectTriggeredAbilities() for detection only, then put on stack manually.
+ *             TODO(#763): Migrate all callers to use detectTriggeredAbilities() + stack management.
+ *             Once all callers are migrated, remove this function.
  */
 export function checkTriggeredAbilities(
   state: GameState,
-  event:
-    | "entersBattlefield"
-    | "leavesBattlefield"
-    | "damageDealt"
-    | "dies"
-    | "attacked"
-    | "phaseChange"
-    | "drawCard"
-    | "cast"
-    | "lifeGain"
-    | "lifeLost",
+  event: TriggerEvent,
 ): TriggeredAbilityResult {
   const triggeredAbilities = detectTriggeredAbilities(state, event);
 
