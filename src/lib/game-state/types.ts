@@ -102,6 +102,10 @@ export interface CardInstance {
   prototypeToughness: number | null;
   /** Prototype alternative mana cost string (when in prototype form) */
   prototypeManaCost: string | null;
+
+  // Boast keyword (CR 702.131) - tracks if this creature attacked last turn
+  /** Whether this creature attacked during the previous turn */
+  attackedLastTurn: boolean;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
 } from "@/lib/game-state/types";
 import { ValidationService } from "@/lib/validation-service";
 import { ScryfallCard } from "@/app/actions";
+import { ReplacementEffectManager } from "@/lib/game-state/replacement-effects";
 
 describe("ValidationService", () => {
   let gameState: GameState;
@@ -73,13 +74,13 @@ describe("ValidationService", () => {
       powerModifier: 0,
       attachedToId: null,
       attachedCardIds: [],
-      mutatedCardIds: [],
       enteredBattlefieldTimestamp: 0,
       attachedTimestamp: null,
       chosenBasicLandType: null,
       isToken: false,
       tokenData: null,
-      // Prototype fields (CR 702.152)
+      attackedLastTurn: false,
+      mutatedCardIds: [],
       isPrototype: false,
       prototypePower: null,
       prototypeToughness: null,
@@ -136,6 +137,7 @@ describe("ValidationService", () => {
       format: "standard",
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
+      replacementEffectManager: new ReplacementEffectManager(),
     };
   });
 

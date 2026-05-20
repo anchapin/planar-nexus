@@ -5,7 +5,7 @@
  */
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
-import { isCreature } from "./card-instance";
+import { isCreature, getPower, getToughness } from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
 import { dealCommanderDamage, isCommander } from "./commander-damage";
@@ -14,6 +14,7 @@ import {
   getEffectivePower,
   getEffectiveToughness,
 } from "./layer-system";
+import { markCreatureAttackedForBoast } from "./evergreen-keywords";
 
 /**
  * Result of a combat action
@@ -237,14 +238,23 @@ export function declareAttackers(
   for (const attacker of attackers) {
     const card = updatedCards.get(attacker.cardId);
     if (card) {
+      const updatedCard = { ...card };
+
       // Check for vigilance - if creature has vigilance, don't tap
       const hasVigilance =
         card.cardData.keywords?.includes("Vigilance") ||
         card.cardData.oracle_text?.toLowerCase().includes("vigilance");
 
       if (!hasVigilance) {
-        updatedCards.set(attacker.cardId, { ...card, isTapped: true });
+        updatedCard.isTapped = true;
       }
+
+      // Mark creature as having attacked for Boast keyword (CR 702.131)
+      // This flag is set when the creature attacks and is checked at the
+      // beginning of the owner's next upkeep to determine if Boast triggers
+      updatedCard.attackedLastTurn = true;
+
+      updatedCards.set(attacker.cardId, updatedCard);
     }
   }
 
@@ -629,10 +639,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         // If attacker has first strike (but not double strike), check if blocker died in first strike step
         // Blockers with lethal damage from first strike don't deal damage back
         if (attackerHasFirstStrike && !attackerHasDoubleStrike) {
-          if (
-            blockerCard.damage >=
-            getEffectiveToughness(blockerCard, layerSystem)
-          ) {
+          if (blockerCard.damage >= getEffectiveToughness(blockerCard, layerSystem)) {
             continue;
           }
         }

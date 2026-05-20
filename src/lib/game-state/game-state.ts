@@ -311,7 +311,7 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   // Check state-based actions after each priority pass
   // SBAs must be checked before advancing phase or passing to next player
   const sbaResult = checkSBAs(newState);
-  let stateAfterSBA = sbaResult.state;
+  const stateAfterSBA = sbaResult.state;
 
   if (allPassed && stateAfterSBA.stack.length === 0) {
     // All players passed with empty stack - advance phase
@@ -399,6 +399,16 @@ function advanceToNextPhase(state: GameState): GameState {
     for (const playerId of updatedPlayers.keys()) {
       const player = updatedPlayers.get(playerId)!;
       updatedPlayers.set(playerId, { ...player, landsPlayedThisTurn: 0 });
+    }
+
+    // Reset Boast tracking (CR 702.131) - clear attackedLastTurn for all creatures
+    // so that at the next upkeep we can check if creature attacked "previous turn"
+    for (const cardId of newState.zones.get(`${nextPlayerId}-battlefield`)
+      ?.cardIds || []) {
+      const card = updatedCards.get(cardId);
+      if (card && card.attackedLastTurn) {
+        updatedCards.set(cardId, { ...card, attackedLastTurn: false });
+      }
     }
 
     return {

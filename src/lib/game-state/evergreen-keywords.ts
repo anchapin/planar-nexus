@@ -12,7 +12,12 @@
  * terminology via the translation layer.
  */
 
-import type { CardInstance, PlayerId } from "./types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  GameState,
+  PlayerId,
+} from "./types";
 
 /**
  * Check if a card has a specific keyword
@@ -489,41 +494,114 @@ export function isProtectedByWard(source: any, card: any): boolean {
 }
 
 // ============== PERSIST ==============
-
-/** @deprecated Stub - persist mechanic not yet implemented (CR 702.78) */
+/**
+ * Check if a card has persist keyword
+ * CR 702.78: When a creature with persist dies, if it had no -1/-1 counters on it,
+ * return it to the battlefield with a -1/-1 counter on it.
+ */
 export function hasPersist(card: CardInstance): boolean {
-  return false;
+  return hasKeyword(card, "persist");
 }
 
-/** @deprecated Stub - persist mechanic not yet implemented (CR 702.78) */
+/**
+ * Check if a creature with persist can trigger its ability
+ * Returns true if the creature dies WITHOUT a -1/-1 counter on it
+ */
 export function canPersistTrigger(card: CardInstance): boolean {
-  return false;
+  const minusCounters = card.counters?.find((c) => c.type === "-1/-1");
+  return !minusCounters || minusCounters.count === 0;
 }
 
 // ============== MUTATE ==============
-
-/** @deprecated Stub - mutate mechanic not yet implemented (CR 702.108) */
+/**
+ * Check if a card has mutate keyword
+ * CR 702.140: Mutate is an ability that lets you cast a creature with mutate
+ * over a creature you control, merging them into one creature.
+ */
 export function hasMutate(card: CardInstance): boolean {
-  return false;
+  return hasKeyword(card, "mutate");
 }
 
-/** @deprecated Stub - mutate mechanic not yet implemented (CR 702.108) */
+/**
+ * Check if a card with mutate can be cast onto a target creature
+ * The mutate card must be a creature and target must be a creature
+ * you control.
+ */
 export function canMutateOnto(
-  card: CardInstance,
+  mutator: CardInstance,
   target: CardInstance,
   playerId: PlayerId,
 ): boolean {
-  return false;
+  if (!hasMutate(mutator)) return false;
+
+  const typeLine = mutator.cardData.type_line?.toLowerCase() || "";
+  if (!typeLine.includes("creature")) return false;
+
+  const targetTypeLine = target.cardData.type_line?.toLowerCase() || "";
+  if (!targetTypeLine.includes("creature")) return false;
+
+  return target.controllerId === playerId;
 }
 
-// ============== CORPSE ==============
+// ============== BOAST (CR 702.131) ==============
 
 /**
- * Check if a card has Corpse keyword
- * Corpse is a triggered ability that triggers when the creature dies
- * Format: "Corpse N" - you may pay N to exile a creature from your graveyard
+ * Check if a card has Boast keyword
  */
-export function hasCorpse(card: CardInstance): boolean {
+export function hasBoast(card: CardInstance): boolean {
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  return oracleText.includes("corpse");
+  return oracleText.includes("boast");
+}
+
+/**
+ * Check if a creature's Boast ability should trigger at the beginning of upkeep
+ * Per CR 702.131: Boast is a triggered ability that triggers at the beginning of your upkeep
+ * if you attacked with the creature with the Boast ability during the previous turn.
+ *
+ * The attackedLastTurn flag is set when the creature attacks and is cleared at the
+ * start of the owner's turn, so at upkeep we check if it was set in the previous turn.
+ */
+export function shouldBoastTrigger(card: CardInstance): boolean {
+  return hasBoast(card) && card.attackedLastTurn;
+}
+
+/**
+ * Reset Boast tracking at the start of a new turn
+ * Called when a player's turn begins to reset the attackedLastTurn flag
+ * so that at the next upkeep, we can check if the creature attacked "previous turn"
+ */
+export function resetBoastForNewTurn(
+  state: GameState,
+  playerId: PlayerId,
+): GameState {
+  const battlefieldZoneKey = `${playerId}-battlefield`;
+  const battlefield = state.zones.get(battlefieldZoneKey);
+  if (!battlefield) return state;
+
+  const updatedCards = new Map(state.cards);
+  for (const cardId of battlefield.cardIds) {
+    const card = updatedCards.get(cardId);
+    if (card && card.attackedLastTurn) {
+      updatedCards.set(cardId, { ...card, attackedLastTurn: false });
+    }
+  }
+
+  return { ...state, cards: updatedCards };
+}
+
+/**
+ * Mark a creature as having attacked this turn (for Boast tracking)
+ * Called when a creature attacks so that at the next upkeep we can check
+ * if the creature attacked "previous turn"
+ */
+export function markCreatureAttackedForBoast(
+  state: GameState,
+  cardId: CardInstanceId,
+): GameState {
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+
+  const updatedCards = new Map(state.cards);
+  updatedCards.set(cardId, { ...card, attackedLastTurn: true });
+  return { ...state, cards: updatedCards };
 }
