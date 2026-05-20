@@ -488,6 +488,34 @@ export function isProtectedByWard(source: any, card: any): boolean {
   return false;
 }
 
+// ============== PERSIST ==============
+
+/** @deprecated Stub - persist mechanic not yet implemented (CR 702.78) */
+export function hasPersist(card: CardInstance): boolean {
+  return false;
+}
+
+/** @deprecated Stub - persist mechanic not yet implemented (CR 702.78) */
+export function canPersistTrigger(card: CardInstance): boolean {
+  return false;
+}
+
+// ============== MUTATE ==============
+
+/** @deprecated Stub - mutate mechanic not yet implemented (CR 702.108) */
+export function hasMutate(card: CardInstance): boolean {
+  return false;
+}
+
+/** @deprecated Stub - mutate mechanic not yet implemented (CR 702.108) */
+export function canMutateOnto(
+  card: CardInstance,
+  target: CardInstance,
+  playerId: PlayerId,
+): boolean {
+  return false;
+}
+
 // ============== CORPSE ==============
 
 /**
