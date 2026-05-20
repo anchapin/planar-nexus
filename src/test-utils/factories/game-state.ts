@@ -144,6 +144,11 @@ export function createCardInstance(
     isToken: options.isToken || false,
     tokenData: options.isToken ? (cardData as unknown as ScryfallCard) : null,
     attackedLastTurn: false,
+    mutatedCardIds: [],
+    isPrototype: false,
+    prototypePower: null,
+    prototypeToughness: null,
+    prototypeManaCost: null,
   };
 }
 

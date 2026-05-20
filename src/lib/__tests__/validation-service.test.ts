@@ -79,6 +79,11 @@ describe("ValidationService", () => {
       isToken: false,
       tokenData: null,
       attackedLastTurn: false,
+      mutatedCardIds: [],
+      isPrototype: false,
+      prototypePower: null,
+      prototypeToughness: null,
+      prototypeManaCost: null,
     };
 
     gameState = {

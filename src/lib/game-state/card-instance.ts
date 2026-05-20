@@ -49,6 +49,11 @@ export function createCardInstance(
     tokenData: options.tokenData || null,
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks
     attackedLastTurn: false,
+    mutatedCardIds: [],
+    isPrototype: false,
+    prototypePower: null,
+    prototypeToughness: null,
+    prototypeManaCost: null,
   };
 }
 
