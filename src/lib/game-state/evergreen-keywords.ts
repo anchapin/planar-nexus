@@ -493,6 +493,56 @@ export function isProtectedByWard(source: any, card: any): boolean {
   return false;
 }
 
+// ============== PERSIST ==============
+/**
+ * Check if a card has persist keyword
+ * CR 702.78: When a creature with persist dies, if it had no -1/-1 counters on it,
+ * return it to the battlefield with a -1/-1 counter on it.
+ */
+export function hasPersist(card: CardInstance): boolean {
+  return hasKeyword(card, "persist");
+}
+
+/**
+ * Check if a creature with persist can trigger its ability
+ * Returns true if the creature dies WITHOUT a -1/-1 counter on it
+ */
+export function canPersistTrigger(card: CardInstance): boolean {
+  const minusCounters = card.counters?.find((c) => c.type === "-1/-1");
+  return !minusCounters || minusCounters.count === 0;
+}
+
+// ============== MUTATE ==============
+/**
+ * Check if a card has mutate keyword
+ * CR 702.140: Mutate is an ability that lets you cast a creature with mutate
+ * over a creature you control, merging them into one creature.
+ */
+export function hasMutate(card: CardInstance): boolean {
+  return hasKeyword(card, "mutate");
+}
+
+/**
+ * Check if a card with mutate can be cast onto a target creature
+ * The mutate card must be a creature and target must be a creature
+ * you control.
+ */
+export function canMutateOnto(
+  mutator: CardInstance,
+  target: CardInstance,
+  playerId: PlayerId,
+): boolean {
+  if (!hasMutate(mutator)) return false;
+
+  const typeLine = mutator.cardData.type_line?.toLowerCase() || "";
+  if (!typeLine.includes("creature")) return false;
+
+  const targetTypeLine = target.cardData.type_line?.toLowerCase() || "";
+  if (!targetTypeLine.includes("creature")) return false;
+
+  return target.controllerId === playerId;
+}
+
 // ============== BOAST (CR 702.131) ==============
 
 /**
