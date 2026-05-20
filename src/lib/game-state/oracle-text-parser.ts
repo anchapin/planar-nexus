@@ -571,6 +571,20 @@ export function extractKeywords(
     }
   }
 
+  // Non-evergreen keywords (CR 702)
+  const nonEvergreenKeywords = [
+    "prototype", // CR 702.152
+  ];
+
+  for (const keyword of nonEvergreenKeywords) {
+    if (combinedText.includes(keyword.toLowerCase())) {
+      keywords.push({
+        keyword,
+        type: "mechanic",
+      });
+    }
+  }
+
   // Remove duplicates
   const uniqueKeywords = keywords.filter(
     (item, index, self) =>
@@ -1338,5 +1352,76 @@ export function parseAttraction(oracleText: string): AttractionInfo {
     hasAttraction: true,
     spinResult: 0, // Will be determined by user action (spin/roll)
     description: "Spin the Attraction die to reveal cards",
+  };
+}
+
+/**
+ * Result of parsing Prototype ability
+ * CR 702.152: Prototype is a static ability that lets you cast a copy of the card
+ * with different power/toughness and mana cost.
+ */
+export interface PrototypeInfo {
+  /** Whether this card has prototype */
+  hasPrototype: boolean;
+  /** Alternative power when in prototype form */
+  prototypePower: number | null;
+  /** Alternative toughness when in prototype form */
+  prototypeToughness: number | null;
+  /** Alternative mana cost for prototype (as string like "{1}") */
+  prototypeManaCost: string | null;
+  /** Parsed prototype mana cost */
+  prototypeManaCostParsed: ParsedManaCost | null;
+  /** Description for UI */
+  description: string;
+}
+
+/**
+ * Parse prototype keyword from Oracle text
+ * CR 702.152: Prototype [cost] — [power]/[toughness]
+ * Format examples:
+ * - "Prototype {2}{U} — 3/3"
+ * - "Prototype {1}{R} — 2/2"
+ */
+export function parsePrototype(oracleText: string): PrototypeInfo {
+  if (!oracleText) {
+    return {
+      hasPrototype: false,
+      prototypePower: null,
+      prototypeToughness: null,
+      prototypeManaCost: null,
+      prototypeManaCostParsed: null,
+      description: "",
+    };
+  }
+
+  // Match prototype pattern: "Prototype {cost} — P/T"
+  // The cost is in curly braces, followed by em dash, followed by power/toughness
+  const prototypeMatch = oracleText.match(
+    /prototype\s*(\{[^}]+\}(?:\{[^}]+\})*)\s*[—–-]\s*(\d+)\/(\d+)/i,
+  );
+
+  if (!prototypeMatch) {
+    return {
+      hasPrototype: false,
+      prototypePower: null,
+      prototypeToughness: null,
+      prototypeManaCost: null,
+      prototypeManaCostParsed: null,
+      description: "",
+    };
+  }
+
+  const manaCostString = prototypeMatch[1];
+  const power = parseInt(prototypeMatch[2], 10);
+  const toughness = parseInt(prototypeMatch[3], 10);
+  const parsedCost = parseManaCost(manaCostString);
+
+  return {
+    hasPrototype: true,
+    prototypePower: power,
+    prototypeToughness: toughness,
+    prototypeManaCost: manaCostString,
+    prototypeManaCostParsed: parsedCost,
+    description: `Prototype ${manaCostString} — ${power}/${toughness}`,
   };
 }

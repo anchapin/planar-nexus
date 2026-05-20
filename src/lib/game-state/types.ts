@@ -73,6 +73,8 @@ export interface CardInstance {
   attachedToId: CardInstanceId | null;
   /** IDs of cards attached to this (for creatures with Equipment/Auras) */
   attachedCardIds: CardInstanceId[];
+  /** IDs of cards merged with this one via mutate (CR 702.140) */
+  mutatedCardIds: CardInstanceId[];
 
   // Timestamps for ordering
   /** When this permanent entered the play area (for timestamp ordering) */
@@ -89,6 +91,16 @@ export interface CardInstance {
   isToken: boolean;
   /** For tokens, a copy of the token's defining characteristics */
   tokenData: ScryfallCard | null;
+
+  // Prototype-specific (CR 702.152)
+  /** Whether this permanent is currently in prototype form */
+  isPrototype: boolean;
+  /** Prototype alternative power (when in prototype form) */
+  prototypePower: number | null;
+  /** Prototype alternative toughness (when in prototype form) */
+  prototypeToughness: number | null;
+  /** Prototype alternative mana cost string (when in prototype form) */
+  prototypeManaCost: string | null;
 }
 
 /**

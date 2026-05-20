@@ -24,6 +24,9 @@ import {
   canCycleCard,
   cycleCard,
   parseCyclingCost,
+  mergeWithMutate,
+  unmergeMutate,
+  getMergeCreatures,
 } from "../keyword-actions";
 
 import { createInitialGameState, startGame } from "../game-state";
@@ -710,6 +713,236 @@ describe("Keyword Actions", () => {
         const updatedHand = result.state.zones.get(`${p1Id}-hand`);
         expect(updatedHand?.cardIds).toContain(plains.id);
       });
+    });
+  });
+  describe("Mutate", () => {
+    it("should merge mutate card with target creature", () => {
+      const testState = createInitialGameState();
+      const p1Id = testState.turn.activePlayerId;
+      const opponentId = Array.from(testState.players.keys()).find(
+        (id) => id !== p1Id,
+      )!;
+
+      // Create a creature to mutate onto (target)
+      const targetCreature = createCardInstance(
+        {
+          id: "target-creature",
+          name: "Cosmium",
+          type_line: "Creature — Elephant",
+          oracle_text: "",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{3}{G}",
+          cmc: 4,
+          power: "4",
+          toughness: "4",
+        } as any,
+        p1Id,
+        p1Id,
+      );
+
+      // Create a creature with mutate
+      const mutateCreature = createCardInstance(
+        {
+          id: "mutate-creature",
+          name: "Brallin",
+          type_line: "Creature — Rabbit",
+          oracle_text: "Mutate {3}{R}",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{3}{R}",
+          cmc: 4,
+          power: "3",
+          toughness: "3",
+          keywords: ["Mutate"],
+        } as any,
+        p1Id,
+        p1Id,
+      );
+
+      // Add creatures to battlefield
+      const p1Battlefield = testState.zones.get(`${p1Id}-battlefield`);
+      if (p1Battlefield) {
+        const updatedBattlefield = {
+          ...p1Battlefield,
+          cardIds: [...p1Battlefield.cardIds, targetCreature.id, mutateCreature.id],
+        };
+        const updatedZones = new Map(testState.zones);
+        updatedZones.set(`${p1Id}-battlefield`, updatedBattlefield);
+
+        const updatedCards = new Map(testState.cards);
+        updatedCards.set(targetCreature.id, targetCreature);
+        updatedCards.set(mutateCreature.id, mutateCreature);
+
+        const testStateWithCreatures = {
+          ...testState,
+          zones: updatedZones,
+          cards: updatedCards,
+        };
+      }
+
+      const result = mergeWithMutate(
+        testStateWithCreatures,
+        mutateCreature.id,
+        targetCreature.id,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.description).toContain("merged");
+      expect(result.affectedCards).toContain(mutateCreature.id);
+      expect(result.affectedCards).toContain(targetCreature.id);
+
+      // Check that mutate card is attached to target
+      const mergedMutateCard = result.state.cards.get(mutateCreature.id);
+      expect(mergedMutateCard?.attachedToId).toBe(targetCreature.id);
+
+      // Check that target has mutate card in mutatedCardIds
+      const mergedTargetCard = result.state.cards.get(targetCreature.id);
+      expect(mergedTargetCard?.mutatedCardIds).toContain(mutateCreature.id);
+    });
+
+    it("should not allow mutate onto opponent creature", () => {
+      const testState = createInitialGameState();
+      const p1Id = testState.turn.activePlayerId;
+      const opponentId = Array.from(testState.players.keys()).find(
+        (id) => id !== p1Id,
+      )!;
+
+      // Create mutate creature controlled by player
+      const mutateCreature = createCardInstance(
+        {
+          id: "mutate-creature-2",
+          name: "Brallin",
+          type_line: "Creature — Rabbit",
+          oracle_text: "Mutate {3}{R}",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{3}{R}",
+          cmc: 4,
+          power: "3",
+          toughness: "3",
+          keywords: ["Mutate"],
+        } as any,
+        p1Id,
+        p1Id,
+      );
+
+      // Create target creature controlled by opponent
+      const targetCreature = createCardInstance(
+        {
+          id: "target-creature-2",
+          name: "Cosmium",
+          type_line: "Creature — Elephant",
+          oracle_text: "",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{3}{G}",
+          cmc: 4,
+          power: "4",
+          toughness: "4",
+        } as any,
+        opponentId,
+        opponentId,
+      );
+
+      // Add to battlefield
+      const p1Battlefield = testState.zones.get(`${p1Id}-battlefield`);
+      const oppBattlefield = testState.zones.get(`${opponentId}-battlefield`);
+      if (p1Battlefield && oppBattlefield) {
+        const updatedZones = new Map(testState.zones);
+        updatedZones.set(`${p1Id}-battlefield`, {
+          ...p1Battlefield,
+          cardIds: [...p1Battlefield.cardIds, mutateCreature.id],
+        });
+        updatedZones.set(`${opponentId}-battlefield`, {
+          ...oppBattlefield,
+          cardIds: [...oppBattlefield.cardIds, targetCreature.id],
+        });
+
+        const updatedCards = new Map(testState.cards);
+        updatedCards.set(mutateCreature.id, mutateCreature);
+        updatedCards.set(targetCreature.id, targetCreature);
+
+        const testStateWithOpponentCreatures = {
+          ...testState,
+          zones: updatedZones,
+          cards: updatedCards,
+        };
+      }
+
+      const result = mergeWithMutate(
+        testStateWithOpponentCreatures,
+        mutateCreature.id,
+        targetCreature.id,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("you control");
+    });
+
+    it("should get all creatures in a merge", () => {
+      const testState = createInitialGameState();
+      const p1Id = testState.turn.activePlayerId;
+
+      // Create base creature with mutated creatures
+      const baseCreature = createCardInstance(
+        {
+          id: "base-creature",
+          name: "Cosmium",
+          type_line: "Creature — Elephant",
+          oracle_text: "",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{3}{G}",
+          cmc: 4,
+          power: "4",
+          toughness: "4",
+        } as any,
+        p1Id,
+        p1Id,
+      );
+
+      const mergedCreature = createCardInstance(
+        {
+          id: "merged-creature",
+          name: "Brallin",
+          type_line: "Creature — Rabbit",
+          oracle_text: "Mutate {3}{R}",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{3}{R}",
+          cmc: 4,
+          power: "3",
+          toughness: "3",
+          keywords: ["Mutate"],
+        } as any,
+        p1Id,
+        p1Id,
+      );
+
+      // Set up merge relationship
+      const baseWithMerge = {
+        ...baseCreature,
+        mutatedCardIds: [mergedCreature.id],
+      };
+      const mergedWithAttachment = {
+        ...mergedCreature,
+        attachedToId: baseCreature.id,
+      };
+
+      const updatedCards = new Map(testState.cards);
+      updatedCards.set(baseCreature.id, baseWithMerge);
+      updatedCards.set(mergedCreature.id, mergedWithAttachment);
+
+      const testStateWithMerge = {
+        ...testState,
+        cards: updatedCards,
+      };
+
+      const mergeIds = getMergeCreatures(testStateWithMerge, baseCreature.id);
+
+      expect(mergeIds).toContain(baseCreature.id);
+      expect(mergeIds).toContain(mergedCreature.id);
     });
   });
 });

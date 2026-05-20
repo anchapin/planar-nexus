@@ -138,11 +138,17 @@ export function createCardInstance(
     powerModifier: 0,
     attachedToId: null,
     attachedCardIds: [],
+    mutatedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
     attachedTimestamp: null,
     chosenBasicLandType: null,
     isToken: options.isToken || false,
     tokenData: options.isToken ? (cardData as unknown as ScryfallCard) : null,
+    // Prototype fields (CR 702.152)
+    isPrototype: false,
+    prototypePower: null,
+    prototypeToughness: null,
+    prototypeManaCost: null,
   };
 }
 

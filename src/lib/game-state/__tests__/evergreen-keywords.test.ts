@@ -43,6 +43,8 @@ import {
   getKeywordDescriptions,
   getMenaceMinimumBlockers,
   canAttackIfNotDefender,
+  hasMutate,
+  canMutateOnto,
 } from '../evergreen-keywords';
 
 import type { CardInstance } from '../types';
@@ -1024,6 +1026,140 @@ describe('Evergreen Keywords', () => {
         } as any,
       });
       expect(isProtectedByHexproof(card, 'player-2')).toBe(false);
+    });
+  });
+
+  describe('Mutate', () => {
+    it('should detect mutate keyword', () => {
+      const card = createMockCard({
+        cardData: {
+          id: 'mutate-id',
+          name: 'Brallin',
+          type_line: 'Creature — Rabbit',
+          oracle_text: 'Mutate {3}{R} (If you cast this spell, you may merge it with target creature you control.)',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '{2}{R}',
+          cmc: 3,
+          keywords: ['Mutate'],
+        } as any,
+      });
+      expect(hasMutate(card)).toBe(true);
+    });
+
+    it('should detect mutate in oracle text', () => {
+      const card = createMockCard({
+        cardData: {
+          id: 'mutate2-id',
+          name: 'Mutate Creature',
+          type_line: 'Creature',
+          oracle_text: 'Mutate {2}{U}',
+          colors: ['U'],
+          color_identity: ['U'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      expect(hasMutate(card)).toBe(true);
+    });
+
+    it('should not detect mutate on non-mutate cards', () => {
+      const card = createMockCard({
+        cardData: {
+          id: 'normal-id',
+          name: 'Normal Creature',
+          type_line: 'Creature',
+          oracle_text: 'Flying',
+          colors: [],
+          color_identity: [],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      expect(hasMutate(card)).toBe(false);
+    });
+
+    it('should check if mutate card can be cast onto target creature', () => {
+      const mutateCard = createMockCard({
+        id: 'mutate-card',
+        cardData: {
+          id: 'mutate-card-data',
+          name: 'Brallin',
+          type_line: 'Creature — Rabbit',
+          oracle_text: 'Mutate {3}{R}',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '{2}{R}',
+          cmc: 3,
+          keywords: ['Mutate'],
+        } as any,
+      });
+
+      const targetCreature = createMockCard({
+        id: 'target-creature',
+        controllerId: 'player1' as any,
+        cardData: {
+          id: 'target-data',
+          name: 'Companion',
+          type_line: 'Creature — Dog',
+          oracle_text: '',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      const opponentCreature = createMockCard({
+        id: 'opponent-creature',
+        controllerId: 'player2' as any,
+        cardData: {
+          id: 'opp-data',
+          name: 'Opponent Creature',
+          type_line: 'Creature',
+          oracle_text: '',
+          colors: [],
+          color_identity: [],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      // Can mutate onto own creature
+      expect(canMutateOnto(mutateCard, targetCreature, 'player1' as any)).toBe(true);
+
+      // Cannot mutate onto opponent's creature
+      expect(canMutateOnto(mutateCard, opponentCreature, 'player1' as any)).toBe(false);
+    });
+
+    it('should not allow mutate onto non-creature', () => {
+      const mutateCard = createMockCard({
+        cardData: {
+          id: 'mutate3-id',
+          name: 'Mutate Card',
+          type_line: 'Creature',
+          oracle_text: 'Mutate {2}',
+          colors: [],
+          color_identity: [],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      const landCard = createMockCard({
+        cardData: {
+          id: 'land-id',
+          name: 'Forest',
+          type_line: 'Basic Land — Forest',
+          oracle_text: '',
+          colors: ['G'],
+          color_identity: ['G'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      expect(canMutateOnto(mutateCard, landCard, 'player1' as any)).toBe(false);
     });
   });
 });

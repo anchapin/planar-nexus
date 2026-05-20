@@ -19,7 +19,7 @@ import {
   getToughness,
   hasLethalDamage,
 } from "./card-instance";
-import { hasIndestructible } from "./keyword-actions";
+import { hasIndestructible, handlePersist } from "./keyword-actions";
 import { destroyCard, exileCard } from "./keyword-actions";
 import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from "./commander-damage";
 
@@ -292,6 +292,14 @@ export function checkStateBasedActions(
       const card = updatedState.cards.get(cardId);
       if (card) {
         descriptions.push(`Destroyed ${card?.cardData.name}`);
+      }
+      // Handle persist keyword (CR 702.78)
+      // Persist triggers when a creature dies without a -1/-1 counter on it
+      const persistResult = handlePersist(updatedState, cardId);
+      if (persistResult.persistedCards.length > 0) {
+        updatedState = persistResult.state;
+        descriptions.push(...persistResult.descriptions);
+        actionsPerformed = true;
       }
     }
   }
