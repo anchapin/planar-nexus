@@ -18,9 +18,10 @@ import {
 } from "../replacement-effects";
 import type { GameState } from "../types";
 
-describe("ReplacementEffectManager - APNAP Ordering", () => {
-  let rem: ReplacementEffectManager;
+// Module-level rem variable shared across all describe blocks
+let rem: ReplacementEffectManager;
 
+describe("ReplacementEffectManager - APNAP Ordering", () => {
   beforeEach(() => {
     rem = new ReplacementEffectManager();
   });
