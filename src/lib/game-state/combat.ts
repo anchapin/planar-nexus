@@ -9,6 +9,11 @@ import { isCreature, getPower, getToughness } from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
 import { dealCommanderDamage, isCommander } from "./commander-damage";
+import {
+  layerSystem,
+  getEffectivePower,
+  getEffectiveToughness,
+} from "./layer-system";
 import { markCreatureAttackedForBoast } from "./evergreen-keywords";
 
 /**
@@ -217,7 +222,9 @@ export function declareAttackers(
         isAttackingPlaneswalker:
           typeof attack.defenderId === "string" &&
           attack.defenderId.startsWith("card-"),
-        damageToDeal: attackerCard ? getPower(attackerCard) : 0,
+        damageToDeal: attackerCard
+          ? getEffectivePower(attackerCard, layerSystem)
+          : 0,
         hasFirstStrike: hasFirstStrike || false,
         hasDoubleStrike: hasDoubleStrike || false,
       };
@@ -330,7 +337,9 @@ export function declareBlockers(
     const blockerObjects: import("./types").Blocker[] = blockerIds.map(
       (blockerId, index) => {
         const blocker = state.cards.get(blockerId);
-        const blockerPower = blocker ? getPower(blocker) : 0;
+        const blockerPower = blocker
+          ? getEffectivePower(blocker, layerSystem)
+          : 0;
         const blockerHasFirstStrike = blocker
           ? blocker.cardData.keywords?.includes("First Strike") ||
             blocker.cardData.oracle_text?.toLowerCase().includes("first strike")
@@ -405,7 +414,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     const attackerCard = updatedState.cards.get(attacker.cardId);
     if (!attackerCard) continue;
 
-    const attackerPower = getPower(attackerCard);
+    const attackerPower = getEffectivePower(attackerCard, layerSystem);
     const attackerHasTrample =
       attackerCard.cardData.keywords?.includes("Trample") ||
       attackerCard.cardData.oracle_text?.toLowerCase().includes("trample");
@@ -534,7 +543,10 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         const blockerCard = updatedState.cards.get(blocker.cardId);
         if (!blockerCard) continue;
 
-        const blockerToughness = getToughness(blockerCard);
+        const blockerToughness = getEffectiveToughness(
+          blockerCard,
+          layerSystem,
+        );
         const blockerHasDeathtouch =
           blockerCard.cardData.keywords?.includes("Deathtouch") ||
           blockerCard.cardData.oracle_text
@@ -627,12 +639,12 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         // If attacker has first strike (but not double strike), check if blocker died in first strike step
         // Blockers with lethal damage from first strike don't deal damage back
         if (attackerHasFirstStrike && !attackerHasDoubleStrike) {
-          if (blockerCard.damage >= getToughness(blockerCard)) {
+          if (blockerCard.damage >= getEffectiveToughness(blockerCard, layerSystem)) {
             continue;
           }
         }
 
-        const blockerPower = getPower(blockerCard);
+        const blockerPower = getEffectivePower(blockerCard, layerSystem);
         if (blockerPower <= 0) continue;
 
         // Apply damage from blocker to attacker
