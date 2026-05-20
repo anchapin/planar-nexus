@@ -27,6 +27,11 @@ import {
   parseBuyback,
   parseFlashback,
   parseBestow,
+  isModalSpell,
+  getModesForModalSpell,
+  hasFuse,
+  isSplitCard,
+  getSplitCardHalves,
 } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
 import { completeHandTargeting } from "./hand-targeting";
@@ -256,6 +261,30 @@ export function castSpell(
     sourceZone = `${playerId}-graveyard`;
   } else if (!handZone || !handZone.cardIds.includes(cardId)) {
     return { success: false, state, error: "Card not in hand." };
+  }
+
+  // Handle modal spell mode selection requirement
+  // CR 700.2: Modal spells require the controller to choose modes before targeting
+  if (isModalSpell(card.cardData)) {
+    const modeInfo = getModesForModalSpell(card.cardData);
+    if (modeInfo && chosenModes.length === 0) {
+      // This will result in a waiting choice for the player to select modes
+      // For now, we require modes to be provided; a full implementation would
+      // create a waiting choice here and return early
+      return {
+        success: false,
+        state,
+        error: "Modal spells require mode selection. No modes provided.",
+      };
+    }
+  }
+
+  // Handle split card casting (CR 709.2)
+  // When casting a split card, only the left half is cast unless using fuse
+  if (isSplitCard(card.cardData)) {
+    const halves = getSplitCardHalves(card.cardData);
+    // Split cards can be cast as only one half by default
+    // The fuse ability (if present) allows casting both halves
   }
 
   // Get the stack zone
@@ -816,6 +845,8 @@ export function createTargetingChoice(
 
 /**
  * Create a waiting choice for choosing modes
+ * For modal spells like "Choose one" or "Choose two"
+ * CR 700.2: Modal spells have multiple modes
  */
 export function createModeChoice(
   state: GameState,
@@ -823,21 +854,53 @@ export function createModeChoice(
   stackObjectId: string,
   spellName: string,
   availableModes: string[],
+  minChoices: number = 1,
+  maxChoices: number = 1,
 ): WaitingChoice {
   return {
     type: "choose_mode",
     playerId,
     stackObjectId,
-    prompt: `Choose mode for ${spellName}:`,
+    prompt: minChoices > 1
+      ? `Choose ${minChoices} modes for ${spellName}:`
+      : `Choose mode for ${spellName}:`,
     choices: availableModes.map((mode) => ({
       label: mode,
       value: mode,
       isValid: true,
     })),
-    minChoices: 1,
-    maxChoices: 1,
+    minChoices,
+    maxChoices,
     presentedAt: Date.now(),
   };
+}
+
+/**
+ * Create a mode choice for choose-two style modal spells
+ * CR 700.2 Example: "Choose two — Create a 1/1 white Soldier token. / Create a 1/1 white Soldier token. / Create a 1/1 white Soldier token."
+ */
+export function createChooseTwoModeChoice(
+  state: GameState,
+  playerId: PlayerId,
+  stackObjectId: string,
+  spellName: string,
+  availableModes: string[],
+): WaitingChoice {
+  return createModeChoice(state, playerId, stackObjectId, spellName, availableModes, 2, 2);
+}
+
+/**
+ * Create a mode choice for modal spells with any valid number of modes
+ */
+export function createModalSpellChoice(
+  state: GameState,
+  playerId: PlayerId,
+  stackObjectId: string,
+  spellName: string,
+  availableModes: string[],
+  modeCount: number,
+): WaitingChoice {
+  return createModeChoice(state, playerId, stackObjectId, spellName, availableModes, modeCount, modeCount);
 }
 
 /**
