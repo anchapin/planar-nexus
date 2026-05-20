@@ -42,16 +42,13 @@ export function createCardInstance(
     powerModifier: 0,
     attachedToId: null,
     attachedCardIds: [],
-    mutatedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
     attachedTimestamp: null,
     chosenBasicLandType: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
-    isPrototype: options.isPrototype || false,
-    prototypePower: options.prototypePower || null,
-    prototypeToughness: options.prototypeToughness || null,
-    prototypeManaCost: options.prototypeManaCost || null,
+    // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks
+    attackedLastTurn: false,
   };
 }
 
@@ -292,16 +289,10 @@ export function isPermanent(card: CardInstance): boolean {
 
 /**
  * Get the power of a creature
- * Per CR 613 - Interaction of Continuous Effects, applies prototype P/T
  */
 export function getPower(card: CardInstance): number {
   if (!isCreature(card)) {
     return 0;
-  }
-
-  // If prototype is active and has prototype power, use that
-  if (card.isPrototype && card.prototypePower !== null) {
-    return card.prototypePower + card.powerModifier;
   }
 
   // For double-faced cards, get the power from the current face
@@ -334,7 +325,6 @@ export function getPower(card: CardInstance): number {
 
 /**
  * Get the current face data for a card (handles double-faced cards)
- * For prototype cards, we need to return the current face data but use prototype P/T
  */
 function getCurrentFaceData(card: CardInstance): ScryfallCard {
   if (card.cardData.card_faces && card.cardData.card_faces.length > 0) {
@@ -342,8 +332,6 @@ function getCurrentFaceData(card: CardInstance): ScryfallCard {
       card.currentFaceIndex,
       card.cardData.card_faces.length - 1,
     );
-    // For prototype cards, the prototype P/T is stored on the card instance
-    // The card_faces data is not modified
     return {
       ...card.cardData,
       power: card.cardData.card_faces[faceIndex].power,
@@ -357,16 +345,10 @@ function getCurrentFaceData(card: CardInstance): ScryfallCard {
 
 /**
  * Get the toughness of a creature
- * Per CR 613 - Interaction of Continuous Effects, applies prototype P/T
  */
 export function getToughness(card: CardInstance): number {
   if (!isCreature(card)) {
     return 0;
-  }
-
-  // If prototype is active and has prototype toughness, use that
-  if (card.isPrototype && card.prototypeToughness !== null) {
-    return card.prototypeToughness + card.toughnessModifier;
   }
 
   // For double-faced cards, get the toughness from the current face

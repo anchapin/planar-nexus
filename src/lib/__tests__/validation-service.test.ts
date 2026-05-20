@@ -73,17 +73,12 @@ describe("ValidationService", () => {
       powerModifier: 0,
       attachedToId: null,
       attachedCardIds: [],
-      mutatedCardIds: [],
       enteredBattlefieldTimestamp: 0,
       attachedTimestamp: null,
       chosenBasicLandType: null,
       isToken: false,
       tokenData: null,
-      // Prototype fields (CR 702.152)
-      isPrototype: false,
-      prototypePower: null,
-      prototypeToughness: null,
-      prototypeManaCost: null,
+      attackedLastTurn: false,
     };
 
     gameState = {

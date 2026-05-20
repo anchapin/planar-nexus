@@ -401,6 +401,16 @@ function advanceToNextPhase(state: GameState): GameState {
       updatedPlayers.set(playerId, { ...player, landsPlayedThisTurn: 0 });
     }
 
+    // Reset Boast tracking (CR 702.131) - clear attackedLastTurn for all creatures
+    // so that at the next upkeep we can check if creature attacked "previous turn"
+    for (const cardId of newState.zones.get(`${nextPlayerId}-battlefield`)
+      ?.cardIds || []) {
+      const card = updatedCards.get(cardId);
+      if (card && card.attackedLastTurn) {
+        updatedCards.set(cardId, { ...card, attackedLastTurn: false });
+      }
+    }
+
     return {
       ...newState,
       turn: newTurn,

@@ -5,15 +5,11 @@
  */
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
-import { isCreature } from "./card-instance";
+import { isCreature, getPower, getToughness } from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
 import { dealCommanderDamage, isCommander } from "./commander-damage";
-import {
-  layerSystem,
-  getEffectivePower,
-  getEffectiveToughness,
-} from "./layer-system";
+import { markCreatureAttackedForBoast } from "./evergreen-keywords";
 
 /**
  * Result of a combat action
@@ -221,9 +217,7 @@ export function declareAttackers(
         isAttackingPlaneswalker:
           typeof attack.defenderId === "string" &&
           attack.defenderId.startsWith("card-"),
-        damageToDeal: attackerCard
-          ? getEffectivePower(attackerCard, layerSystem)
-          : 0,
+        damageToDeal: attackerCard ? getPower(attackerCard) : 0,
         hasFirstStrike: hasFirstStrike || false,
         hasDoubleStrike: hasDoubleStrike || false,
       };
@@ -237,14 +231,23 @@ export function declareAttackers(
   for (const attacker of attackers) {
     const card = updatedCards.get(attacker.cardId);
     if (card) {
+      const updatedCard = { ...card };
+
       // Check for vigilance - if creature has vigilance, don't tap
       const hasVigilance =
         card.cardData.keywords?.includes("Vigilance") ||
         card.cardData.oracle_text?.toLowerCase().includes("vigilance");
 
       if (!hasVigilance) {
-        updatedCards.set(attacker.cardId, { ...card, isTapped: true });
+        updatedCard.isTapped = true;
       }
+
+      // Mark creature as having attacked for Boast keyword (CR 702.131)
+      // This flag is set when the creature attacks and is checked at the
+      // beginning of the owner's next upkeep to determine if Boast triggers
+      updatedCard.attackedLastTurn = true;
+
+      updatedCards.set(attacker.cardId, updatedCard);
     }
   }
 
@@ -327,9 +330,7 @@ export function declareBlockers(
     const blockerObjects: import("./types").Blocker[] = blockerIds.map(
       (blockerId, index) => {
         const blocker = state.cards.get(blockerId);
-        const blockerPower = blocker
-          ? getEffectivePower(blocker, layerSystem)
-          : 0;
+        const blockerPower = blocker ? getPower(blocker) : 0;
         const blockerHasFirstStrike = blocker
           ? blocker.cardData.keywords?.includes("First Strike") ||
             blocker.cardData.oracle_text?.toLowerCase().includes("first strike")
@@ -404,7 +405,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     const attackerCard = updatedState.cards.get(attacker.cardId);
     if (!attackerCard) continue;
 
-    const attackerPower = getEffectivePower(attackerCard, layerSystem);
+    const attackerPower = getPower(attackerCard);
     const attackerHasTrample =
       attackerCard.cardData.keywords?.includes("Trample") ||
       attackerCard.cardData.oracle_text?.toLowerCase().includes("trample");
@@ -533,10 +534,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         const blockerCard = updatedState.cards.get(blocker.cardId);
         if (!blockerCard) continue;
 
-        const blockerToughness = getEffectiveToughness(
-          blockerCard,
-          layerSystem,
-        );
+        const blockerToughness = getToughness(blockerCard);
         const blockerHasDeathtouch =
           blockerCard.cardData.keywords?.includes("Deathtouch") ||
           blockerCard.cardData.oracle_text
@@ -629,15 +627,12 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         // If attacker has first strike (but not double strike), check if blocker died in first strike step
         // Blockers with lethal damage from first strike don't deal damage back
         if (attackerHasFirstStrike && !attackerHasDoubleStrike) {
-          if (
-            blockerCard.damage >=
-            getEffectiveToughness(blockerCard, layerSystem)
-          ) {
+          if (blockerCard.damage >= getToughness(blockerCard)) {
             continue;
           }
         }
 
-        const blockerPower = getEffectivePower(blockerCard, layerSystem);
+        const blockerPower = getPower(blockerCard);
         if (blockerPower <= 0) continue;
 
         // Apply damage from blocker to attacker
