@@ -656,5 +656,3 @@ export function createAsThoughEffect(
     timestamp: Date.now(),
   };
 }
-
-export const replacementEffectManager = new ReplacementEffectManager();

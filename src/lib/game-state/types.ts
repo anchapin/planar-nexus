@@ -8,6 +8,7 @@
  */
 
 import type { ScryfallCard } from "@/app/actions";
+import type { ReplacementEffectManager } from "./replacement-effects";
 
 // Re-export ScryfallCard for use in other game-state modules
 export type { ScryfallCard } from "@/app/actions";
@@ -595,6 +596,8 @@ export interface GameState {
   createdAt: number;
   /** Timestamp when game was last modified */
   lastModifiedAt: number;
+  /** Replacement effect manager for this game instance */
+  replacementEffectManager: ReplacementEffectManager;
 }
 
 /**
