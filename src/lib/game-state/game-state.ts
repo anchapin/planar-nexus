@@ -36,6 +36,7 @@ import {
   checkStateBasedActions as checkSBAs,
   type StateBasedActionResult,
 } from "./state-based-actions";
+import { hasLifelink } from "./evergreen-keywords";
 
 export { castSpell, resolveTopOfStack };
 
@@ -605,11 +606,36 @@ export function dealDamageToPlayer(
   const updatedPlayers = new Map(state.players);
   updatedPlayers.set(playerId, updatedPlayer);
 
-  return {
+  // CR 608.2c: Lifelink modifies damage from the source
+  // Lifelink applies to ALL damage from the source (not just combat damage)
+  // Effects that say "as though it were combat damage" are treated as combat for this purpose
+  let stateAfterDamage = {
     ...state,
     players: updatedPlayers,
     lastModifiedAt: Date.now(),
   };
+
+  if (sourceId) {
+    const sourceCard = state.cards.get(sourceId);
+    if (sourceCard && hasLifelink(sourceCard)) {
+      const sourceController = state.players.get(sourceCard.controllerId);
+      if (sourceController) {
+        const updatedController = {
+          ...sourceController,
+          life: sourceController.life + actualDamage,
+        };
+        stateAfterDamage = {
+          ...stateAfterDamage,
+          players: new Map(stateAfterDamage.players).set(
+            sourceCard.controllerId,
+            updatedController,
+          ),
+        };
+      }
+    }
+  }
+
+  return stateAfterDamage;
 }
 
 /**

@@ -343,13 +343,15 @@ describe("Damage Spells Target Validation", () => {
   });
 
   describe("Lifelink modifier", () => {
-    it("should gain life when dealing damage from source with lifelink", () => {
+    // CR 608.2c: Lifelink modifies damage from the source
+    // Lifelink applies to ALL damage from the source (combat and non-combat)
+    it("should gain life when dealing combat damage from source with lifelink", () => {
       let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
       const playerIds = Array.from(state.players.keys());
       const aliceId = playerIds[0];
       const bobId = playerIds[1];
-      const lifelinkData = createMockCreature("Soultender", 2, 2, ["Lifelink"]);
+      const lifelinkData = createMockCreature("战啸天使", 2, 2, ["Lifelink"]);
       const result1 = addCardToBattlefield(
         state,
         lifelinkData,
@@ -357,11 +359,71 @@ describe("Damage Spells Target Validation", () => {
         aliceId,
       );
       state = result1.state;
+      const lifelinkId = result1.cardId;
       const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
-      const bobLifeBefore = state.players.get(bobId)?.life ?? 20;
-      state = dealDamageToPlayer(state, bobId, 3);
+      // Deal combat damage TO Bob FROM the lifelink creature (so Alice gains life)
+      state = dealDamageToPlayer(state, bobId, 3, true, lifelinkId);
       const bobLifeAfter = state.players.get(bobId)?.life ?? 20;
-      expect(bobLifeBefore - bobLifeAfter).toBe(3);
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      // Bob should lose 3 life
+      expect(bobLifeAfter).toBe(20 - 3);
+      // Alice (lifelink controller) should gain 3 life
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 3);
+    });
+
+    it("should gain life when dealing non-combat damage from source with lifelink (Lightning Helix rule)", () => {
+      // CR 608.2c: The source of the damage determines whether lifelink modifies it
+      // Lightning Helix deals damage "as though it were combat damage" for lifelink purposes
+      // So a lifelink creature casting Lightning Helix should still grant life
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      const lifelinkData = createMockCreature("炽翼护卫", 2, 3, ["Lifelink"]);
+      const result1 = addCardToBattlefield(
+        state,
+        lifelinkData,
+        aliceId,
+        aliceId,
+      );
+      state = result1.state;
+      const lifelinkId = result1.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+      // Non-combat damage from lifelink source should still grant life
+      // This simulates Lightning Helix: "Lightning Helix deals 4 damage to target creature and you gain 4 life"
+      state = dealDamageToPlayer(state, bobId, 4, false, lifelinkId);
+      const bobLifeAfter = state.players.get(bobId)?.life ?? 20;
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      // Bob should lose 4 life
+      expect(bobLifeAfter).toBe(20 - 4);
+      // Alice (lifelink controller) should gain 4 life even though it's not combat damage
+      // This is CR 608.2c: lifelink is tied to the SOURCE, not the damage type
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 4);
+    });
+
+    it("should gain life when lifelink creature deals damage to a player (non-combat)", () => {
+      // A creature with lifelink deals damage outside of combat (e.g., via ability)
+      // The lifelink should still apply
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      const lifelinkData = createMockCreature("生命缚界", 3, 3, ["Lifelink"]);
+      const result1 = addCardToBattlefield(
+        state,
+        lifelinkData,
+        aliceId,
+        aliceId,
+      );
+      state = result1.state;
+      const lifelinkId = result1.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+      // Non-combat damage from lifelink source (e.g., ability activation)
+      state = dealDamageToPlayer(state, bobId, 5, false, lifelinkId);
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 5);
     });
   });
 
