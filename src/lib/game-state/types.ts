@@ -73,6 +73,8 @@ export interface CardInstance {
   attachedToId: CardInstanceId | null;
   /** IDs of cards attached to this (for creatures with Equipment/Auras) */
   attachedCardIds: CardInstanceId[];
+  /** IDs of cards merged with this one via mutate (CR 702.140) */
+  mutatedCardIds: CardInstanceId[];
 
   // Timestamps for ordering
   /** When this permanent entered the play area (for timestamp ordering) */
