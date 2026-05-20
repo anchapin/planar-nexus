@@ -12,12 +12,21 @@
  * Reference: https://cards.highflip.dev/rule/702.152
  */
 
-import type { CardInstance, CardInstanceId, GameState, PlayerId } from "./types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  GameState,
+  PlayerId,
+} from "./types";
 import type { ScryfallCard } from "@/app/actions";
-import { parsePrototype, type PrototypeInfo } from "./oracle-text-parser";
+import {
+  parsePrototype,
+  parseManaCost,
+  type PrototypeInfo,
+  type ParsedManaCost,
+} from "./oracle-text-parser";
 import { createCardInstance } from "./card-instance";
-import { spendMana } from "./mana";
-import type { ParsedManaCost } from "./oracle-text-parser";
+import { canAffordMana } from "./mana";
 
 /**
  * Check if a card has the Prototype keyword
@@ -66,14 +75,14 @@ export function canCastAsPrototype(
     return { canCast: false, reason: "Card is not in hand" };
   }
 
-  // Check mana cost (prototype version)
+  // Check mana cost (prototype version) - pure check, no state mutation
   if (prototypeInfo.prototypeManaCostParsed) {
-    const manaResult = spendMana(
+    const canAfford = canAffordMana(
       state,
       playerId,
       prototypeInfo.prototypeManaCostParsed,
     );
-    if (!manaResult.success) {
+    if (!canAfford) {
       return { canCast: false, reason: "Not enough mana for prototype cost" };
     }
   }
@@ -184,12 +193,11 @@ export function isPrototypePermanent(card: CardInstance): boolean {
 }
 
 /**
- * Parse prototype from a card's oracle text and initialize prototype state
- * Returns updated CardInstance with prototype fields set
+ * Derive prototype metadata for a card and store it on the card instance.
+ * Per CR 702.152, isPrototype should only be set when the card is actually
+ * cast as a prototype - not during initialization.
  */
-export function initializePrototype(
-  card: CardInstance,
-): CardInstance {
+export function initializePrototype(card: CardInstance): CardInstance {
   const prototypeInfo = getPrototypeInfo(card);
 
   if (!prototypeInfo.hasPrototype) {
@@ -198,7 +206,8 @@ export function initializePrototype(
 
   return {
     ...card,
-    isPrototype: true,
+    // Note: isPrototype is NOT set here - it is set at cast time
+    // when the card is actually played as a prototype
     prototypePower: prototypeInfo.prototypePower,
     prototypeToughness: prototypeInfo.prototypeToughness,
     prototypeManaCost: prototypeInfo.prototypeManaCost,
@@ -219,66 +228,4 @@ export function getPrototypeManaCostForSpell(
   }
   // Otherwise use normal mana cost parsing
   return parseManaCost(card.cardData.mana_cost || "");
-}
-
-/**
- * Parse a mana cost string into ParsedManaCost
- */
-function parseManaCost(costString: string): ParsedManaCost | null {
-  if (!costString || costString === "") {
-    return null;
-  }
-
-  const cost: ParsedManaCost = {
-    generic: 0,
-    colorless: 0,
-    white: 0,
-    blue: 0,
-    black: 0,
-    red: 0,
-    green: 0,
-    X: null,
-    snow: 0,
-  };
-
-  const matches = costString.match(/{[^}]+}/g) || [];
-
-  for (const match of matches) {
-    const symbol = match.slice(1, -1);
-
-    if (/^\d+$/.test(symbol)) {
-      cost.generic += parseInt(symbol, 10);
-      continue;
-    }
-
-    if (symbol === "X" || symbol === "x") {
-      cost.X = 0;
-      continue;
-    }
-
-    if (symbol === "C") {
-      cost.colorless += 1;
-      continue;
-    }
-
-    switch (symbol) {
-      case "W":
-        cost.white += 1;
-        break;
-      case "U":
-        cost.blue += 1;
-        break;
-      case "B":
-        cost.black += 1;
-        break;
-      case "R":
-        cost.red += 1;
-        break;
-      case "G":
-        cost.green += 1;
-        break;
-    }
-  }
-
-  return cost;
 }

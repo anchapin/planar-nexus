@@ -78,6 +78,11 @@ describe("ValidationService", () => {
       chosenBasicLandType: null,
       isToken: false,
       tokenData: null,
+      // Prototype fields (CR 702.152)
+      isPrototype: false,
+      prototypePower: null,
+      prototypeToughness: null,
+      prototypeManaCost: null,
     };
 
     gameState = {

@@ -573,7 +573,7 @@ export function extractKeywords(
 
   // Non-evergreen keywords (CR 702)
   const nonEvergreenKeywords = [
-    "Prototype", // CR 702.152
+    "prototype", // CR 702.152
   ];
 
   for (const keyword of nonEvergreenKeywords) {
