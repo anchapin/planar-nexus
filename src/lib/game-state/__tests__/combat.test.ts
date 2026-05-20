@@ -23,6 +23,7 @@ import {
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { Phase } from "../types";
+import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
 import type { ScryfallCard } from "@/app/actions";
 
 // Helper function to create a mock creature card
@@ -1228,6 +1229,128 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
         `${bobId}-battlefield`,
       )!;
       expect(bobBattlefieldAfter.cardIds).not.toContain(blockerId);
+    });
+  });
+
+  describe("Layer System Integration", () => {
+    beforeEach(() => {
+      // Clear layer system to ensure clean state between tests
+      layerSystem.clear();
+    });
+
+    afterEach(() => {
+      // Clean up after tests
+      layerSystem.clear();
+    });
+
+    it("should apply layer 7e P/T modifiers to combat damage", () => {
+      // Create a 2/2 creature with +1/+1 counter and Giant Growth (+3/+3)
+      // Expected combat damage: 2 + 1 + 3 = 6, not 7
+      const { state, aliceId, bobId } = setupGameWithCreatures([
+        { name: "Test Creature", power: 2, toughness: 2 },
+      ]);
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const creatureId = aliceBattlefield.cardIds[0];
+
+      // Add +1/+1 counter (Layer 7c)
+      const creature = state.cards.get(creatureId)!;
+      creature.counters = [{ type: "+1/+1", count: 1 }];
+
+      // Add +2/+2 enchantment effect (Layer 7e)
+      const modifyEffect = createPowerToughnessModifyEffect(
+        creatureId,
+        aliceId,
+        2,
+        2,
+        "+2/+2 enchantment",
+      );
+      layerSystem.registerEffect(modifyEffect);
+
+      // Set up combat
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: creatureId, defenderId: bobId },
+      ]);
+
+      // Verify damageToDeal uses layer-resolved power
+      const attacker = attackResult.state.combat.attackers[0];
+      // 2 (base) + 1 (counter) + 2 (modifier) = 5
+      expect(attacker.damageToDeal).toBe(5);
+    });
+
+    it("should apply layer 7c counters before layer 7e modifiers in combat", () => {
+      // CR 613.8: Layer 7c (counters) applies before 7e (modifiers)
+      // Creature with base 2/2, +1/+1 counter, and +2/+2 enchantment
+      // Should be: 2 + 1 + 2 = 5
+      const { state, aliceId, bobId } = setupGameWithCreatures([
+        { name: "Test Creature", power: 2, toughness: 2 },
+      ]);
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const creatureId = aliceBattlefield.cardIds[0];
+
+      const creature = state.cards.get(creatureId)!;
+      creature.counters = [{ type: "+1/+1", count: 1 }];
+
+      const modifyEffect = createPowerToughnessModifyEffect(
+        creatureId,
+        aliceId,
+        2,
+        2,
+        "+2/+2",
+      );
+      layerSystem.registerEffect(modifyEffect);
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: creatureId, defenderId: bobId },
+      ]);
+
+      // Layer 7c counters apply first, then 7e modifiers
+      // Base 2 + 1 (7c counter) + 2 (7e modifier) = 5
+      expect(attackResult.state.combat.attackers[0].damageToDeal).toBe(5);
+    });
+
+    it("should use layer-resolved P/T for blocker damage", () => {
+      // Test that blockers also use layer-resolved P/T
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Attacker", power: 3, toughness: 3 }],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+
+      // Add +2/+2 to blocker (Layer 7e)
+      const blocker = state.cards.get(blockerId)!;
+      const modifyEffect = createPowerToughnessModifyEffect(
+        blockerId,
+        bobId,
+        2,
+        2,
+        "+2/+2",
+      );
+      layerSystem.registerEffect(modifyEffect);
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, [blockerId]);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      // Blocker should deal 4 damage (2 base + 2 from layer 7e)
+      const blockers = blockResult.state.combat.blockers.get(attackerId)!;
+      expect(blockers[0].damageToDeal).toBe(4);
     });
   });
 });
