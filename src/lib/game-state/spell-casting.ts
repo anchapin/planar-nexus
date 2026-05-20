@@ -25,6 +25,12 @@ import { parseKicker } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
 import { completeHandTargeting } from "./hand-targeting";
 import { destroyCard } from "./keyword-actions";
+import {
+  getPrototypeInfo,
+  initializePrototype,
+  getPrototypeManaCostForSpell,
+} from "./prototype";
+import type { CardInstance } from "./types";
 
 /**
  * Generate a unique stack object ID
