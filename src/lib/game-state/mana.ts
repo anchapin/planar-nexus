@@ -64,6 +64,56 @@ export function addMana(
 }
 
 /**
+ * Check if a player can afford a mana cost (without spending it)
+ * This is a pure check that does not mutate state
+ */
+export function canAffordMana(
+  state: GameState,
+  playerId: PlayerId,
+  mana: Partial<ManaPool>,
+): boolean {
+  const player = state.players.get(playerId);
+  if (!player) {
+    return false;
+  }
+
+  const pool = player.manaPool;
+
+  // Check if player has enough colored mana (specific color requirements)
+  if (
+    pool.white < (mana.white ?? 0) ||
+    pool.blue < (mana.blue ?? 0) ||
+    pool.black < (mana.black ?? 0) ||
+    pool.red < (mana.red ?? 0) ||
+    pool.green < (mana.green ?? 0)
+  ) {
+    return false;
+  }
+
+  // Check if player has enough colorless mana (colorless is specific, like colored)
+  if (pool.colorless < (mana.colorless ?? 0)) {
+    return false;
+  }
+
+  // Calculate total mana available for generic costs
+  // Generic can be paid with: generic pool, colored mana, or colorless mana
+  const totalColored =
+    pool.white + pool.blue + pool.black + pool.red + pool.green;
+  const neededColored =
+    (mana.white ?? 0) +
+    (mana.blue ?? 0) +
+    (mana.black ?? 0) +
+    (mana.red ?? 0) +
+    (mana.green ?? 0);
+  const availableForGeneric =
+    pool.generic +
+    (totalColored - neededColored) +
+    (pool.colorless - (mana.colorless ?? 0));
+
+  return availableForGeneric >= (mana.generic ?? 0);
+}
+
+/**
  * Spend mana from a player's mana pool
  * Returns whether the payment was successful
  *

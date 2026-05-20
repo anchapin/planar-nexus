@@ -91,6 +91,16 @@ export interface CardInstance {
   isToken: boolean;
   /** For tokens, a copy of the token's defining characteristics */
   tokenData: ScryfallCard | null;
+
+  // Prototype-specific (CR 702.152)
+  /** Whether this permanent is currently in prototype form */
+  isPrototype: boolean;
+  /** Prototype alternative power (when in prototype form) */
+  prototypePower: number | null;
+  /** Prototype alternative toughness (when in prototype form) */
+  prototypeToughness: number | null;
+  /** Prototype alternative mana cost string (when in prototype form) */
+  prototypeManaCost: string | null;
 }
 
 /**
