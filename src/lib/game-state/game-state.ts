@@ -31,6 +31,7 @@ import {
   resolveTopOfStack,
 } from "./spell-casting";
 import { ReplacementEffectManager } from "./replacement-effects";
+import { LayerSystem } from "./layer-system";
 import {
   checkStateBasedActions as checkSBAs,
   type StateBasedActionResult,
@@ -106,6 +107,9 @@ export function createInitialGameState(
   // Create a new replacement effect manager for this game instance
   const rem = new ReplacementEffectManager();
 
+  // Create a new layer system for this game instance
+  const layerSystem = new LayerSystem();
+
   const gameId = generateGameId();
   const players = new Map<PlayerId, Player>();
   const zones = new Map<string, Zone>();
@@ -156,6 +160,7 @@ export function createInitialGameState(
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
     replacementEffectManager: rem,
+    layerSystem,
   };
 }
 

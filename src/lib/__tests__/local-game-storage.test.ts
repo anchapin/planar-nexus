@@ -9,6 +9,7 @@ import type {
 } from "../local-game-storage";
 import { type GameState, type PlayerId, Phase } from "../game-state/types";
 import { ReplacementEffectManager } from "../game-state/replacement-effects";
+import { LayerSystem } from "../game-state/layer-system";
 
 describe("LocalGameSession Type", () => {
   it("should create valid session object", () => {
@@ -215,6 +216,7 @@ function createMinimalGameState(): GameState {
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
     replacementEffectManager: new ReplacementEffectManager(),
+    layerSystem: new LayerSystem(),
   };
 }
 

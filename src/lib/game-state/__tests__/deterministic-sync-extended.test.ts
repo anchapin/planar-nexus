@@ -17,6 +17,7 @@ import {
 import { createInitialGameState, startGame } from "../game-state";
 import type { GameState, GameAction, ActionType, ActionData } from "../types";
 import { ReplacementEffectManager } from "../replacement-effects";
+import { LayerSystem } from "../layer-system";
 
 const mockGameState: GameState = {
   gameId: "game-1",
@@ -48,6 +49,7 @@ const mockGameState: GameState = {
   createdAt: Date.now(),
   lastModifiedAt: Date.now(),
   replacementEffectManager: new ReplacementEffectManager(),
+  layerSystem: new LayerSystem(),
 };
 
 const createAction = (type: string): GameAction => ({

@@ -16,6 +16,7 @@ import {
 } from "../event-sourcing";
 import { computeStateHash } from "../state-hash";
 import { ReplacementEffectManager } from "../replacement-effects";
+import { LayerSystem } from "../layer-system";
 
 describe("EventSourcingGameState", () => {
   describe("interface contracts", () => {
@@ -89,6 +90,7 @@ describe("EventSourcingGameState", () => {
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
         replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -161,6 +163,7 @@ describe("EventSourcingGameState", () => {
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
         replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -234,6 +237,7 @@ describe("EventSourcingGameState", () => {
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
         replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -308,6 +312,7 @@ describe("EventSourcingGameState", () => {
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
         replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -381,6 +386,7 @@ describe("EventSourcingGameState", () => {
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
         replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -453,6 +459,7 @@ describe("EventSourcingGameState", () => {
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
         replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -530,6 +537,7 @@ describe("computeStateHash", () => {
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
+      layerSystem: new LayerSystem(),
     };
 
     const hash = computeStateHash(mockState);
@@ -603,6 +611,7 @@ describe("computeStateHash", () => {
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
+      layerSystem: new LayerSystem(),
     };
 
     const hash1 = computeStateHash(mockState);

@@ -1,6 +1,7 @@
 import { DeterministicGameStateEngine } from "../deterministic-sync";
 import { GameState } from "../types";
 import { ReplacementEffectManager } from "../replacement-effects";
+import { LayerSystem } from "../layer-system";
 
 describe("DeterministicGameStateEngine", () => {
   const localPeerId = "local-peer";
@@ -42,6 +43,7 @@ describe("DeterministicGameStateEngine", () => {
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
     replacementEffectManager: new ReplacementEffectManager(),
+    layerSystem: new LayerSystem(),
   };
 
   test("resolveConflict should handle simultaneous actions with tie-breaking", () => {

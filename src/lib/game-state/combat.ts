@@ -14,7 +14,11 @@ import {
   getEffectivePower,
   getEffectiveToughness,
 } from "./layer-system";
-import { markCreatureAttackedForBoast } from "./evergreen-keywords";
+import {
+  markCreatureAttackedForBoast,
+  hasInfect,
+  getToxicLevel,
+} from "./evergreen-keywords";
 
 /**
  * Result of a combat action
@@ -455,17 +459,85 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           // Check if attacker is a commander
           const isAttackerCommander = isCommander(attackerCard);
 
+          // Check for infect (CR 702.93) and toxic (CR 702.94)
+          const attackerHasInfect = hasInfect(attackerCard);
+          const attackerToxicLevel = getToxicLevel(attackerCard);
+
           // Apply damage to player
-          updatedState = {
-            ...updatedState,
-            players: new Map(updatedState.players).set(
-              attacker.defenderId as PlayerId,
-              {
-                ...defender,
-                life: Math.max(0, defender.life - totalDamage),
-              },
-            ),
-          };
+          // CR 702.93 (Infect): ALL damage to players is dealt as poison counters, not life loss
+          // CR 702.94 (Toxic): Player gets poison counters equal to toxic level IN ADDITION to damage
+          if (attackerHasInfect) {
+            // Infect converts damage to poison - no life loss occurs (CR 702.93)
+            let updatedDefender = {
+              ...defender,
+              poisonCounters: defender.poisonCounters + totalDamage,
+            };
+
+            // If creature also has toxic, add toxic poison as well (CR 702.94)
+            if (attackerToxicLevel > 0) {
+              updatedDefender = {
+                ...updatedDefender,
+                poisonCounters:
+                  updatedDefender.poisonCounters + attackerToxicLevel,
+              };
+            }
+
+            updatedState = {
+              ...updatedState,
+              players: new Map(updatedState.players).set(
+                attacker.defenderId as PlayerId,
+                updatedDefender,
+              ),
+            };
+
+            if (attackerToxicLevel > 0) {
+              damageEvents.push(
+                `${attackerCard.cardData.name} deals ${totalDamage} poison to ${defender.name} and ${attackerToxicLevel} toxic poison`,
+              );
+            } else {
+              damageEvents.push(
+                `${attackerCard.cardData.name} deals ${totalDamage} poison to ${defender.name}`,
+              );
+            }
+          } else {
+            // Normal damage - applies as life loss
+            updatedState = {
+              ...updatedState,
+              players: new Map(updatedState.players).set(
+                attacker.defenderId as PlayerId,
+                {
+                  ...defender,
+                  life: Math.max(0, defender.life - totalDamage),
+                },
+              ),
+            };
+
+            // Toxic gives additional poison counters per CR 702.94
+            if (attackerToxicLevel > 0) {
+              const currentDefender = updatedState.players.get(
+                attacker.defenderId as PlayerId,
+              )!;
+              const updatedDefender = {
+                ...currentDefender,
+                poisonCounters:
+                  currentDefender.poisonCounters + attackerToxicLevel,
+              };
+              updatedState = {
+                ...updatedState,
+                players: new Map(updatedState.players).set(
+                  attacker.defenderId as PlayerId,
+                  updatedDefender,
+                ),
+              };
+              damageEvents.push(
+                `${attackerCard.cardData.name} deals ${totalDamage} to ${defender.name} and ${attackerToxicLevel} toxic poison`,
+              );
+            } else {
+              damageEvents.push(
+                `${attackerCard.cardData.name} deals ${totalDamage} to ${defender.name}`,
+              );
+            }
+          }
 
           // Track commander damage if applicable
           if (isAttackerCommander) {
@@ -613,19 +685,40 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           attacker.defenderId as PlayerId,
         );
         if (defender) {
-          updatedState = {
-            ...updatedState,
-            players: new Map(updatedState.players).set(
-              attacker.defenderId as PlayerId,
-              {
-                ...defender,
-                life: Math.max(0, defender.life - remainingDamage),
-              },
-            ),
-          };
-          damageEvents.push(
-            `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`,
-          );
+          // Check for infect on the attacker for trample excess
+          const attackerHasInfect = hasInfect(attackerCard);
+
+          if (attackerHasInfect) {
+            // Excess trample damage with infect also applies as poison
+            const updatedDefender = {
+              ...defender,
+              poisonCounters: defender.poisonCounters + remainingDamage,
+            };
+            updatedState = {
+              ...updatedState,
+              players: new Map(updatedState.players).set(
+                attacker.defenderId as PlayerId,
+                updatedDefender,
+              ),
+            };
+            damageEvents.push(
+              `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name}`,
+            );
+          } else {
+            updatedState = {
+              ...updatedState,
+              players: new Map(updatedState.players).set(
+                attacker.defenderId as PlayerId,
+                {
+                  ...defender,
+                  life: Math.max(0, defender.life - remainingDamage),
+                },
+              ),
+            };
+            damageEvents.push(
+              `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`,
+            );
+          }
         }
       }
 
@@ -639,7 +732,10 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         // If attacker has first strike (but not double strike), check if blocker died in first strike step
         // Blockers with lethal damage from first strike don't deal damage back
         if (attackerHasFirstStrike && !attackerHasDoubleStrike) {
-          if (blockerCard.damage >= getEffectiveToughness(blockerCard, layerSystem)) {
+          if (
+            blockerCard.damage >=
+            getEffectiveToughness(blockerCard, layerSystem)
+          ) {
             continue;
           }
         }

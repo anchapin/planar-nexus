@@ -605,3 +605,53 @@ export function markCreatureAttackedForBoast(
   updatedCards.set(cardId, { ...card, attackedLastTurn: true });
   return { ...state, cards: updatedCards };
 }
+
+// ============== INFECT (CR 702.93) ==============
+/**
+ * Check if a card has infect keyword
+ * CR 702.93: Damage dealt by the object to creatures is dealt as though it were
+ * poison counters, not damage. Damage dealt to players is dealt as poison counters.
+ */
+export function hasInfect(card: CardInstance): boolean {
+  return hasKeyword(card, "infect");
+}
+
+// ============== TOXIC (CR 702.94) ==============
+/**
+ * Get the toxic level of a creature
+ * CR 702.94: When a creature with toxic deals damage to a player, that player
+ * gets a poison counter. The number is the number of poison counters.
+ *
+ * Returns 0 if the creature doesn't have toxic.
+ * Returns 1 for "toxic" (no number specified).
+ * Returns the specified number for "toxic N".
+ */
+export function getToxicLevel(card: CardInstance): number {
+  const keywords = card.cardData.keywords || [];
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+
+  // Check keywords array for "toxic" or "toxic N"
+  for (const keyword of keywords) {
+    const lowerKeyword = keyword.toLowerCase();
+    if (lowerKeyword === "toxic") {
+      return 1;
+    }
+    const toxicMatch = lowerKeyword.match(/^toxic\s+(\d+)$/);
+    if (toxicMatch) {
+      return parseInt(toxicMatch[1], 10);
+    }
+  }
+
+  // Also check oracle text for "toxic N"
+  const toxicOracleMatch = oracleText.match(/toxic\s+(\d+)/);
+  if (toxicOracleMatch) {
+    return parseInt(toxicOracleMatch[1], 10);
+  }
+
+  // Check if "toxic" appears without a number in oracle text
+  if (oracleText.includes("toxic")) {
+    return 1;
+  }
+
+  return 0;
+}
