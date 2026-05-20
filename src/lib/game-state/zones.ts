@@ -2,12 +2,8 @@
  * Zone management for Magic: The Gathering game state
  */
 
-import type {
-  CardInstanceId,
-  PlayerId,
-  Zone,
-  ZoneType,
-} from "./types";
+import type { CardInstanceId, PlayerId, Zone } from "./types";
+import { ZoneType, getZoneKey } from "./types";
 
 /**
  * Generate a unique zone ID
@@ -27,7 +23,7 @@ export function createZone(
     isRevealed?: boolean;
     visibleTo?: PlayerId[];
     initialCards?: CardInstanceId[];
-  } = {}
+  } = {},
 ): Zone {
   return {
     type: zoneType,
@@ -43,60 +39,60 @@ export function createZone(
  */
 export function createPlayerZones(
   playerId: PlayerId,
-  libraryCards: CardInstanceId[]
+  libraryCards: CardInstanceId[],
 ): Map<string, Zone> {
   const zones = new Map<string, Zone>();
 
   // Library - normally ordered, face down
   zones.set(
-    generateZoneId(playerId, "library"),
-    createZone("library", playerId, {
+    getZoneKey(playerId, ZoneType.LIBRARY),
+    createZone(ZoneType.LIBRARY, playerId, {
       initialCards: libraryCards,
-    })
+    }),
   );
 
   // Hand - normally only visible to owner
   zones.set(
-    generateZoneId(playerId, "hand"),
-    createZone("hand", playerId)
+    getZoneKey(playerId, ZoneType.HAND),
+    createZone(ZoneType.HAND, playerId),
   );
 
   // Battlefield - visible to all
   zones.set(
-    generateZoneId(playerId, "battlefield"),
-    createZone("battlefield", playerId, {
+    getZoneKey(playerId, ZoneType.BATTLEFIELD),
+    createZone(ZoneType.BATTLEFIELD, playerId, {
       isRevealed: true,
-    })
+    }),
   );
 
   // Graveyard - normally revealed to all
   zones.set(
-    generateZoneId(playerId, "graveyard"),
-    createZone("graveyard", playerId, {
+    getZoneKey(playerId, ZoneType.GRAVEYARD),
+    createZone(ZoneType.GRAVEYARD, playerId, {
       isRevealed: true,
-    })
+    }),
   );
 
   // Exile - normally revealed to all
   zones.set(
-    generateZoneId(playerId, "exile"),
-    createZone("exile", playerId, {
+    getZoneKey(playerId, ZoneType.EXILE),
+    createZone(ZoneType.EXILE, playerId, {
       isRevealed: true,
-    })
+    }),
   );
 
   // Command zone - revealed to all (commander, emblems, etc.)
   zones.set(
-    generateZoneId(playerId, "command"),
-    createZone("command", playerId, {
+    getZoneKey(playerId, ZoneType.COMMAND),
+    createZone(ZoneType.COMMAND, playerId, {
       isRevealed: true,
-    })
+    }),
   );
 
   // Sideboard - for constructed formats
   zones.set(
-    generateZoneId(playerId, "sideboard"),
-    createZone("sideboard", playerId)
+    getZoneKey(playerId, ZoneType.SIDEBOARD),
+    createZone(ZoneType.SIDEBOARD, playerId),
   );
 
   return zones;
@@ -110,10 +106,10 @@ export function createSharedZones(): Map<string, Zone> {
 
   // Stack - shared, visible to all
   zones.set(
-    "stack",
-    createZone("stack", null, {
+    ZoneType.STACK,
+    createZone(ZoneType.STACK, null, {
       isRevealed: true,
-    })
+    }),
   );
 
   return zones;
@@ -125,7 +121,7 @@ export function createSharedZones(): Map<string, Zone> {
 export function addCardToZone(
   zone: Zone,
   cardId: CardInstanceId,
-  position?: "top" | "bottom" | number
+  position?: "top" | "bottom" | number,
 ): Zone {
   let newCardIds: CardInstanceId[];
 
@@ -149,10 +145,7 @@ export function addCardToZone(
 /**
  * Remove a card from a zone
  */
-export function removeCardFromZone(
-  zone: Zone,
-  cardId: CardInstanceId
-): Zone {
+export function removeCardFromZone(zone: Zone, cardId: CardInstanceId): Zone {
   return {
     ...zone,
     cardIds: zone.cardIds.filter((id) => id !== cardId),
@@ -166,7 +159,7 @@ export function moveCardBetweenZones(
   fromZone: Zone,
   toZone: Zone,
   cardId: CardInstanceId,
-  position?: "top" | "bottom" | number
+  position?: "top" | "bottom" | number,
 ): { from: Zone; to: Zone } {
   const updatedFrom = removeCardFromZone(fromZone, cardId);
   const updatedTo = addCardToZone(toZone, cardId, position);
@@ -240,10 +233,7 @@ export function getCardPosition(zone: Zone, cardId: CardInstanceId): number {
 /**
  * Reorder cards within a zone
  */
-export function reorderCards(
-  zone: Zone,
-  cardIds: CardInstanceId[]
-): Zone {
+export function reorderCards(zone: Zone, cardIds: CardInstanceId[]): Zone {
   // Validate that all cards in the new order exist in the zone
   const zoneCardSet = new Set(zone.cardIds);
   const validOrder = cardIds.filter((id) => zoneCardSet.has(id));
@@ -268,10 +258,7 @@ export function hideZone(zone: Zone): Zone {
 /**
  * Make a zone visible to specific players
  */
-export function setZoneVisibility(
-  zone: Zone,
-  visibleTo: PlayerId[]
-): Zone {
+export function setZoneVisibility(zone: Zone, visibleTo: PlayerId[]): Zone {
   return { ...zone, isRevealed: false, visibleTo };
 }
 
@@ -296,7 +283,7 @@ export function canPlayerSeeZone(zone: Zone, playerId: PlayerId): boolean {
 export function drawCards(
   library: Zone,
   hand: Zone,
-  count: number
+  count: number,
 ): { library: Zone; hand: Zone; drawnCards: CardInstanceId[] } {
   const cardsToDraw = getTopCards(library, count);
 
@@ -322,7 +309,7 @@ export function drawCards(
 export function millCards(
   library: Zone,
   graveyard: Zone,
-  count: number
+  count: number,
 ): { library: Zone; graveyard: Zone; milledCards: CardInstanceId[] } {
   const cardsToMill = getTopCards(library, count);
 
@@ -330,7 +317,11 @@ export function millCards(
   let updatedGraveyard = graveyard;
 
   cardsToMill.forEach((cardId) => {
-    const moved = moveCardBetweenZones(updatedLibrary, updatedGraveyard, cardId);
+    const moved = moveCardBetweenZones(
+      updatedLibrary,
+      updatedGraveyard,
+      cardId,
+    );
     updatedLibrary = moved.from;
     updatedGraveyard = moved.to;
   });
@@ -348,7 +339,7 @@ export function millCards(
 export function exileCards(
   fromZone: Zone,
   exile: Zone,
-  cardIds: CardInstanceId[]
+  cardIds: CardInstanceId[],
 ): { from: Zone; exile: Zone; exiledCards: CardInstanceId[] } {
   let updatedFrom = fromZone;
   let updatedExile = exile;

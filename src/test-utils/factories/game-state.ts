@@ -8,10 +8,10 @@ import type {
   CardInstance,
   Player,
   Zone,
-  ZoneType,
   Counter,
   ScryfallCard,
 } from "@/lib/game-state/types";
+import { ZoneType, getZoneKey } from "@/lib/game-state/types";
 import { createCard } from "./card";
 
 /**
@@ -307,32 +307,48 @@ export function createGameState(
       }),
     ],
     zones: {
-      [`${playerId}-library`]: createZone("library", playerId, playerLibrary),
-      [`${playerId}-hand`]: createZone("hand", playerId, playerHand),
-      [`${playerId}-graveyard`]: createZone(
-        "graveyard",
+      [getZoneKey(playerId, ZoneType.LIBRARY)]: createZone(
+        ZoneType.LIBRARY,
+        playerId,
+        playerLibrary,
+      ),
+      [getZoneKey(playerId, ZoneType.HAND)]: createZone(
+        ZoneType.HAND,
+        playerId,
+        playerHand,
+      ),
+      [getZoneKey(playerId, ZoneType.GRAVEYARD)]: createZone(
+        ZoneType.GRAVEYARD,
         playerId,
         options.playerGraveyard?.map((c) => c.id) ?? [],
       ),
-      [`${playerId}-battlefield`]: createZone(
-        "battlefield",
+      [getZoneKey(playerId, ZoneType.BATTLEFIELD)]: createZone(
+        ZoneType.BATTLEFIELD,
         playerId,
         options.battlefieldCards?.map((c) => c.id) ?? [],
       ),
-      [`${opponentId}-library`]: createZone(
-        "library",
+      [getZoneKey(opponentId, ZoneType.LIBRARY)]: createZone(
+        ZoneType.LIBRARY,
         opponentId,
         opponentLibrary,
       ),
-      [`${opponentId}-hand`]: createZone("hand", opponentId, opponentHand),
-      [`${opponentId}-graveyard`]: createZone(
-        "graveyard",
+      [getZoneKey(opponentId, ZoneType.HAND)]: createZone(
+        ZoneType.HAND,
+        opponentId,
+        opponentHand,
+      ),
+      [getZoneKey(opponentId, ZoneType.GRAVEYARD)]: createZone(
+        ZoneType.GRAVEYARD,
         opponentId,
         options.opponentGraveyard?.map((c) => c.id) ?? [],
       ),
-      [`${opponentId}-battlefield`]: createZone("battlefield", opponentId, []),
-      stack: createZone("stack", null),
-      command: createZone("command", null),
+      [getZoneKey(opponentId, ZoneType.BATTLEFIELD)]: createZone(
+        ZoneType.BATTLEFIELD,
+        opponentId,
+        [],
+      ),
+      [ZoneType.STACK]: createZone(ZoneType.STACK, null),
+      [ZoneType.COMMAND]: createZone(ZoneType.COMMAND, null),
     },
     turn: options.turn ?? 1,
     phase: options.phase ?? "precombat_main",

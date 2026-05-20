@@ -59,6 +59,7 @@ import {
   getPhaseName,
   getPhaseShortName,
 } from "./turn-phases";
+import { ZoneType } from "./types";
 import { ScryfallCard } from "@/app/actions";
 
 /**
@@ -72,7 +73,11 @@ export function example1_createGame() {
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
 
   console.log(`Game ID: ${state.gameId}`);
-  console.log(`Players: ${Array.from(state.players.values()).map((p) => p.name).join(", ")}`);
+  console.log(
+    `Players: ${Array.from(state.players.values())
+      .map((p) => p.name)
+      .join(", ")}`,
+  );
   console.log(`Starting life: ${Array.from(state.players.values())[0].life}`);
   console.log(`Turn: ${state.turn.turnNumber}`);
   console.log(`Current phase: ${getPhaseName(state.turn.currentPhase)}`);
@@ -166,7 +171,9 @@ export function example3_cardOperations() {
 
   // Add counters
   card = addCounters(card, "+1/+1", 2);
-  console.log(`+1/+1 counters: ${card.counters.find((c) => c.type === "+1/+1")?.count || 0}`);
+  console.log(
+    `+1/+1 counters: ${card.counters.find((c) => c.type === "+1/+1")?.count || 0}`,
+  );
 
   // Mark damage
   card = markDamage(card, 2);
@@ -182,7 +189,7 @@ export function example4_zoneOperations() {
   console.log("\nExample 4: Zone operations");
 
   // Create a zone
-  let library = createZone("library", "player-1", {
+  let library = createZone(ZoneType.LIBRARY, "player-1", {
     initialCards: ["card-1", "card-2", "card-3", "card-4", "card-5"],
   });
 
@@ -190,7 +197,7 @@ export function example4_zoneOperations() {
   console.log(`Top card: ${getTopCard(library)}`);
 
   // Draw a card
-  const hand = createZone("hand", "player-1");
+  const hand = createZone(ZoneType.HAND, "player-1");
   const topCard = getTopCard(library);
 
   if (topCard) {
@@ -253,17 +260,25 @@ export function example6_combatAndDamage() {
 
   // Deal damage to player 2
   state = dealDamageToPlayer(state, player2Id, 5);
-  console.log(`Player 2 life after damage: ${state.players.get(player2Id)?.life}`);
+  console.log(
+    `Player 2 life after damage: ${state.players.get(player2Id)?.life}`,
+  );
 
   // Player 1 gains life
   state = gainLife(state, player1Id, 3);
-  console.log(`Player 1 life after gain: ${state.players.get(player1Id)?.life}`);
+  console.log(
+    `Player 1 life after gain: ${state.players.get(player1Id)?.life}`,
+  );
 
   // Check win condition
   state = dealDamageToPlayer(state, player2Id, 20);
-  console.log(`Player 2 life after lethal: ${state.players.get(player2Id)?.life}`);
+  console.log(
+    `Player 2 life after lethal: ${state.players.get(player2Id)?.life}`,
+  );
   console.log(`Game status: ${state.status}`);
-  console.log(`Winners: ${state.winners.length > 0 ? Array.from(state.players.values()).find((p) => p.id === state.winners[0])?.name : "None"}`);
+  console.log(
+    `Winners: ${state.winners.length > 0 ? Array.from(state.players.values()).find((p) => p.id === state.winners[0])?.name : "None"}`,
+  );
 
   return state;
 }
@@ -355,8 +370,12 @@ export function example9_gameSimulation() {
   state = startGame(state);
 
   console.log("=== Game Started ===");
-  console.log(`Player 1 hand: ${getPlayerHand(state, player1Id)?.cardIds.length || 0} cards`);
-  console.log(`Player 2 hand: ${getPlayerHand(state, player2Id)?.cardIds.length || 0} cards`);
+  console.log(
+    `Player 1 hand: ${getPlayerHand(state, player1Id)?.cardIds.length || 0} cards`,
+  );
+  console.log(
+    `Player 2 hand: ${getPlayerHand(state, player2Id)?.cardIds.length || 0} cards`,
+  );
 
   // Both players pass priority for a few phases
   console.log("\n=== Passing priority through phases ===");
