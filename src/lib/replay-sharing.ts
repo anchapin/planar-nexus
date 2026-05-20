@@ -13,6 +13,8 @@
 import type { Replay } from "./game-state/replay";
 import type { ActionType, GameState, Zone } from "./game-state/types";
 import { Phase, ZoneType } from "./game-state/types";
+import { ReplacementEffectManager } from "./game-state/replacement-effects";
+import { LayerSystem } from "./game-state/layer-system";
 
 const REPLAY_PARAM = "replay";
 
@@ -491,6 +493,8 @@ function expandGameState(minified: MinifiedGameState): GameState {
     format: "unknown",
     createdAt: now,
     lastModifiedAt: now,
+    replacementEffectManager: new ReplacementEffectManager(),
+    layerSystem: new LayerSystem(),
   };
 }
 

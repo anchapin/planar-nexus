@@ -1,5 +1,7 @@
 import { DeterministicGameStateEngine } from "../deterministic-sync";
 import { GameState } from "../types";
+import { ReplacementEffectManager } from "../replacement-effects";
+import { LayerSystem } from "../layer-system";
 
 describe("DeterministicGameStateEngine", () => {
   const localPeerId = "local-peer";
@@ -40,6 +42,8 @@ describe("DeterministicGameStateEngine", () => {
     format: "standard",
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
+    replacementEffectManager: new ReplacementEffectManager(),
+    layerSystem: new LayerSystem(),
   };
 
   test("resolveConflict should handle simultaneous actions with tie-breaking", () => {
@@ -71,18 +75,24 @@ describe("DeterministicGameStateEngine", () => {
 
     const resolution = engine.resolveConflict(
       mockGameState,
-      { ...mockGameState, status: "completed", players: new Map([["p1", { life: 10 } as any]]) }, // Discrepancy in player state
+      {
+        ...mockGameState,
+        status: "completed",
+        players: new Map([["p1", { life: 10 } as any]]),
+      }, // Discrepancy in player state
       remotePeerId,
-      conflictSeq
+      conflictSeq,
     );
 
     expect(resolution.resolved).toBe(true);
     expect(resolution.strategy).toBe("authoritative");
-    
+
     // Tie-breaker: local-peer (L) vs remote-peer (R) alphabetically
     // "local-peer" comes before "remote-peer"
     expect(resolution.resolutionActions[0].initiatorId).toBe(localPeerId);
-    expect(resolution.conflictDescription).toContain("Resolved simultaneous action conflict");
+    expect(resolution.conflictDescription).toContain(
+      "Resolved simultaneous action conflict",
+    );
   });
 
   test("resolveConflict should prioritize earlier timestamp", () => {
@@ -111,9 +121,13 @@ describe("DeterministicGameStateEngine", () => {
 
     const resolution = engine.resolveConflict(
       mockGameState,
-      { ...mockGameState, status: "completed", players: new Map([["p1", { life: 10 } as any]]) },
+      {
+        ...mockGameState,
+        status: "completed",
+        players: new Map([["p1", { life: 10 } as any]]),
+      },
       remotePeerId,
-      conflictSeq
+      conflictSeq,
     );
 
     expect(resolution.resolutionActions[0].initiatorId).toBe(remotePeerId);

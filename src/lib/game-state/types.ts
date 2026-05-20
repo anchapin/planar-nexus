@@ -9,6 +9,7 @@
 
 import type { ScryfallCard } from "@/app/actions";
 import type { ReplacementEffectManager } from "./replacement-effects";
+import type { LayerSystem } from "./layer-system";
 
 // Re-export ScryfallCard for use in other game-state modules
 export type { ScryfallCard } from "@/app/actions";
@@ -102,6 +103,10 @@ export interface CardInstance {
   prototypeToughness: number | null;
   /** Prototype alternative mana cost string (when in prototype form) */
   prototypeManaCost: string | null;
+
+  // Boast keyword (CR 702.131) - tracks if this creature attacked last turn
+  /** Whether this creature attacked during the previous turn */
+  attackedLastTurn: boolean;
 }
 
 /**
@@ -598,6 +603,8 @@ export interface GameState {
   lastModifiedAt: number;
   /** Replacement effect manager for this game instance */
   replacementEffectManager: ReplacementEffectManager;
+  /** Layer system for this game instance */
+  layerSystem: LayerSystem;
 }
 
 /**
