@@ -32,6 +32,8 @@ import {
   isIndestructible,
   getWardCost,
   isProtectedByWard,
+  hasPersist,
+  canPersistTrigger,
 } from '../evergreen-keywords';
 
 import type { CardInstance } from '../types';
@@ -40,7 +42,8 @@ import type { CardInstance } from '../types';
 const createMockCard = (
   oracleText: string = '',
   keywords: string[] = [],
-  typeLine: string = 'Creature — Human'
+  typeLine: string = 'Creature — Human',
+  counters: any[] = []
 ): CardInstance =>
   ({
     id: 'test-card' as any,
@@ -63,7 +66,7 @@ const createMockCard = (
     isFaceDown: false,
     damage: 0,
     hasSummoningSickness: true,
-    counters: [],
+    counters,
     attachedTo: null,
     attachments: [],
   } as any);
@@ -349,6 +352,7 @@ describe('Standard Mechanics - Evergreen Keywords', () => {
       { fn: hasDefender, text: 'Defender', keyword: 'Defender' },
       { fn: isIndestructible, text: 'Indestructible', keyword: 'Indestructible' },
       { fn: hasWard, text: 'Ward {2}', keyword: 'Ward' },
+      { fn: hasPersist, text: 'Persist', keyword: 'Persist' },
     ])('should detect $keyword', ({ fn, text, keyword }) => {
       const card = createMockCard(text, [keyword]);
       expect(fn(card)).toBe(true);
@@ -567,5 +571,48 @@ describe('Standard Mechanics - Complex Interactions', () => {
   it('should handle read ahead detection', () => {
     const parsed = extractKeywords('Read ahead', 'Enchantment — Saga');
     expect(parsed.some((k) => k.keyword.includes('read ahead'))).toBe(true);
+  });
+
+  describe('Persist Keyword', () => {
+    it('should detect persist in keywords array', () => {
+      const card = createMockCard('Persist', ['Persist']);
+      expect(hasPersist(card)).toBe(true);
+    });
+
+    it('should detect persist in oracle text', () => {
+      const card = createMockCard('Persist');
+      expect(hasPersist(card)).toBe(true);
+    });
+
+    it('should not detect persist on non-creature cards', () => {
+      const card = createMockCard('Persist', ['Persist'], 'Enchantment');
+      expect(hasPersist(card)).toBe(false);
+    });
+
+    it('should allow persist trigger when no -1/-1 counter', () => {
+      const card = createMockCard('Persist', ['Persist']);
+      expect(canPersistTrigger(card)).toBe(true);
+    });
+
+    it('should not allow persist trigger with -1/-1 counter', () => {
+      const card = createMockCard('Persist', ['Persist'], 'Creature — Human', [
+        { type: '-1/-1', count: 1 },
+      ]);
+      expect(canPersistTrigger(card)).toBe(false);
+    });
+
+    it('should not allow persist trigger with multiple -1/-1 counters', () => {
+      const card = createMockCard('Persist', ['Persist'], 'Creature — Human', [
+        { type: '-1/-1', count: 2 },
+      ]);
+      expect(canPersistTrigger(card)).toBe(false);
+    });
+
+    it('should still allow persist with +1/+1 counters', () => {
+      const card = createMockCard('Persist', ['Persist'], 'Creature — Human', [
+        { type: '+1/+1', count: 3 },
+      ]);
+      expect(canPersistTrigger(card)).toBe(true);
+    });
   });
 });
