@@ -73,6 +73,7 @@ describe("ValidationService", () => {
       powerModifier: 0,
       attachedToId: null,
       attachedCardIds: [],
+      mutatedCardIds: [],
       enteredBattlefieldTimestamp: 0,
       attachedTimestamp: null,
       chosenBasicLandType: null,
