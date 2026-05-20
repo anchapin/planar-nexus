@@ -561,10 +561,17 @@ export function activateLoyaltyAbility(
 }
 
 /**
- * Check for triggered abilities
- * This should be called after any game event (e.g., card enters battlefield, damage is dealt)
+ * Detect triggered abilities matching a game event (CR 603.2)
+ *
+ * This is the primary entry point for detecting triggered abilities.
+ * It scans the battlefield for cards with "when"/"whenever"/"at" clauses
+ * and returns abilities whose trigger conditions match the given event.
+ *
+ * @param state - Current game state
+ * @param event - The game event to check triggers against
+ * @returns Array of TriggeredAbilityInstance that should fire
  */
-export function checkTriggeredAbilities(
+export function detectTriggeredAbilities(
   state: GameState,
   event:
     | "entersBattlefield"
@@ -577,12 +584,12 @@ export function checkTriggeredAbilities(
     | "cast"
     | "lifeGain"
     | "lifeLost",
-): TriggeredAbilityResult {
+): TriggeredAbilityInstance[] {
   const triggeredAbilities: TriggeredAbilityInstance[] = [];
 
   // Check each card on the battlefield for triggered abilities
   for (const [cardId, card] of state.cards) {
-    // Skip if card is not on battlefield using helper
+    // Skip if card is not on battlefield
     if (!isOnBattlefield(state, cardId)) continue;
 
     const abilities = getTriggeredAbilities(card.cardData);
@@ -590,7 +597,7 @@ export function checkTriggeredAbilities(
     for (const ability of abilities) {
       let shouldTrigger = false;
 
-      // Check if the trigger condition matches the event
+      // Check if the trigger condition matches the event (CR 603.2)
       switch (event) {
         case "entersBattlefield":
           shouldTrigger = ability.trigger.event === "entersBattlefield";
@@ -645,14 +652,9 @@ export function checkTriggeredAbilities(
     }
   }
 
-  // For now, triggered abilities go on the stack
-  // In a full implementation, they would be queued and put on stack at the appropriate time
-  let currentState = state;
-
   // Sort triggered abilities according to CR 603.3:
   // 603.3a: Abilities that trigger at the same time are put on the stack in APNAP order
   // 603.3b: Abilities with the same timestamp are ordered by the cards timestamp in the zone
-  // 603.3c: For continuous triggers, check the game state at the moment of the trigger
   triggeredAbilities.sort((a, b) => {
     // First: earlier timestamp resolves first (lower timestamp = earlier)
     if (a.timestamp !== b.timestamp) {
@@ -678,6 +680,34 @@ export function checkTriggeredAbilities(
 
     return 0;
   });
+
+  return triggeredAbilities;
+}
+
+/**
+ * Check for triggered abilities and put them on the stack
+ * This should be called after any game event (e.g., card enters battlefield, damage is dealt)
+ *
+ * @deprecated Use detectTriggeredAbilities() for detection only, then put on stack manually
+ */
+export function checkTriggeredAbilities(
+  state: GameState,
+  event:
+    | "entersBattlefield"
+    | "leavesBattlefield"
+    | "damageDealt"
+    | "dies"
+    | "attacked"
+    | "phaseChange"
+    | "drawCard"
+    | "cast"
+    | "lifeGain"
+    | "lifeLost",
+): TriggeredAbilityResult {
+  const triggeredAbilities = detectTriggeredAbilities(state, event);
+
+  // Put triggered abilities on the stack
+  let currentState = state;
 
   for (const trigger of triggeredAbilities) {
     const card = state.cards.get(trigger.sourceCardId);
