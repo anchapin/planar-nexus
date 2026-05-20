@@ -506,6 +506,7 @@ export function extractKeywords(
     "transform",
     "tribute",
     "undaunted",
+    "corpse",
   ];
 
   for (const keyword of evergreenKeywords) {
