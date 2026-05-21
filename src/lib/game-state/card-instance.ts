@@ -54,6 +54,7 @@ export function createCardInstance(
     prototypePower: null,
     prototypeToughness: null,
     prototypeManaCost: null,
+    currentZoneKey: null,
   };
 }
 

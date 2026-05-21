@@ -146,15 +146,22 @@ export function exileCard(
     };
   }
 
-  // Find the card's current zone
+  // Use cached zone key for O(1) lookup if available, otherwise search
   let currentZone: Zone | null = null;
-  let currentZoneKey: string | null = null;
+  let currentZoneKey: string | null = card.currentZoneKey;
 
-  for (const [zoneKey, zone] of state.zones) {
-    if (zone.cardIds.includes(cardId)) {
-      currentZone = zone;
-      currentZoneKey = zoneKey;
-      break;
+  if (currentZoneKey) {
+    currentZone = state.zones.get(currentZoneKey) ?? null;
+  }
+
+  if (!currentZone) {
+    // Fallback: search all zones (for cards created before cache existed)
+    for (const [zoneKey, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        currentZone = zone;
+        currentZoneKey = zoneKey;
+        break;
+      }
     }
   }
 
@@ -189,6 +196,7 @@ export function exileCard(
     isFaceDown: faceDown,
     attachedToId: null, // Detach from any attachments
     attachedCardIds: [], // Remove any attachments
+    currentZoneKey: exileZoneKey,
   };
 
   // Update zones
@@ -618,7 +626,6 @@ export function consumeRegenerationShield(
   if (hasCounter(card, "regeneration-shield")) {
     // Remove one regeneration shield
     const updatedCard = removeCounters(card, "regeneration-shield", 1);
-
     const updatedCards = new Map(state.cards);
     updatedCards.set(cardId, updatedCard);
 
@@ -654,15 +661,22 @@ export function moveCardToZone(
     };
   }
 
-  // Find current zone
+  // Use cached zone key for O(1) lookup if available, otherwise search
   let currentZone: Zone | null = null;
-  let currentZoneKey: string | null = null;
+  let currentZoneKey: string | null = card.currentZoneKey;
 
-  for (const [zoneKey, zone] of state.zones) {
-    if (zone.cardIds.includes(cardId)) {
-      currentZone = zone;
-      currentZoneKey = zoneKey;
-      break;
+  if (currentZoneKey) {
+    currentZone = state.zones.get(currentZoneKey) ?? null;
+  }
+
+  if (!currentZone) {
+    // Fallback: search all zones (for cards created before cache exists)
+    for (const [zoneKey, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        currentZone = zone;
+        currentZoneKey = zoneKey;
+        break;
+      }
     }
   }
 

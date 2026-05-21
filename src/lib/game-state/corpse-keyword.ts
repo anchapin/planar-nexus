@@ -107,12 +107,19 @@ export function canActivateCorpse(
   }
 
   // Check if the card with corpse is in the graveyard (corpse triggers on death)
+  // Use cached zone key for O(1) lookup
   let isInGraveyard = false;
-  for (const [, zone] of state.zones) {
-    if (zone.cardIds.includes(cardId)) {
-      if (zone.type === ZoneType.GRAVEYARD) {
-        isInGraveyard = true;
-        break;
+  if (card.currentZoneKey) {
+    const zone = state.zones.get(card.currentZoneKey);
+    isInGraveyard = zone?.type === ZoneType.GRAVEYARD;
+  } else {
+    // Fallback: search all zones (for cards created before cache existed)
+    for (const [, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        if (zone.type === ZoneType.GRAVEYARD) {
+          isInGraveyard = true;
+          break;
+        }
       }
     }
   }
