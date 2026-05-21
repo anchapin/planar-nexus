@@ -226,151 +226,25 @@ export interface DesyncDetectionResult {
  */
 /**
  * Deep clone a GameState while preserving Map and Set objects
- * Uses structuredClone which properly handles Maps and Sets in modern JS
- */
-function deepCloneGameState(state: GameState): GameState {
-  function cloneValue(value: unknown): unknown {
-    if (value instanceof Map) {
-      const m = new Map();
-      for (const [k, v] of value.entries()) {
-        m.set(k, cloneValue(v));
-      }
-      return m;
-    }
-    if (value instanceof Set) {
-      const s = new Set();
-      for (const v of value.values()) {
-        s.add(cloneValue(v));
-      }
-      return s;
-    }
-    if (Array.isArray(value)) {
-      return value.map(cloneValue);
-    }
-    if (typeof value === "object" && value !== null) {
-      const result: Record<string, unknown> = {};
-      for (const k of Object.keys(value as Record<string, unknown>)) {
-        result[k] = cloneValue((value as Record<string, unknown>)[k]);
-      }
-      return result;
-    }
-    return value;
-  }
-
-  return cloneValue(state) as GameState;
-}
-
-/**
- * Revive Maps and Sets from the special JSON format used in deepCloneGameState
- */
-function reviveGameState(state: any): any {
-  if (state === null || state === undefined) {
-    return state;
-  }
-  if (Array.isArray(state)) {
-    return state.map(reviveGameState);
-  }
-  if (typeof state === "object") {
-    if (state.__type === "Map") {
-      return new Map(
-        state.data.map(([k, v]: [any, any]) => [k, reviveGameState(v)]),
-      );
-    }
-    if (state.__type === "Set") {
-      return new Set(state.data.map((v: any) => reviveGameState(v)));
-    }
-    const result: any = {};
-    for (const key of Object.keys(state)) {
-      result[key] = reviveGameState(state[key]);
-    }
-    return result;
-  }
-  return state;
-}
-
-/**
- * Reviver function for JSON.parse to restore Maps and Sets
- */
-function mapSetReviver(key: string, value: any): any {
-  if (value instanceof Map) {
-    return { __type: "Map", data: Array.from(value.entries()) };
-  }
-  if (value instanceof Set) {
-    return { __type: "Set", data: Array.from(value.entries()) };
-  }
-  return value;
-}
-
-/**
- * Reviver function for JSON.parse to restore Maps and Sets from serialized format
- */
-function mapSetReviverFromSerialized(key: string, value: any): any {
-  if (value && value.__type === "Map") {
-    return new Map(
-      value.data.map(([k, v]: [any, any]) => [
-        k,
-        mapSetReviverFromSerialized(k, v),
-      ]),
-    );
-  }
-  if (value && value.__type === "Set") {
-    return new Set(
-      value.data.map((v: any) => mapSetReviverFromSerialized("", v)),
-    );
-  }
-  if (Array.isArray(value)) {
-    return value.map((v: any) => mapSetReviverFromSerialized("", v));
-  }
-  if (typeof value === "object" && value !== null) {
-    const result: any = {};
-    for (const k of Object.keys(value)) {
-      result[k] = mapSetReviverFromSerialized(k, value[k]);
-    }
-    return result;
-  }
-  return value;
-}
-
-/**
- * Create a properly deep-cloned GameState that preserves Map/Set types
+ * Uses direct recursive cloning to avoid JSON serialize/parse issues
  */
 function cloneGameState(state: GameState): GameState {
-  // Use a recursive approach to properly serialize Maps and Sets
-  function replacer(key: string, value: any): any {
+  function clone(value: unknown): unknown {
     if (value instanceof Map) {
-      return { __type: "Map", data: Array.from(value.entries()) };
+      return new Map([...value].map(([k, v]) => [clone(k), clone(v)]));
     }
     if (value instanceof Set) {
-      return { __type: "Set", data: Array.from(value.entries()) };
+      return new Set([...value].map(v => clone(v)));
     }
-    return value;
-  }
-
-  function reviver(key: string, value: any): any {
-    if (value && value.__type === "Map") {
-      return new Map(
-        value.data.map(([k, v]: [any, any]) => [k, reviver(k, v)]),
+    if (Array.isArray(value)) return value.map(clone);
+    if (typeof value === 'object' && value !== null) {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, clone(v)])
       );
     }
-    if (value && value.__type === "Set") {
-      return new Set(value.data.map((v: any) => reviver("", v)));
-    }
-    if (Array.isArray(value)) {
-      return value.map((v: any) => reviver("", v));
-    }
-    if (typeof value === "object" && value !== null) {
-      const result: any = {};
-      for (const k of Object.keys(value)) {
-        result[k] = reviver(k, value[k]);
-      }
-      return result;
-    }
     return value;
   }
-
-  const serialized = JSON.stringify(state, replacer);
-  const cloned = JSON.parse(serialized, reviver);
-  return cloned;
+  return clone(state) as GameState;
 }
 
 export class EventSourcingGameState {
@@ -388,7 +262,7 @@ export class EventSourcingGameState {
     localPlayerId: PlayerId,
   ) {
     // Deep clone to preserve Map/Set types
-    this.state = deepCloneGameState(initialState);
+    this.state = cloneGameState(initialState);
     this.localPlayerId = localPlayerId;
     this.eventIndexCounter = 0;
 
