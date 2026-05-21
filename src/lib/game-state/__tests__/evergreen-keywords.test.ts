@@ -22,6 +22,12 @@ import {
   canBlockThisTurn,
   hasProtectionFrom,
   canBeTargetedByColor,
+  canBeTargetedBySource,
+  canBeEnchantedBy,
+  canBeEquippedBy,
+  shouldPreventDamageToTarget,
+  getProtectionQualities,
+  isProtectedFromSource,
   hasFlash,
   canBePlayedAtInstantSpeed,
   hasDeathtouch,
@@ -446,6 +452,282 @@ describe('Evergreen Keywords', () => {
       expect(canBeTargetedByColor(protCard, 'red')).toBe(false);
       expect(canBeTargetedByColor(protCard, 'blue')).toBe(true);
       expect(canBeTargetedByColor(normalCard, 'red')).toBe(true);
+    });
+
+    it('should get protection qualities from oracle text', () => {
+      const card = createMockCard({
+        cardData: {
+          id: 'prot-id',
+          name: 'Holy Guardian',
+          type_line: 'Creature — Angel',
+          oracle_text: 'Protection from black',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const qualities = getProtectionQualities(card);
+      expect(qualities).toContain('black');
+      expect(qualities).not.toContain('red');
+    });
+
+    it('should detect protection from multiple colors', () => {
+      const card = createMockCard({
+        cardData: {
+          id: 'multi-prot',
+          name: 'Multi Protector',
+          type_line: 'Creature',
+          oracle_text: 'Protection from red and blue',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      expect(hasProtectionFrom(card, 'red')).toBe(true);
+      expect(hasProtectionFrom(card, 'blue')).toBe(true);
+      expect(hasProtectionFrom(card, 'black')).toBe(false);
+    });
+
+    it('should check protection from source card colors', () => {
+      const protCard = createMockCard({
+        cardData: {
+          id: 'prot',
+          name: 'Fire Guardian',
+          type_line: 'Creature — Elemental',
+          oracle_text: 'Protection from red',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const redSource = createMockCard({
+        cardData: {
+          id: 'red-src',
+          name: 'Fire Bolt',
+          type_line: 'Sorcery',
+          oracle_text: '',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const blueSource = createMockCard({
+        cardData: {
+          id: 'blue-src',
+          name: 'Water Blast',
+          type_line: 'Instant',
+          oracle_text: '',
+          colors: ['U'],
+          color_identity: ['U'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      expect(isProtectedFromSource(protCard, redSource)).toBe(true);
+      expect(isProtectedFromSource(protCard, blueSource)).toBe(false);
+    });
+
+    it('should prevent targeting by source with matching protection', () => {
+      const protCard = createMockCard({
+        cardData: {
+          id: 'prot',
+          name: 'Angel Protector',
+          type_line: 'Creature — Angel',
+          oracle_text: 'Protection from black',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const blackSpell = createMockCard({
+        cardData: {
+          id: 'black-spell',
+          name: 'Dark Ritual',
+          type_line: 'Sorcery',
+          oracle_text: '',
+          colors: ['B'],
+          color_identity: ['B'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const whiteSpell = createMockCard({
+        cardData: {
+          id: 'white-spell',
+          name: 'Heal',
+          type_line: 'Instant',
+          oracle_text: '',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      expect(canBeTargetedBySource(protCard, blackSpell)).toBe(false);
+      expect(canBeTargetedBySource(protCard, whiteSpell)).toBe(true);
+    });
+
+    it('should check enchantment restrictions for auras', () => {
+      const protCard = createMockCard({
+        cardData: {
+          id: 'prot',
+          name: 'Holy Guardian',
+          type_line: 'Creature — Angel',
+          oracle_text: 'Protection from red',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const redAura = createMockCard({
+        cardData: {
+          id: 'red-aura',
+          name: 'Red Aura',
+          type_line: 'Enchantment — Aura',
+          oracle_text: '',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const whiteAura = createMockCard({
+        cardData: {
+          id: 'white-aura',
+          name: 'White Aura',
+          type_line: 'Enchantment — Aura',
+          oracle_text: '',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      expect(canBeEnchantedBy(protCard, redAura)).toBe(false);
+      expect(canBeEnchantedBy(protCard, whiteAura)).toBe(true);
+    });
+
+    it('should check equipment restrictions', () => {
+      const protCard = createMockCard({
+        cardData: {
+          id: 'prot',
+          name: 'Fire Guardian',
+          type_line: 'Creature — Elemental',
+          oracle_text: 'Protection from red',
+          colors: [],
+          color_identity: [],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const redEquipment = createMockCard({
+        cardData: {
+          id: 'red-equip',
+          name: 'Red Sword',
+          type_line: 'Artifact — Equipment',
+          oracle_text: '',
+          colors: ['R'],
+          color_identity: ['R'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const greenEquipment = createMockCard({
+        cardData: {
+          id: 'green-equip',
+          name: 'Green Sword',
+          type_line: 'Artifact — Equipment',
+          oracle_text: '',
+          colors: ['G'],
+          color_identity: ['G'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      expect(canBeEquippedBy(protCard, redEquipment)).toBe(false);
+      expect(canBeEquippedBy(protCard, greenEquipment)).toBe(true);
+    });
+
+    it('should prevent damage from protected sources', () => {
+      const protCard = createMockCard({
+        cardData: {
+          id: 'prot',
+          name: 'Holy Guardian',
+          type_line: 'Creature — Angel',
+          oracle_text: 'Protection from black',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const blackSource = createMockCard({
+        cardData: {
+          id: 'black-source',
+          name: 'Dark Revenant',
+          type_line: 'Creature — Spirit',
+          oracle_text: '',
+          colors: ['B'],
+          color_identity: ['B'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const whiteSource = createMockCard({
+        cardData: {
+          id: 'white-source',
+          name: 'Silver Knight',
+          type_line: 'Creature — Knight',
+          oracle_text: '',
+          colors: ['W'],
+          color_identity: ['W'],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      expect(shouldPreventDamageToTarget(protCard, blackSource)).toBe(true);
+      expect(shouldPreventDamageToTarget(protCard, whiteSource)).toBe(false);
+    });
+
+    it('should handle protection with color abbreviations (W, U, B, R, G)', () => {
+      const protCard = createMockCard({
+        cardData: {
+          id: 'prot',
+          name: 'Guardian',
+          type_line: 'Creature',
+          oracle_text: 'Protection from red',
+          colors: [],
+          color_identity: [],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+      const redSource = createMockCard({
+        cardData: {
+          id: 'red',
+          name: 'Fire',
+          type_line: '',
+          oracle_text: '',
+          colors: ['R'],
+          color_identity: [],
+          mana_cost: '',
+          cmc: 0,
+        } as any,
+      });
+
+      // Card with colors ['R'] should match protection from "red"
+      expect(isProtectedFromSource(protCard, redSource)).toBe(true);
     });
   });
 
