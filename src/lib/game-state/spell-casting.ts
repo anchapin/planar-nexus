@@ -265,12 +265,14 @@ export function castSpell(
 
   // Handle modal spell mode selection requirement
   // CR 700.2: Modal spells require the controller to choose modes before targeting
+  // Only require explicit mode selection if the modal spell has modes that need targets
   if (isModalSpell(card.cardData)) {
     const modeInfo = getModesForModalSpell(card.cardData);
-    if (modeInfo && chosenModes.length === 0) {
-      // This will result in a waiting choice for the player to select modes
-      // For now, we require modes to be provided; a full implementation would
-      // create a waiting choice here and return early
+    if (
+      modeInfo &&
+      modeInfo.some((m) => m.targetTypes.length > 0) &&
+      chosenModes.length === 0
+    ) {
       return {
         success: false,
         state,
