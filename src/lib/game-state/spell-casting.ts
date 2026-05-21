@@ -41,6 +41,10 @@ import {
   initializePrototype,
   getPrototypeManaCostForSpell,
 } from "./prototype";
+import {
+  canBeTargetedBySource,
+  isProtectedByHexproof,
+} from "./evergreen-keywords";
 import type { CardInstance } from "./types";
 
 /**
@@ -787,18 +791,36 @@ function removeFromStack(state: GameState, stackObjectId: string): GameState {
 
 /**
  * Check if a spell/ability can be targeted
+ * Implements CR 702.16 (Protection) and CR 702.11 (Hexproof)
  */
 export function canTarget(
   targetType: Target["type"],
   targetId: string,
   state: GameState,
-  _sourcePlayerId: PlayerId,
+  sourcePlayerId: PlayerId,
+  sourceCardId?: CardInstanceId,
 ): boolean {
   switch (targetType) {
     case "card": {
       // Check if card exists
       const card = state.cards.get(targetId);
       if (!card) return false;
+
+      // CR 702.11: Hexproof - can't be targeted by opponent spells/abilities
+      // A player with hexproof cannot be targeted by opponent spells or abilities
+      // Hexproof checks if the target card belongs to the source player or not
+      if (isProtectedByHexproof(card, sourcePlayerId)) {
+        return false;
+      }
+
+      // CR 702.16A: Protection - can't be targeted by sources with the given quality
+      // If source card is provided, check protection
+      if (sourceCardId) {
+        const sourceCard = state.cards.get(sourceCardId);
+        if (sourceCard && !canBeTargetedBySource(card, sourceCard)) {
+          return false;
+        }
+      }
 
       // Check if source player can see the card
       // (In reality, would check visibility rules)

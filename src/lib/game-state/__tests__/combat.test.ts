@@ -1570,3 +1570,91 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     });
   });
 });
+
+/**
+ * Integration tests for Protection blocking - Issue #818
+ * CR 702.16D: A creature with protection can't be blocked by sources with the given quality
+ */
+describe("Protection Blocking Integration - Issue #818", () => {
+  // Helper to create a creature with protection from a color
+  function createProtectionCreature(
+    name: string,
+    protectionColor: string,
+  ): ScryfallCard {
+    return {
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: "Creature — Knight",
+      power: "2",
+      toughness: "2",
+      keywords: [],
+      oracle_text: `Protection from ${protectionColor}`,
+      mana_cost: "{2}{W}",
+      cmc: 3,
+      colors: ["W"],
+      color_identity: ["W"],
+      legalities: { standard: "legal", commander: "legal" },
+      card_faces: undefined,
+      layout: "normal",
+    } as ScryfallCard;
+  }
+
+  it("should prevent a creature with protection from being blocked by attacker of that color", () => {
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Protected Attacker", power: 3, toughness: 3 }],
+      [{ name: "White Blocker", power: 2, toughness: 2 }],
+    );
+
+    const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+    const attackerId = aliceBattlefield.cardIds[0];
+    const blockerId = bobBattlefield.cardIds[0];
+
+    // Make attacker have protection from white
+    const attacker = state.cards.get(attackerId)!;
+    attacker.cardData.oracle_text = "Protection from white";
+    attacker.cardData.keywords = [];
+    attacker.cardData.colors = ["G"];
+
+    // Make blocker a white creature
+    const blocker = state.cards.get(blockerId)!;
+    blocker.cardData.colors = ["W"];
+    blocker.cardData.color_identity = ["W"];
+
+    state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blockerAssignments = new Map();
+    blockerAssignments.set(attackerId, [blockerId]);
+
+    // Bob's white blocker should NOT be able to block Alice's white-protected attacker
+    const result = canBlock(state, blockerId, attackerId);
+    expect(result.canBlock).toBe(false);
+    expect(result.reason).toContain("protection");
+  });
+
+  it("should allow a creature with protection to be blocked by attacker of different color", () => {
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Protected Attacker", power: 3, toughness: 3 }],
+      [{ name: "Blue Blocker", power: 2, toughness: 2 }],
+    );
+
+    const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+    const attackerId = aliceBattlefield.cardIds[0];
+    const blockerId = bobBattlefield.cardIds[0];
+
+    // Make attacker have protection from white
+    const attacker = state.cards.get(attackerId)!;
+    attacker.cardData.oracle_text = "Protection from white";
+    attacker.cardData.keywords = [];
+    attacker.cardData.colors = ["G"];
+
+    // Make blocker a blue creature (different color from protection)
+    const blocker = state.cards.get(blockerId)!;
+    blocker.cardData.colors = ["U"];
+    blocker.cardData.color_identity = ["U"];
+
+    state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const result = canBlock(state, blockerId, attackerId);
+    expect(result.canBlock).toBe(true);
+  });
+});

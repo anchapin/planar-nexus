@@ -21,6 +21,7 @@ import {
   hasInfect,
   hasDeathtouch,
   getToxicLevel,
+  isProtectedFromSource,
 } from "./evergreen-keywords";
 
 /**
@@ -143,6 +144,16 @@ export function canBlock(
         return {
           canBlock: false,
           reason: "Cannot block flying creatures without flying or reach",
+        };
+      }
+
+      // CR 702.16D: Protection - creature can't be blocked by sources with the given quality
+      // A creature with protection from a color cannot be blocked by creatures of that color
+      // isProtectedFromSource checks if the ATTACKER has protection from the BLOCKER's colors
+      if (attacker && isProtectedFromSource(attacker, blocker)) {
+        return {
+          canBlock: false,
+          reason: `Cannot block creature with protection from blocker's colors`,
         };
       }
     }

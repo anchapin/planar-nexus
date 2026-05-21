@@ -1035,3 +1035,181 @@ describe("Spell Casting - Modal Spell Choice (choose_mode)", () => {
     });
   });
 });
+
+/**
+ * Integration tests for Protection (#818) and Hexproof (#821)
+ * CR 702.16 - Protection: can't be targeted by sources with given quality
+ * CR 702.11 - Hexproof: can't be targeted by opponent spells/abilities
+ */
+describe("Protection and Hexproof Targeting Integration", () => {
+  // Helper to create a creature with protection from a color
+  function createProtectionCreature(
+    name: string,
+    protectionColor: string,
+  ): ScryfallCard {
+    return {
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: "Creature — Knight",
+      power: "2",
+      toughness: "2",
+      keywords: [],
+      oracle_text: `Protection from ${protectionColor}`,
+      mana_cost: "{2}{W}",
+      cmc: 3,
+      colors: ["W"],
+      color_identity: ["W"],
+      legalities: { standard: "legal", commander: "legal" },
+      card_faces: undefined,
+      layout: "normal",
+    } as ScryfallCard;
+  }
+
+  // Helper to create a hexproof creature
+  function createHexproofCreature(name: string): ScryfallCard {
+    return {
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: "Creature — Elf",
+      power: "2",
+      toughness: "2",
+      keywords: ["Hexproof"],
+      oracle_text: "Hexproof",
+      mana_cost: "{1}{G}",
+      cmc: 2,
+      colors: ["G"],
+      color_identity: ["G"],
+      legalities: { standard: "legal", commander: "legal" },
+      card_faces: undefined,
+      layout: "normal",
+    } as ScryfallCard;
+  }
+
+  describe("Protection - Issue #818", () => {
+    it("should prevent targeting a creature with protection from the source's color", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Alice controls a creature with protection from white
+      const whiteProtectionData = createProtectionCreature("White Knight", "white");
+      const whiteKnight = createCardInstance(whiteProtectionData, aliceId, aliceId);
+      state.cards.set(whiteKnight.id, whiteKnight);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...battlefield,
+        cardIds: [...battlefield.cardIds, whiteKnight.id],
+      });
+
+      // Bob controls a white spell source (e.g., a white creature)
+      const whiteSourceData = createMockCreature("White Soldier", 1, 1);
+      whiteSourceData.keywords = [];
+      whiteSourceData.oracle_text = "";
+      whiteSourceData.colors = ["W"];
+      whiteSourceData.color_identity = ["W"];
+      const whiteSoldier = createCardInstance(whiteSourceData, bobId, bobId);
+      state.cards.set(whiteSoldier.id, whiteSoldier);
+
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      state.zones.set(`${bobId}-battlefield`, {
+        ...bobBattlefield,
+        cardIds: [...bobBattlefield.cardIds, whiteSoldier.id],
+      });
+
+      // Bob (white source) should not be able to target Alice's white-protected creature
+      const result = canTarget("card", whiteKnight.id, state, bobId, whiteSoldier.id);
+      expect(result).toBe(false);
+    });
+
+    it("should allow targeting a creature with protection from a different color", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Alice controls a creature with protection from red
+      const redProtectionData = createProtectionCreature("Red Slayer", "red");
+      const redSlayer = createCardInstance(redProtectionData, aliceId, aliceId);
+      state.cards.set(redSlayer.id, redSlayer);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...battlefield,
+        cardIds: [...battlefield.cardIds, redSlayer.id],
+      });
+
+      // Bob controls a blue creature (different color from protection)
+      const blueSourceData = createMockCreature("Blue Mage", 1, 1);
+      blueSourceData.colors = ["U"];
+      blueSourceData.color_identity = ["U"];
+      const blueMage = createCardInstance(blueSourceData, bobId, bobId);
+      state.cards.set(blueMage.id, blueMage);
+
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      state.zones.set(`${bobId}-battlefield`, {
+        ...bobBattlefield,
+        cardIds: [...bobBattlefield.cardIds, blueMage.id],
+      });
+
+      // Bob (blue source) should be able to target Alice's red-protected creature
+      const result = canTarget("card", redSlayer.id, state, bobId, blueMage.id);
+      expect(result).toBe(true);
+    });
+  });
+
+  describe("Hexproof - Issue #821", () => {
+    it("should prevent targeting a creature with hexproof from opponent", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Alice controls a hexproof creature
+      const hexproofData = createHexproofCreature("Elusive Scout");
+      const elusiveScout = createCardInstance(hexproofData, aliceId, aliceId);
+      state.cards.set(elusiveScout.id, elusiveScout);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...battlefield,
+        cardIds: [...battlefield.cardIds, elusiveScout.id],
+      });
+
+      // Bob (opponent) should not be able to target the hexproof creature
+      const result = canTarget("card", elusiveScout.id, state, bobId);
+      expect(result).toBe(false);
+    });
+
+    it("should allow targeting a creature with hexproof from its controller", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Alice controls a hexproof creature
+      const hexproofData = createHexproofCreature("Elusive Scout");
+      const elusiveScout = createCardInstance(hexproofData, aliceId, aliceId);
+      state.cards.set(elusiveScout.id, elusiveScout);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...battlefield,
+        cardIds: [...battlefield.cardIds, elusiveScout.id],
+      });
+
+      // Alice (controller) should be able to target her own hexproof creature
+      const result = canTarget("card", elusiveScout.id, state, aliceId);
+      expect(result).toBe(true);
+    });
+  });
+});
