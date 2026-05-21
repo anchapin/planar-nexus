@@ -41,6 +41,7 @@ import {
   initializePrototype,
   getPrototypeManaCostForSpell,
 } from "./prototype";
+import { dealDamageToCard } from "./keyword-actions";
 import type { CardInstance } from "./types";
 
 /**
@@ -542,6 +543,53 @@ export function resolveTopOfStack(state: GameState): GameState {
           consecutivePasses: 0,
           lastModifiedAt: Date.now(),
         };
+      }
+      
+      // Handle damage spells that target creatures
+      // Spells like Lightning Bolt that deal damage to creatures need to apply damage
+      if (stackObject.targets && stackObject.targets.length > 0) {
+        const oracleText = sourceCard.cardData.oracle_text || "";
+        const lowerOracleText = oracleText.toLowerCase();
+        
+        // Check if this spell deals damage
+        const dealsDamage = lowerOracleText.includes("deal ") && lowerOracleText.includes(" damage");
+        const isDestroyEffect = lowerOracleText.includes("destroy all creatures");
+        
+        if (dealsDamage && !isDestroyEffect) {
+          let updatedState = state;
+          
+          // Get the damage amount - check for X value first, then parse from text
+          let damageAmount = stackObject.variableValues?.get("X") || 0;
+          if (damageAmount === 0) {
+            // Try to parse damage amount from oracle text (e.g., "Lightning Bolt deals 3 damage")
+            const damageMatch = lowerOracleText.match(/(\d+)\s*damage/i);
+            if (damageMatch) {
+              damageAmount = parseInt(damageMatch[1], 10);
+            }
+          }
+          
+          // Apply damage to creature targets
+          for (const target of stackObject.targets) {
+            if (target.type === "card") {
+              const targetCard = state.cards.get(target.targetId as CardInstanceId);
+              if (targetCard && targetCard.cardData.type_line?.toLowerCase().includes("creature")) {
+                const damageResult = dealDamageToCard(
+                  updatedState,
+                  target.targetId as CardInstanceId,
+                  damageAmount,
+                  false, // isCombatDamage - false for spell damage
+                  stackObject.sourceCardId || undefined,
+                );
+                if (damageResult.success) {
+                  updatedState = damageResult.state;
+                }
+              }
+            }
+          }
+          
+          // Use updatedState for the rest of the resolution
+          state = updatedState;
+        }
       }
     }
   }
