@@ -110,6 +110,7 @@ describe("Layer System", () => {
         "player1",
         "player2",
         "Change control",
+        layerSystem,
       );
 
       layerSystem.registerEffect(ptEffect);
@@ -246,12 +247,33 @@ describe("Layer System", () => {
         "player1",
         "player2",
         "Gain control",
+        layerSystem,
       );
 
       layerSystem.registerEffect(controlEffect);
       const result = layerSystem.applyEffects(creature);
 
       expect(result.controllerId).toBe("player2");
+    });
+
+    it("should persist controllerId change in overrides", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const controlEffect = createControlChangeEffect(
+        "source",
+        "player1",
+        "player2",
+        "Gain control",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(controlEffect);
+      layerSystem.applyEffects(creature);
+
+      // Check that controllerId is stored in overrides for persistence
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+      expect(characteristics.controllerId).toBe("player2");
     });
 
     it("should only apply to cards controlled by the specified player", () => {
@@ -263,6 +285,7 @@ describe("Layer System", () => {
         "player1",
         "player2",
         "Gain control",
+        layerSystem,
       );
 
       expect(controlEffect.canApply(creature)).toBe(false);
