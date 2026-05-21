@@ -17,6 +17,12 @@ import {
   parseKicker,
   parseAttraction,
   AbilityType,
+  isModalSpell,
+  isSplitCard,
+  hasFuse,
+  getSplitCardHalves,
+  getModesForModalSpell,
+  modeRequiresTarget,
 } from "../oracle-text-parser";
 import type { ScryfallCard } from "@/app/actions";
 
@@ -689,5 +695,130 @@ describe("parseAttraction", () => {
     const result = parseAttraction(oracleText);
 
     expect(result.hasAttraction).toBe(true);
+  });
+});
+
+describe("isModalSpell", () => {
+  it("should return true for modal spells with Choose one", () => {
+    const card = createMockCard({
+      oracle_text: "Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.",
+    });
+    expect(isModalSpell(card)).toBe(true);
+  });
+
+  it("should return true for modal spells with Choose two", () => {
+    const card = createMockCard({
+      oracle_text: "Choose two —\n• Create a 1/1 white Soldier token.\n• Create a 1/1 white Soldier token.\n• Create a 1/1 white Soldier token.",
+    });
+    expect(isModalSpell(card)).toBe(true);
+  });
+
+  it("should return false for non-modal spells", () => {
+    const card = createMockCard({
+      oracle_text: "Deal 3 damage to any target.",
+    });
+    expect(isModalSpell(card)).toBe(false);
+  });
+
+  it("should return false for split cards", () => {
+    const card = createMockCard({
+      layout: "split",
+      oracle_text: "Fire deals 2 damage to any target.\n//\nTap target permanent.",
+    });
+    expect(isModalSpell(card)).toBe(false);
+  });
+});
+
+describe("isSplitCard", () => {
+  it("should return true for split layout cards", () => {
+    const card = createMockCard({ layout: "split" });
+    expect(isSplitCard(card)).toBe(true);
+  });
+
+  it("should return false for normal layout cards", () => {
+    const card = createMockCard({ layout: "normal" });
+    expect(isSplitCard(card)).toBe(false);
+  });
+});
+
+describe("hasFuse", () => {
+  it("should return true when fuse keyword is present", () => {
+    const card = createMockCard({
+      layout: "split",
+      oracle_text: "Fire deals 2 damage to any target.\nFuse — You may cast either half.\n//\nTap target permanent.",
+    });
+    expect(hasFuse(card)).toBe(true);
+  });
+
+  it("should return false when fuse keyword is absent", () => {
+    const card = createMockCard({
+      layout: "split",
+      oracle_text: "Fire deals 2 damage to any target.\n//\nTap target permanent.",
+    });
+    expect(hasFuse(card)).toBe(false);
+  });
+
+  it("should return false for non-split cards", () => {
+    const card = createMockCard({ layout: "normal" });
+    expect(hasFuse(card)).toBe(false);
+  });
+});
+
+describe("getSplitCardHalves", () => {
+  it("should parse split card halves correctly", () => {
+    const card = createMockCard({
+      layout: "split",
+      oracle_text: "Fire deals 2 damage to any target.\n//\nTap target permanent. Draw a card.",
+    });
+    const result = getSplitCardHalves(card);
+    expect(result).not.toBeNull();
+    expect(result!.left).toContain("Fire deals 2 damage");
+    expect(result!.right).toContain("Tap target permanent");
+  });
+
+  it("should return null for non-split cards", () => {
+    const card = createMockCard({ layout: "normal" });
+    expect(getSplitCardHalves(card)).toBeNull();
+  });
+});
+
+describe("getModesForModalSpell", () => {
+  it("should return mode info for modal spells", () => {
+    const card = createMockCard({
+      oracle_text:
+        "Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.",
+    });
+    const result = getModesForModalSpell(card);
+    expect(result).not.toBeNull();
+    expect(result!).toHaveLength(2);
+    expect(result![0].targetTypes).toContain("artifact");
+    expect(result![1].targetTypes).toContain("enchantment");
+  });
+
+  it("should return null for non-modal spells", () => {
+    const card = createMockCard({
+      oracle_text: "Draw two cards.",
+    });
+    expect(getModesForModalSpell(card)).toBeNull();
+  });
+
+  it("should detect target types in modes", () => {
+    const card = createMockCard({
+      oracle_text: "Choose one —\n• Deal 3 damage to target creature.\n• Deal 3 damage to target player.",
+    });
+    const result = getModesForModalSpell(card);
+    expect(result).not.toBeNull();
+    expect(result![0].targetTypes).toContain("creature");
+    expect(result![1].targetTypes).toContain("player");
+  });
+});
+
+describe("modeRequiresTarget", () => {
+  it("should return true when mode mentions target", () => {
+    expect(modeRequiresTarget("Destroy target artifact.")).toBe(true);
+  });
+
+  it("should return false for modes without targets", () => {
+    expect(modeRequiresTarget("Create a 1/1 white Soldier token.")).toBe(false);
   });
 });

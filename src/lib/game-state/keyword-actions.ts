@@ -31,7 +31,11 @@ import {
   hasCounter,
   initializePlaneswalkerLoyalty,
 } from "./card-instance";
-import { hasPersist, canPersistTrigger } from "./evergreen-keywords";
+import {
+  hasPersist,
+  canPersistTrigger,
+  shouldPreventDamageToTarget,
+} from "./evergreen-keywords";
 
 /**
  * Result of a keyword action
@@ -142,15 +146,22 @@ export function exileCard(
     };
   }
 
-  // Find the card's current zone
+  // Use cached zone key for O(1) lookup if available, otherwise search
   let currentZone: Zone | null = null;
-  let currentZoneKey: string | null = null;
+  let currentZoneKey: string | null = card.currentZoneKey;
 
-  for (const [zoneKey, zone] of state.zones) {
-    if (zone.cardIds.includes(cardId)) {
-      currentZone = zone;
-      currentZoneKey = zoneKey;
-      break;
+  if (currentZoneKey) {
+    currentZone = state.zones.get(currentZoneKey) ?? null;
+  }
+
+  if (!currentZone) {
+    // Fallback: search all zones (for cards created before cache existed)
+    for (const [zoneKey, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        currentZone = zone;
+        currentZoneKey = zoneKey;
+        break;
+      }
     }
   }
 
@@ -185,6 +196,7 @@ export function exileCard(
     isFaceDown: faceDown,
     attachedToId: null, // Detach from any attachments
     attachedCardIds: [], // Remove any attachments
+    currentZoneKey: exileZoneKey,
   };
 
   // Update zones
@@ -614,7 +626,6 @@ export function consumeRegenerationShield(
   if (hasCounter(card, "regeneration-shield")) {
     // Remove one regeneration shield
     const updatedCard = removeCounters(card, "regeneration-shield", 1);
-
     const updatedCards = new Map(state.cards);
     updatedCards.set(cardId, updatedCard);
 
@@ -650,15 +661,22 @@ export function moveCardToZone(
     };
   }
 
-  // Find current zone
+  // Use cached zone key for O(1) lookup if available, otherwise search
   let currentZone: Zone | null = null;
-  let currentZoneKey: string | null = null;
+  let currentZoneKey: string | null = card.currentZoneKey;
 
-  for (const [zoneKey, zone] of state.zones) {
-    if (zone.cardIds.includes(cardId)) {
-      currentZone = zone;
-      currentZoneKey = zoneKey;
-      break;
+  if (currentZoneKey) {
+    currentZone = state.zones.get(currentZoneKey) ?? null;
+  }
+
+  if (!currentZone) {
+    // Fallback: search all zones (for cards created before cache exists)
+    for (const [zoneKey, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        currentZone = zone;
+        currentZoneKey = zoneKey;
+        break;
+      }
     }
   }
 
@@ -790,6 +808,19 @@ export function dealDamageToCard(
       description: "",
       error: `Card ${cardId} not found`,
     };
+  }
+
+  // CR 702.16C: Check if damage should be prevented due to protection
+  // Protection from a color prevents all damage from sources of that color
+  if (sourceId) {
+    const source = state.cards.get(sourceId);
+    if (source && shouldPreventDamageToTarget(card, source)) {
+      return {
+        success: true,
+        state,
+        description: `Damage prevented by protection from ${card.cardData.oracle_text?.match(/protection from (\w+)/)?.[1] || "color"}`,
+      };
+    }
   }
 
   // Check for prevention effects

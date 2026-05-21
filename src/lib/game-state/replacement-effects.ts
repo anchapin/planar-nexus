@@ -318,6 +318,7 @@ export class ReplacementEffectManager {
    *
    * Note: Effects that don't change the event type (e.g., damage doubling)
    * do NOT create loops - only actual type changes cause loops.
+   * The appliedEffectIds tracking and maxIterations cap handle other cases.
    */
   private wouldCreateLoop(
     possibleEffects: ReplacementAbility[],
@@ -329,15 +330,11 @@ export class ReplacementEffectManager {
     const currentType = currentEvent.type;
 
     for (const effect of possibleEffects) {
-      // Simulate what this effect would do
       const result = effect.apply(currentEvent);
 
       if (result.modified && result.modifiedEvent) {
         const newType = result.modifiedEvent.type;
 
-        // Only a loop if the event type actually CHANGES to something already seen.
-        // Effects that modify amount but don't change type (e.g., double damage)
-        // do NOT create loops per CR 614.4.
         if (newType !== currentType && eventTypeHistory.includes(newType)) {
           return true;
         }

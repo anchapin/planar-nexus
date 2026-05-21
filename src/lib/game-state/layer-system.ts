@@ -256,6 +256,8 @@ export interface CardOverrides {
   toughnessSet?: number;
   /** Whether power/toughness are switched */
   switched?: boolean;
+  /** Controller ID (Layer 2 - CR 613.3) */
+  controllerId?: PlayerId;
 }
 
 /**
@@ -600,6 +602,7 @@ export class LayerSystem {
     oracleText: string;
     grantedAbilities: string[];
     removedAbilities: string[];
+    controllerId?: PlayerId;
   } {
     const modified = this.applyEffects(card);
     const cardData = modified.cardData;
@@ -630,6 +633,7 @@ export class LayerSystem {
       oracleText: overrides.text || cardData.oracle_text || "",
       grantedAbilities: overrides.grantedAbilities || [],
       removedAbilities: overrides.removedAbilities || [],
+      controllerId: overrides.controllerId || modified.controllerId,
     };
   }
 
@@ -803,6 +807,7 @@ export function createControlChangeEffect(
   controllerId: PlayerId,
   newControllerId: PlayerId,
   description: string,
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `control-${sourceCardId}-${Date.now()}`,
@@ -814,10 +819,12 @@ export function createControlChangeEffect(
     timestamp: Date.now(),
     priority: 0,
     canApply: (card) => card.controllerId === controllerId,
-    apply: (card) => ({
-      ...card,
-      controllerId: newControllerId,
-    }),
+    apply: (card) => {
+      const ls = layerSystemInstance || getLayerSystemInstance();
+      const overrides = ls.getOverrides(card.id);
+      overrides.controllerId = newControllerId;
+      return { ...card, controllerId: newControllerId };
+    },
   };
 }
 

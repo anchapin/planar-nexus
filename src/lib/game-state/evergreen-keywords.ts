@@ -219,16 +219,97 @@ export function canBlockThisTurn(_card: CardInstance): boolean {
 }
 
 // ============== PROTECTION ==============
+
+/**
+ * Standard MTG colors
+ */
+const MTG_COLORS = ["white", "blue", "black", "red", "green"];
+
+/**
+ * Check if a string represents a valid MTG color
+ */
+function isMTGColor(value: string): boolean {
+  return MTG_COLORS.includes(value.toLowerCase());
+}
+
+/**
+ * Get the colors of a card from its cardData
+ * Returns array of color strings (e.g., ['W', 'U'] or ['Red', 'Blue'])
+ */
+export function getCardColors(card: CardInstance): string[] {
+  return card.cardData.colors || [];
+}
+
+/**
+ * Extract protection qualities from a card's oracle text
+ * Parses phrases like "protection from black", "protection from red and blue"
+ * Returns array of qualities (colors) the card is protected from
+ */
+export function getProtectionQualities(card: CardInstance): string[] {
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  const qualities: string[] = [];
+
+  // Match "protection from X" where X can be a color or multiple colors
+  // Patterns: "protection from red", "protection from red and blue"
+  const protectionRegex = /protection from\s+([\w]+(?:\s+and\s+[\w]+)?)/gi;
+  let match;
+
+  while ((match = protectionRegex.exec(oracleText)) !== null) {
+    const qualityPart = match[1].toLowerCase();
+    // Split by " and " to handle multiple qualities
+    const parts = qualityPart.split(/\s+and\s+/);
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (isMTGColor(trimmed)) {
+        qualities.push(trimmed);
+      }
+    }
+  }
+
+  return qualities;
+}
+
 /**
  * Check if a card has protection from a color
  */
 export function hasProtectionFrom(card: CardInstance, color: string): boolean {
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  return oracleText.includes(`protection from ${color.toLowerCase()}`);
+  const qualities = getProtectionQualities(card);
+  return qualities.some((q) => q.toLowerCase() === color.toLowerCase());
+}
+
+/**
+ * Check if a card is protected from any quality of a source card
+ * Used for targeting, enchanting, and equipping restrictions
+ */
+export function isProtectedFromSource(target: CardInstance, source: CardInstance): boolean {
+  const targetQualities = getProtectionQualities(target);
+  if (targetQualities.length === 0) return false;
+
+  const sourceColors = getCardColors(source);
+
+  // Check if source has any color that the target is protected from
+  for (const color of sourceColors) {
+    const normalizedColor = color.toLowerCase();
+    // Handle both "red" and "R" formats
+    const colorMap: Record<string, string> = {
+      'w': 'white', 'white': 'white',
+      'u': 'blue', 'blue': 'blue', 
+      'b': 'black', 'black': 'black',
+      'r': 'red', 'red': 'red',
+      'g': 'green', 'green': 'green',
+    };
+    const normalized = colorMap[normalizedColor] || normalizedColor;
+    if (targetQualities.some((q) => q.toLowerCase() === normalized)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
  * Check if a card can be targeted by cards of a certain color
+ * Implements CR 702.16A: can't be targeted by spells/abilities with the given quality
  */
 export function canBeTargetedByColor(
   card: CardInstance,
@@ -236,6 +317,68 @@ export function canBeTargetedByColor(
 ): boolean {
   if (hasProtectionFrom(card, color)) return false;
   return true;
+}
+
+/**
+ * Check if a card can be targeted by a source card
+ * Implements CR 702.16A: can't be targeted by spells/abilities with the given quality
+ */
+export function canBeTargetedBySource(
+  target: CardInstance,
+  source: CardInstance,
+): boolean {
+  if (isProtectedFromSource(target, source)) return false;
+  return true;
+}
+
+/**
+ * Check if an enchantment can legally enchant a protected card
+ * Implements CR 702.16B: can't be enchanted by Objects with the given quality
+ */
+export function canBeEnchantedBy(
+  target: CardInstance,
+  enchantment: CardInstance,
+): boolean {
+  // If the enchantment is an aura, check protection
+  const auraType = enchantment.cardData.type_line?.toLowerCase() || "";
+  if (auraType.includes("aura")) {
+    if (isProtectedFromSource(target, enchantment)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Check if equipment can legally equip a protected creature
+ * Implements CR 702.16D: can't be equipped by Objects with the given quality
+ */
+export function canBeEquippedBy(
+  target: CardInstance,
+  equipment: CardInstance,
+): boolean {
+  // If the equipment is actually equipment
+  const equipmentType = equipment.cardData.type_line?.toLowerCase() || "";
+  if (equipmentType.includes("equipment")) {
+    if (isProtectedFromSource(target, equipment)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Check if damage to a protected creature should be prevented
+ * Implements CR 702.16C: damage that would be dealt to the protected object is prevented
+ */
+export function shouldPreventDamageToTarget(
+  target: CardInstance,
+  source: CardInstance,
+): boolean {
+  if (isProtectedFromSource(target, source)) {
+    return true;
+  }
+  return false;
 }
 
 // ============== FLASH ==============
