@@ -1426,3 +1426,260 @@ export function parsePrototype(oracleText: string): PrototypeInfo {
     description: `Prototype ${manaCostString} — ${power}/${toughness}`,
   };
 }
+
+/**
+ * Alternative cost types
+ */
+export enum AlternativeCostType {
+  KICKER = "kicker",
+  BUYBACK = "buyback",
+  FLASHBACK = "flashback",
+  BESTOW = "bestow",
+  ESCAPE = "escape",
+  COMBAT = "combat",
+  SPECTACLE = "spectacle",
+  BLAZE = "blaze",
+  OTHER = "other",
+}
+
+/**
+ * Result of parsing alternative costs
+ * CR 117.2, CR 702.8 (Buyback), CR 702.66 (Flashback), CR 702.99 (Bestow)
+ */
+export interface AlternativeCostInfo {
+  /** Whether this spell has an alternative cost */
+  hasAlternativeCost: boolean;
+  /** Type of alternative cost */
+  costType: AlternativeCostType | null;
+  /** Parsed mana cost for the alternative */
+  manaCost: ParsedManaCost | null;
+  /** Additional requirements (e.g., "exile this from your graveyard") */
+  additionalRequirement: string | null;
+  /** Whether the alternative cost is available (e.g., card in graveyard for Flashback) */
+  isAvailable: boolean;
+  /** Description of the alternative cost for UI */
+  description: string;
+}
+
+/**
+ * Parse alternative cost from oracle text
+ * Handles: Kicker, Buyback, Flashback, Bestow, Escape, Spectacle, etc.
+ */
+export function parseAlternativeCost(oracleText: string): AlternativeCostInfo {
+  if (!oracleText) {
+    return {
+      hasAlternativeCost: false,
+      costType: null,
+      manaCost: null,
+      additionalRequirement: null,
+      isAvailable: false,
+      description: "",
+    };
+  }
+
+  const lowerText = oracleText.toLowerCase();
+
+  // Check for Flashback (CR 702.66)
+  // Flashback [cost] — You may cast this card from your graveyard.
+  const flashbackMatch = oracleText.match(
+    /flashback\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (flashbackMatch) {
+    const manaCost = parseManaCost(flashbackMatch[1]);
+    // Flashback typically requires the card to be in your graveyard
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.FLASHBACK,
+      manaCost,
+      additionalRequirement: "Exile this card from your graveyard",
+      isAvailable: true, // Availability depends on card being in graveyard
+      description: `Flashback ${flashbackMatch[1]}`,
+    };
+  }
+
+  // Check for Buyback (CR 702.8)
+  // Buyback [cost] — You may pay the buyback cost after the spell resolves to return it to your hand.
+  const buybackMatch = oracleText.match(/buyback\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+  if (buybackMatch) {
+    const manaCost = parseManaCost(buybackMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.BUYBACK,
+      manaCost,
+      additionalRequirement: null, // Buyback is paid as part of casting
+      isAvailable: true,
+      description: `Buyback ${buybackMatch[1]}`,
+    };
+  }
+
+  // Check for Bestow (CR 702.99)
+  // Bestow [cost] — If you cast this card for its bestow cost, it becomes an Aura.
+  const bestowMatch = oracleText.match(/bestow\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+  if (bestowMatch) {
+    const manaCost = parseManaCost(bestowMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.BESTOW,
+      manaCost,
+      additionalRequirement: "Becomes an Aura attached to target creature",
+      isAvailable: true,
+      description: `Bestow ${bestowMatch[1]}`,
+    };
+  }
+
+  // Check for Escape (CR 702.116)
+  // Escape—[cost], Exile [n] other cards from your graveyard.
+  const escapeMatch = oracleText.match(
+    /escape\s*[—–-]\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (escapeMatch) {
+    const manaCost = parseManaCost(escapeMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.ESCAPE,
+      manaCost,
+      additionalRequirement: "Exile four other cards from your graveyard",
+      isAvailable: true,
+      description: `Escape ${escapeMatch[1]}`,
+    };
+  }
+
+  // Check for Spectacle (CR 702.135)
+  // Spectacle [cost] — You may cast this spell for its spectacle cost if an opponent lost life this turn.
+  const spectacleMatch = oracleText.match(
+    /spectacle\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (spectacleMatch) {
+    const manaCost = parseManaCost(spectacleMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.SPECTACLE,
+      manaCost,
+      additionalRequirement: "Opponent must have lost life this turn",
+      isAvailable: false, // Availability depends on game state
+      description: `Spectacle ${spectacleMatch[1]}`,
+    };
+  }
+
+  // Check for Kicker (already handled separately in parseKicker)
+  // Check for Multikicker (already handled separately in parseKicker)
+  const kickerMatch = oracleText.match(/kicker\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+  const multiKickerMatch = oracleText.match(
+    /multikicker\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (kickerMatch || multiKickerMatch) {
+    const costString =
+      (multiKickerMatch && multiKickerMatch[1]) ||
+      (kickerMatch && kickerMatch[1]);
+    if (costString) {
+      const manaCost = parseManaCost(costString);
+      return {
+        hasAlternativeCost: true,
+        costType: multiKickerMatch
+          ? AlternativeCostType.KICKER
+          : AlternativeCostType.KICKER,
+        manaCost,
+        additionalRequirement: null,
+        isAvailable: true,
+        description: multiKickerMatch
+          ? `Multikicker ${costString}`
+          : `Kicker ${costString}`,
+      };
+    }
+  }
+
+  return {
+    hasAlternativeCost: false,
+    costType: null,
+    manaCost: null,
+    additionalRequirement: null,
+    isAvailable: false,
+    description: "",
+  };
+}
+
+/**
+ * Parse Buyback keyword from oracle text
+ * CR 702.8: Buyback lets you return the spell to your hand as it resolves.
+ */
+export function parseBuyback(oracleText: string): {
+  hasBuyback: boolean;
+  buybackCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasBuyback: false, buybackCost: null, description: "" };
+  }
+
+  const buybackMatch = oracleText.match(/buyback\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+
+  if (!buybackMatch) {
+    return { hasBuyback: false, buybackCost: null, description: "" };
+  }
+
+  const buybackCost = parseManaCost(buybackMatch[1]);
+
+  return {
+    hasBuyback: true,
+    buybackCost,
+    description: `Buyback ${buybackMatch[1]}`,
+  };
+}
+
+/**
+ * Parse Flashback keyword from oracle text
+ * CR 702.66: Flashback lets you cast a card from your graveyard.
+ */
+export function parseFlashback(oracleText: string): {
+  hasFlashback: boolean;
+  flashbackCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasFlashback: false, flashbackCost: null, description: "" };
+  }
+
+  const flashbackMatch = oracleText.match(
+    /flashback\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+
+  if (!flashbackMatch) {
+    return { hasFlashback: false, flashbackCost: null, description: "" };
+  }
+
+  const flashbackCost = parseManaCost(flashbackMatch[1]);
+
+  return {
+    hasFlashback: true,
+    flashbackCost,
+    description: `Flashback ${flashbackMatch[1]}`,
+  };
+}
+
+/**
+ * Parse Bestow keyword from oracle text
+ * CR 702.99: Bestow lets you cast a creature as an Aura.
+ */
+export function parseBestow(oracleText: string): {
+  hasBestow: boolean;
+  bestowCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasBestow: false, bestowCost: null, description: "" };
+  }
+
+  const bestowMatch = oracleText.match(/bestow\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+
+  if (!bestowMatch) {
+    return { hasBestow: false, bestowCost: null, description: "" };
+  }
+
+  const bestowCost = parseManaCost(bestowMatch[1]);
+
+  return {
+    hasBestow: true,
+    bestowCost,
+    description: `Bestow ${bestowMatch[1]}`,
+  };
+}

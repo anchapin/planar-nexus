@@ -355,6 +355,14 @@ export interface StackObject {
   isCountered: boolean;
   /** Timestamp when added to stack */
   timestamp: number;
+  /** Alternative costs used for this spell (e.g., Flashback, Buyback) */
+  alternativeCostsUsed?: string[];
+  /** Whether kicker was paid */
+  wasKicked?: boolean;
+  /** Buyback return zone (if used) */
+  buybackReturnZone?: string;
+  /** Bestow attachment target (if cast as aura) */
+  bestowTarget?: CardInstanceId;
 }
 
 /**
