@@ -2,6 +2,7 @@
  * Combat System
  * Implements the MTG combat system for declaring attackers, blockers, and resolving combat damage.
  * Reference: Comprehensive Rules 506-510
+ * Issue #817: First Strike and Double Strike combat implementation (CR 702.7, CR 702.4)
  */
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
