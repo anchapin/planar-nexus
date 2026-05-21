@@ -572,9 +572,12 @@ export class EventSourcingGameState {
 
   /**
    * Find the state at a specific event index
+   * Returns the closest STATE_SYNC or GAME_START checkpoint at or before the target index.
+   * Returns null if no checkpoint exists at or before the target index.
    */
   private findStateAtIndex(targetIndex: EventIndex): GameState | null {
-    // Find the closest STATE_SYNC or GAME_START at or after targetIndex
+    // Find the closest STATE_SYNC or GAME_START at or before targetIndex
+    // Iterate backwards to find the most recent checkpoint
     for (let i = this.eventLog.events.length - 1; i >= 0; i--) {
       const e = this.eventLog.events[i];
       if (e.index <= targetIndex) {
@@ -584,11 +587,7 @@ export class EventSourcingGameState {
         if (e.type === "GAME_START") {
           return cloneGameState((e as GameStartEvent).state);
         }
-        if (e.type === "ACTION") {
-          // We need to replay up to this point
-          // For now, return the current state (should be at or past this point)
-          return cloneGameState(this.state);
-        }
+        // Skip ACTION events - keep searching for a checkpoint
       }
     }
     return null;
