@@ -7,7 +7,7 @@ import type {
   LocalGameSession,
   GameStorageCallbacks,
 } from "../local-game-storage";
-import { type GameState, type PlayerId, Phase } from "../game-state/types";
+import { type GameState, type PlayerId, Phase, type LinkedEffectRegistry } from "../game-state/types";
 import { ReplacementEffectManager } from "../game-state/replacement-effects";
 import { LayerSystem } from "../game-state/layer-system";
 
@@ -217,6 +217,10 @@ function createMinimalGameState(): GameState {
     lastModifiedAt: Date.now(),
     replacementEffectManager: new ReplacementEffectManager(),
     layerSystem: new LayerSystem(),
+    linkedEffectRegistry: {
+      effects: [],
+      bySourceCard: new Map(),
+    } as LinkedEffectRegistry,
   };
 }
 

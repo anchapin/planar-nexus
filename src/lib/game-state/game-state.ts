@@ -162,6 +162,10 @@ export function createInitialGameState(
     lastModifiedAt: Date.now(),
     replacementEffectManager: rem,
     layerSystem,
+    linkedEffectRegistry: {
+      effects: [],
+      bySourceCard: new Map(),
+    },
   };
 }
 

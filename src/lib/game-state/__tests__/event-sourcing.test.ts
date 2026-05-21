@@ -7,7 +7,7 @@
  * these tests are designed to be run once the full game-state infrastructure is in place.
  */
 
-import type { GameState, GameAction, PlayerId, Phase } from "../types";
+import type { GameState, GameAction, PlayerId, Phase, LinkedEffectRegistry } from "../types";
 import {
   createEventSourcedState,
   EventSourcingGameState,

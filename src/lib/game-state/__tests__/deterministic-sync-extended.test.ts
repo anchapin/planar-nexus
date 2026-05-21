@@ -15,7 +15,7 @@ import {
   createDeterministicEngine,
 } from "../deterministic-sync";
 import { createInitialGameState, startGame } from "../game-state";
-import type { GameState, GameAction, ActionType, ActionData } from "../types";
+import type { GameState, GameAction, ActionType, ActionData, LinkedEffectRegistry } from "../types";
 import { ReplacementEffectManager } from "../replacement-effects";
 import { LayerSystem } from "../layer-system";
 
@@ -50,6 +50,10 @@ const mockGameState: GameState = {
   lastModifiedAt: Date.now(),
   replacementEffectManager: new ReplacementEffectManager(),
   layerSystem: new LayerSystem(),
+  linkedEffectRegistry: {
+    effects: [],
+    bySourceCard: new Map(),
+  } as LinkedEffectRegistry,
 };
 
 const createAction = (type: string): GameAction => ({

@@ -4,6 +4,7 @@ import {
   type CardInstance,
   Phase,
   ZoneType,
+  type LinkedEffectRegistry,
 } from "@/lib/game-state/types";
 import { ValidationService } from "@/lib/validation-service";
 import { ScryfallCard } from "@/app/actions";
@@ -141,6 +142,10 @@ describe("ValidationService", () => {
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
       layerSystem: new LayerSystem(),
+      linkedEffectRegistry: {
+        effects: [],
+        bySourceCard: new Map(),
+      } as LinkedEffectRegistry,
     };
   });
 

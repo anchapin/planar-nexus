@@ -1,5 +1,5 @@
 import { DeterministicGameStateEngine } from "../deterministic-sync";
-import { GameState } from "../types";
+import { GameState, LinkedEffectRegistry } from "../types";
 import { ReplacementEffectManager } from "../replacement-effects";
 import { LayerSystem } from "../layer-system";
 
@@ -44,6 +44,10 @@ describe("DeterministicGameStateEngine", () => {
     lastModifiedAt: Date.now(),
     replacementEffectManager: new ReplacementEffectManager(),
     layerSystem: new LayerSystem(),
+    linkedEffectRegistry: {
+      effects: [],
+      bySourceCard: new Map(),
+    } as LinkedEffectRegistry,
   };
 
   test("resolveConflict should handle simultaneous actions with tie-breaking", () => {
