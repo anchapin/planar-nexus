@@ -1153,6 +1153,109 @@ export function getManaValue(cost: ParsedManaCost | null): number {
 }
 
 /**
+ * Check if a card is a modal spell (has "Choose one" / "Choose two" etc.)
+ * CR 700.2: Modal spells have multiple modes
+ */
+export function isModalSpell(card: ScryfallCard): boolean {
+  const oracleText = card.oracle_text || "";
+  return parseModes(oracleText) !== null;
+}
+
+/**
+ * Check if a card is a split card
+ * CR 702.78: Split cards have two halves
+ */
+export function isSplitCard(card: ScryfallCard): boolean {
+  return card.layout === "split";
+}
+
+/**
+ * Check if a split card has the Fuse ability
+ * CR 702.78: Fuse lets you cast both halves simultaneously
+ */
+export function hasFuse(card: ScryfallCard): boolean {
+  if (!isSplitCard(card)) return false;
+  const oracleText = card.oracle_text || "";
+  return oracleText.toLowerCase().includes("fuse");
+}
+
+/**
+ * Get the target types required for each mode of a modal spell
+ * Used to validate targets based on selected mode
+ */
+export interface ModeTargetInfo {
+  modeIndex: number;
+  targetTypes: ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[];
+  description: string;
+}
+
+/**
+ * Parse target requirements from a mode's text
+ * Looks for patterns like "target creature", "target player", etc.
+ */
+function parseTargetsFromMode(modeText: string): ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[] {
+  const targets: ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[] = [];
+  const lowerText = modeText.toLowerCase();
+
+  if (lowerText.includes("target creature")) targets.push("creature");
+  if (lowerText.includes("target player")) targets.push("player");
+  if (lowerText.includes("target planeswalker")) targets.push("planeswalker");
+  if (lowerText.includes("target artifact")) targets.push("artifact");
+  if (lowerText.includes("target enchantment")) targets.push("enchantment");
+  if (lowerText.includes("any target") || lowerText.includes("target any")) targets.push("any");
+
+  // Default to "any" if no specific target found but effect needs one
+  if (targets.length === 0 && lowerText.includes("target")) {
+    targets.push("any");
+  }
+
+  return targets;
+}
+
+/**
+ * Get target information for each mode of a modal spell
+ * Returns mode index, valid target types, and description
+ */
+export function getModesForModalSpell(card: ScryfallCard): ModeTargetInfo[] | null {
+  const modes = parseModes(card.oracle_text || "");
+  if (!modes) return null;
+
+  return modes.modes.map((modeText, index) => ({
+    modeIndex: index,
+    targetTypes: parseTargetsFromMode(modeText),
+    description: modeText,
+  }));
+}
+
+/**
+ * Get the two halves of a split card
+ * Returns { left: leftHalfText, right: rightHalfText } or null if not a split card
+ */
+export function getSplitCardHalves(
+  card: ScryfallCard,
+): { left: string; right: string } | null {
+  if (!isSplitCard(card)) return null;
+
+  const oracleText = card.oracle_text || "";
+  const halves = oracleText.split("//").map((h) => h.trim());
+
+  if (halves.length < 2) return null;
+
+  return {
+    left: halves[0],
+    right: halves[1],
+  };
+}
+
+/**
+ * Check if a specific mode requires targeting
+ * Returns true if the mode text mentions "target"
+ */
+export function modeRequiresTarget(modeText: string): boolean {
+  return modeText.toLowerCase().includes("target");
+}
+
+/**
  * Result of parsing modes from modal spell text
  */
 export interface ParsedModes {
