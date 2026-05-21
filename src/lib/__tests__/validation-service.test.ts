@@ -86,6 +86,7 @@ describe("ValidationService", () => {
       prototypePower: null,
       prototypeToughness: null,
       prototypeManaCost: null,
+      currentZoneKey: null,
     };
 
     gameState = {

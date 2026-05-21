@@ -107,6 +107,10 @@ export interface CardInstance {
   // Boast keyword (CR 702.131) - tracks if this creature attacked last turn
   /** Whether this creature attacked during the previous turn */
   attackedLastTurn: boolean;
+
+  // Performance optimization: zone lookup cache (CR 704 - SBA performance)
+  /** The zone key where this card currently resides. Updated on zone changes for O(1) lookup */
+  currentZoneKey: string | null;
 }
 
 /**
@@ -165,11 +169,18 @@ export function parseZoneKey(zoneKey: string): {
 
 /**
  * Check if a card is on the battlefield
+ * Uses O(1) cached zone key lookup for performance (CR 704 - SBA optimization)
  */
 export function isOnBattlefield(
   state: GameState,
   cardId: CardInstanceId,
 ): boolean {
+  const card = state.cards.get(cardId);
+  if (card?.currentZoneKey) {
+    const zone = state.zones.get(card.currentZoneKey);
+    return (zone?.type ?? null) === ZoneType.BATTLEFIELD;
+  }
+  // Fallback: search all zones (for cards created before cache existed)
   for (const zone of state.zones.values()) {
     if (zone.type === ZoneType.BATTLEFIELD && zone.cardIds.includes(cardId)) {
       return true;

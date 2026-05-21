@@ -124,21 +124,24 @@ export function checkStateBasedActions(
   const cardsToExile: CardInstanceId[] = [];
 
   for (const card of cardsToCheck) {
-    // Find the card's current zone
-    let currentZoneKey: string | null = null;
-    let isOnBf = false;
-    for (const [zoneKey, zone] of updatedState.zones) {
-      if (zone.cardIds.includes(card.id)) {
-        currentZoneKey = zoneKey;
-        const parsed = parseZoneKey(zoneKey);
-        if (parsed.zone === ZoneType.BATTLEFIELD) {
-          isOnBf = true;
+    // Use cached zone key for O(1) lookup, fallback to search for legacy cards
+    let currentZoneKey = card.currentZoneKey;
+    let zone = currentZoneKey ? updatedState.zones.get(currentZoneKey) : null;
+
+    if (!zone) {
+      // Fallback: search all zones (for cards created before cache existed)
+      for (const [zk, z] of updatedState.zones) {
+        if (z.cardIds.includes(card.id)) {
+          zone = z;
+          currentZoneKey = zk;
+          break;
         }
-        break;
       }
     }
 
-    if (!currentZoneKey) continue;
+    if (!currentZoneKey || !zone) continue;
+
+    const isOnBf = zone.type === ZoneType.BATTLEFIELD;
 
     // SBAs 704.5f–704.5n only apply to permanents on the battlefield
     if (isOnBf) {
@@ -191,15 +194,21 @@ export function checkStateBasedActions(
       // SBA 704.5m: An Aura attached to an illegal object is put into its owner's graveyard
       if (isAura(card) && card.attachedToId) {
         const attachedTo = updatedState.cards.get(card.attachedToId);
-        // Check if the target still exists and is on the battlefield
+        // Use cached zone key for O(1) lookup, fallback to search for legacy cards
         let attachedToOnBf = false;
-        if (attachedTo) {
-          for (const [zoneKey, zone] of updatedState.zones) {
-            if (zone.cardIds.includes(card.attachedToId!)) {
-              const parsed = parseZoneKey(zoneKey);
-              if (parsed.zone === ZoneType.BATTLEFIELD) {
-                attachedToOnBf = true;
-              }
+        if (attachedTo && attachedTo.currentZoneKey) {
+          const attachedZone = updatedState.zones.get(
+            attachedTo.currentZoneKey,
+          );
+          attachedToOnBf = attachedZone?.type === ZoneType.BATTLEFIELD;
+        } else if (attachedTo) {
+          // Fallback: search all zones for legacy cards
+          for (const [zk, z] of updatedState.zones) {
+            if (
+              z.cardIds.includes(attachedTo.id) &&
+              z.type === ZoneType.BATTLEFIELD
+            ) {
+              attachedToOnBf = true;
               break;
             }
           }
@@ -220,15 +229,21 @@ export function checkStateBasedActions(
       // Equipment can only be attached to a creature on the battlefield
       if (isEquipment(card) && card.attachedToId) {
         const attachedTo = updatedState.cards.get(card.attachedToId);
-        // Check if the attached object is on the battlefield
+        // Use cached zone key for O(1) lookup, fallback to search for legacy cards
         let attachedToOnBf = false;
-        if (attachedTo) {
-          for (const [zoneKey, zone] of updatedState.zones) {
-            if (zone.cardIds.includes(card.attachedToId!)) {
-              const parsed = parseZoneKey(zoneKey);
-              if (parsed.zone === ZoneType.BATTLEFIELD) {
-                attachedToOnBf = true;
-              }
+        if (attachedTo && attachedTo.currentZoneKey) {
+          const attachedZone = updatedState.zones.get(
+            attachedTo.currentZoneKey,
+          );
+          attachedToOnBf = attachedZone?.type === ZoneType.BATTLEFIELD;
+        } else if (attachedTo) {
+          // Fallback: search all zones for legacy cards
+          for (const [zk, z] of updatedState.zones) {
+            if (
+              z.cardIds.includes(attachedTo.id) &&
+              z.type === ZoneType.BATTLEFIELD
+            ) {
+              attachedToOnBf = true;
               break;
             }
           }
