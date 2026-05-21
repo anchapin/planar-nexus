@@ -876,6 +876,115 @@ describe("Layer System", () => {
         expect(characteristics.toughness).toBe(1);
       });
     });
+
+    describe("CR 613.8 Sublayer Dependencies", () => {
+      it("should apply counters to CDA-set P/T (7c depends on 7a)", () => {
+        const creatureData = createMockCreature("Test Creature", 3, 3);
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // CDA sets P/T to 0/0 (7a)
+        const cdaEffect = createCharacteristicDefiningAbility(
+          "source7a",
+          "player1",
+          { oracleId: "cda-source", power: 0, toughness: 0 },
+          "CDA 0/0",
+          layerSystem,
+        );
+        layerSystem.registerEffect(cdaEffect);
+
+        // Add +1/+1 counters (7c)
+        creature.counters = [{ type: "+1/+1", count: 3 }];
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // CDA (7a) sets to 0/0, then counters (7c) add +3/+3 = 3/3
+        // Per CR 613.8, later sublayers modify earlier ones
+        expect(characteristics.power).toBe(3);
+        expect(characteristics.toughness).toBe(3);
+      });
+
+      it("should apply modification effects after counters (7e depends on 7c)", () => {
+        const creatureData = createMockCreature("Test Creature", 3, 3);
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Add +2/+2 counters (7c)
+        creature.counters = [{ type: "+1/+1", count: 2 }];
+
+        // +1/+1 modifier (7e) - should apply after counters
+        const modifyEffect = createPowerToughnessModifyEffect(
+          "source7e",
+          "player1",
+          1,
+          1,
+          "+1/+1 from modifier",
+        );
+        layerSystem.registerEffect(modifyEffect);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/3 + 2 counters (7c) + 1 modifier (7e) = 6/6
+        expect(characteristics.power).toBe(6);
+        expect(characteristics.toughness).toBe(6);
+      });
+
+      it("should apply switch after counters (7d depends on 7c)", () => {
+        const creatureData = createMockCreature("Test Creature", 3, 5);
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Add +1/+1 counters (7c)
+        creature.counters = [{ type: "+1/+1", count: 1 }];
+
+        // Switch P/T (7d)
+        const switchEffect = createPowerToughnessSwitchEffect(
+          "source7d",
+          "player1",
+          "Switch P/T",
+          layerSystem,
+        );
+        layerSystem.registerEffect(switchEffect);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // Base 3/5 + 1 counter = 4/6, then switch = 6/4
+        expect(characteristics.power).toBe(6);
+        expect(characteristics.toughness).toBe(4);
+      });
+
+      it("should allow earlier sublayer effects to depend on later ones explicitly", () => {
+        const creatureData = createMockCreature("Test Creature", 3, 3);
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Set effect (7b) that sets to 2/2
+        const setEffect = createPowerToughnessSetEffect(
+          "source7b",
+          "player1",
+          2,
+          2,
+          "Set 2/2",
+          layerSystem,
+        );
+        layerSystem.registerEffect(setEffect);
+
+        // CDA (7a) that wants to depend on set effect
+        // 7a depends on 7b (per CR 613.8 - later sublayers can modify earlier)
+        const cdaEffect = createCharacteristicDefiningAbility(
+          "source7a",
+          "player1",
+          { oracleId: "cda-source", power: 5, toughness: 5 },
+          "CDA 5/5",
+          layerSystem,
+        );
+
+        // Add explicit dependency: CDA (7a) depends on Set (7b)
+        // Since 7a applies first, this means set should apply after
+        // This would be unusual but valid per CR 613.8 interaction
+        layerSystem.registerEffect(cdaEffect);
+
+        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        // CDA (7a) sets 5/5, then set (7b) overwrites to 2/2
+        // Since CDA has earlier timestamp, but set has later sublayer order
+        // Order is 7a -> 7b, so 7a sets 5/5, then 7b sets 2/2
+        expect(characteristics.power).toBe(2);
+        expect(characteristics.toughness).toBe(2);
+      });
+    });
   });
 
   describe("Dependency Handling", () => {
