@@ -76,11 +76,27 @@ export const LAYER_7_SUBLAYER_DEPENDENCIES: ReadonlyMap<
   PowerToughnessSublayer,
   PowerToughnessSublayer[]
 > = new Map([
-  [PowerToughnessSublayer.CHARACTERISTIC_DEFINING, []], // 7a depends on nothing in our model
-  [PowerToughnessSublayer.SET, []], // 7b depends on nothing
-  [PowerToughnessSublayer.COUNTERS, []], // 7c depends on nothing
-  [PowerToughnessSublayer.SWITCH, []], // 7d depends on nothing
-  [PowerToughnessSublayer.MODIFY, []], // 7e depends on nothing
+  // CR 613.8: Earlier sublayers must apply BEFORE later ones (dependence flows down)
+  // 7a (CDA) depends on nothing - applies first, later effects can modify it
+  [PowerToughnessSublayer.CHARACTERISTIC_DEFINING, []],
+  // 7b (Set P/T) depends on 7c, 7d, 7e - must apply before counters/switch/modify
+  [
+    PowerToughnessSublayer.SET,
+    [
+      PowerToughnessSublayer.COUNTERS,
+      PowerToughnessSublayer.SWITCH,
+      PowerToughnessSublayer.MODIFY,
+    ],
+  ],
+  // 7c (Counters) depends on 7d, 7e - must apply before switch/modify
+  [
+    PowerToughnessSublayer.COUNTERS,
+    [PowerToughnessSublayer.SWITCH, PowerToughnessSublayer.MODIFY],
+  ],
+  // 7d (Switch P/T) depends on 7e - must apply before modify
+  [PowerToughnessSublayer.SWITCH, [PowerToughnessSublayer.MODIFY]],
+  // 7e (Modify P/T) depends on nothing - applies last
+  [PowerToughnessSublayer.MODIFY, []],
 ]);
 
 /**
