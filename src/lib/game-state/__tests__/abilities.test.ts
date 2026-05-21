@@ -23,6 +23,7 @@ import {
 } from "../abilities";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
+import { addMana as addManaToPool } from "../mana";
 import type { ScryfallCard } from "@/app/actions";
 import { Phase } from "../types";
 
@@ -285,6 +286,68 @@ describe("Abilities System - activateAbility", () => {
     expect(result.state.stack.length).toBe(1);
     expect(result.state.stack[0].type).toBe("ability");
     expect(result.state.stack[0].sourceCardId).toBe(cardId);
+  });
+
+  it("should NOT add mana ability to stack (CR 605)", () => {
+    // Create a mana ability card (e.g., a land with "{T}: Add {G}.")
+    const manaCardData = createMockCard({
+      id: "test-mana-creature",
+      name: "Mana Creature",
+      type_line: "Creature — Plant",
+      oracle_text: "{T}: Add {G}.", // Mana ability
+      power: "0",
+      toughness: "1",
+    });
+    const manaCard = createCardInstance(manaCardData, aliceId, aliceId);
+    manaCard.hasSummoningSickness = false;
+    const manaCardId = manaCard.id;
+    state.cards.set(manaCardId, manaCard);
+
+    const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    state.zones.set(`${aliceId}-battlefield`, {
+      ...battlefield,
+      cardIds: [...battlefield.cardIds, manaCardId],
+    });
+
+    // Give player some mana to pay for the ability (though mana abilities don't cost mana)
+    state = addManaToPool(state, aliceId, { generic: 1 });
+
+    const result = activateAbility(state, aliceId, manaCardId, 0);
+
+    expect(result.success).toBe(true);
+    // CR 605: Mana abilities do NOT go on stack - they resolve immediately
+    expect(result.state.stack.length).toBe(0);
+    // Mana should be added to the pool
+    const player = result.state.players.get(aliceId);
+    expect(player?.manaPool.green).toBe(1);
+  });
+
+  it("should set hasActivatedManaAbility flag when mana ability activates (CR 605.3b)", () => {
+    // Create a mana ability card
+    const manaCardData = createMockCard({
+      id: "test-mana-creature-2",
+      name: "Forest Creature",
+      type_line: "Creature — Elf",
+      oracle_text: "{T}: Add {G}.", // Mana ability
+      power: "0",
+      toughness: "1",
+    });
+    const manaCard = createCardInstance(manaCardData, aliceId, aliceId);
+    manaCard.hasSummoningSickness = false;
+    const manaCardId = manaCard.id;
+    state.cards.set(manaCardId, manaCard);
+
+    const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    state.zones.set(`${aliceId}-battlefield`, {
+      ...battlefield,
+      cardIds: [...battlefield.cardIds, manaCardId],
+    });
+
+    const result = activateAbility(state, aliceId, manaCardId, 0);
+
+    expect(result.success).toBe(true);
+    const player = result.state.players.get(aliceId);
+    expect(player?.hasActivatedManaAbility).toBe(true);
   });
 });
 

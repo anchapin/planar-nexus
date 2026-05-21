@@ -16,7 +16,7 @@ import {
   ParsedActivatedAbility,
   ParsedTriggeredAbility,
 } from "./oracle-text-parser";
-import { spendMana } from "./mana";
+import { spendMana, addMana, isManaAbility } from "./mana";
 import { destroyCard, discardCards } from "./keyword-actions";
 
 /**
@@ -85,6 +85,34 @@ function generateAbilityId(): string {
  */
 function generateTriggeredAbilityId(): string {
   return `triggered-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Parse mana produced from an ability effect text
+ * Handles patterns like "Add {G}", "Add {W} or {U}", "Add {R}{R}"
+ */
+function parseManaFromEffect(
+  effectText: string,
+): Partial<import("./types").ManaPool> {
+  const mana: Partial<import("./types").ManaPool> = {};
+  const text = effectText.toLowerCase();
+
+  // Find all mana symbols in braces: {W}, {U}, {B}, {R}, {G}, {C}, {X}, etc.
+  const symbolRegex = /\{([^}]+)\}/g;
+  let match;
+  while ((match = symbolRegex.exec(text)) !== null) {
+    const sym = match[1].toUpperCase();
+    if (sym === "W") mana.white = (mana.white || 0) + 1;
+    else if (sym === "U") mana.blue = (mana.blue || 0) + 1;
+    else if (sym === "B") mana.black = (mana.black || 0) + 1;
+    else if (sym === "R") mana.red = (mana.red || 0) + 1;
+    else if (sym === "G") mana.green = (mana.green || 0) + 1;
+    else if (sym === "C") mana.colorless = (mana.colorless || 0) + 1;
+    else if (/^\d+$/.test(sym))
+      mana.generic = (mana.generic || 0) + parseInt(sym, 10);
+  }
+
+  return mana;
 }
 
 /**
@@ -299,6 +327,35 @@ export function activateAbility(
     if (result.success) {
       currentState = result.state;
     }
+  }
+
+  // CR 605: Mana abilities don't use the stack - resolve immediately
+  if (isManaAbility(cardId, ability.effect)) {
+    // Parse mana produced by this ability
+    const parsedMana = parseManaFromEffect(ability.effect);
+    if (Object.keys(parsedMana).length > 0) {
+      currentState = addMana(currentState, playerId, parsedMana);
+    }
+
+    // Mark that this player has activated a mana ability this step (CR 605.3b)
+    const updatedPlayers = new Map(currentState.players);
+    const player = updatedPlayers.get(playerId);
+    if (player) {
+      updatedPlayers.set(playerId, {
+        ...player,
+        hasActivatedManaAbility: true,
+      });
+    }
+
+    return {
+      success: true,
+      state: {
+        ...currentState,
+        players: updatedPlayers,
+        lastModifiedAt: Date.now(),
+      },
+      description: `Activated ${card.cardData.name}'s mana ability`,
+    };
   }
 
   // Create stack object for the ability
