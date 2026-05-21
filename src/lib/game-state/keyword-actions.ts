@@ -35,6 +35,7 @@ import {
   hasPersist,
   canPersistTrigger,
   shouldPreventDamageToTarget,
+  hasDeathtouch,
 } from "./evergreen-keywords";
 
 /**
@@ -877,15 +878,11 @@ export function dealDamageToCard(
   if (sourceId) {
     const sourceCard = state.cards.get(sourceId);
     if (sourceCard) {
-      const sourceOracleText =
-        sourceCard.cardData.oracle_text?.toLowerCase() || "";
-      const sourceKeywords = sourceCard.cardData.keywords || [];
-      const sourceHasDeathtouch =
-        sourceKeywords.includes("Deathtouch") ||
-        sourceOracleText.includes("deathtouch");
+      const sourceHasDeathtouch = hasDeathtouch(sourceCard);
 
       if (sourceHasDeathtouch && actualDamage > 0) {
         // With deathtouch, any amount of damage is lethal
+        // CR 702.2b: Any nonzero amount of combat damage from a deathtouch source is lethal
         const lethalDamage = getToughness(card);
         updatedCard = {
           ...updatedCard,

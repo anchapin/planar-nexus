@@ -18,6 +18,7 @@ import {
 import {
   markCreatureAttackedForBoast,
   hasInfect,
+  hasDeathtouch,
   getToxicLevel,
 } from "./evergreen-keywords";
 
@@ -607,9 +608,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         (a, b) => a.blockerOrder - b.blockerOrder,
       );
 
-      const attackerHasDeathtouch =
-        attackerCard.cardData.keywords?.includes("Deathtouch") ||
-        attackerCard.cardData.oracle_text?.toLowerCase().includes("deathtouch");
+      const attackerHasDeathtouch = hasDeathtouch(attackerCard);
 
       // Deal damage from attacker to blockers
       for (const blocker of sortedBlockers) {
@@ -622,11 +621,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           blockerCard,
           layerSystem,
         );
-        const blockerHasDeathtouch =
-          blockerCard.cardData.keywords?.includes("Deathtouch") ||
-          blockerCard.cardData.oracle_text
-            ?.toLowerCase()
-            .includes("deathtouch");
+        const blockerHasDeathtouch = hasDeathtouch(blockerCard);
         const blockerHasLifelink =
           blockerCard.cardData.keywords?.includes("Lifelink") ||
           blockerCard.cardData.oracle_text?.toLowerCase().includes("lifelink");
