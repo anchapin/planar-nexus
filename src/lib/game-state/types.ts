@@ -77,6 +77,12 @@ export interface CardInstance {
   attachedCardIds: CardInstanceId[];
   /** IDs of cards merged with this one via mutate (CR 702.140) */
   mutatedCardIds: CardInstanceId[];
+  /** ID of the base creature this card is mutated onto (null if base or not mutated) */
+  mutateBaseId: CardInstanceId | null;
+  /** Whether this creature is part of a mutate stack */
+  isMutated: boolean;
+  /** ID of the component with the highest CMC (for text display) */
+  highestCmcComponentId: CardInstanceId | null;
 
   // Timestamps for ordering
   /** When this permanent entered the play area (for timestamp ordering) */
@@ -584,6 +590,35 @@ export interface ChoiceOption {
   isValid: boolean;
 }
 
+export interface LinkedEffect {
+  /** Unique identifier for this linked effect */
+  id: string;
+  /** Card that created this linked effect */
+  sourceCardId: CardInstanceId;
+  /** ID of the first ability (creates the linked object) */
+  firstAbilityId: string;
+  /** ID of the second ability (uses the linked object) */
+  secondAbilityId: string;
+  /** Type of link (damage→life or copy→counter) */
+  linkType: "damage_life" | "copy_counter";
+  /** Damage amount for damage_life links */
+  damageAmount?: number;
+  /** Copied card ID for copy_counter links */
+  copiedCardId?: CardInstanceId;
+  /** When this linked effect was created */
+  timestamp: number;
+}
+
+/**
+ * Registry for tracking linked effects
+ */
+export interface LinkedEffectRegistry {
+  /** All active linked effects */
+  effects: LinkedEffect[];
+  /** Linked effects indexed by source card ID for fast lookup */
+  bySourceCard: Map<CardInstanceId, LinkedEffect[]>;
+}
+
 /**
  * The complete game state
  */
@@ -624,6 +659,8 @@ export interface GameState {
   replacementEffectManager: ReplacementEffectManager;
   /** Layer system for this game instance */
   layerSystem: LayerSystem;
+  /** Linked effect registry for this game instance */
+  linkedEffectRegistry: LinkedEffectRegistry;
 }
 
 /**
