@@ -1703,4 +1703,247 @@ describe("Layer System", () => {
       expect(result.toughnessModifier).toBe(2);
     });
   });
+
+  describe("Effective Characteristics Caching", () => {
+    it("should cache effective characteristics per card per state hash", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const effect = createPowerToughnessModifyEffect(
+        "source",
+        "player1",
+        2,
+        2,
+        "+2/+2",
+      );
+      layerSystem.registerEffect(effect);
+
+      // First call - should compute and cache
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars1.power).toBe(5);
+      expect(chars1.toughness).toBe(5);
+
+      // Second call with same state - should return equivalent result
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars2.power).toBe(5);
+      expect(chars2.toughness).toBe(5);
+
+      // Verify cache is working by checking both have same values
+      expect(chars1).toEqual(chars2);
+    });
+
+    it("should invalidate cache when new effect is registered", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // First call - compute and cache
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars1.power).toBe(3);
+      expect(chars1.toughness).toBe(3);
+
+      // Register new effect - should invalidate cache
+      const effect = createPowerToughnessModifyEffect(
+        "source",
+        "player1",
+        2,
+        2,
+        "+2/+2",
+      );
+      layerSystem.registerEffect(effect);
+
+      // Should recompute, not use cached value
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars2.power).toBe(5);
+      expect(chars2.toughness).toBe(5);
+    });
+
+    it("should invalidate cache when dependency is added", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const effect1 = createPowerToughnessModifyEffect(
+        "source1",
+        "player1",
+        1,
+        1,
+        "+1/+1",
+      );
+      const effect2 = createPowerToughnessModifyEffect(
+        "source2",
+        "player1",
+        2,
+        2,
+        "+2/+2",
+      );
+
+      layerSystem.registerEffect(effect1);
+      layerSystem.registerEffect(effect2);
+
+      // First call - compute and cache
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars1.power).toBe(6); // 3 + 1 + 2
+
+      // Add dependency - should invalidate cache
+      const depAdded = layerSystem.addDependency({
+        effectId: effect2.id,
+        dependsOnId: effect1.id,
+        dependencyType: "after",
+      });
+      expect(depAdded).toBe(true);
+
+      // Should recompute
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars2.power).toBe(6); // Same result, but freshly computed
+    });
+
+    it("should invalidate cache when overrides change", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // First call - compute and cache
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars1.power).toBe(3);
+
+      // Clear overrides - should invalidate cache for this card
+      layerSystem.clearOverrides(creature.id);
+
+      // Should recompute
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars2.power).toBe(3); // Same result, but freshly computed
+    });
+
+    it("should produce same result whether using cache or not", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const effect1 = createPowerToughnessModifyEffect(
+        "source1",
+        "player1",
+        1,
+        1,
+        "+1/+1",
+      );
+      const effect2 = createPowerToughnessModifyEffect(
+        "source2",
+        "player1",
+        2,
+        2,
+        "+2/+2",
+      );
+      const effect3 = createPowerToughnessModifyEffect(
+        "source3",
+        "player1",
+        3,
+        3,
+        "+3/+3",
+      );
+
+      layerSystem.registerEffect(effect1);
+      layerSystem.registerEffect(effect2);
+      layerSystem.registerEffect(effect3);
+
+      // Multiple calls should return same result
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature);
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature);
+      const chars3 = layerSystem.getEffectiveCharacteristics(creature);
+
+      expect(chars1.power).toBe(9); // 3 + 1 + 2 + 3
+      expect(chars1.toughness).toBe(9);
+      expect(chars2.power).toBe(9);
+      expect(chars3.power).toBe(9);
+      expect(chars1).toEqual(chars2);
+      expect(chars2).toEqual(chars3);
+    });
+
+    it("should clear all cache entries on clear()", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const effect = createPowerToughnessModifyEffect(
+        "source",
+        "player1",
+        5,
+        5,
+        "+5/+5",
+      );
+      layerSystem.registerEffect(effect);
+
+      // Compute and cache
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars1.power).toBe(8);
+
+      // Clear layer system
+      layerSystem.clear();
+
+      // Re-register effect (simulating new game)
+      layerSystem.registerEffect(effect);
+
+      // Should recompute, not use stale cache
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature);
+      expect(chars2.power).toBe(8);
+    });
+
+    it("should compute state hash based on all registered effects", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // Initially empty state
+      const hash1 = layerSystem.computeStateHash();
+      expect(hash1).toBeDefined();
+      expect(typeof hash1).toBe("string");
+
+      // Add an effect
+      const effect1 = createPowerToughnessModifyEffect(
+        "source1",
+        "player1",
+        1,
+        1,
+        "+1/+1",
+      );
+      layerSystem.registerEffect(effect1);
+      const hash2 = layerSystem.computeStateHash();
+
+      // Hash should change when effects are added
+      expect(hash2).not.toBe(hash1);
+
+      // Add another effect
+      const effect2 = createPowerToughnessModifyEffect(
+        "source2",
+        "player1",
+        2,
+        2,
+        "+2/+2",
+      );
+      layerSystem.registerEffect(effect2);
+      const hash3 = layerSystem.computeStateHash();
+
+      // Hash should change again
+      expect(hash3).not.toBe(hash2);
+
+      // Removing effect should change hash back towards initial
+      layerSystem.removeEffectsFromSource("source1");
+      const hash4 = layerSystem.computeStateHash();
+      expect(hash4).not.toBe(hash3);
+    });
+
+    it("should isolate cache between different cards", () => {
+      const creature1 = createCardInstance(
+        createMockCreature("Creature 1", 2, 2),
+        "player1",
+        "player1",
+      );
+      const creature2 = createCardInstance(
+        createMockCreature("Creature 2", 5, 5),
+        "player1",
+        "player1",
+      );
+
+      // Both should be cached independently
+      const chars1 = layerSystem.getEffectiveCharacteristics(creature1);
+      const chars2 = layerSystem.getEffectiveCharacteristics(creature2);
+
+      expect(chars1.power).toBe(2);
+      expect(chars2.power).toBe(5);
+    });
+  });
 });

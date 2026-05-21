@@ -292,12 +292,69 @@ export class LayerSystem {
   private overrides: Map<CardInstanceId, CardOverrides> = new Map();
 
   /**
+   * Cache for effective characteristics per card.
+   * Maps card ID to cached result with state hash for invalidation.
+   */
+  private effectiveCharacteristicsCache: Map<
+    CardInstanceId,
+    { stateHash: string; characteristics: ReturnType<LayerSystem["getEffectiveCharacteristics"]> }
+  > = new Map();
+
+  /**
+   * Compute a state hash based on all registered effects, dependencies, and overrides.
+   * This hash uniquely identifies the current state that affects card characteristics.
+   * Cache entries are invalidated when the state hash changes.
+   */
+  computeStateHash(): string {
+    const stateParts: string[] = [];
+
+    // Add effect signatures (layer, sublayer, source, timestamp)
+    for (const effect of this.effects) {
+      stateParts.push(
+        `e:${effect.layer}:${effect.sublayer || ""}:${effect.sourceCardId}:${effect.controllerId}:${effect.timestamp}`,
+      );
+    }
+
+    // Add dependencies
+    for (const dep of this.dependencies) {
+      stateParts.push(`d:${dep.effectId}:${dep.dependsOnId}:${dep.dependencyType}`);
+    }
+
+    // Add overrides
+    for (const [cardId, override] of this.overrides) {
+      stateParts.push(`o:${cardId}:${JSON.stringify(override)}`);
+    }
+
+    // Add CDAs
+    for (const cda of this.cdas) {
+      stateParts.push(`cda:${cda.oracleId}`);
+    }
+
+    // Simple hash using JSON stringify (sufficient for game state)
+    // In production, a more sophisticated hash could be used
+    return JSON.stringify(stateParts);
+  }
+
+  /**
+   * Invalidate cache entries for a specific card, or all cards if no card ID provided.
+   * @param cardId - Optional card ID to invalidate. If not provided, all cache entries are cleared.
+   */
+  private invalidateCache(cardId?: CardInstanceId): void {
+    if (cardId !== undefined) {
+      this.effectiveCharacteristicsCache.delete(cardId);
+    } else {
+      this.effectiveCharacteristicsCache.clear();
+    }
+  }
+
+  /**
    * Register a new continuous effect
    * @param effect - The continuous effect to register
    */
   registerEffect(effect: ContinuousEffect): void {
     this.effects.push(effect);
     this.sortEffects();
+    this.invalidateCache();
   }
 
   /**
@@ -309,6 +366,7 @@ export class LayerSystem {
     // Also clear overrides from this source
     // In a full implementation, we'd track which effect created which override
     // For now, overrides are cleared when effects are removed via clearOverrides()
+    this.invalidateCache();
   }
 
   /**
@@ -318,6 +376,7 @@ export class LayerSystem {
   registerCDA(cda: CharacteristicDefiningAbility): void {
     this.cdas.push(cda);
     this.sortEffects();
+    this.invalidateCache();
   }
 
   /**
@@ -341,6 +400,7 @@ export class LayerSystem {
     this.dependencies.push(dependency);
     // Re-sort effects to account for the new dependency
     this.sortEffects();
+    this.invalidateCache();
     return true;
   }
 
@@ -482,6 +542,7 @@ export class LayerSystem {
    */
   clearOverrides(cardId: CardInstanceId): void {
     this.overrides.delete(cardId);
+    this.invalidateCache(cardId);
   }
 
   /**
@@ -597,6 +658,7 @@ export class LayerSystem {
 
   /**
    * Get effective characteristics of a card after all layer effects
+   * Uses caching to avoid recomputing characteristics for the same state.
    * @param card - The card instance
    */
   getEffectiveCharacteristics(card: CardInstance): {
@@ -614,6 +676,15 @@ export class LayerSystem {
     removedAbilities: string[];
     controllerId?: PlayerId;
   } {
+    const currentStateHash = this.computeStateHash();
+    const cached = this.effectiveCharacteristicsCache.get(card.id);
+
+    // Check if we have a valid cached result for this card and state
+    if (cached && cached.stateHash === currentStateHash) {
+      return cached.characteristics;
+    }
+
+    // Compute characteristics from scratch
     const modified = this.applyEffects(card);
     const cardData = modified.cardData;
     const overrides = this.getOverrides(card.id);
@@ -621,7 +692,7 @@ export class LayerSystem {
     // Calculate effective power/toughness considering Layer 7 sublayers
     const { power, toughness } = this.calculateEffectivePT(card, modified);
 
-    return {
+    const characteristics = {
       name:
         modified.isFaceDown && modified.tokenData
           ? modified.tokenData.name
@@ -645,6 +716,14 @@ export class LayerSystem {
       removedAbilities: overrides.removedAbilities || [],
       controllerId: overrides.controllerId || modified.controllerId,
     };
+
+    // Cache the result
+    this.effectiveCharacteristicsCache.set(card.id, {
+      stateHash: currentStateHash,
+      characteristics,
+    });
+
+    return characteristics;
   }
 
   /**
@@ -781,6 +860,7 @@ export class LayerSystem {
     this.dependencies = [];
     this.cdas = [];
     this.overrides.clear();
+    this.effectiveCharacteristicsCache.clear();
   }
 }
 
