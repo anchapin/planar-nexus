@@ -1,6 +1,7 @@
 /**
  * Comprehensive unit tests for Combat System
  * Issue #323: Add comprehensive unit tests for game engine modules
+ * Issue #817: First Strike and Double Strike combat implementation (CR 702.7, CR 702.4)
  *
  * Tests combat edge cases including:
  * - Attacker/blocker declaration validation
