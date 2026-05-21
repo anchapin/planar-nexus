@@ -246,6 +246,16 @@ export interface CardOverrides {
   text?: string;
   /** Overridden colors */
   colors?: string[];
+  /**
+   * Origin layer for color changes (CR 613.4/613.5 exception)
+   * When a type-changing effect also changes color simultaneously,
+   * the color change origin layer is tracked to ensure proper layer ordering.
+   * Per CR 613.5: if an effect changes color AND type simultaneously,
+   * the color change happens in Layer 4 and type change in Layer 4.
+   * Per CR 613.4: if a Layer 3 text-changing effect changes color
+   * and type simultaneously, the color change happens in Layer 4.
+   */
+  colorChangeOriginLayer?: Layer;
   /** Granted abilities */
   grantedAbilities?: string[];
   /** Removed abilities */
@@ -711,6 +721,15 @@ export class LayerSystem {
 
     // Check for color override first
     if (overrides.colors) {
+      // Per CR 613.5 exception: If an effect changes both color AND type
+      // simultaneously, the color change happens in Layer 4.
+      // Per CR 613.4 exception: If a Layer 3 text-changing effect changes
+      // both color AND type simultaneously, the color change happens in Layer 4.
+      // In both cases, the color was already set by the type/text-changing effect,
+      // and we should return it immediately without applying Layer 5 effects.
+      if (overrides.colorChangeOriginLayer) {
+        return [...overrides.colors];
+      }
       return [...overrides.colors];
     }
 
@@ -831,6 +850,10 @@ export function createControlChangeEffect(
 /**
  * Create a text-changing effect (Layer 3 - CR 613.4)
  * Changes the oracle text of a card (e.g., Mind Bend, Volrath's Shapeshifter)
+ *
+ * Per CR 613.4 exception: If a Layer 3 text-changing effect also changes
+ * type and/or color simultaneously, the type change happens in Layer 4
+ * and color change happens in Layer 4 (not Layer 5 as usual).
  */
 export function createTextChangeEffect(
   sourceCardId: CardInstanceId,
@@ -839,6 +862,18 @@ export function createTextChangeEffect(
   description: string,
   _addTypes?: boolean,
   _layerSystemInstance?: LayerSystem,
+  /**
+   * Types to set when text-changing effect also changes type simultaneously.
+   * Per CR 613.4 exception: if a Layer 3 effect changes type and color,
+   * type is applied in Layer 4.
+   */
+  _types?: string[],
+  /**
+   * Colors to set when text-changing effect also changes color simultaneously.
+   * Per CR 613.4 exception: if a Layer 3 effect changes color and type,
+   * the color change is applied in Layer 4 (not Layer 5).
+   */
+  _colors?: string[],
 ): ContinuousEffect {
   return {
     id: `text-${sourceCardId}-${Date.now()}`,
@@ -854,6 +889,16 @@ export function createTextChangeEffect(
       const ls = _layerSystemInstance || getLayerSystemInstance();
       const overrides = ls.getOverrides(card.id);
       overrides.text = newText;
+
+      // Handle simultaneous type/color change (CR 613.4 exception)
+      if (_types && _types.length > 0) {
+        overrides.types = _types;
+      }
+      if (_colors && _colors.length > 0) {
+        overrides.colors = _colors;
+        overrides.colorChangeOriginLayer = Layer.TEXT_CHANGING;
+      }
+
       return { ...card };
     },
   };

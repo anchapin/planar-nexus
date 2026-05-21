@@ -312,6 +312,188 @@ describe("Layer System", () => {
       const characteristics = layerSystem.getEffectiveCharacteristics(creature);
       expect(characteristics.text).toBe("New oracle text");
     });
+
+    describe("CR 613.4 Exception: Simultaneous Type and Color Changes from Layer 3", () => {
+      it("should apply color change in Layer 4 when Layer 3 text-changing effect changes color and type", () => {
+        // Per CR 613.4: If a Layer 3 text-changing effect also changes
+        // type and color simultaneously, type change happens in Layer 4
+        // and color change happens in Layer 4 (not Layer 5 as usual)
+        const creatureData = createMockCreature(
+          "Test Creature",
+          3,
+          3,
+          [],
+          ["R"],
+        );
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Create a Layer 3 text-changing effect that also changes type and color
+        const textTypeColorEffect = createTextChangeEffect(
+          "source",
+          "player1",
+          "New text for artifact creature",
+          "Change text, type, and color",
+          undefined, // addTypes
+          layerSystem,
+          ["Artifact", "Creature"], // _types - sets types in Layer 4
+          ["W"], // _colors - sets color in Layer 4 (not Layer 5)
+        );
+
+        layerSystem.registerEffect(textTypeColorEffect);
+
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
+
+        // Text should be changed (Layer 3)
+        expect(characteristics.text).toBe("New text for artifact creature");
+        // Type should be Artifact (applied in Layer 4 via type component)
+        expect(characteristics.types).toContain("Artifact");
+        expect(characteristics.types).toContain("Creature");
+        // Color should be white (applied in Layer 4, not Layer 5)
+        expect(characteristics.color).toEqual(["W"]);
+      });
+
+      it("should handle Layer 3 text change that changes only type", () => {
+        const creatureData = createMockCreature(
+          "Test Creature",
+          3,
+          3,
+          [],
+          ["R"],
+        );
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Layer 3 text change that also changes type (no color change)
+        const textTypeEffect = createTextChangeEffect(
+          "source",
+          "player1",
+          "New text",
+          "Change text and type",
+          undefined, // addTypes
+          layerSystem,
+          ["Artifact"], // _types - only type change
+          undefined, // no color change
+        );
+
+        layerSystem.registerEffect(textTypeEffect);
+
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
+
+        expect(characteristics.text).toBe("New text");
+        expect(characteristics.types).toContain("Artifact");
+        // Color should remain red (original)
+        expect(characteristics.color).toEqual(["R"]);
+      });
+
+      it("should handle Layer 3 text change that changes only color", () => {
+        const creatureData = createMockCreature(
+          "Test Creature",
+          3,
+          3,
+          [],
+          ["R"],
+        );
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Layer 3 text change that also changes color (no type change)
+        const textColorEffect = createTextChangeEffect(
+          "source",
+          "player1",
+          "New text",
+          "Change text and color",
+          undefined, // addTypes
+          layerSystem,
+          undefined, // no type change
+          ["U"], // _colors - color change only
+        );
+
+        layerSystem.registerEffect(textColorEffect);
+
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
+
+        expect(characteristics.text).toBe("New text");
+        // Color should be blue (applied in Layer 4, not Layer 5)
+        expect(characteristics.color).toEqual(["U"]);
+      });
+
+      it("should handle interaction between Layer 3 and Layer 5 color effects correctly", () => {
+        // If a Layer 3 text-changing effect changes color to white,
+        // and then a Layer 5 effect tries to change color to blue,
+        // the Layer 5 should still apply because layer ordering says later layers
+        // apply after earlier ones and override them.
+        const creatureData = createMockCreature(
+          "Test Creature",
+          3,
+          3,
+          [],
+          ["R"],
+        );
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Layer 3 text change that changes color to white
+        const layer3Effect = createTextChangeEffect(
+          "source3",
+          "player1",
+          "New text",
+          "Change text and color to white",
+          undefined,
+          layerSystem,
+          undefined, // no type change
+          ["W"], // color to white
+        );
+
+        // Layer 5 color change to blue
+        const layer5Effect = createColorChangeEffect(
+          "source5",
+          "player1",
+          ["U"],
+          "Change color to blue",
+          false,
+          layerSystem,
+        );
+
+        layerSystem.registerEffect(layer3Effect);
+        layerSystem.registerEffect(layer5Effect);
+
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
+
+        // Layer 5 effects apply after Layer 3/4, so blue should win
+        // This is correct per CR - later layers override earlier ones
+        expect(characteristics.color).toEqual(["U"]);
+      });
+
+      it("should not skip Layer 5 color effects when colorChangeOriginLayer is not set", () => {
+        const creatureData = createMockCreature(
+          "Test Creature",
+          3,
+          3,
+          [],
+          ["R"],
+        );
+        const creature = createCardInstance(creatureData, "player1", "player1");
+
+        // Layer 5 color change to blue
+        const layer5Effect = createColorChangeEffect(
+          "source5",
+          "player1",
+          ["U"],
+          "Change color to blue",
+          false,
+          layerSystem,
+        );
+
+        layerSystem.registerEffect(layer5Effect);
+
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
+
+        // Regular Layer 5 effect should apply normally
+        expect(characteristics.color).toEqual(["U"]);
+      });
+    });
   });
 
   describe("Layer 4: Type-Changing Effects", () => {
