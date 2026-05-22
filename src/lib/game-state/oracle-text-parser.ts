@@ -122,7 +122,11 @@ export interface TriggerCondition {
     | "lifeGain"
     | "lifeLost"
     | "spellCast"
-    | "abilityActivated";
+    | "abilityActivated"
+    | "turnBegins"
+    | "beginningOfTurn"
+    | "endOfTurn"
+    | "cleanupStep";
   condition?: string;
   target?: ParsedTarget;
   source?: string;
@@ -968,6 +972,19 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "spellCast" };
   }
 
+  // Beginning of turn
+  if (
+    (text.includes("beginning of") && text.includes("turn")) ||
+    text.includes("at the start of")
+  ) {
+    return { event: "beginningOfTurn" };
+  }
+
+  // End of turn
+  if (text.includes("end of turn")) {
+    return { event: "endOfTurn" };
+  }
+
   // Ability activated
   if (
     text.includes("activated an ability") ||
@@ -1185,7 +1202,14 @@ export function hasFuse(card: ScryfallCard): boolean {
  */
 export interface ModeTargetInfo {
   modeIndex: number;
-  targetTypes: ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[];
+  targetTypes: (
+    | "creature"
+    | "player"
+    | "planeswalker"
+    | "artifact"
+    | "enchantment"
+    | "any"
+  )[];
   description: string;
 }
 
@@ -1193,8 +1217,24 @@ export interface ModeTargetInfo {
  * Parse target requirements from a mode's text
  * Looks for patterns like "target creature", "target player", etc.
  */
-function parseTargetsFromMode(modeText: string): ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[] {
-  const targets: ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[] = [];
+function parseTargetsFromMode(
+  modeText: string,
+): (
+  | "creature"
+  | "player"
+  | "planeswalker"
+  | "artifact"
+  | "enchantment"
+  | "any"
+)[] {
+  const targets: (
+    | "creature"
+    | "player"
+    | "planeswalker"
+    | "artifact"
+    | "enchantment"
+    | "any"
+  )[] = [];
   const lowerText = modeText.toLowerCase();
 
   if (lowerText.includes("target creature")) targets.push("creature");
@@ -1202,7 +1242,8 @@ function parseTargetsFromMode(modeText: string): ("creature" | "player" | "plane
   if (lowerText.includes("target planeswalker")) targets.push("planeswalker");
   if (lowerText.includes("target artifact")) targets.push("artifact");
   if (lowerText.includes("target enchantment")) targets.push("enchantment");
-  if (lowerText.includes("any target") || lowerText.includes("target any")) targets.push("any");
+  if (lowerText.includes("any target") || lowerText.includes("target any"))
+    targets.push("any");
 
   // Default to "any" if no specific target found but effect needs one
   if (targets.length === 0 && lowerText.includes("target")) {
@@ -1216,7 +1257,9 @@ function parseTargetsFromMode(modeText: string): ("creature" | "player" | "plane
  * Get target information for each mode of a modal spell
  * Returns mode index, valid target types, and description
  */
-export function getModesForModalSpell(card: ScryfallCard): ModeTargetInfo[] | null {
+export function getModesForModalSpell(
+  card: ScryfallCard,
+): ModeTargetInfo[] | null {
   const modes = parseModes(card.oracle_text || "");
   if (!modes) return null;
 

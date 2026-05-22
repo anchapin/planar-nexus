@@ -269,15 +269,23 @@ export function getCommanderDamage(
 
 /**
  * Get total commander damage to a player from all commanders
+ * 
+ * Sums up all commander damage dealt to a target player across all commanders.
+ * Commander damage is tracked per-commander on the target player's state.
  */
 export function getTotalCommanderDamage(
-  _state: GameState,
-  _targetPlayerId: PlayerId
+  state: GameState,
+  targetPlayerId: PlayerId
 ): number {
-  // Commander damage is tracked from the attacker's perspective
-  // A full implementation would track damage per opponent per commander
-  // Currently returning 0 as placeholder
-  return 0;
+  const targetPlayer = state.players.get(targetPlayerId);
+  if (!targetPlayer) return 0;
+  
+  // Sum all commander damage tracked against this player
+  let total = 0;
+  for (const [, damage] of targetPlayer.commanderDamage) {
+    total += damage;
+  }
+  return total;
 }
 
 /**
@@ -381,12 +389,19 @@ export function getCommanderDamageSummary(
       const commander = state.cards.get(commanderId);
       
       // Calculate damage to each opponent
+      // Note: In the current implementation, damage is stored per commander
+      // as total damage to all opponents combined. The damage value represents
+      // cumulative damage from this specific commander to any target.
       const damageToOpponents = new Map<PlayerId, number>();
       
-      // Note: In the current implementation, damage is stored per commander
-      // but not broken down by target. This is a simplified view.
-      // A full implementation would track damage per opponent per commander.
-      damageToOpponents.set(playerId, 0); // Placeholder
+      // Store the total damage from this commander
+      // playerId here is the target player who took damage from this commander
+      // We iterate over all players to populate damage for each opponent
+      for (const [targetPlayerId] of state.players) {
+        // Only set if there's actual damage tracked for this target
+        const damageToThisTarget = player.commanderDamage.get(targetPlayerId) || 0;
+        damageToOpponents.set(targetPlayerId, damageToThisTarget);
+      }
       
       commanders.push({
         commanderId,
