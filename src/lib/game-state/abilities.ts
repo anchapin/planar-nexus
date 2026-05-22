@@ -33,7 +33,11 @@ export type TriggerEvent =
   | "drawCard"
   | "cast"
   | "lifeGain"
-  | "lifeLost";
+  | "lifeLost"
+  | "beginningOfTurn"
+  | "endOfTurn"
+  | "creatureDies"
+  | "spellCast";
 
 /**
  * Result of activating an ability
