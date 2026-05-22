@@ -291,31 +291,69 @@ export function drawCard(state: GameState, playerId: PlayerId): GameState {
 }
 
 /**
- * Get APNAP Order (Active Player, Non-Active Players)
+ * Get players in APNAP (Active Player, Non-Active Player) order per CR 101.4.
+ * Active player is first, then non-active players in turn order.
  *
- * Per CR 101.4: In multiplayer formats, the active player acts first,
- * then each non-active player in turn order.
+ * CR 101.4: Multiplayer formats use a system of "priority" that determines
+ * the order in which players may cast spells and abilities.
+ * The active player gets priority first at the beginning of each phase/step.
+ * Then each other player in turn order (going clockwise in a multiplayer game)
+ * gets priority. This continues until all players have passed.
  *
  * @param state - Current game state
  * @returns Array of player IDs in APNAP order
  */
 export function getAPNAPOrder(state: GameState): PlayerId[] {
-  const playerIds = Array.from(state.players.keys());
   const activePlayerId = state.turn.activePlayerId;
+  // Filter out players who have lost the game (they don't participate in APNAP)
+  const activePlayerIds = Array.from(state.players.keys()).filter(
+    (id) => !state.players.get(id)!.hasLost,
+  );
 
-  const activeIndex = playerIds.indexOf(activePlayerId);
-  if (activeIndex === -1) {
-    return playerIds;
+  // Find active player's position in the active player order
+  const activeIndex = activePlayerIds.indexOf(activePlayerId);
+
+  // Build APNAP order: active player first, then others in turn order
+  const apnapOrder: PlayerId[] = [activePlayerId];
+
+  // Add remaining players in clockwise order starting from the player after active
+  for (let i = 1; i < activePlayerIds.length; i++) {
+    const nextIndex = (activeIndex + i) % activePlayerIds.length;
+    const nextPlayerId = activePlayerIds[nextIndex];
+    apnapOrder.push(nextPlayerId);
   }
 
-  // APNAP order: active player first, then remaining players in turn order
-  const apnapOrder = [
-    activePlayerId,
-    ...playerIds.slice(activeIndex + 1),
-    ...playerIds.slice(0, activeIndex),
-  ];
-
   return apnapOrder;
+}
+
+/**
+ * Get the next player in APNAP order after the current priority holder
+ *
+ * @param state - Current game state
+ * @returns ID of the next player in APNAP order, or null if no valid player
+ */
+function getNextAPNAPPlayer(state: GameState): PlayerId | null {
+  const apnapOrder = getAPNAPOrder(state);
+  const currentIndex = apnapOrder.indexOf(state.priorityPlayerId!);
+
+  if (currentIndex === -1) {
+    // Priority player not found in APNAP order (shouldn't happen), default to active
+    return state.turn.activePlayerId;
+  }
+
+  // Find the next player who hasn't passed and hasn't lost
+  for (let i = 1; i < apnapOrder.length; i++) {
+    const nextIndex = (currentIndex + i) % apnapOrder.length;
+    const nextPlayerId = apnapOrder[nextIndex];
+    const nextPlayer = state.players.get(nextPlayerId);
+
+    if (nextPlayer && !nextPlayer.hasLost && !nextPlayer.hasPassedPriority) {
+      return nextPlayerId;
+    }
+  }
+
+  // No valid next player found
+  return null;
 }
 
 /**
@@ -328,8 +366,8 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
     throw new Error(`Player ${playerId} not found`);
   }
 
-  // Validate player has priority
-  if (state.priorityPlayerId !== null && playerId !== state.priorityPlayerId) {
+  // Verify this player has priority
+  if (state.priorityPlayerId !== playerId) {
     throw new Error(`Player ${playerId} does not have priority`);
   }
 
@@ -346,46 +384,34 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
     lastModifiedAt: Date.now(),
   };
 
-  // Check if all active (non-lost) players have passed
+  // Check if all players have passed
   const activePlayers = Array.from(updatedPlayers.values()).filter(
     (p) => !p.hasLost,
   );
-  const allActivePassed = activePlayers.every((p) => p.hasPassedPriority);
+  const allPassed = activePlayers.every((p) => p.hasPassedPriority);
 
   // Check state-based actions after each priority pass
   // SBAs must be checked before advancing phase or passing to next player
   const sbaResult = checkSBAs(newState);
   const stateAfterSBA = sbaResult.state;
 
-  if (allActivePassed && stateAfterSBA.stack.length === 0) {
-    // All active players passed with empty stack - advance phase
+  if (allPassed && stateAfterSBA.stack.length === 0) {
+    // All players passed with empty stack - advance phase
     return advanceToNextPhase(stateAfterSBA);
   }
 
-  if (allActivePassed && stateAfterSBA.stack.length > 0) {
-    // All active players passed - resolve top of stack
+  if (allPassed && stateAfterSBA.stack.length > 0) {
+    // All players passed - resolve top of stack
     return resolveSpellStack(stateAfterSBA);
   }
 
   // Pass priority to next player in APNAP order
-  const apnapOrder = getAPNAPOrder(stateAfterSBA);
-  const currentApnapIndex = apnapOrder.indexOf(playerId);
+  const nextPlayerId = getNextAPNAPPlayer(stateAfterSBA);
 
-  // Find next active player in APNAP order
-  let nextPlayerId: PlayerId | null = null;
-  for (let i = 1; i < apnapOrder.length; i++) {
-    const nextIndex = (currentApnapIndex + i) % apnapOrder.length;
-    const nextCandidate = apnapOrder[nextIndex];
-    const nextPlayer = stateAfterSBA.players.get(nextCandidate);
-    if (nextPlayer && !nextPlayer.hasLost) {
-      nextPlayerId = nextCandidate;
-      break;
-    }
-  }
-
-  // If no active player found, priority stays with current (shouldn't happen in normal play)
   if (nextPlayerId === null) {
-    nextPlayerId = stateAfterSBA.priorityPlayerId;
+    // No valid next player - all remaining players have passed
+    // This shouldn't happen in normal flow but handle it gracefully
+    return advanceToNextPhase(stateAfterSBA);
   }
 
   return {
