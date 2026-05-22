@@ -553,7 +553,7 @@ describe("Spell Casting - Targeting", () => {
       });
 
       const result = canTarget("card", creature.id, state, aliceId);
-      expect(result).toBe(true);
+      expect(result.canTarget).toBe(true);
     });
 
     it("should allow targeting a player", () => {
@@ -565,7 +565,7 @@ describe("Spell Casting - Targeting", () => {
       const bobId = playerIds[1];
 
       const result = canTarget("player", bobId, state, aliceId);
-      expect(result).toBe(true);
+      expect(result.canTarget).toBe(true);
     });
 
     it("should allow targeting a spell on the stack", () => {
@@ -593,7 +593,7 @@ describe("Spell Casting - Targeting", () => {
       state.stack = [stackObject];
 
       const result = canTarget("stack", "stack-spell-1", state, aliceId);
-      expect(result).toBe(true);
+      expect(result.canTarget).toBe(true);
     });
 
     it("should not allow targeting non-existent card", () => {
@@ -603,7 +603,8 @@ describe("Spell Casting - Targeting", () => {
       const aliceId = Array.from(state.players.keys())[0];
 
       const result = canTarget("card", "non-existent-card", state, aliceId);
-      expect(result).toBe(false);
+      expect(result.canTarget).toBe(false);
+      expect(result.reason).toBe("Card not found");
     });
 
     it("should not allow targeting non-existent player", () => {
@@ -613,7 +614,8 @@ describe("Spell Casting - Targeting", () => {
       const aliceId = Array.from(state.players.keys())[0];
 
       const result = canTarget("player", "non-existent-player", state, aliceId);
-      expect(result).toBe(false);
+      expect(result.canTarget).toBe(false);
+      expect(result.reason).toBe("Player not found");
     });
   });
 
