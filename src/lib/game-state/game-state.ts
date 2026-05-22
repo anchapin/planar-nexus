@@ -305,18 +305,21 @@ export function drawCard(state: GameState, playerId: PlayerId): GameState {
  */
 export function getAPNAPOrder(state: GameState): PlayerId[] {
   const activePlayerId = state.turn.activePlayerId;
-  const allPlayerIds = Array.from(state.players.keys());
+  // Filter out players who have lost the game (they don't participate in APNAP)
+  const activePlayerIds = Array.from(state.players.keys()).filter(
+    (id) => !state.players.get(id)!.hasLost,
+  );
 
-  // Find active player's position in the player order
-  const activeIndex = allPlayerIds.indexOf(activePlayerId);
+  // Find active player's position in the active player order
+  const activeIndex = activePlayerIds.indexOf(activePlayerId);
 
   // Build APNAP order: active player first, then others in turn order
   const apnapOrder: PlayerId[] = [activePlayerId];
 
   // Add remaining players in clockwise order starting from the player after active
-  for (let i = 1; i < allPlayerIds.length; i++) {
-    const nextIndex = (activeIndex + i) % allPlayerIds.length;
-    const nextPlayerId = allPlayerIds[nextIndex];
+  for (let i = 1; i < activePlayerIds.length; i++) {
+    const nextIndex = (activeIndex + i) % activePlayerIds.length;
+    const nextPlayerId = activePlayerIds[nextIndex];
     apnapOrder.push(nextPlayerId);
   }
 
