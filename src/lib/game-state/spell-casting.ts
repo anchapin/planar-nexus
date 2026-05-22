@@ -538,7 +538,7 @@ export function resolveTopOfStack(state: GameState): GameState {
       stackObject.sourceCardId || undefined,
       stackObject.targets,
     );
-    currentState = result.state;
+    currentState = result;
   }
 
   // Check if this is a board sweeper spell (legacy string-based check)
@@ -585,7 +585,7 @@ export function resolveTopOfStack(state: GameState): GameState {
             stackObject.sourceCardId,
             stackObject.targets,
           );
-          currentState = result.state;
+          currentState = result;
         }
       }
     }

@@ -639,7 +639,7 @@ describe("Effect Resolution - Stack Object Effects", () => {
         undefined as any,
       );
 
-      const playerAfter = result.state.players.get(aliceId);
+      const playerAfter = result.players.get(aliceId);
       const lifeAfter = playerAfter?.life || 0;
 
       expect(lifeAfter).toBe(lifeBefore + 5);
@@ -663,7 +663,7 @@ describe("Effect Resolution - Stack Object Effects", () => {
         targets,
       );
 
-      const bobAfter = result.state.players.get(bobId);
+      const bobAfter = result.players.get(bobId);
       const bobLifeAfter = bobAfter?.life || 0;
 
       expect(bobLifeAfter).toBe(bobLifeBefore - 4);
@@ -706,6 +706,6 @@ describe("Effect Resolution - Edge Cases", () => {
 
     const result = resolveStackObjectEffects(state, [], undefined as any);
 
-    expect(result.state).toBe(state);
+    expect(result).toBe(state);
   });
 });
