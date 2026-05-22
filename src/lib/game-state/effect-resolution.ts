@@ -457,7 +457,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId || undefined,
+        effect.targetId ?? state.turn.activePlayerId,
       );
 
     case "life_gain":
@@ -465,7 +465,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId || undefined,
+        effect.targetId ?? state.turn.activePlayerId,
       );
 
     case "life_loss":
@@ -473,7 +473,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId || undefined,
+        effect.targetId ?? state.turn.activePlayerId,
       );
 
     case "token_creation":
@@ -562,7 +562,9 @@ export function resolveStackObjectEffects(
         effect.effectType === "life_gain" ||
         effect.effectType === "life_loss"
       ) {
-        effect.targetId = target.targetId as PlayerId;
+        if (!effect.targetId) {
+          effect.targetId = target.targetId as PlayerId;
+        }
       } else if (effect.effectType === "damage") {
         effect.targetId = target.targetId as CardInstanceId | PlayerId;
       } else if (effect.effectType === "counter_spell") {
