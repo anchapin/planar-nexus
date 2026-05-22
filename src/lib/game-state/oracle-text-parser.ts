@@ -122,7 +122,10 @@ export interface TriggerCondition {
     | "lifeGain"
     | "lifeLost"
     | "spellCast"
-    | "abilityActivated";
+    | "abilityActivated"
+    | "beginningOfTurn"
+    | "endOfTurn"
+    | "creatureDies";
   condition?: string;
   target?: ParsedTarget;
   source?: string;
@@ -920,7 +923,25 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "blocked" };
   }
 
-  // Is cast / is spell (covers "is cast", "is played", "cast a spell")
+  // Spell cast triggers - "you cast a spell" returns spellCast event
+  if (
+    text.includes("you cast a spell") ||
+    text.includes("you cast any spell")
+  ) {
+    return { event: "spellCast" };
+  }
+
+  // Spell cast triggers - specific patterns that return spellCast
+  if (text.includes("a spell is cast") || text.includes("spell is cast")) {
+    return { event: "spellCast" };
+  }
+
+  // Cast triggers - "you cast" followed by something other than "a spell"
+  if (text.includes("you cast")) {
+    return { event: "cast" };
+  }
+
+  // Is cast / is played / cast a spell (generic cast)
   if (text.includes("cast") || text.includes("is played")) {
     return { event: "cast" };
   }
@@ -938,6 +959,51 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
   // Draw step
   if (text.includes("beginning of your draw step")) {
     return { event: "drawStep" };
+  }
+
+  // Beginning of upkeep
+  if (
+    text.includes("beginning of your upkeep") ||
+    text.includes("at the beginning of your upkeep")
+  ) {
+    return { event: "upkeep" };
+  }
+
+  // Beginning of end step - maps to phaseEnds (end step is part of the end phase)
+  // These must come BEFORE the generic "end of turn" checks
+  if (
+    text.includes("beginning of the end step") ||
+    text.includes("at the beginning of the end step")
+  ) {
+    return { event: "phaseEnds" };
+  }
+
+  // End of turn triggers - check these BEFORE "phase ends" since "end of the turn" contains "phase ends"
+  if (
+    text.includes("at the end of the turn") ||
+    text.includes("end of the turn")
+  ) {
+    return { event: "turnEnds" };
+  }
+
+  // Phase ends - generic phase end trigger - must check AFTER "end of turn" checks
+  if (text.includes("phase ends")) {
+    return { event: "phaseEnds" };
+  }
+
+  // End of turn triggers
+  if (
+    text.includes("at the end of the turn") ||
+    text.includes("end of the turn") ||
+    text.includes("beginning of the turn") ||
+    text.includes("at the beginning of the turn")
+  ) {
+    return { event: "turnEnds" };
+  }
+
+  // Phase ends - generic phase end trigger
+  if (text.includes("phase ends")) {
+    return { event: "phaseEnds" };
   }
 
   // Combat damage step ends
@@ -1185,7 +1251,14 @@ export function hasFuse(card: ScryfallCard): boolean {
  */
 export interface ModeTargetInfo {
   modeIndex: number;
-  targetTypes: ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[];
+  targetTypes: (
+    | "creature"
+    | "player"
+    | "planeswalker"
+    | "artifact"
+    | "enchantment"
+    | "any"
+  )[];
   description: string;
 }
 
@@ -1193,8 +1266,24 @@ export interface ModeTargetInfo {
  * Parse target requirements from a mode's text
  * Looks for patterns like "target creature", "target player", etc.
  */
-function parseTargetsFromMode(modeText: string): ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[] {
-  const targets: ("creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any")[] = [];
+function parseTargetsFromMode(
+  modeText: string,
+): (
+  | "creature"
+  | "player"
+  | "planeswalker"
+  | "artifact"
+  | "enchantment"
+  | "any"
+)[] {
+  const targets: (
+    | "creature"
+    | "player"
+    | "planeswalker"
+    | "artifact"
+    | "enchantment"
+    | "any"
+  )[] = [];
   const lowerText = modeText.toLowerCase();
 
   if (lowerText.includes("target creature")) targets.push("creature");
@@ -1202,7 +1291,8 @@ function parseTargetsFromMode(modeText: string): ("creature" | "player" | "plane
   if (lowerText.includes("target planeswalker")) targets.push("planeswalker");
   if (lowerText.includes("target artifact")) targets.push("artifact");
   if (lowerText.includes("target enchantment")) targets.push("enchantment");
-  if (lowerText.includes("any target") || lowerText.includes("target any")) targets.push("any");
+  if (lowerText.includes("any target") || lowerText.includes("target any"))
+    targets.push("any");
 
   // Default to "any" if no specific target found but effect needs one
   if (targets.length === 0 && lowerText.includes("target")) {
@@ -1216,7 +1306,9 @@ function parseTargetsFromMode(modeText: string): ("creature" | "player" | "plane
  * Get target information for each mode of a modal spell
  * Returns mode index, valid target types, and description
  */
-export function getModesForModalSpell(card: ScryfallCard): ModeTargetInfo[] | null {
+export function getModesForModalSpell(
+  card: ScryfallCard,
+): ModeTargetInfo[] | null {
   const modes = parseModes(card.oracle_text || "");
   if (!modes) return null;
 

@@ -303,10 +303,10 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         }),
         aliceId,
       );
-      // Implementation uses "cast" event, not "spellCast"
-      const result = detectTriggeredAbilities(state, "cast");
+      // Implementation uses "spellCast" event
+      const result = detectTriggeredAbilities(state, "spellCast");
       expect(result.length).toBe(1);
-      expect(result[0].triggerCondition).toBe("cast");
+      expect(result[0].triggerCondition).toBe("spellCast");
       expect(result[0].sourceCardId).toBe(cardId);
     });
 
