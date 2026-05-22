@@ -1,9 +1,9 @@
 /**
  * Commander Damage Tracking System
- * 
+ *
  * Implements commander damage tracking as defined in MTG Commander rules.
  * Reference: CR 903 - Commander
- * 
+ *
  * Features:
  * - Track commander damage from each commander to each opponent
  * - 21+ damage from a single commander = loss condition
@@ -11,7 +11,13 @@
  * - Command zone state management
  */
 
-import type { GameState, PlayerId, CardInstanceId, CardInstance, Player } from './types';
+import type {
+  GameState,
+  PlayerId,
+  CardInstanceId,
+  CardInstance,
+  Player,
+} from "./types";
 
 /**
  * Commander damage tracking state
@@ -56,13 +62,13 @@ export function createCommanderDamageState(): CommanderDamageState {
  * Check if a card is a commander (legendary planeswalker or creature with Commander)
  */
 export function isCommander(card: CardInstance): boolean {
-  const typeLine = card.cardData.type_line?.toLowerCase() || '';
-  
+  const typeLine = card.cardData.type_line?.toLowerCase() || "";
+
   // Check if it's a legendary planeswalker or creature
-  const isLegendary = typeLine.includes('legendary');
-  const isPlaneswalker = typeLine.includes('planeswalker');
-  const isCreature = typeLine.includes('creature');
-  
+  const isLegendary = typeLine.includes("legendary");
+  const isPlaneswalker = typeLine.includes("planeswalker");
+  const isCreature = typeLine.includes("creature");
+
   // In Commander format, legendary creatures and planeswalkers can be commanders
   return isLegendary && (isPlaneswalker || isCreature);
 }
@@ -73,17 +79,22 @@ export function isCommander(card: CardInstance): boolean {
 export function getCommanderIdentity(card: CardInstance): string[] {
   // Get color identity from card
   const colors = card.cardData.colors || [];
-  
+
   // Also check mana cost for color identity
-  const manaCost = card.cardData.mana_cost || '';
+  const manaCost = card.cardData.mana_cost || "";
   const identityFromCost: string[] = [];
-  
-  if (manaCost.includes('W') || manaCost.includes('{W}')) identityFromCost.push('white');
-  if (manaCost.includes('U') || manaCost.includes('{U}')) identityFromCost.push('blue');
-  if (manaCost.includes('B') || manaCost.includes('{B}')) identityFromCost.push('black');
-  if (manaCost.includes('R') || manaCost.includes('{R}')) identityFromCost.push('red');
-  if (manaCost.includes('G') || manaCost.includes('{G}')) identityFromCost.push('green');
-  
+
+  if (manaCost.includes("W") || manaCost.includes("{W}"))
+    identityFromCost.push("white");
+  if (manaCost.includes("U") || manaCost.includes("{U}"))
+    identityFromCost.push("blue");
+  if (manaCost.includes("B") || manaCost.includes("{B}"))
+    identityFromCost.push("black");
+  if (manaCost.includes("R") || manaCost.includes("{R}"))
+    identityFromCost.push("red");
+  if (manaCost.includes("G") || manaCost.includes("{G}"))
+    identityFromCost.push("green");
+
   // Combine and deduplicate
   const combined = [...new Set([...colors, ...identityFromCost])];
   return combined;
@@ -95,17 +106,17 @@ export function getCommanderIdentity(card: CardInstance): string[] {
 export function registerCommander(
   state: GameState,
   playerId: PlayerId,
-  commanderId: CardInstanceId
+  commanderId: CardInstanceId,
 ): GameState {
   const player = state.players.get(playerId);
-  
+
   if (!player) {
     return state;
   }
-  
+
   // Get or create the player's commanders map
   const commanders = player.commanderDamage;
-  
+
   // Initialize damage tracking for this commander to all opponents
   const newDamageMap = new Map<PlayerId, number>();
   for (const [oppId] of state.players) {
@@ -113,17 +124,17 @@ export function registerCommander(
       newDamageMap.set(oppId, 0);
     }
   }
-  
+
   // Update the player's commander damage map
   const updatedDamage = new Map(commanders);
   updatedDamage.set(commanderId, 0);
-  
+
   const updatedPlayers = new Map(state.players);
   updatedPlayers.set(playerId, {
     ...player,
     commanderDamage: updatedDamage,
   });
-  
+
   return {
     ...state,
     players: updatedPlayers,
@@ -133,99 +144,99 @@ export function registerCommander(
 
 /**
  * Deal commander damage
- * 
+ *
  * When a commander deals combat damage to a player, track that damage
  */
 export function dealCommanderDamage(
   state: GameState,
   commanderId: CardInstanceId,
   targetPlayerId: PlayerId,
-  damage: number
+  damage: number,
 ): CommanderDamageResult {
   const descriptions: string[] = [];
   let playerLost: PlayerId | undefined;
   let lossReason: string | undefined;
-  
+
   // Find the commander
   const commander = state.cards.get(commanderId);
   if (!commander) {
     return {
       success: false,
       state,
-      descriptions: ['Commander not found'],
+      descriptions: ["Commander not found"],
     };
   }
-  
+
   // Verify this is actually a commander
   if (!isCommander(commander)) {
     return {
       success: false,
       state,
-      descriptions: ['Card is not a commander'],
+      descriptions: ["Card is not a commander"],
     };
   }
-  
+
   // Find the commander damage map for this commander
   // We need to find the player who controls this commander
   let commanderOwnerId: PlayerId | null = null;
-  
+
   for (const [playerId, player] of state.players) {
     // Check if this player controls the commander (on battlefield or command zone)
     const commanders = player.commanderDamage;
-    
+
     // Check if this commander is in the player's commander damage map
     if (commanders.has(commanderId)) {
       commanderOwnerId = playerId;
       break;
     }
   }
-  
+
   if (!commanderOwnerId) {
     return {
       success: false,
       state,
-      descriptions: ['Commander owner not found'],
+      descriptions: ["Commander owner not found"],
     };
   }
-  
+
   const player = state.players.get(commanderOwnerId);
   if (!player) {
     return {
       success: false,
       state,
-      descriptions: ['Player not found'],
+      descriptions: ["Player not found"],
     };
   }
-  
+
   // Get current damage
   const currentDamage = player.commanderDamage.get(commanderId) || 0;
   const newDamage = currentDamage + damage;
-  
+
   // Update the damage
   const updatedDamage = new Map(player.commanderDamage);
   updatedDamage.set(commanderId, newDamage);
-  
+
   const targetPlayer = state.players.get(targetPlayerId);
-  const targetName = targetPlayer?.name || 'opponent';
-  
+  const targetName = targetPlayer?.name || "opponent";
+
   descriptions.push(
-    `${commander.cardData.name} deals ${damage} commander damage to ${targetName} (total: ${newDamage})`
+    `${commander.cardData.name} deals ${damage} commander damage to ${targetName} (total: ${newDamage})`,
   );
-  
+
   // Check if this causes a loss (21+ damage)
   if (newDamage >= DEFAULT_COMMANDER_DAMAGE_THRESHOLD) {
     playerLost = targetPlayerId;
     lossReason = `${commander.cardData.name} has dealt ${newDamage} commander damage (21+)`;
     descriptions.push(`${targetName} loses the game due to commander damage!`);
   }
-  
+
   // Update the player
   const updatedPlayers = new Map(state.players);
   updatedPlayers.set(commanderOwnerId, {
     ...player,
     commanderDamage: updatedDamage,
   });
-  
+
   // If player lost, update their state
   if (playerLost) {
     const losingPlayer = updatedPlayers.get(playerLost);
@@ -233,17 +244,17 @@ export function dealCommanderDamage(
       updatedPlayers.set(playerLost, {
         ...losingPlayer,
         hasLost: true,
-        lossReason: lossReason || 'Commander damage',
+        lossReason: lossReason || "Commander damage",
       });
     }
   }
-  
+
   // Check win condition
   const finalState = checkCommanderWinCondition(
     { ...state, players: updatedPlayers },
-    commanderOwnerId
+    commanderOwnerId,
   );
-  
+
   return {
     success: true,
     state: finalState,
@@ -259,27 +270,27 @@ export function dealCommanderDamage(
 export function getCommanderDamage(
   state: GameState,
   playerId: PlayerId,
-  commanderId: CardInstanceId
+  commanderId: CardInstanceId,
 ): number {
   const player = state.players.get(playerId);
   if (!player) return 0;
-  
+
   return player.commanderDamage.get(commanderId) || 0;
 }
 
 /**
  * Get total commander damage to a player from all commanders
- * 
+ *
  * Sums up all commander damage dealt to a target player across all commanders.
  * Commander damage is tracked per-commander on the target player's state.
  */
 export function getTotalCommanderDamage(
   state: GameState,
-  targetPlayerId: PlayerId
+  targetPlayerId: PlayerId,
 ): number {
   const targetPlayer = state.players.get(targetPlayerId);
   if (!targetPlayer) return 0;
-  
+
   // Sum all commander damage tracked against this player
   let total = 0;
   for (const [, damage] of targetPlayer.commanderDamage) {
@@ -293,18 +304,18 @@ export function getTotalCommanderDamage(
  */
 export function hasLostFromCommanderDamage(
   state: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): boolean {
   const player = state.players.get(playerId);
   if (!player) return false;
-  
+
   // Check all commanders' damage against this player
   for (const [, damage] of player.commanderDamage) {
     if (damage >= DEFAULT_COMMANDER_DAMAGE_THRESHOLD) {
       return true;
     }
   }
-  
+
   return false;
 }
 
@@ -313,22 +324,24 @@ export function hasLostFromCommanderDamage(
  */
 function checkCommanderWinCondition(
   state: GameState,
-  winningPlayerId: PlayerId
+  winningPlayerId: PlayerId,
 ): GameState {
   // Count players who haven't lost
-  const activePlayers = Array.from(state.players.values()).filter(p => !p.hasLost);
-  
+  const activePlayers = Array.from(state.players.values()).filter(
+    (p) => !p.hasLost,
+  );
+
   // If only one player remains, they win
   if (activePlayers.length === 1) {
     return {
       ...state,
-      status: 'completed',
+      status: "completed",
       winners: [winningPlayerId],
-      endReason: 'All opponents defeated via commander damage',
+      endReason: "All opponents defeated via commander damage",
       lastModifiedAt: Date.now(),
     };
   }
-  
+
   return state;
 }
 
@@ -337,20 +350,20 @@ function checkCommanderWinCondition(
  */
 export function resetCommanderDamage(state: GameState): GameState {
   const updatedPlayers = new Map<PlayerId, Player>();
-  
+
   for (const [playerId, player] of state.players) {
     // Reset all commander damage to 0
     const resetDamage = new Map<PlayerId, number>();
     for (const [commanderId] of player.commanderDamage) {
       resetDamage.set(commanderId, 0);
     }
-    
+
     updatedPlayers.set(playerId, {
       ...player,
       commanderDamage: resetDamage,
     });
   }
-  
+
   return {
     ...state,
     players: updatedPlayers,
@@ -377,42 +390,43 @@ export interface CommanderDamageSummary {
  * Get full commander damage summary for a game
  */
 export function getCommanderDamageSummary(
-  state: GameState
+  state: GameState,
 ): CommanderDamageSummary[] {
   const summaries: CommanderDamageSummary[] = [];
-  
+
   for (const [playerId, player] of state.players) {
-    const commanders: CommanderDamageSummary['commanders'] = [];
+    const commanders: CommanderDamageSummary["commanders"] = [];
     let totalDamageDealt = 0;
-    
+
     for (const [commanderId, damage] of player.commanderDamage) {
       const commander = state.cards.get(commanderId);
-      
+
       // Calculate damage to each opponent
       // Note: In the current implementation, damage is stored per commander
       // as total damage to all opponents combined. The damage value represents
       // cumulative damage from this specific commander to any target.
       const damageToOpponents = new Map<PlayerId, number>();
-      
+
       // Store the total damage from this commander
       // playerId here is the target player who took damage from this commander
       // We iterate over all players to populate damage for each opponent
       for (const [targetPlayerId] of state.players) {
         // Only set if there's actual damage tracked for this target
-        const damageToThisTarget = player.commanderDamage.get(targetPlayerId) || 0;
+        const damageToThisTarget =
+          player.commanderDamage.get(targetPlayerId) || 0;
         damageToOpponents.set(targetPlayerId, damageToThisTarget);
       }
-      
+
       commanders.push({
         commanderId,
-        commanderName: commander?.cardData.name || 'Unknown Commander',
+        commanderName: commander?.cardData.name || "Unknown Commander",
         damageToOpponents,
         totalDamage: damage,
       });
-      
+
       totalDamageDealt += damage;
     }
-    
+
     summaries.push({
       playerId,
       playerName: player.name,
@@ -420,7 +434,7 @@ export function getCommanderDamageSummary(
       totalDamageDealt,
     });
   }
-  
+
   return summaries;
 }
 
@@ -429,25 +443,25 @@ export function getCommanderDamageSummary(
  */
 export function canCastCommander(
   commanderColors: string[],
-  availableColors: string[]
+  availableColors: string[],
 ): boolean {
   // All commander colors must be available
-  return commanderColors.every(color => availableColors.includes(color));
+  return commanderColors.every((color) => availableColors.includes(color));
 }
 
 /**
  * Get opponents who have lost from commander damage
  */
 export function getPlayersLostFromCommanderDamage(
-  state: GameState
+  state: GameState,
 ): PlayerId[] {
   const lostPlayers: PlayerId[] = [];
-  
+
   for (const [playerId, player] of state.players) {
-    if (player.hasLost && player.lossReason?.includes('commander')) {
+    if (player.hasLost && player.lossReason?.includes("commander")) {
       lostPlayers.push(playerId);
     }
   }
-  
+
   return lostPlayers;
 }

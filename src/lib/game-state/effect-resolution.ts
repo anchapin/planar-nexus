@@ -34,7 +34,7 @@ export interface EffectResolutionResult {
  */
 export function resolveCardDrawEffect(
   state: GameState,
-  sourceId: CardInstanceId | undefined,
+  sourceId: CardInstanceId,
   amount: number,
   targetPlayerId?: PlayerId,
 ): EffectResolutionResult {
@@ -455,9 +455,9 @@ export function resolveEffect(
     case "card_draw":
       return resolveCardDrawEffect(
         state,
-        sourceId,
+        sourceId ?? ("unknown" as CardInstanceId),
         effect.amount,
-        effect.targetId ?? state.turn.activePlayerId,
+        effect.targetId || undefined,
       );
 
     case "life_gain":
@@ -465,7 +465,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId ?? state.turn.activePlayerId,
+        effect.targetId || undefined,
       );
 
     case "life_loss":
@@ -473,7 +473,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId ?? state.turn.activePlayerId,
+        effect.targetId || undefined,
       );
 
     case "token_creation":
@@ -562,9 +562,7 @@ export function resolveStackObjectEffects(
         effect.effectType === "life_gain" ||
         effect.effectType === "life_loss"
       ) {
-        if (!effect.targetId) {
-          effect.targetId = target.targetId as PlayerId;
-        }
+        effect.targetId = target.targetId as PlayerId;
       } else if (effect.effectType === "damage") {
         effect.targetId = target.targetId as CardInstanceId | PlayerId;
       } else if (effect.effectType === "counter_spell") {

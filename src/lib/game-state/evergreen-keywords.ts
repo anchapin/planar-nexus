@@ -255,11 +255,16 @@ function isMTGColor(value: string): boolean {
  */
 export function normalizeColor(color: string): string {
   const colorMap: Record<string, string> = {
-    'w': 'white', 'white': 'white',
-    'u': 'blue', 'blue': 'blue',
-    'b': 'black', 'black': 'black',
-    'r': 'red', 'red': 'red',
-    'g': 'green', 'green': 'green',
+    w: "white",
+    white: "white",
+    u: "blue",
+    blue: "blue",
+    b: "black",
+    black: "black",
+    r: "red",
+    red: "red",
+    g: "green",
+    green: "green",
   };
   return colorMap[color.toLowerCase()] || color.toLowerCase();
 }
@@ -313,7 +318,10 @@ export function hasProtectionFrom(card: CardInstance, color: string): boolean {
  * Check if a card is protected from any quality of a source card
  * Used for targeting, enchanting, and equipping restrictions
  */
-export function isProtectedFromSource(target: CardInstance, source: CardInstance): boolean {
+export function isProtectedFromSource(
+  target: CardInstance,
+  source: CardInstance,
+): boolean {
   const targetQualities = getProtectionQualities(target);
   if (targetQualities.length === 0) return false;
 
@@ -324,11 +332,16 @@ export function isProtectedFromSource(target: CardInstance, source: CardInstance
     const normalizedColor = color.toLowerCase();
     // Handle both "red" and "R" formats
     const colorMap: Record<string, string> = {
-      'w': 'white', 'white': 'white',
-      'u': 'blue', 'blue': 'blue', 
-      'b': 'black', 'black': 'black',
-      'r': 'red', 'red': 'red',
-      'g': 'green', 'green': 'green',
+      w: "white",
+      white: "white",
+      u: "blue",
+      blue: "blue",
+      b: "black",
+      black: "black",
+      r: "red",
+      red: "red",
+      g: "green",
+      green: "green",
     };
     const normalized = colorMap[normalizedColor] || normalizedColor;
     if (targetQualities.some((q) => q.toLowerCase() === normalized)) {
@@ -349,6 +362,30 @@ export function canBeTargetedByColor(
 ): boolean {
   if (hasProtectionFrom(card, color)) return false;
   return true;
+}
+
+/**
+ * Check if a card can be targeted based on hexproof/shroud from a player
+ * CR 702.11 (Hexproof), CR 702.18 (Shroud)
+ */
+export function canTargetKeyword(
+  card: CardInstance,
+  sourcePlayerId: PlayerId,
+  effectColor?: string,
+): { canTarget: boolean; reason?: string } {
+  if (card.controllerId === sourcePlayerId) {
+    return { canTarget: true };
+  }
+
+  if (hasHexproof(card) && effectColor) {
+    return { canTarget: false, reason: "Target has hexproof" };
+  }
+
+  if (effectColor && hasProtectionFrom(card, effectColor)) {
+    return { canTarget: false, reason: "Target has protection" };
+  }
+
+  return { canTarget: true };
 }
 
 /**
@@ -441,7 +478,10 @@ export function canTarget(
   if (effectColor) {
     const normalizedEffectColor = normalizeColor(effectColor);
     if (hasProtectionFrom(card, normalizedEffectColor)) {
-      return { canTarget: false, reason: `Target has protection from ${effectColor}` };
+      return {
+        canTarget: false,
+        reason: `Target has protection from ${effectColor}`,
+      };
     }
   }
 
@@ -467,7 +507,10 @@ export function canBlockProtectedAttacker(
   for (const color of blockerColors) {
     const normalizedColor = normalizeColor(color);
     if (hasProtectionFrom(attacker, normalizedColor)) {
-      return { canBlock: false, reason: `Attacker has protection from ${normalizedColor}` };
+      return {
+        canBlock: false,
+        reason: `Attacker has protection from ${normalizedColor}`,
+      };
     }
   }
 
@@ -727,7 +770,10 @@ export function getWardCost(_card: CardInstance): number | null {
 }
 
 /** @deprecated Stub - ward mechanic not yet implemented */
-export function isProtectedByWard(_source: CardInstance, _card: CardInstance): boolean {
+export function isProtectedByWard(
+  _source: CardInstance,
+  _card: CardInstance,
+): boolean {
   void _source;
   void _card;
   return false;

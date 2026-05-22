@@ -521,39 +521,18 @@ export type StackEffectType =
  * Each effect type carries the data needed to resolve that effect
  */
 export type StackEffect =
-  | {
-      effectType: "damage";
-      amount: number;
-      targetId: CardInstanceId | PlayerId;
-      isCombatDamage: boolean;
-    }
-  | { effectType: "life_gain"; amount: number; targetId?: PlayerId }
-  | { effectType: "life_loss"; amount: number; targetId?: PlayerId }
-  | { effectType: "card_draw"; amount: number; targetId?: PlayerId }
-  | {
-      effectType: "token_creation";
-      power: number;
-      toughness: number;
-      color: string;
-      count: number;
-      controllerId: PlayerId;
-    }
+  | { effectType: "damage"; amount: number; targetId: CardInstanceId | PlayerId; isCombatDamage: boolean }
+  | { effectType: "life_gain"; amount: number; targetId: PlayerId }
+  | { effectType: "life_loss"; amount: number; targetId: PlayerId }
+  | { effectType: "card_draw"; amount: number; targetId: PlayerId }
+  | { effectType: "token_creation"; power: number; toughness: number; color: string; count: number; controllerId: PlayerId }
   | { effectType: "counter_spell"; targetStackObjectId: string }
-  | {
-      effectType: "destroy";
-      targetId: CardInstanceId;
-      ignoreIndestructible: boolean;
-    }
+  | { effectType: "destroy"; targetId: CardInstanceId; ignoreIndestructible: boolean }
   | { effectType: "exile"; targetId: CardInstanceId }
-  | { effectType: "draw"; amount: number; targetId?: PlayerId }
-  | {
-      effectType: "createToken";
-      tokenData: ScryfallCard;
-      count: number;
-      controllerId: PlayerId;
-    }
-  | { effectType: "gainLife"; amount: number; targetId?: PlayerId }
-  | { effectType: "loseLife"; amount: number; targetId?: PlayerId };
+  | { effectType: "draw"; amount: number; targetId: PlayerId }
+  | { effectType: "createToken"; tokenData: ScryfallCard; count: number; controllerId: PlayerId }
+  | { effectType: "gainLife"; amount: number; targetId: PlayerId }
+  | { effectType: "loseLife"; amount: number; targetId: PlayerId };
 
 /**
  * Combat state
