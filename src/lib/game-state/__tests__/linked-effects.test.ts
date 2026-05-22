@@ -286,7 +286,7 @@ describe("Linked Effects System (CR 607)", () => {
         "damage_life",
         { damageAmount: 3 },
       );
-      let newState = registerLinkedEffect(state, effect);
+      const newState = registerLinkedEffect(state, effect);
 
       // Now resolve the second ability
       const result = handleSecondAbilityResolution(newState, "card-1", "ability-2");
