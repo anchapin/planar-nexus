@@ -65,17 +65,28 @@ export const DEFAULT_STUN_SERVERS: ICEServerConfig[] = [
 ];
 
 /**
- * Default TURN servers (placeholder - should be configured with actual credentials)
- * In production, these would be your own TURN servers or a TURN service
+ * Default TURN servers - populated from environment variables when available.
+ * Users behind symmetric NATs require TURN servers for connectivity.
+ * Set NEXT_PUBLIC_TURN_URL, NEXT_PUBLIC_TURN_USER, NEXT_PUBLIC_TURN_PASS to configure.
  */
-export const DEFAULT_TURN_SERVERS: ICEServerConfig[] = [
-  // Example TURN server configuration
-  // {
-  //   urls: ['turn:turn.example.com:3478', 'turns:turn.example.com:5349'],
-  //   username: 'username',
-  //   credential: 'credential',
-  // },
-];
+export const DEFAULT_TURN_SERVERS: ICEServerConfig[] = (() => {
+  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+  const turnUser = process.env.NEXT_PUBLIC_TURN_USER;
+  const turnPass = process.env.NEXT_PUBLIC_TURN_PASS;
+
+  if (turnUrl && turnUser && turnPass) {
+    return [
+      {
+        urls: turnUrl,
+        username: turnUser,
+        credential: turnPass,
+        credentialType: 'password',
+      },
+    ];
+  }
+
+  return [];
+})();
 
 /**
  * ICE Configuration Manager
