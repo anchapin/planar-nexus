@@ -184,7 +184,12 @@ describe("Effect Resolution - Life Loss", () => {
       });
       const modifiedState = { ...state, players: updatedPlayers };
 
-      const result = resolveLifeLossEffect(modifiedState, undefined as any, 5, aliceId);
+      const result = resolveLifeLossEffect(
+        modifiedState,
+        undefined as any,
+        5,
+        aliceId,
+      );
 
       expect(result.success).toBe(true);
 
@@ -324,19 +329,29 @@ describe("Effect Resolution - Counter Spell", () => {
       };
       const stateWithStack = { ...state, stack: [stackObject] };
 
-      const result = resolveCounterEffect(stateWithStack, undefined as any, "stack-spell-1");
+      const result = resolveCounterEffect(
+        stateWithStack,
+        undefined as any,
+        "stack-spell-1",
+      );
 
       expect(result.success).toBe(true);
 
       // Check the spell is marked as countered
-      const updatedSpell = result.state.stack.find(s => s.id === "stack-spell-1");
+      const updatedSpell = result.state.stack.find(
+        (s) => s.id === "stack-spell-1",
+      );
       expect(updatedSpell?.isCountered).toBe(true);
     });
 
     it("should handle non-existent stack object", () => {
       const { state } = setupBasicGame();
 
-      const result = resolveCounterEffect(state, undefined as any, "non-existent");
+      const result = resolveCounterEffect(
+        state,
+        undefined as any,
+        "non-existent",
+      );
 
       // Should return success but describe that it couldn't find the spell
       expect(result.state).toBeDefined();
@@ -416,7 +431,12 @@ describe("Effect Resolution - Damage", () => {
       const creatureBefore = state.cards.get("test-creature");
       const damageBefore = creatureBefore?.damage || 0;
 
-      const result = resolveDamageEffect(state, undefined as any, "test-creature", 3);
+      const result = resolveDamageEffect(
+        state,
+        undefined as any,
+        "test-creature",
+        3,
+      );
 
       expect(result.success).toBe(true);
 
@@ -434,7 +454,12 @@ describe("Effect Resolution - Damage", () => {
       const playerBefore = state.players.get(aliceId);
       const lifeBefore = playerBefore?.life || 0;
 
-      const result = resolvePlayerDamageEffect(state, undefined as any, aliceId, 4);
+      const result = resolvePlayerDamageEffect(
+        state,
+        undefined as any,
+        aliceId,
+        4,
+      );
 
       expect(result.success).toBe(true);
 
@@ -452,14 +477,14 @@ describe("Effect Resolution - Oracle Text Parsing", () => {
       const effects = parseSpellEffects("Draw a card.");
 
       expect(effects.length).toBeGreaterThan(0);
-      expect(effects.some(e => e.effectType === "card_draw")).toBe(true);
+      expect(effects.some((e) => e.effectType === "card_draw")).toBe(true);
     });
 
     it("should parse multi-card draw", () => {
       const effects = parseSpellEffects("Draw three cards.");
 
       expect(effects.length).toBeGreaterThan(0);
-      const drawEffect = effects.find(e => e.effectType === "card_draw");
+      const drawEffect = effects.find((e) => e.effectType === "card_draw");
       expect(drawEffect).toBeDefined();
       expect((drawEffect as any).amount).toBe(3);
     });
@@ -468,21 +493,23 @@ describe("Effect Resolution - Oracle Text Parsing", () => {
       const effects = parseSpellEffects("Gain 5 life.");
 
       expect(effects.length).toBeGreaterThan(0);
-      expect(effects.some(e => e.effectType === "life_gain")).toBe(true);
+      expect(effects.some((e) => e.effectType === "life_gain")).toBe(true);
     });
 
     it("should parse life loss effect", () => {
       const effects = parseSpellEffects("Target player loses 3 life.");
 
       expect(effects.length).toBeGreaterThan(0);
-      expect(effects.some(e => e.effectType === "life_loss")).toBe(true);
+      expect(effects.some((e) => e.effectType === "life_loss")).toBe(true);
     });
 
     it("should parse token creation effect", () => {
       const effects = parseSpellEffects("Create two 1/1 white Soldier tokens.");
 
       expect(effects.length).toBeGreaterThan(0);
-      const tokenEffect = effects.find(e => e.effectType === "token_creation");
+      const tokenEffect = effects.find(
+        (e) => e.effectType === "token_creation",
+      );
       expect(tokenEffect).toBeDefined();
       expect((tokenEffect as any).count).toBe(2);
       expect((tokenEffect as any).power).toBe(1);
@@ -493,13 +520,13 @@ describe("Effect Resolution - Oracle Text Parsing", () => {
       const effects = parseSpellEffects("Deal 3 damage to any target.");
 
       expect(effects.length).toBeGreaterThan(0);
-      expect(effects.some(e => e.effectType === "damage")).toBe(true);
+      expect(effects.some((e) => e.effectType === "damage")).toBe(true);
     });
 
     it("should parse X spells using variableValues", () => {
       const effects = parseSpellEffects("Deal X damage.", new Map([["X", 5]]));
 
-      const damageEffect = effects.find(e => e.effectType === "damage");
+      const damageEffect = effects.find((e) => e.effectType === "damage");
       expect(damageEffect).toBeDefined();
       expect((damageEffect as any).amount).toBe(5);
     });
@@ -508,7 +535,7 @@ describe("Effect Resolution - Oracle Text Parsing", () => {
       const effects = parseSpellEffects("Counter target spell.");
 
       expect(effects.length).toBeGreaterThan(0);
-      expect(effects.some(e => e.effectType === "counter_spell")).toBe(true);
+      expect(effects.some((e) => e.effectType === "counter_spell")).toBe(true);
     });
 
     it("should return empty array for unknown effects", () => {
@@ -533,9 +560,13 @@ describe("Effect Resolution - Stack Object Effects", () => {
       const playerBefore = state.players.get(aliceId);
       const lifeBefore = playerBefore?.life || 0;
 
-      const result = resolveStackObjectEffects(state, effects, undefined as any);
+      const result = resolveStackObjectEffects(
+        state,
+        effects,
+        undefined as any,
+      );
 
-      const playerAfter = result.state.players.get(aliceId);
+      const playerAfter = result.players.get(aliceId);
       const lifeAfter = playerAfter?.life || 0;
 
       expect(lifeAfter).toBe(lifeBefore + 5);
@@ -552,9 +583,14 @@ describe("Effect Resolution - Stack Object Effects", () => {
       const bobLifeBefore = bobBefore?.life || 0;
 
       const targets = [{ type: "player" as const, targetId: bobId }];
-      const result = resolveStackObjectEffects(state, effects, undefined as any, targets);
+      const result = resolveStackObjectEffects(
+        state,
+        effects,
+        undefined as any,
+        targets,
+      );
 
-      const bobAfter = result.state.players.get(bobId);
+      const bobAfter = result.players.get(bobId);
       const bobLifeAfter = bobAfter?.life || 0;
 
       expect(bobLifeAfter).toBe(bobLifeBefore - 4);
@@ -566,7 +602,12 @@ describe("Effect Resolution - Edge Cases", () => {
   it("should handle non-existent player gracefully", () => {
     const { state } = setupBasicGame();
 
-    const result = resolveLifeGainEffect(state, undefined as any, 5, "non-existent-player");
+    const result = resolveLifeGainEffect(
+      state,
+      undefined as any,
+      5,
+      "non-existent-player",
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
@@ -576,7 +617,12 @@ describe("Effect Resolution - Edge Cases", () => {
     const { state, aliceId } = setupBasicGame();
 
     // Source ID that doesn't exist
-    const result = resolveLifeGainEffect(state, "non-existent-source" as any, 3, aliceId);
+    const result = resolveLifeGainEffect(
+      state,
+      "non-existent-source" as any,
+      3,
+      aliceId,
+    );
 
     // Should still work, just not mention source in description
     expect(result.state).toBeDefined();
@@ -587,6 +633,6 @@ describe("Effect Resolution - Edge Cases", () => {
 
     const result = resolveStackObjectEffects(state, [], undefined as any);
 
-    expect(result.state).toBe(state);
+    expect(result).toBe(state);
   });
 });
