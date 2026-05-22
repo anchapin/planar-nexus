@@ -107,6 +107,23 @@ export function isProtectedByHexproof(
   return target.controllerId !== sourceControllerId;
 }
 
+// ============== SHROUD ==============
+/**
+ * Check if a card has shroud
+ * Implements CR 702.18: Can't be targeted at all
+ */
+export function hasShroud(card: CardInstance): boolean {
+  return hasKeyword(card, "shroud");
+}
+
+/**
+ * Check if a card can be targeted (considering shroud)
+ * Returns false if the card has shroud
+ */
+export function canBeTargetedByShroud(card: CardInstance): boolean {
+  return !hasShroud(card);
+}
+
 // ============== INDESTRUCTIBLE ==============
 /**
  * Check if a card is indestructible
@@ -230,6 +247,21 @@ const MTG_COLORS = ["white", "blue", "black", "red", "green"];
  */
 function isMTGColor(value: string): boolean {
   return MTG_COLORS.includes(value.toLowerCase());
+}
+
+/**
+ * Normalize MTG color abbreviations (W, U, B, R, G) to full color names
+ * Implements CR 702.16 - Protection
+ */
+export function normalizeColor(color: string): string {
+  const colorMap: Record<string, string> = {
+    'w': 'white', 'white': 'white',
+    'u': 'blue', 'blue': 'blue',
+    'b': 'black', 'black': 'black',
+    'r': 'red', 'red': 'red',
+    'g': 'green', 'green': 'green',
+  };
+  return colorMap[color.toLowerCase()] || color.toLowerCase();
 }
 
 /**
@@ -379,6 +411,67 @@ export function shouldPreventDamageToTarget(
     return true;
   }
   return false;
+}
+
+/**
+ * Check if a card can be targeted by a spell/ability considering protection, hexproof, and shroud
+ * Implements CR 702.16A (Protection), CR 702.11 (Hexproof), CR 702.18 (Shroud)
+ *
+ * @param card - The target card
+ * @param sourcePlayerId - The controller of the source spell/ability
+ * @param effectColor - Optional color of the effect (for protection checks)
+ * @returns Object with canTarget boolean and optional reason string
+ */
+export function canTarget(
+  card: CardInstance,
+  sourcePlayerId: PlayerId,
+  effectColor?: string,
+): { canTarget: boolean; reason?: string } {
+  // Check shroud first (blocks all targeting)
+  if (hasShroud(card)) {
+    return { canTarget: false, reason: "Target has shroud" };
+  }
+
+  // Check hexproof (blocks opponent targeting)
+  if (hasHexproof(card) && card.controllerId !== sourcePlayerId) {
+    return { canTarget: false, reason: "Target has hexproof" };
+  }
+
+  // Check protection from specific color
+  if (effectColor) {
+    const normalizedEffectColor = normalizeColor(effectColor);
+    if (hasProtectionFrom(card, normalizedEffectColor)) {
+      return { canTarget: false, reason: `Target has protection from ${effectColor}` };
+    }
+  }
+
+  return { canTarget: true };
+}
+
+/**
+ * Check if a blocker can block an attacker considering protection
+ * Implements CR 702.16D: A creature with protection can't be blocked by creatures of the protected quality
+ *
+ * @param attacker - The attacking creature
+ * @param blocker - The potential blocker
+ * @returns Object with canBlock boolean and optional reason string
+ */
+export function canBlockProtectedAttacker(
+  attacker: CardInstance,
+  blocker: CardInstance,
+): { canBlock: boolean; reason?: string } {
+  // Get the colors of the blocker
+  const blockerColors = getCardColors(blocker);
+
+  // Check if attacker has protection from any of the blocker's colors
+  for (const color of blockerColors) {
+    const normalizedColor = normalizeColor(color);
+    if (hasProtectionFrom(attacker, normalizedColor)) {
+      return { canBlock: false, reason: `Attacker has protection from ${normalizedColor}` };
+    }
+  }
+
+  return { canBlock: true };
 }
 
 // ============== FLASH ==============
@@ -622,17 +715,21 @@ export function getKeywordDescriptions(card: CardInstance): string[] {
 }
 
 /** @deprecated Stub - ward mechanic not yet implemented */
-export function hasWard(card: any): boolean {
+export function hasWard(_card: CardInstance): boolean {
+  void _card;
   return false;
 }
 
 /** @deprecated Stub - ward mechanic not yet implemented */
-export function getWardCost(card: any): number | null {
+export function getWardCost(_card: CardInstance): number | null {
+  void _card;
   return null;
 }
 
 /** @deprecated Stub - ward mechanic not yet implemented */
-export function isProtectedByWard(source: any, card: any): boolean {
+export function isProtectedByWard(_source: CardInstance, _card: CardInstance): boolean {
+  void _source;
+  void _card;
   return false;
 }
 

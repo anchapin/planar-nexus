@@ -13,12 +13,7 @@
  * - Protection/shroud checking during resolution
  */
 
-import type {
-  GameState,
-  PlayerId,
-  CardInstanceId,
-  StackEffect,
-} from "./types";
+import type { GameState, PlayerId, CardInstanceId, StackEffect } from "./types";
 import { drawCards, createTokenCard, counterSpell } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 
@@ -39,7 +34,7 @@ export interface EffectResolutionResult {
  */
 export function resolveCardDrawEffect(
   state: GameState,
-  sourceId: CardInstanceId,
+  sourceId: CardInstanceId | undefined,
   amount: number,
   targetPlayerId?: PlayerId,
 ): EffectResolutionResult {
@@ -152,7 +147,14 @@ export function resolveLifeLossEffect(
 export function resolveTokenCreationEffect(
   state: GameState,
   sourceId: CardInstanceId | undefined,
-  tokenData: { name: string; type_line: string; power?: string; toughness?: string; colors?: string[]; oracle_text?: string },
+  tokenData: {
+    name: string;
+    type_line: string;
+    power?: string;
+    toughness?: string;
+    colors?: string[];
+    oracle_text?: string;
+  },
   count: number,
   controllerId?: PlayerId,
 ): EffectResolutionResult {
@@ -179,7 +181,13 @@ export function resolveTokenCreationEffect(
     oracle_text: tokenData.oracle_text || "",
   };
 
-  const result = createTokenCard(state, tokenCardData as any, controller, ownerId, count);
+  const result = createTokenCard(
+    state,
+    tokenCardData as any,
+    controller,
+    ownerId,
+    count,
+  );
 
   return {
     success: result.success,
@@ -217,12 +225,20 @@ export function resolveDamageEffect(
   amount: number,
   isCombatDamage: boolean = false,
 ): EffectResolutionResult {
-  const result = dealDamageToCard(state, targetId, amount, isCombatDamage, sourceId);
+  const result = dealDamageToCard(
+    state,
+    targetId,
+    amount,
+    isCombatDamage,
+    sourceId,
+  );
 
   return {
     success: result.success,
     state: result.state,
-    description: result.description || `${state.cards.get(targetId)?.cardData.name || "Target"} took ${amount} damage`,
+    description:
+      result.description ||
+      `${state.cards.get(targetId)?.cardData.name || "Target"} took ${amount} damage`,
     affectedCards: result.affectedCards,
   };
 }
@@ -300,7 +316,9 @@ export function parseSpellEffects(
   const lowerText = oracleText.toLowerCase();
 
   // Card draw: "draw X cards", "draw a card", "draw two cards", "draw three cards"
-  const drawMatch = lowerText.match(/draw(?:s)?\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s*(?:card|cards)?/i);
+  const drawMatch = lowerText.match(
+    /draw(?:s)?\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s*(?:card|cards)?/i,
+  );
   if (drawMatch) {
     const amountStr = drawMatch[1];
     let amount: number;
@@ -320,7 +338,9 @@ export function parseSpellEffects(
   }
 
   // Life gain: "gain X life", "you gain Y life"
-  const gainLifeMatch = lowerText.match(/gain(?:s)?\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i);
+  const gainLifeMatch = lowerText.match(
+    /gain(?:s)?\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i,
+  );
   if (gainLifeMatch) {
     const amountStr = gainLifeMatch[1];
     let amount: number;
@@ -339,7 +359,9 @@ export function parseSpellEffects(
   }
 
   // Life loss: "lose X life", "target player loses Y life"
-  const loseLifeMatch = lowerText.match(/(?:lose|loses)\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i);
+  const loseLifeMatch = lowerText.match(
+    /(?:lose|loses)\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i,
+  );
   if (loseLifeMatch) {
     const amountStr = loseLifeMatch[1];
     let amount: number;
@@ -358,7 +380,9 @@ export function parseSpellEffects(
   }
 
   // Token creation: "create X 1/1 color creature tokens"
-  const tokenMatch = lowerText.match(/create\s+(?:a\s+)?(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+)?(.+?)\s+token/i);
+  const tokenMatch = lowerText.match(
+    /create\s+(?:a\s+)?(?:(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+)?(.+?)\s+token/i,
+  );
   if (tokenMatch) {
     const countStr = tokenMatch[1];
     let count: number;
@@ -405,7 +429,10 @@ export function parseSpellEffects(
   }
 
   // Counter: "counter target spell"
-  if (lowerText.includes("counter") && (lowerText.includes("spell") || lowerText.includes("ability"))) {
+  if (
+    lowerText.includes("counter") &&
+    (lowerText.includes("spell") || lowerText.includes("ability"))
+  ) {
     effects.push({
       effectType: "counter_spell",
       targetStackObjectId: "",
@@ -430,7 +457,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId || undefined,
+        effect.targetId ?? state.turn.activePlayerId,
       );
 
     case "life_gain":
@@ -438,7 +465,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId || undefined,
+        effect.targetId ?? state.turn.activePlayerId,
       );
 
     case "life_loss":
@@ -446,7 +473,7 @@ export function resolveEffect(
         state,
         sourceId,
         effect.amount,
-        effect.targetId || undefined,
+        effect.targetId ?? state.turn.activePlayerId,
       );
 
     case "token_creation":
@@ -469,7 +496,10 @@ export function resolveEffect(
 
     case "damage":
       // Check if target is a card or player based on type
-      if (typeof effect.targetId === "string" && effect.targetId.includes("-")) {
+      if (
+        typeof effect.targetId === "string" &&
+        effect.targetId.includes("-")
+      ) {
         return resolveDamageEffect(
           state,
           sourceId,
@@ -527,8 +557,14 @@ export function resolveStackObjectEffects(
     // Fill in targets from spell targeting
     if (targets && targets.length > 0) {
       const target = targets[0];
-      if (effect.effectType === "card_draw" || effect.effectType === "life_gain" || effect.effectType === "life_loss") {
-        effect.targetId = target.targetId as PlayerId;
+      if (
+        effect.effectType === "card_draw" ||
+        effect.effectType === "life_gain" ||
+        effect.effectType === "life_loss"
+      ) {
+        if (!effect.targetId) {
+          effect.targetId = target.targetId as PlayerId;
+        }
       } else if (effect.effectType === "damage") {
         effect.targetId = target.targetId as CardInstanceId | PlayerId;
       } else if (effect.effectType === "counter_spell") {
