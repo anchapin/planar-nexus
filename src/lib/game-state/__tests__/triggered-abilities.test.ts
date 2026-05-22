@@ -22,8 +22,7 @@ import {
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import type { ScryfallCard } from "@/app/actions";
-import { Phase } from "../types";
-import { ZoneType } from "../types";
+import { Phase, ZoneType } from "../types";
 
 // Helper function to create a mock card
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
