@@ -49,7 +49,6 @@ export default function P2PHostPage() {
       setHostState(prev => ({ ...prev, step: 'connected' }));
     },
     onMessage: (message: P2PMessage) => {
-      console.log('Received message:', message);
       // Handle incoming messages
     },
     onError: (error) => {
@@ -87,7 +86,6 @@ export default function P2PHostPage() {
   };
 
   const handleStartGame = () => {
-    console.log('Starting game...');
     // Navigate to game board or start game logic
     window.location.href = '/game-board';
   };
