@@ -8,7 +8,7 @@
  * - Returning the correct reconstructed state
  */
 
-import type { GameState, GameAction, PlayerId, Phase } from "../types";
+import { GameState, GameAction, PlayerId, Phase, ZoneType } from "../types";
 import {
   createEventSourcedState,
   EventSourcingGameState,
@@ -95,16 +95,106 @@ function createMockState(overrides: Partial<GameState> = {}): GameState {
     ]),
     cards: new Map(),
     zones: new Map([
-      ["player1-library", { type: "library" as const, playerId: "player1", cardIds: ["card1", "card2", "card3", "card4", "card5"], isRevealed: false, visibleTo: [] }],
-      ["player1-hand", { type: "hand" as const, playerId: "player1", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player1-battlefield", { type: "battlefield" as const, playerId: "player1", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player1-graveyard", { type: "graveyard" as const, playerId: "player1", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player1-exile", { type: "exile" as const, playerId: "player1", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player2-library", { type: "library" as const, playerId: "player2", cardIds: ["card6", "card7", "card8", "card9", "card10"], isRevealed: false, visibleTo: [] }],
-      ["player2-hand", { type: "hand" as const, playerId: "player2", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player2-battlefield", { type: "battlefield" as const, playerId: "player2", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player2-graveyard", { type: "graveyard" as const, playerId: "player2", cardIds: [], isRevealed: false, visibleTo: [] }],
-      ["player2-exile", { type: "exile" as const, playerId: "player2", cardIds: [], isRevealed: false, visibleTo: [] }],
+      [
+        "player1-library",
+        {
+          type: ZoneType.LIBRARY,
+          playerId: "player1",
+          cardIds: ["card1", "card2", "card3", "card4", "card5"],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player1-hand",
+        {
+          type: ZoneType.HAND,
+          playerId: "player1",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player1-battlefield",
+        {
+          type: ZoneType.BATTLEFIELD,
+          playerId: "player1",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player1-graveyard",
+        {
+          type: ZoneType.GRAVEYARD,
+          playerId: "player1",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player1-exile",
+        {
+          type: ZoneType.EXILE,
+          playerId: "player1",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player2-library",
+        {
+          type: ZoneType.LIBRARY,
+          playerId: "player2",
+          cardIds: ["card6", "card7", "card8", "card9", "card10"],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player2-hand",
+        {
+          type: ZoneType.HAND,
+          playerId: "player2",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player2-battlefield",
+        {
+          type: ZoneType.BATTLEFIELD,
+          playerId: "player2",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player2-graveyard",
+        {
+          type: ZoneType.GRAVEYARD,
+          playerId: "player2",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
+      [
+        "player2-exile",
+        {
+          type: ZoneType.EXILE,
+          playerId: "player2",
+          cardIds: [],
+          isRevealed: false,
+          visibleTo: [],
+        },
+      ],
     ]),
     stack: [],
     turn: {
@@ -185,7 +275,7 @@ describe("Event Replay", () => {
       expect(result!.gameId).toBe("test-replay");
     });
 
-it("should replay events after checkpoint", () => {
+    it("should replay events after checkpoint", () => {
       const state = createMockState();
       const esState = createEventSourcedState(state, "test-session", "player1");
 
@@ -216,12 +306,15 @@ it("should replay events after checkpoint", () => {
 
       // Both checkpoints should have the same hand size since emitAction doesn't modify state
       const handAtCheckpoint = stateAtCheckpoint!.zones.get("player1-hand");
-      const handAtNextCheckpoint = stateAtNextCheckpoint!.zones.get("player1-hand");
+      const handAtNextCheckpoint =
+        stateAtNextCheckpoint!.zones.get("player1-hand");
 
       // Verify maps work correctly
       expect(handAtCheckpoint).toBeDefined();
       expect(handAtNextCheckpoint).toBeDefined();
-      expect(handAtCheckpoint?.cardIds.length).toBe(handAtNextCheckpoint?.cardIds.length);
+      expect(handAtCheckpoint?.cardIds.length).toBe(
+        handAtNextCheckpoint?.cardIds.length,
+      );
     });
   });
 
