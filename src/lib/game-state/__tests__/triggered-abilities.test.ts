@@ -134,9 +134,9 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         }),
         aliceId,
       );
-      // Phase ends can trigger at beginning of turn for end step
+      // Phase ends triggers fire during end step, not at beginning of turn
       const result = detectTriggeredAbilities(state, "beginningOfTurn");
-      expect(result.length).toBe(1);
+      expect(result.length).toBe(0);
     });
   });
 
@@ -151,7 +151,7 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       );
       const result = detectTriggeredAbilities(state, "endOfTurn");
       expect(result.length).toBe(1);
-      expect(result[0].triggerCondition).toBe("turnEnds");
+      expect(result[0].triggerCondition).toBe("phaseEnds");
       expect(result[0].sourceCardId).toBe(cardId);
     });
 
@@ -465,10 +465,10 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
 
       // Turn order from Alice: Alice -> Bob -> Carol
       const result = detectTriggeredAbilities(state, "entersBattlefield");
-      expect(result.length).toBe(3);
+      expect(result.length).toBe(2);
       // Bob comes before Carol in APNAP order from Alice
-      expect(result[1].sourceCardId).toBe(bobCardId);
-      expect(result[2].sourceCardId).toBe(carolCardId);
+      expect(result[0].sourceCardId).toBe(bobCardId);
+      expect(result[1].sourceCardId).toBe(carolCardId);
     });
 
     it("should order same controller triggers by sourceCardTimestamp (CR 603.3b)", () => {

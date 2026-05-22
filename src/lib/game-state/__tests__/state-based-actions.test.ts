@@ -1430,10 +1430,10 @@ describe("State-Based Actions", () => {
       state.players.set(aliceId, { ...alice, life: 0 });
 
       // Both players pass priority consecutively to trigger allPassed
-      // First pass
-      state = passPriority(state, bobId);
-      // Second pass (now from Alice) - this should trigger allPassed and SBA check
+      // First pass from active player (Alice) who has priority initially
       state = passPriority(state, aliceId);
+      // Second pass from non-active player (Bob)
+      state = passPriority(state, bobId);
 
       // Alice should have lost due to SBA 704.5a
       const updatedAlice = state.players.get(aliceId);

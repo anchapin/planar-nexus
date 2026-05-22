@@ -707,6 +707,25 @@ export function detectTriggeredAbilities(
         case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;
+        case "beginningOfTurn":
+          shouldTrigger =
+            ability.trigger.event === "beginningOfTurn" ||
+            ability.trigger.event === "upkeep";
+          break;
+        case "endOfTurn":
+          shouldTrigger =
+            ability.trigger.event === "endOfTurn" ||
+            ability.trigger.event === "turnEnds" ||
+            ability.trigger.event === "phaseEnds";
+          break;
+        case "creatureDies":
+          shouldTrigger =
+            ability.trigger.event === "creatureDies" ||
+            ability.trigger.event === "dies";
+          break;
+        case "spellCast":
+          shouldTrigger = ability.trigger.event === "spellCast";
+          break;
       }
 
       if (shouldTrigger) {
