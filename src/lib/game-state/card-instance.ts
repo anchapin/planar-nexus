@@ -50,6 +50,9 @@ export function createCardInstance(
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks
     attackedLastTurn: false,
     mutatedCardIds: [],
+    mutateBaseId: null,
+    isMutated: false,
+    highestCmcComponentId: null,
     isPrototype: false,
     prototypePower: null,
     prototypeToughness: null,
