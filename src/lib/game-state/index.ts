@@ -48,6 +48,7 @@ export * from "./state-based-actions";
 export * from "./oracle-text-parser";
 export * from "./mana";
 export * from "./spell-casting";
+export * from "./effect-resolution";
 export * from "./abilities";
 export { getEffectivePower, getEffectiveToughness } from "./layer-system";
 export * from "./replacement-examples";

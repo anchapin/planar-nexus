@@ -88,6 +88,15 @@ export function isLethalDamage(damage: number, source: CardInstance): boolean {
   return false;
 }
 
+// ============== SHROUD ==============
+/**
+ * Check if a card has shroud
+ * CR 702.18: Can't be targeted at all
+ */
+export function hasShroud(card: CardInstance): boolean {
+  return hasKeyword(card, "shroud");
+}
+
 // ============== HEXPROOF ==============
 /**
  * Check if a card has hexproof
@@ -329,6 +338,80 @@ export function canBeTargetedBySource(
 ): boolean {
   if (isProtectedFromSource(target, source)) return false;
   return true;
+}
+
+/**
+ * Check if a target can be targeted by a source player
+ * Implements CR 702.11 (Hexproof), CR 702.18 (Shroud), CR 702.16 (Protection)
+ * 
+ * @param target - The card being targeted
+ * @param sourceControllerId - The controller of the source (player casting spell/ability)
+ * @param effectColor - Optional color to check protection against
+ */
+export function canTarget(
+  target: CardInstance,
+  sourceControllerId: PlayerId,
+  effectColor?: string,
+): { canTarget: boolean; reason?: string } {
+  // CR 702.18: Shroud - can't be targeted at all
+  if (hasShroud(target)) {
+    return { canTarget: false, reason: "Target has shroud" };
+  }
+
+  // CR 702.11: Hexproof - can't be targeted by opponents
+  if (hasHexproof(target)) {
+    // Can't be targeted by opponent
+    if (target.controllerId !== sourceControllerId) {
+      return { canTarget: false, reason: "Target has hexproof" };
+    }
+  }
+
+  // CR 702.16: Protection from color - can't be targeted by that color
+  if (effectColor && hasProtectionFrom(target, effectColor)) {
+    return { canTarget: false, reason: `Target has protection from ${effectColor}` };
+  }
+
+  return { canTarget: true };
+}
+
+/**
+ * Check if a creature can block another creature based on protection
+ * CR 702.16A: A creature with protection from a color can't be blocked by
+ * creatures of that color.
+ *
+ * Example: If an attacker has "protection from red", red creatures cannot block it.
+ *
+ * @param attacker - The attacking creature
+ * @param blocker - The potential blocker
+ */
+export function canBlockProtectedAttacker(
+  attacker: CardInstance,
+  blocker: CardInstance,
+): { canBlock: boolean; reason?: string } {
+  const blockerColors = getCardColors(blocker);
+
+  // Check if attacker has protection from any of blocker's colors
+  for (const color of blockerColors) {
+    if (hasProtectionFrom(attacker, color)) {
+      return {
+        canBlock: false,
+        reason: `Attacker has protection from ${color}, cannot be blocked by ${color} creatures`,
+      };
+    }
+  }
+
+  // Also check blocker's explicit protection qualities (e.g., "protection from red" in oracle)
+  const blockerProtQualities = getProtectionQualities(blocker);
+  for (const quality of blockerProtQualities) {
+    if (hasProtectionFrom(attacker, quality)) {
+      return {
+        canBlock: false,
+        reason: `Attacker has protection from ${quality}, cannot be blocked`,
+      };
+    }
+  }
+
+  return { canBlock: true };
 }
 
 /**
@@ -797,4 +880,62 @@ export function getToxicLevel(card: CardInstance): number {
   }
 
   return 0;
+}
+
+// ============== TARGETING VALIDATION (CR 702.11, 702.16, 702.18) ==============
+
+/**
+ * Check if a target can be targeted by a source player
+ * Implements CR 702.11 (Hexproof), CR 702.18 (Shroud), CR 702.16 (Protection)
+ *
+ * @param target - The card being targeted
+ * @param sourceControllerId - The controller of the source (player casting spell/ability)
+ * @param effectColor - Optional color to check protection against
+ */
+export function canTarget(
+  target: CardInstance,
+  sourceControllerId: PlayerId,
+  effectColor?: string,
+): { canTarget: boolean; reason?: string } {
+  // CR 702.18: Shroud - can't be targeted at all
+  if (hasShroud(target)) {
+    return { canTarget: false, reason: "Target has shroud" };
+  }
+
+  // CR 702.11: Hexproof - can't be targeted by opponents
+  if (hasHexproof(target)) {
+    // Can't be targeted by opponent
+    if (target.controllerId !== sourceControllerId) {
+      return { canTarget: false, reason: "Target has hexproof" };
+    }
+  }
+
+  // CR 702.16: Protection from color - can't be targeted by that color
+  if (effectColor && hasProtectionFrom(target, effectColor)) {
+    return { canTarget: false, reason: `Target has protection from ${effectColor}` };
+  }
+
+  return { canTarget: true };
+}
+
+/**
+ * Check if a creature can block another creature based on protection
+ * CR 702.16D: Creatures with protection from a color can't be blocked by creatures of that color
+ *
+ * @param attacker - The attacking creature
+ * @param blocker - The potential blocker
+ */
+export function canBlockProtectedAttacker(
+  attacker: CardInstance,
+  blocker: CardInstance,
+): { canBlock: boolean; reason?: string } {
+  const attackerColors = getCardColors(attacker);
+
+  for (const color of attackerColors) {
+    if (hasProtectionFrom(blocker, color)) {
+      return { canBlock: false, reason: `Blocker has protection from ${color}` };
+    }
+  }
+
+  return { canBlock: true };
 }

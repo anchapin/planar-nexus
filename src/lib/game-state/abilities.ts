@@ -33,7 +33,11 @@ export type TriggerEvent =
   | "drawCard"
   | "cast"
   | "lifeGain"
-  | "lifeLost";
+  | "lifeLost"
+  | "beginningOfTurn"
+  | "endOfTurn"
+  | "creatureDies"
+  | "spellCast";
 
 /**
  * Result of activating an ability
@@ -678,21 +682,29 @@ export function detectTriggeredAbilities(
           shouldTrigger = ability.trigger.event === "damageDealt";
           break;
         case "dies":
+        case "creatureDies":
           shouldTrigger = ability.trigger.event === "dies";
           break;
         case "attacked":
           shouldTrigger = ability.trigger.event === "attacked";
           break;
         case "phaseChange":
+        case "beginningOfTurn":
           shouldTrigger =
+            ability.trigger.event === "upkeep" ||
             ability.trigger.event === "phaseEnds" ||
+            ability.trigger.event === "turnEnds";
+          break;
+        case "endOfTurn":
+          shouldTrigger =
             ability.trigger.event === "turnEnds" ||
-            ability.trigger.event === "upkeep";
+            ability.trigger.event === "phaseEnds";
           break;
         case "drawCard":
           shouldTrigger = ability.trigger.event === "drawStep";
           break;
         case "cast":
+        case "spellCast":
           shouldTrigger =
             ability.trigger.event === "cast" ||
             ability.trigger.event === "spellCast";

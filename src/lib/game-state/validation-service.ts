@@ -1,5 +1,6 @@
 import type { GameState, GameAction, CardInstance, Player } from "./types";
 import { getGameMode } from "@/lib/game-rules";
+import { canTarget as canTargetKeyword, canBlockProtectedAttacker } from "./evergreen-keywords";
 
 /**
  * Validation result structure
@@ -399,6 +400,84 @@ export class ValidationService {
         // (Note: This doesn't prevent tapping for costs, which is more complex)
         return { isValid: false, reason: "Summoning sickness", message: "This creature has summoning sickness." };
       }
+    }
+
+    return { isValid: true };
+  }
+
+  // ============== TARGETING VALIDATION (CR 702.11, 702.16, 702.18) ==============
+
+  /**
+   * Validate that a target can be targeted by a source
+   * Implements CR 702.11 (Hexproof), CR 702.18 (Shroud), CR 702.16 (Protection)
+   *
+   * @param targetId - ID of the target card
+   * @param sourceId - ID of the source card (the spell/ability doing the targeting)
+   * @param effectColor - Optional color to check protection against (for damage spells)
+   */
+  public static validateTarget(
+    state: GameState,
+    targetId: CardInstanceId,
+    sourceId: CardInstanceId,
+    effectColor?: string,
+  ): ValidationResult {
+    // Get the target card
+    const target = state.cards.get(targetId);
+    if (!target) {
+      return { isValid: false, reason: "Target card not found", message: "Target card not found." };
+    }
+
+    // Get the source card
+    const source = state.cards.get(sourceId);
+    if (!source) {
+      return { isValid: false, reason: "Source card not found", message: "Source card not found." };
+    }
+
+    // Check targeting restrictions
+    const targetingResult = canTargetKeyword(target, source.controllerId, effectColor);
+    if (!targetingResult.canTarget) {
+      return {
+        isValid: false,
+        reason: targetingResult.reason,
+        message: `Invalid target: ${targetingResult.reason}`,
+      };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Validate that a blocker can block an attacker based on protection
+   * CR 702.16D: Creatures with protection from a color can't be blocked by creatures of that color
+   *
+   * @param attackerId - ID of the attacking creature
+   * @param blockerId - ID of the potential blocking creature
+   */
+  public static validateBlocker(
+    state: GameState,
+    attackerId: CardInstanceId,
+    blockerId: CardInstanceId,
+  ): ValidationResult {
+    // Get the attacker
+    const attacker = state.cards.get(attackerId);
+    if (!attacker) {
+      return { isValid: false, reason: "Attacker not found", message: "Attacker not found." };
+    }
+
+    // Get the blocker
+    const blocker = state.cards.get(blockerId);
+    if (!blocker) {
+      return { isValid: false, reason: "Blocker not found", message: "Blocker not found." };
+    }
+
+    // Check protection-based blocking restrictions
+    const blockResult = canBlockProtectedAttacker(attacker, blocker);
+    if (!blockResult.canBlock) {
+      return {
+        isValid: false,
+        reason: blockResult.reason,
+        message: `Cannot block: ${blockResult.reason}`,
+      };
     }
 
     return { isValid: true };

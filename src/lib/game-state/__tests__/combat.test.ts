@@ -22,9 +22,10 @@ import {
   getAvailableBlockers,
 } from "../combat";
 import { createInitialGameState, startGame } from "../game-state";
-import { createCardInstance } from "../card-instance";
-import { Phase } from "../types";
+import { createCardInstance, initializePlaneswalkerLoyalty } from "../card-instance";
+import { Phase, CardInstanceId } from "../types";
 import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
+import { checkStateBasedActions } from "../state-based-actions";
 import type { ScryfallCard } from "@/app/actions";
 
 // Helper function to create a mock creature card
@@ -1567,6 +1568,252 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       // Blocker should deal 4 damage (2 base + 2 from layer 7e)
       const blockers = blockResult.state.combat.blockers.get(attackerId)!;
       expect(blockers[0].damageToDeal).toBe(4);
+    });
+  });
+
+  describe("Planeswalker combat damage (CR 306.7, Issue #858)", () => {
+    function createMockPlaneswalker(
+      name: string,
+      loyalty: number,
+    ): ScryfallCard {
+      return {
+        id: `mock-pw-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
+        name,
+        type_line: `Planeswalker — ${name.split(" ")[0]}`,
+        loyalty: loyalty.toString(),
+        keywords: [],
+        oracle_text: "",
+        mana_cost: "{3}",
+        cmc: 4,
+        colors: ["U"],
+        color_identity: ["U"],
+        legalities: { standard: "legal", commander: "legal" },
+        card_faces: undefined,
+        layout: "normal",
+      } as ScryfallCard;
+    }
+
+    function setupGameWithPlaneswalker(
+      player1Creatures: Array<{
+        name: string;
+        power: number;
+        toughness: number;
+        keywords?: string[];
+      }> = [],
+      player2Planeswalker: {
+        name: string;
+        loyalty: number;
+      } | null = null,
+    ) {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+
+      // Add creatures to Alice's battlefield
+      for (const creature of player1Creatures) {
+        const creatureData = createMockCreature(
+          creature.name,
+          creature.power,
+          creature.toughness,
+          creature.keywords,
+        );
+        const creatureInstance = createCardInstance(
+          creatureData,
+          aliceId,
+          aliceId,
+        );
+        creatureInstance.hasSummoningSickness = false;
+        state.cards.set(creatureInstance.id, creatureInstance);
+
+        const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+        state.zones.set(`${aliceId}-battlefield`, {
+          ...battlefield,
+          cardIds: [...battlefield.cardIds, creatureInstance.id],
+        });
+      }
+
+      // Add planeswalker to Bob's battlefield
+      let planeswalkerId: CardInstanceId | null = null;
+      if (player2Planeswalker) {
+        const pwData = createMockPlaneswalker(
+          player2Planeswalker.name,
+          player2Planeswalker.loyalty,
+        );
+        const pwInstance = createCardInstance(pwData, bobId, bobId);
+        // Initialize planeswalker loyalty counters
+        const pwWithLoyalty = initializePlaneswalkerLoyalty(pwInstance);
+        state.cards.set(pwWithLoyalty.id, pwWithLoyalty);
+
+        const battlefield = state.zones.get(`${bobId}-battlefield`)!;
+        state.zones.set(`${bobId}-battlefield`, {
+          ...battlefield,
+          cardIds: [...battlefield.cardIds, pwWithLoyalty.id],
+        });
+        planeswalkerId = pwWithLoyalty.id;
+      }
+
+      return { state, aliceId, bobId, planeswalkerId };
+    }
+
+    it("should reduce planeswalker loyalty by combat damage (CR 119.3c)", () => {
+      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
+        [{ name: "Attacker", power: 3, toughness: 3 }],
+        { name: "Jace", loyalty: 5 },
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+
+      // Declare attacker targeting the planeswalker
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        {
+          cardId: attackerId,
+          defenderId: planeswalkerId!,
+        },
+      ]);
+      expect(attackResult.success).toBe(true);
+
+      // Check isAttackingPlaneswalker was set correctly
+      const attacker = attackResult.state.combat.attackers.find(
+        (a) => a.cardId === attackerId,
+      );
+      expect(attacker?.isAttackingPlaneswalker).toBe(true);
+
+      // Resolve combat damage
+      const resolveResult = resolveCombatDamage(attackResult.state);
+      expect(resolveResult.success).toBe(true);
+
+      // Check planeswalker loyalty reduced by 3
+      const planeswalker = resolveResult.state.cards.get(planeswalkerId!);
+      const loyaltyCounter = planeswalker?.counters?.find(
+        (c) => c.type === "loyalty",
+      );
+      expect(loyaltyCounter?.count).toBe(2); // 5 - 3 = 2
+    });
+
+    it("should exile planeswalker with 0 loyalty via SBA (CR 704.5i)", () => {
+      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
+        [{ name: "Attacker", power: 5, toughness: 5 }],
+        { name: "Chandra", loyalty: 3 },
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+
+      // Declare attacker targeting the planeswalker with 5 damage
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        {
+          cardId: attackerId,
+          defenderId: planeswalkerId!,
+        },
+      ]);
+
+      // Verify the attacker is correctly set to attack the planeswalker
+      const attacker = attackResult.state.combat.attackers.find(
+        (a) => a.cardId === attackerId,
+      );
+      expect(attacker?.isAttackingPlaneswalker).toBe(true);
+
+      // Resolve combat damage
+      const resolveResult = resolveCombatDamage(attackResult.state);
+      expect(resolveResult.success).toBe(true);
+
+      // Check SBA - planeswalker should be exiled
+      const sbaResult = checkStateBasedActions(resolveResult.state);
+
+      const bobBattlefield = sbaResult.state.zones.get(`${bobId}-battlefield`);
+      expect(bobBattlefield?.cardIds).not.toContain(planeswalkerId);
+
+      const bobExile = sbaResult.state.zones.get(`${bobId}-exile`);
+      expect(bobExile?.cardIds).toContain(planeswalkerId);
+    });
+
+    it("should handle multiple creatures attacking same planeswalker", () => {
+      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
+        [
+          { name: "Attacker1", power: 2, toughness: 2 },
+          { name: "Attacker2", power: 3, toughness: 3 },
+        ],
+        { name: "Jace", loyalty: 7 },
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const attacker1Id = aliceBattlefield.cardIds[0];
+      const attacker2Id = aliceBattlefield.cardIds[1];
+
+      // Declare both attackers targeting the planeswalker
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        {
+          cardId: attacker1Id,
+          defenderId: planeswalkerId!,
+        },
+        {
+          cardId: attacker2Id,
+          defenderId: planeswalkerId!,
+        },
+      ]);
+
+      // Verify both attackers are correctly set to attack the planeswalker
+      const attacker1 = attackResult.state.combat.attackers.find(
+        (a) => a.cardId === attacker1Id,
+      );
+      const attacker2 = attackResult.state.combat.attackers.find(
+        (a) => a.cardId === attacker2Id,
+      );
+      expect(attacker1?.isAttackingPlaneswalker).toBe(true);
+      expect(attacker2?.isAttackingPlaneswalker).toBe(true);
+      expect(attackResult.success).toBe(true);
+
+      // Resolve combat damage (5 total: 2 + 3)
+      const resolveResult = resolveCombatDamage(attackResult.state);
+      expect(resolveResult.success).toBe(true);
+
+      // Check planeswalker loyalty reduced by 5 (2 + 3)
+      const planeswalker = resolveResult.state.cards.get(planeswalkerId!);
+      const loyaltyCounter = planeswalker?.counters?.find(
+        (c) => c.type === "loyalty",
+      );
+      expect(loyaltyCounter?.count).toBe(2); // 7 - 5 = 2
+    });
+
+    it("should not mark combat damage on creature when attacking planeswalker (CR 306.7)", () => {
+      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
+        [{ name: "Attacker", power: 4, toughness: 2 }],
+        { name: "Gideon", loyalty: 5 },
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+
+      // Declare attacker targeting planeswalker
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        {
+          cardId: attackerId,
+          defenderId: planeswalkerId!,
+        },
+      ]);
+
+      // Verify the attacker is correctly set to attack the planeswalker
+      const attackerInCombat = attackResult.state.combat.attackers.find(
+        (a) => a.cardId === attackerId,
+      );
+      expect(attackerInCombat?.isAttackingPlaneswalker).toBe(true);
+
+      // Resolve combat damage
+      const resolveResult = resolveCombatDamage(attackResult.state);
+      expect(resolveResult.success).toBe(true);
+
+      // Creature should have no damage marked on it
+      // (CR 306.7: Damage marked on creature doesn't reduce planeswalker loyalty separately)
+      const attacker = resolveResult.state.cards.get(attackerId);
+expect(attacker?.damage).toBe(0);
     });
   });
 });
