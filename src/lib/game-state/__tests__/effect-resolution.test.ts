@@ -657,6 +657,6 @@ describe("Effect Resolution - Edge Cases", () => {
 
     const result = resolveStackObjectEffects(state, [], undefined as any);
 
-    expect(result).toBe(state);
+    expect(result.state).toBe(state);
   });
 });

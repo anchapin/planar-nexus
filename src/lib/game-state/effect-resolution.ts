@@ -410,14 +410,18 @@ export function parseSpellEffects(
     });
   }
 
-  // Damage: "deal X damage to any target"
-  const damageMatch = lowerText.match(/deal(?:s)?\s+(\d+)\s+damage/i);
+  // Damage: "deal X damage" or "deal 3 damage"
+  const damageMatch = lowerText.match(/deal(?:s)?\s+(x|\d+)\s+damage/i);
   if (damageMatch) {
-    const amount = parseInt(damageMatch[1], 10);
-    const xValue = variableValues?.get("X");
+    let amount: number;
+    if (damageMatch[1].toLowerCase() === "x") {
+      amount = variableValues?.get("X") ?? 0;
+    } else {
+      amount = parseInt(damageMatch[1], 10);
+    }
     effects.push({
       effectType: "damage",
-      amount: xValue !== undefined ? xValue : amount,
+      amount,
       targetId: "" as CardInstanceId | PlayerId,
       isCombatDamage: false,
     });
