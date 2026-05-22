@@ -365,6 +365,30 @@ export function canBeTargetedByColor(
 }
 
 /**
+ * Check if a card can be targeted based on hexproof/shroud from a player
+ * CR 702.11 (Hexproof), CR 702.18 (Shroud)
+ */
+export function canTargetKeyword(
+  card: CardInstance,
+  sourcePlayerId: PlayerId,
+  effectColor?: string,
+): { canTarget: boolean; reason?: string } {
+  if (card.controllerId === sourcePlayerId) {
+    return { canTarget: true };
+  }
+
+  if (hasHexproof(card) && effectColor) {
+    return { canTarget: false, reason: "Target has hexproof" };
+  }
+
+  if (effectColor && hasProtectionFrom(card, effectColor)) {
+    return { canTarget: false, reason: "Target has protection" };
+  }
+
+  return { canTarget: true };
+}
+
+/**
  * Check if a card can be targeted by a source card
  * Implements CR 702.16A: can't be targeted by spells/abilities with the given quality
  */

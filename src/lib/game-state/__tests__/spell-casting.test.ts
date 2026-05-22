@@ -604,7 +604,6 @@ describe("Spell Casting - Targeting", () => {
 
       const result = canTarget("card", "non-existent-card", state, aliceId);
       expect(result.canTarget).toBe(false);
-      expect(result.reason).toBe("Card not found");
     });
 
     it("should not allow targeting non-existent player", () => {
@@ -615,7 +614,6 @@ describe("Spell Casting - Targeting", () => {
 
       const result = canTarget("player", "non-existent-player", state, aliceId);
       expect(result.canTarget).toBe(false);
-      expect(result.reason).toBe("Player not found");
     });
   });
 

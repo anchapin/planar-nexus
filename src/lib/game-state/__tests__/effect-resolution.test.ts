@@ -21,18 +21,67 @@ import {
   parseSpellEffects,
   resolveStackObjectEffects,
 } from "../effect-resolution";
-import { createInitialGameState, startGame } from "../game-state";
+import {
+  createInitialGameState,
+  startGame,
+  loadDeckForPlayer,
+} from "../game-state";
+import { createCardInstance } from "../card-instance";
 import { Phase } from "../types";
 import { addMana } from "../mana";
 
-// Helper to set up a basic game
+function createMockCard(name: string, type: string): any {
+  return {
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
+    name,
+    type_line: type,
+    cmc: 1,
+    mana_cost: type.includes("Land") ? "" : "{1}",
+    oracle_text: "",
+    power: type.includes("Creature") ? "2" : undefined,
+    toughness: type.includes("Creature") ? "2" : undefined,
+    keywords: [],
+    color_identity: [],
+    colors: [],
+    legalities: { standard: "legal" },
+  };
+}
+
+// Helper to set up a basic game with cards in library
 function setupBasicGame() {
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
-  state = startGame(state);
 
   const playerIds = Array.from(state.players.keys());
   const aliceId = playerIds[0];
   const bobId = playerIds[1];
+
+  // Create decks with enough cards - startGame draws 7 for each player
+  // So we need at least 8 cards each (7 for startGame + 1 for resolveCardDrawEffect test)
+  const mockDeck = [
+    createMockCard("Forest", "Land"),
+    createMockCard("Mountain", "Land"),
+    createMockCard("Lightning Bolt", "Instant"),
+    createMockCard("Grizzly Bears", "Creature"),
+    createMockCard("Hill Giant", "Creature"),
+    createMockCard("Raging Goblin", "Creature"),
+    createMockCard("Shock", "Instant"),
+    createMockCard("Elite Vanguard", "Creature"),
+    createMockCard("Mogg Fanatic", "Creature"),
+    createMockCard("Plains", "Land"),
+  ];
+
+  // Create unique cards for each player
+  state = loadDeckForPlayer(
+    state,
+    aliceId,
+    mockDeck.map((c, i) => ({ ...c, id: `alice-card-${i}` })),
+  );
+  state = loadDeckForPlayer(
+    state,
+    bobId,
+    mockDeck.map((c, i) => ({ ...c, id: `bob-card-${i}` })),
+  );
+  state = startGame(state);
 
   return { state, aliceId, bobId };
 }

@@ -410,7 +410,7 @@ export function parseSpellEffects(
     });
   }
 
-  // Damage: "deal X damage" or "deal 3 damage"
+  // Damage: "deal X damage" or "deal 3 damage to any target"
   const damageMatch = lowerText.match(/deal(?:s)?\s+(x|\d+)\s+damage/i);
   if (damageMatch) {
     let amount: number;
@@ -419,9 +419,10 @@ export function parseSpellEffects(
     } else {
       amount = parseInt(damageMatch[1], 10);
     }
+    const xValue = variableValues?.get("X");
     effects.push({
       effectType: "damage",
-      amount,
+      amount: xValue !== undefined ? xValue : amount,
       targetId: "" as CardInstanceId | PlayerId,
       isCombatDamage: false,
     });
@@ -454,7 +455,7 @@ export function resolveEffect(
     case "card_draw":
       return resolveCardDrawEffect(
         state,
-        sourceId ?? "",
+        sourceId ?? ("unknown" as CardInstanceId),
         effect.amount,
         effect.targetId || undefined,
       );
@@ -549,7 +550,7 @@ export function resolveStackObjectEffects(
   effects: StackEffect[],
   sourceId?: CardInstanceId,
   targets?: Array<{ type: string; targetId: string }>,
-): EffectResolutionResult {
+): GameState {
   let currentState = state;
 
   for (const effect of effects) {
@@ -575,9 +576,5 @@ export function resolveStackObjectEffects(
     }
   }
 
-  return {
-    success: true,
-    state: currentState,
-    description: `Resolved ${effects.length} effect(s)`,
-  };
+  return currentState;
 }

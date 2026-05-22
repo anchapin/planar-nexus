@@ -47,7 +47,7 @@ import {
   parseSpellEffects,
 } from "./effect-resolution";
 import type { CardInstance, StackEffect } from "./types";
-import { canTarget as canTargetKeyword } from "./evergreen-keywords";
+import { canTargetKeyword } from "./evergreen-keywords";
 
 /**
  * Generate a unique stack object ID
