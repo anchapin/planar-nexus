@@ -469,10 +469,9 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
-        linkedEffectRegistry: {
-          effects: [],
-          bySourceCard: new Map(),
-        } as LinkedEffectRegistry,
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
+        replacementEffectManager: new ReplacementEffectManager(),
+        layerSystem: new LayerSystem(),
       };
 
       const esState = createEventSourcedState(mockState, "test-session", "p1");
@@ -551,10 +550,7 @@ describe("computeStateHash", () => {
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
       layerSystem: new LayerSystem(),
-      linkedEffectRegistry: {
-        effects: [],
-        bySourceCard: new Map(),
-      } as LinkedEffectRegistry,
+      linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
     };
 
     const hash = computeStateHash(mockState);
@@ -629,10 +625,7 @@ describe("computeStateHash", () => {
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
       layerSystem: new LayerSystem(),
-      linkedEffectRegistry: {
-        effects: [],
-        bySourceCard: new Map(),
-      } as LinkedEffectRegistry,
+      linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
     };
 
     const hash1 = computeStateHash(mockState);
