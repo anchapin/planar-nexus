@@ -26,35 +26,28 @@ import {
   startGame,
   loadDeckForPlayer,
 } from "../game-state";
-import { Phase, ScryfallCard } from "../types";
+import { createCardInstance } from "../card-instance";
+import { Phase } from "../types";
 import { addMana } from "../mana";
 
-function createMockCard(
-  name: string = "Test Card",
-  typeLine: string = "Instant",
-  cmc: number = 1,
-): ScryfallCard {
+function createMockCard(name: string, type: string): any {
   return {
-    id: `mock-${Math.random().toString(36).substr(2, 9)}`,
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`,
     name,
-    type_line: typeLine,
-    mana_cost: "{1}",
-    cmc,
+    type_line: type,
+    cmc: 1,
+    mana_cost: type.includes("Land") ? "" : "{1}",
     oracle_text: "",
-    colors: [],
+    power: type.includes("Creature") ? "2" : undefined,
+    toughness: type.includes("Creature") ? "2" : undefined,
+    keywords: [],
     color_identity: [],
-    legalities: { standard: "legal", commander: "legal" },
-    layout: "normal",
-  } as ScryfallCard;
+    colors: [],
+    legalities: { standard: "legal" },
+  };
 }
 
-function createTestDeck(count: number = 10): ScryfallCard[] {
-  return Array(count)
-    .fill(null)
-    .map((_, i) => createMockCard(`TestCard${i}`, "Instant", i % 5));
-}
-
-// Helper to set up a basic game with decks loaded
+// Helper to set up a basic game with cards in library
 function setupBasicGame() {
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
 
@@ -62,11 +55,32 @@ function setupBasicGame() {
   const aliceId = playerIds[0];
   const bobId = playerIds[1];
 
-  const aliceDeck = createTestDeck(10);
-  const bobDeck = createTestDeck(10);
+  // Create decks with enough cards - startGame draws 7 for each player
+  // So we need at least 8 cards each (7 for startGame + 1 for resolveCardDrawEffect test)
+  const mockDeck = [
+    createMockCard("Forest", "Land"),
+    createMockCard("Mountain", "Land"),
+    createMockCard("Lightning Bolt", "Instant"),
+    createMockCard("Grizzly Bears", "Creature"),
+    createMockCard("Hill Giant", "Creature"),
+    createMockCard("Raging Goblin", "Creature"),
+    createMockCard("Shock", "Instant"),
+    createMockCard("Elite Vanguard", "Creature"),
+    createMockCard("Mogg Fanatic", "Creature"),
+    createMockCard("Plains", "Land"),
+  ];
 
-  state = loadDeckForPlayer(state, aliceId, aliceDeck);
-  state = loadDeckForPlayer(state, bobId, bobDeck);
+  // Create unique cards for each player
+  state = loadDeckForPlayer(
+    state,
+    aliceId,
+    mockDeck.map((c, i) => ({ ...c, id: `alice-card-${i}` })),
+  );
+  state = loadDeckForPlayer(
+    state,
+    bobId,
+    mockDeck.map((c, i) => ({ ...c, id: `bob-card-${i}` })),
+  );
   state = startGame(state);
 
   return { state, aliceId, bobId };
