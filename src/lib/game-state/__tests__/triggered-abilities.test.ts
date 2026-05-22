@@ -22,7 +22,7 @@ import {
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import type { ScryfallCard } from "@/app/actions";
-import { Phase } from "../types";
+import { Phase, ZoneType } from "../types";
 
 // Helper function to create a mock card
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
@@ -73,7 +73,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const cardId = placeCardOnBattlefield(
         createMockCard({
           id: "etb-trigger",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         aliceId,
       );
@@ -87,7 +88,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "etb-trigger",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         aliceId,
       );
@@ -187,7 +189,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         createMockCard({
           id: "damage-trigger",
           name: "Fireball",
-          oracle_text: "When Fireball deals damage to a player, that player loses 1 life.",
+          oracle_text:
+            "When Fireball deals damage to a player, that player loses 1 life.",
         }),
         aliceId,
       );
@@ -201,7 +204,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "deals-damage-trigger",
-          oracle_text: "Whenever this creature deals damage, you gain that much life.",
+          oracle_text:
+            "Whenever this creature deals damage, you gain that much life.",
         }),
         aliceId,
       );
@@ -214,7 +218,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "damage-trigger",
-          oracle_text: "When Fireball deals damage to a player, that player loses 1 life.",
+          oracle_text:
+            "When Fireball deals damage to a player, that player loses 1 life.",
         }),
         aliceId,
       );
@@ -242,7 +247,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "loses-life-trigger",
-          oracle_text: "Whenever a player loses life, each opponent loses 1 life.",
+          oracle_text:
+            "Whenever a player loses life, each opponent loses 1 life.",
         }),
         aliceId,
       );
@@ -255,7 +261,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "any-life-loss-trigger",
-          oracle_text: "Whenever you lose life, create a 1/1 white Spirit token.",
+          oracle_text:
+            "Whenever you lose life, create a 1/1 white Spirit token.",
         }),
         aliceId,
       );
@@ -270,7 +277,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         createMockCard({
           id: "death-trigger",
           name: "Doomed Traveler",
-          oracle_text: "When Doomed Traveler dies, create a 1/1 white Spirit creature token.",
+          oracle_text:
+            "When Doomed Traveler dies, create a 1/1 white Spirit creature token.",
         }),
         aliceId,
       );
@@ -284,7 +292,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "dies-trigger",
-          oracle_text: "When this creature dies, return target creature card from your graveyard to the battlefield.",
+          oracle_text:
+            "When this creature dies, return target creature card from your graveyard to the battlefield.",
         }),
         aliceId,
       );
@@ -354,14 +363,16 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const bobCardId = placeCardOnBattlefield(
         createMockCard({
           id: "bob-etb",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         bobId,
       );
       const aliceCardId = placeCardOnBattlefield(
         createMockCard({
           id: "alice-etb",
-          oracle_text: "When this creature enters the battlefield, gain 1 life.",
+          oracle_text:
+            "When this creature enters the battlefield, gain 1 life.",
         }),
         aliceId,
       );
@@ -387,7 +398,15 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         lossReason: null,
         landsPlayedThisTurn: 0,
         maxLandsPerTurn: 1,
-        manaPool: { colorless: 0, white: 0, blue: 0, black: 0, red: 0, green: 0, generic: 0 },
+        manaPool: {
+          colorless: 0,
+          white: 0,
+          blue: 0,
+          black: 0,
+          red: 0,
+          green: 0,
+          generic: 0,
+        },
         isInCommandZone: false,
         experienceCounters: 0,
         commanderCastCount: 0,
@@ -398,10 +417,34 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         hasOfferedDraw: false,
         hasAcceptedDraw: false,
       });
-      state.zones.set("carol-battlefield", { type: "battlefield" as const, playerId: "carol", cardIds: [], isRevealed: false, visibleTo: [] });
-      state.zones.set("carol-library", { type: "library" as const, playerId: "carol", cardIds: [], isRevealed: false, visibleTo: [] });
-      state.zones.set("carol-hand", { type: "hand" as const, playerId: "carol", cardIds: [], isRevealed: false, visibleTo: [] });
-      state.zones.set("carol-graveyard", { type: "graveyard" as const, playerId: "carol", cardIds: [], isRevealed: false, visibleTo: [] });
+      state.zones.set("carol-battlefield", {
+        type: ZoneType.BATTLEFIELD,
+        playerId: "carol",
+        cardIds: [],
+        isRevealed: false,
+        visibleTo: [],
+      });
+      state.zones.set("carol-library", {
+        type: ZoneType.LIBRARY,
+        playerId: "carol",
+        cardIds: [],
+        isRevealed: false,
+        visibleTo: [],
+      });
+      state.zones.set("carol-hand", {
+        type: ZoneType.HAND,
+        playerId: "carol",
+        cardIds: [],
+        isRevealed: false,
+        visibleTo: [],
+      });
+      state.zones.set("carol-graveyard", {
+        type: ZoneType.GRAVEYARD,
+        playerId: "carol",
+        cardIds: [],
+        isRevealed: false,
+        visibleTo: [],
+      });
 
       const carolCardId = placeCardOnBattlefield(
         createMockCard({
@@ -414,7 +457,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const bobCardId = placeCardOnBattlefield(
         createMockCard({
           id: "bob-etb",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         bobId,
       );
@@ -432,7 +476,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const card1 = placeCardOnBattlefield(
         createMockCard({
           id: "first-trigger",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         aliceId,
       );
@@ -441,7 +486,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const card2 = placeCardOnBattlefield(
         createMockCard({
           id: "second-trigger",
-          oracle_text: "When this creature enters the battlefield, gain 1 life.",
+          oracle_text:
+            "When this creature enters the battlefield, gain 1 life.",
         }),
         aliceId,
       );
@@ -457,7 +503,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const bobCardId = placeCardOnBattlefield(
         createMockCard({
           id: "bob-trigger",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         bobId,
       );
@@ -474,7 +521,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "etb-trigger",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         aliceId,
       );
@@ -499,14 +547,16 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "trigger-1",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         aliceId,
       );
       placeCardOnBattlefield(
         createMockCard({
           id: "trigger-2",
-          oracle_text: "When this creature enters the battlefield, gain 1 life.",
+          oracle_text:
+            "When this creature enters the battlefield, gain 1 life.",
         }),
         aliceId,
       );
@@ -527,7 +577,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const card = createCardInstance(
         createMockCard({
           id: "hand-trigger",
-          oracle_text: "When this creature enters the battlefield, draw a card.",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
         }),
         aliceId,
         aliceId,
@@ -542,7 +593,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const cardId = placeCardOnBattlefield(
         createMockCard({
           id: "effect-trigger",
-          oracle_text: "When this creature enters the battlefield, create a 1/1 white Spirit token.",
+          oracle_text:
+            "When this creature enters the battlefield, create a 1/1 white Spirit token.",
         }),
         aliceId,
       );
@@ -573,7 +625,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "gains-life-trigger",
-          oracle_text: "Whenever a player gains life, each opponent loses 1 life.",
+          oracle_text:
+            "Whenever a player gains life, each opponent loses 1 life.",
         }),
         aliceId,
       );
@@ -604,7 +657,8 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       const cardId = placeCardOnBattlefield(
         createMockCard({
           id: "ltb-trigger",
-          oracle_text: "When this permanent leaves the battlefield, draw a card.",
+          oracle_text:
+            "When this permanent leaves the battlefield, draw a card.",
         }),
         aliceId,
       );
