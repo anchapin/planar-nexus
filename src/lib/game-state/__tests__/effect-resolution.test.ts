@@ -21,18 +21,53 @@ import {
   parseSpellEffects,
   resolveStackObjectEffects,
 } from "../effect-resolution";
-import { createInitialGameState, startGame } from "../game-state";
-import { Phase } from "../types";
+import {
+  createInitialGameState,
+  startGame,
+  loadDeckForPlayer,
+} from "../game-state";
+import { Phase, ScryfallCard } from "../types";
 import { addMana } from "../mana";
 
-// Helper to set up a basic game
+function createMockCard(
+  name: string = "Test Card",
+  typeLine: string = "Instant",
+  cmc: number = 1,
+): ScryfallCard {
+  return {
+    id: `mock-${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    type_line: typeLine,
+    mana_cost: "{1}",
+    cmc,
+    oracle_text: "",
+    colors: [],
+    color_identity: [],
+    legalities: { standard: "legal", commander: "legal" },
+    layout: "normal",
+  } as ScryfallCard;
+}
+
+function createTestDeck(count: number = 10): ScryfallCard[] {
+  return Array(count)
+    .fill(null)
+    .map((_, i) => createMockCard(`TestCard${i}`, "Instant", i % 5));
+}
+
+// Helper to set up a basic game with decks loaded
 function setupBasicGame() {
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
-  state = startGame(state);
 
   const playerIds = Array.from(state.players.keys());
   const aliceId = playerIds[0];
   const bobId = playerIds[1];
+
+  const aliceDeck = createTestDeck(10);
+  const bobDeck = createTestDeck(10);
+
+  state = loadDeckForPlayer(state, aliceId, aliceDeck);
+  state = loadDeckForPlayer(state, bobId, bobDeck);
+  state = startGame(state);
 
   return { state, aliceId, bobId };
 }
