@@ -158,8 +158,6 @@ export class P2PSignalingClient {
 
       this.connection = createP2PConnection(connectionOptions);
       await this.connection.initialize();
-
-      console.log('[Signaling] Initialized', this.isHost ? 'as host' : 'as client');
     } catch (error) {
       console.error('[Signaling] Failed to initialize:', error);
       this.events.onError(error instanceof Error ? error : new Error('Failed to initialize'));
@@ -207,14 +205,12 @@ export class P2PSignalingClient {
     }
 
     try {
-      console.log('[Signaling] Host creating offer...');
       this.updateHandshakeStep('waiting-for-answer');
 
       // Create offer
       const offer = await this.connection.createOffer();
       this.localOffer = offer;
 
-      console.log('[Signaling] Host offer created');
       return offer;
     } catch (error) {
       console.error('[Signaling] Failed to create offer:', error);
@@ -233,7 +229,6 @@ export class P2PSignalingClient {
     }
 
     try {
-      console.log('[Signaling] Client handling offer...');
       this.updateHandshakeStep('waiting-for-candidates');
 
       // Store remote offer
@@ -243,7 +238,6 @@ export class P2PSignalingClient {
       const answer = await this.connection.handleOffer(offer);
       this.localAnswer = answer;
 
-      console.log('[Signaling] Client answer created');
       return answer;
     } catch (error) {
       console.error('[Signaling] Failed to handle offer:', error);
@@ -262,15 +256,11 @@ export class P2PSignalingClient {
     }
 
     try {
-      console.log('[Signaling] Host handling answer...');
-
       // Store remote answer
       this.remoteAnswer = answer;
 
       // Handle answer
       await this.connection.handleAnswer(answer);
-
-      console.log('[Signaling] Host answer handled');
     } catch (error) {
       console.error('[Signaling] Failed to handle answer:', error);
       this.events.onError(error instanceof Error ? error : new Error('Failed to handle answer'));
@@ -289,7 +279,6 @@ export class P2PSignalingClient {
 
     try {
       await this.connection.addIceCandidate(candidate);
-      console.log('[Signaling] ICE candidate added');
     } catch (error) {
       console.error('[Signaling] Failed to add ICE candidate:', error);
       // Don't fail the connection for candidate errors
@@ -347,8 +336,6 @@ export class P2PSignalingClient {
    * Close the connection
    */
   async close(): Promise<void> {
-    console.log('[Signaling] Closing connection...');
-
     if (this.connection) {
       this.connection.close();
       this.connection = null;
@@ -362,8 +349,6 @@ export class P2PSignalingClient {
     this.remoteCandidates = [];
     this.connectionState = 'disconnected';
     this.updateHandshakeStep('idle');
-
-    console.log('[Signaling] Connection closed');
   }
 
   /**
@@ -372,7 +357,6 @@ export class P2PSignalingClient {
   private updateHandshakeStep(step: HandshakeStep): void {
     this.handshakeStep = step;
     this.events.onHandshakeStepChange(step);
-    console.log('[Signaling] Handshake step:', step);
   }
 
   /**

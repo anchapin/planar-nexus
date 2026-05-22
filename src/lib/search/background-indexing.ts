@@ -57,7 +57,6 @@ export class BackgroundIndexingManager {
     try {
       const cards = await getAllCards();
       if (cards.length === 0) {
-        console.log('No cards found in source database.');
         this.notify({ status: 'idle' });
         return;
       }
@@ -71,14 +70,12 @@ export class BackgroundIndexingManager {
       const cardsToEmbed = cards.filter(card => !indexedCardIds.has(card.id));
 
       if (cardsToEmbed.length === 0) {
-        console.log('Search index is up to date.');
         // Still ensure Orama is loaded from snapshot if it hasn't been
         await oramaManager.init();
         this.notify({ status: 'completed', processed: 0, total: 0 });
         return;
       }
 
-      console.log(`Indexing ${cardsToEmbed.length} cards...`);
       this.notify({ total: cardsToEmbed.length });
 
       for (let i = 0; i < cardsToEmbed.length; i += this.batchSize) {
@@ -104,11 +101,9 @@ export class BackgroundIndexingManager {
         await oramaManager.saveIndex();
         
         const processed = Math.min(i + this.batchSize, cardsToEmbed.length);
-        console.log(`Progress: ${processed} / ${cardsToEmbed.length}`);
         this.notify({ processed });
       }
 
-      console.log('Indexing complete.');
       this.notify({ status: 'completed' });
     } catch (error) {
       console.error('Background indexing failed:', error);
@@ -142,7 +137,6 @@ export class BackgroundIndexingManager {
       const games = getAllGameRecords();
       
       if (games.length === 0) {
-        console.log('No game history found to vectorize.');
         this.notify({ status: 'completed', processed: 0, total: 0 });
         return;
       }
@@ -156,13 +150,11 @@ export class BackgroundIndexingManager {
       const gamesToEmbed = games.filter(game => !indexedGameIds.has(game.id));
 
       if (gamesToEmbed.length === 0) {
-        console.log('Game history search index is up to date.');
         await gameHistoryOramaManager.init();
         this.notify({ status: 'completed', processed: 0, total: 0 });
         return;
       }
 
-      console.log(`Vectorizing ${gamesToEmbed.length} game records...`);
       this.notify({ total: gamesToEmbed.length });
 
       // Generate text representations for embedding
@@ -205,11 +197,9 @@ export class BackgroundIndexingManager {
         }
 
         const processed = Math.min(i + this.batchSize, gamesToEmbed.length);
-        console.log(`Vectorization progress: ${processed} / ${gamesToEmbed.length}`);
         this.notify({ processed });
       }
 
-      console.log('Game history vectorization complete.');
       this.notify({ status: 'completed' });
     } catch (error) {
       console.error('Game history vectorization failed:', error);
