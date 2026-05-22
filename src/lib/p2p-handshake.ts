@@ -7,6 +7,7 @@
 
 import type { GameState } from '@/lib/game-state/types';
 import { serializeGameState } from '@/lib/game-state/serialization';
+import { TIMEOUTS } from './config/timeouts';
 
 /**
  * Handshake message types
@@ -456,7 +457,7 @@ export class HandshakeSession {
   private challenge: string | null = null;
   private stateVersion: number = 0;
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  private readonly HANDSHAKE_TIMEOUT = 10000; // 10 seconds
+  private readonly HANDSHAKE_TIMEOUT = TIMEOUTS.P2P_HANDSHAKE_TIMEOUT_MS;
 
   constructor(
     private localPlayerId: string,

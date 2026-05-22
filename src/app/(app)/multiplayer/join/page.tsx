@@ -117,11 +117,9 @@ function JoinGameContent() {
         playerId,
         playerName: joinState.playerName,
         isHost: false,
-        onAnswerGenerated: (answer) => {
-          console.log('[P2P Client] Answer generated:', answer);
+        onAnswerGenerated: () => {
         },
-        onICECandidate: (candidate) => {
-          console.log('[P2P Client] ICE candidate generated:', candidate);
+        onICECandidate: () => {
         },
       });
 

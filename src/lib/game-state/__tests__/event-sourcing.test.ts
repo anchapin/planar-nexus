@@ -7,7 +7,13 @@
  * these tests are designed to be run once the full game-state infrastructure is in place.
  */
 
-import type { GameState, GameAction, PlayerId, Phase, LinkedEffectRegistry } from "../types";
+import type {
+  GameState,
+  GameAction,
+  PlayerId,
+  Phase,
+  LinkedEffectRegistry,
+} from "../types";
 import {
   createEventSourcedState,
   EventSourcingGameState,
@@ -89,6 +95,7 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
         replacementEffectManager: new ReplacementEffectManager(),
         layerSystem: new LayerSystem(),
       };
@@ -162,6 +169,7 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
         replacementEffectManager: new ReplacementEffectManager(),
         layerSystem: new LayerSystem(),
       };
@@ -236,6 +244,7 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
         replacementEffectManager: new ReplacementEffectManager(),
         layerSystem: new LayerSystem(),
       };
@@ -311,6 +320,7 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
         replacementEffectManager: new ReplacementEffectManager(),
         layerSystem: new LayerSystem(),
       };
@@ -385,6 +395,7 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
         replacementEffectManager: new ReplacementEffectManager(),
         layerSystem: new LayerSystem(),
       };
@@ -458,6 +469,7 @@ describe("EventSourcingGameState", () => {
         format: "commander",
         createdAt: Date.now(),
         lastModifiedAt: Date.now(),
+        linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
         replacementEffectManager: new ReplacementEffectManager(),
         layerSystem: new LayerSystem(),
       };
@@ -538,6 +550,7 @@ describe("computeStateHash", () => {
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
       layerSystem: new LayerSystem(),
+      linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
     };
 
     const hash = computeStateHash(mockState);
@@ -612,6 +625,7 @@ describe("computeStateHash", () => {
       lastModifiedAt: Date.now(),
       replacementEffectManager: new ReplacementEffectManager(),
       layerSystem: new LayerSystem(),
+      linkedEffectRegistry: { effects: [], bySourceCard: new Map() },
     };
 
     const hash1 = computeStateHash(mockState);

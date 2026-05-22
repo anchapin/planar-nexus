@@ -132,8 +132,7 @@ export default function HostLobbyPage() {
           setP2pConnectionState('waiting-for-answer');
           setShowP2pSetup(true);
         },
-        onICECandidate: (candidate) => {
-          console.log('[P2P Host] ICE candidate generated:', candidate);
+        onICECandidate: () => {
         },
       });
     } catch (error) {

@@ -288,9 +288,7 @@ export async function createHostConnection(
     originalHandleICECandidate?.call(connection, candidate);
   };
 
-  console.log('[P2P] Host connection created, waiting for answer...');
-  console.log('[P2P] Game code:', gameCode);
-  console.log('[P2P] Session ID:', sessionId);
+  
 
   return connection;
 }
@@ -350,8 +348,6 @@ export async function handleICEExchange(
 
   // Add candidate to connection
   await session.connection.addIceCandidate(candidate);
-
-  console.log('[P2P] ICE candidate added for session:', sessionId);
 }
 
 /**

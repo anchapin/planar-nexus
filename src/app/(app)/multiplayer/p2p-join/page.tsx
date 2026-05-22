@@ -24,10 +24,8 @@ export default function P2PJoinPage() {
 
   const signaling = useP2PSignaling({
     onConnected: () => {
-      console.log('Connected to host!');
     },
     onMessage: (message: P2PMessage) => {
-      console.log('Received message:', message);
     },
     onError: (error) => {
       console.error('Signaling error:', error);
@@ -42,7 +40,7 @@ export default function P2PJoinPage() {
     try {
       await signaling.initializeAsClient(playerName);
       const answer = await signaling.startClientConnection(connectionCode);
-      console.log('Answer generated, share with host:', answer);
+      void answer; // acknowledge generated answer
     } catch (error) {
       console.error('Failed to join:', error);
     }
@@ -63,7 +61,6 @@ export default function P2PJoinPage() {
   };
 
   const handleStartGame = () => {
-    console.log('Starting game...');
     window.location.href = '/game-board';
   };
 

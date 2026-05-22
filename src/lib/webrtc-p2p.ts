@@ -302,16 +302,16 @@ export class WebRTCConnection {
       if (this.enableICEMonitoring) {
         this.iceMonitor = new ICEConnectionMonitor({
           onStateChange: (state) => {
-            console.log("[WebRTC] ICE monitor state:", state);
+            // ICE monitor state changed
           },
           onFailed: () => {
             this.handleICEFailure();
           },
           onConnected: () => {
-            console.log("[WebRTC] ICE connection established");
+            // Connection established
           },
           onDisconnected: () => {
-            console.log("[WebRTC] ICE connection lost, attempting recovery");
+            // Connection lost, attempting recovery
           },
           failureTimeoutMs: 30000,
         });
@@ -323,11 +323,7 @@ export class WebRTCConnection {
         this.setupDataChannel();
       }
 
-      console.log("[WebRTC] Initialized as", this.isHost ? "host" : "client");
-      console.log(
-        "[WebRTC] ICE servers configured:",
-        this.rtcConfig.iceServers?.length || 0,
-      );
+      
     } catch (error) {
       console.error("[WebRTC] Failed to initialize:", error);
       this.updateConnectionState("failed");
@@ -339,11 +335,8 @@ export class WebRTCConnection {
    * Handle ICE connection failure with optional fallback
    */
   private handleICEFailure(): void {
-    console.log("[WebRTC] ICE connection failed");
-
     // If fallback to relay is enabled and TURN servers are available
     if (this.fallbackToRelay && this.iceManager.hasTurnServers()) {
-      console.log("[WebRTC] Attempting fallback to TURN relay");
       this.attemptRelayFallback();
     } else {
       this.handleConnectionFailure();
@@ -364,7 +357,7 @@ export class WebRTCConnection {
       const relayConfig = this.iceManager.getRTCConfiguration();
       relayConfig.iceTransportPolicy = "relay";
 
-      console.log("[WebRTC] Creating new connection with relay-only mode");
+      
 
       // Create new peer connection with relay config
       this.peerConnection = new RTCPeerConnection(relayConfig);
@@ -411,7 +404,6 @@ export class WebRTCConnection {
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
 
-    console.log("[WebRTC] Created offer");
     return offer;
   }
 
@@ -431,7 +423,6 @@ export class WebRTCConnection {
     const answer = await this.peerConnection.createAnswer();
     await this.peerConnection.setLocalDescription(answer);
 
-    console.log("[WebRTC] Handled offer and created answer");
     return answer;
   }
 
@@ -446,7 +437,6 @@ export class WebRTCConnection {
     await this.peerConnection.setRemoteDescription(
       new RTCSessionDescription(answer),
     );
-    console.log("[WebRTC] Handled answer");
   }
 
   /**
@@ -458,7 +448,6 @@ export class WebRTCConnection {
     }
 
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    console.log("[WebRTC] Added ICE candidate");
   }
 
   /**
@@ -467,7 +456,6 @@ export class WebRTCConnection {
   private handleICECandidate(candidate: RTCIceCandidate): void {
     // In a full implementation, this would send the candidate via a signaling server
     // or via an alternative channel (like QR code or manual paste)
-    console.log("[WebRTC] ICE candidate:", candidate.candidate);
   }
 
   /**
@@ -479,7 +467,6 @@ export class WebRTCConnection {
     // If host, create a data channel to listen for incoming connections
     if (this.isHost) {
       this.peerConnection.ondatachannel = (event) => {
-        console.log("[WebRTC] Received data channel");
         this.dataChannel = event.channel;
         this.setupDataChannelEvents();
       };
@@ -500,7 +487,6 @@ export class WebRTCConnection {
     });
 
     this.setupDataChannelEvents();
-    console.log("[WebRTC] Created data channel as client");
   }
 
   /**
@@ -510,13 +496,11 @@ export class WebRTCConnection {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-      console.log("[WebRTC] Data channel opened");
       this.updateConnectionState("connected");
       this.startPingInterval();
     };
 
     this.dataChannel.onclose = () => {
-      console.log("[WebRTC] Data channel closed");
       this.handleDisconnection();
     };
 
@@ -670,17 +654,12 @@ export class WebRTCConnection {
   private handleConnectionRequest(message: ConnectionRequestMessage): void {
     // In a full implementation, host would validate the game code
     // and accept/reject the connection
-    console.log(
-      "[WebRTC] Connection request from:",
-      message.payload.playerName,
-    );
   }
 
   /**
    * Handle connection accept
    */
   private handleConnectionAccept(message: ConnectionAcceptMessage): void {
-    console.log("[WebRTC] Connection accepted:", message.payload.playerName);
     this.updateConnectionState("connected");
   }
 
@@ -698,7 +677,6 @@ export class WebRTCConnection {
     if (!this.peerConnection) return;
 
     const state = this.peerConnection.connectionState;
-    console.log("[WebRTC] Connection state:", state);
 
     switch (state) {
       case "connected":
@@ -726,7 +704,6 @@ export class WebRTCConnection {
     if (!this.peerConnection) return;
 
     const state = this.peerConnection.iceConnectionState;
-    console.log("[WebRTC] ICE connection state:", state);
 
     if (state === "disconnected" || state === "failed") {
       this.handleDisconnection();
@@ -737,7 +714,6 @@ export class WebRTCConnection {
    * Handle disconnection
    */
   private handleDisconnection(): void {
-    console.log("[WebRTC] Disconnected");
     this.updateConnectionState("disconnected");
     this.stopPingInterval();
 
@@ -754,7 +730,6 @@ export class WebRTCConnection {
    * Handle connection failure
    */
   private handleConnectionFailure(): void {
-    console.log("[WebRTC] Connection failed");
     this.updateConnectionState("failed");
     this.stopPingInterval();
     this.events.onError(new Error("Connection failed"), "");
@@ -766,9 +741,6 @@ export class WebRTCConnection {
   private async attemptReconnection(): Promise<void> {
     this.reconnectAttempts++;
     this.updateConnectionState("reconnecting");
-    console.log(
-      `[WebRTC] Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`,
-    );
 
     // In a full implementation, this would re-establish the connection
     // using stored offer/answer or generating new ones
@@ -975,8 +947,6 @@ export class WebRTCConnection {
     this.peers.clear();
     this.pendingCandidates = [];
     this.updateConnectionState("disconnected");
-
-    console.log("[WebRTC] Connection closed");
   }
 
   /**

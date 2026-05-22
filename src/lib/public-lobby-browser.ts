@@ -16,6 +16,7 @@
  */
 
 import { GameFormat, PlayerCount } from './multiplayer-types';
+import { TIMEOUTS } from './config/timeouts';
 
 export interface PublicGameInfo {
   id: string;
@@ -37,7 +38,7 @@ export interface PublicGameInfo {
 }
 
 const STORAGE_KEY = 'planar_nexus_public_lobbies';
-const REFRESH_INTERVAL = 10000; // 10 seconds
+const REFRESH_INTERVAL = TIMEOUTS.LOBBY_REFRESH_MS;
 const DEMO_DATA_KEY = 'planar_nexus_demo_data_added';
 
 class PublicLobbyBrowser {

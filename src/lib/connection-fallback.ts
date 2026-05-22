@@ -7,14 +7,15 @@
  */
 
 import { WebRTCConnection, type P2PConnectionState, type P2PMessage, type P2PEvents } from './webrtc-p2p';
-import { 
-  WebSocketConnection, 
-  type WebSocketConnectionState, 
+import {
+  WebSocketConnection,
+  type WebSocketConnectionState,
   type WebSocketEvents,
   type WebSocketConfig,
   isWebSocketAvailable,
 } from './websocket-connection';
 import type { GameState } from './game-state/types';
+import { TIMEOUTS } from './config/timeouts';
 
 /**
  * Connection type
@@ -84,7 +85,7 @@ export class ConnectionFallbackManager {
       gameCode: options.gameCode ?? '',
       webrtcConfig: options.webrtcConfig ?? {},
       websocketUrl: options.websocketUrl || process.env.NEXT_PUBLIC_WEBSOCKET_URL || '',
-      fallbackTimeout: options.fallbackTimeout ?? 15000,
+      fallbackTimeout: options.fallbackTimeout ?? TIMEOUTS.P2P_FALLBACK_TIMEOUT_MS,
       enableFallback: options.enableFallback ?? true,
       preferWebSocket: options.preferWebSocket ?? false,
     };

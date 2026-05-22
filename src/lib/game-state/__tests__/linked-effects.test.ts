@@ -244,12 +244,14 @@ describe("Linked Effects System (CR 607)", () => {
 
   describe("detectLinkedEffectPattern", () => {
     it("should detect damage-to-life pattern", () => {
-      const text = "When Fire Dragon deals damage to a player, you gain that much life.";
+      const text =
+        "When Fire Dragon deals damage to a player, you gain that much life.";
       expect(detectLinkedEffectPattern(text)).toBe("damage_life");
     });
 
     it("should detect copy-to-counter pattern", () => {
-      const text = "When you copy a card, the copy gets +1/+1 counters equal to the number of counters on the original.";
+      const text =
+        "When you copy a card, the copy gets +1/+1 counters equal to the number of counters on the original.";
       expect(detectLinkedEffectPattern(text)).toBe("copy_counter");
     });
 
@@ -286,10 +288,14 @@ describe("Linked Effects System (CR 607)", () => {
         "damage_life",
         { damageAmount: 3 },
       );
-      let newState = registerLinkedEffect(state, effect);
+      const newState = registerLinkedEffect(state, effect);
 
       // Now resolve the second ability
-      const result = handleSecondAbilityResolution(newState, "card-1", "ability-2");
+      const result = handleSecondAbilityResolution(
+        newState,
+        "card-1",
+        "ability-2",
+      );
 
       expect(result.linkedEffect).not.toBeNull();
       expect(result.linkedEffect?.damageAmount).toBe(3);
@@ -301,7 +307,11 @@ describe("Linked Effects System (CR 607)", () => {
     });
 
     it("should return error when no linked effect found", () => {
-      const result = handleSecondAbilityResolution(state, "card-1", "nonexistent-ability");
+      const result = handleSecondAbilityResolution(
+        state,
+        "card-1",
+        "nonexistent-ability",
+      );
 
       expect(result.linkedEffect).toBeNull();
       expect(result.error).toBe("No linked effect found for this ability");

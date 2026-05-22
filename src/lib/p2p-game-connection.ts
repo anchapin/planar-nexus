@@ -396,14 +396,12 @@ export class P2PGameConnection {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-      console.log('[P2PGameConnection] Data channel opened');
       this.updateConnectionState('connected');
       this.signalingClient.markConnected();
       this.startPingInterval();
     };
 
     this.dataChannel.onclose = () => {
-      console.log('[P2PGameConnection] Data channel closed');
       this.handleDisconnection();
     };
 
@@ -543,7 +541,6 @@ export class P2PGameConnection {
     if (!this.peerConnection) return;
 
     const state = this.peerConnection.connectionState;
-    console.log('[P2PGameConnection] Peer connection state:', state);
 
     switch (state) {
       case 'connected':
@@ -565,7 +562,6 @@ export class P2PGameConnection {
     if (!this.peerConnection) return;
 
     const state = this.peerConnection.iceConnectionState;
-    console.log('[P2PGameConnection] ICE connection state:', state);
 
     if (state === 'disconnected' || state === 'failed') {
       this.handleDisconnection();
@@ -576,7 +572,6 @@ export class P2PGameConnection {
    * Handle disconnection
    */
   private handleDisconnection(): void {
-    console.log('[P2PGameConnection] Disconnected');
     this.updateConnectionState('disconnected');
     this.stopPingInterval();
   }
@@ -616,21 +611,18 @@ export class P2PGameConnection {
    * Handle offer created
    */
   private handleOfferCreated(offer: RTCSessionDescriptionInit): void {
-    console.log('[P2PGameConnection] Offer created');
   }
 
   /**
    * Handle answer created
    */
   private handleAnswerCreated(answer: RTCSessionDescriptionInit): void {
-    console.log('[P2PGameConnection] Answer created');
   }
 
   /**
    * Handle ICE candidate
    */
   private handleIceCandidate(candidate: RTCIceCandidateInit): void {
-    console.log('[P2PGameConnection] ICE candidate generated');
   }
 
   /**
@@ -685,7 +677,6 @@ export class P2PGameConnection {
     }
 
     this.updateConnectionState('disconnected');
-    console.log('[P2PGameConnection] Connection closed');
   }
 
   /**

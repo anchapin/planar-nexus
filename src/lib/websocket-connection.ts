@@ -19,6 +19,7 @@
 import type { P2PMessage } from './webrtc-p2p';
 import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
 import type { GameState, Phase, PlayerId } from './game-state/types';
+import { TIMEOUTS } from './config/timeouts';
 
 /**
  * WebSocket connection configuration
@@ -92,9 +93,9 @@ export class WebSocketConnection {
   constructor(config: WebSocketConfig, events: WebSocketEvents) {
     this.config = {
       serverUrl: config.serverUrl,
-      reconnectInterval: config.reconnectInterval ?? 3000,
+      reconnectInterval: config.reconnectInterval ?? TIMEOUTS.WEBSOCKET_RECONNECT_MS,
       maxReconnectAttempts: config.maxReconnectAttempts ?? 5,
-      connectionTimeout: config.connectionTimeout ?? 10000,
+      connectionTimeout: config.connectionTimeout ?? TIMEOUTS.WEBSOCKET_TIMEOUT_MS,
       autoReconnect: config.autoReconnect ?? true,
     };
     this.events = events;
