@@ -88,6 +88,15 @@ export function isLethalDamage(damage: number, source: CardInstance): boolean {
   return false;
 }
 
+// ============== SHROUD ==============
+/**
+ * Check if a card has shroud
+ * CR 702.18: Can't be targeted at all
+ */
+export function hasShroud(card: CardInstance): boolean {
+  return hasKeyword(card, "shroud");
+}
+
 // ============== HEXPROOF ==============
 /**
  * Check if a card has hexproof
@@ -107,24 +116,7 @@ export function isProtectedByHexproof(
   return target.controllerId !== sourceControllerId;
 }
 
-// ============== SHROUD ==============
-/**
- * Check if a card has shroud
- * Implements CR 702.18: Can't be targeted at all
- */
-export function hasShroud(card: CardInstance): boolean {
-  return hasKeyword(card, "shroud");
-}
-
-/**
- * Check if a card can be targeted (considering shroud)
- * Returns false if the card has shroud
- */
-export function canBeTargetedByShroud(card: CardInstance): boolean {
-  return !hasShroud(card);
-}
-
-// ============== INDESTRUCTIBLE ==============
+// ============== HEXPROOF ==============
 /**
  * Check if a card is indestructible
  */
@@ -241,6 +233,13 @@ export function canBlockThisTurn(_card: CardInstance): boolean {
  * Standard MTG colors
  */
 const MTG_COLORS = ["white", "blue", "black", "red", "green"];
+const COLOR_ABbrev_TO_FULL: Record<string, string> = {
+  w: "white",
+  u: "blue",
+  b: "black",
+  r: "red",
+  g: "green",
+};
 
 /**
  * Check if a string represents a valid MTG color
@@ -274,7 +273,7 @@ export function normalizeColor(color: string): string {
  * Returns array of color strings (e.g., ['W', 'U'] or ['Red', 'Blue'])
  */
 export function getCardColors(card: CardInstance): string[] {
-  return card.cardData.colors || [];
+  return (card.cardData.colors || []).map(normalizeColor);
 }
 
 /**
@@ -311,7 +310,8 @@ export function getProtectionQualities(card: CardInstance): string[] {
  */
 export function hasProtectionFrom(card: CardInstance, color: string): boolean {
   const qualities = getProtectionQualities(card);
-  return qualities.some((q) => q.toLowerCase() === color.toLowerCase());
+  const normalizedColor = normalizeColor(color);
+  return qualities.some((q) => q.toLowerCase() === normalizedColor);
 }
 
 /**
@@ -500,10 +500,8 @@ export function canBlockProtectedAttacker(
   attacker: CardInstance,
   blocker: CardInstance,
 ): { canBlock: boolean; reason?: string } {
-  // Get the colors of the blocker
   const blockerColors = getCardColors(blocker);
 
-  // Check if attacker has protection from any of the blocker's colors
   for (const color of blockerColors) {
     const normalizedColor = normalizeColor(color);
     if (hasProtectionFrom(attacker, normalizedColor)) {

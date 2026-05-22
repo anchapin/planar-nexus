@@ -532,12 +532,13 @@ export function resolveTopOfStack(state: GameState): GameState {
   // Handle structured effects if present
   if (stackObject.effects && stackObject.effects.length > 0) {
     // Resolve each effect in order
-    currentState = resolveStackObjectEffects(
+    const result = resolveStackObjectEffects(
       state,
       stackObject.effects,
       stackObject.sourceCardId || undefined,
       stackObject.targets,
     );
+    currentState = result;
   }
 
   // Check if this is a board sweeper spell (legacy string-based check)
@@ -578,12 +579,13 @@ export function resolveTopOfStack(state: GameState): GameState {
 
         if (parsedEffects.length > 0) {
           // Apply effects with target information
-          currentState = resolveStackObjectEffects(
+          const result = resolveStackObjectEffects(
             currentState,
             parsedEffects,
             stackObject.sourceCardId,
             stackObject.targets,
           );
+          currentState = result;
         }
       }
     }

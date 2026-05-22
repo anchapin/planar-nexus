@@ -21,6 +21,7 @@ import {
   hasInfect,
   hasDeathtouch,
   getToxicLevel,
+  getProtectionQualities,
 } from "./evergreen-keywords";
 
 /**
@@ -124,7 +125,7 @@ export function canBlock(
     return { canBlock: false, reason: "Creature is tapped" };
   }
 
-  // If there's an attacker, check if it can be blocked (flying, reach, etc.)
+  // If there's an attacker, check if it can be blocked (flying, reach, protection, etc.)
   if (attackerId) {
     const attacker = state.cards.get(attackerId);
     if (attacker && isCreature(attacker)) {
@@ -144,6 +145,18 @@ export function canBlock(
           canBlock: false,
           reason: "Cannot block flying creatures without flying or reach",
         };
+      }
+
+      // CR 702.16D: Check protection - creatures with protection from attacker's color can't block
+      const attackerColors = attacker.cardData.colors || [];
+      for (const color of attackerColors) {
+        const protectionQualities = getProtectionQualities(blocker);
+        if (protectionQualities.some((q) => q.toLowerCase() === color.toLowerCase())) {
+          return {
+            canBlock: false,
+            reason: `Cannot block creatures with ${color} protection`,
+          };
+        }
       }
     }
   }
@@ -455,7 +468,16 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
       const damage = attackerPower;
 
       if (attacker.isAttackingPlaneswalker) {
-        // Damage to planeswalker would need planeswalker damage handling
+        // CR 306.7: Damage to planeswalker is handled via dealDamageToCard
+        // which reduces loyalty counters (CR 119.3c)
+        const damageResult = dealDamageToCard(
+          updatedState,
+          attacker.defenderId as CardInstanceId,
+          damage,
+          true,
+          attacker.cardId,
+        );
+        updatedState = damageResult.state;
         damageEvents.push(
           `${attackerCard.cardData.name} deals ${damage} to planeswalker`,
         );
