@@ -56,6 +56,7 @@ function JoinGameContent() {
   const [ready, setReady] = useState(false);
   const [showP2pEntry, setShowP2pEntry] = useState(false);
   const [p2pConnectionState, setP2pConnectionState] = useState<DirectConnectionState>('idle');
+  const [showP2pUnavailable, setShowP2pUnavailable] = useState(false);
 
   // Format display names
   const formatDisplayNames: Record<GameFormat, string> = {
@@ -170,15 +171,47 @@ function JoinGameContent() {
   };
 
   const handleReady = () => {
-    setReady(!ready);
-    // In a real app, this would send ready status to server
-    alert(`Ready status: ${!ready ? 'Ready!' : 'Not ready'}\n\nNote: This is a prototype. P2P networking is not implemented.`);
+    // Show P2P unavailable placeholder instead of alert
+    setShowP2pUnavailable(true);
+  };
+
+  const handleDismissP2pUnavailable = () => {
+    setShowP2pUnavailable(false);
   };
 
   const handleLeave = () => {
     localStorage.removeItem('planar_nexus_joined_game');
     router.push('/multiplayer');
   };
+
+  // P2P unavailable placeholder modal
+  if (showP2pUnavailable) {
+    return (
+      <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="w-5 h-5" />
+              Feature Not Available
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              P2P networking (WebRTC) is not yet implemented in this prototype. 
+              The ready status cannot be synchronized with other players yet.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              This is a demo build. Full multiplayer support with WebRTC 
+              peer-to-peer connections is planned for a future release.
+            </p>
+            <Button onClick={handleDismissP2pUnavailable} className="w-full">
+              Got It
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Step 1: Enter game code
   if (joinState.step === 'code') {
