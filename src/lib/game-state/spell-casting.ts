@@ -532,12 +532,13 @@ export function resolveTopOfStack(state: GameState): GameState {
   // Handle structured effects if present
   if (stackObject.effects && stackObject.effects.length > 0) {
     // Resolve each effect in order
-    currentState = resolveStackObjectEffects(
+    const result = resolveStackObjectEffects(
       state,
       stackObject.effects,
       stackObject.sourceCardId || undefined,
       stackObject.targets,
     );
+    currentState = result.state;
   }
 
   // Check if this is a board sweeper spell (legacy string-based check)
@@ -578,12 +579,13 @@ export function resolveTopOfStack(state: GameState): GameState {
 
         if (parsedEffects.length > 0) {
           // Apply effects with target information
-          currentState = resolveStackObjectEffects(
+          const result = resolveStackObjectEffects(
             currentState,
             parsedEffects,
             stackObject.sourceCardId,
             stackObject.targets,
           );
+          currentState = result.state;
         }
       }
     }
@@ -854,7 +856,11 @@ export function canTarget(
       if (!card) return { canTarget: false, reason: "Card not found" };
 
       // Check hexproof, shroud, and protection targeting restrictions
-      const targetingResult = canTargetKeyword(card, sourcePlayerId, effectColor);
+      const targetingResult = canTargetKeyword(
+        card,
+        sourcePlayerId,
+        effectColor,
+      );
       if (!targetingResult.canTarget) {
         return targetingResult;
       }
@@ -870,12 +876,18 @@ export function canTarget(
     case "stack": {
       // Check if target stack object exists
       const exists = state.stack.some((obj) => obj.id === targetId);
-      return { canTarget: exists, reason: exists ? undefined : "Stack object not found" };
+      return {
+        canTarget: exists,
+        reason: exists ? undefined : "Stack object not found",
+      };
     }
     case "zone": {
       // Check if zone exists
       const exists = state.zones.has(targetId);
-      return { canTarget: exists, reason: exists ? undefined : "Zone not found" };
+      return {
+        canTarget: exists,
+        reason: exists ? undefined : "Zone not found",
+      };
     }
     default:
       return { canTarget: false, reason: "Invalid target type" };
@@ -923,9 +935,10 @@ export function createModeChoice(
     type: "choose_mode",
     playerId,
     stackObjectId,
-    prompt: minChoices > 1
-      ? `Choose ${minChoices} modes for ${spellName}:`
-      : `Choose mode for ${spellName}:`,
+    prompt:
+      minChoices > 1
+        ? `Choose ${minChoices} modes for ${spellName}:`
+        : `Choose mode for ${spellName}:`,
     choices: availableModes.map((mode) => ({
       label: mode,
       value: mode,
@@ -948,7 +961,15 @@ export function createChooseTwoModeChoice(
   spellName: string,
   availableModes: string[],
 ): WaitingChoice {
-  return createModeChoice(state, playerId, stackObjectId, spellName, availableModes, 2, 2);
+  return createModeChoice(
+    state,
+    playerId,
+    stackObjectId,
+    spellName,
+    availableModes,
+    2,
+    2,
+  );
 }
 
 /**
@@ -962,7 +983,15 @@ export function createModalSpellChoice(
   availableModes: string[],
   modeCount: number,
 ): WaitingChoice {
-  return createModeChoice(state, playerId, stackObjectId, spellName, availableModes, modeCount, modeCount);
+  return createModeChoice(
+    state,
+    playerId,
+    stackObjectId,
+    spellName,
+    availableModes,
+    modeCount,
+    modeCount,
+  );
 }
 
 /**

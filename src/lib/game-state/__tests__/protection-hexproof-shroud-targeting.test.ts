@@ -1,9 +1,9 @@
 /**
  * Protection/Hexproof/Shroud Targeting Validation Tests
- * 
+ *
  * Issue #857: Creatures with protection or hexproof don't properly prevent invalid targeting.
  * Currently only flying/reach is checked for blocking.
- * 
+ *
  * Reference: CR 702.16 (Protection), CR 702.11 (Hexproof), CR 702.18 (Shroud)
  */
 
@@ -19,13 +19,16 @@ import {
   hasShroud,
   canBlockProtectedAttacker,
   hasKeyword,
+  shouldPreventDamageToTarget,
 } from "../evergreen-keywords";
 
 import type { CardInstance } from "../types";
 
 describe("Protection/Hexproof/Shroud Targeting Validation", () => {
   // Helper to create a mock card with specific properties
-  const createMockCard = (overrides: Partial<CardInstance> = {}): CardInstance =>
+  const createMockCard = (
+    overrides: Partial<CardInstance> = {},
+  ): CardInstance =>
     ({
       id: "test-card",
       instanceId: "test-instance",
@@ -40,6 +43,7 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         cmc: 1,
         power: "1",
         toughness: "1",
+        legalities: { standard: "legal" as const, commander: "legal" as const },
       },
       controllerId: "player1",
       ownerId: "player1",
@@ -52,7 +56,7 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
       attachedTo: null,
       attachments: [],
       ...overrides,
-    } as unknown as CardInstance);
+    }) as unknown as CardInstance;
 
   describe("Protection from Color (CR 702.16)", () => {
     it("should detect protection from single color", () => {
@@ -66,6 +70,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["W"],
           mana_cost: "{2}{W}{W}",
           cmc: 3,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
       expect(hasProtectionFrom(card, "black")).toBe(true);
@@ -83,6 +91,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -107,6 +119,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -132,6 +148,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["W"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -145,6 +165,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["B"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
         controllerId: "player1",
       });
@@ -165,6 +189,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -178,6 +206,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["R"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -191,6 +223,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["U"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -214,6 +250,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -227,6 +267,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
         controllerId: "player1",
       });
@@ -249,6 +293,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["G"],
           mana_cost: "{1}{G}",
           cmc: 2,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           keywords: ["Hexproof"],
         },
       });
@@ -260,6 +308,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "hex2-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Hexproof Bear",
           type_line: "Creature",
           oracle_text: "Hexproof",
@@ -282,6 +337,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "hex3-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Hexproof Creature",
           type_line: "Creature",
           oracle_text: "Hexproof",
@@ -299,6 +361,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "nohex-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Normal Bear",
           type_line: "Creature",
           oracle_text: "",
@@ -323,6 +392,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           keywords: ["Shroud"],
         },
       });
@@ -334,6 +407,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "shroud2-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Invisible Creature",
           type_line: "Creature",
           oracle_text: "Shroud",
@@ -351,6 +431,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "shroud3-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Mystery Creature",
           type_line: "Creature",
           oracle_text: "Shroud",
@@ -372,6 +459,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "combined-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Super Protected",
           type_line: "Creature",
           oracle_text: "Shroud", // Some cards have both, shroud wins
@@ -389,6 +483,13 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
         controllerId: "player1",
         cardData: {
           id: "prot-hex-id",
+          colors: [] as string[],
+          color_identity: [] as string[],
+          cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
           name: "Protected Hexproof",
           type_line: "Creature",
           oracle_text: "Protection from red. Hexproof.",
@@ -421,6 +522,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["W"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -434,11 +539,15 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["B"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
       // Protection should prevent damage
-      const { shouldPreventDamageToTarget } = require("../evergreen-keywords");
+
       expect(shouldPreventDamageToTarget(protCard, blackSource)).toBe(true);
     });
   });
@@ -455,6 +564,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -474,6 +587,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["W"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 
@@ -487,6 +604,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: ["B", "W"],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
         controllerId: "player1",
       });
@@ -507,6 +628,10 @@ describe("Protection/Hexproof/Shroud Targeting Validation", () => {
           color_identity: [],
           mana_cost: "",
           cmc: 0,
+          legalities: {
+            standard: "legal" as const,
+            commander: "legal" as const,
+          },
         },
       });
 

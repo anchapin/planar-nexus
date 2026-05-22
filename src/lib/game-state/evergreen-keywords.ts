@@ -233,6 +233,18 @@ export function canBlockThisTurn(_card: CardInstance): boolean {
  * Standard MTG colors
  */
 const MTG_COLORS = ["white", "blue", "black", "red", "green"];
+const COLOR_ABbrev_TO_FULL: Record<string, string> = {
+  w: "white",
+  u: "blue",
+  b: "black",
+  r: "red",
+  g: "green",
+};
+
+function normalizeColor(color: string): string {
+  const lower = color.toLowerCase();
+  return COLOR_ABbrev_TO_FULL[lower] || lower;
+}
 
 /**
  * Check if a string represents a valid MTG color
@@ -246,7 +258,7 @@ function isMTGColor(value: string): boolean {
  * Returns array of color strings (e.g., ['W', 'U'] or ['Red', 'Blue'])
  */
 export function getCardColors(card: CardInstance): string[] {
-  return card.cardData.colors || [];
+  return (card.cardData.colors || []).map(normalizeColor);
 }
 
 /**
@@ -283,14 +295,18 @@ export function getProtectionQualities(card: CardInstance): string[] {
  */
 export function hasProtectionFrom(card: CardInstance, color: string): boolean {
   const qualities = getProtectionQualities(card);
-  return qualities.some((q) => q.toLowerCase() === color.toLowerCase());
+  const normalizedColor = normalizeColor(color);
+  return qualities.some((q) => q.toLowerCase() === normalizedColor);
 }
 
 /**
  * Check if a card is protected from any quality of a source card
  * Used for targeting, enchanting, and equipping restrictions
  */
-export function isProtectedFromSource(target: CardInstance, source: CardInstance): boolean {
+export function isProtectedFromSource(
+  target: CardInstance,
+  source: CardInstance,
+): boolean {
   const targetQualities = getProtectionQualities(target);
   if (targetQualities.length === 0) return false;
 
@@ -301,11 +317,16 @@ export function isProtectedFromSource(target: CardInstance, source: CardInstance
     const normalizedColor = color.toLowerCase();
     // Handle both "red" and "R" formats
     const colorMap: Record<string, string> = {
-      'w': 'white', 'white': 'white',
-      'u': 'blue', 'blue': 'blue', 
-      'b': 'black', 'black': 'black',
-      'r': 'red', 'red': 'red',
-      'g': 'green', 'green': 'green',
+      w: "white",
+      white: "white",
+      u: "blue",
+      blue: "blue",
+      b: "black",
+      black: "black",
+      r: "red",
+      red: "red",
+      g: "green",
+      green: "green",
     };
     const normalized = colorMap[normalizedColor] || normalizedColor;
     if (targetQualities.some((q) => q.toLowerCase() === normalized)) {
@@ -343,7 +364,7 @@ export function canBeTargetedBySource(
 /**
  * Check if a target can be targeted by a source player
  * Implements CR 702.11 (Hexproof), CR 702.18 (Shroud), CR 702.16 (Protection)
- * 
+ *
  * @param target - The card being targeted
  * @param sourceControllerId - The controller of the source (player casting spell/ability)
  * @param effectColor - Optional color to check protection against
@@ -368,7 +389,10 @@ export function canTarget(
 
   // CR 702.16: Protection from color - can't be targeted by that color
   if (effectColor && hasProtectionFrom(target, effectColor)) {
-    return { canTarget: false, reason: `Target has protection from ${effectColor}` };
+    return {
+      canTarget: false,
+      reason: `Target has protection from ${effectColor}`,
+    };
   }
 
   return { canTarget: true };
@@ -388,25 +412,28 @@ export function canBlockProtectedAttacker(
   attacker: CardInstance,
   blocker: CardInstance,
 ): { canBlock: boolean; reason?: string } {
-  const blockerColors = getCardColors(blocker);
+  const attackerColors = getCardColors(attacker);
 
-  // Check if attacker has protection from any of blocker's colors
-  for (const color of blockerColors) {
-    if (hasProtectionFrom(attacker, color)) {
+  // CR 702.16D: A creature with protection from a color can't be blocked by creatures of that color
+  // If the blocker has protection from a color, check if the attacker has that color
+  const blockerProtQualities = getProtectionQualities(blocker);
+  for (const quality of blockerProtQualities) {
+    // Check if attacker has any color matching this protection quality
+    const normalizedQuality = normalizeColor(quality);
+    if (attackerColors.some((c) => normalizeColor(c) === normalizedQuality)) {
       return {
         canBlock: false,
-        reason: `Attacker has protection from ${color}, cannot be blocked by ${color} creatures`,
+        reason: `Attacker has ${quality} color, blocker has protection from ${quality}`,
       };
     }
   }
 
-  // Also check blocker's explicit protection qualities (e.g., "protection from red" in oracle)
-  const blockerProtQualities = getProtectionQualities(blocker);
-  for (const quality of blockerProtQualities) {
-    if (hasProtectionFrom(attacker, quality)) {
+  // Also check blocker's explicit protection from attacker's colors
+  for (const color of attackerColors) {
+    if (hasProtectionFrom(blocker, color)) {
       return {
         canBlock: false,
-        reason: `Attacker has protection from ${quality}, cannot be blocked`,
+        reason: `Blocker has protection from ${color}, attacker cannot block`,
       };
     }
   }
@@ -880,62 +907,4 @@ export function getToxicLevel(card: CardInstance): number {
   }
 
   return 0;
-}
-
-// ============== TARGETING VALIDATION (CR 702.11, 702.16, 702.18) ==============
-
-/**
- * Check if a target can be targeted by a source player
- * Implements CR 702.11 (Hexproof), CR 702.18 (Shroud), CR 702.16 (Protection)
- *
- * @param target - The card being targeted
- * @param sourceControllerId - The controller of the source (player casting spell/ability)
- * @param effectColor - Optional color to check protection against
- */
-export function canTarget(
-  target: CardInstance,
-  sourceControllerId: PlayerId,
-  effectColor?: string,
-): { canTarget: boolean; reason?: string } {
-  // CR 702.18: Shroud - can't be targeted at all
-  if (hasShroud(target)) {
-    return { canTarget: false, reason: "Target has shroud" };
-  }
-
-  // CR 702.11: Hexproof - can't be targeted by opponents
-  if (hasHexproof(target)) {
-    // Can't be targeted by opponent
-    if (target.controllerId !== sourceControllerId) {
-      return { canTarget: false, reason: "Target has hexproof" };
-    }
-  }
-
-  // CR 702.16: Protection from color - can't be targeted by that color
-  if (effectColor && hasProtectionFrom(target, effectColor)) {
-    return { canTarget: false, reason: `Target has protection from ${effectColor}` };
-  }
-
-  return { canTarget: true };
-}
-
-/**
- * Check if a creature can block another creature based on protection
- * CR 702.16D: Creatures with protection from a color can't be blocked by creatures of that color
- *
- * @param attacker - The attacking creature
- * @param blocker - The potential blocker
- */
-export function canBlockProtectedAttacker(
-  attacker: CardInstance,
-  blocker: CardInstance,
-): { canBlock: boolean; reason?: string } {
-  const attackerColors = getCardColors(attacker);
-
-  for (const color of attackerColors) {
-    if (hasProtectionFrom(blocker, color)) {
-      return { canBlock: false, reason: `Blocker has protection from ${color}` };
-    }
-  }
-
-  return { canBlock: true };
 }
