@@ -117,6 +117,10 @@ export interface CardInstance {
   // Performance optimization: zone lookup cache (CR 704 - SBA performance)
   /** The zone key where this card currently resides. Updated on zone changes for O(1) lookup */
   currentZoneKey: string | null;
+
+  // Phasing tracking (CR 702.19) - used to track that a card has been phased out even after it phases back in
+  /** @internal Used by phasing system to track if a card has ever been phased out */
+  _hasBeenPhasedOut?: boolean;
 }
 
 /**

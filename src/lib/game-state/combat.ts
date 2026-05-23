@@ -82,6 +82,11 @@ export function canAttack(
     }
   }
 
+  // Must not be phased out (CR 702.19: phased out permanents can't attack)
+  if (card.isPhasedOut) {
+    return { canAttack: false, reason: "Card is phased out" };
+  }
+
   // Must have a defender
   if (!defenderId) {
     return { canAttack: false, reason: "No defender specified" };
@@ -122,6 +127,11 @@ export function canBlock(
   // Must not be tapped
   if (blocker.isTapped) {
     return { canBlock: false, reason: "Creature is tapped" };
+  }
+
+  // Must not be phased out (CR 702.19: phased out permanents can't block)
+  if (blocker.isPhasedOut) {
+    return { canBlock: false, reason: "Creature is phased out" };
   }
 
   // If there's an attacker, check if it can be blocked (flying, reach, etc.)

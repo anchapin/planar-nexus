@@ -52,6 +52,7 @@ export * from "./abilities";
 export { getEffectivePower, getEffectiveToughness } from "./layer-system";
 export * from "./replacement-examples";
 export * from "./terminology-translation";
+export * from "./phasing";
 
 // Local exports for common functions with consistent naming
 export { tapCard, untapCard, checkStateBasedActions };
