@@ -21,6 +21,7 @@
  * @module layer-system
  */
 
+import type { ScryfallCard } from "@/app/actions";
 import { CardInstance, CardInstanceId, PlayerId } from "./types";
 
 /**
@@ -268,6 +269,21 @@ export interface CardOverrides {
   switched?: boolean;
   /** Controller ID (Layer 2 - CR 613.3) */
   controllerId?: PlayerId;
+  /**
+   * Controller history stack for gain-control effects (Layer 2 - CR 613.3)
+   * When multiple control-changing effects apply, we track each controller change
+   * so they can be properly removed in reverse order.
+   * Each entry is { controllerId, sourceCardId } for proper cleanup.
+   */
+  controllerHistory?: Array<{ controllerId: PlayerId; sourceCardId: CardInstanceId }>;
+  /** Card ID that this card copies (Layer 1 - CR 613.2) */
+  copiedFromId?: CardInstanceId;
+  /**
+   * Card data copied from the source card (Layer 1 - CR 613.2)
+   * When a copy effect applies, we store the copied card's data here
+   * so we can use it to resolve effective characteristics.
+   */
+  copiedCardData?: ScryfallCard;
 }
 
 /**
@@ -290,6 +306,12 @@ export class LayerSystem {
   private dependencies: EffectDependency[] = [];
   private cdas: CharacteristicDefiningAbility[] = [];
   private overrides: Map<CardInstanceId, CardOverrides> = new Map();
+
+  /**
+   * Card instances map for copy effect resolution (Layer 1 - CR 613.2)
+   * This allows the layer system to look up card data when resolving copy effects.
+   */
+  private cardInstances: Map<CardInstanceId, CardInstance> = new Map();
 
   /**
    * Cache for effective characteristics per card.
@@ -689,6 +711,14 @@ export class LayerSystem {
     const cardData = modified.cardData;
     const overrides = this.getOverrides(card.id);
 
+    // Handle Layer 1 copy effect (CR 613.2)
+    // If this card is copying another, use the copied card's data as base
+    let effectiveCardData = cardData;
+    if (overrides.copiedFromId) {
+      // The copy effect stored the copied card's data
+      effectiveCardData = overrides.copiedCardData || cardData;
+    }
+
     // Calculate effective power/toughness considering Layer 7 sublayers
     const { power, toughness } = this.calculateEffectivePT(card, modified);
 
@@ -696,22 +726,22 @@ export class LayerSystem {
       name:
         modified.isFaceDown && modified.tokenData
           ? modified.tokenData.name
-          : cardData.name,
+          : effectiveCardData.name,
       types:
         overrides.types ||
-        cardData.type_line?.split(" — ")[0]?.split(" ") ||
+        effectiveCardData.type_line?.split(" — ")[0]?.split(" ") ||
         [],
       subtypes:
         overrides.subtypes ||
-        cardData.type_line?.split(" — ")[1]?.split(" ") ||
+        effectiveCardData.type_line?.split(" — ")[1]?.split(" ") ||
         [],
       supertypes: overrides.supertypes || [],
-      text: overrides.text || cardData.oracle_text || "",
-      manaCost: cardData.mana_cost || "",
+      text: overrides.text || effectiveCardData.oracle_text || "",
+      manaCost: effectiveCardData.mana_cost || "",
       color: this.getEffectiveColor(card),
       power,
       toughness,
-      oracleText: overrides.text || cardData.oracle_text || "",
+      oracleText: overrides.text || effectiveCardData.oracle_text || "",
       grantedAbilities: overrides.grantedAbilities || [],
       removedAbilities: overrides.removedAbilities || [],
       controllerId: overrides.controllerId || modified.controllerId,
@@ -734,7 +764,13 @@ export class LayerSystem {
     modified: CardInstance,
   ): { power: number | null; toughness: number | null } {
     const overrides = this.getOverrides(card.id);
-    const cardData = modified.cardData;
+    let cardData = modified.cardData;
+
+    // Handle Layer 1 copy effect (CR 613.2)
+    // If this card is copying another, use the copied card's data as base
+    if (overrides.copiedFromId && overrides.copiedCardData) {
+      cardData = overrides.copiedCardData;
+    }
 
     // Get base P/T from card data
     let basePower = 0;
@@ -812,10 +848,17 @@ export class LayerSystem {
       return [...overrides.colors];
     }
 
-    // Start with base color from card data
+    // Start with base color from card data (considering copy effects)
     let colors: string[] = [];
-    if (modified.cardData.colors) {
-      colors = [...modified.cardData.colors];
+    let cardData = modified.cardData;
+
+    // Handle Layer 1 copy effect (CR 613.2)
+    if (overrides.copiedFromId && overrides.copiedCardData) {
+      cardData = overrides.copiedCardData;
+    }
+
+    if (cardData.colors) {
+      colors = [...cardData.colors];
     }
 
     // Apply color-changing effects (Layer 5)
@@ -862,6 +905,32 @@ export class LayerSystem {
     this.overrides.clear();
     this.effectiveCharacteristicsCache.clear();
   }
+
+  /**
+   * Register a card instance for copy effect resolution (CR 613.2)
+   * This allows the layer system to look up card data when resolving copy effects.
+   * @param card - The card instance to register
+   */
+  registerCardInstance(card: CardInstance): void {
+    this.cardInstances.set(card.id, card);
+  }
+
+  /**
+   * Unregister a card instance (e.g., when it leaves the battlefield)
+   * @param cardId - The ID of the card to unregister
+   */
+  unregisterCardInstance(cardId: CardInstanceId): void {
+    this.cardInstances.delete(cardId);
+  }
+
+  /**
+   * Get a card instance by ID for copy effect resolution
+   * @param cardId - The ID of the card to look up
+   * @returns The card instance or undefined if not found
+   */
+  getCardInstanceById(cardId: CardInstanceId): CardInstance | undefined {
+    return this.cardInstances.get(cardId);
+  }
 }
 
 // ============================================================
@@ -871,12 +940,14 @@ export class LayerSystem {
 /**
  * Create a copy effect (Layer 1 - CR 613.2)
  * Copy effects are applied first and cause the object to copy characteristics
+ * from another card (CR 613.2a-613.2j)
  */
 export function createCopyEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   copiedCardId: CardInstanceId,
   description: string,
+  layerSystemInstance?: LayerSystem,
 ): ContinuousEffect {
   return {
     id: `copy-${sourceCardId}-${Date.now()}`,
@@ -888,18 +959,34 @@ export function createCopyEffect(
     timestamp: Date.now(),
     priority: 0,
     canApply: (card) => card.id === sourceCardId,
-    apply: (card) => ({
-      ...card,
-      // Copy effect would copy characteristics from the copied card
-      // Full implementation would reference the copied card's data
-      _copiedFrom: copiedCardId,
-    }),
+    apply: (card) => {
+      const ls = layerSystemInstance || getLayerSystemInstance();
+      const overrides = ls.getOverrides(card.id);
+
+      // Per CR 613.2: Copy effects cause the object to copy the other's characteristics
+      // We store the copiedFromId for later resolution when getting effective characteristics
+      overrides.copiedFromId = copiedCardId;
+
+      // Look up the copied card's data to store for characteristic resolution
+      const copiedCard = ls.getCardInstanceById(copiedCardId);
+      if (copiedCard) {
+        // Store the copied card's data for use in getEffectiveCharacteristics
+        overrides.copiedCardData = copiedCard.cardData;
+      }
+
+      // Copy effect copies all characteristics from the copied card
+      // But does NOT copy abilities, controllers, or other game-specific state
+      // Per CR 613.2: copy effects only copy characteristics (name, types, text, P/T, etc.)
+
+      return { ...card, _copiedFrom: copiedCardId };
+    },
   };
 }
 
 /**
  * Create a control-changing effect (Layer 2 - CR 613.3)
  * Changes who controls the permanent
+ * Per CR 613.3: Control-changing effects are applied by timestamp order
  */
 export function createControlChangeEffect(
   sourceCardId: CardInstanceId,
@@ -921,7 +1008,23 @@ export function createControlChangeEffect(
     apply: (card) => {
       const ls = layerSystemInstance || getLayerSystemInstance();
       const overrides = ls.getOverrides(card.id);
+
+      // Track controller history for proper removal (CR 613.3)
+      // When control changes, we push the new controller onto the history stack
+      if (!overrides.controllerHistory) {
+        // Initialize with the original controller (from the card)
+        overrides.controllerHistory = [{ controllerId: card.controllerId, sourceCardId: card.id }];
+      }
+
+      // Push the new controller onto the history
+      overrides.controllerHistory.push({
+        controllerId: newControllerId,
+        sourceCardId,
+      });
+
+      // Set current controller
       overrides.controllerId = newControllerId;
+
       return { ...card, controllerId: newControllerId };
     },
   };
@@ -987,6 +1090,9 @@ export function createTextChangeEffect(
 /**
  * Create a type-changing effect (Layer 4 - CR 613.5)
  * Changes the card types, subtypes, and/or supertypes (e.g., Dryad of the Ilysian Grove)
+ *
+ * Per CR 613.5 exception: If an effect changes both color AND type simultaneously,
+ * the color change happens in Layer 4 (not Layer 5 as usual).
  */
 export function createTypeChangeEffect(
   sourceCardId: CardInstanceId,
@@ -997,6 +1103,12 @@ export function createTypeChangeEffect(
   description: string,
   addTypes: boolean = false, // If true, adds to existing types; if false, replaces
   layerSystemInstance?: LayerSystem,
+  /**
+   * Colors to set when type-changing effect also changes color simultaneously.
+   * Per CR 613.5 exception: if a Layer 4 effect changes color and type,
+   * the color change is applied in Layer 4 (not Layer 5).
+   */
+  _colors?: string[],
 ): ContinuousEffect {
   return {
     id: `type-${sourceCardId}-${Date.now()}`,
@@ -1026,6 +1138,14 @@ export function createTypeChangeEffect(
         overrides.types = types;
         overrides.subtypes = subtypes;
         overrides.supertypes = supertypes;
+      }
+
+      // Handle simultaneous color change (CR 613.5 exception)
+      // Per CR 613.5: if an effect changes color AND type simultaneously,
+      // the color change happens in Layer 4 (not Layer 5 as usual)
+      if (_colors && _colors.length > 0) {
+        overrides.colors = _colors;
+        overrides.colorChangeOriginLayer = Layer.TYPE_CHANGING;
       }
 
       return { ...card };
