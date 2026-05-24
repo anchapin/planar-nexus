@@ -22,7 +22,10 @@ import {
   getAvailableBlockers,
 } from "../combat";
 import { createInitialGameState, startGame } from "../game-state";
-import { createCardInstance, initializePlaneswalkerLoyalty } from "../card-instance";
+import {
+  createCardInstance,
+  initializePlaneswalkerLoyalty,
+} from "../card-instance";
 import { Phase, CardInstanceId } from "../types";
 import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
 import { checkStateBasedActions } from "../state-based-actions";
@@ -1659,10 +1662,11 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     }
 
     it("should reduce planeswalker loyalty by combat damage (CR 119.3c)", () => {
-      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
-        [{ name: "Attacker", power: 3, toughness: 3 }],
-        { name: "Jace", loyalty: 5 },
-      );
+      const { state, aliceId, bobId, planeswalkerId } =
+        setupGameWithPlaneswalker(
+          [{ name: "Attacker", power: 3, toughness: 3 }],
+          { name: "Jace", loyalty: 5 },
+        );
 
       const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
       const attackerId = aliceBattlefield.cardIds[0];
@@ -1696,10 +1700,11 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     });
 
     it("should exile planeswalker with 0 loyalty via SBA (CR 704.5i)", () => {
-      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
-        [{ name: "Attacker", power: 5, toughness: 5 }],
-        { name: "Chandra", loyalty: 3 },
-      );
+      const { state, aliceId, bobId, planeswalkerId } =
+        setupGameWithPlaneswalker(
+          [{ name: "Attacker", power: 5, toughness: 5 }],
+          { name: "Chandra", loyalty: 3 },
+        );
 
       const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
       const attackerId = aliceBattlefield.cardIds[0];
@@ -1734,13 +1739,14 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     });
 
     it("should handle multiple creatures attacking same planeswalker", () => {
-      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
-        [
-          { name: "Attacker1", power: 2, toughness: 2 },
-          { name: "Attacker2", power: 3, toughness: 3 },
-        ],
-        { name: "Jace", loyalty: 7 },
-      );
+      const { state, aliceId, bobId, planeswalkerId } =
+        setupGameWithPlaneswalker(
+          [
+            { name: "Attacker1", power: 2, toughness: 2 },
+            { name: "Attacker2", power: 3, toughness: 3 },
+          ],
+          { name: "Jace", loyalty: 7 },
+        );
 
       const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
       const attacker1Id = aliceBattlefield.cardIds[0];
@@ -1783,10 +1789,11 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     });
 
     it("should not mark combat damage on creature when attacking planeswalker (CR 306.7)", () => {
-      const { state, aliceId, bobId, planeswalkerId } = setupGameWithPlaneswalker(
-        [{ name: "Attacker", power: 4, toughness: 2 }],
-        { name: "Gideon", loyalty: 5 },
-      );
+      const { state, aliceId, bobId, planeswalkerId } =
+        setupGameWithPlaneswalker(
+          [{ name: "Attacker", power: 4, toughness: 2 }],
+          { name: "Gideon", loyalty: 5 },
+        );
 
       const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
       const attackerId = aliceBattlefield.cardIds[0];
@@ -1813,7 +1820,7 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       // Creature should have no damage marked on it
       // (CR 306.7: Damage marked on creature doesn't reduce planeswalker loyalty separately)
       const attacker = resolveResult.state.cards.get(attackerId);
-expect(attacker?.damage).toBe(0);
+      expect(attacker?.damage).toBe(0);
     });
   });
 });

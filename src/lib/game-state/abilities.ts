@@ -762,7 +762,7 @@ export function detectTriggeredAbilities(
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";
           break;
-case "lifeLost":
+        case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;
       }

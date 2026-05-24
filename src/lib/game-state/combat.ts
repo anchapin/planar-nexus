@@ -151,7 +151,11 @@ export function canBlock(
       const attackerColors = attacker.cardData.colors || [];
       for (const color of attackerColors) {
         const protectionQualities = getProtectionQualities(blocker);
-        if (protectionQualities.some((q) => q.toLowerCase() === color.toLowerCase())) {
+        if (
+          protectionQualities.some(
+            (q) => q.toLowerCase() === color.toLowerCase(),
+          )
+        ) {
           return {
             canBlock: false,
             reason: `Cannot block creatures with ${color} protection`,
