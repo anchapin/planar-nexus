@@ -1946,4 +1946,293 @@ describe("Layer System", () => {
       expect(chars2.power).toBe(5);
     });
   });
+
+  describe("Layer 1 Copy Effect Application (CR 613.2)", () => {
+    it("should store copied card data when applying copy effect", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // Create a target card to copy
+      const targetData = createMockCreature("Target Creature", 5, 5);
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      // Register the target card so the layer system can look it up
+      layerSystem.registerCardInstance(target);
+
+      // Create copy effect
+      const copyEffect = createCopyEffect(
+        creature.id,
+        "player1",
+        target.id,
+        "Copy target",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(copyEffect);
+      layerSystem.applyEffects(creature);
+
+      // Check that copiedFromId is set in overrides
+      const overrides = layerSystem.getOverrides(creature.id);
+      expect(overrides.copiedFromId).toBe(target.id);
+      expect(overrides.copiedCardData).toBeDefined();
+      expect(overrides.copiedCardData?.name).toBe("Target Creature");
+    });
+
+    it("should use copied card's power/toughness when getting effective characteristics", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // Create a target card with different P/T
+      const targetData = createMockCreature("Target Creature", 7, 7);
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      // Register the target card
+      layerSystem.registerCardInstance(target);
+
+      // Create copy effect
+      const copyEffect = createCopyEffect(
+        creature.id,
+        "player1",
+        target.id,
+        "Copy target",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(copyEffect);
+
+      // Get effective characteristics
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+
+      // Should use copied card's P/T (7/7) not original (3/3)
+      expect(characteristics.power).toBe(7);
+      expect(characteristics.toughness).toBe(7);
+    });
+
+    it("should copy name from copied card", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // Create a target card with different name
+      const targetData = createMockCreature("Different Name", 3, 3);
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      // Register the target card
+      layerSystem.registerCardInstance(target);
+
+      // Create copy effect
+      const copyEffect = createCopyEffect(
+        creature.id,
+        "player1",
+        target.id,
+        "Copy target",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(copyEffect);
+      layerSystem.applyEffects(creature);
+
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+      expect(characteristics.name).toBe("Different Name");
+    });
+
+    it("should unregister card instances", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      layerSystem.registerCardInstance(creature);
+      expect(layerSystem.getCardInstanceById(creature.id)).toBeDefined();
+
+      layerSystem.unregisterCardInstance(creature.id);
+      expect(layerSystem.getCardInstanceById(creature.id)).toBeUndefined();
+    });
+  });
+
+  describe("Layer 2 Control Change with History (CR 613.3)", () => {
+    it("should track controller history for gain-control effects", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const controlEffect = createControlChangeEffect(
+        "source",
+        "player1",
+        "player2",
+        "Gain control",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(controlEffect);
+      layerSystem.applyEffects(creature);
+
+      const overrides = layerSystem.getOverrides(creature.id);
+      expect(overrides.controllerHistory).toBeDefined();
+      expect(overrides.controllerHistory).toHaveLength(2);
+      expect(overrides.controllerHistory![0].controllerId).toBe("player1");
+      expect(overrides.controllerHistory![1].controllerId).toBe("player2");
+    });
+
+    it("should apply multiple control changes in order", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player2", "player2");
+
+      // First control change: player2 -> player3
+      const controlEffect1 = createControlChangeEffect(
+        "source1",
+        "player2",
+        "player3",
+        "First control change",
+        layerSystem,
+      );
+
+      // Second control change: player3 -> player1
+      const controlEffect2 = createControlChangeEffect(
+        "source2",
+        "player3",
+        "player1",
+        "Second control change",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(controlEffect1);
+      layerSystem.applyEffects(creature);
+
+      // Reset for second effect
+      const creature2 = createCardInstance(creatureData, "player2", "player2");
+      layerSystem.clear();
+      layerSystem.registerEffect(controlEffect1);
+      layerSystem.registerEffect(controlEffect2);
+      const result = layerSystem.applyEffects(creature2);
+
+      expect(result.controllerId).toBe("player1");
+    });
+  });
+
+  describe("Layer 3-5 Exception Handling", () => {
+    it("should apply Layer 4 type change colors in Layer 4 (not Layer 5)", () => {
+      // Per CR 613.5 exception: if an effect changes both color AND type simultaneously,
+      // the color change happens in Layer 4 (not Layer 5 as usual)
+      const creatureData = createMockCreature("Test Creature", 3, 3, [], ["R"]);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // Create a type-changing effect that also changes color
+      const typeColorEffect = createTypeChangeEffect(
+        "source",
+        "player1",
+        ["Artifact"],
+        [],
+        [],
+        "Make artifact and colorless",
+        false,
+        layerSystem,
+        [], // colorless = no colors
+      );
+
+      layerSystem.registerEffect(typeColorEffect);
+      layerSystem.applyEffects(creature);
+
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+      const color = layerSystem.getEffectiveColor(creature);
+
+      // Type should be Artifact (applied in Layer 4)
+      expect(characteristics.types).toContain("Artifact");
+      // Color should be empty (colorless) because colorChangeOriginLayer is TYPE_CHANGING
+      // so Layer 5 effects are skipped
+      expect(color).toEqual([]);
+    });
+
+    it("should allow Layer 5 color effects when no exception applies", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3, [], ["R"]);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      // Create a type change without color change
+      const typeEffect = createTypeChangeEffect(
+        "source",
+        "player1",
+        ["Artifact"],
+        [],
+        [],
+        "Make artifact",
+        false,
+        layerSystem,
+      );
+
+      // Create a regular Layer 5 color change to blue
+      const colorEffect = createColorChangeEffect(
+        "source5",
+        "player1",
+        ["U"],
+        "Make blue",
+        false,
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(typeEffect);
+      layerSystem.registerEffect(colorEffect);
+
+      const color = layerSystem.getEffectiveColor(creature);
+
+      // Layer 5 should apply normally (not blocked by exception)
+      expect(color).toEqual(["U"]);
+    });
+  });
+
+  describe("Layer 6 Keyword Mechanics", () => {
+    it("should check keyword mechanics via oracle_text string matching", () => {
+      const creatureData = createMockCreature(
+        "Test Creature",
+        3,
+        3,
+        ["flying", "trample"],
+      );
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+
+      // Granted abilities should be tracked
+      expect(characteristics.grantedAbilities).toEqual([]);
+      // Original keywords from oracle_text are not in grantedAbilities
+      // They come from the card's native abilities
+    });
+
+    it("should grant abilities via Layer 6 effect", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const grantEffect = createAbilityGrantEffect(
+        "source",
+        "player1",
+        "flying",
+        "Grant flying",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(grantEffect);
+      layerSystem.applyEffects(creature);
+
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+      expect(characteristics.grantedAbilities).toContain("flying");
+    });
+
+    it("should remove abilities via Layer 6 effect", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3, [
+        "flying",
+        "haste",
+      ]);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const removeEffect = createAbilityRemoveEffect(
+        "source",
+        "player1",
+        "flying",
+        "Remove flying",
+        false,
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(removeEffect);
+      layerSystem.applyEffects(creature);
+
+      const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+      expect(characteristics.removedAbilities).toContain("flying");
+    });
+  });
 });
