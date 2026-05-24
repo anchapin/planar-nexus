@@ -9,14 +9,8 @@
  * Issue #10: Phase 1.2: Implement activated and triggered abilities
  */
 
-import type {
-  GameState,
-  PlayerId,
-  CardInstanceId,
-  CardInstance,
-  StackObject,
-} from "./types";
-import { Phase, isOnBattlefield } from "./types";
+import type { GameState, PlayerId, CardInstanceId, StackObject } from "./types";
+import { Phase, ZoneType, isOnBattlefield } from "./types";
 import {
   parseOracleText,
   ParsedActivatedAbility,
@@ -33,7 +27,7 @@ export type TriggerEvent =
   | "entersBattlefield"
   | "leavesBattlefield"
   | "damageDealt"
-  | "creatureDies"
+  | "dies"
   | "attacked"
   | "phaseChange"
   | "drawCard"
@@ -42,26 +36,8 @@ export type TriggerEvent =
   | "lifeLost"
   | "beginningOfTurn"
   | "endOfTurn"
+  | "creatureDies"
   | "spellCast";
-
-/**
- * Trigger condition context passed when detecting triggers.
- * Provides additional information about the event that triggered.
- */
-export interface TriggerContext {
-  /** The source card ID that caused this trigger (for damage, dies, etc.) */
-  sourceCardId?: CardInstanceId;
-  /** The amount of damage dealt (for damageDealt triggers) */
-  damageAmount?: number;
-  /** The target of damage (player or card) */
-  damageTarget?: PlayerId | CardInstanceId;
-  /** The player who lost life (for lifeLost triggers) */
-  lifeLostPlayer?: PlayerId;
-  /** Amount of life lost */
-  lifeLostAmount?: number;
-  /** The spell that was cast (for spellCast triggers) */
-  spellCardId?: CardInstanceId;
-}
 
 /**
  * Result of activating an ability
@@ -99,10 +75,6 @@ export interface TriggeredAbilityInstance {
    * Used for ordering abilities with the same trigger timestamp
    */
   sourceCardTimestamp: number;
-  /**
-   * Context information about the trigger event (CR 603.2)
-   */
-  context?: TriggerContext;
 }
 
 /**
@@ -678,13 +650,11 @@ export function activateLoyaltyAbility(
  *
  * @param state - Current game state
  * @param event - The game event to check triggers against
- * @param context - Optional context about the trigger event (source of damage, amounts, etc.)
  * @returns Array of TriggeredAbilityInstance that should fire
  */
 export function detectTriggeredAbilities(
   state: GameState,
   event: TriggerEvent,
-  context?: TriggerContext,
 ): TriggeredAbilityInstance[] {
   const triggeredAbilities: TriggeredAbilityInstance[] = [];
 
@@ -711,6 +681,7 @@ export function detectTriggeredAbilities(
         case "damageDealt":
           shouldTrigger = ability.trigger.event === "damageDealt";
           break;
+        case "dies":
         case "creatureDies":
           shouldTrigger = ability.trigger.event === "dies";
           break;
@@ -718,38 +689,25 @@ export function detectTriggeredAbilities(
           shouldTrigger = ability.trigger.event === "attacked";
           break;
         case "phaseChange":
-          shouldTrigger =
-            ability.trigger.event === "phaseEnds" ||
-            ability.trigger.event === "turnEnds" ||
-            ability.trigger.event === "upkeep";
-          break;
         case "beginningOfTurn":
-          // Beginning of turn triggers: upkeep, beginning of combat, start of turn
           shouldTrigger =
             ability.trigger.event === "upkeep" ||
-            ability.trigger.event === "turnBegins" ||
-            ability.trigger.event === "beginningOfTurn";
+            ability.trigger.event === "phaseEnds" ||
+            ability.trigger.event === "turnEnds";
           break;
         case "endOfTurn":
-          // End of turn triggers
           shouldTrigger =
             ability.trigger.event === "turnEnds" ||
-            ability.trigger.event === "phaseEnds" ||
-            ability.trigger.event === "endOfTurn" ||
-            ability.trigger.event === "cleanupStep";
+            ability.trigger.event === "phaseEnds";
           break;
         case "drawCard":
-          // TriggerCondition uses "drawStep" not "drawCard"
           shouldTrigger = ability.trigger.event === "drawStep";
           break;
         case "cast":
+        case "spellCast":
           shouldTrigger =
             ability.trigger.event === "cast" ||
-            ability.trigger.event === "spellCast" ||
-            ability.trigger.event === "abilityActivated";
-          break;
-        case "spellCast":
-          shouldTrigger = ability.trigger.event === "spellCast";
+            ability.trigger.event === "spellCast";
           break;
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";
@@ -757,17 +715,6 @@ export function detectTriggeredAbilities(
         case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;
-      }
-
-      // Apply additional conditions based on trigger type (CR 603.2)
-      if (shouldTrigger && ability.interveningIf) {
-        // Handle "when X if Y" clauses - check condition
-        shouldTrigger = evaluateInterveningIf(
-          ability.interveningIf,
-          state,
-          card,
-          context,
-        );
       }
 
       if (shouldTrigger) {
@@ -780,7 +727,6 @@ export function detectTriggeredAbilities(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp,
-          context,
         });
       }
     }
@@ -841,40 +787,6 @@ export function detectTriggeredAbilities(
 }
 
 /**
- * Evaluate an intervening "if" condition for a triggered ability (CR 603.2)
- * Intervening if clauses are conditions that must be true at the time of trigger
- * Example: "When X enters the battlefield, if Y, draw a card."
- */
-function evaluateInterveningIf(
-  condition: string,
-  state: GameState,
-  _card: CardInstance,
-  context?: TriggerContext,
-): boolean {
-  const lowerCondition = condition.toLowerCase();
-
-  // Check life total conditions
-  // Example: "if you have 10 or less life"
-  const lifeMatch = lowerCondition.match(/you have (\d+) or less life/);
-  if (lifeMatch) {
-    const threshold = parseInt(lifeMatch[1], 10);
-    // The triggering player is the controller of the card with this trigger
-    // We need to find the controller - for now, check the context player
-    const playerId = context?.lifeLostPlayer || state.turn.activePlayerId;
-    const player = state.players.get(playerId);
-    if (player) {
-      return player.life <= threshold;
-    }
-    return false;
-  }
-
-  // Check other conditions - for now, default to true
-  // This is a simplified implementation; full implementation would need
-  // to handle all possible intervening if conditions
-  return true;
-}
-
-/**
  * Check for triggered abilities and put them on the stack
  * This should be called after any game event (e.g., card enters battlefield, damage is dealt)
  *
@@ -885,9 +797,8 @@ function evaluateInterveningIf(
 export function checkTriggeredAbilities(
   state: GameState,
   event: TriggerEvent,
-  context?: TriggerContext,
 ): TriggeredAbilityResult {
-  const triggeredAbilities = detectTriggeredAbilities(state, event, context);
+  const triggeredAbilities = detectTriggeredAbilities(state, event);
 
   // Put triggered abilities on the stack
   let currentState = state;
