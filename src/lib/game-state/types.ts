@@ -384,6 +384,8 @@ export interface StackObject {
   buybackReturnZone?: string;
   /** Bestow attachment target (if cast as aura) */
   bestowTarget?: CardInstanceId;
+  /** Structured effects to resolve (CR 608) */
+  effects?: StackEffect[];
 }
 
 /**
@@ -499,6 +501,42 @@ export interface Target {
   /** Whether the target is valid */
   isValid: boolean;
 }
+
+/**
+ * Effect types that can be resolved on the stack
+ * CR 608 - Resolving Spells and Abilities
+ */
+export type StackEffectType =
+  | "damage"
+  | "life_gain"
+  | "life_loss"
+  | "card_draw"
+  | "token_creation"
+  | "counter_spell"
+  | "destroy"
+  | "exile"
+  | "draw"
+  | "createToken"
+  | "gainLife"
+  | "loseLife";
+
+/**
+ * Structured effect data for resolution
+ * Each effect type carries the data needed to resolve that effect
+ */
+export type StackEffect =
+  | { effectType: "damage"; amount: number; targetId: CardInstanceId | PlayerId; isCombatDamage: boolean }
+  | { effectType: "life_gain"; amount: number; targetId: PlayerId }
+  | { effectType: "life_loss"; amount: number; targetId: PlayerId }
+  | { effectType: "card_draw"; amount: number; targetId: PlayerId }
+  | { effectType: "token_creation"; power: number; toughness: number; color: string; count: number; controllerId: PlayerId }
+  | { effectType: "counter_spell"; targetStackObjectId: string }
+  | { effectType: "destroy"; targetId: CardInstanceId; ignoreIndestructible: boolean }
+  | { effectType: "exile"; targetId: CardInstanceId }
+  | { effectType: "draw"; amount: number; targetId: PlayerId }
+  | { effectType: "createToken"; tokenData: ScryfallCard; count: number; controllerId: PlayerId }
+  | { effectType: "gainLife"; amount: number; targetId: PlayerId }
+  | { effectType: "loseLife"; amount: number; targetId: PlayerId };
 
 /**
  * Combat state

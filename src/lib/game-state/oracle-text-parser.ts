@@ -123,10 +123,9 @@ export interface TriggerCondition {
     | "lifeLost"
     | "spellCast"
     | "abilityActivated"
-    | "turnBegins"
     | "beginningOfTurn"
     | "endOfTurn"
-    | "cleanupStep";
+    | "creatureDies";
   condition?: string;
   target?: ParsedTarget;
   source?: string;
@@ -924,7 +923,25 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "blocked" };
   }
 
-  // Is cast / is spell (covers "is cast", "is played", "cast a spell")
+  // Spell cast triggers - "you cast a spell" returns spellCast event
+  if (
+    text.includes("you cast a spell") ||
+    text.includes("you cast any spell")
+  ) {
+    return { event: "spellCast" };
+  }
+
+  // Spell cast triggers - specific patterns that return spellCast
+  if (text.includes("a spell is cast") || text.includes("spell is cast")) {
+    return { event: "spellCast" };
+  }
+
+  // Cast triggers - "you cast" followed by something other than "a spell"
+  if (text.includes("you cast")) {
+    return { event: "cast" };
+  }
+
+  // Is cast / is played / cast a spell (generic cast)
   if (text.includes("cast") || text.includes("is played")) {
     return { event: "cast" };
   }
@@ -942,6 +959,51 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
   // Draw step
   if (text.includes("beginning of your draw step")) {
     return { event: "drawStep" };
+  }
+
+  // Beginning of upkeep
+  if (
+    text.includes("beginning of your upkeep") ||
+    text.includes("at the beginning of your upkeep")
+  ) {
+    return { event: "upkeep" };
+  }
+
+  // Beginning of end step - maps to phaseEnds (end step is part of the end phase)
+  // These must come BEFORE the generic "end of turn" checks
+  if (
+    text.includes("beginning of the end step") ||
+    text.includes("at the beginning of the end step")
+  ) {
+    return { event: "phaseEnds" };
+  }
+
+  // End of turn triggers - check these BEFORE "phase ends" since "end of the turn" contains "phase ends"
+  if (
+    text.includes("at the end of the turn") ||
+    text.includes("end of the turn")
+  ) {
+    return { event: "turnEnds" };
+  }
+
+  // Phase ends - generic phase end trigger - must check AFTER "end of turn" checks
+  if (text.includes("phase ends")) {
+    return { event: "phaseEnds" };
+  }
+
+  // End of turn triggers
+  if (
+    text.includes("at the end of the turn") ||
+    text.includes("end of the turn") ||
+    text.includes("beginning of the turn") ||
+    text.includes("at the beginning of the turn")
+  ) {
+    return { event: "turnEnds" };
+  }
+
+  // Phase ends - generic phase end trigger
+  if (text.includes("phase ends")) {
+    return { event: "phaseEnds" };
   }
 
   // Combat damage step ends
@@ -970,19 +1032,6 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
   // Spell cast
   if (text.includes("a spell is cast") || text.includes("spell cast")) {
     return { event: "spellCast" };
-  }
-
-  // Beginning of turn
-  if (
-    (text.includes("beginning of") && text.includes("turn")) ||
-    text.includes("at the start of")
-  ) {
-    return { event: "beginningOfTurn" };
-  }
-
-  // End of turn
-  if (text.includes("end of turn")) {
-    return { event: "endOfTurn" };
   }
 
   // Ability activated
