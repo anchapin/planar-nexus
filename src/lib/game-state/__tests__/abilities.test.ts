@@ -639,7 +639,7 @@ describe("Abilities System - checkTriggeredAbilities", () => {
     );
     const result = checkTriggeredAbilities(state, "cast");
     expect(result.abilities.length).toBe(1);
-    expect(result.abilities[0].triggerCondition).toBe("cast");
+    expect(result.abilities[0].triggerCondition).toBe("spellCast");
   });
 
   it("should detect upkeep trigger and fire on phaseChange", () => {

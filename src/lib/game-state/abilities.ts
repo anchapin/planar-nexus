@@ -711,6 +711,7 @@ export function detectTriggeredAbilities(
         case "damageDealt":
           shouldTrigger = ability.trigger.event === "damageDealt";
           break;
+        case "dies":
         case "creatureDies":
           shouldTrigger = ability.trigger.event === "dies";
           break;
@@ -718,10 +719,16 @@ export function detectTriggeredAbilities(
           shouldTrigger = ability.trigger.event === "attacked";
           break;
         case "phaseChange":
+        case "beginningOfTurn":
           shouldTrigger =
+            ability.trigger.event === "upkeep" ||
             ability.trigger.event === "phaseEnds" ||
+            ability.trigger.event === "turnEnds";
+          break;
+        case "endOfTurn":
+          shouldTrigger =
             ability.trigger.event === "turnEnds" ||
-            ability.trigger.event === "upkeep";
+            ability.trigger.event === "phaseEnds";
           break;
         case "beginningOfTurn":
           // Beginning of turn triggers: upkeep, beginning of combat, start of turn
@@ -743,6 +750,7 @@ export function detectTriggeredAbilities(
           shouldTrigger = ability.trigger.event === "drawStep";
           break;
         case "cast":
+        case "spellCast":
           shouldTrigger =
             ability.trigger.event === "cast" ||
             ability.trigger.event === "spellCast" ||
@@ -754,7 +762,7 @@ export function detectTriggeredAbilities(
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";
           break;
-        case "lifeLost":
+case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;
       }
