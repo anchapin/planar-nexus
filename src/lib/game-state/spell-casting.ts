@@ -42,7 +42,12 @@ import {
   getPrototypeManaCostForSpell,
 } from "./prototype";
 import { dealDamageToCard } from "./keyword-actions";
-import type { CardInstance } from "./types";
+import {
+  resolveStackObjectEffects,
+  parseSpellEffects,
+} from "./effect-resolution";
+import type { CardInstance, StackEffect } from "./types";
+import { canTargetKeyword } from "./evergreen-keywords";
 
 /**
  * Generate a unique stack object ID
@@ -507,6 +512,7 @@ export function castSpell(
 
 /**
  * Resolve the top object on the stack
+ * CR 608 - Resolving Spells and Abilities
  */
 export function resolveTopOfStack(state: GameState): GameState {
   if (state.stack.length === 0) {
@@ -521,22 +527,41 @@ export function resolveTopOfStack(state: GameState): GameState {
     return removeFromStack(state, stackObject.id);
   }
 
-  // Check if this is a board sweeper spell
+  let currentState = state;
+
+  // Handle structured effects if present
+  if (stackObject.effects && stackObject.effects.length > 0) {
+    // Resolve each effect in order
+    const result = resolveStackObjectEffects(
+      state,
+      stackObject.effects,
+      stackObject.sourceCardId || undefined,
+      stackObject.targets,
+    );
+    currentState = result;
+  }
+
+  // Check if this is a board sweeper spell (legacy string-based check)
   if (stackObject.type === "spell" && stackObject.sourceCardId) {
-    const sourceCard = state.cards.get(stackObject.sourceCardId);
+    const sourceCard = currentState.cards.get(stackObject.sourceCardId);
     if (sourceCard) {
       const oracleText = sourceCard.cardData.oracle_text || "";
+
+      // Handle board sweeper spells
       if (isBoardSweeper(oracleText)) {
         const ignoreIndestructible =
           destroysIndestructibleCreatures(oracleText);
         const stateAfterSweeper = executeBoardSweeper(
-          state,
+          currentState,
           stackObject.sourceCardId,
           ignoreIndestructible,
         );
+
+        // Remove the stack object after resolution
         const updatedStack = stateAfterSweeper.stack.filter(
           (obj) => obj.id !== stackObject.id,
         );
+
         return {
           ...stateAfterSweeper,
           stack: updatedStack,
@@ -544,56 +569,40 @@ export function resolveTopOfStack(state: GameState): GameState {
           lastModifiedAt: Date.now(),
         };
       }
-      
-      // Handle damage spells that target creatures
-      // Spells like Lightning Bolt that deal damage to creatures need to apply damage
-      if (stackObject.targets && stackObject.targets.length > 0) {
-        const oracleText = sourceCard.cardData.oracle_text || "";
-        const lowerOracleText = oracleText.toLowerCase();
-        
-        // Check if this spell deals damage
-        const dealsDamage = lowerOracleText.includes("deal ") && lowerOracleText.includes(" damage");
-        const isDestroyEffect = lowerOracleText.includes("destroy all creatures");
-        
-        if (dealsDamage && !isDestroyEffect) {
-          let updatedState = state;
-          
-          // Get the damage amount - check for X value first, then parse from text
-          let damageAmount = stackObject.variableValues?.get("X") || 0;
-          if (damageAmount === 0) {
-            // Try to parse damage amount from oracle text (e.g., "Lightning Bolt deals 3 damage")
-            const damageMatch = lowerOracleText.match(/(\d+)\s*damage/i);
-            if (damageMatch) {
-              damageAmount = parseInt(damageMatch[1], 10);
-            }
-          }
-          
-          // Apply damage to creature targets
-          for (const target of stackObject.targets) {
-            if (target.type === "card") {
-              const targetCard = state.cards.get(target.targetId as CardInstanceId);
-              if (targetCard && targetCard.cardData.type_line?.toLowerCase().includes("creature")) {
-                const damageResult = dealDamageToCard(
-                  updatedState,
-                  target.targetId as CardInstanceId,
-                  damageAmount,
-                  false, // isCombatDamage - false for spell damage
-                  stackObject.sourceCardId || undefined,
-                );
-                if (damageResult.success) {
-                  updatedState = damageResult.state;
-                }
-              }
-            }
-          }
-          
-          // Use updatedState for the rest of the resolution
-          state = updatedState;
+
+      // Parse effects from oracle text if no structured effects present
+      if (!stackObject.effects || stackObject.effects.length === 0) {
+        const parsedEffects = parseSpellEffects(
+          oracleText,
+          stackObject.variableValues,
+        );
+
+        if (parsedEffects.length > 0) {
+          // Apply effects with target information
+          const result = resolveStackObjectEffects(
+            currentState,
+            parsedEffects,
+            stackObject.sourceCardId,
+            stackObject.targets,
+          );
+          currentState = result;
         }
       }
     }
   }
 
+  // Move the card from stack to appropriate zone and handle post-resolution
+  return resolveSpellCompletion(currentState, stackObject);
+}
+
+/**
+ * Handle the completion of spell resolution - moving to zone and triggering effects
+ * CR 608.2 - After the spell's effect(s) are applied, it moves to its destination zone
+ */
+function resolveSpellCompletion(
+  state: GameState,
+  stackObject: StackObject,
+): GameState {
   // Get the card
   if (stackObject.sourceCardId) {
     const card = state.cards.get(stackObject.sourceCardId);
@@ -733,10 +742,8 @@ export function resolveTopOfStack(state: GameState): GameState {
         }
 
         // CR 702.85 - Apply kicker effects if spell was kicked
-        // (Additional effects from paying kicker cost are applied based on spell text)
         if (stackObject.alternativeCostsUsed?.includes("kicker")) {
-          // The additional effect is handled by the spell's own effect processing
-          // based on the wasKicked flag on the stack object
+          // Additional effect handled by spell's own effect processing
         }
 
         // CR 702.8 - Buyback: Return spell to hand instead of graveyard
@@ -791,11 +798,9 @@ export function resolveTopOfStack(state: GameState): GameState {
           }
         }
 
-        // CR 702.66 - Flashback: Card goes to exile instead of graveyard when spell resolves
-        // Note: Flashback spells are cast from graveyard and don't return there
+        // CR 702.66 - Flashback: Card goes to exile instead of graveyard
         if (stackObject.alternativeCostsUsed?.includes("flashback")) {
-          // Flashback spells resolve normally but the card is already in graveyard
-          // When it moves to battlefield or elsewhere, no special handling needed
+          // Flashback spells resolve normally
         }
 
         return currentState;
@@ -835,38 +840,57 @@ function removeFromStack(state: GameState, stackObjectId: string): GameState {
 
 /**
  * Check if a spell/ability can be targeted
+ * CR 702.11 (Hexproof), CR 702.16 (Protection), CR 702.18 (Shroud)
  */
 export function canTarget(
   targetType: Target["type"],
   targetId: string,
   state: GameState,
-  _sourcePlayerId: PlayerId,
-): boolean {
+  sourcePlayerId: PlayerId,
+  effectColor?: string,
+): { canTarget: boolean; reason?: string } {
   switch (targetType) {
     case "card": {
       // Check if card exists
       const card = state.cards.get(targetId);
-      if (!card) return false;
+      if (!card) return { canTarget: false, reason: "Card not found" };
 
-      // Check if source player can see the card
-      // (In reality, would check visibility rules)
-      return true;
+      // Check hexproof, shroud, and protection targeting restrictions
+      const targetingResult = canTargetKeyword(
+        card,
+        sourcePlayerId,
+        effectColor,
+      );
+      if (!targetingResult.canTarget) {
+        return targetingResult;
+      }
+
+      return { canTarget: true };
     }
     case "player": {
       // Check if player exists
       const player = state.players.get(targetId);
-      return !!player;
+      if (!player) return { canTarget: false, reason: "Player not found" };
+      return { canTarget: true };
     }
     case "stack": {
       // Check if target stack object exists
-      return state.stack.some((obj) => obj.id === targetId);
+      const exists = state.stack.some((obj) => obj.id === targetId);
+      return {
+        canTarget: exists,
+        reason: exists ? undefined : "Stack object not found",
+      };
     }
     case "zone": {
       // Check if zone exists
-      return state.zones.has(targetId);
+      const exists = state.zones.has(targetId);
+      return {
+        canTarget: exists,
+        reason: exists ? undefined : "Zone not found",
+      };
     }
     default:
-      return false;
+      return { canTarget: false, reason: "Invalid target type" };
   }
 }
 
@@ -911,9 +935,10 @@ export function createModeChoice(
     type: "choose_mode",
     playerId,
     stackObjectId,
-    prompt: minChoices > 1
-      ? `Choose ${minChoices} modes for ${spellName}:`
-      : `Choose mode for ${spellName}:`,
+    prompt:
+      minChoices > 1
+        ? `Choose ${minChoices} modes for ${spellName}:`
+        : `Choose mode for ${spellName}:`,
     choices: availableModes.map((mode) => ({
       label: mode,
       value: mode,
@@ -936,7 +961,15 @@ export function createChooseTwoModeChoice(
   spellName: string,
   availableModes: string[],
 ): WaitingChoice {
-  return createModeChoice(state, playerId, stackObjectId, spellName, availableModes, 2, 2);
+  return createModeChoice(
+    state,
+    playerId,
+    stackObjectId,
+    spellName,
+    availableModes,
+    2,
+    2,
+  );
 }
 
 /**
@@ -950,7 +983,15 @@ export function createModalSpellChoice(
   availableModes: string[],
   modeCount: number,
 ): WaitingChoice {
-  return createModeChoice(state, playerId, stackObjectId, spellName, availableModes, modeCount, modeCount);
+  return createModeChoice(
+    state,
+    playerId,
+    stackObjectId,
+    spellName,
+    availableModes,
+    modeCount,
+    modeCount,
+  );
 }
 
 /**
