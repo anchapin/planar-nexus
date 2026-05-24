@@ -47,6 +47,29 @@ import {
 
 import { createToken as createTokenCard } from "./card-instance";
 
+import {
+  declareAttackers as originalDeclareAttackers,
+  declareBlockers as originalDeclareBlockers,
+} from "./combat";
+
+// Map to store original functions for mutation applier
+const mutationFunctions = {
+  originalDeclareAttackers,
+  originalDeclareBlockers,
+  originalDrawCard,
+  originalDealDamageToPlayer,
+  originalGainLife,
+  originalConcede,
+  originalPassPriority,
+  originalMoveCardToZone,
+  originalCreateTokenCard,
+  originalAddCounterToCard,
+  originalRemoveCounterFromCard,
+  originalDestroyCard,
+  originalExileCard,
+  originalSacrificeCard,
+};
+
 /**
  * Create an event-sourced game state wrapper
  */
@@ -55,7 +78,98 @@ export function createEventSourcedState(
   sessionId: string,
   localPlayerId: PlayerId,
 ): EventSourcingGameState {
-  return new EventSourcingGameState(initialState, sessionId, localPlayerId);
+  const esState = new EventSourcingGameState(initialState, sessionId, localPlayerId);
+
+  // Register the mutation applier for event replay
+  // This enables getStateAtIndex() to correctly reconstruct state
+  esState.setMutationApplier((state, action) => {
+    return applyActionToState(state, action, mutationFunctions);
+  });
+
+  return esState;
+}
+
+/**
+ * Apply an action to state for event replay
+ * This is used by EventSourcingGameState.getStateAtIndex() to reconstruct state
+ */
+function applyActionToState(
+  state: GameState,
+  action: GameAction,
+  fns: typeof mutationFunctions
+): GameState {
+  const { type, data } = action;
+
+  switch (type) {
+    case "declare_attackers": {
+      const attackerData = data as { attackers: Array<{ cardId: CardInstanceId; defenderId: PlayerId | CardInstanceId }> };
+      const result = fns.originalDeclareAttackers(state, attackerData.attackers);
+      return result.success ? result.state : state;
+    }
+    case "declare_blockers": {
+      const blockerData = data as { blockers: Array<{ cardId: CardInstanceId; attackerId: CardInstanceId }> };
+      // Convert array format to Map format for the original function
+      const blockerAssignments = new Map<CardInstanceId, CardInstanceId[]>();
+      for (const b of blockerData.blockers) {
+        const existing = blockerAssignments.get(b.attackerId) || [];
+        existing.push(b.cardId);
+        blockerAssignments.set(b.attackerId, existing);
+      }
+      const result = fns.originalDeclareBlockers(state, blockerAssignments);
+      return result.success ? result.state : state;
+    }
+    case "draw_card": {
+      const { targetId } = data as { targetId: PlayerId };
+      return fns.originalDrawCard(state, targetId);
+    }
+    case "deal_damage": {
+      const { amount, targetId, sourceId, isCombatDamage } = data as { amount: number; targetId: string | PlayerId; sourceId?: CardInstanceId; isCombatDamage?: boolean };
+      return fns.originalDealDamageToPlayer(state, targetId as PlayerId, amount, isCombatDamage ?? false, sourceId);
+    }
+    case "gain_life": {
+      const { amount, targetId, sourceId } = data as { amount: number; targetId: string | PlayerId; sourceId?: CardInstanceId };
+      return fns.originalGainLife(state, targetId as PlayerId, amount, sourceId);
+    }
+    case "concede": {
+      return fns.originalConcede(state, action.playerId);
+    }
+    case "pass_priority": {
+      return fns.originalPassPriority(state, action.playerId);
+    }
+    case "move_card": {
+      const { cardId, targetId } = data as { cardId: CardInstanceId; targetId: string };
+      const keywordResult = fns.originalMoveCardToZone(state, cardId, targetId as any);
+      return keywordResult.state;
+    }
+    case "add_counter": {
+      const { counterType, amount, cardId } = data as { counterType: string; amount: number; cardId: CardInstanceId };
+      const keywordResult = fns.originalAddCounterToCard(state, cardId, counterType, amount);
+      return keywordResult.state;
+    }
+    case "remove_counter": {
+      const { counterType, amount, cardId } = data as { counterType: string; amount: number; cardId: CardInstanceId };
+      const keywordResult = fns.originalRemoveCounterFromCard(state, cardId, counterType, amount);
+      return keywordResult.state;
+    }
+    case "destroy_card": {
+      const { cardId } = data as { cardId: CardInstanceId };
+      const keywordResult = fns.originalDestroyCard(state, cardId);
+      return keywordResult.state;
+    }
+    case "exile_card": {
+      const { cardId } = data as { cardId: CardInstanceId };
+      const keywordResult = fns.originalExileCard(state, cardId);
+      return keywordResult.state;
+    }
+    case "sacrifice_card": {
+      const { cardId } = data as { cardId: CardInstanceId };
+      const keywordResult = fns.originalSacrificeCard(state, cardId);
+      return keywordResult.state;
+    }
+    default:
+      // For unhandled action types, return state unchanged
+      return state;
+  }
 }
 
 /**
@@ -418,6 +532,72 @@ export function sacrificeCard(
     (state) => {
       const keywordResult = originalSacrificeCard(state, cardId);
       return keywordResult.state;
+    },
+    action,
+  );
+
+  return { state: result, context };
+}
+
+/**
+ * Declare attackers with event emission
+ */
+export function declareAttackers(
+  esState: EventSourcingGameState,
+  playerId: PlayerId,
+  attackerIds: Array<{
+    cardId: CardInstanceId;
+    defenderId: PlayerId | CardInstanceId;
+  }>,
+): { state: GameState; context: StateMutationContext } {
+  const action: GameAction = {
+    type: "declare_attackers",
+    playerId,
+    timestamp: Date.now(),
+    data: { attackers: attackerIds },
+  };
+
+  const { result, context } = withEventEmission(
+    esState,
+    (state) => {
+      const combatResult = originalDeclareAttackers(state, attackerIds);
+      return combatResult.state;
+    },
+    action,
+  );
+
+  return { state: result, context };
+}
+
+/**
+ * Declare blockers with event emission
+ */
+export function declareBlockers(
+  esState: EventSourcingGameState,
+  playerId: PlayerId,
+  blockerAssignments: Map<CardInstanceId, CardInstanceId[]>,
+): { state: GameState; context: StateMutationContext } {
+  // Convert Map to array format for action data
+  const blockersArray = Array.from(blockerAssignments.entries()).flatMap(
+    ([attackerId, blockerIds]) =>
+      blockerIds.map((blockerId) => ({
+        cardId: blockerId,
+        attackerId,
+      })),
+  );
+
+  const action: GameAction = {
+    type: "declare_blockers",
+    playerId,
+    timestamp: Date.now(),
+    data: { blockers: blockersArray },
+  };
+
+  const { result, context } = withEventEmission(
+    esState,
+    (state) => {
+      const combatResult = originalDeclareBlockers(state, blockerAssignments);
+      return combatResult.state;
     },
     action,
   );

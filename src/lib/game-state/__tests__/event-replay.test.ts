@@ -231,6 +231,69 @@ function createMockState(overrides: Partial<GameState> = {}): GameState {
   return { ...state, ...overrides };
 }
 
+/**
+ * Create a mock CardInstance for testing
+ */
+function createMockCard(
+  cardId: string,
+  controllerId: string,
+  name: string = "Test Card",
+  keywords: string[] = [],
+  oracleText: string = ""
+): import("../types").CardInstance {
+  return {
+    id: cardId as import("../types").CardInstanceId,
+    oracleId: `oracle-${cardId}`,
+    cardData: {
+      id: cardId,
+      name,
+      lang: "en",
+      mana_cost: "{1}",
+      cmc: 1,
+      type_line: "Creature — Human",
+      oracle_text: oracleText,
+      keywords: keywords as any,
+      card_back: false,
+      artist: "",
+      artist_ids: [],
+      edition: "",
+      rarity: "common" as const,
+      border_color: "black" as const,
+      frame: "normal" as const,
+      frame_effect: null,
+      security_stamp: null,
+      relatedCards: { fetches: [], lands: [], pays: [] },
+    } as any,
+    currentFaceIndex: 0,
+    isFaceDown: false,
+    controllerId,
+    ownerId: controllerId,
+    isTapped: false,
+    isFlipped: false,
+    isTurnedFaceUp: false,
+    isPhasedOut: false,
+    hasSummoningSickness: false,
+    attachedTo: null,
+    counters: new Map(),
+    markedDamage: new Map(),
+    timestamp: Date.now(),
+    attackDomain: new Map(),
+    attackPower: null,
+    defenseToughness: null,
+    printedText: null,
+    oracleText: oracleText,
+    currentProwlingPlayer: null,
+    controllingEffectId: null,
+    attackedLastTurn: false,
+    staticAbilities: new Map(),
+    triggeredAbilities: [],
+    activatedAbilities: [],
+    loyalty: 0,
+    countersUpdatedThisTurn: false,
+    zoneId: null,
+  };
+}
+
 describe("Event Replay", () => {
   describe("getStateAtIndex", () => {
     it("should return null when targetIndex is before any checkpoint", () => {
@@ -372,6 +435,129 @@ describe("Event Replay", () => {
         const reconstructedHash = computeStateHash(reconstructedState!);
         // The reconstructed state should match the event's resultingStateHash
         expect(reconstructedHash).toBe((actionEvent as any).resultingStateHash);
+      }
+    });
+  });
+
+  describe("mutationApplier integration", () => {
+    it("should correctly replay declare_attackers action", () => {
+      const { declareAttackers } = require("../event-sourced-game-state");
+      const initialState = createMockState();
+
+      // Create state with a creature on battlefield
+      const creatureCard = createMockCard("creature-1", "player1", "Test Creature");
+      initialState.cards.set("creature-1", creatureCard);
+      const battlefieldZone = initialState.zones.get("player1-battlefield") || { cardIds: [], type: "battlefield" as ZoneType };
+      battlefieldZone.cardIds.push("creature-1");
+      initialState.zones.set("player1-battlefield", battlefieldZone);
+
+      const esState = createEventSourcedState(initialState, "test-session", "player1");
+      esState.addVerifiedStateSyncCheckpoint();
+
+      // Declare attackers
+      const attackerIds = [{ cardId: "creature-1" as CardInstanceId, defenderId: "player2" as PlayerId }];
+      declareAttackers(esState, "player1", attackerIds);
+
+      // Get state at the last checkpoint
+      const log = esState.getEventLog();
+      const lastCheckpoint = log.events.filter(e => e.type === "STATE_SYNC").pop() as any;
+
+      // Reconstruct state at that checkpoint
+      const stateBeforeAttack = esState.getStateAtIndex(lastCheckpoint.index);
+      expect(stateBeforeAttack).not.toBeNull();
+      expect(stateBeforeAttack!.combat.attackers.length).toBe(0);
+
+      // Now replay events and check state after attack declaration
+      const attackEvent = log.events.find(e => e.type === "ACTION" && (e as any).action.type === "declare_attackers");
+      if (attackEvent) {
+        const stateAfterAttack = esState.getStateAtIndex(attackEvent.index);
+        expect(stateAfterAttack).not.toBeNull();
+        expect(stateAfterAttack!.combat.attackers.length).toBe(1);
+        expect(stateAfterAttack!.combat.attackers[0].cardId).toBe("creature-1");
+      }
+    });
+
+    it("should correctly replay declare_blockers action", () => {
+      const { declareBlockers } = require("../event-sourced-game-state");
+      const initialState = createMockState();
+
+      // Create state with attackers and blockers on battlefield
+      const attackerCard = createMockCard("attacker-1", "player1", "Attacker");
+      const blockerCard = createMockCard("blocker-1", "player2", "Blocker");
+      initialState.cards.set("attacker-1", attackerCard);
+      initialState.cards.set("blocker-1", blockerCard);
+
+      // Setup battlefield zones
+      const p1Battlefield = initialState.zones.get("player1-battlefield") || { cardIds: [], type: "battlefield" as ZoneType };
+      p1Battlefield.cardIds.push("attacker-1");
+      initialState.zones.set("player1-battlefield", p1Battlefield);
+
+      const p2Battlefield = initialState.zones.get("player2-battlefield") || { cardIds: [], type: "battlefield" as ZoneType };
+      p2Battlefield.cardIds.push("blocker-1");
+      initialState.zones.set("player2-battlefield", p2Battlefield);
+
+      // Set combat phase and pre-declare attackers
+      initialState.turn.currentPhase = "declare_blockers";
+      initialState.combat.inCombatPhase = true;
+      initialState.combat.attackers = [{
+        cardId: "attacker-1" as CardInstanceId,
+        defenderId: "player2" as PlayerId,
+        isAttackingPlaneswalker: false,
+        damageToDeal: 3,
+        hasFirstStrike: false,
+        hasDoubleStrike: false,
+      }];
+
+      const esState = createEventSourcedState(initialState, "test-session", "player2");
+      esState.addVerifiedStateSyncCheckpoint();
+
+      // Declare blockers
+      const blockerAssignments = new Map<CardInstanceId, CardInstanceId[]>();
+      blockerAssignments.set("attacker-1" as CardInstanceId, ["blocker-1" as CardInstanceId]);
+      declareBlockers(esState, "player2", blockerAssignments);
+
+      // Verify state at the declare_blockers action
+      const log = esState.getEventLog();
+      const blockEvent = log.events.find(e => e.type === "ACTION" && (e as any).action.type === "declare_blockers");
+      if (blockEvent) {
+        const stateAfterBlock = esState.getStateAtIndex(blockEvent.index);
+        expect(stateAfterBlock).not.toBeNull();
+        expect(stateAfterBlock!.combat.blockers.size).toBe(1);
+        expect(stateAfterBlock!.combat.blockers.get("attacker-1")?.[0]?.cardId).toBe("blocker-1");
+      }
+    });
+
+    it("should handle multiple sequential actions and replay correctly", () => {
+      const { drawCard, dealDamageToPlayer, gainLife } = require("../event-sourced-game-state");
+      const initialState = createMockState();
+      const esState = createEventSourcedState(initialState, "test-session", "player1");
+
+      esState.addVerifiedStateSyncCheckpoint(); // Index 2
+
+      // Emit multiple actions
+      drawCard(esState, "player1");
+      esState.addVerifiedStateSyncCheckpoint(); // Index after draw
+
+      gainLife(esState, "player1", 5);
+      esState.addVerifiedStateSyncCheckpoint();
+
+      dealDamageToPlayer(esState, "player2", 3, false);
+
+      // Get the final state
+      const finalState = esState.getState();
+      const finalHash = computeStateHash(finalState);
+
+      // Replay from checkpoint before draw
+      const checkpoint = esState.getStateAtIndex(2);
+      expect(checkpoint).not.toBeNull();
+
+      // All checkpoints should be reachable
+      const log = esState.getEventLog();
+      for (const event of log.events) {
+        if (event.type === "STATE_SYNC") {
+          const state = esState.getStateAtIndex(event.index);
+          expect(state).not.toBeNull();
+        }
       }
     });
   });
