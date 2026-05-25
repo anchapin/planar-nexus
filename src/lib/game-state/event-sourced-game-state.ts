@@ -60,6 +60,7 @@ export function createEventSourcedState(
 
 /**
  * Draw a card with event emission
+ * CR 704: All game state changes flow through event log
  */
 export function drawCard(
   esState: EventSourcingGameState,
@@ -72,6 +73,7 @@ export function drawCard(
     data: { targetId: playerId },
   };
 
+  // Use withEventEmission to properly sequence: capture previous state, apply mutation, then emit
   const { result, context } = withEventEmission(
     esState,
     (state) => originalDrawCard(state, playerId),

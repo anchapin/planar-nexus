@@ -423,6 +423,7 @@ export class P2PGameConnection {
 
   /**
    * Handle incoming message
+   * Wraps message parsing in try/catch to prevent malformed messages from breaking the connection
    */
   private handleMessage(data: string): void {
     try {
@@ -460,6 +461,7 @@ export class P2PGameConnection {
       this.events.onMessage(message);
     } catch (error) {
       console.error('[P2PGameConnection] Failed to parse message:', error);
+      // Don't break connection for parse errors, just log them
     }
   }
 

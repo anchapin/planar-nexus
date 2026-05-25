@@ -395,20 +395,30 @@ export class WebRTCConnection {
 
   /**
    * Create an offer for the host to send to a joining player
+   * Wraps WebRTC offer creation in try/catch to surface errors via onError callback
    */
   async createOffer(): Promise<RTCSessionDescriptionInit> {
     if (!this.peerConnection) {
       throw new Error("Peer connection not initialized");
     }
 
-    const offer = await this.peerConnection.createOffer();
-    await this.peerConnection.setLocalDescription(offer);
-
-    return offer;
+    try {
+      const offer = await this.peerConnection.createOffer();
+      await this.peerConnection.setLocalDescription(offer);
+      return offer;
+    } catch (error) {
+      console.error("[WebRTC] Failed to create offer:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to create offer"),
+        ""
+      );
+      throw error;
+    }
   }
 
   /**
    * Handle an incoming offer from a joining player
+   * Wraps WebRTC offer handling in try/catch to surface errors via onError callback
    */
   async handleOffer(
     offer: RTCSessionDescriptionInit,
@@ -417,13 +427,21 @@ export class WebRTCConnection {
       throw new Error("Peer connection not initialized");
     }
 
-    await this.peerConnection.setRemoteDescription(
-      new RTCSessionDescription(offer),
-    );
-    const answer = await this.peerConnection.createAnswer();
-    await this.peerConnection.setLocalDescription(answer);
-
-    return answer;
+    try {
+      await this.peerConnection.setRemoteDescription(
+        new RTCSessionDescription(offer),
+      );
+      const answer = await this.peerConnection.createAnswer();
+      await this.peerConnection.setLocalDescription(answer);
+      return answer;
+    } catch (error) {
+      console.error("[WebRTC] Failed to handle offer:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to handle offer"),
+        ""
+      );
+      throw error;
+    }
   }
 
   /**
@@ -441,13 +459,20 @@ export class WebRTCConnection {
 
   /**
    * Add an ICE candidate from the remote peer
+   * Wraps ICE candidate addition in try/catch to prevent candidate errors from breaking connection
    */
   async addIceCandidate(candidate: RTCIceCandidateInit | null): Promise<void> {
     if (!this.peerConnection || !candidate) {
       return;
     }
 
-    await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    try {
+      await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (error) {
+      console.error("[WebRTC] Failed to add ICE candidate:", error);
+      // Don't throw - candidate errors shouldn't break the connection
+      // but log for debugging purposes
+    }
   }
 
   /**
@@ -475,18 +500,28 @@ export class WebRTCConnection {
 
   /**
    * Connect to a peer as a client (non-host)
+   * Wraps data channel creation in try/catch to surface errors via onError callback
    */
   async connectToPeer(): Promise<void> {
     if (!this.peerConnection) {
       throw new Error("Peer connection not initialized");
     }
 
-    // Create data channel for sending
-    this.dataChannel = this.peerConnection.createDataChannel("game", {
-      ordered: true,
-    });
+    try {
+      // Create data channel for sending
+      this.dataChannel = this.peerConnection.createDataChannel("game", {
+        ordered: true,
+      });
 
-    this.setupDataChannelEvents();
+      this.setupDataChannelEvents();
+    } catch (error) {
+      console.error("[WebRTC] Failed to connect to peer:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to connect to peer"),
+        ""
+      );
+      throw error;
+    }
   }
 
   /**

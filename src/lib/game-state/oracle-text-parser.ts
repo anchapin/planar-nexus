@@ -115,6 +115,7 @@ export interface TriggerCondition {
     | "turnEnds"
     | "phaseEnds"
     | "upkeep"
+    | "turnBegins"
     | "drawStep"
     | "combatDamageStepEnds"
     | "counterAdded"
@@ -125,6 +126,7 @@ export interface TriggerCondition {
     | "abilityActivated"
     | "beginningOfTurn"
     | "endOfTurn"
+    | "cleanupStep"
     | "creatureDies";
   condition?: string;
   target?: ParsedTarget;

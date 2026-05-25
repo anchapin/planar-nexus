@@ -178,15 +178,24 @@ export class P2PSignalingClient {
 
   /**
    * Generate QR code for the connection information
+   * Wraps QR code generation in try/catch to handle canvas/encoding errors
    */
   async generateQRCode(): Promise<string> {
-    const connectionInfo = this.getConnectionInfo();
-    const dataUrl = await QRCode.toDataURL(JSON.stringify(connectionInfo), {
-      width: 300,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-    });
-    return dataUrl;
+    try {
+      const connectionInfo = this.getConnectionInfo();
+      const dataUrl = await QRCode.toDataURL(JSON.stringify(connectionInfo), {
+        width: 300,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+      });
+      return dataUrl;
+    } catch (error) {
+      console.error('[Signaling] Failed to generate QR code:', error);
+      this.events.onError(
+        error instanceof Error ? error : new Error('Failed to generate QR code')
+      );
+      throw error;
+    }
   }
 
   /**
