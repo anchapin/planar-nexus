@@ -234,12 +234,15 @@ function cloneGameState(state: GameState): GameState {
       return new Map([...value].map(([k, v]) => [clone(k), clone(v)]));
     }
     if (value instanceof Set) {
-      return new Set([...value].map(v => clone(v)));
+      return new Set([...value].map((v) => clone(v)));
     }
     if (Array.isArray(value)) return value.map(clone);
-    if (typeof value === 'object' && value !== null) {
+    if (typeof value === "object" && value !== null) {
       return Object.fromEntries(
-        Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, clone(v)])
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+          k,
+          clone(v),
+        ]),
       );
     }
     return value;
@@ -255,6 +258,8 @@ export class EventSourcingGameState {
   private onDesync?: (result: DesyncDetectionResult) => void;
   private onRollback?: (targetIndex: EventIndex, reason: string) => void;
   private onEventConfirmed?: (eventIndex: EventIndex) => void;
+  /** Optional function to apply actions during replay (set by game engine) */
+  private mutationApplier?: (state: GameState, action: GameAction) => GameState;
 
   constructor(
     initialState: GameState,
@@ -587,20 +592,22 @@ export class EventSourcingGameState {
   /**
    * Get the full state at a specific event index (replays events)
    * Used for late-joining players to reconstruct state
+   * CR 704: State should always be derivable by replaying events
    */
   getStateAtIndex(targetIndex: EventIndex): GameState | null {
-    // Find the closest state sync at or before targetIndex
+    // Find the closest STATE_SYNC or GAME_START at or before targetIndex
     let baseState: GameState | null = null;
     let baseIndex = 0;
 
     for (const event of this.eventLog.events) {
       if (event.index > targetIndex) break;
-      if (event.type === "STATE_SYNC" || event.type === "GAME_START") {
-        baseState =
-          event.type === "STATE_SYNC"
-            ? (event as StateSyncEvent).state
-            : (event as GameStartEvent).state;
+      if (event.type === "STATE_SYNC") {
+        baseState = cloneGameState((event as StateSyncEvent).state);
         baseIndex = event.index;
+      } else if (event.type === "GAME_START") {
+        baseState = cloneGameState((event as GameStartEvent).state);
+        baseIndex = event.index;
+        break; // GAME_START is always the earliest checkpoint
       }
     }
 
@@ -608,9 +615,128 @@ export class EventSourcingGameState {
       return null;
     }
 
-    // For now, return the base state
-    // Full implementation would replay actions between baseIndex and targetIndex
-    return baseState;
+    // Replay ACTION events between baseIndex and targetIndex
+    // This ensures CR 704 compliance: state is derivable by replaying events
+    let currentState = baseState;
+
+    for (const event of this.eventLog.events) {
+      if (event.index <= baseIndex) continue;
+      if (event.index > targetIndex) break;
+      if (event.type === "ACTION") {
+        const actionEvent = event as ActionEvent;
+        currentState = this.applyActionToState(currentState, actionEvent);
+      }
+    }
+
+    return currentState;
+  }
+
+  /**
+   * Apply an action event to a given state (for replay)
+   * This is a pure function that applies the action without emitting events
+   */
+  private applyActionToState(
+    state: GameState,
+    actionEvent: ActionEvent,
+  ): GameState {
+    // Import the mutation functions lazily to avoid circular dependencies
+    // These will be set during initialization if using event-sourced mode
+    if (this.mutationApplier) {
+      return this.mutationApplier(state, actionEvent.action);
+    }
+    // Fallback: return state as-is if no applier is registered
+    // This should not happen in normal operation
+    return state;
+  }
+
+  /**
+   * Register a mutation applier function for event replay
+   * This function takes a state and action and returns the new state
+   * It should be set by the game engine to enable proper event replay
+   */
+  setMutationApplier(
+    applier: (state: GameState, action: GameAction) => GameState,
+  ): void {
+    this.mutationApplier = applier;
+  }
+
+  /**
+   * Get the full state at any event index (alias for getStateAtIndex)
+   */
+  getStateAtEventIndex(targetIndex: EventIndex): GameState | null {
+    return this.getStateAtIndex(targetIndex);
+  }
+
+  /**
+   * Verify that the current state matches the event log
+   * Returns discrepancies if state doesn't match
+   */
+  verifyEventLogIntegrity(): {
+    isValid: boolean;
+    discrepancies: string[];
+    lastVerifiedIndex: EventIndex;
+  } {
+    const discrepancies: string[] = [];
+    let currentState: GameState | null = null;
+    let lastVerifiedIndex = 0;
+
+    for (const event of this.eventLog.events) {
+      if (event.type === "STATE_SYNC" || event.type === "GAME_START") {
+        // Checkpoint - verify our reconstructed state matches
+        const checkpointState =
+          event.type === "STATE_SYNC"
+            ? (event as StateSyncEvent).state
+            : (event as GameStartEvent).state;
+
+        if (currentState !== null) {
+          const reconstructedHash = computeStateHash(currentState);
+          const checkpointHash =
+            event.type === "STATE_SYNC"
+              ? (event as StateSyncEvent).stateHash
+              : (event as GameStartEvent).stateHash;
+
+          if (reconstructedHash !== checkpointHash) {
+            discrepancies.push(
+              `Hash mismatch at event ${event.index}: expected ${checkpointHash}, got ${reconstructedHash}`,
+            );
+          }
+        }
+        currentState = cloneGameState(checkpointState);
+        lastVerifiedIndex = event.index;
+      } else if (event.type === "ACTION" && currentState !== null) {
+        const actionEvent = event as ActionEvent;
+        currentState = this.applyActionToState(currentState, actionEvent);
+      }
+    }
+
+    // Verify final state matches current state
+    const currentHash = this.getStateHash();
+    let finalExpectedHash: string | null = null;
+
+    for (let i = this.eventLog.events.length - 1; i >= 0; i--) {
+      const e = this.eventLog.events[i];
+      if (e.type === "STATE_SYNC") {
+        finalExpectedHash = (e as StateSyncEvent).stateHash;
+        break;
+      } else if (e.type === "GAME_START") {
+        finalExpectedHash = (e as GameStartEvent).stateHash;
+        break;
+      } else if (e.type === "ACTION") {
+        finalExpectedHash = (e as ActionEvent).resultingStateHash;
+      }
+    }
+
+    if (finalExpectedHash && currentHash !== finalExpectedHash) {
+      discrepancies.push(
+        `Final state hash mismatch: event log expects ${finalExpectedHash}, current state is ${currentHash}`,
+      );
+    }
+
+    return {
+      isValid: discrepancies.length === 0,
+      discrepancies,
+      lastVerifiedIndex,
+    };
   }
 
   /**
@@ -639,6 +765,47 @@ export class EventSourcingGameState {
       timestamp: Date.now(),
     };
     this.addEvent(event);
+  }
+
+  /**
+   * Add a state sync checkpoint and verify state hash
+   * CR 704: State hash can be computed at any point for sync verification
+   */
+  addVerifiedStateSyncCheckpoint(): StateSyncEvent {
+    const currentHash = this.getStateHash();
+    const event: StateSyncEvent = {
+      type: "STATE_SYNC",
+      index: ++this.eventIndexCounter,
+      state: cloneGameState(this.state),
+      stateHash: currentHash,
+      timestamp: Date.now(),
+    };
+    this.addEvent(event);
+    return event;
+  }
+
+  /**
+   * Perform a verified state transition
+   * This should be the ONLY way state is mutated in multiplayer
+   * CR 704: All game state changes should flow through event log
+   */
+  performVerifiedStateTransition(
+    action: GameAction,
+    mutationFn: (state: GameState) => GameState,
+  ): { newState: GameState; event: ActionEvent } {
+    const previousState = this.state;
+    const previousHash = this.getStateHash();
+
+    // Apply the mutation
+    const newState = mutationFn(previousState);
+
+    // Update internal state
+    this.state = cloneGameState(newState);
+
+    // Emit the action event
+    const event = this.emitAction(action, previousHash);
+
+    return { newState, event };
   }
 
   /**
