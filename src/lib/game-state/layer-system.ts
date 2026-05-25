@@ -275,7 +275,10 @@ export interface CardOverrides {
    * so they can be properly removed in reverse order.
    * Each entry is { controllerId, sourceCardId } for proper cleanup.
    */
-  controllerHistory?: Array<{ controllerId: PlayerId; sourceCardId: CardInstanceId }>;
+  controllerHistory?: Array<{
+    controllerId: PlayerId;
+    sourceCardId: CardInstanceId;
+  }>;
   /** Card ID that this card copies (Layer 1 - CR 613.2) */
   copiedFromId?: CardInstanceId;
   /**
@@ -319,7 +322,10 @@ export class LayerSystem {
    */
   private effectiveCharacteristicsCache: Map<
     CardInstanceId,
-    { stateHash: string; characteristics: ReturnType<LayerSystem["getEffectiveCharacteristics"]> }
+    {
+      stateHash: string;
+      characteristics: ReturnType<LayerSystem["getEffectiveCharacteristics"]>;
+    }
   > = new Map();
 
   /**
@@ -339,7 +345,9 @@ export class LayerSystem {
 
     // Add dependencies
     for (const dep of this.dependencies) {
-      stateParts.push(`d:${dep.effectId}:${dep.dependsOnId}:${dep.dependencyType}`);
+      stateParts.push(
+        `d:${dep.effectId}:${dep.dependsOnId}:${dep.dependencyType}`,
+      );
     }
 
     // Add overrides
@@ -1013,7 +1021,9 @@ export function createControlChangeEffect(
       // When control changes, we push the new controller onto the history stack
       if (!overrides.controllerHistory) {
         // Initialize with the original controller (from the card)
-        overrides.controllerHistory = [{ controllerId: card.controllerId, sourceCardId: card.id }];
+        overrides.controllerHistory = [
+          { controllerId: card.controllerId, sourceCardId: card.id },
+        ];
       }
 
       // Push the new controller onto the history
@@ -1077,7 +1087,7 @@ export function createTextChangeEffect(
       if (_types && _types.length > 0) {
         overrides.types = _types;
       }
-      if (_colors && _colors.length > 0) {
+      if (_colors !== undefined) {
         overrides.colors = _colors;
         overrides.colorChangeOriginLayer = Layer.TEXT_CHANGING;
       }
@@ -1143,7 +1153,7 @@ export function createTypeChangeEffect(
       // Handle simultaneous color change (CR 613.5 exception)
       // Per CR 613.5: if an effect changes color AND type simultaneously,
       // the color change happens in Layer 4 (not Layer 5 as usual)
-      if (_colors && _colors.length > 0) {
+      if (_colors !== undefined) {
         overrides.colors = _colors;
         overrides.colorChangeOriginLayer = Layer.TYPE_CHANGING;
       }
