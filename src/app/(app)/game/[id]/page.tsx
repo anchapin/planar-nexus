@@ -840,9 +840,13 @@ function PhaseTracker({
             >
               {isCurrent && phase.label}
             </div>
-            {idx < phases.length - 1 && idx !== currentIndex && idx !== currentIndex - 1 && (
-              <div className={`h-[1px] w-1 ${isPast ? "bg-primary/20" : "bg-muted/20"}`} />
-            )}
+            {idx < phases.length - 1 &&
+              idx !== currentIndex &&
+              idx !== currentIndex - 1 && (
+                <div
+                  className={`h-[1px] w-1 ${isPast ? "bg-primary/20" : "bg-muted/20"}`}
+                />
+              )}
           </Fragment>
         );
       })}
@@ -1630,7 +1634,8 @@ function GameBoardContent() {
             } else {
               toast({
                 title: "Cannot play land",
-                description: validation.message || "You cannot play a land right now.",
+                description:
+                  validation.message || "You cannot play a land right now.",
                 variant: "destructive",
               });
             }
@@ -1683,7 +1688,10 @@ function GameBoardContent() {
           );
           if (validation.isValid) {
             // Check for X-cost spell first
-            const xCostInfo = parseXCost(card.cardData, 10);
+            const xCostInfo = parseXCost(
+              card.cardData,
+              getTotalMana(player.manaPool),
+            );
             if (xCostInfo.hasX) {
               setXCostChoice({
                 cardId,
@@ -3069,7 +3077,12 @@ function GameBoardContent() {
                 Single Player
               </h1>
               <div className="flex items-center gap-2 text-[10px] text-muted-foreground leading-none">
-                <Badge variant="outline" className="text-[9px] h-3.5 px-1 py-0 font-normal">Game {gameId?.substring(0, 8)}</Badge>
+                <Badge
+                  variant="outline"
+                  className="text-[9px] h-3.5 px-1 py-0 font-normal"
+                >
+                  Game {gameId?.substring(0, 8)}
+                </Badge>
                 <span>Turn {gameState.turn.turnNumber}</span>
               </div>
             </div>
@@ -3080,13 +3093,19 @@ function GameBoardContent() {
               <div className="text-xs font-medium flex items-center gap-2">
                 {currentPlayer?.name}
                 {isAIThinking && (
-                  <Badge variant="secondary" className="animate-pulse text-[9px] h-3.5 px-1 py-0">
+                  <Badge
+                    variant="secondary"
+                    className="animate-pulse text-[9px] h-3.5 px-1 py-0"
+                  >
                     AI Thinking...
                   </Badge>
                 )}
               </div>
             </div>
-            <Badge variant={mode === "ai" ? "default" : "secondary"} className="text-[10px] h-4 px-1.5 py-0 font-normal">
+            <Badge
+              variant={mode === "ai" ? "default" : "secondary"}
+              className="text-[10px] h-4 px-1.5 py-0 font-normal"
+            >
               {mode === "ai" ? `vs AI (${difficulty})` : "Self Play"}
             </Badge>
           </div>

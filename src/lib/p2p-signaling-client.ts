@@ -13,15 +13,15 @@
  * 5. Direct P2P connection is established
  */
 
-import QRCode from 'qrcode';
-import { generateGameCode as generateWebRTCGameCode } from './webrtc-p2p';
+import QRCode from "qrcode";
+import { generateGameCode as generateWebRTCGameCode } from "./webrtc-p2p";
 import type {
   P2PMessage,
   P2PConnectionState,
   P2PEvents,
   P2PConnectionOptions,
-} from './webrtc-p2p';
-import { WebRTCConnection, createP2PConnection } from './webrtc-p2p';
+} from "./webrtc-p2p";
+import { WebRTCConnection, createP2PConnection } from "./webrtc-p2p";
 
 /**
  * Connection information for P2P handshake
@@ -42,7 +42,7 @@ export interface ConnectionInfo {
  */
 export interface SignalingData {
   /** Type of signaling data */
-  type: 'offer' | 'answer' | 'ice-candidate';
+  type: "offer" | "answer" | "ice-candidate";
   /** The actual WebRTC data */
   data: RTCSessionDescriptionInit | RTCIceCandidateInit;
   /** Sender's game code */
@@ -53,12 +53,12 @@ export interface SignalingData {
  * Connection handshake steps
  */
 export type HandshakeStep =
-  | 'idle'
-  | 'waiting-for-offer'
-  | 'waiting-for-answer'
-  | 'waiting-for-candidates'
-  | 'completed'
-  | 'failed';
+  | "idle"
+  | "waiting-for-offer"
+  | "waiting-for-answer"
+  | "waiting-for-candidates"
+  | "completed"
+  | "failed";
 
 /**
  * Client-side signaling events
@@ -101,14 +101,14 @@ export class P2PSignalingClient {
   private rtcConfig: RTCConfiguration;
   private events: SignalingEvents;
   private connection: WebRTCConnection | null = null;
-  private handshakeStep: HandshakeStep = 'idle';
+  private handshakeStep: HandshakeStep = "idle";
   private localOffer: RTCSessionDescriptionInit | null = null;
   private localAnswer: RTCSessionDescriptionInit | null = null;
   private remoteOffer: RTCSessionDescriptionInit | null = null;
   private remoteAnswer: RTCSessionDescriptionInit | null = null;
   private localCandidates: RTCIceCandidateInit[] = [];
   private remoteCandidates: RTCIceCandidateInit[] = [];
-  private connectionState: P2PConnectionState = 'disconnected';
+  private connectionState: P2PConnectionState = "disconnected";
 
   constructor(options: SignalingOptions) {
     this.gameCode = generateWebRTCGameCode(6);
@@ -116,9 +116,9 @@ export class P2PSignalingClient {
     this.isHost = options.isHost;
     this.rtcConfig = options.rtcConfig || {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
       ],
     };
     this.events = options.events;
@@ -131,7 +131,7 @@ export class P2PSignalingClient {
     try {
       // Create WebRTC connection
       const connectionOptions: P2PConnectionOptions = {
-        playerId: this.isHost ? 'host' : 'client',
+        playerId: this.isHost ? "host" : "client",
         playerName: this.playerName,
         isHost: this.isHost,
         gameCode: this.gameCode,
@@ -159,9 +159,11 @@ export class P2PSignalingClient {
       this.connection = createP2PConnection(connectionOptions);
       await this.connection.initialize();
     } catch (error) {
-      console.error('[Signaling] Failed to initialize:', error);
-      this.events.onError(error instanceof Error ? error : new Error('Failed to initialize'));
-      this.updateHandshakeStep('failed');
+      console.error("[Signaling] Failed to initialize:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to initialize"),
+      );
+      this.updateHandshakeStep("failed");
     }
   }
 
@@ -178,15 +180,26 @@ export class P2PSignalingClient {
 
   /**
    * Generate QR code for the connection information
+   * Wraps QR code generation in try/catch to handle canvas/encoding errors
    */
   async generateQRCode(): Promise<string> {
-    const connectionInfo = this.getConnectionInfo();
-    const dataUrl = await QRCode.toDataURL(JSON.stringify(connectionInfo), {
-      width: 300,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-    });
-    return dataUrl;
+    try {
+      const connectionInfo = this.getConnectionInfo();
+      const dataUrl = await QRCode.toDataURL(JSON.stringify(connectionInfo), {
+        width: 300,
+        margin: 2,
+        errorCorrectionLevel: "M",
+      });
+      return dataUrl;
+    } catch (error) {
+      console.error("[Signaling] Failed to generate QR code:", error);
+      this.events.onError(
+        error instanceof Error
+          ? error
+          : new Error("Failed to generate QR code"),
+      );
+      throw error;
+    }
   }
 
   /**
@@ -201,11 +214,11 @@ export class P2PSignalingClient {
    */
   async startHostConnection(): Promise<RTCSessionDescriptionInit> {
     if (!this.connection) {
-      throw new Error('Connection not initialized');
+      throw new Error("Connection not initialized");
     }
 
     try {
-      this.updateHandshakeStep('waiting-for-answer');
+      this.updateHandshakeStep("waiting-for-answer");
 
       // Create offer
       const offer = await this.connection.createOffer();
@@ -213,9 +226,11 @@ export class P2PSignalingClient {
 
       return offer;
     } catch (error) {
-      console.error('[Signaling] Failed to create offer:', error);
-      this.events.onError(error instanceof Error ? error : new Error('Failed to create offer'));
-      this.updateHandshakeStep('failed');
+      console.error("[Signaling] Failed to create offer:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to create offer"),
+      );
+      this.updateHandshakeStep("failed");
       throw error;
     }
   }
@@ -223,13 +238,15 @@ export class P2PSignalingClient {
   /**
    * Start the client side of the connection (handles offer)
    */
-  async startClientConnection(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
+  async startClientConnection(
+    offer: RTCSessionDescriptionInit,
+  ): Promise<RTCSessionDescriptionInit> {
     if (!this.connection) {
-      throw new Error('Connection not initialized');
+      throw new Error("Connection not initialized");
     }
 
     try {
-      this.updateHandshakeStep('waiting-for-candidates');
+      this.updateHandshakeStep("waiting-for-candidates");
 
       // Store remote offer
       this.remoteOffer = offer;
@@ -240,9 +257,11 @@ export class P2PSignalingClient {
 
       return answer;
     } catch (error) {
-      console.error('[Signaling] Failed to handle offer:', error);
-      this.events.onError(error instanceof Error ? error : new Error('Failed to handle offer'));
-      this.updateHandshakeStep('failed');
+      console.error("[Signaling] Failed to handle offer:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to handle offer"),
+      );
+      this.updateHandshakeStep("failed");
       throw error;
     }
   }
@@ -252,7 +271,7 @@ export class P2PSignalingClient {
    */
   async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
     if (!this.connection) {
-      throw new Error('Connection not initialized');
+      throw new Error("Connection not initialized");
     }
 
     try {
@@ -262,9 +281,11 @@ export class P2PSignalingClient {
       // Handle answer
       await this.connection.handleAnswer(answer);
     } catch (error) {
-      console.error('[Signaling] Failed to handle answer:', error);
-      this.events.onError(error instanceof Error ? error : new Error('Failed to handle answer'));
-      this.updateHandshakeStep('failed');
+      console.error("[Signaling] Failed to handle answer:", error);
+      this.events.onError(
+        error instanceof Error ? error : new Error("Failed to handle answer"),
+      );
+      this.updateHandshakeStep("failed");
       throw error;
     }
   }
@@ -274,13 +295,13 @@ export class P2PSignalingClient {
    */
   async addIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
     if (!this.connection) {
-      throw new Error('Connection not initialized');
+      throw new Error("Connection not initialized");
     }
 
     try {
       await this.connection.addIceCandidate(candidate);
     } catch (error) {
-      console.error('[Signaling] Failed to add ICE candidate:', error);
+      console.error("[Signaling] Failed to add ICE candidate:", error);
       // Don't fail the connection for candidate errors
     }
   }
@@ -317,7 +338,7 @@ export class P2PSignalingClient {
    * Check if connected
    */
   isConnected(): boolean {
-    return this.connectionState === 'connected';
+    return this.connectionState === "connected";
   }
 
   /**
@@ -325,7 +346,7 @@ export class P2PSignalingClient {
    */
   sendMessage(message: P2PMessage): void {
     if (!this.connection || !this.connection.isConnected()) {
-      console.warn('[Signaling] Cannot send message: not connected');
+      console.warn("[Signaling] Cannot send message: not connected");
       return;
     }
 
@@ -347,8 +368,8 @@ export class P2PSignalingClient {
     this.remoteAnswer = null;
     this.localCandidates = [];
     this.remoteCandidates = [];
-    this.connectionState = 'disconnected';
-    this.updateHandshakeStep('idle');
+    this.connectionState = "disconnected";
+    this.updateHandshakeStep("idle");
   }
 
   /**
@@ -372,7 +393,7 @@ export class P2PSignalingClient {
  */
 export function createHostSignalingClient(
   playerName: string,
-  events: SignalingEvents
+  events: SignalingEvents,
 ): P2PSignalingClient {
   return new P2PSignalingClient({
     playerName,
@@ -386,7 +407,7 @@ export function createHostSignalingClient(
  */
 export function createClientSignalingClient(
   playerName: string,
-  events: SignalingEvents
+  events: SignalingEvents,
 ): P2PSignalingClient {
   return new P2PSignalingClient({
     playerName,
@@ -409,7 +430,7 @@ export function parseConnectionInfo(data: string): ConnectionInfo | null {
 
     return info;
   } catch (error) {
-    console.error('[Signaling] Failed to parse connection info:', error);
+    console.error("[Signaling] Failed to parse connection info:", error);
     return null;
   }
 }
@@ -428,7 +449,7 @@ export function deserializeSignalingData(data: string): SignalingData | null {
   try {
     return JSON.parse(data) as SignalingData;
   } catch (error) {
-    console.error('[Signaling] Failed to deserialize signaling data:', error);
+    console.error("[Signaling] Failed to deserialize signaling data:", error);
     return null;
   }
 }

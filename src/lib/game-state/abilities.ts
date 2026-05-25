@@ -33,8 +33,10 @@ export type TriggerEvent =
   | "entersBattlefield"
   | "leavesBattlefield"
   | "damageDealt"
+  | "dies"
   | "creatureDies"
   | "attacked"
+  | "blocked"
   | "phaseChange"
   | "drawCard"
   | "cast"
@@ -42,7 +44,15 @@ export type TriggerEvent =
   | "lifeLost"
   | "beginningOfTurn"
   | "endOfTurn"
-  | "spellCast";
+  | "spellCast"
+  | "upkeep"
+  | "phaseEnds"
+  | "turnEnds"
+  | "turnBegins"
+  | "endOfTurn"
+  | "cleanupStep"
+  | "stateTrigger"
+  | "abilityActivated";
 
 /**
  * Trigger condition context passed when detecting triggers.
@@ -723,22 +733,11 @@ export function detectTriggeredAbilities(
           shouldTrigger =
             ability.trigger.event === "upkeep" ||
             ability.trigger.event === "phaseEnds" ||
-            ability.trigger.event === "turnEnds";
-          break;
-        case "endOfTurn":
-          shouldTrigger =
             ability.trigger.event === "turnEnds" ||
-            ability.trigger.event === "phaseEnds";
-          break;
-        case "beginningOfTurn":
-          // Beginning of turn triggers: upkeep, beginning of combat, start of turn
-          shouldTrigger =
-            ability.trigger.event === "upkeep" ||
             ability.trigger.event === "turnBegins" ||
             ability.trigger.event === "beginningOfTurn";
           break;
         case "endOfTurn":
-          // End of turn triggers
           shouldTrigger =
             ability.trigger.event === "turnEnds" ||
             ability.trigger.event === "phaseEnds" ||
@@ -755,9 +754,6 @@ export function detectTriggeredAbilities(
             ability.trigger.event === "cast" ||
             ability.trigger.event === "spellCast" ||
             ability.trigger.event === "abilityActivated";
-          break;
-        case "spellCast":
-          shouldTrigger = ability.trigger.event === "spellCast";
           break;
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";
