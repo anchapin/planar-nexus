@@ -520,7 +520,15 @@ describe("Event Replay and State Reconstruction", () => {
         timestamp: Date.now(),
         data: { amount: 5 },
       };
-      esState.emitAction(action, esState.getStateHash());
+      // Use performVerifiedStateTransition that applies state before emitting
+      esState.performVerifiedStateTransition(action, (state) => {
+        const newState = cloneGameState(state);
+        const player = newState.players.get("p1");
+        if (player) {
+          player.life += 5;
+        }
+        return newState;
+      });
 
       const checkpoint2 = esState.addVerifiedStateSyncCheckpoint();
 
@@ -553,7 +561,15 @@ describe("Event Replay and State Reconstruction", () => {
         timestamp: Date.now(),
         data: { amount: 5 },
       };
-      esState.emitAction(action, esState.getStateHash());
+      // Use performVerifiedStateTransition that applies state before emitting
+      esState.performVerifiedStateTransition(action, (state) => {
+        const newState = cloneGameState(state);
+        const player = newState.players.get("p1");
+        if (player) {
+          player.life += 5;
+        }
+        return newState;
+      });
 
       // Current state should be different
       const afterActionHash = esState.getStateHash();
