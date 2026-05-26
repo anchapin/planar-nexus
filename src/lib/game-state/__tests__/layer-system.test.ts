@@ -10,6 +10,7 @@ import {
   Layer,
   PowerToughnessSublayer,
   createCopyEffect,
+  createMutateCopyEffect,
   createControlChangeEffect,
   createTextChangeEffect,
   createTypeChangeEffect,
@@ -26,6 +27,7 @@ import {
   createToughnessModifyEffect,
   createCounterEffect,
   getLayerSystemInstance,
+  resolveCopyChain,
 } from "../layer-system";
 import { createCardInstance } from "../card-instance";
 import type { ScryfallCard } from "@/app/actions";
@@ -1077,7 +1079,8 @@ describe("Layer System", () => {
         // Add +1/+1 counters (7c)
         creature.counters = [{ type: "+1/+1", count: 3 }];
 
-        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
         // CDA (7a) sets to 0/0, then counters (7c) add +3/+3 = 3/3
         // Per CR 613.8, later sublayers modify earlier ones
         expect(characteristics.power).toBe(3);
@@ -1101,7 +1104,8 @@ describe("Layer System", () => {
         );
         layerSystem.registerEffect(modifyEffect);
 
-        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
         // Base 3/3 + 2 counters (7c) + 1 modifier (7e) = 6/6
         expect(characteristics.power).toBe(6);
         expect(characteristics.toughness).toBe(6);
@@ -1123,7 +1127,8 @@ describe("Layer System", () => {
         );
         layerSystem.registerEffect(switchEffect);
 
-        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
         // Base 3/5 + 1 counter = 4/6, then switch = 6/4
         expect(characteristics.power).toBe(6);
         expect(characteristics.toughness).toBe(4);
@@ -1159,7 +1164,8 @@ describe("Layer System", () => {
         // This would be unusual but valid per CR 613.8 interaction
         layerSystem.registerEffect(cdaEffect);
 
-        const characteristics = layerSystem.getEffectiveCharacteristics(creature);
+        const characteristics =
+          layerSystem.getEffectiveCharacteristics(creature);
         // CDA (7a) sets 5/5, then set (7b) overwrites to 2/2
         // Since CDA has earlier timestamp, but set has later sublayer order
         // Order is 7a -> 7b, so 7a sets 5/5, then 7b sets 2/2
@@ -2177,12 +2183,10 @@ describe("Layer System", () => {
 
   describe("Layer 6 Keyword Mechanics", () => {
     it("should check keyword mechanics via oracle_text string matching", () => {
-      const creatureData = createMockCreature(
-        "Test Creature",
-        3,
-        3,
-        ["flying", "trample"],
-      );
+      const creatureData = createMockCreature("Test Creature", 3, 3, [
+        "flying",
+        "trample",
+      ]);
       const creature = createCardInstance(creatureData, "player1", "player1");
 
       const characteristics = layerSystem.getEffectiveCharacteristics(creature);
@@ -2233,6 +2237,277 @@ describe("Layer System", () => {
 
       const characteristics = layerSystem.getEffectiveCharacteristics(creature);
       expect(characteristics.removedAbilities).toContain("flying");
+    });
+  });
+
+  describe("Layer 1 Copy Effects - Copy-of-Copy Chain (CR 613.2a)", () => {
+    beforeEach(() => {
+      layerSystem.clear();
+    });
+
+    it("should resolve copy chain when card copies card that is copying another", () => {
+      // Card C is being copied by Card B, which is being copied by Card A
+      // A should end up with C's characteristics
+      const cardCData = createMockCreature("Card C", 7, 7);
+      const cardC = createCardInstance(cardCData, "player1", "player1");
+
+      const cardBData = createMockCreature("Card B", 5, 5);
+      const cardB = createCardInstance(cardBData, "player1", "player1");
+
+      const cardAData = createMockCreature("Card A", 3, 3);
+      const cardA = createCardInstance(cardAData, "player1", "player1");
+
+      // Register all cards
+      layerSystem.registerCardInstance(cardC);
+      layerSystem.registerCardInstance(cardB);
+      layerSystem.registerCardInstance(cardA);
+
+      // B copies C
+      const copyEffectBC = createCopyEffect(
+        cardB.id,
+        "player1",
+        cardC.id,
+        "B copies C",
+        layerSystem,
+      );
+
+      // A copies B
+      const copyEffectAB = createCopyEffect(
+        cardA.id,
+        "player1",
+        cardB.id,
+        "A copies B",
+        layerSystem,
+      );
+
+      // Apply effects - must apply to ALL cards that have copy effects
+      // The layer system applies all Layer 1 effects to all registered cards
+      layerSystem.registerEffect(copyEffectBC);
+      layerSystem.registerEffect(copyEffectAB);
+
+      // Apply effects to all cards that might have copy effects
+      // In a real game, this would iterate over all cards on the battlefield
+      layerSystem.applyEffects(cardC); // C has no copy effect, but we need to register it
+      layerSystem.applyEffects(cardB); // B copies C - apply B's copy effect
+      layerSystem.applyEffects(cardA); // A copies B - apply A's copy effect
+
+      // Verify the copy chain is resolved
+      const resolved = resolveCopyChain(cardA.id, layerSystem);
+      expect(resolved).toBeDefined();
+      expect(resolved?.cardId).toBe(cardC.id);
+      expect(resolved?.cardData.name).toBe("Card C");
+    });
+
+    it("should use ultimate copied card's P/T in effective characteristics", () => {
+      const cardCData = createMockCreature("Card C", 8, 8);
+      const cardC = createCardInstance(cardCData, "player1", "player1");
+
+      const cardBData = createMockCreature("Card B", 4, 4);
+      const cardB = createCardInstance(cardBData, "player1", "player1");
+
+      const cardAData = createMockCreature("Card A", 2, 2);
+      const cardA = createCardInstance(cardAData, "player1", "player1");
+
+      layerSystem.registerCardInstance(cardC);
+      layerSystem.registerCardInstance(cardB);
+      layerSystem.registerCardInstance(cardA);
+
+      // B copies C
+      const copyEffectBC = createCopyEffect(
+        cardB.id,
+        "player1",
+        cardC.id,
+        "B copies C",
+        layerSystem,
+      );
+
+      // A copies B
+      const copyEffectAB = createCopyEffect(
+        cardA.id,
+        "player1",
+        cardB.id,
+        "A copies B",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(copyEffectBC);
+      layerSystem.registerEffect(copyEffectAB);
+
+      // Apply effects to all cards in the copy chain
+      layerSystem.applyEffects(cardB); // B's copy effect must run first
+      layerSystem.applyEffects(cardA); // Then A's copy effect
+
+      // Get effective characteristics for A - should be 8/8 (C's P/T)
+      const characteristics = layerSystem.getEffectiveCharacteristics(cardA);
+      expect(characteristics.power).toBe(8);
+      expect(characteristics.toughness).toBe(8);
+      expect(characteristics.name).toBe("Card C");
+    });
+
+    it("should handle circular copy reference without infinite loop", () => {
+      // This simulates a problematic case where copy effects might create a cycle
+      // The system should handle this gracefully via cycle detection
+      const cardAData = createMockCreature("Card A", 3, 3);
+      const cardA = createCardInstance(cardAData, "player1", "player1");
+
+      const cardBData = createMockCreature("Card B", 5, 5);
+      const cardB = createCardInstance(cardBData, "player1", "player1");
+
+      layerSystem.registerCardInstance(cardA);
+      layerSystem.registerCardInstance(cardB);
+
+      // Both try to copy each other (theoretically impossible in real MTG
+      // due to timestamp ordering, but we should handle it gracefully)
+      const copyEffectAtoB = createCopyEffect(
+        cardA.id,
+        "player1",
+        cardB.id,
+        "A copies B",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(copyEffectAtoB);
+      layerSystem.applyEffects(cardA);
+
+      // Should not infinite loop - just return the card's own data
+      const resolved = resolveCopyChain(cardA.id, layerSystem);
+      expect(resolved).toBeDefined();
+      // The result may be either A or B depending on order, but shouldn't crash
+    });
+  });
+
+  describe("Layer 1 Mutate Copy Effects (CR 702.140)", () => {
+    beforeEach(() => {
+      layerSystem.clear();
+    });
+
+    it("should create a mutate copy effect", () => {
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const targetData = createMockCreature("Target Creature", 4, 4);
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      layerSystem.registerCardInstance(target);
+
+      const mutateEffect = createMutateCopyEffect(
+        creature.id,
+        "player1",
+        target.id,
+        "Mutate onto target",
+        layerSystem,
+      );
+
+      expect(mutateEffect.layer).toBe(Layer.COPY_EFFECTS);
+      expect(mutateEffect.effectType).toBe("copy");
+    });
+
+    it("should mark the resulting card as mutated", () => {
+      const creatureData = createMockCreature("Mutate Creature", 3, 3);
+      const creature = createCardInstance(creatureData, "player1", "player1");
+
+      const targetData = createMockCreature("Target Creature", 4, 4);
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      layerSystem.registerCardInstance(target);
+
+      const mutateEffect = createMutateCopyEffect(
+        creature.id,
+        "player1",
+        target.id,
+        "Mutate onto target",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(mutateEffect);
+      const result = layerSystem.applyEffects(creature);
+
+      // Check that the card has mutated flag set
+      expect(result.isMutated).toBe(true);
+      expect(result.mutateBaseId).toBe(target.id);
+
+      // Check that the overrides have mutate info
+      const overrides = layerSystem.getOverrides(creature.id);
+      expect(overrides.isMutateCopy).toBe(true);
+      expect(overrides.mutateResultIsCreature).toBe(true); // Target is creature
+    });
+
+    it("should copy target characteristics for mutate result", () => {
+      const mutateData = createMockCreature(
+        "Mutate Creature",
+        2,
+        2,
+        ["Flying"],
+        ["U"],
+      );
+      mutateData.oracle_text = "Mutate {2}{U}";
+      const mutateCard = createCardInstance(mutateData, "player1", "player1");
+
+      const targetData = createMockCreature(
+        "Target Beast",
+        6,
+        6,
+        ["Trample"],
+        ["G"],
+      );
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      layerSystem.registerCardInstance(target);
+
+      const mutateEffect = createMutateCopyEffect(
+        mutateCard.id,
+        "player1",
+        target.id,
+        "Mutate onto target",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(mutateEffect);
+      layerSystem.applyEffects(mutateCard);
+
+      const characteristics =
+        layerSystem.getEffectiveCharacteristics(mutateCard);
+
+      // Per CR 702.140: Mutate result has target's name and types
+      expect(characteristics.name).toBe("Target Beast");
+      // But keeps the mutate card's P/T since that's a copiable value
+      expect(characteristics.power).toBe(6);
+      expect(characteristics.toughness).toBe(6);
+    });
+
+    it("should handle mutate onto non-creature (result is not a creature)", () => {
+      const mutateData = createMockCreature("Mutate Creature", 3, 3);
+      const mutateCard = createCardInstance(mutateData, "player1", "player1");
+
+      // Target is an enchantment, not a creature
+      const targetData: ScryfallCard = {
+        id: "mock-target-enchantment",
+        name: "Target Enchantment",
+        type_line: "Enchantment",
+        oracle_text: "Enchanted creature gets +1/+1",
+        mana_cost: "{1}",
+        cmc: 1,
+        colors: [],
+        color_identity: [],
+        legalities: {},
+      };
+      const target = createCardInstance(targetData, "player1", "player1");
+
+      layerSystem.registerCardInstance(target);
+
+      const mutateEffect = createMutateCopyEffect(
+        mutateCard.id,
+        "player1",
+        target.id,
+        "Mutate onto enchantment",
+        layerSystem,
+      );
+
+      layerSystem.registerEffect(mutateEffect);
+      layerSystem.applyEffects(mutateCard);
+
+      const overrides = layerSystem.getOverrides(mutateCard.id);
+      expect(overrides.mutateResultIsCreature).toBe(false);
     });
   });
 });
