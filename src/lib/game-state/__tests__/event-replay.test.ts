@@ -184,14 +184,17 @@ describe("Event Replay and State Reconstruction", () => {
 
       // Use performVerifiedStateTransition which applies state BEFORE emitting
       // direct emitAction is for pre-mutation recording - the state isn't changed yet
-      const { event } = esState.performVerifiedStateTransition(action, (state) => {
-        const newState = cloneGameState(state);
-        const player = newState.players.get("p1");
-        if (player) {
-          player.life += 5;
-        }
-        return newState;
-      });
+      const { event } = esState.performVerifiedStateTransition(
+        action,
+        (state) => {
+          const newState = cloneGameState(state);
+          const player = newState.players.get("p1");
+          if (player) {
+            player.life += 5;
+          }
+          return newState;
+        },
+      );
 
       expect(event.type).toBe("ACTION");
       expect(event.previousStateHash).toBe(previousHash);
