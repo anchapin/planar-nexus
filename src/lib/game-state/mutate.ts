@@ -8,14 +8,22 @@
  * - If mutating onto non-creature, the result is the mutate card characteristics
  */
 
-import type { CardInstance, CardInstanceId, GameState, PlayerId } from "./types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  GameState,
+  PlayerId,
+} from "./types";
 import { getManaValue } from "./card-instance";
 
 /**
  * Check if a card has the mutate ability
  * CR 702.140: Mutate is a keyword ability
  */
-export function hasMutate(card: { keywords?: string[]; oracle_text?: string }): boolean {
+export function hasMutate(card: {
+  keywords?: string[];
+  oracle_text?: string;
+}): boolean {
   if (card.keywords?.includes("Mutate")) {
     return true;
   }
@@ -153,13 +161,15 @@ export function getMutatedCreatureTopCard(
   }
 
   // The top card is the last one in the mutatedCardIds array
-  const topCardId = baseCreature.mutatedCardIds[baseCreature.mutatedCardIds.length - 1];
+  const topCardId =
+    baseCreature.mutatedCardIds[baseCreature.mutatedCardIds.length - 1];
   return state.cards.get(topCardId) || null;
 }
 
 /**
  * Get the text for a mutated creature
- * CR 702.140: Text includes text from component with highest CMC
+ * CR 702.140: Text includes text from all components in the mutate stack.
+ * The text of each component is combined, starting with the highest CMC component.
  */
 export function getMutatedCreatureText(
   state: GameState,
@@ -168,16 +178,25 @@ export function getMutatedCreatureText(
   const baseCreature = state.cards.get(baseCreatureId);
   if (!baseCreature) return "";
 
-  // Get the highest CMC component's text
-  if (baseCreature.highestCmcComponentId) {
-    const highestCard = state.cards.get(baseCreature.highestCmcComponentId);
-    if (highestCard && highestCard.cardData.oracle_text) {
-      return highestCard.cardData.oracle_text;
+  const stack = getMutatedStack(state, baseCreatureId);
+  if (stack.length === 0) return "";
+
+  // Sort by CMC descending to get text priority order
+  const sortedStack = [...stack].sort((a, b) => {
+    const cmcA = getManaValue(a);
+    const cmcB = getManaValue(b);
+    return cmcB - cmcA;
+  });
+
+  // Combine text from all components, highest CMC first
+  const textParts: string[] = [];
+  for (const card of sortedStack) {
+    if (card.cardData.oracle_text) {
+      textParts.push(card.cardData.oracle_text);
     }
   }
 
-  // Fallback to base creature text
-  return baseCreature.cardData.oracle_text || "";
+  return textParts.join("\n\n");
 }
 
 /**
