@@ -19,6 +19,7 @@ import {
   type GameStartEvent,
 } from "../event-sourcing";
 import { computeStateHash } from "../state-hash";
+import { cloneGameState } from "../state-serialization";
 import { ReplacementEffectManager } from "../replacement-effects";
 import { LayerSystem } from "../layer-system";
 
@@ -181,7 +182,19 @@ describe("Event Replay and State Reconstruction", () => {
         data: { amount: 5 },
       };
 
-      const event = esState.emitAction(action, previousHash);
+      // Use performVerifiedStateTransition which applies state BEFORE emitting
+      // direct emitAction is for pre-mutation recording - the state isn't changed yet
+      const { event } = esState.performVerifiedStateTransition(
+        action,
+        (state) => {
+          const newState = cloneGameState(state);
+          const player = newState.players.get("p1");
+          if (player) {
+            player.life += 5;
+          }
+          return newState;
+        },
+      );
 
       expect(event.type).toBe("ACTION");
       expect(event.previousStateHash).toBe(previousHash);
