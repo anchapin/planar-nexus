@@ -290,6 +290,9 @@ export function checkStateBasedActions(
             return c;
           })
           .filter((c) => c.count > 0);
+        // Create a new Map before mutating to avoid corrupting shared state
+        // Issue #891: Shallow-copy Map mutations cause state corruption
+        updatedState.cards = new Map(updatedState.cards);
         updatedState.cards.set(card.id, updatedCard);
         descriptions.push(
           `${card.cardData.name}: Removed ${removeCount} +1/+1 and ${removeCount} -1/-1 counters`,

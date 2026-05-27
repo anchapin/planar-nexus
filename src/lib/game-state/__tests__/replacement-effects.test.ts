@@ -203,8 +203,10 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
 });
 
 describe("ReplacementEffectManager - As Though Effects", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should register and check as though effects", () => {
@@ -310,8 +312,10 @@ describe("ReplacementEffectManager - As Though Effects", () => {
 });
 
 describe("ReplacementEffectManager - Complex Scenarios", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should handle Furnace of Rath + prevention shield interaction", () => {
@@ -498,8 +502,10 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
 });
 
 describe("ReplacementEffectManager - APNAP Order Creation", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should create correct APNAP order", () => {
@@ -724,8 +730,10 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
 });
 
 describe("ReplacementEffectManager - Factory Functions", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("createPreventionShield should create both ability and shield", () => {
@@ -794,8 +802,10 @@ describe("ReplacementEffectManager - Factory Functions", () => {
 });
 
 describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should detect and break a two-effect infinite loop (CR 614.4)", () => {
@@ -1104,5 +1114,245 @@ describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
     // Single effect applies once: 5 + 3 = 8
     const processed = rem.processEvent(event);
     expect(processed.amount).toBe(8);
+  });
+});
+
+describe("ReplacementEffectManager - Multiple Game Instances", () => {
+  /**
+   * Issue #886: CRITICAL - Global singleton ReplacementEffectManager causes
+   * race conditions with multiple game instances
+   *
+   * This test verifies that multiple ReplacementEffectManager instances can
+   * operate independently without interference.
+   */
+  let rem1: ReplacementEffectManager;
+  let rem2: ReplacementEffectManager;
+  let rem3: ReplacementEffectManager;
+
+  beforeEach(() => {
+    rem1 = new ReplacementEffectManager();
+    rem2 = new ReplacementEffectManager();
+    rem3 = new ReplacementEffectManager();
+  });
+
+  test("should isolate effects between game instances", () => {
+    // Game 1 has a damage doubling effect (Furnace of Rath)
+    const furnaceEffect = createDamageReplacementEffect(
+      "furnace1",
+      "player1",
+      "Furnace of Rath doubles damage",
+      (amount) => amount * 2,
+      5,
+    );
+    rem1.registerEffect(furnaceEffect);
+
+    // Game 2 has a damage halving effect
+    const halveEffect = createDamageReplacementEffect(
+      "halver2",
+      "player1",
+      "Halve damage",
+      (amount) => amount / 2,
+      5,
+    );
+    rem2.registerEffect(halveEffect);
+
+    // Game 3 has no replacement effects
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 10,
+      timestamp: Date.now(),
+      targetId: "player2",
+    };
+
+    // Game 1 should double: 10 * 2 = 20
+    const processed1 = rem1.processEvent(event);
+    expect(processed1.amount).toBe(20);
+
+    // Game 2 should halve: 10 / 2 = 5
+    const processed2 = rem2.processEvent(event);
+    expect(processed2.amount).toBe(5);
+
+    // Game 3 should not modify: 10
+    const processed3 = rem3.processEvent(event);
+    expect(processed3.amount).toBe(10);
+  });
+
+  test("should isolate prevention shields between game instances", () => {
+    // Game 1 has a prevention shield of 5
+    rem1.addPreventionShield("player1", {
+      sourceId: "fog1",
+      amount: 5,
+      controllerId: "player1",
+    });
+
+    // Game 2 has a prevention shield of 3
+    rem2.addPreventionShield("player1", {
+      sourceId: "fog2",
+      amount: 3,
+      controllerId: "player1",
+    });
+
+    // Game 3 has no shields
+
+    const shields1 = rem1.getPreventionShields("player1");
+    const shields2 = rem2.getPreventionShields("player1");
+    const shields3 = rem3.getPreventionShields("player1");
+
+    expect(shields1).toHaveLength(1);
+    expect(shields1[0].amount).toBe(5);
+    expect(shields1[0].sourceId).toBe("fog1");
+
+    expect(shields2).toHaveLength(1);
+    expect(shields2[0].amount).toBe(3);
+    expect(shields2[0].sourceId).toBe("fog2");
+
+    expect(shields3).toHaveLength(0);
+  });
+
+  test("should isolate as-though effects between game instances", () => {
+    const mockGameState = { players: new Map() } as GameState;
+
+    // Game 1 has cast_flash effect
+    rem1.registerAsThoughEffect(
+      createAsThoughEffect("source1", "player1", "cast_flash", "Flash effect"),
+    );
+
+    // Game 2 has attack_haste effect
+    rem2.registerAsThoughEffect(
+      createAsThoughEffect(
+        "source2",
+        "player1",
+        "attack_haste",
+        "Haste effect",
+      ),
+    );
+
+    // Game 3 has no effects
+
+    // Game 1: should have cast_flash but not attack_haste
+    expect(
+      rem1.checkAsThoughEffect("player1", "cast_flash", mockGameState),
+    ).toBe(true);
+    expect(
+      rem1.checkAsThoughEffect("player1", "attack_haste", mockGameState),
+    ).toBe(false);
+
+    // Game 2: should have attack_haste but not cast_flash
+    expect(
+      rem2.checkAsThoughEffect("player1", "attack_haste", mockGameState),
+    ).toBe(true);
+    expect(
+      rem2.checkAsThoughEffect("player1", "cast_flash", mockGameState),
+    ).toBe(false);
+
+    // Game 3: should have neither
+    expect(
+      rem3.checkAsThoughEffect("player1", "cast_flash", mockGameState),
+    ).toBe(false);
+    expect(
+      rem3.checkAsThoughEffect("player1", "attack_haste", mockGameState),
+    ).toBe(false);
+  });
+
+  test("should handle concurrent event processing without interference", () => {
+    // This simulates multiple games processing events concurrently
+    const effect1 = createDamageReplacementEffect(
+      "doubler1",
+      "player1",
+      "Double damage",
+      (amount) => amount * 2,
+      5,
+    );
+    rem1.registerEffect(effect1);
+
+    const effect2 = createDamageReplacementEffect(
+      "tripler2",
+      "player1",
+      "Triple damage",
+      (amount) => amount * 3,
+      5,
+    );
+    rem2.registerEffect(effect2);
+
+    // Process many events in each game
+    for (let i = 0; i < 100; i++) {
+      const event1: ReplacementEvent = {
+        type: "damage",
+        amount: 5,
+        timestamp: Date.now() + i,
+        targetId: "player2",
+      };
+
+      const event2: ReplacementEvent = {
+        type: "damage",
+        amount: 5,
+        timestamp: Date.now() + i,
+        targetId: "player2",
+      };
+
+      const result1 = rem1.processEvent(event1);
+      const result2 = rem2.processEvent(event2);
+
+      // Game 1 should always double: 5 * 2 = 10
+      expect(result1.amount).toBe(10);
+
+      // Game 2 should always triple: 5 * 3 = 15
+      expect(result2.amount).toBe(15);
+    }
+  });
+
+  test("should isolate effect removal between game instances", () => {
+    // Game 1 registers two effects
+    const effect1 = createDamageReplacementEffect(
+      "card1",
+      "player1",
+      "Effect 1",
+      (amount) => amount * 2,
+      5,
+    );
+    rem1.registerEffect(effect1);
+
+    const effect2 = createDamageReplacementEffect(
+      "card2",
+      "player1",
+      "Effect 2",
+      (amount) => amount + 1,
+      5,
+    );
+    rem1.registerEffect(effect2);
+
+    // Game 2 registers one effect
+    const effect3 = createDamageReplacementEffect(
+      "card3",
+      "player1",
+      "Effect 3",
+      (amount) => amount * 4,
+      5,
+    );
+    rem2.registerEffect(effect3);
+
+    // Remove effect from card1 in game 1 only
+    rem1.removeEffectsFromSource("card1");
+
+    // Game 1 should only have effect2
+    const event1: ReplacementEvent = {
+      type: "damage",
+      amount: 5,
+      timestamp: Date.now(),
+      targetId: "player2",
+    };
+    const result1 = rem1.processEvent(event1);
+    expect(result1.amount).toBe(6); // 5 + 1
+
+    // Game 2 should still have effect3
+    const event2: ReplacementEvent = {
+      type: "damage",
+      amount: 5,
+      timestamp: Date.now(),
+      targetId: "player2",
+    };
+    const result2 = rem2.processEvent(event2);
+    expect(result2.amount).toBe(20); // 5 * 4
   });
 });
