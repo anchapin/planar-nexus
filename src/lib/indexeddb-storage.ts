@@ -353,26 +353,32 @@ export class IndexedDBStorage {
       const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
 
+      // Catch fatal transaction errors
+      transaction.onerror = () => {
+        reject(new Error(`Transaction failed: ${transaction.error}`));
+      };
+
       let completed = 0;
-      let error: Error | null = null;
+      let hasError = false;
 
       for (const value of values) {
+        // Skip if we've already encountered an error
+        if (hasError) break;
+
         const request = store.put(value);
 
         request.onsuccess = () => {
           completed++;
           if (completed === values.length) {
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
+            resolve();
           }
         };
 
         request.onerror = () => {
-          if (!error) {
-            error = new Error(`Failed to set item: ${request.error}`);
+          if (!hasError) {
+            hasError = true;
+            transaction.abort();
+            reject(new Error(`Failed to set item: ${request.error}`));
           }
         };
       }
