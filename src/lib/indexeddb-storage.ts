@@ -482,8 +482,20 @@ export class IndexedDBStorage {
    * Import data into a store
    */
   async importStore(storeName: string, data: string): Promise<void> {
-    const items = JSON.parse(data) as Array<{ id: string }>;
-    await this.setAll(storeName, items);
+    try {
+      const items = JSON.parse(data);
+      if (!Array.isArray(items)) {
+        throw new Error(`Invalid data for store ${storeName}: expected array`);
+      }
+      await this.setAll(storeName, items as Array<{ id: string }>);
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        throw new Error(
+          `Failed to parse JSON for store ${storeName}: ${err.message}`,
+        );
+      }
+      throw err;
+    }
   }
 
   /**

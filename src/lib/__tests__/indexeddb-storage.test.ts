@@ -316,6 +316,18 @@ describe("IndexedDB Storage", () => {
       expect(allDecks[0].name).toBe("Imported Deck");
     });
 
+    it("should throw on invalid JSON when importing", async () => {
+      await expect(
+        storage.importStore("test-decks", "not valid json"),
+      ).rejects.toThrow(/Failed to parse JSON/);
+    });
+
+    it("should throw when importing non-array data", async () => {
+      await expect(
+        storage.importStore("test-decks", '{"id": "not an array"}'),
+      ).rejects.toThrow(/expected array/);
+    });
+
     it("should export full backup", async () => {
       // Create a storage instance with standard stores for backup tests
       const backupStorage = new IndexedDBStorage({
