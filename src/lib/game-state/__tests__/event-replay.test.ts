@@ -19,6 +19,7 @@ import {
   type GameStartEvent,
 } from "../event-sourcing";
 import { computeStateHash } from "../state-hash";
+import { cloneGameState } from "../state-serialization";
 import { ReplacementEffectManager } from "../replacement-effects";
 import { LayerSystem } from "../layer-system";
 
@@ -181,15 +182,17 @@ describe("Event Replay and State Reconstruction", () => {
         data: { amount: 5 },
       };
 
-      // Apply mutation BEFORE emitAction so state has actually changed
-      // Direct state mutation to avoid replacement effect complexity in test
+      // Use performVerifiedStateTransition which applies state BEFORE emitting
+      // direct emitAction is for pre-mutation recording - the state isn't changed yet
       const { event } = esState.performVerifiedStateTransition(
         action,
         (state) => {
-          const player = state.players.get("p1")!;
-          const updatedPlayers = new Map(state.players);
-          updatedPlayers.set("p1", { ...player, life: player.life + 5 });
-          return { ...state, players: updatedPlayers };
+          const newState = cloneGameState(state);
+          const player = newState.players.get("p1");
+          if (player) {
+            player.life += 5;
+          }
+          return newState;
         },
       );
 
@@ -520,7 +523,15 @@ describe("Event Replay and State Reconstruction", () => {
         timestamp: Date.now(),
         data: { amount: 5 },
       };
-      esState.emitAction(action, esState.getStateHash());
+      // Use performVerifiedStateTransition that applies state before emitting
+      esState.performVerifiedStateTransition(action, (state) => {
+        const newState = cloneGameState(state);
+        const player = newState.players.get("p1");
+        if (player) {
+          player.life += 5;
+        }
+        return newState;
+      });
 
       const checkpoint2 = esState.addVerifiedStateSyncCheckpoint();
 
@@ -546,18 +557,21 @@ describe("Event Replay and State Reconstruction", () => {
       // Add checkpoint
       const checkpoint = esState.addVerifiedStateSyncCheckpoint();
 
-      // Emit action that changes state - use direct mutation to avoid replacement effects
+      // Emit action that changes state
       const action: GameAction = {
         type: "gain_life",
         playerId: "p1",
         timestamp: Date.now(),
         data: { amount: 5 },
       };
+      // Use performVerifiedStateTransition that applies state before emitting
       esState.performVerifiedStateTransition(action, (state) => {
-        const player = state.players.get("p1")!;
-        const updatedPlayers = new Map(state.players);
-        updatedPlayers.set("p1", { ...player, life: player.life + 5 });
-        return { ...state, players: updatedPlayers };
+        const newState = cloneGameState(state);
+        const player = newState.players.get("p1");
+        if (player) {
+          player.life += 5;
+        }
+        return newState;
       });
 
       // Current state should be different

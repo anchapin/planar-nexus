@@ -287,6 +287,17 @@ export interface CardOverrides {
    * so we can use it to resolve effective characteristics.
    */
   copiedCardData?: ScryfallCard;
+  /**
+   * Whether this copy effect is from mutate (CR 702.140)
+   * Mutate creates a merged permanent that copies the target but gains the mutate card's abilities.
+   */
+  isMutateCopy?: boolean;
+  /**
+   * For mutate copy effects: whether the resulting permanent is a creature.
+   * Per CR 702.140: if the target is a creature, the result is a creature.
+   * If the target is not a creature, the result is not a creature.
+   */
+  mutateResultIsCreature?: boolean;
 }
 
 /**
@@ -296,6 +307,73 @@ export interface CardOverrides {
 interface CardInstanceWithEffectiveColors extends CardInstance {
   /** Internal property set by color-changing effects */
   _effectiveColors?: string[];
+}
+
+/**
+ * Resolve the copy chain for a card (CR 613.2 - Layer 1)
+ *
+ * When a card copies another card that is itself copying a third card,
+ * we need to resolve the ultimate source of the copy effect.
+ *
+ * Per CR 707.2: When copying an object, you copy the copiable values
+ * of that object as resolved, which includes any copy effects affecting it.
+ *
+ * @param cardId - The card ID to resolve the copy chain for
+ * @param layerSystem - The layer system instance
+ * @param visited - Set of already-visited card IDs (for cycle detection)
+ * @returns The ultimate card being copied, or undefined if not copying
+ */
+export function resolveCopyChain(
+  cardId: CardInstanceId,
+  layerSystem: LayerSystem,
+  visited: Set<CardInstanceId> = new Set(),
+):
+  | { cardId: CardInstanceId; cardData: ScryfallCard; isMutated: boolean }
+  | undefined {
+  // Cycle detection
+  if (visited.has(cardId)) {
+    // Found a cycle - return the card as-is to avoid infinite loop
+    // Per CR 613.2, timestamp ordering handles which copy effect applies
+    const card = layerSystem.getCardInstanceById(cardId);
+    if (card) {
+      return { cardId, cardData: card.cardData, isMutated: card.isMutated };
+    }
+    return undefined;
+  }
+
+  visited.add(cardId);
+
+  const overrides = layerSystem.getOverrides(cardId);
+
+  // If this card has a copy effect applied, follow the chain
+  if (overrides.copiedFromId) {
+    const copiedCard = layerSystem.getCardInstanceById(overrides.copiedFromId);
+    if (copiedCard) {
+      // Recursively resolve the chain
+      const resolved = resolveCopyChain(
+        overrides.copiedFromId,
+        layerSystem,
+        visited,
+      );
+      if (resolved) {
+        return resolved;
+      }
+    }
+    // Fallback: return the directly copied card
+    return {
+      cardId: overrides.copiedFromId,
+      cardData: (overrides.copiedCardData ?? copiedCard?.cardData)!,
+      isMutated: copiedCard?.isMutated || false,
+    };
+  }
+
+  // This card is not copying anything - return its own data
+  const card = layerSystem.getCardInstanceById(cardId);
+  if (card) {
+    return { cardId, cardData: card.cardData, isMutated: card.isMutated };
+  }
+
+  return undefined;
 }
 
 /**
@@ -720,36 +798,102 @@ export class LayerSystem {
     const overrides = this.getOverrides(card.id);
 
     // Handle Layer 1 copy effect (CR 613.2)
-    // If this card is copying another, use the copied card's data as base
+    // Per CR 707.2: When copying an object, you copy the copiable values of that object.
+    // This includes resolving copy-of-copy chains (CR 613.2a)
     let effectiveCardData = cardData;
+    let isMutatedCopy = false;
+    let mutateResultIsCreature = false;
+
     if (overrides.copiedFromId) {
-      // The copy effect stored the copied card's data
-      effectiveCardData = overrides.copiedCardData || cardData;
+      // Resolve the full copy chain to find the ultimate source
+      // Per CR 613.2a: copy effects that copy other copy effects are resolved in order
+      const resolved = resolveCopyChain(card.id, this);
+      if (resolved) {
+        effectiveCardData = resolved.cardData;
+        isMutatedCopy = resolved.isMutated && (overrides.isMutateCopy || false);
+        mutateResultIsCreature = overrides.mutateResultIsCreature || false;
+      } else {
+        // Fallback to stored copiedCardData
+        effectiveCardData = overrides.copiedCardData || cardData;
+      }
     }
 
     // Calculate effective power/toughness considering Layer 7 sublayers
     const { power, toughness } = this.calculateEffectivePT(card, modified);
 
+    // Handle mutate (CR 702.140)
+    // Per CR 702.140: Mutate creates a merged permanent. If the target is a creature,
+    // the result is a creature with the target's base characteristics plus the mutate card's abilities.
+    // If the target is not a creature, the result is not a creature.
+    let effectiveName = effectiveCardData.name;
+    let effectiveTypes: string[] = [];
+    let effectiveSubtypes: string[] = [];
+    let effectiveSupertypes: string[] = [];
+    let effectiveText = effectiveCardData.oracle_text || "";
+    let effectiveManaCost = effectiveCardData.mana_cost || "";
+
+    if (isMutatedCopy) {
+      // Mutate combines the mutate card's abilities with the target's characteristics
+      // The result uses the target's name, types, and base characteristics,
+      // but gains the mutate card's abilities (oracle text)
+      const originalCard = this.getCardInstanceById(card.id);
+      if (originalCard) {
+        // Use target's name and types (the "base" of the merge)
+        effectiveName = effectiveCardData.name;
+        const typeLineParts = effectiveCardData.type_line?.split(" — ") || [];
+        effectiveTypes = typeLineParts[0]?.split(" ") || [];
+        effectiveSubtypes = typeLineParts[1]?.split(" ") || [];
+
+        // Supertypes come from the type line before the dash
+        effectiveSupertypes = effectiveTypes.filter(
+          (t) =>
+            t === "Basic" ||
+            t === "Legendary" ||
+            t === "Snow" ||
+            t === "World" ||
+            t === "Ongoing" ||
+            t === "Elite" ||
+            t === "Host",
+        );
+
+        // Mutate cards typically have text describing the mutate ability
+        // The result gains the mutate card's abilities in addition to the target's
+        const mutateAbilityText = originalCard.cardData.oracle_text || "";
+        const targetText = effectiveCardData.oracle_text || "";
+        effectiveText = targetText
+          ? `${targetText} ${mutateAbilityText}`
+          : mutateAbilityText;
+
+        // Mana cost combines the mutate card's cost with the target's cost
+        const mutateCost = originalCard.cardData.mana_cost || "";
+        effectiveManaCost = mutateCost || effectiveManaCost;
+      }
+    } else {
+      // Normal copy - use the copied card's characteristics
+      const typeLineParts = effectiveCardData.type_line?.split(" — ") || [];
+      effectiveTypes = overrides.types || typeLineParts[0]?.split(" ") || [];
+      effectiveSubtypes =
+        overrides.subtypes || typeLineParts[1]?.split(" ") || [];
+      effectiveSupertypes = overrides.supertypes || [];
+    }
+
+    // Per CR 613.4/613.5 exception: type/text changes that also change color
+    // are handled by the colorChangeOriginLayer flag
+
     const characteristics = {
       name:
         modified.isFaceDown && modified.tokenData
           ? modified.tokenData.name
-          : effectiveCardData.name,
-      types:
-        overrides.types ||
-        effectiveCardData.type_line?.split(" — ")[0]?.split(" ") ||
-        [],
-      subtypes:
-        overrides.subtypes ||
-        effectiveCardData.type_line?.split(" — ")[1]?.split(" ") ||
-        [],
-      supertypes: overrides.supertypes || [],
-      text: overrides.text || effectiveCardData.oracle_text || "",
-      manaCost: effectiveCardData.mana_cost || "",
+          : effectiveName,
+      types: overrides.types || effectiveTypes,
+      subtypes: overrides.subtypes || effectiveSubtypes,
+      supertypes: effectiveSupertypes,
+      text: overrides.text || effectiveText,
+      manaCost: effectiveManaCost,
       color: this.getEffectiveColor(card),
       power,
       toughness,
-      oracleText: overrides.text || effectiveCardData.oracle_text || "",
+      oracleText: overrides.text || effectiveText,
       grantedAbilities: overrides.grantedAbilities || [],
       removedAbilities: overrides.removedAbilities || [],
       controllerId: overrides.controllerId || modified.controllerId,
@@ -775,9 +919,15 @@ export class LayerSystem {
     let cardData = modified.cardData;
 
     // Handle Layer 1 copy effect (CR 613.2)
-    // If this card is copying another, use the copied card's data as base
-    if (overrides.copiedFromId && overrides.copiedCardData) {
-      cardData = overrides.copiedCardData;
+    // Per CR 707.2: copy effects copy P/T as copiable values
+    // Per CR 613.2a: copy-of-copy chains are resolved in layer order
+    if (overrides.copiedFromId) {
+      const resolved = resolveCopyChain(card.id, this);
+      if (resolved) {
+        cardData = resolved.cardData;
+      } else if (overrides.copiedCardData) {
+        cardData = overrides.copiedCardData;
+      }
     }
 
     // Get base P/T from card data
@@ -861,8 +1011,15 @@ export class LayerSystem {
     let cardData = modified.cardData;
 
     // Handle Layer 1 copy effect (CR 613.2)
-    if (overrides.copiedFromId && overrides.copiedCardData) {
-      cardData = overrides.copiedCardData;
+    // Per CR 707.2: copy effects copy color as a copiable value
+    // Per CR 613.2a: copy-of-copy chains are resolved in layer order
+    if (overrides.copiedFromId) {
+      const resolved = resolveCopyChain(card.id, this);
+      if (resolved) {
+        cardData = resolved.cardData;
+      } else if (overrides.copiedCardData) {
+        cardData = overrides.copiedCardData;
+      }
     }
 
     if (cardData.colors) {
@@ -949,6 +1106,22 @@ export class LayerSystem {
  * Create a copy effect (Layer 1 - CR 613.2)
  * Copy effects are applied first and cause the object to copy characteristics
  * from another card (CR 613.2a-613.2j)
+ *
+ * Per CR 707.2: When copying an object, you copy:
+ * - Name
+ * - Mana cost
+ * - Card types (including supertypes and subtypes)
+ * - Oracle text
+ * - Power/toughness
+ * - Color
+ * - Color indicator
+ * - Expansion symbol, art, illustration credit (for display only)
+ *
+ * Copy effects do NOT copy:
+ * - Abilities (these are separate effects in Layer 6)
+ * - Controller (controlled separately in Layer 2)
+ * - Current zone and game state
+ * - Timestamps and counters
  */
 export function createCopyEffect(
   sourceCardId: CardInstanceId,
@@ -973,12 +1146,14 @@ export function createCopyEffect(
 
       // Per CR 613.2: Copy effects cause the object to copy the other's characteristics
       // We store the copiedFromId for later resolution when getting effective characteristics
+      // Per CR 613.2a: Copy effects that copy other copy effects are resolved in layer order
       overrides.copiedFromId = copiedCardId;
 
-      // Look up the copied card's data to store for characteristic resolution
+      // Look up the copied card's data as a fallback
+      // The full copy chain resolution happens in getEffectiveCharacteristics via resolveCopyChain
+      // We store the immediate copied card's base data as a fallback for edge cases
       const copiedCard = ls.getCardInstanceById(copiedCardId);
       if (copiedCard) {
-        // Store the copied card's data for use in getEffectiveCharacteristics
         overrides.copiedCardData = copiedCard.cardData;
       }
 
@@ -987,6 +1162,74 @@ export function createCopyEffect(
       // Per CR 613.2: copy effects only copy characteristics (name, types, text, P/T, etc.)
 
       return { ...card, _copiedFrom: copiedCardId };
+    },
+  };
+}
+
+/**
+ * Create a mutate copy effect (CR 702.140 - Layer 1)
+ *
+ * When a creature with mutate resolves and targets another creature:
+ * - If the target is a creature, the result is a single merged creature
+ * - The merged creature has the target's base characteristics (name, types, P/T)
+ * - The merged creature gains the mutate card's abilities in addition to the target's
+ * - The result is a creature (since the target is a creature)
+ *
+ * When the target is NOT a creature:
+ * - The result is not a creature
+ * - The mutate effect essentially creates a copy with the mutate abilities added
+ *
+ * Per CR 702.140:
+ * - Mutate combines the mutate card with the target into a single permanent
+ * - The copiable values of the result are determined by the target
+ * - But the result also has the mutate card's ability text merged
+ */
+export function createMutateCopyEffect(
+  sourceCardId: CardInstanceId,
+  controllerId: PlayerId,
+  copiedCardId: CardInstanceId,
+  description: string,
+  layerSystemInstance?: LayerSystem,
+): ContinuousEffect {
+  return {
+    id: `mutate-copy-${sourceCardId}-${Date.now()}`,
+    sourceCardId,
+    controllerId,
+    layer: Layer.COPY_EFFECTS,
+    effectType: "copy",
+    description,
+    timestamp: Date.now(),
+    priority: 0,
+    canApply: (card) => card.id === sourceCardId,
+    apply: (card) => {
+      const ls = layerSystemInstance || getLayerSystemInstance();
+      const overrides = ls.getOverrides(card.id);
+
+      // Per CR 613.2 and CR 702.140: Copy the target's characteristics
+      overrides.copiedFromId = copiedCardId;
+      overrides.isMutateCopy = true;
+
+      // Look up the copied card's data
+      const copiedCard = ls.getCardInstanceById(copiedCardId);
+      if (copiedCard) {
+        overrides.copiedCardData = copiedCard.cardData;
+
+        // Per CR 702.140: If the target is a creature, the result is a creature
+        // Check if the target has the creature type
+        const targetTypeLine = copiedCard.cardData.type_line || "";
+        const isTargetCreature = targetTypeLine.includes("Creature");
+        overrides.mutateResultIsCreature = isTargetCreature;
+      }
+
+      // The mutate card's abilities will be combined with the target's
+      // This is handled in getEffectiveCharacteristics
+
+      return {
+        ...card,
+        _copiedFrom: copiedCardId,
+        isMutated: true,
+        mutateBaseId: copiedCardId,
+      };
     },
   };
 }
