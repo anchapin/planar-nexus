@@ -185,6 +185,39 @@ describe("IndexedDB Storage", () => {
       expect(allDecks).toHaveLength(2);
     });
 
+    it("should properly handle setAll with empty array", async () => {
+      // Empty array should return early without error
+      await expect(storage.setAll("test-decks", [])).resolves.toBeUndefined();
+    });
+
+    it("should handle setAll followed by successful operations", async () => {
+      // First add some valid data
+      const validData = [
+        {
+          id: "valid-1",
+          name: "Valid Deck 1",
+          format: "standard",
+          cards: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          metadata: {},
+        },
+        {
+          id: "valid-2",
+          name: "Valid Deck 2",
+          format: "modern",
+          cards: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          metadata: {},
+        },
+      ];
+
+      await storage.setAll("test-decks", validData);
+      const decks = await storage.getAll("test-decks");
+      expect(decks).toHaveLength(2);
+    });
+
     it("should delete a value", async () => {
       const testData = {
         id: "test-1",
