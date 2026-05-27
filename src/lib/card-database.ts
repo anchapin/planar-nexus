@@ -97,6 +97,27 @@ let initPromise: Promise<void> | null = null;
 // to avoid legal issues. Use scripts/fetch-cards-for-db.ts to generate
 // a personal card database, then import via Settings → Database Management.
 
+// Testing helpers - exposes internal state for unit tests
+
+/**
+ * Reset internal state for testing purposes
+ * @internal Testing only
+ */
+export function _resetCardDatabaseState(): void {
+  db = null;
+  fuseInstance = null;
+  isInitialized = false;
+  initPromise = null;
+}
+
+/**
+ * Get current initPromise state for testing
+ * @internal Testing only
+ */
+export function _getInitPromiseForTesting(): Promise<void> | null {
+  return initPromise;
+}
+
 /**
  * Open IndexedDB and create schema if needed
  */
@@ -163,6 +184,8 @@ export async function initializeCardDatabase(): Promise<void> {
       isInitialized = true;
     } catch (error) {
       console.error("Failed to initialize card database:", error);
+      // Reset initPromise so subsequent calls can retry initialization
+      initPromise = null;
       throw error;
     }
   })();
