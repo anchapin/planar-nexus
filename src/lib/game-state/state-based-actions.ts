@@ -278,19 +278,23 @@ export function checkStateBasedActions(
           plusOneCounters.count,
           minusOneCounters.count,
         );
-        const updatedCard = { ...card };
-        updatedCard.counters = updatedCard.counters
-          .map((c) => {
-            if (c.type === "+1/+1") {
-              return { ...c, count: c.count - removeCount };
-            }
-            if (c.type === "-1/-1") {
-              return { ...c, count: c.count - removeCount };
-            }
-            return c;
-          })
-          .filter((c) => c.count > 0);
-        updatedState.cards.set(card.id, updatedCard);
+        updatedState = {
+          ...updatedState,
+          cards: new Map(updatedState.cards).set(card.id, {
+            ...card,
+            counters: card.counters
+              .map((c) => {
+                if (c.type === "+1/+1") {
+                  return { ...c, count: c.count - removeCount };
+                }
+                if (c.type === "-1/-1") {
+                  return { ...c, count: c.count - removeCount };
+                }
+                return c;
+              })
+              .filter((c) => c.count > 0),
+          }),
+        };
         descriptions.push(
           `${card.cardData.name}: Removed ${removeCount} +1/+1 and ${removeCount} -1/-1 counters`,
         );

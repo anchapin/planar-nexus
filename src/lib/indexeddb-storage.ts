@@ -373,6 +373,7 @@ export class IndexedDBStorage {
         request.onerror = () => {
           if (!error) {
             error = new Error(`Failed to set item: ${request.error}`);
+            transaction.abort();
           }
         };
       }

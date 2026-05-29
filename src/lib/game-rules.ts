@@ -5,9 +5,8 @@
  * Formats are generic game modes that can be customized without code changes.
  */
 
-// Note: GameState type is defined in @/types/game
-// Import directly from '@/types/game' when needed
-// Also see @/lib/game-state/types.ts for full game state types
+// Game state types are defined in @/lib/game-state/types.ts (canonical internal representation)
+// UI-facing adapter types are in @/types/game.ts for external/API compatibility
 
 /**
  * Generic deck construction rule types
