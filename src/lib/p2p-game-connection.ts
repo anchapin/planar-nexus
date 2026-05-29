@@ -6,7 +6,7 @@
  * using client-side signaling without server dependencies.
  */
 
-import type { GameState, Phase, PlayerId } from './game-state/types';
+import type { GameState, Phase, PlayerId } from "./game-state/types";
 import {
   LocalSignalingClient,
   createLocalSignalingClient,
@@ -14,17 +14,17 @@ import {
   type LocalSignalingState,
   ConnectionPhase,
   SignalingRole,
-} from './local-signaling-client';
+} from "./local-signaling-client";
 import {
   serializeGameState,
   deserializeGameState,
   type SerializedGameState,
-} from './game-state/serialization';
+} from "./game-state/serialization";
 import {
   ICEConfigurationManager,
   getGlobalICEManager,
   type ICEConfigOptions,
-} from './ice-config';
+} from "./ice-config";
 
 /**
  * P2P connection events
@@ -44,12 +44,12 @@ export interface P2PGameConnectionEvents {
  * P2P connection state
  */
 export type P2PConnectionState =
-  | 'disconnected'
-  | 'signaling'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  | 'failed';
+  | "disconnected"
+  | "signaling"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "failed";
 
 /**
  * Re-export SignalingRole for convenience
@@ -60,13 +60,13 @@ export type { SignalingRole };
  * Game message types
  */
 export type GameMessageType =
-  | 'game-state-sync'
-  | 'game-action'
-  | 'chat'
-  | 'player-joined'
-  | 'player-left'
-  | 'ping'
-  | 'pong';
+  | "game-state-sync"
+  | "game-action"
+  | "chat"
+  | "player-joined"
+  | "player-left"
+  | "ping"
+  | "pong";
 
 /**
  * Base game message
@@ -122,7 +122,7 @@ export class P2PGameConnection {
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
     this.playerName = options.playerName;
-    this.connectionState = 'disconnected';
+    this.connectionState = "disconnected";
 
     // Initialize ICE manager
     if (options.iceConfig) {
@@ -157,7 +157,9 @@ export class P2PGameConnection {
       onPlayerLeft: () => {},
     };
 
-    this.events = options.events ? { ...defaultEvents, ...options.events } : defaultEvents;
+    this.events = options.events
+      ? { ...defaultEvents, ...options.events }
+      : defaultEvents;
   }
 
   /**
@@ -185,11 +187,11 @@ export class P2PGameConnection {
    * Initialize connection as host
    */
   async initializeAsHost(): Promise<void> {
-    if (this.connectionState !== 'disconnected') {
-      throw new Error('Connection already initialized');
+    if (this.connectionState !== "disconnected") {
+      throw new Error("Connection already initialized");
     }
 
-    this.updateConnectionState('signaling');
+    this.updateConnectionState("signaling");
 
     try {
       // Create peer connection
@@ -214,7 +216,7 @@ export class P2PGameConnection {
       };
 
       // Host creates data channel
-      this.dataChannel = this.peerConnection.createDataChannel('game', {
+      this.dataChannel = this.peerConnection.createDataChannel("game", {
         ordered: true,
       });
       this.setupDataChannelEvents();
@@ -222,7 +224,9 @@ export class P2PGameConnection {
       // Create offer through signaling
       await this.signalingClient.initializeAsHost(this.peerConnection);
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error('Failed to initialize host'));
+      this.handleError(
+        error instanceof Error ? error : new Error("Failed to initialize host"),
+      );
       throw error;
     }
   }
@@ -231,11 +235,11 @@ export class P2PGameConnection {
    * Initialize connection as joiner
    */
   async initializeAsJoiner(offer: RTCSessionDescriptionInit): Promise<void> {
-    if (this.connectionState !== 'disconnected') {
-      throw new Error('Connection already initialized');
+    if (this.connectionState !== "disconnected") {
+      throw new Error("Connection already initialized");
     }
 
-    this.updateConnectionState('signaling');
+    this.updateConnectionState("signaling");
 
     try {
       // Create peer connection
@@ -268,7 +272,11 @@ export class P2PGameConnection {
       // Create answer through signaling
       await this.signalingClient.initializeAsJoiner(this.peerConnection, offer);
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error('Failed to initialize joiner'));
+      this.handleError(
+        error instanceof Error
+          ? error
+          : new Error("Failed to initialize joiner"),
+      );
       throw error;
     }
   }
@@ -278,13 +286,15 @@ export class P2PGameConnection {
    */
   async processAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
     if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+      throw new Error("Peer connection not initialized");
     }
 
     try {
       await this.signalingClient.handleAnswer(answer);
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error('Failed to process answer'));
+      this.handleError(
+        error instanceof Error ? error : new Error("Failed to process answer"),
+      );
       throw error;
     }
   }
@@ -296,7 +306,10 @@ export class P2PGameConnection {
     try {
       await this.signalingClient.addRemoteIceCandidates(candidates);
     } catch (error) {
-      console.error('[P2PGameConnection] Failed to process ICE candidates:', error);
+      console.error(
+        "[P2PGameConnection] Failed to process ICE candidates:",
+        error,
+      );
     }
   }
 
@@ -304,8 +317,8 @@ export class P2PGameConnection {
    * Send a game message
    */
   send(message: GameMessage): boolean {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.warn('[P2PGameConnection] Data channel not ready');
+    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+      console.warn("[P2PGameConnection] Data channel not ready");
       return false;
     }
 
@@ -313,7 +326,7 @@ export class P2PGameConnection {
       this.dataChannel.send(JSON.stringify(message));
       return true;
     } catch (error) {
-      console.error('[P2PGameConnection] Failed to send message:', error);
+      console.error("[P2PGameConnection] Failed to send message:", error);
       return false;
     }
   }
@@ -325,7 +338,7 @@ export class P2PGameConnection {
     const serialized = serializeGameState(gameState);
 
     return this.send({
-      type: 'game-state-sync',
+      type: "game-state-sync",
       senderId: this.playerId,
       timestamp: Date.now(),
       data: {
@@ -340,7 +353,7 @@ export class P2PGameConnection {
    */
   sendGameAction(action: string, data: unknown): boolean {
     return this.send({
-      type: 'game-action',
+      type: "game-action",
       senderId: this.playerId,
       timestamp: Date.now(),
       data: {
@@ -355,7 +368,7 @@ export class P2PGameConnection {
    */
   sendChat(text: string): boolean {
     return this.send({
-      type: 'chat',
+      type: "chat",
       senderId: this.playerId,
       timestamp: Date.now(),
       data: {
@@ -370,7 +383,7 @@ export class P2PGameConnection {
    */
   private sendPing(): void {
     this.send({
-      type: 'ping',
+      type: "ping",
       senderId: this.playerId,
       timestamp: Date.now(),
       data: null,
@@ -382,7 +395,7 @@ export class P2PGameConnection {
    */
   private sendPong(): void {
     this.send({
-      type: 'pong',
+      type: "pong",
       senderId: this.playerId,
       timestamp: Date.now(),
       data: null,
@@ -396,7 +409,7 @@ export class P2PGameConnection {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-      this.updateConnectionState('connected');
+      this.updateConnectionState("connected");
       this.signalingClient.markConnected();
       this.startPingInterval();
     };
@@ -406,15 +419,15 @@ export class P2PGameConnection {
     };
 
     this.dataChannel.onerror = (event) => {
-      console.error('[P2PGameConnection] Data channel error:', event);
+      console.error("[P2PGameConnection] Data channel error:", event);
       this.handleError(
-        event instanceof Error ? event : new Error('Data channel error')
+        event instanceof Error ? event : new Error("Data channel error"),
       );
     };
 
     this.dataChannel.onmessage = (event) => {
-      if (typeof event.data !== 'string') {
-        console.warn('[P2PGameConnection] Received non-string message');
+      if (typeof event.data !== "string") {
+        console.warn("[P2PGameConnection] Received non-string message");
         return;
       }
       this.handleMessage(event.data);
@@ -435,32 +448,32 @@ export class P2PGameConnection {
       }
 
       switch (message.type) {
-        case 'game-state-sync':
+        case "game-state-sync":
           this.handleGameStateSync(message);
           break;
-        case 'game-action':
+        case "game-action":
           this.events.onMessage(message);
           break;
-        case 'chat':
+        case "chat":
           this.handleChat(message);
           break;
-        case 'player-joined':
+        case "player-joined":
           this.handlePlayerJoined(message);
           break;
-        case 'player-left':
+        case "player-left":
           this.handlePlayerLeft(message);
           break;
-        case 'ping':
+        case "ping":
           this.sendPong();
           break;
-        case 'pong':
+        case "pong":
           // Connection is alive
           break;
       }
 
       this.events.onMessage(message);
     } catch (error) {
-      console.error('[P2PGameConnection] Failed to parse message:', error);
+      console.error("[P2PGameConnection] Failed to parse message:", error);
       // Don't break connection for parse errors, just log them
     }
   }
@@ -469,7 +482,10 @@ export class P2PGameConnection {
    * Handle game state sync
    */
   private handleGameStateSync(message: GameMessage): void {
-    const data = message.data as { gameState: SerializedGameState; isFullSync: boolean };
+    const data = message.data as {
+      gameState: SerializedGameState;
+      isFullSync: boolean;
+    };
     const baseState = this.createBaseEngineState();
     const gameState = deserializeGameState(data.gameState, baseState);
     this.events.onGameStateSync(gameState);
@@ -480,14 +496,14 @@ export class P2PGameConnection {
    */
   private createBaseEngineState(): any {
     return {
-      gameId: '',
+      gameId: "",
       players: new Map(),
       cards: new Map(),
       zones: new Map(),
       stack: [],
-      turn: { 
-        activePlayerId: '' as PlayerId, 
-        currentPhase: 'precombat_main' as Phase, 
+      turn: {
+        activePlayerId: "" as PlayerId,
+        currentPhase: "precombat_main" as Phase,
         turnNumber: 1,
         extraTurns: 0,
         isFirstTurn: true,
@@ -497,10 +513,10 @@ export class P2PGameConnection {
       waitingChoice: null,
       priorityPlayerId: null,
       consecutivePasses: 0,
-      status: 'not_started',
+      status: "not_started",
       winners: [],
       endReason: null,
-      format: 'commander',
+      format: "commander",
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
     };
@@ -545,14 +561,14 @@ export class P2PGameConnection {
     const state = this.peerConnection.connectionState;
 
     switch (state) {
-      case 'connected':
-        this.updateConnectionState('connected');
+      case "connected":
+        this.updateConnectionState("connected");
         break;
-      case 'disconnected':
+      case "disconnected":
         this.handleDisconnection();
         break;
-      case 'failed':
-        this.handleError(new Error('Peer connection failed'));
+      case "failed":
+        this.handleError(new Error("Peer connection failed"));
         break;
     }
   }
@@ -565,7 +581,7 @@ export class P2PGameConnection {
 
     const state = this.peerConnection.iceConnectionState;
 
-    if (state === 'disconnected' || state === 'failed') {
+    if (state === "disconnected" || state === "failed") {
       this.handleDisconnection();
     }
   }
@@ -574,7 +590,7 @@ export class P2PGameConnection {
    * Handle disconnection
    */
   private handleDisconnection(): void {
-    this.updateConnectionState('disconnected');
+    this.updateConnectionState("disconnected");
     this.stopPingInterval();
   }
 
@@ -582,8 +598,8 @@ export class P2PGameConnection {
    * Handle error
    */
   private handleError(error: Error): void {
-    console.error('[P2PGameConnection] Error:', error);
-    this.updateConnectionState('failed');
+    console.error("[P2PGameConnection] Error:", error);
+    this.updateConnectionState("failed");
     this.stopPingInterval();
     this.events.onError(error);
   }
@@ -591,7 +607,9 @@ export class P2PGameConnection {
   /**
    * Handle signaling state change
    */
-  private handleSignalingStateChange(signalingState: LocalSignalingState): void {
+  private handleSignalingStateChange(
+    signalingState: LocalSignalingState,
+  ): void {
     this.events.onSignalingStateChange(signalingState);
   }
 
@@ -612,20 +630,17 @@ export class P2PGameConnection {
   /**
    * Handle offer created
    */
-  private handleOfferCreated(offer: RTCSessionDescriptionInit): void {
-  }
+  private handleOfferCreated(offer: RTCSessionDescriptionInit): void {}
 
   /**
    * Handle answer created
    */
-  private handleAnswerCreated(answer: RTCSessionDescriptionInit): void {
-  }
+  private handleAnswerCreated(answer: RTCSessionDescriptionInit): void {}
 
   /**
    * Handle ICE candidate
    */
-  private handleIceCandidate(candidate: RTCIceCandidateInit): void {
-  }
+  private handleIceCandidate(candidate: RTCIceCandidateInit): void {}
 
   /**
    * Update connection state
@@ -659,7 +674,7 @@ export class P2PGameConnection {
    * Check if connected
    */
   isConnected(): boolean {
-    return this.connectionState === 'connected';
+    return this.connectionState === "connected";
   }
 
   /**
@@ -678,7 +693,7 @@ export class P2PGameConnection {
       this.peerConnection = null;
     }
 
-    this.updateConnectionState('disconnected');
+    this.updateConnectionState("disconnected");
   }
 
   /**
@@ -692,7 +707,7 @@ export class P2PGameConnection {
     try {
       return await this.peerConnection.getStats();
     } catch (error) {
-      console.error('[P2PGameConnection] Failed to get stats:', error);
+      console.error("[P2PGameConnection] Failed to get stats:", error);
       return null;
     }
   }
@@ -702,7 +717,7 @@ export class P2PGameConnection {
  * Create a P2P game connection
  */
 export function createP2PGameConnection(
-  options: P2PGameConnectionOptions
+  options: P2PGameConnectionOptions,
 ): P2PGameConnection {
   return new P2PGameConnection(options);
 }
