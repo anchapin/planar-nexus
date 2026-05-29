@@ -322,8 +322,6 @@ export class WebRTCConnection {
       if (this.isHost) {
         this.setupDataChannel();
       }
-
-      
     } catch (error) {
       console.error("[WebRTC] Failed to initialize:", error);
       this.updateConnectionState("failed");
@@ -356,8 +354,6 @@ export class WebRTCConnection {
       // Create new configuration with relay-only mode
       const relayConfig = this.iceManager.getRTCConfiguration();
       relayConfig.iceTransportPolicy = "relay";
-
-      
 
       // Create new peer connection with relay config
       this.peerConnection = new RTCPeerConnection(relayConfig);
@@ -410,7 +406,7 @@ export class WebRTCConnection {
       console.error("[WebRTC] Failed to create offer:", error);
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to create offer"),
-        ""
+        "",
       );
       throw error;
     }
@@ -438,7 +434,7 @@ export class WebRTCConnection {
       console.error("[WebRTC] Failed to handle offer:", error);
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to handle offer"),
-        ""
+        "",
       );
       throw error;
     }
@@ -518,7 +514,7 @@ export class WebRTCConnection {
       console.error("[WebRTC] Failed to connect to peer:", error);
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to connect to peer"),
-        ""
+        "",
       );
       throw error;
     }

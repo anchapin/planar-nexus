@@ -353,11 +353,17 @@ export class EventSourcingGameState {
   }
 
   /**
-   * Emit an action event BEFORE state mutation
-   * This is the core of event sourcing - events are emitted before changes
+   * Emit an action event after state has been mutated
+   * The resultingStateHash should reflect the state AFTER mutation
    */
-  emitAction(action: GameAction, previousStateHash: string): ActionEvent {
-    const resultingHash = computeStateHash(this.state);
+  emitAction(
+    action: GameAction,
+    previousStateHash: string,
+    resultingStateHash?: string,
+  ): ActionEvent {
+    // If resultingStateHash is not provided, compute from current state
+    // This supports legacy usage where emitAction is called after state update
+    const resultingHash = resultingStateHash ?? computeStateHash(this.state);
 
     const event: ActionEvent = {
       type: "ACTION",
@@ -799,11 +805,15 @@ export class EventSourcingGameState {
     // Apply the mutation
     const newState = mutationFn(previousState);
 
+    // Compute hash of new state BEFORE updating this.state
+    // This ensures emitAction receives the correct resulting hash
+    const newStateHash = computeStateHash(newState);
+
     // Update internal state
     this.state = cloneGameState(newState);
 
-    // Emit the action event
-    const event = this.emitAction(action, previousHash);
+    // Emit the action event with the computed new state hash
+    const event = this.emitAction(action, previousHash, newStateHash);
 
     return { newState, event };
   }
@@ -851,11 +861,14 @@ export function withEventEmission<T extends GameState>(
   // Apply mutation
   const result = mutationFn(previousState);
 
+  // Compute hash of the new state BEFORE updating esState
+  const newStateHash = computeStateHash(result);
+
   // Update esState with new state
   esState.applyState(result);
 
-  // Emit the action event with previous state hash
-  const event = esState.emitAction(action, previousStateHash);
+  // Emit the action event with previous state hash and new state hash
+  const event = esState.emitAction(action, previousStateHash, newStateHash);
 
   return {
     result,
