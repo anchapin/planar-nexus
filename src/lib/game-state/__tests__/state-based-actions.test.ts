@@ -1492,5 +1492,108 @@ describe("State-Based Actions", () => {
       // One should be in graveyard
       expect(graveyardAfter.cardIds.length).toBe(1);
     });
+
+    describe("State Isolation (Issue #891)", () => {
+      it("should not mutate the original state when checking SBAs multiple times", () => {
+        let state = createInitialGameState(["Alice"], 20, false);
+        state = startGame(state);
+
+        const playerIds = Array.from(state.players.keys());
+        const creatureData = createMockCreature("Test Creature", 3, 3);
+        const creature = createCardInstance(
+          creatureData,
+          playerIds[0],
+          playerIds[0],
+        );
+
+        creature.counters = [
+          { type: "+1/+1", count: 3 },
+          { type: "-1/-1", count: 2 },
+        ];
+
+        const battlefieldKey = `${playerIds[0]}-battlefield`;
+        const battlefield = state.zones.get(battlefieldKey)!;
+        state.cards.set(creature.id, creature);
+        state = {
+          ...state,
+          zones: new Map(state.zones).set(battlefieldKey, {
+            ...battlefield,
+            cardIds: [...battlefield.cardIds, creature.id],
+          }),
+        };
+
+        const originalCardsRef = state.cards;
+
+        const result1 = checkStateBasedActions(state);
+        const result2 = checkStateBasedActions(state);
+        const result3 = checkStateBasedActions(state);
+
+        expect(result1.actionsPerformed).toBe(true);
+        expect(result2.actionsPerformed).toBe(true);
+        expect(result3.actionsPerformed).toBe(true);
+
+        expect(state.cards).toBe(originalCardsRef);
+
+        const originalCreature = state.cards.get(creature.id)!;
+        expect(
+          originalCreature.counters.find((c) => c.type === "+1/+1")?.count,
+        ).toBe(3);
+        expect(
+          originalCreature.counters.find((c) => c.type === "-1/-1")?.count,
+        ).toBe(2);
+      });
+
+      it("should not corrupt shared state when cards map is mutated during SBA check", () => {
+        let state = createInitialGameState(["Alice", "Bob"], 20, false);
+        state = startGame(state);
+
+        const playerIds = Array.from(state.players.keys());
+        const aliceId = playerIds[0];
+        const bobId = playerIds[1];
+
+        const creature1Data = createMockCreature("Creature 1", 2, 2);
+        const creature1 = createCardInstance(creature1Data, aliceId, aliceId);
+        creature1.counters = [
+          { type: "+1/+1", count: 2 },
+          { type: "-1/-1", count: 1 },
+        ];
+
+        const creature2Data = createMockCreature("Creature 2", 3, 3);
+        const creature2 = createCardInstance(creature2Data, bobId, bobId);
+        creature2.counters = [
+          { type: "+1/+1", count: 3 },
+          { type: "-1/-1", count: 2 },
+        ];
+
+        const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+        const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+        state.cards.set(creature1.id, creature1);
+        state.cards.set(creature2.id, creature2);
+        state.zones.set(`${aliceId}-battlefield`, {
+          ...aliceBattlefield,
+          cardIds: [...aliceBattlefield.cardIds, creature1.id],
+        });
+        state.zones.set(`${bobId}-battlefield`, {
+          ...bobBattlefield,
+          cardIds: [...bobBattlefield.cardIds, creature2.id],
+        });
+
+        const originalCardsRef = state.cards;
+
+        const result = checkStateBasedActions(state);
+
+        expect(result.actionsPerformed).toBe(true);
+        expect(state.cards).toBe(originalCardsRef);
+
+        const original1 = state.cards.get(creature1.id)!;
+        const original2 = state.cards.get(creature2.id)!;
+        expect(original1.counters.find((c) => c.type === "+1/+1")?.count).toBe(
+          2,
+        );
+        expect(original2.counters.find((c) => c.type === "+1/+1")?.count).toBe(
+          3,
+        );
+      });
+    });
   });
 });

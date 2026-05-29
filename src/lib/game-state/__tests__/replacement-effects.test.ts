@@ -203,8 +203,10 @@ describe("ReplacementEffectManager - APNAP Ordering", () => {
 });
 
 describe("ReplacementEffectManager - As Though Effects", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should register and check as though effects", () => {
@@ -310,8 +312,10 @@ describe("ReplacementEffectManager - As Though Effects", () => {
 });
 
 describe("ReplacementEffectManager - Complex Scenarios", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should handle Furnace of Rath + prevention shield interaction", () => {
@@ -498,8 +502,10 @@ describe("ReplacementEffectManager - Complex Scenarios", () => {
 });
 
 describe("ReplacementEffectManager - APNAP Order Creation", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should create correct APNAP order", () => {
@@ -724,8 +730,10 @@ describe("ReplacementEffectManager - APNAP Order Creation", () => {
 });
 
 describe("ReplacementEffectManager - Factory Functions", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("createPreventionShield should create both ability and shield", () => {
@@ -794,8 +802,10 @@ describe("ReplacementEffectManager - Factory Functions", () => {
 });
 
 describe("ReplacementEffectManager - CR 614.4 Loop Detection", () => {
+  let rem: ReplacementEffectManager;
+
   beforeEach(() => {
-    rem.reset();
+    rem = new ReplacementEffectManager();
   });
 
   test("should detect and break a two-effect infinite loop (CR 614.4)", () => {
