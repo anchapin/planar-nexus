@@ -542,10 +542,7 @@ export default function GameBoardPage() {
     saveGameRecord(record).catch(console.error);
 
     // Track achievements for this game
-    // Use engineState for full game state data (engine-state/types.ts GameState)
-    if (engineState) {
-      onGameEnd({ gameState: engineState, won: result === "win" });
-    }
+    onGameEnd({ gameState: engineState!, won: result === "win" });
 
     setGameResult({
       result,
