@@ -75,7 +75,8 @@ export const gameModes: Record<string, GameModeConfig> = {
   "legendary-commander": {
     id: "legendary-commander",
     name: "Legendary Commander",
-    description: "Single-commander format with 100-card decks and 40 starting life",
+    description:
+      "Single-commander format with 100-card decks and 40 starting life",
     deckRules: DEFAULT_RULES.singleCommander,
     rules: [
       "100 cards exactly (including legendary)",
@@ -360,53 +361,54 @@ export type Format = keyof typeof gameModes;
 /**
  * Legacy format rules for backward compatibility
  */
-export const formatRules: Record<Format, DeckConstructionRules> = Object.fromEntries(
-  Object.entries(gameModes).map(([id, config]) => [id, config.deckRules])
-) as Record<Format, DeckConstructionRules>;
+export const formatRules: Record<Format, DeckConstructionRules> =
+  Object.fromEntries(
+    Object.entries(gameModes).map(([id, config]) => [id, config.deckRules]),
+  ) as Record<Format, DeckConstructionRules>;
 
 /**
  * Legacy ban lists for backward compatibility
  */
 export const banLists: Record<Format, string[]> = Object.fromEntries(
-  Object.entries(gameModes).map(([id, config]) => [
-    id,
-    config.banList || [],
-  ])
+  Object.entries(gameModes).map(([id, config]) => [id, config.banList || []]),
 ) as Record<Format, string[]>;
 
 /**
  * Legacy restricted list for Vintage (now mapped to constructed-vintage)
  */
 export const vintageRestrictedList: Set<string> = new Set(
-  gameModes["constructed-vintage"].restrictedList || []
+  gameModes["constructed-vintage"].restrictedList || [],
 );
 
 /**
  * Legacy format rule descriptions for backward compatibility
  */
-export const formatRuleDescriptions: Record<Format, string[]> = Object.fromEntries(
-  Object.entries(gameModes).map(([id, config]) => [id, config.rules])
-) as Record<Format, string[]>;
+export const formatRuleDescriptions: Record<Format, string[]> =
+  Object.fromEntries(
+    Object.entries(gameModes).map(([id, config]) => [id, config.rules]),
+  ) as Record<Format, string[]>;
 
 /**
  * Legacy format name mappings for backward compatibility
  * Maps old format names (commander, modern, etc.) to new game mode IDs
  */
 export const FORMAT_NAME_MAPPINGS: Record<string, string> = {
-  'commander': 'legendary-commander',
-  'modern': 'constructed-legacy',
-  'standard': 'constructed-core',
-  'pioneer': 'constructed-pioneer',
-  'legacy': 'constructed-legacy',
-  'vintage': 'constructed-vintage',
-  'pauper': 'constructed-restricted',
+  commander: "legendary-commander",
+  modern: "constructed-legacy",
+  standard: "constructed-core",
+  pioneer: "constructed-pioneer",
+  legacy: "constructed-legacy",
+  vintage: "constructed-vintage",
+  pauper: "constructed-restricted",
 };
 
 /**
  * Get game mode ID from legacy format name
  */
 export function getGameModeIdFromFormatName(formatName: string): string {
-  return FORMAT_NAME_MAPPINGS[formatName.toLowerCase()] || formatName.toLowerCase();
+  return (
+    FORMAT_NAME_MAPPINGS[formatName.toLowerCase()] || formatName.toLowerCase()
+  );
 }
 
 /**
@@ -458,9 +460,14 @@ export interface FormatValidationResult extends ValidationResult {
  * Validate a decklist for a specific game mode with comprehensive checks
  */
 export function validateDeckFormat(
-  deckCards: { name: string; count: number; color_identity?: string[]; type_line?: string }[],
+  deckCards: {
+    name: string;
+    count: number;
+    color_identity?: string[];
+    type_line?: string;
+  }[],
   format: Format,
-  commander?: { name: string; color_identity: string[] }
+  commander?: { name: string; color_identity: string[] },
 ): FormatValidationResult {
   // Map legacy format name to game mode ID
   const gameModeId = getGameModeIdFromFormatName(format);
@@ -481,21 +488,25 @@ export function validateDeckFormat(
   const rules = gameMode.deckRules;
   const errors: string[] = [];
   const warnings: string[] = [];
-  const bannedCards = new Set((gameMode.banList || []).map((c) => c.toLowerCase()));
-  const restrictedCards = new Set((gameMode.restrictedList || []).map((c) => c.toLowerCase()));
+  const bannedCards = new Set(
+    (gameMode.banList || []).map((c) => c.toLowerCase()),
+  );
+  const restrictedCards = new Set(
+    (gameMode.restrictedList || []).map((c) => c.toLowerCase()),
+  );
 
   // Check total card count
   const totalCards = deckCards.reduce((sum, card) => sum + card.count, 0);
 
   if (totalCards < rules.minCards) {
     errors.push(
-      `Deck must have at least ${rules.minCards} cards (has ${totalCards})`
+      `Deck must have at least ${rules.minCards} cards (has ${totalCards})`,
     );
   }
 
   if (totalCards > rules.maxCards) {
     errors.push(
-      `Deck must have at most ${rules.maxCards} cards (has ${totalCards})`
+      `Deck must have at most ${rules.maxCards} cards (has ${totalCards})`,
     );
   }
 
@@ -503,13 +514,17 @@ export function validateDeckFormat(
   if (format === "legendary-commander") {
     // Commander must have exactly 100 cards
     if (totalCards !== 100) {
-      errors.push(`Legendary Commander decks must have exactly 100 cards (has ${totalCards})`);
+      errors.push(
+        `Legendary Commander decks must have exactly 100 cards (has ${totalCards})`,
+      );
     }
 
     // Check for commander presence
     const hasCommander = !!commander;
     if (!hasCommander) {
-      warnings.push("No legendary specified - ensure deck follows color identity rules");
+      warnings.push(
+        "No legendary specified - ensure deck follows color identity rules",
+      );
     }
 
     // Check color identity if commander is present
@@ -523,7 +538,7 @@ export function validateDeckFormat(
         // Check if card's color identity is within commander's
         const cardColors = color_identity;
         const hasInvalidColor = cardColors.some(
-          (color) => !commanderIdentity.includes(color)
+          (color) => !commanderIdentity.includes(color),
         );
 
         if (hasInvalidColor) {
@@ -533,7 +548,7 @@ export function validateDeckFormat(
 
       if (invalidCards.length > 0) {
         errors.push(
-          `Color identity violation: ${invalidCards.slice(0, 5).join(", ")}${invalidCards.length > 5 ? "..." : ""} not in legendary's colors`
+          `Color identity violation: ${invalidCards.slice(0, 5).join(", ")}${invalidCards.length > 5 ? "..." : ""} not in legendary's colors`,
         );
       }
     }
@@ -561,7 +576,9 @@ export function validateDeckFormat(
     // Check restricted list - these cards are allowed with 1 copy
     if (restrictedCards.has(cardName)) {
       if (count > 1) {
-        errors.push(`${cardName} is restricted in ${gameMode.name} - maximum 1 copy allowed`);
+        errors.push(
+          `${cardName} is restricted in ${gameMode.name} - maximum 1 copy allowed`,
+        );
       }
       return;
     }
@@ -575,7 +592,7 @@ export function validateDeckFormat(
     // Check copy limits
     if (count > rules.maxCopies) {
       errors.push(
-        `${cardName} has ${count} copies, maximum is ${rules.maxCopies} in ${gameMode.name}`
+        `${cardName} has ${count} copies, maximum is ${rules.maxCopies} in ${gameMode.name}`,
       );
     }
   });
@@ -590,7 +607,9 @@ export function validateDeckFormat(
       // For now, we'll add a warning that this needs to be verified
       if (type_line && !type_line.toLowerCase().includes("basic")) {
         // Can't verify rarity without full card data, so add a warning
-        warnings.push(`Rarity verification needed for ${name} (Restricted format requires commons only)`);
+        warnings.push(
+          `Rarity verification needed for ${name} (Restricted format requires commons only)`,
+        );
       }
     });
   }
@@ -612,7 +631,7 @@ export function validateDeckFormat(
  */
 export function validateSideboard(
   sideboardCards: { name: string; count: number }[],
-  format: Format
+  format: Format,
 ): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -641,7 +660,7 @@ export function validateSideboard(
 
   if (totalCards > sideboardSize) {
     errors.push(
-      `Sideboard must have at most ${sideboardSize} cards (has ${totalCards})`
+      `Sideboard must have at most ${sideboardSize} cards (has ${totalCards})`,
     );
   }
 
@@ -656,9 +675,7 @@ export function validateSideboard(
 
   cardCounts.forEach((count, cardName) => {
     if (count > 4) {
-      errors.push(
-        `Sideboard: ${cardName} has ${count} copies, maximum is 4`
-      );
+      errors.push(`Sideboard: ${cardName} has ${count} copies, maximum is 4`);
     }
   });
 
@@ -673,9 +690,14 @@ export function validateSideboard(
  * Check if a deck is legal for a format
  */
 export function isDeckLegal(
-  deckCards: { name: string; count: number; color_identity?: string[]; type_line?: string }[],
+  deckCards: {
+    name: string;
+    count: number;
+    color_identity?: string[];
+    type_line?: string;
+  }[],
   format: Format,
-  commander?: { name: string; color_identity: string[] }
+  commander?: { name: string; color_identity: string[] },
 ): boolean {
   const result = validateDeckFormat(deckCards, format, commander);
   return result.isValid && result.warnings.length === 0;
@@ -770,8 +792,13 @@ export function getAllGameModes(): GameModeConfig[] {
  * Create a custom game mode
  * This allows users to define new formats without code changes
  */
-export function createGameMode(config: Omit<GameModeConfig, "id">): GameModeConfig {
-  const id = config.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+export function createGameMode(
+  config: Omit<GameModeConfig, "id">,
+): GameModeConfig {
+  const id = config.name
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
   return {
     ...config,
     id,
@@ -792,7 +819,7 @@ export function registerGameMode(config: GameModeConfig): void {
 export function findGameModeByName(name: string): GameModeConfig | undefined {
   const normalizedName = name.toLowerCase();
   return Object.values(gameModes).find(
-    (mode) => mode.name.toLowerCase() === normalizedName
+    (mode) => mode.name.toLowerCase() === normalizedName,
   );
 }
 
@@ -802,5 +829,5 @@ export function findGameModeByName(name: string): GameModeConfig | undefined {
 export function getGameModeDescription(format: Format): string {
   const gameModeId = getGameModeIdFromFormatName(format);
   const gameMode = gameModes[gameModeId];
-  return gameMode ? gameMode.description : '';
+  return gameMode ? gameMode.description : "";
 }
