@@ -271,6 +271,10 @@ export interface Player {
   hasOfferedDraw: boolean;
   /** Whether this player has accepted a draw offer */
   hasAcceptedDraw: boolean;
+
+  // Monarchy (CR 704.5p)
+  /** Whether this player is the monarch */
+  isMonarch: boolean;
 }
 
 /**

@@ -242,6 +242,7 @@ export function createPlayer(
     additionalMainPhase: false,
     hasOfferedDraw: false,
     hasAcceptedDraw: false,
+    isMonarch: false,
   };
 }
 
