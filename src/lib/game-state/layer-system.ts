@@ -265,6 +265,16 @@ export interface CardOverrides {
   powerSet?: number;
   /** Toughness set value (Layer 7b) */
   toughnessSet?: number;
+  /**
+   * Power from Characteristic-Defining Ability (Layer 7a - CR 613.8a)
+   * CDAs set P/T before Layer 7b effects, but Layer 7b effects can override them (CR 613.8b)
+   */
+  powerCDA?: number;
+  /**
+   * Toughness from Characteristic-Defining Ability (Layer 7a - CR 613.8a)
+   * CDAs set P/T before Layer 7b effects, but Layer 7b effects can override them (CR 613.8b)
+   */
+  toughnessCDA?: number;
   /** Whether power/toughness are switched */
   switched?: boolean;
   /** Controller ID (Layer 2 - CR 613.3) */
@@ -952,13 +962,32 @@ export class LayerSystem {
       }
     }
 
-    // Layer 7b: P/T setting effects override base values
-    let power =
-      overrides.powerSet !== undefined ? overrides.powerSet : basePower;
-    let toughness =
-      overrides.toughnessSet !== undefined
-        ? overrides.toughnessSet
-        : baseToughness;
+    // Layer 7a: Characteristic-Defining Abilities (CR 613.8a)
+    // CDAs set base P/T before Layer 7b effects
+    // Per CR 613.8a: CDAs are applied first in Layer 7
+    let effectivePower = basePower;
+    let effectiveToughness = baseToughness;
+
+    // Apply CDA values if present (CR 613.8a)
+    if (overrides.powerCDA !== undefined) {
+      effectivePower = overrides.powerCDA;
+    }
+    if (overrides.toughnessCDA !== undefined) {
+      effectiveToughness = overrides.toughnessCDA;
+    }
+
+    // Layer 7b: P/T setting effects override Layer 7a CDAs (CR 613.8b)
+    // Per CR 613.8b: "Effects that set power or toughness to a specific value
+    // override [Layer 7a] for that characteristic"
+    if (overrides.powerSet !== undefined) {
+      effectivePower = overrides.powerSet;
+    }
+    if (overrides.toughnessSet !== undefined) {
+      effectiveToughness = overrides.toughnessSet;
+    }
+
+    let power = effectivePower;
+    let toughness = effectiveToughness;
 
     // Layer 7c: Effects from counters (CR 613.8c)
     // +1/+1 and -1/-1 counters are applied in this sublayer
@@ -1758,11 +1787,14 @@ export function createCharacteristicDefiningAbility(
       const ls = layerSystemInstance || getLayerSystemInstance();
       const overrides = ls.getOverrides(card.id);
 
+      // CR 613.8a: CDAs set P/T in Layer 7a
+      // CR 613.8b: Effects that set P/T to a specific value (Layer 7b) override Layer 7a CDAs
+      // Store CDA P/T separately so Layer 7b can override it
       if (typeof cda.power === "number") {
-        overrides.powerSet = cda.power;
+        overrides.powerCDA = cda.power;
       }
       if (typeof cda.toughness === "number") {
-        overrides.toughnessSet = cda.toughness;
+        overrides.toughnessCDA = cda.toughness;
       }
       if (cda.color) {
         overrides.colors = cda.color;
