@@ -488,6 +488,7 @@ export function validateDeckFormat(
   const rules = gameMode.deckRules;
   const errors: string[] = [];
   const warnings: string[] = [];
+  let restrictedViolation = false;
   const bannedCards = new Set(
     (gameMode.banList || []).map((c) => c.toLowerCase()),
   );
@@ -579,6 +580,7 @@ export function validateDeckFormat(
         errors.push(
           `${cardName} is restricted in ${gameMode.name} - maximum 1 copy allowed`,
         );
+        restrictedViolation = true;
       }
       return;
     }
@@ -614,8 +616,10 @@ export function validateDeckFormat(
     });
   }
 
+  const isValid = errors.length === 0;
+
   return {
-    isValid: errors.length === 0,
+    isValid: errors.length === 0 && !restrictedViolation,
     errors,
     warnings,
     format,
