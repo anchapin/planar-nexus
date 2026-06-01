@@ -41,10 +41,17 @@ export function serializeGameState(state: GameState): string {
 }
 
 /**
- * Deserialize GameState from a JSON string
+ * Deserialize GameState from a JSON string with error handling
  */
 export function deserializeGameState(json: string): GameState {
-  return JSON.parse(json, mapReviver) as GameState;
+  try {
+    return JSON.parse(json, mapReviver) as GameState;
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error(`Failed to parse GameState JSON: ${err.message}`);
+    }
+    throw err;
+  }
 }
 
 /**
