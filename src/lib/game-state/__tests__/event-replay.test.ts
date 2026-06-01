@@ -63,6 +63,7 @@ function createMockState(
           additionalMainPhase: false,
           hasOfferedDraw: false,
           hasAcceptedDraw: false,
+          isMonarch: false,
         },
       ],
     ]),

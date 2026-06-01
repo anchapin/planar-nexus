@@ -94,6 +94,7 @@ function createPlayer(
     additionalMainPhase: false,
     hasOfferedDraw: false,
     hasAcceptedDraw: false,
+    isMonarch: false,
   };
 }
 
@@ -935,6 +936,7 @@ export function declineDraw(state: GameState, playerId: PlayerId): GameState {
       ...p,
       hasOfferedDraw: false,
       hasAcceptedDraw: false,
+      isMonarch: false,
     });
   });
 

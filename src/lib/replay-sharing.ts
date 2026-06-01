@@ -11,7 +11,12 @@
  */
 
 import type { Replay } from "./game-state/replay";
-import type { ActionType, GameState, Zone, LinkedEffectRegistry } from "./game-state/types";
+import type {
+  ActionType,
+  GameState,
+  Zone,
+  LinkedEffectRegistry,
+} from "./game-state/types";
 import { Phase, ZoneType } from "./game-state/types";
 import { ReplacementEffectManager } from "./game-state/replacement-effects";
 import { LayerSystem } from "./game-state/layer-system";
@@ -401,6 +406,7 @@ function expandGameState(minified: MinifiedGameState): GameState {
         additionalMainPhase: false,
         hasOfferedDraw: false,
         hasAcceptedDraw: false,
+        isMonarch: false,
       },
     ]),
   );

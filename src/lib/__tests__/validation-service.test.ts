@@ -50,6 +50,7 @@ describe("ValidationService", () => {
       additionalMainPhase: false,
       hasOfferedDraw: false,
       hasAcceptedDraw: false,
+      isMonarch: false,
     };
 
     const card: CardInstance = {

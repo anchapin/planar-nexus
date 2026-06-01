@@ -396,6 +396,7 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
         additionalMainPhase: false,
         hasOfferedDraw: false,
         hasAcceptedDraw: false,
+        isMonarch: false,
       });
       state.zones.set("carol-battlefield", {
         type: ZoneType.BATTLEFIELD,
