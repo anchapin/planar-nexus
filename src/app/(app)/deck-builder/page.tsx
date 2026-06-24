@@ -12,6 +12,7 @@ import {
 import { CardSearch } from "./_components/card-search";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
+import { useDeckBuilderShortcuts } from "./_lib/use-deck-builder-shortcuts";
 import {
   Select,
   SelectContent,
@@ -42,6 +43,10 @@ export default function DeckBuilderPage() {
   // Defensive: ensure savedDecks is always an array (guards against corrupted storage)
   const savedDecks = Array.isArray(savedDecksRaw) ? savedDecksRaw : [];
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  // The card currently highlighted in CardSearch — the target for the +, - and
+  // Enter shortcuts. Lifted from CardSearch so the page-level keydown listener
+  // (installed by useDeckBuilderShortcuts) can act on it.
+  const [selectedCard, setSelectedCard] = useState<ScryfallCard | null>(null);
   const searchInputRef = useRef<{ focus: () => void }>(null);
 
   const { toast } = useToast();
@@ -97,10 +102,13 @@ export default function DeckBuilderPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []); // Empty deps - handlers are stable
 
-  const handleDeckChange = (updater: (prevDeck: DeckCard[]) => DeckCard[]) => {
-    setDeck(updater);
-    setIsDeckSaved(false);
-  };
+  const handleDeckChange = useCallback(
+    (updater: (prevDeck: DeckCard[]) => DeckCard[]) => {
+      setDeck(updater);
+      setIsDeckSaved(false);
+    },
+    [],
+  );
 
   const handleDeckNameChange = (name: string) => {
     setDeckName(name);
@@ -112,61 +120,67 @@ export default function DeckBuilderPage() {
     setIsDeckSaved(false);
   };
 
-  const addCardToDeck = (card: ScryfallCard) => {
-    const gameModeId = getGameModeIdFromFormatName(format);
-    const rules = formatRules[gameModeId as keyof typeof formatRules];
+  const addCardToDeck = useCallback(
+    (card: ScryfallCard) => {
+      const gameModeId = getGameModeIdFromFormatName(format);
+      const rules = formatRules[gameModeId as keyof typeof formatRules];
 
-    handleDeckChange((prevDeck) => {
-      const existingCard = prevDeck.find((c) => c.id === card.id);
-      const isBasicResource = card.type_line?.includes("Basic Resource");
+      handleDeckChange((prevDeck) => {
+        const existingCard = prevDeck.find((c) => c.id === card.id);
+        const isBasicResource = card.type_line?.includes("Basic Resource");
 
-      if (
-        !isBasicResource &&
-        existingCard &&
-        existingCard.count >= rules.maxCopies
-      ) {
-        toast({
-          variant: "destructive",
-          title: "Card Limit Reached",
-          description: `You can only have ${rules.maxCopies} cop${rules.maxCopies > 1 ? "ies" : "y"} of "${card.name}" in a ${format} deck.`,
-        });
-        return prevDeck;
-      }
+        if (
+          !isBasicResource &&
+          existingCard &&
+          existingCard.count >= rules.maxCopies
+        ) {
+          toast({
+            variant: "destructive",
+            title: "Card Limit Reached",
+            description: `You can only have ${rules.maxCopies} cop${rules.maxCopies > 1 ? "ies" : "y"} of "${card.name}" in a ${format} deck.`,
+          });
+          return prevDeck;
+        }
 
-      const totalCards = prevDeck.reduce((sum, c) => sum + c.count, 0);
-      if (rules.maxCards && totalCards >= rules.maxCards) {
-        toast({
-          variant: "destructive",
-          title: "Deck Limit Reached",
-          description: `A ${format} deck cannot have more than ${rules.maxCards} cards.`,
-        });
-        return prevDeck;
-      }
+        const totalCards = prevDeck.reduce((sum, c) => sum + c.count, 0);
+        if (rules.maxCards && totalCards >= rules.maxCards) {
+          toast({
+            variant: "destructive",
+            title: "Deck Limit Reached",
+            description: `A ${format} deck cannot have more than ${rules.maxCards} cards.`,
+          });
+          return prevDeck;
+        }
 
-      if (existingCard) {
-        return prevDeck.map((c) =>
-          c.id === card.id ? { ...c, count: c.count + 1 } : c,
-        );
-      } else {
-        return [...prevDeck, { ...card, count: 1 }];
-      }
-    });
-  };
+        if (existingCard) {
+          return prevDeck.map((c) =>
+            c.id === card.id ? { ...c, count: c.count + 1 } : c,
+          );
+        } else {
+          return [...prevDeck, { ...card, count: 1 }];
+        }
+      });
+    },
+    [format, handleDeckChange, toast],
+  );
 
-  const removeCardFromDeck = (cardId: string) => {
-    handleDeckChange((prevDeck) => {
-      const existingCard = prevDeck.find((c) => c.id === cardId);
-      if (existingCard && existingCard.count > 1) {
-        return prevDeck.map((c) =>
-          c.id === cardId ? { ...c, count: c.count - 1 } : c,
-        );
-      } else {
-        return prevDeck.filter((c) => c.id !== cardId);
-      }
-    });
-  };
+  const removeCardFromDeck = useCallback(
+    (cardId: string) => {
+      handleDeckChange((prevDeck) => {
+        const existingCard = prevDeck.find((c) => c.id === cardId);
+        if (existingCard && existingCard.count > 1) {
+          return prevDeck.map((c) =>
+            c.id === cardId ? { ...c, count: c.count - 1 } : c,
+          );
+        } else {
+          return prevDeck.filter((c) => c.id !== cardId);
+        }
+      });
+    },
+    [handleDeckChange],
+  );
 
-  const clearDeck = () => {
+  const clearDeck = useCallback(() => {
     setDeck([]);
     setDeckName("New Deck");
     setActiveDeckId(null);
@@ -174,7 +188,42 @@ export default function DeckBuilderPage() {
       title: "Deck Cleared",
       description: "Your deck has been emptied.",
     });
-  };
+  }, [toast]);
+
+  // Maximum copies added by the "Shift++" (add max) shortcut. Matches the
+  // Shift+Click quick-add behaviour in CardSearch.
+  const MAX_QUICK_ADD = 4;
+
+  const handleShortcutAdd = useCallback(
+    (card: ScryfallCard, max: boolean) => {
+      const copies = max ? MAX_QUICK_ADD : 1;
+      for (let i = 0; i < copies; i++) addCardToDeck(card);
+    },
+    [addCardToDeck],
+  );
+
+  const handleShortcutRemove = useCallback(
+    (card: ScryfallCard, all: boolean) => {
+      if (all) {
+        handleDeckChange((prev) => prev.filter((c) => c.id !== card.id));
+      } else {
+        removeCardFromDeck(card.id);
+      }
+    },
+    [removeCardFromDeck, handleDeckChange],
+  );
+
+  // Ctrl/Cmd+N — documented as "New Deck". Wraps clearDeck so a future confirm
+  // prompt can be added in one place.
+  const handleNewDeck = useCallback(() => clearDeck(), [clearDeck]);
+
+  // Documented deck-builder shortcuts: +, -, Shift++/Shift+-, Enter, Ctrl/Cmd+N.
+  useDeckBuilderShortcuts({
+    selectedCard,
+    addCard: handleShortcutAdd,
+    removeCard: handleShortcutRemove,
+    newDeck: handleNewDeck,
+  });
 
   const importDeck = (
     decklist: string,
@@ -365,7 +414,11 @@ export default function DeckBuilderPage() {
         </div>
         <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-2">
-            <CardSearch ref={searchInputRef} onAddCard={addCardToDeck} />
+            <CardSearch
+              ref={searchInputRef}
+              onAddCard={addCardToDeck}
+              onSelectedCardChange={setSelectedCard}
+            />
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
             <Tabs defaultValue="deck" className="w-full">
