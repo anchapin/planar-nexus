@@ -628,7 +628,8 @@ export interface WaitingChoice {
     | "attackers"
     | "blockers"
     | "ordering"
-    | "priority";
+    | "priority"
+    | "choose_legend";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

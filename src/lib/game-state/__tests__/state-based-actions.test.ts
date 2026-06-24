@@ -11,6 +11,13 @@ import {
   drawWithSBAChecking,
 } from "../state-based-actions";
 import {
+  resolveLegendaryChoice,
+  autoResolveLegendaryChoice,
+  findLegendaryViolations,
+  chooseLegendaryToKeep,
+  LEGENDARY_CHOICE_TYPE,
+} from "../legendary-rule";
+import {
   createInitialGameState,
   startGame,
   dealDamageToPlayer,
@@ -682,14 +689,28 @@ describe("State-Based Actions", () => {
     });
   });
 
-  describe("Legendary Rule (SBA 704.5j)", () => {
-    it("should destroy duplicate legendary permanents with the same name", () => {
+  describe("Legendary Rule (SBA 704.5u) - controller choice (#919)", () => {
+    // Helper to place a card instance on a player's battlefield.
+    function putOnBattlefield(
+      state: ReturnType<typeof createInitialGameState>,
+      card: ReturnType<typeof createCardInstance>,
+      playerId: string,
+    ) {
+      const key = `${playerId}-battlefield`;
+      const zone = state.zones.get(key)!;
+      state.cards.set(card.id, card);
+      state.zones.set(key, {
+        ...zone,
+        cardIds: [...zone.cardIds, card.id],
+      });
+      return state;
+    }
+
+    it("should surface a choice instead of auto-destroying duplicate legends", () => {
       let state = createInitialGameState(["Alice"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys());
-
-      // Create two legendary creatures with the same name
       const legendData = createMockCreature(
         "Legendary Creature",
         3,
@@ -708,34 +729,27 @@ describe("State-Based Actions", () => {
         playerIds[0],
       );
 
-      const battlefield = state.zones.get(`${playerIds[0]}-battlefield`)!;
-      state.cards.set(legend1.id, legend1);
-      state.cards.set(legend2.id, legend2);
-      state.zones.set(`${playerIds[0]}-battlefield`, {
-        ...battlefield,
-        cardIds: [...battlefield.cardIds, legend1.id, legend2.id],
-      });
+      state = putOnBattlefield(state, legend1, playerIds[0]);
+      state = putOnBattlefield(state, legend2, playerIds[0]);
 
       const result = checkStateBasedActions(state);
 
       expect(result.actionsPerformed).toBe(true);
+      // Nothing destroyed yet: the controller must choose first.
+      expect(result.state.waitingChoice?.type).toBe(LEGENDARY_CHOICE_TYPE);
+      expect(result.state.waitingChoice?.playerId).toBe(playerIds[0]);
       const battlefieldAfter = result.state.zones.get(
         `${playerIds[0]}-battlefield`,
       )!;
-      const graveyard = result.state.zones.get(`${playerIds[0]}-graveyard`)!;
-
-      // One should remain, one should be destroyed
-      expect(battlefieldAfter.cardIds.length).toBe(1);
-      expect(graveyard.cardIds.length).toBe(1);
+      expect(battlefieldAfter.cardIds).toContain(legend1.id);
+      expect(battlefieldAfter.cardIds).toContain(legend2.id);
     });
 
-    it("should not destroy unique legendary permanents", () => {
-      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+    it("should keep the controller's chosen legend and grave the rest", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
       state = startGame(state);
 
       const playerIds = Array.from(state.players.keys());
-
-      // Create one legendary creature
       const legendData = createMockCreature(
         "Legendary Creature",
         3,
@@ -743,22 +757,187 @@ describe("State-Based Actions", () => {
         [],
         true,
       );
+      const legend1 = createCardInstance(
+        legendData,
+        playerIds[0],
+        playerIds[0],
+      );
+      const legend2 = createCardInstance(
+        legendData,
+        playerIds[0],
+        playerIds[0],
+      );
+
+      state = putOnBattlefield(state, legend1, playerIds[0]);
+      state = putOnBattlefield(state, legend2, playerIds[0]);
+
+      const sba = checkStateBasedActions(state);
+
+      // Controller chooses to keep legend2.
+      const resolved = resolveLegendaryChoice(
+        sba.state,
+        playerIds[0],
+        legend2.id,
+      );
+
+      expect(resolved.success).toBe(true);
+      expect(resolved.state.waitingChoice).toBeNull();
+      const battlefield = resolved.state.zones.get(
+        `${playerIds[0]}-battlefield`,
+      )!;
+      const graveyard = resolved.state.zones.get(`${playerIds[0]}-graveyard`)!;
+      expect(battlefield.cardIds).toContain(legend2.id);
+      expect(battlefield.cardIds).not.toContain(legend1.id);
+      expect(graveyard.cardIds).toContain(legend1.id);
+    });
+
+    it("should let the controller keep three duplicates down to one", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const data = createMockCreature("Triple Legend", 2, 2, [], true);
+      const a = createCardInstance(data, playerIds[0], playerIds[0]);
+      const b = createCardInstance(data, playerIds[0], playerIds[0]);
+      const c = createCardInstance(data, playerIds[0], playerIds[0]);
+
+      state = putOnBattlefield(state, a, playerIds[0]);
+      state = putOnBattlefield(state, b, playerIds[0]);
+      state = putOnBattlefield(state, c, playerIds[0]);
+
+      const sba = checkStateBasedActions(state);
+      const resolved = resolveLegendaryChoice(sba.state, playerIds[0], a.id);
+
+      const battlefield = resolved.state.zones.get(
+        `${playerIds[0]}-battlefield`,
+      )!;
+      const graveyard = resolved.state.zones.get(`${playerIds[0]}-graveyard`)!;
+      expect(battlefield.cardIds).toContain(a.id);
+      expect(graveyard.cardIds).toContain(b.id);
+      expect(graveyard.cardIds).toContain(c.id);
+    });
+
+    it("AI default should deterministically keep the toughest legend", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const weakData = createMockCreature("Same Legend", 2, 2, [], true);
+      const strongData = createMockCreature("Same Legend", 5, 5, [], true);
+      const weak = createCardInstance(weakData, playerIds[0], playerIds[0]);
+      const strong = createCardInstance(strongData, playerIds[0], playerIds[0]);
+
+      state = putOnBattlefield(state, weak, playerIds[0]);
+      state = putOnBattlefield(state, strong, playerIds[0]);
+
+      const sba = checkStateBasedActions(state);
+      const auto = autoResolveLegendaryChoice(sba.state);
+
+      expect(auto.success).toBe(true);
+      const battlefield = auto.state.zones.get(`${playerIds[0]}-battlefield`)!;
+      const graveyard = auto.state.zones.get(`${playerIds[0]}-graveyard`)!;
+      expect(battlefield.cardIds).toContain(strong.id);
+      expect(graveyard.cardIds).toContain(weak.id);
+    });
+
+    it("AI default should keep the legend with the most attachments", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const legendData = createMockCreature("Buffed Legend", 3, 3, [], true);
+      const plain = createCardInstance(legendData, playerIds[0], playerIds[0]);
+      const buffed = createCardInstance(legendData, playerIds[0], playerIds[0]);
+      // Attach two permanents to `buffed` so it is preferred over `plain`.
+      buffed.attachedCardIds = ["aura-1", "equip-1"];
+
+      state = putOnBattlefield(state, plain, playerIds[0]);
+      state = putOnBattlefield(state, buffed, playerIds[0]);
+
+      const keepId = chooseLegendaryToKeep(state, [plain.id, buffed.id]);
+      expect(keepId).toBe(buffed.id);
+
+      const sba = checkStateBasedActions(state);
+      const auto = autoResolveLegendaryChoice(sba.state);
+      const battlefield = auto.state.zones.get(`${playerIds[0]}-battlefield`)!;
+      expect(battlefield.cardIds).toContain(buffed.id);
+    });
+
+    it("should not trigger for a single legend", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const legendData = createMockCreature("Lonely Legend", 3, 3, [], true);
       const legend = createCardInstance(legendData, playerIds[0], playerIds[0]);
 
-      const battlefield = state.zones.get(`${playerIds[0]}-battlefield`)!;
-      state.cards.set(legend.id, legend);
-      state.zones.set(`${playerIds[0]}-battlefield`, {
-        ...battlefield,
-        cardIds: [...battlefield.cardIds, legend.id],
-      });
+      state = putOnBattlefield(state, legend, playerIds[0]);
 
       const result = checkStateBasedActions(state);
 
-      expect(result.actionsPerformed).toBe(false);
-      const battlefieldAfter = result.state.zones.get(
+      expect(result.state.waitingChoice).toBeNull();
+      const battlefield = result.state.zones.get(
         `${playerIds[0]}-battlefield`,
       )!;
-      expect(battlefieldAfter.cardIds).toContain(legend.id);
+      expect(battlefield.cardIds).toContain(legend.id);
+    });
+
+    it("should not trigger for same-name legends controlled by different players", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const legendData = createMockCreature("Shared Legend", 3, 3, [], true);
+      const alices = createCardInstance(legendData, playerIds[0], playerIds[0]);
+      const bobs = createCardInstance(legendData, playerIds[1], playerIds[1]);
+
+      state = putOnBattlefield(state, alices, playerIds[0]);
+      state = putOnBattlefield(state, bobs, playerIds[1]);
+
+      const violations = findLegendaryViolations(state);
+      expect(violations).toHaveLength(0);
+
+      const result = checkStateBasedActions(state);
+      expect(result.state.waitingChoice).toBeNull();
+    });
+
+    it("should not trigger for non-legendary duplicates", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const data = createMockCreature("Generic Creature", 3, 3, [], false);
+      const one = createCardInstance(data, playerIds[0], playerIds[0]);
+      const two = createCardInstance(data, playerIds[0], playerIds[0]);
+
+      state = putOnBattlefield(state, one, playerIds[0]);
+      state = putOnBattlefield(state, two, playerIds[0]);
+
+      const result = checkStateBasedActions(state);
+      expect(result.state.waitingChoice).toBeNull();
+      const battlefield = result.state.zones.get(
+        `${playerIds[0]}-battlefield`,
+      )!;
+      expect(battlefield.cardIds).toContain(one.id);
+      expect(battlefield.cardIds).toContain(two.id);
+    });
+
+    it("should reject a legend choice from the wrong player", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const data = createMockCreature("Contested Legend", 3, 3, [], true);
+      const a = createCardInstance(data, playerIds[0], playerIds[0]);
+      const b = createCardInstance(data, playerIds[0], playerIds[0]);
+
+      state = putOnBattlefield(state, a, playerIds[0]);
+      state = putOnBattlefield(state, b, playerIds[0]);
+
+      const sba = checkStateBasedActions(state);
+      // Bob tries to resolve Alice's choice.
+      const wrong = resolveLegendaryChoice(sba.state, playerIds[1], a.id);
+      expect(wrong.success).toBe(false);
     });
   });
 
@@ -1480,17 +1659,25 @@ describe("State-Based Actions", () => {
       // Manually set priority to Alice
       state = { ...state, priorityPlayerId: aliceId };
 
-      // Pass priority - legendary rule SBA should trigger
+      // Pass priority - legendary rule SBA should trigger as a pending choice
       state = passPriority(state, aliceId);
 
-      // One legendary should be destroyed (legendary rule SBA 704.5j)
+      // The legendary rule surfaces a choice instead of auto-destroying (#919).
+      expect(state.waitingChoice?.type).toBe(LEGENDARY_CHOICE_TYPE);
+
+      // Alice (the controller) chooses to keep creature2.
+      const resolved = resolveLegendaryChoice(state, aliceId, creature2.id);
+      expect(resolved.success).toBe(true);
+      state = resolved.state;
+
       const battlefieldAfter = state.zones.get(`${aliceId}-battlefield`)!;
       const graveyardAfter = state.zones.get(`${aliceId}-graveyard`)!;
 
-      // Only one creature should remain on battlefield
-      expect(battlefieldAfter.cardIds.length).toBe(1);
-      // One should be in graveyard
-      expect(graveyardAfter.cardIds.length).toBe(1);
+      // Only the kept creature remains on the battlefield
+      expect(battlefieldAfter.cardIds).toContain(creature2.id);
+      expect(battlefieldAfter.cardIds).not.toContain(creature1.id);
+      // The other one is in the graveyard
+      expect(graveyardAfter.cardIds).toContain(creature1.id);
     });
 
     describe("State Isolation (Issue #891)", () => {
