@@ -3,8 +3,14 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
-  roots: ["<rootDir>/src"],
-  testMatch: ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx"],
+  roots: ["<rootDir>/src", "<rootDir>/tests"],
+  testMatch: [
+    "**/__tests__/**/*.test.ts",
+    "**/__tests__/**/*.test.tsx",
+    // Integration tests live in the repo-root <rootDir>/tests directory and
+    // exercise real cross-module workflows. See issue #931.
+    "<rootDir>/tests/**/*.test.ts",
+  ],
   testPathIgnorePatterns: [
     "/src/lib/__tests__/keyword-actions.test.ts",
     "/src/lib/game-state/__tests__/keyword-actions.test.ts",
