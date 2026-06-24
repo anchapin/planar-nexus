@@ -271,35 +271,54 @@ export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-            <XAxis
-              dataKey="cmc"
-              tick={{ fontSize: 12 }}
-              tickLine={false}
-              axisLine={{ stroke: 'hsl(var(--border))' }}
-            />
-            <YAxis
-              tick={{ fontSize: 12 }}
-              tickLine={false}
-              axisLine={{ stroke: 'hsl(var(--border))' }}
-              width={30}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(var(--card))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-              }}
-              formatter={(value: number) => [`${value} cards`, 'Count']}
-            />
-            <Bar
-              dataKey="count"
-              fill="hsl(var(--primary))"
-              radius={[4, 4, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
+        <div aria-hidden="true">
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <XAxis
+                dataKey="cmc"
+                tick={{ fontSize: 12 }}
+                tickLine={false}
+                axisLine={{ stroke: 'hsl(var(--border))' }}
+              />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                tickLine={false}
+                axisLine={{ stroke: 'hsl(var(--border))' }}
+                width={30}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                }}
+                formatter={(value: number) => [`${value} cards`, 'Count']}
+              />
+              <Bar
+                dataKey="count"
+                fill="hsl(var(--primary))"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <table className="sr-only">
+          <caption>Mana curve: number of cards at each converted mana cost</caption>
+          <thead>
+            <tr>
+              <th scope="col">Converted Mana Cost</th>
+              <th scope="col">Number of Cards</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d) => (
+              <tr key={String(d.cmc)}>
+                <th scope="row">{d.cmc}</th>
+                <td>{d.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </CardContent>
     </Card>
   );
@@ -346,6 +365,29 @@ export function CardTypeChart({ typeDistribution, chartType = 'pie', className }
     );
   }
 
+  // Screen-reader text alternative mirroring the chart data (WCAG 1.1.1)
+  const typeDataTable = (
+    <table className="sr-only">
+      <caption>Card type breakdown: number and percentage of cards by type</caption>
+      <thead>
+        <tr>
+          <th scope="col">Card Type</th>
+          <th scope="col">Number of Cards</th>
+          <th scope="col">Percentage of Deck</th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((d) => (
+          <tr key={d.type}>
+            <th scope="row">{d.type}</th>
+            <td>{d.count}</td>
+            <td>{d.percentage}%</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   if (chartType === 'bar') {
     return (
       <Card className={className}>
@@ -355,8 +397,9 @@ export function CardTypeChart({ typeDistribution, chartType = 'pie', className }
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={data} layout="vertical" margin={{ top: 10, right: 30, left: 60, bottom: 0 }}>
+          <div aria-hidden="true">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={data} layout="vertical" margin={{ top: 10, right: 30, left: 60, bottom: 0 }}>
               <XAxis
                 type="number"
                 tick={{ fontSize: 12 }}
@@ -389,6 +432,8 @@ export function CardTypeChart({ typeDistribution, chartType = 'pie', className }
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          </div>
+          {typeDataTable}
         </CardContent>
       </Card>
     );
@@ -403,33 +448,36 @@ export function CardTypeChart({ typeDistribution, chartType = 'pie', className }
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={250}>
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              outerRadius={80}
-              dataKey="count"
-              nameKey="type"
-              label={({ type, percentage }) => `${type}: ${percentage}%`}
-              labelLine={false}
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.fill} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(var(--card))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-              }}
-              formatter={(value: number) => [`${value} cards`, 'Count']}
-            />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+        <div aria-hidden="true">
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={data}
+                cx="50%"
+                cy="50%"
+                outerRadius={80}
+                dataKey="count"
+                nameKey="type"
+                label={({ type, percentage }) => `${type}: ${percentage}%`}
+                labelLine={false}
+              >
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                }}
+                formatter={(value: number) => [`${value} cards`, 'Count']}
+              />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        {typeDataTable}
       </CardContent>
     </Card>
   );
@@ -493,34 +541,55 @@ export function DeckColorChart({ colorDistribution, className }: DeckColorChartP
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <ResponsiveContainer width="100%" height={250}>
-          <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              innerRadius={50}
-              outerRadius={90}
-              dataKey="count"
-              nameKey="color"
-              label={({ color, percentage }) => `${colorNames[color] || color}: ${percentage}%`}
-              labelLine={false}
-            >
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.fill} stroke="hsl(var(--card))" strokeWidth={2} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(var(--card))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-              }}
-              formatter={(value: number) => [`${value} cards`, 'Count']}
-            />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+        <div aria-hidden="true">
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={data}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={90}
+                dataKey="count"
+                nameKey="color"
+                label={({ color, percentage }) => `${colorNames[color] || color}: ${percentage}%`}
+                labelLine={false}
+              >
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} stroke="hsl(var(--card))" strokeWidth={2} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                }}
+                formatter={(value: number) => [`${value} cards`, 'Count']}
+              />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <table className="sr-only">
+          <caption>Color distribution: number and percentage of cards by color</caption>
+          <thead>
+            <tr>
+              <th scope="col">Color</th>
+              <th scope="col">Number of Cards</th>
+              <th scope="col">Percentage of Deck</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d) => (
+              <tr key={d.color}>
+                <th scope="row">{colorNames[d.color] || d.color}</th>
+                <td>{d.count}</td>
+                <td>{d.percentage}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </CardContent>
     </Card>
   );
