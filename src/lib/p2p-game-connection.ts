@@ -26,6 +26,12 @@ import {
   type ICEConfigOptions,
 } from "./ice-config";
 import { safeParseJson } from "./p2p-json-validation";
+import {
+  classifyConnectionFailure,
+  hasTurnServer,
+  type ConnectionFailureContext,
+  type ConnectionFailureDiagnostic,
+} from "./p2p-failure-diagnostics";
 
 /**
  * P2P connection events
@@ -148,6 +154,7 @@ export class P2PGameConnection {
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private remotePlayerId: string | null = null;
   private remotePlayerName: string | null = null;
+  private lastFailureDiagnostic: ConnectionFailureDiagnostic | null = null;
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
@@ -211,6 +218,25 @@ export class P2PGameConnection {
    */
   getSignalingClient(): LocalSignalingClient {
     return this.signalingClient;
+  }
+
+  /**
+   * Get the last failure diagnostic with actionable reason and remediation.
+   * Returns null when the connection is not in a failed state.
+   */
+  getLastFailureDiagnostic(): ConnectionFailureDiagnostic | null {
+    return this.lastFailureDiagnostic;
+  }
+
+  /**
+   * Get the RTCConfiguration for diagnostic classification.
+   */
+  private getRTCConfig(): RTCConfiguration | null {
+    return this.peerConnection
+      ? {
+          iceServers: this.iceManager.getRTCConfiguration().iceServers,
+        }
+      : null;
   }
 
   /**
@@ -605,6 +631,11 @@ export class P2PGameConnection {
         this.handleDisconnection();
         break;
       case "failed":
+        this.lastFailureDiagnostic = classifyConnectionFailure({
+          rtcConfig: this.getRTCConfig(),
+          failureContext: "ice" as ConnectionFailureContext,
+          cause: `connectionState=${state}`,
+        });
         this.handleError(new Error("Peer connection failed"));
         break;
     }
@@ -619,6 +650,13 @@ export class P2PGameConnection {
     const state = this.peerConnection.iceConnectionState;
 
     if (state === "disconnected" || state === "failed") {
+      if (state === "failed") {
+        this.lastFailureDiagnostic = classifyConnectionFailure({
+          rtcConfig: this.getRTCConfig(),
+          failureContext: "ice" as ConnectionFailureContext,
+          cause: `iceConnectionState=${state}`,
+        });
+      }
       this.handleDisconnection();
     }
   }
@@ -636,6 +674,13 @@ export class P2PGameConnection {
    */
   private handleError(error: Error): void {
     console.error("[P2PGameConnection] Error:", error);
+    if (!this.lastFailureDiagnostic) {
+      this.lastFailureDiagnostic = classifyConnectionFailure({
+        rtcConfig: this.getRTCConfig(),
+        failureContext: "generic",
+        cause: error.message,
+      });
+    }
     this.updateConnectionState("failed");
     this.stopPingInterval();
     this.events.onError(error);
