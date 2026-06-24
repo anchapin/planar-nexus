@@ -19,6 +19,12 @@ import {
   StorageQuotaInfo,
   formatBytes,
 } from '@/lib/indexeddb-storage';
+import {
+  compressBackup,
+  decompressBackup,
+  BACKUP_COMPRESSED_MIME,
+  BACKUP_COMPRESSED_EXTENSION,
+} from '@/lib/backup-compression';
 
 // ============================================================================
 // TYPES
@@ -127,9 +133,11 @@ export function useStorageBackup() {
       const backupData = await indexedDBStorage.exportBackup();
       setProgress(60);
 
-      // Create blob and download
-      const json = JSON.stringify(backupData, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
+      // Compress the backup (gzip) to keep export files small.
+      const compressed = compressBackup(backupData);
+      const blob = new Blob([compressed as BlobPart], {
+        type: BACKUP_COMPRESSED_MIME,
+      });
       setProgress(80);
 
       const url = URL.createObjectURL(blob);
@@ -138,7 +146,7 @@ export function useStorageBackup() {
 
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().split('T')[0];
-      a.download = filename || `planar-nexus-backup-${timestamp}.json`;
+      a.download = filename || `planar-nexus-backup-${timestamp}${BACKUP_COMPRESSED_EXTENSION}`;
 
       document.body.appendChild(a);
       a.click();
@@ -187,12 +195,14 @@ export function useStorageBackup() {
         setStatus('importing');
         setProgress(20);
 
-        const text = await file.text();
+        // Read as raw bytes so we can detect and handle both the new
+        // gzip-compressed format and legacy uncompressed JSON.
+        const buffer = await file.arrayBuffer();
         setProgress(40);
 
-        // Parse and validate
+        // Parse and validate (auto-detects compressed vs legacy JSON)
         setStatus('validating');
-        const backupData = JSON.parse(text) as BackupData;
+        const backupData = decompressBackup(buffer);
 
         // Validate backup structure
         if (!backupData.version || !backupData.exportedAt) {
@@ -237,8 +247,8 @@ export function useStorageBackup() {
   const getBackupSize = useCallback(async (): Promise<number> => {
     try {
       const backupData = await indexedDBStorage.exportBackup();
-      const json = JSON.stringify(backupData, null, 2);
-      return new Blob([json]).size;
+      // Report the compressed size since that is what gets downloaded.
+      return compressBackup(backupData).length;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       console.error('Failed to estimate backup size:', err);
@@ -318,6 +328,8 @@ export function useStorageBackup() {
 
 /**
  * Validate backup file structure
+ *
+ * Supports both the new gzip-compressed format and legacy uncompressed JSON.
  */
 export function validateBackupFile(file: File): Promise<boolean> {
   return new Promise((resolve) => {
@@ -325,8 +337,10 @@ export function validateBackupFile(file: File): Promise<boolean> {
 
     reader.onload = (e) => {
       try {
-        const text = e.target?.result as string;
-        const data = JSON.parse(text) as BackupData;
+        // Result is raw bytes; decompressBackup handles compressed and
+        // legacy formats transparently.
+        const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
+        const data = decompressBackup(bytes) as BackupData;
 
         // Check required fields
         const isValid =
@@ -346,7 +360,8 @@ export function validateBackupFile(file: File): Promise<boolean> {
       resolve(false);
     };
 
-    reader.readAsText(file);
+    // Read as ArrayBuffer to support binary gzip files as well as text JSON.
+    reader.readAsArrayBuffer(file);
   });
 }
 
