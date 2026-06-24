@@ -119,6 +119,8 @@ describe('use-p2p-connection Hook Types', () => {
         closeConnection: () => {},
         getConnection: () => null,
         getConflictQueueSize: () => 0,
+        currentHostId: 'player-1',
+        isAuthoritativeHost: true,
       };
 
       expect(returnValue.connectionState).toBeDefined();
@@ -137,6 +139,8 @@ describe('use-p2p-connection Hook Types', () => {
       expect(returnValue.closeConnection).toBeDefined();
       expect(returnValue.getConnection).toBeDefined();
       expect(returnValue.getConflictQueueSize).toBeDefined();
+      expect(returnValue.currentHostId).toBe('player-1');
+      expect(returnValue.isAuthoritativeHost).toBe(true);
     });
   });
 });

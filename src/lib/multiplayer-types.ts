@@ -72,10 +72,27 @@ export interface LobbySettings {
 }
 
 export interface LobbyMessage {
-  type: 'player-joined' | 'player-left' | 'player-ready' | 'player-not-ready' | 'game-starting' | 'chat' | 'error';
+  type: 'player-joined' | 'player-left' | 'player-ready' | 'player-not-ready' | 'game-starting' | 'chat' | 'host-migration' | 'error';
   data: unknown;
   senderId?: string;
   timestamp: number;
+}
+
+/**
+ * Host-migration announcement (issue #916). Broadcast when the authoritative
+ * host leaves so a remaining peer can be promoted and the game continues.
+ * Re-exported from the host-migration module for convenience.
+ */
+export interface HostMigrationLobbyMessage extends LobbyMessage {
+  type: 'host-migration';
+  data: {
+    migrationId: string;
+    previousHostId: string;
+    newHostId: string;
+    remainingPeers: string[];
+    gameState: unknown;
+    reason: 'host-disconnected' | 'host-left';
+  };
 }
 
 export interface HostGameConfig {

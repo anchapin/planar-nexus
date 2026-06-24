@@ -27,6 +27,13 @@ import {
   ConflictResolutionManager,
   type TimestampedAction,
 } from '@/lib/p2p-conflict-resolution';
+import {
+  HostMigrationManager,
+  createHostMigrationManager,
+  type HostMigrationMessage,
+  type HostMigrationResult,
+  type PeerRosterEntry,
+} from '@/lib/p2p-host-migration';
 import { useConnectionHealth, type ConnectionHealth } from '@/hooks/use-connection-health';
 import { logger } from '@/lib/logger';
 
@@ -40,6 +47,16 @@ export interface UseP2PConnectionOptions {
   enableHandshake?: boolean;
   enableConflictResolution?: boolean;
   conflictResolutionStrategy?: 'host-wins' | 'timestamp-based' | 'priority-based' | 'round-robin';
+  /** Enable host migration when the authoritative host disconnects (issue #916). */
+  enableHostMigration?: boolean;
+  /** Initial authoritative host id. Defaults to the host when role === 'host'. */
+  initialHostId?: string;
+  /** Initial peer roster used for deterministic successor selection. */
+  migrationPeers?: PeerRosterEntry[];
+  /** Called after a host migration completes (promotion or remote change). */
+  onHostMigrated?: (result: HostMigrationResult) => void;
+  /** Called when no peers remain and the multiplayer game must end cleanly. */
+  onGameTerminated?: (reason: string) => void;
 }
 
 export interface UseP2PConnectionReturn {
@@ -59,26 +76,44 @@ export interface UseP2PConnectionReturn {
   closeConnection: () => void;
   getConnection: () => P2PGameConnection | null;
   getConflictQueueSize: () => number;
+  /** Current authoritative host id (updates on host migration). */
+  currentHostId: string;
+  /** True when the local client currently holds host authority. */
+  isAuthoritativeHost: boolean;
 }
 
 export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnectionReturn {
-  const { 
-    playerId, 
-    playerName, 
-    role, 
+  const {
+    playerId,
+    playerName,
+    role,
     gameCode,
     enableHandshake = true,
     enableConflictResolution = true,
     conflictResolutionStrategy = 'host-wins',
+    enableHostMigration = true,
+    initialHostId,
+    migrationPeers = [],
+    onHostMigrated,
+    onGameTerminated,
   } = options;
 
+  const fallbackHostId = initialHostId ?? (role === 'host' ? playerId : playerId);
   const [connectionState, setConnectionState] = useState<P2PConnectionState>('disconnected');
   const [signalingState, setSignalingState] = useState<LocalSignalingState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [handshakeState, setHandshakeState] = useState<HandshakeState>('idle');
+  const [currentHostId, setCurrentHostIdState] = useState<string>(fallbackHostId);
   const connectionRef = useRef<P2PGameConnection | null>(null);
   const handshakeSessionRef = useRef<HandshakeSession | null>(null);
   const conflictManagerRef = useRef<ConflictResolutionManager | null>(null);
+  const hostMigrationRef = useRef<HostMigrationManager | null>(null);
+  // Keep latest callbacks in refs so the connection event handlers (created
+  // once per initialize) always see the current props without re-creating.
+  const onHostMigratedRef = useRef(onHostMigrated);
+  const onGameTerminatedRef = useRef(onGameTerminated);
+  onHostMigratedRef.current = onHostMigrated;
+  onGameTerminatedRef.current = onGameTerminated;
 
   // Initialize conflict resolution manager
   useEffect(() => {
@@ -89,6 +124,40 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
       });
     }
   }, [enableConflictResolution, conflictResolutionStrategy, role, playerId]);
+
+  // Initialize host migration manager
+  useEffect(() => {
+    if (enableHostMigration && !hostMigrationRef.current) {
+      hostMigrationRef.current = createHostMigrationManager({
+        localPlayerId: playerId,
+        initialHostId: fallbackHostId,
+        initialPeers: migrationPeers,
+        events: {
+          onPromotedToHost: (result) => {
+            p2pLogger.info('Promoted to host after migration', result.newHostId);
+            conflictManagerRef.current?.updateConfig({ hostId: result.newHostId });
+            onHostMigratedRef.current?.(result);
+          },
+          onHostChanged: (result) => {
+            p2pLogger.info('Remote peer promoted to host', result.newHostId);
+            conflictManagerRef.current?.updateConfig({ hostId: result.newHostId });
+            onHostMigratedRef.current?.(result);
+          },
+          onTerminated: (reason) => {
+            p2pLogger.warn('Multiplayer game terminated', reason);
+            setError(reason);
+            onGameTerminatedRef.current?.(reason);
+          },
+        },
+      });
+      setCurrentHostIdState(hostMigrationRef.current.getHostId());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableHostMigration, playerId, fallbackHostId]);
+
+  const setCurrentHostId = useCallback((hostId: string) => {
+    setCurrentHostIdState(hostId);
+  }, []);
 
   // Initialize handshake session when connection is established
   useEffect(() => {
@@ -134,6 +203,80 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
     enableMonitoring: true,
   });
 
+  // --- Host migration helpers (issue #916) ---
+
+  // Cache the latest authoritative game state so a promoted host can adopt it.
+  const cacheGameStateForMigration = useCallback((gameState: GameState) => {
+    hostMigrationRef.current?.setLastKnownGameState(gameState);
+  }, []);
+
+  // Track a newly-joined peer for successor-selection purposes.
+  const registerPeerForMigration = useCallback(
+    (peerPlayerId: string, peerPlayerName: string) => {
+      hostMigrationRef.current?.upsertPeer({
+        playerId: peerPlayerId,
+        playerName: peerPlayerName,
+        joinedAt: Date.now(),
+      });
+    },
+    [],
+  );
+
+  // Apply a received host-migration message (idempotent).
+  const applyHostMigrationMessage = useCallback(
+    (message: HostMigrationMessage) => {
+      const manager = hostMigrationRef.current;
+      if (!manager) return;
+      const result = manager.applyMigration(message);
+      if (result) {
+        setCurrentHostId(manager.getHostId());
+      }
+    },
+    [setCurrentHostId],
+  );
+
+  // Handle a peer leaving. If it was the host, run migration: the deterministic
+  // successor broadcasts a migration message and promotes itself; others apply
+  // it on receipt. If too few peers remain, the manager terminates cleanly.
+  const handlePeerLeftForMigration = useCallback(
+    (peerPlayerId: string, reason: 'host-disconnected' | 'host-left') => {
+      const manager = hostMigrationRef.current;
+      if (!manager) return;
+
+      const wasHost = manager.getHostId() === peerPlayerId;
+      manager.removePeer(peerPlayerId);
+
+      if (!wasHost) return;
+
+      const result = manager.initiateMigration(reason);
+      if (result.terminated) {
+        // onTerminated event already fired by the manager.
+        return;
+      }
+
+      if (result.promotedSelf) {
+        setCurrentHostId(manager.getHostId());
+        const message = manager.buildMigrationMessage(result);
+        connectionRef.current?.sendGameAction('host-migration', message);
+      }
+      // Non-successor peers do nothing here; they apply the successor's
+      // broadcast via applyHostMigrationMessage when it arrives.
+    },
+    [setCurrentHostId],
+  );
+
+  // Inspect a game-action message and route host-migration messages.
+  const handleMigrationGameAction = useCallback(
+    (action: string, data: unknown) => {
+      if (action !== 'host-migration') return;
+      if (!data || typeof data !== 'object') return;
+      const message = data as HostMigrationMessage;
+      if (message.type !== 'host-migration') return;
+      applyHostMigrationMessage(message);
+    },
+    [applyHostMigrationMessage],
+  );
+
   // Initialize connection as host
   const initializeAsHost = useCallback(async (): Promise<RTCSessionDescriptionInit> => {
     try {
@@ -161,9 +304,18 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
               // Handshake message handling would go here
               // For now, we just log them
             }
+
+            // Route host-migration announcements (issue #916).
+            if (message.type === 'game-action') {
+              const payload = message.data as { action?: string; data?: unknown } | undefined;
+              if (payload?.action) {
+                handleMigrationGameAction(payload.action, payload.data);
+              }
+            }
           },
           onGameStateSync: (gameState) => {
             p2pLogger.debug('Received game state sync');
+            cacheGameStateForMigration(gameState);
             
             // Verify checksum if handshake completed
             if (handshakeState === 'completed' && handshakeSessionRef.current) {
@@ -184,6 +336,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
           },
           onPlayerJoined: (playerId, playerName) => {
             p2pLogger.debug('Player joined:', playerName);
+            registerPeerForMigration(playerId, playerName);
             
             // Start handshake with new player
             if (enableHandshake && handshakeSessionRef.current) {
@@ -194,6 +347,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
           },
           onPlayerLeft: (playerId) => {
             p2pLogger.debug('Player left:', playerId);
+            handlePeerLeftForMigration(playerId, 'host-disconnected');
             
             // Cleanup handshake
             if (handshakeSessionRef.current) {
@@ -219,7 +373,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
       setError(errorMessage);
       throw err;
     }
-  }, [playerId, playerName, role, gameCode, enableHandshake, handshakeState]);
+  }, [playerId, playerName, role, gameCode, enableHandshake, handshakeState, cacheGameStateForMigration, registerPeerForMigration, handlePeerLeftForMigration, handleMigrationGameAction]);
 
   // Initialize connection as joiner
   const initializeAsJoiner = useCallback(
@@ -243,9 +397,18 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
             onSignalingStateChange: setSignalingState,
             onMessage: (message) => {
               p2pLogger.debug('Received message:', message.type);
+
+              // Route host-migration announcements (issue #916).
+              if (message.type === 'game-action') {
+                const payload = message.data as { action?: string; data?: unknown } | undefined;
+                if (payload?.action) {
+                  handleMigrationGameAction(payload.action, payload.data);
+                }
+              }
             },
             onGameStateSync: (gameState) => {
               p2pLogger.debug('Received game state sync');
+              cacheGameStateForMigration(gameState);
             },
             onChat: (chatMessage) => {
               p2pLogger.debug('Received chat:', chatMessage.text);
@@ -255,9 +418,11 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
             },
             onPlayerJoined: (playerId, playerName) => {
               p2pLogger.debug('Player joined:', playerName);
+              registerPeerForMigration(playerId, playerName);
             },
             onPlayerLeft: (playerId) => {
               p2pLogger.debug('Player left:', playerId);
+              handlePeerLeftForMigration(playerId, 'host-disconnected');
               
               // Cleanup handshake
               if (handshakeSessionRef.current) {
@@ -284,7 +449,7 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
         throw err;
       }
     },
-    [playerId, playerName, role, gameCode]
+    [playerId, playerName, role, gameCode, cacheGameStateForMigration, registerPeerForMigration, handlePeerLeftForMigration, handleMigrationGameAction]
   );
 
   // Process answer (host only)
@@ -388,11 +553,13 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
     if (handshakeSessionRef.current) {
       handshakeSessionRef.current.cleanup();
     }
+    hostMigrationRef.current?.reset();
+    setCurrentHostIdState(fallbackHostId);
     setConnectionState('disconnected');
     setSignalingState(null);
     setHandshakeState('idle');
     setError(null);
-  }, []);
+  }, [fallbackHostId]);
 
   // Get connection instance
   const getConnection = useCallback(() => {
@@ -424,6 +591,8 @@ export function useP2PConnection(options: UseP2PConnectionOptions): UseP2PConnec
     closeConnection,
     getConnection,
     getConflictQueueSize,
+    currentHostId,
+    isAuthoritativeHost: currentHostId === playerId,
   };
 }
 
