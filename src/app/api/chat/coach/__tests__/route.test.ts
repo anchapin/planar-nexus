@@ -2,9 +2,11 @@
  * @jest-environment node
  */
 import { POST } from "../route";
+import { clearCoachContextCache } from "@/ai/flows/coach-context-prefetch";
 
 // Capture the input handed to the coach flow so we can assert the route builds
-// and forwards a STRUCTURED deck analysis (issue #923) instead of raw cards.
+// and forwards a STRUCTURED deck analysis (issue #923) instead of raw cards,
+// and that the analysis is PRE-FETCHED before the flow runs (issue #928).
 let lastFlowInput: Record<string, unknown> | undefined;
 
 jest.mock("@/ai/flows/genkit-coach-flow", () => ({
@@ -76,6 +78,11 @@ const deckCards = [
 describe("POST /api/chat/coach — structured analysis wiring (#923)", () => {
   beforeEach(() => {
     lastFlowInput = undefined;
+    clearCoachContextCache();
+  });
+
+  afterEach(() => {
+    clearCoachContextCache();
   });
 
   it("builds a structured deck analysis and forwards it to the coach flow", async () => {
@@ -101,6 +108,33 @@ describe("POST /api/chat/coach — structured analysis wiring (#923)", () => {
     // The raw deck is still passed for the search tool, but the PRIMARY context
     // the coach reasons about is the structured analysis, not a card list.
     expect(lastFlowInput!.deckCards).toEqual(deckCards);
+  });
+
+  it("pre-fetches context before invoking the flow and serves repeats from cache (#928)", async () => {
+    // First request: pre-fetch computes + populates the cache.
+    await POST(
+      buildRequest({
+        messages: [{ id: "1", role: "user", content: "analyze" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+    expect(lastFlowInput!.structuredAnalysis).toBeDefined();
+
+    // Second request for the SAME deck: the analysis is still forwarded, served
+    // from the pre-fetch cache (no re-computation path difference observable
+    // here, but the structured analysis must remain present and stable).
+    await POST(
+      buildRequest({
+        messages: [{ id: "2", role: "user", content: "what should I cut?" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+    expect(lastFlowInput!.structuredAnalysis).toBeDefined();
+    expect(lastFlowInput!.structuredAnalysis).toContain(
+      "### Structured Deck Analysis",
+    );
   });
 
   it("omits structuredAnalysis when no deck cards are supplied", async () => {

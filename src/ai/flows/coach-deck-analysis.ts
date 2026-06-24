@@ -14,7 +14,11 @@
 
 import type { DeckCard } from "@/app/actions";
 import { detectArchetype } from "@/ai/archetype-detector";
-import { calculateDeckStats, type DeckStats } from "@/ai/archetype-signatures";
+import {
+  calculateDeckStats,
+  type ArchetypeResult,
+  type DeckStats,
+} from "@/ai/archetype-signatures";
 import {
   detectSynergies,
   detectMissingSynergies,
@@ -293,18 +297,34 @@ function buildKeyCards(
 }
 
 /**
- * Build a structured deck analysis from a raw decklist. Reuses the archetype
- * detector, deck-stat calculator and synergy detector — no duplicate logic.
+ * The independently-computable analyses that feed a structured deck analysis.
+ *
+ * `archetype`, `stats` and `synergies` have NO inter-dependencies and can be
+ * resolved in parallel. Only `missing` depends on `archetype.primary`.
+ * Separating them here lets the context pre-fetcher (issue #928) run the
+ * independent pieces concurrently and hand the results in, avoiding both
+ * serial execution and duplicate work.
  */
-export function buildStructuredDeckAnalysis(
+export interface ResolvedAnalysisComponents {
+  archetype: ArchetypeResult;
+  stats: DeckStats;
+  synergies: SynergyResult[];
+  missing: MissingSynergy[];
+}
+
+/**
+ * Assemble a {@link StructuredDeckAnalysis} from already-resolved analysis
+ * components. Pure / synchronous — does no detection of its own. Both the
+ * serial {@link buildStructuredDeckAnalysis} and the parallel context
+ * pre-fetcher (issue #928) funnel through here so the assembly logic is
+ * defined exactly once.
+ */
+export function assembleStructuredAnalysis(
   deck: DeckCard[],
+  components: ResolvedAnalysisComponents,
 ): StructuredDeckAnalysis {
   const safeDeck = Array.isArray(deck) ? deck : [];
-
-  const archetype = detectArchetype(safeDeck);
-  const stats = calculateDeckStats(safeDeck);
-  const synergies = detectSynergies(safeDeck);
-  const missing = detectMissingSynergies(safeDeck, archetype.primary);
+  const { archetype, stats, synergies, missing } = components;
 
   const roleDistribution = buildRoleDistribution(safeDeck, stats);
   const nonLand = Math.max(stats.totalCards - stats.landCount, 0);
@@ -345,6 +365,30 @@ export function buildStructuredDeckAnalysis(
     strengths,
     keyCards,
   };
+}
+
+/**
+ * Resolve the four underlying analyses SERIALLY. Kept for synchronous callers
+ * and backward compatibility. New, latency-sensitive callers should use the
+ * context pre-fetcher in `./coach-context-prefetch` (issue #928), which
+ * resolves the independent pieces in parallel and caches the result.
+ */
+export function buildStructuredDeckAnalysis(
+  deck: DeckCard[],
+): StructuredDeckAnalysis {
+  const safeDeck = Array.isArray(deck) ? deck : [];
+
+  const archetype = detectArchetype(safeDeck);
+  const stats = calculateDeckStats(safeDeck);
+  const synergies = detectSynergies(safeDeck);
+  const missing = detectMissingSynergies(safeDeck, archetype.primary);
+
+  return assembleStructuredAnalysis(safeDeck, {
+    archetype,
+    stats,
+    synergies,
+    missing,
+  });
 }
 
 /**

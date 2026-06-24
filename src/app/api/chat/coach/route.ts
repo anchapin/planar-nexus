@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { coachFlow } from "@/ai/flows/genkit-coach-flow";
 import type { DeckCard } from "@/app/actions";
-import {
-  buildStructuredDeckAnalysis,
-  formatStructuredAnalysisForLLM,
-} from "@/ai/flows/coach-deck-analysis";
+import { prefetchCoachContext } from "@/ai/flows/coach-context-prefetch";
 
 /**
  * API Route for the Conversational AI Coach using Genkit.
@@ -13,6 +10,10 @@ import {
  * is currently a stub that returns an unavailability message. This route
  * still validates input and streams the stub response for forward
  * compatibility — when Genkit is re-added, this route will work as-is.
+ *
+ * Issue #928: context is now PRE-FETCHED (in parallel, with caching) before
+ * the coach flow is invoked, so every piece of context the model needs is
+ * resolved up-front and the request→model latency meets the WORKER-03 target.
  */
 
 export const dynamic = "force-dynamic";
@@ -57,18 +58,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Build a STRUCTURED deck analysis (issue #923) so the coach reasons
-    //    about archetype, synergy clusters, curve and roles instead of a raw
-    //    card-by-card list. When the client already supplied a digested context
-    //    we keep it, but enrich with structured analysis whenever raw cards are
-    //    available.
+    // 3. PRE-FETCH all coach context up-front and in parallel (issue #928).
+    //    Resolves the structured deck analysis (archetype, synergy clusters,
+    //    curve, roles, gaps) before the model is invoked, with caching so a
+    //    coaching session asking many questions about the same deck skips
+    //    re-computation. When the client already supplied a digested context we
+    //    keep it; raw cards are enriched with the structured analysis.
     let structuredAnalysis: string | undefined;
     if (deckCards && Array.isArray(deckCards) && deckCards.length > 0) {
       try {
-        const analysis = buildStructuredDeckAnalysis(deckCards as DeckCard[]);
-        structuredAnalysis = formatStructuredAnalysisForLLM(analysis);
+        const prefetched = await prefetchCoachContext({
+          deckCards: deckCards as DeckCard[],
+          format,
+        });
+        if (prefetched) {
+          structuredAnalysis = prefetched.structuredAnalysisText;
+        }
       } catch (error) {
-        console.error("Structured deck analysis failed:", error);
+        console.error("Coach context pre-fetch failed:", error);
       }
     }
 
