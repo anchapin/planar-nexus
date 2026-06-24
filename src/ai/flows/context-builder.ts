@@ -3,7 +3,7 @@
  * Converts deck data and metadata into LLM-friendly formats.
  */
 
-import { ChatMessage } from '@/types/chat';
+import { ChatMessage } from "@/types/chat";
 
 // Reuse types from actions.ts to avoid duplication or circular deps
 export interface MinimalCard {
@@ -40,37 +40,42 @@ export interface DeckCard extends ScryfallCard {
  */
 export function formatDeckForLLM(cards: DeckCard[]): string {
   if (!cards || cards.length === 0) {
-    return 'No cards in deck yet.';
+    return "No cards in deck yet.";
   }
 
   // Group by type
   const grouped: Record<string, DeckCard[]> = {
-    'Creatures': [],
-    'Planeswalkers': [],
-    'Instants/Sorceries': [],
-    'Artifacts/Enchantments': [],
-    'Lands': [],
-    'Other': []
+    Creatures: [],
+    Planeswalkers: [],
+    "Instants/Sorceries": [],
+    "Artifacts/Enchantments": [],
+    Lands: [],
+    Other: [],
   };
 
-  cards.forEach(card => {
+  cards.forEach((card) => {
     const type = card.type_line.toLowerCase();
-    if (type.includes('creature')) grouped['Creatures'].push(card);
-    else if (type.includes('planeswalker')) grouped['Planeswalkers'].push(card);
-    else if (type.includes('instant') || type.includes('sorcery')) grouped['Instants/Sorceries'].push(card);
-    else if (type.includes('artifact') || type.includes('enchantment')) grouped['Artifacts/Enchantments'].push(card);
-    else if (type.includes('land')) grouped['Lands'].push(card);
-    else grouped['Other'].push(card);
+    if (type.includes("creature")) grouped["Creatures"].push(card);
+    else if (type.includes("planeswalker")) grouped["Planeswalkers"].push(card);
+    else if (type.includes("instant") || type.includes("sorcery"))
+      grouped["Instants/Sorceries"].push(card);
+    else if (type.includes("artifact") || type.includes("enchantment"))
+      grouped["Artifacts/Enchantments"].push(card);
+    else if (type.includes("land")) grouped["Lands"].push(card);
+    else grouped["Other"].push(card);
   });
 
-  let output = '';
+  let output = "";
   for (const [groupName, groupCards] of Object.entries(grouped)) {
     if (groupCards.length > 0) {
       output += `\n### ${groupName}\n`;
       output += groupCards
-        .map(card => `${card.count}x ${card.name} (${card.mana_cost || 'No cost'})`)
-        .join('\n');
-      output += '\n';
+        .map(
+          (card) =>
+            `${card.count}x ${card.name} (${card.mana_cost || "No cost"})`,
+        )
+        .join("\n");
+      output += "\n";
     }
   }
 
@@ -82,51 +87,59 @@ export function formatDeckForLLM(cards: DeckCard[]): string {
  * This is used for payload reduction when the full deck/game state is too large.
  */
 export function formatDigestedContextForLLM(context: any): string {
-  if (!context) return '';
-  
-  let output = '### Digested Game Context\n';
-  
+  if (!context) return "";
+
+  let output = "### Digested Game Context\n";
+
   if (context.deckSummary) {
     const ds = context.deckSummary;
-    output += `**Deck Stats**: ${ds.totalCards} cards, Avg CMC: ${ds.averageCmc.toFixed(2)}, Colors: ${ds.colors.join(', ')}\n`;
-    output += `**Types**: ${Object.entries(ds.typeCounts).map(([type, count]) => `${count} ${type}`).join(', ')}\n`;
-    output += `**Key Cards**: ${ds.keyCards.join(', ')}\n`;
-    output += `**Mana Curve**: ${ds.manaCurve.join('/')}\n\n`;
+    output += `**Deck Stats**: ${ds.totalCards} cards, Avg CMC: ${ds.averageCmc.toFixed(2)}, Colors: ${ds.colors.join(", ")}\n`;
+    output += `**Types**: ${Object.entries(ds.typeCounts)
+      .map(([type, count]) => `${count} ${type}`)
+      .join(", ")}\n`;
+    output += `**Key Cards**: ${ds.keyCards.join(", ")}\n`;
+    output += `**Mana Curve**: ${ds.manaCurve.join("/")}\n\n`;
   }
-  
+
   if (context.gameSummary) {
     const gs = context.gameSummary;
     output += `**Current Game**: Turn ${gs.turn}, Phase: ${gs.phase}, Active: ${gs.activePlayerId}\n`;
     gs.players.forEach((p: any) => {
       output += `- **${p.id}**: Life: ${p.life}, Hand: ${p.handSize}, Mana: ${p.manaAvailable}`;
       if (p.keyPermanents && p.keyPermanents.length > 0) {
-        output += `, Board: ${p.keyPermanents.join(', ')}`;
+        output += `, Board: ${p.keyPermanents.join(", ")}`;
       }
-      output += '\n';
+      output += "\n";
     });
   }
-  
+
   return output.trim();
 }
 
 /**
  * Builds the system context for the AI coach.
- * Includes format, archetype, and any specific constraints or strategy.
+ *
+ * Issue #923: prefers a STRUCTURED deck analysis (archetype, synergy clusters,
+ * curve, roles, strengths/gaps) over a raw card-by-card decklist so the coach's
+ * advice is specific and grounded. When `structuredAnalysis` is provided it is
+ * the primary context; a raw `deckList` is only included as a terse reference
+ * (and omitted entirely when structured analysis is present).
  */
 export function buildCoachSystemPrompt(
   format: string,
   deckList: string,
   archetype?: string,
   strategy?: string,
-  digestedContext?: string
+  digestedContext?: string,
+  structuredAnalysis?: string,
 ): string {
   let prompt = `You are an expert Magic: The Gathering coach. You are helping a player improve their deck.\n\n`;
   prompt += `**Current Format**: ${format}\n`;
-  
+
   if (archetype) {
     prompt += `**Detected Archetype**: ${archetype}\n`;
   }
-  
+
   if (strategy) {
     prompt += `**General Strategy**: ${strategy}\n`;
   }
@@ -135,7 +148,12 @@ export function buildCoachSystemPrompt(
     prompt += `\n${digestedContext}\n`;
   }
 
-  if (deckList && deckList !== 'No cards in deck yet.') {
+  if (structuredAnalysis) {
+    // Structured analysis replaces the raw card list — reason about clusters,
+    // curve and roles rather than re-deriving them from individual card names.
+    prompt += `\n${structuredAnalysis}\n\n`;
+  } else if (deckList && deckList !== "No cards in deck yet.") {
+    // Fallback (no structured analysis available): include the raw list.
     prompt += `\n**Decklist**:\n${deckList}\n\n`;
   }
 
@@ -143,7 +161,7 @@ export function buildCoachSystemPrompt(
   prompt += `Be encouraging but honest about card quality and synergy. `;
   prompt += `When suggesting cards to cut, explain why (e.g., too expensive, off-plan, redundant). `;
   prompt += `When suggesting cards to add, highlight their synergy with the existing cards.\n`;
-  
+
   prompt += `\nYou have access to the searchCardsTool. Use it to find cards that might be better than the current choices or to explore new options. `;
   prompt += `Focus on identifying win conditions and ensuring the deck has a consistent game plan.\n\n`;
 
@@ -163,12 +181,12 @@ export function buildCoachSystemPrompt(
  */
 export function prepareConversationHistory(
   messages: ChatMessage[],
-  maxMessages: number = 10
-): Array<{ role: 'user' | 'assistant' | 'system'; content: string }> {
+  maxMessages: number = 10,
+): Array<{ role: "user" | "assistant" | "system"; content: string }> {
   // Map ChatMessage to Vercel AI SDK message format
-  const mapped = messages.map(m => ({
-    role: m.role as 'user' | 'assistant' | 'system',
-    content: m.content
+  const mapped = messages.map((m) => ({
+    role: m.role as "user" | "assistant" | "system",
+    content: m.content,
   }));
 
   // Take the last N messages

@@ -1,11 +1,11 @@
 /**
  * @fileoverview Shared TypeScript types for AI flows
- * 
+ *
  * This file defines common types used across AI flow helper functions
  * to eliminate `any` types and improve type safety.
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 /** Basic card representation */
 export interface Card {
@@ -22,7 +22,7 @@ export interface Card {
 /** Zod schema for ChatMessage */
 export const ChatMessageSchema = z.object({
   id: z.string(),
-  role: z.enum(['user', 'assistant', 'system']),
+  role: z.enum(["user", "assistant", "system"]),
   content: z.string(),
   timestamp: z.number().optional(),
 });
@@ -43,26 +43,32 @@ export const DeckCardSchema = z.object({
 
 /** Zod schema for Digested Coach Context */
 export const DigestedCoachContextSchema = z.object({
-  deckSummary: z.object({
-    totalCards: z.number(),
-    typeCounts: z.record(z.number()),
-    averageCmc: z.number(),
-    keyCards: z.array(z.string()),
-    manaCurve: z.array(z.number()),
-    colors: z.array(z.string()),
-  }).optional(),
-  gameSummary: z.object({
-    turn: z.number(),
-    phase: z.string(),
-    activePlayerId: z.string(),
-    players: z.array(z.object({
-      id: z.string(),
-      life: z.number(),
-      handSize: z.number(),
-      manaAvailable: z.number(),
-      keyPermanents: z.array(z.string()),
-    })),
-  }).optional(),
+  deckSummary: z
+    .object({
+      totalCards: z.number(),
+      typeCounts: z.record(z.number()),
+      averageCmc: z.number(),
+      keyCards: z.array(z.string()),
+      manaCurve: z.array(z.number()),
+      colors: z.array(z.string()),
+    })
+    .optional(),
+  gameSummary: z
+    .object({
+      turn: z.number(),
+      phase: z.string(),
+      activePlayerId: z.string(),
+      players: z.array(
+        z.object({
+          id: z.string(),
+          life: z.number(),
+          handSize: z.number(),
+          manaAvailable: z.number(),
+          keyPermanents: z.array(z.string()),
+        }),
+      ),
+    })
+    .optional(),
   timestamp: z.number(),
 });
 
@@ -71,6 +77,9 @@ export const CoachFlowInputSchema = z.object({
   messages: z.array(ChatMessageSchema),
   deckCards: z.array(DeckCardSchema).optional(),
   digestedContext: DigestedCoachContextSchema.optional(),
+  /** Structured deck analysis (archetype, synergy clusters, curve, roles,
+   * strengths/gaps) — preferred over raw `deckCards` per issue #923. */
+  structuredAnalysis: z.string().optional(),
   format: z.string(),
   archetype: z.string().optional(),
   strategy: z.string().optional(),
@@ -181,13 +190,13 @@ export interface Spell extends Card {
 export interface Threat {
   card: string;
   threat: string;
-  priority: 'immediate' | 'high' | 'medium' | 'low';
+  priority: "immediate" | "high" | "medium" | "low";
 }
 
 /** Play suggestion */
 export interface PlaySuggestion {
   cardName: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: "high" | "medium" | "low";
   reasoning: string;
   manaCost?: number;
   expectedImpact: string;
@@ -195,7 +204,7 @@ export interface PlaySuggestion {
 
 /** Warning message */
 export interface Warning {
-  type: 'danger' | 'caution' | 'info';
+  type: "danger" | "caution" | "info";
   message: string;
   relatedCards?: string[];
 }
@@ -266,7 +275,7 @@ export interface CardSuggestion {
 export interface KeyMoment {
   turn: number;
   description: string;
-  type: 'game_change' | 'mistake' | 'great_play' | 'missed_opportunity';
+  type: "game_change" | "mistake" | "great_play" | "missed_opportunity";
   whatHappened: string;
   couldHaveHappened?: string;
 }
@@ -275,7 +284,7 @@ export interface KeyMoment {
 export interface GameMistake {
   turn: number;
   description: string;
-  severity: 'major' | 'minor';
+  severity: "major" | "minor";
   suggestion: string;
 }
 
@@ -289,14 +298,14 @@ export interface StackContext {
 
 /** Stack action */
 export interface StackAction {
-  type: 'cast' | 'activate' | 'respond' | 'pass';
+  type: "cast" | "activate" | "respond" | "pass";
   card?: string;
   target?: string;
   playerId: string;
 }
 
 /** AI difficulty level */
-export type AIDifficulty = 'beginner' | 'intermediate' | 'advanced' | 'expert';
+export type AIDifficulty = "beginner" | "intermediate" | "advanced" | "expert";
 
 /** AI provider configuration */
 export interface AIProviderConfig {

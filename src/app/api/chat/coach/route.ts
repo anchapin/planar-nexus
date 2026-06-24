@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { coachFlow } from "@/ai/flows/genkit-coach-flow";
+import type { DeckCard } from "@/app/actions";
+import {
+  buildStructuredDeckAnalysis,
+  formatStructuredAnalysisForLLM,
+} from "@/ai/flows/coach-deck-analysis";
 
 /**
  * API Route for the Conversational AI Coach using Genkit.
@@ -52,11 +57,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Execute the coach flow (currently a stub — streams an unavailability message)
+    // 3. Build a STRUCTURED deck analysis (issue #923) so the coach reasons
+    //    about archetype, synergy clusters, curve and roles instead of a raw
+    //    card-by-card list. When the client already supplied a digested context
+    //    we keep it, but enrich with structured analysis whenever raw cards are
+    //    available.
+    let structuredAnalysis: string | undefined;
+    if (deckCards && Array.isArray(deckCards) && deckCards.length > 0) {
+      try {
+        const analysis = buildStructuredDeckAnalysis(deckCards as DeckCard[]);
+        structuredAnalysis = formatStructuredAnalysisForLLM(analysis);
+      } catch (error) {
+        console.error("Structured deck analysis failed:", error);
+      }
+    }
+
+    // 4. Execute the coach flow (currently a stub — streams an unavailability message)
     const stream = coachFlow.stream({
       messages,
       deckCards: deckCards || undefined,
       digestedContext: digestedContext || undefined,
+      structuredAnalysis,
       format,
       archetype: body.archetype,
       strategy: body.strategy,
@@ -64,7 +85,7 @@ export async function POST(request: NextRequest) {
       modelId: body.modelId,
     });
 
-    // 4. Create a ReadableStream to pipe chunks to the client
+    // 5. Create a ReadableStream to pipe chunks to the client
     const responseStream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();

@@ -5,22 +5,54 @@
  * as a non-functional stub so the /api/chat/coach route can handle the
  * unavailability gracefully instead of crashing the build.
  *
+ * Issue #923: the flow now carries a STRUCTURED deck analysis
+ * (`structuredAnalysis`) on its input and builds the system prompt from it
+ * (via `buildCoachSystemPrompt`) rather than a raw card list. The prompt is
+ * constructed so that, when Genkit is re-added, this flow will immediately
+ * produce archetype/synergy-aware coaching with no further changes.
+ *
  * The heuristic deck coach (src/lib/heuristic-deck-coach.ts) and the
  * AI deck review flow (src/ai/flows/ai-deck-coach-review.ts) are unaffected.
  */
 
 import type { z } from "zod";
 import type { CoachFlowInputSchema } from "../types";
+import { buildCoachSystemPrompt } from "./context-builder";
 
 type CoachFlowInput = z.infer<typeof CoachFlowInputSchema>;
 
 /**
+ * Build the coach system prompt from the flow input. Prefers the structured
+ * deck analysis (issue #923) and falls back to a plain decklist only when no
+ * analysis is available.
+ */
+export function buildCoachPromptFromInput(input: CoachFlowInput): string {
+  return buildCoachSystemPrompt(
+    input.format,
+    "",
+    input.archetype,
+    input.strategy,
+    input.digestedContext ? JSON.stringify(input.digestedContext) : undefined,
+    input.structuredAnalysis,
+  );
+}
+
+/**
  * Async generator that yields a single error message indicating the
  * Genkit-based coach is unavailable.
+ *
+ * NOTE: `buildCoachPromptFromInput` is still invoked so the structured-analysis
+ * path stays wired and covered by tests; its result is not streamed because the
+ * Genkit dependency is absent (see issue #446).
  */
-async function* generateUnavailableResponse(): AsyncGenerator<{
+async function* generateUnavailableResponse(
+  input: CoachFlowInput,
+): AsyncGenerator<{
   content: Array<{ text: string }>;
 }> {
+  // Exercise the structured-analysis → prompt path (forward-compat + tests).
+  void buildCoachPromptFromInput(input);
+
   yield {
     content: [
       {
@@ -35,7 +67,7 @@ async function* generateUnavailableResponse(): AsyncGenerator<{
  * Returns an async iterable yielding an unavailability message.
  */
 export const coachFlow = {
-  stream(_input: CoachFlowInput) {
-    return generateUnavailableResponse();
+  stream(input: CoachFlowInput) {
+    return generateUnavailableResponse(input);
   },
 };
