@@ -27,6 +27,12 @@ import { drawCard } from "@/lib/game-state/game-state";
 import { engineToAIState } from "@/lib/game-state/serialization";
 import { getMaxHandSize } from "@/lib/game-rules";
 import { discardCards } from "@/lib/game-state/keyword-actions";
+import {
+  classifyArchetypeName,
+  type DeckArchetype,
+} from "./game-state-evaluator";
+import { detectArchetype } from "./archetype-detector";
+import type { DeckCard } from "@/app/actions";
 
 /**
  * AI Turn configuration
@@ -36,6 +42,60 @@ export interface AITurnConfig {
   delayMs: number; // Delay between actions for natural pacing
   skipPhases?: Phase[]; // Phases to skip (for testing)
   onCommentary?: (text: string) => void; // Callback for commentary generation
+  /**
+   * Deck-specific playstyle of the AI player. When provided, this drives the
+   * per-archetype combat/evaluation weights so the AI adapts its decisions to
+   * its deck (aggro vs control vs combo, ...).
+   *
+   * When omitted the turn loop auto-detects the archetype from the AI player's
+   * deck. Either path ensures the per-archetype weights reach the live turn
+   * loop (previously dead code — issue #911).
+   */
+  archetype?: DeckArchetype;
+}
+
+/**
+ * Detect the AI player's deck archetype from the engine game state.
+ *
+ * Gathers every card the player owns across all zones (library, hand,
+ * battlefield, graveyard, exile) and runs the deck archetype detector over it,
+ * mapping the detected archetype name onto the coarse {@link DeckArchetype}
+ * bucket the evaluator/combat tree consume. Returns "unknown" when the deck
+ * cannot be classified.
+ */
+export function detectPlayerArchetype(
+  state: EngineGameState,
+  playerId: PlayerId,
+): DeckArchetype {
+  const zoneKeys = [
+    `${playerId}-library`,
+    `${playerId}-hand`,
+    `${playerId}-battlefield`,
+    `${playerId}-graveyard`,
+    `${playerId}-exile`,
+  ];
+
+  const cards: DeckCard[] = [];
+  for (const key of zoneKeys) {
+    const zone = state.zones.get(key);
+    if (!zone) continue;
+    for (const cardId of zone.cardIds) {
+      const card = state.cards.get(cardId);
+      if (card?.cardData) {
+        cards.push({ ...card.cardData, count: 1 } as DeckCard);
+      }
+    }
+  }
+
+  if (cards.length === 0) return "unknown";
+
+  try {
+    const result = detectArchetype(cards);
+    if (!result || result.primary === "Unknown") return "unknown";
+    return classifyArchetypeName(result.primary);
+  } catch {
+    return "unknown";
+  }
 }
 
 /**
@@ -342,10 +402,16 @@ async function runCombatPhase(
   // Import dynamically to avoid circular dependencies
   const { CombatDecisionTree } =
     await import("./decision-making/combat-decision-tree");
+  // Resolve the deck-specific playstyle so per-archetype weights reach the
+  // live combat decisions. Prefer an explicit config override, otherwise
+  // auto-detect from the AI player's deck (issue #911).
+  const archetype =
+    config.archetype ?? detectPlayerArchetype(currentState, aiPlayerId);
   const combatAI = new CombatDecisionTree(
     aiState,
     aiPlayerId,
     config.difficulty,
+    archetype,
   );
 
   // Generate attack plan using unified format

@@ -9,11 +9,13 @@ export {
   generateAttackDecisions,
   generateBlockingDecisions,
   DefaultCombatConfigs,
+  ARCHETYPE_COMBAT_MODIFIERS,
   type CombatAIConfig,
   type AttackDecision,
   type BlockDecision,
   type CombatPlan,
   type CombatTrick,
+  type DeckArchetype,
 } from "./combat-decision-tree";
 
 export {
