@@ -22,6 +22,11 @@ import {
 import { hasIndestructible, handlePersist } from "./keyword-actions";
 import { destroyCard, exileCard } from "./keyword-actions";
 import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from "./commander-damage";
+import {
+  findLegendaryViolations,
+  hasPendingLegendaryChoice,
+  createLegendaryWaitingChoice,
+} from "./legendary-rule";
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
@@ -331,38 +336,30 @@ export function checkStateBasedActions(
     }
   }
 
-  // Check for legendary rule (SBA 704.5j)
-  // Two legendary permanents with the same name - keep one, destroy the rest
-  const legendaryPermanents = cardsToCheck.filter((card) => {
-    // Check if card is on battlefield using the helper
-    const isOnBf = isOnBattlefield(updatedState, card.id);
-    const isLegendary =
-      card.cardData.type_line?.toLowerCase().includes("legendary") ?? false;
-    return isOnBf && isLegendary;
-  });
-
-  const nameGroups = new Map<string, CardInstanceId[]>();
-  for (const card of legendaryPermanents) {
-    const name = card.cardData.name.toLowerCase();
-    const existing = nameGroups.get(name) || [];
-    existing.push(card.id);
-    nameGroups.set(name, existing);
-  }
-
-  for (const cardIds of nameGroups.values()) {
-    if (cardIds.length > 1) {
-      // Keep the first one, destroy the rest
-      for (let i = 1; i < cardIds.length; i++) {
-        const destroyResult = destroyCard(updatedState, cardIds[i]);
-        if (destroyResult.success) {
-          updatedState = destroyResult.state;
-          const card = updatedState.cards.get(cardIds[i]);
-          descriptions.push(
-            `Destroyed ${card?.cardData.name} (legendary rule)`,
-          );
-          actionsPerformed = true;
-        }
-      }
+  // Legendary rule (SBA 704.5u): when a player controls two or more legendary
+  // permanents with the same name, that player CHOOSES one to keep and the rest
+  // are put into their owner's graveyard. Because the engine resolves SBAs
+  // synchronously, the choice is surfaced as a pending `waitingChoice` (type
+  // "choose_legend") that the UI or an automated controller resolves via
+  // `resolveLegendaryChoice` / `autoResolveLegendaryChoice`.
+  // Issue #919: do not auto-destroy; let the controller choose which to keep.
+  if (!hasPendingLegendaryChoice(updatedState)) {
+    const violations = findLegendaryViolations(updatedState);
+    if (violations.length > 0) {
+      // Surface one violation at a time. After it is resolved the duplicates
+      // leave the battlefield, so the next SBA pass surfaces any remaining one.
+      const violation = violations[0];
+      updatedState = {
+        ...updatedState,
+        waitingChoice: createLegendaryWaitingChoice(violation, updatedState),
+      };
+      const legendName =
+        updatedState.cards.get(violation.candidateIds[0])?.cardData.name ??
+        "Legendary permanent";
+      descriptions.push(
+        `${legendName}: legendary rule triggered, awaiting controller choice`,
+      );
+      actionsPerformed = true;
     }
   }
 
