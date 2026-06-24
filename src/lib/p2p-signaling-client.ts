@@ -22,6 +22,7 @@ import type {
   P2PConnectionOptions,
 } from "./webrtc-p2p";
 import { WebRTCConnection, createP2PConnection } from "./webrtc-p2p";
+import { safeParseJson } from "./p2p-json-validation";
 
 /**
  * Connection information for P2P handshake
@@ -47,6 +48,39 @@ export interface SignalingData {
   data: RTCSessionDescriptionInit | RTCIceCandidateInit;
   /** Sender's game code */
   senderCode: string;
+}
+
+/**
+ * Type guard validating the shape of untrusted {@link ConnectionInfo}.
+ * Rejects valid JSON that does not match the expected schema.
+ */
+export function isConnectionInfo(value: unknown): value is ConnectionInfo {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.gameCode === "string" &&
+    typeof v.hostName === "string" &&
+    typeof v.timestamp === "number"
+  );
+}
+
+/**
+ * Type guard validating the shape of untrusted {@link SignalingData}.
+ * Rejects valid JSON that does not match the expected schema.
+ */
+export function isSignalingData(value: unknown): value is SignalingData {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  return (
+    (v.type === "offer" || v.type === "answer" || v.type === "ice-candidate") &&
+    typeof v.senderCode === "string" &&
+    typeof v.data === "object" &&
+    v.data !== null
+  );
 }
 
 /**
@@ -420,19 +454,14 @@ export function createClientSignalingClient(
  * Parse connection info from QR code data
  */
 export function parseConnectionInfo(data: string): ConnectionInfo | null {
-  try {
-    const info = JSON.parse(data) as ConnectionInfo;
-
-    // Validate required fields
-    if (!info.gameCode || !info.hostName) {
-      return null;
-    }
-
-    return info;
-  } catch (error) {
-    console.error("[Signaling] Failed to parse connection info:", error);
+  const parsed = safeParseJson<ConnectionInfo>(data, isConnectionInfo);
+  if (!parsed) {
+    console.error(
+      "[Signaling] Failed to parse connection info: rejected malformed input",
+    );
     return null;
   }
+  return parsed;
 }
 
 /**
@@ -446,10 +475,12 @@ export function serializeSignalingData(data: SignalingData): string {
  * Deserialize signaling data from copy-paste
  */
 export function deserializeSignalingData(data: string): SignalingData | null {
-  try {
-    return JSON.parse(data) as SignalingData;
-  } catch (error) {
-    console.error("[Signaling] Failed to deserialize signaling data:", error);
+  const parsed = safeParseJson<SignalingData>(data, isSignalingData);
+  if (!parsed) {
+    console.error(
+      "[Signaling] Failed to deserialize signaling data: rejected malformed input",
+    );
     return null;
   }
+  return parsed;
 }

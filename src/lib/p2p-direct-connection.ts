@@ -7,15 +7,16 @@
  * and manual code entry, eliminating Firebase signaling dependency.
  */
 
-import QRCode from 'qrcode';
-import { generateGameCode } from './webrtc-p2p';
-import type { WebRTCConnection, P2PConnectionOptions } from './webrtc-p2p';
+import QRCode from "qrcode";
+import { generateGameCode } from "./webrtc-p2p";
+import type { WebRTCConnection, P2PConnectionOptions } from "./webrtc-p2p";
+import { safeParseJson } from "./p2p-json-validation";
 
 /**
  * Connection data for QR code encoding
  */
 export interface ConnectionData {
-  type: 'offer' | 'answer';
+  type: "offer" | "answer";
   sessionId: string;
   timestamp: number;
   sdp: RTCSessionDescriptionInit;
@@ -28,33 +29,73 @@ export interface ConnectionData {
  * ICE candidate data for exchange
  */
 export interface ICECandidateData {
-  type: 'ice-candidate';
+  type: "ice-candidate";
   sessionId: string;
   candidate: RTCIceCandidateInit;
+}
+
+/**
+ * Type guard validating the shape of untrusted {@link ConnectionData}.
+ * Rejects valid JSON that does not match the expected schema.
+ */
+export function isConnectionData(value: unknown): value is ConnectionData {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  return (
+    (v.type === "offer" || v.type === "answer") &&
+    typeof v.sessionId === "string" &&
+    typeof v.gameCode === "string" &&
+    typeof v.hostName === "string" &&
+    typeof v.timestamp === "number" &&
+    typeof v.sdp === "object" &&
+    v.sdp !== null
+  );
+}
+
+/**
+ * Type guard validating the shape of untrusted {@link ICECandidateData}.
+ * Rejects valid JSON that does not match the expected schema.
+ */
+export function isICECandidateData(value: unknown): value is ICECandidateData {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  return (
+    v.type === "ice-candidate" &&
+    typeof v.sessionId === "string" &&
+    typeof v.candidate === "object" &&
+    v.candidate !== null
+  );
 }
 
 /**
  * Connection state for direct P2P
  */
 export type DirectConnectionState =
-  | 'idle'
-  | 'generating-offer'
-  | 'waiting-for-answer'
-  | 'exchanging-ice'
-  | 'connected'
-  | 'failed';
+  | "idle"
+  | "generating-offer"
+  | "waiting-for-answer"
+  | "exchanging-ice"
+  | "connected"
+  | "failed";
 
 /**
  * Session manager for tracking P2P connections
  */
 class P2PSessionManager {
-  private sessions: Map<string, {
-    connection: WebRTCConnection;
-    state: DirectConnectionState;
-    connectionData: ConnectionData;
-    iceCandidates: RTCIceCandidateInit[];
-    timestamp: number;
-  }> = new Map();
+  private sessions: Map<
+    string,
+    {
+      connection: WebRTCConnection;
+      state: DirectConnectionState;
+      connectionData: ConnectionData;
+      iceCandidates: RTCIceCandidateInit[];
+      timestamp: number;
+    }
+  > = new Map();
 
   /**
    * Create a new P2P session
@@ -62,11 +103,11 @@ class P2PSessionManager {
   createSession(
     sessionId: string,
     connection: WebRTCConnection,
-    connectionData: ConnectionData
+    connectionData: ConnectionData,
   ): void {
     this.sessions.set(sessionId, {
       connection,
-      state: 'idle',
+      state: "idle",
       connectionData,
       iceCandidates: [],
       timestamp: Date.now(),
@@ -139,7 +180,10 @@ class P2PSessionManager {
   /**
    * Get all active sessions
    */
-  getActiveSessions(): Array<{ sessionId: string; state: DirectConnectionState }> {
+  getActiveSessions(): Array<{
+    sessionId: string;
+    state: DirectConnectionState;
+  }> {
     return Array.from(this.sessions.entries()).map(([sessionId, session]) => ({
       sessionId,
       state: session.state,
@@ -151,7 +195,7 @@ class P2PSessionManager {
 export const sessionManager = new P2PSessionManager();
 
 // Clean up old sessions every minute
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   setInterval(() => {
     sessionManager.cleanupOldSessions();
   }, 60 * 1000);
@@ -169,23 +213,26 @@ export async function generateConnectionQRCode(
       dark?: string;
       light?: string;
     };
-  }
+  },
 ): Promise<string> {
   const qrOptions = {
     width: options?.width || 300,
     margin: options?.margin || 2,
     color: options?.color || {
-      dark: '#000000',
-      light: '#FFFFFF',
+      dark: "#000000",
+      light: "#FFFFFF",
     },
   };
 
   try {
-    const dataUrl = await QRCode.toDataURL(JSON.stringify(connectionData), qrOptions);
+    const dataUrl = await QRCode.toDataURL(
+      JSON.stringify(connectionData),
+      qrOptions,
+    );
     return dataUrl;
   } catch (error) {
-    console.error('[P2P] Failed to generate QR code:', error);
-    throw new Error('Failed to generate connection QR code');
+    console.error("[P2P] Failed to generate QR code:", error);
+    throw new Error("Failed to generate connection QR code");
   }
 }
 
@@ -193,38 +240,28 @@ export async function generateConnectionQRCode(
  * Parse connection data from QR code or manual entry
  */
 export function parseConnectionData(input: string): ConnectionData | null {
-  try {
-    // Try parsing as JSON first (from QR code)
-    const parsed = JSON.parse(input);
-
-    // Validate structure
-    if (!parsed.type || !parsed.sessionId || !parsed.sdp || !parsed.gameCode) {
-      return null;
-    }
-
-    return parsed as ConnectionData;
-  } catch (error) {
-    console.error('[P2P] Failed to parse connection data:', error);
+  const parsed = safeParseJson<ConnectionData>(input, isConnectionData);
+  if (!parsed) {
+    console.error(
+      "[P2P] Failed to parse connection data: rejected malformed input",
+    );
     return null;
   }
+  return parsed;
 }
 
 /**
  * Parse ICE candidate data
  */
 export function parseICECandidateData(input: string): ICECandidateData | null {
-  try {
-    const parsed = JSON.parse(input);
-
-    if (!parsed.type || !parsed.sessionId || !parsed.candidate) {
-      return null;
-    }
-
-    return parsed as ICECandidateData;
-  } catch (error) {
-    console.error('[P2P] Failed to parse ICE candidate:', error);
+  const parsed = safeParseJson<ICECandidateData>(input, isICECandidateData);
+  if (!parsed) {
+    console.error(
+      "[P2P] Failed to parse ICE candidate: rejected malformed input",
+    );
     return null;
   }
+  return parsed;
 }
 
 /**
@@ -232,14 +269,23 @@ export function parseICECandidateData(input: string): ICECandidateData | null {
  */
 export async function createHostConnection(
   options: P2PConnectionOptions & {
-    onQRCodeGenerated?: (qrDataUrl: string, connectionData: ConnectionData) => void;
+    onQRCodeGenerated?: (
+      qrDataUrl: string,
+      connectionData: ConnectionData,
+    ) => void;
     onICECandidate?: (candidate: RTCIceCandidateInit) => void;
-  }
+  },
 ): Promise<WebRTCConnection> {
-  const { playerId, playerName, onQRCodeGenerated, onICECandidate, ...rtcOptions } = options;
+  const {
+    playerId,
+    playerName,
+    onQRCodeGenerated,
+    onICECandidate,
+    ...rtcOptions
+  } = options;
 
   // Create WebRTC connection
-  const connection = (await import('./webrtc-p2p')).createP2PConnection({
+  const connection = (await import("./webrtc-p2p")).createP2PConnection({
     playerId,
     playerName,
     ...rtcOptions,
@@ -258,26 +304,26 @@ export async function createHostConnection(
 
   // Create connection data for QR code
   const connectionData: ConnectionData = {
-    type: 'offer',
+    type: "offer",
     sessionId,
     timestamp: Date.now(),
     sdp: offer,
     gameCode,
     hostName: playerName,
-    format: rtcOptions.gameCode ? 'unknown' : 'commander',
+    format: rtcOptions.gameCode ? "unknown" : "commander",
   };
 
   // Create session
   sessionManager.createSession(sessionId, connection, connectionData);
-  sessionManager.updateSessionState(sessionId, 'waiting-for-answer');
+  sessionManager.updateSessionState(sessionId, "waiting-for-answer");
 
   // Generate QR code
   const qrDataUrl = await generateConnectionQRCode(connectionData);
   onQRCodeGenerated?.(qrDataUrl, connectionData);
 
   // Set up ICE candidate collection
-  const originalHandleICECandidate = connection['handleICECandidate'];
-  connection['handleICECandidate'] = (candidate: RTCIceCandidate) => {
+  const originalHandleICECandidate = connection["handleICECandidate"];
+  connection["handleICECandidate"] = (candidate: RTCIceCandidate) => {
     // Add to session
     sessionManager.addICECandidate(sessionId, candidate.toJSON());
 
@@ -287,8 +333,6 @@ export async function createHostConnection(
     // Call original handler if needed
     originalHandleICECandidate?.call(connection, candidate);
   };
-
-  
 
   return connection;
 }
@@ -301,12 +345,18 @@ export async function createClientConnection(
   options: P2PConnectionOptions & {
     onAnswerGenerated?: (answer: RTCSessionDescriptionInit) => void;
     onICECandidate?: (candidate: RTCIceCandidateInit) => void;
-  }
+  },
 ): Promise<WebRTCConnection> {
-  const { playerId, playerName, onAnswerGenerated, onICECandidate, ...rtcOptions } = options;
+  const {
+    playerId,
+    playerName,
+    onAnswerGenerated,
+    onICECandidate,
+    ...rtcOptions
+  } = options;
 
   // Create WebRTC connection
-  const connection = (await import('./webrtc-p2p')).createP2PConnection({
+  const connection = (await import("./webrtc-p2p")).createP2PConnection({
     playerId,
     playerName,
     ...rtcOptions,
@@ -318,16 +368,18 @@ export async function createClientConnection(
   await connection.initialize();
 
   // Create session
-  sessionManager.createSession(connectionData.sessionId, connection, connectionData);
-  sessionManager.updateSessionState(connectionData.sessionId, 'exchanging-ice');
+  sessionManager.createSession(
+    connectionData.sessionId,
+    connection,
+    connectionData,
+  );
+  sessionManager.updateSessionState(connectionData.sessionId, "exchanging-ice");
 
   // Handle offer
   const answer = await connection.handleOffer(connectionData.sdp);
 
   // Notify callback
   onAnswerGenerated?.(answer);
-
-  console.log('[P2P] Client connection created, answer generated...');
 
   return connection;
 }
@@ -338,7 +390,7 @@ export async function createClientConnection(
 export async function handleICEExchange(
   sessionId: string,
   candidate: RTCIceCandidateInit,
-  options: P2PConnectionOptions
+  options: P2PConnectionOptions,
 ): Promise<void> {
   const session = sessionManager.getSession(sessionId);
 
@@ -353,7 +405,9 @@ export async function handleICEExchange(
 /**
  * Generate connection string for manual entry
  */
-export function generateConnectionString(connectionData: ConnectionData): string {
+export function generateConnectionString(
+  connectionData: ConnectionData,
+): string {
   return JSON.stringify(connectionData);
 }
 
@@ -362,10 +416,10 @@ export function generateConnectionString(connectionData: ConnectionData): string
  */
 export function generateICECandidateString(
   sessionId: string,
-  candidate: RTCIceCandidateInit
+  candidate: RTCIceCandidateInit,
 ): string {
   const iceData: ICECandidateData = {
-    type: 'ice-candidate',
+    type: "ice-candidate",
     sessionId,
     candidate,
   };
@@ -382,7 +436,7 @@ export function validateConnectionData(data: ConnectionData): boolean {
   }
 
   // Check type
-  if (data.type !== 'offer' && data.type !== 'answer') {
+  if (data.type !== "offer" && data.type !== "answer") {
     return false;
   }
 
@@ -398,7 +452,9 @@ export function validateConnectionData(data: ConnectionData): boolean {
 /**
  * Get connection state for UI
  */
-export function getConnectionState(sessionId: string): DirectConnectionState | null {
+export function getConnectionState(
+  sessionId: string,
+): DirectConnectionState | null {
   const session = sessionManager.getSession(sessionId);
   return session?.state || null;
 }
@@ -407,7 +463,7 @@ export function getConnectionState(sessionId: string): DirectConnectionState | n
  * Close all P2P sessions
  */
 export function closeAllSessions(): void {
-  for (const [sessionId] of sessionManager['sessions'].entries()) {
+  for (const [sessionId] of sessionManager["sessions"].entries()) {
     sessionManager.closeSession(sessionId);
   }
 }
@@ -421,10 +477,12 @@ export function exportSessionData(): Array<{
   timestamp: number;
   iceCandidates: number;
 }> {
-  return Array.from(sessionManager['sessions'].entries()).map(([sessionId, session]) => ({
-    sessionId,
-    state: session.state,
-    timestamp: session.timestamp,
-    iceCandidates: session.iceCandidates.length,
-  }));
+  return Array.from(sessionManager["sessions"].entries()).map(
+    ([sessionId, session]) => ({
+      sessionId,
+      state: session.state,
+      timestamp: session.timestamp,
+      iceCandidates: session.iceCandidates.length,
+    }),
+  );
 }

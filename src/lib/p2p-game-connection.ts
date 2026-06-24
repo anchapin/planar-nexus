@@ -25,6 +25,7 @@ import {
   getGlobalICEManager,
   type ICEConfigOptions,
 } from "./ice-config";
+import { safeParseJson } from "./p2p-json-validation";
 
 /**
  * P2P connection events
@@ -76,6 +77,35 @@ export interface GameMessage {
   senderId: string;
   timestamp: number;
   data: unknown;
+}
+
+const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
+  "game-state-sync",
+  "game-action",
+  "chat",
+  "player-joined",
+  "player-left",
+  "ping",
+  "pong",
+]);
+
+/**
+ * Type guard validating the shape of an untrusted {@link GameMessage}.
+ * Data-channel messages come directly from peers and must be validated before
+ * use. Rejects valid JSON that does not match the expected schema.
+ */
+export function isGameMessage(value: unknown): value is GameMessage {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.type === "string" &&
+    GAME_MESSAGE_TYPES.has(v.type as GameMessageType) &&
+    typeof v.senderId === "string" &&
+    typeof v.timestamp === "number"
+    // `data` is intentionally `unknown`; handlers validate it as needed.
+  );
 }
 
 /**
@@ -436,11 +466,18 @@ export class P2PGameConnection {
 
   /**
    * Handle incoming message
-   * Wraps message parsing in try/catch to prevent malformed messages from breaking the connection
+   * Validates the parsed payload's shape to prevent malformed or attacker-
+   * controlled data from flowing into business logic. Malformed messages are
+   * rejected gracefully without breaking the connection.
    */
   private handleMessage(data: string): void {
     try {
-      const message: GameMessage = JSON.parse(data);
+      const message = safeParseJson<GameMessage>(data, isGameMessage);
+      if (!message) {
+        // Malformed JSON or wrong shape — reject without breaking the channel.
+        console.error("[P2PGameConnection] Rejected malformed peer message");
+        return;
+      }
 
       // Update remote player info
       if (this.remotePlayerId === null) {
@@ -473,8 +510,8 @@ export class P2PGameConnection {
 
       this.events.onMessage(message);
     } catch (error) {
-      console.error("[P2PGameConnection] Failed to parse message:", error);
-      // Don't break connection for parse errors, just log them
+      console.error("[P2PGameConnection] Failed to handle message:", error);
+      // Don't break connection for handler errors, just log them
     }
   }
 
