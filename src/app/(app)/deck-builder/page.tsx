@@ -436,6 +436,7 @@ export default function DeckBuilderPage() {
                   deckName={deckName}
                   onDeckNameChange={handleDeckNameChange}
                   onRemoveCard={removeCardFromDeck}
+                  onAddCard={addCardToDeck}
                 />
               </TabsContent>
               <TabsContent value="mana-curve" className="mt-4">

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { MinusCircle } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { useMemo } from "react";
 
@@ -14,13 +14,14 @@ interface DeckListProps {
   deckName: string;
   onDeckNameChange: (name: string) => void;
   onRemoveCard: (cardId: string) => void;
+  onAddCard: (card: DeckCard) => void;
 }
 
 type CategorizedDeck = {
   [key: string]: DeckCard[];
 };
 
-export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard }: DeckListProps) {
+export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard, onAddCard }: DeckListProps) {
   const totalCards = useMemo(() => deck.reduce((sum, card) => sum + card.count, 0), [deck]);
 
   const categorizedDeck = useMemo(() => {
@@ -73,11 +74,17 @@ export function DeckList({ deck, deckName, onDeckNameChange, onRemoveCard }: Dec
                                 <h4 className="font-semibold text-muted-foreground mb-2">{category} ({categoryCount})</h4>
                                 <ul className="space-y-1">
                                     {categorizedDeck[category].sort((a: DeckCard, b: DeckCard) => a.name.localeCompare(b.name)).map(card => (
-                                        <li key={card.id} className="group flex items-center justify-between text-sm p-1 rounded-md hover:bg-secondary" data-testid={`deck-item-${card.name.toLowerCase().replace(/\s+/g, '-')}`}>
-                                            <span>{card.count}x {card.name}</span>
-                                            <Button variant="ghost" size="icon" className="size-6 opacity-0 group-hover:opacity-100" onClick={() => onRemoveCard(card.id)}>
-                                                <MinusCircle className="size-4 text-destructive"/>
-                                            </Button>
+                                        <li key={card.id} className="flex items-center justify-between text-sm p-1 rounded-md hover:bg-secondary" data-testid={`deck-item-${card.name.toLowerCase().replace(/\s+/g, '-')}`}>
+                                            <span>{card.name}</span>
+                                            <div className="flex items-center gap-1">
+                                                <Button variant="ghost" size="icon" className="size-6" aria-label={`Decrease quantity of ${card.name}`} onClick={() => onRemoveCard(card.id)} data-testid={`decrease-quantity-${card.id}`}>
+                                                    <Minus className="size-4" />
+                                                </Button>
+                                                <span className="w-5 text-center tabular-nums" aria-label={`Quantity ${card.count}`}>{card.count}</span>
+                                                <Button variant="ghost" size="icon" className="size-6" aria-label={`Increase quantity of ${card.name}`} onClick={() => onAddCard(card)} data-testid={`increase-quantity-${card.id}`}>
+                                                    <Plus className="size-4" />
+                                                </Button>
+                                            </div>
                                         </li>
                                     ))}
                                 </ul>
