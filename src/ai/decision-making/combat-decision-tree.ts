@@ -82,6 +82,37 @@ function clamp01(value: number): number {
 }
 
 /**
+ * Map the coarse {@link DeckArchetype} bucket (the AI's own-deck vocabulary,
+ * also produced by the live opponent detector) onto the
+ * {@link OpponentArchetype} vocabulary that block prediction consumes.
+ *
+ * The two share aggro / control / combo / midrange. "ramp" has no direct
+ * counterpart in {@link OpponentArchetype} and is folded into "midrange"
+ * (a ramp deck blocks like a value/midrange deck); "unknown" passes through.
+ *
+ * Exported so the live turn loop can translate a *detected* opponent deck
+ * archetype into the form {@link CombatDecisionTree}'s block-prediction
+ * subsystem expects (issue #912).
+ */
+export function deckArchetypeToOpponentArchetype(
+  archetype: DeckArchetype,
+): OpponentArchetype {
+  switch (archetype) {
+    case "aggro":
+      return "aggro";
+    case "control":
+      return "control";
+    case "combo":
+      return "combo";
+    case "midrange":
+    case "ramp":
+      return "midrange";
+    default:
+      return "unknown";
+  }
+}
+
+/**
  * Card data interface for combat tricks
  * Extends the basic HandCard with combat-relevant information
  */
@@ -279,15 +310,18 @@ export class CombatDecisionTree {
   private heuristicTable: HeuristicTable;
   private lookaheadEngine: LookaheadEngine;
   private archetype: DeckArchetype;
+  private opponentArchetype: OpponentArchetype;
   constructor(
     gameState: GameState,
     aiPlayerId: string,
     difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
     archetype: DeckArchetype = "unknown",
+    opponentArchetype: OpponentArchetype = "unknown",
   ) {
     this.gameState = gameState;
     this.aiPlayerId = aiPlayerId;
     this.archetype = archetype;
+    this.opponentArchetype = opponentArchetype;
 
     const baseConfig = DefaultCombatConfigs[difficulty];
     // Wire the deck-specific playstyle weights into the live combat config.
@@ -312,6 +346,11 @@ export class CombatDecisionTree {
     } else {
       this.config = { ...baseConfig };
     }
+    // Populate the opponent-archetype signal that block prediction consumes.
+    // DefaultCombatConfigs hardcodes this to "unknown", so without an explicit
+    // override the AI could never model how the opponent will block — the
+    // signal was effectively dead code (issue #912).
+    this.config.opponentArchetype = opponentArchetype;
     this.heuristicTable = new HeuristicTable();
     this.lookaheadEngine = new LookaheadEngine(
       this.heuristicTable,
@@ -325,6 +364,15 @@ export class CombatDecisionTree {
    */
   getArchetype(): DeckArchetype {
     return this.archetype;
+  }
+
+  /**
+   * The opponent's emerging archetype, as observed from the cards they have
+   * revealed/played ("unknown" until enough information is available). Drives
+   * block-prediction weights so the AI models how the opponent will block.
+   */
+  getOpponentArchetype(): OpponentArchetype {
+    return this.opponentArchetype;
   }
 
   /**
@@ -2078,12 +2126,14 @@ export function generateAttackDecisions(
   aiPlayerId: string,
   difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
   archetype: DeckArchetype = "unknown",
+  opponentArchetype: OpponentArchetype = "unknown",
 ): CombatPlan {
   const ai = new CombatDecisionTree(
     gameState,
     aiPlayerId,
     difficulty,
     archetype,
+    opponentArchetype,
   );
   return ai.generateAttackPlan();
 }
@@ -2097,12 +2147,14 @@ export function generateBlockingDecisions(
   attackers: Permanent[],
   difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
   archetype: DeckArchetype = "unknown",
+  opponentArchetype: OpponentArchetype = "unknown",
 ): CombatPlan {
   const ai = new CombatDecisionTree(
     gameState,
     aiPlayerId,
     difficulty,
     archetype,
+    opponentArchetype,
   );
   return ai.generateBlockingPlan(attackers);
 }

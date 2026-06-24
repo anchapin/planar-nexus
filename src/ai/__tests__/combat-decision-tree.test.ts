@@ -8,10 +8,12 @@ import { describe, it, expect, beforeEach } from "@jest/globals";
 import {
   CombatDecisionTree,
   DefaultCombatConfigs,
+  deckArchetypeToOpponentArchetype,
   type CombatPlan,
   type AttackDecision,
   type BlockDecision,
 } from "../decision-making/combat-decision-tree";
+import { predictOpponentBlocks } from "../decision-making/block-prediction";
 import type {
   AIGameState,
   AIPlayerState,
@@ -829,6 +831,82 @@ describe("CombatDecisionTree", () => {
       expect(combo.generateAttackPlan().strategy).toBe("defensive");
       // midrange lifeThreshold stays at 10, so 14 life is still safe -> not defensive.
       expect(midrange.generateAttackPlan().strategy).not.toBe("defensive");
+    });
+  });
+
+  describe("live opponent-archetype detection (#912)", () => {
+    it('defaults opponentArchetype to "unknown" when none is supplied (backward compat)', () => {
+      const combatAI = new CombatDecisionTree(createTestGameState(), "player1");
+      expect(combatAI.getOpponentArchetype()).toBe("unknown");
+      expect(combatAI.getConfig().opponentArchetype).toBe("unknown");
+    });
+
+    it("stores the supplied opponent archetype and surfaces it in the config", () => {
+      const combatAI = new CombatDecisionTree(
+        createTestGameState(),
+        "player1",
+        "medium",
+        "unknown",
+        "control",
+      );
+      expect(combatAI.getOpponentArchetype()).toBe("control");
+      // Previously DefaultCombatConfigs forced this to "unknown" regardless.
+      expect(combatAI.getConfig().opponentArchetype).toBe("control");
+    });
+
+    it("keeps the AI's own archetype independent of the opponent archetype", () => {
+      const combatAI = new CombatDecisionTree(
+        createTestGameState(),
+        "player1",
+        "medium",
+        "aggro",
+        "control",
+      );
+      expect(combatAI.getArchetype()).toBe("aggro");
+      expect(combatAI.getOpponentArchetype()).toBe("control");
+    });
+
+    it("maps deck archetype buckets onto the opponent-archetype vocabulary", () => {
+      expect(deckArchetypeToOpponentArchetype("aggro")).toBe("aggro");
+      expect(deckArchetypeToOpponentArchetype("control")).toBe("control");
+      expect(deckArchetypeToOpponentArchetype("combo")).toBe("combo");
+      expect(deckArchetypeToOpponentArchetype("midrange")).toBe("midrange");
+      // ramp has no OpponentArchetype counterpart -> folds to midrange.
+      expect(deckArchetypeToOpponentArchetype("ramp")).toBe("midrange");
+      expect(deckArchetypeToOpponentArchetype("unknown")).toBe("unknown");
+    });
+
+    it("adapts block prediction to the detected opponent archetype", () => {
+      // Same attacker and potential blocker; only the opponent archetype
+      // changes. A control opponent blocks far more readily than an aggro one,
+      // so the predicted block probability and the weights consumed by the
+      // live combat tree must differ. This proves the detected opponent
+      // archetype reaches and shifts the strategy the AI plans against.
+      const attacker = createMockPermanent("a1", "Bear", "creature", 2, 2);
+      const blocker = createMockPermanent("b1", "Bear", "creature", 2, 2);
+
+      const aggroPred = predictOpponentBlocks(
+        [attacker],
+        [blocker],
+        20,
+        "aggro",
+      );
+      const controlPred = predictOpponentBlocks(
+        [attacker],
+        [blocker],
+        20,
+        "control",
+      );
+
+      // The archetype weights table is the bridge between detection and the
+      // block model — willingnessToBlock must reflect the opponent archetype.
+      expect(aggroPred.archetypeWeights.willingnessToBlock).toBeLessThan(
+        controlPred.archetypeWeights.willingnessToBlock,
+      );
+      // And the resulting block-probability feeding attack EV must differ.
+      expect(aggroPred.predictions[0].blockProbability).not.toBe(
+        controlPred.predictions[0].blockProbability,
+      );
     });
   });
 });
