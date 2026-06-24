@@ -113,8 +113,12 @@ import { CombatDecisionTree } from "@/ai/decision-making";
 // Local storage for active games
 import { savedGamesManager, createSavedGame } from "@/lib/saved-games";
 
-// Sample basic lands for deck generation
-const BASIC_LANDS = ["Plains", "Island", "Swamp", "Mountain", "Forest"];
+import {
+  BASIC_LAND_NAMES,
+  getBasicLandColor,
+  getBasicLandManaAbility,
+  getBasicLandManaAbilityByColor,
+} from "@/lib/basic-land-data";
 
 /**
  * Generate a simple deck for testing/demo purposes
@@ -125,34 +129,15 @@ function generateSimpleDeck(): ScryfallCard[] {
 
   // 24 basic lands (even distribution)
   for (let i = 0; i < 24; i++) {
-    const landName = BASIC_LANDS[i % 5];
+    const landName = BASIC_LAND_NAMES[i % 5];
     deck.push({
       id: `land-${i}`,
       name: landName,
       type_line: "Basic Land",
       mana_cost: "",
-      oracle_text:
-        landName === "Plains"
-          ? "{T}: Add {W}"
-          : landName === "Island"
-            ? "{T}: Add {U}"
-            : landName === "Swamp"
-              ? "{T}: Add {B}"
-              : landName === "Mountain"
-                ? "{T}: Add {R}"
-                : "{T}: Add {G}",
+      oracle_text: getBasicLandManaAbility(landName),
       colors: [],
-      color_identity: [
-        landName === "Plains"
-          ? "W"
-          : landName === "Island"
-            ? "U"
-            : landName === "Swamp"
-              ? "B"
-              : landName === "Mountain"
-                ? "R"
-                : "G",
-      ],
+      color_identity: [getBasicLandColor(landName)],
       legalities: { standard: "legal", modern: "legal", commander: "legal" },
       images: { normal: "", art_crop: "" },
       cmc: 0,
@@ -196,7 +181,7 @@ function createLandCard(
     name,
     type_line: "Basic Land",
     mana_cost: "",
-    oracle_text: `{T}: Add {${color}}`,
+    oracle_text: getBasicLandManaAbilityByColor(color),
     colors: [],
     color_identity: [color],
     legalities: { standard: "legal", modern: "legal", commander: "legal" },
@@ -3525,23 +3510,21 @@ function GameBoardContent() {
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-2 py-4">
-            {["Plains", "Island", "Swamp", "Mountain", "Forest"].map(
-              (landType) => (
-                <Button
-                  key={landType}
-                  variant="outline"
-                  onClick={() => handleBasicLandTypeChoice(landType)}
-                  className="justify-start h-auto py-3 px-4"
-                >
-                  <div className="text-left">
-                    <div className="font-medium">{landType}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {getBasicLandTypeDescription(landType)}
-                    </div>
+            {BASIC_LAND_NAMES.map((landType) => (
+              <Button
+                key={landType}
+                variant="outline"
+                onClick={() => handleBasicLandTypeChoice(landType)}
+                className="justify-start h-auto py-3 px-4"
+              >
+                <div className="text-left">
+                  <div className="font-medium">{landType}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {getBasicLandTypeDescription(landType)}
                   </div>
-                </Button>
-              ),
-            )}
+                </div>
+              </Button>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
