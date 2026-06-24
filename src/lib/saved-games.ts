@@ -63,15 +63,52 @@ const MAX_AUTO_SAVE_SLOTS = 3;
  */
 class SavedGamesManager {
   private initialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
 
   /**
-   * Initialize storage
+   * Initialize storage.
+   *
+   * Idempotent and race-safe: concurrent callers share the same in-flight
+   * promise so initialization only runs once. If initialization fails, the
+   * cached promise is cleared so a subsequent call can retry instead of
+   * remaining permanently rejected.
    */
-  private async initialize(): Promise<void> {
-    if (!this.initialized) {
-      await indexedDBStorage.initialize();
-      this.initialized = true;
+  private initialize(): Promise<void> {
+    // Already initialized: resolve immediately.
+    if (this.initialized) {
+      return Promise.resolve();
     }
+
+    // Initialization already in flight: piggyback on the existing promise.
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    // Start initialization and cache the promise so concurrent callers
+    // collapse onto a single in-flight initialization.
+    this.initPromise = (async () => {
+      try {
+        await indexedDBStorage.initialize();
+        this.initialized = true;
+      } catch (error) {
+        // Clear the cached promise so a later call can retry rather than
+        // being stuck with a permanently-rejected promise.
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
+  }
+
+  /**
+   * Reset internal initialization state.
+   *
+   * Intended for use in tests to isolate the shared singleton between cases.
+   */
+  _resetInitState(): void {
+    this.initPromise = null;
+    this.initialized = false;
   }
 
   /**
