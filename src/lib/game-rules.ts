@@ -668,18 +668,51 @@ export function validateSideboard(
     );
   }
 
-  // Check that sideboard cards don't exceed 4 copies
-  const cardCounts = new Map<string, number>();
+  // Enforce banned list, restricted list, and copy limits in the sideboard.
+  // Combined main+sideboard limits are enforced by validateDeckAndSideboard.
+  const bannedCards = new Set(
+    (gameMode.banList || []).map((c) => c.toLowerCase()),
+  );
+  const restrictedCards = new Set(
+    (gameMode.restrictedList || []).map((c) => c.toLowerCase()),
+  );
+
+  const cardCounts = new Map<string, { count: number; isBasic: boolean }>();
 
   sideboardCards.forEach(({ name, count }) => {
     const normalizedName = name.toLowerCase().trim();
-    const currentCount = cardCounts.get(normalizedName) || 0;
-    cardCounts.set(normalizedName, currentCount + count);
+    const isBasic = isBasicLand(name);
+    const current = cardCounts.get(normalizedName) || { count: 0, isBasic };
+    cardCounts.set(normalizedName, {
+      count: current.count + count,
+      isBasic: current.isBasic && isBasic,
+    });
   });
 
-  cardCounts.forEach((count, cardName) => {
-    if (count > 4) {
-      errors.push(`Sideboard: ${cardName} has ${count} copies, maximum is 4`);
+  cardCounts.forEach(({ count, isBasic }, cardName) => {
+    // Banned cards are never allowed in the sideboard
+    if (bannedCards.has(cardName)) {
+      errors.push(`${cardName} is banned in ${gameMode.name}`);
+      return;
+    }
+
+    // Restricted cards are limited to a single copy
+    if (restrictedCards.has(cardName)) {
+      if (count > 1) {
+        errors.push(
+          `Sideboard: ${cardName} is restricted in ${gameMode.name} - maximum 1 copy allowed`,
+        );
+      }
+      return;
+    }
+
+    // Basic lands are exempt from copy limits
+    if (isBasic) return;
+
+    if (count > rules.maxCopies) {
+      errors.push(
+        `Sideboard: ${cardName} has ${count} copies, maximum is ${rules.maxCopies}`,
+      );
     }
   });
 
@@ -687,6 +720,117 @@ export function validateSideboard(
     isValid: errors.length === 0,
     errors,
     warnings,
+  };
+}
+
+/**
+ * Validation result for a deck and its sideboard checked together.
+ */
+export interface DeckAndSideboardValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+  deckValidation: FormatValidationResult;
+  sideboardValidation: ValidationResult;
+}
+
+/**
+ * Validate a main deck together with its sideboard, enforcing the
+ * cross-list rules that per-list validators cannot catch:
+ *  - restricted cards are limited to 1 copy across main + sideboard combined
+ *  - banned cards are disallowed in both lists (delegated to per-list checks)
+ *  - non-basic-land cards are limited to maxCopies across main + sideboard combined
+ *
+ * Per-list checks (deck size, sideboard size, color identity, etc.) are
+ * delegated to validateDeckFormat and validateSideboard.
+ */
+export function validateDeckAndSideboard(
+  deckCards: {
+    name: string;
+    count: number;
+    color_identity?: string[];
+    type_line?: string;
+  }[],
+  sideboardCards: { name: string; count: number }[],
+  format: Format,
+  commander?: { name: string; color_identity: string[] },
+): DeckAndSideboardValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Validate each list independently first.
+  const deckValidation = validateDeckFormat(deckCards, format, commander);
+  const sideboardValidation = validateSideboard(sideboardCards, format);
+
+  errors.push(...deckValidation.errors, ...sideboardValidation.errors);
+  warnings.push(...deckValidation.warnings, ...sideboardValidation.warnings);
+
+  const gameModeId = getGameModeIdFromFormatName(format);
+  const gameMode = gameModes[gameModeId];
+
+  if (gameMode) {
+    const rules = gameMode.deckRules;
+    const bannedCards = new Set(
+      (gameMode.banList || []).map((c) => c.toLowerCase()),
+    );
+    const restrictedCards = new Set(
+      (gameMode.restrictedList || []).map((c) => c.toLowerCase()),
+    );
+
+    // Aggregate combined copy counts across main deck + sideboard.
+    const combined = new Map<string, { count: number; isBasic: boolean }>();
+
+    const addCards = (cards: { name: string; count: number }[]) => {
+      cards.forEach(({ name, count }) => {
+        const normalizedName = name.toLowerCase().trim();
+        const isBasic = isBasicLand(name);
+        const current = combined.get(normalizedName) || {
+          count: 0,
+          isBasic,
+        };
+        combined.set(normalizedName, {
+          count: current.count + count,
+          isBasic: current.isBasic && isBasic,
+        });
+      });
+    };
+
+    addCards(deckCards);
+    addCards(sideboardCards);
+
+    combined.forEach(({ count, isBasic }, cardName) => {
+      // Basic lands are exempt from copy limits
+      if (isBasic) return;
+
+      // Banned cards are already reported by the per-list validators;
+      // skip here to avoid duplicating the error message.
+      if (bannedCards.has(cardName)) return;
+
+      // Restricted cards: max 1 copy across main + sideboard combined
+      if (restrictedCards.has(cardName)) {
+        if (count > 1) {
+          errors.push(
+            `${cardName} is restricted in ${gameMode.name} - maximum 1 copy allowed across deck and sideboard (has ${count})`,
+          );
+        }
+        return;
+      }
+
+      // Standard copy limit across main + sideboard combined
+      if (count > rules.maxCopies) {
+        errors.push(
+          `${cardName} has ${count} copies across deck and sideboard, maximum is ${rules.maxCopies} in ${gameMode.name}`,
+        );
+      }
+    });
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+    deckValidation,
+    sideboardValidation,
   };
 }
 
