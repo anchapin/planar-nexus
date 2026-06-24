@@ -54,6 +54,8 @@ export { getEffectivePower, getEffectiveToughness } from "./layer-system";
 export * from "./replacement-examples";
 export * from "./terminology-translation";
 export * from "./phasing";
+export { shouldAutoPassPriority } from "./auto-pass-priority";
+export type { AutoPassContext } from "./auto-pass-priority";
 
 // Local exports for common functions with consistent naming
 export { tapCard, untapCard, checkStateBasedActions };
