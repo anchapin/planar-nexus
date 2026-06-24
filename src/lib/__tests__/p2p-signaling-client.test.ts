@@ -12,6 +12,8 @@ import {
   parseConnectionInfo,
   serializeSignalingData,
   deserializeSignalingData,
+  isConnectionInfo,
+  isSignalingData,
   type ConnectionInfo,
   type SignalingData,
   type SignalingEvents,
@@ -213,6 +215,37 @@ describe("parseConnectionInfo", () => {
     const result = parseConnectionInfo('{ "gameCode": invalid }');
     expect(result).toBeNull();
   });
+
+  it("should return null when gameCode has the wrong type (#924)", () => {
+    // Valid JSON, wrong shape — must not be cast as ConnectionInfo.
+    const wrongType = {
+      gameCode: 123,
+      hostName: "Host",
+      timestamp: Date.now(),
+    };
+    expect(parseConnectionInfo(JSON.stringify(wrongType))).toBeNull();
+  });
+
+  it("should return null for valid JSON scalars (#924)", () => {
+    expect(parseConnectionInfo("42")).toBeNull();
+    expect(parseConnectionInfo('"x"')).toBeNull();
+    expect(parseConnectionInfo("null")).toBeNull();
+  });
+
+  it("should never throw on attacker-controlled input (#924)", () => {
+    const payloads = [
+      "",
+      "{",
+      "}}}",
+      "undefined",
+      '{"x":',
+      String.fromCharCode(0),
+    ];
+    for (const p of payloads) {
+      expect(() => parseConnectionInfo(p)).not.toThrow();
+      expect(parseConnectionInfo(p)).toBeNull();
+    }
+  });
 });
 
 describe("serializeSignalingData", () => {
@@ -291,6 +324,72 @@ describe("deserializeSignalingData", () => {
   it("should return null for malformed JSON", () => {
     const result = deserializeSignalingData('{ "type": invalid }');
     expect(result).toBeNull();
+  });
+
+  it("should return null when shape does not match (#924)", () => {
+    // Previously this was a blind `as SignalingData` cast.
+    expect(deserializeSignalingData(JSON.stringify({ foo: "bar" }))).toBeNull();
+    expect(
+      deserializeSignalingData(
+        JSON.stringify({ type: "unknown", data: {}, senderCode: "ABC" }),
+      ),
+    ).toBeNull();
+    expect(
+      deserializeSignalingData(
+        JSON.stringify({
+          type: "offer",
+          data: "not-an-object",
+          senderCode: "ABC",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("should never throw on attacker-controlled input (#924)", () => {
+    const payloads = ["", "{", "}}}", "undefined", "null", "42", "[1,2]"];
+    for (const p of payloads) {
+      expect(() => deserializeSignalingData(p)).not.toThrow();
+      expect(deserializeSignalingData(p)).toBeNull();
+    }
+  });
+});
+
+describe("isConnectionInfo (type guard)", () => {
+  it("accepts valid connection info", () => {
+    expect(
+      isConnectionInfo({ gameCode: "ABC", hostName: "H", timestamp: 1 }),
+    ).toBe(true);
+  });
+
+  it("rejects wrong-typed fields", () => {
+    expect(isConnectionInfo({ gameCode: 1, hostName: "H", timestamp: 1 })).toBe(
+      false,
+    );
+  });
+
+  it("rejects non-objects", () => {
+    expect(isConnectionInfo(null)).toBe(false);
+    expect(isConnectionInfo("x")).toBe(false);
+  });
+});
+
+describe("isSignalingData (type guard)", () => {
+  it("accepts valid signaling data", () => {
+    expect(
+      isSignalingData({ type: "offer", data: { sdp: "x" }, senderCode: "ABC" }),
+    ).toBe(true);
+  });
+
+  it("rejects an invalid type value", () => {
+    expect(
+      isSignalingData({ type: "bogus", data: {}, senderCode: "ABC" }),
+    ).toBe(false);
+  });
+
+  it("rejects a non-object data field", () => {
+    expect(
+      isSignalingData({ type: "offer", data: "x", senderCode: "ABC" }),
+    ).toBe(false);
   });
 });
 
