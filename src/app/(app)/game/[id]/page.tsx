@@ -85,6 +85,7 @@ import {
   getTotalMana,
   canCastSpell,
   canPlayLand,
+  shouldAutoPassPriority,
   type GameState,
   type Player,
   type CardInstance,
@@ -1427,19 +1428,16 @@ function GameBoardContent() {
     );
     if (!humanPlayer || !aiPlayer) return;
 
-    // Only auto-pass when it's the AI's turn and human has priority
-    const isAITurn = gameState.turn.activePlayerId === aiPlayer.id;
-    const humanHasPriority = gameState.priorityPlayerId === humanPlayer.id;
-
-    if (!isAITurn || !humanHasPriority) return;
-
-    // Don't auto-pass during combat phases where human might want to act
-    const combatPhases = [
-      "declare_attackers",
-      "declare_blockers",
-      "combat_damage",
-    ];
-    if (combatPhases.includes(gameState.turn.currentPhase)) return;
+    // Centralized guard: never auto-pass while the stack is non-empty or the
+    // human lacks a safe window to yield. This preserves the player's ability
+    // to respond to the AI's spells/abilities (#910).
+    if (
+      !shouldAutoPassPriority(gameState, {
+        activePlayerId: aiPlayer.id,
+        humanPlayerId: humanPlayer.id,
+      })
+    )
+      return;
 
     // Short delay so user can see the phase change
     const timer = setTimeout(() => {
@@ -1456,10 +1454,14 @@ function GameBoardContent() {
       );
       if (!currentHuman || !currentAI) return;
 
-      // Re-validate conditions with latest state
-      if (latestState.turn.activePlayerId !== currentAI.id) return;
-      if (latestState.priorityPlayerId !== currentHuman.id) return;
-      if (combatPhases.includes(latestState.turn.currentPhase)) return;
+      // Re-validate conditions (incl. empty stack) with the latest state.
+      if (
+        !shouldAutoPassPriority(latestState, {
+          activePlayerId: currentAI.id,
+          humanPlayerId: currentHuman.id,
+        })
+      )
+        return;
 
       const result = passPriority(latestState, currentHuman.id);
       if (result) {
@@ -1473,6 +1475,8 @@ function GameBoardContent() {
     gameState?.priorityPlayerId,
     gameState?.turn.activePlayerId,
     gameState?.turn.currentPhase,
+    gameState?.stack.length,
+    gameState?.status,
     mode,
     isAIThinking,
     playerName,
