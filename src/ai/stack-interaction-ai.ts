@@ -21,6 +21,17 @@ import type {
   AIGameState as GameState,
   AIStackObject,
 } from "@/lib/game-state/types";
+import type {
+  GameState as EngineGameState,
+  StackObject as EngineStackObject,
+} from "@/lib/game-state/types";
+import {
+  canPayWardCost,
+  detectWardTriggers,
+  payWardCost,
+  declineWardPayment,
+  type WardTrigger,
+} from "@/lib/game-state/ward-system";
 import {
   evaluateGameState,
   ThreatAssessment,
@@ -2727,4 +2738,161 @@ export function shouldBluffHoldMana(
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   const currentEvaluation = evaluateGameState(gameState, playerId, "medium");
   return ai.shouldBluffHoldMana(context, currentEvaluation, opponentHistory);
+}
+
+// ===========================================================================
+// Ward payment decisions (CR 702.21)
+//
+// Ward is enforced at resolution time in the engine (ward-system.ts +
+// resolveTopOfStack). These helpers let the AI decide, for each warded target of
+// one of its own spells/abilities, whether paying the ward cost is worth it.
+// They operate on the canonical engine GameState so they can directly apply
+// `payWardCost` / `declineWardPayment`.
+// ===========================================================================
+
+/**
+ * Result of evaluating a single ward trigger.
+ */
+export interface WardPaymentEvaluation {
+  /** The ward trigger being evaluated. */
+  trigger: WardTrigger;
+  /** Whether the payer can currently afford the ward cost. */
+  canAfford: boolean;
+  /** Whether the AI decides to pay. */
+  shouldPay: boolean;
+  /** Human-readable rationale (useful for commentary / debugging). */
+  reasoning: string;
+}
+
+/** Below this life total the AI refuses life-based ward payments (safety). */
+const WARD_LIFE_SAFETY_FLOOR = 5;
+
+/**
+ * Decide whether the AI should pay a single ward cost.
+ *
+ * Heuristics:
+ *  - Never pay if it cannot afford the cost.
+ *  - Life ward: refuse if paying would drop the AI to or below the safety floor.
+ *  - Value test: pay when the targeted permanent is "worth it" — its mana value
+ *    is at least the ward's generic cost (so the AI isn't paying more than the
+ *    threat is worth), or it has meaningful power (a real threat/anchor).
+ *  - A valuable removal target (high CMC or power) is worth paying for; a cheap
+ *    blocker generally is not.
+ */
+export function evaluateWardPayment(
+  state: EngineGameState,
+  stackObject: EngineStackObject,
+  trigger: WardTrigger,
+): WardPaymentEvaluation {
+  const payer = state.players.get(stackObject.controllerId);
+  if (!payer) {
+    return {
+      trigger,
+      canAfford: false,
+      shouldPay: false,
+      reasoning: "Paying player not found",
+    };
+  }
+
+  const canAfford = canPayWardCost(payer, trigger.cost);
+
+  if (!canAfford) {
+    return {
+      trigger,
+      canAfford: false,
+      shouldPay: false,
+      reasoning: "Cannot afford ward cost",
+    };
+  }
+
+  const target = state.cards.get(trigger.targetCardId);
+  const targetManaValue = target?.cardData.cmc ?? 0;
+  const targetPower = Number(target?.cardData.power) || 0;
+
+  // Life safety: don't pay life down to a dangerous total.
+  if (
+    trigger.cost.kind === "life" &&
+    payer.life - trigger.cost.amount <= WARD_LIFE_SAFETY_FLOOR
+  ) {
+    return {
+      trigger,
+      canAfford: true,
+      shouldPay: false,
+      reasoning: `Refusing life payment to stay above ${WARD_LIFE_SAFETY_FLOOR} life`,
+    };
+  }
+
+  // Value test: is the targeted permanent worth the ward cost?
+  const wardGenericCost =
+    trigger.cost.kind === "mana" ? trigger.cost.generic : trigger.cost.amount;
+  const valuableByManaValue = targetManaValue >= Math.max(wardGenericCost, 3);
+  const valuableByPower = targetPower >= 3;
+
+  if (valuableByManaValue || valuableByPower) {
+    return {
+      trigger,
+      canAfford: true,
+      shouldPay: true,
+      reasoning: `Target is worth protecting against (cmc ${targetManaValue}, power ${targetPower})`,
+    };
+  }
+
+  return {
+    trigger,
+    canAfford: true,
+    shouldPay: false,
+    reasoning: `Target (cmc ${targetManaValue}, power ${targetPower}) not worth the ward cost`,
+  };
+}
+
+/**
+ * Evaluate and apply ward payment decisions for every warded target of a single
+ * AI-controlled spell/ability on the stack.
+ *
+ * @returns the updated state plus per-trigger evaluations.
+ */
+export function decideWardPayments(
+  state: EngineGameState,
+  stackObjectId: string,
+): {
+  state: EngineGameState;
+  evaluations: WardPaymentEvaluation[];
+} {
+  const stackObject = state.stack.find((s) => s.id === stackObjectId);
+  if (!stackObject) {
+    return { state, evaluations: [] };
+  }
+
+  const triggers = detectWardTriggers(state, stackObject);
+  if (triggers.length === 0) {
+    return { state, evaluations: [] };
+  }
+
+  let currentState = state;
+  const evaluations: WardPaymentEvaluation[] = [];
+
+  for (const trigger of triggers) {
+    const evaluation = evaluateWardPayment(currentState, stackObject, trigger);
+    evaluations.push(evaluation);
+
+    if (evaluation.shouldPay) {
+      const result = payWardCost(
+        currentState,
+        trigger.stackObjectId,
+        trigger.targetCardId,
+      );
+      if (result.success) {
+        currentState = result.state;
+      }
+    } else {
+      const result = declineWardPayment(
+        currentState,
+        trigger.stackObjectId,
+        trigger.targetCardId,
+      );
+      currentState = result.state;
+    }
+  }
+
+  return { state: currentState, evaluations };
 }
