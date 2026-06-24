@@ -169,6 +169,12 @@ export interface P2PEvents {
   onError: (error: Error, peerId: string) => void;
   onPeerConnected: (peerInfo: PeerInfo) => void;
   onPeerDisconnected: (peerId: string) => void;
+  /**
+   * Emitted when a reconnection ICE restart produces a new offer that the
+   * signaling layer must forward to the remote peer so renegotiation can
+   * complete. Optional — only the offerer (host) emits this.
+   */
+  onReconnectOffer?: (offer: RTCSessionDescriptionInit, peerId: string) => void;
 }
 
 /**
@@ -187,6 +193,17 @@ export interface P2PConnectionOptions {
   enableICEMonitoring?: boolean;
   /** Fallback to relay on connection failure */
   fallbackToRelay?: boolean;
+  /**
+   * Maximum number of reconnection attempts before transitioning to the
+   * terminal "failed" state. Defaults to 3.
+   */
+  maxReconnectAttempts?: number;
+  /** Base delay (ms) for exponential backoff between reconnection attempts. */
+  reconnectBaseDelayMs?: number;
+  /** Upper bound (ms) for the exponential backoff delay. */
+  reconnectMaxDelayMs?: number;
+  /** Time (ms) to wait for recovery after each ICE restart attempt. */
+  reconnectAttemptTimeoutMs?: number;
 }
 
 /**
@@ -205,6 +222,15 @@ export class WebRTCConnection {
   private events: P2PEvents;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 3;
+  private reconnectBaseDelayMs = 1000;
+  private reconnectMaxDelayMs = 16000;
+  private reconnectAttemptTimeoutMs = 15000;
+  /** Guards against overlapping reconnection cycles. */
+  private isReconnecting = false;
+  /** Pending timer for the inter-attempt backoff sleep. */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Resolvers waiting for a recovery verdict during a reconnect attempt. */
+  private recoveryWaiters: Array<(recovered: boolean) => void> = [];
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private iceManager: ICEConfigurationManager;
   private iceMonitor: ICEConnectionMonitor | null = null;
@@ -220,6 +246,10 @@ export class WebRTCConnection {
     this.gameCode = options.gameCode;
     this.enableICEMonitoring = options.enableICEMonitoring ?? true;
     this.fallbackToRelay = options.fallbackToRelay ?? true;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 3;
+    this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1000;
+    this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 16000;
+    this.reconnectAttemptTimeoutMs = options.reconnectAttemptTimeoutMs ?? 15000;
 
     // Initialize ICE configuration
     if (options.iceConfig) {
@@ -745,16 +775,15 @@ export class WebRTCConnection {
    * Handle disconnection
    */
   private handleDisconnection(): void {
+    if (this.connectionState === "failed") return;
+
     this.updateConnectionState("disconnected");
     this.stopPingInterval();
 
-    // Attempt reconnection if not exceeded max attempts
-    if (
-      this.reconnectAttempts < this.maxReconnectAttempts &&
-      this.connectionState !== "failed"
-    ) {
-      this.attemptReconnection();
-    }
+    // Kick off (or re-enter) the bounded reconnection cycle. attemptReconnection
+    // is idempotent for concurrent invocations via the isReconnecting guard and
+    // self-limits to maxReconnectAttempts.
+    void this.attemptReconnection();
   }
 
   /**
@@ -763,18 +792,189 @@ export class WebRTCConnection {
   private handleConnectionFailure(): void {
     this.updateConnectionState("failed");
     this.stopPingInterval();
-    this.events.onError(new Error("Connection failed"), "");
+    this.events.onError(
+      new Error(
+        "P2P connection failed: reconnection attempts exhausted. The peer may be unreachable.",
+      ),
+      "",
+    );
   }
 
   /**
-   * Attempt to reconnect
+   * Attempt to recover the connection after a transient ICE disconnect.
+   *
+   * Strategy: perform an ICE restart (host/offerer generates a restart offer and
+   * emits it so the signaling layer can forward it to the remote peer) and wait
+   * for recovery, retrying with exponential backoff up to maxReconnectAttempts.
+   * On success the state transitions back to "connected"; once retries are
+   * exhausted the state transitions to the terminal "failed" state with an
+   * actionable error instead of stranding the game in "reconnecting" forever.
    */
   private async attemptReconnection(): Promise<void> {
-    this.reconnectAttempts++;
+    // Never strand: a closed connection (peerConnection === null) is terminal.
+    if (this.isReconnecting) return;
+    if (!this.peerConnection || this.getConnectionState() === "failed") return;
+
+    this.isReconnecting = true;
     this.updateConnectionState("reconnecting");
 
-    // In a full implementation, this would re-establish the connection
-    // using stored offer/answer or generating new ones
+    try {
+      while (this.reconnectAttempts < this.maxReconnectAttempts) {
+        // Bail out if the connection was closed or already recovered. State is
+        // read via getConnectionState() to avoid TS narrowing the field across
+        // the awaited backoff/recovery steps below.
+        if (!this.peerConnection || this.getConnectionState() === "failed")
+          return;
+        if (this.getConnectionState() === "connected") {
+          this.reconnectAttempts = 0;
+          return;
+        }
+
+        this.reconnectAttempts++;
+
+        // Exponential backoff before this attempt (no delay on the first
+        // attempt so transient blips recover immediately).
+        await this.sleepReconnect(
+          this.getReconnectDelay(this.reconnectAttempts),
+        );
+        if (!this.peerConnection || this.getConnectionState() === "failed")
+          return;
+        if (this.getConnectionState() === "connected") {
+          this.reconnectAttempts = 0;
+          return;
+        }
+
+        try {
+          const recovered = await this.runReconnectAttempt();
+          if (recovered) {
+            this.reconnectAttempts = 0;
+            return;
+          }
+        } catch (error) {
+          this.events.onError(
+            error instanceof Error
+              ? error
+              : new Error("Reconnection attempt failed"),
+            "",
+          );
+        }
+      }
+
+      // Retries exhausted → terminal failure with an actionable error.
+      if (this.getConnectionState() !== "connected") {
+        this.handleConnectionFailure();
+      }
+    } finally {
+      this.isReconnecting = false;
+    }
+  }
+
+  /**
+   * Run a single reconnection attempt: the host (offerer) initiates an ICE
+   * restart and emits the resulting offer; the answerer refreshes its ICE
+   * configuration and waits for the host's restart offer to arrive via
+   * signaling. Both sides then wait for recovery within the attempt timeout.
+   */
+  private async runReconnectAttempt(): Promise<boolean> {
+    const pc = this.peerConnection;
+    if (!pc) return false;
+
+    if (this.isHost) {
+      // The offerer drives the restart to avoid signaling glare.
+      await this.performIceRestart();
+    } else {
+      // The answerer refreshes ICE servers and waits for the remote restart.
+      try {
+        pc.setConfiguration(this.rtcConfig);
+      } catch {
+        // setConfiguration can throw if the connection is mid-negotiation;
+        // treat as best-effort and still wait for recovery.
+      }
+    }
+
+    return this.waitForRecovery(this.reconnectAttemptTimeoutMs);
+  }
+
+  /**
+   * Perform an ICE restart: refresh the ICE configuration, generate a new offer
+   * with the iceRestart flag, apply it locally, and emit the offer so the
+   * signaling layer can forward it to the remote peer for renegotiation.
+   */
+  private async performIceRestart(): Promise<void> {
+    const pc = this.peerConnection;
+    if (!pc) return;
+
+    pc.setConfiguration(this.rtcConfig);
+    const offer = await pc.createOffer({ iceRestart: true });
+    await pc.setLocalDescription(offer);
+
+    this.events.onReconnectOffer?.(offer, "");
+  }
+
+  /**
+   * Exponential backoff delay for the nth reconnection attempt. The first
+   * attempt has no delay; subsequent attempts back off exponentially up to the
+   * configured maximum.
+   */
+  private getReconnectDelay(attempt: number): number {
+    if (attempt <= 1) return 0;
+    const exp = this.reconnectBaseDelayMs * 2 ** (attempt - 2);
+    return Math.min(exp, this.reconnectMaxDelayMs);
+  }
+
+  /**
+   * Promise-based sleep used for inter-attempt backoff. Tracks the timer so it
+   * can be cancelled when the connection is closed.
+   */
+  private sleepReconnect(ms: number): Promise<void> {
+    if (ms <= 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        resolve();
+      }, ms);
+    });
+  }
+
+  /**
+   * Wait for the connection to recover to "connected" within the given timeout.
+   * Resolves true on recovery, false on timeout or terminal failure.
+   */
+  private waitForRecovery(timeoutMs: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      if (this.connectionState === "connected") {
+        resolve(true);
+        return;
+      }
+
+      let settled = false;
+      const finish = (result: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.recoveryWaiters = this.recoveryWaiters.filter(
+          (w) => w !== resolveWaiter,
+        );
+        resolve(result);
+      };
+      // resolveWaiter is invoked by updateConnectionState() when the state
+      // transitions to "connected" or "failed".
+      const resolveWaiter = finish;
+      this.recoveryWaiters.push(resolveWaiter);
+      const timer = setTimeout(
+        () => finish(this.connectionState === "connected"),
+        timeoutMs,
+      );
+    });
+  }
+
+  /**
+   * Resolve any pending recovery waiters with the given verdict.
+   */
+  private notifyRecoveryWaiters(recovered: boolean): void {
+    const waiters = this.recoveryWaiters;
+    this.recoveryWaiters = [];
+    waiters.forEach((w) => w(recovered));
   }
 
   /**
@@ -783,6 +983,12 @@ export class WebRTCConnection {
   private updateConnectionState(state: P2PConnectionState): void {
     this.connectionState = state;
     this.events.onConnectionStateChange(state, "");
+
+    if (state === "connected") {
+      this.notifyRecoveryWaiters(true);
+    } else if (state === "failed") {
+      this.notifyRecoveryWaiters(false);
+    }
   }
 
   /**
@@ -803,6 +1009,19 @@ export class WebRTCConnection {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
+  }
+
+  /**
+   * Cancel any in-flight reconnection cycle: clear the backoff timer and fail
+   * any pending recovery waiters so the reconnection promise settles.
+   */
+  private cancelReconnection(): void {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.isReconnecting = false;
+    this.notifyRecoveryWaiters(false);
   }
 
   /**
@@ -958,6 +1177,7 @@ export class WebRTCConnection {
    */
   close(): void {
     this.stopPingInterval();
+    this.cancelReconnection();
 
     // Clean up ICE monitor
     if (this.iceMonitor) {
