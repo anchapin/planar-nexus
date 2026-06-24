@@ -27,7 +27,12 @@ async function navigateViaSidebar(
     .getByRole("link", { name: linkName, exact: true })
     .click();
 
-  await expect(page).toHaveURL(urlRegex);
+  // Generous timeout: in CI the first navigation to a heavy route (e.g. Deck
+  // Builder, with its AI assistant + card search) triggers a Next.js dev
+  // compile that can exceed Playwright's default 5s `expect` timeout, causing
+  // a spurious failure even though the nav link works. 30s is well within the
+  // job budget and only bites on the (cached-after-first-hit) compile.
+  await expect(page).toHaveURL(urlRegex, { timeout: 30000 });
   await expect(
     page.getByRole("heading", { name: headingName, level: 1, exact: true }),
   ).toBeVisible();
