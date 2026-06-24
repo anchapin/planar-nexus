@@ -46,6 +46,7 @@ export type TriggerEvent =
   | "endOfTurn"
   | "spellCast"
   | "upkeep"
+  | "untapStep"
   | "phaseEnds"
   | "turnEnds"
   | "turnBegins"

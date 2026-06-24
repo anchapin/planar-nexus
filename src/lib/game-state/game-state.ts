@@ -37,6 +37,8 @@ import {
   type StateBasedActionResult,
 } from "./state-based-actions";
 import { hasLifelink } from "./evergreen-keywords";
+import { detectUntapStepTriggers, putTriggersOnStack } from "./trigger-system";
+import type { TriggeredAbilityInstance } from "./abilities";
 
 export { castSpell, resolveTopOfStack };
 
@@ -422,6 +424,82 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
 }
 
 /**
+ * Result of processing the discrete untap step.
+ */
+export interface UntapStepResult {
+  state: GameState;
+  /** "Beginning of untap step" triggers that were put on the stack (CR 502.3) */
+  triggeredAbilities: TriggeredAbilityInstance[];
+  /** Human-readable descriptions of the triggers */
+  descriptions: string[];
+}
+
+/**
+ * Process the discrete UNTAP step (CR 502).
+ *
+ * This is the single hook point for the untap step. It:
+ *   1. Fires "at the beginning of your untap step" triggered abilities (CR 502.3).
+ *   2. Determines which permanents the active player controls untap, respecting
+ *      untap-modifying effects such as "doesn't untap during your untap step"
+ *      (`doesNotUntapDuringUntapStep`) (CR 502.2).
+ *   3. Untaps those permanents (CR 502.3).
+ *   4. Clears summoning sickness for the active player's permanents (CR 302.3).
+ *
+ * Per CR 502.3 no player receives priority during the untap step; triggers detected
+ * here are put on the stack and receive priority at the start of the upkeep step.
+ */
+export function processUntapStep(state: GameState): UntapStepResult {
+  const activePlayerId = state.turn.activePlayerId;
+  const battlefieldZoneKey = `${activePlayerId}-battlefield`;
+  const battlefield = state.zones.get(battlefieldZoneKey);
+
+  // 1. Fire "beginning of untap step" triggers (CR 502.3)
+  const triggers = detectUntapStepTriggers(state, activePlayerId);
+  let currentState = state;
+  let descriptions: string[] = [];
+  if (triggers.length > 0) {
+    const triggerResult = putTriggersOnStack(state, triggers);
+    currentState = triggerResult.state;
+    descriptions = triggerResult.descriptions;
+  }
+
+  // 2 & 3. Untap permanents respecting untap-modifying effects (CR 502.2), and
+  //        clear summoning sickness at start of controller's turn (CR 302.3)
+  const updatedCards = new Map(currentState.cards);
+  if (battlefield) {
+    for (const cardId of battlefield.cardIds) {
+      const card = updatedCards.get(cardId);
+      if (!card) continue;
+
+      // Untap-modifying effect: "doesn't untap during your untap step" (CR 502.2)
+      if (card.doesNotUntapDuringUntapStep) continue;
+
+      let updatedCard = card;
+      if (card.isTapped) {
+        updatedCard = untapCard(updatedCard);
+      }
+      if (card.hasSummoningSickness) {
+        updatedCard = { ...updatedCard, hasSummoningSickness: false };
+      }
+
+      if (updatedCard !== card) {
+        updatedCards.set(cardId, updatedCard);
+      }
+    }
+  }
+
+  return {
+    state: {
+      ...currentState,
+      cards: updatedCards,
+      lastModifiedAt: Date.now(),
+    },
+    triggeredAbilities: triggers,
+    descriptions,
+  };
+}
+
+/**
  * Advance to the next phase
  */
 function advanceToNextPhase(state: GameState): GameState {
@@ -454,31 +532,17 @@ function advanceToNextPhase(state: GameState): GameState {
 
     const newTurn = startNextTurn(state.turn, nextPlayerId, false);
 
-    // Untap all permanents and clear summoning sickness for the new active player
-    const battlefieldZoneKey = `${nextPlayerId}-battlefield`;
-    const battlefield = newState.zones.get(battlefieldZoneKey);
-    const updatedCards = new Map(newState.cards);
-    if (battlefield) {
-      for (const cardId of battlefield.cardIds) {
-        const card = updatedCards.get(cardId);
-        if (card) {
-          let updatedCard = card;
-
-          // Untap if tapped
-          if (card.isTapped) {
-            updatedCard = untapCard(updatedCard);
-          }
-          // Clear summoning sickness at start of controller's turn (CR 302.3)
-          if (card.hasSummoningSickness) {
-            updatedCard = { ...updatedCard, hasSummoningSickness: false };
-          }
-
-          if (updatedCard !== card) {
-            updatedCards.set(cardId, updatedCard);
-          }
-        }
-      }
-    }
+    // The new turn begins at the UNTAP step. Process it as a discrete step:
+    // fire "beginning of untap step" triggers, untap permanents (respecting
+    // untap-modifying effects), and clear summoning sickness (CR 502, CR 302.3).
+    const untapResult = processUntapStep({
+      ...newState,
+      turn: newTurn,
+      priorityPlayerId: nextPlayerId,
+    });
+    const resultState = untapResult.state;
+    const updatedCards = new Map(resultState.cards);
+    updatedPlayers = new Map(resultState.players);
 
     // Reset land plays for all players at the start of a new turn
     for (const playerId of updatedPlayers.keys()) {
@@ -488,7 +552,7 @@ function advanceToNextPhase(state: GameState): GameState {
 
     // Reset Boast tracking (CR 702.131) - clear attackedLastTurn for all creatures
     // so that at the next upkeep we can check if creature attacked "previous turn"
-    for (const cardId of newState.zones.get(`${nextPlayerId}-battlefield`)
+    for (const cardId of resultState.zones.get(`${nextPlayerId}-battlefield`)
       ?.cardIds || []) {
       const card = updatedCards.get(cardId);
       if (card && card.attackedLastTurn) {
@@ -497,11 +561,9 @@ function advanceToNextPhase(state: GameState): GameState {
     }
 
     return {
-      ...newState,
-      turn: newTurn,
+      ...resultState,
       players: updatedPlayers,
       cards: updatedCards,
-      priorityPlayerId: nextPlayerId,
     };
   }
 

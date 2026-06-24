@@ -32,6 +32,7 @@ import type { TriggeredAbilityInstance } from "./abilities";
  */
 export enum TriggerConditionType {
   TURN_START = "turnStart", // Beginning of turn (upkeep triggers)
+  UNTAP_STEP = "untapStep", // Beginning of the untap step (CR 502.3)
   TURN_END = "turnEnd", // End of turn
   DAMAGE_DEALT = "damageDealt", // When damage is dealt
   CREATURE_DIES = "creatureDies", // When a creature dies
@@ -126,6 +127,64 @@ export function detectTurnStartTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           context: context as any, // Cast to existing TriggerContext type
+        });
+      }
+    }
+  }
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
+}
+
+/**
+ * Detect "beginning of your untap step" triggers (CR 502.3, CR 603.2).
+ *
+ * Called at the start of the discrete untap step. This is the hook point for
+ * triggered abilities worded "At the beginning of your untap step, ...".
+ *
+ * Note: no player receives priority during the untap step (CR 502.3), so these
+ * triggers are put on the stack and will receive priority during the upkeep step.
+ */
+export function detectUntapStepTriggers(
+  state: GameState,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  for (const [cardId, card] of state.cards) {
+    if (!isOnBattlefield(state, cardId)) continue;
+
+    const abilities = getTriggeredAbilitiesFromCard(card.cardData);
+    for (const ability of abilities) {
+      if (ability.trigger.event === "untapStep") {
+        // "At the beginning of YOUR untap step" — only the active player's controller fires
+        if (card.controllerId !== activePlayerId) continue;
+
+        // Check intervening "if" conditions (CR 603.4)
+        if (ability.interveningIf) {
+          if (
+            !evaluateStateCondition(
+              ability.interveningIf,
+              state,
+              card.controllerId,
+            )
+          ) {
+            continue;
+          }
+        }
+
+        const context: TriggerDetectionContext = {
+          triggerType: TriggerConditionType.UNTAP_STEP,
+        };
+
+        triggers.push({
+          id: generateTriggeredAbilityId(),
+          sourceCardId: cardId,
+          triggeringPlayerId: card.controllerId,
+          triggerCondition: ability.trigger.event,
+          effect: ability.effect,
+          timestamp: Date.now(),
+          sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          context: context as any,
         });
       }
     }
@@ -715,7 +774,9 @@ function getTriggeredAbilitiesFromCard(
   // This would be replaced with proper oracle text parsing in production
 
   // Match "When X..." / "Whenever X..." / "At X..."
-  const triggerRegex = /(when|whenever|at)\s+(.+?),?\s*(.+?)(?:\.|$)/gi;
+  // Require a comma separator between the trigger clause and its effect (standard
+  // MTG oracle wording). The clause is group 2, the effect is group 3.
+  const triggerRegex = /(when|whenever|at)\s+(.+?),\s*(.+?)(?:\.|$)/gi;
   let match;
 
   while ((match = triggerRegex.exec(oracleText)) !== null) {
@@ -752,6 +813,14 @@ function getTriggeredAbilitiesFromCard(
     ) {
       abilities.push({
         trigger: { event: "damageDealt" },
+        effect: effect.trim(),
+      });
+    } else if (
+      triggerClause.includes("beginning of your untap") ||
+      triggerClause.includes("beginning of your untap step")
+    ) {
+      abilities.push({
+        trigger: { event: "untapStep" },
         effect: effect.trim(),
       });
     } else if (
