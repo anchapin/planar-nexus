@@ -290,14 +290,17 @@ npm run test:watch
 
 #### Coverage Goals
 
-The project enforces the following coverage thresholds:
+The project **target** is 70% coverage across all metrics. The CI-enforced floor
+(see `jest.config.js` `coverageThreshold`) is set just below currently-measured
+coverage so the gate catches regressions without being flaky; it will be raised
+toward the 70% target as coverage improves.
 
-| Metric     | Target |
-| ---------- | ------ |
-| Lines      | 70%    |
-| Functions  | 70%    |
-| Statements | 70%    |
-| Branches   | 60%    |
+| Metric     | Target | CI-enforced floor |
+| ---------- | ------ | ----------------- |
+| Lines      | 70%    | 29%               |
+| Functions  | 70%    | 23%               |
+| Statements | 70%    | 29%               |
+| Branches   | 60%    | 22%               |
 
 Coverage reports are generated in:
 
