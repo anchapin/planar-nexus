@@ -10,8 +10,8 @@
  * - Backward compatibility with localStorage
  */
 
-import type { DeckCard } from '@/app/actions';
-import { indexedDBStorage, StoredDeck } from './indexeddb-storage';
+import type { DeckCard } from "@/app/actions";
+import { indexedDBStorage, StoredDeck } from "./indexeddb-storage";
 
 // ============================================================================
 // TYPES
@@ -50,7 +50,7 @@ export interface Deck {
 // STORAGE KEYS
 // ============================================================================
 
-const STORAGE_KEY = 'planar_nexus_decks';
+const STORAGE_KEY = "planar_nexus_decks";
 
 /**
  * Stored deck schema (matching indexeddb-storage.ts)
@@ -96,15 +96,52 @@ interface StoredDeckCard {
  */
 class DeckStorageManager {
   private initialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
 
   /**
-   * Initialize storage
+   * Initialize storage.
+   *
+   * Idempotent and race-safe: concurrent callers share the same in-flight
+   * promise so initialization only runs once. If initialization fails, the
+   * cached promise is cleared so a subsequent call can retry instead of
+   * remaining permanently rejected.
    */
-  private async initialize(): Promise<void> {
-    if (!this.initialized) {
-      await indexedDBStorage.initialize();
-      this.initialized = true;
+  private initialize(): Promise<void> {
+    // Already initialized: resolve immediately.
+    if (this.initialized) {
+      return Promise.resolve();
     }
+
+    // Initialization already in flight: piggyback on the existing promise.
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    // Start initialization and cache the promise so concurrent callers
+    // collapse onto a single in-flight initialization.
+    this.initPromise = (async () => {
+      try {
+        await indexedDBStorage.initialize();
+        this.initialized = true;
+      } catch (error) {
+        // Clear the cached promise so a later call can retry rather than
+        // being stuck with a permanently-rejected promise.
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
+  }
+
+  /**
+   * Reset internal initialization state.
+   *
+   * Intended for use in tests to isolate the shared singleton between cases.
+   */
+  _resetInitState(): void {
+    this.initPromise = null;
+    this.initialized = false;
   }
 
   /**
@@ -119,10 +156,12 @@ class DeckStorageManager {
         colors: card.colors || [],
         color_identity: card.color_identity,
         type_line: card.type_line,
-        image_uris: card.image_uris ? {
-          normal: card.image_uris.normal,
-          large: card.image_uris.large,
-        } : undefined,
+        image_uris: card.image_uris
+          ? {
+              normal: card.image_uris.normal,
+              large: card.image_uris.large,
+            }
+          : undefined,
         oracle_text: card.oracle_text,
         mana_cost: card.mana_cost,
         keywords: card.keywords,
@@ -150,17 +189,19 @@ class DeckStorageManager {
       id: stored.id,
       name: stored.name,
       format: stored.format,
-      cards: stored.cards.map(storedCard => {
+      cards: stored.cards.map((storedCard) => {
         const card = storedCard.card as unknown as DeckCard;
         // Reconstruct image_uris with all required fields
-        const image_uris = storedCard.card.image_uris ? {
-          small: storedCard.card.image_uris.normal || '',
-          normal: storedCard.card.image_uris.normal || '',
-          large: storedCard.card.image_uris.large || '',
-          png: storedCard.card.image_uris.large || '',
-          art_crop: storedCard.card.image_uris.large || '',
-          border_crop: storedCard.card.image_uris.large || '',
-        } : undefined;
+        const image_uris = storedCard.card.image_uris
+          ? {
+              small: storedCard.card.image_uris.normal || "",
+              normal: storedCard.card.image_uris.normal || "",
+              large: storedCard.card.image_uris.large || "",
+              png: storedCard.card.image_uris.large || "",
+              art_crop: storedCard.card.image_uris.large || "",
+              border_crop: storedCard.card.image_uris.large || "",
+            }
+          : undefined;
         return {
           ...card,
           image_uris,
@@ -178,16 +219,19 @@ class DeckStorageManager {
    * Get all decks
    */
   async getAllDecks(): Promise<Deck[]> {
-    if (typeof window === 'undefined') return [];
+    if (typeof window === "undefined") return [];
 
     try {
       await this.initialize();
-      const storedDecks = await indexedDBStorage.getAll<StoredDeck>('decks');
+      const storedDecks = await indexedDBStorage.getAll<StoredDeck>("decks");
       return storedDecks
         .map(this.fromStoredDeck)
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        );
     } catch (error) {
-      console.error('Failed to get decks from IndexedDB:', error);
+      console.error("Failed to get decks from IndexedDB:", error);
 
       // Fallback to localStorage
       try {
@@ -197,7 +241,7 @@ class DeckStorageManager {
         const decks = JSON.parse(stored);
         return Array.isArray(decks) ? decks : [];
       } catch (e) {
-        console.error('Failed to parse decks from localStorage:', e);
+        console.error("Failed to parse decks from localStorage:", e);
         return [];
       }
     }
@@ -209,14 +253,14 @@ class DeckStorageManager {
   async getDeck(id: string): Promise<Deck | null> {
     try {
       await this.initialize();
-      const storedDeck = await indexedDBStorage.get<StoredDeck>('decks', id);
+      const storedDeck = await indexedDBStorage.get<StoredDeck>("decks", id);
       return storedDeck ? this.fromStoredDeck(storedDeck) : null;
     } catch (error) {
-      console.error('Failed to get deck from IndexedDB:', error);
+      console.error("Failed to get deck from IndexedDB:", error);
 
       // Fallback to localStorage
       const decks = await this.getAllDecks();
-      return decks.find(d => d.id === id) || null;
+      return decks.find((d) => d.id === id) || null;
     }
   }
 
@@ -232,16 +276,16 @@ class DeckStorageManager {
     try {
       await this.initialize();
       const storedDeck = this.toStoredDeck(deckToSave);
-      await indexedDBStorage.set('decks', storedDeck);
+      await indexedDBStorage.set("decks", storedDeck);
       return deckToSave;
     } catch (error) {
-      console.error('Failed to save deck to IndexedDB:', error);
+      console.error("Failed to save deck to IndexedDB:", error);
 
       // Fallback to localStorage
       const decks = await this.getAllDecks();
 
       // Check if deck with same ID exists
-      const existingIndex = decks.findIndex(d => d.id === deckToSave.id);
+      const existingIndex = decks.findIndex((d) => d.id === deckToSave.id);
 
       if (existingIndex >= 0) {
         // Update existing
@@ -259,7 +303,11 @@ class DeckStorageManager {
   /**
    * Create a new deck
    */
-  async createDeck(name: string, format: string, cards: DeckCard[]): Promise<Deck> {
+  async createDeck(
+    name: string,
+    format: string,
+    cards: DeckCard[],
+  ): Promise<Deck> {
     const now = new Date().toISOString();
     const deck: Deck = {
       id: `deck-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -277,7 +325,10 @@ class DeckStorageManager {
   /**
    * Update an existing deck
    */
-  async updateDeck(id: string, updates: Partial<Omit<Deck, 'id' | 'createdAt'>>): Promise<Deck | null> {
+  async updateDeck(
+    id: string,
+    updates: Partial<Omit<Deck, "id" | "createdAt">>,
+  ): Promise<Deck | null> {
     const deck = await this.getDeck(id);
     if (!deck) return null;
 
@@ -298,14 +349,14 @@ class DeckStorageManager {
   async deleteDeck(id: string): Promise<boolean> {
     try {
       await this.initialize();
-      await indexedDBStorage.delete('decks', id);
+      await indexedDBStorage.delete("decks", id);
       return true;
     } catch (error) {
-      console.error('Failed to delete deck from IndexedDB:', error);
+      console.error("Failed to delete deck from IndexedDB:", error);
 
       // Fallback to localStorage
       const decks = await this.getAllDecks();
-      const filteredDecks = decks.filter(d => d.id !== id);
+      const filteredDecks = decks.filter((d) => d.id !== id);
 
       if (filteredDecks.length === decks.length) {
         return false; // No deck was deleted
@@ -345,13 +396,13 @@ class DeckStorageManager {
     const decks = await this.getAllDecks();
 
     return decks.filter(
-      deck =>
+      (deck) =>
         deck.name.toLowerCase().includes(lowerQuery) ||
         deck.format.toLowerCase().includes(lowerQuery) ||
-        deck.metadata?.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
-        deck.cards.some(
-          card => card.name.toLowerCase().includes(lowerQuery)
-        )
+        deck.metadata?.tags?.some((tag) =>
+          tag.toLowerCase().includes(lowerQuery),
+        ) ||
+        deck.cards.some((card) => card.name.toLowerCase().includes(lowerQuery)),
     );
   }
 
@@ -360,7 +411,7 @@ class DeckStorageManager {
    */
   async filterByFormat(format: string): Promise<Deck[]> {
     const decks = await this.getAllDecks();
-    return decks.filter(d => d.format === format);
+    return decks.filter((d) => d.format === format);
   }
 
   /**
@@ -369,12 +420,12 @@ class DeckStorageManager {
   async getDeckCount(): Promise<number> {
     try {
       await this.initialize();
-      return await indexedDBStorage.count('decks');
+      return await indexedDBStorage.count("decks");
     } catch (error) {
-      console.error('Failed to get deck count:', error);
+      console.error("Failed to get deck count:", error);
 
       // Fallback to localStorage
-      if (typeof window === 'undefined') return 0;
+      if (typeof window === "undefined") return 0;
       const stored = localStorage.getItem(STORAGE_KEY);
       if (!stored) return 0;
       try {
@@ -393,11 +444,13 @@ class DeckStorageManager {
     const deck = await this.getDeck(id);
     if (!deck) return;
 
-    const blob = new Blob([JSON.stringify(deck, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(deck, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `deck-${deck.name.replace(/\s+/g, '-')}.json`;
+    a.download = `deck-${deck.name.replace(/\s+/g, "-")}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -419,7 +472,7 @@ class DeckStorageManager {
 
       return this.saveDeck(deck);
     } catch (error) {
-      console.error('Failed to import deck:', error);
+      console.error("Failed to import deck:", error);
       return null;
     }
   }
@@ -430,17 +483,17 @@ class DeckStorageManager {
   async clearAllDecks(): Promise<void> {
     try {
       await this.initialize();
-      await indexedDBStorage.clear('decks');
+      await indexedDBStorage.clear("decks");
 
       // Also clear localStorage for backward compatibility
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         localStorage.removeItem(STORAGE_KEY);
       }
     } catch (error) {
-      console.error('Failed to clear decks:', error);
+      console.error("Failed to clear decks:", error);
 
       // Fallback to localStorage
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         localStorage.removeItem(STORAGE_KEY);
       }
     }
@@ -450,7 +503,7 @@ class DeckStorageManager {
    * Save decks to localStorage (fallback)
    */
   private saveDecksToLocalStorage(decks: Deck[]): void {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(decks));
   }
 }
@@ -480,13 +533,14 @@ export function calculateDeckStats(deck: Deck): {
   const totalCards = deck.cards.reduce((sum, card) => sum + card.count, 0);
   const uniqueCards = deck.cards.length;
   const averageCMC =
-    deck.cards.reduce((sum, card) => sum + (card.cmc || 0) * card.count, 0) / totalCards;
+    deck.cards.reduce((sum, card) => sum + (card.cmc || 0) * card.count, 0) /
+    totalCards;
 
   // Calculate color identity
   const colorSet = new Set<string>();
   for (const card of deck.cards) {
     if (card.color_identity) {
-      card.color_identity.forEach(color => colorSet.add(color));
+      card.color_identity.forEach((color) => colorSet.add(color));
     }
   }
   const colorIdentity = Array.from(colorSet);
@@ -503,7 +557,7 @@ export function calculateDeckStats(deck: Deck): {
  * Format deck size
  */
 export function formatDeckSize(count: number): string {
-  return `${count} card${count === 1 ? '' : 's'}`;
+  return `${count} card${count === 1 ? "" : "s"}`;
 }
 
 /**
@@ -517,36 +571,36 @@ export function validateDeckFormat(deck: Deck): {
 
   // Basic validation
   if (deck.cards.length === 0) {
-    errors.push('Deck must contain at least one card');
+    errors.push("Deck must contain at least one card");
   }
 
   const totalCards = deck.cards.reduce((sum, card) => sum + card.count, 0);
 
   // Format-specific validation
   switch (deck.format.toLowerCase()) {
-    case 'commander':
+    case "commander":
       if (totalCards !== 100) {
-        errors.push('Commander decks must have exactly 100 cards');
+        errors.push("Commander decks must have exactly 100 cards");
       }
       break;
-    case 'standard':
-    case 'modern':
-    case 'pioneer':
-    case 'historic':
+    case "standard":
+    case "modern":
+    case "pioneer":
+    case "historic":
       if (totalCards < 60) {
         errors.push(`${deck.format} decks must have at least 60 cards`);
       }
       break;
-    case 'pauper': {
+    case "pauper": {
       if (totalCards < 60) {
-        errors.push('Pauper decks must have at least 60 cards');
+        errors.push("Pauper decks must have at least 60 cards");
       }
       // Check that all cards are common
       const uncommonOrBetter = deck.cards.filter(
-        card => card.rarity && card.rarity !== 'common'
+        (card) => card.rarity && card.rarity !== "common",
       );
       if (uncommonOrBetter.length > 0) {
-        errors.push('Pauper decks can only contain common cards');
+        errors.push("Pauper decks can only contain common cards");
       }
       break;
     }
