@@ -12,20 +12,16 @@
 
 "use client";
 
-import { useState, useRef } from 'react';
-import { Button } from '@/components/ui/button';
+import { useState, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert';
+} from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -34,15 +30,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
 import {
   Download,
   Upload,
@@ -51,12 +42,14 @@ import {
   AlertTriangle,
   CheckCircle,
   Loader2,
-} from 'lucide-react';
+  Layers,
+  FileStack,
+} from "lucide-react";
 import {
   useStorageBackup,
   validateBackupFile,
   getBackupMetadata,
-} from '@/hooks/use-storage-backup';
+} from "@/hooks/use-storage-backup";
 
 /**
  * Storage Backup Manager Component
@@ -68,6 +61,9 @@ export function StorageBackupManager() {
     error,
     quota,
     isInitialized,
+    backupMode,
+    setBackupMode,
+    lastIncrementalResult,
     exportData,
     importData,
     clearAllData,
@@ -79,6 +75,8 @@ export function StorageBackupManager() {
     storageUsage,
     storageQuota,
     storagePercentage,
+    hasIncrementalBaseline,
+    lastBackupAt,
   } = useStorageBackup();
 
   const [importFile, setImportFile] = useState<File | null>(null);
@@ -95,7 +93,7 @@ export function StorageBackupManager() {
 
     const isValid = await validateBackupFile(importFile);
     if (!isValid) {
-      alert('Invalid backup file. Please select a valid Planar Nexus backup.');
+      alert("Invalid backup file. Please select a valid Planar Nexus backup.");
       return;
     }
 
@@ -120,7 +118,7 @@ export function StorageBackupManager() {
     reset();
     setImportFile(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
@@ -178,9 +176,10 @@ export function StorageBackupManager() {
               <HardDrive className="h-4 w-4" />
               <AlertTitle>Storage Information</AlertTitle>
               <AlertDescription>
-                Your data is stored locally using IndexedDB, which provides better
-                performance and larger storage capacity than localStorage. You can
-                export your data at any time to create a backup file.
+                Your data is stored locally using IndexedDB, which provides
+                better performance and larger storage capacity than
+                localStorage. You can export your data at any time to create a
+                backup file.
               </AlertDescription>
             </Alert>
           </TabsContent>
@@ -188,11 +187,74 @@ export function StorageBackupManager() {
           {/* Backup Tab */}
           <TabsContent value="backup" className="space-y-4">
             <div className="space-y-4">
+              {/* Backup mode selector */}
               <div>
-                <h3 className="text-sm font-medium mb-2">Export Data</h3>
+                <h3 className="text-sm font-medium mb-2">Backup Mode</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={backupMode === "full" ? "default" : "outline"}
+                    onClick={() => setBackupMode("full")}
+                    disabled={isProcessing}
+                    className="w-full justify-start"
+                  >
+                    <HardDrive className="mr-2 h-4 w-4" />
+                    Full
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      backupMode === "incremental" ? "default" : "outline"
+                    }
+                    onClick={() => setBackupMode("incremental")}
+                    disabled={isProcessing}
+                    className="w-full justify-start"
+                  >
+                    <Layers className="mr-2 h-4 w-4" />
+                    Incremental
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {backupMode === "incremental" ? (
+                    <>
+                      Exports only decks and games changed since the last
+                      backup.{" "}
+                      {hasIncrementalBaseline ? (
+                        <>
+                          Last backup:{" "}
+                          <span className="font-medium">
+                            {lastBackupAt
+                              ? new Date(lastBackupAt).toLocaleString()
+                              : "unknown"}
+                          </span>
+                          .
+                        </>
+                      ) : (
+                        <span className="font-medium">
+                          No previous backup — this first incremental will
+                          include all current data as a baseline.
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      Exports all decks, saved games, and preferences as a
+                      complete snapshot.
+                    </>
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-medium mb-2">
+                  {backupMode === "incremental"
+                    ? "Export Incremental Backup"
+                    : "Export Data"}
+                </h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Create a backup file containing all your decks, saved games, and
-                  preferences.
+                  {backupMode === "incremental"
+                    ? "Download only the records that changed since the last backup."
+                    : "Create a backup file containing all your decks, saved games, and preferences."}
                 </p>
                 <Button
                   onClick={handleExport}
@@ -204,6 +266,11 @@ export function StorageBackupManager() {
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Exporting...
                     </>
+                  ) : backupMode === "incremental" ? (
+                    <>
+                      <FileStack className="mr-2 h-4 w-4" />
+                      Export Incremental Backup
+                    </>
                   ) : (
                     <>
                       <Download className="mr-2 h-4 w-4" />
@@ -213,7 +280,28 @@ export function StorageBackupManager() {
                 </Button>
               </div>
 
-              {isComplete && (
+              {isComplete &&
+                lastIncrementalResult &&
+                backupMode === "incremental" && (
+                  <Alert>
+                    <CheckCircle className="h-4 w-4" />
+                    <AlertTitle>Incremental Export Complete</AlertTitle>
+                    <AlertDescription>
+                      Exported {lastIncrementalResult.deckCount} deck
+                      {lastIncrementalResult.deckCount === 1
+                        ? ""
+                        : "s"} and {lastIncrementalResult.savedGameCount} saved
+                      game
+                      {lastIncrementalResult.savedGameCount === 1
+                        ? ""
+                        : "s"}{" "}
+                      changed since{" "}
+                      {new Date(lastIncrementalResult.since).toLocaleString()}.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+              {isComplete && !lastIncrementalResult && (
                 <Alert>
                   <CheckCircle className="h-4 w-4" />
                   <AlertTitle>Export Complete</AlertTitle>
@@ -277,7 +365,9 @@ export function StorageBackupManager() {
                 {importFile && (
                   <div className="mt-4 p-4 border rounded-lg space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{importFile.name}</span>
+                      <span className="text-sm font-medium">
+                        {importFile.name}
+                      </span>
                       <Badge variant="secondary">
                         {getBackupMetadata(importFile).formattedSize}
                       </Badge>
@@ -339,7 +429,10 @@ export function StorageBackupManager() {
                   Clear all stored data. This action cannot be undone.
                 </p>
 
-                <Dialog open={showConfirmClear} onOpenChange={setShowConfirmClear}>
+                <Dialog
+                  open={showConfirmClear}
+                  onOpenChange={setShowConfirmClear}
+                >
                   <DialogTrigger asChild>
                     <Button variant="destructive" className="w-full">
                       <Trash2 className="mr-2 h-4 w-4" />
@@ -350,12 +443,15 @@ export function StorageBackupManager() {
                     <DialogHeader>
                       <DialogTitle>Clear All Data?</DialogTitle>
                       <DialogDescription>
-                        This will permanently delete all your decks, saved games,
-                        and preferences. This action cannot be undone.
+                        This will permanently delete all your decks, saved
+                        games, and preferences. This action cannot be undone.
                       </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowConfirmClear(false)}>
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowConfirmClear(false)}
+                      >
                         Cancel
                       </Button>
                       <Button variant="destructive" onClick={handleClearData}>
@@ -369,7 +465,7 @@ export function StorageBackupManager() {
           </TabsContent>
         </Tabs>
 
-        {status === 'error' && (
+        {status === "error" && (
           <div className="mt-4 flex justify-end">
             <Button onClick={handleReset} variant="outline" size="sm">
               Reset
