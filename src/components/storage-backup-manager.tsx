@@ -255,7 +255,7 @@ export function StorageBackupManager() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json"
+                  accept=".json,.json.gz,.gz,application/json,application/gzip"
                   onChange={handleFileSelect}
                   className="hidden"
                   id="backup-file-input"
