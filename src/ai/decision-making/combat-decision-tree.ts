@@ -45,9 +45,41 @@ import {
   type LookaheadResult,
   type LookaheadConfig,
 } from "./lookahead";
+import type { DeckArchetype } from "../game-state-evaluator";
 
 // Re-export for backward compatibility
 export type { GameState, PlayerState, Permanent, HandCard };
+export type { DeckArchetype };
+
+/**
+ * Per-archetype combat playstyle modifiers.
+ *
+ * These adjust the difficulty-derived {@link CombatAIConfig} so the AI's combat
+ * decisions actually reflect how each archetype wants to fight:
+ *  - `aggression` shifts the strategy thresholds and attack willingness
+ *    (aggro attacks more freely, control/combo/ramp hold creatures back).
+ *  - `riskTolerance` mirrors that for trick/chump-risk decisions.
+ *  - `lifeThreshold` raises the life total at which fragile archetypes go
+ *    defensive (combo/ramp defend earlier because their board is expendable).
+ *
+ * This is the bridge that connects the per-archetype playstyle weights defined
+ * in game-state-evaluator.ts to the live combat decision tree. See issue #911.
+ */
+export const ARCHETYPE_COMBAT_MODIFIERS: Record<
+  Exclude<DeckArchetype, "unknown">,
+  { aggression: number; riskTolerance: number; lifeThreshold: number }
+> = {
+  aggro: { aggression: 0.2, riskTolerance: 0.15, lifeThreshold: -2 },
+  midrange: { aggression: 0.0, riskTolerance: 0.0, lifeThreshold: 0 },
+  control: { aggression: -0.15, riskTolerance: -0.1, lifeThreshold: 2 },
+  combo: { aggression: -0.25, riskTolerance: -0.15, lifeThreshold: 4 },
+  ramp: { aggression: -0.2, riskTolerance: -0.1, lifeThreshold: 3 },
+};
+
+function clamp01(value: number): number {
+  if (Number.isNaN(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
 
 /**
  * Card data interface for combat tricks
@@ -246,14 +278,40 @@ export class CombatDecisionTree {
   private config: CombatAIConfig;
   private heuristicTable: HeuristicTable;
   private lookaheadEngine: LookaheadEngine;
+  private archetype: DeckArchetype;
   constructor(
     gameState: GameState,
     aiPlayerId: string,
     difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
+    archetype: DeckArchetype = "unknown",
   ) {
     this.gameState = gameState;
     this.aiPlayerId = aiPlayerId;
-    this.config = DefaultCombatConfigs[difficulty];
+    this.archetype = archetype;
+
+    const baseConfig = DefaultCombatConfigs[difficulty];
+    // Wire the deck-specific playstyle weights into the live combat config.
+    // Without this blend the AI plays every deck identically regardless of
+    // archetype — the per-archetype weights were effectively dead code (#911).
+    const modifier =
+      archetype !== "unknown"
+        ? ARCHETYPE_COMBAT_MODIFIERS[archetype]
+        : undefined;
+    if (modifier) {
+      this.config = {
+        ...baseConfig,
+        aggression: clamp01(baseConfig.aggression + modifier.aggression),
+        riskTolerance: clamp01(
+          baseConfig.riskTolerance + modifier.riskTolerance,
+        ),
+        lifeThreshold: Math.max(
+          1,
+          baseConfig.lifeThreshold + modifier.lifeThreshold,
+        ),
+      };
+    } else {
+      this.config = { ...baseConfig };
+    }
     this.heuristicTable = new HeuristicTable();
     this.lookaheadEngine = new LookaheadEngine(
       this.heuristicTable,
@@ -262,10 +320,25 @@ export class CombatDecisionTree {
   }
 
   /**
+   * The deck archetype currently driving combat decisions ("unknown" when no
+   * archetype was supplied or detected).
+   */
+  getArchetype(): DeckArchetype {
+    return this.archetype;
+  }
+
+  /**
    * Set custom combat AI configuration
    */
   setConfig(config: Partial<CombatAIConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  /**
+   * Get the effective combat configuration (post archetype adjustment).
+   */
+  getConfig(): CombatAIConfig {
+    return { ...this.config };
   }
 
   /**
@@ -2004,8 +2077,14 @@ export function generateAttackDecisions(
   gameState: GameState,
   aiPlayerId: string,
   difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
+  archetype: DeckArchetype = "unknown",
 ): CombatPlan {
-  const ai = new CombatDecisionTree(gameState, aiPlayerId, difficulty);
+  const ai = new CombatDecisionTree(
+    gameState,
+    aiPlayerId,
+    difficulty,
+    archetype,
+  );
   return ai.generateAttackPlan();
 }
 
@@ -2017,7 +2096,13 @@ export function generateBlockingDecisions(
   aiPlayerId: string,
   attackers: Permanent[],
   difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
+  archetype: DeckArchetype = "unknown",
 ): CombatPlan {
-  const ai = new CombatDecisionTree(gameState, aiPlayerId, difficulty);
+  const ai = new CombatDecisionTree(
+    gameState,
+    aiPlayerId,
+    difficulty,
+    archetype,
+  );
   return ai.generateBlockingPlan(attackers);
 }

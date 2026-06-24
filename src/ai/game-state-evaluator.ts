@@ -349,7 +349,15 @@ export const ArchetypeWeights: Record<
   },
 };
 
-function classifyArchetypeName(archetypeName: string): DeckArchetype {
+/**
+ * Map a free-form archetype name (e.g. from the deck archetype detector) onto
+ * the coarse-grained {@link DeckArchetype} bucket used by the evaluator's
+ * per-archetype playstyle weights.
+ *
+ * Exported so the live turn loop and combat decision tree can translate a
+ * detected deck archetype into the weights that drive evaluation scoring.
+ */
+export function classifyArchetypeName(archetypeName: string): DeckArchetype {
   const lower = archetypeName.toLowerCase();
   if (
     lower.includes("burn") ||
