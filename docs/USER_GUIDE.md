@@ -33,16 +33,19 @@
 3. Run the installer following platform-specific instructions:
 
 **Windows**:
+
 - Double-click the `.exe` file
 - If SmartScreen warns, click "More info" → "Run anyway"
 - Follow installation prompts
 
 **macOS**:
+
 - Open the `.dmg` file
 - Drag Planar Nexus to Applications folder
 - If blocked, right-click → Open → Open
 
 **Linux**:
+
 ```bash
 # Debian/Ubuntu
 sudo dpkg -i planar-nexus_1.0.0_amd64.deb
@@ -88,6 +91,7 @@ chmod +x Planar-Nexus.AppImage
 ```
 
 **Main Navigation**:
+
 - **Dashboard**: Overview and quick access to features
 - **Deck Builder**: Create and manage decks
 - **AI Coach**: Get deck analysis and recommendations
@@ -152,54 +156,62 @@ The deck validator runs automatically as you build:
 #### Real-time Feedback
 
 **Deck Status Panel** shows:
+
 - **Card Count**: Current/Required (e.g., "98/100" for Commander)
 - **Format Compliance**: ✓ Legal or ✗ Illegal
 - **Warnings**: Issues that need attention
 
 #### Common Validation Issues
 
-| Issue | Description | Solution |
-|-------|-------------|----------|
-| **Too few cards** | Deck has fewer than minimum | Add more cards (100 for Commander, 60 for Standard) |
-| **Too many cards** | Deck exceeds maximum | Remove cards (100 max for Commander) |
-| **Illegal cards** | Cards not legal in format | Remove or replace with legal cards |
-| **Color identity violation** | Cards outside commander's colors | Remove cards with conflicting colors |
-| **Duplicate legendary cards** | More than one copy of legendary | Reduce to 1 copy |
+| Issue                         | Description                      | Solution                                            |
+| ----------------------------- | -------------------------------- | --------------------------------------------------- |
+| **Too few cards**             | Deck has fewer than minimum      | Add more cards (100 for Commander, 60 for Standard) |
+| **Too many cards**            | Deck exceeds maximum             | Remove cards (100 max for Commander)                |
+| **Illegal cards**             | Cards not legal in format        | Remove or replace with legal cards                  |
+| **Color identity violation**  | Cards outside commander's colors | Remove cards with conflicting colors                |
+| **Duplicate legendary cards** | More than one copy of legendary  | Reduce to 1 copy                                    |
 
 ### 2.4 Deck Statistics
 
 View deck analytics in the **Statistics Panel**:
 
 #### Mana Curve
+
 - Bar chart showing card distribution by CMC
 - Ideal curves vary by archetype (Aggro: low CMC, Control: higher CMC)
 
 #### Color Distribution
+
 - Pie chart showing color breakdown
 - Helps identify color balance
 
 #### Card Type Distribution
+
 - Breakdown by creature, spell, land, etc.
 - Ensure adequate land count (typically 35-40 for Commander)
 
 ### 2.5 Saving and Managing Decks
 
 #### Auto-Save
+
 - Decks auto-save on every change
 - No manual save required during editing
 
 #### Manual Save
+
 - Press `Ctrl+S` to force save
 - Click **"Save Deck"** button
 
 #### Organize Decks
 
 **Deck Library** shows all saved decks:
+
 - **Search**: Filter by deck name
 - **Sort**: By name, date modified, or format
 - **Folders**: Create folders to organize decks (optional)
 
 #### Delete a Deck
+
 1. Find deck in library
 2. Click the **⋮** menu
 3. Select **"Delete"**
@@ -230,6 +242,7 @@ View deck analytics in the **Statistics Panel**:
 The AI Coach report includes several sections:
 
 #### Archetype Badge
+
 ```
 ┌─────────────────────────┐
 │  🔥 BURN                │
@@ -243,6 +256,7 @@ The AI Coach report includes several sections:
 - **Secondary**: Alternative archetype classification
 
 **Detected Archetypes** (18 total):
+
 - **Aggro**: Burn, Zoo, Sligh
 - **Control**: Draw-Go, Stax, Prison
 - **Midrange**: Good Stuff, Rock, Value
@@ -251,6 +265,7 @@ The AI Coach report includes several sections:
 - **Special**: Lands, Superfriends
 
 #### Synergy List
+
 ```
 Synergies Found (4):
 ┌────────────────────────────────────────────┐
@@ -270,6 +285,7 @@ Synergies Found (4):
 - **Description**: Why this synergy matters
 
 #### Missing Synergies
+
 ```
 Missing Synergies (2):
 ┌────────────────────────────────────────────┐
@@ -290,6 +306,7 @@ Missing Synergies (2):
 - **Suggestion**: Specific cards to consider
 
 #### Key Cards
+
 ```
 Key Cards (5):
 ┌────────────────────────────────────────────┐
@@ -305,6 +322,7 @@ Key Cards (5):
 - **Role**: Why this card matters to your strategy
 
 #### Improvement Suggestions
+
 ```
 Suggestions:
 • Consider adding 2-3 more burn spells for consistency
@@ -315,16 +333,19 @@ Suggestions:
 ### 3.3 Exporting Reports
 
 #### Export as Text
+
 1. Click **"Export"** button in report header
 2. Select **"Download as Text"**
 3. Save `.txt` file to your computer
 
 #### Export as PDF
+
 1. Click **"Export"** button
 2. Select **"Print to PDF"**
 3. Use browser's print dialog to save as PDF
 
 #### Share Report
+
 - Copy report text to clipboard
 - Share via email, Discord, or forum posts
 - Include decklist for context
@@ -362,6 +383,7 @@ Suggestions:
 ### 4.2 Playing a Game
 
 #### Game Interface
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Opponent (Life: 20)                                        │
@@ -419,21 +441,25 @@ Suggestions:
 ### 4.3 Difficulty Levels Explained
 
 #### Easy
+
 - **Behavior**: Makes obvious mistakes, inefficient plays
 - **Best For**: Learning game mechanics, testing combos
 - **Tips**: Focus on fundamentals, practice sequencing
 
 #### Medium
+
 - **Behavior**: Reasonable plays, occasional blunders
 - **Best For**: Casual play, deck testing
 - **Tips**: Respect their threats, plan ahead
 
 #### Hard
+
 - **Behavior**: Strong plays, rare mistakes, punishes errors
 - **Best For**: Experienced players, serious testing
 - **Tips**: Play around their outs, maximize value
 
 #### Expert
+
 - **Behavior**: Near-optimal play, deep planning
 - **Best For**: Challenge, high-level testing
 - **Tips**: Perfect play required, no room for error
@@ -441,6 +467,7 @@ Suggestions:
 ### 4.4 Game History
 
 #### View Past Games
+
 1. After game ends, click **"View History"**
 2. See list of recent games with:
    - Opponent and difficulty
@@ -449,6 +476,7 @@ Suggestions:
    - Date played
 
 #### Replay a Game
+
 1. Select a game from history
 2. Click **"Replay"**
 3. Watch game unfold turn by turn
@@ -491,16 +519,19 @@ Suggestions:
 ### 5.3 Playing Multiplayer
 
 #### Team Mode (2v2)
+
 - You and your partner share turns
 - Attack either opponent
 - Win by eliminating both opponents
 
 #### Free-for-All (4-player)
+
 - Each player takes individual turns
 - Attack any opponent
 - Last player standing wins
 
 #### Spectator Mode
+
 - Watch games without playing
 - See all hands and board states
 - Chat with other spectators
@@ -512,6 +543,7 @@ Suggestions:
 ### 6.1 Importing Decklists
 
 #### From Clipboard
+
 1. Copy decklist from any source
 2. Click **"Import"** → **"From Clipboard"**
 3. Paste decklist
@@ -519,6 +551,7 @@ Suggestions:
 5. Review and confirm
 
 **Supported Formats**:
+
 ```
 # Standard format
 4 Lightning Bolt
@@ -534,11 +567,13 @@ Suggestions:
 ```
 
 #### From File
+
 1. Click **"Import"** → **"From File"**
 2. Select `.txt` or `.json` file
 3. Decklist is parsed and loaded
 
 #### From URL
+
 1. Click **"Import"** → **"From URL"**
 2. Paste URL (e.g., MTGGoldfish, TappedOut)
 3. Decklist is fetched and parsed
@@ -546,16 +581,19 @@ Suggestions:
 ### 6.2 Exporting Decks
 
 #### Export as Text
+
 1. Open deck in Deck Builder
 2. Click **"Export"** → **"Text"**
 3. Copy or download decklist
 
 #### Export as JSON
+
 1. Click **"Export"** → **"JSON"**
 2. Download `.json` file with full deck data
 3. Includes metadata and notes
 
 #### Export as Share Link
+
 1. Click **"Export"** → **"Share Link"**
 2. Copy generated URL
 3. Share with others (they can import)
@@ -567,11 +605,13 @@ Suggestions:
 ### 7.1 General Settings
 
 **Appearance**:
+
 - **Theme**: Light or Dark mode
 - **Card Size**: Small, Medium, Large
 - **Animations**: Enable/disable visual effects
 
 **Behavior**:
+
 - **Auto-Save**: Enable/disable automatic deck saving
 - **Confirm Actions**: Require confirmation for destructive actions
 - **Sound Effects**: Enable/disable game sounds
@@ -579,6 +619,7 @@ Suggestions:
 ### 7.2 AI Settings
 
 **API Key Configuration**:
+
 1. Navigate to **Settings → AI**
 2. Select AI provider
 3. Enter your API key
@@ -586,12 +627,14 @@ Suggestions:
 5. Click **"Save"**
 
 **Supported Providers**:
+
 - **Gemini**: Google AI (free tier available)
 - **Claude**: Anthropic (paid)
 - **OpenAI**: GPT models (paid)
 - **Z.ai**: GLM models (paid)
 
 **Usage Tracking**:
+
 - View API usage statistics
 - Set spending limits (optional)
 - Clear usage history
@@ -599,21 +642,25 @@ Suggestions:
 ### 7.3 Card Database
 
 **Database Status**:
+
 - View total card count
 - Check database health
 - Last import date
 
 **Import Cards**:
+
 1. Click **"Import Cards"**
 2. Select JSON file from card fetch script
 3. Wait for import to complete
 
 **Clear Database**:
+
 - ⚠️ **Warning**: This cannot be undone
 - Click **"Clear Database"** in Danger Zone
 - Confirm action
 
 **Clear Image Cache**:
+
 - Removes cached card images
 - Frees up storage space
 - Images re-download as needed
@@ -621,11 +668,13 @@ Suggestions:
 ### 7.4 Network Settings
 
 **Multiplayer**:
+
 - **Username**: Display name for multiplayer
 - **Status**: Online/Away/Do Not Disturb
 - **Friends**: Manage friend list
 
 **Privacy**:
+
 - **Show Online Status**: Visible to friends
 - **Allow Game Invites**: Receive invitations
 - **Show Match History**: Public or private
@@ -636,46 +685,47 @@ Suggestions:
 
 ### Global Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+N` | New Deck |
-| `Ctrl+S` | Save Deck |
-| `Ctrl+O` | Open Deck |
-| `Ctrl+F` | Search Cards |
-| `Ctrl+I` | Import Decklist |
-| `Ctrl+E` | Export Deck |
-| `Ctrl+,` | Open Settings |
-| `F1` | Open Help |
-| `F5` | Refresh |
-| `Esc` | Close Dialog / Cancel Action |
+| Shortcut | Action                       |
+| -------- | ---------------------------- |
+| `Ctrl+N` | New Deck                     |
+| `Ctrl+S` | Save Deck                    |
+| `Ctrl+O` | Open Deck                    |
+| `Ctrl+F` | Search Cards                 |
+| `Ctrl+I` | Import Decklist              |
+| `Ctrl+E` | Export Deck                  |
+| `Ctrl+,` | Open Settings                |
+| `F1`     | Open Help                    |
+| `F5`     | Refresh                      |
+| `Esc`    | Close Dialog / Cancel Action |
 
 ### Deck Builder Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `+` | Add Card to Deck |
-| `-` | Remove Card from Deck |
-| `Shift++` | Add Maximum Copies |
-| `Shift+-` | Remove All Copies |
-| `Arrow Keys` | Navigate Cards |
-| `Enter` | View Card Details |
+| Shortcut     | Action                     |
+| ------------ | -------------------------- |
+| `+`          | Add Card to Deck           |
+| `-`          | Remove Card from Deck      |
+| `Shift++`    | Add Maximum Copies         |
+| `Shift+-`    | Remove All Copies          |
+| `Arrow Keys` | Navigate Cards             |
+| `Enter`      | Add Focused Card / Confirm |
 
 ### Game Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Space` | End Turn |
-| `A` | Attack with Selected |
-| `B` | Block with Selected |
-| `T` | Target Selection |
-| `U` | Untap Permanent |
-| `Ctrl+Z` | Undo Last Action |
+| Shortcut | Action               |
+| -------- | -------------------- |
+| `Space`  | End Turn             |
+| `A`      | Attack with Selected |
+| `B`      | Block with Selected  |
+| `T`      | Target Selection     |
+| `U`      | Untap Permanent      |
+| `Ctrl+Z` | Undo Last Action     |
 
 ---
 
 ## Appendix A: Format Rules
 
 ### Commander
+
 - **Deck Size**: Exactly 100 cards (including commander)
 - **Card Limits**: 1 copy per card (except basic lands)
 - **Color Identity**: Cards must match commander's colors
@@ -683,12 +733,14 @@ Suggestions:
 - **Commander Damage**: 21 damage from one commander is lethal
 
 ### Standard
+
 - **Deck Size**: Minimum 60 cards
 - **Card Limits**: 4 copies per card (except basic lands)
 - **Sideboard**: Optional, exactly 15 cards
 - **Starting Life**: 20
 
 ### Modern
+
 - **Deck Size**: Minimum 60 cards
 - **Card Limits**: 4 copies per card (except basic lands)
 - **Sideboard**: Optional, exactly 15 cards
@@ -699,13 +751,13 @@ Suggestions:
 
 ## Appendix B: Troubleshooting Quick Reference
 
-| Issue | Quick Fix |
-|-------|-----------|
-| Cards not loading | Check database status in Settings |
-| AI not responding | Verify API key in Settings → AI |
+| Issue                  | Quick Fix                                   |
+| ---------------------- | ------------------------------------------- |
+| Cards not loading      | Check database status in Settings           |
+| AI not responding      | Verify API key in Settings → AI             |
 | Can't join multiplayer | Check internet connection, verify game code |
-| Deck validation fails | Review format rules, check card legality |
-| App runs slowly | Clear image cache, restart app |
+| Deck validation fails  | Review format rules, check card legality    |
+| App runs slowly        | Clear image cache, restart app              |
 
 For detailed troubleshooting, see [Troubleshooting Guide](TROUBLESHOOTING.md).
 
