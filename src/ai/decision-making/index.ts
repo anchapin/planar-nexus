@@ -10,6 +10,7 @@ export {
   generateBlockingDecisions,
   DefaultCombatConfigs,
   ARCHETYPE_COMBAT_MODIFIERS,
+  deckArchetypeToOpponentArchetype,
   type CombatAIConfig,
   type AttackDecision,
   type BlockDecision,

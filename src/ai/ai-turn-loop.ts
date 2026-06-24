@@ -99,6 +99,58 @@ export function detectPlayerArchetype(
 }
 
 /**
+ * Detect the OPPONENT's emerging deck archetype from the engine game state.
+ *
+ * Unlike {@link detectPlayerArchetype} (which reads the AI's own deck across
+ * every zone, including the hidden library/hand), this only inspects
+ * OBSERVED zones — cards the opponent has actually revealed or played during
+ * the game:
+ *   - battlefield (permanents they control)
+ *   - graveyard (resolved spells / dead creatures)
+ *   - exile (exiled cards)
+ *
+ * The opponent's library and hand are hidden information and are deliberately
+ * NOT consulted. As the opponent plays/reveals more cards across turns, the
+ * observed set grows and the detected archetype's confidence rises naturally.
+ *
+ * Returns the coarse {@link DeckArchetype} bucket; "unknown" until enough
+ * cards have been observed or when classification fails (issue #912).
+ */
+export function detectOpponentArchetype(
+  state: EngineGameState,
+  opponentId: PlayerId,
+): DeckArchetype {
+  // Observed zones only — never the opponent's hidden library or hand.
+  const zoneKeys = [
+    `${opponentId}-battlefield`,
+    `${opponentId}-graveyard`,
+    `${opponentId}-exile`,
+  ];
+
+  const cards: DeckCard[] = [];
+  for (const key of zoneKeys) {
+    const zone = state.zones.get(key);
+    if (!zone) continue;
+    for (const cardId of zone.cardIds) {
+      const card = state.cards.get(cardId);
+      if (card?.cardData) {
+        cards.push({ ...card.cardData, count: 1 } as DeckCard);
+      }
+    }
+  }
+
+  if (cards.length === 0) return "unknown";
+
+  try {
+    const result = detectArchetype(cards);
+    if (!result || result.primary === "Unknown") return "unknown";
+    return classifyArchetypeName(result.primary);
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
  * AI Turn result
  */
 export interface AITurnResult {
@@ -400,18 +452,27 @@ async function runCombatPhase(
 
   // Use CombatDecisionTree for intelligent attack decisions
   // Import dynamically to avoid circular dependencies
-  const { CombatDecisionTree } =
+  const { CombatDecisionTree, deckArchetypeToOpponentArchetype } =
     await import("./decision-making/combat-decision-tree");
   // Resolve the deck-specific playstyle so per-archetype weights reach the
   // live combat decisions. Prefer an explicit config override, otherwise
   // auto-detect from the AI player's deck (issue #911).
   const archetype =
     config.archetype ?? detectPlayerArchetype(currentState, aiPlayerId);
+  // Detect the opponent's emerging archetype from the cards they have
+  // revealed/played (observed zones only) so the AI can adapt its block
+  // prediction / strategy to what the opponent is actually doing. Previously
+  // the opponentArchetype config was always "unknown" (issue #912).
+  const opponentId = getOpponentId(currentState, aiPlayerId);
+  const opponentArchetype = deckArchetypeToOpponentArchetype(
+    detectOpponentArchetype(currentState, opponentId),
+  );
   const combatAI = new CombatDecisionTree(
     aiState,
     aiPlayerId,
     config.difficulty,
     archetype,
+    opponentArchetype,
   );
 
   // Generate attack plan using unified format
