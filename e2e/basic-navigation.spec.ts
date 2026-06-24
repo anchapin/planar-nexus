@@ -27,9 +27,12 @@ async function navigateViaSidebar(
     .getByRole("link", { name: linkName, exact: true })
     .click();
 
-  await expect(page).toHaveURL(urlRegex);
+  // First navigation to a heavy route triggers a one-time dev-compile that can
+  // exceed Playwright's 5s default. Allow up to 30s for the URL to settle.
+  await expect(page).toHaveURL(urlRegex, { timeout: 30000 });
   await expect(
     page.getByRole("heading", { name: headingName, level: 1, exact: true }),
+    { timeout: 30000 },
   ).toBeVisible();
 }
 
@@ -72,7 +75,12 @@ test.describe("Basic Navigation", () => {
   });
 
   test("should navigate to Multiplayer via sidebar", async ({ page }) => {
-    await navigateViaSidebar(page, "Multiplayer", /\/multiplayer/, "Multiplayer");
+    await navigateViaSidebar(
+      page,
+      "Multiplayer",
+      /\/multiplayer/,
+      "Multiplayer",
+    );
   });
 
   test("should navigate to AI Deck Coach via sidebar", async ({ page }) => {
