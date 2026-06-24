@@ -48,12 +48,15 @@ export function DeckStatsPanel({ deck, className }: DeckStatsPanelProps) {
             variant="ghost"
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
+            aria-label={isExpanded ? 'Collapse deck statistics' : 'Expand deck statistics'}
+            aria-expanded={isExpanded}
+            aria-controls="deck-statistics-content"
             className="h-8 w-8 p-0"
           >
             {isExpanded ? (
-              <ChevronUp className="w-4 h-4" />
+              <ChevronUp className="w-4 h-4" aria-hidden="true" />
             ) : (
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="w-4 h-4" aria-hidden="true" />
             )}
           </Button>
         </div>
@@ -68,7 +71,7 @@ export function DeckStatsPanel({ deck, className }: DeckStatsPanelProps) {
       </CardHeader>
       
       {isExpanded && (
-        <CardContent className="space-y-4">
+        <CardContent id="deck-statistics-content" className="space-y-4">
           {/* Chart type selector */}
           <Tabs 
             value={activeChart} 
