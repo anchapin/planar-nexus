@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { VirtualCardList } from "@/components/virtual-card-list";
 import { Search, Plus, Trash2, Download, Upload, FolderPlus, Package, GitCompare, ArrowRightLeft } from "lucide-react";
 
 /**
@@ -463,37 +464,34 @@ export default function CollectionPage() {
                 <p className="text-sm">Search for cards to add them.</p>
               </div>
             ) : (
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-2">
-                  {filteredCards.map((collectionCard) => (
-                    <div
-                      key={collectionCard.card.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Badge variant="secondary" className="w-8 justify-center">
-                          {collectionCard.quantity}
-                        </Badge>
-                        <div>
-                          <div className="font-medium">{collectionCard.card.name}</div>
-                          {collectionCard.card.set && (
-                            <div className="text-xs text-muted-foreground">
-                              {collectionCard.card.set.toUpperCase()} #{collectionCard.card.collector_number}
-                            </div>
-                          )}
-                        </div>
+              <VirtualCardList
+                cards={filteredCards}
+                className="h-[400px]"
+                renderRow={(collectionCard) => (
+                  <div className="flex items-center justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary" className="w-8 justify-center">
+                        {collectionCard.quantity}
+                      </Badge>
+                      <div>
+                        <div className="font-medium">{collectionCard.card.name}</div>
+                        {collectionCard.card.set && (
+                          <div className="text-xs text-muted-foreground">
+                            {collectionCard.card.set.toUpperCase()} #{collectionCard.card.collector_number}
+                          </div>
+                        )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveCard(collectionCard.card.id, collectionCard.card.name)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveCard(collectionCard.card.id, collectionCard.card.name)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              />
             )}
           </CardContent>
         </Card>

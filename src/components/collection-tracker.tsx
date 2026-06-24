@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { VirtualCardList } from '@/components/virtual-card-list';
 import {
   Dialog,
   DialogContent,
@@ -273,24 +274,26 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
       </div>
 
       {/* Card List */}
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-2">
-          {filteredCards.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? 'No cards match your search' : 'Your collection is empty. Import cards to get started.'}
-            </div>
-          ) : (
-            filteredCards.map((card) => (
+      <div className="flex-1 min-h-0">
+        {filteredCards.length === 0 ? (
+          <div className="h-full flex items-center justify-center p-4 text-center text-muted-foreground">
+            {searchQuery ? 'No cards match your search' : 'Your collection is empty. Import cards to get started.'}
+          </div>
+        ) : (
+          <VirtualCardList
+            cards={filteredCards}
+            className="h-full"
+            contentClassName="p-4"
+            renderRow={(card) => (
               <CollectionCardItem
-                key={card.card.id}
                 card={card}
                 onAdd={() => addCard(card.card, 1)}
                 onRemove={() => removeCard(card.card.id, 1)}
               />
-            ))
-          )}
-        </div>
-      </ScrollArea>
+            )}
+          />
+        )}
+      </div>
 
       {/* New Collection Dialog */}
       <Dialog open={showNewCollectionDialog} onOpenChange={setShowNewCollectionDialog}>
