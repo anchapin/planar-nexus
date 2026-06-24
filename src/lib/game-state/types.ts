@@ -51,6 +51,13 @@ export interface CardInstance {
   // State flags
   /** Whether the permanent is activated (internally tracked as "tapped" for compatibility) */
   isTapped: boolean;
+  /**
+   * Untap-modifying effect hook (CR 502.2).
+   * When true, this permanent does NOT untap during its controller's untap step
+   * (e.g. "This creature doesn't untap during your untap step").
+   * Evaluated by the discrete untap step processor (`processUntapStep`).
+   */
+  doesNotUntapDuringUntapStep?: boolean;
   /** Whether the permanent is flipped (flip cards) */
   isFlipped: boolean;
   /** Whether the permanent is turned face up (was face down) */
@@ -121,6 +128,23 @@ export interface CardInstance {
   // Phasing tracking (CR 702.19) - used to track that a card has been phased out even after it phases back in
   /** @internal Used by phasing system to track if a card has ever been phased out */
   _hasBeenPhasedOut?: boolean;
+}
+
+/**
+ * Untap modifier hook (CR 502.2).
+ *
+ * Describes an effect that alters HOW or WHICH permanents untap during the
+ * discrete untap step. This is the extension point for untap-modifying effects
+ * such as "don't untap during your untap step" (`doesNotUntap`) or
+ * "untap an additional land" (`forceUntap`). Processed by `processUntapStep`.
+ */
+export interface UntapModifier {
+  /** Card that is the source of the modifier */
+  sourceCardId: CardInstanceId;
+  /** If true, the target permanent does not untap during the untap step */
+  doesNotUntap?: boolean;
+  /** If true, force the target permanent to untap even if another effect says otherwise */
+  forceUntap?: boolean;
 }
 
 /**

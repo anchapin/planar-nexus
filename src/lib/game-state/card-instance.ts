@@ -32,6 +32,7 @@ export function createCardInstance(
     controllerId,
     ownerId,
     isTapped: false,
+    doesNotUntapDuringUntapStep: false,
     isFlipped: false,
     isTurnedFaceUp: false,
     isPhasedOut: false,

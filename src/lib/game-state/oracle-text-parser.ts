@@ -115,6 +115,7 @@ export interface TriggerCondition {
     | "turnEnds"
     | "phaseEnds"
     | "upkeep"
+    | "untapStep"
     | "turnBegins"
     | "drawStep"
     | "combatDamageStepEnds"
