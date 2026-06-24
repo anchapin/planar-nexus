@@ -695,6 +695,7 @@ export function getAllKeywords(card: CardInstance): string[] {
     "haste",
     "flash",
     "protection",
+    "ward",
   ];
 
   for (const kw of keywordTexts) {
@@ -752,29 +753,90 @@ export function getKeywordDescriptions(card: CardInstance): string[] {
   if (hasTrample(card)) descriptions.push("Trample");
   if (hasVigilance(card)) descriptions.push("Vigilance");
 
+  // Ward description uses the parsed cost (e.g., "Ward {2}")
+  const wardCost = getWardCost(card);
+  if (wardCost !== null) {
+    descriptions.push(`Ward ${wardCost}`);
+  }
+
   return descriptions;
 }
 
-/** @deprecated Stub - ward mechanic not yet implemented */
-export function hasWard(_card: CardInstance): boolean {
-  void _card;
-  return false;
+// ============== WARD ==============
+/**
+ * Default ward cost when a card has "Ward" with no explicit cost.
+ * Most printed Ward cards use a mana cost, so default to {2}.
+ */
+const DEFAULT_WARD_COST = "{2}";
+
+/**
+ * Check if a card has the ward keyword.
+ * CR 702.21: Ward is a triggered ability. "Whenever this permanent becomes the
+ * target of a spell or ability an opponent controls, counter that spell or ability
+ * unless its controller pays [cost]."
+ *
+ * Detection: the card's `keywords` array contains "Ward", OR the oracle text
+ * contains "ward" as a standalone keyword (word-bounded, so "warden"/"forward"
+ * do not match).
+ */
+export function hasWard(card: CardInstance): boolean {
+  const keywords = card.cardData.keywords || [];
+  if (keywords.some((k) => /^ward\b/i.test(k.trim()))) {
+    return true;
+  }
+  const oracleText = card.cardData.oracle_text || "";
+  return /\bward\b/i.test(oracleText);
 }
 
-/** @deprecated Stub - ward mechanic not yet implemented */
-export function getWardCost(_card: CardInstance): number | null {
-  void _card;
-  return null;
+/**
+ * Parse the ward cost of a card into its string representation.
+ *
+ * Supported formats (matching how Ward appears on cards):
+ *  - Mana cost:   "Ward {2}" / "Ward—{2}{U}"  -> "{2}" / "{2}{U}"
+ *  - Life cost:   "Ward—Pay 3 life."           -> "3"
+ *  - Plain ward:  "Ward"                        -> "{2}" (default)
+ *
+ * Returns null for cards without ward.
+ */
+export function getWardCost(card: CardInstance): string | null {
+  if (!hasWard(card)) {
+    return null;
+  }
+
+  const oracleText = card.cardData.oracle_text || "";
+
+  // Mana ward: one or more {...} mana symbols following "Ward"
+  const manaMatch = oracleText.match(/\bward\b(?:[—\-:]?\s*)((?:\{[^}]*\})+)/i);
+  if (manaMatch) {
+    return manaMatch[1];
+  }
+
+  // Life ward: "Ward—Pay N life"
+  const lifeMatch = oracleText.match(/\bward\b[—\-:]?\s*pay\s+(\d+)\s+life/i);
+  if (lifeMatch) {
+    return lifeMatch[1];
+  }
+
+  // Ward keyword present but no explicit cost -> default
+  return DEFAULT_WARD_COST;
 }
 
-/** @deprecated Stub - ward mechanic not yet implemented */
+/**
+ * Check if a card is protected by ward from a spell/ability controlled by the
+ * given player. Ward only protects against opposing sources (CR 702.21).
+ *
+ * @param card The potential target permanent
+ * @param sourceControllerId The controller of the targeting spell/ability
+ */
 export function isProtectedByWard(
-  _source: CardInstance,
-  _card: CardInstance,
+  card: CardInstance,
+  sourceControllerId: PlayerId,
 ): boolean {
-  void _source;
-  void _card;
-  return false;
+  if (!hasWard(card)) {
+    return false;
+  }
+  // Ward triggers only for opposing sources; a player's own spells ignore it.
+  return card.controllerId !== sourceControllerId;
 }
 
 // ============== PERSIST ==============

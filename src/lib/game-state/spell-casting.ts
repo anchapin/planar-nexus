@@ -48,6 +48,7 @@ import {
 } from "./effect-resolution";
 import type { CardInstance, StackEffect } from "./types";
 import { canTargetKeyword } from "./evergreen-keywords";
+import { applyWardResolution } from "./ward-system";
 
 /**
  * Generate a unique stack object ID
@@ -524,6 +525,14 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   // If it's countered, just remove it
   if (stackObject.isCountered) {
+    return removeFromStack(state, stackObject.id);
+  }
+
+  // Ward (CR 702.21): if this spell/ability targets a warded permanent an
+  // opponent controls and the ward cost was not paid, it is countered (removed
+  // from the stack with no effect). This is enforced here, before resolution.
+  const wardResult = applyWardResolution(state, stackObject);
+  if (wardResult.countered) {
     return removeFromStack(state, stackObject.id);
   }
 

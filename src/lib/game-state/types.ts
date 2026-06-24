@@ -388,6 +388,12 @@ export interface StackObject {
   buybackReturnZone?: string;
   /** Bestow attachment target (if cast as aura) */
   bestowTarget?: CardInstanceId;
+  /**
+   * Target card IDs for which the ward cost (CR 702.21) has been paid by this
+   * spell/ability's controller. On resolution, any warded opponent target NOT
+   * in this list causes this spell/ability to be countered.
+   */
+  wardPaidTargetIds?: string[];
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }
