@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useRef, useCallback, Suspense } fro
 import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
-import { importDecklistClient } from "@/lib/client-card-operations";
+import { importDecklistClient, type ImportDeckResult } from "@/lib/client-card-operations";
 import { type DecklistFormat } from "@/lib/decklist-utils";
 import {
   formatRules,
@@ -247,61 +247,66 @@ export default function DeckBuilderPage() {
   const importDeck = (
     decklist: string,
     decklistFormat?: DecklistFormat,
-  ) => {
+  ): Promise<ImportDeckResult | null> => {
     if (!decklist.trim()) {
       toast({
         variant: "destructive",
         title: "Empty Decklist",
         description: "Please paste a decklist to import.",
       });
-      return;
+      return Promise.resolve(null);
     }
     setActiveDeckId(null);
-    startImportTransition(async () => {
-      try {
-        const { found, notFound, illegal } = await importDecklistClient(
-          decklist,
-          decklistFormat,
-          format,
-        );
+    return new Promise<ImportDeckResult | null>((resolve) => {
+      startImportTransition(async () => {
+        try {
+          const result = await importDecklistClient(
+            decklist,
+            decklistFormat,
+            format,
+          );
+          const { found, notFound, illegal } = result;
 
-        if (found.length > 0) {
-          setDeck(found);
-          const totalFound = found.reduce((acc, card) => acc + card.count, 0);
-          toast({
-            title: "Deck Imported",
-            description: `Successfully added ${totalFound} cards.`,
-          });
-        } else {
+          if (found.length > 0) {
+            setDeck(found);
+            toast({
+              title: "Deck Imported",
+              description: `Successfully added ${result.successCount} cards.`,
+            });
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Import Failed",
+              description: "No cards from your list could be found or added.",
+            });
+          }
+
+          if (notFound.length > 0) {
+            toast({
+              variant: "destructive",
+              title: "Cards Not Found",
+              description: `${notFound.length} cards were not found in your local database. You may need to update your database or check for typos. Missing: ${notFound.slice(0, 5).join(", ")}${notFound.length > 5 ? "..." : ""}`,
+            });
+          }
+
+          if (illegal.length > 0) {
+            toast({
+              title: "Illegal Cards Skipped",
+              description: `${illegal.length} cards are not legal in ${format} and were skipped. Illegal: ${illegal.slice(0, 5).join(", ")}${illegal.length > 5 ? "..." : ""}`,
+            });
+          }
+
+          resolve(result);
+        } catch (error) {
+          console.error(error);
           toast({
             variant: "destructive",
-            title: "Import Failed",
-            description: "No cards from your list could be found or added.",
+            title: "Import Error",
+            description: "An unexpected error occurred while importing the deck.",
           });
+          resolve(null);
         }
-
-        if (notFound.length > 0) {
-          toast({
-            variant: "destructive",
-            title: "Cards Not Found",
-            description: `${notFound.length} cards were not found in your local database. You may need to update your database or check for typos. Missing: ${notFound.slice(0, 5).join(", ")}${notFound.length > 5 ? "..." : ""}`,
-          });
-        }
-
-        if (illegal.length > 0) {
-          toast({
-            title: "Illegal Cards Skipped",
-            description: `${illegal.length} cards are not legal in ${format} and were skipped. Illegal: ${illegal.slice(0, 5).join(", ")}${illegal.length > 5 ? "..." : ""}`,
-          });
-        }
-      } catch (error) {
-        console.error(error);
-        toast({
-          variant: "destructive",
-          title: "Import Error",
-          description: "An unexpected error occurred while importing the deck.",
-        });
-      }
+      });
     });
   };
 
