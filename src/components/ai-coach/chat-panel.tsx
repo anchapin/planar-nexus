@@ -5,7 +5,8 @@ import { useGameChat } from '@/hooks/use-game-chat';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bot, User, Send, Loader2, History, Database } from 'lucide-react';
+import { PlaceholderComponent, StubDebugBanner } from '@/components/ui/placeholder';
+import { Bot, User, Send, Loader2, History, Database, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface AICoachChatPanelProps {
@@ -29,6 +30,7 @@ export function AICoachChatPanel({
   });
 
   const [input, setInput] = useState('');
+  const [dismissed, setDismissed] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
@@ -40,6 +42,11 @@ export function AICoachChatPanel({
 
   const isThinking = status === 'submitted' || status === 'streaming';
   const isLoading = status === 'submitted' || status === 'streaming';
+
+  // Graceful degradation: when the conversational AI backend is unavailable the
+  // chat surfaces a friendly "Coming Soon" placeholder instead of a raw error
+  // or a stuck "thinking" state (Issue #1009).
+  const isBackendUnavailable = status === 'error' && !dismissed;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,7 +70,7 @@ export function AICoachChatPanel({
   };
 
   return (
-    <div className={cn('flex flex-col h-[500px] border rounded-lg bg-card shadow-sm', className)}>
+    <div className={cn('flex flex-col h-[500px] border rounded-lg bg-card shadow-sm overflow-hidden', className)}>
       <div className="flex items-center gap-2 p-3 border-b bg-muted/20">
         <Bot className="w-5 h-5 text-primary" />
         <h3 className="font-semibold text-sm">AI Coach</h3>
@@ -75,9 +82,30 @@ export function AICoachChatPanel({
         </div>
       </div>
 
+      {/* Debug-mode banner clarifying this is a stub surface (Issue #1009) */}
+      <StubDebugBanner label="Conversational AI Coach" />
+
       <ScrollArea className="flex-1 p-4">
         <div ref={scrollRef} className="space-y-4">
-          {messages.length === 0 && (
+          {isBackendUnavailable && (
+            <PlaceholderComponent
+              stubId="ai-coach-conversational"
+              icon={Sparkles}
+              title="Conversational Coach — Coming Soon"
+              description="The conversational AI coach is still being wired up. Your deck analysis and heuristic coaching are available right now while we finish this feature."
+              action={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDismissed(true)}
+                >
+                  Dismiss
+                </Button>
+              }
+            />
+          )}
+
+          {messages.length === 0 && !isBackendUnavailable && (
             <div className="text-center py-8 text-muted-foreground">
               <Bot className="w-12 h-12 mx-auto mb-3 opacity-20" />
               <p className="text-sm">Ask me anything about your deck, game history, or card rules!</p>

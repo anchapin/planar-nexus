@@ -16,6 +16,7 @@ venv/
 
 # testing
 /coverage
+/test-results
 
 # playwright
 /test-results/
