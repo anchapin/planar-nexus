@@ -310,9 +310,143 @@ describe('Commander Damage System - getTotalCommanderDamage', () => {
   it('should return total damage from all commanders', () => {
     // Deal damage to Bob from Alice's commander
     const result = dealCommanderDamage(state, commanderId, bobId, 10);
-    
+
     // Verify the operation completed
     expect(result.success).toBe(true);
+    // Issue #976: verify the actual accumulated sum, not just success
+    expect(getTotalCommanderDamage(result.state, bobId)).toBe(10);
+  });
+});
+
+/**
+ * Issue #976: Correctly sum per-opponent commander damage.
+ *
+ * These tests verify that getTotalCommanderDamage sums damage across all
+ * commanders that have dealt combat damage to the target, and that the same
+ * commander's damage to different opponents is tracked independently.
+ * Also covers hasLostFromCommanderDamage's per-commander threshold semantics
+ * (CR 903.9a: 21+ from a single commander, NOT summed across commanders).
+ */
+describe('Commander Damage System - issue #976 per-opponent sum', () => {
+  let state: ReturnType<typeof createInitialGameState>;
+  let aliceId: string;
+  let bobId: string;
+  let carolId: string;
+
+  beforeEach(() => {
+    state = createInitialGameState(['Alice', 'Bob', 'Carol'], 20, true);
+    state = startGame(state);
+
+    const playerIds = Array.from(state.players.keys());
+    aliceId = playerIds[0];
+    bobId = playerIds[1];
+    carolId = playerIds[2];
+  });
+
+  function makeCommander(name: string, ownerId: string) {
+    const commander = createCardInstance(
+      createMockCommander(name, 'Legendary Creature — Human', ['W']),
+      ownerId,
+      ownerId,
+    );
+    state.cards.set(commander.id, commander);
+    return commander;
+  }
+
+  it('accumulates damage from repeated attacks by the same commander', () => {
+    const commander = makeCommander('Solo Commander', aliceId);
+    state = registerCommander(state, aliceId, commander.id);
+
+    state = dealCommanderDamage(state, commander.id, bobId, 3).state;
+    expect(getTotalCommanderDamage(state, bobId)).toBe(3);
+
+    state = dealCommanderDamage(state, commander.id, bobId, 5).state;
+    expect(getTotalCommanderDamage(state, bobId)).toBe(8);
+
+    state = dealCommanderDamage(state, commander.id, bobId, 4).state;
+    expect(getTotalCommanderDamage(state, bobId)).toBe(12);
+  });
+
+  it('sums damage from multiple commanders (partner commanders) to one opponent', () => {
+    const c1 = makeCommander('Partner One', aliceId);
+    const c2 = makeCommander('Partner Two', aliceId);
+    state = registerCommander(state, aliceId, c1.id);
+    state = registerCommander(state, aliceId, c2.id);
+
+    state = dealCommanderDamage(state, c1.id, bobId, 10).state;
+    state = dealCommanderDamage(state, c2.id, bobId, 5).state;
+
+    // Two distinct commanders have damaged Bob: 10 + 5 = 15 total
+    expect(getTotalCommanderDamage(state, bobId)).toBe(15);
+    // Each commander is tracked individually on Bob's map
+    expect(state.players.get(bobId)!.commanderDamage.get(c1.id)).toBe(10);
+    expect(state.players.get(bobId)!.commanderDamage.get(c2.id)).toBe(5);
+  });
+
+  it('tracks the same commander damage to different opponents independently', () => {
+    const commander = makeCommander('Shared Commander', aliceId);
+    state = registerCommander(state, aliceId, commander.id);
+
+    state = dealCommanderDamage(state, commander.id, bobId, 7).state;
+    state = dealCommanderDamage(state, commander.id, carolId, 4).state;
+
+    // Bob's total only reflects damage dealt to Bob, not Carol
+    expect(getTotalCommanderDamage(state, bobId)).toBe(7);
+    // Carol's total only reflects damage dealt to Carol, not Bob
+    expect(getTotalCommanderDamage(state, carolId)).toBe(4);
+    // Alice (the attacker) has no incoming commander damage recorded
+    expect(getTotalCommanderDamage(state, aliceId)).toBe(0);
+  });
+
+  it('returns 0 for an unknown target player', () => {
+    expect(getTotalCommanderDamage(state, 'non-existent-player')).toBe(0);
+  });
+
+  it('does NOT count damage Bob dealt to Alice against Bob', () => {
+    const bobCommander = makeCommander("Bob's Commander", bobId);
+    state = registerCommander(state, bobId, bobCommander.id);
+    state = dealCommanderDamage(state, bobCommander.id, aliceId, 6).state;
+
+    // Bob is the attacker here; his own commanderDamage tally must remain 0.
+    expect(getTotalCommanderDamage(state, bobId)).toBe(0);
+    expect(getTotalCommanderDamage(state, aliceId)).toBe(6);
+  });
+
+  // ---- hasLostFromCommanderDamage per-commander threshold (CR 903.9a) ----
+
+  it('triggers loss when a single commander deals 21 damage', () => {
+    const commander = makeCommander('Lethal Commander', aliceId);
+    state = registerCommander(state, aliceId, commander.id);
+
+    state = dealCommanderDamage(state, commander.id, bobId, 21).state;
+
+    expect(hasLostFromCommanderDamage(state, bobId)).toBe(true);
+    expect(getTotalCommanderDamage(state, bobId)).toBe(21);
+  });
+
+  it('does NOT trigger loss when damage is split across two commanders below 21 each', () => {
+    const c1 = makeCommander('Partner A', aliceId);
+    const c2 = makeCommander('Partner B', aliceId);
+    state = registerCommander(state, aliceId, c1.id);
+    state = registerCommander(state, aliceId, c2.id);
+
+    state = dealCommanderDamage(state, c1.id, bobId, 20).state;
+    state = dealCommanderDamage(state, c2.id, bobId, 20).state;
+
+    // Total is 40, but no single commander has reached 21 → no loss.
+    expect(getTotalCommanderDamage(state, bobId)).toBe(40);
+    expect(hasLostFromCommanderDamage(state, bobId)).toBe(false);
+  });
+
+  it('triggers loss only for the opponent that took 21+ from one commander', () => {
+    const commander = makeCommander('Targeted Commander', aliceId);
+    state = registerCommander(state, aliceId, commander.id);
+
+    state = dealCommanderDamage(state, commander.id, bobId, 21).state;
+    state = dealCommanderDamage(state, commander.id, carolId, 5).state;
+
+    expect(hasLostFromCommanderDamage(state, bobId)).toBe(true);
+    expect(hasLostFromCommanderDamage(state, carolId)).toBe(false);
   });
 });
 
@@ -346,6 +480,13 @@ describe('Commander Damage System - hasLostFromCommanderDamage', () => {
 
   it('should return false for player with no commander damage', () => {
     expect(hasLostFromCommanderDamage(state, bobId)).toBe(false);
+  });
+
+  it('should return true when a single commander reaches the 21 threshold', () => {
+    // Issue #976 acceptance criterion: returns true when any commander has
+    // dealt 21+ damage to a player.
+    const result = dealCommanderDamage(state, commanderId, bobId, 21);
+    expect(hasLostFromCommanderDamage(result.state, bobId)).toBe(true);
   });
 });
 

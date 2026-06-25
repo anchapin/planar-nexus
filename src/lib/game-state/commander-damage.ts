@@ -248,10 +248,17 @@ export function getCommanderDamage(
 }
 
 /**
- * Get total commander damage to a player from all commanders
+ * Get total commander damage dealt to a player across ALL commanders
  *
- * Sums up all commander damage dealt to a target player across all commanders.
- * Commander damage is tracked per-commander on the target player's state.
+ * `Player.commanderDamage` is a `Map<CardInstanceId, number>` keyed by the
+ * source commander (see `dealCommanderDamage`/`registerCommander`), where each
+ * value is the cumulative combat damage that single commander has dealt to the
+ * target player. This function sums every entry, giving the total commander
+ * damage the target has taken from all opponents' commanders combined.
+ *
+ * Note: This sum is informational/display-oriented. The 21-damage loss
+ * threshold is per individual commander (CR 903.9a), NOT the sum returned here.
+ * Use {@link hasLostFromCommanderDamage} to check the loss condition.
  */
 export function getTotalCommanderDamage(
   state: GameState,
@@ -260,16 +267,25 @@ export function getTotalCommanderDamage(
   const targetPlayer = state.players.get(targetPlayerId);
   if (!targetPlayer) return 0;
 
-  // Sum all commander damage tracked against this player
+  // Map<CardInstanceId, number> — sum damage from every commander that has
+  // dealt combat damage to this player. Guard against malformed entries.
   let total = 0;
-  for (const [, damage] of targetPlayer.commanderDamage) {
-    total += damage;
+  for (const damage of targetPlayer.commanderDamage.values()) {
+    if (typeof damage === "number" && Number.isFinite(damage)) {
+      total += damage;
+    }
   }
   return total;
 }
 
 /**
- * Check if a player has lost from commander damage
+ * Check if a player has lost from commander damage (CR 903.9a)
+ *
+ * Returns true when ANY single commander has dealt `damageThreshold` (default
+ * 21) or more cumulative combat damage to `playerId`. The threshold is checked
+ * per-commander — damage from different commanders is NOT summed for the loss
+ * check (e.g., 10 from commander A + 11 from commander B does NOT cause a
+ * loss; both must independently reach 21).
  */
 export function hasLostFromCommanderDamage(
   state: GameState,
@@ -278,9 +294,13 @@ export function hasLostFromCommanderDamage(
   const player = state.players.get(playerId);
   if (!player) return false;
 
-  // Check all commanders' damage against this player
-  for (const [, damage] of player.commanderDamage) {
-    if (damage >= DEFAULT_COMMANDER_DAMAGE_THRESHOLD) {
+  // Map<CardInstanceId, number> — check each commander's cumulative damage
+  // against the threshold independently.
+  for (const damage of player.commanderDamage.values()) {
+    if (
+      typeof damage === "number" &&
+      damage >= DEFAULT_COMMANDER_DAMAGE_THRESHOLD
+    ) {
       return true;
     }
   }
