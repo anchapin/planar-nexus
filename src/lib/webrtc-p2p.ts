@@ -10,9 +10,19 @@
 import {
   serializeGameState,
   deserializeGameState,
+  engineToAIState,
+  aiToEngineState,
   type SerializedGameState,
 } from "./game-state/serialization";
 import type { GameState, Phase, PlayerId } from "./game-state/types";
+import {
+  computeStateDelta,
+  applyDelta,
+  shouldUseFullSync,
+  estimateDeltaSize,
+  type PeerSyncState,
+  type GameStateDelta,
+} from "./game-state/delta-sync";
 import {
   ICEConfigurationManager,
   ICEConnectionMonitor,
@@ -154,6 +164,8 @@ export interface PeerInfo {
   connectionState: P2PConnectionState;
   connectedAt?: number;
   lastMessageAt?: number;
+  lastSyncVersion?: number;
+  lastSyncChecksum?: string;
 }
 
 /**
@@ -207,6 +219,20 @@ export interface P2PConnectionOptions {
 }
 
 /**
+ * Compute a simple checksum for state validation
+ */
+function computeChecksum(state: ReturnType<typeof engineToAIState>): string {
+  const data = JSON.stringify(state);
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(8, "0");
+}
+
+/**
  * WebRTC P2P Connection Manager
  */
 export class WebRTCConnection {
@@ -218,6 +244,7 @@ export class WebRTCConnection {
   private gameCode: string | undefined;
   private rtcConfig: RTCConfiguration;
   private peers: Map<string, PeerInfo> = new Map();
+  private peerSyncStates: Map<string, PeerSyncState> = new Map();
   private connectionState: P2PConnectionState = "disconnected";
   private events: P2PEvents;
   private reconnectAttempts = 0;
@@ -642,15 +669,40 @@ export class WebRTCConnection {
   }
 
   /**
-   * Handle game state sync message
+   * Handle game state sync message - supports both full and delta sync
    */
   private handleGameStateSync(message: GameStateSyncMessage): void {
     const baseState = this.createBaseEngineState();
-    const gameState = deserializeGameState(
-      message.payload.gameState,
-      baseState,
-    );
-    this.events.onGameStateSync(gameState, "");
+
+    if (message.payload.isFullSync) {
+      const gameState = deserializeGameState(
+        message.payload.gameState,
+        baseState,
+      );
+      this.events.onGameStateSync(gameState, "");
+    } else {
+      const delta = message.payload.gameState as unknown as GameStateDelta;
+      const peerId = message.senderId;
+      const peerState = this.peerSyncStates.get(peerId);
+
+      if (peerState?.lastState) {
+        const updatedAIState = applyDelta(peerState.lastState, delta);
+        const gameState = aiToEngineState(updatedAIState, baseState);
+        this.peerSyncStates.set(peerId, {
+          ...peerState,
+          lastState: updatedAIState,
+          lastVersion: delta.version,
+          lastChecksum: delta.checksum,
+        });
+        this.events.onGameStateSync(gameState, "");
+      } else {
+        const gameState = deserializeGameState(
+          message.payload.gameState,
+          baseState,
+        );
+        this.events.onGameStateSync(gameState, "");
+      }
+    }
   }
 
   /**
@@ -1061,10 +1113,42 @@ export class WebRTCConnection {
   }
 
   /**
-   * Send game state to peers
+   * Send game state to peers with delta compression
+   * Uses incremental delta sync for typical updates, full sync only on reconnection
    */
   sendGameState(gameState: GameState, isFullSync: boolean = false): void {
+    for (const [peerId, peerInfo] of this.peers) {
+      const peerState = this.peerSyncStates.get(peerId);
+      const lastSyncedAI = peerState?.lastState ?? null;
+
+      if (isFullSync || shouldUseFullSync(gameState, lastSyncedAI)) {
+        this.sendFullSync(gameState, peerId);
+      } else {
+        this.sendDeltaSync(gameState, peerId, lastSyncedAI);
+      }
+    }
+  }
+
+  /**
+   * Send full state sync to a specific peer
+   */
+  private sendFullSync(gameState: GameState, peerId: string): void {
     const serializedState = serializeGameState(gameState);
+    const aiState = engineToAIState(gameState);
+
+    const syncState: PeerSyncState = {
+      lastVersion: (gameState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0,
+      lastChecksum: computeChecksum(aiState),
+      lastState: aiState,
+      lastSerializedState: JSON.stringify(serializedState),
+    };
+    this.peerSyncStates.set(peerId, syncState);
+
+    if (this.peers.has(peerId)) {
+      const peer = this.peers.get(peerId)!;
+      peer.lastSyncVersion = syncState.lastVersion;
+      peer.lastSyncChecksum = syncState.lastChecksum;
+    }
 
     this.send({
       type: "game-state-sync",
@@ -1072,7 +1156,49 @@ export class WebRTCConnection {
       timestamp: Date.now(),
       payload: {
         gameState: serializedState,
-        isFullSync,
+        isFullSync: true,
+      },
+    });
+  }
+
+  /**
+   * Send delta sync to a specific peer
+   */
+  private sendDeltaSync(
+    gameState: GameState,
+    peerId: string,
+    lastSyncedAI: ReturnType<typeof engineToAIState> | null
+  ): void {
+    const delta = computeStateDelta(gameState, lastSyncedAI);
+    const deltaSize = estimateDeltaSize(delta);
+
+    if (deltaSize >= 10 * 1024) {
+      this.sendFullSync(gameState, peerId);
+      return;
+    }
+
+    const aiState = engineToAIState(gameState);
+    const syncState: PeerSyncState = {
+      lastVersion: delta.version,
+      lastChecksum: delta.checksum,
+      lastState: aiState,
+      lastSerializedState: JSON.stringify(delta),
+    };
+    this.peerSyncStates.set(peerId, syncState);
+
+    if (this.peers.has(peerId)) {
+      const peer = this.peers.get(peerId)!;
+      peer.lastSyncVersion = syncState.lastVersion;
+      peer.lastSyncChecksum = syncState.lastChecksum;
+    }
+
+    this.send({
+      type: "game-state-sync",
+      senderId: this.localPlayerId,
+      timestamp: Date.now(),
+      payload: {
+        gameState: delta,
+        isFullSync: false,
       },
     });
   }
