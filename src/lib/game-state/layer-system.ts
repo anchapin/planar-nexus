@@ -675,6 +675,42 @@ export class LayerSystem {
   }
 
   /**
+   * Check if `effectId` transitively depends on `targetId` (CR 613.7-613.8).
+   *
+   * The dependency relation is transitive: if C depends on B and B depends on
+   * A, then C depends on A for ordering purposes. The public dependsOn() only
+   * inspects the first direct edge, which is insufficient for sorting — a
+   * pairwise comparator that ignores transitive edges cannot produce a correct
+   * topological order and will silently fall back to timestamp ordering for
+   * non-adjacent pairs (producing wrong results for non-commutative effects
+   * such as Layer 7b P/T setters). This DFS helper is used by sortEffects to
+   * build a proper dependency-aware total order.
+   *
+   * @param effectId - The effect whose dependency path is being followed
+   * @param targetId - The candidate dependency target
+   * @returns true if there is a dependency path from effectId to targetId
+   */
+  private dependsOnTransitive(
+    effectId: string,
+    targetId: string,
+  ): boolean {
+    if (effectId === targetId) return false;
+    const visited = new Set<string>();
+    const stack: string[] = [effectId];
+    while (stack.length > 0) {
+      const current = stack.pop()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      for (const dep of this.dependencies) {
+        if (dep.effectId !== current) continue;
+        if (dep.dependsOnId === targetId) return true;
+        if (!visited.has(dep.dependsOnId)) stack.push(dep.dependsOnId);
+      }
+    }
+    return false;
+  }
+
+  /**
    * Sort effects by layer, timestamp, and dependencies (CR 613.7-613.8)
    */
   private sortEffects(): void {
@@ -698,10 +734,12 @@ export class LayerSystem {
         if (aIndex !== bIndex) return aIndex - bIndex;
       }
 
-      // Check dependencies (CR 613.7)
-      // If a depends on b, b comes first
-      if (this.dependsOn(a, b)) return 1;
-      if (this.dependsOn(b, a)) return -1;
+      // Check dependencies (CR 613.7). Use transitive reachability so that
+      // dependency chains (e.g. C->B->A) produce a correct topological order
+      // rather than falling back to timestamp for non-adjacent pairs.
+      // If a depends on b, b comes first.
+      if (this.dependsOnTransitive(a.id, b.id)) return 1;
+      if (this.dependsOnTransitive(b.id, a.id)) return -1;
 
       // Then by timestamp (CR 613.6, 613.7)
       if (a.timestamp !== b.timestamp) {
@@ -756,6 +794,13 @@ export class LayerSystem {
 
   /**
    * Sort Layer 7 effects by sublayer (CR 613.8)
+   *
+   * Within a sublayer, effects are ordered by dependency (CR 613.7) and then
+   * by timestamp. The dependency check must be transitive so that dependency
+   * chains (e.g. C->B->A) resolve in the correct topological order; without it
+   * the application order would silently fall back to timestamp for
+   * non-adjacent pairs, producing wrong results for non-commutative effects
+   * such as Layer 7b P/T setters.
    */
   private sortLayer7Effects(effects: ContinuousEffect[]): ContinuousEffect[] {
     const sublayerOrder = [
@@ -770,6 +815,9 @@ export class LayerSystem {
       const aIndex = a.sublayer ? sublayerOrder.indexOf(a.sublayer) : 999;
       const bIndex = b.sublayer ? sublayerOrder.indexOf(b.sublayer) : 999;
       if (aIndex !== bIndex) return aIndex - bIndex;
+      // Same sublayer: honour CR 613.7 dependency order before timestamp.
+      if (this.dependsOnTransitive(a.id, b.id)) return 1;
+      if (this.dependsOnTransitive(b.id, a.id)) return -1;
       return a.timestamp - b.timestamp;
     });
   }
