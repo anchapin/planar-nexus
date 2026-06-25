@@ -101,7 +101,11 @@ export function getCommanderIdentity(card: CardInstance): string[] {
 }
 
 /**
- * Register a commander for a player
+ * Register a commander for a player.
+ *
+ * Commander damage is tracked on each opponent (the receiver of combat damage),
+ * keyed by commanderId. Initialize this commander's tally to 0 for every opponent
+ * so subsequent combat damage accumulates correctly (CR 903.9a).
  */
 export function registerCommander(
   state: GameState,
@@ -114,26 +118,20 @@ export function registerCommander(
     return state;
   }
 
-  // Get or create the player's commanders map
-  const commanders = player.commanderDamage;
-
-  // Initialize damage tracking for this commander to all opponents
-  const newDamageMap = new Map<PlayerId, number>();
-  for (const [oppId] of state.players) {
-    if (oppId !== playerId) {
-      newDamageMap.set(oppId, 0);
-    }
-  }
-
-  // Update the player's commander damage map
-  const updatedDamage = new Map(commanders);
-  updatedDamage.set(commanderId, 0);
-
   const updatedPlayers = new Map(state.players);
-  updatedPlayers.set(playerId, {
-    ...player,
-    commanderDamage: updatedDamage,
-  });
+  for (const [opponentId, opponent] of state.players) {
+    if (opponentId === playerId) {
+      continue;
+    }
+    const updatedDamage = new Map(opponent.commanderDamage);
+    if (!updatedDamage.has(commanderId)) {
+      updatedDamage.set(commanderId, 0);
+    }
+    updatedPlayers.set(opponentId, {
+      ...opponent,
+      commanderDamage: updatedDamage,
+    });
+  }
 
   return {
     ...state,
@@ -145,7 +143,12 @@ export function registerCommander(
 /**
  * Deal commander damage
  *
- * When a commander deals combat damage to a player, track that damage
+ * When a commander deals combat damage to a player, the damage accumulates on the
+ * RECEIVER (keyed by commanderId). 21+ cumulative combat damage from the same
+ * commander causes that player to lose the game (CR 903.9a).
+ *
+ * Life loss is handled separately by the combat system; this function only tracks
+ * the commander-damage tally and the resulting loss condition.
  */
 export function dealCommanderDamage(
   state: GameState,
@@ -157,7 +160,6 @@ export function dealCommanderDamage(
   let playerLost: PlayerId | undefined;
   let lossReason: string | undefined;
 
-  // Find the commander
   const commander = state.cards.get(commanderId);
   if (!commander) {
     return {
@@ -167,7 +169,6 @@ export function dealCommanderDamage(
     };
   }
 
-  // Verify this is actually a commander
   if (!isCommander(commander)) {
     return {
       success: false,
@@ -176,80 +177,48 @@ export function dealCommanderDamage(
     };
   }
 
-  // Find the commander damage map for this commander
-  // We need to find the player who controls this commander
-  let commanderOwnerId: PlayerId | null = null;
-
-  for (const [playerId, player] of state.players) {
-    // Check if this player controls the commander (on battlefield or command zone)
-    const commanders = player.commanderDamage;
-
-    // Check if this commander is in the player's commander damage map
-    if (commanders.has(commanderId)) {
-      commanderOwnerId = playerId;
-      break;
-    }
-  }
-
-  if (!commanderOwnerId) {
-    return {
-      success: false,
-      state,
-      descriptions: ["Commander owner not found"],
-    };
-  }
-
-  const player = state.players.get(commanderOwnerId);
-  if (!player) {
-    return {
-      success: false,
-      state,
-      descriptions: ["Player not found"],
-    };
-  }
-
-  // Get current damage
-  const currentDamage = player.commanderDamage.get(commanderId) || 0;
-  const newDamage = currentDamage + damage;
-
-  // Update the damage
-  const updatedDamage = new Map(player.commanderDamage);
-  updatedDamage.set(commanderId, newDamage);
+  const commanderOwnerId: PlayerId =
+    commander.controllerId || commander.ownerId;
 
   const targetPlayer = state.players.get(targetPlayerId);
-  const targetName = targetPlayer?.name || "opponent";
+  if (!targetPlayer) {
+    return {
+      success: false,
+      state,
+      descriptions: ["Target player not found"],
+    };
+  }
+
+  const currentDamage = targetPlayer.commanderDamage.get(commanderId) || 0;
+  const newDamage = currentDamage + damage;
+
+  const updatedTargetDamage = new Map(targetPlayer.commanderDamage);
+  updatedTargetDamage.set(commanderId, newDamage);
+
+  const updatedPlayers = new Map(state.players);
+  updatedPlayers.set(targetPlayerId, {
+    ...targetPlayer,
+    commanderDamage: updatedTargetDamage,
+  });
 
   descriptions.push(
-    `${commander.cardData.name} deals ${damage} commander damage to ${targetName} (total: ${newDamage})`,
+    `${commander.cardData.name} deals ${damage} commander damage to ${targetPlayer.name} (total: ${newDamage})`,
   );
 
-  // Check if this causes a loss (21+ damage)
   if (newDamage >= DEFAULT_COMMANDER_DAMAGE_THRESHOLD) {
     playerLost = targetPlayerId;
     lossReason = `${commander.cardData.name} has dealt ${newDamage} commander damage (21+)`;
-    descriptions.push(`${targetName} loses the game due to commander damage!`);
+    descriptions.push(
+      `${targetPlayer.name} loses the game due to commander damage!`,
+    );
+    const losingPlayer = updatedPlayers.get(playerLost)!;
+    updatedPlayers.set(playerLost, {
+      ...losingPlayer,
+      hasLost: true,
+      lossReason,
+    });
   }
 
-  // Update the player
-  const updatedPlayers = new Map(state.players);
-  updatedPlayers.set(commanderOwnerId, {
-    ...player,
-    commanderDamage: updatedDamage,
-  });
-
-  // If player lost, update their state
-  if (playerLost) {
-    const losingPlayer = updatedPlayers.get(playerLost);
-    if (losingPlayer) {
-      updatedPlayers.set(playerLost, {
-        ...losingPlayer,
-        hasLost: true,
-        lossReason: lossReason || "Commander damage",
-      });
-    }
-  }
-
-  // Check win condition
   const finalState = checkCommanderWinCondition(
     { ...state, players: updatedPlayers },
     commanderOwnerId,
@@ -372,6 +341,36 @@ export function resetCommanderDamage(state: GameState): GameState {
 }
 
 /**
+ * Reset commander damage dealt by a single commander (e.g. when that commander
+ * changes zones or is replaced). Clears the tally tracked against every receiver.
+ */
+export function resetCommanderDamageFromCommander(
+  state: GameState,
+  commanderId: CardInstanceId,
+): GameState {
+  const updatedPlayers = new Map<PlayerId, Player>();
+
+  for (const [playerId, player] of state.players) {
+    if (player.commanderDamage.has(commanderId)) {
+      const updatedDamage = new Map(player.commanderDamage);
+      updatedDamage.set(commanderId, 0);
+      updatedPlayers.set(playerId, {
+        ...player,
+        commanderDamage: updatedDamage,
+      });
+    } else {
+      updatedPlayers.set(playerId, player);
+    }
+  }
+
+  return {
+    ...state,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
  * Get commander damage summary for display
  */
 export interface CommanderDamageSummary {
@@ -401,21 +400,8 @@ export function getCommanderDamageSummary(
     for (const [commanderId, damage] of player.commanderDamage) {
       const commander = state.cards.get(commanderId);
 
-      // Calculate damage to each opponent
-      // Note: In the current implementation, damage is stored per commander
-      // as total damage to all opponents combined. The damage value represents
-      // cumulative damage from this specific commander to any target.
       const damageToOpponents = new Map<PlayerId, number>();
-
-      // Store the total damage from this commander
-      // playerId here is the target player who took damage from this commander
-      // We iterate over all players to populate damage for each opponent
-      for (const [targetPlayerId] of state.players) {
-        // Only set if there's actual damage tracked for this target
-        const damageToThisTarget =
-          player.commanderDamage.get(targetPlayerId) || 0;
-        damageToOpponents.set(targetPlayerId, damageToThisTarget);
-      }
+      damageToOpponents.set(playerId, damage);
 
       commanders.push({
         commanderId,
