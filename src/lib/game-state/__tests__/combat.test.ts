@@ -1005,6 +1005,302 @@ describe("Combat System - Damage Resolution", () => {
       const bob = result.state.players.get(bobId)!;
       expect(bob.life).toBe(16); // 20 - 4 = 16
     });
+
+    // Issue #978: Trample with multiple blockers per CR 702.19b
+    // An attacker with trample must assign lethal damage to each blocker in
+    // the chosen order before any excess can trample to the defending player.
+    it("should assign lethal to each of two equal blockers with no trample - 6/6 vs two 3/3s (#978)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Trampler", power: 6, toughness: 6, keywords: ["Trample"] }],
+        [
+          { name: "Blocker1", power: 1, toughness: 3 },
+          { name: "Blocker2", power: 1, toughness: 3 },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, blockerIds);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // Both blockers receive lethal (3 each), no excess tramples
+      const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+      expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+      expect(bobGraveyard.cardIds).toContain(blockerIds[1]);
+
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(20); // 6 - 3 - 3 = 0 trample
+    });
+
+    it("should trample excess after lethal to two blockers - 6/6 vs two 2/2s (#978)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Trampler", power: 6, toughness: 6, keywords: ["Trample"] }],
+        [
+          { name: "Blocker1", power: 1, toughness: 2 },
+          { name: "Blocker2", power: 1, toughness: 2 },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, blockerIds);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // 6 - 2 - 2 = 2 trample
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(18); // 20 - 2 = 18
+
+      // Both blockers still die from lethal assignment
+      const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+      expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+      expect(bobGraveyard.cardIds).toContain(blockerIds[1]);
+    });
+
+    it("should assign lethal in order across three blockers - 7/7 vs three 2/2s (#978)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Trampler", power: 7, toughness: 7, keywords: ["Trample"] }],
+        [
+          { name: "Blocker1", power: 1, toughness: 2 },
+          { name: "Blocker2", power: 1, toughness: 2 },
+          { name: "Blocker3", power: 1, toughness: 2 },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, blockerIds);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // 7 - 2 - 2 - 2 = 1 trample
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(19); // 20 - 1 = 19
+    });
+
+    it("should trample nothing when blockers absorb all damage (#978)", () => {
+      // 5/5 blocked by 4/4 then 4/4: assign 4 to first, 1 to second, 0 excess
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Trampler", power: 5, toughness: 5, keywords: ["Trample"] }],
+        [
+          { name: "Blocker1", power: 1, toughness: 4 },
+          { name: "Blocker2", power: 1, toughness: 4 },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, blockerIds);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // No excess tramples: all 5 power absorbed by blockers
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(20);
+
+      // First blocker (4 toughness) dies from 4 assigned; second survives (1 < 4)
+      const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+      expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+      expect(bobGraveyard.cardIds).not.toContain(blockerIds[1]);
+    });
+
+    it("should not trample when lethal cannot be assigned to all blockers (#978)", () => {
+      // 4/4 blocked by 3/3 then 3/3: 3 to first (lethal), 1 to second (non-lethal)
+      // CR 702.19b: cannot trample until ALL blockers have lethal assigned
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Trampler", power: 4, toughness: 4, keywords: ["Trample"] }],
+        [
+          { name: "Blocker1", power: 1, toughness: 3 },
+          { name: "Blocker2", power: 1, toughness: 3 },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, blockerIds);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // No trample: blocker 2 was not assigned lethal damage
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(20);
+
+      // First blocker dies (3 = lethal), second survives (1 < 3)
+      const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+      expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+      expect(bobGraveyard.cardIds).not.toContain(blockerIds[1]);
+    });
+
+    it("should ignore blocker's deathtouch when assigning attacker damage (#978)", () => {
+      // CR 702.19c + CR 702.2b: a blocker's own deathtouch does not change the
+      // lethal damage the attacker must assign to it. Previously the engine
+      // over-assigned damage beyond the attacker's remaining power when a
+      // blocker had deathtouch and toughness > assigned damage.
+      // 4/4 trampler blocked by 0/5 deathtouch: assign 4 (not 5!), no trample.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Trampler", power: 4, toughness: 4, keywords: ["Trample"] }],
+        [
+          { name: "Deathtouch Wall", power: 0, toughness: 5, keywords: ["Deathtouch"] },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, [blockerId]);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // Attacker dealt at most 4 damage; blocker (5 toughness) survives
+      const bobBattlefieldAfter = result.state.zones.get(
+        `${bobId}-battlefield`,
+      )!;
+      expect(bobBattlefieldAfter.cardIds).toContain(blockerId);
+
+      // No trample because lethal (5) was not assigned
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(20);
+    });
+
+    it("should handle deathtouch + trample across multiple blockers (#978)", () => {
+      // CR 702.2b + CR 702.19b: deathtouch attacker assigns 1 (lethal) per
+      // blocker, remainder tramples. 6/6 deathtouch trampler vs 2/2 + 3/3:
+      // 1 + 1 = 2 to blockers, 4 trample.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Deathtouch Trampler",
+            power: 6,
+            toughness: 6,
+            keywords: ["Deathtouch", "Trample"],
+          },
+        ],
+        [
+          { name: "Blocker1", power: 1, toughness: 2 },
+          { name: "Blocker2", power: 1, toughness: 3 },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, blockerIds);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+
+      const result = resolveCombatDamage(blockResult.state);
+      expect(result.success).toBe(true);
+
+      // Both blockers die from 1 deathtouch damage each
+      const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+      expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+      expect(bobGraveyard.cardIds).toContain(blockerIds[1]);
+
+      // 6 - 1 - 1 = 4 trample
+      const bob = result.state.players.get(bobId)!;
+      expect(bob.life).toBe(16); // 20 - 4 = 16
+    });
   });
 });
 
