@@ -79,7 +79,8 @@ function CardDisplay({
             onClick={onClick}
             disabled={!isSelectable}
             className={`
-              relative aspect-[5/7] w-full min-w-[70px] max-w-[100px] sm:min-w-[80px] sm:max-w-[120px] md:min-w-[100px] md:max-w-[140px] lg:max-w-[160px]
+              relative aspect-[5/7] w-full min-w-[60px] max-w-[90px] sm:min-w-[80px] sm:max-w-[120px] md:min-w-[100px] md:max-w-[140px] lg:max-w-[160px]
+              flex-shrink-0
               transform transition-all duration-300 ease-out
               hover:scale-[1.75] hover:-translate-y-12 hover:z-50 hover:shadow-2xl
               origin-center
@@ -312,7 +313,7 @@ export function HandDisplay({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0"
+                    className="h-11 w-11 p-0 md:h-7 md:w-7"
                     onClick={() => {
                       const options: HandSortOption[] = [
                         "name",
@@ -341,7 +342,7 @@ export function HandDisplay({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0"
+                    className="h-11 w-11 p-0 md:h-7 md:w-7"
                     onClick={() =>
                       setDisplayMode(
                         displayMode === "overlapping"
@@ -370,7 +371,7 @@ export function HandDisplay({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
+                      className="h-11 w-11 p-0 md:h-7 md:w-7"
                       onClick={handleClearSelection}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -386,9 +387,9 @@ export function HandDisplay({
         )}
       </div>
 
-      {/* Card display area */}
+      {/* Card display area — single-row scrollable on mobile */}
       <div
-        className={`w-full ${displayMode === "overlapping" ? "overflow-x-auto py-12 -my-12 px-8 -mx-8 scrollbar-hide" : "overflow-visible"}`}
+        className={`w-full overflow-x-auto py-12 -my-12 px-2 -mx-2 md:py-12 md:px-8 md:-mx-8 scrollbar-hide ${displayMode === "spread" ? "md:overflow-visible" : ""}`}
       >
         <div
           className={`

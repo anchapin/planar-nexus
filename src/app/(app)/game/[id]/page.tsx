@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { GameBoard } from "@/components/game-board";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { PlayerCount, ZoneType } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, SavedDeck } from "@/app/actions";
@@ -872,6 +873,7 @@ function GameBoardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -2964,7 +2966,7 @@ function GameBoardContent() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 p-4 md:p-6 flex items-center justify-center">
+      <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
         <Card className="max-w-md w-full">
           <CardContent className="p-6 text-center space-y-4">
             <div className="animate-pulse space-y-2">
@@ -2981,7 +2983,7 @@ function GameBoardContent() {
 
   if (error || !gameState) {
     return (
-      <div className="flex-1 p-4 md:p-6">
+      <div className="flex-1 p-2 md:p-4">
         <Button
           variant="ghost"
           onClick={() => router.push("/single-player")}
@@ -3066,13 +3068,14 @@ function GameBoardContent() {
         className="flex-shrink-0 bg-background/95 backdrop-blur border-b"
         data-tutorial="phase-info"
       >
-        <div className="flex items-center justify-between px-4 py-2">
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between px-2 py-1.5 md:px-4 md:py-2">
+          <div className="flex items-center gap-2 md:gap-3">
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0"
+              className="h-11 w-11 p-0 md:h-8 md:w-8"
               onClick={() => router.push("/single-player")}
+              aria-label="Back to single player menu"
             >
               <ArrowLeft className="w-4 h-4" />
             </Button>
@@ -3146,10 +3149,10 @@ function GameBoardContent() {
 
       {/* Game Controls Footer */}
       <footer
-        className="flex-shrink-0 bg-background/95 backdrop-blur border-t p-2"
+        className="flex-shrink-0 bg-background/95 backdrop-blur border-t p-1.5 md:p-2"
         data-tutorial="actions"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div
             className="flex items-center gap-4 text-xs text-muted-foreground"
             data-tutorial="life-total"
@@ -3235,7 +3238,7 @@ function GameBoardContent() {
             })()}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {/* Current phase badge */}
             <Badge
               variant={isPlayerTurn ? "default" : "outline"}
@@ -3250,6 +3253,7 @@ function GameBoardContent() {
               size="sm"
               onClick={handlePassPriority}
               disabled={isGameEnded}
+              className="h-11 md:h-8"
               title={
                 mode === "ai"
                   ? "Advance to the next phase"
@@ -3267,6 +3271,7 @@ function GameBoardContent() {
               onClick={handleEndTurn}
               disabled={isGameEnded || !isPlayerTurn}
               title="Pass through all remaining phases to end your turn"
+              className="h-11 md:h-8"
             >
               <Flag className="w-3 h-3 mr-1" />
               End Turn
@@ -3279,6 +3284,7 @@ function GameBoardContent() {
                 size="sm"
                 onClick={handleAdvancePhase}
                 disabled={isGameEnded}
+                className="h-11 md:h-8"
               >
                 <Play className="w-3 h-3 mr-1" />
                 Advance Phase
@@ -3290,6 +3296,7 @@ function GameBoardContent() {
               size="sm"
               onClick={handleConcede}
               disabled={isGameEnded}
+              className="h-11 md:h-8"
             >
               Concede
             </Button>
@@ -3301,6 +3308,7 @@ function GameBoardContent() {
               title={
                 autoSaveEnabled ? "Auto-save enabled" : "Auto-save disabled"
               }
+              className="h-11 w-11 p-0 md:h-8 md:w-auto md:p-0"
             >
               {autoSaveEnabled ? (
                 <RotateCcw className="w-3 h-3" />
@@ -3318,19 +3326,22 @@ function GameBoardContent() {
                   description: `Turn ${gameState.turn.turnNumber}, Phase: ${gameState.turn.currentPhase}, Status: ${gameState.status}`,
                 });
               }}
+              className="h-11 w-11 p-0 md:h-8 md:w-auto md:p-0"
             >
               <Info className="w-3 h-3" />
             </Button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock className="w-3 h-3" />
-            <span>
-              {gameState.status === "completed"
-                ? "Game Ended"
-                : "Game in Progress"}
-            </span>
-          </div>
+          {!isMobile && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Clock className="w-3 h-3" />
+              <span>
+                {gameState.status === "completed"
+                  ? "Game Ended"
+                  : "Game in Progress"}
+              </span>
+            </div>
+          )}
         </div>
       </footer>
 
@@ -3358,7 +3369,7 @@ function GameBoardContent() {
                 <p>Your hand is empty</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
                 {playerHandCards.map((card) => (
                   <div
                     key={card.id}
@@ -3822,7 +3833,7 @@ function GameBoardContent() {
 
 function GameLoading() {
   return (
-    <div className="flex-1 p-4 md:p-6 flex items-center justify-center">
+    <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
       <Card className="max-w-md w-full">
         <CardContent className="p-6 text-center space-y-4">
           <div className="animate-pulse space-y-2">

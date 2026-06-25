@@ -48,6 +48,8 @@ import {
   Handshake,
   X,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileGameLayout } from "@/components/mobile-game-layout";
 
 // Performance optimization constants
 const VIRTUALIZATION_THRESHOLD = 20;
@@ -501,7 +503,7 @@ function PlayerArea({
           </div>
 
           <div
-            className={`grid grid-cols-4 gap-1.5 ${isBottom ? "row-start-2 z-0" : "z-0"}`}
+            className={`grid grid-cols-2 md:grid-cols-4 gap-1.5 ${isBottom ? "row-start-2 z-0" : "z-0"}`}
             data-tutorial={isBottom ? "zones" : undefined}
           >
             <ZoneDisplayLocal
@@ -572,6 +574,7 @@ export function GameBoard({
   damageEvents = [],
   onDamageEventComplete,
 }: GameBoardProps) {
+  const isMobile = useIsMobile();
   const currentPlayer = players[currentTurnIndex];
 
   // Dialog states
@@ -583,6 +586,28 @@ export function GameBoard({
     damageEvents.length > 0 ? damageEvents : internalDamageEvents.events;
   const handleDamageEventComplete =
     onDamageEventComplete || internalDamageEvents.clearEvents;
+
+  // Mobile layout — vertically-stacked, scrollable, touch-friendly
+  if (isMobile) {
+    return (
+      <MobileGameLayout
+        players={players}
+        playerCount={playerCount}
+        currentTurnIndex={currentTurnIndex}
+        onCardClick={onCardClick}
+        onZoneClick={onZoneClick}
+        onConcede={onConcede}
+        onOfferDraw={onOfferDraw}
+        onAcceptDraw={onAcceptDraw}
+        onDeclineDraw={onDeclineDraw}
+        hasActiveDrawOffer={hasActiveDrawOffer}
+        hasPlayerOfferedDraw={hasPlayerOfferedDraw}
+        isGameOver={isGameOver}
+        damageEvents={activeDamageEvents}
+        onDamageEventComplete={handleDamageEventComplete}
+      />
+    );
+  }
 
   // Layout strategy based on player count
   const renderLayout = () => {
