@@ -11,9 +11,11 @@ import {
   getCommanderFromDeck,
   getGameModeIdFromFormatName,
   validateDeckFormat,
+  getFormatDisplayName,
   type Format,
   type BannedCardSuggestion,
 } from "@/lib/game-rules";
+import { useFormatLegalityCheck, checkCardLegality } from "@/hooks/use-format-legality-check";
 import { CardSearch } from "./_components/card-search";
 import { CardGridSkeleton } from "./_components/card-grid-skeleton";
 import { DeckBuilderSkeleton } from "./_components/deck-builder-skeleton";
@@ -29,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +73,9 @@ export default function DeckBuilderPage() {
   // Enter shortcuts. Lifted from CardSearch so the page-level keydown listener
   // (installed by useDeckBuilderShortcuts) can act on it.
   const [selectedCard, setSelectedCard] = useState<ScryfallCard | null>(null);
+  // When true, the card search hides any card that is not legal in the
+  // active format. Off by default so users can still browse the full pool.
+  const [formatFilter, setFormatFilter] = useState(false);
   const searchInputRef = useRef<{ focus: () => void; search: (q: string) => void }>(null);
 
   const { toast } = useToast();
@@ -85,6 +91,10 @@ export default function DeckBuilderPage() {
     [deck, isCommanderFormat],
   );
   const commanderColorIdentity = commander?.color_identity;
+  // Human-readable label for the active format, reused across legality
+  // messages so toasts/badges stay consistent with the format selector.
+  const formatLabel = getFormatDisplayName(format);
+  const legalitySummary = useFormatLegalityCheck(deck, format, formatLabel);
 
   useEffect(() => {
     // If there is an active deck, check if it's "dirty"
@@ -158,6 +168,24 @@ export default function DeckBuilderPage() {
     (card: ScryfallCard) => {
       const gameModeId = getGameModeIdFromFormatName(format);
       const rules = formatRules[gameModeId as keyof typeof formatRules];
+
+      // Format legality guard: refuse to add cards that are banned or simply
+      // not part of the active format's pool. We surface the exact reason via
+      // toast so the user understands why the add was blocked. Restricted
+      // cards are allowed through; the existing max-copies rule below still
+      // caps them at one.
+      const legality = checkCardLegality(card, format, formatLabel);
+      if (legality.isIllegal) {
+        toast({
+          variant: "destructive",
+          title:
+            legality.status === "banned"
+              ? "Banned Card"
+              : "Format-Illegal Card",
+          description: `${legality.reason} It cannot be added to a ${formatLabel} deck.`,
+        });
+        return;
+      }
 
       handleDeckChange((prevDeck) => {
         const existingCard = prevDeck.find((c) => c.id === card.id);
@@ -471,6 +499,21 @@ export default function DeckBuilderPage() {
                   <SelectItem value="pauper">Pauper</SelectItem>
                 </SelectContent>
               </Select>
+              {/* Format Filter toggle: hides cards that are not legal in the
+                  active format from search results. Helps users stay on-pool
+                  while building. */}
+              <label
+                htmlFor="format-filter-toggle"
+                className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none"
+              >
+                <Switch
+                  id="format-filter-toggle"
+                  checked={formatFilter}
+                  onCheckedChange={setFormatFilter}
+                  data-testid="format-filter-toggle"
+                />
+                Format Filter
+              </label>
             </div>
           </div>
           <ImportExportControls
@@ -494,6 +537,8 @@ export default function DeckBuilderPage() {
                   onAddCard={addCardToDeck}
                   onSelectedCardChange={setSelectedCard}
                   commanderColorIdentity={commanderColorIdentity}
+                  format={format}
+                  formatFilter={formatFilter}
                 />
               </Suspense>
             </ComponentErrorBoundary>
@@ -520,6 +565,7 @@ export default function DeckBuilderPage() {
                     onRemoveCard={removeCardFromDeck}
                     onAddCard={addCardToDeck}
                     commanderColorIdentity={commanderColorIdentity}
+                    cardLegality={legalitySummary.cards}
                   />
                 </ComponentErrorBoundary>
               </TabsContent>
@@ -544,7 +590,12 @@ export default function DeckBuilderPage() {
               />
             )}
             <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
-            <DeckStatsPanel deck={deck} format={format} />
+            <DeckStatsPanel
+              deck={deck}
+              format={format}
+              formatLabel={formatLabel}
+              legalitySummary={legalitySummary}
+            />
             <Card>
               <CardHeader className="py-4">
                 <CardTitle className="text-lg">Saved Decks</CardTitle>

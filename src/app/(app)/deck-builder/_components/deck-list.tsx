@@ -18,6 +18,8 @@ import {
   type ColorIdentityViolation,
 } from "@/lib/game-rules";
 import { cn } from "@/lib/utils";
+import { LegalityBadge } from "./legality-badge";
+import type { CardLegalityResult } from "@/hooks/use-format-legality-check";
 
 interface DeckListProps {
   deck: DeckCard[];
@@ -31,6 +33,13 @@ interface DeckListProps {
    * color-identity checks entirely.
    */
   commanderColorIdentity?: string[];
+  /**
+   * Optional per-card legality results, keyed by card id. When supplied,
+   * each deck row renders a colour-coded LegalityBadge next to the card
+   * name. Omit to render the list without legality indicators (e.g. when
+   * the host page does not yet know the active format).
+   */
+  cardLegality?: Map<string, CardLegalityResult>;
 }
 
 type CategorizedDeck = {
@@ -79,6 +88,7 @@ export function DeckList({
   onRemoveCard,
   onAddCard,
   commanderColorIdentity,
+  cardLegality,
 }: DeckListProps) {
   const totalCards = useMemo(() => deck.reduce((sum, card) => sum + card.count, 0), [deck]);
   const [fixMode, setFixMode] = useState(false);
@@ -250,6 +260,7 @@ export function DeckList({
                                       const status = statusById.get(card.id);
                                       const isViolation = status?.severity === "violation";
                                       const isWarning = status?.severity === "warning";
+                                      const legality = cardLegality?.get(card.id);
                                       return (
                                         <li
                                           key={card.id}
@@ -278,6 +289,12 @@ export function DeckList({
                                                 {card.count}x {card.name}
                                                 {card.color_identity && card.color_identity.length > 0 && (
                                                   <ColorIdentityBadge identity={card.color_identity} />
+                                                )}
+                                                {legality && (
+                                                  <LegalityBadge
+                                                    status={legality.status}
+                                                    className="text-[10px] px-1.5 py-0"
+                                                  />
                                                 )}
                                                 {isViolation && (
                                                   <ShieldAlert className="size-3.5 ml-1.5 text-destructive" data-testid="violation-icon" />

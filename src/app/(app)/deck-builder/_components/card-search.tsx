@@ -54,6 +54,8 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useSynergy } from "./synergy-context";
+import { checkCardLegality } from "@/hooks/use-format-legality-check";
+import { LegalityBadge } from "./legality-badge";
 import Image from "next/image";
 
 interface CardSearchHandle {
@@ -79,6 +81,17 @@ interface CardSearchProps {
    * results to cards whose color identity fits within the commander's.
    */
   commanderColorIdentity?: string[];
+  /**
+   * Active deck format, used to evaluate per-card legality in the results
+   * grid and to power the format-filter toggle.
+   */
+  format?: Format;
+  /**
+   * When true, cards that are not legal in `format` are hidden from the
+   * search results entirely. Defaults to false (show everything with a
+   * badge) so users can still discover banned / out-of-format cards.
+   */
+  formatFilter?: boolean;
 }
 
 /**
@@ -106,7 +119,7 @@ function toMinimalCard(card: ScryfallCard): MinimalCard {
 }
 
 export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
-  function CardSearch({ onAddCard, onSelectedCardChange, commanderColorIdentity }, ref) {
+  function CardSearch({ onAddCard, onSelectedCardChange, commanderColorIdentity, format, formatFilter = false }, ref) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<ScryfallCard[]>([]);
@@ -466,6 +479,16 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
           );
         }
 
+        // Format legality filter: when the toggle is on, drop any card whose
+        // `legalities[format]` is not 'legal' or 'restricted'. This makes the
+        // search results reflect only format-playable cards.
+        if (formatFilter && format && searchResults.length > 0) {
+          searchResults = searchResults.filter((card) => {
+            const result = checkCardLegality(card, format, format);
+            return !result.isIllegal;
+          });
+        }
+
         setResults(searchResults);
       });
     }, [
@@ -478,6 +501,8 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       matchCommanderIdentity,
       canMatchCommanderIdentity,
       commanderColorIdentity,
+      format,
+      formatFilter,
     ]);
 
     const { synergyData } = useSynergy();
@@ -792,6 +817,12 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                 const synergy = synergyData.get(card.id);
                 const isSelected = selectedIndex === virtualItem.index;
                 const hasHighSynergy = synergy && synergy.score >= 60;
+                // Legality for the active format (only when format is known).
+                // Hidden entirely when the format filter is on, since every
+                // visible card is guaranteed legal in that mode.
+                const legality = (!formatFilter && format)
+                  ? checkCardLegality(card, format, format)
+                  : undefined;
 
                 return (
                   <button
@@ -850,6 +881,18 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                         >
                           {Math.round(synergy.score)}%
                         </Badge>
+                      </div>
+                    )}
+
+                    {legality && (
+                      <div
+                        className="absolute top-2 left-2 z-10"
+                        data-testid={`search-legality-${legality.status}`}
+                      >
+                        <LegalityBadge
+                          status={legality.status}
+                          className="text-[10px] px-1.5 py-0 shadow-sm"
+                        />
                       </div>
                     )}
                   </button>
