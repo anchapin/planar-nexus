@@ -410,19 +410,27 @@ export function parseSpellEffects(
     });
   }
 
-  // Damage: "deal X damage" or "deal 3 damage to any target"
-  const damageMatch = lowerText.match(/deal(?:s)?\s+(x|\d+)\s+damage/i);
+  // Damage: "deal X damage", "Lightning Bolt deals 3 damage to any target",
+  // "deals three damage to target creature", etc.
+  // Accepts digit amounts, X, or word-numbers (one..ten) so real card oracle
+  // text parses correctly. The target itself is supplied at resolution time
+  // from the spell's targets array (see resolveStackObjectEffects).
+  const damageMatch = lowerText.match(
+    /deal(?:s)?\s+(x|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+damage/i,
+  );
   if (damageMatch) {
+    const amountStr = damageMatch[1];
     let amount: number;
-    if (damageMatch[1].toLowerCase() === "x") {
+    if (amountStr.toLowerCase() === "x") {
       amount = variableValues?.get("X") ?? 0;
+    } else if (/^\d+$/.test(amountStr)) {
+      amount = parseInt(amountStr, 10);
     } else {
-      amount = parseInt(damageMatch[1], 10);
+      amount = wordToNumber(amountStr) ?? 0;
     }
-    const xValue = variableValues?.get("X");
     effects.push({
       effectType: "damage",
-      amount: xValue !== undefined ? xValue : amount,
+      amount,
       targetId: "" as CardInstanceId | PlayerId,
       isCombatDamage: false,
     });
@@ -494,27 +502,31 @@ export function resolveEffect(
     case "counter_spell":
       return resolveCounterEffect(state, sourceId, effect.targetStackObjectId);
 
-    case "damage":
-      // Check if target is a card or player based on type
-      if (
-        typeof effect.targetId === "string" &&
-        effect.targetId.includes("-")
-      ) {
-        return resolveDamageEffect(
-          state,
-          sourceId,
-          effect.targetId as CardInstanceId,
-          effect.amount,
-          effect.isCombatDamage,
-        );
-      } else {
+    case "damage": {
+      // Route damage to a card or player based on what the target actually is
+      // in the current state. The previous heuristic (targetId.includes("-"))
+      // was unreliable because both player IDs ("player-...") and card IDs
+      // contain hyphens, causing player damage to be misrouted to card damage.
+      // CR 119: damage to a player reduces life; damage to a permanent is
+      // handled by dealDamageToCard (creatures mark damage, planeswalkers
+      // remove loyalty counters per CR 119.3c).
+      const targetId = effect.targetId as string;
+      if (targetId && state.players.has(targetId)) {
         return resolvePlayerDamageEffect(
           state,
           sourceId,
-          effect.targetId as PlayerId,
+          targetId as PlayerId,
           effect.amount,
         );
       }
+      return resolveDamageEffect(
+        state,
+        sourceId,
+        targetId as CardInstanceId,
+        effect.amount,
+        effect.isCombatDamage,
+      );
+    }
 
     case "destroy":
       // Handled by destroyCard in keyword-actions
@@ -568,6 +580,36 @@ export function resolveStackObjectEffects(
       } else if (effect.effectType === "counter_spell") {
         effect.targetStackObjectId = target.targetId;
       }
+    }
+
+    // Damage effects: when a structured target is available, route by its
+    // declared type rather than relying on a string heuristic. This correctly
+    // distinguishes a player target from a permanent (card) target even though
+    // both IDs may contain hyphens. CR 119 / CR 119.3c.
+    if (effect.effectType === "damage" && targets && targets.length > 0) {
+      const target = targets[0];
+      let damageResult: EffectResolutionResult;
+      if (target.type === "player") {
+        damageResult = resolvePlayerDamageEffect(
+          currentState,
+          sourceId,
+          target.targetId as PlayerId,
+          effect.amount,
+        );
+      } else {
+        // "card" covers creatures, planeswalkers, and battles
+        damageResult = resolveDamageEffect(
+          currentState,
+          sourceId,
+          target.targetId as CardInstanceId,
+          effect.amount,
+          effect.isCombatDamage,
+        );
+      }
+      if (damageResult.success) {
+        currentState = damageResult.state;
+      }
+      continue;
     }
 
     const result = resolveEffect(currentState, effect, sourceId);
