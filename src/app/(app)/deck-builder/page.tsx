@@ -44,6 +44,12 @@ const AIDeckAssistant = dynamic(
   },
 );
 
+// Stable reference so useLocalStorage's effect deps don't change every render
+// (an inline [] would re-trigger the load effect on each render, leaving the
+// loading flag permanently true because each run's cleanup invalidates the
+// previous one before it can call setLoading(false)).
+const EMPTY_DECKS: SavedDeck[] = [];
+
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
   const [deckName, setDeckName] = useState("New Deck");
@@ -51,7 +57,7 @@ export default function DeckBuilderPage() {
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
   const [savedDecksRaw, setSavedDecks, { loading: decksLoading }] =
-    useLocalStorage<SavedDeck[]>("saved-decks", []);
+    useLocalStorage<SavedDeck[]>("saved-decks", EMPTY_DECKS);
   // Defensive: ensure savedDecks is always an array (guards against corrupted storage)
   const savedDecks = Array.isArray(savedDecksRaw) ? savedDecksRaw : [];
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
