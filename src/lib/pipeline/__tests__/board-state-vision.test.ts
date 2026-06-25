@@ -9,6 +9,15 @@ import {
   BOARD_STATE_SYSTEM_PROMPT,
   BOARD_STATE_VALIDATION_PROMPT,
 } from "@/lib/pipeline/board-state-prompt";
+import { analyzeFrame } from "@/lib/pipeline/board-state-vision";
+
+// The `ai` and `@ai-sdk/google` modules are now dynamically imported inside
+// analyzeFrame (Issue #1022). Track whether they are ever loaded so we can
+// assert the SDK is NOT pulled in for early-return paths.
+const googleModule = { createGoogleGenerativeAI: jest.fn() };
+const aiModule = { generateText: jest.fn() };
+jest.mock("@ai-sdk/google", () => googleModule);
+jest.mock("ai", () => aiModule);
 
 
 describe("RecognizedBoardStateSchema", () => {
@@ -243,5 +252,44 @@ describe("BOARD_STATE_VALIDATION_PROMPT", () => {
     expect(BOARD_STATE_VALIDATION_PROMPT).toContain("valid");
     expect(BOARD_STATE_VALIDATION_PROMPT).toContain("suggested_name");
     expect(BOARD_STATE_VALIDATION_PROMPT).toContain("JSON");
+  });
+});
+
+describe("analyzeFrame (dynamic imports — Issue #1022)", () => {
+  const originalGoogleKey = process.env.GOOGLE_AI_API_KEY;
+  const originalGoogleKey2 = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+  afterEach(() => {
+    if (originalGoogleKey === undefined) delete process.env.GOOGLE_AI_API_KEY;
+    else process.env.GOOGLE_AI_API_KEY = originalGoogleKey;
+    if (originalGoogleKey2 === undefined)
+      delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    else process.env.GOOGLE_GENERATIVE_AI_API_KEY = originalGoogleKey2;
+    googleModule.createGoogleGenerativeAI.mockClear();
+    aiModule.generateText.mockClear();
+  });
+
+  it("returns an error without loading the AI SDK when the API key is missing", async () => {
+    delete process.env.GOOGLE_AI_API_KEY;
+    delete process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+    const result = await analyzeFrame("/tmp/does-not-matter.png");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("GOOGLE_AI_API_KEY not configured");
+    // The heavy SDK must NOT be imported on this early-return path.
+    expect(googleModule.createGoogleGenerativeAI).not.toHaveBeenCalled();
+    expect(aiModule.generateText).not.toHaveBeenCalled();
+  });
+
+  it("returns an error without loading the AI SDK when the image cannot be read", async () => {
+    process.env.GOOGLE_AI_API_KEY = "test-key";
+
+    const result = await analyzeFrame("/tmp/this-file-does-not-exist-12345.png");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Failed to read image");
+    expect(googleModule.createGoogleGenerativeAI).not.toHaveBeenCalled();
+    expect(aiModule.generateText).not.toHaveBeenCalled();
   });
 });

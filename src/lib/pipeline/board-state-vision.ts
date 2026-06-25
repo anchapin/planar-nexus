@@ -1,7 +1,5 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { generateText } from "ai";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import {
   BOARD_STATE_SYSTEM_PROMPT,
 } from "./board-state-prompt";
@@ -77,6 +75,12 @@ export async function analyzeFrame(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      // Dynamic imports keep the heavy `ai` and `@ai-sdk/google` packages
+      // out of the initial bundle until vision analysis is actually used.
+      // (Issue #1022)
+      const { createGoogleGenerativeAI } = await import("@ai-sdk/google");
+      const { generateText } = await import("ai");
+
       const google = createGoogleGenerativeAI({ apiKey });
       const model = google(modelId);
 

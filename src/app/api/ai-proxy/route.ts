@@ -164,8 +164,8 @@ export async function POST(request: NextRequest): Promise<NextResponse | Respons
     // Check for streaming request
     const isStreaming = providerBody?.stream === true;
     
-    // Get the model instance from our factory
-    const model = getAIModel(provider, modelId);
+    // Get the model instance from our factory (async — dynamic SDK imports, Issue #1022)
+    const model = await getAIModel(provider, modelId);
 
     // Extract messages (standard for most chat completions)
     const messages = (providerBody.messages as any[]) || [];
