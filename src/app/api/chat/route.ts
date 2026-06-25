@@ -27,8 +27,8 @@ export async function POST(req: Request) {
     // Default to openai if not specified
     const selectedProvider = provider || 'openai';
     
-    // Get the model instance from our factory
-    const model = getAIModel(selectedProvider, modelId);
+    // Get the model instance from our factory (async — dynamic SDK imports, Issue #1022)
+    const model = await getAIModel(selectedProvider, modelId);
 
     // Create a streaming response using Vercel AI SDK
     const result = streamText({

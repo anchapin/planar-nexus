@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useEffect, useRef, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
@@ -25,10 +26,20 @@ import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SynergyProvider } from "./_components/synergy-context";
-import { AIDeckAssistant } from "./_components/ai-deck-assistant";
 import { DeckStatsPanel } from "./_components/deck-stats-panel";
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+// Lazy-load the AI deck assistant so @ai-sdk/react and its chat UI are split
+// into a separate chunk and only loaded when the deck-builder renders.
+// (Issue #1022)
+const AIDeckAssistant = dynamic(
+  () => import("./_components/ai-deck-assistant").then((m) => m.AIDeckAssistant),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);

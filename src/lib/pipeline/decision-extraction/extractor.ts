@@ -150,7 +150,7 @@ async function parseWithLLM(
       | "anthropic"
       | "google"
       | "openai";
-    const model = getAIModel(provider, _options.model);
+    const model = await getAIModel(provider, _options.model);
 
     const { text } = await generateText({
       model,
