@@ -76,7 +76,7 @@ describe("MobileGameLayout", () => {
     expect(controlsBar).toBeTruthy();
 
     // Concede button in the controls bar has h-11
-    const concedeBtn = within(controlsBar!).getByText("Concede").closest("button");
+    const concedeBtn = within(controlsBar as HTMLElement).getByText("Concede").closest("button");
     expect(concedeBtn).toHaveClass("h-11");
   });
 
