@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 
 // Sample card data for demonstration
 const sampleScryfallCards: ScryfallCard[] = [
@@ -256,6 +257,16 @@ export function HandDisplayDemo() {
     []
   );
 
+  const { toast } = useToast();
+
+  const cardNameById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const cs of [...currentPlayerHand, ...opponentHand, ...largeHand]) {
+      map.set(cs.id, cs.card.name);
+    }
+    return map;
+  }, [currentPlayerHand, opponentHand, largeHand]);
+
   const handleCardSelect = (cardIds: string[]) => {
     setSelectedCardIds(cardIds);
   };
@@ -265,8 +276,22 @@ export function HandDisplayDemo() {
   };
 
   const handleCastSelected = () => {
-    console.log("Casting cards:", selectedCardIds);
-    alert(`Attempting to cast ${selectedCardIds.length} card(s):\n${selectedCardIds.join("\n")}`);
+    if (selectedCardIds.length === 0) {
+      toast({
+        title: "No cards selected",
+        description: "Select one or more cards from your hand to cast.",
+      });
+      return;
+    }
+
+    const cardNames = selectedCardIds
+      .map((id) => cardNameById.get(id))
+      .filter((name): name is string => Boolean(name));
+
+    toast({
+      title: `Cast ${selectedCardIds.length} card(s)`,
+      description: cardNames.join(", "),
+    });
   };
 
   return (
