@@ -37,8 +37,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useDebounce } from "use-debounce";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { CardGridSkeleton } from "./card-grid-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -686,36 +686,14 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                 <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" />
                 <p>Initializing offline card database...</p>
               </div>
-              <div
-                className="grid gap-4"
-                style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
-              >
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    className="aspect-[5/7] rounded-lg"
-                    aria-hidden="true"
-                  />
-                ))}
-              </div>
+              <CardGridSkeleton />
             </div>
           )}
 
           {/* Pending state */}
           {!isInitializing && isPending && (
             <div className="p-4">
-              <div
-                className="grid gap-4"
-                style={{ gridTemplateColumns: `repeat(${columnCount}, 1fr)` }}
-              >
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    className="aspect-[5/7] rounded-lg"
-                    aria-hidden="true"
-                  />
-                ))}
-              </div>
+              <CardGridSkeleton />
             </div>
           )}
 
