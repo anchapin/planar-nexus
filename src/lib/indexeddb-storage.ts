@@ -339,7 +339,8 @@ export class IndexedDBStorage {
   }
 
   /**
-   * Set multiple items in a store
+   * Set multiple items in a store using a single transaction.
+   * All items are queued before any success callbacks fire.
    */
   async setAll<T>(
     storeName: string,
@@ -353,30 +354,125 @@ export class IndexedDBStorage {
       const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
 
-      let completed = 0;
       let error: Error | null = null;
+
+      transaction.oncomplete = () => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      transaction.onerror = () => {
+        if (!error) {
+          error = new Error(`Transaction failed: ${transaction.error}`);
+        }
+        reject(error);
+      };
+
+      transaction.onabort = () => {
+        if (!error && transaction.error) {
+          error = new Error(`Transaction aborted: ${transaction.error}`);
+        }
+        reject(error || new Error("Transaction aborted"));
+      };
 
       for (const value of values) {
         const request = store.put(value);
 
-        request.onsuccess = () => {
-          completed++;
-          if (completed === values.length) {
-            if (error) {
-              reject(error);
-            } else {
-              resolve();
-            }
-          }
-        };
-
         request.onerror = () => {
           if (!error) {
-            error = new Error(`Failed to set item: ${request.error}`);
+            error = new Error(`Failed to put item: ${request.error}`);
             transaction.abort();
           }
         };
       }
+    });
+  }
+
+  /**
+   * Bulk put items with optional progress callback.
+   * Uses a single transaction for all items.
+   * Progress callback fires at batch boundaries to avoid per-item overhead.
+   *
+   * @param storeName - The object store name
+   * @param values - Array of items with id property
+   * @param options - Optional settings including batchSize for progress and onProgress callback
+   */
+  async bulkPut<T>(
+    storeName: string,
+    values: (T & { id: string })[],
+    options?: {
+      batchSize?: number;
+      onProgress?: (imported: number, total: number) => void;
+    },
+  ): Promise<void> {
+    await this.ensureInitialized();
+
+    if (values.length === 0) return;
+
+    const { batchSize = 500, onProgress } = options ?? {};
+    let imported = 0;
+
+    return new Promise((resolve, reject) => {
+      const transaction = this.db!.transaction(storeName, "readwrite");
+      const store = transaction.objectStore(storeName);
+
+      let error: Error | null = null;
+
+      transaction.oncomplete = () => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      transaction.onerror = () => {
+        if (!error) {
+          error = new Error(`Transaction failed: ${transaction.error}`);
+        }
+        reject(error);
+      };
+
+      transaction.onabort = () => {
+        if (!error && transaction.error) {
+          error = new Error(`Transaction aborted: ${transaction.error}`);
+        }
+        reject(error || new Error("Transaction aborted"));
+      };
+
+      let index = 0;
+
+      const queueBatch = () => {
+        const batchEnd = Math.min(index + batchSize, values.length);
+
+        while (index < batchEnd) {
+          const value = values[index];
+          const request = store.put(value);
+
+          request.onerror = () => {
+            if (!error) {
+              error = new Error(`Failed to put item: ${request.error}`);
+              transaction.abort();
+            }
+          };
+
+          index++;
+        }
+
+        imported = batchEnd;
+        if (onProgress) {
+          onProgress(imported, values.length);
+        }
+
+        if (index < values.length) {
+          queueBatch();
+        }
+      };
+
+      queueBatch();
     });
   }
 

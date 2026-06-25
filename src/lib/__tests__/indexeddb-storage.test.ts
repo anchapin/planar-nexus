@@ -271,6 +271,88 @@ describe("IndexedDB Storage", () => {
     });
   });
 
+  describe("Bulk Operations", () => {
+    beforeEach(async () => {
+      await storage.initialize();
+    });
+
+    it("should bulkPut multiple items with progress callback", async () => {
+      const testData = Array.from({ length: 550 }, (_, i) => ({
+        id: `bulk-test-${i}`,
+        name: `Bulk Deck ${i}`,
+        format: "standard",
+        cards: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {},
+      }));
+
+      const progressUpdates: Array<{ imported: number; total: number }> = [];
+
+      await storage.bulkPut("test-decks", testData, {
+        batchSize: 100,
+        onProgress: (imported, total) => {
+          progressUpdates.push({ imported, total });
+        },
+      });
+
+      expect(progressUpdates.length).toBeGreaterThan(0);
+      expect(progressUpdates[progressUpdates.length - 1]).toEqual({
+        imported: 550,
+        total: 550,
+      });
+
+      const count = await storage.count("test-decks");
+      expect(count).toBe(550);
+
+      const allDecks = await storage.getAll("test-decks");
+      expect(allDecks).toHaveLength(550);
+    });
+
+    it("should handle empty array in bulkPut", async () => {
+      await storage.bulkPut("test-decks", []);
+      const count = await storage.count("test-decks");
+      expect(count).toBe(0);
+    });
+
+    it("should bulkPut items without progress callback", async () => {
+      const testData = Array.from({ length: 50 }, (_, i) => ({
+        id: `bulk-no-callback-${i}`,
+        name: `Bulk Deck ${i}`,
+        format: "modern",
+        cards: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {},
+      }));
+
+      await storage.bulkPut("test-decks", testData);
+
+      const count = await storage.count("test-decks");
+      expect(count).toBe(50);
+    });
+
+    it("should bulkPut and verify all items are stored correctly", async () => {
+      const testData = Array.from({ length: 200 }, (_, i) => ({
+        id: `bulk-verify-${i}`,
+        name: `Verify Deck ${i}`,
+        format: "commander",
+        cards: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: { index: i },
+      }));
+
+      await storage.bulkPut("test-decks", testData, { batchSize: 50 });
+
+      for (let i = 0; i < 200; i++) {
+        const retrieved = await storage.get("test-decks", `bulk-verify-${i}`);
+        expect(retrieved).toBeDefined();
+        expect((retrieved as any).metadata.index).toBe(i);
+      }
+    });
+  });
+
   describe("Export/Import", () => {
     beforeEach(async () => {
       await storage.initialize();
