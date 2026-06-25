@@ -496,7 +496,7 @@ export default function DeckBuilderPage() {
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
             <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
-            <DeckStatsPanel deck={deck} />
+            <DeckStatsPanel deck={deck} format={format} />
             <Card>
               <CardHeader className="py-4">
                 <CardTitle className="text-lg">Saved Decks</CardTitle>
