@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   BarChart3,
   PieChart,
@@ -12,9 +13,14 @@ import {
   ChevronUp,
   Calculator,
   Lightbulb,
+  ShieldCheck,
+  ShieldAlert,
+  Ban,
 } from 'lucide-react';
 import type { DeckCard } from '@/app/actions';
+import type { Format } from '@/lib/game-rules';
 import { useDeckStatistics } from '@/hooks/use-deck-statistics';
+import type { DeckLegalitySummary } from '@/hooks/use-format-legality-check';
 import { ManaCurveChart, CardTypeChart, DeckColorChart } from '@/components/deck-statistics';
 import {
   compareToOptimal,
@@ -28,14 +34,25 @@ interface DeckStatsPanelProps {
   deck: DeckCard[];
   /** Deck format string (any legacy Format value is normalized internally). */
   format?: string;
+  /** Display name for the active format, used in summary copy. */
+  formatLabel?: string;
+  /** Pre-computed per-card legality summary for the active format. */
+  legalitySummary?: DeckLegalitySummary;
   className?: string;
 }
 
 /**
  * Deck Statistics Panel Component
- * Displays deck analysis charts in the deck builder.
+ * Displays deck analysis charts in the deck builder, plus a format-legality
+ * summary that flags banned / not-legal cards in the active format.
  */
-export function DeckStatsPanel({ deck, format = 'commander', className }: DeckStatsPanelProps) {
+export function DeckStatsPanel({
+  deck,
+  format = 'commander',
+  formatLabel,
+  legalitySummary,
+  className,
+}: DeckStatsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeChart, setActiveChart] = useState<'mana' | 'type' | 'color'>('mana');
 
@@ -60,6 +77,8 @@ export function DeckStatsPanel({ deck, format = 'commander', className }: DeckSt
   }
 
   const hasGaps = comparison.gaps.length > 0 || comparison.landGap !== null;
+  const hasLegalityData = Boolean(format && legalitySummary);
+  const hasIllegalCards = hasLegalityData && (legalitySummary?.illegalCardCount ?? 0) > 0;
 
   return (
     <Card className={className}>
@@ -85,7 +104,7 @@ export function DeckStatsPanel({ deck, format = 'commander', className }: DeckSt
             )}
           </Button>
         </div>
-        
+
         {/* Quick stats summary */}
         {isExpanded && (
           <div className="flex gap-4 text-sm text-muted-foreground mt-2">
@@ -94,12 +113,68 @@ export function DeckStatsPanel({ deck, format = 'commander', className }: DeckSt
           </div>
         )}
       </CardHeader>
-      
+
       {isExpanded && (
         <CardContent id="deck-statistics-content" className="space-y-4">
+          {/* Format legality summary */}
+          {hasLegalityData && legalitySummary && format && (
+            <div data-testid="deck-legality-summary">
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-1.5 font-medium text-foreground">
+                  {hasIllegalCards ? (
+                    <ShieldAlert className="w-4 h-4 text-yellow-500" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4 text-green-500" />
+                  )}
+                  {formatLabel ?? format} Legality
+                </span>
+                <span
+                  className={
+                    hasIllegalCards
+                      ? 'text-yellow-600 dark:text-yellow-500'
+                      : 'text-green-600 dark:text-green-500'
+                  }
+                  data-testid="legality-summary-text"
+                >
+                  {legalitySummary.legalCardCount} legal, {legalitySummary.illegalCardCount} illegal
+                </span>
+              </div>
+
+              {/* Detailed breakdown for problem decks */}
+              {hasIllegalCards && (
+                <Alert variant="destructive" className="mt-2">
+                  <Ban className="h-4 w-4" />
+                  <AlertDescription className="text-sm space-y-1">
+                    {legalitySummary.bannedCardNames.length > 0 && (
+                      <div data-testid="legality-banned-list">
+                        <strong>Banned:</strong>{' '}
+                        {legalitySummary.bannedCardNames.slice(0, 5).join(', ')}
+                        {legalitySummary.bannedCardNames.length > 5
+                          ? ` (+${legalitySummary.bannedCardNames.length - 5} more)`
+                          : ''}
+                      </div>
+                    )}
+                    {legalitySummary.illegalCardNames.length >
+                      legalitySummary.bannedCardNames.length && (
+                      <div data-testid="legality-notlegal-list">
+                        <strong>Not legal:</strong>{' '}
+                        {legalitySummary.illegalCardNames
+                          .filter(
+                            (name) =>
+                              !legalitySummary.bannedCardNames.includes(name),
+                          )
+                          .slice(0, 5)
+                          .join(', ')}
+                      </div>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
           {/* Chart type selector */}
-          <Tabs 
-            value={activeChart} 
+          <Tabs
+            value={activeChart}
             onValueChange={(v) => setActiveChart(v as 'mana' | 'type' | 'color')}
             className="w-full"
           >
@@ -117,7 +192,7 @@ export function DeckStatsPanel({ deck, format = 'commander', className }: DeckSt
                 Colors
               </TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="mana" className="mt-4">
               <ManaCurveChart
                 manaCurve={stats.manaCurve}
@@ -126,11 +201,11 @@ export function DeckStatsPanel({ deck, format = 'commander', className }: DeckSt
                 optimalTargets={optimalTargets}
               />
             </TabsContent>
-            
+
             <TabsContent value="type" className="mt-4">
               <CardTypeChart typeDistribution={stats.typeDistribution} chartType="bar" />
             </TabsContent>
-            
+
             <TabsContent value="color" className="mt-4">
               <DeckColorChart colorDistribution={stats.colorDistribution} />
             </TabsContent>
