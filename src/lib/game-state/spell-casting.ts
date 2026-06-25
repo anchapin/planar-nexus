@@ -41,7 +41,6 @@ import {
   initializePrototype,
   getPrototypeManaCostForSpell,
 } from "./prototype";
-import { dealDamageToCard } from "./keyword-actions";
 import {
   resolveStackObjectEffects,
   parseSpellEffects,
