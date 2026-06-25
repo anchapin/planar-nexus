@@ -8,6 +8,7 @@ import { importDecklistClient, type ImportDeckResult } from "@/lib/client-card-o
 import { type DecklistFormat } from "@/lib/decklist-utils";
 import {
   formatRules,
+  getCommanderFromDeck,
   getGameModeIdFromFormatName,
   validateDeckFormat,
   type Format,
@@ -73,6 +74,17 @@ export default function DeckBuilderPage() {
 
   const { toast } = useToast();
   const [isImporting, startImportTransition] = useTransition();
+
+  // Derive the commander from the deck (first legendary creature). The color
+  // identity drives the deck-list violation highlighting and the search
+  // "Match Commander Color Identity" filter. Color identity enforcement only
+  // applies to commander-family formats.
+  const isCommanderFormat = format === "commander" || format === "legendary-commander";
+  const commander = useMemo(
+    () => (isCommanderFormat ? getCommanderFromDeck(deck) : undefined),
+    [deck, isCommanderFormat],
+  );
+  const commanderColorIdentity = commander?.color_identity;
 
   useEffect(() => {
     // If there is an active deck, check if it's "dirty"
@@ -481,6 +493,7 @@ export default function DeckBuilderPage() {
                   ref={searchInputRef}
                   onAddCard={addCardToDeck}
                   onSelectedCardChange={setSelectedCard}
+                  commanderColorIdentity={commanderColorIdentity}
                 />
               </Suspense>
             </ComponentErrorBoundary>
@@ -506,6 +519,7 @@ export default function DeckBuilderPage() {
                     onDeckNameChange={handleDeckNameChange}
                     onRemoveCard={removeCardFromDeck}
                     onAddCard={addCardToDeck}
+                    commanderColorIdentity={commanderColorIdentity}
                   />
                 </ComponentErrorBoundary>
               </TabsContent>

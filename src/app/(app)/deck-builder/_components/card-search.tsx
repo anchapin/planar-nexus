@@ -36,6 +36,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { useDebounce } from "use-debounce";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CardGridSkeleton } from "./card-grid-skeleton";
@@ -71,6 +73,12 @@ interface CardSearchProps {
    * operate on the "currently focused/selected" card (+, -, Enter).
    */
   onSelectedCardChange?: (card: ScryfallCard | null) => void;
+  /**
+   * Color identity of the deck's commander. When provided, enables the
+   * "Match Commander Color Identity" filter toggle that restricts search
+   * results to cards whose color identity fits within the commander's.
+   */
+  commanderColorIdentity?: string[];
 }
 
 /**
@@ -98,7 +106,7 @@ function toMinimalCard(card: ScryfallCard): MinimalCard {
 }
 
 export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
-  function CardSearch({ onAddCard, onSelectedCardChange }, ref) {
+  function CardSearch({ onAddCard, onSelectedCardChange, commanderColorIdentity }, ref) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<ScryfallCard[]>([]);
@@ -109,6 +117,12 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       cardCount: number;
     }>({ loaded: false, cardCount: 0 });
     const { toast } = useToast();
+
+    // "Match Commander Color Identity" filter toggle. Only has an effect when a
+    // commander color identity is available.
+    const [matchCommanderIdentity, setMatchCommanderIdentity] = useState(false);
+    const canMatchCommanderIdentity =
+      !!commanderColorIdentity && commanderColorIdentity.length > 0;
 
     // Initialize filter hook for advanced filtering
     const {
@@ -425,6 +439,16 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
           searchResults = [];
         }
 
+        // Optional: restrict results to the commander's color identity.
+        if (matchCommanderIdentity && canMatchCommanderIdentity) {
+          const allowed = new Set(commanderColorIdentity);
+          searchResults = searchResults.filter((card) => {
+            const identity = card.color_identity || [];
+            // Colorless cards (empty identity) are always allowed.
+            return identity.every((c) => allowed.has(c));
+          });
+        }
+
         // Apply additional filters from the hook if active
         if (hasActiveFilters && searchResults.length > 0) {
           // Convert to MinimalCard for filtering
@@ -451,6 +475,9 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       dbStatus.loaded,
       hasActiveFilters,
       filterSearch,
+      matchCommanderIdentity,
+      canMatchCommanderIdentity,
+      commanderColorIdentity,
     ]);
 
     const { synergyData } = useSynergy();
@@ -641,6 +668,25 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
               <span className="text-xs text-muted-foreground">
                 No saved presets
               </span>
+            )}
+
+            {/* Match Commander Color Identity filter toggle */}
+            {canMatchCommanderIdentity && (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="match-commander-identity"
+                  checked={matchCommanderIdentity}
+                  onCheckedChange={(checked) => setMatchCommanderIdentity(checked === true)}
+                  data-testid="match-commander-identity-checkbox"
+                />
+                <Label
+                  htmlFor="match-commander-identity"
+                  className="text-xs cursor-pointer"
+                  title={`Only show cards within commander's color identity (${commanderColorIdentity!.join("/")})`}
+                >
+                  Match Commander Color Identity ({commanderColorIdentity!.join("")})
+                </Label>
+              </div>
             )}
           </div>
         </div>

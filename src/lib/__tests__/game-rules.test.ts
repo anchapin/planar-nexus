@@ -29,6 +29,12 @@ import {
   DEFAULT_RULES,
   BANNED_CARD_ALTERNATIVES,
   getBannedCardAlternatives,
+  getViolatedColors,
+  getColorIdentitySeverity,
+  getCardColorIdentityStatus,
+  getCommanderFromDeck,
+  getColorIdentityFixSuggestions,
+  MANA_COLOR_NAMES,
   type Format,
 } from "../game-rules";
 
@@ -286,6 +292,180 @@ describe("Game Rules - validateDeckFormat", () => {
       expect(result.warnings).toContain(
         "No legendary specified - ensure deck follows color identity rules",
       );
+    });
+
+    it("should report specific violated colors per card in colorIdentityViolations", () => {
+      const deck = [
+        { name: "Counterspell", count: 1, color_identity: ["U"] }, // 1 color outside -> warning
+        { name: "Doom Blade", count: 1, color_identity: ["B", "U"] }, // 2 colors outside -> violation
+      ];
+      const result = validateDeckFormat(deck, "legendary-commander", {
+        name: "Ghired, Shell of the Ghireds",
+        color_identity: ["R", "W"],
+      });
+
+      expect(result.colorIdentityViolations).toBeDefined();
+      expect(result.colorIdentityViolations).toHaveLength(2);
+
+      const counterspell = result.colorIdentityViolations!.find(
+        (v) => v.name === "Counterspell",
+      );
+      expect(counterspell?.violatedColors).toEqual(["U"]);
+      expect(counterspell?.severity).toBe("warning");
+
+      const doomBlade = result.colorIdentityViolations!.find(
+        (v) => v.name === "Doom Blade",
+      );
+      expect(doomBlade?.violatedColors).toEqual(["B", "U"]);
+      expect(doomBlade?.severity).toBe("violation");
+    });
+
+    it("should include specific color names in the violation error message", () => {
+      const deck = [
+        { name: "Counterspell", count: 1, color_identity: ["U"] },
+      ];
+      const result = validateDeckFormat(deck, "legendary-commander", {
+        name: "Ghired, Shell of the Ghireds",
+        color_identity: ["R", "W"],
+      });
+
+      const violationError = result.errors.find((e) =>
+        e.includes("Color identity violation"),
+      );
+      expect(violationError).toBeDefined();
+      expect(violationError).toContain("Counterspell");
+      expect(violationError).toContain("Blue");
+    });
+
+    it("should set colorIdentityViolations to undefined when deck is compliant", () => {
+      const deck = [
+        { name: "Lightning Bolt", count: 1, color_identity: ["R"] },
+        { name: "Sol Ring", count: 1, color_identity: [] },
+      ];
+      const result = validateDeckFormat(deck, "legendary-commander", {
+        name: "Ghired, Shell of the Ghireds",
+        color_identity: ["R", "W"],
+      });
+
+      expect(result.colorIdentityViolations).toBeUndefined();
+    });
+  });
+
+  describe("Color identity helpers", () => {
+    describe("getViolatedColors", () => {
+      it("returns colors in the card but not the commander", () => {
+        expect(getViolatedColors(["R", "U", "B"], ["R", "W"])).toEqual(["U", "B"]);
+      });
+
+      it("returns an empty array when fully contained", () => {
+        expect(getViolatedColors(["R"], ["R", "W"])).toEqual([]);
+      });
+
+      it("treats colorless cards as compliant", () => {
+        expect(getViolatedColors([], ["R", "W"])).toEqual([]);
+      });
+    });
+
+    describe("getColorIdentitySeverity", () => {
+      it("is valid when no colors are violated", () => {
+        expect(getColorIdentitySeverity([])).toBe("valid");
+      });
+
+      it("is a warning when exactly 1 color is violated", () => {
+        expect(getColorIdentitySeverity(["U"])).toBe("warning");
+      });
+
+      it("is a violation when 2+ colors are violated", () => {
+        expect(getColorIdentitySeverity(["U", "B"])).toBe("violation");
+        expect(getColorIdentitySeverity(["U", "B", "G"])).toBe("violation");
+      });
+    });
+
+    describe("getCardColorIdentityStatus", () => {
+      it("returns null when no commander identity is provided", () => {
+        expect(
+          getCardColorIdentityStatus({ name: "X", color_identity: ["U"] }, undefined),
+        ).toBeNull();
+      });
+
+      it("returns null for basic lands", () => {
+        expect(
+          getCardColorIdentityStatus({ name: "Swamp", color_identity: ["B"] }, ["R", "W"]),
+        ).toBeNull();
+      });
+
+      it("reports a valid status for colorless cards", () => {
+        const status = getCardColorIdentityStatus(
+          { name: "Sol Ring", color_identity: [] },
+          ["R", "W"],
+        );
+        expect(status?.severity).toBe("valid");
+        expect(status?.violatedColors).toEqual([]);
+      });
+
+      it("computes violated colors and severity for non-compliant cards", () => {
+        const status = getCardColorIdentityStatus(
+          { name: "Counterspell", color_identity: ["U", "B"] },
+          ["R", "W"],
+        );
+        expect(status?.violatedColors).toEqual(["U", "B"]);
+        expect(status?.severity).toBe("violation");
+      });
+    });
+
+    describe("getCommanderFromDeck", () => {
+      it("returns the first legendary creature", () => {
+        const deck = [
+          { name: "Sol Ring", type_line: "Artifact", color_identity: [] },
+          { name: "Ghired", type_line: "Legendary Creature", color_identity: ["R", "W", "G"] },
+          { name: "Other Legend", type_line: "Legendary Creature", color_identity: ["U"] },
+        ];
+        const commander = getCommanderFromDeck(deck);
+        expect(commander?.name).toBe("Ghired");
+        expect(commander?.color_identity).toEqual(["R", "W", "G"]);
+      });
+
+      it("returns undefined when no legendary creature is present", () => {
+        const deck = [
+          { name: "Sol Ring", type_line: "Artifact", color_identity: [] },
+          { name: "Forest", type_line: "Basic Land — Forest", color_identity: ["G"] },
+        ];
+        expect(getCommanderFromDeck(deck)).toBeUndefined();
+      });
+    });
+
+    describe("getColorIdentityFixSuggestions", () => {
+      it("returns an empty array when there is no commander identity", () => {
+        expect(getColorIdentityFixSuggestions([{ name: "X", color_identity: ["U"] }], undefined)).toEqual([]);
+      });
+
+      it("sorts hard violations before warnings, then alphabetically", () => {
+        const deck = [
+          { name: "Zebra", color_identity: ["U"] }, // warning
+          { name: "Alpha", color_identity: ["U", "B"] }, // violation
+          { name: "Apple", color_identity: ["U", "B"] }, // violation
+        ];
+        const suggestions = getColorIdentityFixSuggestions(deck, ["R", "W"]);
+        expect(suggestions.map((s) => s.name)).toEqual(["Alpha", "Apple", "Zebra"]);
+      });
+
+      it("excludes compliant cards", () => {
+        const deck = [
+          { name: "Lightning Bolt", color_identity: ["R"] },
+          { name: "Counterspell", color_identity: ["U"] },
+        ];
+        const suggestions = getColorIdentityFixSuggestions(deck, ["R", "W"]);
+        expect(suggestions).toHaveLength(1);
+        expect(suggestions[0].name).toBe("Counterspell");
+      });
+    });
+
+    it("MANA_COLOR_NAMES maps all five colors", () => {
+      expect(MANA_COLOR_NAMES.W).toBe("White");
+      expect(MANA_COLOR_NAMES.U).toBe("Blue");
+      expect(MANA_COLOR_NAMES.B).toBe("Black");
+      expect(MANA_COLOR_NAMES.R).toBe("Red");
+      expect(MANA_COLOR_NAMES.G).toBe("Green");
     });
   });
 
