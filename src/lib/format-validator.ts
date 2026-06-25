@@ -11,6 +11,7 @@ import {
   getFormatDisplayName,
   type Format,
   type ValidationResult,
+  type BannedCardSuggestion,
 } from './game-rules';
 import type { SavedDeck } from '@/app/actions';
 
@@ -24,6 +25,13 @@ export interface LobbyDeckValidationResult {
   errors: string[];
   warnings: string[];
   canPlay: boolean;
+  /**
+   * Legal substitutes for any banned cards detected in the deck.
+   * Surfaced here so lobby UIs can offer "add alternative" actions
+   * alongside the validation errors. Undefined when no banned cards
+   * with curated alternatives were found.
+   */
+  bannedCardSuggestions?: BannedCardSuggestion[];
 }
 
 /**
@@ -60,6 +68,7 @@ export function validateDeckForLobby(deck: SavedDeck, lobbyFormat: Format): Lobb
     errors,
     warnings,
     canPlay: validation.isValid && formatMatches,
+    bannedCardSuggestions: validation.bannedCardSuggestions,
   };
 }
 

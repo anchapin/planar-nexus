@@ -56,6 +56,11 @@ import Image from "next/image";
 
 interface CardSearchHandle {
   focus: () => void;
+  /**
+   * Pre-fill the search box with a query and run the search immediately.
+   * Used by banned-card alternative suggestions to surface a replacement.
+   */
+  search: (query: string) => void;
 }
 
 interface CardSearchProps {
@@ -183,6 +188,10 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       ref,
       () => ({
         focus: () => inputRef.current?.focus(),
+        search: (q: string) => {
+          setQuery(q);
+          inputRef.current?.focus();
+        },
       }),
       [],
     );

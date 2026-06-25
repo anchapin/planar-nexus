@@ -27,6 +27,8 @@ import {
   getGameMode,
   getGameModeDescription,
   DEFAULT_RULES,
+  BANNED_CARD_ALTERNATIVES,
+  getBannedCardAlternatives,
   type Format,
 } from "../game-rules";
 
@@ -379,6 +381,93 @@ describe("Game Rules - validateDeckFormat", () => {
       expect(result.errors).toContain(
         "black lotus is banned in Legendary Commander",
       );
+    });
+  });
+
+  describe("Banned card alternative suggestions", () => {
+    it("returns curated alternatives for a known banned card", () => {
+      const alts = getBannedCardAlternatives("Black Lotus");
+      expect(alts.length).toBeGreaterThanOrEqual(2);
+      expect(alts.length).toBeLessThanOrEqual(3);
+      alts.forEach((alt) => {
+        expect(typeof alt.name).toBe("string");
+        expect(typeof alt.type).toBe("string");
+        expect(typeof alt.manaValue).toBe("number");
+        expect(typeof alt.reason).toBe("string");
+      });
+    });
+
+    it("is case-insensitive and trims whitespace", () => {
+      const lower = getBannedCardAlternatives("black lotus");
+      const messy = getBannedCardAlternatives("  BLACK LOTUS  ");
+      expect(messy).toEqual(lower);
+    });
+
+    it("returns an empty array for cards without curated alternatives", () => {
+      // 'balance' has no curated entry
+      expect(getBannedCardAlternatives("balance")).toEqual([]);
+      expect(getBannedCardAlternatives("totally unknown card")).toEqual([]);
+    });
+
+    it("never suggests a substitute that is itself banned in the format", () => {
+      // For every curated banned card, in every format that bans it, no
+      // suggested alternative may appear on that format's ban list.
+      const formats = Object.keys(gameModes) as Format[];
+      Object.keys(BANNED_CARD_ALTERNATIVES).forEach((bannedCard) => {
+        formats.forEach((fmt) => {
+          const fmtBanList = banLists[fmt].map((c) => c.toLowerCase());
+          if (!fmtBanList.includes(bannedCard)) return;
+          const alts = getBannedCardAlternatives(bannedCard, fmt);
+          alts.forEach((alt) => {
+            expect(fmtBanList).not.toContain(alt.name.toLowerCase());
+          });
+        });
+      });
+    });
+
+    it("validateDeckFormat surfaces suggestions alongside the ban error", () => {
+      const deck = [{ name: "Black Lotus", count: 1 }];
+      const result = validateDeckFormat(deck, "legendary-commander");
+
+      expect(result.isValid).toBe(false);
+      expect(result.bannedCardSuggestions).toBeDefined();
+      expect(result.bannedCardSuggestions).toHaveLength(1);
+      const suggestion = result.bannedCardSuggestions![0];
+      expect(suggestion.bannedCard).toBe("black lotus");
+      expect(suggestion.alternatives.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("validateDeckFormat omits suggestions key when no alternatives apply", () => {
+      // 'balance' is banned but has no curated alternatives
+      const deck = [{ name: "Balance", count: 1 }];
+      const result = validateDeckFormat(deck, "legendary-commander");
+
+      expect(result.isValid).toBe(false);
+      expect(result.errors).toContain("balance is banned in Legendary Commander");
+      expect(result.bannedCardSuggestions).toBeUndefined();
+    });
+
+    it("validateDeckFormat groups one suggestion per banned card", () => {
+      const deck = [
+        { name: "Black Lotus", count: 1 },
+        { name: "Time Walk", count: 1 },
+      ];
+      const result = validateDeckFormat(deck, "legendary-commander");
+
+      expect(result.bannedCardSuggestions).toHaveLength(2);
+      const banned = result.bannedCardSuggestions!.map((s) => s.bannedCard);
+      expect(banned).toEqual(expect.arrayContaining(["black lotus", "time walk"]));
+    });
+
+    it("validateSideboard surfaces suggestions for banned sideboard cards", () => {
+      // Jace, the Mind Sculptor is banned in constructed-extended (a
+      // sideboard format) and has curated alternatives.
+      const sideboard = [{ name: "Jace, the Mind Sculptor", count: 1 }];
+      const result = validateSideboard(sideboard, "constructed-extended");
+
+      expect(result.isValid).toBe(false);
+      expect(result.bannedCardSuggestions).toBeDefined();
+      expect(result.bannedCardSuggestions![0].alternatives.length).toBeGreaterThanOrEqual(2);
     });
   });
 });

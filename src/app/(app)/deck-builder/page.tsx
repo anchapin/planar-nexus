@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef, useCallback, Suspense } from "react";
+import { useState, useTransition, useEffect, useRef, useCallback, Suspense, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
@@ -9,7 +9,9 @@ import { type DecklistFormat } from "@/lib/decklist-utils";
 import {
   formatRules,
   getGameModeIdFromFormatName,
+  validateDeckFormat,
   type Format,
+  type BannedCardSuggestion,
 } from "@/lib/game-rules";
 import { CardSearch } from "./_components/card-search";
 import { CardGridSkeleton } from "./_components/card-grid-skeleton";
@@ -17,6 +19,7 @@ import { DeckBuilderSkeleton } from "./_components/deck-builder-skeleton";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
 import { useDeckBuilderShortcuts } from "./_lib/use-deck-builder-shortcuts";
+import { BannedCardAlternatives } from "./_components/banned-card-alternatives";
 import {
   Select,
   SelectContent,
@@ -66,7 +69,7 @@ export default function DeckBuilderPage() {
   // Enter shortcuts. Lifted from CardSearch so the page-level keydown listener
   // (installed by useDeckBuilderShortcuts) can act on it.
   const [selectedCard, setSelectedCard] = useState<ScryfallCard | null>(null);
-  const searchInputRef = useRef<{ focus: () => void }>(null);
+  const searchInputRef = useRef<{ focus: () => void; search: (q: string) => void }>(null);
 
   const { toast } = useToast();
   const [isImporting, startImportTransition] = useTransition();
@@ -243,6 +246,31 @@ export default function DeckBuilderPage() {
     removeCard: handleShortcutRemove,
     newDeck: handleNewDeck,
   });
+
+  // Detect banned cards in the current deck and surface curated legal
+  // substitutes. Recomputed whenever the deck or format changes.
+  const bannedCardSuggestions: BannedCardSuggestion[] = useMemo(() => {
+    if (deck.length === 0) return [];
+    const deckCards = deck.map((card) => ({
+      name: card.name,
+      count: card.count,
+      color_identity: card.color_identity,
+      type_line: card.type_line,
+    }));
+    const result = validateDeckFormat(deckCards, format);
+    return result.bannedCardSuggestions ?? [];
+  }, [deck, format]);
+
+  // One-click action for a suggested alternative: pre-fill the card search
+  // box so the user can review the replacement and add it on confirm. This
+  // satisfies the "add to deck or search for it" acceptance criterion.
+  const handleSelectAlternative = useCallback((cardName: string) => {
+    searchInputRef.current?.search(cardName);
+    toast({
+      title: "Searching for alternative",
+      description: `Showing results for "${cardName}".`,
+    });
+  }, [toast]);
 
   const importDeck = (
     decklist: string,
@@ -495,6 +523,12 @@ export default function DeckBuilderPage() {
             </Tabs>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
+            {bannedCardSuggestions.length > 0 && (
+              <BannedCardAlternatives
+                suggestions={bannedCardSuggestions}
+                onSelectAlternative={handleSelectAlternative}
+              />
+            )}
             <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
             <DeckStatsPanel deck={deck} />
             <Card>
