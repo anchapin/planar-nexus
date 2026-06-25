@@ -306,7 +306,7 @@ export function shouldUseFullSync(
 
   const delta = computeStateDelta(currentState, lastSyncedState);
 
-  if (delta.playerDeltas.length > 10) return true;
+  if (delta.playerDeltas.length > 3) return true;
   if (delta.cardDeltas.length > 50) return true;
   if (delta.stackDeltas.length > 5) return true;
 
@@ -329,7 +329,7 @@ export function applyDelta(
   for (const playerDelta of delta.playerDeltas) {
     if (playerDelta.action === "add") {
       (newState.players as Record<string, AIPlayerState>)[playerDelta.id] =
-        playerDelta.data as AIPlayerState;
+        playerDelta.data as unknown as AIPlayerState;
     } else if (playerDelta.action === "remove") {
       delete (newState.players as Record<string, AIPlayerState>)[playerDelta.id];
     } else if (playerDelta.action === "update" && playerDelta.data) {

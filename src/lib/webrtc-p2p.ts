@@ -11,6 +11,7 @@ import {
   serializeGameState,
   deserializeGameState,
   engineToAIState,
+  aiToEngineState,
   type SerializedGameState,
 } from "./game-state/serialization";
 import type { GameState, Phase, PlayerId } from "./game-state/types";
@@ -20,6 +21,7 @@ import {
   shouldUseFullSync,
   estimateDeltaSize,
   type PeerSyncState,
+  type GameStateDelta,
 } from "./game-state/delta-sync";
 import {
   ICEConfigurationManager,
@@ -674,12 +676,12 @@ export class WebRTCConnection {
 
     if (message.payload.isFullSync) {
       const gameState = deserializeGameState(
-        message.payload.gameState as string,
+        message.payload.gameState,
         baseState,
       );
       this.events.onGameStateSync(gameState, "");
     } else {
-      const delta = message.payload.gameState as ReturnType<typeof computeStateDelta>;
+      const delta = message.payload.gameState as unknown as GameStateDelta;
       const peerId = message.senderId;
       const peerState = this.peerSyncStates.get(peerId);
 
@@ -695,7 +697,7 @@ export class WebRTCConnection {
         this.events.onGameStateSync(gameState, "");
       } else {
         const gameState = deserializeGameState(
-          message.payload.gameState as string,
+          message.payload.gameState,
           baseState,
         );
         this.events.onGameStateSync(gameState, "");
@@ -1138,7 +1140,7 @@ export class WebRTCConnection {
       lastVersion: (gameState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0,
       lastChecksum: computeChecksum(aiState),
       lastState: aiState,
-      lastSerializedState: serializedState,
+      lastSerializedState: JSON.stringify(serializedState),
     };
     this.peerSyncStates.set(peerId, syncState);
 
