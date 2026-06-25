@@ -163,10 +163,10 @@ describe("Golden Scenarios", () => {
     state.cards.set(card.id, card);
     state.zones.get(`${aliceId}-battlefield`)!.cardIds.push(card.id);
 
-    // Serialize
+    // Serialize (compact, no indentation — see state-serialization.ts)
     const json = serializeGameState(state);
     expect(json).toContain("commanderDamage");
-    expect(json).toContain('"dataType": "Map"');
+    expect(json).toContain('"dataType":"Map"');
 
     // Deserialize
     const newState = deserializeGameState(json);
