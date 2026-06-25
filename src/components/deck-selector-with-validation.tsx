@@ -15,12 +15,19 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { validateDeckForLobby } from "@/lib/format-validator";
 import { getFormatDisplayName, type Format } from "@/lib/game-rules";
+import { Skeleton } from "./ui/skeleton";
 
 interface DeckSelectorWithValidationProps {
   onDeckSelect: (deck: SavedDeck, validation: { isValid: boolean; errors: string[] }) => void;
   lobbyFormat: Format;
   selectedDeckId?: string;
   className?: string;
+  /**
+   * When true (or while saved decks are still hydrating from IndexedDB), a
+   * skeleton placeholder is rendered in place of the select to avoid a layout
+   * shift and give visual feedback during the deck list load.
+   */
+  isLoading?: boolean;
 }
 
 export function DeckSelectorWithValidation({
@@ -28,8 +35,9 @@ export function DeckSelectorWithValidation({
   lobbyFormat,
   selectedDeckId,
   className,
+  isLoading,
 }: DeckSelectorWithValidationProps) {
-  const [savedDecks] = useLocalStorage<SavedDeck[]>("saved-decks", []);
+  const [savedDecks, , { loading: decksLoading }] = useLocalStorage<SavedDeck[]>("saved-decks", []);
   const [currentDeckId, setCurrentDeckId] = useState<string>(selectedDeckId || "");
   const [validation, setValidation] = useState<{ isValid: boolean; errors: string[] }>({
     isValid: true,
@@ -37,6 +45,7 @@ export function DeckSelectorWithValidation({
   });
 
   const formatName = getFormatDisplayName(lobbyFormat);
+  const loading = isLoading || decksLoading;
 
   // Get valid decks for the format
   const validDecks = savedDecks.filter((deck) => {
@@ -82,11 +91,19 @@ export function DeckSelectorWithValidation({
   return (
     <div className={className}>
       <Label htmlFor="deck-selector">Select Deck for {formatName}</Label>
-      <Select
-        value={currentDeckId}
-        onValueChange={handleSelect}
-        disabled={savedDecks.length === 0}
-      >
+      {loading ? (
+        <Skeleton
+          className="h-9 w-full rounded-md border"
+          aria-label={`Loading decks for ${formatName}`}
+          role="status"
+          aria-live="polite"
+        />
+      ) : (
+        <Select
+          value={currentDeckId}
+          onValueChange={handleSelect}
+          disabled={savedDecks.length === 0}
+        >
         <SelectTrigger id="deck-selector">
           <SelectValue placeholder="Select a deck..." />
         </SelectTrigger>
@@ -156,7 +173,8 @@ export function DeckSelectorWithValidation({
             </>
           )}
         </SelectContent>
-      </Select>
+        </Select>
+      )}
 
       {/* Validation message */}
       {currentDeckId && (

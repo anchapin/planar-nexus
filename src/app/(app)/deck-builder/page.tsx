@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef, useCallback } from "react";
+import { useState, useTransition, useEffect, useRef, useCallback, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
@@ -11,6 +11,8 @@ import {
   type Format,
 } from "@/lib/game-rules";
 import { CardSearch } from "./_components/card-search";
+import { CardGridSkeleton } from "./_components/card-grid-skeleton";
+import { DeckBuilderSkeleton } from "./_components/deck-builder-skeleton";
 import { DeckList } from "./_components/deck-list";
 import { ImportExportControls } from "./_components/import-export-controls";
 import { useDeckBuilderShortcuts } from "./_lib/use-deck-builder-shortcuts";
@@ -48,10 +50,8 @@ export default function DeckBuilderPage() {
   const [format, setFormat] = useState<Format>("commander");
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDeckSaved, setIsDeckSaved] = useState(false);
-  const [savedDecksRaw, setSavedDecks] = useLocalStorage<SavedDeck[]>(
-    "saved-decks",
-    [],
-  );
+  const [savedDecksRaw, setSavedDecks, { loading: decksLoading }] =
+    useLocalStorage<SavedDeck[]>("saved-decks", []);
   // Defensive: ensure savedDecks is always an array (guards against corrupted storage)
   const savedDecks = Array.isArray(savedDecksRaw) ? savedDecksRaw : [];
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -383,6 +383,12 @@ export default function DeckBuilderPage() {
     toast({ title: "Deck Deleted" });
   };
 
+  // While saved decks (and other IndexedDB-backed state) hydrate on first
+  // navigation, show a layout-stable skeleton instead of a blank screen.
+  if (decksLoading) {
+    return <DeckBuilderSkeleton />;
+  }
+
   return (
     <SynergyProvider deck={deck}>
       <div className="flex h-full min-h-svh w-full flex-col p-4 md:p-6">
@@ -430,11 +436,13 @@ export default function DeckBuilderPage() {
               title="Card Search Error"
               description="The card search failed to load. Try again to resume searching for cards."
             >
-              <CardSearch
-                ref={searchInputRef}
-                onAddCard={addCardToDeck}
-                onSelectedCardChange={setSelectedCard}
-              />
+              <Suspense fallback={<CardGridSkeleton className="p-4" />}>
+                <CardSearch
+                  ref={searchInputRef}
+                  onAddCard={addCardToDeck}
+                  onSelectedCardChange={setSelectedCard}
+                />
+              </Suspense>
             </ComponentErrorBoundary>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
