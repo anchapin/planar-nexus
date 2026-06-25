@@ -34,9 +34,25 @@ export function mapReviver(_key: string, value: unknown): unknown {
 }
 
 /**
- * Serialize GameState to a JSON string
+ * Serialize GameState to a compact JSON string.
+ *
+ * Indentation is intentionally omitted: the serialized payload is used for
+ * WebRTC sync messages and IndexedDB storage, where whitespace only inflates
+ * size (~30%) without any benefit. Use {@link prettyPrintGameState} when a
+ * human-readable representation is required (e.g. debugging).
  */
 export function serializeGameState(state: GameState): string {
+  return JSON.stringify(state, mapReplacer);
+}
+
+/**
+ * Serialize GameState to a pretty-printed JSON string for debugging only.
+ *
+ * This is intentionally NOT used by any persistence or transport path; it
+ * exists so logs and dev tooling can render readable state snapshots without
+ * regressing the compact serialization used elsewhere.
+ */
+export function prettyPrintGameState(state: GameState): string {
   return JSON.stringify(state, mapReplacer, 2);
 }
 

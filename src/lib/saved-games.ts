@@ -22,6 +22,10 @@ import {
   mapReplacer,
   mapReviver,
 } from "./game-state/state-serialization";
+import {
+  compressGameStateJson,
+  decompressGameStateJson,
+} from "./game-state/game-state-compression";
 
 export interface SavedGame {
   /** Unique identifier */
@@ -112,21 +116,34 @@ class SavedGamesManager {
   }
 
   /**
-   * Convert SavedGame to StoredGame for IndexedDB
+   * Convert SavedGame to StoredGame for IndexedDB.
+   *
+   * The compact {@code gameStateJson} is gzip-compressed (base64-enveloped) at
+   * this storage boundary so IndexedDB holds a much smaller payload. The
+   * in-memory {@link SavedGame} contract (a directly JSON-parseable string)
+   * is preserved by {@link fromStoredGame} on read.
    */
   private toStoredGame(game: SavedGame): StoredGame {
     return {
       ...game,
+      gameStateJson: compressGameStateJson(game.gameStateJson),
       metadata: {},
     };
   }
 
   /**
-   * Convert StoredGame to SavedGame from IndexedDB
+   * Convert StoredGame to SavedGame from IndexedDB.
+   *
+   * Decompresses the {@code gameStateJson} written by {@link toStoredGame}.
+   * Legacy uncompressed saves (pretty-printed or compact JSON) pass through
+   * unchanged for backward compatibility.
    */
   private fromStoredGame(stored: StoredGame): SavedGame {
-    const { metadata: _, ...game } = stored;
-    return game;
+    const { metadata: _, gameStateJson, ...rest } = stored;
+    return {
+      ...rest,
+      gameStateJson: decompressGameStateJson(gameStateJson),
+    };
   }
 
   /**
