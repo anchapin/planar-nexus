@@ -38,14 +38,16 @@ export function buildCoachPromptFromInput(input: CoachFlowInput): string {
 }
 
 /**
- * Async generator that yields a single error message indicating the
- * Genkit-based coach is unavailable.
+ * Async generator that yields a single friendly "coming soon" message instead
+ * of an error. Issue #1009: end users must never see a raw "unavailable"
+ * string; the wording here steers them toward working coaching surfaces while
+ * the Genkit-backed conversational flow is rebuilt.
  *
  * NOTE: `buildCoachPromptFromInput` is still invoked so the structured-analysis
  * path stays wired and covered by tests; its result is not streamed because the
  * Genkit dependency is absent (see issue #446).
  */
-async function* generateUnavailableResponse(
+async function* generateComingSoonResponse(
   input: CoachFlowInput,
 ): AsyncGenerator<{
   content: Array<{ text: string }>;
@@ -56,7 +58,7 @@ async function* generateUnavailableResponse(
   yield {
     content: [
       {
-        text: "The AI conversational coach is currently unavailable. The Genkit dependency has been removed from this project. Please use the heuristic deck coach for deck analysis instead.",
+        text: "The conversational AI coach is still being set up and will be ready soon. In the meantime, you can get instant deck analysis and recommendations from the Heuristic Deck Coach.",
       },
     ],
   };
@@ -64,10 +66,10 @@ async function* generateUnavailableResponse(
 
 /**
  * Stub coach flow that mimics the Genkit flow interface (`.stream()`).
- * Returns an async iterable yielding an unavailability message.
+ * Returns an async iterable yielding a friendly "coming soon" message.
  */
 export const coachFlow = {
   stream(input: CoachFlowInput) {
-    return generateUnavailableResponse(input);
+    return generateComingSoonResponse(input);
   },
 };
