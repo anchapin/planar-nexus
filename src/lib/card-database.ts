@@ -592,7 +592,9 @@ export async function clearImageCache(): Promise<void> {
  */
 
 /**
- * Import cards from a JSON array (for user-provided card database)
+ * Import cards from a JSON array (for user-provided card database).
+ * Uses a single transaction for the entire import with progress callbacks
+ * at batch boundaries.
  */
 export async function importCardsFromJSON(
   cards: MinimalCard[],
@@ -604,34 +606,72 @@ export async function importCardsFromJSON(
 
   if (!db) throw new Error("Database not initialized");
 
-  const batchSize = 100;
-  let imported = 0;
+  const batchSize = 500;
+  const cardsWithLowerName = cards.map((card) => ({
+    ...card,
+    name_lower: card.name.toLowerCase(),
+  }));
 
-  for (let i = 0; i < cards.length; i += batchSize) {
-    const batch = cards.slice(i, i + batchSize);
-
-    const transaction = db.transaction([STORE_NAME], "readwrite");
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db!.transaction([STORE_NAME], "readwrite");
     const store = transaction.objectStore(STORE_NAME);
 
-    await new Promise<void>((resolve, reject) => {
-      transaction.onerror = () => reject(transaction.error);
-      transaction.oncomplete = () => resolve();
+    let error: Error | null = null;
+    let index = 0;
 
-      batch.forEach((card) => {
-        store.put({
-          ...card,
-          name_lower: card.name.toLowerCase(),
-        });
-      });
-    });
+    transaction.oncomplete = () => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
 
-    imported += batch.length;
-    onProgress?.(imported, cards.length);
-  }
+    transaction.onerror = () => {
+      if (!error) {
+        error = new Error(`Transaction failed: ${transaction.error}`);
+      }
+      reject(error);
+    };
 
-  // Reinitialize fuzzy search with all cards
-  const allCards = await getAllCardsFromDB();
-  initializeFuzzySearch(allCards);
+    transaction.onabort = () => {
+      if (!error && transaction.error) {
+        error = new Error(`Transaction aborted: ${transaction.error}`);
+      }
+      reject(error || new Error("Transaction aborted"));
+    };
+
+    const queueBatch = () => {
+      const batchEnd = Math.min(index + batchSize, cardsWithLowerName.length);
+
+      while (index < batchEnd) {
+        const card = cardsWithLowerName[index];
+        const request = store.put(card);
+
+        request.onerror = () => {
+          if (!error) {
+            error = new Error(`Failed to put card: ${request.error}`);
+            transaction.abort();
+          }
+        };
+
+        index++;
+      }
+
+      if (onProgress) {
+        onProgress(batchEnd, cardsWithLowerName.length);
+      }
+
+      if (index < cardsWithLowerName.length) {
+        queueBatch();
+      }
+    };
+
+    queueBatch();
+  }).then(async () => {
+    const allCards = await getAllCardsFromDB();
+    initializeFuzzySearch(allCards);
+  });
 }
 
 /**
