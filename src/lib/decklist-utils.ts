@@ -9,9 +9,151 @@ import type { DeckCard } from "@/app/actions";
 import { type Format } from "@/lib/game-rules";
 
 /**
- * Decklist format types
+ * Decklist format types.
+ *
+ * Text-based formats are parsed directly from decklist text content:
+ *  - "standard": free-form "Count Name" or just "Name"
+ *  - "mtgo": "COUNT CARDNAME"
+ *  - "json": serialized JSON card list
+ *
+ * URL-based formats are resolved through the /api/deck-import endpoint, which
+ * fetches the deck and returns plain text that is re-parsed as "standard":
+ *  - "moxfield": moxfield.com deck URLs
+ *  - "archidekt": archidekt.com deck URLs
+ *
+ * The union is intentionally open: add a new site by extending this type and
+ * registering a {@link DeckSiteInfo} entry in {@link DECK_SITES}.
  */
-export type DecklistFormat = "standard" | "mtgo" | "json";
+export type DecklistFormat =
+  | "standard"
+  | "mtgo"
+  | "json"
+  | "moxfield"
+  | "archidekt";
+
+/**
+ * Formats that are parsed directly from decklist text content.
+ */
+export const TEXT_DECKLIST_FORMATS = ["standard", "mtgo", "json"] as const;
+
+/**
+ * Formats resolved through the deck-import API from a deck-hosting URL.
+ */
+export const URL_DECKLIST_FORMATS = ["moxfield", "archidekt"] as const;
+
+/**
+ * Shared contract for a format-specific decklist parser.
+ *
+ * Implement this interface to add support for a new text format. URL-based
+ * formats register their site metadata through {@link DECK_SITES} instead,
+ * since their parsing happens server-side.
+ */
+export interface DecklistParser {
+  readonly format: DecklistFormat;
+  parse: (input: string) => { name: string; quantity: number }[];
+}
+
+/**
+ * Metadata describing a deck-hosting site, used by both the deck-import API
+ * (for routing/fetching) and the import UI (for displaying supported sites).
+ */
+export interface DeckSiteInfo {
+  readonly format: DecklistFormat;
+  /** Human-readable site name shown in the UI. */
+  readonly name: string;
+  /** Hostname substring used to match the site (e.g. "moxfield.com"). */
+  readonly host: string;
+  /** Example URL shown as a placeholder in the import UI. */
+  readonly exampleUrl: string;
+  /** Extract the deck identifier from a supported URL, or null if unmatched. */
+  extractId: (url: string) => string | null;
+}
+
+/**
+ * Registry of supported deck-hosting sites. This is the single source of truth
+ * consumed by both the import UI and the deck-import API route. Add a new site
+ * by appending an entry here.
+ */
+export const DECK_SITES: readonly DeckSiteInfo[] = [
+  {
+    format: "standard",
+    name: "MTGGoldfish",
+    host: "mtggoldfish.com",
+    exampleUrl: "https://www.mtggoldfish.com/deck/12345678",
+    extractId: (url: string): string | null => {
+      const match = url.match(/\/deck\/([^/?#]+)/i);
+      return match ? match[1] : null;
+    },
+  },
+  {
+    format: "standard",
+    name: "TappedOut",
+    host: "tappedout.net",
+    exampleUrl: "https://tappedout.net/mtg-decks/example-deck/",
+    extractId: (url: string): string | null => {
+      const match = url.match(/\/mtg-decks\/([^/?#]+)/i);
+      return match ? match[1] : null;
+    },
+  },
+  {
+    format: "moxfield",
+    name: "Moxfield",
+    host: "moxfield.com",
+    exampleUrl: "https://www.moxfield.com/decks/AbCdEfGhIjKl",
+    extractId: (url: string): string | null => {
+      // Handles /decks/{id}, /deck/{id}, and /deck/anonymous/{id}
+      const match = url.match(
+        /\/decks?\/(?:anonymous\/)?([A-Za-z0-9_-]+)/i,
+      );
+      return match ? match[1] : null;
+    },
+  },
+  {
+    format: "archidekt",
+    name: "Archidekt",
+    host: "archidekt.com",
+    exampleUrl: "https://archidekt.com/decks/12345678",
+    extractId: (url: string): string | null => {
+      const match = url.match(/\/decks\/(\d+)/i);
+      return match ? match[1] : null;
+    },
+  },
+] as const;
+
+/**
+ * Detect which supported deck-hosting site a URL belongs to, if any.
+ */
+export function detectDeckSite(url: string): DeckSiteInfo | null {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    hostname = url.toLowerCase();
+  }
+  return DECK_SITES.find((site) => hostname.includes(site.host)) ?? null;
+}
+
+/**
+ * Whether a URL points to a supported deck-hosting site.
+ */
+export function isSupportedDeckUrl(url: string): boolean {
+  return detectDeckSite(url) !== null;
+}
+
+/**
+ * Build a helpful suggestion message for an unsupported deck URL, recommending
+ * the user export the decklist as text and use the Text/Clipboard import.
+ */
+export function getUnsupportedSiteSuggestion(url: string): string {
+  const supported = DECK_SITES.map((s) => s.name).join(", ");
+  const detected = detectDeckSite(url);
+  if (detected) {
+    // The host is known but we could not extract/parse the deck. Guide the user
+    // to the text-export fallback.
+    return `Could not parse the deck from ${detected.name}. Try exporting the decklist as text from the site and using the Text/Clipboard import option instead. Supported sites: ${supported}.`;
+  }
+  return `This site is not directly supported. Try exporting the decklist as text and using the Text/Clipboard import option instead. Directly supported sites: ${supported}.`;
+}
 
 /**
  * Arena-to-paper name aliases from Through the Omenpaths (OM1)
@@ -368,6 +510,11 @@ export function parseDecklist(
     return parseJSONDecklist(decklist);
   }
 
+  // URL-based formats ("moxfield", "archidekt") are resolved by the
+  // deck-import API into plain "Count Name" text before reaching this parser,
+  // so their text content is parsed as standard text. This keeps the format
+  // union extensible without breaking the text parser for callers that pass a
+  // resolved decklist.
   const lines = splitDecklist(decklist);
   if (lines.length === 0) {
     return [];

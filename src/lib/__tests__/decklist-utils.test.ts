@@ -6,6 +6,11 @@ import {
   detectDecklistFormat,
   splitDecklist,
   sanitizeCardInput,
+  detectDeckSite,
+  isSupportedDeckUrl,
+  getUnsupportedSiteSuggestion,
+  DECK_SITES,
+  type DecklistFormat,
 } from "../decklist-utils";
 
 describe("parseDecklistLine", () => {
@@ -305,5 +310,119 @@ describe("sanitizeCardInput", () => {
     const { cardMap, malformedInputs } = sanitizeCardInput(cards);
     expect(cardMap.size).toBe(1);
     expect(malformedInputs.length).toBe(2);
+  });
+});
+
+describe("DecklistFormat extensibility", () => {
+  it("includes the URL-based formats moxfield and archidekt", () => {
+    const format: DecklistFormat = "moxfield";
+    expect(format).toBe("moxfield");
+    const archidekt: DecklistFormat = "archidekt";
+    expect(archidekt).toBe("archidekt");
+  });
+
+  it("treats URL-based formats as standard text in parseDecklist", () => {
+    const decklist = "4 Sol Ring\n1 Command Tower";
+    expect(parseDecklist(decklist, "moxfield")).toEqual([
+      { name: "Sol Ring", quantity: 4 },
+      { name: "Command Tower", quantity: 1 },
+    ]);
+    expect(parseDecklist(decklist, "archidekt")).toEqual([
+      { name: "Sol Ring", quantity: 4 },
+      { name: "Command Tower", quantity: 1 },
+    ]);
+  });
+});
+
+describe("DECK_SITES registry", () => {
+  it("includes Moxfield and Archidekt alongside the original sites", () => {
+    const names = DECK_SITES.map((s) => s.name);
+    expect(names).toContain("MTGGoldfish");
+    expect(names).toContain("TappedOut");
+    expect(names).toContain("Moxfield");
+    expect(names).toContain("Archidekt");
+  });
+
+  it("every site has a non-empty host and example URL", () => {
+    for (const site of DECK_SITES) {
+      expect(site.host.length).toBeGreaterThan(0);
+      expect(site.exampleUrl.startsWith("http")).toBe(true);
+    }
+  });
+
+  it("extracts a Moxfield id from /decks/{id}, /deck/{id}, and /deck/anonymous/{id}", () => {
+    const moxfield = DECK_SITES.find((s) => s.name === "Moxfield")!;
+    expect(moxfield.extractId("https://www.moxfield.com/decks/AbCdEf123")).toBe(
+      "AbCdEf123",
+    );
+    expect(moxfield.extractId("https://moxfield.com/deck/AbCdEf123")).toBe(
+      "AbCdEf123",
+    );
+    expect(
+      moxfield.extractId("https://moxfield.com/deck/anonymous/AbCdEf123"),
+    ).toBe("AbCdEf123");
+    expect(moxfield.extractId("https://moxfield.com/other/path")).toBeNull();
+  });
+
+  it("extracts a numeric Archidekt id from /decks/{id}", () => {
+    const archidekt = DECK_SITES.find((s) => s.name === "Archidekt")!;
+    expect(archidekt.extractId("https://archidekt.com/decks/12345678")).toBe(
+      "12345678",
+    );
+    expect(
+      archidekt.extractId("https://www.archidekt.com/decks/12345678/"),
+    ).toBe("12345678");
+    expect(archidekt.extractId("https://archidekt.com/decks/abc")).toBeNull();
+  });
+});
+
+describe("detectDeckSite", () => {
+  it("detects each supported site by hostname", () => {
+    expect(detectDeckSite("https://www.moxfield.com/decks/abc")?.name).toBe(
+      "Moxfield",
+    );
+    expect(detectDeckSite("https://archidekt.com/decks/123")?.name).toBe(
+      "Archidekt",
+    );
+    expect(
+      detectDeckSite("https://www.mtggoldfish.com/deck/123")?.name,
+    ).toBe("MTGGoldfish");
+    expect(detectDeckSite("https://tappedout.net/mtg-decks/foo/")?.name).toBe(
+      "TappedOut",
+    );
+  });
+
+  it("returns null for unsupported sites", () => {
+    expect(detectDeckSite("https://example.com/deck/123")).toBeNull();
+  });
+
+  it("returns null for invalid input", () => {
+    expect(detectDeckSite("not a url")).toBeNull();
+  });
+});
+
+describe("isSupportedDeckUrl", () => {
+  it("returns true for supported sites and false otherwise", () => {
+    expect(isSupportedDeckUrl("https://www.moxfield.com/decks/abc")).toBe(true);
+    expect(isSupportedDeckUrl("https://archidekt.com/decks/123")).toBe(true);
+    expect(isSupportedDeckUrl("https://example.com/deck/123")).toBe(false);
+  });
+});
+
+describe("getUnsupportedSiteSuggestion", () => {
+  it("mentions the text-export fallback and lists supported sites", () => {
+    const suggestion = getUnsupportedSiteSuggestion(
+      "https://example.com/deck/123",
+    );
+    expect(suggestion.toLowerCase()).toContain("text");
+    expect(suggestion).toContain("Moxfield");
+    expect(suggestion).toContain("Archidekt");
+  });
+
+  it("names the detected site when the host is known", () => {
+    const suggestion = getUnsupportedSiteSuggestion(
+      "https://archidekt.com/decks/123",
+    );
+    expect(suggestion).toContain("Archidekt");
   });
 });
