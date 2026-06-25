@@ -35,6 +35,9 @@ import {
   getCommanderFromDeck,
   getColorIdentityFixSuggestions,
   MANA_COLOR_NAMES,
+  STANDARD_ROTATION_SCHEDULE,
+  getStandardLegalSets,
+  validateStandardRotation,
   type Format,
 } from "../game-rules";
 
@@ -1204,5 +1207,182 @@ describe("Game Rules - Default Rules", () => {
     expect(DEFAULT_RULES.limited.minCards).toBe(40);
     expect(DEFAULT_RULES.limited.startingLife).toBe(20);
     expect(DEFAULT_RULES.limited.commanderDamage).toBeNull();
+  });
+});
+
+describe("Game Rules - Standard Rotation Awareness (Issue #996)", () => {
+  // Fixed reference date so assertions are deterministic regardless of when
+  // the tests run. Picked mid-2025: sets released before this date that
+  // rotate in late 2024 are out; "blb" onward (released mid/late 2024) are in.
+  const referenceDate = new Date("2025-06-01T00:00:00Z");
+
+  describe("STANDARD_ROTATION_SCHEDULE", () => {
+    it("should expose a non-empty schedule", () => {
+      expect(STANDARD_ROTATION_SCHEDULE.length).toBeGreaterThan(0);
+    });
+
+    it("should have well-formed entries with set/releaseDate/rotationDate", () => {
+      STANDARD_ROTATION_SCHEDULE.forEach((entry) => {
+        expect(typeof entry.set).toBe("string");
+        expect(entry.set.length).toBeGreaterThan(0);
+        expect(entry.releaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        expect(entry.rotationDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+        // rotation must come after release
+        expect(
+          new Date(entry.rotationDate).getTime(),
+        ).toBeGreaterThan(new Date(entry.releaseDate).getTime());
+      });
+    });
+  });
+
+  describe("getStandardLegalSets", () => {
+    it("should return a set of currently-legal lowercase set codes", () => {
+      const legal = getStandardLegalSets(referenceDate);
+      expect(legal).toBeInstanceOf(Set);
+      legal.forEach((code) => {
+        expect(code).toBe(code.toLowerCase());
+      });
+    });
+
+    it("should include sets released before and rotating after the reference date", () => {
+      const legal = getStandardLegalSets(referenceDate);
+      // "blb" released 2024-07-26, rotates 2026-10-30 -> legal on 2025-06-01
+      expect(legal.has("blb")).toBe(true);
+      // "dsk" released 2024-09-27, rotates 2026-10-30 -> legal on 2025-06-01
+      expect(legal.has("dsk")).toBe(true);
+    });
+
+    it("should exclude sets that rotated out before the reference date", () => {
+      const legal = getStandardLegalSets(referenceDate);
+      // "neo" released 2022-02-18, rotated 2024-09-27 -> not legal on 2025-06-01
+      expect(legal.has("neo")).toBe(false);
+      // "dmu" rotated 2024-09-27 -> not legal
+      expect(legal.has("dmu")).toBe(false);
+    });
+
+    it("should exclude sets not yet released as of the reference date", () => {
+      const early = getStandardLegalSets(new Date("2020-01-01T00:00:00Z"));
+      // Nothing in the schedule was released before 2020
+      expect(early.size).toBe(0);
+    });
+  });
+
+  describe("validateStandardRotation", () => {
+    it("should return no warnings for cards in legal sets", () => {
+      const result = validateStandardRotation(
+        [
+          { name: "Heartfire Hero", set: "blb" },
+          { name: "Mountain", set: "blb" },
+        ],
+        referenceDate,
+      );
+      expect(result.rotatedCards).toEqual([]);
+      expect(result.unknownSetCards).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it("should flag cards whose set has rotated out", () => {
+      const result = validateStandardRotation(
+        [{ name: "Fable of the Mirror-Breaker", set: "neo" }],
+        referenceDate,
+      );
+      expect(result.rotatedCards).toHaveLength(1);
+      expect(result.rotatedCards[0]).toEqual({
+        name: "Fable of the Mirror-Breaker",
+        set: "neo",
+      });
+      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings[0]).toMatch(/rotated set/i);
+    });
+
+    it("should report cards from sets absent from the schedule as unknown", () => {
+      const result = validateStandardRotation(
+        [{ name: "Lightning Bolt", set: "2xm" }],
+        referenceDate,
+      );
+      expect(result.rotatedCards).toEqual([]);
+      expect(result.unknownSetCards).toHaveLength(1);
+      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings[0]).toMatch(/not tracked by the rotation schedule/i);
+    });
+
+    it("should ignore basic lands", () => {
+      const result = validateStandardRotation(
+        [
+          { name: "Forest", set: "neo" },
+          { name: "Plains", set: "unknownset" },
+        ],
+        referenceDate,
+      );
+      expect(result.rotatedCards).toEqual([]);
+      expect(result.unknownSetCards).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it("should match set codes case-insensitively", () => {
+      const result = validateStandardRotation(
+        [{ name: "Fable of the Mirror-Breaker", set: "NEO" }],
+        referenceDate,
+      );
+      expect(result.rotatedCards).toHaveLength(1);
+    });
+
+    it("should skip cards without a set code", () => {
+      const result = validateStandardRotation(
+        [{ name: "Mystery Card" }],
+        referenceDate,
+      );
+      expect(result.rotatedCards).toEqual([]);
+      expect(result.unknownSetCards).toEqual([]);
+      expect(result.warnings).toEqual([]);
+    });
+
+    it("should truncate rotated card lists in the warning message", () => {
+      const many = Array.from({ length: 7 }, (_, i) => ({
+        name: `Rotated Card ${i}`,
+        set: "neo",
+      }));
+      const result = validateStandardRotation(many, referenceDate);
+      expect(result.rotatedCards).toHaveLength(7);
+      expect(result.warnings[0]).toMatch(/\.\.\.$/);
+    });
+  });
+
+  describe("validateDeckFormat integration", () => {
+    it("should surface rotation warnings for constructed-core decks", () => {
+      const deck = [
+        { name: "Fable of the Mirror-Breaker", set: "neo", count: 4 },
+        { name: "Forest", count: 56 },
+      ];
+      const result = validateDeckFormat(deck, "constructed-core");
+      const hasRotationWarning = result.warnings.some((w) =>
+        /rotated set/i.test(w),
+      );
+      expect(hasRotationWarning).toBe(true);
+      // Rotation is a warning, not a hard error, so the deck stays "valid"
+      expect(result.isValid).toBe(true);
+    });
+
+    it("should surface rotation warnings for the legacy 'standard' alias", () => {
+      const deck = [
+        { name: "Sheoldred, the Apocalypse", set: "dmu", count: 4 },
+        { name: "Forest", count: 56 },
+      ];
+      const result = validateDeckFormat(deck, "standard");
+      expect(
+        result.warnings.some((w) => /rotated set/i.test(w)),
+      ).toBe(true);
+    });
+
+    it("should not add rotation warnings to non-Standard formats", () => {
+      const deck = [
+        { name: "Fable of the Mirror-Breaker", set: "neo", count: 4 },
+        { name: "Forest", count: 56 },
+      ];
+      const result = validateDeckFormat(deck, "constructed-legacy");
+      expect(
+        result.warnings.some((w) => /rotated set/i.test(w)),
+      ).toBe(false);
+    });
   });
 });
