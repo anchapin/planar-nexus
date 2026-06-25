@@ -604,6 +604,182 @@ describe("Keyword Enforcement — Combat", () => {
       expect(hasMenace(bear)).toBe(false);
       expect(getMenaceMinimumBlockers(bear)).toBe(1);
     });
+
+    // The following integration tests cover the gameplay-enforcement gap
+    // described in Issue #968: declareBlockers must reject an assignment of
+    // fewer than two blockers against a menace attacker.
+    it("rejects a single blocker assigned to a menace attacker (attacker stays unblocked)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Dire Wolf Prowler", power: 3, toughness: 3, keywords: ["Menace"] }],
+        [{ name: "Solo Blocker", power: 2, toughness: 2 }],
+      );
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      // Declare the attacker
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      // Attempt to block the menace attacker with exactly one creature
+      const blockerAssignments = new Map<CardInstanceId, CardInstanceId[]>([
+        [attackerId, [blockerId]],
+      ]);
+      const result = declareBlockers(stateWithAttackers, blockerAssignments);
+
+      // The single-blocker assignment must be rejected: the attacker is not
+      // recorded as blocked, and an error mentioning menace is surfaced.
+      expect(result.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(result.errors).toBeDefined();
+      expect(result.errors!.some((e) => /menace/i.test(e))).toBe(true);
+    });
+
+    it("accepts two blockers assigned to a menace attacker", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Dire Wolf Prowler", power: 3, toughness: 3, keywords: ["Menace"] }],
+        [
+          { name: "Blocker A", power: 2, toughness: 2 },
+          { name: "Blocker B", power: 2, toughness: 2 },
+        ],
+      );
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map<CardInstanceId, CardInstanceId[]>([
+        [attackerId, bobBattlefield],
+      ]);
+      const result = declareBlockers(stateWithAttackers, blockerAssignments);
+
+      expect(result.state.combat.blockers.get(attackerId)).toHaveLength(2);
+      // No menace-related error should be reported when the minimum is met.
+      const menaceError =
+        result.errors && result.errors.find((e) => /menace/i.test(e));
+      expect(menaceError).toBeUndefined();
+    });
+
+    it("non-menace attacker can still be blocked by a single creature", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Grizzly Bears", power: 2, toughness: 2 }],
+        [{ name: "Lone Blocker", power: 2, toughness: 2 }],
+      );
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const blockerAssignments = new Map<CardInstanceId, CardInstanceId[]>([
+        [attackerId, [blockerId]],
+      ]);
+      const result = declareBlockers(stateWithAttackers, blockerAssignments);
+
+      expect(result.state.combat.blockers.get(attackerId)).toHaveLength(1);
+      expect(
+        result.errors && result.errors.some((e) => /menace/i.test(e)),
+      ).toBeFalsy();
+    });
+
+    it("a menace attacker left unblocked (0 blockers) is legal and not flagged as a menace violation", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Dire Wolf Prowler", power: 3, toughness: 3, keywords: ["Menace"] }],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      // No entry for this attacker in the blocker map = intentionally unblocked.
+      const result = declareBlockers(stateWithAttackers, new Map());
+      expect(result.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(
+        result.errors && result.errors.some((e) => /menace/i.test(e)),
+      ).toBeFalsy();
+    });
+
+    it("composes menace + flying: requires two blockers that each satisfy the flying restriction", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Menace Flyer",
+            power: 3,
+            toughness: 3,
+            keywords: ["Menace", "Flying"],
+          },
+        ],
+        [
+          // A ground creature that cannot block flying
+          { name: "Ground Blocker", power: 2, toughness: 2 },
+          // Two flyers that can block the flying attacker
+          { name: "Flying Blocker A", power: 2, toughness: 2, keywords: ["Flying"] },
+          { name: "Flying Blocker B", power: 2, toughness: 2, keywords: ["Flying"] },
+        ],
+      );
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!.cardIds;
+      const groundBlockerId = bobBattlefield[0];
+      const flyingBlockerIds = [bobBattlefield[1], bobBattlefield[2]];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      // (a) One flyer only → only 1 valid blocker → menace rejects the assignment.
+      const oneFlyerResult = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([
+          [attackerId, [flyingBlockerIds[0]]],
+        ]),
+      );
+      expect(oneFlyerResult.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(
+        oneFlyerResult.errors && oneFlyerResult.errors.some((e) => /menace/i.test(e)),
+      ).toBe(true);
+
+      // (b) Ground blocker + flyer → ground blocker filtered out by flying
+      //     restriction, leaving 1 valid blocker → menace still rejects.
+      const mixedResult = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([
+          [attackerId, [groundBlockerId, flyingBlockerIds[0]]],
+        ]),
+      );
+      expect(mixedResult.state.combat.blockers.has(attackerId)).toBe(false);
+
+      // (c) Two flyers → 2 valid blockers satisfy both flying and menace.
+      const twoFlyersResult = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([
+          [attackerId, flyingBlockerIds],
+        ]),
+      );
+      expect(twoFlyersResult.state.combat.blockers.get(attackerId)).toHaveLength(2);
+      expect(
+        twoFlyersResult.errors &&
+          twoFlyersResult.errors.some((e) => /menace/i.test(e)),
+      ).toBeFalsy();
+    });
   });
 
   // ---- Indestructible (CR 702.12) ----

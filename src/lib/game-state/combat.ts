@@ -22,6 +22,7 @@ import {
   hasDeathtouch,
   getToxicLevel,
   getProtectionQualities,
+  getMenaceMinimumBlockers,
 } from "./evergreen-keywords";
 
 /**
@@ -339,7 +340,24 @@ export function declareBlockers(
       }
     }
 
+    // Menace enforcement (CR 702.70): a creature with menace can't be blocked
+    // except by two or more creatures. If the attacker requires more blockers
+    // than were validly assigned, reject the entire assignment for this
+    // attacker (it remains unblocked) and surface an error.
+    // Note: 0 blockers is always legal (the attacker is simply unblocked);
+    // only a partial assignment (fewer than the minimum) is rejected.
+    // Issue #968
     if (validBlockerIds.length > 0) {
+      const attacker = state.cards.get(attackerId);
+      if (attacker && isCreature(attacker)) {
+        const minRequired = getMenaceMinimumBlockers(attacker);
+        if (validBlockerIds.length < minRequired) {
+          errors.push(
+            `${attacker.cardData.name || attackerId}: can't be blocked by fewer than ${minRequired} creature${minRequired !== 1 ? "s" : ""} (menace)`,
+          );
+          continue;
+        }
+      }
       validBlockers.set(attackerId, validBlockerIds);
     }
   }
