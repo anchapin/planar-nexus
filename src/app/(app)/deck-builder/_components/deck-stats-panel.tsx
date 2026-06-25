@@ -1,40 +1,65 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  BarChart3, 
-  PieChart, 
-  Palette, 
-  ChevronDown, 
+import {
+  BarChart3,
+  PieChart,
+  Palette,
+  ChevronDown,
   ChevronUp,
-  Calculator
+  Calculator,
+  Lightbulb,
 } from 'lucide-react';
 import type { DeckCard } from '@/app/actions';
 import { useDeckStatistics } from '@/hooks/use-deck-statistics';
 import { ManaCurveChart, CardTypeChart, DeckColorChart } from '@/components/deck-statistics';
+import {
+  compareToOptimal,
+  normalizeDeckFormat,
+  getManaCurveTips,
+  OPTIMAL_MANA_CURVES,
+  type DeckFormat,
+} from '@/lib/deck-analyzer';
 
 interface DeckStatsPanelProps {
   deck: DeckCard[];
+  /** Deck format string (any legacy Format value is normalized internally). */
+  format?: string;
   className?: string;
 }
 
 /**
  * Deck Statistics Panel Component
- * Displays deck analysis charts in the deck builder
+ * Displays deck analysis charts in the deck builder.
  */
-export function DeckStatsPanel({ deck, className }: DeckStatsPanelProps) {
+export function DeckStatsPanel({ deck, format = 'commander', className }: DeckStatsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeChart, setActiveChart] = useState<'mana' | 'type' | 'color'>('mana');
-  
+
   const stats = useDeckStatistics(deck);
+  const deckFormat: DeckFormat = normalizeDeckFormat(format);
+
+  // Compare the deck against the format-optimal curve for actionable gaps.
+  const comparison = useMemo(() => compareToOptimal(deck, deckFormat), [deck, deckFormat]);
+  const tips = useMemo(() => getManaCurveTips(deckFormat), [deckFormat]);
+  const optimalTargets = useMemo(() => {
+    const targets: Record<number, number> = {};
+    const profile = OPTIMAL_MANA_CURVES[deckFormat];
+    for (let cmc = 1; cmc <= 7; cmc++) {
+      targets[cmc] = profile.buckets[cmc].target;
+    }
+    return targets;
+  }, [deckFormat]);
 
   // Don't render if deck is empty
   if (deck.length === 0) {
     return null;
   }
+
+  const hasGaps = comparison.gaps.length > 0 || comparison.landGap !== null;
 
   return (
     <Card className={className}>
@@ -94,7 +119,12 @@ export function DeckStatsPanel({ deck, className }: DeckStatsPanelProps) {
             </TabsList>
             
             <TabsContent value="mana" className="mt-4">
-              <ManaCurveChart manaCurve={stats.manaCurve} />
+              <ManaCurveChart
+                manaCurve={stats.manaCurve}
+                format={deckFormat}
+                gaps={comparison.gaps}
+                optimalTargets={optimalTargets}
+              />
             </TabsContent>
             
             <TabsContent value="type" className="mt-4">
@@ -105,7 +135,67 @@ export function DeckStatsPanel({ deck, className }: DeckStatsPanelProps) {
               <DeckColorChart colorDistribution={stats.colorDistribution} />
             </TabsContent>
           </Tabs>
-          
+
+          {/* Mana curve optimization suggestions & format-specific guidance */}
+          {activeChart === 'mana' && (
+            <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Lightbulb className="w-4 h-4 text-yellow-500" />
+                Mana Curve Optimization
+                <span className="ml-auto text-xs text-muted-foreground capitalize">{deckFormat}</span>
+              </div>
+
+              {hasGaps ? (
+                <ul className="space-y-1 text-xs">
+                  {comparison.gaps.slice(0, 4).map((gap) => (
+                    <li
+                      key={gap.cmc}
+                      className={
+                        gap.difference > 0
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }
+                    >
+                      • {gap.difference > 0 ? 'Add' : 'Cut'}{' '}
+                      {Math.abs(gap.difference) <= 1
+                        ? Math.abs(gap.difference)
+                        : `${Math.max(1, Math.abs(gap.difference) - 1)}-${Math.abs(gap.difference)}`}{' '}
+                      {gap.difference > 0 ? 'more' : 'fewer'} {gap.label}s (have {gap.current}, target ~{gap.target})
+                    </li>
+                  ))}
+                  {comparison.landGap && (
+                    <li
+                      className={
+                        comparison.landGap.difference > 0
+                          ? 'text-amber-600 dark:text-amber-400'
+                          : 'text-red-600 dark:text-red-400'
+                      }
+                    >
+                      • {comparison.landGap.difference > 0 ? 'Add' : 'Cut'}{' '}
+                      {Math.abs(comparison.landGap.difference)} lands (have{' '}
+                      {comparison.landGap.current}, target ~{comparison.landGap.target})
+                    </li>
+                  )}
+                </ul>
+              ) : (
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  Your mana curve matches the optimal {deckFormat} profile. Nice work!
+                </p>
+              )}
+
+              <div className="border-t pt-2">
+                <div className="text-xs font-medium text-muted-foreground mb-1">
+                  {deckFormat.charAt(0).toUpperCase() + deckFormat.slice(1)} curve tips
+                </div>
+                <ul className="space-y-0.5 text-xs text-muted-foreground list-disc list-inside">
+                  {tips.map((tip) => (
+                    <li key={tip}>{tip}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           {/* Quick type summary */}
           <div className="text-sm text-muted-foreground space-y-1">
             <div className="font-medium text-foreground">Quick Summary</div>

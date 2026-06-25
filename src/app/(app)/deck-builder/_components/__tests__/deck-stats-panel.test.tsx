@@ -71,6 +71,7 @@ jest.mock("lucide-react", () => ({
   ChevronDown: () => <svg />,
   ChevronUp: () => <svg />,
   Calculator: () => <svg />,
+  Lightbulb: () => <svg />,
 }));
 
 import { DeckStatsPanel } from "@/app/(app)/deck-builder/_components/deck-stats-panel";

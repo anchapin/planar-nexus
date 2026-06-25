@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { 
-  TrendingUp, 
-  TrendingDown, 
+import {
+  TrendingUp,
+  TrendingDown,
   Minus,
   PieChart as PieChartIcon,
   Activity,
@@ -17,9 +17,14 @@ import {
   Flame,
   Droplets,
   Skull,
-  Shield
+  Shield,
+  MousePointerClick,
+  Plus,
+  Minus as MinusIcon,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { ManaCurveGap, DeckFormat } from '@/lib/deck-analyzer';
 import {
   BarChart,
   Bar,
@@ -245,22 +250,74 @@ export function ColorDistributionChart({ distribution, className }: ColorDistrib
 
 /**
  * Recharts-based Mana Curve Chart
- * Displays the distribution of cards by converted mana cost
+ * Displays the distribution of cards by converted mana cost.
+ *
+ * When `gaps` and `optimalTargets` are provided, bars are color-coded by how far
+ * they sit from the format-optimal count, and clicking a bar reveals an
+ * actionable add/cut suggestion.
  */
 interface ManaCurveChartProps {
   manaCurve: Record<number, number>;
   className?: string;
+  /** Format used for the optimal-curve comparison (e.g. 'commander'). */
+  format?: DeckFormat;
+  /** Per-bucket gaps vs. the optimal curve. */
+  gaps?: ManaCurveGap[];
+  /** Optional optimal target counts keyed by CMC bucket (1..7). */
+  optimalTargets?: Record<number, number>;
 }
 
-export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
-  // Convert mana curve to array format for Recharts
+// Map a gap to a bar fill color.
+function gapFill(gap: ManaCurveGap | undefined): string {
+  if (!gap) return 'hsl(var(--primary))';
+  if (gap.difference > 0) return '#f59e0b'; // too few — amber
+  return '#ef4444'; // too many — red
+}
+
+export function ManaCurveChart({
+  manaCurve,
+  className,
+  format,
+  gaps,
+  optimalTargets,
+}: ManaCurveChartProps) {
+  const [selectedCmc, setSelectedCmc] = useState<number | null>(null);
+
+  // Convert mana curve to array format for Recharts.
   const data = useMemo(() => {
-    return Object.entries(manaCurve).map(([cmc, count]) => ({
-      cmc: parseInt(cmc) >= 7 ? '7+' : cmc,
-      count,
-      cmcNum: parseInt(cmc),
-    }));
-  }, [manaCurve]);
+    const gapByCmc = new Map<number, ManaCurveGap>();
+    (gaps || []).forEach((g) => gapByCmc.set(g.cmc, g));
+
+    return Object.entries(manaCurve)
+      .filter(([cmc]) => parseInt(cmc) > 0) // exclude the land (0) bucket
+      .map(([cmc, count]) => {
+        const cmcNum = parseInt(cmc);
+        const gap = gapByCmc.get(cmcNum);
+        const target = optimalTargets?.[cmcNum];
+        return {
+          cmc: cmcNum >= 7 ? '7+' : cmc,
+          cmcNum,
+          count,
+          target,
+          gap,
+          fill: gap ? gapFill(gap) : 'hsl(var(--primary))',
+        };
+      });
+  }, [manaCurve, gaps, optimalTargets]);
+
+  const interactive = Array.isArray(gaps) || !!optimalTargets;
+  const selectedGap = useMemo(() => {
+    if (selectedCmc == null) return null;
+    return (gaps || []).find((g) => g.cmc === selectedCmc) ?? null;
+  }, [gaps, selectedCmc]);
+
+  // Look up the raw count/target for the selected bucket even when not a gap.
+  const selectedDetail = useMemo(() => {
+    if (selectedCmc == null) return null;
+    const point = data.find((d) => d.cmcNum === selectedCmc);
+    if (!point) return null;
+    return { count: point.count, target: point.target };
+  }, [data, selectedCmc]);
 
   return (
     <Card className={className}>
@@ -268,9 +325,22 @@ export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
         <CardTitle className="flex items-center gap-2">
           <Activity className="w-5 h-5" />
           Mana Curve
+          {format && (
+            <Badge variant="outline" className="ml-1 capitalize text-xs">
+              {format}
+            </Badge>
+          )}
+          {interactive && (
+            <MousePointerClick className="w-3.5 h-3.5 text-muted-foreground ml-auto" />
+          )}
         </CardTitle>
+        {interactive && (
+          <CardDescription className="text-xs">
+            Click a bar for add/cut suggestions. Amber = too few, red = too many.
+          </CardDescription>
+        )}
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         <div aria-hidden="true">
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
@@ -292,13 +362,35 @@ export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
                   border: '1px solid hsl(var(--border))',
                   borderRadius: '8px',
                 }}
-                formatter={(value: number) => [`${value} cards`, 'Count']}
+                formatter={(value: number, _name: string, props: { payload?: { target?: number; gap?: ManaCurveGap } }) => {
+                  const target = props?.payload?.target;
+                  const lines = [`${value} cards`];
+                  if (typeof target === 'number') lines.push(`Target: ~${target}`);
+                  return [lines.join(' • '), 'Count'];
+                }}
               />
               <Bar
                 dataKey="count"
-                fill="hsl(var(--primary))"
                 radius={[4, 4, 0, 0]}
-              />
+                cursor={interactive ? 'pointer' : undefined}
+                onClick={
+                  interactive
+                    ? (payload: { cmcNum?: number }) => {
+                        if (payload && typeof payload.cmcNum === 'number') {
+                          setSelectedCmc(payload.cmcNum);
+                        }
+                      }
+                    : undefined
+                }
+              >
+                {data.map((entry, index) => (
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.fill}
+                    opacity={selectedCmc == null || selectedCmc === entry.cmcNum ? 1 : 0.4}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -319,6 +411,54 @@ export function ManaCurveChart({ manaCurve, className }: ManaCurveChartProps) {
             ))}
           </tbody>
         </table>
+
+        {/* Selected bucket suggestion */}
+        {interactive && selectedCmc != null && selectedDetail && (
+          <div className="rounded-md border bg-muted/40 p-3 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium capitalize">
+                {selectedCmc >= 7 ? '7+ CMC' : `${selectedCmc}-drop`} spells
+              </span>
+              <Badge variant="outline">
+                {selectedDetail.count} / target ~{selectedDetail.target ?? '—'}
+              </Badge>
+            </div>
+            {selectedGap ? (
+              <div
+                className={cn(
+                  'mt-2 flex items-start gap-2',
+                  selectedGap.difference > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400',
+                )}
+              >
+                {selectedGap.difference > 0 ? (
+                  <Plus className="w-4 h-4 mt-0.5 shrink-0" />
+                ) : (
+                  <MinusIcon className="w-4 h-4 mt-0.5 shrink-0" />
+                )}
+                <span>
+                  {selectedGap.difference > 0 ? 'Add' : 'Cut'}{' '}
+                  {Math.abs(selectedGap.difference) <= 1
+                    ? Math.abs(selectedGap.difference)
+                    : `${Math.max(1, Math.abs(selectedGap.difference) - 1)}-${Math.abs(selectedGap.difference)}`}{' '}
+                  {selectedGap.difference > 0 ? 'more' : 'fewer'} to reach the optimal {format} curve.
+                </span>
+              </div>
+            ) : (
+              <div className="mt-2 flex items-center gap-2 text-green-600 dark:text-green-400">
+                <Check className="w-4 h-4" />
+                <span>On target for the optimal {format} curve.</span>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-2 h-7 px-2 text-xs"
+              onClick={() => setSelectedCmc(null)}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

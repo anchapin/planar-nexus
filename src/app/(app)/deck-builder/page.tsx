@@ -530,7 +530,7 @@ export default function DeckBuilderPage() {
               />
             )}
             <AIDeckAssistant deck={deck} onAddCard={addCardToDeck} />
-            <DeckStatsPanel deck={deck} />
+            <DeckStatsPanel deck={deck} format={format} />
             <Card>
               <CardHeader className="py-4">
                 <CardTitle className="text-lg">Saved Decks</CardTitle>
