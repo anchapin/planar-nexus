@@ -204,6 +204,13 @@ export interface P2PConnectionOptions {
   reconnectMaxDelayMs?: number;
   /** Time (ms) to wait for recovery after each ICE restart attempt. */
   reconnectAttemptTimeoutMs?: number;
+  /**
+   * Defer ping cadence to an external driver (e.g. a connection pool that
+   * consolidates pings into a single sweep). When true the connection never
+   * starts its own ping interval; callers must invoke {@link ping} instead.
+   * Issue #1021.
+   */
+  externalPing?: boolean;
 }
 
 /**
@@ -238,6 +245,11 @@ export class WebRTCConnection {
   private enableICEMonitoring: boolean;
   private fallbackToRelay: boolean;
   private pendingCandidates: RTCIceCandidateInit[] = [];
+  /**
+   * When true the connection relies on an external driver for ping health
+   * checks instead of its own interval. Issue #1021.
+   */
+  private externalPing: boolean;
 
   constructor(options: P2PConnectionOptions) {
     this.localPlayerId = options.playerId;
@@ -250,6 +262,7 @@ export class WebRTCConnection {
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1000;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 16000;
     this.reconnectAttemptTimeoutMs = options.reconnectAttemptTimeoutMs ?? 15000;
+    this.externalPing = options.externalPing ?? false;
 
     // Initialize ICE configuration
     if (options.iceConfig) {
@@ -557,9 +570,11 @@ export class WebRTCConnection {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-      this.updateConnectionState("connected");
-      this.startPingInterval();
-    };
+       this.updateConnectionState("connected");
+       if (!this.externalPing) {
+         this.startPingInterval();
+       }
+     };
 
     this.dataChannel.onclose = () => {
       this.handleDisconnection();
@@ -743,7 +758,9 @@ export class WebRTCConnection {
       case "connected":
         this.updateConnectionState("connected");
         this.reconnectAttempts = 0;
-        this.startPingInterval();
+        if (!this.externalPing) {
+          this.startPingInterval();
+        }
         break;
       case "disconnected":
         this.handleDisconnection();
@@ -1009,6 +1026,15 @@ export class WebRTCConnection {
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
+  }
+
+  /**
+   * Send a single ping on demand. Used by external ping drivers such as a
+   * connection pool that consolidates health checks for many connections into
+   * one interval. Issue #1021.
+   */
+  ping(): void {
+    this.sendPing();
   }
 
   /**
