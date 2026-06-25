@@ -666,23 +666,25 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           blockerCard,
           layerSystem,
         );
-        const blockerHasDeathtouch = hasDeathtouch(blockerCard);
         const blockerHasLifelink =
           blockerCard.cardData.keywords?.includes("Lifelink") ||
           blockerCard.cardData.oracle_text?.toLowerCase().includes("lifelink");
 
-        // Calculate damage to deal to this blocker
+        // Calculate damage to assign to this blocker.
+        // CR 702.19b (trample) + CR 510.1c (general combat): the attacker must
+        // assign lethal damage to each blocker in the chosen order before any
+        // remaining damage can be assigned to the next blocker or (with trample)
+        // to the defending player.
+        //
+        // Lethal damage to a blocker equals its toughness (minus damage already
+        // marked on it — CR 702.19c). The blocker's own deathtouch does NOT
+        // change how much damage the attacker must assign to it; only the
+        // attacker's deathtouch is relevant (CR 702.2b: any nonzero amount from
+        // a deathtouch source counts as lethal, so a deathtouch attacker
+        // assigns only 1 per blocker and tramples the rest).
         let damage: number;
         if (attackerHasDeathtouch && remainingDamage > 0) {
-          // CR 702.2b: Any nonzero amount of damage from a deathtouch source is lethal
-          // Assign only 1 damage to each blocker to maximize trample excess
           damage = 1;
-        } else if (blockerHasDeathtouch && remainingDamage > 0) {
-          // Blocker has deathtouch — ensure we assign lethal to kill it if we can
-          damage = Math.min(remainingDamage, blockerToughness);
-          if (damage > 0) {
-            damage = Math.max(damage, blockerToughness);
-          }
         } else {
           damage = Math.min(remainingDamage, blockerToughness);
         }
