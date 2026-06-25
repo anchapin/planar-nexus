@@ -294,7 +294,7 @@ export class ICEConnectionMonitor {
     if (!this.connection) return;
 
     const state = this.connection.iceConnectionState;
-    console.log('[ICE] Connection state:', state);
+    console.info('[ICE] Connection state:', state);
     
     this.onStateChange?.(state);
 
@@ -327,7 +327,7 @@ export class ICEConnectionMonitor {
   private startFailureTimeout(): void {
     this.clearFailureTimeout();
     this.failureTimeout = setTimeout(() => {
-      console.log('[ICE] Connection timeout - considering failed');
+      console.info('[ICE] Connection timeout - considering failed');
       this.onFailed?.();
     }, this.failureTimeoutMs);
   }

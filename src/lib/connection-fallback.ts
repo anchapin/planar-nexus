@@ -131,7 +131,7 @@ export class ConnectionFallbackManager {
       if (this.options.enableFallback && isWebSocketAvailable() && this.options.websocketUrl) {
         this.fallbackTimer = setTimeout(() => {
           if (!resolved && this.state.activeConnection !== 'webrtc') {
-            console.log('[ConnectionFallback] WebRTC connection timeout, falling back to WebSocket');
+            console.info('[ConnectionFallback] WebRTC connection timeout, falling back to WebSocket');
             this.connectWebSocket()
               .then((connectionType) => {
                 resolved = true;
@@ -319,7 +319,7 @@ export class ConnectionFallbackManager {
       return;
     }
 
-    console.log('[ConnectionFallback] Attempting fallback to WebSocket');
+    console.info('[ConnectionFallback] Attempting fallback to WebSocket');
     this.state.fallbackAttempted = true;
 
     // Clean up WebRTC connection
