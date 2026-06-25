@@ -658,6 +658,38 @@ export interface BannedCardSuggestion {
 }
 
 /**
+ * Severity of a card's color-identity status relative to its commander.
+ *
+ * - `valid`    - card identity is fully within the commander's identity
+ * - `warning`  - card has exactly 1 color outside the commander's identity
+ *                (close to violating; highlighted distinctly from hard violations)
+ * - `violation`- card has 2+ colors outside the commander's identity
+ */
+export type ColorIdentitySeverity = "valid" | "warning" | "violation";
+
+/**
+ * A per-card color-identity assessment. `violatedColors` lists the specific
+ * mana colors present on the card but absent from the commander's identity.
+ */
+export interface ColorIdentityViolation {
+  name: string;
+  colorIdentity: string[];
+  violatedColors: string[];
+  severity: ColorIdentitySeverity;
+}
+
+/**
+ * Human-readable names for the single-letter MTG mana color codes.
+ */
+export const MANA_COLOR_NAMES: Record<string, string> = {
+  W: "White",
+  U: "Blue",
+  B: "Black",
+  R: "Red",
+  G: "Green",
+};
+
+/**
  * Comprehensive format validation result
  */
 export interface FormatValidationResult extends ValidationResult {
@@ -666,6 +698,128 @@ export interface FormatValidationResult extends ValidationResult {
   requiredSize: number;
   hasCommander: boolean;
   colorIdentity?: string[];
+  /**
+   * Per-card color-identity assessments for cards that fall outside the
+   * commander's color identity. Only populated for legendary-commander
+   * decks when a commander is present. Undefined when there are no
+   * violations or when the check does not apply.
+   */
+  colorIdentityViolations?: ColorIdentityViolation[];
+}
+
+/**
+ * Return the colors present in `cardIdentity` but absent from
+ * `commanderIdentity`.
+ */
+export function getViolatedColors(
+  cardIdentity: string[],
+  commanderIdentity: string[],
+): string[] {
+  return cardIdentity.filter((color) => !commanderIdentity.includes(color));
+}
+
+/**
+ * Classify how severely a card violates the commander's color identity based
+ * on the number of out-of-identity colors. A single out-of-identity color is
+ * treated as a warning (close to violating); two or more is a hard violation.
+ */
+export function getColorIdentitySeverity(
+  violatedColors: string[],
+): ColorIdentitySeverity {
+  if (violatedColors.length === 0) return "valid";
+  if (violatedColors.length === 1) return "warning";
+  return "violation";
+}
+
+export interface CardColorIdentityStatus {
+  name: string;
+  colorIdentity: string[];
+  violatedColors: string[];
+  severity: ColorIdentitySeverity;
+}
+
+/**
+ * Assess a single card's color identity against the commander's identity.
+ *
+ * Returns `null` when the check does not apply (no commander identity, or the
+ * card is a basic land which is always exempt). Colorless cards (empty
+ * identity) are reported as `valid`.
+ */
+export function getCardColorIdentityStatus(
+  card: { name: string; color_identity?: string[] },
+  commanderIdentity: string[] | undefined,
+): CardColorIdentityStatus | null {
+  if (!commanderIdentity || commanderIdentity.length === 0) return null;
+  if (isBasicLand(card.name)) return null;
+
+  const identity = card.color_identity || [];
+  const violated = getViolatedColors(identity, commanderIdentity);
+  return {
+    name: card.name,
+    colorIdentity: identity,
+    violatedColors: violated,
+    severity: getColorIdentitySeverity(violated),
+  };
+}
+
+/**
+ * Derive the commander from a deck by selecting the first legendary creature.
+ * Returns `undefined` when no legendary creature is present. The returned
+ * color identity defaults to an empty array when the card has none.
+ */
+export function getCommanderFromDeck(
+  deckCards: {
+    name: string;
+    type_line?: string;
+    color_identity?: string[];
+  }[],
+): { name: string; color_identity: string[] } | undefined {
+  const commander = deckCards.find((c) => {
+    const type = (c.type_line || "").toLowerCase();
+    return type.includes("legendary") && type.includes("creature");
+  });
+  if (!commander) return undefined;
+  return {
+    name: commander.name,
+    color_identity: commander.color_identity || [],
+  };
+}
+
+/**
+ * Suggest cards to remove from a deck to bring it into compliance with the
+ * commander's color identity. Results are sorted with hard violations first
+ * (2+ out-of-identity colors), then warnings (1 out-of-identity color), then
+ * alphabetically by name. Returns an empty array when there is no commander
+ * identity or nothing violates it.
+ */
+export function getColorIdentityFixSuggestions(
+  deckCards: {
+    name: string;
+    color_identity?: string[];
+  }[],
+  commanderIdentity: string[] | undefined,
+): ColorIdentityViolation[] {
+  if (!commanderIdentity || commanderIdentity.length === 0) return [];
+
+  const suggestions: ColorIdentityViolation[] = [];
+  deckCards.forEach((card) => {
+    const status = getCardColorIdentityStatus(card, commanderIdentity);
+    if (status && status.severity !== "valid") {
+      suggestions.push({
+        name: status.name,
+        colorIdentity: status.colorIdentity,
+        violatedColors: status.violatedColors,
+        severity: status.severity,
+      });
+    }
+  });
+
+  return suggestions.sort((a, b) => {
+    if (a.severity !== b.severity) {
+      return a.severity === "violation" ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
 }
 
 /**
@@ -702,6 +856,7 @@ export function validateDeckFormat(
   const warnings: string[] = [];
   let restrictedViolation = false;
   const bannedCardSuggestions: BannedCardSuggestion[] = [];
+  const colorIdentityViolations: ColorIdentityViolation[] = [];
   const bannedCards = new Set(
     (gameMode.banList || []).map((c) => c.toLowerCase()),
   );
@@ -744,25 +899,34 @@ export function validateDeckFormat(
     // Check color identity if commander is present
     if (commander && commander.color_identity) {
       const commanderIdentity = commander.color_identity;
-      const invalidCards: string[] = [];
 
       deckCards.forEach(({ name, color_identity }) => {
-        if (!color_identity || isBasicLand(name)) return;
-
-        // Check if card's color identity is within commander's
-        const cardColors = color_identity;
-        const hasInvalidColor = cardColors.some(
-          (color) => !commanderIdentity.includes(color),
+        const status = getCardColorIdentityStatus(
+          { name, color_identity },
+          commanderIdentity,
         );
-
-        if (hasInvalidColor) {
-          invalidCards.push(name);
+        if (status && status.severity !== "valid") {
+          colorIdentityViolations.push({
+            name: status.name,
+            colorIdentity: status.colorIdentity,
+            violatedColors: status.violatedColors,
+            severity: status.severity,
+          });
         }
       });
 
-      if (invalidCards.length > 0) {
+      if (colorIdentityViolations.length > 0) {
+        // Detailed message including the specific colors each card violates.
+        const details = colorIdentityViolations.slice(0, 5)
+          .map((v) => {
+            const violatedNames = v.violatedColors
+              .map((c) => MANA_COLOR_NAMES[c] || c)
+              .join("/");
+            return `${v.name} (has ${violatedNames})`;
+          })
+          .join(", ");
         errors.push(
-          `Color identity violation: ${invalidCards.slice(0, 5).join(", ")}${invalidCards.length > 5 ? "..." : ""} not in legendary's colors`,
+          `Color identity violation: ${details}${colorIdentityViolations.length > 5 ? "..." : ""} not in legendary's colors`,
         );
       }
     }
@@ -846,6 +1010,8 @@ export function validateDeckFormat(
     colorIdentity: commander?.color_identity,
     bannedCardSuggestions:
       bannedCardSuggestions.length > 0 ? bannedCardSuggestions : undefined,
+    colorIdentityViolations:
+      colorIdentityViolations.length > 0 ? colorIdentityViolations : undefined,
   };
 }
 
