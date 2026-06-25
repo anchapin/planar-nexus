@@ -4,6 +4,7 @@ import * as React from "react";
 import { useState, useTransition, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { GameBoard } from "@/components/game-board";
+import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import { GameChat } from "@/components/game-chat";
 import { EmotePicker, EmoteFeed } from "@/components/emote-picker";
 import { TurnTimer } from "@/components/turn-timer";
@@ -885,13 +886,15 @@ export default function GameBoardPage() {
       {/* Game Board */}
       <div className="flex-1 h-full relative">
         {gameState && (
-          <GameBoard
-            players={gameState.players}
-            playerCount={gameState.playerCount}
-            currentTurnIndex={gameState.currentTurnPlayerIndex}
-            onCardClick={handleCardClick}
-            onZoneClick={handleZoneClick}
-          />
+          <GameBoardErrorBoundary>
+            <GameBoard
+              players={gameState.players}
+              playerCount={gameState.playerCount}
+              currentTurnIndex={gameState.currentTurnPlayerIndex}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
+            />
+          </GameBoardErrorBoundary>
         )}
 
         {/* Floating Chat Panel */}
