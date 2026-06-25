@@ -156,6 +156,68 @@ export function getUnsupportedSiteSuggestion(url: string): string {
 }
 
 /**
+ * Error codes that can occur during decklist import.
+ *
+ * Structural codes (MALFORMED_LINE, INVALID_QUANTITY) are produced while
+ * parsing text. Card-level codes (UNKNOWN_CARD, ILLEGAL_CARD) are produced
+ * when resolving parsed names against the card database.
+ */
+export type ImportErrorCode =
+  | "MALFORMED_LINE"
+  | "INVALID_QUANTITY"
+  | "UNKNOWN_CARD"
+  | "ILLEGAL_CARD";
+
+/**
+ * Human-readable descriptions for each error code.
+ */
+export const IMPORT_ERROR_MESSAGES: Record<ImportErrorCode, string> = {
+  MALFORMED_LINE: "Line could not be parsed",
+  INVALID_QUANTITY: "Invalid or missing quantity",
+  UNKNOWN_CARD: "Card not found in database",
+  ILLEGAL_CARD: "Card is not legal in the selected format",
+};
+
+/**
+ * A single import error tied to a specific decklist line.
+ */
+export interface ImportError {
+  /** 1-based line number within the source decklist (0 if not line-specific). */
+  line: number;
+  /** The original, unmodified line content. */
+  content: string;
+  /** Machine-readable error code. */
+  error: ImportErrorCode;
+  /** Parsed card name, when one could be extracted. */
+  cardName?: string;
+  /** A suggested fix, e.g. "Did you mean: Lightning Bolt?". */
+  suggestion?: string;
+}
+
+/**
+ * A card name extracted from a decklist, annotated with its source location.
+ */
+export interface ParsedCardWithLine {
+  name: string;
+  quantity: number;
+  /** 1-based line number within the source decklist. */
+  line: number;
+  /** The original, unmodified line content. */
+  content: string;
+}
+
+/**
+ * Outcome of parsing a single decklist line.
+ * - `card`    : a valid card entry was extracted
+ * - `skipped` : intentionally ignored (blank line, comment, section header)
+ * - `error`   : the line looked like a card entry but could not be parsed
+ */
+export type LineParseOutcome =
+  | { status: "card"; name: string; quantity: number }
+  | { status: "skipped" }
+  | { status: "error"; code: ImportErrorCode; reason: string };
+
+/**
  * Arena-to-paper name aliases from Through the Omenpaths (OM1)
  * Generated from Scryfall API
  * When Wizards does not have digital rights for Universes Beyond cards,
@@ -363,6 +425,77 @@ export function parseDecklistLine(
 }
 
 /**
+ * Parse a single decklist line, distinguishing *why* a line was skipped.
+ *
+ * Unlike {@link parseDecklistLine} (which collapses every non-card line into
+ * `null`), this returns a structured outcome so callers can report
+ * structural errors (e.g. invalid quantities) to the user.
+ *
+ * Section headers, comments, and blank lines report `skipped` (not an error).
+ */
+export function parseDecklistLineWithErrors(line: string): LineParseOutcome {
+  const trimmedLine = line.trim();
+  if (!trimmedLine) return { status: "skipped" };
+
+  const match = trimmedLine.match(/^(?:(\d+)\s*x?\s*)?(.+)/);
+  if (!match) return { status: "error", code: "MALFORMED_LINE", reason: "Unrecognized line format" };
+
+  const skipHeaders = [
+    "sideboard",
+    "deck",
+    "about",
+    "name",
+    "mainboard",
+    "maybeboard",
+  ];
+  let name = match[2]?.trim();
+  if (!name) {
+    return { status: "error", code: "MALFORMED_LINE", reason: "No card name" };
+  }
+  if (/^\/\//.test(name) || skipHeaders.includes(name.toLowerCase())) {
+    return { status: "skipped" };
+  }
+
+  // Validate quantity before mutating the name so an invalid count is reported
+  // against the original spelling.
+  const rawCount = match[1];
+  if (rawCount !== undefined) {
+    const parsed = Number(rawCount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return {
+        status: "error",
+        code: "INVALID_QUANTITY",
+        reason: `Quantity "${rawCount}" is not a positive integer`,
+      };
+    }
+  }
+
+  // Strip set codes and collector numbers like "Sol Ring (CMR) 632" or "Sol Ring [CMR] 632"
+  // This is common in Moxfield and Arena exports
+  name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*\d+.*$/i, "").trim();
+
+  // Also handle cases without collector number like "Sol Ring (CMR)"
+  name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*$/i, "").trim();
+
+  if (!name) {
+    return { status: "error", code: "MALFORMED_LINE", reason: "Line reduced to empty after stripping set codes" };
+  }
+
+  // Normalize DFC separators: some exports use "/" instead of " // "
+  if (name.includes("/") && !name.includes(" // ")) {
+    name = name.replace(/\s*\/\s*/g, " // ");
+  }
+
+  // Translate Arena-only names to their paper equivalents
+  if (ARENA_NAME_ALIASES[name]) {
+    name = ARENA_NAME_ALIASES[name];
+  }
+
+  const count = parseInt(match[1] || "1", 10);
+  return { status: "card", name, quantity: count };
+}
+
+/**
  * Parse MTGO format line
  * MTGO format: "COUNT CARDNAME" (e.g., "4 Sol Ring" or "4x Sol Ring")
  */
@@ -559,4 +692,135 @@ export function detectDecklistFormat(decklist: string): DecklistFormat {
   }
 
   return "standard";
+}
+
+/**
+ * Parse a decklist into cards (with source line numbers) and structural errors.
+ *
+ * JSON input cannot produce line-level errors and is returned with `line: 0`
+ * entries; structural errors are only reported for text formats.
+ *
+ * @returns parsed cards annotated with line numbers, plus any structural errors
+ */
+export function parseDecklistWithErrors(
+  decklist: string,
+  format: DecklistFormat = "standard",
+): { cards: ParsedCardWithLine[]; errors: ImportError[] } {
+  if (format === "json") {
+    const jsonCards = parseJSONDecklist(decklist);
+    const cards: ParsedCardWithLine[] = jsonCards.map((card, index) => ({
+      name: card.name,
+      quantity: card.quantity,
+      line: index + 1,
+      content: `${card.quantity} ${card.name}`,
+    }));
+    return { cards, errors: [] };
+  }
+
+  const lines = decklist.split("\n");
+  const cards: ParsedCardWithLine[] = [];
+  const errors: ImportError[] = [];
+
+  lines.forEach((line, index) => {
+    if (line.trim() === "") return; // preserve original line numbering only for non-blank lines
+    const outcome = parseDecklistLineWithErrors(line);
+    const lineNumber = index + 1;
+
+    if (outcome.status === "card") {
+      cards.push({
+        name: outcome.name,
+        quantity: outcome.quantity,
+        line: lineNumber,
+        content: line,
+      });
+    } else if (outcome.status === "error") {
+      errors.push({
+        line: lineNumber,
+        content: line,
+        error: outcome.code,
+        suggestion: outcome.reason,
+      });
+    }
+    // `skipped` outcomes (comments, headers, blanks) produce no output
+  });
+
+  return { cards, errors };
+}
+
+/**
+ * Compute the Levenshtein edit distance between two strings.
+ * Used to power "Did you mean?" suggestions without a database dependency.
+ */
+export function levenshteinDistance(a: string, b: string): number {
+  const aLower = a.toLowerCase();
+  const bLower = b.toLowerCase();
+  const m = aLower.length;
+  const n = bLower.length;
+
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  const previousRow = Array.from({ length: n + 1 }, (_, i) => i);
+  const currentRow = new Array<number>(n + 1);
+
+  for (let i = 1; i <= m; i++) {
+    currentRow[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = aLower[i - 1] === bLower[j - 1] ? 0 : 1;
+      currentRow[j] = Math.min(
+        previousRow[j] + 1, // deletion
+        currentRow[j - 1] + 1, // insertion
+        previousRow[j - 1] + cost, // substitution
+      );
+    }
+    previousRow.splice(0, n + 1, ...currentRow);
+  }
+
+  return previousRow[n];
+}
+
+/**
+ * Find the closest matching card name from a list of known names.
+ *
+ * Returns the best candidate whose normalized edit distance is within
+ * `maxDistanceRatio` (default 0.34) of the input length, or `undefined`
+ * when nothing is close enough. This is a pure, database-independent
+ * fallback used to build "Did you mean?" suggestions.
+ *
+ * @param name        The misspelled / unknown card name
+ * @param candidates  Known card names to search among
+ * @param maxDistanceRatio  Maximum edit distance as a fraction of `name.length`
+ */
+export function findClosestNameMatch(
+  name: string,
+  candidates: string[],
+  maxDistanceRatio = 0.34,
+): string | undefined {
+  if (!name || candidates.length === 0) return undefined;
+
+  let bestName: string | undefined;
+  let bestDistance = Infinity;
+  const threshold = Math.max(1, Math.ceil(name.length * maxDistanceRatio));
+
+  for (const candidate of candidates) {
+    const distance = levenshteinDistance(name, candidate);
+    if (
+      distance < bestDistance ||
+      (distance === bestDistance && candidate.length < (bestName?.length ?? Infinity))
+    ) {
+      bestDistance = distance;
+      bestName = candidate;
+    }
+  }
+
+  if (!bestName || bestDistance > threshold) return undefined;
+  return bestName;
+}
+
+/**
+ * Build a human-readable "Did you mean?" suggestion string.
+ * Returns `undefined` when no suggestion is available.
+ */
+export function buildSuggestion(match?: string): string | undefined {
+  return match ? `Did you mean: ${match}?` : undefined;
 }

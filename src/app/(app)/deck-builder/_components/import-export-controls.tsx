@@ -40,14 +40,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import type { ImportDeckResult as ImportDeckResultType } from "@/lib/client-card-operations";
 import {
   type DecklistFormat,
   DECK_SITES,
   detectDeckSite,
+  IMPORT_ERROR_MESSAGES,
 } from "@/lib/decklist-utils";
+import { AlertCircle, CheckCircle2, HelpCircle } from "lucide-react";
+
+type ImportDeckResult = ImportDeckResultType;
 
 interface ImportExportControlsProps {
-  onImport: (decklist: string, format?: DecklistFormat) => void;
+  onImport: (
+    decklist: string,
+    format?: DecklistFormat,
+  ) => Promise<ImportDeckResult | null> | null;
   onExport: () => void;
   onClear: () => void;
   onSave: () => void;
@@ -73,11 +81,21 @@ export function ImportExportControls({
   const [activeTab, setActiveTab] = useState<"text" | "url">("text");
   const [isUrlImporting, setIsUrlImporting] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importResult, setImportResult] = useState<ImportDeckResult | null>(
+    null,
+  );
   const { toast } = useToast();
 
-  const handleImportClick = () => {
-    onImport(importText, importFormat);
-    setIsImportDialogOpen(false);
+  const handleImportClick = async () => {
+    const result = await onImport(importText, importFormat);
+    // Keep the dialog open so the user can review per-line errors. Close it
+    // only when the import was fully successful (no errors of any kind).
+    if (result && result.errors.length > 0) {
+      setImportResult(result);
+    } else {
+      setImportResult(null);
+      setIsImportDialogOpen(false);
+    }
   };
 
   const handlePasteFromClipboard = async () => {
@@ -294,6 +312,7 @@ export function ImportExportControls({
             setImportText("");
             setImportUrl("");
             setActiveTab("text");
+            setImportResult(null);
           }
         }}
       >
@@ -432,6 +451,10 @@ export function ImportExportControls({
             </TabsContent>
           </Tabs>
 
+          {importResult && (
+            <ImportResultsPanel result={importResult} />
+          )}
+
           <DialogFooter>
             <Button
               type="button"
@@ -528,6 +551,150 @@ export function ImportExportControls({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/**
+ * Renders detailed import results: a success summary, an "Unknown cards"
+ * panel with "Did you mean?" suggestions, and per-line errors for everything
+ * that could not be imported.
+ */
+function ImportResultsPanel({ result }: { result: ImportDeckResult }) {
+  const {
+    successCount,
+    found,
+    unknownCards,
+    illegalCardErrors,
+    errors,
+  } = result;
+
+  const structuralErrors = errors.filter(
+    (e) => e.error === "MALFORMED_LINE" || e.error === "INVALID_QUANTITY",
+  );
+
+  return (
+    <div
+      className="space-y-3 rounded-md border p-3 text-sm"
+      data-testid="import-results-panel"
+    >
+      {/* Success summary */}
+      <div className="flex items-start gap-2">
+        {found.length > 0 ? (
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+        ) : (
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+        )}
+        <div>
+          <p className="font-medium">
+            {found.length > 0
+              ? `Imported ${successCount} card${successCount === 1 ? "" : "s"}`
+              : "No cards imported"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {found.length} unique card{found.length === 1 ? "" : "s"} added to
+            your deck
+            {unknownCards.length > 0
+              ? ` · ${unknownCards.length} unknown`
+              : ""}
+            {illegalCardErrors.length > 0
+              ? ` · ${illegalCardErrors.length} illegal`
+              : ""}
+          </p>
+        </div>
+      </div>
+
+      {/* Unknown cards panel with suggestions */}
+      {unknownCards.length > 0 && (
+        <div
+          className="space-y-2 rounded-md bg-muted/50 p-2"
+          data-testid="unknown-cards-panel"
+        >
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+            <HelpCircle className="h-3.5 w-3.5" />
+            Unknown cards ({unknownCards.length})
+          </p>
+          <ul className="space-y-1.5">
+            {unknownCards.map((err, index) => (
+              <li
+                key={`${err.line}-${err.cardName}-${index}`}
+                className="text-xs"
+                data-testid="unknown-card-item"
+              >
+                <span className="font-medium text-destructive">
+                  {err.cardName || err.content}
+                </span>
+                {err.line > 0 && (
+                  <span className="text-muted-foreground"> (line {err.line})</span>
+                )}
+                {err.suggestion && (
+                  <span className="block text-green-600 dark:text-green-400">
+                    {err.suggestion}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Illegal cards */}
+      {illegalCardErrors.length > 0 && (
+        <div
+          className="space-y-2 rounded-md bg-muted/50 p-2"
+          data-testid="illegal-cards-panel"
+        >
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+            <AlertCircle className="h-3.5 w-3.5" />
+            Illegal cards ({illegalCardErrors.length})
+          </p>
+          <ul className="space-y-1.5">
+            {illegalCardErrors.map((err, index) => (
+              <li
+                key={`${err.line}-${err.cardName}-${index}`}
+                className="text-xs"
+              >
+                <span className="font-medium">{err.cardName || err.content}</span>
+                {err.line > 0 && (
+                  <span className="text-muted-foreground"> (line {err.line})</span>
+                )}
+                {err.suggestion && (
+                  <span className="block text-muted-foreground">
+                    {err.suggestion}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Structural per-line errors */}
+      {structuralErrors.length > 0 && (
+        <div
+          className="space-y-2 rounded-md bg-muted/50 p-2"
+          data-testid="line-errors-panel"
+        >
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+            <AlertCircle className="h-3.5 w-3.5" />
+            Unreadable lines ({structuralErrors.length})
+          </p>
+          <ul className="space-y-1.5">
+            {structuralErrors.map((err, index) => (
+              <li
+                key={`${err.line}-${index}`}
+                className="text-xs"
+              >
+                <span className="text-muted-foreground">Line {err.line}: </span>
+                <code className="text-destructive">{err.content}</code>
+                <span className="block text-muted-foreground">
+                  {err.suggestion || IMPORT_ERROR_MESSAGES[err.error]}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import {
   parseDecklistLine,
+  parseDecklistLineWithErrors,
   parseMTGOLine,
   parseJSONDecklist,
   parseDecklist,
+  parseDecklistWithErrors,
   detectDecklistFormat,
   splitDecklist,
   sanitizeCardInput,
@@ -10,6 +12,10 @@ import {
   isSupportedDeckUrl,
   getUnsupportedSiteSuggestion,
   DECK_SITES,
+  findClosestNameMatch,
+  levenshteinDistance,
+  buildSuggestion,
+  IMPORT_ERROR_MESSAGES,
   type DecklistFormat,
 } from "../decklist-utils";
 
@@ -424,5 +430,185 @@ describe("getUnsupportedSiteSuggestion", () => {
       "https://archidekt.com/decks/123",
     );
     expect(suggestion).toContain("Archidekt");
+  });
+});
+
+describe("parseDecklistLineWithErrors", () => {
+  it("returns a card outcome for valid lines", () => {
+    expect(parseDecklistLineWithErrors("4 Lightning Bolt")).toEqual({
+      status: "card",
+      name: "Lightning Bolt",
+      quantity: 4,
+    });
+  });
+
+  it("returns skipped for blank lines", () => {
+    expect(parseDecklistLineWithErrors("")).toEqual({ status: "skipped" });
+    expect(parseDecklistLineWithErrors("   ")).toEqual({ status: "skipped" });
+  });
+
+  it("returns skipped for comments and section headers", () => {
+    expect(parseDecklistLineWithErrors("// comment")).toEqual({
+      status: "skipped",
+    });
+    expect(parseDecklistLineWithErrors("Sideboard")).toEqual({
+      status: "skipped",
+    });
+    expect(parseDecklistLineWithErrors("mainboard")).toEqual({
+      status: "skipped",
+    });
+  });
+
+  it("reports INVALID_QUANTITY for non-positive counts", () => {
+    // Regex captures leading digits, so a literal "0" quantity is parsed.
+    const outcome = parseDecklistLineWithErrors("0 Sol Ring");
+    expect(outcome.status).toBe("error");
+    if (outcome.status === "error") {
+      expect(outcome.code).toBe("INVALID_QUANTITY");
+    }
+  });
+
+  it("translates Arena-only names in card outcome", () => {
+    expect(parseDecklistLineWithErrors("3 Zora, Spider Fancier")).toEqual({
+      status: "card",
+      name: "Aunt May",
+      quantity: 3,
+    });
+  });
+
+  it("normalizes DFC separators in card outcome", () => {
+    expect(parseDecklistLineWithErrors("1 Roaring Furnace/Steaming Sauna")).toEqual({
+      status: "card",
+      name: "Roaring Furnace // Steaming Sauna",
+      quantity: 1,
+    });
+  });
+});
+
+describe("parseDecklistWithErrors", () => {
+  it("tracks line numbers for parsed cards", () => {
+    const decklist = "4 Sol Ring\n\n1 Command Tower";
+    const { cards, errors } = parseDecklistWithErrors(decklist, "standard");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toEqual({
+      name: "Sol Ring",
+      quantity: 4,
+      line: 1,
+      content: "4 Sol Ring",
+    });
+    expect(cards[1]).toEqual({
+      name: "Command Tower",
+      quantity: 1,
+      line: 3,
+      content: "1 Command Tower",
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it("collects structural errors with line numbers", () => {
+    const decklist = "4 Sol Ring\n0 Bad Quantity";
+    const { errors } = parseDecklistWithErrors(decklist, "standard");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].line).toBe(2);
+    expect(errors[0].content).toBe("0 Bad Quantity");
+    expect(errors[0].error).toBe("INVALID_QUANTITY");
+  });
+
+  it("skips comments and headers without producing errors", () => {
+    const decklist = "// header\nSideboard\n4 Sol Ring";
+    const { cards, errors } = parseDecklistWithErrors(decklist, "standard");
+    expect(cards).toHaveLength(1);
+    expect(errors).toEqual([]);
+  });
+
+  it("handles JSON format with synthetic line numbers", () => {
+    const json = JSON.stringify([
+      { name: "Sol Ring", quantity: 4 },
+      { name: "Command Tower", quantity: 1 },
+    ]);
+    const { cards, errors } = parseDecklistWithErrors(json, "json");
+    expect(cards).toHaveLength(2);
+    expect(cards[0].line).toBe(1);
+    expect(cards[1].line).toBe(2);
+    expect(errors).toEqual([]);
+  });
+
+  it("returns empty result for blank input", () => {
+    const { cards, errors } = parseDecklistWithErrors("   ", "standard");
+    expect(cards).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+});
+
+describe("levenshteinDistance", () => {
+  it("returns 0 for identical strings", () => {
+    expect(levenshteinDistance("Sol Ring", "Sol Ring")).toBe(0);
+  });
+
+  it("is case-insensitive", () => {
+    expect(levenshteinDistance("sol ring", "SOL RING")).toBe(0);
+  });
+
+  it("counts single edits correctly", () => {
+    expect(levenshteinDistance("Lightning Boltx", "Lightning Bolt")).toBe(1);
+    expect(levenshteinDistance("Ligtning Bolt", "Lightning Bolt")).toBe(1);
+  });
+
+  it("returns input length for empty comparison", () => {
+    expect(levenshteinDistance("Sol Ring", "")).toBe(8);
+  });
+});
+
+describe("findClosestNameMatch", () => {
+  const candidates = [
+    "Lightning Bolt",
+    "Sol Ring",
+    "Command Tower",
+    "Arcane Signet",
+  ];
+
+  it("finds a close match for a typo", () => {
+    expect(findClosestNameMatch("Lightning Blot", candidates)).toBe(
+      "Lightning Bolt",
+    );
+  });
+
+  it("finds a close match for a missing letter", () => {
+    expect(findClosestNameMatch("Sol Rin", candidates)).toBe("Sol Ring");
+  });
+
+  it("returns undefined when nothing is close", () => {
+    expect(
+      findClosestNameMatch("Completely Unrelated Card Name", candidates),
+    ).toBeUndefined();
+  });
+
+  it("returns undefined for empty input", () => {
+    expect(findClosestNameMatch("", candidates)).toBeUndefined();
+  });
+
+  it("returns undefined for empty candidates", () => {
+    expect(findClosestNameMatch("Sol Ring", [])).toBeUndefined();
+  });
+});
+
+describe("buildSuggestion", () => {
+  it("builds a 'Did you mean?' string", () => {
+    expect(buildSuggestion("Lightning Bolt")).toBe(
+      "Did you mean: Lightning Bolt?",
+    );
+  });
+
+  it("returns undefined for no match", () => {
+    expect(buildSuggestion(undefined)).toBeUndefined();
+  });
+});
+
+describe("IMPORT_ERROR_MESSAGES", () => {
+  it("provides a message for every error code", () => {
+    expect(IMPORT_ERROR_MESSAGES.UNKNOWN_CARD).toBeTruthy();
+    expect(IMPORT_ERROR_MESSAGES.MALFORMED_LINE).toBeTruthy();
+    expect(IMPORT_ERROR_MESSAGES.INVALID_QUANTITY).toBeTruthy();
+    expect(IMPORT_ERROR_MESSAGES.ILLEGAL_CARD).toBeTruthy();
   });
 });
