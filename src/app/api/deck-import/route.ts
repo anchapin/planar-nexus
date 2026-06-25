@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUnsupportedSiteSuggestion } from "@/lib/decklist-utils";
 
 /**
  * Supported deck hosting sites
@@ -129,8 +130,9 @@ const SUPPORTED_SITES: SupportedSite[] = [
       return null;
     },
     fetchDecklist: async (url: string): Promise<string | null> => {
-      // Extract public ID from URL
-      const match = url.match(/\/decks\/([^/?#]+)/);
+      // Extract public ID from URL. Handles /decks/{id}, /deck/{id}, and
+      // /deck/anonymous/{id} formats.
+      const match = url.match(/\/decks?\/(?:anonymous\/)?([^/?#]+)/i);
       if (!match) return null;
 
       const publicId = match[1];
@@ -202,7 +204,132 @@ const SUPPORTED_SITES: SupportedSite[] = [
       return null;
     },
   },
+  {
+    name: "Archidekt",
+    domain: "archidekt.com",
+    parseDecklist: (html: string): string | null => {
+      // Archidekt is a Next.js app that embeds deck data in __NEXT_DATA__.
+      const scriptMatch = html.match(
+        /<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i,
+      );
+      if (scriptMatch) {
+        try {
+          const data = JSON.parse(scriptMatch[1]);
+          const decklist = extractArchidektCardsFromState(data);
+          if (decklist) return decklist;
+        } catch {
+          // Failed to parse, fall through
+        }
+      }
+      return null;
+    },
+    fetchDecklist: async (url: string): Promise<string | null> => {
+      // Extract numeric deck id from URL: archidekt.com/decks/{id}
+      const match = url.match(/\/decks\/(\d+)/i);
+      if (!match) return null;
+
+      const deckId = match[1];
+      // Archidekt v2 deckjson endpoint returns the full deck payload.
+      const apiUrl = `https://archidekt.com/api/v2/decks/${deckId}/deckjson/`;
+
+      const proxyUrls = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`,
+        `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
+      ];
+
+      for (const proxyUrl of proxyUrls) {
+        try {
+          const response = await fetch(proxyUrl, {
+            headers: { Accept: "application/json" },
+          });
+
+          if (!response.ok) continue;
+
+          const text = await response.text();
+          let jsonText = text;
+
+          // allorigins /get wraps response in JSON
+          if (proxyUrl.includes("/get?")) {
+            try {
+              const wrapped = JSON.parse(text);
+              if (wrapped.contents) jsonText = wrapped.contents;
+            } catch {
+              // Not wrapped, use raw text
+            }
+          }
+
+          const deck = JSON.parse(jsonText);
+          if (!deck) continue;
+
+          const allCards = extractArchidektCardsFromState(deck);
+          if (allCards) return allCards;
+        } catch {
+          // Try next proxy
+        }
+      }
+
+      return null;
+    },
+  },
 ];
+
+/**
+ * Recursively locate a `cards` array within an Archidekt deck payload.
+ * Handles both the flat v2 deckjson shape and the nested __NEXT_DATA__ shape.
+ */
+function findArchidektCardsArray(node: any, depth = 0): any[] | null {
+  if (!node || typeof node !== "object" || depth > 6) return null;
+  if (Array.isArray(node) && node.length > 0 && isArchidektCardEntry(node[0])) {
+    return node;
+  }
+  if (Array.isArray(node.cards) && node.cards.length > 0) {
+    return node.cards;
+  }
+  for (const value of Object.values(node)) {
+    const found = findArchidektCardsArray(value, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Heuristic: does this object look like an Archidekt card entry?
+ */
+function isArchidektCardEntry(obj: any): boolean {
+  if (!obj || typeof obj !== "object") return false;
+  return (
+    typeof obj.quantity === "number" &&
+    (typeof obj.name === "string" ||
+      obj.card?.name != null ||
+      obj.oracleCard?.name != null ||
+      obj.card?.oracleCard?.name != null)
+  );
+}
+
+/**
+ * Extract "Count Name" lines from an Archidekt deck payload of any shape.
+ * Returns null when no cards could be extracted.
+ */
+function extractArchidektCardsFromState(data: any): string | null {
+  if (!data || typeof data !== "object") return null;
+  const cards = findArchidektCardsArray(data);
+  if (!cards || cards.length === 0) return null;
+
+  const allCards: string[] = [];
+  for (const entry of cards) {
+    const quantity = entry?.quantity;
+    const name =
+      entry?.name ??
+      entry?.card?.name ??
+      entry?.oracleCard?.name ??
+      entry?.card?.oracleCard?.name;
+    if (typeof quantity === "number" && typeof name === "string" && name) {
+      allCards.push(`${quantity} ${name}`);
+    }
+  }
+
+  return allCards.length > 0 ? allCards.join("\n") : null;
+}
 
 /**
  * Detect which site the URL is from and parse the decklist
@@ -270,6 +397,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Unsupported website",
+          suggestion: getUnsupportedSiteSuggestion(url),
           supportedSites: SUPPORTED_SITES.map((s) => s.name),
         },
         { status: 400 },
@@ -328,8 +456,7 @@ export async function POST(request: NextRequest) {
         {
           error: "Could not parse decklist from this URL",
           siteName: supportedSite.name,
-          suggestion:
-            "Try exporting the decklist as text from the site and using the Text/Clipboard import option instead.",
+          suggestion: getUnsupportedSiteSuggestion(url),
         },
         { status: 422 },
       );

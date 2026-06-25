@@ -4,6 +4,7 @@ import { useState, useTransition, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
+import { type DecklistFormat } from "@/lib/decklist-utils";
 import {
   formatRules,
   getGameModeIdFromFormatName,
@@ -178,7 +179,7 @@ export default function DeckBuilderPage() {
 
   const importDeck = (
     decklist: string,
-    decklistFormat?: "standard" | "mtgo" | "json",
+    decklistFormat?: DecklistFormat,
   ) => {
     if (!decklist.trim()) {
       toast({

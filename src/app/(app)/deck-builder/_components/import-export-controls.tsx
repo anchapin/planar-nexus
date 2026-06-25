@@ -40,9 +40,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import {
+  type DecklistFormat,
+  DECK_SITES,
+  detectDeckSite,
+} from "@/lib/decklist-utils";
 
 interface ImportExportControlsProps {
-  onImport: (decklist: string, format?: "standard" | "mtgo" | "json") => void;
+  onImport: (decklist: string, format?: DecklistFormat) => void;
   onExport: () => void;
   onClear: () => void;
   onSave: () => void;
@@ -63,9 +68,7 @@ export function ImportExportControls({
   deckCards,
 }: ImportExportControlsProps) {
   const [importText, setImportText] = useState("");
-  const [importFormat, setImportFormat] = useState<
-    "standard" | "mtgo" | "json"
-  >("standard");
+  const [importFormat, setImportFormat] = useState<DecklistFormat>("standard");
   const [importUrl, setImportUrl] = useState("");
   const [activeTab, setActiveTab] = useState<"text" | "url">("text");
   const [isUrlImporting, setIsUrlImporting] = useState(false);
@@ -389,7 +392,10 @@ export function ImportExportControls({
                 <div className="flex gap-2">
                   <Input
                     id="import-url"
-                    placeholder="https://mtggoldfish.com/decks/..."
+                    placeholder={
+                      detectDeckSite(importUrl)?.exampleUrl ??
+                      "https://www.moxfield.com/decks/..."
+                    }
                     value={importUrl}
                     onChange={(e) => setImportUrl(e.target.value)}
                     disabled={isUrlImporting}
@@ -412,10 +418,15 @@ export function ImportExportControls({
 
               <div className="text-xs text-muted-foreground space-y-2">
                 <p>Supported sites:</p>
-                <ul className="list-disc list-inside space-y-1">
-                  <li>MTGGoldfish</li>
-                  <li>TappedOut</li>
-                  <li>Moxfield</li>
+                <ul className="space-y-1">
+                  {DECK_SITES.map((site) => (
+                    <li key={site.host} className="flex flex-col">
+                      <span>{site.name}</span>
+                      <code className="text-[10px] text-muted-foreground/70 break-all">
+                        {site.exampleUrl}
+                      </code>
+                    </li>
+                  ))}
                 </ul>
               </div>
             </TabsContent>
