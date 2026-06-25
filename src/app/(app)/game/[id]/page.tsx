@@ -39,6 +39,7 @@ import {
 import Image from "next/image";
 import { GameBoard } from "@/components/game-board";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, SavedDeck } from "@/app/actions";
@@ -3118,17 +3119,19 @@ function GameBoardContent() {
         data-tutorial="battlefield"
       >
         <div className="h-full w-full">
-          <GameBoard
-            players={sortedPlayers}
-            playerCount={gameState.players.size as PlayerCount}
-            currentTurnIndex={currentTurnIndex}
-            onCardClick={handleCardClick}
-            onZoneClick={handleZoneClick}
-            onConcede={handleConcede}
-            onOfferDraw={handleOfferDraw}
-            onAcceptDraw={handleAcceptDraw}
-            onDeclineDraw={handleDeclineDraw}
-          />
+          <GameBoardErrorBoundary>
+            <GameBoard
+              players={sortedPlayers}
+              playerCount={gameState.players.size as PlayerCount}
+              currentTurnIndex={currentTurnIndex}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
+              onConcede={handleConcede}
+              onOfferDraw={handleOfferDraw}
+              onAcceptDraw={handleAcceptDraw}
+              onDeclineDraw={handleDeclineDraw}
+            />
+          </GameBoardErrorBoundary>
         </div>
       </main>
 

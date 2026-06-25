@@ -29,6 +29,7 @@ import { SynergyProvider } from "./_components/synergy-context";
 import { DeckStatsPanel } from "./_components/deck-stats-panel";
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ComponentErrorBoundary } from "@/components/error-boundaries";
 
 // Lazy-load the AI deck assistant so @ai-sdk/react and its chat UI are split
 // into a separate chunk and only loaded when the deck-builder renders.
@@ -425,11 +426,16 @@ export default function DeckBuilderPage() {
         </div>
         <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-2">
-            <CardSearch
-              ref={searchInputRef}
-              onAddCard={addCardToDeck}
-              onSelectedCardChange={setSelectedCard}
-            />
+            <ComponentErrorBoundary
+              title="Card Search Error"
+              description="The card search failed to load. Try again to resume searching for cards."
+            >
+              <CardSearch
+                ref={searchInputRef}
+                onAddCard={addCardToDeck}
+                onSelectedCardChange={setSelectedCard}
+              />
+            </ComponentErrorBoundary>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
             <Tabs defaultValue="deck" className="w-full">
@@ -442,13 +448,18 @@ export default function DeckBuilderPage() {
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="deck" className="mt-4">
-                <DeckList
-                  deck={deck}
-                  deckName={deckName}
-                  onDeckNameChange={handleDeckNameChange}
-                  onRemoveCard={removeCardFromDeck}
-                  onAddCard={addCardToDeck}
-                />
+                <ComponentErrorBoundary
+                  title="Deck List Error"
+                  description="Your deck list failed to render. Your cards are saved — try reloading the list."
+                >
+                  <DeckList
+                    deck={deck}
+                    deckName={deckName}
+                    onDeckNameChange={handleDeckNameChange}
+                    onRemoveCard={removeCardFromDeck}
+                    onAddCard={addCardToDeck}
+                  />
+                </ComponentErrorBoundary>
               </TabsContent>
               <TabsContent value="mana-curve" className="mt-4">
                 {deck.length > 0 ? (

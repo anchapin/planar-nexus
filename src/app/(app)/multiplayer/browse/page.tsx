@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RefreshCw, Search, Users, Lock, Eye, Gamepad2, Crown, AlertCircle } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { GameFormat, PlayerCount } from '@/lib/multiplayer-types';
+import { ComponentErrorBoundary } from '@/components/error-boundaries';
 
 const formatDisplayNames: Record<GameFormat, string> = {
   commander: 'Commander',
@@ -264,6 +265,11 @@ export default function BrowseGamesPage() {
       </Card>
 
       {/* Game List */}
+      <ComponentErrorBoundary
+        title="Lobby Browser Error"
+        description="The game lobby browser failed to load. Try again to see available games."
+        icon={Gamepad2}
+      >
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center justify-between">
@@ -418,6 +424,7 @@ export default function BrowseGamesPage() {
           )}
         </CardContent>
       </Card>
+      </ComponentErrorBoundary>
 
       {/* Info Alert */}
       <Alert className="mt-6">

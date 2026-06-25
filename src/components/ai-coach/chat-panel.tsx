@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { PlaceholderComponent, StubDebugBanner } from '@/components/ui/placeholder';
 import { Bot, User, Send, Loader2, History, Database, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ComponentErrorBoundary } from '@/components/error-boundaries';
 
 interface AICoachChatPanelProps {
   currentPlayerId: string;
@@ -70,8 +71,15 @@ export function AICoachChatPanel({
   };
 
   return (
-    <div className={cn('flex flex-col h-[500px] border rounded-lg bg-card shadow-sm overflow-hidden', className)}>
-      <div className="flex items-center gap-2 p-3 border-b bg-muted/20">
+    <ComponentErrorBoundary
+      title="Coach Disconnected"
+      description="The AI coach panel hit an error. Your game is unaffected."
+      icon={Bot}
+      resetLabel="Restart Coach"
+      className={className}
+    >
+      <div className={cn('flex flex-col h-[500px] border rounded-lg bg-card shadow-sm overflow-hidden', className)}>
+        <div className="flex items-center gap-2 p-3 border-b bg-muted/20">
         <Bot className="w-5 h-5 text-primary" />
         <h3 className="font-semibold text-sm">AI Coach</h3>
         <div className="ml-auto flex items-center gap-2">
@@ -198,6 +206,7 @@ export function AICoachChatPanel({
           </Button>
         </div>
       </form>
-    </div>
+      </div>
+    </ComponentErrorBoundary>
   );
 }
