@@ -4,12 +4,12 @@ import * as React from "react";
 import { HandDisplay } from "./hand-display";
 import { CardState } from "@/types/game";
 import { ScryfallCard } from "@/app/actions";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { useToast } from "@/hooks/use-toast";
 
 // Sample card data for demonstration
 const sampleScryfallCards: ScryfallCard[] = [
@@ -238,6 +238,7 @@ function createCardStates(scryfallCards: ScryfallCard[], playerId: string): Card
 }
 
 export function HandDisplayDemo() {
+  const { toast } = useToast();
   const [selectedCardIds, setSelectedCardIds] = React.useState<string[]>([]);
   const [lastClickedCard, setLastClickedCard] = React.useState<string | null>(null);
 
@@ -256,8 +257,6 @@ export function HandDisplayDemo() {
     () => createCardStates([...sampleScryfallCards, ...sampleScryfallCards].slice(0, 12), "player-3"),
     []
   );
-
-  const { toast } = useToast();
 
   const cardNameById = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -510,7 +509,7 @@ function MyGameComponent() {
       cards={playerHand}
       isCurrentPlayer={true}
       onCardSelect={setSelectedCards}
-      onCardClick={(cardId) => console.log("Clicked:", cardId)}
+      onCardClick={(cardId) => { /* handle card click */ }}
       selectedCardIds={selectedCards}
     />
   );

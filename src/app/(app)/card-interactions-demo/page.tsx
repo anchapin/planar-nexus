@@ -77,6 +77,13 @@ const DEMO_PLAYERS = [
  * Implements issues #25, #26, #27
  */
 export default function CardInteractionsDemoPage() {
+  // Event log state — wired to the demo callbacks below so interactions surface
+  // in the visible Event Log panel rather than the browser console.
+  const [eventLog, setEventLog] = React.useState<string[]>([]);
+  const addEvent = (event: string) => {
+    setEventLog((prev) => [event, ...prev].slice(0, 10));
+  };
+
   // Use the card interactions hook
   const {
     selectedCardId,
@@ -91,22 +98,22 @@ export default function CardInteractionsDemoPage() {
     clearSelection,
   } = useCardInteractions({
     onCardInspect: (cardId) => {
-      console.log("Inspecting card:", cardId);
+      addEvent(`Inspect: ${cardId}`);
     },
     onCardTap: (cardId) => {
-      console.log("Tapping/untapping card:", cardId);
+      addEvent(`Tap/untap: ${cardId}`);
     },
     onAbilityActivate: (cardId, abilityIndex) => {
-      console.log("Activating ability:", cardId, abilityIndex);
+      addEvent(`Ability ${abilityIndex} activated on ${cardId}`);
     },
     onTargetSelect: (targetId, targetType) => {
-      console.log("Target selected:", targetId, targetType);
+      addEvent(`Target selected: ${targetId} (${targetType})`);
     },
     onTargetConfirm: (targets) => {
-      console.log("Targets confirmed:", targets);
+      addEvent(`Targets confirmed (${targets.length})`);
     },
     onTargetCancel: () => {
-      console.log("Targeting cancelled");
+      addEvent("Targeting cancelled");
     },
   });
 
@@ -115,12 +122,6 @@ export default function CardInteractionsDemoPage() {
   const [selectedAbilityForMenu, setSelectedAbilityForMenu] = React.useState<CardAbility[]>([]);
   const [cardNameForMenu, setCardNameForMenu] = React.useState("");
   const [cardTypesForMenu, setCardTypesForMenu] = React.useState<string[]>([]);
-  const [eventLog, setEventLog] = React.useState<string[]>([]);
-
-  // Add event to log
-  const addEvent = (event: string) => {
-    setEventLog((prev) => [event, ...prev].slice(0, 10));
-  };
 
   // Handle ability activation from menu
   const handleAbilityActivate = (abilityIndex: number) => {
