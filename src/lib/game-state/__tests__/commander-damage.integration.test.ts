@@ -171,7 +171,7 @@ describe("Commander Damage Integration — CR 903.9a (issue #1017)", () => {
 
   describe("reset when a commander changes zones", () => {
     it("clears the tally for a specific commander across all receivers", () => {
-      let result = dealCommanderDamage(state, commanderId, bobId, 15);
+      const result = dealCommanderDamage(state, commanderId, bobId, 15);
       expect(getCommanderDamage(result.state, bobId, commanderId)).toBe(15);
 
       const reset = resetCommanderDamageFromCommander(result.state, commanderId);
