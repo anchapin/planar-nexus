@@ -595,7 +595,7 @@ export function CombatDeclaration({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-2xl max-h-[90vh] overflow-hidden flex flex-col gap-3 p-4 md:gap-4 md:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Swords className="h-5 w-5" />
@@ -606,7 +606,7 @@ export function CombatDeclaration({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap text-xs md:text-sm">
           <Badge variant={combatPhase === "declare-attackers" ? "default" : "outline"}>
             1. Attackers
           </Badge>
@@ -631,16 +631,17 @@ export function CombatDeclaration({
           {combatPhase === "confirm" && renderConfirm()}
         </div>
 
-        <DialogFooter className="flex-row justify-between sm:justify-between">
+        <DialogFooter className="flex-row justify-between sm:justify-between gap-2">
           <Button
             variant="outline"
             onClick={handleBack}
             disabled={combatPhase === "declare-attackers" && !onGoBack}
+            className="h-11 md:h-auto"
           >
             <RotateCcw className="h-4 w-4 mr-1" />
             Back
           </Button>
-          <Button onClick={handleNext} disabled={!canProceed()}>
+          <Button onClick={handleNext} disabled={!canProceed()} className="h-11 md:h-auto">
             {getNextButtonText()}
             <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
