@@ -6,10 +6,22 @@ import {
   remove,
 } from "@orama/orama";
 import { persist, restore } from "@orama/plugin-data-persistence";
+import { LRUCache } from "lru-cache";
 import { db } from "../db/local-intelligence-db";
 import type { MinimalCard } from "../card-database";
 
 const CARD_SEARCH_INDEX_ID = "card_search";
+
+/**
+ * LRU result cache configuration.
+ *
+ * Repeated search queries (e.g. while a user types "li" -> "lig" -> "ligh"
+ * -> "light") would otherwise each traverse the Orama index and hit
+ * IndexedDB for hydration. Caching the small {id, name}[] payloads at the
+ * index chokepoint benefits every consumer (searchCardsOffline, fuzzySearch).
+ */
+const SEARCH_CACHE_MAX_SIZE = 256;
+const SEARCH_CACHE_TTL_MS = 60_000;
 
 const CARD_SCHEMA = {
   id: "string",
@@ -40,6 +52,15 @@ export interface SearchOptions {
 export class CardSearchIndex {
   private orama: AnyOrama | null = null;
   private initialized = false;
+
+  /**
+   * LRU cache of recent search results, keyed by a normalized query string.
+   * Invalidated on any index mutation (insert/remove/clear/reindex).
+   */
+  private resultCache = new LRUCache<string, { id: string; name: string }[]>({
+    max: SEARCH_CACHE_MAX_SIZE,
+    ttl: SEARCH_CACHE_TTL_MS,
+  });
 
   async init(): Promise<boolean> {
     if (this.initialized) return false;
@@ -98,6 +119,7 @@ export class CardSearchIndex {
     }
     this.orama = await create({ schema: CARD_SCHEMA });
     this.initialized = true;
+    this.invalidateCache();
   }
 
   async indexCards(cards: MinimalCard[]): Promise<void> {
@@ -115,6 +137,7 @@ export class CardSearchIndex {
 
     if (documents.length > 0) {
       await insertMultiple(orama, documents);
+      this.invalidateCache();
     }
   }
 
@@ -122,6 +145,7 @@ export class CardSearchIndex {
     if (!this.orama) return;
     try {
       await remove(this.orama, id);
+      this.invalidateCache();
     } catch {
       // Card may not be in index
     }
@@ -131,6 +155,12 @@ export class CardSearchIndex {
     term: string,
     options: SearchOptions = {},
   ): Promise<{ id: string; name: string }[]> {
+    const cacheKey = this.buildCacheKey(term, options);
+    const cached = this.resultCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const orama = await this.getOrama();
 
     const results = await oramaSearch(orama, {
@@ -141,10 +171,13 @@ export class CardSearchIndex {
       properties: ["name", "type_line", "oracle_text"],
     });
 
-    return results.hits.map((hit) => ({
+    const hits = results.hits.map((hit) => ({
       id: hit.document.id as string,
       name: hit.document.name as string,
     }));
+
+    this.resultCache.set(cacheKey, hits);
+    return hits;
   }
 
   async searchByCardIds(
@@ -177,6 +210,29 @@ export class CardSearchIndex {
     await this.clear();
     await this.indexCards(cards);
     await this.saveIndex();
+  }
+
+  /**
+   * Drop the entire search result cache. Called after any index mutation
+   * (insert/remove/clear/reindex) so stale results never leak out.
+   */
+  private invalidateCache(): void {
+    this.resultCache.clear();
+  }
+
+  /**
+   * Build a stable cache key from a query and its options.
+   *
+   * The term is normalized (trimmed + lowercased) so equivalent inputs share
+   * an entry, and the options are serialized in a deterministic order so two
+   * calls with the same arguments always hash identically.
+   */
+  private buildCacheKey(term: string, options: SearchOptions): string {
+    const normalizedTerm = (term ?? "").trim().toLowerCase();
+    const limit = options.limit ?? 20;
+    const offset = options.offset ?? 0;
+    const whereKey = options.where ? JSON.stringify(options.where) : "";
+    return `${normalizedTerm}|${limit}|${offset}|${whereKey}`;
   }
 }
 
