@@ -11,15 +11,16 @@ test.describe("AI Deck Assistant", () => {
   });
 
   test("should display initial state of AI Assistant", async ({ page }) => {
-    // Check if AI Assistant container exists
+    // AIDeckAssistant is dynamically imported (ssr: false) for code splitting,
+    // so allow extra time for the chunk to load and render on CI runners.
     const assistant = page.locator("text=AI Assistant");
-    await expect(assistant).toBeVisible();
+    await expect(assistant).toBeVisible({ timeout: 15000 });
 
     // Initial state should prompt to add cards
     const emptyState = page.locator(
       "text=Add cards to your deck to get AI suggestions.",
     );
-    await expect(emptyState).toBeVisible();
+    await expect(emptyState).toBeVisible({ timeout: 10000 });
   });
 
   // Skipped: Requires AI service (Gemini) that may not be available in CI
