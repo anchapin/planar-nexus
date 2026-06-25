@@ -16,7 +16,11 @@ import {
 import { createCardInstance } from "../card-instance";
 import { addMana as addManaToPool, activateManaAbility } from "../mana";
 import type { ScryfallCard } from "@/app/actions";
-import type { GameState, ManaPool, PlayerId } from "../types";
+import type { GameState, ManaPool, PlayerId, StackObject } from "../types";
+import { resolveTopOfStack } from "../spell-casting";
+import { counterSpell } from "../keyword-actions";
+import { computeStateHash } from "../state-hash";
+import { cloneGameState } from "../state-serialization";
 
 // Helper to create a basic land
 function createBasicLand(
@@ -362,7 +366,203 @@ describe("Property-based Tests: Game Invariants", () => {
         // Card IDs should be unique within a zone
         const uniqueIds = new Set(zone!.cardIds);
         expect(uniqueIds.size).toBe(zone!.cardIds.length);
-      }
-    });
+    }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Stack Resolution Determinism (issue #1013)
+//
+// The stack is an ordered, LIFO data structure. In P2P multiplayer every peer
+// must reach an identical state from identical inputs. These property-based
+// tests assert that stack resolution is a pure function of its inputs:
+//   1. Resolving the same stack repeatedly yields identical state hashes.
+//   2. Resolution order is deterministic and (per the rules) order-dependent.
+//   3. Counter spells resolve consistently regardless of how many are stacked.
+// ---------------------------------------------------------------------------
+
+const DETERMINISM_GAME_ID = "test-stack-determinism";
+
+/**
+ * Build a minimal, fully-specified StackObject with deterministic fields.
+ * `sourceCardId` is intentionally null so resolution exercises the generic
+ * "remove from stack" path without depending on card data, keeping the
+ * determinism property independent of effect-resolution specifics.
+ */
+function makeStackObject(
+  id: string,
+  opts: { type?: "spell" | "ability"; name?: string; isCountered?: boolean } = {},
+): StackObject {
+  return {
+    id,
+    type: opts.type ?? "spell",
+    sourceCardId: null,
+    controllerId: "player-placeholder" as PlayerId,
+    name: opts.name ?? `Spell ${id}`,
+    text: "",
+    manaCost: null,
+    targets: [],
+    chosenModes: [],
+    variableValues: new Map<string, number>(),
+    isCountered: opts.isCountered ?? false,
+    timestamp: 0,
+  };
+}
+
+/**
+ * Create a fresh game state with the given stack. A normalized gameId is used so
+ * hashes are comparable; the controller of every stack object is set to a real
+ * player id present in the state.
+ */
+function buildStateWithStack(stack: StackObject[]): GameState {
+  let state = createInitialGameState(["Alice", "Bob"], 20, false);
+  state = startGame(state);
+  const firstPlayer = Array.from(state.players.keys())[0] as PlayerId;
+  const normalizedStack = stack.map((obj) => ({ ...obj, controllerId: firstPlayer }));
+  return { ...state, gameId: DETERMINISM_GAME_ID, stack: normalizedStack };
+}
+
+/**
+ * Resolve every object on the stack until it is empty. Each `resolveTopOfStack`
+ * call removes exactly one object (countered or not), so the loop always
+ * terminates; the guard is a safety net against regressions.
+ */
+function resolveEntireStack(state: GameState): GameState {
+  let current = state;
+  let guard = current.stack.length + 5;
+  while (current.stack.length > 0 && guard-- > 0) {
+    current = resolveTopOfStack(current);
+  }
+  return current;
+}
+
+describe("Property-based Tests: Stack Resolution Determinism", () => {
+  // Generates a single spell/ability spec. `constantFrom` is typed as the
+  // literal union so no casts are needed downstream.
+  const spellSpecArb = fc.record({
+    type: fc.constantFrom<"spell" | "ability">("spell", "ability"),
+    name: fc.string({ minLength: 1, maxLength: 12 }),
+  });
+
+  // Acceptance criterion #1: identical stack states resolve to identical next
+  // states across 100+ runs.
+  it("resolving the same stack multiple times produces identical state hashes", () => {
+    fc.assert(
+      fc.property(
+        fc.array(spellSpecArb, { minLength: 0, maxLength: 6 }),
+        (specs) => {
+          const base = buildStateWithStack(
+            specs.map((s, i) => makeStackObject(`obj-${i}`, s)),
+          );
+
+          // Resolve the same stack independently several times. Every resulting
+          // hash must be identical (resolution is a pure function of the input).
+          const REPETITIONS = 10;
+          const hashes: string[] = [];
+          for (let r = 0; r < REPETITIONS; r++) {
+            hashes.push(computeStateHash(resolveEntireStack(cloneGameState(base))));
+          }
+          const firstHash = hashes[0];
+          for (const h of hashes) {
+            expect(h).toBe(firstHash);
+          }
+
+          // Fully resolving the stack always empties it.
+          expect(resolveEntireStack(cloneGameState(base)).stack.length).toBe(0);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  // Acceptance criterion #2: spell resolution order is deterministic (LIFO) and
+  // order-dependent — i.e. stack operations are NOT commutative.
+  it("spell resolution order is deterministic and order-dependent (fc.tuple)", () => {
+    fc.assert(
+      fc.property(
+        fc.tuple(spellSpecArb, spellSpecArb),
+        ([specP, specQ]) => {
+          const p = makeStackObject("p", specP);
+          const q = makeStackObject("q", specQ);
+
+          // Forward stack: [p, q]  (q is on top). Reverse stack: [q, p] (p on top).
+          const forward = buildStateWithStack([p, q]);
+          const reverse = buildStateWithStack([q, p]);
+
+          // Peer determinism: two independent resolutions of the same ordered
+          // stack must reach the same state.
+          expect(computeStateHash(resolveEntireStack(cloneGameState(forward)))).toBe(
+            computeStateHash(resolveEntireStack(cloneGameState(forward))),
+          );
+
+          // LIFO: a single resolution always removes the top object.
+          const forwardAfterOne = resolveTopOfStack(cloneGameState(forward));
+          const reverseAfterOne = resolveTopOfStack(cloneGameState(reverse));
+          expect(forwardAfterOne.stack.length).toBe(1);
+          expect(reverseAfterOne.stack.length).toBe(1);
+
+          // Non-commutativity: the object that remains depends on resolution
+          // order. Forward leaves p on the stack; reverse leaves q.
+          expect(forwardAfterOne.stack[0].id).toBe("p");
+          expect(reverseAfterOne.stack[0].id).toBe("q");
+          expect(forwardAfterOne.stack[0].id).not.toBe(reverseAfterOne.stack[0].id);
+
+          // Despite differing removal order, fully resolving either yields an
+          // empty stack.
+          expect(resolveEntireStack(cloneGameState(forward)).stack.length).toBe(0);
+          expect(resolveEntireStack(cloneGameState(reverse)).stack.length).toBe(0);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  // Acceptance criterion #3: counter spells resolve correctly and
+  // deterministically, including counter-on-counter ordering.
+  it("countering any subset of the stack resolves deterministically (counter-on-counter)", () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.record({
+            type: fc.constantFrom<"spell" | "ability">("spell", "ability"),
+            name: fc.string({ minLength: 1, maxLength: 12 }),
+            counter: fc.boolean(),
+          }),
+          { minLength: 1, maxLength: 5 },
+        ),
+        (entries) => {
+          const stack = entries.map((e, i) => makeStackObject(`c-${i}`, e));
+          let state = buildStateWithStack(stack);
+
+          // Apply counters to the selected objects. Multiple counters are
+          // supported (counter-on-counter).
+          for (let i = 0; i < entries.length; i++) {
+            if (entries[i].counter) {
+              const result = counterSpell(state, `c-${i}`);
+              expect(result.success).toBe(true);
+              state = result.state;
+            }
+          }
+
+          // Correctness: each countered object is flagged but still on the stack
+          // until it is resolved.
+          for (let i = 0; i < entries.length; i++) {
+            const obj = state.stack.find((o) => o.id === `c-${i}`);
+            expect(obj).toBeDefined();
+            expect(obj!.isCountered).toBe(entries[i].counter);
+          }
+
+          // Determinism: two peers reach the identical resolved state.
+          const hashA = computeStateHash(resolveEntireStack(cloneGameState(state)));
+          const hashB = computeStateHash(resolveEntireStack(cloneGameState(state)));
+          expect(hashA).toBe(hashB);
+
+          // Full resolution always empties the stack, countered or not.
+          expect(resolveEntireStack(cloneGameState(state)).stack.length).toBe(0);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+});
 });
