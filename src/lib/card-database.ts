@@ -56,6 +56,9 @@ export interface MinimalCard {
   layout?: string;
   // Loyalty for planeswalkers
   loyalty?: string;
+  // ISO-8601 release date of the card's set (e.g. "2024-02-09").
+  // Used by Standard rotation validation (see src/lib/game-rules.ts).
+  release_date?: string;
 }
 
 export interface CardDatabaseOptions {

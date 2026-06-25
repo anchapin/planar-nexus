@@ -608,6 +608,163 @@ export function getGameModeIdFromFormatName(formatName: string): string {
   );
 }
 
+// ============================================================================
+// Standard rotation tracking
+//
+// Standard ("Constructed Core") rotates sets out of legality on a schedule.
+// Each entry records a set's release date and the date it rotates OUT of
+// Standard. A set is legal from its releaseDate (inclusive) up to but not
+// including its rotationDate. See docs/standard-rotation.md for how to
+// update this schedule when new sets release.
+// ============================================================================
+
+/**
+ * A single entry in the Standard rotation schedule.
+ */
+export interface RotationScheduleEntry {
+  /** Set code (e.g. "neo", "dmu"). Matched case-insensitively against card.set. */
+  set: string;
+  /** ISO-8601 date the set becomes legal in Standard. */
+  releaseDate: string;
+  /** ISO-8601 date the set rotates OUT of Standard (exclusive). */
+  rotationDate: string;
+}
+
+/**
+ * Standard rotation schedule.
+ *
+ * Ordered oldest-first. To add a new set, append an entry with its release
+ * date and the date it will rotate out (typically the release date of the
+ * first set of the following "year"). See docs/standard-rotation.md.
+ */
+export const STANDARD_ROTATION_SCHEDULE: ReadonlyArray<RotationScheduleEntry> =
+  [
+    { set: "mid", releaseDate: "2021-09-24", rotationDate: "2024-09-27" },
+    { set: "vow", releaseDate: "2021-11-19", rotationDate: "2024-09-27" },
+    { set: "neo", releaseDate: "2022-02-18", rotationDate: "2024-09-27" },
+    { set: "snc", releaseDate: "2022-04-29", rotationDate: "2024-09-27" },
+    { set: "dmu", releaseDate: "2022-09-09", rotationDate: "2024-09-27" },
+    { set: "bro", releaseDate: "2022-11-18", rotationDate: "2025-10-31" },
+    { set: "one", releaseDate: "2023-02-10", rotationDate: "2025-10-31" },
+    { set: "mom", releaseDate: "2023-04-21", rotationDate: "2025-10-31" },
+    { set: "mat", releaseDate: "2023-05-12", rotationDate: "2025-10-31" },
+    { set: "woe", releaseDate: "2023-09-08", rotationDate: "2025-10-31" },
+    { set: "lci", releaseDate: "2023-11-17", rotationDate: "2025-10-31" },
+    { set: "mkm", releaseDate: "2024-02-09", rotationDate: "2025-10-31" },
+    { set: "otj", releaseDate: "2024-04-19", rotationDate: "2025-10-31" },
+    { set: "blb", releaseDate: "2024-07-26", rotationDate: "2026-10-30" },
+    { set: "dsk", releaseDate: "2024-09-27", rotationDate: "2026-10-30" },
+    { set: "fdn", releaseDate: "2024-11-15", rotationDate: "2026-10-30" },
+  ];
+
+/**
+ * Normalise a set code for case-insensitive comparison.
+ */
+function normalizeSetCode(set: string | undefined): string | null {
+  if (!set) return null;
+  const trimmed = set.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Get the set codes that are currently legal in Standard.
+ *
+ * A set is legal from its releaseDate (inclusive) up to but not including
+ * its rotationDate, evaluated against `referenceDate` (defaults to now).
+ *
+ * @returns A lowercase Set of legal set codes.
+ */
+export function getStandardLegalSets(
+  referenceDate: Date = new Date(),
+): Set<string> {
+  const ref = referenceDate.getTime();
+  const legal = new Set<string>();
+  for (const entry of STANDARD_ROTATION_SCHEDULE) {
+    const release = new Date(entry.releaseDate).getTime();
+    const rotation = new Date(entry.rotationDate).getTime();
+    if (ref >= release && ref < rotation) {
+      legal.add(entry.set.toLowerCase());
+    }
+  }
+  return legal;
+}
+
+/**
+ * Result of checking a deck for Standard rotation violations.
+ */
+export interface StandardRotationResult {
+  /** Cards whose set has rotated out of Standard. */
+  rotatedCards: Array<{ name: string; set: string }>;
+  /** Cards whose set code is unknown to the rotation schedule. */
+  unknownSetCards: Array<{ name: string; set: string }>;
+  /** Human-readable warning messages. */
+  warnings: string[];
+}
+
+/**
+ * Validate a list of cards against the current Standard rotation schedule.
+ *
+ * Cards whose set is not currently legal produce a warning entry in
+ * `rotatedCards`. Cards that carry a set code absent from the schedule
+ * entirely are reported in `unknownSetCards` so the UI can flag them for
+ * manual review. Basic lands are ignored.
+ *
+ * @param cards  Cards to check (only `name` and `set` are read).
+ * @param referenceDate Date to evaluate legality against (defaults to now).
+ */
+export function validateStandardRotation(
+  cards: Array<{ name: string; set?: string; type_line?: string }>,
+  referenceDate: Date = new Date(),
+): StandardRotationResult {
+  const legalSets = getStandardLegalSets(referenceDate);
+  const scheduledSets = new Set(
+    STANDARD_ROTATION_SCHEDULE.map((e) => e.set.toLowerCase()),
+  );
+
+  const rotatedCards: Array<{ name: string; set: string }> = [];
+  const unknownSetCards: Array<{ name: string; set: string }> = [];
+
+  for (const card of cards) {
+    if (isBasicLand(card.name)) continue;
+    const setCode = normalizeSetCode(card.set);
+    if (!setCode) continue;
+
+    if (!scheduledSets.has(setCode)) {
+      unknownSetCards.push({ name: card.name, set: card.set as string });
+    } else if (!legalSets.has(setCode)) {
+      rotatedCards.push({ name: card.name, set: card.set as string });
+    }
+  }
+
+  const warnings: string[] = [];
+  if (rotatedCards.length > 0) {
+    const sample = rotatedCards.slice(0, 5).map((c) => c.name).join(", ");
+    warnings.push(
+      `${rotatedCards.length} card${rotatedCards.length > 1 ? "s" : ""} from rotated set${rotatedCards.length > 1 ? "s" : ""} are no longer legal in Standard: ${sample}${rotatedCards.length > 5 ? "..." : ""}`,
+    );
+  }
+  if (unknownSetCards.length > 0) {
+    const sample = unknownSetCards
+      .slice(0, 5)
+      .map((c) => `${c.name} (${c.set})`)
+      .join(", ");
+    warnings.push(
+      `${unknownSetCards.length} card${unknownSetCards.length > 1 ? "s" : ""} from set${unknownSetCards.length > 1 ? "s" : ""} not tracked by the rotation schedule: ${sample}${unknownSetCards.length > 5 ? "..." : ""}`,
+    );
+  }
+
+  return { rotatedCards, unknownSetCards, warnings };
+}
+
+/**
+ * Formats that enforce Standard rotation (the "Constructed Core" game mode
+ * and the legacy "standard" alias).
+ */
+const ROTATION_AWARE_FORMATS = new Set<string>([
+  "constructed-core",
+  "standard",
+]);
+
 /**
  * Basic land names (excluded from copy limits)
  */
@@ -831,6 +988,8 @@ export function validateDeckFormat(
     count: number;
     color_identity?: string[];
     type_line?: string;
+    set?: string;
+    release_date?: string;
   }[],
   format: Format,
   commander?: { name: string; color_identity: string[] },
@@ -997,6 +1156,18 @@ export function validateDeckFormat(
     });
   }
 
+  // Standard rotation awareness for the Constructed Core format (and the
+  // legacy "standard" alias). Cards whose set has rotated out of Standard
+  // are surfaced as warnings so existing decks remain editable while the
+  // deck builder can flag them for the user. See validateStandardRotation.
+  if (
+    ROTATION_AWARE_FORMATS.has(format) ||
+    ROTATION_AWARE_FORMATS.has(gameModeId)
+  ) {
+    const rotationResult = validateStandardRotation(deckCards);
+    warnings.push(...rotationResult.warnings);
+  }
+
   const isValid = errors.length === 0;
 
   return {
@@ -1142,6 +1313,8 @@ export function validateDeckAndSideboard(
     count: number;
     color_identity?: string[];
     type_line?: string;
+    set?: string;
+    release_date?: string;
   }[],
   sideboardCards: { name: string; count: number }[],
   format: Format,
@@ -1235,6 +1408,8 @@ export function isDeckLegal(
     count: number;
     color_identity?: string[];
     type_line?: string;
+    set?: string;
+    release_date?: string;
   }[],
   format: Format,
   commander?: { name: string; color_identity: string[] },

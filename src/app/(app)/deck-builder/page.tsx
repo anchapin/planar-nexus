@@ -12,6 +12,7 @@ import {
   getGameModeIdFromFormatName,
   validateDeckFormat,
   getFormatDisplayName,
+  validateStandardRotation,
   type Format,
   type BannedCardSuggestion,
 } from "@/lib/game-rules";
@@ -32,6 +33,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle } from "lucide-react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,6 +98,18 @@ export default function DeckBuilderPage() {
   // messages so toasts/badges stay consistent with the format selector.
   const formatLabel = getFormatDisplayName(format);
   const legalitySummary = useFormatLegalityCheck(deck, format, formatLabel);
+  // Standard rotation awareness: when editing a Standard ("constructed-core")
+  // deck, flag cards whose set has rotated out of legality. Surfaces warnings
+  // from validateStandardRotation so users can swap rotated cards. See
+  // src/lib/game-rules.ts and docs/standard-rotation.md.
+  const rotationWarnings = useMemo(() => {
+    const gameModeId = getGameModeIdFromFormatName(format);
+    if (gameModeId !== "constructed-core" && format !== "standard") {
+      return [] as string[];
+    }
+    if (deck.length === 0) return [] as string[];
+    return validateStandardRotation(deck).warnings;
+  }, [format, deck]);
 
   useEffect(() => {
     // If there is an active deck, check if it's "dirty"
@@ -544,6 +559,19 @@ export default function DeckBuilderPage() {
             </ComponentErrorBoundary>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
+            {rotationWarnings.length > 0 && (
+              <Alert variant="warning" data-testid="rotation-warning">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Standard rotation warning</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc pl-4 space-y-1">
+                    {rotationWarnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            )}
             <Tabs defaultValue="deck" className="w-full">
               <TabsList className="w-full">
                 <TabsTrigger value="deck" className="flex-1">
