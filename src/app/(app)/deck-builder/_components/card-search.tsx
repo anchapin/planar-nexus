@@ -422,7 +422,7 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
           const minimalCards = searchResults.map(toMinimalCard);
 
           // Apply filters and sorting using the hook
-          const filtered = filterSearch(debouncedQuery, minimalCards);
+          const filtered = await filterSearch(debouncedQuery, minimalCards);
 
           // Get IDs of filtered cards
           const filteredIds = new Set(filtered.map((c) => c.id));
