@@ -4,20 +4,46 @@ import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useCollection } from "@/hooks/use-collection";
 import type { ScryfallCard } from "@/app/actions";
-import { searchCardsOffline, getAllCards, type MinimalCard } from "@/lib/card-database";
+import {
+  searchCardsOffline,
+  getAllCards,
+  type MinimalCard,
+} from "@/lib/card-database";
 import { type Format } from "@/lib/game-rules";
 import { useCardFilters } from "@/hooks/use-card-filters";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { VirtualCardList } from "@/components/virtual-card-list";
-import { Search, Plus, Trash2, Download, Upload, FolderPlus, Package, GitCompare, ArrowRightLeft } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Trash2,
+  Download,
+  Upload,
+  FolderPlus,
+  Package,
+  GitCompare,
+  ArrowRightLeft,
+} from "lucide-react";
 
 /**
  * Deck Comparison Tool Component
@@ -26,15 +52,17 @@ import { Search, Plus, Trash2, Download, Upload, FolderPlus, Package, GitCompare
 function DeckComparisonTool() {
   const { compareDeckWithCollection } = useCollection();
   const [deckText, setDeckText] = useState("");
-  const [comparisonResult, setComparisonResult] = useState<ReturnType<typeof compareDeckWithCollection> | null>(null);
+  const [comparisonResult, setComparisonResult] = useState<ReturnType<
+    typeof compareDeckWithCollection
+  > | null>(null);
 
   const handleCompare = () => {
     if (!deckText.trim()) return;
 
     // Parse deck list (format: "4 Lightning Bolt" or "Lightning Bolt")
-    const lines = deckText.trim().split('\n');
+    const lines = deckText.trim().split("\n");
     const deckCards: { name: string; quantity: number }[] = [];
-    
+
     for (const line of lines) {
       const match = line.match(/^(\d+)?\s*[,;]?\s*(.+)$/);
       if (match) {
@@ -48,7 +76,8 @@ function DeckComparisonTool() {
     setComparisonResult(result);
   };
 
-  const missingCount = comparisonResult?.filter(c => c.status !== 'ok').length || 0;
+  const missingCount =
+    comparisonResult?.filter((c) => c.status !== "ok").length || 0;
 
   return (
     <div className="space-y-3">
@@ -62,27 +91,41 @@ function DeckComparisonTool() {
         onChange={(e) => setDeckText(e.target.value)}
         className="min-h-[100px] text-sm"
       />
-      <Button onClick={handleCompare} variant="outline" size="sm" className="w-full">
+      <Button
+        onClick={handleCompare}
+        variant="outline"
+        size="sm"
+        className="w-full"
+      >
         Compare Deck
       </Button>
-      
+
       {comparisonResult && (
         <div className="space-y-2">
           <div className="text-sm">
             {missingCount === 0 ? (
-              <span className="text-green-500">✓ Deck is fully covered by collection!</span>
+              <span className="text-green-500">
+                ✓ Deck is fully covered by collection!
+              </span>
             ) : (
-              <span className="text-amber-500">⚠ {missingCount} cards missing or insufficient</span>
+              <span className="text-amber-500">
+                ⚠ {missingCount} cards missing or insufficient
+              </span>
             )}
           </div>
           <ScrollArea className="h-[150px]">
             <div className="space-y-1">
               {comparisonResult.map((card, i) => (
-                <div key={i} className={`flex items-center justify-between text-xs p-1 rounded ${
-                  card.status === 'ok' ? 'text-green-500' :
-                  card.status === 'missing' ? 'text-red-500 bg-red-50' :
-                  'text-amber-500 bg-amber-50'
-                }`}>
+                <div
+                  key={i}
+                  className={`flex items-center justify-between text-xs p-1 rounded ${
+                    card.status === "ok"
+                      ? "text-green-500"
+                      : card.status === "missing"
+                        ? "text-red-500 bg-red-50"
+                        : "text-amber-500 bg-amber-50"
+                  }`}
+                >
                   <span className="truncate flex-1">{card.name}</span>
                   <span className="ml-2">
                     {card.collectionQuantity}/{card.deckQuantity}
@@ -103,7 +146,9 @@ function DeckComparisonTool() {
  */
 function TradeListGenerator() {
   const { generateTradeList } = useCollection();
-  const [tradeList, setTradeList] = useState<ReturnType<typeof generateTradeList> | null>(null);
+  const [tradeList, setTradeList] = useState<ReturnType<
+    typeof generateTradeList
+  > | null>(null);
 
   const handleGenerate = () => {
     const list = generateTradeList();
@@ -113,14 +158,17 @@ function TradeListGenerator() {
   const handleExportTradeList = () => {
     if (!tradeList) return;
     const text = tradeList
-      .map(c => `${c.quantity} ${c.name} (${c.set || 'unknown'}) - ${c.condition}`)
-      .join('\n');
-    
-    const blob = new Blob([text], { type: 'text/plain' });
+      .map(
+        (c) =>
+          `${c.quantity} ${c.name} (${c.set || "unknown"}) - ${c.condition}`,
+      )
+      .join("\n");
+
+    const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = 'trade-list.txt';
+    a.download = "trade-list.txt";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -136,15 +184,22 @@ function TradeListGenerator() {
       <p className="text-xs text-muted-foreground">
         Cards with more than 4 copies (duplicates available for trade)
       </p>
-      <Button onClick={handleGenerate} variant="outline" size="sm" className="w-full">
+      <Button
+        onClick={handleGenerate}
+        variant="outline"
+        size="sm"
+        className="w-full"
+      >
         Generate Trade List
       </Button>
-      
+
       {tradeList && (
         <div className="space-y-2">
           <div className="text-sm">
             {tradeList.length === 0 ? (
-              <span className="text-muted-foreground">No tradeable cards found</span>
+              <span className="text-muted-foreground">
+                No tradeable cards found
+              </span>
             ) : (
               <span>{tradeList.length} cards available for trade</span>
             )}
@@ -154,13 +209,22 @@ function TradeListGenerator() {
               <ScrollArea className="h-[100px]">
                 <div className="space-y-1">
                   {tradeList.map((card, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs">
-                      <span className="truncate">{card.quantity}x {card.name}</span>
+                    <div
+                      key={i}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="truncate">
+                        {card.quantity}x {card.name}
+                      </span>
                     </div>
                   ))}
                 </div>
               </ScrollArea>
-              <Button onClick={handleExportTradeList} size="sm" className="w-full">
+              <Button
+                onClick={handleExportTradeList}
+                size="sm"
+                className="w-full"
+              >
                 <Download className="h-3 w-3 mr-1" />
                 Export Trade List
               </Button>
@@ -188,13 +252,20 @@ export default function CollectionPage() {
   } = useCollection();
 
   // Initialize filter hook for advanced filtering
-  const { filters, setFilter, sortConfig, setSort, hasActiveFilters, search: filterSearch } = useCardFilters();
-  
+  const {
+    filters,
+    setFilter,
+    sortConfig,
+    setSort,
+    hasActiveFilters,
+    search: filterSearch,
+  } = useCardFilters();
+
   // Store all cards for filtering
   const [allCards, setAllCards] = useState<MinimalCard[]>([]);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState< ScryfallCard[]>([]);
+  const [searchResults, setSearchResults] = useState<ScryfallCard[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [importText, setImportText] = useState("");
   const [newCollectionName, setNewCollectionName] = useState("");
@@ -220,7 +291,7 @@ export default function CollectionPage() {
     set: card.set,
     collector_number: card.collector_number,
     cmc: card.cmc,
-    type_line: card.type_line || '',
+    type_line: card.type_line || "",
     oracle_text: card.oracle_text,
     colors: card.colors || [],
     color_identity: card.color_identity || [],
@@ -239,39 +310,39 @@ export default function CollectionPage() {
     setIsSearching(true);
     try {
       let results: ScryfallCard[];
-      
+
       if (searchQuery.trim()) {
         // Perform name-based search
-        results = await searchCardsOffline(searchQuery, {
+        results = (await searchCardsOffline(searchQuery, {
           maxCards: 20,
           format: "commander" as Format,
           includeImages: true,
-        }) as ScryfallCard[];
-        
+        })) as ScryfallCard[];
+
         // Apply additional filters if active
         if (hasActiveFilters && results.length > 0) {
           const minimalCards = results.map(toMinimalCard);
-          const filtered = filterSearch(searchQuery, minimalCards);
-          const filteredIds = new Set(filtered.map(c => c.id));
-          results = results.filter(card => filteredIds.has(card.id));
+          const filtered = await filterSearch(searchQuery, minimalCards);
+          const filteredIds = new Set(filtered.map((c) => c.id));
+          results = results.filter((card) => filteredIds.has(card.id));
         }
       } else if (hasActiveFilters && allCards.length > 0) {
         // No search query but filters active - filter all cards
-        const filtered = filterSearch('', allCards);
-        const filteredIds = new Set(filtered.map(c => c.id));
-        
+        const filtered = await filterSearch("", allCards);
+        const filteredIds = new Set(filtered.map((c) => c.id));
+
         // Get full card data for filtered results
-        results = await searchCardsOffline('', {
+        results = (await searchCardsOffline("", {
           maxCards: 100,
           format: "commander" as Format,
           includeImages: true,
-        }) as ScryfallCard[];
-        
-        results = results.filter(card => filteredIds.has(card.id));
+        })) as ScryfallCard[];
+
+        results = results.filter((card) => filteredIds.has(card.id));
       } else {
         results = [];
       }
-      
+
       setSearchResults(results);
     } catch (error) {
       console.error(error);
@@ -321,11 +392,11 @@ export default function CollectionPage() {
 
   const handleExport = () => {
     const csv = exportToCSV();
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${activeCollection.name.replace(/\s/g, '_')}.csv`;
+    a.download = `${activeCollection.name.replace(/\s/g, "_")}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -357,10 +428,13 @@ export default function CollectionPage() {
   };
 
   const filteredCards = activeCollection.cards.filter((c) =>
-    c.card.name.toLowerCase().includes(searchQuery.toLowerCase())
+    c.card.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const totalCards = activeCollection.cards.reduce((sum, c) => sum + c.quantity, 0);
+  const totalCards = activeCollection.cards.reduce(
+    (sum, c) => sum + c.quantity,
+    0,
+  );
   const uniqueCards = activeCollection.cards.length;
 
   return (
@@ -410,11 +484,15 @@ export default function CollectionPage() {
               <div>
                 <CardTitle>{activeCollection.name}</CardTitle>
                 <CardDescription>
-                  {totalCards} cards • Updated {new Date(activeCollection.updatedAt).toLocaleDateString()}
+                  {totalCards} cards • Updated{" "}
+                  {new Date(activeCollection.updatedAt).toLocaleDateString()}
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Dialog open={showNewCollectionDialog} onOpenChange={setShowNewCollectionDialog}>
+                <Dialog
+                  open={showNewCollectionDialog}
+                  onOpenChange={setShowNewCollectionDialog}
+                >
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm">
                       <FolderPlus className="h-4 w-4 mr-2" />
@@ -435,7 +513,9 @@ export default function CollectionPage() {
                           placeholder="My Binder"
                         />
                       </div>
-                      <Button onClick={handleCreateCollection}>Create Collection</Button>
+                      <Button onClick={handleCreateCollection}>
+                        Create Collection
+                      </Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -474,10 +554,13 @@ export default function CollectionPage() {
                         {collectionCard.quantity}
                       </Badge>
                       <div>
-                        <div className="font-medium">{collectionCard.card.name}</div>
+                        <div className="font-medium">
+                          {collectionCard.card.name}
+                        </div>
                         {collectionCard.card.set && (
                           <div className="text-xs text-muted-foreground">
-                            {collectionCard.card.set.toUpperCase()} #{collectionCard.card.collector_number}
+                            {collectionCard.card.set.toUpperCase()} #
+                            {collectionCard.card.collector_number}
                           </div>
                         )}
                       </div>
@@ -485,7 +568,12 @@ export default function CollectionPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => handleRemoveCard(collectionCard.card.id, collectionCard.card.name)}
+                      onClick={() =>
+                        handleRemoveCard(
+                          collectionCard.card.id,
+                          collectionCard.card.name,
+                        )
+                      }
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -502,7 +590,9 @@ export default function CollectionPage() {
           <Card>
             <CardHeader>
               <CardTitle>Add Cards</CardTitle>
-              <CardDescription>Search and add cards to your collection.</CardDescription>
+              <CardDescription>
+                Search and add cards to your collection.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-2">
@@ -526,12 +616,18 @@ export default function CollectionPage() {
                         className="flex items-center justify-between p-2 rounded border bg-card"
                       >
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{card.name}</div>
+                          <div className="font-medium truncate">
+                            {card.name}
+                          </div>
                           <div className="text-xs text-muted-foreground truncate">
                             {card.set?.toUpperCase()} {card.collector_number}
                           </div>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => handleAddCard(card)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAddCard(card)}
+                        >
                           <Plus className="h-4 w-4" />
                         </Button>
                       </div>
@@ -570,7 +666,8 @@ export default function CollectionPage() {
 
                 <TabsContent value="export" className="space-y-4 mt-4">
                   <p className="text-sm text-muted-foreground">
-                    Export your collection as a CSV file that can be imported into other apps.
+                    Export your collection as a CSV file that can be imported
+                    into other apps.
                   </p>
                   <Button onClick={handleExport} className="w-full">
                     <Download className="h-4 w-4 mr-2" />
@@ -597,14 +694,20 @@ export default function CollectionPage() {
                   <div
                     key={collection.id}
                     className={`flex items-center justify-between p-2 rounded cursor-pointer ${
-                      collection.id === activeCollectionId ? "bg-accent" : "hover:bg-accent/50"
+                      collection.id === activeCollectionId
+                        ? "bg-accent"
+                        : "hover:bg-accent/50"
                     }`}
                     onClick={() => setActiveCollectionId(collection.id)}
                   >
                     <div>
                       <div className="font-medium">{collection.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {collection.cards.reduce((sum, c) => sum + c.quantity, 0)} cards
+                        {collection.cards.reduce(
+                          (sum, c) => sum + c.quantity,
+                          0,
+                        )}{" "}
+                        cards
                       </div>
                     </div>
                     {collection.id !== "default-collection" && (

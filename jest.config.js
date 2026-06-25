@@ -21,6 +21,13 @@ module.exports = {
   ],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
+    // @orama/* ships ESM under the `browser`/`import` export conditions which
+    // Jest's jsdom resolver selects by default and cannot parse. Map to the
+    // prebuilt CommonJS artifacts so the test runtime can require them.
+    "^@orama/orama$":
+      "<rootDir>/node_modules/@orama/orama/dist/commonjs/index.js",
+    "^@orama/plugin-data-persistence$":
+      "<rootDir>/node_modules/@orama/plugin-data-persistence/dist/commonjs.cjs",
   },
   transform: {
     "^.+\\.tsx?$": [

@@ -5,10 +5,11 @@
  * - Levenshtein distance <= 2 for typo tolerance (FUZZY-01)
  * - Partial word matching (FUZZY-02)
  * - Synonym matching (FUZZY-03)
+ *
+ * Now uses Orama for indexed search instead of Fuse.js for better performance.
  */
-import Fuse, { IFuseOptions } from 'fuse.js';
-import type { MinimalCard } from '@/lib/card-database';
-import { FUSE_SEARCH_OPTIONS } from '@/lib/card-database';
+import { cardSearchIndex } from "./card-search-index";
+import type { MinimalCard } from "@/lib/card-database";
 
 /**
  * Fuzzy search options
@@ -36,21 +37,21 @@ const DEFAULT_FUZZY_OPTIONS: FuzzySearchOptions = {
  * Maps canonical terms to their synonyms for expanded search
  */
 export const SYNONYM_MAP: Record<string, string[]> = {
-  'damage': ['damage', 'deals damage', 'deals'],
-  'draw': ['draw', 'draw a card', 'card draw'],
-  'destroy': ['destroy', 'destroy target', 'destroyed'],
-  'counter': ['counter', 'counter target', 'countered'],
-  'search': ['search', 'search library', 'search your library'],
-  'mill': ['mill', 'mill target', 'put into graveyard'],
-  'ramp': ['ramp', 'mana', 'add mana', 'produce mana'],
-  'removal': ['destroy', 'exile', 'remove from game'],
-  'flying': ['flying', 'fly'],
-  'trample': ['trample', 'trample'],
-  'lifelink': ['lifelink', 'life link', 'gain life'],
-  'deathtouch': ['deathtouch', 'death touch'],
-  'haste': ['haste'],
-  'flash': ['flash'],
-  'vigilance': ['vigilance'],
+  damage: ["damage", "deals damage", "deals"],
+  draw: ["draw", "draw a card", "card draw"],
+  destroy: ["destroy", "destroy target", "destroyed"],
+  counter: ["counter", "counter target", "countered"],
+  search: ["search", "search library", "search your library"],
+  mill: ["mill", "mill target", "put into graveyard"],
+  ramp: ["ramp", "mana", "add mana", "produce mana"],
+  removal: ["destroy", "exile", "remove from game"],
+  flying: ["flying", "fly"],
+  trample: ["trample", "trample"],
+  lifelink: ["lifelink", "life link", "gain life"],
+  deathtouch: ["deathtouch", "death touch"],
+  haste: ["haste"],
+  flash: ["flash"],
+  vigilance: ["vigilance"],
 };
 
 /**
@@ -93,9 +94,9 @@ export function levenshteinDistance(a: string, b: string): number {
     for (let j = 1; j <= bLower.length; j++) {
       const cost = aLower[i - 1] === bLower[j - 1] ? 0 : 1;
       matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,     // deletion
-        matrix[i][j - 1] + 1,     // insertion
-        matrix[i - 1][j - 1] + cost // substitution
+        matrix[i - 1][j] + 1, // deletion
+        matrix[i][j - 1] + 1, // insertion
+        matrix[i - 1][j - 1] + cost, // substitution
       );
     }
   }
@@ -117,17 +118,17 @@ export function partialMatch(text: string, query: string): boolean {
   const queryLower = query.toLowerCase();
 
   // Split query into words/tokens
-  const tokens = queryLower.split(/\s+/).filter(t => t.length > 0);
+  const tokens = queryLower.split(/\s+/).filter((t) => t.length > 0);
 
   if (tokens.length === 0) return false;
 
   // Check if ANY token matches part of the text
-  return tokens.some(token => {
+  return tokens.some((token) => {
     // Check if token is a substring of text
     if (textLower.includes(token)) return true;
 
     // Also check word boundaries - token matches if it starts a word
-    const wordPattern = new RegExp(`\\b${escapeRegex(token)}`, 'i');
+    const wordPattern = new RegExp(`\\b${escapeRegex(token)}`, "i");
     return wordPattern.test(textLower);
   });
 }
@@ -136,7 +137,7 @@ export function partialMatch(text: string, query: string): boolean {
  * Escape special regex characters
  */
 function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -157,9 +158,9 @@ export function expandWithSynonyms(query: string): string[] {
   for (const word of words) {
     // Find canonical form (check if word is a value in SYNONYM_MAP)
     for (const [canonical, synonyms] of Object.entries(SYNONYM_MAP)) {
-      if (synonyms.some(s => s === word) || canonical === word) {
+      if (synonyms.some((s) => s === word) || canonical === word) {
         // Add all synonyms including canonical form
-        synonyms.forEach(s => variations.add(s));
+        synonyms.forEach((s) => variations.add(s));
         variations.add(canonical);
       }
     }
@@ -179,7 +180,7 @@ export function expandWithSynonyms(query: string): string[] {
 function cardMatchesFuzzy(
   card: MinimalCard,
   query: string,
-  options: FuzzySearchOptions
+  options: FuzzySearchOptions,
 ): boolean {
   const queryLower = query.toLowerCase();
   const threshold = options.threshold ?? DEFAULT_FUZZY_OPTIONS.threshold!;
@@ -187,9 +188,11 @@ function cardMatchesFuzzy(
   // Search fields: name, type_line, oracle_text
   const searchableText = [
     card.name,
-    card.type_line || '',
-    card.oracle_text || '',
-  ].join(' ').toLowerCase();
+    card.type_line || "",
+    card.oracle_text || "",
+  ]
+    .join(" ")
+    .toLowerCase();
 
   // 1. Direct substring match (case-insensitive)
   if (searchableText.includes(queryLower)) {
@@ -235,48 +238,36 @@ function cardMatchesFuzzy(
 /**
  * Perform fuzzy search on card array
  *
- * Combines Fuse.js with additional Levenshtein filtering, partial matching,
- * and synonym expansion to meet all fuzzy search requirements.
+ * Uses Orama indexed search for fast queries, with fallback to
+ * Levenshtein filtering, partial matching, and synonym expansion.
  *
  * @param cards - Array of cards to search
  * @param query - Search query string
  * @param options - Optional fuzzy search options
  * @returns Filtered array of matching cards
  */
-export function fuzzySearch(
+export async function fuzzySearch(
   cards: MinimalCard[],
   query: string,
-  options?: FuzzySearchOptions
-): MinimalCard[] {
+  options?: FuzzySearchOptions,
+): Promise<MinimalCard[]> {
   if (!query || query.length < 2) {
     return cards;
   }
 
   const opts = { ...DEFAULT_FUZZY_OPTIONS, ...options };
-  const queryLower = query.toLowerCase();
 
-  // First, use Fuse.js for initial matching with relaxed threshold
-  const fuseOptions: IFuseOptions<MinimalCard> = {
-    ...FUSE_SEARCH_OPTIONS,
-    threshold: 0.4, // More relaxed for initial pass
-  };
+  // Use Orama indexed search for fast lookup
+  const searchResults = await cardSearchIndex.search(query, { limit: 100 });
+  const matchedIds = new Set(searchResults.map((r) => r.id));
 
-  const fuse = new Fuse(cards, fuseOptions);
-  const fuseResults = fuse.search(queryLower);
-
-  // Get Fuse.js matches
-  const fuseMatches = new Set(fuseResults.map(r => r.item.id));
-
-  // Apply additional fuzzy filtering for FUZZY-01 (Levenshtein <= 2)
-  const threshold = opts.threshold ?? DEFAULT_FUZZY_OPTIONS.threshold!;
-
-  const fuzzyMatches = cards.filter(card => {
-    // Include if already in Fuse results
-    if (fuseMatches.has(card.id)) {
+  const fuzzyMatches = cards.filter((card) => {
+    // Include if already in Orama results
+    if (matchedIds.has(card.id)) {
       return true;
     }
 
-    // Apply strict fuzzy matching
+    // Apply strict fuzzy matching for cards not in Orama index
     return cardMatchesFuzzy(card, query, opts);
   });
 
@@ -293,7 +284,11 @@ export function fuzzySearch(
  * @param maxDistance - Maximum Levenshtein distance (default: 2)
  * @returns true if name matches within tolerance
  */
-export function fuzzyMatchName(cardName: string, query: string, maxDistance: number = 2): boolean {
+export function fuzzyMatchName(
+  cardName: string,
+  query: string,
+  maxDistance: number = 2,
+): boolean {
   const nameLower = cardName.toLowerCase();
   const queryLower = query.toLowerCase();
 

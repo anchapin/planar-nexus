@@ -4,13 +4,16 @@
  * Provides React hook for managing filter state with set/remove/reset
  * operations. Also integrates fuzzy search, sorting, and preference persistence.
  */
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import type { MinimalCard } from '@/lib/card-database';
-import type { FilterState } from '@/lib/search/filter-types';
-import { applyFilters, FILTER_ORDER } from '@/lib/search/filter-cards';
-import { fuzzySearch } from '@/lib/search/fuzzy-search';
-import { sortCards, SortConfig, DEFAULT_SORT } from '@/lib/search/sort-cards';
-import { loadPreferences, savePreferences } from '@/lib/search/search-preferences';
+import { useState, useCallback, useMemo, useEffect } from "react";
+import type { MinimalCard } from "@/lib/card-database";
+import type { FilterState } from "@/lib/search/filter-types";
+import { applyFilters, FILTER_ORDER } from "@/lib/search/filter-cards";
+import { fuzzySearch } from "@/lib/search/fuzzy-search";
+import { sortCards, SortConfig, DEFAULT_SORT } from "@/lib/search/sort-cards";
+import {
+  loadPreferences,
+  savePreferences,
+} from "@/lib/search/search-preferences";
 
 /**
  * Default empty filter state
@@ -22,7 +25,10 @@ export const DEFAULT_FILTERS: FilterState = {};
  */
 export interface UseCardFiltersReturn {
   filters: FilterState;
-  setFilter: <K extends keyof FilterState>(key: K, value: FilterState[K]) => void;
+  setFilter: <K extends keyof FilterState>(
+    key: K,
+    value: FilterState[K],
+  ) => void;
   resetFilters: () => void;
   removeFilter: (key: keyof FilterState) => void;
   hasActiveFilters: boolean;
@@ -30,7 +36,7 @@ export interface UseCardFiltersReturn {
   // Sorting additions
   sortConfig: SortConfig;
   setSort: (config: SortConfig) => void;
-  search: (query: string, cards: MinimalCard[]) => MinimalCard[];
+  search: (query: string, cards: MinimalCard[]) => Promise<MinimalCard[]>;
   isLoadingPrefs: boolean;
 }
 
@@ -52,7 +58,9 @@ export { DEFAULT_SORT };
  * - search: perform fuzzy search + filter + sort
  * - isLoadingPrefs: whether preferences are loading
  */
-export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): UseCardFiltersReturn {
+export function useCardFilters(
+  initialFilters: FilterState = DEFAULT_FILTERS,
+): UseCardFiltersReturn {
   const [filters, setFilters] = useState<FilterState>(initialFilters);
   const [sortConfig, setSortConfig] = useState<SortConfig>(DEFAULT_SORT);
   const [isLoadingPrefs, setIsLoadingPrefs] = useState(true);
@@ -71,7 +79,7 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
         }
       })
       .catch((error) => {
-        console.warn('Failed to load search preferences:', error);
+        console.warn("Failed to load search preferences:", error);
       })
       .finally(() => {
         if (mounted) {
@@ -87,12 +95,15 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
   /**
    * Set a specific filter by key
    */
-  const setFilter = useCallback(<K extends keyof FilterState>(key: K, value: FilterState[K]) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
-  }, []);
+  const setFilter = useCallback(
+    <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+      setFilters((prev) => ({
+        ...prev,
+        [key]: value,
+      }));
+    },
+    [],
+  );
 
   /**
    * Reset all filters to empty state
@@ -122,9 +133,12 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
   /**
    * Apply current filters to a card array
    */
-  const filteredCards = useCallback((cards: MinimalCard[]) => {
-    return applyFilters(cards, filters);
-  }, [filters]);
+  const filteredCards = useCallback(
+    (cards: MinimalCard[]) => {
+      return applyFilters(cards, filters);
+    },
+    [filters],
+  );
 
   /**
    * Set sort configuration with auto-save
@@ -137,7 +151,7 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
       sortOption: config.option,
       sortDirection: config.direction,
     }).catch((error) => {
-      console.warn('Failed to save sort preferences:', error);
+      console.warn("Failed to save sort preferences:", error);
     });
   }, []);
 
@@ -149,12 +163,12 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
    * @returns Filtered, searched, and sorted card array
    */
   const search = useCallback(
-    (query: string, cards: MinimalCard[]): MinimalCard[] => {
+    async (query: string, cards: MinimalCard[]): Promise<MinimalCard[]> => {
       let results = cards;
 
       // Step 1: Fuzzy search (requires at least 2 characters)
       if (query.length >= 2) {
-        results = fuzzySearch(results, query);
+        results = await fuzzySearch(results, query);
       }
 
       // Step 2: Apply filters
@@ -165,7 +179,7 @@ export function useCardFilters(initialFilters: FilterState = DEFAULT_FILTERS): U
 
       return results;
     },
-    [filters, sortConfig]
+    [filters, sortConfig],
   );
 
   return {

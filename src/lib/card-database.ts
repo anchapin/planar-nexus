@@ -2,28 +2,13 @@
  * @fileOverview Offline card database module with IndexedDB storage
  *
  * This module provides offline card search and validation using IndexedDB for persistent storage
- * and Fuse.js for fuzzy search capabilities. Designed for use in Tauri/PWA offline mode.
+ * and Orama for indexed search capabilities. Designed for use in Tauri/PWA offline mode.
  */
 
-import Fuse from "fuse.js";
-import type { IFuseOptions } from "fuse.js";
+import { cardSearchIndex } from "./search/card-search-index";
 
 // Minimal card data for offline use (subset of Scryfall data)
 
-/**
- * Shared Fuse.js search options for fuzzy card search
- */
-export const FUSE_SEARCH_OPTIONS: IFuseOptions<MinimalCard> = {
-  keys: [
-    { name: "name", weight: 0.7 },
-    { name: "type_line", weight: 0.2 },
-    { name: "oracle_text", weight: 0.1 },
-  ],
-  threshold: 0.3, // Lower = more strict matching
-  distance: 100,
-  minMatchCharLength: 2,
-  includeScore: true,
-};
 export interface MinimalCard {
   id: string;
   oracle_id?: string;
@@ -89,8 +74,7 @@ const IMAGE_STORE_NAME = "card_images";
 
 // Database state
 let db: IDBDatabase | null = null;
-let fuseInstance: Fuse<MinimalCard> | null = null;
-let isInitialized = false;
+let searchReady = false;
 let initPromise: Promise<void> | null = null;
 
 // NOTE: Database starts empty. Users must import their own card data
@@ -140,7 +124,7 @@ async function openDatabase(): Promise<IDBDatabase> {
  * Initialize the card database
  */
 export async function initializeCardDatabase(): Promise<void> {
-  if (isInitialized) {
+  if (searchReady) {
     return initPromise || Promise.resolve();
   }
 
@@ -153,14 +137,19 @@ export async function initializeCardDatabase(): Promise<void> {
       // Open IndexedDB
       db = await openDatabase();
 
-      // Database starts empty - users must import their own card data
-      // Load all cards into memory for fuzzy search
-      const allCards = await getAllCardsFromDB();
-      if (allCards.length > 0) {
-        initializeFuzzySearch(allCards);
+      // Initialize Orama search index (restores from IndexedDB if available)
+      const restored = await cardSearchIndex.init();
+
+      // Only build the index fresh when nothing was restored from persistence
+      if (!restored) {
+        const allCards = await getAllCardsFromDB();
+        if (allCards.length > 0) {
+          await cardSearchIndex.indexCards(allCards);
+          await cardSearchIndex.saveIndex();
+        }
       }
 
-      isInitialized = true;
+      searchReady = true;
     } catch (error) {
       console.error("Failed to initialize card database:", error);
       throw error;
@@ -168,13 +157,6 @@ export async function initializeCardDatabase(): Promise<void> {
   })();
 
   return initPromise;
-}
-
-/**
- * Initialize Fuse.js for fuzzy search
- */
-function initializeFuzzySearch(cards: MinimalCard[]): void {
-  fuseInstance = new Fuse(cards, FUSE_SEARCH_OPTIONS);
 }
 
 /**
@@ -234,31 +216,40 @@ async function getAllCardsFromDB(): Promise<MinimalCard[]> {
 }
 
 /**
- * Search cards using fuzzy search (instant, no network required)
+ * Search cards using Orama indexed search (instant, no network required)
  */
 export async function searchCardsOffline(
   query: string,
   options?: CardDatabaseOptions,
 ): Promise<MinimalCard[]> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
   if (!query || query.length < 2) return [];
-  if (!fuseInstance) return [];
 
   const maxCards = options?.maxCards ?? 20;
 
-  // Perform fuzzy search
-  const results = fuseInstance.search(query, { limit: maxCards });
+  // Perform Orama indexed search
+  const searchResults = await cardSearchIndex.search(query, {
+    limit: maxCards * 2,
+  });
+
+  // Get full card data from IndexedDB
+  const cards: MinimalCard[] = [];
+  for (const result of searchResults) {
+    const card = await getCardById(result.id);
+    if (card) {
+      cards.push(card);
+    }
+    if (cards.length >= maxCards * 2) break;
+  }
 
   // Filter by format if specified
-  let cards = results.map((result) => result.item);
-
   if (options?.format) {
-    cards = cards.filter(
-      (card) => card.legalities[options.format!] === "legal",
-    );
+    return cards
+      .filter((card) => card.legalities[options.format!] === "legal")
+      .slice(0, maxCards);
   }
 
   return cards.slice(0, maxCards);
@@ -270,7 +261,7 @@ export async function searchCardsOffline(
 export async function getCardByName(
   name: string,
 ): Promise<MinimalCard | undefined> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -321,7 +312,7 @@ export async function getCardByName(
 export async function getCardById(
   id: string,
 ): Promise<MinimalCard | undefined> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -357,7 +348,7 @@ export async function validateDeckOffline(
   cards: Array<{ name: string; quantity: number }>,
   format: string,
 ): Promise<{ valid: boolean; illegalCards: string[]; issues: string[] }> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -390,7 +381,7 @@ export async function getDatabaseStatus(): Promise<{
   loaded: boolean;
   cardCount: number;
 }> {
-  if (!isInitialized) {
+  if (!searchReady) {
     return { loaded: false, cardCount: 0 };
   }
 
@@ -405,7 +396,7 @@ export async function getDatabaseStatus(): Promise<{
  * Add a card to the database (for bulk importing)
  */
 export async function addCard(card: MinimalCard): Promise<void> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -422,10 +413,12 @@ export async function addCard(card: MinimalCard): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
 
-    // Reinitialize fuzzy search after adding a card
+    // Reinitialize search index after adding a card
     transaction.oncomplete = async () => {
+      await cardSearchIndex.clear();
       const allCards = await getAllCardsFromDB();
-      initializeFuzzySearch(allCards);
+      await cardSearchIndex.indexCards(allCards);
+      await cardSearchIndex.saveIndex();
       resolve();
     };
   });
@@ -435,7 +428,7 @@ export async function addCard(card: MinimalCard): Promise<void> {
  * Add multiple cards to the database (for bulk importing)
  */
 export async function addCards(cards: MinimalCard[]): Promise<void> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -447,9 +440,11 @@ export async function addCards(cards: MinimalCard[]): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.onerror = () => reject(transaction.error);
     transaction.oncomplete = async () => {
-      // Reinitialize fuzzy search after adding cards
+      // Reinitialize search index after adding cards
+      await cardSearchIndex.clear();
       const allCards = await getAllCardsFromDB();
-      initializeFuzzySearch(allCards);
+      await cardSearchIndex.indexCards(allCards);
+      await cardSearchIndex.saveIndex();
       resolve();
     };
 
@@ -466,7 +461,7 @@ export async function addCards(cards: MinimalCard[]): Promise<void> {
  * Clear all cards from the database
  */
 export async function clearDatabase(): Promise<void> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -478,8 +473,8 @@ export async function clearDatabase(): Promise<void> {
     const store = transaction.objectStore(STORE_NAME);
     const request = store.clear();
 
-    request.onsuccess = () => {
-      fuseInstance = null;
+    request.onsuccess = async () => {
+      await cardSearchIndex.clear();
       resolve();
     };
     request.onerror = () => reject(request.error);
@@ -490,7 +485,7 @@ export async function clearDatabase(): Promise<void> {
  * Export all cards from the database
  */
 export async function getAllCards(): Promise<MinimalCard[]> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -600,7 +595,7 @@ export async function importCardsFromJSON(
   cards: MinimalCard[],
   onProgress?: (count: number, total: number) => void,
 ): Promise<void> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -669,8 +664,11 @@ export async function importCardsFromJSON(
 
     queueBatch();
   }).then(async () => {
+    // Reinitialize search index with all cards
+    await cardSearchIndex.clear();
     const allCards = await getAllCardsFromDB();
-    initializeFuzzySearch(allCards);
+    await cardSearchIndex.indexCards(allCards);
+    await cardSearchIndex.saveIndex();
   });
 }
 
@@ -731,7 +729,7 @@ export async function getDatabaseStats(): Promise<{
   imageCount: number;
   isInitialized: boolean;
 }> {
-  if (!isInitialized) {
+  if (!searchReady) {
     await initializeCardDatabase();
   }
 
@@ -741,6 +739,6 @@ export async function getDatabaseStats(): Promise<{
   return {
     cardCount,
     imageCount,
-    isInitialized,
+    isInitialized: searchReady,
   };
 }
