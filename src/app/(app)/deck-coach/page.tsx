@@ -2,23 +2,41 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { getDeckReview, type SavedDeck, type DeckCard } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
 import { type Format } from "@/lib/game-rules";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
-import { analyzeMetaAndSuggest, type MetaAnalysisOutput } from "@/ai/flows/ai-meta-analysis";
+import {
+  analyzeMetaAndSuggest,
+  type MetaAnalysisOutput,
+} from "@/ai/flows/ai-meta-analysis";
 import { Bot, Loader2, TrendingUp, MessageSquare } from "lucide-react";
 import { EnhancedReviewDisplay } from "./_components/enhanced-review-display";
 import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { DeckSelector } from "@/components/deck-selector";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CoachReportSkeleton, LoadingProgress } from "./_components/coach-skeleton";
+import {
+  CoachReportSkeleton,
+  LoadingProgress,
+} from "./_components/coach-skeleton";
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
 import { DeckCoachChatPanel } from "@/components/chat";
 import { useDeckCoachChat } from "@/hooks/use-deck-coach-chat";
@@ -30,15 +48,26 @@ export default function DeckCoachPage() {
   const [format, setFormat] = useState<Format>("commander");
   const [focusArchetype, setFocusArchetype] = useState<string>("");
   const [review, setReview] = useState<DeckReviewOutput | null>(null);
-  const [metaAnalysis, setMetaAnalysis] = useState<MetaAnalysisOutput | null>(null);
-  const [originalDeckCards, setOriginalDeckCards] = useState<DeckCard[] | null>(null);
+  const [metaAnalysis, setMetaAnalysis] = useState<MetaAnalysisOutput | null>(
+    null,
+  );
+  const [originalDeckCards, setOriginalDeckCards] = useState<DeckCard[] | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
-  const [analysisType, setAnalysisType] = useState<"review" | "meta" | "chat">("review");
-  const [, setSavedDecks] = useLocalStorage<SavedDeck[]>('saved-decks', []);
+  const [analysisType, setAnalysisType] = useState<"review" | "meta" | "chat">(
+    "review",
+  );
+  const [, setSavedDecks] = useLocalStorage<SavedDeck[]>("saved-decks", []);
   const { toast } = useToast();
-  
+
   // Chat state for conversational AI
-  const { messages, isLoading: isChatLoading, sendMessage, addAssistantMessage, setLoading: setChatLoading } = useDeckCoachChat();
+  const {
+    messages,
+    isLoading: isChatLoading,
+    sendMessage,
+    cancelGeneration,
+  } = useDeckCoachChat();
 
   const handleAnalyzeDeck = (type: "review" | "meta") => {
     if (decklist.trim().length === 0) {
@@ -54,35 +83,40 @@ export default function DeckCoachPage() {
       try {
         setReview(null);
         setMetaAnalysis(null);
-        
+
         let initialCards: DeckCard[] = [];
         if (originalDeckCards) {
           initialCards = originalDeckCards;
         } else {
-            const { found, notFound, illegal } = await importDecklistClient(decklist, undefined, format);
-            if (notFound.length > 0) {
-                 toast({
-                    variant: "destructive",
-                    title: "Some cards not found",
-                    description: `Could not process: ${notFound.join(", ")}. Please check spelling.`,
-                });
-            }
-            if (illegal.length > 0) {
-                toast({
-                   variant: "destructive",
-                   title: "Illegal Cards Found",
-                   description: `Your deck contains cards not legal in ${format}: ${illegal.join(", ")}.`,
-               });
-           }
-            if (found.length === 0) {
-                toast({
-                    variant: "destructive",
-                    title: "No valid cards found",
-                    description: "Could not find any valid cards in the decklist provided.",
-                });
-                return;
-            }
-            initialCards = found;
+          const { found, notFound, illegal } = await importDecklistClient(
+            decklist,
+            undefined,
+            format,
+          );
+          if (notFound.length > 0) {
+            toast({
+              variant: "destructive",
+              title: "Some cards not found",
+              description: `Could not process: ${notFound.join(", ")}. Please check spelling.`,
+            });
+          }
+          if (illegal.length > 0) {
+            toast({
+              variant: "destructive",
+              title: "Illegal Cards Found",
+              description: `Your deck contains cards not legal in ${format}: ${illegal.join(", ")}.`,
+            });
+          }
+          if (found.length === 0) {
+            toast({
+              variant: "destructive",
+              title: "No valid cards found",
+              description:
+                "Could not find any valid cards in the decklist provided.",
+            });
+            return;
+          }
+          initialCards = found;
         }
         setOriginalDeckCards(initialCards);
 
@@ -90,10 +124,10 @@ export default function DeckCoachPage() {
           const result = await getDeckReview({ decklist, format });
           setReview(result);
         } else {
-          const result = await analyzeMetaAndSuggest({ 
-            decklist, 
+          const result = await analyzeMetaAndSuggest({
+            decklist,
             format,
-            focusArchetype: focusArchetype || undefined 
+            focusArchetype: focusArchetype || undefined,
           });
           setMetaAnalysis(result);
         }
@@ -101,19 +135,25 @@ export default function DeckCoachPage() {
         toast({
           variant: "destructive",
           title: type === "review" ? "Review Failed" : "Meta Analysis Failed",
-          description: "Could not get analysis from the AI coach. Please try again later.",
+          description:
+            "Could not get analysis from the AI coach. Please try again later.",
         });
         console.error(error);
       }
     });
   };
-  
+
   const handleDeckSelect = (deck: SavedDeck) => {
     setFormat(deck.format);
-    const decklistStr = deck.cards.map(c => `${c.count} ${c.name}`).join('\n');
+    const decklistStr = deck.cards
+      .map((c) => `${c.count} ${c.name}`)
+      .join("\n");
     setDecklist(decklistStr);
     setOriginalDeckCards(deck.cards);
-    toast({ title: 'Deck Loaded', description: `Loaded "${deck.name}" for review.` });
+    toast({
+      title: "Deck Loaded",
+      description: `Loaded "${deck.name}" for review.`,
+    });
   };
 
   const handleSaveNewDeck = async (option: DeckOption, newDeckName: string) => {
@@ -122,34 +162,55 @@ export default function DeckCoachPage() {
     try {
       const cardsToAddFromAI = option.cardsToAdd || [];
       const cardsToRemoveFromAI = option.cardsToRemove || [];
-      
+
       let cardsToAddFromApi: DeckCard[] = [];
       let notFound: string[] = [];
       let illegal: string[] = [];
 
       if (cardsToAddFromAI.length > 0) {
-        const decklistForImport = cardsToAddFromAI.map(c => `${c.quantity} ${c.name}`).join('\n');
-        const importResult = await importDecklistClient(decklistForImport, undefined, format);
+        const decklistForImport = cardsToAddFromAI
+          .map((c) => `${c.quantity} ${c.name}`)
+          .join("\n");
+        const importResult = await importDecklistClient(
+          decklistForImport,
+          undefined,
+          format,
+        );
         cardsToAddFromApi = importResult.found;
         notFound = importResult.notFound;
         illegal = importResult.illegal;
       }
-      
-      const intendedAddCount = cardsToAddFromAI.reduce((sum, c) => sum + c.quantity, 0);
-      const actualAddCount = cardsToAddFromApi.reduce((sum, c) => sum + c.count, 0);
-      const intendedRemoveCount = cardsToRemoveFromAI.reduce((sum, c) => sum + c.quantity, 0);
+
+      const intendedAddCount = cardsToAddFromAI.reduce(
+        (sum, c) => sum + c.quantity,
+        0,
+      );
+      const actualAddCount = cardsToAddFromApi.reduce(
+        (sum, c) => sum + c.count,
+        0,
+      );
+      const intendedRemoveCount = cardsToRemoveFromAI.reduce(
+        (sum, c) => sum + c.quantity,
+        0,
+      );
 
       const errorMessages = [];
       if (notFound.length > 0) {
         errorMessages.push(`Cards not found: ${notFound.join(", ")}.`);
       }
       if (illegal.length > 0) {
-        errorMessages.push(`Illegal cards suggested and ignored: ${illegal.join(", ")}.`);
+        errorMessages.push(
+          `Illegal cards suggested and ignored: ${illegal.join(", ")}.`,
+        );
       }
       if (intendedAddCount !== intendedRemoveCount) {
-        errorMessages.push(`The AI suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}, which would change the deck size.`);
+        errorMessages.push(
+          `The AI suggested adding ${intendedAddCount} cards but removing ${intendedRemoveCount}, which would change the deck size.`,
+        );
       } else if (intendedAddCount !== actualAddCount) {
-         errorMessages.push(`The AI's suggestions included invalid or illegal cards, which would result in an incorrect deck size.`);
+        errorMessages.push(
+          `The AI's suggestions included invalid or illegal cards, which would result in an incorrect deck size.`,
+        );
       }
 
       if (errorMessages.length > 0) {
@@ -161,10 +222,14 @@ export default function DeckCoachPage() {
         return;
       }
 
-      let newDeckList: DeckCard[] = JSON.parse(JSON.stringify(originalDeckCards));
+      let newDeckList: DeckCard[] = JSON.parse(
+        JSON.stringify(originalDeckCards),
+      );
 
       for (const toRemove of cardsToRemoveFromAI) {
-        const cardIndex = newDeckList.findIndex(c => c.name.toLowerCase() === toRemove.name.toLowerCase());
+        const cardIndex = newDeckList.findIndex(
+          (c) => c.name.toLowerCase() === toRemove.name.toLowerCase(),
+        );
         if (cardIndex > -1) {
           newDeckList[cardIndex].count -= toRemove.quantity;
           if (newDeckList[cardIndex].count <= 0) {
@@ -174,7 +239,7 @@ export default function DeckCoachPage() {
       }
 
       for (const card of cardsToAddFromApi) {
-        const cardIndex = newDeckList.findIndex(c => c.id === card.id);
+        const cardIndex = newDeckList.findIndex((c) => c.id === card.id);
         if (cardIndex > -1) {
           newDeckList[cardIndex].count += card.count;
         } else {
@@ -191,21 +256,28 @@ export default function DeckCoachPage() {
         createdAt: now,
         updatedAt: now,
       };
-      
-      setSavedDecks(prevDecks => [...prevDecks, newDeck]);
-      toast({ 
-        title: "New Deck Saved!", 
-        description: `"${newDeckName}" has been added to your collection.`
-      });
 
+      setSavedDecks((prevDecks) => [...prevDecks, newDeck]);
+      toast({
+        title: "New Deck Saved!",
+        description: `"${newDeckName}" has been added to your collection.`,
+      });
     } catch (error) {
       console.error("Failed to save new deck:", error);
-      toast({ variant: "destructive", title: "Save Failed", description: "An error occurred while saving the new deck." });
+      toast({
+        variant: "destructive",
+        title: "Save Failed",
+        description: "An error occurred while saving the new deck.",
+      });
     }
   };
 
   // Handle save for meta analysis suggestions
-  const handleSaveMetaDeck = async (cardsToAdd: { name: string; quantity: number }[], cardsToRemove: { name: string; quantity: number }[], newDeckName: string) => {
+  const handleSaveMetaDeck = async (
+    cardsToAdd: { name: string; quantity: number }[],
+    cardsToRemove: { name: string; quantity: number }[],
+    newDeckName: string,
+  ) => {
     const option: DeckOption = {
       title: newDeckName,
       description: "Meta-optimized deck version",
@@ -215,26 +287,12 @@ export default function DeckCoachPage() {
     await handleSaveNewDeck(option, newDeckName);
   };
 
-  // Handle chat message submission
+  // Handle chat message submission.
+  // `sendMessage` streams the coach response token-by-token and renders it
+  // progressively (issue #1077); `cancelGeneration` aborts an in-flight stream
+  // via the panel's Cancel button.
   const handleChatMessage = async (content: string) => {
-    sendMessage(content);
-    
-    // For now, show a simple response - this would connect to the AI flow later
-    // In phase 28-30, we'll integrate the actual AI conversational flow
-    setChatLoading(true);
-    
-    // Simulate AI response (placeholder for actual AI integration)
-    setTimeout(() => {
-      const responses = [
-        "That's a great question about your deck! Let me analyze your card choices.",
-        "I'd recommend focusing on your mana curve to improve consistency.",
-        "Have you considered adding more interaction spells to your sideboard?",
-        "Your deck looks interesting! What format are you playing?",
-      ];
-      const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-      addAssistantMessage(randomResponse);
-      setChatLoading(false);
-    }, 1500);
+    await sendMessage(content);
   };
 
   return (
@@ -245,8 +303,12 @@ export default function DeckCoachPage() {
           Paste your decklist to get an expert analysis from our AI coach.
         </p>
       </header>
-      
-      <Tabs value={analysisType} onValueChange={(v) => setAnalysisType(v as "review" | "meta" | "chat")} className="mb-4">
+
+      <Tabs
+        value={analysisType}
+        onValueChange={(v) => setAnalysisType(v as "review" | "meta" | "chat")}
+        className="mb-4"
+      >
         <TabsList>
           <TabsTrigger value="review">Deck Review</TabsTrigger>
           <TabsTrigger value="meta">Meta Analysis</TabsTrigger>
@@ -256,12 +318,14 @@ export default function DeckCoachPage() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
-      
+
       <main className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Your Decklist</CardTitle>
-            <CardDescription>Select a saved deck or paste one below.</CardDescription>
+            <CardDescription>
+              Select a saved deck or paste one below.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2 mb-4">
@@ -272,35 +336,39 @@ export default function DeckCoachPage() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">
-                  Or
-                </span>
+                <span className="bg-card px-2 text-muted-foreground">Or</span>
               </div>
             </div>
             <div className="space-y-2 mb-4">
               <Label htmlFor="format-select">Format</Label>
-              <Select value={format} onValueChange={(value) => setFormat(value as Format)} disabled={isPending}>
-                  <SelectTrigger id="format-select" className="capitalize">
-                      <SelectValue placeholder="Select format" />
-                  </SelectTrigger>
-                  <SelectContent>
-                      <SelectItem value="commander">Commander</SelectItem>
-                      <SelectItem value="standard">Standard</SelectItem>
-                      <SelectItem value="modern">Modern</SelectItem>
-                      <SelectItem value="pioneer">Pioneer</SelectItem>
-                      <SelectItem value="legacy">Legacy</SelectItem>
-                      <SelectItem value="vintage">Vintage</SelectItem>
-                      <SelectItem value="pauper">Pauper</SelectItem>
-                  </SelectContent>
+              <Select
+                value={format}
+                onValueChange={(value) => setFormat(value as Format)}
+                disabled={isPending}
+              >
+                <SelectTrigger id="format-select" className="capitalize">
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="commander">Commander</SelectItem>
+                  <SelectItem value="standard">Standard</SelectItem>
+                  <SelectItem value="modern">Modern</SelectItem>
+                  <SelectItem value="pioneer">Pioneer</SelectItem>
+                  <SelectItem value="legacy">Legacy</SelectItem>
+                  <SelectItem value="vintage">Vintage</SelectItem>
+                  <SelectItem value="pauper">Pauper</SelectItem>
+                </SelectContent>
               </Select>
             </div>
-            
+
             {analysisType === "meta" && (
               <div className="space-y-2 mb-4">
-                <Label htmlFor="archetype-select">Focus Archetype (Optional)</Label>
-                <Select 
-                  value={focusArchetype} 
-                  onValueChange={setFocusArchetype} 
+                <Label htmlFor="archetype-select">
+                  Focus Archetype (Optional)
+                </Label>
+                <Select
+                  value={focusArchetype}
+                  onValueChange={setFocusArchetype}
                   disabled={isPending}
                 >
                   <SelectTrigger id="archetype-select">
@@ -317,7 +385,7 @@ export default function DeckCoachPage() {
                 </Select>
               </div>
             )}
-            
+
             <Textarea
               placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;..."
               className="h-96 font-mono text-sm"
@@ -328,11 +396,15 @@ export default function DeckCoachPage() {
               }}
               disabled={isPending}
             />
-            
+
             <div className="flex gap-2 mt-4">
-              <Button 
-                onClick={() => handleAnalyzeDeck(analysisType === 'chat' ? 'review' : analysisType)} 
-                disabled={isPending || analysisType === 'chat'} 
+              <Button
+                onClick={() =>
+                  handleAnalyzeDeck(
+                    analysisType === "chat" ? "review" : analysisType,
+                  )
+                }
+                disabled={isPending || analysisType === "chat"}
                 className="flex-1"
               >
                 {isPending ? (
@@ -342,29 +414,38 @@ export default function DeckCoachPage() {
                 ) : (
                   <TrendingUp className="mr-2" />
                 )}
-                {isPending ? "Analyzing..." : analysisType === "review" ? "Review My Deck" : "Analyze Meta"}
+                {isPending
+                  ? "Analyzing..."
+                  : analysisType === "review"
+                    ? "Review My Deck"
+                    : "Analyze Meta"}
               </Button>
             </div>
           </CardContent>
         </Card>
-        
+
         <div className="flex flex-col">
-            {/* Loading state with skeleton */}
-            {isPending && analysisType === "review" && (
-              <CoachReportSkeleton />
-            )}
-            
-            {/* Loading state for meta analysis */}
-            {isPending && analysisType === "meta" && (
-              <LoadingProgress message="Analyzing metagame and optimizing your deck..." />
-            )}
-            
-            {/* Enhanced Review Display with Tabs */}
-            {!isPending && review && originalDeckCards && analysisType === "review" && (
+          {/* Loading state with skeleton */}
+          {isPending && analysisType === "review" && <CoachReportSkeleton />}
+
+          {/* Loading state for meta analysis */}
+          {isPending && analysisType === "meta" && (
+            <LoadingProgress message="Analyzing metagame and optimizing your deck..." />
+          )}
+
+          {/* Enhanced Review Display with Tabs */}
+          {!isPending &&
+            review &&
+            originalDeckCards &&
+            analysisType === "review" && (
               <Tabs defaultValue="review" className="w-full">
                 <TabsList className="w-full">
-                  <TabsTrigger value="review" className="flex-1">AI Review</TabsTrigger>
-                  <TabsTrigger value="mana-curve" className="flex-1">Mana Curve</TabsTrigger>
+                  <TabsTrigger value="review" className="flex-1">
+                    AI Review
+                  </TabsTrigger>
+                  <TabsTrigger value="mana-curve" className="flex-1">
+                    Mana Curve
+                  </TabsTrigger>
                 </TabsList>
                 <TabsContent value="review">
                   <EnhancedReviewDisplay
@@ -378,45 +459,55 @@ export default function DeckCoachPage() {
                 </TabsContent>
               </Tabs>
             )}
-            
-            {/* Meta Analysis Display */}
-            {!isPending && metaAnalysis && analysisType === "meta" && (
-              <Tabs defaultValue="meta" className="w-full">
-                <TabsList className="w-full">
-                  <TabsTrigger value="meta" className="flex-1">Meta Analysis</TabsTrigger>
-                  <TabsTrigger value="mana-curve" className="flex-1">Mana Curve</TabsTrigger>
-                </TabsList>
-                <TabsContent value="meta">
-                  <MetaAnalysisDisplay
-                    analysis={metaAnalysis}
-                    format={format}
-                    onSaveNewDeck={handleSaveMetaDeck}
-                    originalDeckCards={originalDeckCards}
-                  />
-                </TabsContent>
-                <TabsContent value="mana-curve">
-                  {originalDeckCards && <ManaCurveAnalysis deck={originalDeckCards} />}
-                </TabsContent>
-              </Tabs>
-            )}
-            
-            {/* Chat Interface */}
-            {analysisType === "chat" && (
-              <DeckCoachChatPanel
-                messages={messages}
-                isLoading={isChatLoading}
-                onSendMessage={handleChatMessage}
-              />
-            )}
-            
-            {/* Empty state */}
-            {!isPending && !review && !metaAnalysis && analysisType !== "chat" && (
-                <Card className="flex-1 flex items-center justify-center border-dashed">
-                    <div className="text-center text-muted-foreground">
-                        <Bot className="mx-auto h-12 w-12" />
-                        <p className="mt-4">Your deck analysis will appear here.</p>
-                    </div>
-                </Card>
+
+          {/* Meta Analysis Display */}
+          {!isPending && metaAnalysis && analysisType === "meta" && (
+            <Tabs defaultValue="meta" className="w-full">
+              <TabsList className="w-full">
+                <TabsTrigger value="meta" className="flex-1">
+                  Meta Analysis
+                </TabsTrigger>
+                <TabsTrigger value="mana-curve" className="flex-1">
+                  Mana Curve
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="meta">
+                <MetaAnalysisDisplay
+                  analysis={metaAnalysis}
+                  format={format}
+                  onSaveNewDeck={handleSaveMetaDeck}
+                  originalDeckCards={originalDeckCards}
+                />
+              </TabsContent>
+              <TabsContent value="mana-curve">
+                {originalDeckCards && (
+                  <ManaCurveAnalysis deck={originalDeckCards} />
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+
+          {/* Chat Interface */}
+          {analysisType === "chat" && (
+            <DeckCoachChatPanel
+              messages={messages}
+              isLoading={isChatLoading}
+              onSendMessage={handleChatMessage}
+              onCancel={cancelGeneration}
+            />
+          )}
+
+          {/* Empty state */}
+          {!isPending &&
+            !review &&
+            !metaAnalysis &&
+            analysisType !== "chat" && (
+              <Card className="flex-1 flex items-center justify-center border-dashed">
+                <div className="text-center text-muted-foreground">
+                  <Bot className="mx-auto h-12 w-12" />
+                  <p className="mt-4">Your deck analysis will appear here.</p>
+                </div>
+              </Card>
             )}
         </div>
       </main>
