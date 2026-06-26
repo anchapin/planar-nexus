@@ -1,19 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
-import { coachFlow } from "@/ai/flows/genkit-coach-flow";
 import type { DeckCard } from "@/app/actions";
 import { prefetchCoachContext } from "@/ai/flows/coach-context-prefetch";
+import { buildCoachSystemPrompt } from "@/ai/flows/context-builder";
+import {
+  streamCoachResponse,
+  eventToSse,
+  type CoachStreamMessage,
+} from "@/ai/flows/coach-stream";
+import { getProviderFailoverChain } from "@/ai/providers/factory";
+import { sanitizeUserInput } from "@/ai/prompt-security";
 
 /**
- * API Route for the Conversational AI Coach using Genkit.
+ * API Route for the Conversational AI Coach.
  *
- * NOTE: The Genkit dependency was removed in Issue #446. The coach flow
- * is currently a stub that returns an unavailability message. This route
- * still validates input and streams the stub response for forward
- * compatibility — when Genkit is re-added, this route will work as-is.
+ * Streams responses token-by-token as Server-Sent Events so the UI can render
+ * progressively, cancel an in-flight generation, and surface per-message token
+ * usage (issue #1077). The route also performs transparent provider failover:
+ * if the primary LLM provider errors before any token is delivered, the next
+ * provider from the factory failover chain is tried automatically.
  *
- * Issue #928: context is now PRE-FETCHED (in parallel, with caching) before
- * the coach flow is invoked, so every piece of context the model needs is
- * resolved up-front and the request→model latency meets the WORKER-03 target.
+ * Prompt-injection guardrails (#1107) are preserved end-to-end:
+ *   - The system prompt is built with `buildCoachSystemPrompt`, which prepends
+ *     `SECURITY_PREAMBLE` and sanitizes/wraps every deck field.
+ *   - Each user/assistant message's content is additionally sanitized here
+ *     (defense-in-depth) before it is forwarded to the model.
+ *   - Client-supplied `system` messages are dropped; the system prompt is
+ *     always assembled server-side.
+ *
+ * Cancellation: the client aborts its `fetch` via an `AbortController`; that
+ * propagates to `request.signal`, which is threaded through to the provider
+ * call so generation stops server-side within one chunk.
+ *
+ * Issue #928: context is PRE-FETCHED (in parallel, with caching) before the
+ * model is invoked, so request→model latency meets the WORKER-03 target.
  */
 
 export const dynamic = "force-dynamic";
@@ -79,46 +98,90 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Execute the coach flow (currently a stub — streams an unavailability message)
-    const stream = coachFlow.stream({
-      messages,
-      deckCards: deckCards || undefined,
-      digestedContext: digestedContext || undefined,
-      structuredAnalysis,
+    // 4. Build a GUARDRAILED system prompt (issue #1107). `buildCoachSystemPrompt`
+    //    prepends SECURITY_PREAMBLE and sanitizes/wraps every deck-controlled
+    //    field. We pass the empty decklist (the structured analysis carries the
+    //    deck context per issue #923), matching the prior stub behaviour.
+    const systemPrompt = buildCoachSystemPrompt(
       format,
-      archetype: body.archetype,
-      strategy: body.strategy,
-      provider: body.provider,
+      "",
+      body.archetype,
+      body.strategy,
+      digestedContext ? JSON.stringify(digestedContext) : undefined,
+      structuredAnalysis,
+    );
+
+    // 5. Defense-in-depth: sanitize each message's content and drop any
+    //    client-supplied `system` role. Only the server-built `systemPrompt`
+    //    above is allowed to set system instructions.
+    const sanitizedMessages: CoachStreamMessage[] = (messages as unknown[])
+      .map((raw): CoachStreamMessage | null => {
+        if (typeof raw !== "object" || raw === null) return null;
+        const m = raw as { role?: unknown; content?: unknown };
+        if (m.role !== "user" && m.role !== "assistant") return null;
+        const content = sanitizeUserInput(m.content, { maxLength: 20_000 });
+        return { role: m.role, content };
+      })
+      .filter((m): m is CoachStreamMessage => m !== null);
+
+    // 6. Resolve the ordered provider failover chain (issue #1077).
+    const providers = getProviderFailoverChain(body.provider);
+
+    // 7. Stream the response as SSE. `request.signal` aborts when the client
+    //    cancels its fetch (AbortController) — threading it through stops
+    //    server-side generation and prevents further provider attempts.
+    const eventStream = streamCoachResponse({
+      systemPrompt,
+      messages: sanitizedMessages,
+      providers,
       modelId: body.modelId,
+      signal: request.signal,
     });
 
-    // 5. Create a ReadableStream to pipe chunks to the client
-    const responseStream = new ReadableStream({
+    const encoder = new TextEncoder();
+    const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        const encoder = new TextEncoder();
         try {
-          for await (const chunk of stream) {
-            if (chunk.content) {
-              const text = chunk.content
-                .map((c: { text: string }) => c.text || "")
-                .join("");
-              if (text) {
-                controller.enqueue(encoder.encode(text));
-              }
-            }
+          for await (const event of eventStream) {
+            controller.enqueue(encoder.encode(eventToSse(event)));
           }
           controller.close();
         } catch (error) {
-          console.error("Streaming error:", error);
-          controller.error(error);
+          console.error("Coach streaming error:", error);
+          // Best-effort: emit a terminal error event before closing so the
+          // client can surface a message instead of seeing a truncated stream.
+          try {
+            controller.enqueue(
+              encoder.encode(
+                eventToSse({
+                  type: "error",
+                  value:
+                    error instanceof Error
+                      ? error.message
+                      : "Internal streaming error",
+                }),
+              ),
+            );
+          } catch {
+            // controller may already be errored/closed; nothing more to do.
+          }
+          controller.close();
         }
+      },
+      cancel() {
+        // Client disconnected (Cancel button). The request.signal has already
+        // been aborted, which stops the generator; this hook is informational.
       },
     });
 
     return new Response(responseStream, {
       headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Transfer-Encoding": "chunked",
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        // Hint surface for simple clients/observability; the authoritative
+        // provider/usage/failover data travels inside the SSE events.
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (error) {
