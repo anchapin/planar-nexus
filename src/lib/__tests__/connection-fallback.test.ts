@@ -33,7 +33,7 @@ const mockWebRTCSendChat = jest.fn();
 const mockWebRTCSendEmote = jest.fn();
 const mockWebRTCConstructor = jest.fn();
 
-jest.mock('../webrtc-p2p', () => ({
+jest.mock("../webrtc-p2p", () => ({
   WebRTCConnection: function (options: unknown) {
     // Delegate to the constructor mock so each test can configure
     // a fresh behaviour via mockWebRTCConstructor.mockImplementationOnce.
@@ -41,7 +41,7 @@ jest.mock('../webrtc-p2p', () => ({
   },
 }));
 
-jest.mock('../websocket-connection', () => ({
+jest.mock("../websocket-connection", () => ({
   WebSocketConnection: function (config: unknown, events: unknown) {
     return mockWSConstructor(config, events);
   },
@@ -69,9 +69,10 @@ import {
   isConnectionAvailable,
   type ConnectionFallbackEvents,
   type ConnectionFallbackOptions,
-} from '../connection-fallback';
-import type { P2PMessage } from '../webrtc-p2p';
-import type { GameState } from '../game-state/types';
+} from "../connection-fallback";
+import type { P2PMessage, P2PConnectionState } from "../webrtc-p2p";
+import type { WebSocketConnectionState } from "../websocket-connection";
+import type { GameState } from "../game-state/types";
 
 // --- Helpers --------------------------------------------------------------
 
@@ -121,11 +122,11 @@ function makeOptions(
     onPeerDisconnected: jest.fn(),
   };
   return {
-    playerId: 'player-1',
-    playerName: 'Tester',
+    playerId: "player-1",
+    playerName: "Tester",
     isHost: true,
-    gameCode: 'ABC234',
-    websocketUrl: 'wss://example.test/socket',
+    gameCode: "ABC234",
+    websocketUrl: "wss://example.test/socket",
     events,
     fallbackTimeout: 50,
     retryBaseDelayMs: 1, // tests should never wait on real backoff
@@ -155,7 +156,7 @@ function flushTimers(ms = 0): Promise<void> {
 
 // --- Test lifecycle -------------------------------------------------------
 
-describe('connection-fallback — error handling (#985)', () => {
+describe("connection-fallback — error handling (#985)", () => {
   let consoleErrorSpy: jest.SpyInstance;
   let consoleWarnSpy: jest.SpyInstance;
   let consoleInfoSpy: jest.SpyInstance;
@@ -179,9 +180,9 @@ describe('connection-fallback — error handling (#985)', () => {
     mockWSConstructor.mockImplementation(() => makeWSMock());
 
     // Silence diagnostic logs in test output (they're tested separately).
-    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-    consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
-    consoleInfoSpy = jest.spyOn(console, 'info').mockImplementation(() => {});
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    consoleInfoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -193,40 +194,44 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- Typed error primitives -------------------------------------------
 
-  describe('ConnectionError / ConnectionErrorCode', () => {
-    it('exposes the documented error codes', () => {
+  describe("ConnectionError / ConnectionErrorCode", () => {
+    it("exposes the documented error codes", () => {
       // The issue spec calls out ICE_FAILED, WEBRTC_FAILED, WEBSOCKET_FAILED.
-      expect(ConnectionErrorCode.ICE_FAILED).toBe('ICE_FAILED');
-      expect(ConnectionErrorCode.WEBRTC_FAILED).toBe('WEBRTC_FAILED');
-      expect(ConnectionErrorCode.WEBSOCKET_FAILED).toBe('WEBSOCKET_FAILED');
+      expect(ConnectionErrorCode.ICE_FAILED).toBe("ICE_FAILED");
+      expect(ConnectionErrorCode.WEBRTC_FAILED).toBe("WEBRTC_FAILED");
+      expect(ConnectionErrorCode.WEBSOCKET_FAILED).toBe("WEBSOCKET_FAILED");
       // Plus the additional structural codes this PR introduces.
-      expect(ConnectionErrorCode.BOTH_FAILED).toBe('BOTH_FAILED');
-      expect(ConnectionErrorCode.NO_CONNECTION_METHOD).toBe('NO_CONNECTION_METHOD');
-      expect(ConnectionErrorCode.SEND_FAILED).toBe('SEND_FAILED');
-      expect(ConnectionErrorCode.RETRY_EXHAUSTED).toBe('RETRY_EXHAUSTED');
-      expect(ConnectionErrorCode.TIMEOUT).toBe('TIMEOUT');
-      expect(ConnectionErrorCode.WEBSOCKET_UNAVAILABLE).toBe('WEBSOCKET_UNAVAILABLE');
-      expect(ConnectionErrorCode.WEBRTC_UNAVAILABLE).toBe('WEBRTC_UNAVAILABLE');
+      expect(ConnectionErrorCode.BOTH_FAILED).toBe("BOTH_FAILED");
+      expect(ConnectionErrorCode.NO_CONNECTION_METHOD).toBe(
+        "NO_CONNECTION_METHOD",
+      );
+      expect(ConnectionErrorCode.SEND_FAILED).toBe("SEND_FAILED");
+      expect(ConnectionErrorCode.RETRY_EXHAUSTED).toBe("RETRY_EXHAUSTED");
+      expect(ConnectionErrorCode.TIMEOUT).toBe("TIMEOUT");
+      expect(ConnectionErrorCode.WEBSOCKET_UNAVAILABLE).toBe(
+        "WEBSOCKET_UNAVAILABLE",
+      );
+      expect(ConnectionErrorCode.WEBRTC_UNAVAILABLE).toBe("WEBRTC_UNAVAILABLE");
     });
 
-    it('preserves code + cause + name on a ConnectionError', () => {
-      const cause = new Error('underlying');
+    it("preserves code + cause + name on a ConnectionError", () => {
+      const cause = new Error("underlying");
       const err = new ConnectionError(
         ConnectionErrorCode.WEBRTC_FAILED,
-        'boom',
+        "boom",
         cause,
       );
       expect(err).toBeInstanceOf(Error);
       expect(err).toBeInstanceOf(ConnectionError);
       expect(err.code).toBe(ConnectionErrorCode.WEBRTC_FAILED);
-      expect(err.message).toBe('boom');
+      expect(err.message).toBe("boom");
       expect(err.cause).toBe(cause);
-      expect(err.name).toBe('ConnectionError');
+      expect(err.name).toBe("ConnectionError");
     });
 
-    it('supports instanceof across try/catch boundaries', () => {
+    it("supports instanceof across try/catch boundaries", () => {
       function throwIt(): never {
-        throw new ConnectionError(ConnectionErrorCode.ICE_FAILED, 'x');
+        throw new ConnectionError(ConnectionErrorCode.ICE_FAILED, "x");
       }
       let caught: unknown;
       try {
@@ -235,20 +240,24 @@ describe('connection-fallback — error handling (#985)', () => {
         caught = e;
       }
       expect(caught).toBeInstanceOf(ConnectionError);
-      expect((caught as ConnectionError).code).toBe(ConnectionErrorCode.ICE_FAILED);
+      expect((caught as ConnectionError).code).toBe(
+        ConnectionErrorCode.ICE_FAILED,
+      );
     });
   });
 
   // --- initialize() — no-connection & preferWebSocket ------------------
 
-  describe('initialize() — failure modes', () => {
-    it('throws NO_CONNECTION_METHOD when neither transport is available', async () => {
+  describe("initialize() — failure modes", () => {
+    it("throws NO_CONNECTION_METHOD when neither transport is available", async () => {
       disableWebRTCGlobal();
       mockIsWebSocketAvailable.mockReturnValue(false);
-      const opts = makeOptions({ websocketUrl: '' });
+      const opts = makeOptions({ websocketUrl: "" });
 
       const manager = new ConnectionFallbackManager(opts);
-      await expect(manager.initialize()).rejects.toBeInstanceOf(ConnectionError);
+      await expect(manager.initialize()).rejects.toBeInstanceOf(
+        ConnectionError,
+      );
       await expect(manager.initialize()).rejects.toMatchObject({
         code: ConnectionErrorCode.NO_CONNECTION_METHOD,
       });
@@ -260,44 +269,48 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(arg.code).toBe(ConnectionErrorCode.NO_CONNECTION_METHOD);
     });
 
-    it('throws NO_CONNECTION_METHOD when preferWebSocket but no URL configured', async () => {
+    it("throws NO_CONNECTION_METHOD when preferWebSocket but no URL configured", async () => {
       disableWebRTCGlobal();
-      const opts = makeOptions({ preferWebSocket: true, websocketUrl: '' });
+      const opts = makeOptions({ preferWebSocket: true, websocketUrl: "" });
       const manager = new ConnectionFallbackManager(opts);
       await expect(manager.initialize()).rejects.toMatchObject({
         code: ConnectionErrorCode.NO_CONNECTION_METHOD,
       });
     });
 
-    it('routes through connectWebSocket when preferWebSocket is true', async () => {
+    it("routes through connectWebSocket when preferWebSocket is true", async () => {
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
       const type = await manager.initialize();
-      expect(type).toBe('websocket');
+      expect(type).toBe("websocket");
       expect(mockWSConnect).toHaveBeenCalledTimes(1);
-      expect(opts.events.onConnectionTypeChange).toHaveBeenCalledWith('websocket');
+      expect(opts.events.onConnectionTypeChange).toHaveBeenCalledWith(
+        "websocket",
+      );
     });
 
-    it('routes through connectWebSocket when WebRTC is unavailable', async () => {
+    it("routes through connectWebSocket when WebRTC is unavailable", async () => {
       disableWebRTCGlobal();
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       const type = await manager.initialize();
-      expect(type).toBe('websocket');
+      expect(type).toBe("websocket");
     });
 
-    it('wraps unexpected throw inside initialize as ConnectionError', async () => {
+    it("wraps unexpected throw inside initialize as ConnectionError", async () => {
       // Force the WebRTC constructor itself to throw — this is an
       // uncaught (non-Connection) error that the top-level safety net
       // must wrap.
       mockWebRTCConstructor.mockImplementation(() => {
-        throw new Error('constructor boom');
+        throw new Error("constructor boom");
       });
       // Disable fallback so we don't recover via WS.
-      const opts = makeOptions({ enableFallback: false, websocketUrl: '' });
+      const opts = makeOptions({ enableFallback: false, websocketUrl: "" });
       const manager = new ConnectionFallbackManager(opts);
 
-      await expect(manager.initialize()).rejects.toBeInstanceOf(ConnectionError);
+      await expect(manager.initialize()).rejects.toBeInstanceOf(
+        ConnectionError,
+      );
       // Already-typed errors pass through.
       expect(opts.events.onError).toHaveBeenCalled();
     });
@@ -305,10 +318,10 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- connectWebRTC — retry / backoff ----------------------------------
 
-  describe('connectWebRTC — retry with exponential backoff', () => {
-    it('does not retry by default (maxRetries=0) and throws WEBRTC_FAILED', async () => {
-      mockWebRTCInitialize.mockRejectedValue(new Error('ice fail'));
-      const opts = makeOptions({ enableFallback: false, websocketUrl: '' });
+  describe("connectWebRTC — retry with exponential backoff", () => {
+    it("does not retry by default (maxRetries=0) and throws WEBRTC_FAILED", async () => {
+      mockWebRTCInitialize.mockRejectedValue(new Error("ice fail"));
+      const opts = makeOptions({ enableFallback: false, websocketUrl: "" });
       const manager = new ConnectionFallbackManager(opts);
 
       await expect(manager.initialize()).rejects.toMatchObject({
@@ -320,11 +333,11 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(opts.events.onError).toHaveBeenCalled();
     });
 
-    it('retries maxRetries times, then bubbles RETRY_EXHAUSTED', async () => {
-      mockWebRTCInitialize.mockRejectedValue(new Error('transient'));
+    it("retries maxRetries times, then bubbles RETRY_EXHAUSTED", async () => {
+      mockWebRTCInitialize.mockRejectedValue(new Error("transient"));
       const opts = makeOptions({
         enableFallback: false,
-        websocketUrl: '',
+        websocketUrl: "",
         maxRetries: 2,
         retryBaseDelayMs: 1,
       });
@@ -339,11 +352,11 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(opts.events.onError.mock.calls.length).toBeGreaterThanOrEqual(3);
     });
 
-    it('recovers on a later attempt without bubbling', async () => {
+    it("recovers on a later attempt without bubbling", async () => {
       // Fail twice then succeed.
       mockWebRTCInitialize
-        .mockRejectedValueOnce(new Error('first'))
-        .mockRejectedValueOnce(new Error('second'))
+        .mockRejectedValueOnce(new Error("first"))
+        .mockRejectedValueOnce(new Error("second"))
         .mockResolvedValueOnce(undefined);
       const opts = makeOptions({
         maxRetries: 3,
@@ -352,26 +365,27 @@ describe('connection-fallback — error handling (#985)', () => {
       const manager = new ConnectionFallbackManager(opts);
 
       const type = await manager.initialize();
-      expect(type).toBe('webrtc');
+      expect(type).toBe("webrtc");
       expect(mockWebRTCInitialize).toHaveBeenCalledTimes(3);
-      expect(opts.events.onConnectionTypeChange).toHaveBeenCalledWith('webrtc');
+      expect(opts.events.onConnectionTypeChange).toHaveBeenCalledWith("webrtc");
     });
 
-    it('exponential backoff uses base * 2^attempt', async () => {
+    it("exponential backoff uses base * 2^attempt", async () => {
       // Spy setTimeout to capture requested delays without actually waiting.
       const delays: number[] = [];
       const origSetTimeout = setTimeout;
-      jest
-        .spyOn(global, 'setTimeout')
-        .mockImplementation(((cb: TimerHandler, ms?: number) => {
-          if (typeof ms === 'number' && ms > 0) delays.push(ms);
-          return origSetTimeout(cb, ms ?? 0);
-        }) as typeof setTimeout);
+      jest.spyOn(global, "setTimeout").mockImplementation(((
+        cb: TimerHandler,
+        ms?: number,
+      ) => {
+        if (typeof ms === "number" && ms > 0) delays.push(ms);
+        return origSetTimeout(cb, ms ?? 0);
+      }) as typeof setTimeout);
 
-      mockWebRTCInitialize.mockRejectedValue(new Error('x'));
+      mockWebRTCInitialize.mockRejectedValue(new Error("x"));
       const opts = makeOptions({
         enableFallback: false,
-        websocketUrl: '',
+        websocketUrl: "",
         maxRetries: 2,
         retryBaseDelayMs: 10,
       });
@@ -384,33 +398,33 @@ describe('connection-fallback — error handling (#985)', () => {
       jest.restoreAllMocks();
     });
 
-    it('surfaces the underlying cause when retries exhausted', async () => {
-      const underlying = new Error('ICE_TIMEOUT');
+    it("surfaces the underlying cause when retries exhausted", async () => {
+      const underlying = new Error("ICE_TIMEOUT");
       mockWebRTCInitialize.mockRejectedValue(underlying);
       const opts = makeOptions({
         enableFallback: false,
-        websocketUrl: '',
+        websocketUrl: "",
         maxRetries: 1,
       });
       const manager = new ConnectionFallbackManager(opts);
 
       try {
         await manager.initialize();
-        fail('expected initialize to reject');
+        fail("expected initialize to reject");
       } catch (e) {
         expect(e).toBeInstanceOf(ConnectionError);
         const err = e as ConnectionError;
         expect(err.code).toBe(ConnectionErrorCode.RETRY_EXHAUSTED);
         expect(err.cause).toBeInstanceOf(Error);
-        expect((err.cause as Error).message).toContain('ICE_TIMEOUT');
+        expect((err.cause as Error).message).toContain("ICE_TIMEOUT");
       }
     });
 
-    it('cleans up partially-initialised WebRTC connection before retry', async () => {
-      mockWebRTCInitialize.mockRejectedValue(new Error('x'));
+    it("cleans up partially-initialised WebRTC connection before retry", async () => {
+      mockWebRTCInitialize.mockRejectedValue(new Error("x"));
       const opts = makeOptions({
         enableFallback: false,
-        websocketUrl: '',
+        websocketUrl: "",
         maxRetries: 1,
       });
       const manager = new ConnectionFallbackManager(opts);
@@ -422,8 +436,8 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- connectWebSocket — failure modes ---------------------------------
 
-  describe('connectWebSocket — failure modes', () => {
-    it('throws WEBSOCKET_UNAVAILABLE when WS reports unavailable mid-flow', async () => {
+  describe("connectWebSocket — failure modes", () => {
+    it("throws WEBSOCKET_UNAVAILABLE when WS reports unavailable mid-flow", async () => {
       // connectWebSocket's unavailable check is only reachable via the
       // fallback paths (initialize bails earlier with NO_CONNECTION_METHOD).
       // Establish a WebRTC connection, then make WS report unavailable and
@@ -438,27 +452,27 @@ describe('connection-fallback — error handling (#985)', () => {
       });
     });
 
-    it('throws WEBSOCKET_FAILED when connect() rejects', async () => {
-      mockWSConnect.mockRejectedValue(new Error('ECONNREFUSED'));
+    it("throws WEBSOCKET_FAILED when connect() rejects", async () => {
+      mockWSConnect.mockRejectedValue(new Error("ECONNREFUSED"));
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
 
       try {
         await manager.initialize();
-        fail('expected initialize to reject');
+        fail("expected initialize to reject");
       } catch (e) {
         expect(e).toBeInstanceOf(ConnectionError);
         const err = e as ConnectionError;
         expect(err.code).toBe(ConnectionErrorCode.WEBSOCKET_FAILED);
         expect(err.cause).toBeInstanceOf(Error);
-        expect((err.cause as Error).message).toContain('ECONNREFUSED');
+        expect((err.cause as Error).message).toContain("ECONNREFUSED");
       }
       // WS failure surfaces via onError too.
       expect(opts.events.onError).toHaveBeenCalled();
     });
 
-    it('throws WEBSOCKET_FAILED for non-Error rejection payloads', async () => {
-      mockWSConnect.mockRejectedValue('string error');
+    it("throws WEBSOCKET_FAILED for non-Error rejection payloads", async () => {
+      mockWSConnect.mockRejectedValue("string error");
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
 
@@ -467,8 +481,8 @@ describe('connection-fallback — error handling (#985)', () => {
       });
     });
 
-    it('tears down half-constructed socket on failure so retries are clean', async () => {
-      mockWSConnect.mockRejectedValue(new Error('boom'));
+    it("tears down half-constructed socket on failure so retries are clean", async () => {
+      mockWSConnect.mockRejectedValue(new Error("boom"));
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
       await expect(manager.initialize()).rejects.toThrow();
@@ -478,47 +492,45 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- connectWithFallback — fallback behaviour -------------------------
 
-  describe('connectWithFallback — fallback orchestration', () => {
-    it('succeeds via WebRTC when it connects first', async () => {
+  describe("connectWithFallback — fallback orchestration", () => {
+    it("succeeds via WebRTC when it connects first", async () => {
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       const type = await manager.initialize();
-      expect(type).toBe('webrtc');
+      expect(type).toBe("webrtc");
       // Fallback timer should have been cleared.
       expect(mockWSConnect).not.toHaveBeenCalled();
     });
 
-    it('falls back to WebSocket when WebRTC fails', async () => {
-      mockWebRTCInitialize.mockRejectedValue(new Error('webrtc down'));
+    it("falls back to WebSocket when WebRTC fails", async () => {
+      mockWebRTCInitialize.mockRejectedValue(new Error("webrtc down"));
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
 
       const type = await manager.initialize();
-      expect(type).toBe('websocket');
+      expect(type).toBe("websocket");
       expect(mockWSConnect).toHaveBeenCalledTimes(1);
     });
 
-    it('falls back to WebSocket after fallback timeout elapses', async () => {
+    it("falls back to WebSocket after fallback timeout elapses", async () => {
       // WebRTC hangs forever; the timer should fire and force a fallback.
-      mockWebRTCInitialize.mockImplementation(
-        () => new Promise(() => {}),
-      );
+      mockWebRTCInitialize.mockImplementation(() => new Promise(() => {}));
       const opts = makeOptions({ fallbackTimeout: 20 });
       const manager = new ConnectionFallbackManager(opts);
 
       const type = await manager.initialize();
-      expect(type).toBe('websocket');
+      expect(type).toBe("websocket");
     });
 
-    it('rejects with BOTH_FAILED when WebRTC and WS both fail', async () => {
-      mockWebRTCInitialize.mockRejectedValue(new Error('rtc down'));
-      mockWSConnect.mockRejectedValue(new Error('ws down'));
+    it("rejects with BOTH_FAILED when WebRTC and WS both fail", async () => {
+      mockWebRTCInitialize.mockRejectedValue(new Error("rtc down"));
+      mockWSConnect.mockRejectedValue(new Error("ws down"));
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
 
       try {
         await manager.initialize();
-        fail('expected initialize to reject');
+        fail("expected initialize to reject");
       } catch (e) {
         expect(e).toBeInstanceOf(ConnectionError);
         const err = e as ConnectionError;
@@ -531,8 +543,8 @@ describe('connection-fallback — error handling (#985)', () => {
       }
     });
 
-    it('rejects cleanly with WEBRTC_FAILED when fallback is disabled', async () => {
-      mockWebRTCInitialize.mockRejectedValue(new Error('rtc down'));
+    it("rejects cleanly with WEBRTC_FAILED when fallback is disabled", async () => {
+      mockWebRTCInitialize.mockRejectedValue(new Error("rtc down"));
       const opts = makeOptions({ enableFallback: false });
       const manager = new ConnectionFallbackManager(opts);
 
@@ -542,17 +554,17 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(mockWSConnect).not.toHaveBeenCalled();
     });
 
-    it('clears the fallback timer when WebRTC wins the race', async () => {
+    it("clears the fallback timer when WebRTC wins the race", async () => {
       const opts = makeOptions({ fallbackTimeout: 5000 });
       const manager = new ConnectionFallbackManager(opts);
       const type = await manager.initialize();
-      expect(type).toBe('webrtc');
+      expect(type).toBe("webrtc");
       // Wait past where the timer would have fired; WS must not be invoked.
       await flushTimers(10);
       expect(mockWSConnect).not.toHaveBeenCalled();
     });
 
-    it('does not double-settle when WebRTC fails after fallback succeeds', async () => {
+    it("does not double-settle when WebRTC fails after fallback succeeds", async () => {
       // WebRTC hangs, fallback timer fires WS which succeeds, then WebRTC
       // eventually rejects. The promise must resolve exactly once with WS.
       let rejectWebRTC: (err: Error) => void = () => {};
@@ -567,32 +579,32 @@ describe('connection-fallback — error handling (#985)', () => {
 
       const resultPromise = manager.initialize();
       await flushTimers(20); // let timer fire and WS succeed
-      rejectWebRTC(new Error('late failure'));
+      rejectWebRTC(new Error("late failure"));
 
       const type = await resultPromise;
-      expect(type).toBe('websocket');
+      expect(type).toBe("websocket");
       // onConnectionTypeChange should be called for WS exactly once.
       const typeChanges = opts.events.onConnectionTypeChange.mock.calls.filter(
-        (c) => c[0] === 'websocket',
+        (c) => c[0] === "websocket",
       );
       expect(typeChanges.length).toBe(1);
     });
 
-    it('never produces an unhandled rejection on WebRTC path', async () => {
+    it("never produces an unhandled rejection on WebRTC path", async () => {
       // Sanity check: errors flow through onError and the rejection.
-      mockWebRTCInitialize.mockRejectedValue(new Error('x'));
-      mockWSConnect.mockRejectedValue(new Error('y'));
+      mockWebRTCInitialize.mockRejectedValue(new Error("x"));
+      mockWSConnect.mockRejectedValue(new Error("y"));
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       // Capture unhandled rejections during this test.
       const unhandled: unknown[] = [];
       const handler = (reason: unknown) => unhandled.push(reason);
-      process.on('unhandledRejection', handler);
+      process.on("unhandledRejection", handler);
       try {
         await expect(manager.initialize()).rejects.toThrow();
         await flushTimers(10);
       } finally {
-        process.off('unhandledRejection', handler);
+        process.off("unhandledRejection", handler);
       }
       expect(unhandled).toHaveLength(0);
     });
@@ -600,8 +612,8 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- forceFallback() ----------------------------------------------------
 
-  describe('forceFallback()', () => {
-    it('is a no-op when already on WebSocket', async () => {
+  describe("forceFallback()", () => {
+    it("is a no-op when already on WebSocket", async () => {
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
@@ -610,20 +622,20 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(mockWSConnect).not.toHaveBeenCalled();
     });
 
-    it('throws ConnectionError(WEBSOCKET_FAILED) when the WS fails', async () => {
+    it("throws ConnectionError(WEBSOCKET_FAILED) when the WS fails", async () => {
       // First connect via WebRTC.
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
 
-      mockWSConnect.mockRejectedValue(new Error('no relay'));
+      mockWSConnect.mockRejectedValue(new Error("no relay"));
       await expect(manager.forceFallback()).rejects.toMatchObject({
         code: ConnectionErrorCode.WEBSOCKET_FAILED,
       });
       expect(opts.events.onError).toHaveBeenCalled();
     });
 
-    it('closes the WebRTC connection during forceFallback', async () => {
+    it("closes the WebRTC connection during forceFallback", async () => {
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
@@ -635,14 +647,14 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- attemptFallback (private path, via state 'failed' event) ---------
 
-  describe('attemptFallback — auto-fallback from WebRTC failed state', () => {
-    it('catches WS failures and surfaces them via onError without throwing', async () => {
+  describe("attemptFallback — auto-fallback from WebRTC failed state", () => {
+    it("catches WS failures and surfaces them via onError without throwing", async () => {
       mockWebRTCInitialize.mockImplementation(async () => {
         // Simulate the WebRTC connection reporting a 'failed' state after
         // initialisation by triggering the fallback path manually via
         // the public forceFallback() entry point.
       });
-      mockWSConnect.mockRejectedValue(new Error('ws down'));
+      mockWSConnect.mockRejectedValue(new Error("ws down"));
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize(); // WebRTC succeeds
@@ -661,36 +673,35 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- send* methods (graceful degradation) ------------------------------
 
-  describe('send* methods — graceful degradation', () => {
-    it('send() catches transport throw and routes via onError', () => {
+  describe("send* methods — graceful degradation", () => {
+    it("send() catches transport throw and routes via onError", () => {
       mockWebRTCSend.mockImplementation(() => {
-        throw new Error('data channel closed');
+        throw new Error("data channel closed");
       });
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       // Establish WebRTC first.
-      return manager
-        .initialize()
-        .then(() => {
-          const msg: P2PMessage = {
-            type: 'chat',
-            senderId: 'p1',
-            timestamp: Date.now(),
-            payload: { text: 'hi' },
-          };
-          expect(() => manager.send(msg)).not.toThrow();
-          expect(opts.events.onError).toHaveBeenCalled();
-          const err = opts.events.onError.mock.calls[
+      return manager.initialize().then(() => {
+        const msg: P2PMessage = {
+          type: "chat",
+          senderId: "p1",
+          timestamp: Date.now(),
+          payload: { text: "hi" },
+        };
+        expect(() => manager.send(msg)).not.toThrow();
+        expect(opts.events.onError).toHaveBeenCalled();
+        const err =
+          opts.events.onError.mock.calls[
             opts.events.onError.mock.calls.length - 1
           ][0];
-          expect(err).toBeInstanceOf(ConnectionError);
-          expect(err.code).toBe(ConnectionErrorCode.SEND_FAILED);
-        });
+        expect(err).toBeInstanceOf(ConnectionError);
+        expect(err.code).toBe(ConnectionErrorCode.SEND_FAILED);
+      });
     });
 
-    it('sendGameState() catches transport throw', async () => {
+    it("sendGameState() catches transport throw", async () => {
       mockWSSendGameState.mockImplementation(() => {
-        throw new Error('socket gone');
+        throw new Error("socket gone");
       });
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
@@ -702,24 +713,24 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(last.code).toBe(ConnectionErrorCode.SEND_FAILED);
     });
 
-    it('sendPlayerAction/sendChat/sendEmote all swallow throws', async () => {
+    it("sendPlayerAction/sendChat/sendEmote all swallow throws", async () => {
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
 
       mockWSSendPlayerAction.mockImplementation(() => {
-        throw new Error('x');
+        throw new Error("x");
       });
       mockWSSendChat.mockImplementation(() => {
-        throw new Error('x');
+        throw new Error("x");
       });
       mockWSSendEmote.mockImplementation(() => {
-        throw new Error('x');
+        throw new Error("x");
       });
 
-      expect(() => manager.sendPlayerAction('pass', null)).not.toThrow();
-      expect(() => manager.sendChat('hi')).not.toThrow();
-      expect(() => manager.sendEmote('wave')).not.toThrow();
+      expect(() => manager.sendPlayerAction("pass", null)).not.toThrow();
+      expect(() => manager.sendChat("hi")).not.toThrow();
+      expect(() => manager.sendEmote("wave")).not.toThrow();
 
       // Three SEND_FAILED errors should have surfaced.
       const sendErrors = opts.events.onError.mock.calls
@@ -732,34 +743,34 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(sendErrors.length).toBe(3);
     });
 
-    it('send() with no active connection logs a warning (no throw)', () => {
+    it("send() with no active connection logs a warning (no throw)", () => {
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       expect(() =>
         manager.send({
-          type: 'chat',
-          senderId: 'p',
+          type: "chat",
+          senderId: "p",
           timestamp: Date.now(),
-          payload: { text: 'x' },
+          payload: { text: "x" },
         }),
       ).not.toThrow();
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('No active connection'),
+        expect.stringContaining("No active connection"),
       );
     });
   });
 
   // --- isConnected / disconnect / cleanup --------------------------------
 
-  describe('isConnected() / disconnect() — defensive', () => {
-    it('isConnected() returns false when no active connection', () => {
+  describe("isConnected() / disconnect() — defensive", () => {
+    it("isConnected() returns false when no active connection", () => {
       const manager = new ConnectionFallbackManager(makeOptions());
       expect(manager.isConnected()).toBe(false);
     });
 
-    it('isConnected() swallows throw from the transport', async () => {
+    it("isConnected() swallows throw from the transport", async () => {
       mockWebRTCIsConnected.mockImplementation(() => {
-        throw new Error('wut');
+        throw new Error("wut");
       });
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
@@ -768,29 +779,30 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(consoleWarnSpy).toHaveBeenCalled();
     });
 
-    it('disconnect() clears timers and closes both transports', async () => {
+    it("disconnect() clears timers and closes both transports", async () => {
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
       manager.disconnect();
       expect(mockWebRTCClose).toHaveBeenCalled();
       expect(opts.events.onConnectionStateChange).toHaveBeenCalled();
-      const lastState = opts.events.onConnectionStateChange.mock.calls[
-        opts.events.onConnectionStateChange.mock.calls.length - 1
-      ][0];
-      expect(lastState.activeConnection).toBe('none');
+      const lastState =
+        opts.events.onConnectionStateChange.mock.calls[
+          opts.events.onConnectionStateChange.mock.calls.length - 1
+        ][0];
+      expect(lastState.activeConnection).toBe("none");
     });
 
-    it('cleanup helpers swallow close() failures', async () => {
+    it("cleanup helpers swallow close() failures", async () => {
       mockWebRTCClose.mockImplementation(() => {
-        throw new Error('close failed');
+        throw new Error("close failed");
       });
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
       expect(() => manager.disconnect()).not.toThrow();
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('cleanup'),
+        expect.stringContaining("cleanup"),
         expect.any(String),
       );
     });
@@ -798,12 +810,14 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- #982 redaction preservation --------------------------------------
 
-  describe('#982 redaction preservation', () => {
-    it('WebRTC failures log redacted error (no session ID leak)', async () => {
+  describe("#982 redaction preservation", () => {
+    it("WebRTC failures log redacted error (no session ID leak)", async () => {
       // Build an error whose message embeds a host-style session ID.
-      const sessionId = 'host-1700000000000-abc12345';
-      mockWebRTCInitialize.mockRejectedValue(new Error(`ICE fail for ${sessionId}`));
-      const opts = makeOptions({ enableFallback: false, websocketUrl: '' });
+      const sessionId = "host-1700000000000-abc12345";
+      mockWebRTCInitialize.mockRejectedValue(
+        new Error(`ICE fail for ${sessionId}`),
+      );
+      const opts = makeOptions({ enableFallback: false, websocketUrl: "" });
       const manager = new ConnectionFallbackManager(opts);
 
       await expect(manager.initialize()).rejects.toThrow();
@@ -811,11 +825,11 @@ describe('connection-fallback — error handling (#985)', () => {
       const calls = consoleErrorSpy.mock.calls;
       const flat = JSON.stringify(calls);
       expect(flat).not.toContain(sessionId);
-      expect(flat).toContain('[REDACTED_SESSION]');
+      expect(flat).toContain("[REDACTED_SESSION]");
     });
 
-    it('WebSocket failures log redacted error', async () => {
-      const sessionId = 'host-1700000000000-abc12345';
+    it("WebSocket failures log redacted error", async () => {
+      const sessionId = "host-1700000000000-abc12345";
       mockWSConnect.mockRejectedValue(
         new Error(`WS handshake failed for ${sessionId}`),
       );
@@ -825,11 +839,11 @@ describe('connection-fallback — error handling (#985)', () => {
       await expect(manager.initialize()).rejects.toThrow();
       const flat = JSON.stringify(consoleErrorSpy.mock.calls);
       expect(flat).not.toContain(sessionId);
-      expect(flat).toContain('[REDACTED_SESSION]');
+      expect(flat).toContain("[REDACTED_SESSION]");
     });
 
-    it('send() failures log redacted error', async () => {
-      const sessionId = 'host-1700000000000-abc12345';
+    it("send() failures log redacted error", async () => {
+      const sessionId = "host-1700000000000-abc12345";
       mockWebRTCSend.mockImplementation(() => {
         throw new Error(`channel closed for ${sessionId}`);
       });
@@ -837,31 +851,31 @@ describe('connection-fallback — error handling (#985)', () => {
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
       manager.send({
-        type: 'chat',
-        senderId: 'p',
+        type: "chat",
+        senderId: "p",
         timestamp: Date.now(),
-        payload: { text: 'hi' },
+        payload: { text: "hi" },
       });
       const flat = JSON.stringify(consoleErrorSpy.mock.calls);
       expect(flat).not.toContain(sessionId);
-      expect(flat).toContain('[REDACTED_SESSION]');
+      expect(flat).toContain("[REDACTED_SESSION]");
     });
   });
 
   // --- State machine: every error updates lastError ----------------------
 
-  describe('state machine — lastError tracking', () => {
-    it('updates lastError on every failure path', async () => {
-      mockWSConnect.mockRejectedValue(new Error('boom'));
+  describe("state machine — lastError tracking", () => {
+    it("updates lastError on every failure path", async () => {
+      mockWSConnect.mockRejectedValue(new Error("boom"));
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
       await expect(manager.initialize()).rejects.toThrow();
       expect(manager.getState().lastError).toBeTruthy();
-      expect(manager.getState().lastError).toContain('WebSocket');
+      expect(manager.getState().lastError).toContain("WebSocket");
     });
 
-    it('onError always receives Error instances (never strings)', async () => {
-      mockWSConnect.mockRejectedValue('string error');
+    it("onError always receives Error instances (never strings)", async () => {
+      mockWSConnect.mockRejectedValue("string error");
       const opts = makeOptions({ preferWebSocket: true });
       const manager = new ConnectionFallbackManager(opts);
       await expect(manager.initialize()).rejects.toThrow();
@@ -873,24 +887,24 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- Factory + availability helpers ------------------------------------
 
-  describe('module exports', () => {
-    it('createConnectionFallbackManager returns a manager instance', () => {
+  describe("module exports", () => {
+    it("createConnectionFallbackManager returns a manager instance", () => {
       const manager = createConnectionFallbackManager(makeOptions());
       expect(manager).toBeInstanceOf(ConnectionFallbackManager);
     });
 
-    it('isConnectionAvailable returns true when WebRTC global exists', () => {
+    it("isConnectionAvailable returns true when WebRTC global exists", () => {
       enableWebRTCGlobal();
       expect(isConnectionAvailable()).toBe(true);
     });
 
-    it('isConnectionAvailable returns true when only WS is available', () => {
+    it("isConnectionAvailable returns true when only WS is available", () => {
       disableWebRTCGlobal();
       mockIsWebSocketAvailable.mockReturnValue(true);
       expect(isConnectionAvailable()).toBe(true);
     });
 
-    it('isConnectionAvailable returns false when neither is available', () => {
+    it("isConnectionAvailable returns false when neither is available", () => {
       disableWebRTCGlobal();
       mockIsWebSocketAvailable.mockReturnValue(false);
       expect(isConnectionAvailable()).toBe(false);
@@ -899,19 +913,21 @@ describe('connection-fallback — error handling (#985)', () => {
 
   // --- Coverage of branch combinations -----------------------------------
 
-  describe('branch coverage — degenerate inputs', () => {
-    it('handles non-Error rejections from initialize() top-level net', async () => {
+  describe("branch coverage — degenerate inputs", () => {
+    it("handles non-Error rejections from initialize() top-level net", async () => {
       // Throw a non-Error from the constructor to bypass typed paths.
       mockWebRTCConstructor.mockImplementation(() => {
         // Throw a non-Error value — must still be wrapped safely.
-        throw 'string thrown';
+        throw "string thrown";
       });
-      const opts = makeOptions({ enableFallback: false, websocketUrl: '' });
+      const opts = makeOptions({ enableFallback: false, websocketUrl: "" });
       const manager = new ConnectionFallbackManager(opts);
-      await expect(manager.initialize()).rejects.toBeInstanceOf(ConnectionError);
+      await expect(manager.initialize()).rejects.toBeInstanceOf(
+        ConnectionError,
+      );
     });
 
-    it('forceFallback resets fallbackAttempted so re-forcing works', async () => {
+    it("forceFallback resets fallbackAttempted so re-forcing works", async () => {
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       await manager.initialize();
@@ -922,17 +938,347 @@ describe('connection-fallback — error handling (#985)', () => {
       expect(mockWSConnect).toHaveBeenCalled();
     });
 
-    it('attemptFallback (via state) is a no-op once fallbackAttempted', async () => {
+    it("attemptFallback (via state) is a no-op once fallbackAttempted", async () => {
       // Indirect: after a successful fallback via initialize, forcing
       // fallback again should not re-trigger another connectWebSocket.
-      mockWebRTCInitialize.mockRejectedValue(new Error('rtc down'));
+      mockWebRTCInitialize.mockRejectedValue(new Error("rtc down"));
       const opts = makeOptions();
       const manager = new ConnectionFallbackManager(opts);
       const type = await manager.initialize();
-      expect(type).toBe('websocket');
+      expect(type).toBe("websocket");
       const firstCount = mockWSConnect.mock.calls.length;
       await manager.forceFallback(); // already on websocket — no-op
       expect(mockWSConnect.mock.calls.length).toBe(firstCount);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #1094 — P2P connection fallback & reconnection path coverage.
+  //
+  // These suites exercise the previously-uncovered internal transport-event
+  // wiring (the P2PEvents / WebSocketEvents lambdas the manager registers on
+  // the underlying connections), the auto-fallback triggered when WebRTC
+  // reports a 'failed' ICE state, sending over each active transport, the
+  // defensive getters, cleanup swallowing, and destroy(). Transports stay
+  // mocked; we capture the registered event objects to drive them directly.
+  // -------------------------------------------------------------------------
+
+  type CapturedWebRTCEvents = {
+    onConnectionStateChange: (
+      state: P2PConnectionState,
+      peerId: string,
+    ) => void;
+    onMessage: (message: P2PMessage, peerId: string) => void;
+    onGameStateSync: (gameState: GameState, peerId: string) => void;
+    onPlayerAction: (action: string, data: unknown, peerId: string) => void;
+    onChat: (text: string, peerId: string) => void;
+    onEmote: (emote: string, peerId: string) => void;
+    onError: (error: Error, peerId: string) => void;
+    onPeerConnected: (peerInfo: {
+      peerId: string;
+      playerName?: string;
+    }) => void;
+    onPeerDisconnected: (peerId: string) => void;
+  };
+
+  type CapturedWSEvents = {
+    onConnectionStateChange: (state: WebSocketConnectionState) => void;
+    onMessage: (message: P2PMessage) => void;
+    onGameStateSync: (gameState: GameState) => void;
+    onError: (error: Error) => void;
+    onPlayerJoined: (playerId: string, playerName?: string) => void;
+    onPlayerLeft: (playerId: string) => void;
+  };
+
+  describe("WebRTC event wiring — P2PEvents forwarding (#1094)", () => {
+    let captured: CapturedWebRTCEvents;
+    let opts: ReturnType<typeof makeOptions>;
+    let manager: ConnectionFallbackManager;
+
+    beforeEach(async () => {
+      opts = makeOptions();
+      mockWebRTCConstructor.mockImplementationOnce(
+        (options: { events: CapturedWebRTCEvents }) => {
+          captured = options.events;
+          return makeWebRTCMock();
+        },
+      );
+      manager = new ConnectionFallbackManager(opts);
+      await manager.initialize();
+    });
+
+    it("forwards connection state changes and updates the snapshot state", () => {
+      captured.onConnectionStateChange("connected", "peer-2");
+      const last = opts.events.onConnectionStateChange.mock.calls.at(-1)![0];
+      expect(last.webrtcState).toBe("connected");
+    });
+
+    it("forwards inbound data messages verbatim", () => {
+      const msg: P2PMessage = {
+        type: "chat",
+        senderId: "p2",
+        timestamp: 1,
+        payload: { text: "hi" },
+      };
+      captured.onMessage(msg, "p2");
+      expect(opts.events.onMessage).toHaveBeenCalledWith(msg, "p2");
+    });
+
+    it("forwards game-state sync (dropping the peer id)", () => {
+      const gs = { players: [] } as unknown as GameState;
+      captured.onGameStateSync(gs, "p2");
+      expect(opts.events.onGameStateSync).toHaveBeenCalledWith(gs);
+      expect(opts.events.onGameStateSync.mock.calls[0]).toHaveLength(1);
+    });
+
+    it("rewraps player actions / chat / emotes as messages", () => {
+      captured.onPlayerAction("pass", { x: 1 }, "p2");
+      captured.onChat("hello", "p2");
+      captured.onEmote("wave", "p2");
+      const calls = opts.events.onMessage.mock.calls;
+      expect(calls.at(-3)![0]).toMatchObject({
+        type: "player-action",
+        senderId: "p2",
+      });
+      expect(calls.at(-2)![0]).toMatchObject({ type: "chat", senderId: "p2" });
+      expect(calls.at(-1)![0]).toMatchObject({ type: "emote", senderId: "p2" });
+    });
+
+    it("forwards transport errors and records lastError", () => {
+      captured.onError(new Error("rtc hiccup"), "p2");
+      expect(opts.events.onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "rtc hiccup" }),
+      );
+      expect(manager.getState().lastError).toBe("rtc hiccup");
+    });
+
+    it("forwards peer connected / disconnected", () => {
+      captured.onPeerConnected({ peerId: "p2", playerName: "Alice" });
+      captured.onPeerDisconnected("p2");
+      expect(opts.events.onPeerConnected).toHaveBeenCalledWith("p2", "Alice");
+      expect(opts.events.onPeerDisconnected).toHaveBeenCalledWith("p2");
+    });
+  });
+
+  describe("WebRTC failed state — auto-fallback engagement (#1094)", () => {
+    it("engages WebSocket fallback when WebRTC reports 'failed'", async () => {
+      let captured: CapturedWebRTCEvents;
+      mockWebRTCConstructor.mockImplementationOnce(
+        (options: { events: CapturedWebRTCEvents }) => {
+          captured = options.events;
+          return makeWebRTCMock();
+        },
+      );
+      const opts = makeOptions();
+      const manager = new ConnectionFallbackManager(opts);
+      await manager.initialize(); // WebRTC active
+      expect(manager.getActiveConnection()).toBe("webrtc");
+
+      // Simulate ICE failure -> auto-fallback to WebSocket.
+      captured!.onConnectionStateChange("failed", "peer-2");
+      await flushTimers(5);
+
+      expect(manager.getActiveConnection()).toBe("websocket");
+      expect(manager.getState().fallbackAttempted).toBe(true);
+      expect(opts.events.onConnectionTypeChange).toHaveBeenCalledWith(
+        "websocket",
+      );
+    });
+
+    it("does not double-trigger fallback on a second failed event", async () => {
+      let captured: CapturedWebRTCEvents;
+      mockWebRTCConstructor.mockImplementationOnce(
+        (options: { events: CapturedWebRTCEvents }) => {
+          captured = options.events;
+          return makeWebRTCMock();
+        },
+      );
+      const manager = new ConnectionFallbackManager(makeOptions());
+      await manager.initialize();
+
+      captured!.onConnectionStateChange("failed", "peer-2");
+      await flushTimers(5);
+      const countAfterFirst = mockWSConnect.mock.calls.length;
+
+      captured!.onConnectionStateChange("failed", "peer-2"); // already fell back
+      await flushTimers(5);
+      expect(mockWSConnect.mock.calls.length).toBe(countAfterFirst);
+    });
+
+    it("surfaces a typed error via onError when the auto-fallback WS also fails", async () => {
+      let captured: CapturedWebRTCEvents;
+      mockWebRTCConstructor.mockImplementationOnce(
+        (options: { events: CapturedWebRTCEvents }) => {
+          captured = options.events;
+          return makeWebRTCMock();
+        },
+      );
+      mockWSConnect.mockRejectedValue(new Error("relay down"));
+      const opts = makeOptions();
+      const manager = new ConnectionFallbackManager(opts);
+      await manager.initialize();
+
+      // Auto-fallback is fire-and-forget from the event handler; it must not
+      // throw, but it must surface a typed ConnectionError via onError.
+      expect(() =>
+        captured!.onConnectionStateChange("failed", "peer-2"),
+      ).not.toThrow();
+      await flushTimers(5);
+
+      const last = opts.events.onError.mock.calls.at(-1)![0];
+      expect(last).toBeInstanceOf(ConnectionError);
+      expect((last as ConnectionError).code).toBe(
+        ConnectionErrorCode.WEBSOCKET_FAILED,
+      );
+    });
+  });
+
+  describe("WebSocket event wiring — WebSocketEvents forwarding (#1094)", () => {
+    let captured: CapturedWSEvents;
+    let opts: ReturnType<typeof makeOptions>;
+
+    beforeEach(async () => {
+      mockWSConstructor.mockImplementationOnce(
+        (config: unknown, events: CapturedWSEvents) => {
+          captured = events;
+          return makeWSMock();
+        },
+      );
+      opts = makeOptions({ preferWebSocket: true });
+      const manager = new ConnectionFallbackManager(opts);
+      await manager.initialize();
+    });
+
+    it("records an error when the socket reports 'failed'", () => {
+      captured.onConnectionStateChange("failed");
+      const last = opts.events.onError.mock.calls.at(-1)![0];
+      expect(last.message).toBe("WebSocket connection failed");
+    });
+
+    it("forwards inbound messages (using the message sender id)", () => {
+      const msg: P2PMessage = {
+        type: "chat",
+        senderId: "p2",
+        timestamp: 1,
+        payload: { text: "hi" },
+      };
+      captured.onMessage(msg);
+      expect(opts.events.onMessage).toHaveBeenCalledWith(msg, "p2");
+    });
+
+    it("forwards game-state sync", () => {
+      const gs = { players: [] } as unknown as GameState;
+      captured.onGameStateSync(gs);
+      expect(opts.events.onGameStateSync).toHaveBeenCalledWith(gs);
+    });
+
+    it("forwards transport errors", () => {
+      captured.onError(new Error("socket boom"));
+      expect(opts.events.onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "socket boom" }),
+      );
+    });
+
+    it("forwards player joined / left as peer connected / disconnected", () => {
+      captured.onPlayerJoined("p2", "Bob");
+      captured.onPlayerLeft("p2");
+      expect(opts.events.onPeerConnected).toHaveBeenCalledWith("p2", "Bob");
+      expect(opts.events.onPeerDisconnected).toHaveBeenCalledWith("p2");
+    });
+  });
+
+  describe("send* over each active transport (#1094)", () => {
+    it("send() routes through the active WebSocket connection", async () => {
+      const manager = new ConnectionFallbackManager(
+        makeOptions({ preferWebSocket: true }),
+      );
+      await manager.initialize();
+      const msg: P2PMessage = {
+        type: "chat",
+        senderId: "p1",
+        timestamp: 1,
+        payload: { text: "x" },
+      };
+      manager.send(msg);
+      expect(mockWSSend).toHaveBeenCalledWith(msg);
+    });
+
+    it("sendGameState / sendPlayerAction / sendChat / sendEmote route through WebRTC", async () => {
+      const manager = new ConnectionFallbackManager(makeOptions());
+      await manager.initialize();
+      const gs = { players: [] } as unknown as GameState;
+
+      manager.sendGameState(gs, true);
+      manager.sendPlayerAction("pass", { a: 1 });
+      manager.sendChat("hi");
+      manager.sendEmote("wave");
+
+      expect(mockWebRTCSendGameState).toHaveBeenCalledWith(gs, true);
+      expect(mockWebRTCSendPlayerAction).toHaveBeenCalledWith("pass", { a: 1 });
+      expect(mockWebRTCSendChat).toHaveBeenCalledWith("hi");
+      expect(mockWebRTCSendEmote).toHaveBeenCalledWith("wave");
+    });
+
+    it("sendGameState with no active connection warns and does not throw", () => {
+      mockWSSendGameState.mockImplementation(() => {
+        throw new Error("should not be called");
+      });
+      const manager = new ConnectionFallbackManager(makeOptions()); // never initialized
+      expect(() =>
+        manager.sendGameState({ players: [] } as unknown as GameState),
+      ).not.toThrow();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("No active connection to send game state"),
+      );
+    });
+  });
+
+  describe("cleanup, getters & destroy (#1094)", () => {
+    it("cleanupWebSocket swallows a disconnect() throw", async () => {
+      mockWSDisconnect.mockImplementation(() => {
+        throw new Error("socket already gone");
+      });
+      const manager = new ConnectionFallbackManager(
+        makeOptions({ preferWebSocket: true }),
+      );
+      await manager.initialize();
+      expect(() => manager.disconnect()).not.toThrow();
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("closing WebSocket"),
+        expect.anything(),
+      );
+    });
+
+    it("getActiveConnection / getWebRTCConnection / getWebSocketConnection", async () => {
+      const rtcManager = new ConnectionFallbackManager(makeOptions());
+      await rtcManager.initialize();
+      expect(rtcManager.getActiveConnection()).toBe("webrtc");
+      expect(rtcManager.getWebRTCConnection()).not.toBeNull();
+      expect(rtcManager.getWebSocketConnection()).toBeNull();
+
+      const wsManager = new ConnectionFallbackManager(
+        makeOptions({ preferWebSocket: true }),
+      );
+      await wsManager.initialize();
+      expect(wsManager.getActiveConnection()).toBe("websocket");
+      expect(wsManager.getWebSocketConnection()).not.toBeNull();
+    });
+
+    it("isConnected() reflects the active WebSocket transport", async () => {
+      mockWSIsConnected.mockReturnValue(true);
+      const manager = new ConnectionFallbackManager(
+        makeOptions({ preferWebSocket: true }),
+      );
+      await manager.initialize();
+      expect(manager.isConnected()).toBe(true);
+    });
+
+    it("destroy() tears everything down to no active connection", async () => {
+      const manager = new ConnectionFallbackManager(makeOptions());
+      await manager.initialize();
+      manager.destroy();
+      expect(manager.getActiveConnection()).toBe("none");
+      expect(manager.getWebRTCConnection()).toBeNull();
     });
   });
 });
