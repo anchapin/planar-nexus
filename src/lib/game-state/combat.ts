@@ -433,6 +433,133 @@ export function declareBlockers(
 }
 
 /**
+ * Set the attacker's chosen damage assignment order among its blockers.
+ *
+ * CR 508.2: After blockers are declared, the active player announces, for each
+ * attacking creature, the order in which it will assign its combat damage to
+ * the creatures blocking it. CR 510.1c: that order is then used in BOTH the
+ * first-strike and regular combat damage steps — lethal damage must be
+ * assigned to the first blocker in the order before any damage is assigned to
+ * the next.
+ *
+ * Issue #979: When an attacker with first strike (or double strike) is blocked
+ * by multiple creatures, this announced order is what governs damage flow in
+ * the first-strike step. `declareBlockers` seeds a default insertion order
+ * (the order the defending player declared blockers); this function lets the
+ * attacker override that with their own chosen sequence. The actual
+ * lethal-in-order assignment lives in `resolveCombatDamage`, which simply
+ * sorts blockers by `blockerOrder` in each damage step — so setting the order
+ * here is sufficient for it to be applied correctly in the first-strike step.
+ *
+ * This only touches the assignment-ORDERING data; the two-step damage gating
+ * (which attackers act in which step) is a separate concern.
+ */
+export function setDamageAssignmentOrder(
+  state: GameState,
+  attackerId: CardInstanceId,
+  orderedBlockerIds: CardInstanceId[],
+): CombatActionResult {
+  // Must be in an active combat with attackers declared
+  if (!state.combat.inCombatPhase || state.combat.attackers.length === 0) {
+    return {
+      success: false,
+      state,
+      description: "",
+      errors: ["No active combat to set damage assignment order for"],
+    };
+  }
+
+  // The attacker must be part of the current combat
+  const attacker = state.combat.attackers.find((a) => a.cardId === attackerId);
+  if (!attacker) {
+    return {
+      success: false,
+      state,
+      description: "",
+      errors: [`Creature is not attacking in this combat`],
+    };
+  }
+
+  const currentBlockers = state.combat.blockers.get(attackerId);
+
+  // An order is only meaningful when the attacker is actually blocked
+  if (!currentBlockers || currentBlockers.length === 0) {
+    return {
+      success: false,
+      state,
+      description: "",
+      errors: [
+        `Attacker is not blocked; no damage assignment order to set`,
+      ],
+    };
+  }
+
+  // The announced order must be an exact permutation of the blockers
+  // currently assigned to this attacker. Reject missing blockers, extras, and
+  // duplicates so the engine never silently reorders or drops a creature.
+  const currentIds = new Set(currentBlockers.map((b) => b.cardId));
+  if (orderedBlockerIds.length !== currentIds.size) {
+    return {
+      success: false,
+      state,
+      description: "",
+      errors: [
+        `Damage assignment order must include every blocker exactly once (expected ${currentIds.size}, got ${orderedBlockerIds.length})`,
+      ],
+    };
+  }
+
+  const seen = new Set<CardInstanceId>();
+  for (const id of orderedBlockerIds) {
+    if (!currentIds.has(id)) {
+      return {
+        success: false,
+        state,
+        description: "",
+        errors: [`Creature is not blocking this attacker`],
+      };
+    }
+    if (seen.has(id)) {
+      return {
+        success: false,
+        state,
+        description: "",
+        errors: [`Creature appears more than once in the damage assignment order`],
+      };
+    }
+    seen.add(id);
+  }
+
+  // Re-key each blocker's `blockerOrder` to the attacker's announced sequence.
+  // `resolveCombatDamage` sorts by this field in each damage step, so updating
+  // it here is enough to make the chosen order govern damage flow in both the
+  // first-strike and regular steps (CR 510.1c).
+  const idToPosition = new Map<CardInstanceId, number>();
+  orderedBlockerIds.forEach((id, index) => idToPosition.set(id, index));
+
+  const reorderedBlockers = currentBlockers.map((blocker) => ({
+    ...blocker,
+    blockerOrder: idToPosition.get(blocker.cardId)!,
+  }));
+
+  const updatedBlockersMap = new Map(state.combat.blockers);
+  updatedBlockersMap.set(attackerId, reorderedBlockers);
+
+  return {
+    success: true,
+    state: {
+      ...state,
+      combat: {
+        ...state.combat,
+        blockers: updatedBlockersMap,
+      },
+      lastModifiedAt: Date.now(),
+    },
+    description: `Set damage assignment order for attacker (blockers in chosen order)`,
+  };
+}
+
+/**
  * Resolve combat damage
  * After dealing damage, state-based actions are checked to handle:
  * - Creatures with lethal damage dying

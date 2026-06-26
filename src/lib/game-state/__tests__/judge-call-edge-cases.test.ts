@@ -25,6 +25,13 @@ import { startGame } from "../game-state";
 import { createCardInstance, addCounters } from "../card-instance";
 import { markDamage, hasLethalDamage } from "../card-instance";
 import { registerCommander, dealCommanderDamage } from "../commander-damage";
+import {
+  declareAttackers,
+  declareBlockers,
+  resolveCombatDamage,
+  setDamageAssignmentOrder,
+} from "../combat";
+import { Phase } from "../types";
 import type { ScryfallCard } from "@/app/actions";
 import type { CardInstanceId, PlayerId } from "../types";
 
@@ -359,5 +366,428 @@ describe("JC-008: Double Strike Combat Steps", () => {
   it("double strike creatures should have both first-strike and regular damage steps", () => {
     const dsCard = createMockCreature("Berserker", 2, 2, ["Double Strike"]);
     expect(dsCard.keywords).toContain("Double Strike");
+  });
+});
+
+/**
+ * JC-979: First strike damage assignment order with multiple blockers.
+ *
+ * CR 508.2 + CR 510.1c: an attacker blocked by multiple creatures assigns its
+ * combat damage to those blockers in the order announced by the active player.
+ * Lethal damage must be assigned to the first creature in that order before
+ * any damage is assigned to the next. With first strike, this ordering is
+ * applied in the first-strike combat damage step.
+ *
+ * These tests cover the attacker-chosen damage assignment ORDER only. The
+ * two-step damage gating (which attackers act in which step) is tracked
+ * separately under #969.
+ */
+describe("JC-979: First strike damage assignment order with multiple blockers (#979)", () => {
+  // Local helper: set up a game with the given creatures on each battlefield.
+  // Mirrors the helper in combat.test.ts so these tests are self-contained.
+  function setupGameWithCreatures(
+    player1Creatures: Array<{
+      name: string;
+      power: number;
+      toughness: number;
+      keywords?: string[];
+    }> = [],
+    player2Creatures: Array<{
+      name: string;
+      power: number;
+      toughness: number;
+      keywords?: string[];
+    }> = [],
+  ) {
+    let state = createInitialGameState(["Alice", "Bob"], 20, false);
+    state = startGame(state);
+
+    const playerIds = Array.from(state.players.keys());
+    const aliceId = playerIds[0] as PlayerId;
+    const bobId = playerIds[1] as PlayerId;
+
+    for (const creature of player1Creatures) {
+      const data = createMockCreature(
+        creature.name,
+        creature.power,
+        creature.toughness,
+        creature.keywords,
+      );
+      const instance = createCardInstance(data, aliceId, aliceId);
+      instance.hasSummoningSickness = false;
+      state.cards.set(instance.id, instance);
+      const bf = state.zones.get(`${aliceId}-battlefield`)!;
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...bf,
+        cardIds: [...bf.cardIds, instance.id],
+      });
+    }
+
+    for (const creature of player2Creatures) {
+      const data = createMockCreature(
+        creature.name,
+        creature.power,
+        creature.toughness,
+        creature.keywords,
+      );
+      const instance = createCardInstance(data, bobId, bobId);
+      instance.hasSummoningSickness = false;
+      state.cards.set(instance.id, instance);
+      const bf = state.zones.get(`${bobId}-battlefield`)!;
+      state.zones.set(`${bobId}-battlefield`, {
+        ...bf,
+        cardIds: [...bf.cardIds, instance.id],
+      });
+    }
+
+    return { state, aliceId, bobId };
+  }
+
+  // Helper: move a state into a given combat damage step.
+  type GameStateShape = ReturnType<typeof createInitialGameState>;
+  function inPhase(state: GameStateShape, phase: Phase) {
+    return {
+      ...state,
+      turn: { ...state.turn, currentPhase: phase },
+    };
+  }
+
+  // Convenience accessors for post-combat assertions.
+  function onBattlefield(state: GameStateShape, playerId: PlayerId) {
+    return state.zones.get(`${playerId}-battlefield`)!.cardIds;
+  }
+  function inGraveyard(state: GameStateShape, playerId: PlayerId) {
+    return state.zones.get(`${playerId}-graveyard`)!.cardIds;
+  }
+
+  it("a first-strike attacker with 3 blockers assigns lethal in the chosen order in the first-strike step", () => {
+    // 5/5 First Strike vs three 2/2s. Attacker reorders blockers so the
+    // "third" declared blocker is struck first.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "FS Attacker", power: 5, toughness: 5, keywords: ["First Strike"] }],
+      [
+        { name: "Blocker A", power: 1, toughness: 2 },
+        { name: "Blocker B", power: 1, toughness: 2 },
+        { name: "Blocker C", power: 1, toughness: 2 },
+      ],
+    );
+
+    const aliceBf = state.zones.get(`${aliceId}-battlefield`)!.cardIds;
+    const bobBf = state.zones.get(`${bobId}-battlefield`)!.cardIds;
+    const attackerId = aliceBf[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = bobBf as CardInstanceId[];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+    // Defending player declares blockers in order A, B, C
+    const blockerMap = new Map();
+    blockerMap.set(attackerId, [blockerA, blockerB, blockerC]);
+    const blockRes = declareBlockers(attackRes.state, blockerMap);
+
+    // Attacker announces a NEW damage assignment order: C first, then A, then B.
+    const orderRes = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerC, blockerA, blockerB],
+    );
+    expect(orderRes.success).toBe(true);
+
+    // First-strike step
+    const fsState = inPhase(orderRes.state, Phase.COMBAT_DAMAGE_FIRST_STRIKE);
+    const fsRes = resolveCombatDamage(fsState);
+    expect(fsRes.success).toBe(true);
+
+    // 5 power in chosen order C → A → B: 2 to C (lethal), 2 to A (lethal),
+    // 1 to B (survives). C and A die in the first-strike step; B is wounded.
+    const graveyard = inGraveyard(fsRes.state, bobId);
+    const bobBfAfter = onBattlefield(fsRes.state, bobId);
+    expect(graveyard).toContain(blockerC);
+    expect(graveyard).toContain(blockerA);
+    expect(bobBfAfter).toContain(blockerB);
+    expect(fsRes.state.cards.get(blockerB)!.damage).toBe(1);
+
+    // The first-strike attacker survives (blockers have no first strike)
+    expect(onBattlefield(fsRes.state, aliceId)).toContain(attackerId);
+  });
+
+  it("first-strike attacker respects the DEFAULT insertion order when no explicit order is set", () => {
+    // Same 5/5 FS vs three 2/2s, but the attacker never calls
+    // setDamageAssignmentOrder. The defending player's declaration order
+    // (A, B, C) should govern: A and B die, C is wounded.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "FS Attacker", power: 5, toughness: 5, keywords: ["First Strike"] }],
+      [
+        { name: "Blocker A", power: 1, toughness: 2 },
+        { name: "Blocker B", power: 1, toughness: 2 },
+        { name: "Blocker C", power: 1, toughness: 2 },
+      ],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = state.zones
+      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+    const blockerMap = new Map();
+    blockerMap.set(attackerId, [blockerA, blockerB, blockerC]);
+    const blockRes = declareBlockers(attackRes.state, blockerMap);
+
+    const fsRes = resolveCombatDamage(
+      inPhase(blockRes.state, Phase.COMBAT_DAMAGE_FIRST_STRIKE),
+    );
+    expect(fsRes.success).toBe(true);
+
+    // Default order A → B → C: A and B die, C is wounded with 1 damage.
+    const graveyard = inGraveyard(fsRes.state, bobId);
+    expect(graveyard).toContain(blockerA);
+    expect(graveyard).toContain(blockerB);
+    expect(onBattlefield(fsRes.state, bobId)).toContain(blockerC);
+    expect(fsRes.state.cards.get(blockerC)!.damage).toBe(1);
+  });
+
+  it("a non-first-strike attacker's damage assignment order is unaffected (regular step)", () => {
+    // 5/5 (no first strike) vs three 2/2s. The attacker-chosen order must
+    // still govern the single regular combat damage step.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Plain Attacker", power: 5, toughness: 5 }],
+      [
+        { name: "Blocker A", power: 1, toughness: 2 },
+        { name: "Blocker B", power: 1, toughness: 2 },
+        { name: "Blocker C", power: 1, toughness: 2 },
+      ],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = state.zones
+      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+    const blockerMap = new Map();
+    blockerMap.set(attackerId, [blockerA, blockerB, blockerC]);
+    const blockRes = declareBlockers(attackRes.state, blockerMap);
+
+    // Attacker announces order: B first, then C, then A.
+    const orderRes = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerB, blockerC, blockerA],
+    );
+    expect(orderRes.success).toBe(true);
+
+    // No first strike in this combat → there is no first-strike step; resolve
+    // directly in the regular combat damage step.
+    const res = resolveCombatDamage(inPhase(orderRes.state, Phase.COMBAT_DAMAGE));
+    expect(res.success).toBe(true);
+
+    // 5 power in order B → C → A: 2 to B (lethal), 2 to C (lethal), 1 to A.
+    const graveyard = inGraveyard(res.state, bobId);
+    expect(graveyard).toContain(blockerB);
+    expect(graveyard).toContain(blockerC);
+    expect(onBattlefield(res.state, bobId)).toContain(blockerA);
+    expect(res.state.cards.get(blockerA)!.damage).toBe(1);
+  });
+
+  it("a double-strike attacker assigns damage in the chosen order in BOTH combat damage steps", () => {
+    // 2/2 Double Strike vs [A=1/4, B=1/4]. Attacker order: A → B.
+    // First-strike step: 2 → all to A (4 toughness, not lethal), 0 to B.
+    //   A has 2 damage marked, B untouched.
+    // Regular step: 2 more → all to A again (now 4 total = lethal), 0 to B.
+    //   A dies, B survives.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "DS Attacker", power: 2, toughness: 2, keywords: ["Double Strike"] }],
+      [
+        { name: "Blocker A", power: 1, toughness: 4 },
+        { name: "Blocker B", power: 1, toughness: 4 },
+      ],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB] = state.zones
+      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+    const blockerMap = new Map();
+    blockerMap.set(attackerId, [blockerA, blockerB]);
+    const blockRes = declareBlockers(attackRes.state, blockerMap);
+
+    const orderRes = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerA, blockerB],
+    );
+    expect(orderRes.success).toBe(true);
+
+    // First-strike step: A gets 2 damage (not lethal at 4 toughness), B untouched.
+    const fsRes = resolveCombatDamage(
+      inPhase(orderRes.state, Phase.COMBAT_DAMAGE_FIRST_STRIKE),
+    );
+    expect(fsRes.success).toBe(true);
+    expect(fsRes.state.cards.get(blockerA)!.damage).toBe(2);
+    expect(fsRes.state.cards.get(blockerB)!.damage).toBe(0);
+    expect(onBattlefield(fsRes.state, bobId)).toContain(blockerA);
+
+    // Regular step: double striker strikes again, same order. A takes 2 more
+    // (4 total = lethal), B untouched. A dies.
+    const res = resolveCombatDamage(inPhase(fsRes.state, Phase.COMBAT_DAMAGE));
+    expect(res.success).toBe(true);
+    expect(inGraveyard(res.state, bobId)).toContain(blockerA);
+    expect(onBattlefield(res.state, bobId)).toContain(blockerB);
+    expect(res.state.cards.get(blockerB)!.damage).toBe(0);
+  });
+
+  it("a deathtouch attacker assigns 1 (= lethal) per blocker in the chosen order, stopping when power runs out", () => {
+    // 2/2 Deathtouch vs three 2/2s, attacker order: C → A → B.
+    // Deathtouch makes any nonzero assignment lethal (CR 702.2b), so the
+    // attacker assigns 1 to C (dies), 1 to A (dies), 0 to B (out of power).
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "DT Attacker", power: 2, toughness: 2, keywords: ["Deathtouch"] }],
+      [
+        { name: "Blocker A", power: 1, toughness: 2 },
+        { name: "Blocker B", power: 1, toughness: 2 },
+        { name: "Blocker C", power: 1, toughness: 2 },
+      ],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = state.zones
+      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+    const blockerMap = new Map();
+    blockerMap.set(attackerId, [blockerA, blockerB, blockerC]);
+    const blockRes = declareBlockers(attackRes.state, blockerMap);
+
+    const orderRes = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerC, blockerA, blockerB],
+    );
+    expect(orderRes.success).toBe(true);
+
+    const res = resolveCombatDamage(inPhase(orderRes.state, Phase.COMBAT_DAMAGE));
+    expect(res.success).toBe(true);
+
+    // C and A each received a 1-point deathtouch assignment (lethal per
+    // CR 702.2b) and were destroyed; B was never assigned damage (the
+    // attacker only had 2 power) and survives untouched. Dead creatures have
+    // their marked damage cleared on cleanup, so we assert via graveyard
+    // membership rather than `.damage`.
+    const graveyard = inGraveyard(res.state, bobId);
+    expect(graveyard).toContain(blockerC);
+    expect(graveyard).toContain(blockerA);
+    expect(onBattlefield(res.state, bobId)).toContain(blockerB);
+    expect(res.state.cards.get(blockerB)!.damage).toBe(0);
+  });
+
+  it("setDamageAssignmentOrder rejects an order that omits or duplicates a blocker", () => {
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Attacker", power: 3, toughness: 3 }],
+      [
+        { name: "Blocker A", power: 1, toughness: 2 },
+        { name: "Blocker B", power: 1, toughness: 2 },
+      ],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB] = state.zones
+      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+    const blockerMap = new Map();
+    blockerMap.set(attackerId, [blockerA, blockerB]);
+    const blockRes = declareBlockers(attackRes.state, blockerMap);
+
+    // Missing a blocker
+    const tooFew = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerA],
+    );
+    expect(tooFew.success).toBe(false);
+    expect(tooFew.errors?.[0]).toMatch(/every blocker exactly once/);
+
+    // Duplicates
+    const dup = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerA, blockerA],
+    );
+    expect(dup.success).toBe(false);
+    expect(dup.errors?.[0]).toMatch(/not blocking this attacker|appears more than once/);
+
+    // A creature that isn't blocking this attacker
+    const fake = "not-a-real-blocker" as CardInstanceId;
+    const extra = setDamageAssignmentOrder(
+      blockRes.state,
+      attackerId,
+      [blockerA, fake],
+    );
+    expect(extra.success).toBe(false);
+    expect(extra.errors?.[0]).toMatch(/not blocking this attacker/);
+  });
+
+  it("setDamageAssignmentOrder rejects an attacker that is not in combat or not blocked", () => {
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Attacker", power: 3, toughness: 3 }],
+      [{ name: "Blocker A", power: 1, toughness: 2 }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+
+    // No combat declared yet
+    const noCombat = setDamageAssignmentOrder(state, attackerId, []);
+    expect(noCombat.success).toBe(false);
+
+    // Now declare attacker but leave it unblocked
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackRes = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const unblocked = setDamageAssignmentOrder(
+      attackRes.state,
+      attackerId,
+      [],
+    );
+    expect(unblocked.success).toBe(false);
+    expect(unblocked.errors?.[0]).toMatch(/not blocked/);
+
+    // A creature that is not an attacker
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const notAttacker = setDamageAssignmentOrder(
+      attackRes.state,
+      blockerId,
+      [],
+    );
+    expect(notAttacker.success).toBe(false);
   });
 });
