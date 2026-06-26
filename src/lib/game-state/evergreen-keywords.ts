@@ -162,6 +162,55 @@ export function hasReach(card: CardInstance): boolean {
   return hasKeyword(card, "reach");
 }
 
+// ============== LANDWALK (CR 702.14) ==============
+/**
+ * The five basic land types that the basic-landwalk family keys off.
+ * CR 702.14b: A creature with landwalk can't be blocked if the defending
+ * player controls a land with the matching basic land subtype.
+ */
+const LANDWALK_BASIC_LAND_TYPES = [
+  "plains",
+  "island",
+  "swamp",
+  "mountain",
+  "forest",
+] as const;
+
+/**
+ * Get the basic land types for which a card has landwalk.
+ *
+ * Detects the five basic landwalk variants — plainswalk, islandwalk,
+ * swampwalk, mountainwalk, forestwalk — by parsing oracle text and the
+ * keywords array for the "{land}walk" pattern.
+ *
+ * @returns Array of lowercase basic land type names (e.g., ["swamp"]).
+ *          Empty if the card has no landwalk.
+ */
+export function getLandwalkTypes(card: CardInstance): string[] {
+  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  const keywords = (card.cardData.keywords || []).map((k) => k.toLowerCase());
+  const combined = `${oracleText} ${keywords.join(" ")}`;
+
+  const types: string[] = [];
+  for (const landType of LANDWALK_BASIC_LAND_TYPES) {
+    // Word-boundaried match so "forestwalk" matches but "forestwal" /
+    // "forestwalker" / "plainswalking" (rare, but distinct token) don't
+    // produce false positives that mis-flag the card.
+    const pattern = new RegExp(`\\b${landType}walk\\b`);
+    if (pattern.test(combined)) {
+      types.push(landType);
+    }
+  }
+  return types;
+}
+
+/**
+ * Check if a card has any basic landwalk variant.
+ */
+export function hasLandwalk(card: CardInstance): boolean {
+  return getLandwalkTypes(card).length > 0;
+}
+
 // ============== TRAMPLE ==============
 /**
  * Check if a card has trample

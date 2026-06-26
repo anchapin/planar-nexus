@@ -23,6 +23,7 @@ import {
   getToxicLevel,
   getProtectionQualities,
   getMenaceMinimumBlockers,
+  getLandwalkTypes,
 } from "./evergreen-keywords";
 
 /**
@@ -161,6 +162,42 @@ export function canBlock(
             canBlock: false,
             reason: `Cannot block creatures with ${color} protection`,
           };
+        }
+      }
+
+      // CR 702.14 (Landwalk): A creature with a basic-landwalk variant
+      // (swampwalk, islandwalk, plainswalk, mountainwalk, forestwalk) can't
+      // be blocked if the defending player controls a land with the matching
+      // basic land subtype. The defender is the blocker's controller — only
+      // the player being attacked can block, so blocker.controllerId is the
+      // relevant defender for this attacker.
+      // Issue #971
+      const landwalkTypes = getLandwalkTypes(attacker);
+      if (landwalkTypes.length > 0) {
+        const defenderId = blocker.controllerId;
+        const defenderBattlefield = state.zones.get(`${defenderId}-battlefield`);
+        const defenderCardIds = defenderBattlefield?.cardIds || [];
+        for (const landType of landwalkTypes) {
+          const controlsMatchingLand = defenderCardIds.some((id) => {
+            const landCard = state.cards.get(id);
+            if (!landCard) return false;
+            const typeLine =
+              landCard.cardData.type_line?.toLowerCase() || "";
+            // Must be a land, and either have the basic land subtype in its
+            // type line or be designated as that basic land type via a
+            // continuous effect (chosenBasicLandType).
+            if (!typeLine.includes("land")) return false;
+            return (
+              typeLine.includes(landType) ||
+              landCard.chosenBasicLandType?.toLowerCase() === landType
+            );
+          });
+          if (controlsMatchingLand) {
+            return {
+              canBlock: false,
+              reason: `Cannot block ${landType}walk creature while controlling a ${landType}`,
+            };
+          }
         }
       }
     }
