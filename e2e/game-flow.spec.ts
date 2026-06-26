@@ -81,12 +81,22 @@ test.describe("Game Flow E2E", () => {
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
 
-    // Start game
+    // Start game — wait until a deck is selected and the button is genuinely
+    // actionable before clicking (mirrors the stable sibling test above).
+    // Clicking before the board setup is ready is what races under CI load.
     const startButton = page.locator('button:has-text("Start Game vs AI")');
+    await expect(startButton).toBeEnabled({ timeout: 10000 });
     await startButton.click();
 
-    // Handle the Mulligan dialog
+    // Wait for navigation to the game board before proceeding — mirrors the
+    // stable sibling test. Without this readiness gate the test races ahead
+    // of board load under CI load (#1159).
+    await expect(page).toHaveURL(/.*\/game\/.*/, { timeout: 15000 });
+
+    // Handle the Mulligan dialog — wait for the button to be visible and
+    // interactive so the opening hand is actually dealt before we interact.
     const keepHandButton = page.getByRole("button", { name: "Keep Hand" });
+    await expect(keepHandButton).toBeVisible();
     await keepHandButton.click();
     await expect(keepHandButton).toBeHidden();
 
@@ -108,14 +118,25 @@ test.describe("Game Flow E2E", () => {
         console.warn("Overlay backdrop did not hide");
       });
 
-    // Locate cards in hand (they use checkboxes for selection)
-    const handCards = page.getByRole("checkbox");
-    await expect(handCards.first()).toBeVisible({ timeout: 10000 });
+    // Locate cards in hand. Only the current player's cards expose
+    // role="checkbox" (opponents render card backs), so this locator is
+    // unambiguous — bind it once and reuse it for a stable interaction.
+    const firstCard = page.getByRole("checkbox").first();
 
-    // Select the first card - Use click() because it's a custom button-based checkbox
-    await handCards.first().click();
+    // Readiness gate: wait until the opening hand has actually been dealt and
+    // the card is visible AND interactive (enabled == selectable) before
+    // interacting. This is the state-based wait that resolves the #1159 race
+    // where the click landed before the hand was settled under CI load.
+    await expect(firstCard).toBeVisible({ timeout: 10000 });
+    await expect(firstCard).toBeEnabled();
 
-    // Verify it is checked (custom component uses aria-pressed="true" for selection state)
-    await expect(handCards.first()).toHaveAttribute("aria-pressed", "true");
+    // Select the card. click() auto-waits for actionability (visible, stable,
+    // enabled, receives pointer events) — no manual timing.
+    await firstCard.click();
+
+    // Verify it is selected. This is a web-first (auto-retrying) assertion:
+    // Playwright re-checks aria-pressed up to the expect timeout rather than
+    // doing a one-shot check — the state-based wait for the selection state.
+    await expect(firstCard).toHaveAttribute("aria-pressed", "true");
   });
 });
