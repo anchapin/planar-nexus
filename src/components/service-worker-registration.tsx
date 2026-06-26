@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { WifiOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { captureError, initTelemetry } from "@/lib/telemetry";
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -21,7 +22,8 @@ interface ServiceWorkerStatus {
 }
 
 export function ServiceWorkerRegistration() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -34,13 +36,20 @@ export function ServiceWorkerRegistration() {
 
   useEffect(() => {
     // Check if already installed
-    if (typeof window !== "undefined" && window.matchMedia("(display-mode: standalone)").matches) {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(display-mode: standalone)").matches
+    ) {
       setIsInstalled(true);
     }
 
+    // Issue #1112: install global unhandled-exception listeners (consent-gated,
+    // idempotent, no-op during SSR). Captures nothing unless the user opts in.
+    initTelemetry();
+
     // Track online/offline status — surface as a persistent banner + toast
     const handleOnline = () => {
-      setSwStatus(prev => ({ ...prev, isOnline: true }));
+      setSwStatus((prev) => ({ ...prev, isOnline: true }));
       toast({
         title: "Back online",
         description: "Your connection has been restored.",
@@ -48,7 +57,7 @@ export function ServiceWorkerRegistration() {
     };
 
     const handleOffline = () => {
-      setSwStatus(prev => ({ ...prev, isOnline: false }));
+      setSwStatus((prev) => ({ ...prev, isOnline: false }));
       toast({
         title: "You're offline",
         description: "Changes will sync when you reconnect.",
@@ -60,7 +69,7 @@ export function ServiceWorkerRegistration() {
     window.addEventListener("offline", handleOffline);
 
     // Check initial online status
-    setSwStatus(prev => ({ ...prev, isOnline: navigator.onLine }));
+    setSwStatus((prev) => ({ ...prev, isOnline: navigator.onLine }));
 
     if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       // Register service worker
@@ -69,7 +78,8 @@ export function ServiceWorkerRegistration() {
         .then((registration) => {
           toast({
             title: "Ready for offline use",
-            description: "Planar Nexus is cached and can run without a connection.",
+            description:
+              "Planar Nexus is cached and can run without a connection.",
           });
 
           // Get cache information
@@ -80,9 +90,12 @@ export function ServiceWorkerRegistration() {
             const newWorker = registration.installing;
             if (newWorker) {
               newWorker.addEventListener("statechange", () => {
-                if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                if (
+                  newWorker.state === "installed" &&
+                  navigator.serviceWorker.controller
+                ) {
                   setIsUpdateAvailable(true);
-                  setSwStatus(prev => ({ ...prev, lastUpdated: Date.now() }));
+                  setSwStatus((prev) => ({ ...prev, lastUpdated: Date.now() }));
                   toast({
                     title: "Update available",
                     description: "A new version is ready. Reload to update.",
@@ -94,6 +107,8 @@ export function ServiceWorkerRegistration() {
         })
         .catch((error) => {
           console.error("Service Worker registration failed:", error);
+          // Issue #1112: report SW registration failures (consent-gated; no-op when off).
+          captureError(error, "SW", "Service Worker registration failed");
         });
     }
 
@@ -120,7 +135,10 @@ export function ServiceWorkerRegistration() {
     const intervalId = setInterval(getCacheInfo, 60000); // Every minute
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
       window.removeEventListener("appinstalled", handleAppInstalled);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
@@ -149,13 +167,14 @@ export function ServiceWorkerRegistration() {
         }
       }
 
-      setSwStatus(prev => ({
+      setSwStatus((prev) => ({
         ...prev,
         cacheSize: totalSize,
         cacheNames: cacheNames,
       }));
     } catch (error) {
       console.error("[SW] Failed to get cache info:", error);
+      captureError(error, "SW", "Failed to get cache info");
     }
   }, []);
 
@@ -194,9 +213,9 @@ export function ServiceWorkerRegistration() {
 
     try {
       const cacheNames = await caches.keys();
-      await Promise.all(cacheNames.map(name => caches.delete(name)));
+      await Promise.all(cacheNames.map((name) => caches.delete(name)));
 
-      setSwStatus(prev => ({
+      setSwStatus((prev) => ({
         ...prev,
         cacheSize: 0,
         cacheNames: [],
@@ -209,6 +228,7 @@ export function ServiceWorkerRegistration() {
       setShowSettings(false);
     } catch (error) {
       console.error("[SW] Failed to clear caches:", error);
+      captureError(error, "SW", "Failed to clear caches");
     }
   }, []);
 
@@ -224,6 +244,7 @@ export function ServiceWorkerRegistration() {
       }
     } catch (error) {
       console.error("[SW] Failed to force update:", error);
+      captureError(error, "SW", "Failed to force SW update");
     }
   }, []);
 
@@ -279,7 +300,9 @@ export function ServiceWorkerRegistration() {
             className="px-3 py-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg shadow-lg hover:bg-background/90 transition-colors text-xs font-medium flex items-center gap-2"
             aria-label="Open service worker settings"
           >
-            <div className={`w-2 h-2 rounded-full ${swStatus.isOnline ? "bg-green-500" : "bg-red-500"}`} />
+            <div
+              className={`w-2 h-2 rounded-full ${swStatus.isOnline ? "bg-green-500" : "bg-red-500"}`}
+            />
             {formatBytes(swStatus.cacheSize)}
           </button>
 
@@ -298,7 +321,9 @@ export function ServiceWorkerRegistration() {
 
               {/* Online Status */}
               <div className="flex items-center gap-2 mb-3 p-2 bg-muted rounded">
-                <div className={`w-3 h-3 rounded-full ${swStatus.isOnline ? "bg-green-500" : "bg-red-500"}`} />
+                <div
+                  className={`w-3 h-3 rounded-full ${swStatus.isOnline ? "bg-green-500" : "bg-red-500"}`}
+                />
                 <span className="text-sm">
                   {swStatus.isOnline ? "Online" : "Offline"}
                 </span>
@@ -308,16 +333,22 @@ export function ServiceWorkerRegistration() {
               <div className="mb-3">
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span>Cache Size:</span>
-                  <span className="font-medium">{formatBytes(swStatus.cacheSize)}</span>
+                  <span className="font-medium">
+                    {formatBytes(swStatus.cacheSize)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span>Caches:</span>
-                  <span className="font-medium">{swStatus.cacheNames.length}</span>
+                  <span className="font-medium">
+                    {swStatus.cacheNames.length}
+                  </span>
                 </div>
                 {swStatus.lastUpdated && (
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>Last Update:</span>
-                    <span>{new Date(swStatus.lastUpdated).toLocaleTimeString()}</span>
+                    <span>
+                      {new Date(swStatus.lastUpdated).toLocaleTimeString()}
+                    </span>
                   </div>
                 )}
               </div>
