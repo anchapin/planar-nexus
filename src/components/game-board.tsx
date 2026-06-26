@@ -28,7 +28,6 @@ import {
   CardState,
 } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
-import Image from "next/image";
 import {
   DamageOverlay,
   useDamageEvents,
@@ -50,10 +49,16 @@ import {
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileGameLayout } from "@/components/mobile-game-layout";
+import {
+  BattlefieldCard,
+  VirtualizedBattlefield,
+} from "@/components/virtualized-battlefield";
 
 // Performance optimization constants
-const VIRTUALIZATION_THRESHOLD = 20;
-const MAX_VISIBLE_GAME_BOARD_CARDS = 14;
+// Only the visible window of battlefield permanents is mounted once a board
+// exceeds this size; below it every permanent renders directly (no overhead).
+// See #1082 — windowing the game-board permanent list for large board states.
+const BATTLEFIELD_WINDOWING_THRESHOLD = 20;
 
 interface GameBoardProps {
   players: PlayerState[];
@@ -128,20 +133,14 @@ const ZoneDisplay = memo(function ZoneDisplay({
     onZoneClick?.(zone, playerId);
   }, [onZoneClick, zone, playerId]);
 
-  // Virtualize game board when there are many cards (performance optimization)
-  const displayCards = useMemo(() => {
-    if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
-      return cards.slice(0, MAX_VISIBLE_GAME_BOARD_CARDS);
-    }
-    return zone === "battlefield" ? cards.slice(0, 7) : cards;
-  }, [zone, count, cards]);
-
-  const remainingCount = useMemo(() => {
-    if (zone === "battlefield" && count > VIRTUALIZATION_THRESHOLD) {
-      return count - MAX_VISIBLE_GAME_BOARD_CARDS;
-    }
-    return 0;
-  }, [zone, count]);
+  // Window the battlefield once the board is large enough to matter (#1082).
+  // Below the threshold every permanent renders directly; above it the
+  // `VirtualizedBattlefield` mounts only the visible window (+ overscan) and
+  // reveals the rest via horizontal scroll. This also replaces the previous
+  // approach that silently sliced off overflow permanents (making them
+  // untargetable); every permanent is now reachable by scroll.
+  const isWindowedBattlefield =
+    zone === "battlefield" && count > BATTLEFIELD_WINDOWING_THRESHOLD;
 
   const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(
     () => ({
@@ -180,47 +179,23 @@ const ZoneDisplay = memo(function ZoneDisplay({
             {count > 0 && (
               <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
                 {zone === "battlefield" &&
-                  displayCards.map((card: ZoneCard, idx: number) => (
-                    <div
-                      key={card.id || idx}
-                      data-testid={`battlefield-card-${card.card.name.toLowerCase().replace(/\s+/g, "-")}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCardClick?.(card.id, zone);
-                      }}
-                      className="relative w-10 h-14 sm:w-12 sm:h-16 md:w-14 md:h-20 rounded overflow-hidden border border-primary/30 hover:scale-[3] hover:z-50 hover:shadow-2xl transition-all duration-300 cursor-pointer group"
-                      title={card.card.name}
-                    >
-                      {card.card.image_uris?.normal ? (
-                        <Image
-                          src={card.card.image_uris.normal}
-                          alt={card.card.name}
-                          fill
-                          sizes="80px"
-                          className="object-cover rounded"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                          <span className="text-[8px] text-center leading-tight px-0.5 line-clamp-2">
-                            {card.card.name}
-                          </span>
-                        </div>
-                      )}
-                      {card.tapped && (
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                          <span className="text-[8px] text-white font-bold rotate-45">
-                            TAPPED
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                  (isWindowedBattlefield ? (
+                    <VirtualizedBattlefield
+                      cards={cards}
+                      zone={zone}
+                      onCardClick={onCardClick}
+                      className="absolute inset-0 p-1"
+                    />
+                  ) : (
+                    cards.map((card: ZoneCard, idx: number) => (
+                      <BattlefieldCard
+                        key={card.id || idx}
+                        card={card}
+                        zone={zone}
+                        onCardClick={onCardClick}
+                      />
+                    ))
                   ))}
-                {zone === "battlefield" && remainingCount > 0 && (
-                  <div className="absolute bottom-1 right-1 bg-primary/80 text-primary-foreground text-xs px-1.5 py-0.5 rounded">
-                    +{remainingCount} more
-                  </div>
-                )}
                 {zone !== "battlefield" && (
                   <div className="flex items-center gap-1">
                     {zoneIcons[zone]}
@@ -277,7 +252,9 @@ const PlayerInfo = memo(function PlayerInfo({
   );
 
   return (
-    <div className={`flex items-center gap-1.5 ${isVertical ? "flex-col" : ""}`}>
+    <div
+      className={`flex items-center gap-1.5 ${isVertical ? "flex-col" : ""}`}
+    >
       <div className="flex items-center gap-1">
         <div className="flex items-center gap-1 text-xs">
           <User className="h-3 w-3" />
@@ -475,7 +452,9 @@ function PlayerArea({
         <div
           className={`grid ${isBottom ? "grid-rows-[1fr_auto_auto]" : "grid-rows-[auto_auto_1fr]"} gap-1.5 flex-1 min-h-0`}
         >
-          <div className={`${isBottom ? "row-start-3 z-10 overflow-visible" : "z-0"}`}>
+          <div
+            className={`${isBottom ? "row-start-3 z-10 overflow-visible" : "z-0"}`}
+          >
             {isBottom ? (
               <div
                 className="bg-primary/5 border border-primary/20 rounded-md p-1.5 overflow-visible"
