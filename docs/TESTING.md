@@ -495,6 +495,56 @@ PR that raised coverage. The documented target remains **70%** across all
 metrics (60% for branches); the ratchet is how we get there without the floor
 ever sliding back.
 
+### Mutation Testing
+
+Line/branch coverage only proves a line _executed_; it says nothing about
+whether the tests would catch a logic change. **Mutation testing** (via
+[Stryker](https://stryker-mutator.io/) + `@stryker-mutator/jest-runner`, added
+in #1097) rewrites the source one small change at a time — flipping operators,
+inverting conditions, altering boundaries ("mutants") — and re-runs the suite.
+A mutant that still passes the tests is a **survivor**: a hole in the suite.
+
+Coverage measures _what ran_. Mutation score measures _what the tests prove_.
+
+Configuration lives in [`stryker.config.js`](../stryker.config.js). It is
+intentionally **scoped** to the rules-engine modules where ordering and boundary
+conditions are the correctness argument — not the whole repo:
+
+- `src/lib/game-state/layer-system.ts`
+- `src/lib/game-state/replacement-effects.ts`
+- `src/lib/game-state/spell-casting.ts`
+
+```bash
+# Run mutation testing for all configured modules:
+npm run test:mutation
+
+# Iterate on a single module (much faster):
+npm run test:mutation -- --mutate src/lib/game-state/replacement-effects.ts
+
+# Reuse results from the previous run (skips already-killed mutants):
+npm run test:mutation:incremental
+```
+
+The HTML report is written to `reports/mutation/index.html`. Stryker uses
+`coverageAnalysis: "perTest"` so only the tests that cover each mutant are run
+for it — the single biggest performance lever on a large suite.
+
+**Target mutation score: ≥70%** (the same floor as coverage). The config sets
+`thresholds.high/low` for report coloring only; it deliberately does **not** set
+`thresholds.break` yet, so the run reports the score without failing. Once the
+baseline is consistently ≥70% across all scoped modules, enable `break` to
+ratchet it (mirroring the coverage floor above).
+
+**Current baseline** (single-module run, `replacement-effects.ts`):
+**77.78%** — 293 killed, 85 survived, 50 timed out, 13 no-coverage of 441
+mutants. Most survivors are equivalent or non-behavioural (description strings,
+generated ids, empty-array initializers); the actionable ones are tracked as
+follow-up test improvements.
+
+Mutation testing is expensive (≈8 min per scoped module on 8 cores), so it runs
+as a **non-blocking nightly CI job** (`.github/workflows/mutation.yml`), never on
+every PR. See section [13. CI Integration](#13-ci-integration).
+
 ---
 
 ## 11. Decision Guide

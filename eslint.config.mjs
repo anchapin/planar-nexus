@@ -69,6 +69,7 @@ const eslintConfig = [
       "jest.setup.js",
       "jest.config.js",
       "commitlint.config.js",
+      "stryker.config.js",
       // Plain Node CommonJS tooling (uses require/module/process globals that
       // the flat config has no Node environment for), same class of file as
       // jest.config.js above.
