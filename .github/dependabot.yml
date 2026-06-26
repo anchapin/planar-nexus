@@ -1,0 +1,42 @@
+# Dependabot dependency-update configuration.
+# Keeps npm packages and GitHub Actions versions current on a weekly cadence
+# so known-vulnerable transitive deps are auto-bumped/reported. Resolves #1108.
+# Dependabot PRs are skipped by the CodeQL workflow (codeql.yml:
+# `if: github.actor != 'dependabot[bot]'`), so bumps are never blocked by SAST.
+version: 2
+updates:
+  # npm dependencies (package-lock.json; CI runs `npm ci`).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "security"
+      - "tech-debt"
+    # Bundle semver-compatible minor/patch updates into a single PR; major
+    # bumps (potential breaking changes) still get individual PRs for review.
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions used across .github/workflows/* (actions/checkout,
+  # actions/setup-node, dtolnay/rust-toolchain, codecov-action, etc.).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    labels:
+      - "security"
+      - "tech-debt"
