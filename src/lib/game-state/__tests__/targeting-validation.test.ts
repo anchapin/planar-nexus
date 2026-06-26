@@ -24,6 +24,7 @@ import {
   isProtectedByHexproof,
   canTargetCard,
   validateSpellTargets,
+  getWardRequirements,
   getTargetingRestrictions,
   TargetValidationResult,
 } from "../targeting-validation";
@@ -657,6 +658,301 @@ describe("Targeting Validation System", () => {
 
       expect(result.valid).toBe(false);
       expect(result.reason).toBe("shroud");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Ward (CR 702.21) — Issue #970
+  //
+  // Ward is fundamentally different from shroud/hexproof/protection: it does
+  // NOT block targeting. The target is legal, but a ward cost payment is
+  // required; if unpaid at resolution, the spell/ability is countered.
+  // -------------------------------------------------------------------------
+
+  describe("Ward targeting validation (CR 702.21) — Issue #970", () => {
+    function createWardedCreature(
+      name: string,
+      oracleText: string,
+    ): ScryfallCard {
+      return {
+        id: `mock-warded-${name.toLowerCase().replace(/\s+/g, "-")}`,
+        name,
+        type_line: "Creature — Test",
+        power: "2",
+        toughness: "2",
+        keywords: [],
+        oracle_text: oracleText,
+        mana_cost: "{1}{U}",
+        cmc: 2,
+        colors: ["U"],
+        color_identity: ["U"],
+        legalities: { standard: "legal", commander: "legal" },
+        card_faces: undefined,
+        layout: "normal",
+      } as unknown as ScryfallCard;
+    }
+
+    function createMinimalState(p1: string, p2: string): GameState {
+      const initialState = createInitialGameState([p1, p2], 20, false);
+      return startGame(initialState);
+    }
+
+    it("surfaces a ward requirement (target still valid) when an opponent targets a warded permanent", () => {
+      const targetCard = createWardedCreature("Warded", "Ward {2}");
+      const target = createCardInstance(targetCard, "player2", "player2");
+
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      const result = canTargetCard(target, source, "player1");
+
+      // Targeting is LEGAL — ward is a payment trigger, not a hard block.
+      expect(result.valid).toBe(true);
+      // ...but a ward payment is required.
+      expect(result.wardRequired).toBeDefined();
+      expect(result.wardRequired?.targetCardId).toBe(target.id);
+      expect(result.wardRequired?.wardControllerId).toBe("player2");
+      expect(result.wardRequired?.cost).toMatchObject({
+        kind: "mana",
+        generic: 2,
+      });
+    });
+
+    it("does NOT surface ward when the controller targets their own warded permanent", () => {
+      const targetCard = createWardedCreature("Warded", "Ward {2}");
+      const target = createCardInstance(targetCard, "player1", "player1");
+
+      const sourceCard = createMockSpell("Giant Growth", ["G"], "+3/+3");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      const result = canTargetCard(target, source, "player1");
+
+      expect(result.valid).toBe(true);
+      expect(result.wardRequired).toBeUndefined();
+    });
+
+    it("does NOT surface ward for a non-warded target", () => {
+      const targetCard = createMockCreature("Plain", 2, 2, [], ["W"], "Flying");
+      const target = createCardInstance(targetCard, "player2", "player2");
+
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      const result = canTargetCard(target, source, "player1");
+
+      expect(result.valid).toBe(true);
+      expect(result.wardRequired).toBeUndefined();
+    });
+
+    it("surfaces ward only for opponent (not for the ward permanent's controller)", () => {
+      const targetCard = createWardedCreature("Warded", "Ward {1}{U}");
+      const target = createCardInstance(targetCard, "player2", "player2");
+
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      // Opponent (player1) -> ward triggers.
+      expect(canTargetCard(target, source, "player1").wardRequired).toBeDefined();
+
+      // Controller (player2) targeting their own warded permanent -> no ward.
+      expect(
+        canTargetCard(target, source, "player2").wardRequired,
+      ).toBeUndefined();
+    });
+
+    it("parses a life-ward cost into the requirement", () => {
+      const targetCard = createWardedCreature("Life Warded", "Ward—Pay 3 life.");
+      const target = createCardInstance(targetCard, "player2", "player2");
+
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      const result = canTargetCard(target, source, "player1");
+
+      expect(result.valid).toBe(true);
+      expect(result.wardRequired?.cost).toMatchObject({
+        kind: "life",
+        amount: 3,
+      });
+    });
+
+    it("still applies shroud/hexproof/protection BEFORE ward (hard blocks win)", () => {
+      // A permanent with both shroud and ward cannot be targeted at all.
+      const targetCard = createWardedCreature(
+        "Lockdown",
+        "Shroud. Ward {2}.",
+      );
+      const target = createCardInstance(targetCard, "player2", "player2");
+
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      const result = canTargetCard(target, source, "player1");
+
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe("shroud");
+      expect(result.wardRequired).toBeUndefined();
+    });
+  });
+
+  describe("validateSpellTargets ward aggregation (CR 702.21) — Issue #970", () => {
+    function createWardedCreature(
+      name: string,
+      oracleText: string,
+    ): ScryfallCard {
+      return {
+        id: `mock-warded-${name.toLowerCase().replace(/\s+/g, "-")}`,
+        name,
+        type_line: "Creature — Test",
+        power: "2",
+        toughness: "2",
+        keywords: [],
+        oracle_text: oracleText,
+        mana_cost: "{1}{U}",
+        cmc: 2,
+        colors: ["U"],
+        color_identity: ["U"],
+        legalities: { standard: "legal", commander: "legal" },
+        card_faces: undefined,
+        layout: "normal",
+      } as unknown as ScryfallCard;
+    }
+
+    function createMinimalState(p1: string, p2: string): GameState {
+      const initialState = createInitialGameState([p1, p2], 20, false);
+      return startGame(initialState);
+    }
+
+    it("collects ward requirements for multiple warded targets", () => {
+      const state = createMinimalState("player1", "player2");
+
+      const w1Card = createWardedCreature("Warded One", "Ward {2}");
+      const w1 = createCardInstance(w1Card, "player2", "player2");
+      const w2Card = createWardedCreature("Warded Two", "Ward {1}");
+      const w2 = createCardInstance(w2Card, "player2", "player2");
+      const sourceCard = createMockSpell("Fireball", ["R"], "Deal damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      state.cards.set(w1.id, w1);
+      state.cards.set(w2.id, w2);
+      state.cards.set(source.id, source);
+
+      const result = validateSpellTargets(state, source.id, [w1.id, w2.id]);
+
+      expect(result.valid).toBe(true);
+      expect(result.wardRequirements).toHaveLength(2);
+      expect(result.wardRequirements?.map((w) => w.targetCardId)).toEqual(
+        expect.arrayContaining([w1.id, w2.id]),
+      );
+    });
+
+    it("getWardRequirements returns the same requirements ergonomically", () => {
+      const state = createMinimalState("player1", "player2");
+
+      const wCard = createWardedCreature("Warded", "Ward {2}");
+      const w = createCardInstance(wCard, "player2", "player2");
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      state.cards.set(w.id, w);
+      state.cards.set(source.id, source);
+
+      const reqs = getWardRequirements(state, source.id, [w.id]);
+
+      expect(reqs).toHaveLength(1);
+      expect(reqs[0].targetCardId).toBe(w.id);
+      expect(reqs[0].cost).toMatchObject({ kind: "mana", generic: 2 });
+    });
+
+    it("returns no ward requirements for a non-targeted spell (empty targets)", () => {
+      const state = createMinimalState("player1", "player2");
+
+      const sourceCard = createMockSpell("Divination", ["U"], "Draw 2 cards");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+      state.cards.set(source.id, source);
+
+      // No targets at all — ward never triggers.
+      const result = validateSpellTargets(state, source.id, []);
+
+      expect(result.valid).toBe(true);
+      expect(result.wardRequirements).toBeUndefined();
+      expect(getWardRequirements(state, source.id, [])).toEqual([]);
+    });
+
+    it("still returns the first hard-block reason (ward does not override protection)", () => {
+      const state = createMinimalState("player1", "player2");
+
+      // A target that has BOTH protection from red AND ward — protection wins.
+      const targetCard = createMockCreature(
+        "Guardian",
+        2,
+        2,
+        [],
+        ["W"],
+        "Protection from red. Ward {2}.",
+      );
+      const target = createCardInstance(targetCard, "player2", "player2");
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      state.cards.set(target.id, target);
+      state.cards.set(source.id, source);
+
+      const result = validateSpellTargets(state, source.id, [target.id]);
+
+      expect(result.valid).toBe(false);
+      expect(result.reason).toBe("protection");
+      expect(result.wardRequirements).toBeUndefined();
+    });
+
+    it("treats a warded permanent with no ward cost as still valid (no requirement surfaced)", () => {
+      // Edge case: if a card's oracle text says "Ward" but parsing somehow
+      // yields no cost, canTargetCard must not crash and must not surface a
+      // requirement with a null cost. The default-cost path in evergreen
+      // keywords means this is mostly defensive.
+      const state = createMinimalState("player1", "player2");
+
+      const wCard = createWardedCreature("Warded", "Ward {2}");
+      const w = createCardInstance(wCard, "player2", "player2");
+      const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
+      const source = createCardInstance(sourceCard, "player1", "player1");
+
+      state.cards.set(w.id, w);
+      state.cards.set(source.id, source);
+
+      const result = validateSpellTargets(state, source.id, [w.id]);
+      expect(result.valid).toBe(true);
+      // A cost IS surfaced here because {2} parses cleanly.
+      expect(result.wardRequirements?.[0].cost).toBeDefined();
+    });
+  });
+
+  describe("getTargetingRestrictions includes ward (CR 702.21)", () => {
+    it("lists ward as a payment restriction (not a hard block)", () => {
+      const card = createCardInstance(
+        {
+          id: "mock-restrict-warded",
+          name: "Warded",
+          type_line: "Creature — Test",
+          power: "2",
+          toughness: "2",
+          keywords: [],
+          oracle_text: "Ward {2}. Flying.",
+          mana_cost: "{1}{U}",
+          cmc: 2,
+          colors: ["U"],
+          color_identity: ["U"],
+          legalities: { standard: "legal", commander: "legal" },
+          card_faces: undefined,
+          layout: "normal",
+        } as unknown as ScryfallCard,
+        "player1",
+        "player1",
+      );
+
+      const restrictions = getTargetingRestrictions(card);
+
+      expect(restrictions.some((r) => /^Ward/.test(r))).toBe(true);
     });
   });
 });
