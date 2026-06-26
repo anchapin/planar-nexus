@@ -28,6 +28,7 @@ import {
   type DirectConnectionState,
 } from '@/lib/p2p-direct-connection';
 import { QRCodeDisplay } from '@/components/qr-code-display';
+import { P2PStatusBanner } from '@/components/p2p-status-banner';
 
 export default function HostLobbyPage() {
   const { 
@@ -666,9 +667,12 @@ export default function HostLobbyPage() {
           </Card>
         </div>
 
-        <p className="text-xs text-muted-foreground mt-6 text-center">
-          Note: This lobby uses P2P networking (WebRTC) for multiplayer connections.
-        </p>
+        <P2PStatusBanner
+          className="mt-6"
+          status="in-development"
+          title="P2P Lobby (Prototype)"
+          description="This lobby uses WebRTC peer-to-peer networking. Connections are local during the prototype phase — full cross-player sync is arriving in a future release."
+        />
       </div>
     );
   }
