@@ -143,6 +143,7 @@ export function AppSidebar() {
             variant="ghost"
             size="icon"
             className="ml-auto size-7 shrink-0"
+            aria-label={t("keyboardShortcuts")}
             title={t("keyboardShortcuts")}
           >
             <MousePointer className="size-4" />
@@ -151,6 +152,7 @@ export function AppSidebar() {
             variant="ghost"
             size="icon"
             className="ml-auto size-7 shrink-0"
+            aria-label={t("community")}
             title={t("community")}
           >
             <Users className="size-4" />

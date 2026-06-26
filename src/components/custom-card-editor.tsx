@@ -684,6 +684,7 @@ export function CustomCardEditor({
                           })
                         }
                         disabled={readOnly}
+                        aria-label="Clear artwork URL"
                       >
                         <X className="w-4 h-4" />
                       </Button>

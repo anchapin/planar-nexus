@@ -1,22 +1,28 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Gavel, 
-  Users, 
-  Shield, 
-  Heart, 
-  Skull, 
-  RotateCcw, 
-  AlertTriangle, 
-  Eye, 
+import { useState, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Gavel,
+  Users,
+  Shield,
+  Heart,
+  Skull,
+  RotateCcw,
+  AlertTriangle,
+  Eye,
   Settings,
   Plus,
   Minus,
@@ -24,15 +30,19 @@ import {
   X,
   Pause,
   Play,
-  Zap
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  Zap,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Judge role types
-export type JudgeRole = 'judge' | 'head-judge' | 'spectator-privileged';
+export type JudgeRole = "judge" | "head-judge" | "spectator-privileged";
 
 // Warning/Penalty types
-export type PenaltyType = 'warning' | 'game-loss' | 'match-loss' | 'disqualification';
+export type PenaltyType =
+  | "warning"
+  | "game-loss"
+  | "match-loss"
+  | "disqualification";
 
 export interface Warning {
   id: string;
@@ -79,7 +89,7 @@ export interface JudgeToolsConfig {
 // Default judge configuration
 export const DEFAULT_JUDGE_CONFIG: JudgeToolsConfig = {
   enabled: false,
-  role: 'judge',
+  role: "judge",
   canModifyLife: true,
   canModifyCounters: true,
   canUndoActions: true,
@@ -95,25 +105,23 @@ interface PenaltyBadgeProps {
 export function PenaltyBadge({ type }: PenaltyBadgeProps) {
   const getConfig = () => {
     switch (type) {
-      case 'warning':
-        return { color: 'bg-yellow-500', label: 'Warning' };
-      case 'game-loss':
-        return { color: 'bg-orange-500', label: 'Game Loss' };
-      case 'match-loss':
-        return { color: 'bg-red-500', label: 'Match Loss' };
-      case 'disqualification':
-        return { color: 'bg-purple-500', label: 'DQ' };
+      case "warning":
+        return { color: "bg-yellow-500", label: "Warning" };
+      case "game-loss":
+        return { color: "bg-orange-500", label: "Game Loss" };
+      case "match-loss":
+        return { color: "bg-red-500", label: "Match Loss" };
+      case "disqualification":
+        return { color: "bg-purple-500", label: "DQ" };
       default:
-        return { color: 'bg-gray-500', label: type };
+        return { color: "bg-gray-500", label: type };
     }
   };
 
   const config = getConfig();
 
   return (
-    <Badge className={cn('text-white', config.color)}>
-      {config.label}
-    </Badge>
+    <Badge className={cn("text-white", config.color)}>{config.label}</Badge>
   );
 }
 
@@ -124,8 +132,14 @@ interface WarningLogProps {
   className?: string;
 }
 
-export function WarningLog({ warnings, onDismiss, className }: WarningLogProps) {
-  const sortedWarnings = [...warnings].sort((a, b) => b.timestamp - a.timestamp);
+export function WarningLog({
+  warnings,
+  onDismiss,
+  className,
+}: WarningLogProps) {
+  const sortedWarnings = [...warnings].sort(
+    (a, b) => b.timestamp - a.timestamp,
+  );
 
   return (
     <Card className={className}>
@@ -134,9 +148,7 @@ export function WarningLog({ warnings, onDismiss, className }: WarningLogProps) 
           <AlertTriangle className="w-5 h-5 text-yellow-500" />
           Warning Log
         </CardTitle>
-        <CardDescription>
-          Track issued warnings and penalties
-        </CardDescription>
+        <CardDescription>Track issued warnings and penalties</CardDescription>
       </CardHeader>
       <CardContent>
         {sortedWarnings.length === 0 ? (
@@ -152,7 +164,9 @@ export function WarningLog({ warnings, onDismiss, className }: WarningLogProps) 
               >
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{warning.playerName}</span>
+                    <span className="font-medium text-sm">
+                      {warning.playerName}
+                    </span>
                     <PenaltyBadge type={warning.type} />
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
@@ -184,7 +198,11 @@ interface LifeAdjustmentProps {
   disabled?: boolean;
 }
 
-export function LifeAdjustment({ player, onAdjust, disabled }: LifeAdjustmentProps) {
+export function LifeAdjustment({
+  player,
+  onAdjust,
+  disabled,
+}: LifeAdjustmentProps) {
   return (
     <div className="flex items-center gap-2">
       <Button
@@ -193,14 +211,21 @@ export function LifeAdjustment({ player, onAdjust, disabled }: LifeAdjustmentPro
         onClick={() => onAdjust(player.id, -1)}
         disabled={disabled || player.life <= 0}
         className="h-8 w-8"
+        aria-label="Decrease life"
       >
         <Minus className="w-3 h-3" />
       </Button>
       <div className="flex items-center gap-1 min-w-[60px] justify-center">
-        <Heart className={cn(
-          'w-4 h-4',
-          player.life > 10 ? 'text-green-500' : player.life > 5 ? 'text-yellow-500' : 'text-red-500'
-        )} />
+        <Heart
+          className={cn(
+            "w-4 h-4",
+            player.life > 10
+              ? "text-green-500"
+              : player.life > 5
+                ? "text-yellow-500"
+                : "text-red-500",
+          )}
+        />
         <span className="font-bold text-lg w-8 text-center">{player.life}</span>
       </div>
       <Button
@@ -209,6 +234,7 @@ export function LifeAdjustment({ player, onAdjust, disabled }: LifeAdjustmentPro
         onClick={() => onAdjust(player.id, 1)}
         disabled={disabled}
         className="h-8 w-8"
+        aria-label="Increase life"
       >
         <Plus className="w-3 h-3" />
       </Button>
@@ -223,7 +249,8 @@ export function LifeAdjustment({ player, onAdjust, disabled }: LifeAdjustmentPro
             disabled={disabled || (player.life + amount <= 0 && amount < 0)}
             className="h-7 text-xs"
           >
-            {amount > 0 ? '+' : ''}{amount}
+            {amount > 0 ? "+" : ""}
+            {amount}
           </Button>
         ))}
       </div>
@@ -234,14 +261,29 @@ export function LifeAdjustment({ player, onAdjust, disabled }: LifeAdjustmentPro
 // Counter adjustment component
 interface CounterAdjustmentProps {
   player: JudgePlayerState;
-  counterType: 'poison' | 'energy';
-  onAdjust: (playerId: string, counterType: 'poison' | 'energy', amount: number) => void;
+  counterType: "poison" | "energy";
+  onAdjust: (
+    playerId: string,
+    counterType: "poison" | "energy",
+    amount: number,
+  ) => void;
   disabled?: boolean;
 }
 
-export function CounterAdjustment({ player, counterType, onAdjust, disabled }: CounterAdjustmentProps) {
-  const value = counterType === 'poison' ? player.poisonCounters : player.energyCounters;
-  const icon = counterType === 'poison' ? <Skull className="w-4 h-4 text-purple-500" /> : <Zap className="w-4 h-4 text-yellow-500" />;
+export function CounterAdjustment({
+  player,
+  counterType,
+  onAdjust,
+  disabled,
+}: CounterAdjustmentProps) {
+  const value =
+    counterType === "poison" ? player.poisonCounters : player.energyCounters;
+  const icon =
+    counterType === "poison" ? (
+      <Skull className="w-4 h-4 text-purple-500" />
+    ) : (
+      <Zap className="w-4 h-4 text-yellow-500" />
+    );
 
   return (
     <div className="flex items-center gap-2">
@@ -251,6 +293,7 @@ export function CounterAdjustment({ player, counterType, onAdjust, disabled }: C
         onClick={() => onAdjust(player.id, counterType, -1)}
         disabled={disabled || value <= 0}
         className="h-8 w-8"
+        aria-label={`Decrease ${counterType} counter`}
       >
         <Minus className="w-3 h-3" />
       </Button>
@@ -264,6 +307,7 @@ export function CounterAdjustment({ player, counterType, onAdjust, disabled }: C
         onClick={() => onAdjust(player.id, counterType, 1)}
         disabled={disabled}
         className="h-8 w-8"
+        aria-label={`Increase ${counterType} counter`}
       >
         <Plus className="w-3 h-3" />
       </Button>
@@ -277,7 +321,10 @@ interface GameStateInspectorProps {
   className?: string;
 }
 
-export function GameStateInspector({ gameState, className }: GameStateInspectorProps) {
+export function GameStateInspector({
+  gameState,
+  className,
+}: GameStateInspectorProps) {
   return (
     <Card className={className}>
       <CardHeader>
@@ -306,31 +353,43 @@ export function GameStateInspector({ gameState, className }: GameStateInspectorP
         {/* Active/Priority players */}
         <div className="flex gap-2">
           <Badge variant="outline" className="bg-green-500/10">
-            Active: {gameState.players.find(p => p.id === gameState.activePlayerId)?.name || 'N/A'}
+            Active:{" "}
+            {gameState.players.find((p) => p.id === gameState.activePlayerId)
+              ?.name || "N/A"}
           </Badge>
           <Badge variant="outline" className="bg-blue-500/10">
-            Priority: {gameState.players.find(p => p.id === gameState.priorityPlayerId)?.name || 'N/A'}
+            Priority:{" "}
+            {gameState.players.find((p) => p.id === gameState.priorityPlayerId)
+              ?.name || "N/A"}
           </Badge>
         </div>
 
         {/* Player states */}
         <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Player States:</Label>
+          <Label className="text-xs text-muted-foreground">
+            Player States:
+          </Label>
           {gameState.players.map((player) => (
             <div
               key={player.id}
               className={cn(
-                'flex items-center justify-between p-2 rounded text-sm',
-                player.isActive && 'bg-green-500/10 border border-green-500/30'
+                "flex items-center justify-between p-2 rounded text-sm",
+                player.isActive && "bg-green-500/10 border border-green-500/30",
               )}
             >
               <span className="font-medium">{player.name}</span>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1">
-                  <Heart className={cn(
-                    'w-3 h-3',
-                    player.life > 10 ? 'text-green-500' : player.life > 5 ? 'text-yellow-500' : 'text-red-500'
-                  )} />
+                  <Heart
+                    className={cn(
+                      "w-3 h-3",
+                      player.life > 10
+                        ? "text-green-500"
+                        : player.life > 5
+                          ? "text-yellow-500"
+                          : "text-red-500",
+                    )}
+                  />
                   <span>{player.life}</span>
                 </div>
                 {player.poisonCounters > 0 && (
@@ -358,17 +417,24 @@ interface IssuePenaltyProps {
   className?: string;
 }
 
-export function IssuePenalty({ players, currentRound, judgeName: _judgeName, onIssuePenalty, disabled, className }: IssuePenaltyProps) {
-  const [selectedPlayer, setSelectedPlayer] = useState('');
-  const [penaltyType, setPenaltyType] = useState<PenaltyType>('warning');
-  const [reason, setReason] = useState('');
+export function IssuePenalty({
+  players,
+  currentRound,
+  judgeName: _judgeName,
+  onIssuePenalty,
+  disabled,
+  className,
+}: IssuePenaltyProps) {
+  const [selectedPlayer, setSelectedPlayer] = useState("");
+  const [penaltyType, setPenaltyType] = useState<PenaltyType>("warning");
+  const [reason, setReason] = useState("");
 
   const handleSubmit = () => {
     if (selectedPlayer && reason) {
       onIssuePenalty(selectedPlayer, penaltyType, reason);
-      setSelectedPlayer('');
-      setPenaltyType('warning');
-      setReason('');
+      setSelectedPlayer("");
+      setPenaltyType("warning");
+      setReason("");
     }
   };
 
@@ -401,10 +467,17 @@ export function IssuePenalty({ players, currentRound, judgeName: _judgeName, onI
         <div className="space-y-2">
           <Label>Penalty Type</Label>
           <div className="flex flex-wrap gap-2">
-            {(['warning', 'game-loss', 'match-loss', 'disqualification'] as PenaltyType[]).map((type) => (
+            {(
+              [
+                "warning",
+                "game-loss",
+                "match-loss",
+                "disqualification",
+              ] as PenaltyType[]
+            ).map((type) => (
               <Button
                 key={type}
-                variant={penaltyType === type ? 'default' : 'outline'}
+                variant={penaltyType === type ? "default" : "outline"}
                 size="sm"
                 onClick={() => setPenaltyType(type)}
                 disabled={disabled}
@@ -445,7 +518,11 @@ interface JudgePanelProps {
   warnings: Warning[];
   onConfigChange: (config: JudgeToolsConfig) => void;
   onLifeAdjust: (playerId: string, amount: number) => void;
-  onCounterAdjust: (playerId: string, counterType: 'poison' | 'energy', amount: number) => void;
+  onCounterAdjust: (
+    playerId: string,
+    counterType: "poison" | "energy",
+    amount: number,
+  ) => void;
   onUndoAction: () => void;
   onPauseGame: () => void;
   onResumeGame: () => void;
@@ -468,7 +545,7 @@ export function JudgePanel({
   onIssuePenalty,
   onDismissWarning,
   isGamePaused = false,
-  className
+  className,
 }: JudgePanelProps) {
   if (!config.enabled) {
     return (
@@ -494,10 +571,18 @@ export function JudgePanel({
   return (
     <Tabs defaultValue="control" className={className}>
       <TabsList className="w-full">
-        <TabsTrigger value="control" className="flex-1">Control</TabsTrigger>
-        <TabsTrigger value="inspect" className="flex-1">Inspect</TabsTrigger>
-        <TabsTrigger value="penalties" className="flex-1">Penalties</TabsTrigger>
-        <TabsTrigger value="settings" className="flex-1">Settings</TabsTrigger>
+        <TabsTrigger value="control" className="flex-1">
+          Control
+        </TabsTrigger>
+        <TabsTrigger value="inspect" className="flex-1">
+          Inspect
+        </TabsTrigger>
+        <TabsTrigger value="penalties" className="flex-1">
+          Penalties
+        </TabsTrigger>
+        <TabsTrigger value="settings" className="flex-1">
+          Settings
+        </TabsTrigger>
       </TabsList>
 
       {/* Control Tab */}
@@ -509,7 +594,9 @@ export function JudgePanel({
                 <Users className="w-5 h-5" />
                 Player Controls
               </span>
-              <Badge variant="outline">{gameState.players.length} Players</Badge>
+              <Badge variant="outline">
+                {gameState.players.length} Players
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -517,9 +604,11 @@ export function JudgePanel({
               <div key={player.id} className="space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{player.name}</span>
-                  {player.isActive && <Badge className="bg-green-500">Active</Badge>}
+                  {player.isActive && (
+                    <Badge className="bg-green-500">Active</Badge>
+                  )}
                 </div>
-                
+
                 {config.canModifyLife && (
                   <LifeAdjustment
                     player={player}
@@ -527,7 +616,7 @@ export function JudgePanel({
                     disabled={!config.enabled}
                   />
                 )}
-                
+
                 {config.canModifyCounters && (
                   <div className="flex items-center gap-4">
                     <CounterAdjustment
@@ -559,7 +648,7 @@ export function JudgePanel({
           )}
           {config.canPauseGame && (
             <Button
-              variant={isGamePaused ? 'default' : 'outline'}
+              variant={isGamePaused ? "default" : "outline"}
               onClick={isGamePaused ? onResumeGame : onPauseGame}
               className="flex-1"
             >
@@ -588,18 +677,15 @@ export function JudgePanel({
       <TabsContent value="penalties" className="space-y-4">
         {config.canIssuePenalties && (
           <IssuePenalty
-            players={gameState.players.map(p => ({ id: p.id, name: p.name }))}
+            players={gameState.players.map((p) => ({ id: p.id, name: p.name }))}
             currentRound={gameState.turn}
             judgeName="Judge"
             onIssuePenalty={onIssuePenalty}
             disabled={!config.enabled}
           />
         )}
-        
-        <WarningLog
-          warnings={warnings}
-          onDismiss={onDismissWarning}
-        />
+
+        <WarningLog warnings={warnings} onDismiss={onDismissWarning} />
       </TabsContent>
 
       {/* Settings Tab */}
@@ -616,21 +702,29 @@ export function JudgePanel({
               <Label>Enable Judge Tools</Label>
               <Switch
                 checked={config.enabled}
-                onCheckedChange={(checked) => onConfigChange({ ...config, enabled: checked })}
+                onCheckedChange={(checked) =>
+                  onConfigChange({ ...config, enabled: checked })
+                }
               />
             </div>
 
             <div className="space-y-2">
               <Label>Judge Role</Label>
               <div className="flex gap-2">
-                {(['spectator-privileged', 'judge', 'head-judge'] as JudgeRole[]).map((role) => (
+                {(
+                  ["spectator-privileged", "judge", "head-judge"] as JudgeRole[]
+                ).map((role) => (
                   <Button
                     key={role}
-                    variant={config.role === role ? 'default' : 'outline'}
+                    variant={config.role === role ? "default" : "outline"}
                     size="sm"
                     onClick={() => onConfigChange({ ...config, role })}
                   >
-                    {role === 'spectator-privileged' ? 'Spectator' : role === 'judge' ? 'Judge' : 'Head Judge'}
+                    {role === "spectator-privileged"
+                      ? "Spectator"
+                      : role === "judge"
+                        ? "Judge"
+                        : "Head Judge"}
                   </Button>
                 ))}
               </div>
@@ -643,35 +737,45 @@ export function JudgePanel({
                   <span className="text-sm">Modify Life Totals</span>
                   <Switch
                     checked={config.canModifyLife}
-                    onCheckedChange={(checked) => onConfigChange({ ...config, canModifyLife: checked })}
+                    onCheckedChange={(checked) =>
+                      onConfigChange({ ...config, canModifyLife: checked })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Modify Counters</span>
                   <Switch
                     checked={config.canModifyCounters}
-                    onCheckedChange={(checked) => onConfigChange({ ...config, canModifyCounters: checked })}
+                    onCheckedChange={(checked) =>
+                      onConfigChange({ ...config, canModifyCounters: checked })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Undo Actions</span>
                   <Switch
                     checked={config.canUndoActions}
-                    onCheckedChange={(checked) => onConfigChange({ ...config, canUndoActions: checked })}
+                    onCheckedChange={(checked) =>
+                      onConfigChange({ ...config, canUndoActions: checked })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Issue Penalties</span>
                   <Switch
                     checked={config.canIssuePenalties}
-                    onCheckedChange={(checked) => onConfigChange({ ...config, canIssuePenalties: checked })}
+                    onCheckedChange={(checked) =>
+                      onConfigChange({ ...config, canIssuePenalties: checked })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm">Pause Game</span>
                   <Switch
                     checked={config.canPauseGame}
-                    onCheckedChange={(checked) => onConfigChange({ ...config, canPauseGame: checked })}
+                    onCheckedChange={(checked) =>
+                      onConfigChange({ ...config, canPauseGame: checked })
+                    }
                   />
                 </div>
               </div>
@@ -698,7 +802,12 @@ interface UseJudgeToolsReturn {
   config: JudgeToolsConfig;
   warnings: Warning[];
   setConfig: (config: JudgeToolsConfig) => void;
-  addWarning: (playerId: string, type: PenaltyType, reason: string, round: number) => void;
+  addWarning: (
+    playerId: string,
+    type: PenaltyType,
+    reason: string,
+    round: number,
+  ) => void;
   dismissWarning: (warningId: string) => void;
   clearWarnings: () => void;
 }
@@ -707,19 +816,22 @@ export function useJudgeTools(): UseJudgeToolsReturn {
   const [config, setConfig] = useState<JudgeToolsConfig>(DEFAULT_JUDGE_CONFIG);
   const [warnings, setWarnings] = useState<Warning[]>([]);
 
-  const addWarning = useCallback((playerId: string, type: PenaltyType, reason: string, round: number) => {
-    const warning: Warning = {
-      id: `warning-${Date.now()}`,
-      playerId,
-      playerName: `Player ${playerId}`, // Would be resolved from game state
-      type,
-      reason,
-      round,
-      timestamp: Date.now(),
-      issuedBy: 'Judge',
-    };
-    setWarnings((prev) => [...prev, warning]);
-  }, []);
+  const addWarning = useCallback(
+    (playerId: string, type: PenaltyType, reason: string, round: number) => {
+      const warning: Warning = {
+        id: `warning-${Date.now()}`,
+        playerId,
+        playerName: `Player ${playerId}`, // Would be resolved from game state
+        type,
+        reason,
+        round,
+        timestamp: Date.now(),
+        issuedBy: "Judge",
+      };
+      setWarnings((prev) => [...prev, warning]);
+    },
+    [],
+  );
 
   const dismissWarning = useCallback((warningId: string) => {
     setWarnings((prev) => prev.filter((w) => w.id !== warningId));

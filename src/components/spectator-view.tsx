@@ -1,13 +1,20 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Eye, EyeOff, Users, MessageCircle, Settings, Crown } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { Spectator, SpectatorPermissions } from '@/lib/spectator';
+import { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  Eye,
+  EyeOff,
+  Users,
+  MessageCircle,
+  Settings,
+  Crown,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Spectator, SpectatorPermissions } from "@/lib/spectator";
 
 interface SpectatorViewProps {
   spectators: Spectator[];
@@ -28,13 +35,14 @@ export function SpectatorView({
   onOpenSettings,
   className,
 }: SpectatorViewProps) {
-  const [visibleSpectators, setVisibleSpectators] = useState<Spectator[]>(spectators);
+  const [visibleSpectators, setVisibleSpectators] =
+    useState<Spectator[]>(spectators);
 
   useEffect(() => {
     // Filter hidden spectators based on permissions
     if (permissions.isHidden) {
       setVisibleSpectators(
-        spectators.filter((s) => !s.isHidden || s.id === currentSpectatorId)
+        spectators.filter((s) => !s.isHidden || s.id === currentSpectatorId),
       );
     } else {
       setVisibleSpectators(spectators);
@@ -54,18 +62,35 @@ export function SpectatorView({
           </CardTitle>
           <div className="flex items-center gap-1">
             {permissions.canChat && (
-              <Button variant="ghost" size="icon" onClick={onOpenChat}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onOpenChat}
+                aria-label="Open chat"
+              >
                 <MessageCircle className="w-4 h-4" />
               </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={onToggleVisibility}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onToggleVisibility}
+              aria-label={
+                permissions.isHidden ? "Show spectators" : "Hide spectators"
+              }
+            >
               {permissions.isHidden ? (
                 <EyeOff className="w-4 h-4" />
               ) : (
                 <Eye className="w-4 h-4" />
               )}
             </Button>
-            <Button variant="ghost" size="icon" onClick={onOpenSettings}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onOpenSettings}
+              aria-label="Spectator settings"
+            >
               <Settings className="w-4 h-4" />
             </Button>
           </div>
@@ -83,8 +108,8 @@ export function SpectatorView({
               <div
                 key={spectator.id}
                 className={cn(
-                  'flex items-center justify-between p-2 rounded-md',
-                  spectator.id === currentSpectatorId && 'bg-primary/10'
+                  "flex items-center justify-between p-2 rounded-md",
+                  spectator.id === currentSpectatorId && "bg-primary/10",
                 )}
               >
                 <div className="flex items-center gap-2">
@@ -132,8 +157,8 @@ export function SpectatorBanner({
   return (
     <div
       className={cn(
-        'flex items-center justify-between px-4 py-2 bg-muted/50 border-b',
-        className
+        "flex items-center justify-between px-4 py-2 bg-muted/50 border-b",
+        className,
       )}
     >
       <div className="flex items-center gap-4">
@@ -142,14 +167,15 @@ export function SpectatorBanner({
           Spectating
         </Badge>
         <span className="text-sm text-muted-foreground">
-          {playerCount} player{playerCount !== 1 ? 's' : ''} in game
+          {playerCount} player{playerCount !== 1 ? "s" : ""} in game
         </span>
         {spectatorCount > 0 && (
           <>
             <Separator orientation="vertical" className="h-4" />
             <span className="text-sm text-muted-foreground">
               <Eye className="w-3 h-3 inline mr-1" />
-              {spectatorCount} spectator{spectatorCount !== 1 ? 's' : ''} watching
+              {spectatorCount} spectator{spectatorCount !== 1 ? "s" : ""}{" "}
+              watching
             </span>
           </>
         )}
@@ -162,8 +188,14 @@ export function SpectatorBanner({
 }
 
 // Join as spectator form
-export function JoinSpectatorForm({ onJoin, className }: { onJoin: (name: string, isHidden: boolean) => void; className?: string }) {
-  const [name, setName] = useState('');
+export function JoinSpectatorForm({
+  onJoin,
+  className,
+}: {
+  onJoin: (name: string, isHidden: boolean) => void;
+  className?: string;
+}) {
+  const [name, setName] = useState("");
   const [isHidden, setIsHidden] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -174,7 +206,7 @@ export function JoinSpectatorForm({ onJoin, className }: { onJoin: (name: string
   };
 
   return (
-    <form onSubmit={handleSubmit} className={cn('space-y-4', className)}>
+    <form onSubmit={handleSubmit} className={cn("space-y-4", className)}>
       <div className="space-y-2">
         <label htmlFor="spectator-name" className="text-sm font-medium">
           Spectator Name
@@ -198,7 +230,10 @@ export function JoinSpectatorForm({ onJoin, className }: { onJoin: (name: string
           onChange={(e) => setIsHidden(e.target.checked)}
           className="rounded"
         />
-        <label htmlFor="spectator-hidden" className="text-sm text-muted-foreground">
+        <label
+          htmlFor="spectator-hidden"
+          className="text-sm text-muted-foreground"
+        >
           Join as hidden spectator
         </label>
       </div>
