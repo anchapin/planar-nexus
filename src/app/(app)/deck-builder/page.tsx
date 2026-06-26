@@ -1,10 +1,21 @@
 "use client";
 
-import { useState, useTransition, useEffect, useRef, useCallback, Suspense, useMemo } from "react";
+import {
+  useState,
+  useTransition,
+  useEffect,
+  useRef,
+  useCallback,
+  Suspense,
+  useMemo,
+} from "react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
-import { importDecklistClient, type ImportDeckResult } from "@/lib/client-card-operations";
+import {
+  importDecklistClient,
+  type ImportDeckResult,
+} from "@/lib/client-card-operations";
 import { type DecklistFormat } from "@/lib/decklist-utils";
 import {
   formatRules,
@@ -16,7 +27,10 @@ import {
   type Format,
   type BannedCardSuggestion,
 } from "@/lib/game-rules";
-import { useFormatLegalityCheck, checkCardLegality } from "@/hooks/use-format-legality-check";
+import {
+  useFormatLegalityCheck,
+  checkCardLegality,
+} from "@/hooks/use-format-legality-check";
 import { CardSearch } from "./_components/card-search";
 import { CardGridSkeleton } from "./_components/card-grid-skeleton";
 import { DeckBuilderSkeleton } from "./_components/deck-builder-skeleton";
@@ -48,7 +62,8 @@ import { ComponentErrorBoundary } from "@/components/error-boundaries";
 // into a separate chunk and only loaded when the deck-builder renders.
 // (Issue #1022)
 const AIDeckAssistant = dynamic(
-  () => import("./_components/ai-deck-assistant").then((m) => m.AIDeckAssistant),
+  () =>
+    import("./_components/ai-deck-assistant").then((m) => m.AIDeckAssistant),
   {
     ssr: false,
     loading: () => null,
@@ -79,7 +94,10 @@ export default function DeckBuilderPage() {
   // When true, the card search hides any card that is not legal in the
   // active format. Off by default so users can still browse the full pool.
   const [formatFilter, setFormatFilter] = useState(false);
-  const searchInputRef = useRef<{ focus: () => void; search: (q: string) => void }>(null);
+  const searchInputRef = useRef<{
+    focus: () => void;
+    search: (q: string) => void;
+  }>(null);
 
   const { toast } = useToast();
   const [isImporting, startImportTransition] = useTransition();
@@ -88,7 +106,8 @@ export default function DeckBuilderPage() {
   // identity drives the deck-list violation highlighting and the search
   // "Match Commander Color Identity" filter. Color identity enforcement only
   // applies to commander-family formats.
-  const isCommanderFormat = format === "commander" || format === "legendary-commander";
+  const isCommanderFormat =
+    format === "commander" || format === "legendary-commander";
   const commander = useMemo(
     () => (isCommanderFormat ? getCommanderFromDeck(deck) : undefined),
     [deck, isCommanderFormat],
@@ -319,13 +338,16 @@ export default function DeckBuilderPage() {
   // One-click action for a suggested alternative: pre-fill the card search
   // box so the user can review the replacement and add it on confirm. This
   // satisfies the "add to deck or search for it" acceptance criterion.
-  const handleSelectAlternative = useCallback((cardName: string) => {
-    searchInputRef.current?.search(cardName);
-    toast({
-      title: "Searching for alternative",
-      description: `Showing results for "${cardName}".`,
-    });
-  }, [toast]);
+  const handleSelectAlternative = useCallback(
+    (cardName: string) => {
+      searchInputRef.current?.search(cardName);
+      toast({
+        title: "Searching for alternative",
+        description: `Showing results for "${cardName}".`,
+      });
+    },
+    [toast],
+  );
 
   const importDeck = (
     decklist: string,
@@ -385,7 +407,8 @@ export default function DeckBuilderPage() {
           toast({
             variant: "destructive",
             title: "Import Error",
-            description: "An unexpected error occurred while importing the deck.",
+            description:
+              "An unexpected error occurred while importing the deck.",
           });
           resolve(null);
         }
@@ -538,6 +561,11 @@ export default function DeckBuilderPage() {
             onSave={saveDeck}
             isDeckSaved={isDeckSaved}
             isImporting={isImporting}
+            deckName={deckName}
+            deckCards={deck.map((card) => ({
+              name: card.name,
+              quantity: card.count,
+            }))}
           />
         </div>
         <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
