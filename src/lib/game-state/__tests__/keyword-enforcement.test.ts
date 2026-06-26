@@ -65,6 +65,8 @@ import {
   hasProtectionFrom,
   dealsFirstStrikeDamage,
   hasDoubleStrike,
+  hasLandwalk,
+  getLandwalkTypes,
 } from "../evergreen-keywords";
 import { Phase } from "../types";
 import type {
@@ -779,6 +781,367 @@ describe("Keyword Enforcement — Combat", () => {
         twoFlyersResult.errors &&
           twoFlyersResult.errors.some((e) => /menace/i.test(e)),
       ).toBeFalsy();
+    });
+  });
+
+  // ---- Landwalk (CR 702.14) ----
+  // Issue #971: A creature with a basic-landwalk variant (swampwalk,
+  // islandwalk, plainswalk, mountainwalk, forestwalk) can't be blocked when
+  // the defending player controls a land with the matching basic land subtype.
+  describe("Landwalk", () => {
+    /**
+     * Create a mock basic land card with the given subtype.
+     */
+    function createMockBasicLand(landType: string): ScryfallCard {
+      const name = landType.charAt(0).toUpperCase() + landType.slice(1);
+      return {
+        id: `mock-${landType}-${name.toLowerCase()}`,
+        name,
+        type_line: `Basic Land — ${name}`,
+        power: undefined as unknown as string,
+        toughness: undefined as unknown as string,
+        keywords: [],
+        oracle_text: `({T}: Add ${name[0].toUpperCase()}.)`,
+        mana_cost: "",
+        cmc: 0,
+        colors: [],
+        color_identity: [],
+        legalities: { standard: "legal", commander: "legal" },
+        card_faces: undefined,
+        layout: "normal",
+      } as ScryfallCard;
+    }
+
+    /**
+     * Place a basic land of the given type on a player's battlefield.
+     */
+    function placeBasicLand(
+      state: GameState,
+      playerId: PlayerId,
+      landType: string,
+    ): CardInstanceId {
+      const data = createMockBasicLand(landType);
+      const inst = createCardInstance(data, playerId, playerId);
+      state.cards.set(inst.id, inst);
+      const bf = state.zones.get(`${playerId}-battlefield`)!;
+      state.zones.set(`${playerId}-battlefield`, {
+        ...bf,
+        cardIds: [...bf.cardIds, inst.id],
+      });
+      return inst.id;
+    }
+
+    it("getLandwalkTypes detects the five basic landwalk variants", () => {
+      const { state } = setupGameWithCreatures(
+        [
+          { name: "Swamp Walker", power: 2, toughness: 2, keywords: ["Swampwalk"] },
+        ],
+        [],
+      );
+      const swampWalker = state.cards.get(
+        state.zones.get(Array.from(state.players.keys())[0] + "-battlefield")!
+          .cardIds[0],
+      )!;
+      expect(getLandwalkTypes(swampWalker)).toEqual(["swamp"]);
+      expect(hasLandwalk(swampWalker)).toBe(true);
+
+      // Verify detection via oracle text for the other four variants.
+      const makeOracle = (text: string) =>
+        createMockCreatureWithOracle("X", 1, 1, text);
+      expect(
+        getLandwalkTypes({ cardData: makeOracle("Islandwalk") } as CardInstance),
+      ).toEqual(["island"]);
+      expect(
+        getLandwalkTypes({ cardData: makeOracle("Plainswalk") } as CardInstance),
+      ).toEqual(["plains"]);
+      expect(
+        getLandwalkTypes(
+          { cardData: makeOracle("Mountainwalk") } as CardInstance,
+        ),
+      ).toEqual(["mountain"]);
+      expect(
+        getLandwalkTypes({ cardData: makeOracle("Forestwalk") } as CardInstance),
+      ).toEqual(["forest"]);
+    });
+
+    it("a creature without landwalk returns an empty list and hasLandwalk=false", () => {
+      const { state } = setupGameWithCreatures(
+        [{ name: "Grizzly Bears", power: 2, toughness: 2 }],
+        [],
+      );
+      const bear = state.cards.get(
+        state.zones.get(Array.from(state.players.keys())[0] + "-battlefield")!
+          .cardIds[0],
+      )!;
+      expect(getLandwalkTypes(bear)).toEqual([]);
+      expect(hasLandwalk(bear)).toBe(false);
+    });
+
+    it("rejects a blocker when the defender controls a matching basic land (swampwalk + Swamp)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Bog Wraith",
+            power: 3,
+            toughness: 3,
+            keywords: ["Swampwalk"],
+          },
+        ],
+        [{ name: "Solo Blocker", power: 2, toughness: 2 }],
+      );
+      // Bob (the defender) controls a Swamp → swampwalk applies.
+      placeBasicLand(state, bobId, "swamp");
+
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const result = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+
+      // Block rejected: attacker remains unblocked, landwalk error surfaced.
+      expect(result.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(result.errors).toBeDefined();
+      expect(result.errors!.some((e) => /swampwalk|landwalk/i.test(e))).toBe(
+        true,
+      );
+    });
+
+    it("accepts a blocker when the defender controls NO matching basic land (swampwalk, no Swamp)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Bog Wraith",
+            power: 3,
+            toughness: 3,
+            keywords: ["Swampwalk"],
+          },
+        ],
+        [{ name: "Solo Blocker", power: 2, toughness: 2 }],
+      );
+      // Bob controls a Plains (NOT a Swamp) → swampwalk does not apply.
+      placeBasicLand(state, bobId, "plains");
+
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const result = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+
+      // Block legal: landwalk didn't trigger because no Swamp on defender's side.
+      expect(result.state.combat.blockers.get(attackerId)).toHaveLength(1);
+      expect(
+        result.errors && result.errors.some((e) => /landwalk/i.test(e)),
+      ).toBeFalsy();
+    });
+
+    it("works for islandwalk when the defender controls an Island", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Tidal Warrior",
+            power: 2,
+            toughness: 2,
+            keywords: ["Islandwalk"],
+          },
+        ],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+      placeBasicLand(state, bobId, "island");
+
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const result = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+
+      expect(result.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(
+        result.errors && result.errors!.some((e) => /islandwalk|landwalk/i.test(e)),
+      ).toBe(true);
+    });
+
+    it("a non-landwalk attacker is unaffected even when the defender controls a Swamp", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Grizzly Bears", power: 2, toughness: 2 }],
+        [{ name: "Lone Blocker", power: 2, toughness: 2 }],
+      );
+      // Defender controls a Swamp, but attacker has no landwalk → block legal.
+      placeBasicLand(state, bobId, "swamp");
+
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const result = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+
+      expect(result.state.combat.blockers.get(attackerId)).toHaveLength(1);
+      expect(
+        result.errors && result.errors.some((e) => /landwalk/i.test(e)),
+      ).toBeFalsy();
+    });
+
+    it("composes landwalk + flying: unblockable when defender has a Swamp regardless of blocker flying", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Bog Wraith of the Skies",
+            power: 3,
+            toughness: 3,
+            keywords: ["Swampwalk", "Flying"],
+          },
+        ],
+        [{ name: "Flying Blocker", power: 2, toughness: 2, keywords: ["Flying"] }],
+      );
+      // Defender has both a Swamp (triggers swampwalk) — so even a flyer can't block.
+      placeBasicLand(state, bobId, "swamp");
+
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const result = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+
+      // Swampwalk takes priority: even a valid flyer cannot block.
+      expect(result.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(
+        result.errors && result.errors.some((e) => /swampwalk|landwalk/i.test(e)),
+      ).toBe(true);
+    });
+
+    it("composes landwalk + flying: blocker without flying/reach can't block even when no matching land", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Bog Wraith of the Skies",
+            power: 3,
+            toughness: 3,
+            keywords: ["Swampwalk", "Flying"],
+          },
+        ],
+        [{ name: "Ground Blocker", power: 2, toughness: 2 }],
+      );
+      // No Swamp on defender's side → swampwalk doesn't apply, but flying still does.
+      placeBasicLand(state, bobId, "plains");
+
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      const stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const result = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+
+      // Flying restriction still rejects the ground blocker.
+      expect(result.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(
+        result.errors && result.errors.some((e) => /flying/i.test(e)),
+      ).toBe(true);
+    });
+
+    it("detects multiple landwalk types on a single attacker and applies if any match", () => {
+      // A creature printed with "Swampwalk and Islandwalk" (or similar composition).
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Tidal Bog Stalker",
+            power: 2,
+            toughness: 2,
+            oracleText: "Swampwalk, Islandwalk",
+          },
+        ],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+
+      const attacker = state.cards.get(
+        state.zones.get(`${aliceId}-battlefield`)!.cardIds[0],
+      )!;
+      expect(getLandwalkTypes(attacker).sort()).toEqual([
+        "island",
+        "swamp",
+      ]);
+
+      // Defender controls only a Mountain → neither landwalk applies → block legal.
+      placeBasicLand(state, bobId, "mountain");
+      const attackerId = attacker.id;
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      let stateWithAttackers = attackResult.state;
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+
+      const legalResult = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+      expect(legalResult.state.combat.blockers.get(attackerId)).toHaveLength(1);
+
+      // Now give the defender an Island → islandwalk triggers → block rejected.
+      placeBasicLand(stateWithAttackers, bobId, "island");
+      stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const rejectedResult = declareBlockers(
+        stateWithAttackers,
+        new Map<CardInstanceId, CardInstanceId[]>([[attackerId, [blockerId]]]),
+      );
+      expect(rejectedResult.state.combat.blockers.has(attackerId)).toBe(false);
+      expect(
+        rejectedResult.errors &&
+          rejectedResult.errors.some((e) => /islandwalk|landwalk/i.test(e)),
+      ).toBe(true);
     });
   });
 
