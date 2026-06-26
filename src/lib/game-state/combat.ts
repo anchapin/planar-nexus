@@ -6,7 +6,7 @@
  */
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
-import { Phase } from "./types";
+import { Phase, isOnBattlefield } from "./types";
 import { isCreature, getPower, getToughness } from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
@@ -458,13 +458,23 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
   // CR 702.4b: Double strike creatures deal damage in BOTH steps
   // In first strike step: creatures with first strike OR double strike deal damage
   // In regular damage step: surviving creatures with double strike OR regular creatures deal damage
+  // CR 510.1c: A creature that has left the battlefield cannot deal combat damage.
+  // Issue #969: creatures that died in the first-strike step must NOT deal damage
+  // again in the regular step, even if they have double strike.
   const attackersDealingDamage = state.combat.attackers.filter((attacker) => {
+    // A creature no longer on the battlefield cannot deal combat damage.
+    // This gates the regular step against creatures killed in the first-strike
+    // step, and also guards against any creature removed mid-combat.
+    if (!isOnBattlefield(state, attacker.cardId)) {
+      return false;
+    }
     if (isFirstStrikeStep) {
       // First strike step: only first strike or double strike
       return attacker.hasFirstStrike || attacker.hasDoubleStrike;
     } else {
       // Regular damage step: only double strike OR no first strike
-      // Exclude creatures that died in first strike step (they won't be on battlefield)
+      // First-strike-only creatures are excluded (they already dealt damage).
+      // Double-strike creatures that survived the first-strike step deal again.
       return !attacker.hasFirstStrike || attacker.hasDoubleStrike;
     }
   });
@@ -771,7 +781,16 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
       // CR 702.4b: Blockers with first strike deal damage in first strike step
       // CR 702.4b: Blockers with double strike deal damage in BOTH steps
       // In regular step: Only surviving blockers deal damage
+      // Issue #969: blockers that died in the first-strike step must NOT deal
+      // damage in the regular step, even if they have double strike.
       for (const blocker of sortedBlockers) {
+        // A blocker no longer on the battlefield cannot deal combat damage.
+        // This gates the regular step against blockers killed in the
+        // first-strike step (CR 510.1c).
+        if (!isOnBattlefield(updatedState, blocker.cardId)) {
+          continue;
+        }
+
         const blockerCard = updatedState.cards.get(blocker.cardId);
         if (!blockerCard) continue;
 

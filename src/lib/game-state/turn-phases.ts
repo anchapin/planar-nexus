@@ -2,7 +2,7 @@
  * Turn phase and step management
  */
 
-import type { PlayerId, Turn } from "./types";
+import type { PlayerId, Turn, GameState } from "./types";
 import { Phase } from "./types";
 
 /**
@@ -214,6 +214,38 @@ export function isCombatDamageStep(phase: Phase): boolean {
     phase === Phase.COMBAT_DAMAGE_FIRST_STRIKE ||
     phase === Phase.COMBAT_DAMAGE
   );
+}
+
+/**
+ * Determine whether a first-strike combat damage step should occur.
+ *
+ * CR 510.5: The first-strike step is an additional combat damage step that
+ * only happens if at least one attacking or blocking creature has first
+ * strike (CR 702.7) or double strike (CR 702.4). When no creature in combat
+ * has either ability, the first-strike step is skipped and combat proceeds
+ * directly from Declare Blockers to the (single) Combat Damage step.
+ *
+ * Issue #969: gate the first-strike combat damage step so it is only entered
+ * when it would actually have participants.
+ *
+ * @param state the game state to inspect (must have combat attackers/blockers populated)
+ * @returns true if at least one attacker or blocker deals first-strike damage
+ */
+export function shouldHaveFirstStrikeStep(state: GameState): boolean {
+  const { attackers, blockers } = state.combat;
+  for (const attacker of attackers) {
+    if (attacker.hasFirstStrike || attacker.hasDoubleStrike) {
+      return true;
+    }
+  }
+  for (const blockerList of blockers.values()) {
+    for (const blocker of blockerList) {
+      if (blocker.hasFirstStrike || blocker.hasDoubleStrike) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

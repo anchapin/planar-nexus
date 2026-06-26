@@ -10,6 +10,7 @@ import type {
   Zone,
   Player,
 } from "./types";
+import { Phase } from "./types";
 import type { ScryfallCard } from "@/app/actions";
 import {
   createCardInstance,
@@ -23,6 +24,7 @@ import {
   advancePhase,
   startNextTurn,
   playerDrawsCard,
+  shouldHaveFirstStrikeStep,
 } from "./turn-phases";
 import { emptyAllManaPools } from "./mana";
 import {
@@ -503,7 +505,21 @@ export function processUntapStep(state: GameState): UntapStepResult {
  * Advance to the next phase
  */
 function advanceToNextPhase(state: GameState): GameState {
-  const nextPhase = advancePhase(state.turn);
+  let nextPhase = advancePhase(state.turn);
+
+  // CR 510.5 (First Strike step skipping): if we are about to enter the
+  // first-strike combat damage step but no attacker or blocker has first
+  // strike or double strike, skip it and advance directly to the regular
+  // combat damage step. Issue #969.
+  if (
+    nextPhase.currentPhase === Phase.COMBAT_DAMAGE_FIRST_STRIKE &&
+    !shouldHaveFirstStrikeStep(state)
+  ) {
+    const skipped = advancePhase(nextPhase);
+    if (skipped.currentPhase !== nextPhase.currentPhase) {
+      nextPhase = skipped;
+    }
+  }
 
   // Reset priority passes
   let updatedPlayers = new Map(state.players);
