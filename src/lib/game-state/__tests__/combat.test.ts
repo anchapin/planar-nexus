@@ -30,6 +30,7 @@ import {
 import { Phase, CardInstanceId } from "../types";
 import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
 import { checkStateBasedActions } from "../state-based-actions";
+import { shouldHaveFirstStrikeStep } from "../turn-phases";
 import type { ScryfallCard } from "@/app/actions";
 
 // Helper function to create a mock creature card
@@ -2388,8 +2389,6 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     });
 
     it("shouldHaveFirstStrikeStep returns false when no creature has first/double strike, true otherwise (#969)", () => {
-      const { shouldHaveFirstStrikeStep } = require("../turn-phases");
-
       // No first/double strike anywhere.
       const { state, aliceId, bobId } = setupGameWithCreatures(
         [{ name: "Attacker", power: 2, toughness: 2 }],
