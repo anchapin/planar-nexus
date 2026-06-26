@@ -53,6 +53,15 @@ export interface P2PGameConnectionEvents {
   onError: (error: Error) => void;
   onPlayerJoined: (playerId: string, playerName: string) => void;
   onPlayerLeft: (playerId: string) => void;
+  /**
+   * Emitted when the data channel / peer connection recovers AFTER a prior
+   * disconnect (e.g. following an ICE-restart reconnect, issue #1086). This
+   * is the canonical signal to reconcile authoritative game state: the host
+   * pushes a full `game-state-sync` snapshot and the recovering peer adopts
+   * it (re-basing its anti-replay counter via the snapshot's `lastSeq`).
+   * Distinct from the initial connect. Optional. Issue #1086.
+   */
+  onReconnect?: () => void;
 }
 
 /**
@@ -79,6 +88,12 @@ export type { SignalingRole };
  * engine (issue #1089). It is informational — receiving one does NOT fail the
  * connection (unlike a transport-level failure routed through the private
  * `handleError`).
+ *
+ * `request-state-sync` lets a peer that notices drift (or that just
+ * recovered after an ICE-restart reconnect, issue #1086) PULL a fresh
+ * authoritative full `game-state-sync` snapshot from the host on demand. The
+ * host responds via the {@link P2PGameConnectionOptions.onStateSyncRequest}
+ * callback.
  */
 export type GameMessageType =
   | "game-state-sync"
@@ -88,7 +103,8 @@ export type GameMessageType =
   | "player-left"
   | "ping"
   | "pong"
-  | "error";
+  | "error"
+  | "request-state-sync";
 
 /**
  * Base game message.
@@ -127,6 +143,7 @@ const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "ping",
   "pong",
   "error",
+  "request-state-sync",
 ]);
 
 /**
@@ -234,6 +251,17 @@ export interface P2PGameConnectionOptions {
    * Issue #1089.
    */
   validatePeerAction?: PeerActionValidator;
+  /**
+   * Host-side callback invoked when a peer sends a `request-state-sync`
+   * message (issue #1086) — typically after that peer recovered from an
+   * ICE-restart reconnect and wants to pull a fresh authoritative snapshot.
+   * The host returns its authoritative {@link GameState}; the connection
+   * serializes and pushes it as a full `game-state-sync` (`isFullSync: true`,
+   * carrying `lastSeq`). Returning `null`/`undefined` is a no-op (e.g. the
+   * host has no state yet). The transport never owns game state — it
+   * delegates to this callback.
+   */
+  onStateSyncRequest?: () => GameState | null | undefined;
 }
 
 /**
@@ -289,6 +317,24 @@ export class P2PGameConnection {
    * by the host; validates against the host's OWN state.
    */
   private readonly validatePeerAction: PeerActionValidator | null;
+  /**
+   * Host callback returning the authoritative state to push when a peer
+   * requests a state sync (issue #1086). Null on non-hosts / when unwired.
+   */
+  private readonly onStateSyncRequest: (() => GameState | null | undefined) | null;
+  /**
+   * True once the connection has reached "connected" at least once. Used to
+   * distinguish a RECONNECT (recovery after a drop) from the initial connect
+   * so {@link P2PGameConnectionEvents.onReconnect} fires only on recovery.
+   * Issue #1086.
+   */
+  private hadConnectedOnce = false;
+  /**
+   * True while the connection is in a disconnected/reconnecting state
+   * following a prior connect. The next transition back to "connected" fires
+   * {@link P2PGameConnectionEvents.onReconnect}. Issue #1086.
+   */
+  private wasDisconnected = false;
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
@@ -303,6 +349,9 @@ export class P2PGameConnection {
     // default so single-player/AI paths are unaffected.
     this.validatePeerActions = options.validatePeerActions === true;
     this.validatePeerAction = options.validatePeerAction ?? null;
+    // Host-side state-sync request handler (issue #1086). Null on non-hosts
+    // or when unwired; the transport never owns game state.
+    this.onStateSyncRequest = options.onStateSyncRequest ?? null;
 
     // Initialize ICE manager
     if (options.iceConfig) {
@@ -575,6 +624,25 @@ export class P2PGameConnection {
   }
 
   /**
+   * Request a fresh authoritative full `game-state-sync` from the host.
+   *
+   * Sent by a peer that notices drift or that just recovered after an
+   * ICE-restart reconnect (issue #1086). The host responds by pushing its
+   * authoritative state via the {@link P2PGameConnectionOptions.onStateSyncRequest}
+   * callback (see {@link handleRequestStateSync}). The request itself carries
+   * no payload; it is a one-bit "please re-sync me" signal.
+   */
+  requestStateSync(): boolean {
+    return this.send({
+      type: "request-state-sync",
+      senderId: this.playerId,
+      timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
+      data: null,
+    });
+  }
+
+  /**
    * Send a game action
    */
   sendGameAction(action: string, data: unknown): boolean {
@@ -781,6 +849,12 @@ export class P2PGameConnection {
           );
           break;
         }
+        case "request-state-sync":
+          // A peer (typically one that just recovered from an ICE-restart
+          // reconnect, #1086) wants a fresh authoritative snapshot. Only the
+          // host can answer; non-hosts ignore the request.
+          this.handleRequestStateSync(message);
+          break;
       }
 
       this.events.onMessage(message);
@@ -931,12 +1005,18 @@ export class P2PGameConnection {
    * Handle game state sync.
    *
    * On a FULL sync (the reconciliation snapshot, e.g. post host-migration
-   * #946), the sender carries `lastSeq` — the high-water mark of applied
-   * sequence numbers baked into this state. The receiver advances its
-   * per-sender anti-replay tracker to that mark so any queued / re-emitted
-   * action with `seq <= lastSeq` is rejected as a replay (issue #1091).
-   * `max(current, lastSeq)` is used so a duplicate delivery of the snapshot
-   * itself is still rejected by the earlier {@link isReplay} check.
+   * #946 or after an ICE-restart reconnect #1086), the sender carries
+   * `lastSeq` — the high-water mark of applied sequence numbers baked into
+   * this state. The receiver advances its per-sender anti-replay tracker to
+   * that mark so any queued / re-emitted action with `seq <= lastSeq` is
+   * rejected as a replay (issue #1091). `max(current, lastSeq)` is used so a
+   * duplicate delivery of the snapshot itself is still rejected by the
+   * earlier {@link isReplay} check.
+   *
+   * The full-sync adoption is the receiving half of authoritative-state
+   * reconciliation (#1086): the recovering peer discards its diverged local
+   * state and adopts the host's authoritative snapshot as the single source
+   * of truth (see `p2p-reconciliation.ts` for the pending-action policy).
    *
    * The seq advancement runs BEFORE state deserialization so a malformed
    * payload cannot leave the anti-replay tracker stuck at a stale value.
@@ -961,6 +1041,34 @@ export class P2PGameConnection {
     const baseState = this.createBaseEngineState();
     const gameState = deserializeGameState(data.gameState, baseState);
     this.events.onGameStateSync(gameState);
+  }
+
+  /**
+   * Handle a `request-state-sync` from a peer (issue #1086). Only the
+   * authoritative host can answer: it asks the host-side
+   * {@link onStateSyncRequest} callback for its authoritative state and
+   * pushes it back as a full `game-state-sync` (`isFullSync: true`, carrying
+   * `lastSeq`). Non-hosts, or hosts with no state / no callback wired, do
+   * nothing (fail-open: a missing snapshot leaves the peer to retry or rely
+   * on the reconnect-driven push). The transport never owns game state.
+   */
+  private handleRequestStateSync(message: GameMessage): void {
+    void message; // senderId available if per-peer throttling is ever needed.
+    if (!this.onStateSyncRequest) return;
+    let state: GameState | null | undefined;
+    try {
+      state = this.onStateSyncRequest();
+    } catch (error) {
+      // #982: redact — a throwing host callback may reference game state.
+      console.error(
+        "[P2PGameConnection] onStateSyncRequest threw:",
+        redactSensitive(error),
+      );
+      return;
+    }
+    if (state) {
+      this.sendGameState(state, true);
+    }
   }
 
   /**
@@ -1136,11 +1244,36 @@ export class P2PGameConnection {
   private handleIceCandidate(candidate: RTCIceCandidateInit): void {}
 
   /**
-   * Update connection state
+   * Update connection state.
+   *
+   * On a transition INTO "connected" that follows a prior disconnect (i.e. a
+   * reconnect, e.g. after an ICE-restart recovery), fires
+   * {@link P2PGameConnectionEvents.onReconnect} exactly once so the
+   * integration layer can reconcile authoritative game state. Never fires on
+   * the initial connect. Issue #1086.
    */
   private updateConnectionState(state: P2PConnectionState): void {
+    const previous = this.connectionState;
     this.connectionState = state;
     this.events.onConnectionStateChange(state);
+
+    if (state === "connected") {
+      if (!this.hadConnectedOnce) {
+        this.hadConnectedOnce = true;
+      } else if (previous !== "connected" && this.wasDisconnected) {
+        // Reconnect after a drop — signal authoritative-state reconciliation.
+        this.wasDisconnected = false;
+        this.events.onReconnect?.();
+      }
+    } else if (
+      state === "disconnected" ||
+      state === "reconnecting" ||
+      state === "failed"
+    ) {
+      if (this.hadConnectedOnce) {
+        this.wasDisconnected = true;
+      }
+    }
   }
 
   /**
@@ -1190,6 +1323,10 @@ export class P2PGameConnection {
     // Drop anti-replay tracking so a fresh session isn't poisoned by stale
     // high-water marks from the previous peer. Issue #1091.
     this.lastAppliedSeqByPeer.clear();
+    // Reset the reconnect-edge detectors so a fresh session's initial
+    // connect never fires a spurious onReconnect. Issue #1086.
+    this.hadConnectedOnce = false;
+    this.wasDisconnected = false;
     this.updateConnectionState("disconnected");
   }
 

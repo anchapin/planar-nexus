@@ -197,6 +197,16 @@ export interface P2PEvents {
    * complete. Optional — only the offerer (host) emits this.
    */
   onReconnectOffer?: (offer: RTCSessionDescriptionInit, peerId: string) => void;
+  /**
+   * Emitted when an ICE-restart reconnection SUCCEEDS — i.e. the transport
+   * recovered after a transient ICE disconnect via the bounded retry cycle
+   * (issue #943/#915). This is the canonical signal to reconcile
+   * authoritative game state (issue #1086): the host pushes a full
+   * `game-state-sync` snapshot and the recovering peer adopts it. Distinct
+   * from the INITIAL connect and from `onReconnectOffer` (which fires when
+   * the host produces a restart offer, before recovery is known). Optional.
+   */
+  onReconnect?: () => void;
 }
 
 /**
@@ -277,6 +287,12 @@ export class WebRTCConnection {
   private reconnectAttemptTimeoutMs = 15000;
   /** Guards against overlapping reconnection cycles. */
   private isReconnecting = false;
+  /**
+   * True once the transport has dropped (`handleDisconnection`) and not yet
+   * recovered. Used to fire {@link P2PEvents.onReconnect} exactly once per
+   * ICE-restart recovery and never on the initial connect. Issue #1086.
+   */
+  private wasDisconnected = false;
   /** Pending timer for the inter-attempt backoff sleep. */
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Resolvers waiting for a recovery verdict during a reconnect attempt. */
@@ -951,6 +967,9 @@ export class WebRTCConnection {
     if (this.connectionState === "failed") return;
 
     this.updateConnectionState("disconnected");
+    // Mark that the transport dropped so the next successful recovery fires
+    // onReconnect (issue #1086) — distinct from the initial connect.
+    this.wasDisconnected = true;
     this.stopPingInterval();
 
     // Kick off (or re-enter) the bounded reconnection cycle. attemptReconnection
@@ -1154,11 +1173,20 @@ export class WebRTCConnection {
    * Update connection state
    */
   private updateConnectionState(state: P2PConnectionState): void {
+    const previous = this.connectionState;
     this.connectionState = state;
     this.events.onConnectionStateChange(state, "");
 
     if (state === "connected") {
       this.notifyRecoveryWaiters(true);
+      // Fire onReconnect exactly once per ICE-restart recovery: only on a
+      // transition INTO "connected" that follows a prior disconnect. Never
+      // on the initial connect (wasDisconnected is false until a drop).
+      // Issue #1086 — drives authoritative-state reconciliation.
+      if (previous !== "connected" && this.wasDisconnected) {
+        this.wasDisconnected = false;
+        this.events.onReconnect?.();
+      }
     } else if (state === "failed") {
       this.notifyRecoveryWaiters(false);
     }
@@ -1458,6 +1486,9 @@ export class WebRTCConnection {
     this.peers.clear();
     this.pendingCandidates = [];
     this.rateLimiter.reset();
+    // Reset the reconnect-edge detector so a fresh session never fires a
+    // spurious onReconnect on its initial connect. Issue #1086.
+    this.wasDisconnected = false;
     this.updateConnectionState("disconnected");
   }
 

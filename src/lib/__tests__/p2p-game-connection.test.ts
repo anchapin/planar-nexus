@@ -1186,3 +1186,333 @@ describe("createRulesEngineValidator (#1089)", () => {
     spy.mockRestore();
   });
 });
+
+/**
+ * Authoritative-state reconciliation after an ICE-restart reconnect
+ * (issue #1086).
+ *
+ * Covers the connection-layer pieces:
+ *   - `onReconnect` fires exactly once on a reconnect (recovery after a
+ *     drop), never on the initial connect, and never twice for one recovery.
+ *   - `request-state-sync` message: a peer pulls a fresh authoritative full
+ *     snapshot and the host responds via `onStateSyncRequest`; non-host /
+ *     unwired / null / throwing callbacks are handled gracefully.
+ *   - the request message is a valid `GameMessage`.
+ *
+ * The pure reconcile POLICY (host pushes / peer adopts / pending drop) is
+ * covered in `p2p-reconciliation.test.ts`; the lastSeq re-base of the
+ * anti-replay counter on a full sync is covered in the #1091 block above.
+ */
+describe("P2PGameConnection reconnect reconciliation (issue #1086)", () => {
+  const setState = (conn: P2PGameConnection, state: string): void => {
+    (
+      conn as unknown as {
+        updateConnectionState: (s: string) => void;
+      }
+    ).updateConnectionState(state);
+  };
+
+  const handleMessage = (conn: P2PGameConnection, raw: string): void => {
+    (
+      conn as unknown as { handleMessage: (d: string) => void }
+    ).handleMessage(raw);
+  };
+
+  const msg = (
+    senderId: string,
+    seq: number,
+    type: GameMessageType,
+    data: unknown,
+  ): GameMessage => ({
+    type,
+    senderId,
+    timestamp: Date.now(),
+    seq,
+    data,
+  });
+
+  describe("onReconnect event", () => {
+    it("does NOT fire on the initial connect", () => {
+      const onReconnect = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "host",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          onReconnect,
+        },
+      });
+
+      setState(conn, "connected");
+      expect(onReconnect).not.toHaveBeenCalled();
+    });
+
+    it("fires exactly once when recovering after a disconnect", () => {
+      const onReconnect = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "host",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          onReconnect,
+        },
+      });
+
+      // Initial connect.
+      setState(conn, "connected");
+      expect(onReconnect).not.toHaveBeenCalled();
+
+      // Transport drops (ICE-restart disconnect).
+      setState(conn, "disconnected");
+      setState(conn, "reconnecting");
+
+      // Recovery → onReconnect fires exactly once.
+      setState(conn, "connected");
+      expect(onReconnect).toHaveBeenCalledTimes(1);
+
+      // A duplicate "connected" transition does not re-fire.
+      setState(conn, "connected");
+      expect(onReconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fire when the initial connect follows a disconnect from a fresh (never-connected) session", () => {
+      const onReconnect = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "host",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          onReconnect,
+        },
+      });
+
+      // A fresh session that bounces disconnected→connected before ever
+      // having connected must NOT be treated as a reconnect.
+      setState(conn, "disconnected");
+      setState(conn, "connected");
+      expect(onReconnect).not.toHaveBeenCalled();
+    });
+
+    it("close() resets the reconnect-edge detector (fresh session does not fire)", () => {
+      const onReconnect = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "host",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          onReconnect,
+        },
+      });
+
+      setState(conn, "connected");
+      setState(conn, "disconnected");
+      setState(conn, "connected");
+      expect(onReconnect).toHaveBeenCalledTimes(1);
+
+      conn.close();
+      onReconnect.mockClear();
+
+      // After close, a new connect cycle must not fire onReconnect.
+      setState(conn, "connected");
+      expect(onReconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("request-state-sync message", () => {
+    it("is a valid GameMessage type", () => {
+      expect(
+        isGameMessage({
+          type: "request-state-sync",
+          senderId: "peer",
+          timestamp: Date.now(),
+          seq: 0,
+          data: null,
+        }),
+      ).toBe(true);
+    });
+
+    it("host responds to a request by pushing its authoritative full state", () => {
+      const authoritative = { gameId: "g1", players: {} } as never;
+      const onStateSyncRequest = jest.fn(() => authoritative);
+      const conn = createP2PGameConnection({
+        playerId: "host",
+        playerName: "Host",
+        role: "host",
+        onStateSyncRequest,
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+        },
+      });
+      // Spy on the public push path (avoids depending on serialization
+      // internals; the lastSeq re-base on the wire is covered in the #1091
+      // block above).
+      const pushSpy = jest.spyOn(conn, "sendGameState").mockReturnValue(true);
+
+      handleMessage(
+        conn,
+        JSON.stringify(msg("peer", 0, "request-state-sync", null)),
+      );
+
+      // The host asked its callback for authoritative state...
+      expect(onStateSyncRequest).toHaveBeenCalledTimes(1);
+      // ...and pushed it as a FULL sync (isFullSync: true).
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+      expect(pushSpy).toHaveBeenCalledWith(authoritative, true);
+      pushSpy.mockRestore();
+    });
+
+    it("a host with no onStateSyncRequest wired does not respond (fail-open)", () => {
+      const conn = createP2PGameConnection({
+        playerId: "host",
+        playerName: "Host",
+        role: "host",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+        },
+      });
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      // Must not throw and must not send anything.
+      expect(() =>
+        handleMessage(
+          conn,
+          JSON.stringify(msg("peer", 0, "request-state-sync", null)),
+        ),
+      ).not.toThrow();
+      expect(sendSpy).not.toHaveBeenCalled();
+      sendSpy.mockRestore();
+    });
+
+    it("a host whose callback returns null sends nothing", () => {
+      const conn = createP2PGameConnection({
+        playerId: "host",
+        playerName: "Host",
+        role: "host",
+        onStateSyncRequest: () => null,
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+        },
+      });
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      handleMessage(
+        conn,
+        JSON.stringify(msg("peer", 0, "request-state-sync", null)),
+      );
+      expect(sendSpy).not.toHaveBeenCalled();
+      sendSpy.mockRestore();
+    });
+
+    it("a throwing host callback is swallowed (no crash, no send)", () => {
+      const conn = createP2PGameConnection({
+        playerId: "host",
+        playerName: "Host",
+        role: "host",
+        onStateSyncRequest: () => {
+          throw new Error("state unavailable");
+        },
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+        },
+      });
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      expect(() =>
+        handleMessage(
+          conn,
+          JSON.stringify(msg("peer", 0, "request-state-sync", null)),
+        ),
+      ).not.toThrow();
+      expect(sendSpy).not.toHaveBeenCalled();
+      sendSpy.mockRestore();
+    });
+
+    it("requestStateSync() sends a request-state-sync message", () => {
+      const conn = createP2PGameConnection({
+        playerId: "peer",
+        playerName: "Peer",
+        role: "joiner",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+        },
+      });
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      const ok = conn.requestStateSync();
+      expect(ok).toBe(true);
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect(sent.type).toBe("request-state-sync");
+      expect(sent.senderId).toBe("peer");
+      expect(typeof sent.seq).toBe("number");
+      sendSpy.mockRestore();
+    });
+  });
+});

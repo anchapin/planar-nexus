@@ -36,6 +36,10 @@ import {
 } from "@/lib/p2p-host-migration";
 import { saveGameForLocalHotSeat } from "@/lib/local-game-storage";
 import {
+  ReconciliationCoordinator,
+  type PendingAction,
+} from "@/lib/p2p-reconciliation";
+import {
   useConnectionHealth,
   type ConnectionHealth,
 } from "@/hooks/use-connection-health";
@@ -125,6 +129,12 @@ export interface UseP2PConnectionReturn {
     data: unknown,
   ) => { success: boolean; action?: TimestampedAction; queued?: boolean };
   sendChat: (text: string) => boolean;
+  /**
+   * Pull a fresh authoritative full game-state-sync from the host on demand
+   * (issue #1086). Used after an ICE-restart reconnect to reconcile, or any
+   * time the local peer notices drift. No-op when not connected.
+   */
+  requestStateSync: () => boolean;
   closeConnection: () => void;
   getConnection: () => P2PGameConnection | null;
   getConflictQueueSize: () => number;
@@ -145,6 +155,13 @@ export interface UseP2PConnectionReturn {
   saveForLocalResume: () => Promise<LocalHotSeatSaveResult>;
   /** Acknowledge the terminal failure (abandon) and dismiss the degrade prompt. */
   dismissTerminalFailure: () => void;
+  /**
+   * Local actions recorded while disconnected that were DROPPED when the host's
+   * authoritative state was adopted after a reconnect (issue #1086). The UI
+   * surfaces these so the player is not silently undone. Cleared on the next
+   * reconcile / close.
+   */
+  droppedPendingActions: PendingAction[];
 }
 
 export function useP2PConnection(
@@ -197,6 +214,23 @@ export function useP2PConnection(
   onHostMigratedRef.current = onHostMigrated;
   onGameTerminatedRef.current = onGameTerminated;
   onDegradedToLocalRef.current = onDegradedToLocal;
+
+  // --- Issue #1086: authoritative-state reconciliation after ICE-restart ---
+  // Pure coordinator tracking pending actions during disconnect and producing
+  // the reconcile decision on reconnect. See src/lib/p2p-reconciliation.ts.
+  const reconcileRef = useRef<ReconciliationCoordinator>(
+    new ReconciliationCoordinator(),
+  );
+  // Mirrors `currentHostId` so the once-created onReconnect handler reads the
+  // latest authority without re-creating the connection.
+  const currentHostIdRef = useRef(fallbackHostId);
+  currentHostIdRef.current = currentHostId;
+  // True on a non-host peer between its reconnect and the arrival of the
+  // host's authoritative full sync (the snapshot it must adopt).
+  const awaitingReconciliationRef = useRef(false);
+  const [droppedPendingActions, setDroppedPendingActions] = useState<
+    PendingAction[]
+  >([]);
 
   // Initialize conflict resolution manager
   useEffect(() => {
@@ -378,6 +412,57 @@ export function useP2PConnection(
     [applyHostMigrationMessage],
   );
 
+  // --- Issue #1086: reconciliation after ICE-restart reconnect ---
+
+  // Drive the reconcile decision when the transport recovers. The host pushes
+  // its authoritative full state; a non-host peer arms adoption and pulls a
+  // fresh snapshot (belt-and-suspenders alongside the host's reconnect push).
+  // `droppedPendingActions` surfaced for the adopt path come from the
+  // onGameStateSync adoption below. See src/lib/p2p-reconciliation.ts.
+  const handleReconnect = useCallback(() => {
+    const coordinator = reconcileRef.current;
+    const isHost = currentHostIdRef.current === playerId;
+    const decision = coordinator.onReconnect({
+      isHost,
+      hasAuthoritativeState: lastGameStateRef.current !== null,
+    });
+    if (
+      decision.action === "send-authoritative-state" &&
+      lastGameStateRef.current
+    ) {
+      p2pLogger.info(
+        "Reconnected as host; pushing authoritative full state to peer",
+      );
+      connectionRef.current?.sendGameState(lastGameStateRef.current, true);
+    } else if (decision.action === "adopt-host-state") {
+      // Arm adoption: the NEXT authoritative full sync received is adopted and
+      // pending actions are dropped. Also explicitly request a snapshot so a
+      // host push that raced ahead of this reconnect still produces an adopt.
+      awaitingReconciliationRef.current = true;
+      p2pLogger.info(
+        "Reconnected as peer; awaiting host authoritative state for reconciliation",
+      );
+      connectionRef.current?.requestStateSync();
+    }
+  }, [playerId]);
+
+  // On a received game-state sync, if we are awaiting reconciliation, adopt
+  // the host's authoritative state (source of truth) and drop the pending
+  // actions that never reached the host. Idempotent: a duplicate full sync
+  // with no pending queued between syncs drops nothing.
+  const adoptHostStateIfAwaiting = useCallback(() => {
+    if (!awaitingReconciliationRef.current) return;
+    awaitingReconciliationRef.current = false;
+    const dropped = reconcileRef.current.adoptAuthoritativeState();
+    if (dropped.length > 0) {
+      p2pLogger.warn(
+        "Reconciled to host authoritative state; dropped pending actions",
+        dropped.length,
+      );
+      setDroppedPendingActions(dropped);
+    }
+  }, []);
+
   // Initialize connection as host
   const initializeAsHost =
     useCallback(async (): Promise<RTCSessionDescriptionInit> => {
@@ -405,6 +490,7 @@ export function useP2PConnection(
                 );
               }
             },
+            onReconnect: handleReconnect,
             onSignalingStateChange: setSignalingState,
             onMessage: (message) => {
               p2pLogger.debug("Received message:", message.type);
@@ -429,6 +515,9 @@ export function useP2PConnection(
               p2pLogger.debug("Received game state sync");
               cacheGameStateForMigration(gameState);
               cacheLatestGameState(gameState);
+              // Issue #1086: adopt the host's authoritative state on
+              // reconnect-driven reconciliation (drops pending actions).
+              adoptHostStateIfAwaiting();
 
               // Verify checksum if handshake completed
               if (
@@ -506,6 +595,8 @@ export function useP2PConnection(
       registerPeerForMigration,
       handlePeerLeftForMigration,
       handleMigrationGameAction,
+      handleReconnect,
+      adoptHostStateIfAwaiting,
     ]);
 
   // Initialize connection as joiner
@@ -537,6 +628,7 @@ export function useP2PConnection(
                 );
               }
             },
+            onReconnect: handleReconnect,
             onSignalingStateChange: setSignalingState,
             onMessage: (message) => {
               p2pLogger.debug("Received message:", message.type);
@@ -555,6 +647,9 @@ export function useP2PConnection(
               p2pLogger.debug("Received game state sync");
               cacheGameStateForMigration(gameState);
               cacheLatestGameState(gameState);
+              // Issue #1086: adopt the host's authoritative state on
+              // reconnect-driven reconciliation (drops pending actions).
+              adoptHostStateIfAwaiting();
             },
             onChat: (chatMessage) => {
               p2pLogger.debug("Received chat:", chatMessage.text);
@@ -606,6 +701,8 @@ export function useP2PConnection(
       registerPeerForMigration,
       handlePeerLeftForMigration,
       handleMigrationGameAction,
+      handleReconnect,
+      adoptHostStateIfAwaiting,
     ],
   );
 
@@ -676,6 +773,14 @@ export function useP2PConnection(
         return { success: false };
       }
 
+      // Issue #1086: while the transport is down, record the action as
+      // pending so it can be reconciled (re-submitted if the local node is
+      // the host, or dropped with notice if the host's authoritative state is
+      // adopted on reconnect). Best-effort — never blocks the send path.
+      if (connectionState !== "connected") {
+        reconcileRef.current.recordPendingAction(action, data);
+      }
+
       // Apply conflict resolution if enabled
       if (enableConflictResolution && conflictManagerRef.current) {
         const result = conflictManagerRef.current.processAction(
@@ -707,8 +812,13 @@ export function useP2PConnection(
       const success = connectionRef.current.sendGameAction(action, data);
       return { success };
     },
-    [playerId, playerName, enableConflictResolution],
+    [playerId, playerName, enableConflictResolution, connectionState],
   );
+
+  // Request a fresh authoritative state sync from the host (issue #1086).
+  const requestStateSync = useCallback((): boolean => {
+    return connectionRef.current?.requestStateSync() ?? false;
+  }, []);
 
   // Send chat
   const sendChat = useCallback((text: string): boolean => {
@@ -741,6 +851,10 @@ export function useP2PConnection(
     setTerminalFailureDismissed(false);
     lastGameStateRef.current = null;
     setLastGameState(null);
+    // Reset reconciliation bookkeeping so a fresh session starts clean.
+    reconcileRef.current.clear();
+    awaitingReconciliationRef.current = false;
+    setDroppedPendingActions([]);
   }, [fallbackHostId]);
 
   // Get connection instance
@@ -883,6 +997,7 @@ export function useP2PConnection(
     sendGameState,
     sendGameAction,
     sendChat,
+    requestStateSync,
     closeConnection,
     getConnection,
     getConflictQueueSize,
@@ -894,6 +1009,7 @@ export function useP2PConnection(
     continueAsLocalHotSeat,
     saveForLocalResume,
     dismissTerminalFailure,
+    droppedPendingActions,
   };
 }
 
