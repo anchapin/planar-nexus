@@ -137,12 +137,57 @@ export function analyzeDeck(deck: DeckCard[]): CardAnalysisResult {
 }
 
 /**
- * React hook for deck statistics
+ * Build a stable, order-sensitive signature for a deck array.
+ *
+ * `analyzeDeck` is pure over the card fields it reads (`count`, `cmc`,
+ * `colors`, `type_line`); its result is fully determined by those values in
+ * array order. `id` is folded in as well so the signature is a faithful
+ * content fingerprint — two deck arrays with identical contents always share
+ * a signature, regardless of whether they are the same array reference.
+ *
+ * This lets `useDeckStatistics` (and `DeckStatsPanel`'s `React.memo`
+ * comparator) skip recomputation when a parent hands down a freshly-
+ * constructed array holding the same cards — the root cause of the deck-
+ * editing re-render storm (issue #1083).
+ *
+ * @param deck - Array of DeckCard objects
+ * @returns A string that changes only when the deck's contents change
+ */
+export function getDeckSignature(deck: DeckCard[]): string {
+  let signature = '';
+  for (let i = 0; i < deck.length; i++) {
+    const card = deck[i];
+    const colors = card.colors;
+    signature +=
+      String(card.id) +
+      '\u0001' +
+      (card.count ?? 1) +
+      '\u0001' +
+      (card.cmc ?? 0) +
+      '\u0001' +
+      (colors && colors.length > 0 ? colors.join(',') : '') +
+      '\u0001' +
+      (card.type_line ?? '') +
+      '\u0002';
+  }
+  return signature;
+}
+
+/**
+ * React hook for deck statistics.
+ *
+ * Memoized on the deck's content signature rather than its array reference so
+ * that a parent allocating a fresh deck array each render (common in the deck
+ * builder) does not trigger a full `analyzeDeck` pass on unrelated re-renders.
+ *
  * @param deck - Array of DeckCard objects
  * @returns Memoized CardAnalysisResult
  */
 export function useDeckStatistics(deck: DeckCard[]) {
-  return useMemo(() => analyzeDeck(deck), [deck]);
+  const signature = getDeckSignature(deck);
+  // Intentionally keyed on the content signature, not the array reference.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => analyzeDeck(deck), [signature]);
 }
 
 /**

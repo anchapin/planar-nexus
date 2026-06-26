@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import type { DeckCard } from '@/app/actions';
 import type { Format } from '@/lib/game-rules';
-import { useDeckStatistics } from '@/hooks/use-deck-statistics';
+import { useDeckStatistics, getDeckSignature } from '@/hooks/use-deck-statistics';
 import type { DeckLegalitySummary } from '@/hooks/use-format-legality-check';
 import { ManaCurveChart, CardTypeChart, DeckColorChart } from '@/components/deck-statistics';
 import {
@@ -45,8 +45,14 @@ interface DeckStatsPanelProps {
  * Deck Statistics Panel Component
  * Displays deck analysis charts in the deck builder, plus a format-legality
  * summary that flags banned / not-legal cards in the active format.
+ *
+ * Wrapped in `React.memo` with a custom comparator (issue #1083) so the
+ * expensive Recharts subtree is skipped whenever the deck's contents are
+ * unchanged — i.e. on the unrelated parent re-renders (search typing, tab
+ * switches, AI-assistant activity) that previously caused a re-render storm
+ * during deck editing.
  */
-export function DeckStatsPanel({
+export const DeckStatsPanel = memo(function DeckStatsPanel({
   deck,
   format = 'commander',
   formatLabel,
@@ -291,4 +297,30 @@ export function DeckStatsPanel({
       )}
     </Card>
   );
+}, areDeckStatsPanelPropsEqual);
+
+/**
+ * Custom `React.memo` comparator for {@link DeckStatsPanel}.
+ *
+ * Returns `true` (skip re-render) only when every prop is equivalent, with
+ * the deck compared by its content signature rather than by array reference.
+ * This is what stops the statistics subtree (and its Recharts children) from
+ * re-rendering on unrelated parent state changes during deck editing.
+ *
+ * `legalitySummary` is itself a `useMemo` result in the parent keyed on the
+ * deck + format, so reference equality is both correct and cheap here.
+ */
+function areDeckStatsPanelPropsEqual(
+  prev: DeckStatsPanelProps,
+  next: DeckStatsPanelProps,
+): boolean {
+  if (
+    prev.className !== next.className ||
+    prev.format !== next.format ||
+    prev.formatLabel !== next.formatLabel ||
+    prev.legalitySummary !== next.legalitySummary
+  ) {
+    return false;
+  }
+  return getDeckSignature(prev.deck) === getDeckSignature(next.deck);
 }
