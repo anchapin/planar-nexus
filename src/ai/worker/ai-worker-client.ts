@@ -1,10 +1,16 @@
 import * as Comlink from "comlink";
-import type { AIWorkerAPI, EvaluateTriggerChainPayload } from "./worker-types";
+import type {
+  AIWorkerAPI,
+  EvaluateTriggerChainPayload,
+  DetectSynergiesPayload,
+} from "./worker-types";
 import type {
   CascadeContext,
   BoardPermanent,
   TriggerChain,
 } from "../trigger-chain-evaluator";
+import type { SynergyResult } from "../synergy-detector";
+import type { DeckCard } from "@/app/actions";
 
 /**
  * Main Thread Client for AI Web Worker
@@ -94,6 +100,27 @@ class AIWorkerClient {
       maxDepth,
     };
     return this.proxy.evaluateTriggerChain(payload);
+  }
+
+  /**
+   * Offloads deck synergy detection to the AI Web Worker (#1079).
+   *
+   * Returns the worker-computed `SynergyResult[]`, or `null` when the worker is
+   * unavailable (no proxy / not a browser). Callers MUST treat `null` or a
+   * thrown error as "compute on the main thread" — the synergy worker bridge
+   * (`synergy-worker-bridge.ts`) centralizes that fallback so the coach never
+   * breaks if the worker fails to initialize or errors mid-call.
+   */
+  public async detectSynergies(
+    deck: DeckCard[],
+    minScore?: number,
+    maxResults?: number,
+  ): Promise<SynergyResult[] | null> {
+    if (!this.proxy) {
+      return null;
+    }
+    const payload: DetectSynergiesPayload = { deck, minScore, maxResults };
+    return this.proxy.detectSynergies(payload);
   }
 
   /**

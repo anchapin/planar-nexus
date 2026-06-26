@@ -126,7 +126,10 @@ describe("buildStructuredDeckAnalysisParallel", () => {
   it("produces output identical to the serial builder", async () => {
     const deck = buildDeck();
     const parallel = await buildStructuredDeckAnalysisParallel(deck);
-    const serial = buildStructuredDeckAnalysis(deck);
+    // Serial builder is now async (synergy detection goes through the worker
+    // bridge, #1079). Both paths fall back to identical main-thread compute in
+    // jsdom, so their output must still match exactly.
+    const serial = await buildStructuredDeckAnalysis(deck);
     expect(parallel).toEqual(serial);
   });
 });

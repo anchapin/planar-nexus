@@ -2,14 +2,17 @@ import * as Comlink from "comlink";
 import { evaluateGameState, quickScore } from "../game-state-evaluator";
 import { detectArchetype } from "../archetype-detector";
 import { evaluateTriggerChain as runTriggerChainEvaluation } from "../trigger-chain-evaluator";
+import { detectSynergies as runSynergyDetection } from "../synergy-detector";
 import type {
   AIWorkerAPI,
   AnalyzeStatePayload,
   CoachContextPayload,
   DigestedCoachContext,
   EvaluateTriggerChainPayload,
+  DetectSynergiesPayload,
 } from "./worker-types";
 import type { TriggerChain } from "../trigger-chain-evaluator";
+import type { SynergyResult } from "../synergy-detector";
 import type { DeckCard } from "@/app/actions";
 
 /**
@@ -132,6 +135,20 @@ export const aiWorker: AIWorkerAPI = {
   ): Promise<TriggerChain[]> {
     const { stackItem, battlefield, maxDepth } = payload;
     return runTriggerChainEvaluation(stackItem, battlefield, maxDepth);
+  },
+
+  /**
+   * Detects card-to-card synergies across an entire deck.
+   * The pure detector lives in `synergy-detector.ts` (which only imports a
+   * type and a plain-data synergy database) and has no DOM/main-thread
+   * dependencies, so it is safe to run inside the worker. Returns the exact
+   * same `SynergyResult[]` the in-thread detector produces.
+   */
+  async detectSynergies(
+    payload: DetectSynergiesPayload,
+  ): Promise<SynergyResult[]> {
+    const { deck, minScore, maxResults } = payload;
+    return runSynergyDetection(deck, minScore, maxResults);
   },
 };
 
