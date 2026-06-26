@@ -380,10 +380,8 @@ describe("parseTriggeredAbilities — trigger event branches", () => {
     ).toBe("dies");
   });
 
-  it("falls back to entersBattlefield for unrecognized triggers", () => {
-    expect(trigger("When ~ becomes monstrous, draw a card.")).toBe(
-      "entersBattlefield",
-    );
+  it("classifies unrecognized triggers as unknown (not entersBattlefield)", () => {
+    expect(trigger("When ~ becomes monstrous, draw a card.")).toBe("unknown");
   });
 
   it("parses a 'when' trigger that carries an intervening effect", () => {

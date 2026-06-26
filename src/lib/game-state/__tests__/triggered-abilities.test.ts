@@ -98,6 +98,91 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
     });
   });
 
+  describe("Issue #1157 — non-ETB triggers must NOT fire on enters-the-battlefield (CR 603.2/603.6)", () => {
+    // Regression: a creature's NON-ETB triggered ability (e.g. "Whenever
+    // CARDNAME deals combat damage ...") must not be misclassified as an
+    // enters-the-battlefield trigger and fire as a side effect of the creature
+    // spell resolving, which previously pushed a never-resolving object onto the
+    // stack and stalled the priority loop.
+    it("does not classify a non-ETB (combat-damage) trigger as entersBattlefield", () => {
+      const cardData = createMockCard({
+        id: "ragavan",
+        name: "Ragavan, Nimble Pilferer",
+        oracle_text:
+          "Whenever Ragavan, Nimble Pilferer deals combat damage to a player, create a Treasure token.",
+      });
+      const parsed = getTriggeredAbilities(cardData);
+      expect(parsed).toHaveLength(1);
+      // The trigger condition must NOT be assumed to be ETB.
+      expect(parsed[0].trigger.event).not.toBe("entersBattlefield");
+      expect(parsed[0].trigger.event).toBe("unknown");
+    });
+
+    it("does not fire a non-ETB trigger when checked against entersBattlefield", () => {
+      placeCardOnBattlefield(
+        createMockCard({
+          id: "ragavan",
+          name: "Ragavan, Nimble Pilferer",
+          oracle_text:
+            "Whenever Ragavan, Nimble Pilferer deals combat damage to a player, create a Treasure token.",
+        }),
+        aliceId,
+      );
+      // Resolving a creature spell calls checkTriggeredAbilities(state, "entersBattlefield");
+      // a non-ETB trigger must contribute nothing to the stack here.
+      const result = detectTriggeredAbilities(state, "entersBattlefield");
+      expect(result).toHaveLength(0);
+    });
+
+    it("does not fire a 'Whenever CARDNAME attacks' trigger on entersBattlefield", () => {
+      placeCardOnBattlefield(
+        createMockCard({
+          id: "attacks-trigger",
+          name: "Burglar Rat",
+          oracle_text: "Whenever Burglar Rat attacks, you draw a card.",
+        }),
+        aliceId,
+      );
+      const result = detectTriggeredAbilities(state, "entersBattlefield");
+      expect(result).toHaveLength(0);
+    });
+
+    it("checkTriggeredAbilities leaves the stack empty for a non-ETB creature on ETB", () => {
+      placeCardOnBattlefield(
+        createMockCard({
+          id: "ragavan",
+          name: "Ragavan, Nimble Pilferer",
+          oracle_text:
+            "Whenever Ragavan, Nimble Pilferer deals combat damage to a player, create a Treasure token.",
+        }),
+        aliceId,
+      );
+      const before = state.stack.length;
+      const { state: nextState } = checkTriggeredAbilities(
+        state,
+        "entersBattlefield",
+      );
+      // No spurious triggered-ability object is pushed onto the stack.
+      expect(nextState.stack.length).toBe(before);
+      expect(nextState.stack.every((o) => o.type !== "ability")).toBe(true);
+    });
+
+    it("still fires a genuine ETB trigger on entersBattlefield", () => {
+      // Guard: the fix must not suppress real ETB triggers (CR 603.6a).
+      placeCardOnBattlefield(
+        createMockCard({
+          id: "etb-trigger",
+          oracle_text:
+            "When this creature enters the battlefield, draw a card.",
+        }),
+        aliceId,
+      );
+      const result = detectTriggeredAbilities(state, "entersBattlefield");
+      expect(result).toHaveLength(1);
+      expect(result[0].triggerCondition).toBe("entersBattlefield");
+    });
+  });
+
   describe("Beginning of Turn Triggers (CR 603.2)", () => {
     it("should detect upkeep trigger on beginningOfTurn event", () => {
       const cardId = placeCardOnBattlefield(
