@@ -65,27 +65,149 @@ export const DEFAULT_STUN_SERVERS: ICEServerConfig[] = [
 ];
 
 /**
- * Default TURN servers - populated from environment variables when available.
- * Users behind symmetric NATs require TURN servers for connectivity.
- * Set NEXT_PUBLIC_TURN_URL, NEXT_PUBLIC_TURN_USER, NEXT_PUBLIC_TURN_PASS to configure.
+ * Public free TURN servers used as a last-resort fallback.
+ *
+ * These are the OpenRelay public relay servers operated by Metered
+ * (https://github.com/ metered-test-hosting / openrelay) explicitly published
+ * with shared community credentials (`openrelayproject` / `openrelayproject`)
+ * for development, testing, and small-scale production use. They are NOT
+ * secrets — the credentials are intentionally public so clients can embed
+ * them. They provide a relay fallback so users behind symmetric NATs are not
+ * left with zero connectivity when no private TURN infrastructure is
+ * configured via environment variables.
+ *
+ * For production deployments, set NEXT_PUBLIC_TURN_URL / USER / PASS to your
+ * own TURN infrastructure for reliable, rate-limit-free NAT traversal.
  */
-export const DEFAULT_TURN_SERVERS: ICEServerConfig[] = (() => {
-  const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
-  const turnUser = process.env.NEXT_PUBLIC_TURN_USER;
-  const turnPass = process.env.NEXT_PUBLIC_TURN_PASS;
+export const PUBLIC_FALLBACK_TURN_SERVERS: ICEServerConfig[] = [
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+    credentialType: 'password',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+    credentialType: 'password',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+    credentialType: 'password',
+  },
+];
+
+/**
+ * Environment variable record shape used for TURN resolution.
+ */
+type TurnEnvRecord = Record<string, string | undefined>;
+
+/**
+ * Result of resolving TURN servers from the environment.
+ */
+export interface ResolveTurnServersResult {
+  /** Resolved TURN server configurations (never empty). */
+  servers: ICEServerConfig[];
+  /**
+   * `true` when servers came from the public fallback rather than env vars.
+   * Consumers use this to decide whether to emit a configuration warning.
+   */
+  usedFallback: boolean;
+}
+
+/**
+ * Resolve TURN servers from environment variables, falling back to public
+ * relay servers so NAT traversal always has a relay option.
+ *
+ * Reads:
+ *  - NEXT_PUBLIC_TURN_URL  (comma-separated list of turn:/turns: URLs)
+ *  - NEXT_PUBLIC_TURN_USER (username shared across all URLs)
+ *  - NEXT_PUBLIC_TURN_PASS (credential shared across all URLs)
+ *
+ * All three must be present to use env-configured servers; otherwise the
+ * public fallback is used. Partial credentials are ignored to avoid
+ * half-configured, broken relay attempts.
+ *
+ * @param env Environment record (defaults to `process.env`).
+ */
+export function resolveTurnServers(
+  env: TurnEnvRecord = process.env,
+): ResolveTurnServersResult {
+  const turnUrl = env.NEXT_PUBLIC_TURN_URL;
+  const turnUser = env.NEXT_PUBLIC_TURN_USER;
+  const turnPass = env.NEXT_PUBLIC_TURN_PASS;
 
   if (turnUrl && turnUser && turnPass) {
-    return [
-      {
-        urls: turnUrl,
+    const urls = turnUrl
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    if (urls.length > 0) {
+      const servers: ICEServerConfig[] = urls.map((url) => ({
+        urls: url,
         username: turnUser,
         credential: turnPass,
         credentialType: 'password',
-      },
-    ];
+      }));
+      return { servers, usedFallback: false };
+    }
   }
 
-  return [];
+  return { servers: PUBLIC_FALLBACK_TURN_SERVERS.map((s) => ({ ...s })), usedFallback: true };
+}
+
+let turnConfigWarningEmitted = false;
+
+/**
+ * Reset the one-time "no TURN env" warning guard. Intended for tests.
+ * @internal
+ */
+export function __resetTurnWarningGuard(): void {
+  turnConfigWarningEmitted = false;
+}
+
+/**
+ * Emit a one-time warning when TURN servers are coming from the public
+ * fallback rather than environment-configured infrastructure. This surfaces
+ * the configuration gap called out by issue #983 so operators notice that
+ * they should set their own TURN credentials for production reliability.
+ *
+ * @param result Resolution result from {@link resolveTurnServers}.
+ * @param force Emit even if already emitted (use sparingly).
+ */
+export function warnIfNoEnvTurnConfigured(
+  result: ResolveTurnServersResult,
+  force = false,
+): void {
+  if (!result.usedFallback) return;
+  if (turnConfigWarningEmitted && !force) return;
+  turnConfigWarningEmitted = true;
+  console.warn(
+    '[ICE] No TURN servers configured via NEXT_PUBLIC_TURN_URL / ' +
+      'NEXT_PUBLIC_TURN_USER / NEXT_PUBLIC_TURN_PASS. Falling back to public ' +
+      'OpenRelay TURN servers, which are rate-limited and not suitable for ' +
+      'production scale. Set these environment variables to your own TURN ' +
+      'infrastructure for reliable NAT traversal behind symmetric NATs.',
+  );
+}
+
+/**
+ * Default TURN servers - resolved from environment variables with a public
+ * relay fallback so the array is never empty.
+ *
+ * Users behind symmetric NATs require TURN servers for connectivity; an empty
+ * default (the previous behavior) caused 100% connection failure for them.
+ * Set NEXT_PUBLIC_TURN_URL, NEXT_PUBLIC_TURN_USER, NEXT_PUBLIC_TURN_PASS to
+ * override the public fallback with your own TURN infrastructure.
+ */
+export const DEFAULT_TURN_SERVERS: ICEServerConfig[] = (() => {
+  const result = resolveTurnServers();
+  warnIfNoEnvTurnConfigured(result);
+  return result.servers;
 })();
 
 /**
