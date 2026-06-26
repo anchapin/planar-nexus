@@ -8,29 +8,30 @@
  * conversion functions to work with the engine's GameState format.
  */
 
-import type { 
-  GameState as EngineGameState, 
-  PlayerId, 
+import type {
+  GameState as EngineGameState,
+  PlayerId,
   CardInstanceId,
   AIGameState,
-} from '@/lib/game-state/types';
-import { engineToAIState } from '@/lib/game-state/serialization';
-import type { AvailableResponse } from '@/ai/stack-interaction-ai';
-import { 
-  playLand as enginePlayLand, 
-  canPlayLand as engineCanPlayLand 
-} from '@/lib/game-state/mana';
-import { 
-  castSpell as engineCastSpell, 
-  canCastSpell as engineCanCastSpell 
-} from '@/lib/game-state/spell-casting';
-import { 
-  declareAttackers as engineDeclareAttackers 
-} from '@/lib/game-state/combat';
-import { tapCardAction, untapCardAction } from '@/lib/game-state/keyword-actions';
-import { passPriority } from '@/lib/game-state/game-state';
-import { quickScore } from './game-state-evaluator';
-import type { GameState } from './game-state-evaluator';
+} from "@/lib/game-state/types";
+import { engineToAIState } from "@/lib/game-state/serialization";
+import type { AvailableResponse } from "@/ai/stack-interaction-ai";
+import {
+  playLand as enginePlayLand,
+  canPlayLand as engineCanPlayLand,
+} from "@/lib/game-state/mana";
+import {
+  castSpell as engineCastSpell,
+  canCastSpell as engineCanCastSpell,
+} from "@/lib/game-state/spell-casting";
+import { declareAttackers as engineDeclareAttackers } from "@/lib/game-state/combat";
+import {
+  tapCardAction,
+  untapCardAction,
+} from "@/lib/game-state/keyword-actions";
+import { passPriority } from "@/lib/game-state/game-state";
+import { quickScore } from "./game-state-evaluator";
+import type { GameState } from "./game-state-evaluator";
 
 /**
  * AI Action types
@@ -51,17 +52,17 @@ export interface AIAction {
   mode?: string;
 }
 
-export type AIActionType = 
-  | 'play_land'
-  | 'cast_spell'
-  | 'attack'
-  | 'block'
-  | 'tap_card'
-  | 'untap_card'
-  | 'activate_ability'
-  | 'pass_priority'
-  | 'respond_to_stack'
-  | 'no_action';
+export type AIActionType =
+  | "play_land"
+  | "cast_spell"
+  | "attack"
+  | "block"
+  | "tap_card"
+  | "untap_card"
+  | "activate_ability"
+  | "pass_priority"
+  | "respond_to_stack"
+  | "no_action";
 
 /**
  * Result of executing an AI action
@@ -79,53 +80,63 @@ export interface AIActionResult {
 export async function executeAIAction(
   gameState: EngineGameState,
   action: AIAction,
-  aiPlayerId: PlayerId
+  aiPlayerId: PlayerId,
 ): Promise<AIActionResult> {
   try {
     switch (action.type) {
-      case 'play_land':
+      case "play_land":
         return executePlayLand(gameState, aiPlayerId, action.cardId!);
-      
-      case 'cast_spell':
+
+      case "cast_spell":
         return executeCastSpell(
-          gameState, 
-          aiPlayerId, 
-          action.cardId!, 
+          gameState,
+          aiPlayerId,
+          action.cardId!,
           action.targetIds || action.targetId,
           action.mode ? [action.mode] : [],
-          action.xValue || 0
+          action.xValue || 0,
         );
-      
-      case 'attack':
-        return executeAttack(gameState, aiPlayerId, action.cardId!, action.targetId);
-      
-      case 'block':
-        return executeBlock(gameState, aiPlayerId, action.cardId!, action.targetId!);
-      
-      case 'tap_card':
+
+      case "attack":
+        return executeAttack(
+          gameState,
+          aiPlayerId,
+          action.cardId!,
+          action.targetId,
+        );
+
+      case "block":
+        return executeBlock(
+          gameState,
+          aiPlayerId,
+          action.cardId!,
+          action.targetId!,
+        );
+
+      case "tap_card":
         return executeTapCard(gameState, action.cardId!);
-      
-      case 'untap_card':
+
+      case "untap_card":
         return executeUntapCard(gameState, action.cardId!);
-      
-      case 'pass_priority':
+
+      case "pass_priority":
         return executePassPriority(gameState, aiPlayerId);
-      
-      case 'no_action':
+
+      case "no_action":
         return { success: true, newState: gameState, action };
-      
+
       default:
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: `Unknown action type: ${(action as any).type}`,
-          action 
+          action,
         };
     }
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error',
-      action 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+      action,
     };
   }
 }
@@ -136,30 +147,30 @@ export async function executeAIAction(
 function executePlayLand(
   gameState: EngineGameState,
   playerId: PlayerId,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): AIActionResult {
   if (!engineCanPlayLand(gameState, playerId)) {
-    return { 
-      success: false, 
-      error: 'Cannot play land (already played or no priority)',
-      action: { type: 'play_land', cardId }
+    return {
+      success: false,
+      error: "Cannot play land (already played or no priority)",
+      action: { type: "play_land", cardId },
     };
   }
 
   const result = enginePlayLand(gameState, playerId, cardId);
-  
+
   if (result.success) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       newState: result.state,
-      action: { type: 'play_land', cardId }
+      action: { type: "play_land", cardId },
     };
   }
 
-  return { 
-    success: false, 
-    error: result.error || 'Failed to play land',
-    action: { type: 'play_land', cardId }
+  return {
+    success: false,
+    error: result.error || "Failed to play land",
+    action: { type: "play_land", cardId },
   };
 }
 
@@ -173,44 +184,63 @@ function executeCastSpell(
   cardId: CardInstanceId,
   targetIdOrIds?: string | PlayerId | string[],
   chosenModes: string[] = [],
-  xValue: number = 0
+  xValue: number = 0,
 ): AIActionResult {
+  // canCastSpell returns { canCast: boolean; reason?: string } — guard on the
+  // boolean field, not the object (which is always truthy). Previously this
+  // checked `!canCast`, a dead branch that never short-circuited, so the AI
+  // always proceeded to castSpell even when it lacked mana/priority. (#1092)
   const canCast = engineCanCastSpell(gameState, playerId, cardId);
-  
-  if (!canCast) {
-    return { 
-      success: false, 
-      error: 'Cannot cast spell (no mana or no priority)',
-      action: { type: 'cast_spell', cardId, targetId: targetIdOrIds as string }
+
+  if (!canCast.canCast) {
+    return {
+      success: false,
+      error: "Cannot cast spell (no mana or no priority)",
+      action: { type: "cast_spell", cardId, targetId: targetIdOrIds as string },
     };
   }
 
   // Handle multi-target: array of targetIds
   let targets;
   if (Array.isArray(targetIdOrIds)) {
-    targets = targetIdOrIds.map((tid) => ({ 
-      type: 'card' as const, 
-      targetId: tid, 
-      isValid: true 
+    targets = targetIdOrIds.map((tid) => ({
+      type: "card" as const,
+      targetId: tid,
+      isValid: true,
     }));
   } else if (targetIdOrIds) {
-    targets = [{ type: 'card' as const, targetId: targetIdOrIds, isValid: true }];
+    targets = [
+      { type: "card" as const, targetId: targetIdOrIds, isValid: true },
+    ];
   }
 
-  const result = engineCastSpell(gameState, playerId, cardId, targets, chosenModes, xValue);
-  
+  const result = engineCastSpell(
+    gameState,
+    playerId,
+    cardId,
+    targets,
+    chosenModes,
+    xValue,
+  );
+
   if (result.success) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       newState: result.state,
-      action: { type: 'cast_spell', cardId, targetId: targetIdOrIds as string, mode: chosenModes[0], xValue }
+      action: {
+        type: "cast_spell",
+        cardId,
+        targetId: targetIdOrIds as string,
+        mode: chosenModes[0],
+        xValue,
+      },
     };
   }
 
-  return { 
-    success: false, 
-    error: result.error || 'Failed to cast spell',
-    action: { type: 'cast_spell', cardId, targetId: targetIdOrIds as string }
+  return {
+    success: false,
+    error: result.error || "Failed to cast spell",
+    action: { type: "cast_spell", cardId, targetId: targetIdOrIds as string },
   };
 }
 
@@ -221,27 +251,27 @@ function executeAttack(
   gameState: EngineGameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-  defenderId?: string | PlayerId
+  defenderId?: string | PlayerId,
 ): AIActionResult {
   // Get current attackers from combat state
   const currentAttackers = gameState.combat.attackers || [];
-  
+
   // Find the creature
   const creature = gameState.cards.get(cardId);
   if (!creature) {
-    return { 
-      success: false, 
-      error: 'Creature not found',
-      action: { type: 'attack', cardId, targetId: defenderId }
+    return {
+      success: false,
+      error: "Creature not found",
+      action: { type: "attack", cardId, targetId: defenderId },
     };
   }
 
   // Check if creature can attack
   if (creature.isTapped || creature.hasSummoningSickness) {
-    return { 
-      success: false, 
-      error: 'Creature cannot attack (tapped or summoning sickness)',
-      action: { type: 'attack', cardId, targetId: defenderId }
+    return {
+      success: false,
+      error: "Creature cannot attack (tapped or summoning sickness)",
+      action: { type: "attack", cardId, targetId: defenderId },
     };
   }
 
@@ -250,27 +280,31 @@ function executeAttack(
     cardId,
     defenderId: defenderId || getOpponentPlayerId(gameState, playerId),
     isAttackingPlaneswalker: false,
-    damageToDeal: creature.cardData.power ? parseInt(creature.cardData.power) || 0 : 0,
-    hasFirstStrike: creature.cardData.keywords?.includes('first_strike') || false,
-    hasDoubleStrike: creature.cardData.keywords?.includes('double_strike') || false,
+    damageToDeal: creature.cardData.power
+      ? parseInt(creature.cardData.power) || 0
+      : 0,
+    hasFirstStrike:
+      creature.cardData.keywords?.includes("first_strike") || false,
+    hasDoubleStrike:
+      creature.cardData.keywords?.includes("double_strike") || false,
   };
 
   const updatedAttackers = [...currentAttackers, newAttacker];
-  
+
   const result = engineDeclareAttackers(gameState, updatedAttackers);
-  
+
   if (result.success) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       newState: result.state,
-      action: { type: 'attack', cardId, targetId: defenderId }
+      action: { type: "attack", cardId, targetId: defenderId },
     };
   }
 
-  return { 
-    success: false, 
-    error: result.errors?.join(', ') || 'Failed to declare attackers',
-    action: { type: 'attack', cardId, targetId: defenderId }
+  return {
+    success: false,
+    error: result.errors?.join(", ") || "Failed to declare attackers",
+    action: { type: "attack", cardId, targetId: defenderId },
   };
 }
 
@@ -281,27 +315,27 @@ function executeBlock(
   gameState: EngineGameState,
   playerId: PlayerId,
   blockerId: CardInstanceId,
-  attackerId: string
+  attackerId: string,
 ): AIActionResult {
   // Get current blockers
   const currentBlockers = gameState.combat.blockers || new Map();
-  
+
   // Find the creature
   const creature = gameState.cards.get(blockerId);
   if (!creature) {
-    return { 
-      success: false, 
-      error: 'Creature not found',
-      action: { type: 'block', cardId: blockerId, targetId: attackerId }
+    return {
+      success: false,
+      error: "Creature not found",
+      action: { type: "block", cardId: blockerId, targetId: attackerId },
     };
   }
 
   // Check if creature can block
   if (creature.isTapped) {
-    return { 
-      success: false, 
-      error: 'Creature cannot block (tapped)',
-      action: { type: 'block', cardId: blockerId, targetId: attackerId }
+    return {
+      success: false,
+      error: "Creature cannot block (tapped)",
+      action: { type: "block", cardId: blockerId, targetId: attackerId },
     };
   }
 
@@ -310,21 +344,25 @@ function executeBlock(
   const newBlocker = {
     cardId: blockerId,
     attackerId,
-    damageToDeal: creature.cardData.toughness ? parseInt(creature.cardData.toughness) || 0 : 0,
+    damageToDeal: creature.cardData.toughness
+      ? parseInt(creature.cardData.toughness) || 0
+      : 0,
     blockerOrder: existingBlockers.length,
-    hasFirstStrike: creature.cardData.keywords?.includes('first_strike') || false,
-    hasDoubleStrike: creature.cardData.keywords?.includes('double_strike') || false,
+    hasFirstStrike:
+      creature.cardData.keywords?.includes("first_strike") || false,
+    hasDoubleStrike:
+      creature.cardData.keywords?.includes("double_strike") || false,
   };
 
   const updatedBlockers = new Map(currentBlockers);
   updatedBlockers.set(attackerId, [...existingBlockers, newBlocker]);
-  
+
   // Note: The actual blocking would need to be implemented in the combat module
   // For now, return success with the current state
-  return { 
-    success: true, 
+  return {
+    success: true,
     newState: gameState,
-    action: { type: 'block', cardId: blockerId, targetId: attackerId }
+    action: { type: "block", cardId: blockerId, targetId: attackerId },
   };
 }
 
@@ -333,22 +371,22 @@ function executeBlock(
  */
 function executeTapCard(
   gameState: EngineGameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): AIActionResult {
   const result = tapCardAction(gameState, cardId);
-  
+
   if (result.success) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       newState: result.state,
-      action: { type: 'tap_card', cardId }
+      action: { type: "tap_card", cardId },
     };
   }
 
-  return { 
-    success: false, 
-    error: result.error || 'Failed to tap card',
-    action: { type: 'tap_card', cardId }
+  return {
+    success: false,
+    error: result.error || "Failed to tap card",
+    action: { type: "tap_card", cardId },
   };
 }
 
@@ -357,22 +395,22 @@ function executeTapCard(
  */
 function executeUntapCard(
   gameState: EngineGameState,
-  cardId: CardInstanceId
+  cardId: CardInstanceId,
 ): AIActionResult {
   const result = untapCardAction(gameState, cardId);
-  
+
   if (result.success) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       newState: result.state,
-      action: { type: 'untap_card', cardId }
+      action: { type: "untap_card", cardId },
     };
   }
 
-  return { 
-    success: false, 
-    error: result.error || 'Failed to untap card',
-    action: { type: 'untap_card', cardId }
+  return {
+    success: false,
+    error: result.error || "Failed to untap card",
+    action: { type: "untap_card", cardId },
   };
 }
 
@@ -381,23 +419,26 @@ function executeUntapCard(
  */
 function executePassPriority(
   gameState: EngineGameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): AIActionResult {
   const newState = passPriority(gameState, playerId);
-  
-  return { 
-    success: true, 
+
+  return {
+    success: true,
     newState,
-    action: { type: 'pass_priority' }
+    action: { type: "pass_priority" },
   };
 }
 
 /**
  * Get opponent player ID (for 1v1)
  */
-function getOpponentPlayerId(gameState: EngineGameState, playerId: PlayerId): PlayerId {
+function getOpponentPlayerId(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+): PlayerId {
   const playerIds = Array.from(gameState.players.keys());
-  return playerIds.find(id => id !== playerId) || playerId;
+  return playerIds.find((id) => id !== playerId) || playerId;
 }
 
 /**
@@ -405,16 +446,16 @@ function getOpponentPlayerId(gameState: EngineGameState, playerId: PlayerId): Pl
  */
 export function getAvailableLands(
   gameState: EngineGameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): CardInstanceId[] {
   const handZone = gameState.zones.get(`${playerId}-hand`);
   if (!handZone) return [];
 
   const lands: CardInstanceId[] = [];
-  
+
   for (const cardId of handZone.cardIds) {
     const card = gameState.cards.get(cardId);
-    if (card && card.cardData.type_line.toLowerCase().includes('land')) {
+    if (card && card.cardData.type_line.toLowerCase().includes("land")) {
       lands.push(cardId);
     }
   }
@@ -427,19 +468,21 @@ export function getAvailableLands(
  */
 export function getAvailableAttackers(
   gameState: EngineGameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): CardInstanceId[] {
   const battlefield = gameState.zones.get(`${playerId}-battlefield`);
   if (!battlefield) return [];
 
   const attackers: CardInstanceId[] = [];
-  
+
   for (const cardId of battlefield.cardIds) {
     const card = gameState.cards.get(cardId);
-    if (card && 
-        card.cardData.type_line.toLowerCase().includes('creature') &&
-        !card.isTapped &&
-        !card.hasSummoningSickness) {
+    if (
+      card &&
+      card.cardData.type_line.toLowerCase().includes("creature") &&
+      !card.isTapped &&
+      !card.hasSummoningSickness
+    ) {
       attackers.push(cardId);
     }
   }
@@ -452,18 +495,20 @@ export function getAvailableAttackers(
  */
 export function getAvailableBlockers(
   gameState: EngineGameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): CardInstanceId[] {
   const battlefield = gameState.zones.get(`${playerId}-battlefield`);
   if (!battlefield) return [];
 
   const blockers: CardInstanceId[] = [];
-  
+
   for (const cardId of battlefield.cardIds) {
     const card = gameState.cards.get(cardId);
-    if (card && 
-        card.cardData.type_line.toLowerCase().includes('creature') &&
-        !card.isTapped) {
+    if (
+      card &&
+      card.cardData.type_line.toLowerCase().includes("creature") &&
+      !card.isTapped
+    ) {
       blockers.push(cardId);
     }
   }
@@ -476,31 +521,32 @@ export function getAvailableBlockers(
  */
 export function getAvailableResponses(
   gameState: EngineGameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): AvailableResponse[] {
   const handZone = gameState.zones.get(`${playerId}-hand`);
   if (!handZone) return [];
 
   const responses: AvailableResponse[] = [];
-  
+
   for (const cardId of handZone.cardIds) {
     const card = gameState.cards.get(cardId);
     if (!card) continue;
 
-    const isInstant = card.cardData.type_line.toLowerCase().includes('instant');
-    const hasFlash = card.cardData.keywords?.includes('flash');
-    
+    const isInstant = card.cardData.type_line.toLowerCase().includes("instant");
+    const hasFlash = card.cardData.keywords?.includes("flash");
+
     if (isInstant || hasFlash) {
       responses.push({
         cardId,
         name: card.cardData.name,
-        type: isInstant ? 'instant' : 'flash',
+        type: isInstant ? "instant" : "flash",
         manaValue: card.cardData.cmc,
-        manaCost: parseManaCost(card.cardData.mana_cost || ''),
-        canCounter: card.cardData.oracle_text?.toLowerCase().includes('counter') || false,
+        manaCost: parseManaCost(card.cardData.mana_cost || ""),
+        canCounter:
+          card.cardData.oracle_text?.toLowerCase().includes("counter") || false,
         canTarget: [],
         effect: {
-          type: 'other',
+          type: "other",
           value: 5,
           targets: [],
         },
@@ -516,7 +562,7 @@ export function getAvailableResponses(
  */
 function parseManaCost(manaCost: string): { [color: string]: number } {
   const result: { [color: string]: number } = {};
-  
+
   // Simple parsing - count each color symbol
   const colorMatches = manaCost.matchAll(/[{]([WUBRG])(\d*)[}]/g);
   for (const match of colorMatches) {
@@ -524,11 +570,11 @@ function parseManaCost(manaCost: string): { [color: string]: number } {
     const count = match[2] ? parseInt(match[2]) : 1;
     result[color] = (result[color] || 0) + count;
   }
-  
+
   // Count generic mana
   const genericMatches = manaCost.matchAll(/[{](\d+)[}]/g);
   for (const match of genericMatches) {
-    result['generic'] = (result['generic'] || 0) + parseInt(match[1]);
+    result["generic"] = (result["generic"] || 0) + parseInt(match[1]);
   }
 
   return result;
@@ -545,42 +591,52 @@ export function getAIGameState(engineState: EngineGameState): AIGameState {
 /**
  * Get available lands from player's hand (using AI format)
  */
-export function getAvailableLandsAI(aiState: AIGameState, playerId: PlayerId): string[] {
+export function getAvailableLandsAI(
+  aiState: AIGameState,
+  playerId: PlayerId,
+): string[] {
   const player = aiState.players[playerId];
   if (!player) return [];
-  
+
   return player.hand
-    .filter(card => card.type.toLowerCase().includes('land'))
-    .map(card => card.cardInstanceId);
+    .filter((card) => card.type.toLowerCase().includes("land"))
+    .map((card) => card.cardInstanceId);
 }
 
 /**
  * Get available creatures for attacking (using AI format)
  */
-export function getAvailableAttackersAI(aiState: AIGameState, playerId: PlayerId): string[] {
+export function getAvailableAttackersAI(
+  aiState: AIGameState,
+  playerId: PlayerId,
+): string[] {
   const player = aiState.players[playerId];
   if (!player) return [];
-  
+
   return player.battlefield
-    .filter(perm => 
-      perm.type === 'creature' && 
-      !perm.tapped && 
-      !perm.summoningSickness &&
-      (perm.power || 0) > 0
+    .filter(
+      (perm) =>
+        perm.type === "creature" &&
+        !perm.tapped &&
+        !perm.summoningSickness &&
+        (perm.power || 0) > 0,
     )
-    .map(perm => perm.cardInstanceId);
+    .map((perm) => perm.cardInstanceId);
 }
 
 /**
  * Get available creatures for blocking (using AI format)
  */
-export function getAvailableBlockersAI(aiState: AIGameState, playerId: PlayerId): string[] {
+export function getAvailableBlockersAI(
+  aiState: AIGameState,
+  playerId: PlayerId,
+): string[] {
   const player = aiState.players[playerId];
   if (!player) return [];
-  
+
   return player.battlefield
-    .filter(perm => perm.type === 'creature' && !perm.tapped)
-    .map(perm => perm.cardInstanceId);
+    .filter((perm) => perm.type === "creature" && !perm.tapped)
+    .map((perm) => perm.cardInstanceId);
 }
 
 /**
@@ -592,24 +648,24 @@ export async function evaluateLookahead(
   gameState: EngineGameState,
   playerId: PlayerId,
   depth: number,
-  action?: AIAction
+  action?: AIAction,
 ): Promise<number> {
   // Base case: max depth reached
   if (depth <= 0) {
     const aiState = getAIGameState(gameState);
     // Use quick score for terminal evaluation
-    return quickScore(aiState as unknown as GameState, playerId, 'medium');
+    return quickScore(aiState as unknown as GameState, playerId, "medium");
   }
 
   // If no action provided, just evaluate current state
   if (!action) {
     const aiState = getAIGameState(gameState);
-    return quickScore(aiState as unknown as GameState, playerId, 'medium');
+    return quickScore(aiState as unknown as GameState, playerId, "medium");
   }
 
   // Execute the action to get new state (async)
   const result = await executeAIAction(gameState, action, playerId);
-  
+
   if (!result.success || !result.newState) {
     // Action failed, return negative value
     return -100;
@@ -617,7 +673,7 @@ export async function evaluateLookahead(
 
   // Get opponent ID (the one who would respond)
   const opponentId = getOpponentPlayerId(gameState, playerId);
-  
+
   // For depth > 1, simulate opponent's best response and recurse
   if (depth > 1) {
     // Get opponent's available actions (simplified - just evaluate their perspective)
@@ -625,16 +681,16 @@ export async function evaluateLookahead(
     const opponentScore = quickScore(
       getAIGameState(opponentState) as unknown as GameState,
       opponentId,
-      'medium'
+      "medium",
     );
-    
+
     // Our score after opponent's potential response
     const ourScore = quickScore(
       getAIGameState(result.newState) as unknown as GameState,
       playerId,
-      'medium'
+      "medium",
     );
-    
+
     // Combine: our immediate gain minus opponent's potential gain
     // This is simplified - real implementation would explore opponent actions
     return ourScore - (opponentScore * 0.5) / depth;
@@ -642,5 +698,5 @@ export async function evaluateLookahead(
 
   // For depth === 1, just evaluate the resulting state
   const aiState = getAIGameState(result.newState);
-  return quickScore(aiState as unknown as GameState, playerId, 'medium');
+  return quickScore(aiState as unknown as GameState, playerId, "medium");
 }
