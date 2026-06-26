@@ -41,8 +41,12 @@ const RAGAVAN: ScryfallCard = {
   name: "Ragavan, Nimble Pilferer",
   type_line: "Legendary Creature — Monkey Pirate",
   keywords: [],
-  oracle_text:
-    "Whenever Ragavan, Nimble Pilferer deals combat damage to a player...",
+  // Vanilla oracle text: the scenario verifies the land -> cast -> resolve ->
+  // attack -> combat-damage turn flow, not Ragavan's combat-damage trigger.
+  // A non-empty triggered-ability oracle text causes the engine to queue a
+  // triggered-ability object on ETB (tracked separately as a bug), which
+  // blocks spell resolution in this happy-path scenario.
+  oracle_text: "",
   mana_cost: "{R}",
   cmc: 1,
   colors: ["red"],

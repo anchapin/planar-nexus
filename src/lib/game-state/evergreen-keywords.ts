@@ -895,7 +895,13 @@ export function isProtectedByWard(
  * return it to the battlefield with a -1/-1 counter on it.
  */
 export function hasPersist(card: CardInstance): boolean {
-  return hasKeyword(card, "persist");
+  if (!hasKeyword(card, "persist")) {
+    return false;
+  }
+  // CR 702.78: persist is a creature keyword ("When this creature is put into
+  // a graveyard from the battlefield..."). It has no effect on non-creatures.
+  const typeLine = card.cardData.type_line?.toLowerCase() || "";
+  return typeLine.includes("creature");
 }
 
 /**
