@@ -278,7 +278,7 @@
 3. Contributing guide covers test requirements
 4. Test coverage goals are documented
 
-**Plans**: TBD
+**Plans**: ✅ Complete — `docs/TESTING.md` (canonical guide), `docs/CONTRIBUTING.md` §7 (testing requirements + coverage floor + PR checklist), `docs/API.md` cross-links to test examples, 70% coverage goal recorded. Resolves #1109.
 
 ---
 
@@ -479,7 +479,7 @@ Plans:
 
 **Requirements**: REQ-006
 
-**Plans**: TBD
+**Plans**: ✅ Complete (resolves #1109) — `docs/TESTING.md`, `docs/CONTRIBUTING.md` §7, `docs/API.md` cross-links.
 
 ---
 

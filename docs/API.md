@@ -54,6 +54,10 @@ Planar Nexus uses a minimal server-side proxy for optional LLM features. The app
 
 ## 2. AI Endpoints
 
+> **Testing**: see [TESTING.md](./TESTING.md) for how these endpoints are
+> tested (route-handler unit tests + MSW integration). Concrete test links are
+> included under each endpoint below where they exist.
+
 ### 2.1 POST /api/ai/coach/review
 
 Analyze a deck and generate a comprehensive coach report.
@@ -176,6 +180,12 @@ interface CoachReviewResponse {
   }
 }
 ```
+
+> **Tests**:
+> - Route handler — [`src/app/api/chat/coach/__tests__/route.test.ts`](../src/app/api/chat/coach/__tests__/route.test.ts)
+> - Deck-analysis flow — [`src/ai/flows/__tests__/coach-deck-analysis.test.ts`](../src/ai/flows/__tests__/coach-deck-analysis.test.ts)
+> - Prompt construction — [`src/ai/flows/__tests__/coach-prompt.test.ts`](../src/ai/flows/__tests__/coach-prompt.test.ts)
+> - Context prefetch — [`src/ai/flows/__tests__/coach-context-prefetch.test.ts`](../src/ai/flows/__tests__/coach-context-prefetch.test.ts)
 
 ---
 
