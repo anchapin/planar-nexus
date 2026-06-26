@@ -16,6 +16,38 @@
 import type { GameState, PlayerId, CardInstanceId, StackEffect } from "./types";
 import { drawCards, createTokenCard, counterSpell } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
+import { hasLifelink } from "./evergreen-keywords";
+
+/**
+ * Apply lifelink life gain for damage dealt by a source with lifelink.
+ *
+ * CR 702.15b: "Damage dealt by a source with lifelink causes that source's
+ * controller to gain that much life, in addition to the damage's other effects."
+ * CR 608.2c: Lifelink is tied to the source of the damage, not the kind of
+ * damage — so non-combat damage from spells/abilities also triggers it.
+ *
+ * @returns updated state (life gained if source has lifelink, else unchanged)
+ */
+function applyLifelinkLifeGain(
+  state: GameState,
+  sourceId: CardInstanceId | undefined,
+  damageDealt: number,
+): GameState {
+  if (!sourceId || damageDealt <= 0) return state;
+  const sourceCard = state.cards.get(sourceId);
+  if (!sourceCard || !hasLifelink(sourceCard)) return state;
+  const controllerId = sourceCard.controllerId;
+  const controller = state.players.get(controllerId);
+  if (!controller) return state;
+  return {
+    ...state,
+    players: new Map(state.players).set(controllerId, {
+      ...controller,
+      life: controller.life + damageDealt,
+    }),
+    lastModifiedAt: Date.now(),
+  };
+}
 
 /**
  * Result of an effect resolution
@@ -225,6 +257,13 @@ export function resolveDamageEffect(
   amount: number,
   isCombatDamage: boolean = false,
 ): EffectResolutionResult {
+  // Capture damage marked on the target before resolution so we can derive
+  // the actual damage dealt after prevention/replacement effects. CR 702.15b:
+  // lifelink grants life equal to the damage actually dealt, not the
+  // requested amount.
+  const targetCardBefore = state.cards.get(targetId);
+  const damageBefore = targetCardBefore?.damage ?? 0;
+
   const result = dealDamageToCard(
     state,
     targetId,
@@ -233,9 +272,29 @@ export function resolveDamageEffect(
     sourceId,
   );
 
+  // dealDamageToCard marks `card.damage += actualDamage`, so the delta is the
+  // actual damage dealt. Cap at the requested amount so deathtouch's lethality
+  // bump (which marks extra damage up to toughness) does not inflate the
+  // lifelink life gain.
+  const targetCardAfter = result.state.cards.get(targetId);
+  const damageAfter = targetCardAfter?.damage ?? damageBefore;
+  const actualDamageDealt = Math.max(
+    0,
+    Math.min(damageAfter - damageBefore, amount),
+  );
+
+  // CR 702.15b / CR 608.2c: a non-combat source with lifelink (e.g. a spell
+  // or ability whose source has lifelink) grants its controller life equal to
+  // the damage dealt.
+  const stateWithLifelink = applyLifelinkLifeGain(
+    result.state,
+    sourceId,
+    actualDamageDealt,
+  );
+
   return {
     success: result.success,
-    state: result.state,
+    state: stateWithLifelink,
     description:
       result.description ||
       `${state.cards.get(targetId)?.cardData.name || "Target"} took ${amount} damage`,
@@ -263,23 +322,61 @@ export function resolvePlayerDamageEffect(
     };
   }
 
+  // Process replacement/prevention effects to determine the actual damage
+  // dealt. CR 614: prevention effects reduce damage that would be dealt.
+  // CR 702.15b: lifelink grants life equal to the damage actually dealt, so
+  // it must be computed after prevention.
+  const replacementEvent = {
+    type: "damage" as const,
+    timestamp: Date.now(),
+    sourceId,
+    targetId: targetPlayerId,
+    amount,
+    isCombatDamage: false,
+    damageTypes: ["noncombat"] as ("combat" | "noncombat")[],
+  };
+  const rem = state.replacementEffectManager;
+  const apnapOrder = rem.createAPNAPOrder(
+    state.turn.activePlayerId,
+    Array.from(state.players.keys()),
+  );
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
+  const actualDamage = processedEvent.amount;
+
+  if (actualDamage <= 0) {
+    return {
+      success: true,
+      state,
+      description: `Damage to ${playerData.name} was fully prevented`,
+    };
+  }
+
   // Deal damage to player - this reduces their life total
-  // For commander damage, we would track that separately
   const updatedPlayers = new Map(state.players);
   const updatedPlayer = {
     ...playerData,
-    life: Math.max(0, playerData.life - amount),
+    life: Math.max(0, playerData.life - actualDamage),
   };
   updatedPlayers.set(targetPlayerId, updatedPlayer);
 
+  let stateAfterDamage: GameState = {
+    ...state,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
+  };
+
+  // CR 702.15b / CR 608.2c: a source with lifelink grants its controller life
+  // equal to the damage dealt — including non-combat damage from spells.
+  stateAfterDamage = applyLifelinkLifeGain(
+    stateAfterDamage,
+    sourceId,
+    actualDamage,
+  );
+
   return {
     success: true,
-    state: {
-      ...state,
-      players: updatedPlayers,
-      lastModifiedAt: Date.now(),
-    },
-    description: `${playerData.name} took ${amount} damage${sourceId ? ` (from ${state.cards.get(sourceId)?.cardData.name || "source"})` : ""}`,
+    state: stateAfterDamage,
+    description: `${playerData.name} took ${actualDamage} damage${sourceId ? ` (from ${state.cards.get(sourceId)?.cardData.name || "source"})` : ""}`,
   };
 }
 

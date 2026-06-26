@@ -24,6 +24,10 @@ import {
   initializePlaneswalkerLoyalty,
 } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
+import {
+  resolvePlayerDamageEffect,
+  resolveDamageEffect,
+} from "../effect-resolution";
 import { checkStateBasedActions } from "../state-based-actions";
 import type { ScryfallCard } from "@/app/actions";
 import type { GameState, PlayerId } from "../types";
@@ -591,6 +595,179 @@ describe("Damage Spells Target Validation", () => {
       state = dealDamageToPlayer(state, bobId, 100);
       const bobLife = state.players.get(bobId)?.life ?? 20;
       expect(bobLife).toBe(0);
+    });
+  });
+
+  describe("Lifelink on non-combat (spell) damage — Issue #981", () => {
+    // CR 702.15b: Damage dealt by a source with lifelink causes that source's
+    // controller to gain that much life. CR 608.2c: this is tied to the
+    // source, so NON-combat damage from spells/abilities also triggers it.
+    // These tests exercise the spell-resolution path (resolvePlayerDamageEffect
+    // / resolveDamageEffect) which previously did not check lifelink at all.
+
+    it("lifelink source dealing spell damage to a player gains controller life", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      const lifelinkData = createMockCreature("Blinding Angel", 3, 3, [
+        "Lifelink",
+      ]);
+      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      state = result1.state;
+      const lifelinkId = result1.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+
+      // Spell damage (non-combat) routed through the spell resolution path.
+      const damageResult = resolvePlayerDamageEffect(
+        state,
+        lifelinkId,
+        bobId,
+        4,
+      );
+      expect(damageResult.success).toBe(true);
+      state = damageResult.state;
+
+      const bobLifeAfter = state.players.get(bobId)?.life ?? 20;
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      // Bob loses 4 life from the damage
+      expect(bobLifeAfter).toBe(20 - 4);
+      // Alice gains 4 life from lifelink even though damage is non-combat
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 4);
+    });
+
+    it("non-lifelink spell source deals no life gain to controller", () => {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      // Source without lifelink
+      const vanillaData = createMockCreature("Runeclaw Bear", 2, 2);
+      const result1 = addCardToBattlefield(state, vanillaData, aliceId, aliceId);
+      state = result1.state;
+      const sourceId = result1.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+
+      const damageResult = resolvePlayerDamageEffect(
+        state,
+        sourceId,
+        bobId,
+        3,
+      );
+      expect(damageResult.success).toBe(true);
+      state = damageResult.state;
+
+      const bobLifeAfter = state.players.get(bobId)?.life ?? 20;
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      expect(bobLifeAfter).toBe(20 - 3);
+      // No lifelink → no life gain
+      expect(aliceLifeAfter).toBe(aliceLifeBefore);
+    });
+
+    it("lifelink granted by an aura: spell damage to a creature gains controller life", () => {
+      // A creature has lifelink because an aura grants it (here the lifelink
+      // is modeled on the creature's keywords). A damage spell whose source
+      // is that creature hits another creature — controller should gain life.
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      const lifelinkData = createMockCreature("Aura-touched Monk", 2, 2, [
+        "Lifelink",
+      ]);
+      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      state = result1.state;
+      const lifelinkId = result1.cardId;
+      const targetData = createMockCreature("Hill Giant", 3, 3);
+      const result2 = addCardToBattlefield(state, targetData, bobId, bobId);
+      state = result2.state;
+      const targetId = result2.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+
+      // Non-combat damage to a CREATURE via the spell resolution path
+      const damageResult = resolveDamageEffect(
+        state,
+        lifelinkId,
+        targetId,
+        2,
+        false,
+      );
+      expect(damageResult.success).toBe(true);
+      state = damageResult.state;
+
+      const targetCard = state.cards.get(targetId);
+      expect(targetCard?.damage).toBe(2);
+      // Alice gains 2 life from lifelink on non-combat damage to a creature
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 2);
+    });
+
+    it("lifelink + prevention: controller gains only the damage actually dealt", () => {
+      // CR 702.15b + CR 614: lifelink grants life equal to the damage actually
+      // dealt (after prevention), not the original amount.
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      const lifelinkData = createMockCreature("Lifelink Mage", 3, 3, [
+        "Lifelink",
+      ]);
+      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      state = result1.state;
+      const lifelinkId = result1.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+
+      // Bob has a prevention shield preventing the next 3 damage to him.
+      state.replacementEffectManager.addPreventionShield(bobId, {
+        sourceId: "fog-effect",
+        amount: 3,
+        controllerId: bobId,
+      });
+
+      // Spell deals 5 damage, 3 prevented → 2 actually dealt.
+      const damageResult = resolvePlayerDamageEffect(
+        state,
+        lifelinkId,
+        bobId,
+        5,
+      );
+      expect(damageResult.success).toBe(true);
+      state = damageResult.state;
+
+      const bobLifeAfter = state.players.get(bobId)?.life ?? 20;
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      // Bob loses only 2 life (5 - 3 prevented)
+      expect(bobLifeAfter).toBe(20 - 2);
+      // Alice gains only 2 life (the damage actually dealt), not 5
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 2);
+    });
+
+    it("combat lifelink still works (regression) — dealDamageToPlayer with combat damage", () => {
+      // Ensures the lifelink primitive used by the combat path is unchanged.
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const playerIds = Array.from(state.players.keys());
+      const aliceId = playerIds[0];
+      const bobId = playerIds[1];
+      const lifelinkData = createMockCreature("Battle Messenger", 2, 2, [
+        "Lifelink",
+      ]);
+      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      state = result1.state;
+      const lifelinkId = result1.cardId;
+      const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
+
+      // Combat damage from a lifelink source to a player
+      state = dealDamageToPlayer(state, bobId, 2, true, lifelinkId);
+
+      const bobLifeAfter = state.players.get(bobId)?.life ?? 20;
+      const aliceLifeAfter = state.players.get(aliceId)?.life ?? 20;
+      expect(bobLifeAfter).toBe(20 - 2);
+      expect(aliceLifeAfter).toBe(aliceLifeBefore + 2);
     });
   });
 });
