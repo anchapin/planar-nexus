@@ -77,8 +77,11 @@ const MANA_CURVE_BUCKETS = 8; // indices 0..7 where 7 == "7+"
 /**
  * Classify a card into a functional role based on its type line, keywords and
  * oracle text. The first matching role wins; lands are handled by the caller.
+ *
+ * Exported (issue #1076) so the per-matchup sideboard planner can reuse the
+ * SAME role taxonomy instead of inventing its own.
  */
-function classifyRole(card: DeckCard): keyof RoleDistribution {
+export function classifyRole(card: DeckCard): keyof RoleDistribution {
   const type = (card.type_line || "").toLowerCase();
   const text = `${card.name} ${card.oracle_text || ""}`.toLowerCase();
 
