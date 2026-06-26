@@ -1,0 +1,60 @@
+{
+  "common": {
+    "appName": "Planar Nexus",
+    "tagline": "A generic card game platform"
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "deckBuilder": "Deck Builder",
+    "cardStudio": "Card Studio",
+    "collection": "Collection",
+    "draftAssistant": "Draft Assistant",
+    "aiDeckCoach": "AI Deck Coach",
+    "coachReport": "Coach Report",
+    "metaAnalysis": "Meta Analysis",
+    "gameAnalysis": "Game Analysis",
+    "savedGames": "Saved Games",
+    "singlePlayer": "Single Player",
+    "multiplayer": "Multiplayer",
+    "gameBoardDemo": "Game Board Demo",
+    "cardInteractions": "Card Interactions",
+    "settings": "Settings",
+    "playerName": "Player One",
+    "playerId": "#54321",
+    "keyboardShortcuts": "Keyboard Shortcuts",
+    "community": "Community"
+  },
+  "footer": {
+    "appTagline": "Planar Nexus - A generic card game platform",
+    "wizardsFanContentPolicy": "Wizards Fan Content Policy",
+    "legal": "Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC."
+  },
+  "dashboard": {
+    "welcomeHeading": "Welcome to Planar Nexus",
+    "welcomeSubtitle": "Your command center for epic Planar Nexus battles.",
+    "getStarted": "Get Started",
+    "goTo": "Go to {title}",
+    "features": {
+      "deckBuilder": {
+        "title": "Deck Builder",
+        "description": "Craft and fine-tune your decks with a powerful editor and vast card library."
+      },
+      "aiDeckCoach": {
+        "title": "AI Deck Coach",
+        "description": "Get expert analysis on your deck. The AI coach provides insights on strategy and suggests improvements."
+      },
+      "singlePlayer": {
+        "title": "Single Player",
+        "description": "Test your creations against an AI opponent or practice your combos in self-play mode."
+      },
+      "spectator": {
+        "title": "Spectator Mode",
+        "description": "Watch two AI opponents battle it out with play-by-play commentary. Learn from the best strategies."
+      },
+      "multiplayer": {
+        "title": "Multiplayer",
+        "description": "Challenge your friends to a 4-player game. The ultimate battle of wits awaits."
+      }
+    }
+  }
+}

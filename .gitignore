@@ -33,6 +33,8 @@ venv/
 .DS_Store
 *.pem
 *.json
+# i18n message catalogs must be tracked
+!src/messages/*.json
 
 # python
 __pycache__/
