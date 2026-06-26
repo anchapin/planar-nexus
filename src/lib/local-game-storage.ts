@@ -3,14 +3,18 @@
  * Replaces Firebase Realtime Database with IndexedDB for game state storage
  */
 
-import { serializeGameState, deserializeGameState, type SerializedGameState } from './game-state/serialization';
-import type { GameState, Phase, PlayerId } from './game-state/types';
+import {
+  serializeGameState,
+  deserializeGameState,
+  type SerializedGameState,
+} from "./game-state/serialization";
+import type { GameState, Phase, PlayerId } from "./game-state/types";
 
 // IndexedDB configuration
-const DB_NAME = 'PlanarNexusGameDB';
+const DB_NAME = "PlanarNexusGameDB";
 const DB_VERSION = 1;
-const GAMES_STORE_NAME = 'games';
-const GAME_CODES_STORE_NAME = 'gameCodes';
+const GAMES_STORE_NAME = "games";
+const GAME_CODES_STORE_NAME = "gameCodes";
 
 // Database state
 let db: IDBDatabase | null = null;
@@ -44,14 +48,25 @@ export interface LocalGameSession {
   /** Last action timestamp */
   lastActionAt: number;
   /** Game status */
-  status: 'active' | 'paused' | 'completed' | 'abandoned';
+  status: "active" | "paused" | "completed" | "abandoned";
+  /**
+   * Origin of the session. `'p2p'` marks a game that was migrated to local
+   * hot-seat storage after a terminal P2P connection failure (issue #1090).
+   * Omitted/`'local'` for sessions created natively in local mode.
+   */
+  source?: "p2p" | "local";
+  /**
+   * Stable key used to upsert a degraded/hot-seat game idempotently so that
+   * re-saving the same failed match never duplicates or corrupts state.
+   */
+  resumeKey?: string;
 }
 
 /**
  * Game state update info
  */
 export interface GameStateUpdate {
-  type: 'full-sync' | 'delta' | 'action';
+  type: "full-sync" | "delta" | "action";
   version: number;
   timestamp: number;
   senderId: string;
@@ -96,15 +111,19 @@ class LocalGameStorageManager {
 
         // Create games object store
         if (!database.objectStoreNames.contains(GAMES_STORE_NAME)) {
-          const gamesStore = database.createObjectStore(GAMES_STORE_NAME, { keyPath: 'gameId' });
-          gamesStore.createIndex('gameCode', 'gameCode', { unique: true });
-          gamesStore.createIndex('status', 'status', { unique: false });
-          gamesStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+          const gamesStore = database.createObjectStore(GAMES_STORE_NAME, {
+            keyPath: "gameId",
+          });
+          gamesStore.createIndex("gameCode", "gameCode", { unique: true });
+          gamesStore.createIndex("status", "status", { unique: false });
+          gamesStore.createIndex("updatedAt", "updatedAt", { unique: false });
         }
 
         // Create game codes object store for quick lookups
         if (!database.objectStoreNames.contains(GAME_CODES_STORE_NAME)) {
-          database.createObjectStore(GAME_CODES_STORE_NAME, { keyPath: 'gameCode' });
+          database.createObjectStore(GAME_CODES_STORE_NAME, {
+            keyPath: "gameCode",
+          });
         }
       };
     });
@@ -127,7 +146,7 @@ class LocalGameStorageManager {
         db = await this.openDatabase();
         isInitialized = true;
       } catch (error) {
-        console.error('Failed to initialize game storage:', error);
+        console.error("Failed to initialize game storage:", error);
         throw error;
       }
     })();
@@ -149,12 +168,12 @@ class LocalGameStorageManager {
     hostId: string,
     hostName: string,
     gameCode: string,
-    initialGameState?: GameState
+    initialGameState?: GameState,
   ): Promise<LocalGameSession> {
     await this.initialize();
 
     if (!db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
     const gameId = this.generateGameId();
@@ -165,12 +184,14 @@ class LocalGameStorageManager {
       gameCode,
       hostId,
       hostName,
-      gameState: initialGameState ? serializeGameState(initialGameState) : undefined,
+      gameState: initialGameState
+        ? serializeGameState(initialGameState)
+        : undefined,
       gameStateVersion: initialGameState ? 1 : 0,
       createdAt: now,
       updatedAt: now,
       lastActionAt: now,
-      status: 'active',
+      status: "active",
     };
 
     // Store game code mapping
@@ -198,23 +219,23 @@ class LocalGameStorageManager {
   async joinGame(
     gameCode: string,
     playerId: string,
-    playerName: string
+    playerName: string,
   ): Promise<LocalGameSession> {
     await this.initialize();
 
     if (!db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
     // Look up game by game code
     const gameId = await this.lookupGameCode(gameCode);
     if (!gameId) {
-      throw new Error('Game not found. Check the code and try again.');
+      throw new Error("Game not found. Check the code and try again.");
     }
 
     const session = await this.getGameSessionById(gameId);
     if (!session) {
-      throw new Error('Game session not found');
+      throw new Error("Game session not found");
     }
 
     // Register as client
@@ -241,20 +262,23 @@ class LocalGameStorageManager {
   /**
    * Update game state
    */
-  async updateGameState(gameState: GameState, isFullSync: boolean = false): Promise<void> {
+  async updateGameState(
+    gameState: GameState,
+    isFullSync: boolean = false,
+  ): Promise<void> {
     if (!this.currentGameId) {
-      throw new Error('No active game');
+      throw new Error("No active game");
     }
 
     if (!db) {
-      throw new Error('Database not initialized');
+      throw new Error("Database not initialized");
     }
 
     const update: GameStateUpdate = {
-      type: isFullSync ? 'full-sync' : 'delta',
+      type: isFullSync ? "full-sync" : "delta",
       version: this.currentVersion + 1,
       timestamp: Date.now(),
-      senderId: this.isHost ? 'host' : 'client',
+      senderId: this.isHost ? "host" : "client",
       data: serializeGameState(gameState),
     };
 
@@ -290,7 +314,7 @@ class LocalGameStorageManager {
     }
 
     // Only host can update game state in storage
-    if (this.isHost || update.type === 'action') {
+    if (this.isHost || update.type === "action") {
       session.gameState = update.data;
       session.gameStateVersion = update.version;
       session.updatedAt = Date.now();
@@ -311,14 +335,14 @@ class LocalGameStorageManager {
    */
   private createBaseEngineState(): any {
     return {
-      gameId: '',
+      gameId: "",
       players: new Map(),
       cards: new Map(),
       zones: new Map(),
       stack: [],
-      turn: { 
-        activePlayerId: '' as PlayerId, 
-        currentPhase: 'precombat_main' as Phase, 
+      turn: {
+        activePlayerId: "" as PlayerId,
+        currentPhase: "precombat_main" as Phase,
         turnNumber: 1,
         extraTurns: 0,
         isFirstTurn: true,
@@ -328,10 +352,10 @@ class LocalGameStorageManager {
       waitingChoice: null,
       priorityPlayerId: null,
       consecutivePasses: 0,
-      status: 'not_started',
+      status: "not_started",
       winners: [],
       endReason: null,
-      format: 'commander',
+      format: "commander",
       createdAt: Date.now(),
       lastModifiedAt: Date.now(),
     };
@@ -368,7 +392,9 @@ class LocalGameStorageManager {
   /**
    * Update game status
    */
-  async updateStatus(status: 'active' | 'paused' | 'completed' | 'abandoned'): Promise<void> {
+  async updateStatus(
+    status: "active" | "paused" | "completed" | "abandoned",
+  ): Promise<void> {
     if (!this.currentGameId || !db) {
       return;
     }
@@ -424,7 +450,7 @@ class LocalGameStorageManager {
       this.callbacks?.onPlayerLeft(session.clientId);
     } else {
       // Host leaves - mark game as abandoned
-      await this.updateStatus('abandoned');
+      await this.updateStatus("abandoned");
     }
 
     this.cleanup();
@@ -434,7 +460,7 @@ class LocalGameStorageManager {
    * End the game
    */
   async endGame(): Promise<void> {
-    await this.updateStatus('completed');
+    await this.updateStatus("completed");
     this.cleanup();
   }
 
@@ -474,18 +500,26 @@ class LocalGameStorageManager {
    * Generate a unique game ID
    */
   private generateGameId(): string {
-    return 'game_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
+    return (
+      "game_" +
+      Date.now().toString(36) +
+      "_" +
+      Math.random().toString(36).substr(2, 9)
+    );
   }
 
   /**
    * Store game code mapping
    */
   private async storeGameCode(gameCode: string, gameId: string): Promise<void> {
-    if (!db) throw new Error('Database not initialized');
+    if (!db) throw new Error("Database not initialized");
 
     const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAME_CODES_STORE_NAME], 'readwrite');
+      const transaction = database.transaction(
+        [GAME_CODES_STORE_NAME],
+        "readwrite",
+      );
       const store = transaction.objectStore(GAME_CODES_STORE_NAME);
       const request = store.put({ gameCode, gameId });
 
@@ -498,11 +532,14 @@ class LocalGameStorageManager {
    * Look up game by game code
    */
   private async lookupGameCode(gameCode: string): Promise<string | null> {
-    if (!db) throw new Error('Database not initialized');
+    if (!db) throw new Error("Database not initialized");
 
     const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAME_CODES_STORE_NAME], 'readonly');
+      const transaction = database.transaction(
+        [GAME_CODES_STORE_NAME],
+        "readonly",
+      );
       const store = transaction.objectStore(GAME_CODES_STORE_NAME);
       const request = store.get(gameCode);
 
@@ -518,11 +555,11 @@ class LocalGameStorageManager {
    * Store game session
    */
   private async storeGameSession(session: LocalGameSession): Promise<void> {
-    if (!db) throw new Error('Database not initialized');
+    if (!db) throw new Error("Database not initialized");
 
     const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAMES_STORE_NAME], 'readwrite');
+      const transaction = database.transaction([GAMES_STORE_NAME], "readwrite");
       const store = transaction.objectStore(GAMES_STORE_NAME);
       const request = store.put(session);
 
@@ -534,12 +571,14 @@ class LocalGameStorageManager {
   /**
    * Get game session by ID
    */
-  private async getGameSessionById(gameId: string): Promise<LocalGameSession | null> {
-    if (!db) throw new Error('Database not initialized');
+  private async getGameSessionById(
+    gameId: string,
+  ): Promise<LocalGameSession | null> {
+    if (!db) throw new Error("Database not initialized");
 
     const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAMES_STORE_NAME], 'readonly');
+      const transaction = database.transaction([GAMES_STORE_NAME], "readonly");
       const store = transaction.objectStore(GAMES_STORE_NAME);
       const request = store.get(gameId);
 
@@ -551,14 +590,81 @@ class LocalGameStorageManager {
   }
 
   /**
+   * Persist an in-progress game as a local hot-seat session after a terminal
+   * P2P failure (issue #1090).
+   *
+   * Standalone transaction that does NOT mutate the manager's `currentGameId`
+   * (the dead P2P session's bookkeeping is left untouched). Idempotent: the
+   * same `resumeKey` always upserts the same row (stable `gameId`/`gameCode`),
+   * so degrading twice never duplicates or corrupts state.
+   *
+   * @param gameState  The live game state to snapshot.
+   * @param meta       Optional resume key + host player name.
+   * @returns The stored {@link LocalGameSession}.
+   */
+  async saveHotSeatGame(
+    gameState: GameState,
+    meta?: { resumeKey?: string; playerName?: string },
+  ): Promise<LocalGameSession> {
+    await this.initialize();
+    if (!db) {
+      throw new Error("Database not initialized");
+    }
+
+    const resumeKey =
+      meta?.resumeKey ?? `p2p_${gameState.gameId || Date.now().toString(36)}`;
+    const gameId = `hotseat_${resumeKey}`;
+    const gameCode = `LOCAL-${resumeKey}`;
+    const now = Date.now();
+
+    // Load any existing row so a re-save bumps the version instead of reset.
+    const existing = await this.getGameSessionById(gameId);
+    const version = existing ? existing.gameStateVersion + 1 : 1;
+
+    const session: LocalGameSession = {
+      gameId,
+      gameCode,
+      hostId: existing?.hostId || "local",
+      hostName: meta?.playerName || existing?.hostName || "Local Player",
+      gameState: serializeGameState(gameState),
+      gameStateVersion: version,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      lastActionAt: now,
+      status: "active",
+      source: "p2p",
+      resumeKey,
+    };
+
+    await this.storeGameCode(gameCode, gameId);
+    await this.storeGameSession(session);
+
+    return session;
+  }
+
+  /**
+   * Read back a hot-seat game saved via {@link saveHotSeatGame}, deserializing
+   * it into a live {@link GameState}. Returns null when no such game exists.
+   */
+  async getHotSeatGame(resumeKey: string): Promise<GameState | null> {
+    await this.initialize();
+    const session = await this.getGameSessionById(`hotseat_${resumeKey}`);
+    if (!session || !session.gameState) {
+      return null;
+    }
+    const baseState = this.createBaseEngineState();
+    return deserializeGameState(session.gameState, baseState);
+  }
+
+  /**
    * Remove player from session
    */
   private async removePlayerFromSession(gameId: string): Promise<void> {
-    if (!db) throw new Error('Database not initialized');
+    if (!db) throw new Error("Database not initialized");
 
     const database = db;
     return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAMES_STORE_NAME], 'readwrite');
+      const transaction = database.transaction([GAMES_STORE_NAME], "readwrite");
       const store = transaction.objectStore(GAMES_STORE_NAME);
       const request = store.get(gameId);
 
@@ -598,12 +704,17 @@ export async function createGame(
   hostName: string,
   gameCode: string,
   initialGameState?: GameState,
-  callbacks?: GameStorageCallbacks
+  callbacks?: GameStorageCallbacks,
 ): Promise<LocalGameSession> {
   if (callbacks) {
     localGameStorage.setCallbacks(callbacks);
   }
-  return localGameStorage.createGame(hostId, hostName, gameCode, initialGameState);
+  return localGameStorage.createGame(
+    hostId,
+    hostName,
+    gameCode,
+    initialGameState,
+  );
 }
 
 /**
@@ -613,7 +724,7 @@ export async function joinGame(
   gameCode: string,
   playerId: string,
   playerName: string,
-  callbacks?: GameStorageCallbacks
+  callbacks?: GameStorageCallbacks,
 ): Promise<LocalGameSession> {
   if (callbacks) {
     localGameStorage.setCallbacks(callbacks);
@@ -624,7 +735,10 @@ export async function joinGame(
 /**
  * Update game state
  */
-export async function updateGameState(gameState: GameState, isFullSync?: boolean): Promise<void> {
+export async function updateGameState(
+  gameState: GameState,
+  isFullSync?: boolean,
+): Promise<void> {
   return localGameStorage.updateGameState(gameState, isFullSync);
 }
 
@@ -645,7 +759,9 @@ export async function getGameSession(): Promise<LocalGameSession | null> {
 /**
  * Update game status
  */
-export async function updateGameStatus(status: 'active' | 'paused' | 'completed' | 'abandoned'): Promise<void> {
+export async function updateGameStatus(
+  status: "active" | "paused" | "completed" | "abandoned",
+): Promise<void> {
   return localGameStorage.updateStatus(status);
 }
 
@@ -661,4 +777,31 @@ export async function leaveGame(): Promise<void> {
  */
 export async function endGame(): Promise<void> {
   return localGameStorage.endGame();
+}
+
+// ---------------------------------------------------------------------------
+// Issue #1090 — graceful degradation to local hot-seat on terminal P2P failure
+// ---------------------------------------------------------------------------
+
+/**
+ * Snapshot an in-progress game into local hot-seat (IndexedDB) storage so it
+ * can be continued on this device after the P2P connection fails terminally.
+ *
+ * Idempotent: repeated calls with the same `resumeKey` upsert the same row.
+ */
+export async function saveGameForLocalHotSeat(
+  gameState: GameState,
+  meta?: { resumeKey?: string; playerName?: string },
+): Promise<LocalGameSession> {
+  return localGameStorage.saveHotSeatGame(gameState, meta);
+}
+
+/**
+ * Load a hot-seat game previously saved via {@link saveGameForLocalHotSeat}.
+ * Returns the deserialized game state, or null if none exists for the key.
+ */
+export async function getLocalHotSeatGame(
+  resumeKey: string,
+): Promise<GameState | null> {
+  return localGameStorage.getHotSeatGame(resumeKey);
 }

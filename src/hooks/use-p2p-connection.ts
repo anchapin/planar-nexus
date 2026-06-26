@@ -34,6 +34,7 @@ import {
   type HostMigrationResult,
   type PeerRosterEntry,
 } from "@/lib/p2p-host-migration";
+import { saveGameForLocalHotSeat } from "@/lib/local-game-storage";
 import {
   useConnectionHealth,
   type ConnectionHealth,
@@ -65,6 +66,42 @@ export interface UseP2PConnectionOptions {
   onHostMigrated?: (result: HostMigrationResult) => void;
   /** Called when no peers remain and the multiplayer game must end cleanly. */
   onGameTerminated?: (reason: string) => void;
+  /**
+   * Called after the connection degrades to local hot-seat on a terminal P2P
+   * failure (issue #1090). Carries the resume key + gameId so the UI can load
+   * the migrated game, or nulls when there was no game state to migrate.
+   */
+  onDegradedToLocal?: (result: LocalDegradeInfo) => void;
+}
+
+/**
+ * Outcome of migrating a failed P2P game to local hot-seat storage.
+ */
+export interface LocalDegradeInfo {
+  resumeKey: string | null;
+  gameId: string | null;
+  /** False when there was no in-progress game state to preserve. */
+  hadGameState: boolean;
+}
+
+/**
+ * Result of {@link useP2PConnectionReturn.continueAsLocalHotSeat}.
+ */
+export interface LocalHotSeatMigrationResult {
+  ok: boolean;
+  resumeKey?: string;
+  gameId?: string;
+  hadGameState?: boolean;
+  error?: string;
+}
+
+/**
+ * Result of {@link useP2PConnectionReturn.saveForLocalResume}.
+ */
+export interface LocalHotSeatSaveResult {
+  ok: boolean;
+  resumeKey?: string;
+  error?: string;
 }
 
 export interface UseP2PConnectionReturn {
@@ -95,6 +132,19 @@ export interface UseP2PConnectionReturn {
   currentHostId: string;
   /** True when the local client currently holds host authority. */
   isAuthoritativeHost: boolean;
+  // --- Issue #1090: graceful degradation to local hot-seat ---
+  /** True when the P2P connection has failed terminally and the user has not yet acted. */
+  terminalFailure: boolean;
+  /** True after the game has been migrated to local hot-seat mode. */
+  degradedToLocal: boolean;
+  /** The most recent game state observed (sent or received), available for migration. */
+  lastGameState: GameState | null;
+  /** Migrate the in-progress game to local hot-seat storage and switch modes. Idempotent. */
+  continueAsLocalHotSeat: () => Promise<LocalHotSeatMigrationResult>;
+  /** Persist the in-progress game to IndexedDB for later resume (without switching modes). */
+  saveForLocalResume: () => Promise<LocalHotSeatSaveResult>;
+  /** Acknowledge the terminal failure (abandon) and dismiss the degrade prompt. */
+  dismissTerminalFailure: () => void;
 }
 
 export function useP2PConnection(
@@ -113,6 +163,7 @@ export function useP2PConnection(
     migrationPeers = [],
     onHostMigrated,
     onGameTerminated,
+    onDegradedToLocal,
   } = options;
 
   const fallbackHostId =
@@ -127,6 +178,13 @@ export function useP2PConnection(
     useState<string>(fallbackHostId);
   const [connectionFailureReason, setConnectionFailureReason] =
     useState<ConnectionFailureDiagnostic | null>(null);
+  // --- Issue #1090: graceful degradation to local hot-seat ---
+  const [degradedToLocal, setDegradedToLocal] = useState(false);
+  const [terminalFailureDismissed, setTerminalFailureDismissed] =
+    useState(false);
+  const [lastGameState, setLastGameState] = useState<GameState | null>(null);
+  const lastGameStateRef = useRef<GameState | null>(null);
+  const degradedRef = useRef(false);
   const connectionRef = useRef<P2PGameConnection | null>(null);
   const handshakeSessionRef = useRef<HandshakeSession | null>(null);
   const conflictManagerRef = useRef<ConflictResolutionManager | null>(null);
@@ -135,8 +193,10 @@ export function useP2PConnection(
   // once per initialize) always see the current props without re-creating.
   const onHostMigratedRef = useRef(onHostMigrated);
   const onGameTerminatedRef = useRef(onGameTerminated);
+  const onDegradedToLocalRef = useRef(onDegradedToLocal);
   onHostMigratedRef.current = onHostMigrated;
   onGameTerminatedRef.current = onGameTerminated;
+  onDegradedToLocalRef.current = onDegradedToLocal;
 
   // Initialize conflict resolution manager
   useEffect(() => {
@@ -242,6 +302,13 @@ export function useP2PConnection(
   // Cache the latest authoritative game state so a promoted host can adopt it.
   const cacheGameStateForMigration = useCallback((gameState: GameState) => {
     hostMigrationRef.current?.setLastKnownGameState(gameState);
+  }, []);
+
+  // Cache the latest observed game state (sent or received) so it can be
+  // migrated to local hot-seat storage on a terminal P2P failure (#1090).
+  const cacheLatestGameState = useCallback((gameState: GameState) => {
+    lastGameStateRef.current = gameState;
+    setLastGameState(gameState);
   }, []);
 
   // Track a newly-joined peer for successor-selection purposes.
@@ -361,6 +428,7 @@ export function useP2PConnection(
             onGameStateSync: (gameState) => {
               p2pLogger.debug("Received game state sync");
               cacheGameStateForMigration(gameState);
+              cacheLatestGameState(gameState);
 
               // Verify checksum if handshake completed
               if (
@@ -434,6 +502,7 @@ export function useP2PConnection(
       enableHandshake,
       handshakeState,
       cacheGameStateForMigration,
+      cacheLatestGameState,
       registerPeerForMigration,
       handlePeerLeftForMigration,
       handleMigrationGameAction,
@@ -485,6 +554,7 @@ export function useP2PConnection(
             onGameStateSync: (gameState) => {
               p2pLogger.debug("Received game state sync");
               cacheGameStateForMigration(gameState);
+              cacheLatestGameState(gameState);
             },
             onChat: (chatMessage) => {
               p2pLogger.debug("Received chat:", chatMessage.text);
@@ -532,6 +602,7 @@ export function useP2PConnection(
       role,
       gameCode,
       cacheGameStateForMigration,
+      cacheLatestGameState,
       registerPeerForMigration,
       handlePeerLeftForMigration,
       handleMigrationGameAction,
@@ -583,13 +654,16 @@ export function useP2PConnection(
   // Send game state
   const sendGameState = useCallback(
     (gameState: GameState, isFullSync: boolean = false): boolean => {
+      // Cache the outgoing state so it is available for local migration on
+      // a later terminal failure (#1090).
+      cacheLatestGameState(gameState);
       if (!connectionRef.current) {
         return false;
       }
 
       return connectionRef.current.sendGameState(gameState, isFullSync);
     },
-    [],
+    [cacheLatestGameState],
   );
 
   // Send game action with conflict resolution
@@ -661,6 +735,12 @@ export function useP2PConnection(
     setHandshakeState("idle");
     setError(null);
     setConnectionFailureReason(null);
+    // Reset degrade-to-local bookkeeping so a fresh session starts clean.
+    degradedRef.current = false;
+    setDegradedToLocal(false);
+    setTerminalFailureDismissed(false);
+    lastGameStateRef.current = null;
+    setLastGameState(null);
   }, [fallbackHostId]);
 
   // Get connection instance
@@ -675,6 +755,118 @@ export function useP2PConnection(
     }
     return conflictManagerRef.current.getQueueSize();
   }, []);
+
+  // --- Issue #1090: graceful degradation to local hot-seat ---
+
+  // Tear down the dead P2P connection without ever throwing into the caller.
+  const safeCloseConnection = useCallback(() => {
+    try {
+      connectionRef.current?.close();
+    } catch (err) {
+      p2pLogger.warn("Error closing failed P2P connection", String(err));
+    }
+    connectionRef.current = null;
+  }, []);
+
+  // Migrate the in-progress game to local hot-seat storage and switch modes.
+  // Idempotent: a second call is a no-op once degradedToLocal is true.
+  const continueAsLocalHotSeat =
+    useCallback(async (): Promise<LocalHotSeatMigrationResult> => {
+      if (degradedRef.current) {
+        return { ok: true };
+      }
+
+      const gameState = lastGameStateRef.current;
+
+      // No game state to preserve: still leave multiplayer cleanly and notify.
+      if (!gameState) {
+        degradedRef.current = true;
+        setDegradedToLocal(true);
+        setError(null);
+        safeCloseConnection();
+        onDegradedToLocalRef.current?.({
+          resumeKey: null,
+          gameId: null,
+          hadGameState: false,
+        });
+        return { ok: true, hadGameState: false };
+      }
+
+      try {
+        const resumeKey = `p2p_${gameState.gameId || Date.now().toString(36)}`;
+        const session = await saveGameForLocalHotSeat(gameState, {
+          resumeKey,
+          playerName,
+        });
+        degradedRef.current = true;
+        setDegradedToLocal(true);
+        setError(null);
+        safeCloseConnection();
+        p2pLogger.info(
+          "Degraded to local hot-seat after terminal P2P failure",
+          session.gameId,
+        );
+        onDegradedToLocalRef.current?.({
+          resumeKey: session.resumeKey ?? resumeKey,
+          gameId: session.gameId,
+          hadGameState: true,
+        });
+        return {
+          ok: true,
+          resumeKey: session.resumeKey ?? resumeKey,
+          gameId: session.gameId,
+          hadGameState: true,
+        };
+      } catch (err) {
+        // Never let the degrade path crash the UI — surface as a normal error.
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Failed to migrate game to local hot-seat";
+        p2pLogger.error("Local hot-seat migration failed", msg);
+        setError(msg);
+        return { ok: false, error: msg };
+      }
+    }, [playerName, safeCloseConnection]);
+
+  // Persist the in-progress game to IndexedDB for later resume WITHOUT
+  // switching modes (the user chose "save for later" rather than continue).
+  const saveForLocalResume =
+    useCallback(async (): Promise<LocalHotSeatSaveResult> => {
+      const gameState = lastGameStateRef.current;
+      if (!gameState) {
+        return { ok: false, error: "No in-progress game state to save" };
+      }
+      try {
+        const resumeKey = `resume_${gameState.gameId || Date.now().toString(36)}`;
+        const session = await saveGameForLocalHotSeat(gameState, {
+          resumeKey,
+          playerName,
+        });
+        return { ok: true, resumeKey: session.resumeKey ?? resumeKey };
+      } catch (err) {
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Failed to save game for local resume";
+        setError(msg);
+        return { ok: false, error: msg };
+      }
+    }, [playerName]);
+
+  // The user chose to abandon: tear down and dismiss the degrade prompt.
+  const dismissTerminalFailure = useCallback(() => {
+    safeCloseConnection();
+    setTerminalFailureDismissed(true);
+  }, [safeCloseConnection]);
+
+  // Terminal failure is a distinct, actionable state: the P2P connection has
+  // failed AND fallback/reconnection is exhausted, the user has not yet
+  // migrated or abandoned, and we are not already in local mode.
+  const terminalFailure =
+    connectionState === "failed" &&
+    !degradedToLocal &&
+    !terminalFailureDismissed;
 
   return {
     connectionState,
@@ -696,6 +888,12 @@ export function useP2PConnection(
     getConflictQueueSize,
     currentHostId,
     isAuthoritativeHost: currentHostId === playerId,
+    terminalFailure,
+    degradedToLocal,
+    lastGameState,
+    continueAsLocalHotSeat,
+    saveForLocalResume,
+    dismissTerminalFailure,
   };
 }
 
