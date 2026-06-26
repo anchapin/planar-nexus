@@ -41,12 +41,13 @@ const RAGAVAN: ScryfallCard = {
   name: "Ragavan, Nimble Pilferer",
   type_line: "Legendary Creature — Monkey Pirate",
   keywords: [],
-  // Vanilla oracle text: the scenario verifies the land -> cast -> resolve ->
-  // attack -> combat-damage turn flow, not Ragavan's combat-damage trigger.
-  // A non-empty triggered-ability oracle text causes the engine to queue a
-  // triggered-ability object on ETB (tracked separately as a bug), which
-  // blocks spell resolution in this happy-path scenario.
-  oracle_text: "",
+  // Real oracle text: Ragavan carries a NON-ETB triggered ability
+  // ("Whenever CARDNAME deals combat damage to a player, ..."). The scenario
+  // verifies the land -> cast -> resolve -> attack -> combat-damage turn flow
+  // and asserts that resolving the creature spell leaves the stack EMPTY — i.e.
+  // the non-ETB trigger must NOT fire on resolution (issue #1157, CR 603.2/603.6).
+  oracle_text:
+    "Whenever Ragavan, Nimble Pilferer deals combat damage to a player, create a Treasure token.",
   mana_cost: "{R}",
   cmc: 1,
   colors: ["red"],

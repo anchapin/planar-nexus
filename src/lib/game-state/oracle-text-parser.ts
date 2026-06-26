@@ -128,7 +128,8 @@ export interface TriggerCondition {
     | "beginningOfTurn"
     | "endOfTurn"
     | "cleanupStep"
-    | "creatureDies";
+    | "creatureDies"
+    | "unknown";
   condition?: string;
   target?: ParsedTarget;
   source?: string;
@@ -1178,8 +1179,16 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "dies" };
   }
 
-  // If we can't determine the trigger, return a generic one
-  return { event: "entersBattlefield" };
+  // If we can't classify the trigger condition, return an "unknown" event.
+  // Per CR 603.2 a triggered ability may only fire when its trigger condition
+  // is actually met, so an unrecognised condition must NOT be assumed to be an
+  // "enters the battlefield" trigger (issue #1157). Otherwise non-ETB triggers
+  // (e.g. "Whenever CARDNAME deals combat damage to a player") that the parser
+  // fails to classify would fire spuriously when the creature's spell resolves,
+  // pushing a never-resolving object onto the stack and stalling the game.
+  // "unknown" matches no detection switch case, so such abilities simply never
+  // fire until a precise classification is added.
+  return { event: "unknown" };
 }
 
 /**
