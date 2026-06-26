@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/card";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 export const ONBOARDING_STORAGE_KEY = "planar-nexus:onboarded";
 /** Custom event dispatched to re-trigger the tour from anywhere (e.g. Settings). */
@@ -131,18 +132,9 @@ export function restartOnboardingTour(): void {
 
 /* ------------------------------- primitives ------------------------------- */
 
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const update = () => setReduced(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
-  return reduced;
-}
+// Reduced-motion awareness comes from the shared `@/hooks/use-prefers-reduced-motion`
+// hook (see issue #1103) so every animation component honors the OS preference
+// from a single source of truth.
 
 /** Focusable element selector used by the lightweight focus trap. */
 const FOCUSABLE =

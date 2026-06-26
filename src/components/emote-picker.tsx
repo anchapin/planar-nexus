@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Smile, ThumbsUp, Heart, Zap, Skull, Clock, HelpCircle, Laugh, Angry, PartyPopper } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 export type EmoteType = 
   | 'thumbsup' 
@@ -53,6 +54,11 @@ interface EmotePickerProps {
 
 export function EmotePicker({ onSelectEmote, disabled, className }: EmotePickerProps) {
   const [open, setOpen] = useState(false);
+  // #1103: popover open/close is essential UI, so it stays functional. When the
+  // user prefers reduced motion we explicitly drop the entrance/exit transition
+  // on the popover panel (the global CSS rule is the broader safety net, this
+  // is the per-component gate).
+  const reduceMotion = usePrefersReducedMotion();
 
   const handleEmoteSelect = (emote: EmoteType) => {
     onSelectEmote(emote);
@@ -73,7 +79,12 @@ export function EmotePicker({ onSelectEmote, disabled, className }: EmotePickerP
           <Smile className="w-4 h-4" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-2" align="start" role="listbox" aria-label="Select an emote">
+      <PopoverContent
+        className={cn('w-auto p-2', reduceMotion && 'transition-none')}
+        align="start"
+        role="listbox"
+        aria-label="Select an emote"
+      >
         <div className="grid grid-cols-5 gap-1" role="listbox">
           {EMOTES.map((emote) => (
             <Button

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 /**
  * Combat Animation System
@@ -61,8 +62,22 @@ export function AttackAnimation({ action, onComplete, className }: CombatAnimati
   const [phase, setPhase] = useState<AnimationPhase>('idle');
   const [trailPositions, setTrailPositions] = useState<{ x: number; y: number }[]>([]);
   const animationRef = useRef<number | undefined>(undefined);
+  // #1103: skip the multi-phase motion sequence under reduced motion — show the
+  // final state immediately and complete without trails / impact particles.
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (reduceMotion) {
+      // #1103: show the attack indicator statically (peak state, no transforms —
+      // see getAnimationStyle) for a short dwell so the event is communicated
+      // without motion, then complete.
+      setPhase('strike');
+      const completeTimer = setTimeout(() => {
+        onComplete?.(action.id);
+      }, 300);
+      return () => clearTimeout(completeTimer);
+    }
+
     // Windup phase - prepare to attack
     const windupTimer = setTimeout(() => setPhase('windup'), 50);
     
@@ -106,11 +121,16 @@ export function AttackAnimation({ action, onComplete, className }: CombatAnimati
         clearInterval(animationRef.current);
       }
     };
-  }, [action.id, onComplete]);
+  }, [action.id, onComplete, reduceMotion]);
 
-  const getAnimationStyle = () => {
+  const getAnimationStyle = (): React.CSSProperties => {
+    // #1103: no transforms / filter animation under reduced motion.
+    if (reduceMotion) {
+      return phase === 'fadeout' ? { opacity: 0 } : { opacity: 1 };
+    }
+
     const baseStyle = { opacity: 1 };
-    
+
     switch (phase) {
       case 'windup':
         return { ...baseStyle, transform: 'translateX(-30px) scale(1.1)', filter: 'brightness(1.2)' };
@@ -149,37 +169,38 @@ export function AttackAnimation({ action, onComplete, className }: CombatAnimati
         className
       )}
     >
-      {/* Trail effect */}
-      {phase === 'strike' && trailPositions.map((pos, idx) => (
+      {/* Trail effect — decorative, skipped under reduced motion (#1103) */}
+      {!reduceMotion && phase === 'strike' && trailPositions.map((pos, idx) => (
         <div
           key={idx}
           className="absolute w-8 h-8 bg-red-500/30 rounded-full blur-sm"
-          style={{ 
-            left: pos.x, 
+          style={{
+            left: pos.x,
             top: pos.y,
             opacity: 0.5 - (idx * 0.1)
           }}
         />
       ))}
-      
+
       {/* Main attack indicator */}
       <div
         className={cn(
           'flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-500',
           'border-2 border-red-400 rounded-lg px-4 py-2 shadow-lg shadow-red-500/50',
-          'transition-all duration-150 ease-out'
+          // #1103: drop the transition when motion is reduced.
+          !reduceMotion && 'transition-all duration-150 ease-out'
         )}
         style={getAnimationStyle()}
       >
-        <span className="text-2xl animate-pulse">{getIcon()}</span>
+        <span className={cn('text-2xl', !reduceMotion && 'animate-pulse')}>{getIcon()}</span>
         <div className="flex flex-col">
           <span className="font-bold text-white text-sm">{action.sourceName}</span>
           <span className="text-red-200 text-xs">attacking!</span>
         </div>
       </div>
-      
-      {/* Impact particles */}
-      {phase === 'impact' && (
+
+      {/* Impact particles — decorative, skipped under reduced motion (#1103) */}
+      {!reduceMotion && phase === 'impact' && (
         <div className="absolute left-full top-1/2 -translate-y-1/2">
           {Array.from({ length: 8 }).map((_, i) => (
             <div
@@ -201,8 +222,22 @@ export function AttackAnimation({ action, onComplete, className }: CombatAnimati
 // Block animation with shield effect
 export function BlockAnimation({ action, onComplete, className }: CombatAnimationProps) {
   const [phase, setPhase] = useState<'idle' | 'raise' | 'block' | 'hold' | 'lower' | 'complete'>('idle');
+  // #1103: under reduced motion, skip the raise/block/hold/lower sequence and
+  // present the static block indicator, completing on the next tick.
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (reduceMotion) {
+      // #1103: show the block indicator statically (peak state, no transforms —
+      // see getAnimationStyle) for a short dwell so the event is communicated
+      // without motion, then complete.
+      setPhase('block');
+      const completeTimer = setTimeout(() => {
+        onComplete?.(action.id);
+      }, 300);
+      return () => clearTimeout(completeTimer);
+    }
+
     const raiseTimer = setTimeout(() => setPhase('raise'), 50);
     const blockTimer = setTimeout(() => setPhase('block'), 200);
     const holdTimer = setTimeout(() => setPhase('hold'), 400);
@@ -219,9 +254,14 @@ export function BlockAnimation({ action, onComplete, className }: CombatAnimatio
       clearTimeout(lowerTimer);
       clearTimeout(completeTimer);
     };
-  }, [action.id, onComplete]);
+  }, [action.id, onComplete, reduceMotion]);
 
-  const getAnimationStyle = () => {
+  const getAnimationStyle = (): React.CSSProperties => {
+    // #1103: no transforms / opacity ramp under reduced motion.
+    if (reduceMotion) {
+      return { transform: 'scale(1)', opacity: 1 };
+    }
+
     switch (phase) {
       case 'raise':
         return { transform: 'scale(0.8) translateY(20px)', opacity: 0.7 };
@@ -245,21 +285,22 @@ export function BlockAnimation({ action, onComplete, className }: CombatAnimatio
         className
       )}
     >
-      {/* Shield glow effect */}
+      {/* Shield glow effect — pulse is decorative, skipped under reduced motion (#1103) */}
       <div
         className={cn(
           'absolute inset-0 bg-blue-500/30 rounded-full blur-xl',
-          phase === 'block' && 'animate-pulse'
+          !reduceMotion && phase === 'block' && 'animate-pulse'
         )}
         style={{ transform: 'scale(2)' }}
       />
-      
+
       {/* Main block indicator */}
       <div
         className={cn(
           'flex items-center gap-2 bg-gradient-to-r from-blue-600 to-blue-500',
           'border-2 border-blue-400 rounded-lg px-4 py-2 shadow-lg shadow-blue-500/50',
-          'transition-all duration-200 ease-out'
+          // #1103: drop the transition when motion is reduced.
+          !reduceMotion && 'transition-all duration-200 ease-out'
         )}
         style={getAnimationStyle()}
       >
@@ -269,9 +310,9 @@ export function BlockAnimation({ action, onComplete, className }: CombatAnimatio
           <span className="text-blue-200 text-xs">blocking</span>
         </div>
       </div>
-      
-      {/* Shield particles */}
-      {phase === 'block' && (
+
+      {/* Shield particles — decorative, skipped under reduced motion (#1103) */}
+      {!reduceMotion && phase === 'block' && (
         <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
@@ -294,37 +335,51 @@ export function BlockAnimation({ action, onComplete, className }: CombatAnimatio
 export function DamageAnimation({ action, onComplete, className }: CombatAnimationProps) {
   const [phase, setPhase] = useState<'idle' | 'appear' | 'float' | 'fade' | 'complete'>('idle');
   const [displayAmount, setDisplayAmount] = useState(0);
+  // #1103: under reduced motion, skip the count-up + bounce/float/fade — show
+  // the full damage value statically, dwell briefly so it's readable, complete.
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    if (action.amount) {
-      // Animate the damage number counting up
-      const steps = 10;
-      const increment = action.amount / steps;
-      let current = 0;
-      
-      const countInterval = setInterval(() => {
-        current += increment;
-        setDisplayAmount(Math.min(Math.round(current), action.amount || 0));
-      }, 30);
-      
-      const appearTimer = setTimeout(() => setPhase('appear'), 50);
-      const floatTimer = setTimeout(() => setPhase('float'), 300);
-      const fadeTimer = setTimeout(() => setPhase('fade'), 1200);
-      const completeTimer = setTimeout(() => {
-        setPhase('complete');
-        clearInterval(countInterval);
-        onComplete?.(action.id);
-      }, 1500);
-
-      return () => {
-        clearInterval(countInterval);
-        clearTimeout(appearTimer);
-        clearTimeout(floatTimer);
-        clearTimeout(fadeTimer);
-        clearTimeout(completeTimer);
-      };
+    if (!action.amount) {
+      return;
     }
-  }, [action.id, action.amount, onComplete]);
+
+    if (reduceMotion) {
+      setDisplayAmount(action.amount);
+      setPhase('appear');
+      const completeTimer = setTimeout(() => {
+        onComplete?.(action.id);
+      }, 800);
+      return () => clearTimeout(completeTimer);
+    }
+
+    // Animate the damage number counting up
+    const steps = 10;
+    const increment = action.amount / steps;
+    let current = 0;
+
+    const countInterval = setInterval(() => {
+      current += increment;
+      setDisplayAmount(Math.min(Math.round(current), action.amount || 0));
+    }, 30);
+
+    const appearTimer = setTimeout(() => setPhase('appear'), 50);
+    const floatTimer = setTimeout(() => setPhase('float'), 300);
+    const fadeTimer = setTimeout(() => setPhase('fade'), 1200);
+    const completeTimer = setTimeout(() => {
+      setPhase('complete');
+      clearInterval(countInterval);
+      onComplete?.(action.id);
+    }, 1500);
+
+    return () => {
+      clearInterval(countInterval);
+      clearTimeout(appearTimer);
+      clearTimeout(floatTimer);
+      clearTimeout(fadeTimer);
+      clearTimeout(completeTimer);
+    };
+  }, [action.id, action.amount, onComplete, reduceMotion]);
 
   const getDamageColor = () => {
     switch (action.type) {
@@ -351,17 +406,20 @@ export function DamageAnimation({ action, onComplete, className }: CombatAnimati
       {/* Damage number */}
       <div
         className={cn(
-          'flex flex-col items-center transition-all duration-300',
-          phase === 'appear' && 'animate-bounce',
-          phase === 'float' && '-translate-y-8',
-          phase === 'fade' && 'opacity-0 -translate-y-16'
+          'flex flex-col items-center',
+          // #1103: motion classes only when motion is allowed.
+          !reduceMotion && 'transition-all duration-300',
+          !reduceMotion && phase === 'appear' && 'animate-bounce',
+          !reduceMotion && phase === 'float' && '-translate-y-8',
+          !reduceMotion && phase === 'fade' && 'opacity-0 -translate-y-16'
         )}
       >
         <span
           className={cn(
             'text-5xl font-bold drop-shadow-lg',
             getDamageColor(),
-            'animate-pulse'
+            // #1103: drop the pulse animation under reduced motion.
+            !reduceMotion && 'animate-pulse'
           )}
           style={{
             textShadow: '0 0 10px currentColor, 0 0 20px currentColor',
@@ -369,16 +427,16 @@ export function DamageAnimation({ action, onComplete, className }: CombatAnimati
         >
           -{displayAmount}
         </span>
-        
+
         {action.targetName && (
           <span className="text-sm text-muted-foreground mt-1">
             {action.targetName}
           </span>
         )}
       </div>
-      
-      {/* Impact effect */}
-      {phase === 'appear' && (
+
+      {/* Impact effect — decorative, skipped under reduced motion (#1103) */}
+      {!reduceMotion && phase === 'appear' && (
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
           <div className="w-16 h-16 bg-red-500/50 rounded-full animate-ping" />
         </div>
@@ -538,6 +596,8 @@ export function CombatCard({
 }: CombatCardProps) {
   const [isAnimating, setIsAnimating] = useState(false);
   const [showImpact, setShowImpact] = useState(false);
+  // #1103: gate the bounce / pulse / scale micro-animations on the card.
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     if (isAttacking || isBlocking) {
@@ -566,20 +626,23 @@ export function CombatCard({
     <div
       className={cn(
         'relative w-16 h-24 bg-gradient-to-br from-primary/20 to-primary/5 border-2 rounded-lg',
-        'flex flex-col items-center justify-between p-1 cursor-pointer transition-all duration-200',
+        'flex flex-col items-center justify-between p-1 cursor-pointer',
+        // #1103: keep the tap rotate (state, not motion) but drop the transition
+        // and decorative bounce/pulse/scale when motion is reduced.
+        !reduceMotion && 'transition-all duration-200',
         isTapped && 'rotate-90',
         getBorderColor(),
         (isAttacking || isBlocking) && 'shadow-lg',
         hasDealtDamage && 'opacity-60',
-        isAnimating && 'animate-bounce',
-        showImpact && 'animate-pulse scale-110',
+        !reduceMotion && isAnimating && 'animate-bounce',
+        !reduceMotion && showImpact && 'animate-pulse scale-110',
         className
       )}
       onClick={onTap}
     >
       {/* Card name */}
       <span className="text-[8px] font-medium truncate w-full text-center">{cardName}</span>
-      
+
       {/* Power/Toughness */}
       <div className="flex items-center justify-center gap-1">
         <span className={cn(
@@ -591,7 +654,7 @@ export function CombatCard({
         <span className="text-xs text-muted-foreground">/</span>
         <span className="text-xs font-bold">{toughness}</span>
       </div>
-      
+
       {/* Ability indicators */}
       <div className="absolute bottom-0.5 left-0.5 flex gap-0.5">
         {hasFirstStrike && <span className="text-[8px]" title="First Strike">⚡</span>}
@@ -599,10 +662,13 @@ export function CombatCard({
         {hasDeathtouch && <span className="text-[8px]" title="Deathtouch">💀</span>}
         {hasTrample && <span className="text-[8px]" title="Trample">🐘</span>}
       </div>
-      
-      {/* Attack indicator */}
+
+      {/* Attack indicator — pulse is decorative, skipped under reduced motion (#1103) */}
       {isAttacking && (
-        <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs shadow-lg animate-pulse">
+        <div className={cn(
+          'absolute -top-2 -right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-xs shadow-lg',
+          !reduceMotion && 'animate-pulse'
+        )}>
           ⚔️
         </div>
       )}
@@ -633,6 +699,9 @@ interface CombatPhaseIndicatorProps {
 export function CombatPhaseIndicator({ phase, className }: CombatPhaseIndicatorProps) {
   const [isVisible, setIsVisible] = useState(true);
   const [isAnimating, setIsAnimating] = useState(false);
+  // #1103: phase banner is functional (announces the combat step), so it stays
+  // visible; only the decorative bounce / flash are suppressed under reduced motion.
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     setIsAnimating(true);
@@ -678,18 +747,19 @@ export function CombatPhaseIndicator({ phase, className }: CombatPhaseIndicatorP
           'bg-gradient-to-r border-2 border-white/30 rounded-lg px-6 py-3 shadow-2xl',
           'flex items-center gap-3',
           color,
-          isAnimating && 'animate-bounce'
+          // #1103: skip the decorative bounce under reduced motion.
+          !reduceMotion && isAnimating && 'animate-bounce'
         )}
         style={{
-          animation: isAnimating ? 'bounce 0.5s ease-out' : undefined,
+          animation: !reduceMotion && isAnimating ? 'bounce 0.5s ease-out' : undefined,
         }}
       >
         <span className="text-3xl">{icon}</span>
         <span className="font-bold text-white text-lg">{text}</span>
       </div>
-      
-      {/* Background flash effect */}
-      {isAnimating && (
+
+      {/* Background flash effect — decorative, skipped under reduced motion (#1103) */}
+      {!reduceMotion && isAnimating && (
         <div className="absolute inset-0 -z-10 bg-white/20 rounded-lg animate-ping" />
       )}
     </div>
