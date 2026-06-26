@@ -18,8 +18,10 @@ import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from 'lucide-react';
 import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
 import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
 import { ConnectionDataEntry } from '@/components/connection-data-entry';
+import { P2PStatusBanner } from '@/components/p2p-status-banner';
 import { GameFormat } from '@/lib/multiplayer-types';
 import { validateDeckForLobby } from '@/lib/format-validator';
+import { useToast } from '@/hooks/use-toast';
 import type { SavedDeck } from '@/app/actions';
 import {
   createClientConnection,
@@ -37,17 +39,18 @@ interface JoinState {
 function JoinGameContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+  const { toast } = useToast();
+
   // Initialize with code from URL if present
   const initialCode = searchParams.get('code') || '';
-  
+
   const [joinState, setJoinState] = useState<JoinState>({
     step: initialCode ? 'name' : 'code',
     gameCode: initialCode,
     playerName: '',
     game: null,
   });
-  
+
   const [playerNameInput, setPlayerNameInput] = useState('');
   const [selectedDeck, setSelectedDeck] = useState<SavedDeck | null>(null);
   const [deckValidation, setDeckValidation] = useState<{ isValid: boolean; errors: string[] }>({ isValid: true, errors: [] });
@@ -56,7 +59,6 @@ function JoinGameContent() {
   const [ready, setReady] = useState(false);
   const [showP2pEntry, setShowP2pEntry] = useState(false);
   const [p2pConnectionState, setP2pConnectionState] = useState<DirectConnectionState>('idle');
-  const [showP2pUnavailable, setShowP2pUnavailable] = useState(false);
 
   // Format display names
   const formatDisplayNames: Record<GameFormat, string> = {
@@ -171,47 +173,23 @@ function JoinGameContent() {
   };
 
   const handleReady = () => {
-    // Show P2P unavailable placeholder instead of alert
-    setShowP2pUnavailable(true);
-  };
-
-  const handleDismissP2pUnavailable = () => {
-    setShowP2pUnavailable(false);
+    // P2P sync is not yet implemented — toggle local ready state and surface
+    // a non-blocking, in-app toast instead of the old jarring alert-style modal.
+    const newReady = !ready;
+    setReady(newReady);
+    if (newReady) {
+      toast({
+        title: 'P2P Multiplayer Coming Soon',
+        description:
+          'Your ready status is local-only for now. WebRTC peer sync arrives in a future release.',
+      });
+    }
   };
 
   const handleLeave = () => {
     localStorage.removeItem('planar_nexus_joined_game');
     router.push('/multiplayer');
   };
-
-  // P2P unavailable placeholder modal
-  if (showP2pUnavailable) {
-    return (
-      <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="w-5 h-5" />
-              Feature Not Available
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              P2P networking (WebRTC) is not yet implemented in this prototype. 
-              The ready status cannot be synchronized with other players yet.
-            </p>
-            <p className="text-xs text-muted-foreground">
-              This is a demo build. Full multiplayer support with WebRTC 
-              peer-to-peer connections is planned for a future release.
-            </p>
-            <Button onClick={handleDismissP2pUnavailable} className="w-full">
-              Got It
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   // Step 1: Enter game code
   if (joinState.step === 'code') {
@@ -445,10 +423,7 @@ function JoinGameContent() {
         </Card>
       </div>
 
-      <p className="text-xs text-muted-foreground mt-6 text-center">
-        Note: This is a prototype lobby. P2P networking (WebRTC) is not yet implemented.
-        Deck selection is stored locally for demonstration.
-      </p>
+      <P2PStatusBanner className="mt-6" />
     </div>
   );
 }
