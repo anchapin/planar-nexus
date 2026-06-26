@@ -25,6 +25,10 @@ import {
   isTauri,
   formatBytes,
 } from "../indexeddb-storage";
+import {
+  QuotaExceededError,
+  classifyWriteError,
+} from "../storage-quota";
 
 describe("IndexedDB Storage", () => {
   let storage: IndexedDBStorage;
@@ -536,6 +540,167 @@ describe("IndexedDB Storage", () => {
       // Cleanup
       await quotaStorage.clearAll();
       await quotaStorage.close();
+    });
+  });
+
+  describe("Storage Quota (issue #1085)", () => {
+    // Swap navigator.storage estimate per test, restore afterwards.
+    const nav = global.navigator as unknown as {
+      storage?: { estimate?: () => Promise<unknown> };
+    };
+    const originalStorage = nav.storage;
+
+    afterEach(() => {
+      nav.storage = originalStorage;
+    });
+
+    it("flags approachingLimit at/above the 90% warn threshold", async () => {
+      const q = new IndexedDBStorage({
+        dbName: "ThresholdQuota",
+        version: 1,
+        stores: ["decks"],
+      });
+      await q.initialize();
+
+      nav.storage = {
+        estimate: async () => ({ usage: 95, quota: 100 }),
+      };
+      const near = await q.getStorageQuota();
+      expect(near.approachingLimit).toBe(true);
+      expect(near.percentage).toBeCloseTo(95);
+
+      nav.storage = {
+        estimate: async () => ({ usage: 10, quota: 100 }),
+      };
+      const ok = await q.getStorageQuota();
+      expect(ok.approachingLimit).toBe(false);
+
+      await q.clearAll();
+      await q.close();
+    });
+
+    it("falls back to a payload-size estimate when the Storage API is absent", async () => {
+      nav.storage = undefined;
+      const q = new IndexedDBStorage({
+        dbName: "FallbackQuota",
+        version: 1,
+        stores: ["decks", "saved-games"],
+      });
+      await q.initialize();
+      await q.set("decks", {
+        id: "d1",
+        name: "Demo",
+        format: "standard",
+        cards: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        metadata: {},
+      });
+
+      const info = await q.getStorageQuota();
+      expect(info.usage).toBeGreaterThan(0);
+      expect(info.quota).toBeGreaterThan(0);
+      expect(info.percentage).toBeGreaterThanOrEqual(0);
+      expect(info.percentage).toBeLessThanOrEqual(100);
+
+      await q.clearAll();
+      await q.close();
+    });
+  });
+
+  describe("Quota-aware writes (issue #1085)", () => {
+    /**
+     * Replace the storage instance's internal IDBDatabase with a stub whose
+     * `put` always fails with a QuotaExceededError-shaped error. This lets us
+     * assert the storage layer normalises the failure into a typed, recoverable
+     * QuotaExceededError without depending on real quota exhaustion.
+     */
+    function attachQuotaFailingDb(target: IndexedDBStorage): void {
+      const fail = {
+        name: "QuotaExceededError",
+        message: "simulated quota exhaustion",
+      };
+      const request: {
+        error: unknown;
+        onsuccess: ((e?: unknown) => void) | null;
+        onerror: ((e?: unknown) => void) | null;
+      } = { error: fail, onsuccess: null, onerror: null };
+      const store = {
+        put: () => {
+          setTimeout(() => request.onerror?.(), 0);
+          return request;
+        },
+      };
+      const transaction: {
+        objectStore: () => typeof store;
+        error: unknown;
+        oncomplete: (() => void) | null;
+        onerror: (() => void) | null;
+        onabort: (() => void) | null;
+        abort: () => void;
+      } = {
+        objectStore: () => store,
+        error: fail,
+        oncomplete: null,
+        onerror: null,
+        onabort: null,
+        abort: () => {
+          setTimeout(() => transaction.onabort?.(), 0);
+        },
+      };
+      (target as unknown as { db: unknown }).db = {
+        transaction: () => transaction,
+      };
+    }
+
+    function detachDb(target: IndexedDBStorage): void {
+      // Force ensureInitialized() to reopen the real database on next access.
+      (target as unknown as { db: unknown }).db = null;
+    }
+
+    beforeEach(async () => {
+      await storage.initialize();
+    });
+
+    it("set() surfaces a typed QuotaExceededError (no opaque crash)", async () => {
+      // 1. a normal write succeeds against the real DB
+      await storage.set("test-decks", { id: "A" });
+
+      // 2. swap in a DB that fails every put with QuotaExceededError
+      attachQuotaFailingDb(storage);
+      await expect(
+        storage.set("test-decks", { id: "B" }),
+      ).rejects.toBeInstanceOf(QuotaExceededError);
+
+      // 3. the failing write must not corrupt prior state
+      detachDb(storage);
+      const all = await storage.getAll<{ id: string }>("test-decks");
+      expect(all.find((x) => x.id === "A")).toBeTruthy();
+      expect(all.find((x) => x.id === "B")).toBeUndefined();
+    });
+
+    it("setAll() surfaces a typed QuotaExceededError for batch writes", async () => {
+      attachQuotaFailingDb(storage);
+      await expect(
+        storage.setAll("test-decks", [
+          { id: "x" },
+          { id: "y" },
+          { id: "z" },
+        ]),
+      ).rejects.toBeInstanceOf(QuotaExceededError);
+
+      // state intact: nothing from the aborted batch persisted
+      detachDb(storage);
+      const all = await storage.getAll<{ id: string }>("test-decks");
+      expect(all.filter((x) => ["x", "y", "z"].includes(x.id))).toEqual([]);
+    });
+
+    it("non-quota write errors are NOT misclassified as QuotaExceededError", async () => {
+      // A generic failure must stay a plain Error (only quota errors are typed).
+      const err = classifyWriteError(new Error("boom"), "ctx", "decks");
+      expect(err).not.toBeInstanceOf(QuotaExceededError);
+      expect(err.message).toContain("ctx");
+      expect(err.message).toContain("boom");
     });
   });
 
