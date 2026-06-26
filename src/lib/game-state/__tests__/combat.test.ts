@@ -1468,6 +1468,303 @@ describe("Combat System - Utility Functions", () => {
   });
 });
 
+describe("Combat System - Deathtouch with Multiple Blockers (#980)", () => {
+  // CR 702.2b: Any nonzero amount of damage from a source with deathtouch is
+  // considered lethal. Combined with CR 510.1c (an attacker must assign lethal
+  // damage to each blocker in assignment order before assigning damage
+  // elsewhere), a deathtouch attacker need only assign 1 damage per blocker —
+  // regardless of that blocker's toughness — before trampling or stopping. The
+  // total damage assigned is still bounded by the attacker's power; deathtouch
+  // changes the per-blocker lethal threshold, not the damage total.
+
+  // Helper: run both combat damage steps from a post-declare-blockers state.
+  function runBothDamageSteps(
+    stateAfterBlockers: import("../types").GameState,
+  ): { firstStrike: CombatActionResult; regular: CombatActionResult } {
+    const stateFirstStrike = {
+      ...stateAfterBlockers,
+      turn: {
+        ...stateAfterBlockers.turn,
+        currentPhase: Phase.COMBAT_DAMAGE_FIRST_STRIKE,
+      },
+    };
+    const firstStrike = resolveCombatDamage(stateFirstStrike);
+    expect(firstStrike.success).toBe(true);
+    const stateRegular = {
+      ...firstStrike.state,
+      turn: {
+        ...firstStrike.state.turn,
+        currentPhase: Phase.COMBAT_DAMAGE,
+      },
+    };
+    const regular = resolveCombatDamage(stateRegular);
+    expect(regular.success).toBe(true);
+    return { firstStrike, regular };
+  }
+
+  it("deathtouch attacker assigns 1 damage to each of 3 blockers in order (#980)", () => {
+    // 3/3 deathtouch vs three 5/5 blockers: 1 to each (lethal via deathtouch),
+    // 0 to the player (no trample). All three blockers die despite 5 toughness.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [
+        {
+          name: "Deathtouch Attacker",
+          power: 3,
+          toughness: 3,
+          keywords: ["Deathtouch"],
+        },
+      ],
+      [
+        { name: "Blocker1", power: 1, toughness: 5 },
+        { name: "Blocker2", power: 1, toughness: 5 },
+        { name: "Blocker3", power: 1, toughness: 5 },
+      ],
+    );
+
+    const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+    const attackerId = aliceBattlefield.cardIds[0];
+    const blockerIds = bobBattlefield.cardIds;
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackResult = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blockResult = declareBlockers(
+      attackResult.state,
+      new Map([[attackerId, blockerIds]]),
+    );
+
+    const result = resolveCombatDamage(blockResult.state);
+    expect(result.success).toBe(true);
+
+    // All three blockers die: 1 deathtouch damage is lethal regardless of
+    // their 5 toughness (CR 702.2b).
+    const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+    expect(bobGraveyard.cardIds).toContain(blockerIds[1]);
+    expect(bobGraveyard.cardIds).toContain(blockerIds[2]);
+
+    // No trample keyword: no damage reaches the player.
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.life).toBe(20);
+  });
+
+  it("deathtouch attacker with trample assigns 1 to each blocker and remainder to player (#980)", () => {
+    // 5/5 deathtouch trampler vs three 1/1 blockers: 1 to each (lethal via
+    // deathtouch), 2 excess tramples to the defending player.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [
+        {
+          name: "Deathtouch Trampler",
+          power: 5,
+          toughness: 5,
+          keywords: ["Deathtouch", "Trample"],
+        },
+      ],
+      [
+        { name: "Blocker1", power: 1, toughness: 1 },
+        { name: "Blocker2", power: 1, toughness: 1 },
+        { name: "Blocker3", power: 1, toughness: 1 },
+      ],
+    );
+
+    const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+    const attackerId = aliceBattlefield.cardIds[0];
+    const blockerIds = bobBattlefield.cardIds;
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackResult = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blockResult = declareBlockers(
+      attackResult.state,
+      new Map([[attackerId, blockerIds]]),
+    );
+
+    const result = resolveCombatDamage(blockResult.state);
+    expect(result.success).toBe(true);
+
+    // All three blockers die from 1 deathtouch damage each.
+    const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+    expect(bobGraveyard.cardIds).toContain(blockerIds[1]);
+    expect(bobGraveyard.cardIds).toContain(blockerIds[2]);
+
+    // 5 - 1 - 1 - 1 = 2 trample damage to the player.
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.life).toBe(18); // 20 - 2 = 18
+  });
+
+  it("deathtouch multi-blocker assignment conserves total damage to attacker power (#980)", () => {
+    // The issue's example proposed a 1/1 deathtouch blocked by two 3/3s. Under
+    // the CR, total assigned damage can never exceed the attacker's power, so a
+    // 1/1 can assign 1 to ONLY the first blocker in order. The second blocker
+    // receives no assignment and survives. Deathtouch lowers the lethal
+    // threshold per blocker; it does not create additional damage.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [
+        {
+          name: "Tiny Deathtouch",
+          power: 1,
+          toughness: 1,
+          keywords: ["Deathtouch"],
+        },
+      ],
+      [
+        { name: "Blocker1", power: 3, toughness: 3 },
+        { name: "Blocker2", power: 3, toughness: 3 },
+      ],
+    );
+
+    const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+    const attackerId = aliceBattlefield.cardIds[0];
+    const blockerIds = bobBattlefield.cardIds;
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackResult = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blockResult = declareBlockers(
+      attackResult.state,
+      new Map([[attackerId, blockerIds]]),
+    );
+
+    const result = resolveCombatDamage(blockResult.state);
+    expect(result.success).toBe(true);
+
+    // First blocker dies from the single point of deathtouch damage; the
+    // second blocker is unassigned (power exhausted) and survives.
+    const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+    const bobBfAfter = result.state.zones.get(`${bobId}-battlefield`)!;
+    expect(bobBfAfter.cardIds).toContain(blockerIds[1]);
+
+    // No trample: 0 to player.
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.life).toBe(20);
+  });
+
+  it("non-deathtouch attacker assigns toughness (not 1) per blocker, unlike deathtouch (#980)", () => {
+    // Contrast: a 4/4 NON-deathtouch vs two 3/3s assigns 3 to the first
+    // (lethal) and only 1 to the second (non-lethal, survives). A 4/4
+    // DEATHTOUCH vs the same two 3/3s assigns 1 to each — both lethal via
+    // deathtouch — confirming deathtouch changes the assignment, not just SBA.
+    const setupCombat = (attackerKeywords: string[]) => {
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "Attacker",
+            power: 4,
+            toughness: 4,
+            keywords: attackerKeywords,
+          },
+        ],
+        [
+          { name: "Blocker1", power: 1, toughness: 3 },
+          { name: "Blocker2", power: 1, toughness: 3 },
+        ],
+      );
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerIds = bobBattlefield.cardIds;
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, blockerIds]]),
+      );
+      return {
+        result: resolveCombatDamage(blockResult.state),
+        bobId,
+        blockerIds,
+      };
+    };
+
+    // Non-deathtouch: first blocker dies (3 = toughness = lethal), the second
+    // survives (only 1 assigned, which is non-lethal without deathtouch).
+    const nonDt = setupCombat([]);
+    expect(nonDt.result.success).toBe(true);
+    const nonDtGraveyard = nonDt.result.state.zones.get(
+      `${nonDt.bobId}-graveyard`,
+    )!;
+    expect(nonDtGraveyard.cardIds).toContain(nonDt.blockerIds[0]);
+    expect(nonDtGraveyard.cardIds).not.toContain(nonDt.blockerIds[1]);
+
+    // Deathtouch: both blockers die (1 each is lethal via deathtouch).
+    const dt = setupCombat(["Deathtouch"]);
+    expect(dt.result.success).toBe(true);
+    const dtGraveyard = dt.result.state.zones.get(`${dt.bobId}-graveyard`)!;
+    expect(dtGraveyard.cardIds).toContain(dt.blockerIds[0]);
+    expect(dtGraveyard.cardIds).toContain(dt.blockerIds[1]);
+  });
+
+  it("deathtouch first-strike attacker kills all blockers in the first-strike step before they deal damage (#980/#969)", () => {
+    // 3/3 first-strike deathtouch vs three 2/2 regular blockers. In the
+    // first-strike step the attacker assigns 1 to each blocker (lethal via
+    // deathtouch); all blockers die and therefore never deal their combat
+    // damage back in the regular step. The attacker survives having taken 0
+    // damage (CR 510.1c: a creature no longer on the battlefield cannot deal
+    // combat damage).
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [
+        {
+          name: "FS Deathtouch",
+          power: 3,
+          toughness: 3,
+          keywords: ["First Strike", "Deathtouch"],
+        },
+      ],
+      [
+        { name: "Blocker1", power: 2, toughness: 2 },
+        { name: "Blocker2", power: 2, toughness: 2 },
+        { name: "Blocker3", power: 2, toughness: 2 },
+      ],
+    );
+
+    const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+    const attackerId = aliceBattlefield.cardIds[0];
+    const blockerIds = bobBattlefield.cardIds;
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attackResult = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blockResult = declareBlockers(
+      attackResult.state,
+      new Map([[attackerId, blockerIds]]),
+    );
+
+    const { firstStrike, regular } = runBothDamageSteps(blockResult.state);
+
+    // All three blockers die in the first-strike step from 1 deathtouch damage
+    // each, despite the attacker only having 3 power.
+    const bobGraveyard = firstStrike.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).toContain(blockerIds[0]);
+    expect(bobGraveyard.cardIds).toContain(blockerIds[1]);
+    expect(bobGraveyard.cardIds).toContain(blockerIds[2]);
+
+    // Attacker survives the whole combat having taken no damage, because the
+    // blockers were dead before the regular damage step could process them.
+    const aliceBfAfter = regular.state.zones.get(`${aliceId}-battlefield`)!;
+    expect(aliceBfAfter.cardIds).toContain(attackerId);
+    const attackerAfter = regular.state.cards.get(attackerId)!;
+    expect(attackerAfter.damage).toBe(0);
+  });
+});
+
 describe("Combat System - Deathtouch and Indestructible (#669)", () => {
   describe("resolveCombatDamage", () => {
     it("should assign only 1 damage from a deathtouch attacker per blocker (trample optimization)", () => {
