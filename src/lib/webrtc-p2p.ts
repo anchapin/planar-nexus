@@ -31,6 +31,14 @@ import {
   getGlobalICEManager,
 } from "./ice-config";
 import { redactSensitive } from "./p2p-log-redact";
+import {
+  MAX_MESSAGE_SIZE_BYTES,
+  withinStructuralLimits,
+} from "./p2p-json-validation";
+import {
+  P2PRateLimiter,
+  type P2PRateLimitOptions,
+} from "./p2p-rate-limiter";
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -218,6 +226,12 @@ export interface P2PConnectionOptions {
   /** Time (ms) to wait for recovery after each ICE restart attempt. */
   reconnectAttemptTimeoutMs?: number;
   /**
+   * Per-connection rate limit for incoming data-channel messages. Defaults to
+   * 100 msgs / 1s. Messages exceeding the limit are dropped before parsing
+   * to prevent CPU/memory exhaustion from a flooding peer. Issue #1111.
+   */
+  rateLimit?: Partial<P2PRateLimitOptions>;
+  /**
    * Defer ping cadence to an external driver (e.g. a connection pool that
    * consolidates pings into a single sweep). When true the connection never
    * starts its own ping interval; callers must invoke {@link ping} instead.
@@ -278,6 +292,12 @@ export class WebRTCConnection {
    * checks instead of its own interval. Issue #1021.
    */
   private externalPing: boolean;
+  /**
+   * Per-connection sliding-window rate limiter for incoming data-channel
+   * messages. Caps how many messages per second a single peer can push
+   * through the parse path. Issue #1111.
+   */
+  private rateLimiter: P2PRateLimiter;
 
   constructor(options: P2PConnectionOptions) {
     this.localPlayerId = options.playerId;
@@ -291,6 +311,9 @@ export class WebRTCConnection {
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 16000;
     this.reconnectAttemptTimeoutMs = options.reconnectAttemptTimeoutMs ?? 15000;
     this.externalPing = options.externalPing ?? false;
+    // Per-connection rate limiter guards the parse path against flooding
+    // peers. Issue #1111.
+    this.rateLimiter = new P2PRateLimiter(options.rateLimit);
 
     // Initialize ICE configuration
     if (options.iceConfig) {
@@ -658,11 +681,50 @@ export class WebRTCConnection {
   }
 
   /**
-   * Handle incoming messages
+   * Handle incoming messages.
+   *
+   * Untrusted peer bytes are hardened against resource exhaustion (issue
+   * #1111) before any business logic runs:
+   *   1. Per-connection rate limit — a flooding peer is dropped before any
+   *      parsing work is done.
+   *   2. Hard byte cap on the raw message — checked BEFORE JSON.parse so the
+   *      parser never allocates an unbounded buffer (cf. GHSA-96hv-2xvq-fx4p,
+   *      the ws memory-exhaustion advisory).
+   *   3. Structural limits — max nesting depth + max total key count, so a
+   *      deeply-nested or key-bloated payload cannot blow the stack or burn
+   *      CPU in the recursive handlers below.
+   *
+   * Every limit violation is rejected silently (logged) rather than thrown.
    */
   private handleMessage(data: string): void {
     try {
+      // 1. Rate-limit first: never do parse work for a flooding peer.
+      if (!this.rateLimiter.tryAcquire()) {
+        console.warn("[WebRTC] Rate limit exceeded; dropping peer message");
+        return;
+      }
+
+      // 2. Hard size cap before JSON.parse to bound parser memory allocation.
+      if (data.length > MAX_MESSAGE_SIZE_BYTES) {
+        console.warn(
+          "[WebRTC] Rejected oversize peer message",
+          data.length,
+          ">",
+          MAX_MESSAGE_SIZE_BYTES,
+        );
+        return;
+      }
+
       const message: P2PMessage = JSON.parse(data);
+
+      // 3. Structural caps: reject pathologically deep / wide payloads before
+      // the recursive message handlers run.
+      if (!withinStructuralLimits(message)) {
+        console.warn(
+          "[WebRTC] Rejected peer message exceeding structural limits",
+        );
+        return;
+      }
 
       switch (message.type) {
         case "game-state-sync":
@@ -1371,6 +1433,7 @@ export class WebRTCConnection {
 
     this.peers.clear();
     this.pendingCandidates = [];
+    this.rateLimiter.reset();
     this.updateConnectionState("disconnected");
   }
 

@@ -27,6 +27,10 @@ import {
 } from "./ice-config";
 import { safeParseJson } from "./p2p-json-validation";
 import {
+  P2PRateLimiter,
+  type P2PRateLimitOptions,
+} from "./p2p-rate-limiter";
+import {
   classifyConnectionFailure,
   hasTurnServer,
   type ConnectionFailureContext,
@@ -135,6 +139,13 @@ export interface P2PGameConnectionOptions {
   gameCode?: string;
   iceConfig?: ICEConfigOptions;
   events?: Partial<P2PGameConnectionEvents>;
+  /**
+   * Per-connection rate limit for incoming data-channel messages. Defaults to
+   * {@link DEFAULT_P2P_RATE_LIMIT} (100 msgs / 1s). Messages exceeding the
+   * limit are dropped before parsing to prevent CPU/memory exhaustion from a
+   * flooding peer. Issue #1111.
+   */
+  rateLimit?: Partial<P2PRateLimitOptions>;
 }
 
 /**
@@ -156,11 +167,21 @@ export class P2PGameConnection {
   private remotePlayerId: string | null = null;
   private remotePlayerName: string | null = null;
   private lastFailureDiagnostic: ConnectionFailureDiagnostic | null = null;
+  /**
+   * Per-connection sliding-window rate limiter for incoming messages. Caps how
+   * many messages per second a single peer can push through the parse +
+   * validation path. Issue #1111.
+   */
+  private rateLimiter: P2PRateLimiter;
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
     this.playerName = options.playerName;
     this.connectionState = "disconnected";
+
+    // Per-connection rate limiter guards the parse/validate path against
+    // flooding peers. Issue #1111.
+    this.rateLimiter = new P2PRateLimiter(options.rateLimit);
 
     // Initialize ICE manager
     if (options.iceConfig) {
@@ -502,12 +523,27 @@ export class P2PGameConnection {
 
   /**
    * Handle incoming message
-   * Validates the parsed payload's shape to prevent malformed or attacker-
-   * controlled data from flowing into business logic. Malformed messages are
-   * rejected gracefully without breaking the connection.
+   *
+   * Enforces, in order:
+   *   1. Per-connection rate limit — a flooding peer is dropped before any
+   *      parsing work is done (issue #1111).
+   *   2. Safe parse + structural limits (size/depth/key-count) via
+   *      {@link safeParseJson}.
+   *   3. Shape validation via {@link isGameMessage}.
+   *
+   * Malformed, oversize, or rate-limited messages are rejected gracefully
+   * without breaking the connection.
    */
   private handleMessage(data: string): void {
     try {
+      // Rate-limit first: never do parse/validation work for a flooding peer.
+      if (!this.rateLimiter.tryAcquire()) {
+        console.warn(
+          "[P2PGameConnection] Rate limit exceeded; dropping peer message",
+        );
+        return;
+      }
+
       const message = safeParseJson<GameMessage>(data, isGameMessage);
       if (!message) {
         // Malformed JSON or wrong shape — reject without breaking the channel.
@@ -791,6 +827,7 @@ export class P2PGameConnection {
       this.peerConnection = null;
     }
 
+    this.rateLimiter.reset();
     this.updateConnectionState("disconnected");
   }
 
