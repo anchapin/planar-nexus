@@ -79,7 +79,14 @@ function buildElfRampDeck(): DeckCard[] {
 
 describe("buildStructuredDeckAnalysis", () => {
   const deck = buildElfRampDeck();
-  const analysis = buildStructuredDeckAnalysis(deck);
+  // Synergy detection now runs through the AI Web Worker bridge (#1079), which
+  // makes the builder async. The shared analysis is awaited once per describe
+  // block via beforeAll so the individual assertions stay synchronous.
+  let analysis: StructuredDeckAnalysis;
+
+  beforeAll(async () => {
+    analysis = await buildStructuredDeckAnalysis(deck);
+  });
 
   it("returns a structured object, not a raw card list", () => {
     expect(analysis).not.toBeNull();
@@ -155,8 +162,8 @@ describe("buildStructuredDeckAnalysis", () => {
     }
   });
 
-  it("handles an empty deck without throwing", () => {
-    const empty = buildStructuredDeckAnalysis([]);
+  it("handles an empty deck without throwing", async () => {
+    const empty = await buildStructuredDeckAnalysis([]);
     expect(empty.totalCards).toBe(0);
     expect(empty.archetype).toBe("Unknown");
     expect(empty.synergyClusters).toEqual([]);
@@ -165,8 +172,13 @@ describe("buildStructuredDeckAnalysis", () => {
 
 describe("formatStructuredAnalysisForLLM", () => {
   const deck = buildElfRampDeck();
-  const analysis = buildStructuredDeckAnalysis(deck);
-  const formatted = formatStructuredAnalysisForLLM(analysis);
+  let analysis: StructuredDeckAnalysis;
+  let formatted: string;
+
+  beforeAll(async () => {
+    analysis = await buildStructuredDeckAnalysis(deck);
+    formatted = formatStructuredAnalysisForLLM(analysis);
+  });
 
   it("emits the structured header and key sections", () => {
     expect(formatted).toContain("### Structured Deck Analysis");

@@ -5,6 +5,8 @@ import type {
   BoardPermanent,
   TriggerChain,
 } from "@/ai/trigger-chain-evaluator";
+import type { SynergyResult } from "@/ai/synergy-detector";
+import type { DeckCard } from "@/app/actions";
 
 /**
  * Actions that the AI Worker can perform.
@@ -17,6 +19,7 @@ export enum AIWorkerAction {
   DETECT_ARCHETYPE = "DETECT_ARCHETYPE",
   PREPARE_COACH_CONTEXT = "PREPARE_COACH_CONTEXT",
   EVALUATE_TRIGGER_CHAIN = "EVALUATE_TRIGGER_CHAIN",
+  DETECT_SYNERGIES = "DETECT_SYNERGIES",
 }
 
 /**
@@ -83,6 +86,24 @@ export interface EvaluateTriggerChainPayload {
 }
 
 /**
+ * Payload for offloading deck synergy detection to the worker.
+ *
+ * Synergy detection (`synergy-detector.ts`) scores card-to-card synergy across
+ * an entire deck and is CPU-heavy. It previously ran synchronously on the main
+ * thread during deck-coach analysis, causing jank on 60+ card decks. Offloading
+ * it to the AI Web Worker keeps the UI responsive (issue #1079).
+ *
+ * All fields are structured-cloneable plain data (a plain deck card list +
+ * scoring options) so they can be posted to the worker via Comlink. The
+ * detector itself has no DOM/main-thread dependencies.
+ */
+export interface DetectSynergiesPayload {
+  deck: DeckCard[];
+  minScore?: number;
+  maxResults?: number;
+}
+
+/**
  * Response from the AI Worker.
  */
 export interface AIWorkerResponse<T = unknown> {
@@ -134,4 +155,12 @@ export interface AIWorkerAPI {
   evaluateTriggerChain(
     payload: EvaluateTriggerChainPayload,
   ): Promise<TriggerChain[]>;
+
+  /**
+   * Detects card-to-card synergies across an entire deck. Offloaded from the
+   * main thread to keep deck-coach analysis responsive (#1079). Returns the
+   * exact `SynergyResult[]` the in-thread detector would produce (no behavior
+   * change), so callers can treat the result identically.
+   */
+  detectSynergies(payload: DetectSynergiesPayload): Promise<SynergyResult[]>;
 }

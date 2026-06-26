@@ -20,11 +20,11 @@ import {
   type DeckStats,
 } from "@/ai/archetype-signatures";
 import {
-  detectSynergies,
   detectMissingSynergies,
   type SynergyResult,
   type MissingSynergy,
 } from "@/ai/synergy-detector";
+import { detectSynergiesAsync } from "@/ai/worker/synergy-worker-bridge";
 
 /** A single synergy cluster surfaced to the coach. */
 export interface SynergyCluster {
@@ -372,15 +372,20 @@ export function assembleStructuredAnalysis(
  * and backward compatibility. New, latency-sensitive callers should use the
  * context pre-fetcher in `./coach-context-prefetch` (issue #928), which
  * resolves the independent pieces in parallel and caches the result.
+ *
+ * Synergy detection runs through the AI Web Worker bridge (`issue #1079`) so
+ * the CPU-heavy scoring is offloaded off the main thread, with an identical
+ * main-thread fallback if the worker is unavailable. This makes the function
+ * async — callers must `await` it.
  */
-export function buildStructuredDeckAnalysis(
+export async function buildStructuredDeckAnalysis(
   deck: DeckCard[],
-): StructuredDeckAnalysis {
+): Promise<StructuredDeckAnalysis> {
   const safeDeck = Array.isArray(deck) ? deck : [];
 
   const archetype = detectArchetype(safeDeck);
   const stats = calculateDeckStats(safeDeck);
-  const synergies = detectSynergies(safeDeck);
+  const synergies = await detectSynergiesAsync(safeDeck);
   const missing = detectMissingSynergies(safeDeck, archetype.primary);
 
   return assembleStructuredAnalysis(safeDeck, {

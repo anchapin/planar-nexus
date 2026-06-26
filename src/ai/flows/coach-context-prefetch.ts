@@ -29,7 +29,8 @@
 import type { DeckCard } from "@/app/actions";
 import { detectArchetype } from "@/ai/archetype-detector";
 import { calculateDeckStats } from "@/ai/archetype-signatures";
-import { detectSynergies, detectMissingSynergies } from "@/ai/synergy-detector";
+import { detectMissingSynergies } from "@/ai/synergy-detector";
+import { detectSynergiesAsync } from "@/ai/worker/synergy-worker-bridge";
 import {
   assembleStructuredAnalysis,
   formatStructuredAnalysisForLLM,
@@ -127,16 +128,21 @@ export function _coachContextCacheSize(): number {
 /**
  * Resolve the three INDEPENDENT deck analyses concurrently.
  *
- * `detectArchetype`, `calculateDeckStats` and `detectSynergies` do not depend
+ * `detectArchetype`, `calculateDeckStats` and synergy detection do not depend
  * on one another. Running them through `Promise.all` guarantees that whenever
  * any becomes async it executes in parallel with the others rather than
  * serially — the core latency fix for issue #928.
+ *
+ * Synergy detection is routed through the AI Web Worker bridge (issue #1079)
+ * so the CPU-heavy scoring runs off the main thread, falling back to identical
+ * main-thread compute when the worker is unavailable. It is already a Promise,
+ * so it overlaps with the other two analyses.
  */
 async function resolveIndependentAnalyses(deck: DeckCard[]) {
   const [archetype, stats, synergies] = await Promise.all([
     Promise.resolve(detectArchetype(deck)),
     Promise.resolve(calculateDeckStats(deck)),
-    Promise.resolve(detectSynergies(deck)),
+    detectSynergiesAsync(deck),
   ]);
   return { archetype, stats, synergies };
 }
