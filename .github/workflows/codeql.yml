@@ -1,0 +1,81 @@
+# CodeQL Static Application Security Testing (SAST)
+# Triggers: PR (main/develop), push (main/develop), weekly schedule, manual.
+# Scans the TypeScript codebase and the GitHub Actions workflow files themselves.
+# Resolves #1110.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.mdx'
+      - 'docs/**'
+      - '**/docs/**'
+      - 'LICENSE'
+      - '.editorconfig'
+  pull_request:
+    branches: [main, develop]
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.mdx'
+      - 'docs/**'
+      - '**/docs/**'
+      - 'LICENSE'
+      - '.editorconfig'
+  schedule:
+    # Weekly: Mondays at 04:27 UTC (offset to avoid GitHub-side top-of-hour load).
+    - cron: '27 4 * * 1'
+  workflow_dispatch:
+
+# Minimal least-privilege scope required by the CodeQL Action.
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # Skip Dependabot PRs so dependency-bump PRs are never blocked by CodeQL.
+    # Dependabot bumps are still covered by the weekly scheduled scan of main.
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # javascript-typescript -> app code (URL importers, P2P, card parsing).
+        # actions              -> this and other workflow files.
+        language: [javascript-typescript, actions]
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: matrix.language == 'javascript-typescript'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
