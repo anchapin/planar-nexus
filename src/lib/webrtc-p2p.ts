@@ -30,15 +30,16 @@ import {
   type ICEConfigOptions,
   getGlobalICEManager,
 } from "./ice-config";
+import {
+  ICEDiagnosticsCollector,
+  type ICEDiagnosticsSnapshot,
+} from "./ice-diagnostics";
 import { redactSensitive } from "./p2p-log-redact";
 import {
   MAX_MESSAGE_SIZE_BYTES,
   withinStructuralLimits,
 } from "./p2p-json-validation";
-import {
-  P2PRateLimiter,
-  type P2PRateLimitOptions,
-} from "./p2p-rate-limiter";
+import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -248,7 +249,7 @@ function computeChecksum(state: ReturnType<typeof engineToAIState>): string {
   let hash = 0;
   for (let i = 0; i < data.length; i++) {
     const char = data.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).padStart(8, "0");
@@ -284,6 +285,12 @@ export class WebRTCConnection {
   private iceManager: ICEConfigurationManager;
   private iceMonitor: ICEConnectionMonitor | null = null;
   private iceCandidateFilter: ICECandidateFilter;
+  /**
+   * Observability-only ICE diagnostics collector (issue #1088). Listens to the
+   * peer connection's ICE events via addEventListener so it never disturbs the
+   * existing on* handlers that drive the connection.
+   */
+  private iceDiagnostics: ICEDiagnosticsCollector;
   private enableICEMonitoring: boolean;
   private fallbackToRelay: boolean;
   private pendingCandidates: RTCIceCandidateInit[] = [];
@@ -332,6 +339,9 @@ export class WebRTCConnection {
       allowLinkLocal: false,
     });
 
+    // Initialize ICE diagnostics collector (issue #1088 — NAT-traversal panel).
+    this.iceDiagnostics = new ICEDiagnosticsCollector();
+
     // Set default event handlers
 
     const defaultEvents: P2PEvents = {
@@ -368,6 +378,14 @@ export class WebRTCConnection {
       this.updateConnectionState("connecting");
 
       this.peerConnection = new RTCPeerConnection(this.rtcConfig);
+
+      // Attach ICE diagnostics collector (observability-only; #1088). Done
+      // after the on* handlers below so it never overwrites them — it listens
+      // via addEventListener and only records candidate/state events.
+      this.iceDiagnostics.attach(
+        this.peerConnection,
+        this.iceManager.hasTurnServers(),
+      );
 
       // Set up ICE candidate handling with filtering
       this.peerConnection.onicecandidate = (event) => {
@@ -452,6 +470,11 @@ export class WebRTCConnection {
 
       // Create new peer connection with relay config
       this.peerConnection = new RTCPeerConnection(relayConfig);
+
+      // Re-attach ICE diagnostics collector for the relayed connection (#1088).
+      // Relay mode is TURN-dependent by definition.
+      this.iceDiagnostics.reset();
+      this.iceDiagnostics.attach(this.peerConnection, true);
 
       // Re-attach event handlers
       this.peerConnection.onicecandidate = (event) => {
@@ -633,11 +656,11 @@ export class WebRTCConnection {
     if (!this.dataChannel) return;
 
     this.dataChannel.onopen = () => {
-       this.updateConnectionState("connected");
-       if (!this.externalPing) {
-         this.startPingInterval();
-       }
-     };
+      this.updateConnectionState("connected");
+      if (!this.externalPing) {
+        this.startPingInterval();
+      }
+    };
 
     this.dataChannel.onclose = () => {
       this.handleDisconnection();
@@ -645,10 +668,7 @@ export class WebRTCConnection {
 
     this.dataChannel.onerror = (event) => {
       // #982: redact — error events may include diagnostic data channel info.
-      console.error(
-        "[WebRTC] Data channel error:",
-        redactSensitive(event),
-      );
+      console.error("[WebRTC] Data channel error:", redactSensitive(event));
 
       let errorToReport: Error;
 
@@ -1247,7 +1267,8 @@ export class WebRTCConnection {
     const aiState = engineToAIState(gameState);
 
     const syncState: PeerSyncState = {
-      lastVersion: (gameState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0,
+      lastVersion:
+        (gameState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0,
       lastChecksum: computeChecksum(aiState),
       lastState: aiState,
       lastSerializedState: JSON.stringify(serializedState),
@@ -1277,7 +1298,7 @@ export class WebRTCConnection {
   private sendDeltaSync(
     gameState: GameState,
     peerId: string,
-    lastSyncedAI: ReturnType<typeof engineToAIState> | null
+    lastSyncedAI: ReturnType<typeof engineToAIState> | null,
   ): void {
     const delta = computeStateDelta(gameState, lastSyncedAI);
     const deltaSize = estimateDeltaSize(delta);
@@ -1421,6 +1442,9 @@ export class WebRTCConnection {
       this.iceMonitor = null;
     }
 
+    // Detach ICE diagnostics listeners (#1088).
+    this.iceDiagnostics.detach();
+
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
@@ -1459,6 +1483,20 @@ export class WebRTCConnection {
    */
   getICEConnectionState(): RTCIceConnectionState | null {
     return this.peerConnection?.iceConnectionState || null;
+  }
+
+  /**
+   * Build an aggregated ICE / NAT-traversal diagnostics snapshot for the panel
+   * (issue #1088). Merges the live candidate/state history collected from ICE
+   * events with a fresh `getStats()` report for the selected candidate pair and
+   * link quality. Observability-only — never mutates the connection.
+   *
+   * Returns `null` when no peer connection is active.
+   */
+  async getDiagnostics(): Promise<ICEDiagnosticsSnapshot | null> {
+    if (!this.peerConnection) return null;
+    const stats = await this.getICEStats();
+    return this.iceDiagnostics.getSnapshot(stats);
   }
 
   /**

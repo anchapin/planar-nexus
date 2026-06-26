@@ -361,3 +361,123 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     expect(conn.isConnected()).toBe(false);
   });
 });
+
+// =============================================================================
+// Issue #1088: getDiagnostics() — ICE candidate / NAT-traversal observability
+// =============================================================================
+
+/**
+ * RTCPeerConnection mock that supports addEventListener (so the diagnostics
+ * collector actually subscribes) and emits candidate/state events on demand.
+ */
+let lastDiagPC: DiagnosticsPC | null = null;
+
+class DiagnosticsPC {
+  connectionState: RTCPeerConnectionState = "new";
+  iceConnectionState: RTCIceConnectionState = "new";
+  iceGatheringState: RTCIceGatheringState = "new";
+  localDescription: RTCSessionDescriptionInit | null = null;
+  private listeners: Record<string, Array<(event: unknown) => void>> = {};
+
+  constructor() {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    lastDiagPC = this;
+  }
+  addEventListener(type: string, listener: (event: unknown) => void): void {
+    (this.listeners[type] ??= []).push(listener);
+  }
+  removeEventListener(type: string, listener: (event: unknown) => void): void {
+    this.listeners[type] = (this.listeners[type] ?? []).filter(
+      (l) => l !== listener,
+    );
+  }
+  emit(type: string, event: unknown): void {
+    for (const l of this.listeners[type] ?? []) l(event);
+  }
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: "offer", sdp: "sdp" };
+  }
+  async setLocalDescription(d: RTCSessionDescriptionInit): Promise<void> {
+    this.localDescription = d;
+  }
+  createDataChannel(): unknown {
+    return { close: () => {} };
+  }
+  async getStats(): Promise<Map<string, unknown>> {
+    return new Map();
+  }
+  close(): void {
+    this.connectionState = "closed";
+  }
+}
+
+describe("WebRTCConnection.getDiagnostics() (issue #1088)", () => {
+  const ORIGINAL_RTCP = global.RTCPeerConnection;
+
+  beforeEach(() => {
+    (global as { RTCPeerConnection?: unknown }).RTCPeerConnection =
+      DiagnosticsPC as unknown as typeof RTCPeerConnection;
+    lastDiagPC = null;
+  });
+
+  afterEach(() => {
+    (global as { RTCPeerConnection?: unknown }).RTCPeerConnection =
+      ORIGINAL_RTCP;
+  });
+
+  it("returns null before a peer connection exists", async () => {
+    const conn = new WebRTCConnection({
+      playerId: "p1",
+      playerName: "P1",
+      isHost: true,
+      enableICEMonitoring: false,
+    });
+    expect(await conn.getDiagnostics()).toBeNull();
+  });
+
+  it("reports candidate types, ICE state and NAT type via the collector", async () => {
+    const conn = new WebRTCConnection({
+      playerId: "p1",
+      playerName: "P1",
+      isHost: true,
+      enableICEMonitoring: false,
+    });
+    await conn.initialize();
+    const pc = lastDiagPC as DiagnosticsPC;
+
+    // Simulate ICE gathering producing a host + srflx candidate.
+    pc.emit("icegatheringstatechange", {});
+    // First set the gathering state on the mock, then re-emit so the collector
+    // reads the updated value.
+    pc.iceGatheringState = "gathering";
+    pc.emit("icegatheringstatechange", {});
+    pc.emit("icecandidate", {
+      candidate: {
+        candidate: "candidate:1 1 udp 1 192.168.1.5 5000 typ host generation 0",
+      },
+    });
+    pc.emit("icecandidate", {
+      candidate: {
+        candidate:
+          "candidate:2 1 udp 2 203.0.113.7 5001 typ srflx generation 0",
+      },
+    });
+    pc.iceGatheringState = "complete";
+    pc.emit("icegatheringstatechange", {});
+    pc.iceConnectionState = "connected";
+    pc.emit("iceconnectionstatechange", {});
+
+    const diag = await conn.getDiagnostics();
+    expect(diag).not.toBeNull();
+    expect(diag?.candidateCounts.host).toBe(1);
+    expect(diag?.candidateCounts.srflx).toBe(1);
+    expect(diag?.natType).toBe("cone");
+    expect(diag?.iceConnectionState).toBe("connected");
+    expect(diag?.phase).toBe("connected");
+    expect(diag?.totalGathered).toBe(2);
+
+    conn.close();
+    // Detaching must not throw and the connection is gone.
+    expect(await conn.getDiagnostics()).toBeNull();
+  });
+});
