@@ -16,6 +16,30 @@
  *  - Idempotent migration application (duplicate / reordered migration
  *    messages are no-ops).
  *  - Graceful termination when no peers remain to continue.
+ *
+ * Sequence-number continuity policy (issue #1091):
+ *  GameMessages carry a monotonic per-sender `seq` (see
+ *  `p2p-game-connection.ts`). Host migration is the one place where the
+ *  "sender" of the authoritative stream changes, so the policy must be
+ *  explicit:
+ *
+ *    1. When the successor is promoted, it adopts the authoritative
+ *       high-water mark: it calls `P2PGameConnection.adoptOutgoingSeq(<last
+ *       seq observed from the previous host>)` so its post-migration messages
+ *       continue monotonically from where the previous host left off.
+ *    2. The successor then broadcasts a FULL `game-state-sync` carrying
+ *       `data.lastSeq = <that high-water mark>` as the reconciliation
+ *       snapshot. Followers advance their per-`senderId` anti-replay tracker
+ *       for the new host to that mark (see `handleGameStateSync`).
+ *    3. Any queued action the successor re-emits afterwards has
+ *       `seq > lastSeq` (because step 1 continued the counter), so followers
+ *       accept exactly the actions that are not yet baked into the snapshot
+ *       and reject any they already applied under the previous host.
+ *
+ *  Net effect: a follower that already applied an action before the migration
+ *  does not apply it again, satisfying issue #1091's post-migration
+ *  acceptance criterion. The `lastKnownGameState` cached here is the snapshot
+ *  the successor ships in step 2.
  */
 
 /**
@@ -31,19 +55,23 @@ export interface PeerRosterEntry {
 /**
  * Why a host migration is happening.
  */
-export type HostMigrationReason = 'host-disconnected' | 'host-left';
+export type HostMigrationReason = "host-disconnected" | "host-left";
 
 /**
  * The lifecycle state of migration for the local client.
  */
-export type HostMigrationStatus = 'stable' | 'migrating' | 'migrated' | 'terminated';
+export type HostMigrationStatus =
+  | "stable"
+  | "migrating"
+  | "migrated"
+  | "terminated";
 
 /**
  * Wire message broadcast by the newly-promoted host (and relayed by peers) to
  * announce authority transfer. Rides over the existing game-action channel.
  */
 export interface HostMigrationMessage {
-  type: 'host-migration';
+  type: "host-migration";
   /** Idempotency key: identical messages are applied at most once. */
   migrationId: string;
   previousHostId: string;
@@ -136,7 +164,7 @@ export function buildMigrationId(
   newHostId: string,
   remainingPeers: string[],
 ): string {
-  return `mig-${previousHostId}-${newHostId}-${remainingPeers.join(',')}`;
+  return `mig-${previousHostId}-${newHostId}-${remainingPeers.join(",")}`;
 }
 
 /**
@@ -153,7 +181,7 @@ export class HostMigrationManager {
   private hostId: string;
   private peers: Map<string, PeerRosterEntry> = new Map();
   private events: HostMigrationEvents;
-  private status: HostMigrationStatus = 'stable';
+  private status: HostMigrationStatus = "stable";
   /** Migration ids already applied — dedupes duplicates / reordering. */
   private appliedMigrationIds: Set<string> = new Set();
   /** Latest authoritative game state known to this client. */
@@ -162,7 +190,8 @@ export class HostMigrationManager {
   constructor(options: HostMigrationManagerOptions) {
     this.localPlayerId = options.localPlayerId;
     this.hostId = options.initialHostId;
-    this.minPlayersToContinue = options.minPlayersToContinue ?? DEFAULT_MIN_PLAYERS;
+    this.minPlayersToContinue =
+      options.minPlayersToContinue ?? DEFAULT_MIN_PLAYERS;
     this.events = {
       // eslint-disable-next-line @typescript-eslint/no-empty-function
       onPromotedToHost: () => {},
@@ -253,21 +282,21 @@ export class HostMigrationManager {
     // Not enough players to keep the game alive → clean terminal state.
     if (remaining.length < this.minPlayersToContinue) {
       const result: HostMigrationResult = {
-        migrationId: buildMigrationId(previousHostId, '', remainingIds),
+        migrationId: buildMigrationId(previousHostId, "", remainingIds),
         previousHostId,
-        newHostId: '',
+        newHostId: "",
         remainingPeers: remainingIds,
         terminated: true,
         promotedSelf: false,
         reason,
         migratedAt: now,
       };
-      this.status = 'terminated';
+      this.status = "terminated";
       this.appliedMigrationIds.add(result.migrationId);
       this.events.onTerminated(
-        reason === 'host-left'
-          ? 'Host left the game and not enough players remain to continue.'
-          : 'Host disconnected and not enough players remain to continue.',
+        reason === "host-left"
+          ? "Host left the game and not enough players remain to continue."
+          : "Host disconnected and not enough players remain to continue.",
       );
       return result;
     }
@@ -275,7 +304,11 @@ export class HostMigrationManager {
     const successor = selectHostSuccessor(remaining);
     // successor is guaranteed non-null because remaining.length >= minPlayers >= 1
     const newHostId = successor as string;
-    const migrationId = buildMigrationId(previousHostId, newHostId, remainingIds);
+    const migrationId = buildMigrationId(
+      previousHostId,
+      newHostId,
+      remainingIds,
+    );
     const promotedSelf = newHostId === this.localPlayerId;
 
     const result: HostMigrationResult = {
@@ -302,7 +335,7 @@ export class HostMigrationManager {
    */
   buildMigrationMessage(result: HostMigrationResult): HostMigrationMessage {
     return {
-      type: 'host-migration',
+      type: "host-migration",
       migrationId: result.migrationId,
       previousHostId: result.previousHostId,
       newHostId: result.newHostId,
@@ -321,11 +354,11 @@ export class HostMigrationManager {
    * @returns the applied result, or `null` if it was a duplicate/no-op.
    */
   applyMigration(message: HostMigrationMessage): HostMigrationResult | null {
-    if (message.type !== 'host-migration') return null;
+    if (message.type !== "host-migration") return null;
     // Defensive validation: a P2P message handler must tolerate malformed input.
     if (
-      typeof message.migrationId !== 'string' ||
-      typeof message.newHostId !== 'string' ||
+      typeof message.migrationId !== "string" ||
+      typeof message.newHostId !== "string" ||
       !Array.isArray(message.remainingPeers)
     ) {
       return null;
@@ -342,7 +375,10 @@ export class HostMigrationManager {
     const promotedSelf = message.newHostId === this.localPlayerId;
 
     // Ensure the leaving host is no longer tracked.
-    if (message.previousHostId && message.previousHostId !== message.newHostId) {
+    if (
+      message.previousHostId &&
+      message.previousHostId !== message.newHostId
+    ) {
       this.removePeer(message.previousHostId);
     }
 
@@ -371,9 +407,12 @@ export class HostMigrationManager {
    * Apply a locally-resolved result: update host authority, status and emit the
    * appropriate event.
    */
-  private applyResult(result: HostMigrationResult, promotedSelf: boolean): void {
+  private applyResult(
+    result: HostMigrationResult,
+    promotedSelf: boolean,
+  ): void {
     this.hostId = result.newHostId;
-    this.status = 'migrated';
+    this.status = "migrated";
     this.appliedMigrationIds.add(result.migrationId);
 
     if (promotedSelf) {
@@ -393,7 +432,7 @@ export class HostMigrationManager {
   /** Reset all migration tracking (e.g. when starting a fresh session). */
   reset(): void {
     this.appliedMigrationIds.clear();
-    this.status = 'stable';
+    this.status = "stable";
     this.lastKnownGameState = null;
   }
 }

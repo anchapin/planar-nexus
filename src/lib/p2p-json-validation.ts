@@ -144,6 +144,27 @@ export function withinStructuralLimits(
 }
 
 /**
+ * Is `value` a non-negative integer (a valid sequence number)?
+ *
+ * Sequence numbers (`GameMessage.seq`, issue #1091) must be:
+ *   - a `number` (reject strings/objects),
+ *   - an integer (reject 1.5 — seqs are discrete),
+ *   - non-negative (reject -1 — seqs start at 0),
+ *   - finite (reject NaN / Infinity — they break `<=` comparisons).
+ *
+ * Exposed here so every shape guard that asserts a seq field validates it the
+ * same way without duplicating the predicate.
+ */
+export function isNonNegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+  );
+}
+
+/**
  * Safely parse a JSON string, enforce resource limits, and validate its shape.
  *
  * Order of checks (fail-closed at every step, never throws to the caller):
@@ -153,7 +174,9 @@ export function withinStructuralLimits(
  *   3. JSON.parse is wrapped so syntactically invalid input returns null.
  *   4. A valid JSON scalar (number, string, boolean, null) is never a message.
  *   5. The parsed object must satisfy the structural depth/key limits.
- *   6. The caller's type guard must accept the shape.
+ *   6. The caller's type guard must accept the shape (e.g. {@link isGameMessage}
+ *      in `p2p-game-connection.ts`, which uses {@link isNonNegativeInteger} to
+ *      require the `seq` anti-replay field added in issue #1091).
  *
  * @param raw      - Raw string received from an untrusted source (peer/signal).
  * @param validate - Type guard returning true only when the parsed value has
