@@ -1,5 +1,10 @@
 import * as Comlink from "comlink";
-import type { AIWorkerAPI } from "./worker-types";
+import type { AIWorkerAPI, EvaluateTriggerChainPayload } from "./worker-types";
+import type {
+  CascadeContext,
+  BoardPermanent,
+  TriggerChain,
+} from "../trigger-chain-evaluator";
 
 /**
  * Main Thread Client for AI Web Worker
@@ -64,6 +69,31 @@ class AIWorkerClient {
    */
   public get api(): Comlink.Remote<AIWorkerAPI> | null {
     return this.proxy;
+  }
+
+  /**
+   * Offloads trigger-chain evaluation to the AI Web Worker (#1080).
+   *
+   * Returns the worker-computed `TriggerChain[]`, or `null` when the worker is
+   * unavailable (no proxy / not a browser). Callers MUST treat `null` or a
+   * thrown error as "compute on the main thread" — the trigger-chain worker
+   * bridge (`trigger-chain-worker-bridge.ts`) centralizes that fallback so the
+   * AI never breaks if the worker fails to initialize or errors mid-call.
+   */
+  public async evaluateTriggerChain(
+    stackItem: CascadeContext["stackItem"],
+    battlefield: BoardPermanent[],
+    maxDepth?: number,
+  ): Promise<TriggerChain[] | null> {
+    if (!this.proxy) {
+      return null;
+    }
+    const payload: EvaluateTriggerChainPayload = {
+      stackItem,
+      battlefield,
+      maxDepth,
+    };
+    return this.proxy.evaluateTriggerChain(payload);
   }
 
   /**

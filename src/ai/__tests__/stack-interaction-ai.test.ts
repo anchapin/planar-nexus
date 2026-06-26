@@ -4,7 +4,7 @@
  * Comprehensive tests for the Stack Interaction AI system.
  */
 
-import { describe, test, expect, beforeEach } from '@jest/globals';
+import { describe, test, expect, beforeEach } from "@jest/globals";
 
 import {
   StackInteractionAI,
@@ -14,26 +14,26 @@ import {
   evaluateStackResponse,
   decideCounterspell,
   manageResponseResources,
-} from '../stack-interaction-ai';
-import { GameState, PlayerState } from '../game-state-evaluator';
+} from "../stack-interaction-ai";
+import { GameState, PlayerState } from "../game-state-evaluator";
 
-describe('StackInteractionAI', () => {
+describe("StackInteractionAI", () => {
   let gameState: GameState;
   let playerId: string;
 
   beforeEach(() => {
-    playerId = 'player1';
+    playerId = "player1";
     gameState = createTestGameState();
   });
 
-  describe('Basic Response Evaluation', () => {
-    test('should pass on low-threat actions', () => {
+  describe("Basic Response Evaluation", () => {
+    test("should pass on low-threat actions", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'small_creature',
-        name: 'Gray Ogre',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "small_creature",
+        name: "Gray Ogre",
+        controller: "player2",
+        type: "spell",
         manaValue: 3,
         isInstantSpeed: false,
         timestamp: Date.now(),
@@ -47,40 +47,40 @@ describe('StackInteractionAI', () => {
         availableResponses: [],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.evaluateResponse(context);
 
       expect(decision.shouldRespond).toBe(false);
-      expect(decision.action).toBe('pass');
+      expect(decision.action).toBe("pass");
     });
 
-    test('should respond to high-threat actions', () => {
+    test("should respond to high-threat actions", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'threatening_spell',
-        name: 'Exsanguinate',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "threatening_spell",
+        name: "Exsanguinate",
+        controller: "player2",
+        type: "spell",
         manaValue: 6,
         isInstantSpeed: false,
         timestamp: Date.now(),
       };
 
       const response: AvailableResponse = {
-        cardId: 'counter',
-        name: 'Counterspell',
-        type: 'instant',
+        cardId: "counter",
+        name: "Counterspell",
+        type: "instant",
         manaValue: 2,
         manaCost: { blue: 2 },
         canCounter: true,
-        canTarget: ['spell'],
+        canTarget: ["spell"],
         effect: {
-          type: 'counter',
+          type: "counter",
           value: 8,
           targets: [stackAction.id],
         },
@@ -94,42 +94,42 @@ describe('StackInteractionAI', () => {
         availableResponses: [response],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.evaluateResponse(context);
 
       expect(decision.shouldRespond).toBe(true);
-      expect(decision.action).toBe('respond');
+      expect(decision.action).toBe("respond");
     });
   });
 
-  describe('Counterspell Decisions', () => {
-    test('should counter high-threat spells', () => {
+  describe("Counterspell Decisions", () => {
+    test("should counter high-threat spells", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'threat',
-        name: 'Primeval Titan',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "threat",
+        name: "Primeval Titan",
+        controller: "player2",
+        type: "spell",
         manaValue: 6,
         isInstantSpeed: false,
         timestamp: Date.now(),
       };
 
       const counterspell: AvailableResponse = {
-        cardId: 'counter',
-        name: 'Cancel',
-        type: 'instant',
+        cardId: "counter",
+        name: "Cancel",
+        type: "instant",
         manaValue: 3,
         manaCost: { blue: 2, colorless: 1 },
         canCounter: true,
-        canTarget: ['spell'],
+        canTarget: ["spell"],
         effect: {
-          type: 'counter',
+          type: "counter",
           value: 7,
           targets: [stackAction.id],
         },
@@ -143,40 +143,40 @@ describe('StackInteractionAI', () => {
         availableResponses: [counterspell],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.decideCounterspell(context, counterspell);
 
       expect(decision.shouldRespond).toBe(true);
       expect(decision.responseCardId).toBe(counterspell.cardId);
     });
 
-    test('should not counter low-value spells', () => {
+    test("should not counter low-value spells", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'minor_spell',
-        name: 'Elvish Mystic',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "minor_spell",
+        name: "Elvish Mystic",
+        controller: "player2",
+        type: "spell",
         manaValue: 1,
         isInstantSpeed: false,
         timestamp: Date.now(),
       };
 
       const counterspell: AvailableResponse = {
-        cardId: 'counter',
-        name: 'Counterspell',
-        type: 'instant',
+        cardId: "counter",
+        name: "Counterspell",
+        type: "instant",
         manaValue: 2,
         manaCost: { blue: 2 },
         canCounter: true,
-        canTarget: ['spell'],
+        canTarget: ["spell"],
         effect: {
-          type: 'counter',
+          type: "counter",
           value: 2,
           targets: [stackAction.id],
         },
@@ -190,44 +190,44 @@ describe('StackInteractionAI', () => {
         availableResponses: [counterspell],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.decideCounterspell(context, counterspell);
 
       expect(decision.shouldRespond).toBe(false);
-      expect(decision.action).toBe('pass');
+      expect(decision.action).toBe("pass");
     });
 
-    test('should counter lethal threats regardless of cost', () => {
-      gameState.players['player1'].life = 3;
+    test("should counter lethal threats regardless of cost", () => {
+      gameState.players["player1"].life = 3;
 
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'lethal',
-        name: 'Lightning Bolt',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "lethal",
+        name: "Lightning Bolt",
+        controller: "player2",
+        type: "spell",
         manaValue: 1,
-        colors: ['red'],
-        targets: [{ playerId: 'player1' }],
+        colors: ["red"],
+        targets: [{ playerId: "player1" }],
         isInstantSpeed: true,
         timestamp: Date.now(),
       };
 
       const counterspell: AvailableResponse = {
-        cardId: 'counter',
-        name: 'Force of Will',
-        type: 'instant',
+        cardId: "counter",
+        name: "Force of Will",
+        type: "instant",
         manaValue: 0, // Alternative cost
         manaCost: { blue: 0 },
         canCounter: true,
-        canTarget: ['spell'],
+        canTarget: ["spell"],
         effect: {
-          type: 'counter',
+          type: "counter",
           value: 10, // Preventing lethal
           targets: [stackAction.id],
         },
@@ -241,12 +241,12 @@ describe('StackInteractionAI', () => {
         availableResponses: [counterspell],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'postcombat_main',
-        step: 'main',
+        phase: "postcombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.decideCounterspell(context, counterspell);
 
       expect(decision.shouldRespond).toBe(true);
@@ -254,29 +254,29 @@ describe('StackInteractionAI', () => {
     });
   });
 
-  describe('Resource Management', () => {
-    test('should hold mana for opponent turn', () => {
+  describe("Resource Management", () => {
+    test("should hold mana for opponent turn", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'minor_spell',
-        name: 'Candlestick',
-        controller: 'player1',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "minor_spell",
+        name: "Candlestick",
+        controller: "player1",
+        type: "spell",
         manaValue: 1,
         isInstantSpeed: false,
         timestamp: Date.now(),
       };
 
       const instantResponse: AvailableResponse = {
-        cardId: 'instant',
-        name: 'Shock',
-        type: 'instant',
+        cardId: "instant",
+        name: "Shock",
+        type: "instant",
         manaValue: 1,
         manaCost: { red: 1 },
         canCounter: false,
         canTarget: [],
         effect: {
-          type: 'damage',
+          type: "damage",
           value: 4,
           targets: [],
         },
@@ -288,27 +288,27 @@ describe('StackInteractionAI', () => {
         actionsAbove: [],
         availableMana: { red: 2, blue: 1, colorless: 1 },
         availableResponses: [instantResponse],
-        opponentsRemaining: ['player2'],
+        opponentsRemaining: ["player2"],
         isMyTurn: true,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: false,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.manageResources(context);
 
-      expect(decision.holdFor).toBe('opponent_turn');
+      expect(decision.holdFor).toBe("opponent_turn");
       expect(decision.manaToReserve).toBeDefined();
     });
 
-    test('should use mana now when no better opportunity', () => {
+    test("should use mana now when no better opportunity", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'instant_use',
-        name: 'Sorcery',
-        controller: 'player1',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "instant_use",
+        name: "Sorcery",
+        controller: "player1",
+        type: "spell",
         manaValue: 2,
         isInstantSpeed: false,
         timestamp: Date.now(),
@@ -322,27 +322,27 @@ describe('StackInteractionAI', () => {
         availableResponses: [], // No instant-speed options
         opponentsRemaining: [],
         isMyTurn: true,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: false,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.manageResources(context);
 
       expect(decision.useNow).toBe(true);
-      expect(decision.holdFor).toBe('nothing');
+      expect(decision.holdFor).toBe("nothing");
     });
   });
 
-  describe('Priority Decisions', () => {
-    test('should pass priority on low-threat actions', () => {
+  describe("Priority Decisions", () => {
+    test("should pass priority on low-threat actions", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'minor_spell',
-        name: 'Giant Growth',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "minor_spell",
+        name: "Giant Growth",
+        controller: "player2",
+        type: "spell",
         manaValue: 1,
         isInstantSpeed: true,
         timestamp: Date.now(),
@@ -356,30 +356,30 @@ describe('StackInteractionAI', () => {
         availableResponses: [],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'combat',
-        step: 'combat_damage',
+        phase: "combat",
+        step: "combat_damage",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.decidePriorityPass(context);
 
       expect(decision.shouldPass).toBe(true);
-      expect(decision.riskLevel).toBe('low');
+      expect(decision.riskLevel).toBe("low");
     });
 
-    test('should not pass priority on high-threat actions', () => {
-      gameState.players['player1'].life = 5;
+    test("should not pass priority on high-threat actions", () => {
+      gameState.players["player1"].life = 5;
 
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'threat',
-        name: 'Fireball',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "threat",
+        name: "Fireball",
+        controller: "player2",
+        type: "spell",
         manaValue: 5,
-        colors: ['red'],
-        targets: [{ playerId: 'player1' }],
+        colors: ["red"],
+        targets: [{ playerId: "player1" }],
         isInstantSpeed: true,
         timestamp: Date.now(),
       };
@@ -391,15 +391,15 @@ describe('StackInteractionAI', () => {
         availableMana: { blue: 2, colorless: 1 },
         availableResponses: [
           {
-            cardId: 'counter',
-            name: 'Counterspell',
-            type: 'instant',
+            cardId: "counter",
+            name: "Counterspell",
+            type: "instant",
             manaValue: 2,
             manaCost: { blue: 2 },
             canCounter: true,
-            canTarget: ['spell'],
+            canTarget: ["spell"],
             effect: {
-              type: 'counter',
+              type: "counter",
               value: 10,
               targets: [stackAction.id],
             },
@@ -407,27 +407,27 @@ describe('StackInteractionAI', () => {
         ],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'postcombat_main',
-        step: 'main',
+        phase: "postcombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.decidePriorityPass(context);
 
       expect(decision.shouldPass).toBe(false);
-      expect(decision.riskLevel).toBe('high');
+      expect(decision.riskLevel).toBe("high");
     });
   });
 
-  describe('Stack Ordering', () => {
-    test('should optimize order of multiple responses', () => {
+  describe("Stack Ordering", () => {
+    test("should optimize order of multiple responses", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'target',
-        name: 'Creature',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "target",
+        name: "Creature",
+        controller: "player2",
+        type: "spell",
         manaValue: 3,
         isInstantSpeed: false,
         timestamp: Date.now(),
@@ -435,29 +435,29 @@ describe('StackInteractionAI', () => {
 
       const responses: AvailableResponse[] = [
         {
-          cardId: 'response_1',
-          name: 'Counterspell',
-          type: 'instant',
+          cardId: "response_1",
+          name: "Counterspell",
+          type: "instant",
           manaValue: 2,
           manaCost: { blue: 2 },
           canCounter: true,
-          canTarget: ['spell'],
+          canTarget: ["spell"],
           effect: {
-            type: 'counter',
+            type: "counter",
             value: 6,
             targets: [stackAction.id],
           },
         },
         {
-          cardId: 'response_2',
-          name: 'Draw Spell',
-          type: 'instant',
+          cardId: "response_2",
+          name: "Draw Spell",
+          type: "instant",
           manaValue: 2,
           manaCost: { blue: 1, colorless: 1 },
           canCounter: false,
           canTarget: [],
           effect: {
-            type: 'draw',
+            type: "draw",
             value: 5,
             targets: [],
           },
@@ -472,12 +472,12 @@ describe('StackInteractionAI', () => {
         availableResponses: responses,
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const ai = new StackInteractionAI(gameState, playerId, 'medium');
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
       const decision = ai.optimizeResponseOrder(context, responses);
 
       expect(decision.orderedActions).toBeDefined();
@@ -486,29 +486,29 @@ describe('StackInteractionAI', () => {
     });
   });
 
-  describe('Difficulty Level Differences', () => {
-    test('easy difficulty should be more aggressive', () => {
+  describe("Difficulty Level Differences", () => {
+    test("easy difficulty should be more aggressive", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'medium_threat',
-        name: 'Hill Giant',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "medium_threat",
+        name: "Hill Giant",
+        controller: "player2",
+        type: "spell",
         manaValue: 3,
         isInstantSpeed: false,
         timestamp: Date.now(),
       };
 
       const counterspell: AvailableResponse = {
-        cardId: 'counter',
-        name: 'Cancel',
-        type: 'instant',
+        cardId: "counter",
+        name: "Cancel",
+        type: "instant",
         manaValue: 3,
         manaCost: { blue: 2, colorless: 1 },
         canCounter: true,
-        canTarget: ['spell'],
+        canTarget: ["spell"],
         effect: {
-          type: 'counter',
+          type: "counter",
           value: 4,
           targets: [stackAction.id],
         },
@@ -522,15 +522,15 @@ describe('StackInteractionAI', () => {
         availableResponses: [counterspell],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const easyAI = new StackInteractionAI(gameState, playerId, 'easy');
+      const easyAI = new StackInteractionAI(gameState, playerId, "easy");
       const easyDecision = easyAI.decideCounterspell(context, counterspell);
 
-      const hardAI = new StackInteractionAI(gameState, playerId, 'hard');
+      const hardAI = new StackInteractionAI(gameState, playerId, "hard");
       const hardDecision = hardAI.decideCounterspell(context, counterspell);
 
       // Easy might counter, hard might save it
@@ -540,14 +540,14 @@ describe('StackInteractionAI', () => {
     });
   });
 
-  describe('Convenience Functions', () => {
-    test('evaluateStackResponse should work', () => {
+  describe("Convenience Functions", () => {
+    test("evaluateStackResponse should work", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'test_spell',
-        name: 'Test Spell',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "test_spell",
+        name: "Test Spell",
+        controller: "player2",
+        type: "spell",
         manaValue: 2,
         isInstantSpeed: false,
         timestamp: Date.now(),
@@ -561,39 +561,44 @@ describe('StackInteractionAI', () => {
         availableResponses: [],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const decision = evaluateStackResponse(gameState, playerId, context, 'medium');
+      const decision = evaluateStackResponse(
+        gameState,
+        playerId,
+        context,
+        "medium",
+      );
 
       expect(decision).toBeDefined();
       expect(decision.shouldRespond).toBeDefined();
     });
 
-    test('decideCounterspell should work', () => {
+    test("decideCounterspell should work", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'test_spell',
-        name: 'Test Spell',
-        controller: 'player2',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "test_spell",
+        name: "Test Spell",
+        controller: "player2",
+        type: "spell",
         manaValue: 2,
         isInstantSpeed: false,
         timestamp: Date.now(),
       };
 
       const counterspell: AvailableResponse = {
-        cardId: 'counter',
-        name: 'Counterspell',
-        type: 'instant',
+        cardId: "counter",
+        name: "Counterspell",
+        type: "instant",
         manaValue: 2,
         manaCost: { blue: 2 },
         canCounter: true,
-        canTarget: ['spell'],
+        canTarget: ["spell"],
         effect: {
-          type: 'counter',
+          type: "counter",
           value: 5,
           targets: [stackAction.id],
         },
@@ -607,24 +612,30 @@ describe('StackInteractionAI', () => {
         availableResponses: [counterspell],
         opponentsRemaining: [],
         isMyTurn: false,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: true,
       };
 
-      const decision = decideCounterspell(gameState, playerId, context, counterspell, 'medium');
+      const decision = decideCounterspell(
+        gameState,
+        playerId,
+        context,
+        counterspell,
+        "medium",
+      );
 
       expect(decision).toBeDefined();
       expect(decision.shouldRespond).toBeDefined();
     });
 
-    test('manageResponseResources should work', () => {
+    test("manageResponseResources should work", () => {
       const stackAction: StackAction = {
-        id: 'stack_1',
-        cardId: 'test_spell',
-        name: 'Test Spell',
-        controller: 'player1',
-        type: 'spell',
+        id: "stack_1",
+        cardId: "test_spell",
+        name: "Test Spell",
+        controller: "player1",
+        type: "spell",
         manaValue: 1,
         isInstantSpeed: false,
         timestamp: Date.now(),
@@ -636,18 +647,100 @@ describe('StackInteractionAI', () => {
         actionsAbove: [],
         availableMana: { blue: 2, colorless: 1 },
         availableResponses: [],
-        opponentsRemaining: ['player2'],
+        opponentsRemaining: ["player2"],
         isMyTurn: true,
-        phase: 'precombat_main',
-        step: 'main',
+        phase: "precombat_main",
+        step: "main",
         respondingToOpponent: false,
       };
 
-      const decision = manageResponseResources(gameState, playerId, context, 'medium');
+      const decision = manageResponseResources(
+        gameState,
+        playerId,
+        context,
+        "medium",
+      );
 
       expect(decision).toBeDefined();
       expect(decision.useNow).toBeDefined();
       expect(decision.holdFor).toBeDefined();
+    });
+  });
+
+  describe("Trigger Chain Evaluation (offloaded via the AI Web Worker, #1080)", () => {
+    test("evaluateTriggerChains is async and returns the full post-processed result", async () => {
+      // A resolving spell that can produce ETB/cascade triggers downstream.
+      const stackAction: StackAction = {
+        id: "stack_chain",
+        cardId: "cascade_spell",
+        name: "Bloodbraid Cascade",
+        controller: "player2",
+        type: "spell",
+        manaValue: 4,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+      };
+
+      const context: StackContext = {
+        currentAction: stackAction,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 2, colorless: 1 },
+        availableResponses: [],
+        opponentsRemaining: ["player2"],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
+
+      // Now async: awaits the AI Web Worker (or its main-thread fallback).
+      const result = await ai.evaluateTriggerChains(context);
+
+      expect(result).toBeDefined();
+      expect(typeof result.summary).toBe("string");
+      expect(result.chains).toBeInstanceOf(Array);
+      expect(result.cascadeThreatBonus).toBeGreaterThanOrEqual(0);
+      expect(result.cascadeThreatBonus).toBeLessThanOrEqual(0.5);
+      expect(typeof result.shouldCounterToPrevent).toBe("boolean");
+      // highestValueChain, when present, is one of the evaluated chains.
+      if (result.highestValueChain) {
+        expect(result.chains).toContainEqual(result.highestValueChain);
+      }
+    });
+
+    test("assessActionThreatWithTriggers is async and clamps to [0,1]", async () => {
+      const stackAction: StackAction = {
+        id: "stack_threat",
+        cardId: "threat",
+        name: "Exsanguinate",
+        controller: "player2",
+        type: "spell",
+        manaValue: 6,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+      };
+
+      const context: StackContext = {
+        currentAction: stackAction,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 2, colorless: 1 },
+        availableResponses: [],
+        opponentsRemaining: ["player2"],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
+      const threat = await ai.assessActionThreatWithTriggers(context);
+
+      expect(threat).toBeGreaterThanOrEqual(0);
+      expect(threat).toBeLessThanOrEqual(1);
     });
   });
 });
@@ -657,41 +750,56 @@ describe('StackInteractionAI', () => {
  */
 function createTestGameState(): GameState {
   const player1: PlayerState = {
-    id: 'player1',
+    id: "player1",
     life: 20,
     poisonCounters: 0,
     commanderDamage: {},
     hand: [
-      { cardInstanceId: 'card1', name: 'Counterspell', type: 'Instant', manaValue: 2 },
-      { cardInstanceId: 'card2', name: 'Instant', type: 'Instant', manaValue: 1 },
-      { cardInstanceId: 'card3', name: 'Creature', type: 'Creature', manaValue: 3 },
+      {
+        cardInstanceId: "card1",
+        name: "Counterspell",
+        type: "Instant",
+        manaValue: 2,
+      },
+      {
+        cardInstanceId: "card2",
+        name: "Instant",
+        type: "Instant",
+        manaValue: 1,
+      },
+      {
+        cardInstanceId: "card3",
+        name: "Creature",
+        type: "Creature",
+        manaValue: 3,
+      },
     ],
     graveyard: [],
     exile: [],
     library: 50,
     battlefield: [
       {
-        id: 'land1',
-        cardInstanceId: 'land1',
-        name: 'Island',
-        type: 'land',
-        controller: 'player1',
+        id: "land1",
+        cardInstanceId: "land1",
+        name: "Island",
+        type: "land",
+        controller: "player1",
         tapped: false,
       },
       {
-        id: 'land2',
-        cardInstanceId: 'land2',
-        name: 'Island',
-        type: 'land',
-        controller: 'player1',
+        id: "land2",
+        cardInstanceId: "land2",
+        name: "Island",
+        type: "land",
+        controller: "player1",
         tapped: false,
       },
       {
-        id: 'land3',
-        cardInstanceId: 'land3',
-        name: 'Island',
-        type: 'land',
-        controller: 'player1',
+        id: "land3",
+        cardInstanceId: "land3",
+        name: "Island",
+        type: "land",
+        controller: "player1",
         tapped: false,
       },
     ],
@@ -699,32 +807,42 @@ function createTestGameState(): GameState {
   };
 
   const player2: PlayerState = {
-    id: 'player2',
+    id: "player2",
     life: 20,
     poisonCounters: 0,
     commanderDamage: {},
     hand: [
-      { cardInstanceId: 'opp1', name: 'Creature', type: 'Creature', manaValue: 3 },
-      { cardInstanceId: 'opp2', name: 'Sorcery', type: 'Sorcery', manaValue: 2 },
+      {
+        cardInstanceId: "opp1",
+        name: "Creature",
+        type: "Creature",
+        manaValue: 3,
+      },
+      {
+        cardInstanceId: "opp2",
+        name: "Sorcery",
+        type: "Sorcery",
+        manaValue: 2,
+      },
     ],
     graveyard: [],
     exile: [],
     library: 50,
     battlefield: [
       {
-        id: 'opp_land1',
-        cardInstanceId: 'opp_land1',
-        name: 'Mountain',
-        type: 'land',
-        controller: 'player2',
+        id: "opp_land1",
+        cardInstanceId: "opp_land1",
+        name: "Mountain",
+        type: "land",
+        controller: "player2",
         tapped: false,
       },
       {
-        id: 'opp_land2',
-        cardInstanceId: 'opp_land2',
-        name: 'Mountain',
-        type: 'land',
-        controller: 'player2',
+        id: "opp_land2",
+        cardInstanceId: "opp_land2",
+        name: "Mountain",
+        type: "land",
+        controller: "player2",
         tapped: false,
       },
     ],
@@ -738,10 +856,10 @@ function createTestGameState(): GameState {
     },
     turnInfo: {
       currentTurn: 3,
-      currentPlayer: 'player2',
-      phase: 'precombat_main',
-      step: 'main',
-      priority: 'player1',
+      currentPlayer: "player2",
+      phase: "precombat_main",
+      step: "main",
+      priority: "player1",
     },
     stack: [],
   };

@@ -1,12 +1,15 @@
 import * as Comlink from "comlink";
 import { evaluateGameState, quickScore } from "../game-state-evaluator";
 import { detectArchetype } from "../archetype-detector";
+import { evaluateTriggerChain as runTriggerChainEvaluation } from "../trigger-chain-evaluator";
 import type {
   AIWorkerAPI,
   AnalyzeStatePayload,
   CoachContextPayload,
   DigestedCoachContext,
+  EvaluateTriggerChainPayload,
 } from "./worker-types";
+import type { TriggerChain } from "../trigger-chain-evaluator";
 import type { DeckCard } from "@/app/actions";
 
 /**
@@ -14,8 +17,12 @@ import type { DeckCard } from "@/app/actions";
  *
  * This worker offloads heuristic calculations from the main thread
  * to maintain UI responsiveness (60fps).
+ *
+ * NOTE: this object is exported so unit tests can assert handler correctness
+ * (incl. trigger-chain parity, #1080) without going through Comlink.
+ * `Comlink.expose(aiWorker)` at the bottom is the actual worker entrypoint.
  */
-const aiWorker: AIWorkerAPI = {
+export const aiWorker: AIWorkerAPI = {
   async analyzeGameState(payload: AnalyzeStatePayload) {
     const { gameState, playerId } = payload;
     return evaluateGameState(gameState, playerId);
@@ -112,6 +119,19 @@ const aiWorker: AIWorkerAPI = {
       gameSummary,
       timestamp: Date.now(),
     };
+  },
+
+  /**
+   * Evaluates cascade / trigger chains for a resolving stack item.
+   * The pure evaluator lives in `trigger-chain-evaluator.ts` and has no
+   * DOM/main-thread dependencies, so it is safe to run inside the worker.
+   * Returns the exact same `TriggerChain[]` the in-thread evaluator produces.
+   */
+  async evaluateTriggerChain(
+    payload: EvaluateTriggerChainPayload,
+  ): Promise<TriggerChain[]> {
+    const { stackItem, battlefield, maxDepth } = payload;
+    return runTriggerChainEvaluation(stackItem, battlefield, maxDepth);
   },
 };
 
