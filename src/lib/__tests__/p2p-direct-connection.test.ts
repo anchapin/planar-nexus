@@ -10,6 +10,7 @@ import {
   generateICECandidateString,
   validateConnectionData,
   getConnectionState,
+  handleICEExchange,
   isConnectionData,
   isICECandidateData,
   type ConnectionData,
@@ -383,6 +384,61 @@ describe("P2P Direct Connection Utilities", () => {
     it("should return null for non-existent session", () => {
       const result = getConnectionState("non-existent-session");
       expect(result).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Issue #982 — strip console.log statements exposing session IDs / game codes
+  // --------------------------------------------------------------------------
+
+  describe("Sensitive-data leak protection (#982)", () => {
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      errorSpy.mockRestore();
+    });
+
+    it("parseConnectionData does not log the raw input on failure", () => {
+      // Malicious input that embeds a session id and a game code — even though
+      // the current logger prints a static message, this test fails loudly if a
+      // future contributor adds `console.error("...", input)`.
+      const session = "host-1700000000000-abc12345";
+      const gameCode = "ZZZ999";
+      const malicious = `{ "sessionId": "${session}", "gameCode": "${gameCode}" }`;
+
+      expect(parseConnectionData(malicious)).toBeNull();
+
+      expect(errorSpy).toHaveBeenCalled();
+      for (const call of errorSpy.mock.calls) {
+        const serialized = JSON.stringify(call);
+        expect(serialized).not.toContain(session);
+        expect(serialized).not.toContain(gameCode);
+      }
+    });
+
+    it("handleICEExchange does not embed sessionId in the thrown error", async () => {
+      const sessionId = `host-1700000000000-leak1234`;
+      // No session was created for this id, so the manager will reject.
+      let caught: unknown = null;
+      try {
+        await handleICEExchange(sessionId, { candidate: "x" }, {
+          playerId: "p1",
+          playerName: "p1",
+        } as never);
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      const message = (caught as Error).message;
+      // #982: the sessionId must NOT leak through the thrown error message
+      // (it can propagate up to higher-level error reporters / console output).
+      expect(message).not.toContain(sessionId);
+      // Sanity: the generic message is still informative.
+      expect(message).toMatch(/session not found/i);
     });
   });
 });

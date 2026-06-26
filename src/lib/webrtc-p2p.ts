@@ -30,6 +30,7 @@ import {
   type ICEConfigOptions,
   getGlobalICEManager,
 } from "./ice-config";
+import { redactSensitive } from "./p2p-log-redact";
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -393,7 +394,8 @@ export class WebRTCConnection {
         this.setupDataChannel();
       }
     } catch (error) {
-      console.error("[WebRTC] Failed to initialize:", error);
+      // #982: redact — RTCPeerConnection errors may embed SDP / ICE config.
+      console.error("[WebRTC] Failed to initialize:", redactSensitive(error));
       this.updateConnectionState("failed");
       throw error;
     }
@@ -454,7 +456,8 @@ export class WebRTCConnection {
       // Notify that reconnection is being attempted
       this.updateConnectionState("reconnecting");
     } catch (error) {
-      console.error("[WebRTC] Relay fallback failed:", error);
+      // #982: redact — relay fallback errors may reference TURN credentials.
+      console.error("[WebRTC] Relay fallback failed:", redactSensitive(error));
       this.handleConnectionFailure();
     }
   }
@@ -473,7 +476,8 @@ export class WebRTCConnection {
       await this.peerConnection.setLocalDescription(offer);
       return offer;
     } catch (error) {
-      console.error("[WebRTC] Failed to create offer:", error);
+      // #982: redact — offer creation errors may embed the SDP offer.
+      console.error("[WebRTC] Failed to create offer:", redactSensitive(error));
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to create offer"),
         "",
@@ -501,7 +505,8 @@ export class WebRTCConnection {
       await this.peerConnection.setLocalDescription(answer);
       return answer;
     } catch (error) {
-      console.error("[WebRTC] Failed to handle offer:", error);
+      // #982: redact — handleOffer errors may embed the remote SDP offer.
+      console.error("[WebRTC] Failed to handle offer:", redactSensitive(error));
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to handle offer"),
         "",
@@ -535,7 +540,11 @@ export class WebRTCConnection {
     try {
       await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (error) {
-      console.error("[WebRTC] Failed to add ICE candidate:", error);
+      // #982: redact — candidate errors may embed the ICE candidate blob.
+      console.error(
+        "[WebRTC] Failed to add ICE candidate:",
+        redactSensitive(error),
+      );
       // Don't throw - candidate errors shouldn't break the connection
       // but log for debugging purposes
     }
@@ -581,7 +590,11 @@ export class WebRTCConnection {
 
       this.setupDataChannelEvents();
     } catch (error) {
-      console.error("[WebRTC] Failed to connect to peer:", error);
+      // #982: redact — data-channel setup errors may embed peer config.
+      console.error(
+        "[WebRTC] Failed to connect to peer:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to connect to peer"),
         "",
@@ -608,7 +621,11 @@ export class WebRTCConnection {
     };
 
     this.dataChannel.onerror = (event) => {
-      console.error("[WebRTC] Data channel error:", event);
+      // #982: redact — error events may include diagnostic data channel info.
+      console.error(
+        "[WebRTC] Data channel error:",
+        redactSensitive(event),
+      );
 
       let errorToReport: Error;
 
@@ -679,7 +696,12 @@ export class WebRTCConnection {
 
       this.events.onMessage(message, "");
     } catch (error) {
-      console.error("[WebRTC] Failed to parse message:", error);
+      // #982: redact — JSON.parse errors include the raw (potentially
+      // attacker-controlled, potentially sensitive) payload in their message.
+      console.error(
+        "[WebRTC] Failed to parse message:",
+        redactSensitive(error),
+      );
     }
   }
 
@@ -1363,7 +1385,8 @@ export class WebRTCConnection {
     try {
       return await this.peerConnection.getStats();
     } catch (error) {
-      console.error("[WebRTC] Failed to get stats:", error);
+      // #982: redact — getStats errors may reference ICE candidates.
+      console.error("[WebRTC] Failed to get stats:", redactSensitive(error));
       return null;
     }
   }
