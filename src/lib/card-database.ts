@@ -6,6 +6,10 @@
  */
 
 import { cardSearchIndex } from "./search/card-search-index";
+import {
+  classifyWriteError,
+  getStorageEstimate,
+} from "./storage-quota";
 
 // Minimal card data for offline use (subset of Scryfall data)
 
@@ -414,7 +418,8 @@ export async function addCard(card: MinimalCard): Promise<void> {
     });
 
     request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    request.onerror = () =>
+      reject(classifyWriteError(request.error, "Failed to add card", STORE_NAME));
 
     // Reinitialize search index after adding a card
     transaction.oncomplete = async () => {
@@ -441,7 +446,10 @@ export async function addCards(cards: MinimalCard[]): Promise<void> {
   const store = transaction.objectStore(STORE_NAME);
 
   return new Promise((resolve, reject) => {
-    transaction.onerror = () => reject(transaction.error);
+    transaction.onerror = () =>
+      reject(
+        classifyWriteError(transaction.error, "Failed to add cards", STORE_NAME),
+      );
     transaction.oncomplete = async () => {
       // Reinitialize search index after adding cards
       await cardSearchIndex.clear();
@@ -604,6 +612,18 @@ export async function importCardsFromJSON(
 
   if (!db) throw new Error("Database not initialized");
 
+  // Capacity awareness (#1085): probe the storage estimate before the bulk
+  // write so we (and the UI hook) can warn the user before writes start failing.
+  // Non-blocking — we still attempt the write; an actual quota failure is
+  // surfaced as a typed QuotaExceededError by the transaction handlers below.
+  const estimate = await getStorageEstimate();
+  if (estimate.available && estimate.level === "critical") {
+    console.warn(
+      `[card-database] Storage critically low before bulk import ` +
+        `(${Math.round(estimate.ratio * 100)}% used). Writes may fail.`,
+    );
+  }
+
   const batchSize = 500;
   const cardsWithLowerName = cards.map((card) => ({
     ...card,
@@ -627,14 +647,22 @@ export async function importCardsFromJSON(
 
     transaction.onerror = () => {
       if (!error) {
-        error = new Error(`Transaction failed: ${transaction.error}`);
+        error = classifyWriteError(
+          transaction.error,
+          "Card import transaction failed",
+          STORE_NAME,
+        );
       }
       reject(error);
     };
 
     transaction.onabort = () => {
       if (!error && transaction.error) {
-        error = new Error(`Transaction aborted: ${transaction.error}`);
+        error = classifyWriteError(
+          transaction.error,
+          "Card import transaction aborted",
+          STORE_NAME,
+        );
       }
       reject(error || new Error("Transaction aborted"));
     };
@@ -648,7 +676,11 @@ export async function importCardsFromJSON(
 
         request.onerror = () => {
           if (!error) {
-            error = new Error(`Failed to put card: ${request.error}`);
+            error = classifyWriteError(
+              request.error,
+              "Failed to put card",
+              STORE_NAME,
+            );
             transaction.abort();
           }
         };

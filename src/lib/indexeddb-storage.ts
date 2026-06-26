@@ -11,6 +11,13 @@
  * - Migration from localStorage
  */
 
+import {
+  classifyWriteError,
+  getStorageEstimate,
+  QUOTA_WARN_THRESHOLD,
+  FALLBACK_QUOTA_BYTES,
+} from "./storage-quota";
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -312,7 +319,9 @@ export class IndexedDBStorage {
       };
 
       request.onerror = () => {
-        reject(new Error(`Failed to set item: ${request.error}`));
+        reject(
+          classifyWriteError(request.error, "Failed to set item", storeName),
+        );
       };
     });
   }
@@ -366,14 +375,22 @@ export class IndexedDBStorage {
 
       transaction.onerror = () => {
         if (!error) {
-          error = new Error(`Transaction failed: ${transaction.error}`);
+          error = classifyWriteError(
+            transaction.error,
+            "Transaction failed",
+            storeName,
+          );
         }
         reject(error);
       };
 
       transaction.onabort = () => {
         if (!error && transaction.error) {
-          error = new Error(`Transaction aborted: ${transaction.error}`);
+          error = classifyWriteError(
+            transaction.error,
+            "Transaction aborted",
+            storeName,
+          );
         }
         reject(error || new Error("Transaction aborted"));
       };
@@ -383,7 +400,11 @@ export class IndexedDBStorage {
 
         request.onerror = () => {
           if (!error) {
-            error = new Error(`Failed to put item: ${request.error}`);
+            error = classifyWriteError(
+              request.error,
+              "Failed to put item",
+              storeName,
+            );
             transaction.abort();
           }
         };
@@ -431,14 +452,22 @@ export class IndexedDBStorage {
 
       transaction.onerror = () => {
         if (!error) {
-          error = new Error(`Transaction failed: ${transaction.error}`);
+          error = classifyWriteError(
+            transaction.error,
+            "Transaction failed",
+            storeName,
+          );
         }
         reject(error);
       };
 
       transaction.onabort = () => {
         if (!error && transaction.error) {
-          error = new Error(`Transaction aborted: ${transaction.error}`);
+          error = classifyWriteError(
+            transaction.error,
+            "Transaction aborted",
+            storeName,
+          );
         }
         reject(error || new Error("Transaction aborted"));
       };
@@ -454,7 +483,11 @@ export class IndexedDBStorage {
 
           request.onerror = () => {
             if (!error) {
-              error = new Error(`Failed to put item: ${request.error}`);
+              error = classifyWriteError(
+                request.error,
+                "Failed to put item",
+                storeName,
+              );
               transaction.abort();
             }
           };
@@ -807,34 +840,36 @@ export class IndexedDBStorage {
   }
 
   /**
-   * Get storage quota information
+   * Get storage quota information.
+   *
+   * Delegates to navigator.storage.estimate() (via getStorageEstimate) and the
+   * shared QUOTA_WARN_THRESHOLD so the warning boundary is consistent across
+   * the app (issue #1085). When the Storage API is unavailable, falls back to a
+   * rough payload-size estimate against FALLBACK_QUOTA_BYTES.
    */
   async getStorageQuota(): Promise<StorageQuotaInfo> {
-    if (navigator.storage && navigator.storage.estimate) {
-      const estimate = await navigator.storage.estimate();
-      const usage = estimate.usage || 0;
-      const quota = estimate.quota || 0;
-      const percentage = quota > 0 ? (usage / quota) * 100 : 0;
-
+    const estimate = await getStorageEstimate();
+    if (estimate.available) {
       return {
-        usage,
-        quota,
-        percentage,
-        approachingLimit: percentage > 80,
+        usage: estimate.usage,
+        quota: estimate.quota,
+        percentage: estimate.ratio * 100,
+        approachingLimit:
+          estimate.level === "warning" || estimate.level === "critical",
       };
     }
 
-    // Fallback: estimate based on IndexedDB size
+    // Fallback: approximate usage from the stored payload size.
     const decks = await this.getAll("decks");
     const savedGames = await this.getAll("saved-games");
-    const json = JSON.stringify({ decks, savedGames });
-    const usage = new Blob([json]).size;
+    const usage = new Blob([JSON.stringify({ decks, savedGames })]).size;
+    const percentage = (usage / FALLBACK_QUOTA_BYTES) * 100;
 
     return {
       usage,
-      quota: 50 * 1024 * 1024, // Assume 50MB quota
-      percentage: (usage / (50 * 1024 * 1024)) * 100,
-      approachingLimit: false,
+      quota: FALLBACK_QUOTA_BYTES,
+      percentage,
+      approachingLimit: percentage / 100 >= QUOTA_WARN_THRESHOLD,
     };
   }
 
