@@ -38,7 +38,6 @@ import {
   DetailedEvaluation,
 } from "./game-state-evaluator";
 import {
-  evaluateTriggerChain,
   shouldCounterToPreventTriggers,
   getHighestValueChain,
   getTriggerChainSummary,
@@ -48,6 +47,10 @@ import type {
   BoardPermanent,
   CascadeContext,
 } from "./trigger-chain-evaluator";
+// Trigger-chain evaluation is offloaded to the AI Web Worker to keep AI turns
+// off the main thread (#1080). The bridge falls back to identical main-thread
+// computation if the worker is unavailable.
+import { evaluateTriggerChainAsync } from "./worker/trigger-chain-worker-bridge";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "./providers/types";
 import {
@@ -1447,13 +1450,16 @@ export class StackInteractionAI {
   /**
    * Assess threat including cascade/trigger-chain evaluation.
    * Use this when you need to account for downstream triggered abilities.
+   *
+   * `async` because trigger-chain evaluation is offloaded to the AI Web Worker
+   * (#1080); callers must `await` the result.
    */
-  assessActionThreatWithTriggers(context: StackContext): number {
+  async assessActionThreatWithTriggers(context: StackContext): Promise<number> {
     const baseThreat = this.assessActionThreat(
       context,
       evaluateGameState(this.gameState, this.playerId, "medium"),
     );
-    const triggerResult = this.evaluateTriggerChains(context);
+    const triggerResult = await this.evaluateTriggerChains(context);
     return Math.min(1, baseThreat + triggerResult.cascadeThreatBonus);
   }
 
@@ -2455,14 +2461,20 @@ export class StackInteractionAI {
    * Evaluate trigger chains that would result from a stack item resolving.
    * Accounts for ETB effects, "whenever you cast" triggers, Cascade keyword,
    * Panharmonicon-style doubling, and secondary cascaded triggers.
+   *
+   * The recursive chain expansion runs in the AI Web Worker (off the main
+   * thread, #1080); the lightweight post-processing stays here. This method is
+   * `async` because callers must `await` the worker result before the AI
+   * commits to the stack. Results are identical to the previous synchronous
+   * computation.
    */
-  evaluateTriggerChains(context: StackContext): {
+  async evaluateTriggerChains(context: StackContext): Promise<{
     chains: TriggerChain[];
     summary: string;
     shouldCounterToPrevent: boolean;
     highestValueChain: TriggerChain | null;
     cascadeThreatBonus: number;
-  } {
+  }> {
     const boardPermanents: BoardPermanent[] = [];
     for (const [playerId, player] of Object.entries(this.gameState.players)) {
       for (const permanent of player.battlefield) {
@@ -2499,7 +2511,7 @@ export class StackInteractionAI {
       )?.life,
     };
 
-    const chains = evaluateTriggerChain(
+    const chains = await evaluateTriggerChainAsync(
       cascadeCtx.stackItem,
       cascadeCtx.battlefield,
     );
