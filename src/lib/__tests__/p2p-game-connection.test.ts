@@ -6,6 +6,7 @@
 import {
   P2PGameConnection,
   createP2PGameConnection,
+  createRulesEngineValidator,
   isGameMessage,
   type P2PGameConnectionEvents,
   type P2PGameConnectionOptions,
@@ -13,7 +14,9 @@ import {
   type GameMessage,
   type GameMessageType,
   type ChatMessage,
+  type PeerActionValidator,
 } from "../p2p-game-connection";
+import { ValidationService } from "../game-state/validation-service";
 
 describe("P2P Game Connection Types", () => {
   describe("GameMessageType", () => {
@@ -832,5 +835,354 @@ describe("P2PGameConnection sequence-number anti-replay (#1091)", () => {
       handleMessage(connection, JSON.stringify(msg("peer", 3)));
       expect(connection.getLastAppliedSeq("peer")).toBe(3);
     });
+  });
+});
+
+/**
+ * Authoritative-host game-action validation coverage (issue #1089).
+ *
+ * On the host, an incoming peer `game-action` must be validated against the
+ * rules engine BEFORE it is applied. Legal actions pass through to onMessage;
+ * illegal actions are rejected (not applied) and the originating peer is
+ * notified via a typed `error` message. This stage composes with — and runs
+ * strictly after — the rate-limit, structural, and anti-replay checks.
+ */
+describe("P2PGameConnection host action validation (#1089)", () => {
+  let onMessage: jest.Mock;
+  let onError: jest.Mock;
+  let sendSpy: jest.SpyInstance;
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  /**
+   * Build a connection whose `send` is spied on so we can assert on the
+   * rejection feedback message without a live data channel.
+   */
+  const makeConn = (
+    opts: {
+      validator?: PeerActionValidator;
+      enabled?: boolean;
+    } = {},
+  ): P2PGameConnection => {
+    onMessage = jest.fn();
+    onError = jest.fn();
+    const conn = createP2PGameConnection({
+      playerId: "host",
+      playerName: "Host",
+      role: "host",
+      validatePeerActions: opts.enabled ?? true,
+      validatePeerAction: opts.validator ?? jest.fn(() => ({ isValid: true })),
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage,
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError,
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+      },
+    });
+    sendSpy = jest.spyOn(conn, "send");
+    return conn;
+  };
+
+  const handleMessage = (conn: P2PGameConnection, raw: string) =>
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
+
+  /** Build a `game-action` message with a strict-increasing seq stream. */
+  const actionMsg = (
+    senderId: string,
+    seq: number,
+    action = "pass_priority",
+    data: unknown = {},
+  ): GameMessage => ({
+    type: "game-action",
+    senderId,
+    timestamp: Date.now(),
+    seq,
+    data: { action, data },
+  });
+
+  /** Distinct forwarded seqs for a sender (robust to single-dispatch). */
+  const forwardedSeqs = (senderId: string): number[] =>
+    Array.from(
+      new Set(
+        onMessage.mock.calls
+          .map((c) => c[0] as GameMessage)
+          .filter((m) => m.senderId === senderId && m.type === "game-action")
+          .map((m) => m.seq),
+      ),
+    ).sort((a, b) => a - b);
+
+  describe("legal actions", () => {
+    it("applies a legal action (forwards to onMessage)", () => {
+      const conn = makeConn({
+        validator: () => ({ isValid: true }),
+      });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(forwardedSeqs("peer")).toEqual([0]);
+    });
+
+    it("does not send a rejection for a legal action", () => {
+      const conn = makeConn({
+        validator: () => ({ isValid: true }),
+      });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 1)));
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("illegal actions", () => {
+    it("rejects an illegal action and does NOT apply it (not forwarded)", () => {
+      const conn = makeConn({
+        validator: () => ({ isValid: false, reason: "Not your turn" }),
+      });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(forwardedSeqs("peer")).toEqual([]);
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    it("notifies the peer of the rejection with a typed error message", () => {
+      const conn = makeConn({
+        validator: () => ({ isValid: false, reason: "Not your turn" }),
+      });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 7, "cast_spell")));
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect(sent.type).toBe("error");
+      expect(sent.senderId).toBe("host");
+      expect(sent.data).toEqual(
+        expect.objectContaining({
+          code: "action_rejected",
+          action: "cast_spell",
+          reason: "Not your turn",
+          rejectedSeq: 7,
+        }),
+      );
+      // The rejection itself carries a monotonic seq (anti-replay compatible).
+      expect(typeof sent.seq).toBe("number");
+    });
+
+    it("uses a default reason when the validator omits one", () => {
+      const conn = makeConn({
+        validator: () => ({ isValid: false }),
+      });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect((sent.data as { reason: string }).reason).toBe(
+        "Action rejected by host",
+      );
+    });
+
+    it("does not corrupt host state: a later legal action still applies", () => {
+      const conn = makeConn({
+        validator: (action) =>
+          action.action === "evil"
+            ? { isValid: false, reason: "Illegal" }
+            : { isValid: true },
+      });
+      // Illegal first — rejected, not applied.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0, "evil")));
+      // Then a legal action with a higher seq — accepted and applied.
+      handleMessage(
+        conn,
+        JSON.stringify(actionMsg("peer", 1, "pass_priority")),
+      );
+      expect(forwardedSeqs("peer")).toEqual([1]);
+    });
+  });
+
+  describe("fail-closed on bad input / validator misbehaviour", () => {
+    it("rejects a malformed action payload (no action string) without calling the validator", () => {
+      const validator = jest.fn(() => ({ isValid: true }));
+      const conn = makeConn({ validator });
+      // Valid GameMessage shape, but its data lacks an `action` string.
+      handleMessage(
+        conn,
+        JSON.stringify({
+          type: "game-action",
+          senderId: "peer",
+          timestamp: 1,
+          seq: 0,
+          data: { notAnAction: true },
+        }),
+      );
+      expect(forwardedSeqs("peer")).toEqual([]);
+      expect(validator).not.toHaveBeenCalled();
+      // Peer is still notified of the rejection.
+      const sent = sendSpy.mock.calls[sendSpy.mock.calls.length - 1]?.[0] as
+        | GameMessage
+        | undefined;
+      expect(sent?.type).toBe("error");
+    });
+
+    it("rejects when the validator throws (never applies)", () => {
+      const conn = makeConn({
+        validator: () => {
+          throw new Error("boom");
+        },
+      });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(forwardedSeqs("peer")).toEqual([]);
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect((sent.data as { reason: string }).reason).toBe("boom");
+    });
+
+    it("fail-closes when the gate is enabled but no validator is wired", () => {
+      // Build directly so the option is genuinely absent.
+      onMessage = jest.fn();
+      onError = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "host",
+        playerName: "Host",
+        role: "host",
+        validatePeerActions: true,
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage,
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError,
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+        },
+      });
+      sendSpy = jest.spyOn(conn, "send");
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(forwardedSeqs("peer")).toEqual([]);
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect((sent.data as { reason: string }).reason).toBe(
+        "No action validator configured",
+      );
+    });
+  });
+
+  describe("opt-in gate (single-player / AI unaffected)", () => {
+    it("does not validate when validatePeerActions is disabled (default)", () => {
+      const validator = jest.fn();
+      const conn = makeConn({ enabled: false, validator });
+      // Even though the validator would reject, the gate is off so the action
+      // passes straight through to onMessage.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(validator).not.toHaveBeenCalled();
+      expect(forwardedSeqs("peer")).toEqual([0]);
+      expect(sendSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("composition with earlier pipeline stages", () => {
+    it("anti-replay drops a duplicate BEFORE validation runs (no regression #1091)", () => {
+      const validator = jest.fn(() => ({ isValid: true }));
+      const conn = makeConn({ validator });
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 5)));
+      // Replay the same seq — dropped by anti-replay; validator must NOT be
+      // consulted again for it and no extra forwarding occurs.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 5)));
+      expect(forwardedSeqs("peer")).toEqual([5]);
+      // Validator called exactly once (for the first, accepted message only).
+      expect(validator).toHaveBeenCalledTimes(1);
+      // A genuinely new action is still validated and forwarded.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 6)));
+      expect(validator).toHaveBeenCalledTimes(2);
+      expect(forwardedSeqs("peer")).toEqual([5, 6]);
+    });
+
+    it("rejects a well-shaped message missing the seq field (no regression #1091)", () => {
+      const validator = jest.fn();
+      const conn = makeConn({ validator });
+      expect(() =>
+        handleMessage(
+          conn,
+          JSON.stringify({
+            type: "game-action",
+            senderId: "peer",
+            timestamp: 1,
+            data: { action: "pass_priority", data: {} },
+          }),
+        ),
+      ).not.toThrow();
+      expect(validator).not.toHaveBeenCalled();
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+
+    it("rejects malformed JSON before validation (no regression #924/#951)", () => {
+      const validator = jest.fn();
+      const conn = makeConn({ validator });
+      expect(() => handleMessage(conn, "{ not json")).not.toThrow();
+      expect(validator).not.toHaveBeenCalled();
+      expect(onMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("incoming error message (rejection feedback to the peer)", () => {
+    it("surfaces a received error message via onError and onMessage without failing", () => {
+      const conn = makeConn();
+      handleMessage(
+        conn,
+        JSON.stringify({
+          type: "error",
+          senderId: "host",
+          timestamp: 1,
+          seq: 0,
+          data: { code: "action_rejected", reason: "Not your turn" },
+        }),
+      );
+      expect(onError).toHaveBeenCalledTimes(1);
+      expect(onError.mock.calls[0][0]).toBeInstanceOf(Error);
+      expect((onError.mock.calls[0][0] as Error).message).toBe("Not your turn");
+      // Also forwarded for app-level handling.
+      expect(onMessage).toHaveBeenCalledTimes(1);
+    });
+  });
+});
+
+/**
+ * The rules-engine validator factory (issue #1089). It must delegate to
+ * `ValidationService.validateAction`, mapping the wire payload + senderId to
+ * the engine's `GameAction` and validating against the host's OWN state.
+ */
+describe("createRulesEngineValidator (#1089)", () => {
+  it("delegates to ValidationService.validateAction with the mapped action", () => {
+    const fakeState = { status: "in_progress" } as never;
+    const spy = jest
+      .spyOn(ValidationService, "validateAction")
+      .mockReturnValue({ isValid: true });
+
+    const validator = createRulesEngineValidator(() => fakeState, "commander");
+    const result = validator(
+      { action: "cast_spell", data: { cardId: "c1" } },
+      "peer-1",
+    );
+
+    expect(result).toEqual({ isValid: true, reason: undefined });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const [stateArg, actionArg, modeArg] = spy.mock.calls[0];
+    expect(stateArg).toBe(fakeState);
+    expect(actionArg).toMatchObject({
+      type: "cast_spell",
+      playerId: "peer-1",
+      data: { cardId: "c1" },
+    });
+    expect(modeArg).toBe("commander");
+    spy.mockRestore();
+  });
+
+  it("propagates the engine's rejection reason", () => {
+    const fakeState = {} as never;
+    const spy = jest
+      .spyOn(ValidationService, "validateAction")
+      .mockReturnValue({ isValid: false, reason: "Not enough mana" });
+
+    const validator = createRulesEngineValidator(() => fakeState);
+    const result = validator({ action: "cast_spell", data: {} }, "peer-2");
+
+    expect(result).toEqual({ isValid: false, reason: "Not enough mana" });
+    spy.mockRestore();
   });
 });

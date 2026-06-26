@@ -6,7 +6,12 @@
  * using client-side signaling without server dependencies.
  */
 
-import type { GameState, Phase, PlayerId } from "./game-state/types";
+import type {
+  GameState,
+  Phase,
+  PlayerId,
+  GameAction,
+} from "./game-state/types";
 import {
   LocalSignalingClient,
   createLocalSignalingClient,
@@ -20,6 +25,7 @@ import {
   deserializeGameState,
   type SerializedGameState,
 } from "./game-state/serialization";
+import { ValidationService } from "./game-state/validation-service";
 import {
   ICEConfigurationManager,
   getGlobalICEManager,
@@ -67,6 +73,12 @@ export type { SignalingRole };
 
 /**
  * Game message types
+ *
+ * `error` is the typed rejection/feedback channel used by the authoritative
+ * host to tell a peer one of its `game-action`s was rejected by the rules
+ * engine (issue #1089). It is informational — receiving one does NOT fail the
+ * connection (unlike a transport-level failure routed through the private
+ * `handleError`).
  */
 export type GameMessageType =
   | "game-state-sync"
@@ -75,7 +87,8 @@ export type GameMessageType =
   | "player-joined"
   | "player-left"
   | "ping"
-  | "pong";
+  | "pong"
+  | "error";
 
 /**
  * Base game message.
@@ -113,6 +126,7 @@ const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "player-left",
   "ping",
   "pong",
+  "error",
 ]);
 
 /**
@@ -151,6 +165,42 @@ export interface ChatMessage {
 }
 
 /**
+ * Result of validating a peer-originated game-action against the rules engine
+ * on the authoritative host. Issue #1089.
+ */
+export interface PeerActionValidationResult {
+  isValid: boolean;
+  /** Machine-readable reason the action was rejected (when `isValid` is false). */
+  reason?: string;
+}
+
+/**
+ * Wire payload of a `game-action` message — an action name plus its
+ * action-specific data. Mirrors what {@link P2PGameConnection.sendGameAction}
+ * puts on the wire. Issue #1089.
+ */
+export interface PeerGameActionPayload {
+  action: string;
+  data: unknown;
+}
+
+/**
+ * Validator the authoritative host supplies to check a peer-originated
+ * `game-action` against the rules engine using the host's OWN authoritative
+ * state. The transport layer never owns or trusts peer-supplied state — it
+ * delegates the legality decision to this callback.
+ *
+ * `peerAction` is the parsed `{ action, data }` payload of the `game-action`
+ * message; `senderId` is the originating peer (the actor). Hosts typically
+ * wire this to the rules engine via {@link createRulesEngineValidator}.
+ * Issue #1089.
+ */
+export type PeerActionValidator = (
+  peerAction: PeerGameActionPayload,
+  senderId: string,
+) => PeerActionValidationResult;
+
+/**
  * P2P Game Connection options
  */
 export interface P2PGameConnectionOptions {
@@ -167,6 +217,23 @@ export interface P2PGameConnectionOptions {
    * flooding peer. Issue #1111.
    */
   rateLimit?: Partial<P2PRateLimitOptions>;
+  /**
+   * Authoritative-host game-action validation. When `true`, every incoming
+   * peer `game-action` is run through {@link validatePeerAction} against the
+   * host's authoritative state BEFORE it is emitted for application; illegal
+   * actions are rejected (not applied) and the originating peer is notified
+   * with an `error` message. Defaults to `false` so single-player/AI and
+   * non-host paths are unaffected. Issue #1089.
+   */
+  validatePeerActions?: boolean;
+  /**
+   * Rules-engine validator invoked for each peer `game-action` when
+   * {@link validatePeerActions} is enabled. Must validate against the host's
+   * OWN authoritative state — never peer-supplied state. Use
+   * {@link createRulesEngineValidator} to wire it to the rules engine.
+   * Issue #1089.
+   */
+  validatePeerAction?: PeerActionValidator;
 }
 
 /**
@@ -211,6 +278,17 @@ export class P2PGameConnection {
    * `p2p-host-migration.ts`.
    */
   private lastAppliedSeqByPeer: Map<string, number> = new Map();
+  /**
+   * Authoritative-host game-action validation gate (issue #1089). When true,
+   * incoming peer `game-action`s are validated by {@link validatePeerAction}
+   * against the host's authoritative state before being applied.
+   */
+  private readonly validatePeerActions: boolean;
+  /**
+   * Rules-engine legality check for peer game-actions (issue #1089). Supplied
+   * by the host; validates against the host's OWN state.
+   */
+  private readonly validatePeerAction: PeerActionValidator | null;
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
@@ -220,6 +298,11 @@ export class P2PGameConnection {
     // Per-connection rate limiter guards the parse/validate path against
     // flooding peers. Issue #1111.
     this.rateLimiter = new P2PRateLimiter(options.rateLimit);
+
+    // Authoritative-host action validation (issue #1089). Opt-in; disabled by
+    // default so single-player/AI paths are unaffected.
+    this.validatePeerActions = options.validatePeerActions === true;
+    this.validatePeerAction = options.validatePeerAction ?? null;
 
     // Initialize ICE manager
     if (options.iceConfig) {
@@ -598,9 +681,17 @@ export class P2PGameConnection {
    *   4. Anti-replay check: a message with `seq <=` the highest seq already
    *      applied from this `senderId` is dropped as a duplicate/replay BEFORE
    *      it can be applied to game state (issue #1091).
+   *   5. Rules-engine legality (issue #1089): on the authoritative host, a
+   *      `game-action` is validated against the host's own state; illegal
+   *      actions are rejected (peer notified via an `error` message) BEFORE
+   *      they are applied.
    *
-   * Malformed, oversize, rate-limited, or replayed messages are rejected
-   * gracefully without breaking the connection.
+   * The legality stage (#5) runs strictly AFTER anti-replay (#4) and
+   * structural/shape checks (#2/#3) and strictly BEFORE the action is emitted
+   * for application, so an illegal action can never touch host game state.
+   *
+   * Malformed, oversize, rate-limited, replayed, or illegal messages are
+   * rejected gracefully without breaking the connection.
    */
   private handleMessage(data: string): void {
     try {
@@ -640,9 +731,25 @@ export class P2PGameConnection {
         case "game-state-sync":
           this.handleGameStateSync(message);
           break;
-        case "game-action":
-          this.events.onMessage(message);
+        case "game-action": {
+          // Rules-engine legality (issue #1089). Runs AFTER anti-replay
+          // (#1091) and structural/shape checks, and BEFORE the action is
+          // emitted for application — so an illegal action can never touch
+          // host game state. Only the authoritative host opts in. Fail-closed:
+          // if the gate is on but no validator is wired, actions are rejected
+          // rather than applied unvalidated (trust-boundary default).
+          if (this.validatePeerActions) {
+            const result = this.validatePeerGameAction(message);
+            if (!result.isValid) {
+              this.sendActionRejection(message, result.reason);
+              // Do NOT fall through to onMessage: the illegal action is not
+              // applied. `return` skips the post-switch emission too.
+              return;
+            }
+          }
+          // Legal (or validation disabled): forward to onMessage below.
           break;
+        }
         case "chat":
           this.handleChat(message);
           break;
@@ -658,6 +765,22 @@ export class P2PGameConnection {
         case "pong":
           // Connection is alive
           break;
+        case "error": {
+          // A peer (typically the host) is signalling a rejection/error.
+          // Surface it WITHOUT failing the connection (the private
+          // handleError sets state=failed — we must not call it here). The
+          // message also flows to onMessage below for app-level handling.
+          // Issue #1089.
+          const errorData = message.data as { reason?: string };
+          this.events.onError(
+            new Error(
+              typeof errorData?.reason === "string"
+                ? errorData.reason
+                : "Received error message from peer",
+            ),
+          );
+          break;
+        }
       }
 
       this.events.onMessage(message);
@@ -733,6 +856,75 @@ export class P2PGameConnection {
    */
   resetIncomingSeq(senderId: string): void {
     this.lastAppliedSeqByPeer.delete(senderId);
+  }
+
+  /**
+   * Validate a peer-originated `game-action` against the rules engine using
+   * the host's authoritative state (via {@link validatePeerAction}). Defensive
+   * against malformed payloads and throwing validators: anything that cannot
+   * be confirmed legal is treated as illegal (fail-closed) so it can never be
+   * applied to host state. Issue #1089.
+   */
+  private validatePeerGameAction(
+    message: GameMessage,
+  ): PeerActionValidationResult {
+    const payload = message.data;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      typeof (payload as { action?: unknown }).action !== "string"
+    ) {
+      return { isValid: false, reason: "Malformed game action" };
+    }
+    const peerAction = payload as PeerGameActionPayload;
+    if (!this.validatePeerAction) {
+      // Gate enabled without a validator — fail-closed.
+      return { isValid: false, reason: "No action validator configured" };
+    }
+    try {
+      const result = this.validatePeerAction(peerAction, message.senderId);
+      if (
+        result &&
+        typeof result === "object" &&
+        typeof result.isValid === "boolean"
+      ) {
+        return result;
+      }
+      return { isValid: false, reason: "Invalid validator result" };
+    } catch (error) {
+      // A throwing validator is treated as a rejection — never apply.
+      return {
+        isValid: false,
+        reason:
+          error instanceof Error ? error.message : "Action validation error",
+      };
+    }
+  }
+
+  /**
+   * Notify the originating peer that its `game-action` was rejected by the
+   * authoritative host. Reuses the typed message channel (an `error` message)
+   * rather than introducing a new protocol. Issue #1089.
+   */
+  private sendActionRejection(
+    message: GameMessage,
+    reason: string | undefined,
+  ): void {
+    const payload = message.data as { action?: unknown };
+    this.send({
+      type: "error",
+      senderId: this.playerId,
+      timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
+      data: {
+        code: "action_rejected",
+        action:
+          typeof payload?.action === "string" ? payload.action : undefined,
+        reason: reason ?? "Action rejected by host",
+        // Echo the rejected message's seq so the peer can correlate.
+        rejectedSeq: message.seq,
+      },
+    });
   }
 
   /**
@@ -1029,4 +1221,46 @@ export function createP2PGameConnection(
   options: P2PGameConnectionOptions,
 ): P2PGameConnection {
   return new P2PGameConnection(options);
+}
+
+/**
+ * Build a {@link PeerActionValidator} that delegates to the rules engine
+ * (`ValidationService.validateAction`) against the host's authoritative state.
+ *
+ * The host supplies `getState`, which must return its OWN authoritative
+ * {@link GameState} at call time — never a state claimed by the peer. The wire
+ * payload (`{ action, data }`) plus the originating `senderId` are mapped to
+ * the engine's {@link GameAction} and validated in place; the action is NOT
+ * applied (this only decides legality). Issue #1089.
+ *
+ * Example (authoritative host):
+ * ```ts
+ * createP2PGameConnection({
+ *   // ...
+ *   validatePeerActions: true,
+ *   validatePeerAction: createRulesEngineValidator(
+ *     () => authoritativeGameStateRef.current,
+ *   ),
+ * });
+ * ```
+ *
+ * This wrapper only delegates — it does not reimplement rules. Unknown action
+ * types therefore fall through to `ValidationService.validateAction`'s default
+ * handling.
+ */
+export function createRulesEngineValidator(
+  getState: () => GameState,
+  modeId?: string,
+): PeerActionValidator {
+  return (peerAction, senderId) => {
+    const state = getState();
+    const gameAction = {
+      type: peerAction.action,
+      playerId: senderId as PlayerId,
+      timestamp: Date.now(),
+      data: peerAction.data,
+    } as unknown as GameAction;
+    const result = ValidationService.validateAction(state, gameAction, modeId);
+    return { isValid: result.isValid, reason: result.reason };
+  };
 }
