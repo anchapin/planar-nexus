@@ -1,6 +1,6 @@
 /**
  * P2P Conflict Resolution for Simultaneous Actions
- * 
+ *
  * This module handles conflict resolution when multiple players
  * perform actions simultaneously in P2P mode.
  */
@@ -8,17 +8,17 @@
 /**
  * Action priority levels for conflict resolution
  */
-export type ActionPriority = 'critical' | 'high' | 'normal' | 'low';
+export type ActionPriority = "critical" | "high" | "normal" | "low";
 
 /**
  * Conflict resolution strategy
  */
 export type ConflictStrategy =
-  | 'host-wins'        // Host's action takes priority
-  | 'timestamp-based'  // Earlier timestamp wins
-  | 'priority-based'   // Higher priority action wins
-  | 'round-robin'      // Alternate between players
-  | 'consensus'        // Require agreement from all peers;
+  | "host-wins" // Host's action takes priority
+  | "timestamp-based" // Earlier timestamp wins
+  | "priority-based" // Higher priority action wins
+  | "round-robin" // Alternate between players
+  | "consensus"; // Require agreement from all peers;
 
 /**
  * Action wrapper with metadata for conflict resolution
@@ -41,7 +41,7 @@ export interface TimestampedAction {
 export interface ActionConflict {
   action1: TimestampedAction;
   action2: TimestampedAction;
-  resolution: 'action1-wins' | 'action2-wins' | 'merge' | 'queue';
+  resolution: "action1-wins" | "action2-wins" | "merge" | "queue";
   reason: string;
   resolvedAt: number;
 }
@@ -70,9 +70,9 @@ export interface ConflictResolutionConfig {
  * Default configuration
  */
 const DEFAULT_CONFIG: ConflictResolutionConfig = {
-  strategy: 'host-wins',
+  strategy: "host-wins",
   actionWindow: 100, // 100ms window
-  hostId: '',
+  hostId: "",
   enablePriority: true,
   enableSequenceNumbers: true,
 };
@@ -82,26 +82,26 @@ const DEFAULT_CONFIG: ConflictResolutionConfig = {
  */
 const ACTION_PRIORITY_MAP: Record<string, ActionPriority> = {
   // Critical actions that must be processed immediately
-  'game-end': 'critical',
-  'player-eliminated': 'critical',
-  'state-correction': 'critical',
-  
+  "game-end": "critical",
+  "player-eliminated": "critical",
+  "state-correction": "critical",
+
   // High priority actions
-  'combat-declare': 'high',
-  'spell-cast': 'high',
-  'ability-activate': 'high',
-  
+  "combat-declare": "high",
+  "spell-cast": "high",
+  "ability-activate": "high",
+
   // Normal game actions
-  'play-card': 'normal',
-  'attack': 'normal',
-  'block': 'normal',
-  'tap': 'normal',
-  'untap': 'normal',
-  
+  "play-card": "normal",
+  attack: "normal",
+  block: "normal",
+  tap: "normal",
+  untap: "normal",
+
   // Low priority actions
-  'chat': 'low',
-  'emote': 'low',
-  'surrender': 'low',
+  chat: "low",
+  emote: "low",
+  surrender: "low",
 };
 
 /**
@@ -136,7 +136,7 @@ export class ConflictResolutionManager {
     actionType: string,
     actionData: unknown,
     playerId: string,
-    playerName: string
+    playerName: string,
   ): {
     shouldProcess: boolean;
     action?: TimestampedAction;
@@ -145,7 +145,7 @@ export class ConflictResolutionManager {
     queueReason?: string;
   } {
     const now = Date.now();
-    
+
     // Create timestamped action
     const sequenceNumber = this.getNextSequenceNumber(playerId);
     const action: TimestampedAction = {
@@ -169,22 +169,22 @@ export class ConflictResolutionManager {
       const conflict = this.resolveConflict(action, conflictingAction);
       this.pendingConflicts.set(conflict.action1.actionId, conflict);
 
-      if (conflict.resolution === 'queue') {
+      if (conflict.resolution === "queue") {
         return {
           shouldProcess: false,
           shouldQueue: true,
-          queueReason: 'Conflicting action being processed',
+          queueReason: "Conflicting action being processed",
           conflict,
         };
       }
 
-      if (conflict.resolution === 'action2-wins') {
+      if (conflict.resolution === "action2-wins") {
         // Other action wins, queue this one
         this.queueAction(action);
         return {
           shouldProcess: false,
           shouldQueue: true,
-          queueReason: 'Lower priority in conflict resolution',
+          queueReason: "Lower priority in conflict resolution",
           conflict,
         };
       }
@@ -206,11 +206,11 @@ export class ConflictResolutionManager {
    */
   private findConflict(
     newAction: TimestampedAction,
-    recentActions: TimestampedAction[]
+    recentActions: TimestampedAction[],
   ): TimestampedAction | null {
     // Only check for conflicts if there are recent actions from other players
     const otherPlayerActions = recentActions.filter(
-      a => a.playerId !== newAction.playerId
+      (a) => a.playerId !== newAction.playerId,
     );
 
     if (otherPlayerActions.length === 0) {
@@ -219,7 +219,7 @@ export class ConflictResolutionManager {
 
     // Find the most recent action from another player
     const mostRecent = otherPlayerActions.reduce((latest, current) =>
-      current.timestamp > latest.timestamp ? current : latest
+      current.timestamp > latest.timestamp ? current : latest,
     );
 
     // Check if within the action window
@@ -236,52 +236,57 @@ export class ConflictResolutionManager {
    */
   private resolveConflict(
     action1: TimestampedAction,
-    action2: TimestampedAction
+    action2: TimestampedAction,
   ): ActionConflict {
     const now = Date.now();
-    let resolution: 'action1-wins' | 'action2-wins' | 'merge' | 'queue';
+    let resolution: "action1-wins" | "action2-wins" | "merge" | "queue";
     let reason: string;
 
     switch (this.config.strategy) {
-      case 'host-wins':
+      case "host-wins":
         if (action1.playerId === this.config.hostId) {
-          resolution = 'action1-wins';
-          reason = 'Host action takes priority';
+          resolution = "action1-wins";
+          reason = "Host action takes priority";
         } else if (action2.playerId === this.config.hostId) {
-          resolution = 'action2-wins';
-          reason = 'Host action takes priority';
+          resolution = "action2-wins";
+          reason = "Host action takes priority";
         } else {
           // Neither is host, fall back to timestamp
-          resolution = action1.timestamp < action2.timestamp ? 'action1-wins' : 'action2-wins';
-          reason = 'Earlier timestamp wins (neither is host)';
+          resolution = this.pickWinnerByTimestamp(action1, action2);
+          reason = "Earlier timestamp wins (neither is host)";
         }
         break;
 
-      case 'timestamp-based':
-        resolution = action1.timestamp < action2.timestamp ? 'action1-wins' : 'action2-wins';
-        reason = 'Earlier timestamp wins';
+      case "timestamp-based":
+        resolution = this.pickWinnerByTimestamp(action1, action2);
+        reason = "Earlier timestamp wins";
         break;
 
-      case 'priority-based': {
-        const priorityOrder: ActionPriority[] = ['critical', 'high', 'normal', 'low'];
+      case "priority-based": {
+        const priorityOrder: ActionPriority[] = [
+          "critical",
+          "high",
+          "normal",
+          "low",
+        ];
         const action1Priority = priorityOrder.indexOf(action1.priority);
         const action2Priority = priorityOrder.indexOf(action2.priority);
 
         if (action1Priority < action2Priority) {
-          resolution = 'action1-wins';
-          reason = 'Higher priority action wins';
+          resolution = "action1-wins";
+          reason = "Higher priority action wins";
         } else if (action2Priority < action1Priority) {
-          resolution = 'action2-wins';
-          reason = 'Higher priority action wins';
+          resolution = "action2-wins";
+          reason = "Higher priority action wins";
         } else {
-          // Same priority, use timestamp
-          resolution = action1.timestamp < action2.timestamp ? 'action1-wins' : 'action2-wins';
-          reason = 'Same priority, earlier timestamp wins';
+          // Same priority, use timestamp (with a deterministic tie-break)
+          resolution = this.pickWinnerByTimestamp(action1, action2);
+          reason = "Same priority, earlier timestamp wins";
         }
         break;
       }
 
-      case 'round-robin': {
+      case "round-robin": {
         // Track turn order for round-robin
         if (!this.roundRobinOrder.includes(action1.playerId)) {
           this.roundRobinOrder.push(action1.playerId);
@@ -295,24 +300,24 @@ export class ConflictResolutionManager {
         const action2Index = this.roundRobinOrder.indexOf(action2.playerId);
 
         if (action1Index < action2Index) {
-          resolution = 'action1-wins';
-          reason = 'Round-robin order';
+          resolution = "action1-wins";
+          reason = "Round-robin order";
         } else {
-          resolution = 'action2-wins';
-          reason = 'Round-robin order';
+          resolution = "action2-wins";
+          reason = "Round-robin order";
         }
         break;
       }
 
-      case 'consensus':
+      case "consensus":
         // For consensus, we queue both actions and wait for agreement
-        resolution = 'queue';
-        reason = 'Waiting for consensus from all peers';
+        resolution = "queue";
+        reason = "Waiting for consensus from all peers";
         break;
 
       default:
-        resolution = 'timestamp-based' as any;
-        reason = 'Default resolution';
+        resolution = "timestamp-based" as any;
+        reason = "Default resolution";
     }
 
     return {
@@ -347,7 +352,7 @@ export class ConflictResolutionManager {
     entries.sort((a, b) => a[1].queuedAt - b[1].queuedAt);
 
     const [actionId, queuedAction] = entries[0];
-    
+
     // Check if dependency is resolved
     if (queuedAction.processAfter) {
       if (!this.processedActions.has(queuedAction.processAfter)) {
@@ -365,15 +370,46 @@ export class ConflictResolutionManager {
   private getRecentActions(windowMs: number): TimestampedAction[] {
     const now = Date.now();
     return Array.from(this.processedActions.values()).filter(
-      action => now - action.timestamp <= windowMs
+      (action) => now - action.timestamp <= windowMs,
     );
+  }
+
+  /**
+   * Pick the winner between two actions by timestamp.
+   *
+   * When the timestamps are EQUAL (a true simultaneous tie) the previous
+   * implementation fell back to "action2-wins", i.e. whichever action was
+   * processed first. That is dependent on message arrival order, so two peers
+   * receiving the same pair of simultaneous actions in opposite orders would
+   * pick different winners and silently diverge — exactly the class of bug
+   * this module exists to prevent.
+   *
+   * The tie is now broken deterministically by lexicographic playerId: the
+   * action whose playerId sorts lower wins. Because findConflict() only pairs
+   * actions from DIFFERENT players, the playerIds always differ, so every
+   * peer independently computes the identical winner regardless of arrival
+   * order. This mirrors resolveSimultaneousConflict() in deterministic-sync.
+   * (Issue #1096.)
+   */
+  private pickWinnerByTimestamp(
+    action1: TimestampedAction,
+    action2: TimestampedAction,
+  ): "action1-wins" | "action2-wins" {
+    if (action1.timestamp !== action2.timestamp) {
+      return action1.timestamp < action2.timestamp
+        ? "action1-wins"
+        : "action2-wins";
+    }
+    return action1.playerId < action2.playerId
+      ? "action1-wins"
+      : "action2-wins";
   }
 
   /**
    * Get action priority based on type
    */
   private getActionPriority(actionType: string): ActionPriority {
-    return ACTION_PRIORITY_MAP[actionType] || 'normal';
+    return ACTION_PRIORITY_MAP[actionType] || "normal";
   }
 
   /**
@@ -443,7 +479,7 @@ export class ConflictResolutionManager {
  * Create a conflict resolution manager
  */
 export function createConflictResolutionManager(
-  config: Partial<ConflictResolutionConfig> = {}
+  config: Partial<ConflictResolutionConfig> = {},
 ): ConflictResolutionManager {
   return new ConflictResolutionManager(config);
 }
@@ -453,13 +489,15 @@ export function createConflictResolutionManager(
  */
 export function mergeActions(
   action1: TimestampedAction,
-  action2: TimestampedAction
+  action2: TimestampedAction,
 ): TimestampedAction | null {
   // Only certain action types can be merged
-  const mergeableTypes = ['chat', 'emote', 'surrender'];
+  const mergeableTypes = ["chat", "emote", "surrender"];
 
-  if (!mergeableTypes.includes(action1.actionType) ||
-      !mergeableTypes.includes(action2.actionType)) {
+  if (
+    !mergeableTypes.includes(action1.actionType) ||
+    !mergeableTypes.includes(action2.actionType)
+  ) {
     return null;
   }
 
