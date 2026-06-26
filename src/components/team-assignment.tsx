@@ -1,15 +1,21 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
-import { Users, Shuffle, Check, X, Edit2 } from 'lucide-react';
-import { Team, TeamId, Player, TeamSettings } from '@/lib/multiplayer-types';
+import { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { Users, Shuffle, Check, X, Edit2 } from "lucide-react";
+import { Team, TeamId, Player, TeamSettings } from "@/lib/multiplayer-types";
 
 interface TeamAssignmentProps {
   teams: Team[];
@@ -35,10 +41,10 @@ export function TeamAssignment({
   isHost,
 }: TeamAssignmentProps) {
   const [editingTeam, setEditingTeam] = useState<TeamId | null>(null);
-  const [teamNameInput, setTeamNameInput] = useState('');
+  const [teamNameInput, setTeamNameInput] = useState("");
 
   // Get unassigned players
-  const unassignedPlayers = players.filter(p => !p.teamId);
+  const unassignedPlayers = players.filter((p) => !p.teamId);
 
   // Handle team name edit
   const handleStartEdit = (team: Team) => {
@@ -51,12 +57,12 @@ export function TeamAssignment({
       onUpdateTeamName(teamId, teamNameInput.trim());
     }
     setEditingTeam(null);
-    setTeamNameInput('');
+    setTeamNameInput("");
   };
 
   const handleCancelEdit = () => {
     setEditingTeam(null);
-    setTeamNameInput('');
+    setTeamNameInput("");
   };
 
   // Handle drag and drop for team assignment
@@ -97,39 +103,57 @@ export function TeamAssignment({
             <h4 className="text-sm font-medium">Team Settings</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center justify-between">
-                <Label htmlFor="shared-life" className="text-sm">Shared Life</Label>
+                <Label htmlFor="shared-life" className="text-sm">
+                  Shared Life
+                </Label>
                 <Switch
                   id="shared-life"
                   checked={teamSettings.sharedLife}
-                  onCheckedChange={(checked) => onUpdateTeamSettings({ sharedLife: checked })}
+                  onCheckedChange={(checked) =>
+                    onUpdateTeamSettings({ sharedLife: checked })
+                  }
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="shared-blockers" className="text-sm">Shared Blockers</Label>
+                <Label htmlFor="shared-blockers" className="text-sm">
+                  Shared Blockers
+                </Label>
                 <Switch
                   id="shared-blockers"
                   checked={teamSettings.sharedBlockers}
-                  onCheckedChange={(checked) => onUpdateTeamSettings({ sharedBlockers: checked })}
+                  onCheckedChange={(checked) =>
+                    onUpdateTeamSettings({ sharedBlockers: checked })
+                  }
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="team-chat" className="text-sm">Team Chat</Label>
+                <Label htmlFor="team-chat" className="text-sm">
+                  Team Chat
+                </Label>
                 <Switch
                   id="team-chat"
                   checked={teamSettings.teamChat}
-                  onCheckedChange={(checked) => onUpdateTeamSettings({ teamChat: checked })}
+                  onCheckedChange={(checked) =>
+                    onUpdateTeamSettings({ teamChat: checked })
+                  }
                 />
               </div>
               {teamSettings.sharedLife && (
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="starting-life" className="text-sm">Starting Life</Label>
+                  <Label htmlFor="starting-life" className="text-sm">
+                    Starting Life
+                  </Label>
                   <Input
                     id="starting-life"
                     type="number"
                     min={1}
                     max={100}
                     value={teamSettings.startingLifePerTeam}
-                    onChange={(e) => onUpdateTeamSettings({ startingLifePerTeam: parseInt(e.target.value) || 30 })}
+                    onChange={(e) =>
+                      onUpdateTeamSettings({
+                        startingLifePerTeam: parseInt(e.target.value) || 30,
+                      })
+                    }
                     className="w-20 h-8"
                   />
                 </div>
@@ -141,7 +165,7 @@ export function TeamAssignment({
         {/* Teams Display */}
         <div className="grid grid-cols-2 gap-4">
           {teams.map((team) => {
-            const teamPlayers = players.filter(p => p.teamId === team.id);
+            const teamPlayers = players.filter((p) => p.teamId === team.id);
             const isEditing = editingTeam === team.id;
 
             return (
@@ -152,7 +176,7 @@ export function TeamAssignment({
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
-                  const playerId = e.dataTransfer.getData('playerId');
+                  const playerId = e.dataTransfer.getData("playerId");
                   if (playerId) {
                     handlePlayerDrop(playerId, team.id);
                   }
@@ -173,6 +197,7 @@ export function TeamAssignment({
                         variant="ghost"
                         onClick={() => handleSaveEdit(team.id)}
                         className="h-8 w-8"
+                        aria-label="Save team name"
                       >
                         <Check className="w-4 h-4 text-green-500" />
                       </Button>
@@ -181,6 +206,7 @@ export function TeamAssignment({
                         variant="ghost"
                         onClick={handleCancelEdit}
                         className="h-8 w-8"
+                        aria-label="Cancel edit"
                       >
                         <X className="w-4 h-4 text-red-500" />
                       </Button>
@@ -205,6 +231,7 @@ export function TeamAssignment({
                           variant="ghost"
                           onClick={() => handleStartEdit(team)}
                           className="h-8 w-8"
+                          aria-label="Edit team"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Button>
@@ -225,24 +252,35 @@ export function TeamAssignment({
                         key={player.id}
                         draggable={isHost}
                         onDragStart={(e) => {
-                          e.dataTransfer.setData('playerId', player.id);
+                          e.dataTransfer.setData("playerId", player.id);
                         }}
                         className={`flex items-center justify-between p-2 rounded-md ${
-                          isHost ? 'cursor-move bg-muted/50' : 'bg-muted/30'
+                          isHost ? "cursor-move bg-muted/50" : "bg-muted/30"
                         }`}
                         style={{ borderLeft: `3px solid ${team.color}` }}
                       >
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{player.name}</span>
-                          {player.status === 'host' && (
-                            <Badge variant="outline" className="text-xs">Host</Badge>
+                          {player.status === "host" && (
+                            <Badge variant="outline" className="text-xs">
+                              Host
+                            </Badge>
                           )}
                         </div>
                         <Badge
-                          variant={player.status === 'ready' || player.status === 'host' ? 'default' : 'secondary'}
+                          variant={
+                            player.status === "ready" ||
+                            player.status === "host"
+                              ? "default"
+                              : "secondary"
+                          }
                           className="text-xs"
                         >
-                          {player.status === 'ready' ? 'Ready' : player.status === 'host' ? 'Host' : 'Not Ready'}
+                          {player.status === "ready"
+                            ? "Ready"
+                            : player.status === "host"
+                              ? "Host"
+                              : "Not Ready"}
                         </Badge>
                       </div>
                     ))
@@ -253,7 +291,11 @@ export function TeamAssignment({
                 {teamSettings?.sharedLife && (
                   <div className="mt-3 pt-3 border-t">
                     <div className="text-sm text-muted-foreground">
-                      Shared Life: <span className="font-bold text-foreground">{team.sharedLifeTotal || teamSettings.startingLifePerTeam}</span>
+                      Shared Life:{" "}
+                      <span className="font-bold text-foreground">
+                        {team.sharedLifeTotal ||
+                          teamSettings.startingLifePerTeam}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -274,18 +316,26 @@ export function TeamAssignment({
                     key={player.id}
                     draggable={isHost}
                     onDragStart={(e) => {
-                      e.dataTransfer.setData('playerId', player.id);
+                      e.dataTransfer.setData("playerId", player.id);
                     }}
                     className={`flex items-center gap-2 p-2 rounded-md border ${
-                      isHost ? 'cursor-move' : ''
+                      isHost ? "cursor-move" : ""
                     }`}
                   >
                     <span className="font-medium">{player.name}</span>
                     <Badge
-                      variant={player.status === 'ready' || player.status === 'host' ? 'default' : 'secondary'}
+                      variant={
+                        player.status === "ready" || player.status === "host"
+                          ? "default"
+                          : "secondary"
+                      }
                       className="text-xs"
                     >
-                      {player.status === 'ready' ? 'Ready' : player.status === 'host' ? 'Host' : 'Not Ready'}
+                      {player.status === "ready"
+                        ? "Ready"
+                        : player.status === "host"
+                          ? "Host"
+                          : "Not Ready"}
                     </Badge>
                   </div>
                 ))}
@@ -305,14 +355,14 @@ export function TeamAssignment({
             ) : (
               <>
                 <X className="w-5 h-5 text-red-500" />
-                <span className="text-sm text-red-600">Teams must be balanced</span>
+                <span className="text-sm text-red-600">
+                  Teams must be balanced
+                </span>
               </>
             )}
           </div>
           {teamSettings?.sharedLife && (
-            <Badge variant="outline">
-              Two-Headed Giant Mode
-            </Badge>
+            <Badge variant="outline">Two-Headed Giant Mode</Badge>
           )}
         </div>
       </CardContent>

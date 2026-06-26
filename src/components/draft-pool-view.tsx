@@ -73,7 +73,7 @@ export function DraftPoolView({
 
     // Sort by name
     return Array.from(groups.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0])
+      a[0].localeCompare(b[0]),
     );
   }, [pool]);
 
@@ -87,7 +87,8 @@ export function DraftPoolView({
     // Count by color
     const colorCounts: Record<string, number> = {};
     for (const card of pool) {
-      const color = card.colors.length > 0 ? card.colors.join(",") : "Colorless";
+      const color =
+        card.colors.length > 0 ? card.colors.join(",") : "Colorless";
       colorCounts[color] = (colorCounts[color] || 0) + 1;
     }
 
@@ -105,7 +106,7 @@ export function DraftPoolView({
     <Card
       className={cn(
         "flex flex-col h-full border-l-4 border-l-primary",
-        className
+        className,
       )}
     >
       {/* Header */}
@@ -115,26 +116,23 @@ export function DraftPoolView({
             <Package className="h-5 w-5" />
             Draft Pool
           </CardTitle>
-          <Badge variant="secondary">
-            {stats.totalCards} cards
-          </Badge>
+          <Badge variant="secondary">{stats.totalCards} cards</Badge>
         </div>
 
         {/* Progress toward deck */}
         <div className="mt-2 space-y-1">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Progress</span>
-            <span className={cn(
-              "font-medium",
-              stats.isDeckReady && "text-green-500"
-            )}>
+            <span
+              className={cn(
+                "font-medium",
+                stats.isDeckReady && "text-green-500",
+              )}
+            >
               {stats.totalCards} / {MINIMUM_DECK_SIZE}
             </span>
           </div>
-          <Progress
-            value={stats.progress}
-            className="h-2"
-          />
+          <Progress value={stats.progress} className="h-2" />
         </div>
       </CardHeader>
 
@@ -151,9 +149,7 @@ export function DraftPoolView({
                   card={cards[0]}
                   quantity={cards.length}
                   onRemove={
-                    onRemoveCard
-                      ? () => onRemoveCard(cards[0].id)
-                      : undefined
+                    onRemoveCard ? () => onRemoveCard(cards[0].id) : undefined
                   }
                 />
               ))}
@@ -230,7 +226,10 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
 
       {/* Quantity */}
       {quantity > 1 && (
-        <Badge variant="secondary" className="h-5 w-5 p-0 flex items-center justify-center">
+        <Badge
+          variant="secondary"
+          className="h-5 w-5 p-0 flex items-center justify-center"
+        >
           {quantity}
         </Badge>
       )}
@@ -242,6 +241,7 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
           size="icon"
           className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={onRemove}
+          aria-label="Remove card"
         >
           <Trash2 className="h-3 w-3" />
         </Button>

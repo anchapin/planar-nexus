@@ -311,6 +311,7 @@ export function GameTutorial({
                 size="icon"
                 className="h-6 w-6"
                 onClick={handleSkip}
+                aria-label="Skip tutorial"
               >
                 <X className="h-3 w-3" />
               </Button>

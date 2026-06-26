@@ -1,13 +1,19 @@
-'use client';
+"use client";
 
-import * as React from 'react';
-import { useCollection, CollectionCard } from '@/hooks/use-collection';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { VirtualCardList } from '@/components/virtual-card-list';
+import * as React from "react";
+import { useCollection, CollectionCard } from "@/hooks/use-collection";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { VirtualCardList } from "@/components/virtual-card-list";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +30,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+} from "@/components/ui/dropdown-menu";
 import {
   Plus,
   Minus,
@@ -37,8 +43,8 @@ import {
   CheckCircle,
   FolderOpen,
   ArrowUpDown,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface CollectionTrackerProps {
   className?: string;
@@ -58,12 +64,15 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
     getCollectionStats,
   } = useCollection();
 
-  const [searchQuery, setSearchQuery] = React.useState('');
-  const [sortBy, setSortBy] = React.useState<'name' | 'quantity' | 'added'>('name');
-  const [sortOrder, setSortOrder] = React.useState<'asc' | 'desc'>('asc');
-  const [showNewCollectionDialog, setShowNewCollectionDialog] = React.useState(false);
-  const [newCollectionName, setNewCollectionName] = React.useState('');
-  const [importText, setImportText] = React.useState('');
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [sortBy, setSortBy] = React.useState<"name" | "quantity" | "added">(
+    "name",
+  );
+  const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("asc");
+  const [showNewCollectionDialog, setShowNewCollectionDialog] =
+    React.useState(false);
+  const [newCollectionName, setNewCollectionName] = React.useState("");
+  const [importText, setImportText] = React.useState("");
   const [showImportDialog, setShowImportDialog] = React.useState(false);
 
   const stats = getCollectionStats();
@@ -82,17 +91,18 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
     cards.sort((a, b) => {
       let comparison = 0;
       switch (sortBy) {
-        case 'name':
+        case "name":
           comparison = a.card.name.localeCompare(b.card.name);
           break;
-        case 'quantity':
+        case "quantity":
           comparison = a.quantity - b.quantity;
           break;
-        case 'added':
-          comparison = new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
+        case "added":
+          comparison =
+            new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
           break;
       }
-      return sortOrder === 'asc' ? comparison : -comparison;
+      return sortOrder === "asc" ? comparison : -comparison;
     });
 
     return cards;
@@ -101,7 +111,7 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
   const handleCreateCollection = () => {
     if (newCollectionName.trim()) {
       createCollection(newCollectionName.trim());
-      setNewCollectionName('');
+      setNewCollectionName("");
       setShowNewCollectionDialog(false);
     }
   };
@@ -109,33 +119,33 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
   const handleImport = () => {
     if (importText.trim()) {
       importFromCSV(importText);
-      setImportText('');
+      setImportText("");
       setShowImportDialog(false);
     }
   };
 
   const handleExport = () => {
     const csv = exportToCSV();
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${activeCollection.name.replace(/\s+/g, '-').toLowerCase()}.csv`;
+    a.download = `${activeCollection.name.replace(/\s+/g, "-").toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const toggleSort = (field: 'name' | 'quantity' | 'added') => {
+  const toggleSort = (field: "name" | "quantity" | "added") => {
     if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
     } else {
       setSortBy(field);
-      setSortOrder('asc');
+      setSortOrder("asc");
     }
   };
 
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn("flex flex-col h-full", className)}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
@@ -154,7 +164,8 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
               <DialogHeader>
                 <DialogTitle>Import Collection</DialogTitle>
                 <DialogDescription>
-                  Paste your card list in CSV format (quantity,card name) or simple format (quantity card name)
+                  Paste your card list in CSV format (quantity,card name) or
+                  simple format (quantity card name)
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">
@@ -166,7 +177,10 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
                 />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowImportDialog(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowImportDialog(false)}
+                >
                   Cancel
                 </Button>
                 <Button onClick={handleImport}>Import</Button>
@@ -183,7 +197,9 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
       {/* Stats Overview */}
       <div className="grid grid-cols-4 gap-2 p-4 border-b bg-muted/30">
         <div className="text-center">
-          <div className="text-2xl font-bold text-primary">{stats.totalCards}</div>
+          <div className="text-2xl font-bold text-primary">
+            {stats.totalCards}
+          </div>
           <div className="text-xs text-muted-foreground">Total Cards</div>
         </div>
         <div className="text-center">
@@ -191,11 +207,15 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
           <div className="text-xs text-muted-foreground">Unique</div>
         </div>
         <div className="text-center">
-          <div className="text-2xl font-bold text-green-500">{stats.playableCards}</div>
+          <div className="text-2xl font-bold text-green-500">
+            {stats.playableCards}
+          </div>
           <div className="text-xs text-muted-foreground">Playsets</div>
         </div>
         <div className="text-center">
-          <div className="text-2xl font-bold text-amber-500">{stats.tradeableCards}</div>
+          <div className="text-2xl font-bold text-amber-500">
+            {stats.tradeableCards}
+          </div>
           <div className="text-xs text-muted-foreground">Tradeable</div>
         </div>
       </div>
@@ -216,7 +236,7 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
               <DropdownMenuItem
                 key={c.id}
                 onClick={() => setActiveCollectionId(c.id)}
-                className={cn(c.id === activeCollectionId && 'bg-primary/10')}
+                className={cn(c.id === activeCollectionId && "bg-primary/10")}
               >
                 {c.name} ({c.cards.length} cards)
               </DropdownMenuItem>
@@ -245,31 +265,31 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
       <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/20">
         <span className="text-xs text-muted-foreground">Sort by:</span>
         <Button
-          variant={sortBy === 'name' ? 'secondary' : 'ghost'}
+          variant={sortBy === "name" ? "secondary" : "ghost"}
           size="sm"
-          onClick={() => toggleSort('name')}
+          onClick={() => toggleSort("name")}
           className="h-7"
         >
           Name
-          {sortBy === 'name' && <ArrowUpDown className="h-3 w-3 ml-1" />}
+          {sortBy === "name" && <ArrowUpDown className="h-3 w-3 ml-1" />}
         </Button>
         <Button
-          variant={sortBy === 'quantity' ? 'secondary' : 'ghost'}
+          variant={sortBy === "quantity" ? "secondary" : "ghost"}
           size="sm"
-          onClick={() => toggleSort('quantity')}
+          onClick={() => toggleSort("quantity")}
           className="h-7"
         >
           Quantity
-          {sortBy === 'quantity' && <ArrowUpDown className="h-3 w-3 ml-1" />}
+          {sortBy === "quantity" && <ArrowUpDown className="h-3 w-3 ml-1" />}
         </Button>
         <Button
-          variant={sortBy === 'added' ? 'secondary' : 'ghost'}
+          variant={sortBy === "added" ? "secondary" : "ghost"}
           size="sm"
-          onClick={() => toggleSort('added')}
+          onClick={() => toggleSort("added")}
           className="h-7"
         >
           Added
-          {sortBy === 'added' && <ArrowUpDown className="h-3 w-3 ml-1" />}
+          {sortBy === "added" && <ArrowUpDown className="h-3 w-3 ml-1" />}
         </Button>
       </div>
 
@@ -277,7 +297,9 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
       <div className="flex-1 min-h-0">
         {filteredCards.length === 0 ? (
           <div className="h-full flex items-center justify-center p-4 text-center text-muted-foreground">
-            {searchQuery ? 'No cards match your search' : 'Your collection is empty. Import cards to get started.'}
+            {searchQuery
+              ? "No cards match your search"
+              : "Your collection is empty. Import cards to get started."}
           </div>
         ) : (
           <VirtualCardList
@@ -296,20 +318,28 @@ export function CollectionTracker({ className }: CollectionTrackerProps) {
       </div>
 
       {/* New Collection Dialog */}
-      <Dialog open={showNewCollectionDialog} onOpenChange={setShowNewCollectionDialog}>
+      <Dialog
+        open={showNewCollectionDialog}
+        onOpenChange={setShowNewCollectionDialog}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Collection</DialogTitle>
-            <DialogDescription>Enter a name for your new collection</DialogDescription>
+            <DialogDescription>
+              Enter a name for your new collection
+            </DialogDescription>
           </DialogHeader>
           <Input
             value={newCollectionName}
             onChange={(e) => setNewCollectionName(e.target.value)}
             placeholder="Collection name"
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateCollection()}
+            onKeyDown={(e) => e.key === "Enter" && handleCreateCollection()}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewCollectionDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowNewCollectionDialog(false)}
+            >
               Cancel
             </Button>
             <Button onClick={handleCreateCollection}>Create</Button>
@@ -326,7 +356,11 @@ interface CollectionCardItemProps {
   onRemove: () => void;
 }
 
-function CollectionCardItem({ card, onAdd, onRemove }: CollectionCardItemProps) {
+function CollectionCardItem({
+  card,
+  onAdd,
+  onRemove,
+}: CollectionCardItemProps) {
   const isPlayable = card.quantity >= 4;
   const isTradeable = card.quantity > 4;
 
@@ -357,11 +391,25 @@ function CollectionCardItem({ card, onAdd, onRemove }: CollectionCardItemProps) 
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={onRemove}>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          onClick={onRemove}
+          aria-label="Decrease quantity"
+        >
           <Minus className="h-4 w-4" />
         </Button>
-        <span className="w-8 text-center font-mono font-bold">{card.quantity}</span>
-        <Button variant="outline" size="icon" className="h-8 w-8" onClick={onAdd}>
+        <span className="w-8 text-center font-mono font-bold">
+          {card.quantity}
+        </span>
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-8 w-8"
+          onClick={onAdd}
+          aria-label="Increase quantity"
+        >
           <Plus className="h-4 w-4" />
         </Button>
       </div>
@@ -379,15 +427,19 @@ export function DeckComparison({ deckCards, className }: DeckComparisonProps) {
   const { compareDeckWithCollection } = useCollection();
   const comparison = compareDeckWithCollection(deckCards);
 
-  const missingCount = comparison.filter((c) => c.status === 'missing').length;
-  const insufficientCount = comparison.filter((c) => c.status === 'insufficient').length;
-  const okCount = comparison.filter((c) => c.status === 'ok').length;
+  const missingCount = comparison.filter((c) => c.status === "missing").length;
+  const insufficientCount = comparison.filter(
+    (c) => c.status === "insufficient",
+  ).length;
+  const okCount = comparison.filter((c) => c.status === "ok").length;
 
   return (
     <Card className={className}>
       <CardHeader>
         <CardTitle className="text-lg">Deck vs Collection</CardTitle>
-        <CardDescription>Compare your deck list with your collection</CardDescription>
+        <CardDescription>
+          Compare your deck list with your collection
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-3 gap-4 mb-4">
@@ -396,11 +448,15 @@ export function DeckComparison({ deckCards, className }: DeckComparisonProps) {
             <div className="text-xs text-muted-foreground">Complete</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-amber-500">{insufficientCount}</div>
+            <div className="text-2xl font-bold text-amber-500">
+              {insufficientCount}
+            </div>
             <div className="text-xs text-muted-foreground">Partial</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-red-500">{missingCount}</div>
+            <div className="text-2xl font-bold text-red-500">
+              {missingCount}
+            </div>
             <div className="text-xs text-muted-foreground">Missing</div>
           </div>
         </div>
@@ -410,10 +466,10 @@ export function DeckComparison({ deckCards, className }: DeckComparisonProps) {
               <div
                 key={card.name}
                 className={cn(
-                  'flex items-center justify-between p-2 rounded text-sm',
-                  card.status === 'ok' && 'bg-green-500/10',
-                  card.status === 'insufficient' && 'bg-amber-500/10',
-                  card.status === 'missing' && 'bg-red-500/10'
+                  "flex items-center justify-between p-2 rounded text-sm",
+                  card.status === "ok" && "bg-green-500/10",
+                  card.status === "insufficient" && "bg-amber-500/10",
+                  card.status === "missing" && "bg-red-500/10",
                 )}
               >
                 <span>{card.name}</span>
@@ -421,9 +477,15 @@ export function DeckComparison({ deckCards, className }: DeckComparisonProps) {
                   <span className="font-mono">
                     {card.collectionQuantity}/{card.deckQuantity}
                   </span>
-                  {card.status === 'missing' && <AlertCircle className="h-4 w-4 text-red-500" />}
-                  {card.status === 'insufficient' && <AlertCircle className="h-4 w-4 text-amber-500" />}
-                  {card.status === 'ok' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                  {card.status === "missing" && (
+                    <AlertCircle className="h-4 w-4 text-red-500" />
+                  )}
+                  {card.status === "insufficient" && (
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                  )}
+                  {card.status === "ok" && (
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                  )}
                 </div>
               </div>
             ))}
@@ -443,7 +505,9 @@ export function TradeList({ className }: { className?: string }) {
     <Card className={className}>
       <CardHeader>
         <CardTitle className="text-lg">Trade List</CardTitle>
-        <CardDescription>Cards you have extras of (more than 4)</CardDescription>
+        <CardDescription>
+          Cards you have extras of (more than 4)
+        </CardDescription>
       </CardHeader>
       <CardContent>
         {tradeList.length === 0 ? (

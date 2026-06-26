@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { QrCode, Copy, Check } from 'lucide-react';
-import QRCode from 'qrcode';
+import { useEffect, useRef, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { QrCode, Copy, Check } from "lucide-react";
+import QRCode from "qrcode";
 
 /**
  * QR Code Display Component
@@ -27,10 +27,10 @@ interface QRCodeDisplayProps {
 export function QRCodeDisplay({
   qrCode,
   gameCode,
-  gameName = 'Planar Nexus Game',
+  gameName = "Planar Nexus Game",
   onCopy,
   size = 200,
-  connectionInfo
+  connectionInfo,
 }: QRCodeDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
@@ -50,16 +50,16 @@ export function QRCodeDisplay({
           width: size,
           margin: 2,
           color: {
-            dark: '#000000',
-            light: '#ffffff',
+            dark: "#000000",
+            light: "#ffffff",
           },
-          errorCorrectionLevel: 'M',
+          errorCorrectionLevel: "M",
         });
 
         setError(null);
       } catch (err) {
-        console.error('Error generating QR code:', err);
-        setError('Failed to generate QR code');
+        console.error("Error generating QR code:", err);
+        setError("Failed to generate QR code");
       }
     };
 
@@ -70,7 +70,7 @@ export function QRCodeDisplay({
     navigator.clipboard.writeText(gameCode);
     setCopied(true);
     onCopy?.();
-    
+
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -126,6 +126,7 @@ export function QRCodeDisplay({
               variant="outline"
               size="icon"
               onClick={handleCopy}
+              aria-label="Copy game code"
               title="Copy code"
             >
               {copied ? (
@@ -163,7 +164,7 @@ export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [hasCamera, setHasCamera] = useState<boolean | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [manualCode, setManualCode] = useState('');
+  const [manualCode, setManualCode] = useState("");
   const [showManual, setShowManual] = useState(false);
 
   // Check for camera availability
@@ -171,34 +172,34 @@ export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
     async function checkCamera() {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const cameras = devices.filter(d => d.kind === 'videoinput');
+        const cameras = devices.filter((d) => d.kind === "videoinput");
         setHasCamera(cameras.length > 0);
       } catch (err) {
-        console.error('Error checking camera:', err);
+        console.error("Error checking camera:", err);
         setHasCamera(false);
       }
     }
-    
+
     checkCamera();
   }, []);
 
   const startScanning = async () => {
     if (!videoRef.current) return;
-    
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
       });
-      
+
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
       setScanning(true);
-      
+
       // Note: Full QR scanning would require additional library like jsQR
       // For now, this shows camera preview
     } catch (err) {
-      console.error('Error starting camera:', err);
-      onError?.(err instanceof Error ? err : new Error('Camera error'));
+      console.error("Error starting camera:", err);
+      onError?.(err instanceof Error ? err : new Error("Camera error"));
       setShowManual(true);
     }
   };
@@ -206,7 +207,7 @@ export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
   const stopScanning = () => {
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach((track) => track.stop());
     }
     setScanning(false);
   };
@@ -229,13 +230,13 @@ export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
       <CardContent className="space-y-4">
         {/* Camera Preview */}
         <div className="relative aspect-square bg-black rounded-lg overflow-hidden">
-          <video 
+          <video
             ref={videoRef}
             className="w-full h-full object-cover"
             playsInline
             muted
           />
-          
+
           {!scanning && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50">
               <Button onClick={startScanning} variant="secondary">
@@ -244,11 +245,11 @@ export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
               </Button>
             </div>
           )}
-          
+
           {scanning && (
             <div className="absolute bottom-4 left-4 right-4">
-              <Button 
-                onClick={stopScanning} 
+              <Button
+                onClick={stopScanning}
                 variant="destructive"
                 className="w-full"
               >
@@ -260,12 +261,12 @@ export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
 
         {/* Manual Entry Toggle */}
         <div className="text-center">
-          <Button 
-            variant="link" 
+          <Button
+            variant="link"
             onClick={() => setShowManual(!showManual)}
             className="text-sm"
           >
-            {showManual ? 'Hide' : 'Enter code manually'}
+            {showManual ? "Hide" : "Enter code manually"}
           </Button>
         </div>
 
