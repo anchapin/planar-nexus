@@ -1,25 +1,40 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trophy, Swords, History, TrendingUp, Activity, Trash2 } from 'lucide-react';
-import { 
-  getAllGameRecords, 
-  getPlayerStats, 
+import { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Trophy,
+  Swords,
+  History,
+  TrendingUp,
+  Activity,
+  Trash2,
+} from "lucide-react";
+import {
+  getAllGameRecords,
+  getPlayerStats,
   getRecentGames,
   clearGameHistory,
   type GameRecord,
-  type PlayerStats 
-} from '@/lib/game-history';
+  type PlayerStats,
+} from "@/lib/game-history";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 export default function GameHistoryPage() {
   const [stats, setStats] = useState<PlayerStats | null>(null);
   const [recentGames, setRecentGames] = useState<GameRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     loadStats();
@@ -31,37 +46,52 @@ export default function GameHistoryPage() {
     setIsLoading(false);
   }
 
-  function handleClearHistory() {
-    if (confirm('Are you sure you want to clear all game history? This cannot be undone.')) {
+  async function handleClearHistory() {
+    const confirmed = await confirm({
+      title: "Clear game history?",
+      description:
+        "Are you sure you want to clear all game history? This cannot be undone.",
+      confirmLabel: "Clear History",
+      destructive: true,
+    });
+    if (confirmed) {
       clearGameHistory();
       loadStats();
     }
   }
 
   function formatDate(timestamp: number): string {
-    return new Date(timestamp).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return new Date(timestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
   function getResultColor(result: string): string {
     switch (result) {
-      case 'win': return 'bg-green-500';
-      case 'loss': return 'bg-red-500';
-      case 'draw': return 'bg-gray-500';
-      default: return 'bg-gray-500';
+      case "win":
+        return "bg-green-500";
+      case "loss":
+        return "bg-red-500";
+      case "draw":
+        return "bg-gray-500";
+      default:
+        return "bg-gray-500";
     }
   }
 
   function getResultIcon(result: string): string {
     switch (result) {
-      case 'win': return '✓';
-      case 'loss': return '✗';
-      case 'draw': return '○';
-      default: return '?';
+      case "win":
+        return "✓";
+      case "loss":
+        return "✗";
+      case "draw":
+        return "○";
+      default:
+        return "?";
     }
   }
 
@@ -75,6 +105,7 @@ export default function GameHistoryPage() {
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div>
         <h1 className="text-3xl font-bold">Game History</h1>
         <p className="text-muted-foreground">
@@ -112,11 +143,15 @@ export default function GameHistoryPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Vs AI Win Rate</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Vs AI Win Rate
+            </CardTitle>
             <Swords className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.vsAiStats.winRate ?? 0}%</div>
+            <div className="text-2xl font-bold">
+              {stats?.vsAiStats.winRate ?? 0}%
+            </div>
             <p className="text-xs text-muted-foreground">
               {stats?.vsAiStats.wins ?? 0}W - {stats?.vsAiStats.losses ?? 0}L
             </p>
@@ -129,10 +164,10 @@ export default function GameHistoryPage() {
             <History className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.avgTurnsPerGame ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Per game average
-            </p>
+            <div className="text-2xl font-bold">
+              {stats?.avgTurnsPerGame ?? 0}
+            </div>
+            <p className="text-xs text-muted-foreground">Per game average</p>
           </CardContent>
         </Card>
       </div>
@@ -172,7 +207,9 @@ export default function GameHistoryPage() {
                 <div className="text-center py-8 text-muted-foreground">
                   <Trophy className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>No games played yet</p>
-                  <p className="text-sm">Start a single-player game to track your results!</p>
+                  <p className="text-sm">
+                    Start a single-player game to track your results!
+                  </p>
                 </div>
               ) : (
                 <ScrollArea className="h-[400px]">
@@ -191,20 +228,28 @@ export default function GameHistoryPage() {
                           </div>
                           <div>
                             <div className="font-medium">
-                              {game.mode === 'vs_ai' ? 'vs AI' : game.mode === 'self_play' ? 'Self Play' : 'Goldfish'}
+                              {game.mode === "vs_ai"
+                                ? "vs AI"
+                                : game.mode === "self_play"
+                                  ? "Self Play"
+                                  : "Goldfish"}
                               {game.difficulty && ` (${game.difficulty})`}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {game.playerDeck}
                               {game.opponentDeck && ` vs ${game.opponentDeck}`}
-                              {' • '}
+                              {" • "}
                               {formatDate(game.date)}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
                           <div className="text-sm font-medium">
-                            {game.result === 'win' ? 'Victory' : game.result === 'loss' ? 'Defeat' : 'Draw'}
+                            {game.result === "win"
+                              ? "Victory"
+                              : game.result === "loss"
+                                ? "Defeat"
+                                : "Draw"}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {game.turns} turns • {game.playerLifeAtEnd} life
@@ -230,26 +275,41 @@ export default function GameHistoryPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Vs AI</span>
-                    <Badge variant={stats?.vsAiStats.winRate && stats.vsAiStats.winRate >= 50 ? 'default' : 'secondary'}>
+                    <Badge
+                      variant={
+                        stats?.vsAiStats.winRate &&
+                        stats.vsAiStats.winRate >= 50
+                          ? "default"
+                          : "secondary"
+                      }
+                    >
                       {stats?.vsAiStats.winRate ?? 0}% WR
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {stats?.vsAiStats.wins}W - {stats?.vsAiStats.losses}L - {stats?.vsAiStats.draws}D
-                    {' '}({stats?.vsAiStats.games} games)
+                    {stats?.vsAiStats.wins}W - {stats?.vsAiStats.losses}L -{" "}
+                    {stats?.vsAiStats.draws}D ({stats?.vsAiStats.games} games)
                   </div>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Self Play</span>
-                    <Badge variant={stats?.selfPlayStats.winRate && stats.selfPlayStats.winRate >= 50 ? 'default' : 'secondary'}>
+                    <Badge
+                      variant={
+                        stats?.selfPlayStats.winRate &&
+                        stats.selfPlayStats.winRate >= 50
+                          ? "default"
+                          : "secondary"
+                      }
+                    >
                       {stats?.selfPlayStats.winRate ?? 0}% WR
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {stats?.selfPlayStats.wins}W - {stats?.selfPlayStats.losses}L - {stats?.selfPlayStats.draws}D
-                    {' '}({stats?.selfPlayStats.games} games)
+                    {stats?.selfPlayStats.wins}W - {stats?.selfPlayStats.losses}
+                    L - {stats?.selfPlayStats.draws}D (
+                    {stats?.selfPlayStats.games} games)
                   </div>
                 </div>
               </CardContent>
@@ -262,20 +322,28 @@ export default function GameHistoryPage() {
                   <CardDescription>AI difficulty performance</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {Object.entries(stats.difficultyStats).map(([difficulty, diffStats]) => (
-                    <div key={difficulty}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium capitalize">{difficulty}</span>
-                        <Badge variant={diffStats.winRate >= 50 ? 'default' : 'secondary'}>
-                          {diffStats.winRate}% WR
-                        </Badge>
+                  {Object.entries(stats.difficultyStats).map(
+                    ([difficulty, diffStats]) => (
+                      <div key={difficulty}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium capitalize">
+                            {difficulty}
+                          </span>
+                          <Badge
+                            variant={
+                              diffStats.winRate >= 50 ? "default" : "secondary"
+                            }
+                          >
+                            {diffStats.winRate}% WR
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {diffStats.wins}W - {diffStats.losses}L -{" "}
+                          {diffStats.draws}D ({diffStats.games} games)
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground">
-                        {diffStats.wins}W - {diffStats.losses}L - {diffStats.draws}D
-                        {' '}({diffStats.games} games)
-                      </div>
-                    </div>
-                  ))}
+                    ),
+                  )}
                 </CardContent>
               </Card>
             )}

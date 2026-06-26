@@ -28,6 +28,7 @@ import {
   importCardsFromFile,
 } from "@/lib/card-database";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 export default function DatabaseManagementPage() {
   const { toast } = useToast();
@@ -40,6 +41,7 @@ export default function DatabaseManagementPage() {
   const [importProgress, setImportProgress] = useState(0);
   const [isClearing, setIsClearing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   useEffect(() => {
     loadStats();
@@ -108,11 +110,14 @@ export default function DatabaseManagementPage() {
   }
 
   async function handleClearDatabase() {
-    if (
-      !confirm(
+    const confirmed = await confirm({
+      title: "Clear card database?",
+      description:
         "Are you sure you want to clear the entire card database? This cannot be undone.",
-      )
-    ) {
+      confirmLabel: "Clear Database",
+      destructive: true,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -160,6 +165,7 @@ export default function DatabaseManagementPage() {
 
   return (
     <div className="space-y-6">
+      {confirmDialog}
       <div>
         <h1 className="text-3xl font-bold">Database Management</h1>
         <p className="text-muted-foreground">

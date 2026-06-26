@@ -42,6 +42,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import type { ScryfallCard, SavedDeck } from "@/app/actions";
 import type { Permanent, HandCard } from "@/ai/game-state-evaluator";
 import { gameLogger } from "@/lib/logger";
@@ -859,6 +860,7 @@ function GameBoardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const { confirm, confirmDialog } = useConfirmDialog();
   const isMobile = useIsMobile();
 
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -2118,7 +2120,13 @@ function GameBoardContent() {
   const handleConcede = useCallback(async () => {
     if (!gameState) return;
 
-    if (confirm("Are you sure you want to concede?")) {
+    const confirmed = await confirm({
+      title: "Concede game?",
+      description: "Are you sure you want to concede?",
+      confirmLabel: "Concede",
+      destructive: true,
+    });
+    if (confirmed) {
       const player = Array.from(gameState.players.values()).find(
         (p) => p.name === playerName,
       );
@@ -2138,7 +2146,7 @@ function GameBoardContent() {
         }, 2000);
       }
     }
-  }, [gameState, playerName, router, toast]);
+  }, [gameState, playerName, router, toast, confirm]);
 
   // Handle draw offer - Use engine function
   const handleOfferDraw = useCallback(async () => {
@@ -3813,6 +3821,7 @@ function GameBoardContent() {
 
       {/* Tutorial */}
       {isGameStarted && <GameTutorial />}
+      {confirmDialog}
     </div>
   );
 }

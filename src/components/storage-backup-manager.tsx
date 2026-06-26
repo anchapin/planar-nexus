@@ -50,6 +50,7 @@ import {
   validateBackupFile,
   getBackupMetadata,
 } from "@/hooks/use-storage-backup";
+import { toast } from "@/hooks/use-toast";
 
 /**
  * Storage Backup Manager Component
@@ -93,7 +94,11 @@ export function StorageBackupManager() {
 
     const isValid = await validateBackupFile(importFile);
     if (!isValid) {
-      alert("Invalid backup file. Please select a valid Planar Nexus backup.");
+      toast({
+        title: "Invalid backup file",
+        description: "Please select a valid Planar Nexus backup.",
+        variant: "destructive",
+      });
       return;
     }
 

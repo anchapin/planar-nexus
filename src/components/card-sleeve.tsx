@@ -1,33 +1,54 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Upload, Check, Palette, Image, RotateCcw, Eye, Sparkles } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
+import { useState, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Upload,
+  Check,
+  Palette,
+  Image,
+  RotateCcw,
+  Eye,
+  Sparkles,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
+import { toast } from "@/hooks/use-toast";
 
 // Sleeve patterns
-export type SleevePattern = 'gradient' | 'stripes' | 'dots' | 'diamond' | 'swirl' | 'solid';
+export type SleevePattern =
+  | "gradient"
+  | "stripes"
+  | "dots"
+  | "diamond"
+  | "swirl"
+  | "solid";
 
 // Default sleeve options
-export type SleeveType = 
-  | 'default' 
-  | 'blue' 
-  | 'red' 
-  | 'green' 
-  | 'black' 
-  | 'white' 
-  | 'purple' 
-  | 'orange'
-  | 'gold'
-  | 'silver'
-  | 'holographic'
-  | 'custom';
+export type SleeveType =
+  | "default"
+  | "blue"
+  | "red"
+  | "green"
+  | "black"
+  | "white"
+  | "purple"
+  | "orange"
+  | "gold"
+  | "silver"
+  | "holographic"
+  | "custom";
 
 export interface CardSleeve {
   type: SleeveType;
@@ -39,30 +60,96 @@ export interface CardSleeve {
 }
 
 export const DEFAULT_SLEEVES: CardSleeve[] = [
-  { type: 'default', name: 'Default', pattern: 'gradient', primaryColor: '#6366f1', secondaryColor: '#8b5cf6' },
-  { type: 'blue', name: 'Ocean Blue', pattern: 'gradient', primaryColor: '#3b82f6', secondaryColor: '#1d4ed8' },
-  { type: 'red', name: 'Ruby Red', pattern: 'gradient', primaryColor: '#ef4444', secondaryColor: '#dc2626' },
-  { type: 'green', name: 'Forest Green', pattern: 'gradient', primaryColor: '#22c55e', secondaryColor: '#16a34a' },
-  { type: 'black', name: 'Midnight', pattern: 'gradient', primaryColor: '#374151', secondaryColor: '#1f2937' },
-  { type: 'white', name: 'Snow White', pattern: 'gradient', primaryColor: '#f9fafb', secondaryColor: '#e5e7eb' },
-  { type: 'purple', name: 'Royal Purple', pattern: 'gradient', primaryColor: '#a855f7', secondaryColor: '#7c3aed' },
-  { type: 'orange', name: 'Sunset Orange', pattern: 'gradient', primaryColor: '#f97316', secondaryColor: '#ea580c' },
-  { type: 'gold', name: 'Golden', pattern: 'swirl', primaryColor: '#fbbf24', secondaryColor: '#d97706' },
-  { type: 'silver', name: 'Silver', pattern: 'diamond', primaryColor: '#9ca3af', secondaryColor: '#6b7280' },
-  { type: 'holographic', name: 'Holographic', pattern: 'swirl', primaryColor: '#ec4899', secondaryColor: '#8b5cf6' },
+  {
+    type: "default",
+    name: "Default",
+    pattern: "gradient",
+    primaryColor: "#6366f1",
+    secondaryColor: "#8b5cf6",
+  },
+  {
+    type: "blue",
+    name: "Ocean Blue",
+    pattern: "gradient",
+    primaryColor: "#3b82f6",
+    secondaryColor: "#1d4ed8",
+  },
+  {
+    type: "red",
+    name: "Ruby Red",
+    pattern: "gradient",
+    primaryColor: "#ef4444",
+    secondaryColor: "#dc2626",
+  },
+  {
+    type: "green",
+    name: "Forest Green",
+    pattern: "gradient",
+    primaryColor: "#22c55e",
+    secondaryColor: "#16a34a",
+  },
+  {
+    type: "black",
+    name: "Midnight",
+    pattern: "gradient",
+    primaryColor: "#374151",
+    secondaryColor: "#1f2937",
+  },
+  {
+    type: "white",
+    name: "Snow White",
+    pattern: "gradient",
+    primaryColor: "#f9fafb",
+    secondaryColor: "#e5e7eb",
+  },
+  {
+    type: "purple",
+    name: "Royal Purple",
+    pattern: "gradient",
+    primaryColor: "#a855f7",
+    secondaryColor: "#7c3aed",
+  },
+  {
+    type: "orange",
+    name: "Sunset Orange",
+    pattern: "gradient",
+    primaryColor: "#f97316",
+    secondaryColor: "#ea580c",
+  },
+  {
+    type: "gold",
+    name: "Golden",
+    pattern: "swirl",
+    primaryColor: "#fbbf24",
+    secondaryColor: "#d97706",
+  },
+  {
+    type: "silver",
+    name: "Silver",
+    pattern: "diamond",
+    primaryColor: "#9ca3af",
+    secondaryColor: "#6b7280",
+  },
+  {
+    type: "holographic",
+    name: "Holographic",
+    pattern: "swirl",
+    primaryColor: "#ec4899",
+    secondaryColor: "#8b5cf6",
+  },
 ];
 
 // Default playmat options
-export type PlaymatType = 
-  | 'default' 
-  | 'wood' 
-  | 'stone' 
-  | 'grass' 
-  | 'magic' 
-  | 'arena'
-  | 'space'
-  | 'ocean'
-  | 'custom';
+export type PlaymatType =
+  | "default"
+  | "wood"
+  | "stone"
+  | "grass"
+  | "magic"
+  | "arena"
+  | "space"
+  | "ocean"
+  | "custom";
 
 export interface Playmat {
   type: PlaymatType;
@@ -75,14 +162,68 @@ export interface Playmat {
 }
 
 export const DEFAULT_PLAYMATS: Playmat[] = [
-  { type: 'default', name: 'Classic', primaryColor: '#1f2937', borderColor: '#374151' },
-  { type: 'wood', name: 'Wooden Table', primaryColor: '#78350f', secondaryColor: '#451a03', borderColor: '#451a03', pattern: 'stripes' },
-  { type: 'stone', name: 'Stone Floor', primaryColor: '#4b5563', secondaryColor: '#374151', borderColor: '#1f2937', pattern: 'diamond' },
-  { type: 'grass', name: 'Forest Ground', primaryColor: '#166534', secondaryColor: '#14532d', borderColor: '#14532d', pattern: 'dots' },
-  { type: 'magic', name: 'Magic Arena', primaryColor: '#312e81', secondaryColor: '#1e1b4b', borderColor: '#1e1b4b', pattern: 'swirl' },
-  { type: 'arena', name: 'Colosseum', primaryColor: '#713f12', secondaryColor: '#451a03', borderColor: '#451a03', pattern: 'gradient' },
-  { type: 'space', name: 'Cosmic', primaryColor: '#0f172a', secondaryColor: '#1e1b4b', borderColor: '#312e81', pattern: 'swirl' },
-  { type: 'ocean', name: 'Ocean Depths', primaryColor: '#0c4a6e', secondaryColor: '#164e63', borderColor: '#155e75', pattern: 'gradient' },
+  {
+    type: "default",
+    name: "Classic",
+    primaryColor: "#1f2937",
+    borderColor: "#374151",
+  },
+  {
+    type: "wood",
+    name: "Wooden Table",
+    primaryColor: "#78350f",
+    secondaryColor: "#451a03",
+    borderColor: "#451a03",
+    pattern: "stripes",
+  },
+  {
+    type: "stone",
+    name: "Stone Floor",
+    primaryColor: "#4b5563",
+    secondaryColor: "#374151",
+    borderColor: "#1f2937",
+    pattern: "diamond",
+  },
+  {
+    type: "grass",
+    name: "Forest Ground",
+    primaryColor: "#166534",
+    secondaryColor: "#14532d",
+    borderColor: "#14532d",
+    pattern: "dots",
+  },
+  {
+    type: "magic",
+    name: "Magic Arena",
+    primaryColor: "#312e81",
+    secondaryColor: "#1e1b4b",
+    borderColor: "#1e1b4b",
+    pattern: "swirl",
+  },
+  {
+    type: "arena",
+    name: "Colosseum",
+    primaryColor: "#713f12",
+    secondaryColor: "#451a03",
+    borderColor: "#451a03",
+    pattern: "gradient",
+  },
+  {
+    type: "space",
+    name: "Cosmic",
+    primaryColor: "#0f172a",
+    secondaryColor: "#1e1b4b",
+    borderColor: "#312e81",
+    pattern: "swirl",
+  },
+  {
+    type: "ocean",
+    name: "Ocean Depths",
+    primaryColor: "#0c4a6e",
+    secondaryColor: "#164e63",
+    borderColor: "#155e75",
+    pattern: "gradient",
+  },
 ];
 
 // Customization settings interface
@@ -92,19 +233,23 @@ export interface CustomizationSettings {
 }
 
 // Generate pattern background
-function getPatternBackground(pattern: SleevePattern, primaryColor: string, secondaryColor: string): string {
+function getPatternBackground(
+  pattern: SleevePattern,
+  primaryColor: string,
+  secondaryColor: string,
+): string {
   switch (pattern) {
-    case 'gradient':
+    case "gradient":
       return `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})`;
-    case 'stripes':
+    case "stripes":
       return `repeating-linear-gradient(45deg, ${primaryColor}, ${primaryColor} 10px, ${secondaryColor} 10px, ${secondaryColor} 20px)`;
-    case 'dots':
+    case "dots":
       return `radial-gradient(circle, ${secondaryColor} 2px, ${primaryColor} 2px)`;
-    case 'diamond':
+    case "diamond":
       return `linear-gradient(45deg, ${primaryColor} 25%, ${secondaryColor} 25%, ${secondaryColor} 50%, ${primaryColor} 50%, ${primaryColor} 75%, ${secondaryColor} 75%)`;
-    case 'swirl':
+    case "swirl":
       return `conic-gradient(from 0deg, ${primaryColor}, ${secondaryColor}, ${primaryColor})`;
-    case 'solid':
+    case "solid":
     default:
       return primaryColor;
   }
@@ -117,28 +262,36 @@ interface SleeveSelectorProps {
   className?: string;
 }
 
-export function SleeveSelector({ selectedSleeve, onSelect, className }: SleeveSelectorProps) {
+export function SleeveSelector({
+  selectedSleeve,
+  onSelect,
+  className,
+}: SleeveSelectorProps) {
   // #1103: skip the hover scale transform when the user prefers reduced motion.
   const reduceMotion = usePrefersReducedMotion();
   return (
-    <div className={cn('grid grid-cols-3 sm:grid-cols-4 gap-2', className)}>
+    <div className={cn("grid grid-cols-3 sm:grid-cols-4 gap-2", className)}>
       {DEFAULT_SLEEVES.map((sleeve) => (
         <button
           key={sleeve.type}
           onClick={() => onSelect(sleeve)}
           className={cn(
-            'relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all',
-            !reduceMotion && 'hover:scale-105',
+            "relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all",
+            !reduceMotion && "hover:scale-105",
             selectedSleeve.type === sleeve.type
-              ? 'border-primary ring-2 ring-primary/50'
-              : 'border-border hover:border-primary/50'
+              ? "border-primary ring-2 ring-primary/50"
+              : "border-border hover:border-primary/50",
           )}
           title={sleeve.name}
         >
           <div
             className="absolute inset-0"
             style={{
-              background: getPatternBackground(sleeve.pattern || 'gradient', sleeve.primaryColor!, sleeve.secondaryColor!),
+              background: getPatternBackground(
+                sleeve.pattern || "gradient",
+                sleeve.primaryColor!,
+                sleeve.secondaryColor!,
+              ),
             }}
           />
           {selectedSleeve.type === sleeve.type && (
@@ -162,29 +315,37 @@ interface PlaymatSelectorProps {
   className?: string;
 }
 
-export function PlaymatSelector({ selectedPlaymat, onSelect, className }: PlaymatSelectorProps) {
+export function PlaymatSelector({
+  selectedPlaymat,
+  onSelect,
+  className,
+}: PlaymatSelectorProps) {
   // #1103: skip the hover scale transform when the user prefers reduced motion.
   const reduceMotion = usePrefersReducedMotion();
   return (
-    <div className={cn('grid grid-cols-2 sm:grid-cols-3 gap-2', className)}>
+    <div className={cn("grid grid-cols-2 sm:grid-cols-3 gap-2", className)}>
       {DEFAULT_PLAYMATS.map((playmat) => (
         <button
           key={playmat.type}
           onClick={() => onSelect(playmat)}
           className={cn(
-            'relative aspect-video rounded-md overflow-hidden border-2 transition-all',
-            !reduceMotion && 'hover:scale-105',
+            "relative aspect-video rounded-md overflow-hidden border-2 transition-all",
+            !reduceMotion && "hover:scale-105",
             selectedPlaymat.type === playmat.type
-              ? 'border-primary ring-2 ring-primary/50'
-              : 'border-border hover:border-primary/50'
+              ? "border-primary ring-2 ring-primary/50"
+              : "border-border hover:border-primary/50",
           )}
           title={playmat.name}
         >
           <div
             className="absolute inset-0"
             style={{
-              background: playmat.pattern 
-                ? getPatternBackground(playmat.pattern, playmat.primaryColor!, playmat.secondaryColor || playmat.primaryColor!)
+              background: playmat.pattern
+                ? getPatternBackground(
+                    playmat.pattern,
+                    playmat.primaryColor!,
+                    playmat.secondaryColor || playmat.primaryColor!,
+                  )
                 : playmat.primaryColor,
               border: `4px solid ${playmat.borderColor}`,
             }}
@@ -207,39 +368,56 @@ export function PlaymatSelector({ selectedPlaymat, onSelect, className }: Playma
 interface SleevePreviewProps {
   sleeve: CardSleeve;
   className?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: "sm" | "md" | "lg";
 }
 
-export function SleevePreview({ sleeve, className, size = 'md' }: SleevePreviewProps) {
+export function SleevePreview({
+  sleeve,
+  className,
+  size = "md",
+}: SleevePreviewProps) {
   const sizeClasses = {
-    sm: 'w-12 h-16',
-    md: 'w-16 h-24',
-    lg: 'w-24 h-36',
+    sm: "w-12 h-16",
+    md: "w-16 h-24",
+    lg: "w-24 h-36",
   };
 
   return (
     <div
       className={cn(
-        'rounded-md overflow-hidden shadow-lg relative',
+        "rounded-md overflow-hidden shadow-lg relative",
         sizeClasses[size],
-        className
+        className,
       )}
       style={{
-        background: sleeve.type === 'custom' && sleeve.customImage
-          ? `url(${sleeve.customImage}) center/cover`
-          : getPatternBackground(sleeve.pattern || 'gradient', sleeve.primaryColor!, sleeve.secondaryColor!),
+        background:
+          sleeve.type === "custom" && sleeve.customImage
+            ? `url(${sleeve.customImage}) center/cover`
+            : getPatternBackground(
+                sleeve.pattern || "gradient",
+                sleeve.primaryColor!,
+                sleeve.secondaryColor!,
+              ),
       }}
     >
       {/* Card back design */}
       <div className="w-full h-full flex items-center justify-center">
-        <div className={cn(
-          'border-2 border-white/30 rounded-sm flex items-center justify-center',
-          size === 'sm' ? 'w-8 h-12' : size === 'md' ? 'w-12 h-20' : 'w-18 h-28'
-        )}>
-          <Sparkles className={cn(
-            'text-white/50',
-            size === 'sm' ? 'w-4 h-4' : size === 'md' ? 'w-6 h-6' : 'w-8 h-8'
-          )} />
+        <div
+          className={cn(
+            "border-2 border-white/30 rounded-sm flex items-center justify-center",
+            size === "sm"
+              ? "w-8 h-12"
+              : size === "md"
+                ? "w-12 h-20"
+                : "w-18 h-28",
+          )}
+        >
+          <Sparkles
+            className={cn(
+              "text-white/50",
+              size === "sm" ? "w-4 h-4" : size === "md" ? "w-6 h-6" : "w-8 h-8",
+            )}
+          />
         </div>
       </div>
     </div>
@@ -256,15 +434,20 @@ export function PlaymatPreview({ playmat, className }: PlaymatPreviewProps) {
   return (
     <div
       className={cn(
-        'w-full aspect-video rounded-lg overflow-hidden shadow-lg relative',
-        className
+        "w-full aspect-video rounded-lg overflow-hidden shadow-lg relative",
+        className,
       )}
       style={{
-        background: playmat.type === 'custom' && playmat.backgroundImage
-          ? `url(${playmat.backgroundImage}) center/cover`
-          : playmat.pattern
-            ? getPatternBackground(playmat.pattern, playmat.primaryColor!, playmat.secondaryColor || playmat.primaryColor!)
-            : playmat.primaryColor,
+        background:
+          playmat.type === "custom" && playmat.backgroundImage
+            ? `url(${playmat.backgroundImage}) center/cover`
+            : playmat.pattern
+              ? getPatternBackground(
+                  playmat.pattern,
+                  playmat.primaryColor!,
+                  playmat.secondaryColor || playmat.primaryColor!,
+                )
+              : playmat.primaryColor,
         border: `8px solid ${playmat.borderColor}`,
       }}
     >
@@ -315,7 +498,9 @@ function PreviewDialog({ settings, trigger }: PreviewDialogProps) {
               <div className="flex-1">
                 <p className="font-medium">{settings.sleeve.name}</p>
                 <p className="text-sm text-muted-foreground">
-                  {settings.sleeve.type === 'custom' ? 'Custom upload' : 'Preset sleeve'}
+                  {settings.sleeve.type === "custom"
+                    ? "Custom upload"
+                    : "Preset sleeve"}
                 </p>
               </div>
             </div>
@@ -325,7 +510,9 @@ function PreviewDialog({ settings, trigger }: PreviewDialogProps) {
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Playmat</h4>
             <PlaymatPreview playmat={settings.playmat} />
-            <p className="text-sm text-muted-foreground">{settings.playmat.name}</p>
+            <p className="text-sm text-muted-foreground">
+              {settings.playmat.name}
+            </p>
           </div>
         </div>
       </DialogContent>
@@ -341,14 +528,15 @@ interface CustomizationPanelProps {
   showPreview?: boolean;
 }
 
-export function CustomizationPanel({ 
-  settings, 
+export function CustomizationPanel({
+  settings,
   onSettingsChange,
   className,
   showPreview = true,
 }: CustomizationPanelProps) {
-  const [customSleeveName, setCustomSleeveName] = useState('');
-  const [pendingSettings, setPendingSettings] = useState<CustomizationSettings>(settings);
+  const [customSleeveName, setCustomSleeveName] = useState("");
+  const [pendingSettings, setPendingSettings] =
+    useState<CustomizationSettings>(settings);
 
   // Sync pending settings with actual settings
   useEffect(() => {
@@ -367,50 +555,60 @@ export function CustomizationPanel({
     onSettingsChange(newSettings);
   };
 
-  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>, type: 'sleeve' | 'playmat') => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Check file size (limit to 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB');
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const imageData = reader.result as string;
-        if (type === 'sleeve') {
-          const newSettings = {
-            ...pendingSettings,
-            sleeve: {
-              type: 'custom' as SleeveType,
-              name: customSleeveName || 'Custom Sleeve',
-              customImage: imageData,
-              primaryColor: '#6366f1',
-              secondaryColor: '#8b5cf6',
-              pattern: 'gradient' as SleevePattern,
-            },
-          };
-          setPendingSettings(newSettings);
-          onSettingsChange(newSettings);
-        } else {
-          const newSettings = {
-            ...pendingSettings,
-            playmat: {
-              type: 'custom' as PlaymatType,
-              name: 'Custom Playmat',
-              backgroundImage: imageData,
-              primaryColor: '#1f2937',
-              borderColor: '#374151',
-            },
-          };
-          setPendingSettings(newSettings);
-          onSettingsChange(newSettings);
+  const handleImageUpload = useCallback(
+    (
+      event: React.ChangeEvent<HTMLInputElement>,
+      type: "sleeve" | "playmat",
+    ) => {
+      const file = event.target.files?.[0];
+      if (file) {
+        // Check file size (limit to 5MB)
+        if (file.size > 5 * 1024 * 1024) {
+          toast({
+            title: "Image too large",
+            description: "Image size must be less than 5MB.",
+            variant: "destructive",
+          });
+          return;
         }
-      };
-      reader.readAsDataURL(file);
-    }
-  }, [pendingSettings, onSettingsChange, customSleeveName]);
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const imageData = reader.result as string;
+          if (type === "sleeve") {
+            const newSettings = {
+              ...pendingSettings,
+              sleeve: {
+                type: "custom" as SleeveType,
+                name: customSleeveName || "Custom Sleeve",
+                customImage: imageData,
+                primaryColor: "#6366f1",
+                secondaryColor: "#8b5cf6",
+                pattern: "gradient" as SleevePattern,
+              },
+            };
+            setPendingSettings(newSettings);
+            onSettingsChange(newSettings);
+          } else {
+            const newSettings = {
+              ...pendingSettings,
+              playmat: {
+                type: "custom" as PlaymatType,
+                name: "Custom Playmat",
+                backgroundImage: imageData,
+                primaryColor: "#1f2937",
+                borderColor: "#374151",
+              },
+            };
+            setPendingSettings(newSettings);
+            onSettingsChange(newSettings);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    },
+    [pendingSettings, onSettingsChange, customSleeveName],
+  );
 
   return (
     <Card className={className}>
@@ -420,24 +618,26 @@ export function CustomizationPanel({
             <Palette className="w-5 h-5" />
             Card Customization
           </CardTitle>
-          {showPreview && (
-            <PreviewDialog settings={pendingSettings} />
-          )}
+          {showPreview && <PreviewDialog settings={pendingSettings} />}
         </div>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="sleeves" className="w-full">
           <TabsList className="w-full">
-            <TabsTrigger value="sleeves" className="flex-1">Card Sleeves</TabsTrigger>
-            <TabsTrigger value="playmat" className="flex-1">Playmat</TabsTrigger>
+            <TabsTrigger value="sleeves" className="flex-1">
+              Card Sleeves
+            </TabsTrigger>
+            <TabsTrigger value="playmat" className="flex-1">
+              Playmat
+            </TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="sleeves" className="space-y-4">
             <SleeveSelector
               selectedSleeve={pendingSettings.sleeve}
               onSelect={handleSleeveSelect}
             />
-            
+
             <div className="border-t pt-4">
               <Label className="flex items-center gap-2 mb-2">
                 <Upload className="w-4 h-4" />
@@ -458,22 +658,24 @@ export function CustomizationPanel({
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) => handleImageUpload(e, 'sleeve')}
+                    onChange={(e) => handleImageUpload(e, "sleeve")}
                   />
                   <Button variant="outline" size="sm" asChild>
-                    <span><Image className="w-4 h-4 mr-1" /> Upload</span>
+                    <span>
+                      <Image className="w-4 h-4 mr-1" /> Upload
+                    </span>
                   </Button>
                 </Label>
               </div>
             </div>
           </TabsContent>
-          
+
           <TabsContent value="playmat" className="space-y-4">
             <PlaymatSelector
               selectedPlaymat={pendingSettings.playmat}
               onSelect={handlePlaymatSelect}
             />
-            
+
             <div className="border-t pt-4">
               <Label className="flex items-center gap-2 mb-2">
                 <Upload className="w-4 h-4" />
@@ -487,10 +689,12 @@ export function CustomizationPanel({
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => handleImageUpload(e, 'playmat')}
+                  onChange={(e) => handleImageUpload(e, "playmat")}
                 />
                 <Button variant="outline" size="sm" asChild>
-                  <span><Image className="w-4 h-4 mr-1" /> Upload Image</span>
+                  <span>
+                    <Image className="w-4 h-4 mr-1" /> Upload Image
+                  </span>
                 </Button>
               </Label>
             </div>
@@ -517,8 +721,11 @@ const DEFAULT_SETTINGS: CustomizationSettings = {
   playmat: DEFAULT_PLAYMATS[0],
 };
 
-export function useCustomization({ storageKey = 'planar-nexus-customization' }: UseCustomizationOptions = {}): UseCustomizationReturn {
-  const [settings, setSettings] = useState<CustomizationSettings>(DEFAULT_SETTINGS);
+export function useCustomization({
+  storageKey = "planar-nexus-customization",
+}: UseCustomizationOptions = {}): UseCustomizationReturn {
+  const [settings, setSettings] =
+    useState<CustomizationSettings>(DEFAULT_SETTINGS);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -528,16 +735,19 @@ export function useCustomization({ storageKey = 'planar-nexus-customization' }: 
         const parsed = JSON.parse(stored);
         setSettings({ ...DEFAULT_SETTINGS, ...parsed });
       } catch (e) {
-        console.error('Failed to parse customization settings:', e);
+        console.error("Failed to parse customization settings:", e);
       }
     }
   }, [storageKey]);
 
   // Save settings to localStorage when changed
-  const updateSettings = useCallback((newSettings: CustomizationSettings) => {
-    setSettings(newSettings);
-    localStorage.setItem(storageKey, JSON.stringify(newSettings));
-  }, [storageKey]);
+  const updateSettings = useCallback(
+    (newSettings: CustomizationSettings) => {
+      setSettings(newSettings);
+      localStorage.setItem(storageKey, JSON.stringify(newSettings));
+    },
+    [storageKey],
+  );
 
   const resetToDefaults = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
@@ -560,7 +770,7 @@ export function CustomizationPage({ className }: CustomizationPageProps) {
   const { settings, updateSettings, resetToDefaults } = useCustomization();
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn("space-y-6", className)}>
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Customization</h2>
         <Button variant="outline" size="sm" onClick={resetToDefaults}>
@@ -568,7 +778,7 @@ export function CustomizationPage({ className }: CustomizationPageProps) {
           Reset to Defaults
         </Button>
       </div>
-      
+
       <CustomizationPanel
         settings={settings}
         onSettingsChange={updateSettings}
