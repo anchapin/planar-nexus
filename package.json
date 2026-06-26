@@ -76,6 +76,7 @@
     "lru-cache": "^11.2.6",
     "lucide-react": "^0.575.0",
     "next": "^16.2.4",
+    "next-intl": "^4.13.0",
     "pako": "^2.2.0",
     "patch-package": "^8.0.0",
     "peerjs": "^1.5.5",
