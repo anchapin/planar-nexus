@@ -122,6 +122,12 @@ describe("use-p2p-connection Hook Types", () => {
         getConflictQueueSize: () => 0,
         currentHostId: "player-1",
         isAuthoritativeHost: true,
+        terminalFailure: false,
+        degradedToLocal: false,
+        lastGameState: null,
+        continueAsLocalHotSeat: async () => ({ ok: true }),
+        saveForLocalResume: async () => ({ ok: true }),
+        dismissTerminalFailure: () => {},
       };
 
       expect(returnValue.connectionState).toBeDefined();
