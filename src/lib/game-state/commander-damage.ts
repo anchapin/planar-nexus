@@ -248,6 +248,65 @@ export function getCommanderDamage(
 }
 
 /**
+ * Query a single cell of the (commander, opponent) damage matrix (CR 903.9a).
+ *
+ * Returns the cumulative combat damage that `commanderId` has dealt to
+ * `opponentId`. This is the canonical per-commander-per-opponent lookup — the
+ * matrix is distributed across the receivers' `commanderDamage` maps (each
+ * opponent independently tallies damage from every commander that has hit
+ * them), and this accessor reads the relevant cell directly.
+ *
+ * Use {@link getCommanderDamageMatrix} to obtain the full matrix.
+ */
+export function getCommanderDamageToOpponent(
+  state: GameState,
+  commanderId: CardInstanceId,
+  opponentId: PlayerId,
+): number {
+  const opponent = state.players.get(opponentId);
+  if (!opponent) return 0;
+
+  const cell = opponent.commanderDamage.get(commanderId);
+  return typeof cell === "number" && Number.isFinite(cell) ? cell : 0;
+}
+
+/**
+ * Build the full (commander, opponent) damage matrix (CR 903.9a, issue #977).
+ *
+ * Returns `Map<CardInstanceId, Map<PlayerId, number>>` where the outer key is
+ * the source commander, the inner key is the opponent (receiver) the commander
+ * dealt combat damage to, and the value is the cumulative damage. This is the
+ * same shape declared by {@link CommanderDamageState.damageByCommander}, and is
+ * the source of truth for "damage from commander X to opponent Y".
+ *
+ * The matrix is derived from the distributed per-player `commanderDamage`
+ * maps (receiver-side), which {@link dealCommanderDamage} writes to. Only
+ * commanders that have dealt damage to at least one opponent appear as outer
+ * keys.
+ */
+export function getCommanderDamageMatrix(
+  state: GameState,
+): Map<CardInstanceId, Map<PlayerId, number>> {
+  const matrix = new Map<CardInstanceId, Map<PlayerId, number>>();
+
+  for (const [opponentId, opponent] of state.players) {
+    for (const [commanderId, damage] of opponent.commanderDamage) {
+      if (typeof damage !== "number" || !Number.isFinite(damage)) {
+        continue;
+      }
+      let row = matrix.get(commanderId);
+      if (!row) {
+        row = new Map<PlayerId, number>();
+        matrix.set(commanderId, row);
+      }
+      row.set(opponentId, damage);
+    }
+  }
+
+  return matrix;
+}
+
+/**
  * Get total commander damage dealt to a player across ALL commanders
  *
  * `Player.commanderDamage` is a `Map<CardInstanceId, number>` keyed by the
@@ -406,42 +465,65 @@ export interface CommanderDamageSummary {
 }
 
 /**
- * Get full commander damage summary for a game
+ * Get full commander damage summary for a game (issue #977).
+ *
+ * Builds the per-owner summary from the (commander, opponent) damage matrix
+ * (see {@link getCommanderDamageMatrix}). Each entry represents a player who
+ * owns one or more commanders, listing — for each of their commanders — the
+ * damage it dealt to every opponent, plus that commander's total. Commanders
+ * are attributed to their controller (falling back to owner), matching the
+ * attribution used by {@link dealCommanderDamage}. Only commanders that have
+ * actually dealt damage appear.
  */
 export function getCommanderDamageSummary(
   state: GameState,
 ): CommanderDamageSummary[] {
-  const summaries: CommanderDamageSummary[] = [];
+  const matrix = getCommanderDamageMatrix(state);
 
-  for (const [playerId, player] of state.players) {
-    const commanders: CommanderDamageSummary["commanders"] = [];
-    let totalDamageDealt = 0;
+  const owners = new Map<PlayerId, CommanderDamageSummary>();
 
-    for (const [commanderId, damage] of player.commanderDamage) {
-      const commander = state.cards.get(commanderId);
+  for (const [commanderId, opponents] of matrix) {
+    const commander = state.cards.get(commanderId);
+    const ownerId: PlayerId | undefined =
+      commander?.controllerId || commander?.ownerId;
 
-      const damageToOpponents = new Map<PlayerId, number>();
-      damageToOpponents.set(playerId, damage);
-
-      commanders.push({
-        commanderId,
-        commanderName: commander?.cardData.name || "Unknown Commander",
-        damageToOpponents,
-        totalDamage: damage,
-      });
-
-      totalDamageDealt += damage;
+    if (ownerId === undefined) {
+      continue;
     }
 
-    summaries.push({
-      playerId,
-      playerName: player.name,
-      commanders,
-      totalDamageDealt,
+    const owner = state.players.get(ownerId);
+    if (!owner) {
+      continue;
+    }
+
+    let summary = owners.get(ownerId);
+    if (!summary) {
+      summary = {
+        playerId: ownerId,
+        playerName: owner.name,
+        commanders: [],
+        totalDamageDealt: 0,
+      };
+      owners.set(ownerId, summary);
+    }
+
+    const damageToOpponents = new Map<PlayerId, number>();
+    let totalDamage = 0;
+    for (const [opponentId, damage] of opponents) {
+      damageToOpponents.set(opponentId, damage);
+      totalDamage += damage;
+    }
+
+    summary.commanders.push({
+      commanderId,
+      commanderName: commander?.cardData.name || "Unknown Commander",
+      damageToOpponents,
+      totalDamage,
     });
+    summary.totalDamageDealt += totalDamage;
   }
 
-  return summaries;
+  return Array.from(owners.values());
 }
 
 /**

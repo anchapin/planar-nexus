@@ -16,6 +16,8 @@ import {
   registerCommander,
   dealCommanderDamage,
   getCommanderDamage,
+  getCommanderDamageToOpponent,
+  getCommanderDamageMatrix,
   getTotalCommanderDamage,
   hasLostFromCommanderDamage,
   resetCommanderDamage,
@@ -598,5 +600,218 @@ describe('Commander Damage System - resetCommanderDamage', () => {
     
     const damage = getCommanderDamage(result, commanderId, bobId);
     expect(damage).toBe(0);
+  });
+});
+
+/**
+ * Issue #977: per-commander-per-opponent damage tracking.
+ *
+ * The (commander, opponent) matrix is the source of truth for "damage from
+ * commander X to opponent Y". These tests verify that:
+ * - damage from commander A to opponent X is tracked separately from commander
+ *   A to opponent Y, and from commander B to either;
+ * - getCommanderDamageMatrix exposes the full matrix;
+ * - getCommanderDamageToOpponent reads individual cells;
+ * - getCommanderDamageSummary correctly attributes damage by commander owner
+ *   and opponent (the previous implementation mislabelled receivers);
+ * - per-opponent totals (getTotalCommanderDamage) and the per-commander 21-loss
+ *   threshold (hasLostFromCommanderDamage) remain consistent with the matrix,
+ *   composing with the #976 summation fix.
+ */
+describe('Commander Damage System - issue #977 per-commander-per-opponent matrix', () => {
+  let state: ReturnType<typeof createInitialGameState>;
+  let aliceId: string;
+  let bobId: string;
+  let carolId: string;
+  let daveId: string;
+
+  beforeEach(() => {
+    state = createInitialGameState(['Alice', 'Bob', 'Carol', 'Dave'], 20, true);
+    state = startGame(state);
+
+    const playerIds = Array.from(state.players.keys());
+    aliceId = playerIds[0];
+    bobId = playerIds[1];
+    carolId = playerIds[2];
+    daveId = playerIds[3];
+  });
+
+  function makeCommander(name: string, ownerId: string) {
+    const commander = createCardInstance(
+      createMockCommander(name, 'Legendary Creature — Human', ['W']),
+      ownerId,
+      ownerId,
+    );
+    state.cards.set(commander.id, commander);
+    return commander;
+  }
+
+  it('tracks damage from commander A to opponent X separately from opponent Y', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    state = registerCommander(state, aliceId, commanderA.id);
+
+    state = dealCommanderDamage(state, commanderA.id, bobId, 7).state;
+    state = dealCommanderDamage(state, commanderA.id, carolId, 4).state;
+
+    // Same commander, different opponents — independent tallies.
+    expect(getCommanderDamageToOpponent(state, commanderA.id, bobId)).toBe(7);
+    expect(getCommanderDamageToOpponent(state, commanderA.id, carolId)).toBe(4);
+    // Bob and Carol do not leak into each other.
+    expect(getCommanderDamageToOpponent(state, commanderA.id, daveId)).toBe(0);
+  });
+
+  it('tracks damage from commander A and commander B independently (the matrix)', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    const commanderB = makeCommander('Commander B', aliceId);
+    state = registerCommander(state, aliceId, commanderA.id);
+    state = registerCommander(state, aliceId, commanderB.id);
+
+    state = dealCommanderDamage(state, commanderA.id, bobId, 5).state;
+    state = dealCommanderDamage(state, commanderB.id, bobId, 9).state;
+    state = dealCommanderDamage(state, commanderA.id, carolId, 3).state;
+
+    // (commander, opponent) cells are all distinct.
+    expect(getCommanderDamageToOpponent(state, commanderA.id, bobId)).toBe(5);
+    expect(getCommanderDamageToOpponent(state, commanderB.id, bobId)).toBe(9);
+    expect(getCommanderDamageToOpponent(state, commanderA.id, carolId)).toBe(3);
+    expect(getCommanderDamageToOpponent(state, commanderB.id, carolId)).toBe(0);
+  });
+
+  it('exposes the full (commander, opponent) matrix via getCommanderDamageMatrix', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    const commanderB = makeCommander('Commander B', bobId);
+    state = registerCommander(state, aliceId, commanderA.id);
+    state = registerCommander(state, bobId, commanderB.id);
+
+    state = dealCommanderDamage(state, commanderA.id, bobId, 6).state;
+    state = dealCommanderDamage(state, commanderA.id, carolId, 2).state;
+    state = dealCommanderDamage(state, commanderB.id, carolId, 11).state;
+
+    const matrix = getCommanderDamageMatrix(state);
+
+    // Both commanders that have dealt damage appear as rows.
+    expect(matrix.has(commanderA.id)).toBe(true);
+    expect(matrix.has(commanderB.id)).toBe(true);
+    // Commanders with no incoming recorded damage to anyone do not appear.
+    expect(matrix.has('nonexistent-commander')).toBe(false);
+
+    // commanderA row: { bob: 6, carol: 2 }
+    const rowA = matrix.get(commanderA.id)!;
+    expect(rowA.get(bobId)).toBe(6);
+    expect(rowA.get(carolId)).toBe(2);
+    expect(rowA.has(aliceId)).toBe(false); // attacker not self-damaged
+
+    // commanderB row: { carol: 11 }
+    const rowB = matrix.get(commanderB.id)!;
+    expect(rowB.get(carolId)).toBe(11);
+    expect(rowB.has(bobId)).toBe(false); // Bob's own commander didn't hit Bob
+  });
+
+  it('returns an empty matrix when no commander damage has been dealt', () => {
+    const matrix = getCommanderDamageMatrix(state);
+    expect(matrix.size).toBe(0);
+  });
+
+  it('returns 0 for unknown commander or opponent cells', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    state = registerCommander(state, aliceId, commanderA.id);
+    state = dealCommanderDamage(state, commanderA.id, bobId, 4).state;
+
+    expect(getCommanderDamageToOpponent(state, 'no-such-commander', bobId)).toBe(0);
+    expect(getCommanderDamageToOpponent(state, commanderA.id, 'no-such-opponent')).toBe(0);
+  });
+
+  it('keeps per-opponent totals consistent with the matrix (#976 composition)', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    const commanderB = makeCommander('Commander B', aliceId);
+    state = registerCommander(state, aliceId, commanderA.id);
+    state = registerCommander(state, aliceId, commanderB.id);
+
+    state = dealCommanderDamage(state, commanderA.id, bobId, 6).state;
+    state = dealCommanderDamage(state, commanderB.id, bobId, 4).state;
+    state = dealCommanderDamage(state, commanderA.id, carolId, 8).state;
+
+    // Bob's per-opponent total = sum over commanders that hit Bob.
+    expect(getTotalCommanderDamage(state, bobId)).toBe(10);
+    // Carol's per-opponent total only reflects damage to Carol.
+    expect(getTotalCommanderDamage(state, carolId)).toBe(8);
+
+    // The matrix cells sum to the same per-opponent totals.
+    const matrix = getCommanderDamageMatrix(state);
+    let bobSum = 0;
+    for (const row of matrix.values()) {
+      const v = row.get(bobId);
+      if (typeof v === 'number') bobSum += v;
+    }
+    expect(bobSum).toBe(10);
+  });
+
+  it('keeps the per-commander 21-loss threshold consistent with the matrix (#976 composition)', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    const commanderB = makeCommander('Commander B', aliceId);
+    state = registerCommander(state, aliceId, commanderA.id);
+    state = registerCommander(state, aliceId, commanderB.id);
+
+    // Split damage across two commanders: 12 from A + 12 from B = 24 total, but
+    // neither commander alone reaches 21, so no loss (CR 903.9a).
+    state = dealCommanderDamage(state, commanderA.id, bobId, 12).state;
+    state = dealCommanderDamage(state, commanderB.id, bobId, 12).state;
+
+    expect(getTotalCommanderDamage(state, bobId)).toBe(24);
+    expect(hasLostFromCommanderDamage(state, bobId)).toBe(false);
+    expect(getCommanderDamageToOpponent(state, commanderA.id, bobId)).toBe(12);
+    expect(getCommanderDamageToOpponent(state, commanderB.id, bobId)).toBe(12);
+
+    // Push commander A alone to 21 — Bob now loses from THAT commander's tally.
+    state = dealCommanderDamage(state, commanderA.id, bobId, 9).state;
+    expect(getCommanderDamageToOpponent(state, commanderA.id, bobId)).toBe(21);
+    expect(hasLostFromCommanderDamage(state, bobId)).toBe(true);
+    // Carol is untouched.
+    expect(hasLostFromCommanderDamage(state, carolId)).toBe(false);
+  });
+
+  it('attributes summary damage to the commander owner and lists each opponent (fixes mislabelling)', () => {
+    const commanderA = makeCommander('Commander A', aliceId);
+    const commanderB = makeCommander('Commander B', bobId);
+    state = registerCommander(state, aliceId, commanderA.id);
+    state = registerCommander(state, bobId, commanderB.id);
+
+    state = dealCommanderDamage(state, commanderA.id, bobId, 5).state;
+    state = dealCommanderDamage(state, commanderA.id, carolId, 3).state;
+    state = dealCommanderDamage(state, commanderB.id, carolId, 7).state;
+
+    const summary = getCommanderDamageSummary(state);
+
+    // Only owners whose commanders have dealt damage appear.
+    const aliceSummary = summary.find((s) => s.playerId === aliceId);
+    const bobSummary = summary.find((s) => s.playerId === bobId);
+    expect(aliceSummary).toBeDefined();
+    expect(bobSummary).toBeDefined();
+    expect(summary.find((s) => s.playerId === carolId)).toBeUndefined();
+
+    // Alice owns commanderA, which hit Bob (5) and Carol (3) — total 8.
+    const aliceCmdA = aliceSummary!.commanders.find(
+      (c) => c.commanderId === commanderA.id,
+    );
+    expect(aliceCmdA).toBeDefined();
+    expect(aliceCmdA!.damageToOpponents.get(bobId)).toBe(5);
+    expect(aliceCmdA!.damageToOpponents.get(carolId)).toBe(3);
+    expect(aliceCmdA!.totalDamage).toBe(8);
+    expect(aliceSummary!.totalDamageDealt).toBe(8);
+
+    // Bob owns commanderB, which hit Carol (7) — NOT Bob (the old bug).
+    const bobCmdB = bobSummary!.commanders.find(
+      (c) => c.commanderId === commanderB.id,
+    );
+    expect(bobCmdB).toBeDefined();
+    expect(bobCmdB!.damageToOpponents.get(carolId)).toBe(7);
+    expect(bobCmdB!.damageToOpponents.has(bobId)).toBe(false);
+    expect(bobCmdB!.totalDamage).toBe(7);
+  });
+
+  it('returns an empty summary array when no commander damage has been dealt', () => {
+    const summary = getCommanderDamageSummary(state);
+    expect(Array.isArray(summary)).toBe(true);
+    expect(summary.length).toBe(0);
   });
 });
