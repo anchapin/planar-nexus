@@ -13,6 +13,12 @@ import { reviewDeckHeuristic } from '@/lib/heuristic-deck-coach';
 import { validateCardLegality } from '@/lib/server-card-operations';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
 import { callAIProxy } from '@/lib/ai-proxy-client';
+import {
+  SECURITY_PREAMBLE,
+  sanitizeUserInput,
+  validateDeckReviewOutput,
+  wrapUntrusted,
+} from '@/ai/prompt-security';
 
 // Input types for deck review function
 export interface DeckReviewInput {
@@ -99,11 +105,11 @@ export async function reviewDeck(
           messages: [
             { 
               role: 'system', 
-              content: 'You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements. Return result as JSON.' 
+              content: 'You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements. Return result as JSON.\n\n' + SECURITY_PREAMBLE
             },
             { 
               role: 'user', 
-              content: `Format: ${input.format}\n\nDecklist:\n${input.decklist}` 
+              content: `Format: ${sanitizeUserInput(input.format)}\n\nDecklist:\n${wrapUntrusted(input.decklist, 'decklist')}` 
             }
           ],
           response_format: { type: 'json_object' }
@@ -111,7 +117,13 @@ export async function reviewDeck(
       });
 
       if (response.success && response.data) {
-        return response.data;
+        // Issue #1107: defensively parse/validate model output so a malformed
+        // or harmful payload falls back to the heuristic coach instead of being
+        // rendered to the user as trusted text.
+        const validated = validateDeckReviewOutput(response.data);
+        if (validated) {
+          return validated;
+        }
       }
     } catch (error) {
       console.error('AI deck review failed, falling back to heuristic:', error);

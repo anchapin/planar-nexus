@@ -4,6 +4,11 @@
  */
 
 import { ChatMessage } from "@/types/chat";
+import {
+  SECURITY_PREAMBLE,
+  sanitizeUserInput,
+  wrapUntrusted,
+} from "@/ai/prompt-security";
 
 // Reuse types from actions.ts to avoid duplication or circular deps
 export interface MinimalCard {
@@ -134,27 +139,36 @@ export function buildCoachSystemPrompt(
   structuredAnalysis?: string,
 ): string {
   let prompt = `You are an expert Magic: The Gathering coach. You are helping a player improve their deck.\n\n`;
-  prompt += `**Current Format**: ${format}\n`;
+
+  // Issue #1107: reinforce the system prompt so embedded instructions inside
+  // untrusted fields cannot override the coach's task or exfiltrate the prompt.
+  prompt += `${SECURITY_PREAMBLE}\n\n`;
+
+  // Issue #1107: every user-controlled field is sanitized and/or fenced before
+  // it touches the prompt. Short metadata fields are sanitized; large free-form
+  // blobs (decklist, digested context, structured analysis) are wrapped in
+  // unambiguous data fences.
+  prompt += `**Current Format**: ${sanitizeUserInput(format)}\n`;
 
   if (archetype) {
-    prompt += `**Detected Archetype**: ${archetype}\n`;
+    prompt += `**Detected Archetype**: ${sanitizeUserInput(archetype)}\n`;
   }
 
   if (strategy) {
-    prompt += `**General Strategy**: ${strategy}\n`;
+    prompt += `**General Strategy**: ${sanitizeUserInput(strategy)}\n`;
   }
 
   if (digestedContext) {
-    prompt += `\n${digestedContext}\n`;
+    prompt += `\n${wrapUntrusted(digestedContext, "game_context")}\n`;
   }
 
   if (structuredAnalysis) {
     // Structured analysis replaces the raw card list — reason about clusters,
     // curve and roles rather than re-deriving them from individual card names.
-    prompt += `\n${structuredAnalysis}\n\n`;
+    prompt += `\n${wrapUntrusted(structuredAnalysis, "structured_analysis")}\n\n`;
   } else if (deckList && deckList !== "No cards in deck yet.") {
-    // Fallback (no structured analysis available): include the raw list.
-    prompt += `\n**Decklist**:\n${deckList}\n\n`;
+    // Fallback (no structured analysis available): include the raw list, fenced.
+    prompt += `\n**Decklist**:\n${wrapUntrusted(deckList, "decklist")}\n\n`;
   }
 
   prompt += `Your goal is to provide strategic advice, card recommendations, and answer questions about the deck's performance. `;
