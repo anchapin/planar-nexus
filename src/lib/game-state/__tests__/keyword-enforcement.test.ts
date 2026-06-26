@@ -1121,7 +1121,7 @@ describe("Keyword Enforcement — Combat", () => {
       const attackResult = declareAttackers(state, [
         { cardId: attackerId, defenderId: bobId },
       ]);
-      let stateWithAttackers = attackResult.state;
+      const stateWithAttackers = attackResult.state;
       stateWithAttackers.turn.currentPhase = Phase.DECLARE_BLOCKERS;
 
       const legalResult = declareBlockers(
