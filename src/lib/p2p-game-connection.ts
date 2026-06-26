@@ -25,11 +25,8 @@ import {
   getGlobalICEManager,
   type ICEConfigOptions,
 } from "./ice-config";
-import { safeParseJson } from "./p2p-json-validation";
-import {
-  P2PRateLimiter,
-  type P2PRateLimitOptions,
-} from "./p2p-rate-limiter";
+import { safeParseJson, isNonNegativeInteger } from "./p2p-json-validation";
+import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import {
   classifyConnectionFailure,
   hasTurnServer,
@@ -81,12 +78,30 @@ export type GameMessageType =
   | "pong";
 
 /**
- * Base game message
+ * Base game message.
+ *
+ * Anti-replay field (issue #1091):
+ *   `seq` is a monotonically-increasing sequence number assigned by the SENDER
+ *   on every outgoing message (shared across all message types on a single
+ *   connection — the underlying data channel is `ordered: true`, so one stream
+ *   suffices). The receiver tracks the highest `seq` it has applied per
+ *   `senderId` and rejects any message whose `seq` is `<=` that high-water
+ *   mark. This drops duplicates (reconnect re-delivery, #943) and replays
+ *   (host-migration rebroadcast, #946) before they can corrupt game state.
+ *
+ *   The `timestamp` field is retained for display/debugging only — it is NOT
+ *   used for ordering or replay protection.
  */
 export interface GameMessage {
   type: GameMessageType;
   senderId: string;
   timestamp: number;
+  /**
+   * Monotonic per-sender sequence number (starts at 0). Required on every
+   * message; {@link isGameMessage} rejects messages missing it. See the class
+   * header doc for the anti-replay policy. Issue #1091.
+   */
+  seq: number;
   data: unknown;
 }
 
@@ -104,6 +119,11 @@ const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
  * Type guard validating the shape of an untrusted {@link GameMessage}.
  * Data-channel messages come directly from peers and must be validated before
  * use. Rejects valid JSON that does not match the expected schema.
+ *
+ * As of issue #1091 the `seq` field is REQUIRED and must be a non-negative
+ * finite integer (validated via {@link isNonNegativeInteger}); messages
+ * without it are rejected so the anti-replay check in {@link handleMessage}
+ * can rely on the field being present and well-formed.
  */
 export function isGameMessage(value: unknown): value is GameMessage {
   if (typeof value !== "object" || value === null) {
@@ -114,7 +134,8 @@ export function isGameMessage(value: unknown): value is GameMessage {
     typeof v.type === "string" &&
     GAME_MESSAGE_TYPES.has(v.type as GameMessageType) &&
     typeof v.senderId === "string" &&
-    typeof v.timestamp === "number"
+    typeof v.timestamp === "number" &&
+    isNonNegativeInteger(v.seq)
     // `data` is intentionally `unknown`; handlers validate it as needed.
   );
 }
@@ -173,6 +194,23 @@ export class P2PGameConnection {
    * validation path. Issue #1111.
    */
   private rateLimiter: P2PRateLimiter;
+  /**
+   * Monotonic outgoing sequence counter. Incremented for every message sent on
+   * this connection (all types share one stream since the data channel is
+   * `ordered: true`). Issue #1091.
+   */
+  private outgoingSeq: number = 0;
+  /**
+   * Highest sequence number applied per remote `senderId`. The anti-replay
+   * high-water mark: any incoming message with `seq <=` the stored value is
+   * dropped as a duplicate/replay BEFORE it touches game state. Issue #1091.
+   *
+   * Reset/advanced on a full `game-state-sync` (the reconciliation snapshot)
+   * via the `lastSeq` field carried by the snapshot — see
+   * {@link handleGameStateSync} and the host-migration policy in
+   * `p2p-host-migration.ts`.
+   */
+  private lastAppliedSeqByPeer: Map<string, number> = new Map();
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
@@ -393,7 +431,12 @@ export class P2PGameConnection {
   }
 
   /**
-   * Send a game message
+   * Send a game message.
+   *
+   * Stamps the monotonic outgoing `seq` (issue #1091) before transmission so
+   * the receiver can reject duplicates and replays. The caller does not need
+   * to supply `seq`; the few internal helpers below call
+   * {@link nextOutgoingSeq} when constructing the message.
    */
   send(message: GameMessage): boolean {
     if (!this.dataChannel || this.dataChannel.readyState !== "open") {
@@ -415,7 +458,19 @@ export class P2PGameConnection {
   }
 
   /**
-   * Send game state to remote peer
+   * Allocate the next outgoing sequence number. Centralised so every send
+   * path shares one monotonic counter. Issue #1091.
+   */
+  private nextOutgoingSeq(): number {
+    return this.outgoingSeq++;
+  }
+
+  /**
+   * Send game state to remote peer.
+   *
+   * `lastSeq` is carried only on a full sync (the reconciliation snapshot) so
+   * the receiver can advance its per-sender anti-replay high-water mark —
+   * see {@link handleGameStateSync}. Issue #1091.
    */
   sendGameState(gameState: GameState, isFullSync: boolean = false): boolean {
     const serialized = serializeGameState(gameState);
@@ -424,9 +479,14 @@ export class P2PGameConnection {
       type: "game-state-sync",
       senderId: this.playerId,
       timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
       data: {
         gameState: serialized,
         isFullSync,
+        // On a full reconciliation snapshot, carry the high-water mark of
+        // applied seqs so the receiver can advance its anti-replay tracker
+        // (and reject re-emitted/queued actions post host-migration #946).
+        lastSeq: isFullSync ? this.outgoingSeq - 1 : undefined,
       },
     });
   }
@@ -439,6 +499,7 @@ export class P2PGameConnection {
       type: "game-action",
       senderId: this.playerId,
       timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
       data: {
         action,
         data,
@@ -454,6 +515,7 @@ export class P2PGameConnection {
       type: "chat",
       senderId: this.playerId,
       timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
       data: {
         senderName: this.playerName,
         text,
@@ -469,6 +531,7 @@ export class P2PGameConnection {
       type: "ping",
       senderId: this.playerId,
       timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
       data: null,
     });
   }
@@ -481,6 +544,7 @@ export class P2PGameConnection {
       type: "pong",
       senderId: this.playerId,
       timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
       data: null,
     });
   }
@@ -529,10 +593,14 @@ export class P2PGameConnection {
    *      parsing work is done (issue #1111).
    *   2. Safe parse + structural limits (size/depth/key-count) via
    *      {@link safeParseJson}.
-   *   3. Shape validation via {@link isGameMessage}.
+   *   3. Shape validation via {@link isGameMessage} (including the required
+   *      `seq` field added in #1091).
+   *   4. Anti-replay check: a message with `seq <=` the highest seq already
+   *      applied from this `senderId` is dropped as a duplicate/replay BEFORE
+   *      it can be applied to game state (issue #1091).
    *
-   * Malformed, oversize, or rate-limited messages are rejected gracefully
-   * without breaking the connection.
+   * Malformed, oversize, rate-limited, or replayed messages are rejected
+   * gracefully without breaking the connection.
    */
   private handleMessage(data: string): void {
     try {
@@ -550,6 +618,18 @@ export class P2PGameConnection {
         console.error("[P2PGameConnection] Rejected malformed peer message");
         return;
       }
+
+      // Anti-replay (issue #1091): drop duplicates and replays BEFORE the
+      // message can touch game state. This runs after shape validation so
+      // `message.seq` is guaranteed to be a non-negative integer.
+      if (this.isReplay(message)) {
+        console.warn(
+          "[P2PGameConnection] Dropping duplicate/replay message",
+          redactSensitive({ senderId: message.senderId, seq: message.seq }),
+        );
+        return;
+      }
+      this.markApplied(message);
 
       // Update remote player info
       if (this.remotePlayerId === null) {
@@ -592,13 +672,100 @@ export class P2PGameConnection {
   }
 
   /**
-   * Handle game state sync
+   * Anti-replay check (issue #1091). Returns true when `message.seq` has
+   * already been applied (or is older than the last applied) for this
+   * `senderId`, indicating a duplicate or replay that must be dropped.
+   */
+  private isReplay(message: GameMessage): boolean {
+    const last = this.lastAppliedSeqByPeer.get(message.senderId);
+    if (last === undefined) {
+      // First message observed from this sender — accept.
+      return false;
+    }
+    return message.seq <= last;
+  }
+
+  /**
+   * Record the high-water mark for `message.senderId` as `message.seq`.
+   * Used on every accepted message so the stream stays monotonic. Issue #1091.
+   */
+  private markApplied(message: GameMessage): void {
+    const last = this.lastAppliedSeqByPeer.get(message.senderId) ?? -1;
+    if (message.seq > last) {
+      this.lastAppliedSeqByPeer.set(message.senderId, message.seq);
+    }
+  }
+
+  /**
+   * The highest outgoing seq this connection has stamped so far. Exposed so a
+   * newly-promoted host (issue #946) can ship it as the `lastSeq` high-water
+   * mark in the post-migration reconciliation snapshot. Issue #1091.
+   */
+  getOutgoingSeq(): number {
+    return this.outgoingSeq;
+  }
+
+  /**
+   * Advance the outgoing seq counter to at least `seq` (no-op if already past
+   * it). A newly-promoted host calls this after host migration (#946) so its
+   * post-migration messages continue monotonically from the authoritative
+   * high-water mark, letting followers reject any queued/re-emitted actions
+   * they already saw from the previous host. Issue #1091.
+   */
+  adoptOutgoingSeq(seq: number): void {
+    if (Number.isFinite(seq) && seq >= 0 && seq > this.outgoingSeq) {
+      this.outgoingSeq = seq;
+    }
+  }
+
+  /**
+   * Highest seq applied from `senderId`, or `null` if no message has been seen
+   * from that sender. Exposed for diagnostics and tests. Issue #1091.
+   */
+  getLastAppliedSeq(senderId: string): number | null {
+    const v = this.lastAppliedSeqByPeer.get(senderId);
+    return v === undefined ? null : v;
+  }
+
+  /**
+   * Reset the anti-replay high-water mark for a sender (e.g. when starting a
+   * fresh session or recovering from a known-clean state). Issue #1091.
+   */
+  resetIncomingSeq(senderId: string): void {
+    this.lastAppliedSeqByPeer.delete(senderId);
+  }
+
+  /**
+   * Handle game state sync.
+   *
+   * On a FULL sync (the reconciliation snapshot, e.g. post host-migration
+   * #946), the sender carries `lastSeq` — the high-water mark of applied
+   * sequence numbers baked into this state. The receiver advances its
+   * per-sender anti-replay tracker to that mark so any queued / re-emitted
+   * action with `seq <= lastSeq` is rejected as a replay (issue #1091).
+   * `max(current, lastSeq)` is used so a duplicate delivery of the snapshot
+   * itself is still rejected by the earlier {@link isReplay} check.
+   *
+   * The seq advancement runs BEFORE state deserialization so a malformed
+   * payload cannot leave the anti-replay tracker stuck at a stale value.
    */
   private handleGameStateSync(message: GameMessage): void {
     const data = message.data as {
       gameState: SerializedGameState;
       isFullSync: boolean;
+      lastSeq?: number;
     };
+
+    // Advance the anti-replay high-water mark first (transport-level concern,
+    // independent of whether the payload deserializes).
+    if (data.isFullSync && isNonNegativeInteger(data.lastSeq)) {
+      const current = this.lastAppliedSeqByPeer.get(message.senderId) ?? -1;
+      this.lastAppliedSeqByPeer.set(
+        message.senderId,
+        Math.max(current, data.lastSeq),
+      );
+    }
+
     const baseState = this.createBaseEngineState();
     const gameState = deserializeGameState(data.gameState, baseState);
     this.events.onGameStateSync(gameState);
@@ -828,6 +995,9 @@ export class P2PGameConnection {
     }
 
     this.rateLimiter.reset();
+    // Drop anti-replay tracking so a fresh session isn't poisoned by stale
+    // high-water marks from the previous peer. Issue #1091.
+    this.lastAppliedSeqByPeer.clear();
     this.updateConnectionState("disconnected");
   }
 

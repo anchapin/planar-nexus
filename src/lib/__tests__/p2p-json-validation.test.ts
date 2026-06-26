@@ -7,6 +7,7 @@
 import {
   safeParseJson,
   withinStructuralLimits,
+  isNonNegativeInteger,
   MAX_MESSAGE_SIZE_BYTES,
   MAX_NESTING_DEPTH,
   MAX_KEY_COUNT,
@@ -135,7 +136,7 @@ describe("safeParseJson", () => {
       // Build a payload deeper than MAX_NESTING_DEPTH.
       const depth = MAX_NESTING_DEPTH + 5;
       let raw = "";
-      for (let i = 0; i < depth; i++) raw += "{\"a\":";
+      for (let i = 0; i < depth; i++) raw += '{"a":';
       raw += "1";
       for (let i = 0; i < depth; i++) raw += "}";
       // The raw string is small (no size trip), parses fine, but exceeds the
@@ -184,6 +185,63 @@ describe("safeParseJson", () => {
       expect(() => withinStructuralLimits(wide)).not.toThrow();
       expect(withinStructuralLimits(deep)).toBe(false);
       expect(withinStructuralLimits(wide)).toBe(false);
+    });
+  });
+
+  /**
+   * Sequence-number predicate used by `isGameMessage` to require the
+   * anti-replay `seq` field (issue #1091).
+   */
+  describe("isNonNegativeInteger (#1091 seq predicate)", () => {
+    it("accepts 0 and positive integers", () => {
+      expect(isNonNegativeInteger(0)).toBe(true);
+      expect(isNonNegativeInteger(1)).toBe(true);
+      expect(isNonNegativeInteger(42)).toBe(true);
+      expect(isNonNegativeInteger(1_000_000)).toBe(true);
+    });
+
+    it("rejects negative integers", () => {
+      expect(isNonNegativeInteger(-1)).toBe(false);
+      expect(isNonNegativeInteger(-42)).toBe(false);
+    });
+
+    it("rejects non-integer numbers", () => {
+      expect(isNonNegativeInteger(1.5)).toBe(false);
+      expect(isNonNegativeInteger(0.1)).toBe(false);
+      expect(isNonNegativeInteger(-0.5)).toBe(false);
+    });
+
+    it("rejects NaN and +/-Infinity (they break <= comparisons)", () => {
+      expect(isNonNegativeInteger(NaN)).toBe(false);
+      expect(isNonNegativeInteger(Infinity)).toBe(false);
+      expect(isNonNegativeInteger(-Infinity)).toBe(false);
+    });
+
+    it("rejects non-number types", () => {
+      expect(isNonNegativeInteger("0")).toBe(false);
+      expect(isNonNegativeInteger("42")).toBe(false);
+      expect(isNonNegativeInteger(true)).toBe(false);
+      expect(isNonNegativeInteger(null)).toBe(false);
+      expect(isNonNegativeInteger(undefined)).toBe(false);
+      expect(isNonNegativeInteger({})).toBe(false);
+      expect(isNonNegativeInteger([0])).toBe(false);
+    });
+
+    it("never throws on hostile input", () => {
+      const hostile: unknown[] = [
+        null,
+        undefined,
+        "",
+        "0",
+        [],
+        {},
+        Symbol("x"),
+
+        new Number(0),
+      ];
+      for (const v of hostile) {
+        expect(() => isNonNegativeInteger(v)).not.toThrow();
+      }
     });
   });
 });
