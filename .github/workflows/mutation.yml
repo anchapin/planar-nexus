@@ -1,0 +1,59 @@
+name: Mutation Testing
+
+# Non-blocking mutation-testing report for the rules-engine invariants (#1097).
+# Stryker mutates the modules listed in stryker.config.js and reports the
+# mutation score. It is intentionally NOT run on every PR — each scoped module
+# takes several minutes — so the job runs on a nightly schedule and on manual
+# dispatch only. `continue-on-error` guarantees it can never block a merge; it
+# only surfaces a trend and an HTML report as a build artifact.
+#
+# Run locally instead with:  npm run test:mutation
+
+on:
+  schedule:
+    # 03:17 UTC daily — off-peak, avoids the top-of-the-hour GH runner rush.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  mutation:
+    name: Stryker Mutation Report
+    runs-on: ubuntu-latest
+    # Always continue so a low/missing score never fails the workflow. This job
+    # is informational only; enforce a floor locally once the baseline is stable.
+    continue-on-error: true
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Stryker mutation testing
+        run: npm run test:mutation
+        env:
+          # Bigger runners help, but cap workers so the job stays within the
+          # GitHub Actions 6h limit even on a 2-core runner.
+          STRYKER_CONCURRENCY: 4
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: reports/mutation/
+          retention-days: 30

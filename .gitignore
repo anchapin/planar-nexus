@@ -18,6 +18,10 @@ venv/
 /coverage
 /test-results
 
+# mutation testing (Stryker) — issue #1097
+/.stryker-tmp
+/reports/mutation
+
 # playwright
 /test-results/
 /playwright-report/
