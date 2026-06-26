@@ -1,10 +1,12 @@
 /**
  * Targeting Validation System
  *
- * Implements CR 702.16 (Protection), CR 702.11 (Hexproof), CR 702.18 (Shroud)
- * for validating target合法性 during spell casting and ability activation.
+ * Implements CR 702.16 (Protection), CR 702.11 (Hexproof), CR 702.18 (Shroud),
+ * and CR 702.21 (Ward) for validating target合法性 during spell casting and
+ * ability activation.
  *
  * Issue #857: Protection/hexproof targeting validation (CR 702.16)
+ * Issue #970: Wire ward cost payment into targeting validation (CR 702.21)
  */
 
 import type {
@@ -13,6 +15,30 @@ import type {
   PlayerId,
   GameState,
 } from "./types";
+import {
+  hasWard,
+  getWardCost,
+  isProtectedByWard,
+} from "./evergreen-keywords";
+import { parseWardCostString, type WardCostDescriptor } from "./ward-system";
+
+/**
+ * A ward payment requirement surfaced by targeting validation.
+ *
+ * Ward (CR 702.21) does NOT prevent targeting — the target is legal, but the
+ * casting player must pay the listed cost (or decline) before the spell/ability
+ * resolves, otherwise it is countered. This descriptor hands the requirement
+ * off to the cost-payment flow (see `payWardCost` / `createWardPaymentChoice`
+ * in ward-system.ts).
+ */
+export interface WardRequirement {
+  /** The warded permanent that was targeted. */
+  targetCardId: CardInstanceId;
+  /** Controller of the warded permanent (an opponent of the caster). */
+  wardControllerId: PlayerId;
+  /** The cost the caster must pay to stop the spell/ability from being countered. */
+  cost: WardCostDescriptor;
+}
 
 /**
  * Result of target validation
@@ -21,6 +47,18 @@ export interface TargetValidationResult {
   valid: boolean;
   reason?: string;
   message?: string;
+  /**
+   * Ward payment requirement for a single-target check (CR 702.21).
+   * Present when `canTargetCard` detects an opposing warded permanent.
+   * Targeting is still `valid` — ward is a payment trigger, not a hard block.
+   */
+  wardRequired?: WardRequirement;
+  /**
+   * All ward requirements collected across a multi-target spell. Populated by
+   * `validateSpellTargets` so the casting flow can present one payment choice
+   * per warded target (each must be paid or the whole spell is countered).
+   */
+  wardRequirements?: WardRequirement[];
 }
 
 /**
@@ -181,11 +219,14 @@ export function isProtectedByHexproof(
 
 /**
  * Validate if a spell can legally target a card
- * Combines protection, hexproof, and shroud checks
+ * Combines protection, hexproof, shroud, and ward checks
  *
  * CR 702.16A: Protection prevents targeting by spells/abilities with the given quality
  * CR 702.11A: Hexproof prevents targeting by opponents
  * CR 702.18A: Shroud prevents all targeting
+ * CR 702.21:  Ward does NOT prevent targeting — the target is legal, but a ward
+ *             payment is required. If unpaid at resolution, the spell/ability
+ *             is countered. The requirement is returned via `wardRequired`.
  */
 export function canTargetCard(
   target: CardInstance,
@@ -220,6 +261,25 @@ export function canTargetCard(
     };
   }
 
+  // CR 702.21: Ward — targeting is LEGAL, but a payment is required. Unlike
+  // shroud/hexproof/protection, ward does not block the target selection; it
+  // triggers a cost the caster must pay or the spell/ability will be countered
+  // on resolution. We surface the requirement so the casting/payment flow can
+  // present the choice (see ward-system.ts `payWardCost`).
+  if (isProtectedByWard(target, sourceControllerId)) {
+    const cost = parseWardCostString(getWardCost(target));
+    if (cost) {
+      return {
+        valid: true,
+        wardRequired: {
+          targetCardId: target.id,
+          wardControllerId: target.controllerId,
+          cost,
+        },
+      };
+    }
+  }
+
   return { valid: true };
 }
 
@@ -239,7 +299,11 @@ export function canTargetPlayer(
 
 /**
  * Validate all targets for a spell or ability
- * Returns validation result for the first invalid target found
+ *
+ * Returns the validation result for the first invalid (illegal) target found.
+ * If every target is legal but one or more carry a ward requirement (CR
+ * 702.21), the result is `valid: true` with `wardRequirements` populated so the
+ * caller can drive the ward payment flow (one choice per warded target).
  */
 export function validateSpellTargets(
   state: GameState,
@@ -255,6 +319,8 @@ export function validateSpellTargets(
     };
   }
 
+  const wardRequirements: WardRequirement[] = [];
+
   for (const targetId of targetIds) {
     const target = state.cards.get(targetId);
     if (!target) continue; // Skip if card not found
@@ -263,9 +329,33 @@ export function validateSpellTargets(
     if (!result.valid) {
       return result;
     }
+    if (result.wardRequired) {
+      wardRequirements.push(result.wardRequired);
+    }
+  }
+
+  if (wardRequirements.length > 0) {
+    return { valid: true, wardRequirements };
   }
 
   return { valid: true };
+}
+
+/**
+ * Collect every ward payment requirement (CR 702.21) raised by a spell or
+ * ability's targets. Returns an empty array when no target triggers ward.
+ *
+ * Convenience wrapper around `validateSpellTargets` for callers (spell-casting
+ * flow, AI) that only care about ward payments. Each requirement can be handed
+ * directly to `payWardCost` / `createWardPaymentChoice` in ward-system.ts.
+ */
+export function getWardRequirements(
+  state: GameState,
+  sourceCardId: CardInstanceId,
+  targetIds: CardInstanceId[],
+): WardRequirement[] {
+  const result = validateSpellTargets(state, sourceCardId, targetIds);
+  return result.wardRequirements ?? [];
 }
 
 /**
@@ -287,6 +377,18 @@ export function getTargetingRestrictions(card: CardInstance): string[] {
   const protections = getProtectionQualities(card);
   for (const quality of protections) {
     restrictions.push(`Protection from ${quality}`);
+  }
+
+  // CR 702.21: Ward is surfaced as a payment requirement, not a hard block —
+  // the card CAN be targeted, but the caster must pay the ward cost or the
+  // spell/ability is countered.
+  if (hasWard(card)) {
+    const costStr = getWardCost(card);
+    restrictions.push(
+      costStr
+        ? `Ward ${costStr} (targeting costs ${costStr} or spell is countered)`
+        : "Ward (targeting may cost mana or the spell is countered)",
+    );
   }
 
   return restrictions;
