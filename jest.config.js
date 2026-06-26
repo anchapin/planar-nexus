@@ -50,20 +50,24 @@ module.exports = {
   ],
   // Coverage thresholds — ENFORCED by CI (ci.yml "Run unit tests with coverage").
   // Values are set just below MEASURED coverage so the gate catches real
-  // regressions without being flaky. Measured 2026-06-24 (jest --coverage):
-  //   statements 32.86% | branches 25.58% | functions 26.99% | lines 33.19%
-  // These ~double the previous 15/17/22 floor. The documented project target
-  // is 70% (README/TESTING/CONTRIBUTING); raising toward 70% is tracked as
-  // follow-up work — DO NOT raise a threshold above measured coverage or CI
-  // will fail. Re-measure with `npm run test:coverage` before adjusting.
+  // regressions without being flaky. Measured 2026-06-26 (jest --coverage):
+  //   statements 37.66% | branches 29.97% | functions 31.09% | lines 37.98%
+  // The documented project target is 70% (README/TESTING/CONTRIBUTING). This
+  // floor is ratcheted upward automatically by `scripts/ratchet-coverage.js`
+  // (`npm run test:coverage:ratchet`, issue #1099) — the floor moves toward 70%
+  // as coverage improves and can never silently decay. DO NOT raise a threshold
+  // above measured coverage or CI will fail. Re-measure with
+  // `npm run test:coverage` before adjusting by hand.
   // See: https://github.com/anchapin/planar-nexus/issues/922
   coverageThreshold: {
     global: {
-      branches: 22,
-      functions: 23,
-      lines: 29,
-      statements: 29,
+      branches: 28,
+      functions: 30,
+      lines: 36,
+      statements: 36,
     },
   },
-  coverageReporters: ["text-summary", "lcov", "html"],
+  // `json-summary` emits coverage/coverage-summary.json, consumed by
+  // scripts/ratchet-coverage.js (npm run test:coverage:ratchet, issue #1099).
+  coverageReporters: ["text-summary", "lcov", "html", "json-summary"],
 };

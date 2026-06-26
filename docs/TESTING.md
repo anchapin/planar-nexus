@@ -30,12 +30,12 @@ pipeline, and how coverage is measured and enforced.
 
 ## 1. Testing Stack
 
-| Layer            | Tool                                            | Config                  |
-| ---------------- | ----------------------------------------------- | ----------------------- |
-| Unit / component | [Jest](https://jestjs.io/) + `ts-jest`          | `jest.config.js`        |
-| DOM assertions   | [React Testing Library](https://testing-library.com/) | `jest.setup.js`  |
-| API mocking      | [MSW](https://mswjs.io/) (Mock Service Worker)  | `src/test-utils/msw/`   |
-| E2E              | [Playwright](https://playwright.dev/)           | `playwright.config.ts`  |
+| Layer            | Tool                                                  | Config                 |
+| ---------------- | ----------------------------------------------------- | ---------------------- |
+| Unit / component | [Jest](https://jestjs.io/) + `ts-jest`                | `jest.config.js`       |
+| DOM assertions   | [React Testing Library](https://testing-library.com/) | `jest.setup.js`        |
+| API mocking      | [MSW](https://mswjs.io/) (Mock Service Worker)        | `src/test-utils/msw/`  |
+| E2E              | [Playwright](https://playwright.dev/)                 | `playwright.config.ts` |
 
 The Jest test environment is `jsdom` (see `jest.config.js`). Path alias `@/*`
 maps to `src/*`, matching `tsconfig.json`.
@@ -115,11 +115,11 @@ planar-nexus/
 
 ### Naming
 
-| Type         | Pattern                 | Location            |
-| ------------ | ----------------------- | ------------------- |
-| Unit         | `*.test.ts` / `.test.tsx` | co-located `__tests__/` |
-| Integration  | `*.integration.test.ts` | `tests/`            |
-| E2E          | `*.spec.ts`             | `e2e/`              |
+| Type        | Pattern                   | Location                |
+| ----------- | ------------------------- | ----------------------- |
+| Unit        | `*.test.ts` / `.test.tsx` | co-located `__tests__/` |
+| Integration | `*.integration.test.ts`   | `tests/`                |
+| E2E         | `*.spec.ts`               | `e2e/`                  |
 
 ---
 
@@ -130,26 +130,26 @@ then by function.
 
 ```typescript
 // src/ai/__tests__/archetype-detector.test.ts
-import { detectArchetype } from '../archetype-detector';
+import { detectArchetype } from "../archetype-detector";
 
-describe('detectArchetype', () => {
-  it('should detect the Burn archetype', () => {
+describe("detectArchetype", () => {
+  it("should detect the Burn archetype", () => {
     // Arrange
     const deck = [
-      { name: 'Lightning Bolt', count: 4 },
-      { name: 'Goblin Guide', count: 4 },
+      { name: "Lightning Bolt", count: 4 },
+      { name: "Goblin Guide", count: 4 },
     ];
 
     // Act
     const result = detectArchetype(deck);
 
     // Assert
-    expect(result.primary).toBe('Burn');
+    expect(result.primary).toBe("Burn");
     expect(result.confidence).toBeGreaterThan(0.7);
   });
 
-  it('should throw on an empty deck', () => {
-    expect(() => detectArchetype([])).toThrow('empty');
+  it("should throw on an empty deck", () => {
+    expect(() => detectArchetype([])).toThrow("empty");
   });
 });
 ```
@@ -159,8 +159,8 @@ describe('detectArchetype', () => {
 The project uses Jest, so prefer `jest.mock` / `jest.fn` (not vitest's `vi`):
 
 ```typescript
-jest.mock('@/lib/card-database', () => ({
-  getCard: jest.fn().mockResolvedValue({ name: 'Lightning Bolt' }),
+jest.mock("@/lib/card-database", () => ({
+  getCard: jest.fn().mockResolvedValue({ name: "Lightning Bolt" }),
 }));
 ```
 
@@ -170,10 +170,10 @@ jest.mock('@/lib/card-database', () => ({
 `sessionStorage` use the reusable mocks from `@/test-utils`:
 
 ```typescript
-import { mockLocalStorage } from '@/test-utils';
+import { mockLocalStorage } from "@/test-utils";
 
 beforeEach(() => {
-  mockLocalStorage({ theme: 'dark' });
+  mockLocalStorage({ theme: "dark" });
 });
 ```
 
@@ -224,11 +224,11 @@ They use **MSW** to intercept network calls instead of hitting real APIs.
 
 ```typescript
 // tests/deck-construction.integration.test.ts
-import { createMockDeck } from '@/test-utils/integration';
+import { createMockDeck } from "@/test-utils/integration";
 
-describe('Deck construction flow', () => {
-  it('builds and validates a deck end-to-end', async () => {
-    const deck = createMockDeck({ name: 'Burn' });
+describe("Deck construction flow", () => {
+  it("builds and validates a deck end-to-end", async () => {
+    const deck = createMockDeck({ name: "Burn" });
     // ... drive the real code paths, assert on the resulting deck
   });
 });
@@ -237,11 +237,11 @@ describe('Deck construction flow', () => {
 MSW setup (server handlers in `src/test-utils/msw/`):
 
 ```typescript
-import { createServer } from '@/test-utils/msw/server';
-import { http, HttpResponse } from 'msw';
+import { createServer } from "@/test-utils/msw/server";
+import { http, HttpResponse } from "msw";
 
 const server = createServer(
-  http.get('/api/cards/search', () => HttpResponse.json({ data: [] })),
+  http.get("/api/cards/search", () => HttpResponse.json({ data: [] })),
 );
 
 beforeAll(() => server.listen());
@@ -259,15 +259,15 @@ automatically (`webServer` config), so you do not need to start it manually.
 
 ```typescript
 // e2e/deck-builder.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('complete deck building flow', async ({ page }) => {
-  await page.goto('/deck-builder');
+test("complete deck building flow", async ({ page }) => {
+  await page.goto("/deck-builder");
 
-  await page.fill('[data-testid="card-search"]', 'Lightning');
+  await page.fill('[data-testid="card-search"]', "Lightning");
   await page.click('[data-testid="add-card"]:first-child');
 
-  await expect(page.locator('.deck-list')).toContainText('Lightning');
+  await expect(page.locator(".deck-list")).toContainText("Lightning");
 });
 ```
 
@@ -299,10 +299,10 @@ import {
   createGameState,
   createCombatState,
   createMulliganState,
-} from '@/test-utils';
+} from "@/test-utils";
 
-const bolt = createCard({ name: 'Lightning Bolt' });
-const deck = createDeck({ name: 'Burn', cards: [bolt] });
+const bolt = createCard({ name: "Lightning Bolt" });
+const deck = createDeck({ name: "Burn", cards: [bolt] });
 const state = createGameState({ players: 2 });
 ```
 
@@ -310,7 +310,7 @@ For integration tests, the convenience wrappers live in
 `@/test-utils/integration`:
 
 ```typescript
-import { createMockDeck, createMockCard } from '@/test-utils/integration';
+import { createMockDeck, createMockCard } from "@/test-utils/integration";
 ```
 
 ### Helpers
@@ -413,19 +413,20 @@ npm test -- --testPathPattern=video-derived --coverage
 
 ### Target vs. enforced floor
 
-| Metric      | Project target | CI-enforced floor (`jest.config.js`) |
-| ----------- | -------------- | ------------------------------------ |
-| Lines       | **70%**        | 29%                                  |
-| Functions   | **70%**        | 23%                                  |
-| Statements  | **70%**        | 29%                                  |
-| Branches    | **60%**        | 22%                                  |
+| Metric     | Project target | CI-enforced floor (`jest.config.js`) |
+| ---------- | -------------- | ------------------------------------ |
+| Lines      | **70%**        | 29%                                  |
+| Functions  | **70%**        | 23%                                  |
+| Statements | **70%**        | 29%                                  |
+| Branches   | **60%**        | 22%                                  |
 
 - The **target** is 70% across all metrics (60% for branches). This is the
   documented project goal and is referenced from `README.md`,
   `docs/CONTRIBUTING.md`, and `jest.config.js`.
-- The **CI-enforced floor** is set *just below currently-measured coverage* so
+- The **CI-enforced floor** is set _just below currently-measured coverage_ so
   the gate catches real regressions without being flaky. It is raised toward
-  the 70% target as coverage improves (tracked via issue #922).
+  the 70% target as coverage improves (tracked via issue #922) — automatically,
+  via the [ratchet script](#ratcheting-the-coverage-floor) (issue #1099).
 
 > **Do not** raise a threshold above currently-measured coverage or CI will
 > fail. Always re-measure with `npm run test:coverage` before adjusting
@@ -458,20 +459,56 @@ Outputs:
 The video-derived workflow additionally writes `coverage-final.json` and posts
 a coverage delta comment on pull requests.
 
+### Ratcheting the coverage floor
+
+Coverage gains are locked in by [`scripts/ratchet-coverage.js`](../scripts/ratchet-coverage.js),
+which raises the `coverageThreshold.global` block in `jest.config.js` toward
+the currently measured coverage (minus a small safety margin) so the floor can
+move up but never silently decay.
+
+```bash
+# Measure coverage, then ratchet the floor up to the measured value:
+npm run test:coverage:ratchet
+
+# Preview the change without writing jest.config.js:
+npm run test:coverage && node scripts/ratchet-coverage.js --dry-run
+```
+
+How it works:
+
+- Reads `coverage/coverage-summary.json` (emitted by the `json-summary`
+  reporter in `coverageReporters`).
+- For each metric, computes `floor = max(current, floor(measured - margin))`.
+  The default `margin` is **1** percentage point; override it with
+  `--margin <n>` or the `RATCHET_MARGIN` env var. The ratchet is **monotonic** —
+  a floor is never lowered, even when the margin would dip below the current
+  value.
+- **Regression guard:** if any measured metric falls _below_ the current floor,
+  the script exits non-zero (CI fails) and leaves `jest.config.js` untouched.
+- **Idempotent:** running it twice produces no further change — the second run
+  reports "already at the ratcheted floor" and writes nothing.
+
+Jest's own `coverageThreshold` check fails the build on any regression (a drop
+below the floor). The ratchet is the mechanism that moves the gate _forward_
+as coverage improves. Commit the resulting `jest.config.js` bump as part of the
+PR that raised coverage. The documented target remains **70%** across all
+metrics (60% for branches); the ratchet is how we get there without the floor
+ever sliding back.
+
 ---
 
 ## 11. Decision Guide
 
-| Scenario                  | Test type      |
-| ------------------------- | -------------- |
-| Pure function / utility   | Unit (co-located) |
-| Custom hook               | Unit           |
-| Single React component    | Unit (RTL)     |
-| Component + providers     | Unit (`renderWithProviders`) |
-| Server action / route     | Integration (`tests/`) |
-| Cross-module workflow     | Integration (`tests/`) |
-| Critical user flow in browser | E2E (`e2e/`)   |
-| Game-state regression     | Video-derived fixture |
+| Scenario                      | Test type                    |
+| ----------------------------- | ---------------------------- |
+| Pure function / utility       | Unit (co-located)            |
+| Custom hook                   | Unit                         |
+| Single React component        | Unit (RTL)                   |
+| Component + providers         | Unit (`renderWithProviders`) |
+| Server action / route         | Integration (`tests/`)       |
+| Cross-module workflow         | Integration (`tests/`)       |
+| Critical user flow in browser | E2E (`e2e/`)                 |
+| Game-state regression         | Video-derived fixture        |
 
 **Choose E2E** when you need a real browser, real DOM, or unmocked network.
 **Choose integration** when you can mock external dependencies and want faster
@@ -512,3 +549,9 @@ Tests run automatically on:
 
 A coverage regression that drops a metric below the `coverageThreshold` floor
 will fail CI and block the merge.
+
+To **raise** the floor after improving coverage, run
+`npm run test:coverage:ratchet` (see
+[Ratcheting the coverage floor](#10-coverage)) and commit the resulting
+`jest.config.js` bump. This is how the floor moves toward the 70% target
+without ever sliding backward.
