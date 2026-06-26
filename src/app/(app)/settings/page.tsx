@@ -5,13 +5,20 @@
  * - Card Images
  * - Sound
  * - Auto-Save
+ * - Privacy & Telemetry
  */
 
 "use client";
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -20,6 +27,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { SoundSettings } from "@/components/sound-settings";
 import { AutoSaveSettings } from "@/components/auto-save-settings";
+import { TelemetrySettings } from "@/components/telemetry-settings";
 import {
   getImageDirectory,
   setImageDirectory,
@@ -48,9 +56,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <Button asChild>
-              <a href="/database-management">
-                Manage Database
-              </a>
+              <a href="/database-management">Manage Database</a>
             </Button>
           </CardContent>
         </Card>
@@ -61,6 +67,7 @@ export default function SettingsPage() {
           <TabsTrigger value="card-images">Card Images</TabsTrigger>
           <TabsTrigger value="sound">Sound</TabsTrigger>
           <TabsTrigger value="auto-save">Auto-Save</TabsTrigger>
+          <TabsTrigger value="privacy">Privacy &amp; Telemetry</TabsTrigger>
         </TabsList>
 
         <TabsContent value="card-images" className="space-y-6">
@@ -75,8 +82,10 @@ export default function SettingsPage() {
               <Alert>
                 <AlertTitle>Bring Your Own Images</AlertTitle>
                 <AlertDescription>
-                  Planar Nexus follows the Cockatrice/XMage model - you must provide your own card images.
-                  This protects the project from legal issues. Card data (names, text, rules) is still fetched from Scryfall.
+                  Planar Nexus follows the Cockatrice/XMage model - you must
+                  provide your own card images. This protects the project from
+                  legal issues. Card data (names, text, rules) is still fetched
+                  from Scryfall.
                 </AlertDescription>
               </Alert>
 
@@ -85,7 +94,7 @@ export default function SettingsPage() {
                 <Input
                   id="image-dir"
                   placeholder="e.g., C:/MTGImages or /path/to/images"
-                  defaultValue={getImageDirectory() || ''}
+                  defaultValue={getImageDirectory() || ""}
                   onBlur={(e) => {
                     const path = e.target.value;
                     if (path) {
@@ -97,7 +106,8 @@ export default function SettingsPage() {
                   }}
                 />
                 <p className="text-sm text-muted-foreground">
-                  Enter the path to your card images folder. Images should be organized as: {'{dir}/{set}/{number}.jpg'}
+                  Enter the path to your card images folder. Images should be
+                  organized as: {"{dir}/{set}/{number}.jpg"}
                 </p>
               </div>
 
@@ -121,7 +131,17 @@ export default function SettingsPage() {
               <div>
                 <h4 className="font-medium mb-2">How to get card images</h4>
                 <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                  <li>Download card images from <a href="https://scryfall.com/docs/bulk-data" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Scryfall Bulk Data</a></li>
+                  <li>
+                    Download card images from{" "}
+                    <a
+                      href="https://scryfall.com/docs/bulk-data"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      Scryfall Bulk Data
+                    </a>
+                  </li>
                   <li>Organize images by set (e.g., m21/, eld/, etc.)</li>
                   <li>Name files by collector number (e.g., 242.jpg)</li>
                   <li>Enter the folder path above</li>
@@ -149,12 +169,24 @@ export default function SettingsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Auto-Save Settings</CardTitle>
-              <CardDescription>
-                Configure automatic game saving
-              </CardDescription>
+              <CardDescription>Configure automatic game saving</CardDescription>
             </CardHeader>
             <CardContent>
               <AutoSaveSettings />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="privacy" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Privacy &amp; Telemetry</CardTitle>
+              <CardDescription>
+                Control anonymous crash and error reporting
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TelemetrySettings />
             </CardContent>
           </Card>
         </TabsContent>
