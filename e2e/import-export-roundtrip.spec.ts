@@ -3,79 +3,109 @@
  *
  * Verifies that decks remain identical after a full export/import cycle
  * across multiple formats (Text, JSON, Clipboard).
+ *
+ * Stability notes
+ * ---------------
+ * The previous version of this suite relied on fixed `waitForTimeout`
+ * sleeps and `waitForLoadState("networkidle")`, which raced the async
+ * deck-parse / clipboard / dialog-close operations on slower CI runners.
+ * Those have been replaced with state-based readiness signals:
+ *
+ *   - Page ready:   wait for the toolbar (`import-deck-button`) to render.
+ *   - Format set:   wait for the `format-select` trigger to reflect the
+ *                   chosen value before importing (the import reads the
+ *                   `format` state, so this removes a stale-state race).
+ *   - Import done:  on success `ImportExportControls` closes its dialog, so
+ *                   we wait for `import-textarea` to leave the DOM rather
+ *                   than sleeping a fixed number of milliseconds.
+ *   - Clipboard:    wait for the app's own toast ("Copied to clipboard" /
+ *                   "Pasted from clipboard") and the textarea value.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { seedCardDatabase, waitForDbSeed } from "./test-utils";
 
-// Run tests in CI but with longer timeouts and retries
-const testOptions =
-  process.env.CI === "true"
-    ? { retries: 2, timeout: 60000 }
-    : { retries: 0, timeout: 30000 };
+/**
+ * Select a deck-legality format from the toolbar `<Select>` and block until
+ * the trigger reflects the new value, guaranteeing the next import reads the
+ * intended format.
+ */
+async function selectFormat(page: Page, name: RegExp) {
+  const trigger = page.getByTestId("format-select");
+  await trigger.click();
+  await page.getByRole("option", { name }).click();
+  await expect(trigger).toContainText(name);
+}
+
+/**
+ * Deterministic "import resolved" signal: a successful import with no errors
+ * closes the import dialog, detaching the textarea from the DOM.
+ */
+async function waitForImportResolved(page: Page) {
+  await expect(page.getByTestId("import-textarea")).toBeHidden({
+    timeout: 15000,
+  });
+}
 
 test.describe("Import/Export Round Trip", () => {
   test.beforeEach(async ({ page }) => {
-    // Seed database before navigation so IndexedDB is ready when app initializes
+    // Seed the card database before navigation so IndexedDB is ready when
+    // the app initializes.
     await seedCardDatabase(page);
     await page.goto("/deck-builder");
-    await page.waitForLoadState("networkidle");
+
+    // Wait for the toolbar to render instead of `networkidle`, which never
+    // reliably settles on the HMR dev server.
+    await expect(page.getByTestId("import-deck-button")).toBeVisible({
+      timeout: 15000,
+    });
     await waitForDbSeed(page);
 
-    // Clear any existing deck if needed
-    const clearButton = page.getByTestId("clear-deck-button");
+    // Ensure every test starts from an empty deck.
     const deckCount = page.getByTestId("deck-count");
-
-    if (await deckCount.isVisible()) {
-      const text = await deckCount.textContent();
-      if (text && !text.includes("0 cards")) {
-        await clearButton.click();
-        await page.waitForLoadState("networkidle");
-        const confirmClear = page.getByTestId("confirm-clear-button");
-        await expect(confirmClear).toBeVisible();
-        await confirmClear.click();
-        await expect(deckCount).toContainText("0 cards");
-      }
+    await expect(deckCount).toBeVisible();
+    const current = (await deckCount.textContent()) ?? "";
+    if (!current.includes("0 cards")) {
+      await page.getByTestId("clear-deck-button").click();
+      const confirmClear = page.getByTestId("confirm-clear-button");
+      await expect(confirmClear).toBeVisible();
+      await confirmClear.click();
+      await expect(deckCount).toContainText("0 cards");
     }
   });
 
   test("should round-trip a simple deck via text import/export", async ({
     page,
   }) => {
-    // Extend timeout for CI
     test.setTimeout(60000);
+
+    // Set legality format to Standard first so 4x copies resolve.
+    await selectFormat(page, /standard/i);
 
     const sampleDeck = `4 Lightning Bolt
 4 Mountain
 20 Island`;
 
-    // Set format to Standard first so 4x copies are legal
-    const formatSelect = page.getByTestId("format-select");
-    await formatSelect.click();
-    await page.getByRole("option", { name: /standard/i }).click();
-
     // 1. Import
     await page.getByTestId("import-deck-button").click();
-    // Wait for dialog to be fully visible before filling textarea
     const textarea = page.getByTestId("import-textarea");
-    await textarea.waitFor({ state: "visible", timeout: 10000 });
+    await expect(textarea).toBeVisible({ timeout: 10000 });
     await textarea.fill(sampleDeck);
     await page.getByTestId("confirm-import-button").click();
 
-    // Wait for import to complete and cards to appear in deck list
-    await page.waitForTimeout(3000);
+    // Wait for the async import to resolve (dialog closes on success) and the
+    // deck count to update — no fixed sleeps.
+    await waitForImportResolved(page);
+    await expect(page.getByTestId("deck-count")).toContainText("28 cards");
 
     // 2. Export (as text)
     await page.getByTestId("export-deck-button").click();
-
-    // Wait for export dialog to be visible
     await expect(page.getByTestId("export-text-button")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.getByTestId("export-copy-button")).toBeVisible();
 
-    // 3. Verify card count in UI matches
-    // The deck list should show these cards
+    // 3. Verify the imported cards rendered in the deck list.
     await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible({
       timeout: 10000,
     });
@@ -84,20 +114,20 @@ test.describe("Import/Export Round Trip", () => {
   });
 
   test("should round-trip a complex deck via JSON", async ({ page }) => {
-    // Set format to Commander
-    const formatSelect = page.getByTestId("format-select");
-    await formatSelect.click();
-    await page.getByRole("option", { name: /commander/i }).click();
+    test.setTimeout(60000);
+
+    await selectFormat(page, /commander/i);
 
     // 1. Import JSON
     await page.getByTestId("import-deck-button").click();
-
-    // Wait for import dialog to be visible
     const textarea = page.getByTestId("import-textarea");
-    await textarea.waitFor({ state: "visible", timeout: 10000 });
+    await expect(textarea).toBeVisible({ timeout: 10000 });
 
-    // Select JSON format via the tabs - click on the JSON tab trigger
-    await page.getByRole("tab", { name: /json/i }).click();
+    // Switch the *input* format to JSON (distinct from the legality format
+    // above) and gate on the tab becoming active before filling.
+    const jsonTab = page.getByRole("tab", { name: /json/i });
+    await jsonTab.click();
+    await expect(jsonTab).toHaveAttribute("data-state", "active");
 
     const jsonDeck = JSON.stringify({
       cards: [
@@ -110,16 +140,17 @@ test.describe("Import/Export Round Trip", () => {
     await textarea.fill(jsonDeck);
     await page.getByTestId("confirm-import-button").click();
 
-    // Wait for import to complete - deck count should update
-    await page.waitForTimeout(2000);
-    await expect(page.getByTestId("deck-count")).toContainText(/[1-9] cards?/);
+    // Wait for import to resolve.
+    await waitForImportResolved(page);
+    await expect(page.getByTestId("deck-count")).toContainText("3 cards");
 
     // 2. Export JSON
     await page.getByTestId("export-deck-button").click();
-    await expect(page.getByTestId("export-json-button")).toBeVisible();
+    await expect(page.getByTestId("export-json-button")).toBeVisible({
+      timeout: 10000,
+    });
 
     // 3. Verify results
-    // Check if cards are in the deck list
     await expect(page.getByTestId("deck-item-sol-ring")).toBeVisible({
       timeout: 10000,
     });
@@ -128,23 +159,16 @@ test.describe("Import/Export Round Trip", () => {
   });
 
   test("should round-trip via clipboard", async ({ page, context }) => {
-    // Grant clipboard permissions
+    test.setTimeout(60000);
+
+    // Grant clipboard permissions for the round trip.
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await selectFormat(page, /commander/i);
 
-    // Set format to Commander so cards are legal
-    const formatSelect = page.getByTestId("format-select");
-    await formatSelect.click();
-    await page.getByRole("option", { name: /commander/i }).click();
-
-    // Wait for page to settle
-    await page.waitForTimeout(1000);
-
-    // 1. Import a simple deck via the import dialog
+    // 1. Import a simple deck via the import dialog.
     await page.getByTestId("import-deck-button").click();
-
-    // Wait for import dialog to be fully visible
     const textarea = page.getByTestId("import-textarea");
-    await textarea.waitFor({ state: "visible", timeout: 10000 });
+    await expect(textarea).toBeVisible({ timeout: 10000 });
 
     const sampleDeck = `1 Lightning Bolt
 1 Sol Ring`;
@@ -152,10 +176,11 @@ test.describe("Import/Export Round Trip", () => {
     await textarea.fill(sampleDeck);
     await page.getByTestId("confirm-import-button").click();
 
-    // Wait for import to complete
-    await page.waitForTimeout(2000);
+    // Wait for import to resolve.
+    await waitForImportResolved(page);
+    await expect(page.getByTestId("deck-count")).toContainText("2 cards");
 
-    // Verify cards are in the deck
+    // Verify cards are in the deck.
     await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible({
       timeout: 10000,
     });
@@ -163,51 +188,56 @@ test.describe("Import/Export Round Trip", () => {
       timeout: 10000,
     });
 
-    // 2. Export to clipboard
+    // 2. Export to clipboard.
     await page.getByTestId("export-deck-button").click();
-
-    // Wait for dialog to open and be visible
-    await page.waitForTimeout(500);
-
-    // Click copy to clipboard button
     const copyButton = page.getByTestId("export-copy-button");
     await expect(copyButton).toBeVisible({ timeout: 10000 });
     await copyButton.click();
 
-    // Wait briefly for clipboard operation
-    await page.waitForTimeout(500);
+    // Wait for the app's own completion toast, then assert the clipboard
+    // actually received the decklist (data-integrity check).
+    await expect(
+      page.getByText("Copied to clipboard", { exact: true }),
+    ).toBeVisible({ timeout: 10000 });
+    const clipboardText = await page.evaluate(() =>
+      navigator.clipboard.readText(),
+    );
+    expect(clipboardText).toContain("Lightning Bolt");
+    expect(clipboardText).toContain("Sol Ring");
 
-    // Press Escape to close the dialog
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(500);
+    // Close the export dialog via its Close (X) button before clearing the
+    // deck. A direct click is more reliable than Escape, which a toast layer
+    // can intercept.
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Close" })
+      .click();
+    await expect(page.getByTestId("export-copy-button")).toBeHidden({
+      timeout: 5000,
+    });
 
-    // 3. Clear deck
+    // 3. Clear the deck.
     await page.getByTestId("clear-deck-button").click();
-    await page.waitForTimeout(300);
-    await page.getByTestId("confirm-clear-button").click();
+    const confirmClear = page.getByTestId("confirm-clear-button");
+    await expect(confirmClear).toBeVisible();
+    await confirmClear.click();
     await expect(page.getByTestId("deck-count")).toContainText("0 cards");
 
-    // 4. Import from clipboard
+    // 4. Import from clipboard.
     await page.getByTestId("import-deck-button").click();
+    await expect(textarea).toBeVisible({ timeout: 10000 });
 
-    // Wait for dialog to open
-    await textarea.waitFor({ state: "visible", timeout: 10000 });
-
-    // Click the "Paste from Clipboard" button
     const pasteButton = page.getByTestId("paste-deck-button");
     await expect(pasteButton).toBeVisible({ timeout: 5000 });
     await pasteButton.click();
 
-    // Wait for paste to complete
-    await page.waitForTimeout(1000);
-
-    // The textarea should now have content
-    const textareaValue = await textarea.inputValue();
-    expect(textareaValue.length).toBeGreaterThan(0);
+    // Wait for the paste to populate the textarea (auto-waiting on value).
+    await expect(textarea).toHaveValue(/Lightning Bolt/, { timeout: 10000 });
 
     await page.getByTestId("confirm-import-button").click();
 
-    // 5. Verify cards are back
+    // 5. Verify cards are back.
+    await waitForImportResolved(page);
     await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible({
       timeout: 10000,
     });
