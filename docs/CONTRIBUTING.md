@@ -354,9 +354,27 @@ npm run lint -- --fix
 
 ## 7. Testing
 
-### 7.1 Unit Tests
+> **Canonical guide**: the full reference lives in
+> [docs/TESTING.md](./TESTING.md). This section states the **requirements**
+> every contributor must meet.
 
-Unit tests are written with Jest and React Testing Library:
+### 7.1 Testing requirements
+
+- **Every change that adds or modifies behavior must add or update tests.**
+  A PR that only touches source code without touching a test file will be
+  requested for changes.
+- Prefer **co-located unit tests** (`__tests__/*.test.ts` next to the module
+  under test). Use repo-root `tests/` for integration tests and `e2e/` for
+  Playwright specs.
+- Reuse the helpers in [`@/test-utils`](../src/test-utils) (factories, mocks,
+  MSW) rather than hand-rolling fixtures.
+- Bug fixes **must** include a regression test that fails before the fix and
+  passes after.
+
+### 7.2 Unit Tests
+
+Unit tests are written with Jest (`jest.config.js`, `ts-jest`, `jsdom`) and
+React Testing Library:
 
 ```typescript
 // src/ai/__tests__/archetype-detector.test.ts
@@ -369,34 +387,37 @@ describe('detectArchetype', () => {
       { name: 'Goblin Guide', count: 4 },
       // ... more cards
     ];
-    
+
     const result = detectArchetype(deck);
-    
+
     expect(result.primary).toBe('Burn');
     expect(result.confidence).toBeGreaterThan(0.7);
   });
 });
 ```
 
-### 7.2 Running Tests
+### 7.3 Running Tests
 
 ```bash
-# Run all tests
+# Run all unit/integration tests
 npm test
 
-# Run specific test file
-npm test -- archetype-detector.test.ts
+# Run a specific file / pattern
+npm test -- --testPathPattern="archetype-detector"
 
-# Run tests in watch mode
+# Watch mode
 npm run test:watch
 
-# Run tests with coverage report
-npm test -- --coverage
+# Coverage report (HTML + lcov + text-summary)
+npm run test:coverage
+
+# E2E (Playwright boots the dev server on :9002 automatically)
+npm run test:e2e
 ```
 
-### 7.3 E2E Tests
+### 7.4 E2E Tests
 
-E2E tests are written with Playwright:
+E2E tests are written with Playwright and live in `e2e/`:
 
 ```typescript
 // e2e/deck-builder.spec.ts
@@ -404,11 +425,11 @@ import { test, expect } from '@playwright/test';
 
 test('should create a new deck', async ({ page }) => {
   await page.goto('/deck-builder');
-  
+
   await page.click('[data-testid="new-deck"]');
   await page.fill('[data-testid="deck-name"]', 'Test Deck');
   await page.click('[data-testid="create-deck"]');
-  
+
   await expect(page.locator('[data-testid="deck-name"]'))
     .toHaveText('Test Deck');
 });
@@ -421,15 +442,35 @@ npx playwright test
 # Run with UI mode
 npx playwright test --ui
 
-# Run specific test file
+# Run a single spec
 npx playwright test deck-builder.spec.ts
 ```
 
-### 7.4 Test Coverage Goals
+### 7.5 Coverage goals & the CI floor
 
-- **Overall**: 70%+ coverage
-- **Critical modules** (game engine, AI): 85%+ coverage
-- **UI components**: 60%+ coverage
+The project **target** is **70%** coverage across all metrics (60% for
+branches). The CI-enforced floor lives in `jest.config.js` →
+`coverageThreshold` and is intentionally kept just below currently-measured
+coverage so the gate catches regressions without being flaky; it is raised
+toward 70% as coverage improves (tracked in issue #922).
+
+| Metric      | Target | CI floor |
+| ----------- | ------ | -------- |
+| Lines       | 70%    | 29%      |
+| Functions   | 70%    | 23%      |
+| Statements  | 70%    | 29%      |
+| Branches    | 60%    | 22%      |
+
+> New code should not lower overall coverage. Run `npm run test:coverage`
+> locally before opening a PR. If your change drops a metric below the floor,
+> CI will fail.
+
+### 7.6 Video-derived fixtures
+
+Game-state fixtures derived from recorded gameplay are auto-converted into Jest
+tests by `scripts/generate-test-fixture.ts` (CI: `.github/workflows/video-derived-tests.yml`).
+See [TESTING.md §9](./TESTING.md#9-video-derived-fixture-pipeline) and
+[VIDEO_DERIVED_TESTS_WORKFLOW.md](./VIDEO_DERIVED_TESTS_WORKFLOW.md) for details.
 
 ---
 
@@ -437,10 +478,23 @@ npx playwright test deck-builder.spec.ts
 
 ### 8.1 Before Submitting
 
-- [ ] Tests pass locally (`npm test`)
+**Testing (required):**
+
+- [ ] Added/updated tests for the new or changed behavior
+- [ ] Included a regression test for any bug fix
+- [ ] `npm test` passes locally
+- [ ] `npm run test:coverage` does not drop any metric below the CI floor
+      (see [§7.5](#75-coverage-goals--the-ci-floor)); aimed toward 70%
+- [ ] `npm run test:e2e` passes if you touched user-facing flows
+
+**Quality:**
+
 - [ ] Linting passes (`npm run lint`)
 - [ ] Type checking passes (`npm run typecheck`)
 - [ ] Build succeeds (`npm run build`)
+
+**Docs:**
+
 - [ ] Documentation updated (if applicable)
 - [ ] Changelog entry added (if applicable)
 
