@@ -128,6 +128,24 @@ global.navigator = {
   },
 };
 
+// matchMedia — jsdom does not implement it. Provide a permissive default that
+// reports no preference; individual tests can override via Object.defineProperty
+// or jest.spyOn(window, "matchMedia") to emulate prefers-reduced-motion, etc.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  const noop = () => {};
+  const mediaQueryList = {
+    matches: false,
+    media: "",
+    onchange: null,
+    addListener: noop, // legacy
+    removeListener: noop, // legacy
+    addEventListener: noop,
+    removeEventListener: noop,
+    dispatchEvent: noop,
+  };
+  window.matchMedia = (query) => ({ ...mediaQueryList, media: String(query) });
+}
+
 // ============================================================================
 // Test Data Seeding Utilities
 // ============================================================================

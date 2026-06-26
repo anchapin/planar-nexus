@@ -9,6 +9,7 @@
 
 import { cn } from "@/lib/utils";
 import { Package, ArrowLeft, ArrowRight } from "lucide-react";
+import { usePrefersReducedMotion } from "@/hooks/use-prefers-reduced-motion";
 
 interface PackPassingAnimationProps {
   /** Is pack currently passing */
@@ -32,15 +33,23 @@ export function PackPassingAnimation({
   children,
   duration = 500,
 }: PackPassingAnimationProps) {
+  // #1103: under reduced motion, snap to the end state instantly — no slide,
+  // no opacity ramp, no scale. The "passing" state is still communicated
+  // (opacity stays lower so the handoff is legible) but without motion.
+  const reduceMotion = usePrefersReducedMotion();
+  const motionEnabled = !reduceMotion;
+
   return (
     <div
       className={cn(
-        "transition-all ease-in-out",
-        isPassing && direction === 'to-ai' && "-translate-x-8 opacity-50 scale-95",
-        isPassing && direction === 'to-user' && "translate-x-8 opacity-50 scale-95"
+        motionEnabled && "transition-all ease-in-out",
+        motionEnabled && isPassing && direction === 'to-ai' && "-translate-x-8 opacity-50 scale-95",
+        motionEnabled && isPassing && direction === 'to-user' && "translate-x-8 opacity-50 scale-95",
+        // Reduced-motion fallback: dim only, no transform / no slide.
+        !motionEnabled && isPassing && "opacity-50"
       )}
       style={{
-        transitionDuration: isPassing ? `${duration}ms` : '0ms',
+        transitionDuration: motionEnabled && isPassing ? `${duration}ms` : '0ms',
       }}
     >
       {children}

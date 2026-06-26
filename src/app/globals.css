@@ -88,14 +88,25 @@
     @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
   }
 
-  /* Accessibility: Reduced motion */
+  /* Accessibility: Reduced motion (#1103)
+     Global safety net that catches CSS-driven motion (keyframes, transitions,
+     smooth scroll, parallax) regardless of whether a component reads the JS
+     hook. JS/canvas-driven animations are gated per-component via the
+     `usePrefersReducedMotion` hook in src/hooks/use-prefers-reduced-motion.ts.
+     Essential transitions (e.g. dialog open/close, focus rings) are kept
+     effectively instant rather than removed, so functionality is preserved. */
   @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto !important;
+    }
+
     *,
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 

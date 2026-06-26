@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 export type DamageType = 'combat' | 'noncombat' | 'poison' | 'life' | 'heal';
 
@@ -23,14 +24,18 @@ interface DamageIndicatorProps {
 export function DamageIndicator({ event, onComplete, className }: DamageIndicatorProps) {
   const [isVisible, setIsVisible] = useState(true);
   const [offset, setOffset] = useState(0);
+  // #1103: skip the floating-up motion when the user prefers reduced motion;
+  // show the value in place and dismiss without translation.
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => {
-    // Animate the damage number floating up
+    // Animate the damage number floating up (skipped under reduced motion).
     const animationTimer = setTimeout(() => {
-      setOffset(-60);
+      setOffset(reduceMotion ? 0 : -60);
     }, 50);
 
-    // Fade out after animation
+    // Fade out after animation. Under reduced motion we still let the value
+    // linger briefly so it remains readable, just without the float.
     const fadeTimer = setTimeout(() => {
       setIsVisible(false);
       onComplete?.(event.id);
@@ -40,7 +45,7 @@ export function DamageIndicator({ event, onComplete, className }: DamageIndicato
       clearTimeout(animationTimer);
       clearTimeout(fadeTimer);
     };
-  }, [event.id, onComplete]);
+  }, [event.id, onComplete, reduceMotion]);
 
   const getColor = () => {
     switch (event.type) {
@@ -82,7 +87,8 @@ export function DamageIndicator({ event, onComplete, className }: DamageIndicato
     <div
       className={cn(
         'absolute left-1/2 -translate-x-1/2 pointer-events-none select-none',
-        'transition-all duration-500 ease-out',
+        // #1103: keep the transition only when motion is allowed.
+        !reduceMotion && 'transition-all duration-500 ease-out',
         getColor(),
         className
       )}

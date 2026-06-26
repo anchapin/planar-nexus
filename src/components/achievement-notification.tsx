@@ -36,6 +36,7 @@ import {
   GitCompare
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 /**
  * Icon mapping for achievements
@@ -75,6 +76,11 @@ function getIconComponent(iconName: string) {
  */
 export function AchievementNotificationToast() {
   const { toast } = useToast();
+  // #1103: when the user prefers reduced motion, the entrance/exit animations
+  // are dampened by the global CSS rule and we keep the toast on screen a bit
+  // longer so the unlock is still readable without the celebratory motion.
+  const reduceMotion = usePrefersReducedMotion();
+  const toastDuration = reduceMotion ? 7000 : 5000;
 
   useEffect(() => {
     // Subscribe to achievement notifications
@@ -104,7 +110,7 @@ export function AchievementNotificationToast() {
               </span>
             </div>
           ),
-          duration: 5000,
+          duration: toastDuration,
         });
       }
     );
@@ -112,7 +118,7 @@ export function AchievementNotificationToast() {
     return () => {
       unsubscribe();
     };
-  }, [toast]);
+  }, [toast, toastDuration]);
 
   return null;
 }
@@ -123,6 +129,9 @@ export function AchievementNotificationToast() {
  */
 export function useAchievementToast() {
   const { toast } = useToast();
+  // #1103: mirror the reduced-motion accommodation of the auto toast above.
+  const reduceMotion = usePrefersReducedMotion();
+  const toastDuration = reduceMotion ? 7000 : 5000;
 
   const showAchievementToast = (notification: AchievementNotification) => {
     const Icon = getIconComponent(notification.achievement.icon);
@@ -148,7 +157,7 @@ export function useAchievementToast() {
           </span>
         </div>
       ),
-      duration: 5000,
+      duration: toastDuration,
     });
   };
 

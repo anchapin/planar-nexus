@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Upload, Check, Palette, Image, RotateCcw, Eye, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { usePrefersReducedMotion } from '@/hooks/use-prefers-reduced-motion';
 
 // Sleeve patterns
 export type SleevePattern = 'gradient' | 'stripes' | 'dots' | 'diamond' | 'swirl' | 'solid';
@@ -117,6 +118,8 @@ interface SleeveSelectorProps {
 }
 
 export function SleeveSelector({ selectedSleeve, onSelect, className }: SleeveSelectorProps) {
+  // #1103: skip the hover scale transform when the user prefers reduced motion.
+  const reduceMotion = usePrefersReducedMotion();
   return (
     <div className={cn('grid grid-cols-3 sm:grid-cols-4 gap-2', className)}>
       {DEFAULT_SLEEVES.map((sleeve) => (
@@ -124,9 +127,10 @@ export function SleeveSelector({ selectedSleeve, onSelect, className }: SleeveSe
           key={sleeve.type}
           onClick={() => onSelect(sleeve)}
           className={cn(
-            'relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all hover:scale-105',
-            selectedSleeve.type === sleeve.type 
-              ? 'border-primary ring-2 ring-primary/50' 
+            'relative aspect-[3/4] rounded-md overflow-hidden border-2 transition-all',
+            !reduceMotion && 'hover:scale-105',
+            selectedSleeve.type === sleeve.type
+              ? 'border-primary ring-2 ring-primary/50'
               : 'border-border hover:border-primary/50'
           )}
           title={sleeve.name}
@@ -159,6 +163,8 @@ interface PlaymatSelectorProps {
 }
 
 export function PlaymatSelector({ selectedPlaymat, onSelect, className }: PlaymatSelectorProps) {
+  // #1103: skip the hover scale transform when the user prefers reduced motion.
+  const reduceMotion = usePrefersReducedMotion();
   return (
     <div className={cn('grid grid-cols-2 sm:grid-cols-3 gap-2', className)}>
       {DEFAULT_PLAYMATS.map((playmat) => (
@@ -166,9 +172,10 @@ export function PlaymatSelector({ selectedPlaymat, onSelect, className }: Playma
           key={playmat.type}
           onClick={() => onSelect(playmat)}
           className={cn(
-            'relative aspect-video rounded-md overflow-hidden border-2 transition-all hover:scale-105',
-            selectedPlaymat.type === playmat.type 
-              ? 'border-primary ring-2 ring-primary/50' 
+            'relative aspect-video rounded-md overflow-hidden border-2 transition-all',
+            !reduceMotion && 'hover:scale-105',
+            selectedPlaymat.type === playmat.type
+              ? 'border-primary ring-2 ring-primary/50'
               : 'border-border hover:border-primary/50'
           )}
           title={playmat.name}
