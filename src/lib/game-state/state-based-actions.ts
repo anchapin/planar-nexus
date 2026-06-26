@@ -168,8 +168,17 @@ export function checkStateBasedActions(
 
       // SBA 704.5g: A creature with toughness 0 or less is destroyed
       if (isCreature(card)) {
-        const toughness = getToughness(card);
-        if (toughness <= 0) {
+        // Account for P/T counters (CR 613.8c). Infect damage manifests as
+        // -1/-1 counters (CR 702.93b), so a creature can reach 0 toughness
+        // via counters without any marked damage. The net counter bonus
+        // (matching Layer 7c) is applied here so such creatures are destroyed.
+        const plusOneCounters =
+          card.counters?.find((c) => c.type === "+1/+1")?.count ?? 0;
+        const minusOneCounters =
+          card.counters?.find((c) => c.type === "-1/-1")?.count ?? 0;
+        const effectiveToughness =
+          getToughness(card) + plusOneCounters - minusOneCounters;
+        if (effectiveToughness <= 0) {
           if (!cardsToDestroy.includes(card.id)) {
             cardsToDestroy.push(card.id);
           }
