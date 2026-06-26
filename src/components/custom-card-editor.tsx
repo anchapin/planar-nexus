@@ -1,32 +1,45 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useEffect } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Slider } from '@/components/ui/slider';
-import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
-import { 
-  Palette, 
-  Type, 
-  Image as ImageIcon, 
-  Save, 
-  Copy, 
-  Download, 
+import { useState, useCallback, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import {
+  Palette,
+  Type,
+  Image as ImageIcon,
+  Save,
+  Copy,
+  Download,
   Trash2,
   Plus,
   X,
   RotateCcw,
-  Upload
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  Upload,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   type CustomCardDefinition,
   type CardColor,
@@ -39,11 +52,11 @@ import {
   RARITY_COLORS,
   generateCustomCardId,
   validateCustomCard,
-} from '@/lib/custom-card';
+} from "@/lib/custom-card";
 
 /**
  * Custom Card Editor Component
- * 
+ *
  * WYSIWYG editor for creating and editing custom Magic: The Gathering cards
  * Part of the Custom Card Creation Studio (Issue #593)
  */
@@ -64,35 +77,42 @@ export interface CustomCardEditorProps {
 }
 
 const CARD_TYPES: { value: CustomCardType; label: string; icon: string }[] = [
-  { value: 'creature', label: 'Creature', icon: '🦄' },
-  { value: 'instant', label: 'Instant', icon: '⚡' },
-  { value: 'sorcery', label: 'Sorcery', icon: '🔮' },
-  { value: 'artifact', label: 'Artifact', icon: '⚙️' },
-  { value: 'enchantment', label: 'Enchantment', icon: '✨' },
-  { value: 'planeswalker', label: 'Planeswalker', icon: '🧙' },
-  { value: 'land', label: 'Land', icon: '🏔️' },
+  { value: "creature", label: "Creature", icon: "🦄" },
+  { value: "instant", label: "Instant", icon: "⚡" },
+  { value: "sorcery", label: "Sorcery", icon: "🔮" },
+  { value: "artifact", label: "Artifact", icon: "⚙️" },
+  { value: "enchantment", label: "Enchantment", icon: "✨" },
+  { value: "planeswalker", label: "Planeswalker", icon: "🧙" },
+  { value: "land", label: "Land", icon: "🏔️" },
 ];
 
 const FRAME_STYLES: { value: CardFrameStyle; label: string }[] = [
-  { value: 'modern', label: 'Modern' },
-  { value: 'old', label: 'Old School' },
-  { value: 'future', label: 'Future' },
-  { value: 'classic', label: 'Classic' },
-  { value: 'mirrodin', label: 'Mirrodin' },
-  { value: 'innistrad', label: 'Innistrad' },
-  { value: 'zendikar', label: 'Zendikar' },
-  { value: 'Ixalan', label: 'Ixalan' },
-  { value: 'Strixhaven', label: 'Strixhaven' },
+  { value: "modern", label: "Modern" },
+  { value: "old", label: "Old School" },
+  { value: "future", label: "Future" },
+  { value: "classic", label: "Classic" },
+  { value: "mirrodin", label: "Mirrodin" },
+  { value: "innistrad", label: "Innistrad" },
+  { value: "zendikar", label: "Zendikar" },
+  { value: "Ixalan", label: "Ixalan" },
+  { value: "Strixhaven", label: "Strixhaven" },
 ];
 
 const RARITIES: { value: CardRarity; label: string }[] = [
-  { value: 'common', label: 'Common' },
-  { value: 'uncommon', label: 'Uncommon' },
-  { value: 'rare', label: 'Rare' },
-  { value: 'mythic', label: 'Mythic Rare' },
+  { value: "common", label: "Common" },
+  { value: "uncommon", label: "Uncommon" },
+  { value: "rare", label: "Rare" },
+  { value: "mythic", label: "Mythic Rare" },
 ];
 
-const COLOR_OPTIONS: CardColor[] = ['white', 'blue', 'black', 'red', 'green', 'colorless'];
+const COLOR_OPTIONS: CardColor[] = [
+  "white",
+  "blue",
+  "black",
+  "red",
+  "green",
+  "colorless",
+];
 
 export function CustomCardEditor({
   initialCard,
@@ -103,7 +123,8 @@ export function CustomCardEditor({
   readOnly = false,
 }: CustomCardEditorProps) {
   const { toast } = useToast();
-  
+  const { confirm, confirmDialog } = useConfirmDialog();
+
   // Initialize card state
   const [card, setCard] = useState<CustomCardDefinition>(() => {
     if (initialCard) {
@@ -136,29 +157,32 @@ export function CustomCardEditor({
     setIsModified(false);
     setErrors([]);
     toast({
-      title: 'Card Reset',
-      description: 'Card has been reset to its original state.',
+      title: "Card Reset",
+      description: "Card has been reset to its original state.",
     });
   }, [initialCard, toast]);
 
   // Update a specific field
-  const updateField = useCallback(<K extends keyof CustomCardDefinition>(
-    field: K,
-    value: CustomCardDefinition[K]
-  ) => {
-    setCard(prev => ({
-      ...prev,
-      [field]: value,
-      updatedAt: Date.now(),
-    }));
-    setIsModified(true);
-  }, []);
+  const updateField = useCallback(
+    <K extends keyof CustomCardDefinition>(
+      field: K,
+      value: CustomCardDefinition[K],
+    ) => {
+      setCard((prev) => ({
+        ...prev,
+        [field]: value,
+        updatedAt: Date.now(),
+      }));
+      setIsModified(true);
+    },
+    [],
+  );
 
   // Toggle a card type
   const toggleCardType = useCallback((type: CustomCardType) => {
-    setCard(prev => {
+    setCard((prev) => {
       const types = prev.cardTypes.includes(type)
-        ? prev.cardTypes.filter(t => t !== type)
+        ? prev.cardTypes.filter((t) => t !== type)
         : [...prev.cardTypes, type];
       return { ...prev, cardTypes: types, updatedAt: Date.now() };
     });
@@ -167,9 +191,9 @@ export function CustomCardEditor({
 
   // Toggle a color
   const toggleColor = useCallback((color: CardColor) => {
-    setCard(prev => {
+    setCard((prev) => {
       const colors = prev.colors.includes(color)
-        ? prev.colors.filter(c => c !== color)
+        ? prev.colors.filter((c) => c !== color)
         : [...prev.colors, color];
       return { ...prev, colors, updatedAt: Date.now() };
     });
@@ -182,19 +206,19 @@ export function CustomCardEditor({
     if (validationErrors.length > 0) {
       setErrors(validationErrors);
       toast({
-        variant: 'destructive',
-        title: 'Validation Failed',
-        description: validationErrors.join(', '),
+        variant: "destructive",
+        title: "Validation Failed",
+        description: validationErrors.join(", "),
       });
       return;
     }
-    
+
     onSave?.(card);
     setIsModified(false);
     setErrors([]);
     toast({
-      title: 'Card Saved',
-      description: 'Your custom card has been saved.',
+      title: "Card Saved",
+      description: "Your custom card has been saved.",
     });
   }, [card, onSave, toast]);
 
@@ -202,35 +226,41 @@ export function CustomCardEditor({
   const handleDelete = useCallback(() => {
     onDelete?.(card.id);
     toast({
-      title: 'Card Deleted',
-      description: 'Your custom card has been deleted.',
+      title: "Card Deleted",
+      description: "Your custom card has been deleted.",
     });
   }, [card.id, onDelete, toast]);
 
   // Handle export as JSON
   const handleExport = useCallback(() => {
     const json = JSON.stringify(card, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+    const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${card.name || 'custom-card'}.json`;
+    a.download = `${card.name || "custom-card"}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     onExport?.(card);
     toast({
-      title: 'Card Exported',
-      description: 'Card has been exported as JSON.',
+      title: "Card Exported",
+      description: "Card has been exported as JSON.",
     });
   }, [card, onExport, toast]);
 
   // Handle new card
-  const handleCreateNew = useCallback(() => {
+  const handleCreateNew = useCallback(async () => {
     if (isModified) {
-      if (!confirm('You have unsaved changes. Create a new card anyway?')) {
+      const confirmed = await confirm({
+        title: "Unsaved changes",
+        description: "You have unsaved changes. Create a new card anyway?",
+        confirmLabel: "Create New",
+        destructive: true,
+      });
+      if (!confirmed) {
         return;
       }
     }
@@ -243,32 +273,33 @@ export function CustomCardEditor({
     } as CustomCardDefinition);
     setIsModified(false);
     setErrors([]);
-  }, [isModified, onCreateNew]);
+  }, [isModified, onCreateNew, confirm]);
 
   // Update type line based on card types
   useEffect(() => {
     if (card.cardTypes.length > 0) {
       const typeLabels: Record<CustomCardType, string> = {
-        creature: 'Creature',
-        instant: 'Instant',
-        sorcery: 'Sorcery',
-        artifact: 'Artifact',
-        enchantment: 'Enchantment',
-        planeswalker: 'Planeswalker',
-        land: 'Land',
-        legendary: 'Legendary',
-        token: 'Token',
+        creature: "Creature",
+        instant: "Instant",
+        sorcery: "Sorcery",
+        artifact: "Artifact",
+        enchantment: "Enchantment",
+        planeswalker: "Planeswalker",
+        land: "Land",
+        legendary: "Legendary",
+        token: "Token",
       };
-      
-      const mainType = card.cardTypes.map(t => typeLabels[t]).join(' — ');
-      if (!card.typeLine.includes('—')) {
-        updateField('typeLine', mainType);
+
+      const mainType = card.cardTypes.map((t) => typeLabels[t]).join(" — ");
+      if (!card.typeLine.includes("—")) {
+        updateField("typeLine", mainType);
       }
     }
   }, [card.cardTypes]);
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
+      {confirmDialog}
       {/* Editor Panel */}
       <div className="flex-1 space-y-4">
         {/* Header Actions */}
@@ -282,11 +313,21 @@ export function CustomCardEditor({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleReset} disabled={readOnly}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReset}
+              disabled={readOnly}
+            >
               <RotateCcw className="w-4 h-4 mr-2" />
               Reset
             </Button>
-            <Button variant="outline" size="sm" onClick={handleCreateNew} disabled={readOnly}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCreateNew}
+              disabled={readOnly}
+            >
               <Plus className="w-4 h-4 mr-2" />
               New
             </Button>
@@ -305,7 +346,9 @@ export function CustomCardEditor({
         {errors.length > 0 && (
           <Card className="border-destructive">
             <CardHeader className="py-2">
-              <CardTitle className="text-destructive text-sm">Validation Errors</CardTitle>
+              <CardTitle className="text-destructive text-sm">
+                Validation Errors
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="list-disc list-inside text-sm text-destructive">
@@ -334,9 +377,7 @@ export function CustomCardEditor({
                   <Type className="w-4 h-4" />
                   Basic Information
                 </CardTitle>
-                <CardDescription>
-                  Core card properties
-                </CardDescription>
+                <CardDescription>Core card properties</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-2">
@@ -344,7 +385,7 @@ export function CustomCardEditor({
                   <Input
                     id="cardName"
                     value={card.name}
-                    onChange={(e) => updateField('name', e.target.value)}
+                    onChange={(e) => updateField("name", e.target.value)}
                     placeholder="Enter card name"
                     disabled={readOnly}
                   />
@@ -355,7 +396,7 @@ export function CustomCardEditor({
                   <Input
                     id="manaCost"
                     value={card.manaCost}
-                    onChange={(e) => updateField('manaCost', e.target.value)}
+                    onChange={(e) => updateField("manaCost", e.target.value)}
                     placeholder="{1}{W}{U} or 2UU"
                     disabled={readOnly}
                   />
@@ -369,7 +410,7 @@ export function CustomCardEditor({
                   <Input
                     id="typeLine"
                     value={card.typeLine}
-                    onChange={(e) => updateField('typeLine', e.target.value)}
+                    onChange={(e) => updateField("typeLine", e.target.value)}
                     placeholder="Creature — Human Soldier"
                     disabled={readOnly}
                   />
@@ -381,18 +422,25 @@ export function CustomCardEditor({
                     {COLOR_OPTIONS.map((color) => (
                       <Button
                         key={color}
-                        variant={card.colors.includes(color) ? 'default' : 'outline'}
+                        variant={
+                          card.colors.includes(color) ? "default" : "outline"
+                        }
                         size="sm"
                         className={cn(
-                          'gap-2',
-                          card.colors.includes(color) && 
-                          `bg-[${CARD_COLORS[color].hex}] hover:bg-[${CARD_COLORS[color].hex}]/90`
+                          "gap-2",
+                          card.colors.includes(color) &&
+                            `bg-[${CARD_COLORS[color].hex}] hover:bg-[${CARD_COLORS[color].hex}]/90`,
                         )}
                         onClick={() => toggleColor(color)}
                         disabled={readOnly}
                         style={{
-                          backgroundColor: card.colors.includes(color) ? CARD_COLORS[color].hex : undefined,
-                          color: color === 'white' || color === 'colorless' ? '#000' : '#fff',
+                          backgroundColor: card.colors.includes(color)
+                            ? CARD_COLORS[color].hex
+                            : undefined,
+                          color:
+                            color === "white" || color === "colorless"
+                              ? "#000"
+                              : "#fff",
                         }}
                       >
                         <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center">
@@ -408,7 +456,9 @@ export function CustomCardEditor({
                   <Label htmlFor="rarity">Rarity</Label>
                   <Select
                     value={card.rarity}
-                    onValueChange={(value) => updateField('rarity', value as CardRarity)}
+                    onValueChange={(value) =>
+                      updateField("rarity", value as CardRarity)
+                    }
                     disabled={readOnly}
                   >
                     <SelectTrigger>
@@ -418,7 +468,11 @@ export function CustomCardEditor({
                       {RARITIES.map((rarity) => (
                         <SelectItem key={rarity.value} value={rarity.value}>
                           <span className="flex items-center gap-2">
-                            <span style={{ color: RARITY_COLORS[rarity.value] }}>●</span>
+                            <span
+                              style={{ color: RARITY_COLORS[rarity.value] }}
+                            >
+                              ●
+                            </span>
                             {rarity.label}
                           </span>
                         </SelectItem>
@@ -438,16 +492,18 @@ export function CustomCardEditor({
                   <Type className="w-4 h-4" />
                   Card Types
                 </CardTitle>
-                <CardDescription>
-                  Select one or more card types
-                </CardDescription>
+                <CardDescription>Select one or more card types</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                   {CARD_TYPES.map((type) => (
                     <Button
                       key={type.value}
-                      variant={card.cardTypes.includes(type.value) ? 'default' : 'outline'}
+                      variant={
+                        card.cardTypes.includes(type.value)
+                          ? "default"
+                          : "outline"
+                      }
                       className="justify-start gap-2"
                       onClick={() => toggleCardType(type.value)}
                       disabled={readOnly}
@@ -464,22 +520,27 @@ export function CustomCardEditor({
                   <Label htmlFor="subtypes">Subtypes</Label>
                   <Input
                     id="subtypes"
-                    value={card.subtypes?.join(' ') || ''}
-                    onChange={(e) => updateField('subtypes', e.target.value.split(' ').filter(Boolean))}
+                    value={card.subtypes?.join(" ") || ""}
+                    onChange={(e) =>
+                      updateField(
+                        "subtypes",
+                        e.target.value.split(" ").filter(Boolean),
+                      )
+                    }
                     placeholder="Human Soldier (space separated)"
                     disabled={readOnly}
                   />
                 </div>
 
                 {/* Power/Toughness for creatures */}
-                {card.cardTypes.includes('creature') && (
+                {card.cardTypes.includes("creature") && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="grid gap-2">
                       <Label htmlFor="power">Power</Label>
                       <Input
                         id="power"
                         value={card.power}
-                        onChange={(e) => updateField('power', e.target.value)}
+                        onChange={(e) => updateField("power", e.target.value)}
                         placeholder="1"
                         disabled={readOnly}
                       />
@@ -489,7 +550,9 @@ export function CustomCardEditor({
                       <Input
                         id="toughness"
                         value={card.toughness}
-                        onChange={(e) => updateField('toughness', e.target.value)}
+                        onChange={(e) =>
+                          updateField("toughness", e.target.value)
+                        }
                         placeholder="1"
                         disabled={readOnly}
                       />
@@ -498,13 +561,13 @@ export function CustomCardEditor({
                 )}
 
                 {/* Loyalty for planeswalkers */}
-                {card.cardTypes.includes('planeswalker') && (
+                {card.cardTypes.includes("planeswalker") && (
                   <div className="grid gap-2">
                     <Label htmlFor="loyalty">Starting Loyalty</Label>
                     <Input
                       id="loyalty"
                       value={card.loyalty}
-                      onChange={(e) => updateField('loyalty', e.target.value)}
+                      onChange={(e) => updateField("loyalty", e.target.value)}
                       placeholder="3"
                       disabled={readOnly}
                     />
@@ -532,13 +595,14 @@ export function CustomCardEditor({
                   <Textarea
                     id="oracleText"
                     value={card.oracleText}
-                    onChange={(e) => updateField('oracleText', e.target.value)}
+                    onChange={(e) => updateField("oracleText", e.target.value)}
                     placeholder="Enter card abilities and rules text..."
                     rows={6}
                     disabled={readOnly}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use Enter for new lines. {'{T}'} for tap, {'{Q}'} for untap, etc.
+                    Use Enter for new lines. {"{T}"} for tap, {"{Q}"} for untap,
+                    etc.
                   </p>
                 </div>
 
@@ -547,7 +611,7 @@ export function CustomCardEditor({
                   <Textarea
                     id="flavorText"
                     value={card.flavorText}
-                    onChange={(e) => updateField('flavorText', e.target.value)}
+                    onChange={(e) => updateField("flavorText", e.target.value)}
                     placeholder="Enter flavor text (optional)..."
                     rows={3}
                     disabled={readOnly}
@@ -574,7 +638,9 @@ export function CustomCardEditor({
                   <Label htmlFor="frameStyle">Frame Style</Label>
                   <Select
                     value={card.frameStyle}
-                    onValueChange={(value) => updateField('frameStyle', value as CardFrameStyle)}
+                    onValueChange={(value) =>
+                      updateField("frameStyle", value as CardFrameStyle)
+                    }
                     disabled={readOnly}
                   >
                     <SelectTrigger>
@@ -597,8 +663,13 @@ export function CustomCardEditor({
                   <div className="flex gap-2">
                     <Input
                       id="artUrl"
-                      value={card.art.imageUrl || ''}
-                      onChange={(e) => updateField('art', { ...card.art, imageUrl: e.target.value })}
+                      value={card.art.imageUrl || ""}
+                      onChange={(e) =>
+                        updateField("art", {
+                          ...card.art,
+                          imageUrl: e.target.value,
+                        })
+                      }
                       placeholder="https://example.com/art.jpg"
                       disabled={readOnly}
                     />
@@ -606,7 +677,12 @@ export function CustomCardEditor({
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => updateField('art', { ...card.art, imageUrl: undefined })}
+                        onClick={() =>
+                          updateField("art", {
+                            ...card.art,
+                            imageUrl: undefined,
+                          })
+                        }
                         disabled={readOnly}
                       >
                         <X className="w-4 h-4" />
@@ -618,22 +694,35 @@ export function CustomCardEditor({
                 <div className="grid gap-2">
                   <Label>Procedural Art Colors</Label>
                   <div className="flex flex-wrap gap-2">
-                    {(['white', 'blue', 'black', 'red', 'green'] as CardColor[]).map((color) => (
+                    {(
+                      ["white", "blue", "black", "red", "green"] as CardColor[]
+                    ).map((color) => (
                       <Button
                         key={color}
-                        variant={card.art.proceduralColors?.includes(color) ? 'default' : 'outline'}
+                        variant={
+                          card.art.proceduralColors?.includes(color)
+                            ? "default"
+                            : "outline"
+                        }
                         size="sm"
                         onClick={() => {
                           const colors = card.art.proceduralColors || [];
                           const newColors = colors.includes(color)
-                            ? colors.filter(c => c !== color)
+                            ? colors.filter((c) => c !== color)
                             : [...colors, color];
-                          updateField('art', { ...card.art, proceduralColors: newColors });
+                          updateField("art", {
+                            ...card.art,
+                            proceduralColors: newColors,
+                          });
                         }}
                         disabled={readOnly}
                         style={{
-                          backgroundColor: card.art.proceduralColors?.includes(color) ? CARD_COLORS[color].hex : undefined,
-                          color: color === 'white' ? '#000' : '#fff',
+                          backgroundColor: card.art.proceduralColors?.includes(
+                            color,
+                          )
+                            ? CARD_COLORS[color].hex
+                            : undefined,
+                          color: color === "white" ? "#000" : "#fff",
                         }}
                       >
                         {CARD_COLORS[color].name}
@@ -648,7 +737,7 @@ export function CustomCardEditor({
                   <Label>Artist Credit</Label>
                   <Input
                     value={card.artist}
-                    onChange={(e) => updateField('artist', e.target.value)}
+                    onChange={(e) => updateField("artist", e.target.value)}
                     placeholder="Artist Name"
                     disabled={readOnly}
                   />
@@ -658,7 +747,7 @@ export function CustomCardEditor({
                   <Label>Copyright</Label>
                   <Input
                     value={card.copyright}
-                    onChange={(e) => updateField('copyright', e.target.value)}
+                    onChange={(e) => updateField("copyright", e.target.value)}
                     placeholder="© 2024 Custom Cards"
                     disabled={readOnly}
                   />
@@ -686,7 +775,9 @@ export function CustomCardEditor({
                     <Input
                       id="setCode"
                       value={card.setCode}
-                      onChange={(e) => updateField('setCode', e.target.value.toUpperCase())}
+                      onChange={(e) =>
+                        updateField("setCode", e.target.value.toUpperCase())
+                      }
                       placeholder="CUS"
                       maxLength={3}
                       disabled={readOnly}
@@ -697,7 +788,9 @@ export function CustomCardEditor({
                     <Input
                       id="collectorNumber"
                       value={card.collectorNumber}
-                      onChange={(e) => updateField('collectorNumber', e.target.value)}
+                      onChange={(e) =>
+                        updateField("collectorNumber", e.target.value)
+                      }
                       placeholder="001"
                       disabled={readOnly}
                     />
@@ -709,7 +802,7 @@ export function CustomCardEditor({
                   <Input
                     id="setName"
                     value={card.setName}
-                    onChange={(e) => updateField('setName', e.target.value)}
+                    onChange={(e) => updateField("setName", e.target.value)}
                     placeholder="Custom"
                     disabled={readOnly}
                   />
@@ -739,9 +832,7 @@ export function CustomCardEditor({
         <Card className="sticky top-4">
           <CardHeader>
             <CardTitle>Card Preview</CardTitle>
-            <CardDescription>
-              Live preview of your card
-            </CardDescription>
+            <CardDescription>Live preview of your card</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             {/* Import dynamically to avoid SSR issues */}
@@ -758,16 +849,17 @@ export function CustomCardEditor({
 
 // Preview renderer component (dynamically loaded)
 function PreviewRenderer({ card }: { card: CustomCardDefinition }) {
-  const [CustomCardPreview, setCustomCardPreview] = useState<React.ComponentType<{
-    card: CustomCardDefinition;
-    scale?: number;
-    interactive?: boolean;
-    className?: string;
-    showBack?: boolean;
-  }> | null>(null);
+  const [CustomCardPreview, setCustomCardPreview] =
+    useState<React.ComponentType<{
+      card: CustomCardDefinition;
+      scale?: number;
+      interactive?: boolean;
+      className?: string;
+      showBack?: boolean;
+    }> | null>(null);
 
   useEffect(() => {
-    import('@/components/custom-card-preview').then((module) => {
+    import("@/components/custom-card-preview").then((module) => {
       setCustomCardPreview(() => module.CustomCardPreview);
     });
   }, []);

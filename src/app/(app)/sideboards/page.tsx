@@ -1,20 +1,45 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { SideboardPlanCard, SideboardPlanEditor } from '@/components/meta/sideboard';
-import { getAllSideboardPlans, deleteSideboardPlan, SavedSideboardPlan } from '@/lib/sideboard-plans';
-import { MagicFormat } from '@/lib/meta';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import React, { useState, useEffect } from "react";
+import {
+  SideboardPlanCard,
+  SideboardPlanEditor,
+} from "@/components/meta/sideboard";
+import {
+  getAllSideboardPlans,
+  deleteSideboardPlan,
+  SavedSideboardPlan,
+} from "@/lib/sideboard-plans";
+import { MagicFormat } from "@/lib/meta";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Shield } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Trash2, Shield } from "lucide-react";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 export default function SideboardsPage() {
   const [plans, setPlans] = useState<SavedSideboardPlan[]>([]);
-  const [formatFilter, setFormatFilter] = useState<string>('all');
+  const [formatFilter, setFormatFilter] = useState<string>("all");
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<SavedSideboardPlan | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<SavedSideboardPlan | null>(null);
+  const [editingPlan, setEditingPlan] = useState<SavedSideboardPlan | null>(
+    null,
+  );
+  const [selectedPlan, setSelectedPlan] = useState<SavedSideboardPlan | null>(
+    null,
+  );
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   // Load plans on mount
   useEffect(() => {
@@ -23,17 +48,27 @@ export default function SideboardsPage() {
 
   const loadPlans = () => {
     const allPlans = getAllSideboardPlans();
-    setPlans(allPlans.sort((a, b) => 
-      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    ));
+    setPlans(
+      allPlans.sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+    );
   };
 
-  const filteredPlans = formatFilter === 'all' 
-    ? plans 
-    : plans.filter(plan => plan.format === formatFilter);
+  const filteredPlans =
+    formatFilter === "all"
+      ? plans
+      : plans.filter((plan) => plan.format === formatFilter);
 
-  const handleDelete = (plan: SavedSideboardPlan) => {
-    if (confirm(`Delete "${plan.name}"? This cannot be undone.`)) {
+  const handleDelete = async (plan: SavedSideboardPlan) => {
+    const confirmed = await confirm({
+      title: "Delete sideboard plan?",
+      description: `Delete "${plan.name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (confirmed) {
       deleteSideboardPlan(plan.id);
       loadPlans();
       if (selectedPlan?.id === plan.id) {
@@ -54,6 +89,7 @@ export default function SideboardsPage() {
 
   return (
     <div className="flex flex-1 flex-col">
+      {confirmDialog}
       <div className="container mx-auto py-6 px-4 max-w-6xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -63,7 +99,12 @@ export default function SideboardsPage() {
               Manage your custom sideboard configurations
             </p>
           </div>
-          <Button onClick={() => { setEditingPlan(null); setEditorOpen(true); }}>
+          <Button
+            onClick={() => {
+              setEditingPlan(null);
+              setEditorOpen(true);
+            }}
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Plan
           </Button>
@@ -87,7 +128,7 @@ export default function SideboardsPage() {
             </Select>
           </div>
           <span className="text-sm text-muted-foreground">
-            {filteredPlans.length} plan{filteredPlans.length !== 1 ? 's' : ''}
+            {filteredPlans.length} plan{filteredPlans.length !== 1 ? "s" : ""}
           </span>
         </div>
 
@@ -112,11 +153,17 @@ export default function SideboardsPage() {
                 No Sideboard Plans Yet
               </CardTitle>
               <CardDescription>
-                Create custom sideboard plans or save recommendations from the meta page.
+                Create custom sideboard plans or save recommendations from the
+                meta page.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button onClick={() => { setEditingPlan(null); setEditorOpen(true); }}>
+              <Button
+                onClick={() => {
+                  setEditingPlan(null);
+                  setEditorOpen(true);
+                }}
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Your First Plan
               </Button>

@@ -3,48 +3,71 @@
  * Allows players to create and manage a game lobby
  */
 
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Copy, Check, Users, Play, X, Crown, Clock, Eye, Info } from 'lucide-react';
-import { useLobby } from '@/hooks/use-lobby';
-import { HostGameConfig, PlayerStatus } from '@/lib/multiplayer-types';
-import { FormatRulesDisplay } from '@/components/format-rules-display';
-import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
-import { TeamAssignment } from '@/components/team-assignment';
-import { SavedDeck } from '@/app/actions';
+import {
+  Copy,
+  Check,
+  Users,
+  Play,
+  X,
+  Crown,
+  Clock,
+  Eye,
+  Info,
+} from "lucide-react";
+import { useLobby } from "@/hooks/use-lobby";
+import { HostGameConfig, PlayerStatus } from "@/lib/multiplayer-types";
+import { FormatRulesDisplay } from "@/components/format-rules-display";
+import { DeckSelectorWithValidation } from "@/components/deck-selector-with-validation";
+import { TeamAssignment } from "@/components/team-assignment";
+import { SavedDeck } from "@/app/actions";
 import {
   createHostConnection,
   type ConnectionData,
   type DirectConnectionState,
-} from '@/lib/p2p-direct-connection';
-import { QRCodeDisplay } from '@/components/qr-code-display';
-import { P2PStatusBanner } from '@/components/p2p-status-banner';
+} from "@/lib/p2p-direct-connection";
+import { QRCodeDisplay } from "@/components/qr-code-display";
+import { P2PStatusBanner } from "@/components/p2p-status-banner";
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 
 export default function HostLobbyPage() {
-  const { 
-    lobby, 
-    isHost, 
-    isLoading, 
-    error, 
-    createLobby, 
-    updatePlayerStatus, 
-    updatePlayerDeck, 
-    canStartGame, 
-    canForceStart, 
-    startGame, 
-    forceStartGame, 
-    closeLobby, 
-    getGameCode, 
+  const {
+    lobby,
+    isHost,
+    isLoading,
+    error,
+    createLobby,
+    updatePlayerStatus,
+    updatePlayerDeck,
+    canStartGame,
+    canForceStart,
+    startGame,
+    forceStartGame,
+    closeLobby,
+    getGameCode,
     validateDeckForFormat,
     // Team management
     isTeamMode,
@@ -54,11 +77,20 @@ export default function HostLobbyPage() {
     updateTeamSettings,
     updateTeamName,
   } = useLobby();
+  const { confirm, confirmDialog } = useConfirmDialog();
 
   // Form state
-  const [gameName, setGameName] = useState('');
-  const [gameFormat, setGameFormat] = useState<'commander' | 'modern' | 'standard' | 'pioneer' | 'legacy' | 'vintage' | 'pauper'>('commander');
-  const [playerCount, setPlayerCount] = useState<'2' | '3' | '4'>('4');
+  const [gameName, setGameName] = useState("");
+  const [gameFormat, setGameFormat] = useState<
+    | "commander"
+    | "modern"
+    | "standard"
+    | "pioneer"
+    | "legacy"
+    | "vintage"
+    | "pauper"
+  >("commander");
+  const [playerCount, setPlayerCount] = useState<"2" | "3" | "4">("4");
   const [allowSpectators, setAllowSpectators] = useState(true);
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [timerMinutes, setTimerMinutes] = useState(30);
@@ -68,8 +100,10 @@ export default function HostLobbyPage() {
   // UI state
   const [copied, setCopied] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(true);
-  const [p2pConnectionData, setP2pConnectionData] = useState<ConnectionData | null>(null);
-  const [p2pConnectionState, setP2pConnectionState] = useState<DirectConnectionState>('idle');
+  const [p2pConnectionData, setP2pConnectionData] =
+    useState<ConnectionData | null>(null);
+  const [p2pConnectionState, setP2pConnectionState] =
+    useState<DirectConnectionState>("idle");
   const [showP2pSetup, setShowP2pSetup] = useState(false);
 
   const gameCode = getGameCode();
@@ -99,7 +133,8 @@ export default function HostLobbyPage() {
     };
 
     // Get player name from localStorage or use default
-    const hostName = localStorage.getItem('planar_nexus_player_name') || 'Host Player';
+    const hostName =
+      localStorage.getItem("planar_nexus_player_name") || "Host Player";
 
     createLobby(config, hostName);
     setShowCreateForm(false);
@@ -121,7 +156,8 @@ export default function HostLobbyPage() {
   // Setup P2P connection with QR code
   const setupP2PConnection = async (hostName: string) => {
     try {
-      const playerId = localStorage.getItem('planar_nexus_player_id') || `host-${Date.now()}`;
+      const playerId =
+        localStorage.getItem("planar_nexus_player_id") || `host-${Date.now()}`;
 
       await createHostConnection({
         playerId,
@@ -130,34 +166,37 @@ export default function HostLobbyPage() {
         gameCode: getGameCode(),
         onQRCodeGenerated: (qrDataUrl, connectionData) => {
           setP2pConnectionData(connectionData);
-          setP2pConnectionState('waiting-for-answer');
+          setP2pConnectionState("waiting-for-answer");
           setShowP2pSetup(true);
         },
-        onICECandidate: () => {
-        },
+        onICECandidate: () => {},
       });
     } catch (error) {
-      console.error('[P2P Host] Failed to setup connection:', error);
+      console.error("[P2P Host] Failed to setup connection:", error);
     }
   };
 
   // Refresh P2P connection
   const refreshP2PConnection = async () => {
-    const hostName = localStorage.getItem('planar_nexus_player_name') || 'Host Player';
+    const hostName =
+      localStorage.getItem("planar_nexus_player_name") || "Host Player";
     setShowP2pSetup(false);
     setP2pConnectionData(null);
-    setP2pConnectionState('idle');
+    setP2pConnectionState("idle");
     await setupP2PConnection(hostName);
   };
 
   // Helper to get stored decks
   const getStoredDecks = () => {
-    const stored = localStorage.getItem('saved-decks');
+    const stored = localStorage.getItem("saved-decks");
     return stored ? JSON.parse(stored) : [];
   };
 
   // Handle deck selection with validation
-  const handleDeckSelect = (deck: SavedDeck, validation?: { isValid: boolean; errors: string[] }) => {
+  const handleDeckSelect = (
+    deck: SavedDeck,
+    validation?: { isValid: boolean; errors: string[] },
+  ) => {
     setSelectedDeck(deck);
     // Validation is handled by the deck selector component
     if (!validation) {
@@ -166,7 +205,7 @@ export default function HostLobbyPage() {
 
     // Update player deck in lobby
     if (lobby) {
-      const hostPlayer = lobby.players.find(p => p.id === lobby.hostId);
+      const hostPlayer = lobby.players.find((p) => p.id === lobby.hostId);
       if (hostPlayer) {
         updatePlayerDeck(lobby.hostId, deck.id, deck.name, deck);
       }
@@ -174,16 +213,17 @@ export default function HostLobbyPage() {
   };
 
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(lobby?.gameCode || '');
+    navigator.clipboard.writeText(lobby?.gameCode || "");
     setCopied(true);
   };
 
   const handleReadyToggle = () => {
     if (!lobby) return;
 
-    const hostPlayer = lobby.players.find(p => p.id === lobby.hostId);
+    const hostPlayer = lobby.players.find((p) => p.id === lobby.hostId);
     if (hostPlayer) {
-      const newStatus: PlayerStatus = hostPlayer.status === 'ready' ? 'not-ready' : 'ready';
+      const newStatus: PlayerStatus =
+        hostPlayer.status === "ready" ? "not-ready" : "ready";
       updatePlayerStatus(lobby.hostId, newStatus);
     }
   };
@@ -192,40 +232,58 @@ export default function HostLobbyPage() {
     const success = startGame();
     if (success) {
       // Navigate to game board
-      window.location.href = '/game-board';
+      window.location.href = "/game-board";
     }
   };
 
-  const handleCloseLobby = () => {
-    if (confirm('Are you sure you want to close the lobby? This will disconnect all players.')) {
+  const handleCloseLobby = async () => {
+    const confirmed = await confirm({
+      title: "Close lobby?",
+      description:
+        "Are you sure you want to close the lobby? This will disconnect all players.",
+      confirmLabel: "Close Lobby",
+      destructive: true,
+    });
+    if (confirmed) {
       closeLobby();
-      window.location.href = '/multiplayer';
+      window.location.href = "/multiplayer";
     }
   };
 
-  const handleLeaveLobby = () => {
-    if (confirm('Are you sure you want to leave? The lobby will be closed for all players.')) {
+  const handleLeaveLobby = async () => {
+    const confirmed = await confirm({
+      title: "Leave lobby?",
+      description:
+        "Are you sure you want to leave? The lobby will be closed for all players.",
+      confirmLabel: "Leave",
+      destructive: true,
+    });
+    if (confirmed) {
       closeLobby();
-      window.location.href = '/multiplayer';
+      window.location.href = "/multiplayer";
     }
   };
 
   // Format display name
   const formatDisplayNames: Record<string, string> = {
-    commander: 'Commander',
-    modern: 'Modern',
-    standard: 'Standard',
-    pioneer: 'Pioneer',
-    legacy: 'Legacy',
-    vintage: 'Vintage',
-    pauper: 'Pauper',
+    commander: "Commander",
+    modern: "Modern",
+    standard: "Standard",
+    pioneer: "Pioneer",
+    legacy: "Legacy",
+    vintage: "Vintage",
+    pauper: "Pauper",
   };
 
   if (showCreateForm && !lobby) {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-4xl mx-auto">
         <header className="mb-6">
-          <Button variant="ghost" onClick={() => window.location.href = '/multiplayer'} className="mb-4">
+          <Button
+            variant="ghost"
+            onClick={() => (window.location.href = "/multiplayer")}
+            className="mb-4"
+          >
             ← Back
           </Button>
           <h1 className="font-headline text-3xl font-bold">Host a Game</h1>
@@ -255,7 +313,12 @@ export default function HostLobbyPage() {
               {/* Game Format */}
               <div className="space-y-2">
                 <Label htmlFor="format">Format *</Label>
-                <Select value={gameFormat} onValueChange={(value: typeof gameFormat) => setGameFormat(value)}>
+                <Select
+                  value={gameFormat}
+                  onValueChange={(value: typeof gameFormat) =>
+                    setGameFormat(value)
+                  }
+                >
                   <SelectTrigger id="format">
                     <SelectValue />
                   </SelectTrigger>
@@ -274,7 +337,12 @@ export default function HostLobbyPage() {
               {/* Player Count */}
               <div className="space-y-2">
                 <Label htmlFor="players">Max Players</Label>
-                <Select value={playerCount} onValueChange={(value: typeof playerCount) => setPlayerCount(value)}>
+                <Select
+                  value={playerCount}
+                  onValueChange={(value: typeof playerCount) =>
+                    setPlayerCount(value)
+                  }
+                >
                   <SelectTrigger id="players">
                     <SelectValue />
                   </SelectTrigger>
@@ -310,7 +378,10 @@ export default function HostLobbyPage() {
                       Let others watch your game
                     </p>
                   </div>
-                  <Switch checked={allowSpectators} onCheckedChange={setAllowSpectators} />
+                  <Switch
+                    checked={allowSpectators}
+                    onCheckedChange={setAllowSpectators}
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -320,7 +391,10 @@ export default function HostLobbyPage() {
                       Add a turn timer for competitive play
                     </p>
                   </div>
-                  <Switch checked={timerEnabled} onCheckedChange={setTimerEnabled} />
+                  <Switch
+                    checked={timerEnabled}
+                    onCheckedChange={setTimerEnabled}
+                  />
                 </div>
 
                 {timerEnabled && (
@@ -332,7 +406,9 @@ export default function HostLobbyPage() {
                       min={1}
                       max={60}
                       value={timerMinutes}
-                      onChange={(e) => setTimerMinutes(parseInt(e.target.value) || 30)}
+                      onChange={(e) =>
+                        setTimerMinutes(parseInt(e.target.value) || 30)
+                      }
                     />
                   </div>
                 )}
@@ -350,7 +426,7 @@ export default function HostLobbyPage() {
                 className="w-full"
                 size="lg"
               >
-                {isLoading ? 'Creating...' : 'Create Lobby'}
+                {isLoading ? "Creating..." : "Create Lobby"}
               </Button>
             </CardContent>
           </Card>
@@ -365,6 +441,7 @@ export default function HostLobbyPage() {
 
     return (
       <div className="flex-1 p-4 md:p-6 max-w-5xl mx-auto">
+        {confirmDialog}
         <header className="mb-6">
           <Button variant="ghost" onClick={handleLeaveLobby} className="mb-4">
             ← Leave Lobby
@@ -373,7 +450,9 @@ export default function HostLobbyPage() {
             <div>
               <h1 className="font-headline text-3xl font-bold flex items-center gap-2">
                 {lobby.name}
-                <Badge variant="secondary">{formatDisplayNames[lobby.format]}</Badge>
+                <Badge variant="secondary">
+                  {formatDisplayNames[lobby.format]}
+                </Badge>
               </h1>
               <p className="text-muted-foreground mt-1">
                 Waiting for players to join...
@@ -393,7 +472,8 @@ export default function HostLobbyPage() {
                 <Users className="w-5 h-5" />
                 Invite Players
               </CardTitle>
-              <CardDescription>Share this code with your friends
+              <CardDescription>
+                Share this code with your friends
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -425,11 +505,15 @@ export default function HostLobbyPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Format:</span>
-                  <span className="font-medium">{formatDisplayNames[lobby.format]}</span>
+                  <span className="font-medium">
+                    {formatDisplayNames[lobby.format]}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Players:</span>
-                  <span className="font-medium">{lobby.players.length} / {maxPlayers}</span>
+                  <span className="font-medium">
+                    {lobby.players.length} / {maxPlayers}
+                  </span>
                 </div>
                 {lobby.settings.timerEnabled && (
                   <div className="flex justify-between">
@@ -437,7 +521,9 @@ export default function HostLobbyPage() {
                       <Clock className="w-3 h-3" />
                       Timer:
                     </span>
-                    <span className="font-medium">{lobby.settings.timerMinutes} min turns</span>
+                    <span className="font-medium">
+                      {lobby.settings.timerMinutes} min turns
+                    </span>
                   </div>
                 )}
                 {lobby.settings.allowSpectators && (
@@ -454,7 +540,8 @@ export default function HostLobbyPage() {
               {playerSlots > 0 && (
                 <Alert>
                   <AlertDescription className="text-center">
-                    Waiting for {playerSlots} more player{playerSlots > 1 ? 's' : ''}...
+                    Waiting for {playerSlots} more player
+                    {playerSlots > 1 ? "s" : ""}...
                   </AlertDescription>
                 </Alert>
               )}
@@ -475,7 +562,11 @@ export default function HostLobbyPage() {
                 }}
               />
               <div className="mt-4 flex gap-3">
-                <Button onClick={refreshP2PConnection} variant="outline" className="flex-1">
+                <Button
+                  onClick={refreshP2PConnection}
+                  variant="outline"
+                  className="flex-1"
+                >
                   Generate New Connection Code
                 </Button>
                 <Button onClick={() => setShowP2pSetup(false)} variant="ghost">
@@ -488,7 +579,11 @@ export default function HostLobbyPage() {
           {/* Show P2P Setup Button */}
           {!showP2pSetup && (
             <div className="md:col-span-3">
-              <Button onClick={() => setShowP2pSetup(true)} variant="outline" className="w-full">
+              <Button
+                onClick={() => setShowP2pSetup(true)}
+                variant="outline"
+                className="w-full"
+              >
                 Show P2P Connection Code
               </Button>
             </div>
@@ -558,30 +653,42 @@ export default function HostLobbyPage() {
                         <div className="font-medium">
                           {player.name}
                           {player.id === lobby.hostId && (
-                            <Badge variant="outline" className="ml-2">Host</Badge>
+                            <Badge variant="outline" className="ml-2">
+                              Host
+                            </Badge>
                           )}
                         </div>
                         {player.deckName && (
                           <div className="text-sm text-muted-foreground">
                             Deck: {player.deckName}
-                            {player.deckFormat && player.deckFormat !== lobby.format && (
-                              <span className="text-yellow-600 ml-2">
-                                ({player.deckFormat} deck)
-                              </span>
-                            )}
+                            {player.deckFormat &&
+                              player.deckFormat !== lobby.format && (
+                                <span className="text-yellow-600 ml-2">
+                                  ({player.deckFormat} deck)
+                                </span>
+                              )}
                           </div>
                         )}
-                        {player.deckValidationErrors && player.deckValidationErrors.length > 0 && (
-                          <div className="text-xs text-red-500 mt-1">
-                            {player.deckValidationErrors[0]}
-                          </div>
-                        )}
+                        {player.deckValidationErrors &&
+                          player.deckValidationErrors.length > 0 && (
+                            <div className="text-xs text-red-500 mt-1">
+                              {player.deckValidationErrors[0]}
+                            </div>
+                          )}
                       </div>
                     </div>
                     <Badge
-                      variant={player.status === 'ready' || player.status === 'host' ? 'default' : 'secondary'}
+                      variant={
+                        player.status === "ready" || player.status === "host"
+                          ? "default"
+                          : "secondary"
+                      }
                     >
-                      {player.status === 'ready' ? 'Ready' : player.status === 'host' ? 'Host' : 'Not Ready'}
+                      {player.status === "ready"
+                        ? "Ready"
+                        : player.status === "host"
+                          ? "Host"
+                          : "Not Ready"}
                     </Badge>
                   </div>
                 ))}
@@ -629,11 +736,17 @@ export default function HostLobbyPage() {
                 ) : (
                   <Button
                     onClick={handleReadyToggle}
-                    variant={lobby.players.find(p => p.id === lobby.hostId)?.status === 'ready' ? 'outline' : 'default'}
+                    variant={
+                      lobby.players.find((p) => p.id === lobby.hostId)
+                        ?.status === "ready"
+                        ? "outline"
+                        : "default"
+                    }
                     className="flex-1"
                     size="lg"
                   >
-                    {lobby.players.find(p => p.id === lobby.hostId)?.status === 'ready' ? (
+                    {lobby.players.find((p) => p.id === lobby.hostId)
+                      ?.status === "ready" ? (
                       <>
                         <X className="w-4 h-4 mr-2" />
                         Not Ready
@@ -651,16 +764,17 @@ export default function HostLobbyPage() {
               {!canStartGame && !canForceStart && (
                 <p className="text-xs text-center text-muted-foreground mt-2">
                   {lobby.players.length < 2
-                    ? 'Need at least 2 players to start'
-                    : lobby.players.some(p => !p.deckId)
-                    ? 'All players must select a deck'
-                    : 'All players must have valid decks and be ready to start'}
+                    ? "Need at least 2 players to start"
+                    : lobby.players.some((p) => !p.deckId)
+                      ? "All players must select a deck"
+                      : "All players must have valid decks and be ready to start"}
                 </p>
               )}
 
               {canForceStart && !canStartGame && (
                 <p className="text-xs text-center text-amber-600 mt-2">
-                  Not all players are ready. Use "Force Start" to begin with ready players only.
+                  Not all players are ready. Use "Force Start" to begin with
+                  ready players only.
                 </p>
               )}
             </CardContent>
