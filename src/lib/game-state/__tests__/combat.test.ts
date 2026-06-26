@@ -2758,3 +2758,287 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
     });
   });
 });
+
+// ============================================================
+// Infect and Toxic keyword combat damage (Issue #972)
+// CR 702.93 (Infect): damage to creatures is dealt as -1/-1 counters;
+//   damage to players is dealt as poison counters (no life loss).
+// CR 702.94 (Toxic): a creature with toxic N that deals combat damage
+//   to a player causes that player to get N poison counters IN ADDITION
+//   to the normal damage effects.
+// ============================================================
+describe("Combat System - Infect and Toxic (#972)", () => {
+  function getMinusOneCounters(
+    state: import("../types").GameState,
+    cardId: CardInstanceId,
+  ): number {
+    return (
+      state.cards.get(cardId)?.counters.find((c) => c.type === "-1/-1")
+        ?.count ?? 0
+    );
+  }
+
+  it("infect attacker deals -1/-1 counters (not marked damage) to a blocker (CR 702.93b)", () => {
+    // 3/3 infect attacker vs 0/5 blocker: 3 infect damage → 3 -1/-1 counters.
+    // Blocker effective toughness drops to 2, so it survives with counters and
+    // NO damage marked on it.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Infect Attacker", power: 3, toughness: 3, keywords: ["Infect"] }],
+      [{ name: "Blocker", power: 0, toughness: 5 }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    atk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blk = declareBlockers(
+      atk.state,
+      new Map([[attackerId, [blockerId]]]),
+    );
+
+    const result = resolveCombatDamage(blk.state);
+    expect(result.success).toBe(true);
+
+    // Blocker received 3 -1/-1 counters, NOT 3 marked damage.
+    expect(getMinusOneCounters(result.state, blockerId)).toBe(3);
+    const blockerCard = result.state.cards.get(blockerId)!;
+    expect(blockerCard.damage).toBe(0);
+
+    // Effective toughness 5 - 3 = 2 > 0, so the blocker survives.
+    const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).not.toContain(blockerId);
+  });
+
+  it("infect attacker destroys a blocker when -1/-1 counters reduce toughness to 0 (SBA 704.5g)", () => {
+    // 2/2 infect attacker vs 0/2 blocker: 2 infect damage → 2 -1/-1 counters.
+    // Effective toughness 2 - 2 = 0, so SBA destroys it.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Infect Attacker", power: 2, toughness: 2, keywords: ["Infect"] }],
+      [{ name: "Blocker", power: 0, toughness: 2 }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    atk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blk = declareBlockers(
+      atk.state,
+      new Map([[attackerId, [blockerId]]]),
+    );
+
+    const result = resolveCombatDamage(blk.state);
+    expect(result.success).toBe(true);
+
+    const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).toContain(blockerId);
+  });
+
+  it("infect attacker unblocked deals poison counters to player (no life loss) (CR 702.93c)", () => {
+    // 3/3 infect attacker unblocked → 3 poison counters, life unchanged.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Infect Attacker", power: 3, toughness: 3, keywords: ["Infect"] }],
+      [],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+
+    const result = resolveCombatDamage(atk.state);
+    expect(result.success).toBe(true);
+
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.poisonCounters).toBe(3);
+    expect(bob.life).toBe(20); // no life loss with infect
+  });
+
+  it("toxic attacker unblocked deals normal damage plus toxic poison (CR 702.94)", () => {
+    // 2/2 toxic 1 attacker unblocked → 2 life loss AND 1 poison counter.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Toxic Attacker", power: 2, toughness: 2, keywords: ["Toxic 1"] }],
+      [],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+
+    const result = resolveCombatDamage(atk.state);
+    expect(result.success).toBe(true);
+
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.life).toBe(18); // 20 - 2
+    expect(bob.poisonCounters).toBe(1);
+  });
+
+  it("toxic N attacker unblocked adds N poison counters", () => {
+    // 1/1 toxic 3 attacker unblocked → 1 life loss AND 3 poison counters.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Toxic Three", power: 1, toughness: 1, keywords: ["Toxic 3"] }],
+      [],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+
+    const result = resolveCombatDamage(atk.state);
+    expect(result.success).toBe(true);
+
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.life).toBe(19); // 20 - 1
+    expect(bob.poisonCounters).toBe(3);
+  });
+
+  it("infect + deathtouch attacker destroys a blocker with a single point (CR 702.2b + 702.93b)", () => {
+    // 1/1 infect + deathtouch attacker vs 0/5 blocker: 1 infect damage →
+    // 1 -1/-1 counter, and because the source has deathtouch any nonzero
+    // infect damage is lethal, so the blocker is destroyed.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [
+        {
+          name: "Infect Deathtoucher",
+          power: 1,
+          toughness: 1,
+          keywords: ["Infect", "Deathtouch"],
+        },
+      ],
+      [{ name: "Blocker", power: 0, toughness: 5 }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    atk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blk = declareBlockers(
+      atk.state,
+      new Map([[attackerId, [blockerId]]]),
+    );
+
+    const result = resolveCombatDamage(blk.state);
+    expect(result.success).toBe(true);
+
+    // Blocker is destroyed (deathtouch lethality) despite only 1 damage.
+    // Note: counters are cleared when a card moves to the graveyard
+    // (moveCardToZone resets counters), so we assert destruction here;
+    // the infect -1/-1 counter behaviour is verified in the surviving-
+    // blocker test above.
+    const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
+    expect(bobGraveyard.cardIds).toContain(blockerId);
+  });
+
+  it("non-infect attacker marks normal damage and adds no -1/-1 counters", () => {
+    // 3/3 regular attacker vs 0/5 blocker: 3 marked damage, no -1/-1 counters.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Vanilla Attacker", power: 3, toughness: 3 }],
+      [{ name: "Blocker", power: 0, toughness: 5 }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    atk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blk = declareBlockers(
+      atk.state,
+      new Map([[attackerId, [blockerId]]]),
+    );
+
+    const result = resolveCombatDamage(blk.state);
+    expect(result.success).toBe(true);
+
+    const blockerCard = result.state.cards.get(blockerId)!;
+    expect(blockerCard.damage).toBe(3);
+    expect(getMinusOneCounters(result.state, blockerId)).toBe(0);
+  });
+
+  it("toxic attacker with trample adds toxic poison on excess damage to player", () => {
+    // 5/5 toxic 1 trampler vs 0/1 blocker: 1 to blocker (lethal), 4 tramples
+    // to player → 4 life loss AND 1 toxic poison counter.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [
+        {
+          name: "Toxic Trampler",
+          power: 5,
+          toughness: 5,
+          keywords: ["Toxic 1", "Trample"],
+        },
+      ],
+      [{ name: "Blocker", power: 0, toughness: 1 }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    atk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blk = declareBlockers(
+      atk.state,
+      new Map([[attackerId, [blockerId]]]),
+    );
+
+    const result = resolveCombatDamage(blk.state);
+    expect(result.success).toBe(true);
+
+    const bob = result.state.players.get(bobId)!;
+    expect(bob.life).toBe(16); // 20 - 4 trample
+    expect(bob.poisonCounters).toBe(1);
+  });
+
+  it("infect blocker deals -1/-1 counters to the attacker (CR 702.93b)", () => {
+    // 0/3 attacker (0 power) blocked by a 2/2 infect blocker: the blocker
+    // deals 2 infect damage to the attacker → 2 -1/-1 counters on attacker.
+    const { state, aliceId, bobId } = setupGameWithCreatures(
+      [{ name: "Attacker", power: 0, toughness: 3 }],
+      [{ name: "Infect Blocker", power: 2, toughness: 2, keywords: ["Infect"] }],
+    );
+
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const atk = declareAttackers(state, [
+      { cardId: attackerId, defenderId: bobId },
+    ]);
+    atk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const blk = declareBlockers(
+      atk.state,
+      new Map([[attackerId, [blockerId]]]),
+    );
+
+    const result = resolveCombatDamage(blk.state);
+    expect(result.success).toBe(true);
+
+    // Attacker received 2 -1/-1 counters and no marked damage.
+    expect(getMinusOneCounters(result.state, attackerId)).toBe(2);
+    const attackerCard = result.state.cards.get(attackerId)!;
+    expect(attackerCard.damage).toBe(0);
+  });
+});

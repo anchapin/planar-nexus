@@ -7,7 +7,7 @@
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
 import { Phase, isOnBattlefield } from "./types";
-import { isCreature, getPower, getToughness } from "./card-instance";
+import { isCreature, getPower, getToughness, addCounters } from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
 import { dealCommanderDamage, isCommander } from "./commander-damage";
@@ -828,6 +828,9 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
       );
 
       const attackerHasDeathtouch = hasDeathtouch(attackerCard);
+      // CR 702.93 (Infect): damage to creatures from a source with infect
+      // is dealt as -1/-1 counters instead of marked damage.
+      const attackerHasInfect = hasInfect(attackerCard);
 
       // Deal damage from attacker to blockers
       for (const blocker of sortedBlockers) {
@@ -863,39 +866,64 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           damage = Math.min(remainingDamage, blockerToughness);
         }
 
-        // Apply damage to blocker
-        const damageResult = dealDamageToCard(
-          updatedState,
-          blocker.cardId,
-          damage,
-          true,
-          attacker.cardId,
-        );
-        updatedState = damageResult.state;
-
-        // Check for lifelink on blocker
-        if (blockerHasLifelink) {
-          const blockerController = updatedState.players.get(
-            blockerCard.controllerId,
-          );
-          if (blockerController) {
-            updatedState = {
-              ...updatedState,
-              players: new Map(updatedState.players).set(
-                blockerCard.controllerId!,
-                {
-                  ...blockerController,
-                  life: blockerController.life + damage,
-                },
-              ),
+        if (attackerHasInfect) {
+          // CR 702.93b: Infect damage to a creature is dealt as -1/-1
+          // counters; it is NOT marked as damage on the creature.
+          const blockerWithCounters = addCounters(blockerCard, "-1/-1", damage);
+          let finalBlocker = blockerWithCounters;
+          // CR 702.2b + 702.93b: A source with both infect and deathtouch
+          // still counts as a deathtouch source — any nonzero infect damage
+          // is lethal, so mark lethal damage to trigger SBA destruction.
+          if (attackerHasDeathtouch && damage > 0) {
+            const lethalDamage = getToughness(blockerWithCounters);
+            finalBlocker = {
+              ...blockerWithCounters,
+              damage: Math.max(blockerWithCounters.damage, lethalDamage),
             };
           }
+          updatedState = {
+            ...updatedState,
+            cards: new Map(updatedState.cards).set(blocker.cardId, finalBlocker),
+            lastModifiedAt: Date.now(),
+          };
+          damageEvents.push(
+            `${attackerCard.cardData.name} deals ${damage} infect damage (${damage} -1/-1 counters) to ${blockerCard.cardData.name}`,
+          );
+        } else {
+          // Apply damage to blocker
+          const damageResult = dealDamageToCard(
+            updatedState,
+            blocker.cardId,
+            damage,
+            true,
+            attacker.cardId,
+          );
+          updatedState = damageResult.state;
+
+          // Check for lifelink on blocker
+          if (blockerHasLifelink) {
+            const blockerController = updatedState.players.get(
+              blockerCard.controllerId,
+            );
+            if (blockerController) {
+              updatedState = {
+                ...updatedState,
+                players: new Map(updatedState.players).set(
+                  blockerCard.controllerId!,
+                  {
+                    ...blockerController,
+                    life: blockerController.life + damage,
+                  },
+                ),
+              };
+            }
+          }
+          damageEvents.push(
+            `${attackerCard.cardData.name} deals ${damage} to ${blockerCard.cardData.name}`,
+          );
         }
 
         remainingDamage -= damage;
-        damageEvents.push(
-          `${attackerCard.cardData.name} deals ${damage} to ${blockerCard.cardData.name}`,
-        );
       }
 
       // Handle trample excess damage
@@ -924,18 +952,31 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
               `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name}`,
             );
           } else {
+            let updatedDefender = {
+              ...defender,
+              life: Math.max(0, defender.life - remainingDamage),
+            };
+            // CR 702.94 (Toxic): any combat damage to a player from a toxic
+            // source adds toxic-level poison counters in addition to life loss.
+            const toxicLevel = getToxicLevel(attackerCard);
+            if (toxicLevel > 0) {
+              updatedDefender = {
+                ...updatedDefender,
+                poisonCounters:
+                  updatedDefender.poisonCounters + toxicLevel,
+              };
+            }
             updatedState = {
               ...updatedState,
               players: new Map(updatedState.players).set(
                 attacker.defenderId as PlayerId,
-                {
-                  ...defender,
-                  life: Math.max(0, defender.life - remainingDamage),
-                },
+                updatedDefender,
               ),
             };
             damageEvents.push(
-              `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`,
+              toxicLevel > 0
+                ? `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name} and ${toxicLevel} toxic poison`
+                : `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`,
             );
           }
         }
@@ -993,18 +1034,53 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         const blockerPower = getEffectivePower(blockerCard, layerSystem);
         if (blockerPower <= 0) continue;
 
-        // Apply damage from blocker to attacker
-        const damageResult = dealDamageToCard(
-          updatedState,
-          attacker.cardId,
-          blockerPower,
-          true,
-          blocker.cardId,
-        );
-        updatedState = damageResult.state;
-        damageEvents.push(
-          `${blockerCard.cardData.name} deals ${blockerPower} to ${attackerCard.cardData.name}`,
-        );
+        // CR 702.93 (Infect): a blocker with infect deals damage to the
+        // attacker as -1/-1 counters instead of marked damage.
+        const blockerHasInfect = hasInfect(blockerCard);
+        if (blockerHasInfect) {
+          const currentAttacker = updatedState.cards.get(attacker.cardId);
+          if (currentAttacker) {
+            const attackerWithCounters = addCounters(
+              currentAttacker,
+              "-1/-1",
+              blockerPower,
+            );
+            let finalAttacker = attackerWithCounters;
+            // CR 702.2b + 702.93b: infect + deathtouch is lethal.
+            const blockerHasDeathtouch = hasDeathtouch(blockerCard);
+            if (blockerHasDeathtouch && blockerPower > 0) {
+              const lethalDamage = getToughness(attackerWithCounters);
+              finalAttacker = {
+                ...attackerWithCounters,
+                damage: Math.max(attackerWithCounters.damage, lethalDamage),
+              };
+            }
+            updatedState = {
+              ...updatedState,
+              cards: new Map(updatedState.cards).set(
+                attacker.cardId,
+                finalAttacker,
+              ),
+              lastModifiedAt: Date.now(),
+            };
+            damageEvents.push(
+              `${blockerCard.cardData.name} deals ${blockerPower} infect damage (${blockerPower} -1/-1 counters) to ${attackerCard.cardData.name}`,
+            );
+          }
+        } else {
+          // Apply damage from blocker to attacker
+          const damageResult = dealDamageToCard(
+            updatedState,
+            attacker.cardId,
+            blockerPower,
+            true,
+            blocker.cardId,
+          );
+          updatedState = damageResult.state;
+          damageEvents.push(
+            `${blockerCard.cardData.name} deals ${blockerPower} to ${attackerCard.cardData.name}`,
+          );
+        }
       }
     }
   }
