@@ -57,7 +57,14 @@ export function useP2PDiagnostics(
     pollIntervalMs = DEFAULT_POLL_MS,
   } = options;
 
-  const supported = isICEDiagnosticsSupported();
+  // Issue #1178: `isICEDiagnosticsSupported()` reads `window.RTCPeerConnection`,
+  // which is absent during SSR. Computing it during render made the server
+  // output (unsupported) differ from the client's first render (supported),
+  // producing a React hydration mismatch on /multiplayer/. Initialize to a
+  // stable SSR value and read the real capability in an effect after hydration
+  // so the first client render matches the server, then update.
+  const [supported, setSupported] = useState(false);
+
   const [snapshot, setSnapshot] = useState<ICEDiagnosticsSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -72,6 +79,14 @@ export function useP2PDiagnostics(
   const refresh = useCallback(() => {
     refreshNonce.current += 1;
     setNonce(refreshNonce.current);
+  }, []);
+
+  // Detect WebRTC support post-hydration. Kept separate from the polling
+  // effect: it runs once after mount so SSR and the first client render agree
+  // on `supported` (issue #1178). Flipping this re-triggers the polling effect
+  // below via its dependency on `supported`.
+  useEffect(() => {
+    setSupported(isICEDiagnosticsSupported());
   }, []);
 
   useEffect(() => {
