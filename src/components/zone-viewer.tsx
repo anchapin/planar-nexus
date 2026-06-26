@@ -1,11 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { memo, useMemo, useState, useCallback } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -14,15 +14,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Skull, 
-  Ban, 
-  Library, 
-  Crown, 
+import {
+  Skull,
+  Ban,
+  Library,
+  Crown,
   Layers,
   Eye,
   Search,
-  User
+  User,
 } from "lucide-react";
 import { ZoneType } from "@/types/game";
 import { cn } from "@/lib/utils";
@@ -60,7 +60,13 @@ interface ZoneViewerProps {
   /** Cards in companion zone */
   companion?: ZoneCard[];
   /** Currently open tab */
-  defaultTab?: "graveyard" | "exile" | "command" | "stack" | "sideboard" | "companion";
+  defaultTab?:
+    | "graveyard"
+    | "exile"
+    | "command"
+    | "stack"
+    | "sideboard"
+    | "companion";
   /** Callback when a card is clicked */
   onCardClick?: (cardId: string) => void;
   /** Callback when the viewer is closed */
@@ -95,7 +101,13 @@ interface StackItem {
 type SortOption = "name" | "cmc" | "type" | "color";
 
 /**
- * Zone card list component
+ * Zone card list component.
+ *
+ * Exposes itself as a `role="list"` of `role="listitem"` buttons and implements
+ * a roving tabindex so the user can move between cards with all four arrow
+ * keys (wrapping in both directions) while Tab moves into/out of the list as a
+ * whole. Each card button has a descriptive `aria-label` so screen-reader users
+ * hear the card name, type, cost and P/T without seeing the grid.
  */
 const ZoneCardList = memo(function ZoneCardList({
   cards,
@@ -116,11 +128,72 @@ const ZoneCardList = memo(function ZoneCardList({
       case "type":
         return sorted.sort((a, b) => a.typeLine.localeCompare(b.typeLine));
       case "color":
-        return sorted.sort((a, b) => (a.colors?.[0] || "").localeCompare(b.colors?.[0] || ""));
+        return sorted.sort((a, b) =>
+          (a.colors?.[0] || "").localeCompare(b.colors?.[0] || ""),
+        );
       default:
         return sorted;
     }
   }, [cards, sortBy]);
+
+  // Roving tabindex: only the active card has tabIndex 0.
+  const [activeIndex, setActiveIndex] = useState(0);
+  const cardRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  useEffect(() => {
+    if (activeIndex >= sortedCards.length) setActiveIndex(0);
+  }, [sortedCards.length, activeIndex]);
+
+  useEffect(() => {
+    const el = cardRefs.current[activeIndex];
+    if (el) el.focus();
+  }, [activeIndex, sortedCards.length]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (sortedCards.length === 0) return;
+      const cols = 5; // lg:grid-cols-5 — used for grid-style arrow navigation
+      switch (e.key) {
+        case "ArrowRight":
+          e.preventDefault();
+          setActiveIndex((i) => (i + 1) % sortedCards.length);
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          setActiveIndex((i) => (i - 1 < 0 ? sortedCards.length - 1 : i - 1));
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setActiveIndex((i) => {
+            const next = i + cols;
+            return next < sortedCards.length
+              ? next
+              : (i + 1) % sortedCards.length;
+          });
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setActiveIndex((i) => {
+            const prev = i - cols;
+            return prev >= 0
+              ? prev
+              : i - 1 < 0
+                ? sortedCards.length - 1
+                : i - 1;
+          });
+          break;
+        case "Home":
+          e.preventDefault();
+          setActiveIndex(0);
+          break;
+        case "End":
+          e.preventDefault();
+          setActiveIndex(sortedCards.length - 1);
+          break;
+      }
+    },
+    [sortedCards.length],
+  );
 
   const colorMap: Record<string, string> = {
     W: "bg-white border-white",
@@ -131,51 +204,70 @@ const ZoneCardList = memo(function ZoneCardList({
   };
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-      {sortedCards.map((card, idx) => (
-        <button
-          key={`${card.id}-${idx}`}
-          onClick={() => onCardClick?.(card.id)}
-          className="group relative flex flex-col items-center p-2 rounded-md border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left w-full"
-        >
-          {/* Color indicator */}
-          {card.colors && card.colors.length > 0 && (
-            <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-md overflow-hidden">
-              {card.colors.map((color) => (
-                <div 
-                  key={color} 
-                  className={cn("w-full", colorMap[color] || "bg-gray-400")}
-                  style={{ height: `${100 / (card.colors?.length ?? 1)}%` }}
-                />
-              ))}
-            </div>
-          )}
-          
-          {/* Card name */}
-          <span className="text-xs font-medium truncate w-full pl-2" title={card.name}>
-            {card.name}
-          </span>
-          
-          {/* Card type */}
-          <span className="text-[10px] text-muted-foreground truncate w-full pl-2" title={card.typeLine}>
-            {card.typeLine}
-          </span>
-          
-          {/* Mana cost if present */}
-          {card.manaCost && (
-            <span className="text-[10px] text-muted-foreground mt-1">
-              {card.manaCost}
-            </span>
-          )}
-          
-          {/* P/T for creatures */}
-          {card.power && card.toughness && (
-            <span className="text-xs font-mono mt-1">
-              {card.power}/{card.toughness}
-            </span>
-          )}
-        </button>
-      ))}
+    <div
+      role="list"
+      aria-label={`${sortedCards.length} cards`}
+      onKeyDown={handleKeyDown}
+      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2"
+    >
+      {sortedCards.map((card, idx) => {
+        const pt =
+          card.power && card.toughness ? `${card.power}/${card.toughness}` : "";
+        return (
+          <div role="listitem" key={`${card.id}-${idx}`}>
+            <button
+              ref={(el) => {
+                cardRefs.current[idx] = el;
+              }}
+              tabIndex={idx === activeIndex ? 0 : -1}
+              onClick={() => onCardClick?.(card.id)}
+              aria-label={`${card.name}, ${card.typeLine}${card.manaCost ? `, cost ${card.manaCost}` : ""}${pt ? `, ${pt}` : ""}`}
+              className="group relative flex flex-col items-center p-2 rounded-md border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {/* Color indicator */}
+              {card.colors && card.colors.length > 0 && (
+                <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-md overflow-hidden">
+                  {card.colors.map((color) => (
+                    <div
+                      key={color}
+                      className={cn("w-full", colorMap[color] || "bg-gray-400")}
+                      style={{
+                        height: `${100 / (card.colors?.length ?? 1)}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Card name */}
+              <span
+                className="text-xs font-medium truncate w-full pl-2"
+                title={card.name}
+              >
+                {card.name}
+              </span>
+
+              {/* Card type */}
+              <span
+                className="text-[10px] text-muted-foreground truncate w-full pl-2"
+                title={card.typeLine}
+              >
+                {card.typeLine}
+              </span>
+
+              {/* Mana cost if present */}
+              {card.manaCost && (
+                <span className="text-[10px] text-muted-foreground mt-1">
+                  {card.manaCost}
+                </span>
+              )}
+
+              {/* P/T for creatures */}
+              {pt && <span className="text-xs font-mono mt-1">{pt}</span>}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 });
@@ -188,7 +280,6 @@ const StackItemDisplay = memo(function StackItemDisplay({
 }: {
   item: StackItem;
 }) {
-
   return (
     <div className="flex flex-col p-3 rounded-md border border-border bg-muted/30">
       <div className="flex items-start justify-between gap-2">
@@ -196,15 +287,15 @@ const StackItemDisplay = memo(function StackItemDisplay({
           <div className="flex items-center gap-2">
             <span className="font-medium text-sm truncate">{item.name}</span>
             {item.isCopiedSpell && (
-              <Badge variant="outline" className="text-[10px]">Copy</Badge>
+              <Badge variant="outline" className="text-[10px]">
+                Copy
+              </Badge>
             )}
           </div>
           <span className="text-xs text-muted-foreground">{item.typeLine}</span>
         </div>
         <div className="flex flex-col items-end gap-1">
-          {item.manaCost && (
-            <span className="text-xs">{item.manaCost}</span>
-          )}
+          {item.manaCost && <span className="text-xs">{item.manaCost}</span>}
           <span className="text-xs text-muted-foreground">
             {item.controllerName}
           </span>
@@ -237,6 +328,109 @@ const StackItemDisplay = memo(function StackItemDisplay({
 });
 
 /**
+ * Live region announcing stack push/resolve events to screen-reader users.
+ *
+ * Mounted inside the dialog so SR users hear when a new spell is added or a
+ * spell resolves even when focused on a different tab. Polite so it never
+ * interrupts the user mid-keypress.
+ */
+const StackLiveRegion = memo(function StackLiveRegion({
+  stack,
+}: {
+  stack: StackItem[];
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const prevLenRef = useRef<number>(stack.length);
+  useEffect(() => {
+    const prev = prevLenRef.current;
+    const cur = stack.length;
+    let msg = "";
+    if (cur > prev) {
+      const top = stack[stack.length - 1];
+      msg = top ? `New spell added to stack: ${top.name}` : "Stack updated";
+    } else if (cur < prev) {
+      msg =
+        cur === 0 ? "Stack is empty" : "Spell resolved and removed from stack";
+    }
+    if (msg && ref.current) ref.current.textContent = msg;
+    prevLenRef.current = cur;
+  }, [stack]);
+  return (
+    <div ref={ref} aria-live="polite" aria-atomic="true" className="sr-only" />
+  );
+});
+
+/**
+ * Keyboard-navigable list of stack items (roving tabindex + arrow keys).
+ */
+const StackItemList = memo(function StackItemList({
+  items,
+}: {
+  items: StackItem[];
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const refs = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    if (activeIndex >= items.length) setActiveIndex(0);
+  }, [items.length, activeIndex]);
+
+  useEffect(() => {
+    const el = refs.current[activeIndex];
+    if (el) el.focus();
+  }, [activeIndex, items.length]);
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (items.length === 0) return;
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setActiveIndex((i) => (i + 1) % items.length);
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setActiveIndex((i) => (i - 1 < 0 ? items.length - 1 : i - 1));
+          break;
+        case "Home":
+          e.preventDefault();
+          setActiveIndex(0);
+          break;
+        case "End":
+          e.preventDefault();
+          setActiveIndex(items.length - 1);
+          break;
+      }
+    },
+    [items.length],
+  );
+
+  return (
+    <div
+      role="list"
+      aria-label="Spells and abilities on the stack"
+      className="space-y-2"
+      onKeyDown={onKeyDown}
+    >
+      {items.map((item, idx) => (
+        <div
+          role="listitem"
+          key={item.id}
+          ref={(el) => {
+            refs.current[idx] = el;
+          }}
+          tabIndex={idx === activeIndex ? 0 : -1}
+          aria-label={`${item.name}, ${item.typeLine}, controlled by ${item.controllerName}`}
+          className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+        >
+          <StackItemDisplay item={item} />
+        </div>
+      ))}
+    </div>
+  );
+});
+
+/**
  * Main ZoneViewer component
  */
 export function ZoneViewer({
@@ -258,38 +452,60 @@ export function ZoneViewer({
   const [searchQuery, setSearchQuery] = useState("");
 
   // Filter cards based on search
-  const filterCards = useCallback((cards: ZoneCard[]) => {
-    if (!searchQuery) return cards;
-    const query = searchQuery.toLowerCase();
-    return cards.filter(
-      (card) =>
-        card.name.toLowerCase().includes(query) ||
-        card.typeLine.toLowerCase().includes(query)
-    );
-  }, [searchQuery]);
+  const filterCards = useCallback(
+    (cards: ZoneCard[]) => {
+      if (!searchQuery) return cards;
+      const query = searchQuery.toLowerCase();
+      return cards.filter(
+        (card) =>
+          card.name.toLowerCase().includes(query) ||
+          card.typeLine.toLowerCase().includes(query),
+      );
+    },
+    [searchQuery],
+  );
 
-  const filteredGraveyard = useMemo(() => filterCards(graveyard), [graveyard, filterCards]);
+  const filteredGraveyard = useMemo(
+    () => filterCards(graveyard),
+    [graveyard, filterCards],
+  );
   const filteredExile = useMemo(() => filterCards(exile), [exile, filterCards]);
-  const filteredCommand = useMemo(() => filterCards(command), [command, filterCards]);
-  const filteredSideboard = useMemo(() => filterCards(sideboard), [sideboard, filterCards]);
-  const filteredCompanion = useMemo(() => filterCards(companion), [companion, filterCards]);
+  const filteredCommand = useMemo(
+    () => filterCards(command),
+    [command, filterCards],
+  );
+  const filteredSideboard = useMemo(
+    () => filterCards(sideboard),
+    [sideboard, filterCards],
+  );
+  const filteredCompanion = useMemo(
+    () => filterCards(companion),
+    [companion, filterCards],
+  );
 
   if (!isOpen) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose?.()}>
-      <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col">
+      <DialogContent
+        className="max-w-4xl max-h-[85vh] flex flex-col"
+        aria-modal="true"
+        aria-describedby="zone-viewer-description"
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
             {title}
           </DialogTitle>
-          {playerName && (
-            <DialogDescription>
-              Viewing zones for {playerName}
-            </DialogDescription>
-          )}
+          <DialogDescription id="zone-viewer-description">
+            {playerName
+              ? `Inspecting zones for ${playerName}. Use Tab to move between controls and the arrow keys to move between cards.`
+              : "Inspecting board zones. Use Tab to move between controls and the arrow keys to move between cards."}
+          </DialogDescription>
         </DialogHeader>
+
+        {/* Live region for SR announcements of stack push/resolve events */}
+        <StackLiveRegion stack={stack} />
 
         {/* Search and sort controls */}
         <div className="flex items-center gap-2 pb-2 border-b">
@@ -298,6 +514,7 @@ export function ZoneViewer({
             <input
               type="text"
               placeholder="Search cards..."
+              aria-label="Search cards in the selected zone"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-8 pr-4 py-1.5 text-sm border rounded-md bg-background"
@@ -307,6 +524,7 @@ export function ZoneViewer({
             <span className="text-xs text-muted-foreground">Sort:</span>
             <select
               value={sortBy}
+              aria-label="Sort cards by"
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="text-xs border rounded px-2 py-1 bg-background"
             >
@@ -319,7 +537,11 @@ export function ZoneViewer({
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex-1 flex flex-col min-h-0"
+        >
           <TabsList className="w-full justify-start overflow-x-auto">
             <TabsTrigger value="graveyard" className="flex items-center gap-1">
               <Skull className="h-3 w-3" />
@@ -386,8 +608,8 @@ export function ZoneViewer({
                   <p>Discard Pile is empty</p>
                 </div>
               ) : (
-                <ZoneCardList 
-                  cards={filteredGraveyard} 
+                <ZoneCardList
+                  cards={filteredGraveyard}
                   onCardClick={onCardClick}
                   sortBy={sortBy}
                 />
@@ -401,8 +623,8 @@ export function ZoneViewer({
                   <p>Banish Zone is empty</p>
                 </div>
               ) : (
-                <ZoneCardList 
-                  cards={filteredExile} 
+                <ZoneCardList
+                  cards={filteredExile}
                   onCardClick={onCardClick}
                   sortBy={sortBy}
                 />
@@ -416,8 +638,8 @@ export function ZoneViewer({
                   <p>Leader Zone is empty</p>
                 </div>
               ) : (
-                <ZoneCardList 
-                  cards={filteredCommand} 
+                <ZoneCardList
+                  cards={filteredCommand}
                   onCardClick={onCardClick}
                   sortBy={sortBy}
                 />
@@ -426,19 +648,15 @@ export function ZoneViewer({
 
             <TabsContent value="stack" className="m-0">
               {stack.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
+                <div
+                  className="text-center py-8 text-muted-foreground"
+                  role="status"
+                >
                   <Layers className="h-8 w-8 mx-auto mb-auto mb-2 opacity-50" />
                   <p>Spell Chain is empty</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {stack.map((item) => (
-                    <StackItemDisplay 
-                      key={item.id} 
-                      item={item}
-                    />
-                  ))}
-                </div>
+                <StackItemList items={stack} />
               )}
             </TabsContent>
 
@@ -449,8 +667,8 @@ export function ZoneViewer({
                   <p>Sideboard is empty</p>
                 </div>
               ) : (
-                <ZoneCardList 
-                  cards={filteredSideboard} 
+                <ZoneCardList
+                  cards={filteredSideboard}
                   onCardClick={onCardClick}
                   sortBy={sortBy}
                 />
@@ -464,8 +682,8 @@ export function ZoneViewer({
                   <p>No companion</p>
                 </div>
               ) : (
-                <ZoneCardList 
-                  cards={filteredCompanion} 
+                <ZoneCardList
+                  cards={filteredCompanion}
                   onCardClick={onCardClick}
                   sortBy={sortBy}
                 />
