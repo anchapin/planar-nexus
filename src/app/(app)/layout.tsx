@@ -4,6 +4,7 @@ import { Sidebar, SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar';
 import { AppFooter } from '@/components/app-footer';
 import { IndexedDBMigration } from '@/components/indexeddb-migration';
+import { OnboardingTour } from '@/components/onboarding-tour';
 import { usePathname } from 'next/navigation';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <IndexedDBMigration />
+      <OnboardingTour />
       <Sidebar collapsible="icon">
         <AppSidebar />
       </Sidebar>

@@ -20,20 +20,20 @@ export function AppSidebar() {
 
   const menuItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/deck-builder', label: 'Deck Builder', icon: Library },
+    { href: '/deck-builder', label: 'Deck Builder', icon: Library, tourId: 'deck-builder' },
     { href: '/card-studio', label: 'Card Studio', icon: Palette },
-    { href: '/collection', label: 'Collection', icon: Package },
+    { href: '/collection', label: 'Collection', icon: Package, tourId: 'collection' },
     { href: '/draft-assistant', label: 'Draft Assistant', icon: Gem },
-    { href: '/deck-coach', label: 'AI Deck Coach', icon: Bot },
+    { href: '/deck-coach', label: 'AI Deck Coach', icon: Bot, tourId: 'deck-coach' },
     { href: '/coach-report', label: 'Coach Report', icon: GraduationCap },
     { href: '/meta', label: 'Meta Analysis', icon: TrendingUp },
     { href: '/game-analysis', label: 'Game Analysis', icon: BarChart3 },
     { href: '/saved-games', label: 'Saved Games', icon: Save },
-    { href: '/single-player', label: 'Single Player', icon: Swords },
-    { href: '/multiplayer', label: 'Multiplayer', icon: Users },
+    { href: '/single-player', label: 'Single Player', icon: Swords, tourId: 'single-player' },
+    { href: '/multiplayer', label: 'Multiplayer', icon: Users, tourId: 'multiplayer' },
     { href: '/game-board', label: 'Game Board Demo', icon: Eye },
     { href: '/card-interactions-demo', label: 'Card Interactions', icon: MousePointer },
-    { href: '/settings', label: 'Settings', icon: Settings },
+    { href: '/settings', label: 'Settings', icon: Settings, tourId: 'settings' },
   ];
 
   return (
@@ -57,7 +57,7 @@ export function AppSidebar() {
                 isActive={pathname === item.href}
                 tooltip={{ children: item.label }}
               >
-                <Link href={item.href}>
+                <Link href={item.href} data-tour={item.tourId}>
                   <item.icon />
                   <span>{item.label}</span>
                 </Link>

@@ -6,6 +6,10 @@ import { defineConfig } from '@playwright/test';
  * This configuration sets up E2E testing for the Planar Nexus application.
  * Tests run against a local dev server on port 9002.
  */
+
+// Dev-server origin (also used as the base URL for every test).
+const E2E_ORIGIN = process.env.BASE_URL || 'http://localhost:9002';
+
 export default defineConfig({
   // Directory containing E2E tests
   testDir: './e2e',
@@ -43,8 +47,23 @@ export default defineConfig({
   // Shared settings for all the projects below
   use: {
     // Base URL for all tests
-    baseURL: process.env.BASE_URL || 'http://localhost:9002',
-    
+    baseURL: E2E_ORIGIN,
+
+    // Hide the first-run onboarding tour (#1106) for every test by default.
+    // The tour auto-starts when `planar-nexus:onboarded` is absent, and its
+    // modal backdrop would intercept pointer events across the whole suite.
+    // `e2e/onboarding.spec.ts` opts back in by clearing this key per page
+    // via `forceFreshVisitor()` (addInitScript runs after storageState).
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: E2E_ORIGIN,
+          localStorage: [{ name: 'planar-nexus:onboarded', value: 'true' }],
+        },
+      ],
+    },
+
     // Collect trace when retrying the failed test
     trace: 'on-first-retry',
     
