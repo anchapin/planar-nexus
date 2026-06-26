@@ -18,7 +18,10 @@ import {
   beforeAll,
 } from "@jest/globals";
 import { renderHook, act } from "@testing-library/react";
-import { useDeckCoachChat } from "../use-deck-coach-chat";
+import {
+  useDeckCoachChat,
+  clearAllCoachConversations,
+} from "../use-deck-coach-chat";
 
 jest.mock("@/ai/worker/ai-worker-client", () => ({
   aiWorkerClient: { api: null },
@@ -67,10 +70,13 @@ const flush = () => new Promise<void>((r) => setTimeout(r, 0));
 let lastFetchOptions: { signal?: AbortSignal | null } = {};
 let lastRequestBody: { messages?: unknown[]; format?: string } = {};
 
-beforeEach(() => {
+beforeEach(async () => {
   lastFetchOptions = {};
   lastRequestBody = {};
-  // The hook persists history to localStorage; clear it so tests are isolated.
+  // The hook persists conversations to IndexedDB (issue #1074); clear the store
+  // so each test starts isolated and a prior test's conversation is never
+  // auto-resumed into the next one.
+  await clearAllCoachConversations();
   localStorage.clear();
   (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
     async (_url: string, init?: RequestInit) => {
@@ -208,5 +214,177 @@ describe("useDeckCoachChat — cancel/abort", () => {
       (m) => m.role === "assistant",
     );
     expect(assistant?.content).toContain("Hel");
+  });
+});
+
+describe("useDeckCoachChat — IndexedDB persistence (#1074)", () => {
+  it("persists a completed conversation and resumes it after a simulated reload", async () => {
+    // First "session": send a message and let the stream complete.
+    const first = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-z" }),
+    );
+    await act(async () => {
+      await first.result.current.sendMessage("how do I sideboard?", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    // The finalized assistant message must be present before we tear down.
+    expect(
+      first.result.current.messages.some((m) => m.role === "assistant"),
+    ).toBe(true);
+    first.unmount();
+
+    // Simulate a page reload: a brand-new hook instance mounts and its
+    // auto-resume effect should load the most-recent conversation.
+    const reloaded = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-z" }),
+    );
+    await act(async () => {
+      await flush();
+      await flush();
+    });
+
+    const restored = reloaded.result.current.messages;
+    expect(restored.length).toBeGreaterThanOrEqual(2);
+    expect(restored.some((m) => m.content === "how do I sideboard?")).toBe(
+      true,
+    );
+    expect(restored.some((m) => m.content === "Hello")).toBe(true);
+    // The resumed conversation is the active one.
+    expect(reloaded.result.current.activeConversationId).not.toBeNull();
+    expect(reloaded.result.current.conversations.length).toBeGreaterThanOrEqual(
+      1,
+    );
+    reloaded.unmount();
+  });
+
+  it("saves streaming-era fields once the assistant message completes", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-fields" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.provider).toBe("openai");
+    expect(assistant?.usage?.totalTokens).toBe(4);
+
+    // Read the persisted conversation directly and assert the finalized fields
+    // (provider/usage) were written — i.e. we saved once on completion, not
+    // per token.
+    const { loadMostRecentConversation } =
+      await import("@/lib/coach-conversation-storage");
+    const persisted = await loadMostRecentConversation("deck-fields");
+    expect(persisted).not.toBeNull();
+    const persistedAssistant = persisted!.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(persistedAssistant?.provider).toBe("openai");
+    expect(persistedAssistant?.usage?.totalTokens).toBe(4);
+  });
+
+  it("resumes a past conversation via resumeConversation", async () => {
+    // Seed two conversations for the deck.
+    const seed = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-resume" }),
+    );
+    await act(async () => {
+      await seed.result.current.sendMessage("first question", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    const firstId = seed.result.current.activeConversationId;
+    seed.unmount();
+
+    const seed2 = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-resume" }),
+    );
+    // Auto-resume loaded the most recent (firstId); start a fresh conversation
+    // and complete it so a second persisted conversation exists.
+    await act(async () => {
+      seed2.result.current.startNewConversation();
+      await flush();
+    });
+    await act(async () => {
+      await seed2.result.current.sendMessage("second question", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    const secondId = seed2.result.current.activeConversationId;
+    expect(secondId).not.toBe(firstId);
+    seed2.unmount();
+
+    // Mount again and explicitly resume the FIRST conversation.
+    const app = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-resume" }),
+    );
+    await act(async () => {
+      await flush();
+      await flush();
+    });
+
+    await act(async () => {
+      await app.result.current.resumeConversation(firstId!);
+      await flush();
+    });
+    expect(app.result.current.activeConversationId).toBe(firstId);
+    expect(
+      app.result.current.messages.some((m) => m.content === "first question"),
+    ).toBe(true);
+    app.unmount();
+  });
+
+  it("degrades gracefully on quota errors (no crash, surfaces a notice)", async () => {
+    // Force every IndexedDB put to reject with a quota error for this test.
+    // Return a fake request that fires ONLY onerror so the storage layer
+    // classifies + rejects (the real fake-indexeddb request would otherwise
+    // fire onsuccess first).
+    const realPut = IDBObjectStore.prototype.put;
+    const quotaError = new DOMException(
+      "The quota has been exceeded",
+      "QuotaExceededError",
+    );
+    IDBObjectStore.prototype.put = function () {
+      const fakeReq: {
+        error: unknown;
+        onsuccess: ((ev: Event) => void) | null;
+        onerror: ((ev: Event) => void) | null;
+      } = { error: null, onsuccess: null, onerror: null };
+      setTimeout(() => {
+        fakeReq.error = quotaError;
+        if (typeof fakeReq.onerror === "function") {
+          fakeReq.onerror(new Event("error"));
+        }
+      }, 0);
+      return fakeReq as unknown as IDBRequest;
+    };
+
+    try {
+      const { result } = renderHook(() =>
+        useDeckCoachChat({ format: "modern", deckId: "deck-quota" }),
+      );
+
+      // The send must not throw even though persistence fails.
+      await act(async () => {
+        await result.current.sendMessage("hello", {
+          deckCards: [{ name: "Sol Ring", count: 1 } as never],
+        });
+      });
+
+      // The assistant message still rendered in-session.
+      expect(result.current.messages.some((m) => m.role === "assistant")).toBe(
+        true,
+      );
+      // A non-null storage notice surfaced the degraded persistence.
+      expect(result.current.storageNotice).not.toBeNull();
+      expect(result.current.storageNotice).toMatch(/save/i);
+    } finally {
+      IDBObjectStore.prototype.put = realPut;
+    }
   });
 });

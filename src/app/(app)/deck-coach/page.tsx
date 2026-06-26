@@ -19,7 +19,15 @@ import {
   analyzeMetaAndSuggest,
   type MetaAnalysisOutput,
 } from "@/ai/flows/ai-meta-analysis";
-import { Bot, Loader2, TrendingUp, MessageSquare } from "lucide-react";
+import {
+  Bot,
+  Loader2,
+  TrendingUp,
+  MessageSquare,
+  History,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { EnhancedReviewDisplay } from "./_components/enhanced-review-display";
 import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
 import {
@@ -40,6 +48,7 @@ import {
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
 import { DeckCoachChatPanel } from "@/components/chat";
 import { useDeckCoachChat } from "@/hooks/use-deck-coach-chat";
+import { DEFAULT_DECK_ID } from "@/lib/coach-conversation-storage";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -61,13 +70,30 @@ export default function DeckCoachPage() {
   const [, setSavedDecks] = useLocalStorage<SavedDeck[]>("saved-decks", []);
   const { toast } = useToast();
 
-  // Chat state for conversational AI
+  // The deck currently loaded into the coach (id of the selected saved deck, or
+  // "default" when working from a pasted decklist). Coach conversations are
+  // scoped to this id so history is per-deck (issue #1074).
+  const [selectedDeckId, setSelectedDeckId] = useState<string>(DEFAULT_DECK_ID);
+
+  // Chat state for conversational AI. Passing format + deck cards means each
+  // persisted conversation carries its deck context and can be resumed
+  // self-contained (issue #1074).
   const {
     messages,
     isLoading: isChatLoading,
     sendMessage,
     cancelGeneration,
-  } = useDeckCoachChat();
+    conversations,
+    activeConversationId,
+    storageNotice,
+    resumeConversation,
+    startNewConversation,
+    removeConversation,
+  } = useDeckCoachChat({
+    deckId: selectedDeckId,
+    format,
+    deckCards: originalDeckCards ?? undefined,
+  });
 
   const handleAnalyzeDeck = (type: "review" | "meta") => {
     if (decklist.trim().length === 0) {
@@ -145,6 +171,7 @@ export default function DeckCoachPage() {
 
   const handleDeckSelect = (deck: SavedDeck) => {
     setFormat(deck.format);
+    setSelectedDeckId(deck.id);
     const decklistStr = deck.cards
       .map((c) => `${c.count} ${c.name}`)
       .join("\n");
@@ -393,6 +420,9 @@ export default function DeckCoachPage() {
               onChange={(e) => {
                 setDecklist(e.target.value);
                 setOriginalDeckCards(null);
+                // Editing the decklist detaches from any saved deck; scope
+                // coach history back to the default bucket (issue #1074).
+                setSelectedDeckId(DEFAULT_DECK_ID);
               }}
               disabled={isPending}
             />
@@ -489,12 +519,83 @@ export default function DeckCoachPage() {
 
           {/* Chat Interface */}
           {analysisType === "chat" && (
-            <DeckCoachChatPanel
-              messages={messages}
-              isLoading={isChatLoading}
-              onSendMessage={handleChatMessage}
-              onCancel={cancelGeneration}
-            />
+            <div className="flex flex-col gap-3">
+              {/* Storage degradation notice (quota / unavailable). Non-blocking:
+                  the coach keeps working in-session (issue #1074/#1085). */}
+              {storageNotice && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-900 dark:text-yellow-200"
+                >
+                  {storageNotice}
+                </div>
+              )}
+
+              {/* Conversation history: resume or delete prior sessions, or start
+                  a new one. Persists across refresh/restart via IndexedDB
+                  (issue #1074). */}
+              {conversations.length > 0 && (
+                <div className="rounded-md border bg-card/60 p-2">
+                  <div className="mb-2 flex items-center gap-2 px-1">
+                    <History className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Recent conversations
+                    </span>
+                    <button
+                      type="button"
+                      onClick={startNewConversation}
+                      className="ml-auto inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                      title="Start a new conversation"
+                    >
+                      <Plus className="h-3 w-3" aria-hidden="true" />
+                      New
+                    </button>
+                  </div>
+                  <ul className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                    {conversations.map((conv) => {
+                      const active = conv.id === activeConversationId;
+                      return (
+                        <li key={conv.id}>
+                          <div
+                            className={`group flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                              active
+                                ? "bg-primary/10 text-primary"
+                                : "hover:bg-accent/50"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => resumeConversation(conv.id)}
+                              className="flex-1 truncate text-left"
+                              title={conv.title}
+                            >
+                              {conv.title}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeConversation(conv.id)}
+                              className="invisible inline-flex items-center rounded p-1 text-muted-foreground hover:text-destructive group-hover:visible"
+                              aria-label={`Delete conversation: ${conv.title}`}
+                              title="Delete conversation"
+                            >
+                              <Trash2 className="h-3 w-3" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              <DeckCoachChatPanel
+                messages={messages}
+                isLoading={isChatLoading}
+                onSendMessage={handleChatMessage}
+                onCancel={cancelGeneration}
+              />
+            </div>
           )}
 
           {/* Empty state */}

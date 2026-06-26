@@ -9,6 +9,25 @@ import type {
 import { DeckCard } from "@/ai/flows/context-builder";
 import { aiWorkerClient } from "@/ai/worker/ai-worker-client";
 import type { DigestedCoachContext } from "@/ai/worker/worker-types";
+import {
+  COACH_CONVERSATION_STORE,
+  DEFAULT_DECK_ID,
+  type CoachConversation,
+  type CoachConversationDeckContext,
+  clearAllCoachConversations,
+  createConversationRecord,
+  deleteConversation,
+  deleteConversationsForDeck,
+  deriveConversationTitle,
+  loadConversation,
+  loadConversations,
+  loadMostRecentConversation,
+  saveConversation,
+} from "@/lib/coach-conversation-storage";
+import {
+  isQuotaExceededError,
+  type QuotaExceededError,
+} from "@/lib/storage-quota";
 
 const BASE_STORAGE_KEY = "deck-coach-chat-history";
 
@@ -55,37 +74,10 @@ function parseSseEvent(rawEvent: string): CoachStreamEventPayload | null {
   }
 }
 
+/** Legacy localStorage key helper (kept only to clear stale pre-#1074 data). */
 function getStorageKey(deckId?: string): string {
   if (!deckId) return BASE_STORAGE_KEY;
   return `${BASE_STORAGE_KEY}-${deckId}`;
-}
-
-function loadFromStorage(deckId?: string): ChatMessage[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const key = getStorageKey(deckId);
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return parsed.map((m: ChatMessage) => ({
-        ...m,
-        timestamp: new Date(m.timestamp),
-      }));
-    }
-  } catch (e) {
-    console.error("Failed to load chat history:", e);
-  }
-  return [];
-}
-
-function saveToStorage(messages: ChatMessage[], deckId?: string) {
-  if (typeof window === "undefined") return;
-  try {
-    const key = getStorageKey(deckId);
-    localStorage.setItem(key, JSON.stringify(messages));
-  } catch (e) {
-    console.error("Failed to save chat history:", e);
-  }
 }
 
 export interface UseDeckCoachChatOptions {
@@ -94,18 +86,34 @@ export interface UseDeckCoachChatOptions {
   format?: string;
   archetype?: string;
   strategy?: string;
-  deckId?: string; // Add deckId for isolation
+  deckId?: string; // Scope conversations to a deck; "default" when unset.
 }
 
 export interface UseDeckCoachChatReturn {
   messages: ChatMessage[];
   isLoading: boolean;
   isStreaming: boolean;
+  /** Persisted conversations for the active deck, newest-first. */
+  conversations: CoachConversation[];
+  /** id of the conversation currently loaded into the chat, if any. */
+  activeConversationId: string | null;
+  /**
+   * Human-readable storage notice when persistence is degraded (e.g. quota
+   * exceeded). `null` when persistence is healthy. The in-session coach keeps
+   * working regardless — this is purely informational (issue #1074/#1085).
+   */
+  storageNotice: string | null;
   sendMessage: (content: string, options?: ChatRequestOptions) => Promise<void>;
   cancelGeneration: () => void;
   addAssistantMessage: (content: string) => void;
   clearMessages: () => void;
   setLoading: (loading: boolean) => void;
+  /** Load a past conversation into the chat (resume). */
+  resumeConversation: (conversationId: string) => Promise<void>;
+  /** Start a fresh conversation (clears the chat; next send creates a record). */
+  startNewConversation: () => void;
+  /** Delete a persisted conversation by id. */
+  removeConversation: (conversationId: string) => Promise<void>;
 }
 
 export interface ChatRequestOptions {
@@ -122,46 +130,205 @@ export function useDeckCoachChat(
 ): UseDeckCoachChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [conversations, setConversations] = useState<CoachConversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+
   const messagesRef = useRef(messages);
   const deckIdRef = useRef(options.deckId);
+  /** Live deck context (format/archetype/strategy/cards) from options/overrides. */
+  const deckContextRef = useRef<CoachConversationDeckContext>({});
+  /** id of the conversation currently loaded into the chat. */
+  const activeConversationIdRef = useRef<string | null>(null);
+  /** True once the user has interacted (sent/resumed/started/cleared). */
+  const interactedRef = useRef(false);
+  /** True once the initial auto-resume has run for the current deck. */
+  const hydratedRef = useRef(false);
+
   /**
    * AbortController for the in-flight coach stream. The Cancel button aborts
    * it; the fetch rejects with an AbortError which the stream loop treats as a
    * user-initiated stop rather than a failure (issue #1077).
    */
   const abortControllerRef = useRef<AbortController | null>(null);
-  /** Id of the assistant message currently being streamed into. */
+  /** id of the assistant message currently being streamed into. */
   const streamingMessageIdRef = useRef<string | null>(null);
 
-  // Load messages when deckId changes
-  useEffect(() => {
-    const stored = loadFromStorage(options.deckId);
-    setMessages(stored.length > 0 ? stored : (options.initialMessages ?? []));
-    deckIdRef.current = options.deckId;
-  }, [options.deckId, options.initialMessages]);
+  /**
+   * Apply a messages update and keep {@link messagesRef} in sync *synchronously*.
+   *
+   * React's state is asynchronous, and an effect-based ref mirror only runs
+   * after commit — too late for `persistCurrent`, which reads the ref inside
+   * `sendMessage`'s `finally` before effects flush. Updating the ref here (from
+   * the previous ref value, not the updater's `prev`) keeps it deterministic so
+   * the finalized assistant message (provider/usage/cancelled) is captured by
+   * the single post-completion write (issue #1074).
+   */
+  const updateMessages = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      const next = updater(messagesRef.current);
+      messagesRef.current = next;
+      setMessages(next);
+    },
+    [],
+  );
 
-  // Keep ref in sync
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  /** Resolve the effective deck id for the current scope. */
+  const getDeckId = useCallback(() => deckIdRef.current || DEFAULT_DECK_ID, []);
 
-  // Persist to localStorage
-  useEffect(() => {
-    if (messages.length > 0) {
-      saveToStorage(messages, deckIdRef.current);
-    }
-  }, [messages]);
-
-  const addMessage = useCallback((content: string, role: ChatMessageRole) => {
-    const newMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role,
-      content,
-      timestamp: new Date(),
+  /** Sync the latest option-supplied deck context into the ref. */
+  const refreshDeckContext = useCallback(() => {
+    deckContextRef.current = {
+      format: options.format,
+      archetype: options.archetype,
+      strategy: options.strategy,
+      deckCards: options.deckCards,
     };
-    setMessages((prev) => [...prev, newMessage]);
-    return newMessage;
-  }, []);
+  }, [options.format, options.archetype, options.strategy, options.deckCards]);
+
+  /** Refresh the persisted-conversation list for the active deck. */
+  const refreshConversations = useCallback(async () => {
+    const list = await loadConversations(getDeckId());
+    setConversations(list);
+  }, [getDeckId]);
+
+  // messagesRef is kept synchronously in sync by `updateMessages` (see below);
+  // no effect-based mirror is needed.
+
+  /**
+   * Persist the current chat state (messages + live deck context) to IndexedDB.
+   * Creates a conversation record on first save and updates it thereafter.
+   * Quota errors surface as a `storageNotice` and never throw (issue #1074).
+   */
+  const persistCurrent = useCallback(async () => {
+    const currentMessages = messagesRef.current;
+    // Nothing meaningful to persist yet (no user content).
+    if (currentMessages.length === 0) return;
+
+    refreshDeckContext();
+    const now = new Date().toISOString();
+    const existingId = activeConversationIdRef.current;
+
+    let record: CoachConversation;
+    if (existingId) {
+      const existing = await loadConversation(existingId);
+      record = existing
+        ? {
+            ...existing,
+            title: deriveConversationTitle(currentMessages),
+            deckContext: deckContextRef.current,
+            messages: currentMessages,
+            updatedAt: now,
+          }
+        : createConversationRecord({
+            id: existingId,
+            deckId: getDeckId(),
+            messages: currentMessages,
+            deckContext: deckContextRef.current,
+            now: new Date(now),
+          });
+    } else {
+      const newId = crypto.randomUUID();
+      activeConversationIdRef.current = newId;
+      record = createConversationRecord({
+        id: newId,
+        deckId: getDeckId(),
+        messages: currentMessages,
+        deckContext: deckContextRef.current,
+        now: new Date(now),
+      });
+    }
+
+    const result = await saveConversation(record);
+    if (!result.ok) {
+      if (isQuotaExceededError(result.error)) {
+        const storeName = (result.error as QuotaExceededError).storeName;
+        setStorageNotice(
+          `Storage is full — this conversation isn't being saved, but the coach still works this session.` +
+            (storeName ? ` (${storeName})` : ""),
+        );
+      } else {
+        setStorageNotice(
+          "Couldn't save this conversation locally — the coach still works this session.",
+        );
+      }
+      return;
+    }
+    // Healthy write: clear any prior notice and refresh the sidebar list.
+    setStorageNotice(null);
+    await refreshConversations();
+    setActiveConversationId(activeConversationIdRef.current);
+  }, [getDeckId, refreshConversations, refreshDeckContext]);
+
+  // Load most-recent conversation + list when deckId changes (auto-resume).
+  useEffect(() => {
+    let cancelled = false;
+    hydratedRef.current = false;
+    interactedRef.current = false;
+    deckIdRef.current = options.deckId;
+    refreshDeckContext();
+
+    (async () => {
+      // Clear stale legacy localStorage history from pre-#1074 builds.
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(getStorageKey(options.deckId));
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const [recent, list] = await Promise.all([
+        loadMostRecentConversation(options.deckId || DEFAULT_DECK_ID),
+        loadConversations(options.deckId || DEFAULT_DECK_ID),
+      ]);
+      if (cancelled) return;
+
+      setConversations(list);
+      // Race guard: if the user started interacting before this async load
+      // resolved (e.g. sent a message immediately on mount), do NOT clobber
+      // their in-progress state with the resumed history (issue #1074).
+      if (interactedRef.current) {
+        hydratedRef.current = true;
+        return;
+      }
+      if (recent && recent.messages.length > 0) {
+        activeConversationIdRef.current = recent.id;
+        setActiveConversationId(recent.id);
+        messagesRef.current = recent.messages;
+        setMessages(recent.messages);
+        deckContextRef.current = recent.deckContext ?? {};
+      } else {
+        activeConversationIdRef.current = null;
+        setActiveConversationId(null);
+        const initial = options.initialMessages ?? [];
+        messagesRef.current = initial;
+        setMessages(initial);
+      }
+      hydratedRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options.deckId]);
+
+  const addMessage = useCallback(
+    (content: string, role: ChatMessageRole) => {
+      const newMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role,
+        content,
+        timestamp: new Date(),
+      };
+      updateMessages((prev) => [...prev, newMessage]);
+      return newMessage;
+    },
+    [updateMessages],
+  );
 
   const addAssistantMessage = useCallback(
     (content: string) => {
@@ -172,6 +339,8 @@ export function useDeckCoachChat(
 
   const sendMessage = useCallback(
     async (content: string, chatOptions: ChatRequestOptions = {}) => {
+      // Mark as interacted so a late auto-resume load can't clobber this turn.
+      interactedRef.current = true;
       // 1. Add user message
       const userMessage = addMessage(content, "user");
 
@@ -187,7 +356,7 @@ export function useDeckCoachChat(
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, initialAssistantMsg]);
+      updateMessages((prev) => [...prev, initialAssistantMsg]);
       streamingMessageIdRef.current = assistantMsgId;
 
       // AbortController enables the Cancel button (issue #1077).
@@ -198,7 +367,7 @@ export function useDeckCoachChat(
       const patchAssistant = (patch: Partial<ChatMessage>) => {
         const id = streamingMessageIdRef.current;
         if (!id) return;
-        setMessages((prev) =>
+        updateMessages((prev) =>
           prev.map((msg) =>
             msg.id === id && msg.role === "assistant"
               ? { ...msg, ...patch }
@@ -207,6 +376,11 @@ export function useDeckCoachChat(
         );
       };
 
+      // Persist the user's message immediately so it survives a refresh even if
+      // the stream is interrupted mid-flight (issue #1074). The finalized
+      // assistant message is persisted again in `finally` below.
+      void persistCurrent();
+
       try {
         const currentDeckCards =
           chatOptions.deckCards || options.deckCards || [];
@@ -214,6 +388,13 @@ export function useDeckCoachChat(
           chatOptions.format || options.format || "commander";
         const currentArchetype = chatOptions.archetype || options.archetype;
         const currentStrategy = chatOptions.strategy || options.strategy;
+        // Update live context so the persisted snapshot reflects this turn.
+        deckContextRef.current = {
+          format: currentFormat,
+          archetype: currentArchetype,
+          strategy: currentStrategy,
+          deckCards: currentDeckCards,
+        };
 
         // Payload reduction: if the deck is large, use digested context
         let digestedContext: DigestedCoachContext | undefined;
@@ -344,7 +525,7 @@ export function useDeckCoachChat(
           patchAssistant({ cancelled: true });
         } else {
           console.error("Chat error:", error);
-          setMessages((prev) =>
+          updateMessages((prev) =>
             prev.map((msg) =>
               msg.id === assistantMsgId
                 ? {
@@ -359,14 +540,20 @@ export function useDeckCoachChat(
         abortControllerRef.current = null;
         streamingMessageIdRef.current = null;
         setIsLoading(false);
+        // Persist the finalized assistant message (with provider/usage/cancelled
+        // attached by the stream). This is the single post-completion write — we
+        // deliberately do NOT write on every streaming token (issue #1074).
+        await persistCurrent();
       }
     },
     [
       addMessage,
+      updateMessages,
       options.deckCards,
       options.format,
       options.archetype,
       options.strategy,
+      persistCurrent,
     ],
   );
 
@@ -381,18 +568,84 @@ export function useDeckCoachChat(
   }, []);
 
   const clearMessages = useCallback(() => {
+    interactedRef.current = true;
+    messagesRef.current = [];
     setMessages([]);
-    localStorage.removeItem(getStorageKey(deckIdRef.current));
+    const id = activeConversationIdRef.current;
+    activeConversationIdRef.current = null;
+    setActiveConversationId(null);
+    if (id) {
+      void deleteConversation(id).then(refreshConversations);
+    } else {
+      // No active record to delete; still clear any deck-scoped legacy data.
+      void deleteConversationsForDeck(getDeckId()).then(refreshConversations);
+    }
+  }, [getDeckId, refreshConversations]);
+
+  const resumeConversation = useCallback(async (conversationId: string) => {
+    interactedRef.current = true;
+    // Abort any in-flight stream before switching context.
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    streamingMessageIdRef.current = null;
+    setIsLoading(false);
+
+    const conv = await loadConversation(conversationId);
+    if (!conv) return;
+    activeConversationIdRef.current = conv.id;
+    setActiveConversationId(conv.id);
+    messagesRef.current = conv.messages;
+    setMessages(conv.messages);
+    deckContextRef.current = conv.deckContext ?? {};
+    setStorageNotice(null);
   }, []);
+
+  const startNewConversation = useCallback(() => {
+    interactedRef.current = true;
+    // Abort any in-flight stream before starting fresh.
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    streamingMessageIdRef.current = null;
+    setIsLoading(false);
+    activeConversationIdRef.current = null;
+    setActiveConversationId(null);
+    messagesRef.current = [];
+    setMessages([]);
+    setStorageNotice(null);
+  }, []);
+
+  const removeConversation = useCallback(
+    async (conversationId: string) => {
+      interactedRef.current = true;
+      await deleteConversation(conversationId);
+      if (activeConversationIdRef.current === conversationId) {
+        activeConversationIdRef.current = null;
+        setActiveConversationId(null);
+        messagesRef.current = [];
+        setMessages([]);
+      }
+      await refreshConversations();
+    },
+    [refreshConversations],
+  );
 
   return {
     messages,
     isLoading,
     isStreaming: isLoading,
+    conversations,
+    activeConversationId,
+    storageNotice,
     sendMessage,
     cancelGeneration,
     addAssistantMessage,
     clearMessages,
     setLoading: setIsLoading,
+    resumeConversation,
+    startNewConversation,
+    removeConversation,
   };
 }
+
+// Re-export store name + clearAll for tests/inspection.
+export { COACH_CONVERSATION_STORE, clearAllCoachConversations };
