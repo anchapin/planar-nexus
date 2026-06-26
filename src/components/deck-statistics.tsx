@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -274,7 +274,7 @@ function gapFill(gap: ManaCurveGap | undefined): string {
   return '#ef4444'; // too many — red
 }
 
-export function ManaCurveChart({
+export const ManaCurveChart = memo(function ManaCurveChart({
   manaCurve,
   className,
   format,
@@ -462,7 +462,7 @@ export function ManaCurveChart({
       </CardContent>
     </Card>
   );
-}
+});
 
 /**
  * Recharts-based Card Type Chart
@@ -474,7 +474,7 @@ interface CardTypeChartProps {
   className?: string;
 }
 
-export function CardTypeChart({ typeDistribution, chartType = 'pie', className }: CardTypeChartProps) {
+export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, chartType = 'pie', className }: CardTypeChartProps) {
   // Convert type distribution to array format for Recharts
   const data = useMemo(() => {
     const total = Object.values(typeDistribution).reduce((a, b) => a + b, 0);
@@ -621,7 +621,7 @@ export function CardTypeChart({ typeDistribution, chartType = 'pie', className }
       </CardContent>
     </Card>
   );
-}
+});
 
 /**
  * Recharts-based Deck Color Chart
@@ -632,7 +632,7 @@ interface DeckColorChartProps {
   className?: string;
 }
 
-export function DeckColorChart({ colorDistribution, className }: DeckColorChartProps) {
+export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, className }: DeckColorChartProps) {
   // Convert color distribution to array format for Recharts
   const data = useMemo(() => {
     const total = Object.values(colorDistribution).reduce((a, b) => a + b, 0);
@@ -733,7 +733,7 @@ export function DeckColorChart({ colorDistribution, className }: DeckColorChartP
       </CardContent>
     </Card>
   );
-}
+});
 
 // Match history table
 interface MatchHistoryTableProps {
