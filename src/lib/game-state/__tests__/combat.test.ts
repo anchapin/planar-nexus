@@ -21,6 +21,7 @@ import {
   getAvailableAttackers,
   getAvailableBlockers,
 } from "../combat";
+import type { CombatActionResult } from "../combat";
 import { createInitialGameState, startGame } from "../game-state";
 import {
   createCardInstance,
@@ -29,6 +30,7 @@ import {
 import { Phase, CardInstanceId } from "../types";
 import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
 import { checkStateBasedActions } from "../state-based-actions";
+import { shouldHaveFirstStrikeStep } from "../turn-phases";
 import type { ScryfallCard } from "@/app/actions";
 
 // Helper function to create a mock creature card
@@ -2117,6 +2119,345 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       // (CR 306.7: Damage marked on creature doesn't reduce planeswalker loyalty separately)
       const attacker = resolveResult.state.cards.get(attackerId);
       expect(attacker?.damage).toBe(0);
+    });
+  });
+
+  // Issue #969: First Strike / Double Strike combat damage step gating (CR 702.7, CR 702.4)
+  describe("First Strike / Double Strike damage step gating (#969)", () => {
+    // Helper: run both combat damage steps starting from a post-declare-blockers state.
+    function runBothDamageSteps(
+      stateAfterBlockers: import("../types").GameState,
+    ): { firstStrike: CombatActionResult; regular: CombatActionResult } {
+      const stateFirstStrike = {
+        ...stateAfterBlockers,
+        turn: {
+          ...stateAfterBlockers.turn,
+          currentPhase: Phase.COMBAT_DAMAGE_FIRST_STRIKE,
+        },
+      };
+      const firstStrike = resolveCombatDamage(stateFirstStrike);
+      expect(firstStrike.success).toBe(true);
+      const stateRegular = {
+        ...firstStrike.state,
+        turn: {
+          ...firstStrike.state.turn,
+          currentPhase: Phase.COMBAT_DAMAGE,
+        },
+      };
+      const regular = resolveCombatDamage(stateRegular);
+      expect(regular.success).toBe(true);
+      return { firstStrike, regular };
+    }
+
+    it("first-strike attacker kills a regular blocker before the blocker deals any damage (#969)", () => {
+      // 2/2 first strike vs 2/2 regular blocker. First striker kills the
+      // blocker in the first-strike step; the blocker never deals its
+      // damage back because it is dead before the regular damage step.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "FS Attacker",
+            power: 2,
+            toughness: 2,
+            keywords: ["First Strike"],
+          },
+        ],
+        [{ name: "Regular Blocker", power: 2, toughness: 2 }],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, [blockerId]]]),
+      );
+
+      const { firstStrike, regular } = runBothDamageSteps(blockResult.state);
+
+      // Blocker died in the first-strike step.
+      const bobGraveyard = firstStrike.state.zones.get(
+        `${bobId}-graveyard`,
+      )!;
+      expect(bobGraveyard.cardIds).toContain(blockerId);
+
+      // Attacker survived the whole combat — the regular blocker never dealt
+      // its 2 damage because it was already dead before the regular step.
+      const aliceBfAfter = regular.state.zones.get(
+        `${aliceId}-battlefield`,
+      )!;
+      expect(aliceBfAfter.cardIds).toContain(attackerId);
+      const attackerAfter = regular.state.cards.get(attackerId)!;
+      expect(attackerAfter.damage).toBe(0);
+    });
+
+    it("double-strike attacker deals damage in BOTH first-strike and regular steps (#969)", () => {
+      // 2/2 double strike, unblocked, attacks player.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "DS Attacker",
+            power: 2,
+            toughness: 2,
+            keywords: ["Double Strike"],
+          },
+        ],
+        [],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+
+      const { firstStrike, regular } = runBothDamageSteps(attackResult.state);
+
+      // 2 damage in the first-strike step.
+      const bobAfterFirst = firstStrike.state.players.get(bobId)!;
+      expect(bobAfterFirst.life).toBe(18);
+      // +2 more damage in the regular step (4 total).
+      const bobAfterRegular = regular.state.players.get(bobId)!;
+      expect(bobAfterRegular.life).toBe(16);
+    });
+
+    it("a double-strike attacker killed in the first-strike step does NOT deal damage in the regular step (#969)", () => {
+      // 2/2 double strike attacker blocked by a 3/3 first-strike blocker.
+      // Step 1 (first strike): attacker deals 2 to blocker (not lethal); blocker
+      // deals 3 to attacker → attacker dies. Step 2 (regular): the dead double-
+      // strike attacker must NOT deal its second hit.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "DS Attacker",
+            power: 2,
+            toughness: 2,
+            keywords: ["Double Strike"],
+          },
+        ],
+        [
+          {
+            name: "FS Blocker",
+            power: 3,
+            toughness: 3,
+            keywords: ["First Strike"],
+          },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, [blockerId]]]),
+      );
+
+      const { firstStrike, regular } = runBothDamageSteps(blockResult.state);
+
+      // Attacker died in the first-strike step.
+      const aliceGraveyard = firstStrike.state.zones.get(
+        `${aliceId}-graveyard`,
+      )!;
+      expect(aliceGraveyard.cardIds).toContain(attackerId);
+      // Blocker survived the first-strike step with exactly 2 damage marked.
+      const blockerAfterFirst = firstStrike.state.cards.get(blockerId)!;
+      expect(blockerAfterFirst.damage).toBe(2);
+
+      // After the regular step, the blocker must still only have 2 damage —
+      // the dead double-strike attacker did not deal its second hit.
+      const blockerAfterRegular = regular.state.cards.get(blockerId)!;
+      expect(blockerAfterRegular.damage).toBe(2);
+      const bobBfAfter = regular.state.zones.get(`${bobId}-battlefield`)!;
+      expect(bobBfAfter.cardIds).toContain(blockerId);
+    });
+
+    it("a double-strike blocker killed in the first-strike step does NOT deal damage in the regular step (#969)", () => {
+      // 3/3 first-strike attacker blocked by a 2/2 double-strike blocker.
+      // Step 1: attacker deals 3 to blocker (lethal, dies); blocker deals 2 to
+      // attacker. Step 2: the dead double-strike blocker must NOT deal its
+      // second hit. The attacker (first-strike-only) also does not act again,
+      // so the attacker ends with exactly 2 marked damage.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [
+          {
+            name: "FS Attacker",
+            power: 3,
+            toughness: 3,
+            keywords: ["First Strike"],
+          },
+        ],
+        [
+          {
+            name: "DS Blocker",
+            power: 2,
+            toughness: 2,
+            keywords: ["Double Strike"],
+          },
+        ],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, [blockerId]]]),
+      );
+
+      const { firstStrike, regular } = runBothDamageSteps(blockResult.state);
+
+      // Blocker died in the first-strike step.
+      const bobGraveyard = firstStrike.state.zones.get(`${bobId}-graveyard`)!;
+      expect(bobGraveyard.cardIds).toContain(blockerId);
+
+      // After the regular step, the attacker has only 2 damage (single hit
+      // from the blocker in the first-strike step). If the dead double-strike
+      // blocker incorrectly dealt its second hit, the attacker would have 4.
+      const attackerAfterRegular = regular.state.cards.get(attackerId)!;
+      expect(attackerAfterRegular.damage).toBe(2);
+      const aliceBfAfter = regular.state.zones.get(`${aliceId}-battlefield`)!;
+      expect(aliceBfAfter.cardIds).toContain(attackerId);
+    });
+
+    it("normal combat (no first/double strike) is unaffected: only one effective damage step (#969)", () => {
+      // 2/2 attacker vs 2/2 blocker, no keywords. Both should die after a
+      // single (regular) combat damage step. The first-strike step, if run,
+      // must be a no-op (no participants).
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Attacker", power: 2, toughness: 2 }],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, [blockerId]]]),
+      );
+
+      const { firstStrike, regular } = runBothDamageSteps(blockResult.state);
+
+      // First-strike step is a no-op: nothing dies, no damage marked.
+      const aliceBfAfterFs = firstStrike.state.zones.get(
+        `${aliceId}-battlefield`,
+      )!;
+      const bobBfAfterFs = firstStrike.state.zones.get(
+        `${bobId}-battlefield`,
+      )!;
+      expect(aliceBfAfterFs.cardIds).toContain(attackerId);
+      expect(bobBfAfterFs.cardIds).toContain(blockerId);
+      expect(firstStrike.state.cards.get(attackerId)!.damage).toBe(0);
+      expect(firstStrike.state.cards.get(blockerId)!.damage).toBe(0);
+
+      // Regular step: both deal damage simultaneously and both die.
+      const aliceGraveyard = regular.state.zones.get(`${aliceId}-graveyard`)!;
+      const bobGraveyard = regular.state.zones.get(`${bobId}-graveyard`)!;
+      expect(aliceGraveyard.cardIds).toContain(attackerId);
+      expect(bobGraveyard.cardIds).toContain(blockerId);
+    });
+
+    it("shouldHaveFirstStrikeStep returns false when no creature has first/double strike, true otherwise (#969)", () => {
+      // No first/double strike anywhere.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Attacker", power: 2, toughness: 2 }],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = bobBattlefield.cardIds[0];
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, [blockerId]]]),
+      );
+      expect(shouldHaveFirstStrikeStep(blockResult.state)).toBe(false);
+
+      // First-strike attacker present → true.
+      const fsState = setupGameWithCreatures(
+        [
+          {
+            name: "FS Attacker",
+            power: 2,
+            toughness: 2,
+            keywords: ["First Strike"],
+          },
+        ],
+        [],
+      );
+      const fsAttackerId = fsState.state.zones.get(
+        `${fsState.aliceId}-battlefield`,
+      )!.cardIds[0];
+      fsState.state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const fsAtk = declareAttackers(fsState.state, [
+        { cardId: fsAttackerId, defenderId: fsState.bobId },
+      ]);
+      expect(shouldHaveFirstStrikeStep(fsAtk.state)).toBe(true);
+
+      // Double-strike blocker present → true.
+      const dsState = setupGameWithCreatures(
+        [{ name: "Attacker", power: 2, toughness: 2 }],
+        [
+          {
+            name: "DS Blocker",
+            power: 2,
+            toughness: 2,
+            keywords: ["Double Strike"],
+          },
+        ],
+      );
+      const dsAttackerId = dsState.state.zones.get(
+        `${dsState.aliceId}-battlefield`,
+      )!.cardIds[0];
+      const dsBlockerId = dsState.state.zones.get(
+        `${dsState.bobId}-battlefield`,
+      )!.cardIds[0];
+      dsState.state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const dsAtk = declareAttackers(dsState.state, [
+        { cardId: dsAttackerId, defenderId: dsState.bobId },
+      ]);
+      dsAtk.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const dsBlk = declareBlockers(
+        dsAtk.state,
+        new Map([[dsAttackerId, [dsBlockerId]]]),
+      );
+      expect(shouldHaveFirstStrikeStep(dsBlk.state)).toBe(true);
     });
   });
 });
