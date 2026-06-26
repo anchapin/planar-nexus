@@ -11,14 +11,15 @@ module.exports = {
     // exercise real cross-module workflows. See issue #931.
     "<rootDir>/tests/**/*.test.ts",
   ],
-  testPathIgnorePatterns: [
-    "/src/lib/__tests__/keyword-actions.test.ts",
-    "/src/lib/game-state/__tests__/keyword-actions.test.ts",
-    "/src/lib/game-state/__tests__/evergreen-keywords.test.ts",
-    "/src/lib/game-state/__tests__/standard-mechanics.test.ts",
-    "/src/lib/game-state/__tests__/hand-targeting.test.ts",
-    "/src/lib/game-state/__tests__/golden-scenarios.test.ts",
-  ],
+  // The six game-state suites that were previously skipped here have been
+  // repaired and re-enabled (issue #1093):
+  //   src/lib/__tests__/keyword-actions.test.ts
+  //   src/lib/game-state/__tests__/keyword-actions.test.ts
+  //   src/lib/game-state/__tests__/evergreen-keywords.test.ts
+  //   src/lib/game-state/__tests__/standard-mechanics.test.ts
+  //   src/lib/game-state/__tests__/hand-targeting.test.ts
+  //   src/lib/game-state/__tests__/golden-scenarios.test.ts
+  testPathIgnorePatterns: ["/node_modules/"],
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     // @orama/* ships ESM under the `browser`/`import` export conditions which
