@@ -16,6 +16,7 @@ import {
 } from './websocket-connection';
 import type { GameState } from './game-state/types';
 import { TIMEOUTS } from './config/timeouts';
+import { redactSensitive } from './p2p-log-redact';
 
 /**
  * Connection type
@@ -157,7 +158,8 @@ export class ConnectionFallbackManager {
           resolve(connectionType);
         })
         .catch((error) => {
-          console.error('[ConnectionFallback] WebRTC connection failed:', error);
+          // #982: redact — WebRTC connection errors may embed SDP / ICE config.
+          console.error('[ConnectionFallback] WebRTC connection failed:', redactSensitive(error));
           this.state.lastError = error instanceof Error ? error.message : 'WebRTC connection failed';
           
           // If fallback timer hasn't triggered yet and WebSocket is available
@@ -175,7 +177,9 @@ export class ConnectionFallbackManager {
               })
               .catch((wsError) => {
                 if (!resolved) {
-                  console.error('[ConnectionFallback] WebSocket fallback failed:', wsError);
+                  // #982: redact — WS fallback errors may embed server URLs
+                  // carrying session tokens.
+                  console.error('[ConnectionFallback] WebSocket fallback failed:', redactSensitive(wsError));
                   reject(new Error(`Both WebRTC and WebSocket failed: ${error instanceof Error ? error.message : 'Unknown error'}`));
                 }
               });
@@ -331,7 +335,8 @@ export class ConnectionFallbackManager {
     try {
       await this.connectWebSocket();
     } catch (error) {
-      console.error('[ConnectionFallback] Fallback to WebSocket failed:', error);
+      // #982: redact — fallback errors may embed WS URLs / session tokens.
+      console.error('[ConnectionFallback] Fallback to WebSocket failed:', redactSensitive(error));
       this.state.lastError = error instanceof Error ? error.message : 'Fallback failed';
       this.notifyStateChange();
     }

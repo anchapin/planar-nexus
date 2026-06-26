@@ -11,6 +11,7 @@ import QRCode from "qrcode";
 import { generateGameCode } from "./webrtc-p2p";
 import type { WebRTCConnection, P2PConnectionOptions } from "./webrtc-p2p";
 import { safeParseJson } from "./p2p-json-validation";
+import { redactSensitive } from "./p2p-log-redact";
 
 /**
  * Connection data for QR code encoding
@@ -231,7 +232,11 @@ export async function generateConnectionQRCode(
     );
     return dataUrl;
   } catch (error) {
-    console.error("[P2P] Failed to generate QR code:", error);
+    // #982: redact in case the QRCode error embeds connectionData (sessionId, gameCode, sdp).
+    console.error(
+      "[P2P] Failed to generate QR code:",
+      redactSensitive(error),
+    );
     throw new Error("Failed to generate connection QR code");
   }
 }
@@ -395,7 +400,10 @@ export async function handleICEExchange(
   const session = sessionManager.getSession(sessionId);
 
   if (!session) {
-    throw new Error(`Session not found: ${sessionId}`);
+    // #982: do NOT embed sessionId in the thrown message — it can propagate
+    // up to higher-level error reporters / console output and leak session
+    // metadata. Callers already know which sessionId they asked about.
+    throw new Error("Session not found");
   }
 
   // Add candidate to connection

@@ -23,6 +23,7 @@ import type {
 } from "./webrtc-p2p";
 import { WebRTCConnection, createP2PConnection } from "./webrtc-p2p";
 import { safeParseJson } from "./p2p-json-validation";
+import { redactSensitive } from "./p2p-log-redact";
 
 /**
  * Connection information for P2P handshake
@@ -193,7 +194,8 @@ export class P2PSignalingClient {
       this.connection = createP2PConnection(connectionOptions);
       await this.connection.initialize();
     } catch (error) {
-      console.error("[Signaling] Failed to initialize:", error);
+      // #982: redact — init errors may embed ICE config / TURN credentials.
+      console.error("[Signaling] Failed to initialize:", redactSensitive(error));
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to initialize"),
       );
@@ -226,7 +228,12 @@ export class P2PSignalingClient {
       });
       return dataUrl;
     } catch (error) {
-      console.error("[Signaling] Failed to generate QR code:", error);
+      // #982: redact — QRCode errors may include the serialized connectionInfo
+      // (which carries gameCode / hostName).
+      console.error(
+        "[Signaling] Failed to generate QR code:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error
           ? error
@@ -260,7 +267,11 @@ export class P2PSignalingClient {
 
       return offer;
     } catch (error) {
-      console.error("[Signaling] Failed to create offer:", error);
+      // #982: redact — offer creation errors may embed the local SDP offer.
+      console.error(
+        "[Signaling] Failed to create offer:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to create offer"),
       );
@@ -291,7 +302,11 @@ export class P2PSignalingClient {
 
       return answer;
     } catch (error) {
-      console.error("[Signaling] Failed to handle offer:", error);
+      // #982: redact — handle-offer errors may embed the remote SDP offer.
+      console.error(
+        "[Signaling] Failed to handle offer:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to handle offer"),
       );
@@ -315,7 +330,11 @@ export class P2PSignalingClient {
       // Handle answer
       await this.connection.handleAnswer(answer);
     } catch (error) {
-      console.error("[Signaling] Failed to handle answer:", error);
+      // #982: redact — handle-answer errors may embed the remote SDP answer.
+      console.error(
+        "[Signaling] Failed to handle answer:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to handle answer"),
       );
@@ -335,7 +354,11 @@ export class P2PSignalingClient {
     try {
       await this.connection.addIceCandidate(candidate);
     } catch (error) {
-      console.error("[Signaling] Failed to add ICE candidate:", error);
+      // #982: redact — candidate errors may embed the ICE candidate blob.
+      console.error(
+        "[Signaling] Failed to add ICE candidate:",
+        redactSensitive(error),
+      );
       // Don't fail the connection for candidate errors
     }
   }

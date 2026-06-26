@@ -246,6 +246,36 @@ describe("parseConnectionInfo", () => {
       expect(parseConnectionInfo(p)).toBeNull();
     }
   });
+
+  // --------------------------------------------------------------------------
+  // Issue #982 — strip console.log statements exposing session IDs / game codes
+  // --------------------------------------------------------------------------
+
+  describe("Sensitive-data leak protection (#982)", () => {
+    let errorSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      errorSpy.mockRestore();
+    });
+
+    it("parseConnectionInfo does not log gameCode or hostName on malformed input", () => {
+      const gameCode = "ZZZ999";
+      const hostName = "SecretHost";
+      const malicious = `{ "gameCode": "${gameCode}", "hostName": "${hostName}", invalid }`;
+
+      expect(parseConnectionInfo(malicious)).toBeNull();
+      expect(errorSpy).toHaveBeenCalled();
+      for (const call of errorSpy.mock.calls) {
+        const serialized = JSON.stringify(call);
+        expect(serialized).not.toContain(gameCode);
+        expect(serialized).not.toContain(hostName);
+      }
+    });
+  });
 });
 
 describe("serializeSignalingData", () => {

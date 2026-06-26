@@ -32,6 +32,7 @@ import {
   type ConnectionFailureContext,
   type ConnectionFailureDiagnostic,
 } from "./p2p-failure-diagnostics";
+import { redactSensitive } from "./p2p-log-redact";
 
 /**
  * P2P connection events
@@ -362,9 +363,10 @@ export class P2PGameConnection {
     try {
       await this.signalingClient.addRemoteIceCandidates(candidates);
     } catch (error) {
+      // #982: redact — candidate errors may embed ICE candidate blobs.
       console.error(
         "[P2PGameConnection] Failed to process ICE candidates:",
-        error,
+        redactSensitive(error),
       );
     }
   }
@@ -382,7 +384,11 @@ export class P2PGameConnection {
       this.dataChannel.send(JSON.stringify(message));
       return true;
     } catch (error) {
-      console.error("[P2PGameConnection] Failed to send message:", error);
+      // #982: redact — send errors may reference the message payload.
+      console.error(
+        "[P2PGameConnection] Failed to send message:",
+        redactSensitive(error),
+      );
       return false;
     }
   }
@@ -475,7 +481,11 @@ export class P2PGameConnection {
     };
 
     this.dataChannel.onerror = (event) => {
-      console.error("[P2PGameConnection] Data channel error:", event);
+      // #982: redact — data channel error events may embed diagnostic info.
+      console.error(
+        "[P2PGameConnection] Data channel error:",
+        redactSensitive(event),
+      );
       this.handleError(
         event instanceof Error ? event : new Error("Data channel error"),
       );
@@ -536,7 +546,11 @@ export class P2PGameConnection {
 
       this.events.onMessage(message);
     } catch (error) {
-      console.error("[P2PGameConnection] Failed to handle message:", error);
+      // #982: redact — handler errors may reference the peer message payload.
+      console.error(
+        "[P2PGameConnection] Failed to handle message:",
+        redactSensitive(error),
+      );
       // Don't break connection for handler errors, just log them
     }
   }
@@ -673,7 +687,9 @@ export class P2PGameConnection {
    * Handle error
    */
   private handleError(error: Error): void {
-    console.error("[P2PGameConnection] Error:", error);
+    // #982: redact — error.message may embed session metadata propagated up
+    // from lower layers.
+    console.error("[P2PGameConnection] Error:", redactSensitive(error));
     if (!this.lastFailureDiagnostic) {
       this.lastFailureDiagnostic = classifyConnectionFailure({
         rtcConfig: this.getRTCConfig(),
@@ -789,7 +805,11 @@ export class P2PGameConnection {
     try {
       return await this.peerConnection.getStats();
     } catch (error) {
-      console.error("[P2PGameConnection] Failed to get stats:", error);
+      // #982: redact — getStats errors may reference ICE candidates.
+      console.error(
+        "[P2PGameConnection] Failed to get stats:",
+        redactSensitive(error),
+      );
       return null;
     }
   }
