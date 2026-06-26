@@ -117,6 +117,7 @@ describe("use-p2p-connection Hook Types", () => {
         sendGameState: (gameState, isFullSync) => false,
         sendGameAction: (action, data) => ({ success: false }),
         sendChat: (text) => false,
+        requestStateSync: () => false,
         closeConnection: () => {},
         getConnection: () => null,
         getConflictQueueSize: () => 0,
@@ -128,6 +129,7 @@ describe("use-p2p-connection Hook Types", () => {
         continueAsLocalHotSeat: async () => ({ ok: true }),
         saveForLocalResume: async () => ({ ok: true }),
         dismissTerminalFailure: () => {},
+        droppedPendingActions: [],
       };
 
       expect(returnValue.connectionState).toBeDefined();

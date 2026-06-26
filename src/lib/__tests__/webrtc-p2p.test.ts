@@ -185,6 +185,7 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     reconnectBaseDelayMs?: number;
     reconnectAttemptTimeoutMs?: number;
     onReconnectOffer?: P2PEvents["onReconnectOffer"];
+    onReconnect?: P2PEvents["onReconnect"];
     onError?: P2PEvents["onError"];
     onConnectionStateChange?: P2PEvents["onConnectionStateChange"];
   };
@@ -193,10 +194,12 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     conn: WebRTCConnection;
     pc: MockRTCPeerConnection;
     offerSpy: jest.Mock;
+    reconnectSpy: jest.Mock;
     errorSpy: jest.Mock;
     stateSpy: jest.Mock;
   }> {
     const offerSpy = jest.fn();
+    const reconnectSpy = jest.fn();
     const errorSpy = jest.fn();
     const stateSpy = jest.fn();
 
@@ -210,6 +213,7 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
       reconnectAttemptTimeoutMs: opts.reconnectAttemptTimeoutMs ?? 30,
       events: {
         onReconnectOffer: opts.onReconnectOffer ?? offerSpy,
+        onReconnect: opts.onReconnect ?? reconnectSpy,
         onError: opts.onError ?? errorSpy,
         onConnectionStateChange: opts.onConnectionStateChange ?? stateSpy,
       },
@@ -219,7 +223,7 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
 
     const pc = lastCreatedPC as MockRTCPeerConnection;
     lastCreatedPC = null;
-    return { conn, pc, offerSpy, errorSpy, stateSpy };
+    return { conn, pc, offerSpy, reconnectSpy, errorSpy, stateSpy };
   }
 
   function fireICEState(
@@ -269,6 +273,36 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     expect(conn.getConnectionState()).toBe("connected");
     // Exactly one restart offer for a single successful recovery.
     expect(offerSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onReconnect exactly once after an ICE-restart recovery (and not on initial connect) (issue #1086)", async () => {
+    const { conn, pc, reconnectSpy } = await makeConnection();
+
+    // Initial connect must NOT fire onReconnect.
+    fireConnectionState(pc, "connected");
+    expect(conn.getConnectionState()).toBe("connected");
+    expect(reconnectSpy).not.toHaveBeenCalled();
+
+    // Transient ICE disconnect → recovery.
+    fireICEState(pc, "disconnected");
+    await waitFor(() =>
+      conn.getConnectionState() === "reconnecting" ? true : false,
+    );
+    expect(reconnectSpy).not.toHaveBeenCalled();
+
+    // Peer completes renegotiation → connection recovers.
+    fireConnectionState(pc, "connected");
+    await waitFor(() =>
+      conn.getConnectionState() === "connected" ? true : false,
+    );
+    // onReconnect fires exactly once on recovery — the canonical signal for
+    // the game layer to reconcile authoritative state.
+    expect(reconnectSpy).toHaveBeenCalledTimes(1);
+
+    // A duplicate "connected" transition must NOT re-fire onReconnect.
+    fireConnectionState(pc, "connected");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(reconnectSpy).toHaveBeenCalledTimes(1);
   });
 
   it("retries with backoff up to max attempts then transitions to terminal failed (not stuck reconnecting)", async () => {
