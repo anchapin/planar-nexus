@@ -739,7 +739,13 @@ function parseEffect(
   }
 
   // Determine effect type based on keywords
-  if (effect.includes("deal ") && effect.includes(" damage")) {
+  // NOTE (issue #1098): real Oracle text is "deals N damage" (3rd person). The
+  // original check only matched the imperative "deal ", so the damage branch
+  // was never reached for any real card. Accept both forms.
+  if (
+    (effect.includes("deal ") || effect.includes("deals ")) &&
+    effect.includes(" damage")
+  ) {
     return { effectType: "damage" as const, targets, value };
   }
 
@@ -785,7 +791,12 @@ function parseEffect(
     };
   }
 
-  if (effect.includes("lose ") && effect.includes("life")) {
+  // NOTE (issue #1098): same verb-conjugation gap as damage above — real Oracle
+  // text uses both "you lose N life" and "target player loses N life".
+  if (
+    (effect.includes("lose ") || effect.includes("loses ")) &&
+    effect.includes("life")
+  ) {
     return {
       effectType: "loseLife" as const,
       targets: [{ type: "player", restrictions: [], isOptional: false }],
