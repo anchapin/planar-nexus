@@ -35,6 +35,8 @@ import {
   isCustomImagesEnabled,
   validateImageDirectory,
 } from "@/lib/card-image-resolver";
+import { restartOnboardingTour } from "@/components/onboarding-tour";
+import { RotateCcw } from "lucide-react";
 
 export default function SettingsPage() {
   return (
@@ -57,6 +59,23 @@ export default function SettingsPage() {
           <CardContent>
             <Button asChild>
               <a href="/database-management">Manage Database</a>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Help &amp; Onboarding</CardTitle>
+            <CardDescription>
+              Replay the first-run tour that highlights the key sections of the app
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => restartOnboardingTour()}>
+              <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Restart tour
             </Button>
           </CardContent>
         </Card>
