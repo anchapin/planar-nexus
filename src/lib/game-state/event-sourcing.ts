@@ -640,6 +640,17 @@ export class EventSourcingGameState {
   /**
    * Apply an action event to a given state (for replay)
    * This is a pure function that applies the action without emitting events
+   *
+   * Determinism note (CR 702.41 Storm / CR 707.10 Copying Spells): spell-copy
+   * and storm are NOT separate event types in this log. They are deterministic
+   * state transitions produced entirely inside `castSpell` when a `cast_spell`
+   * action is applied — the storm count (`Player.spellsCastThisTurn`) is
+   * incremented and the required stack copies are created as a pure function of
+   * the cast_spell action and the pre-existing state. Because the registered
+   * mutation applier replays the same `castSpell` for the same `cast_spell`
+   * action, the copies and the storm count are reconstructed identically on
+   * every replay, so the resulting `state-hash` stays deterministic without a
+   * dedicated SPELL_COPIED event.
    */
   private applyActionToState(
     state: GameState,

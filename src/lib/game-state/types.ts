@@ -307,6 +307,20 @@ export interface Player {
    */
   foretoldThisTurn?: number;
 
+  // Storm tracking (CR 702.41)
+  /**
+   * Number of spells this player has CAST this turn. CR 702.41a bases the storm
+   * count on "spells cast before it this turn", so this counter is the source
+   * of the storm count. Reset to 0 at the start of each turn (mirrors
+   * `landsPlayedThisTurn` / `foretoldThisTurn`). Optional so legacy Player
+   * literals default to "no spells cast yet" (read with `?? 0`).
+   *
+   * Note: a spell COPY is not "cast" (CR 707.10) and so does NOT increment this
+   * counter — only `castSpell` does. This is what stops storm copies from
+   * recursively re-triggering storm.
+   */
+  spellsCastThisTurn?: number;
+
   // Mana pool (internally tracked, displayed as "energy" to users)
   /** Available mana in each color */
   manaPool: ManaPool;
@@ -468,6 +482,27 @@ export interface StackObject {
    * instances are redundant (CR 702.60c).
    */
   splitSecond?: boolean;
+  /**
+   * Storm (CR 702.41).
+   *
+   * Set on a spell's StackObject when its Oracle text contains "Storm". Storm
+   * is a triggered ability that fires "when you cast this spell": on cast, the
+   * engine creates one copy of the spell for each spell cast before it this
+   * turn (see `detectStormTrigger` in trigger-system.ts and `copySpellOnStack`
+   * in spell-casting.ts). Targets may be reselected for each copy (CR 702.41a /
+   * CR 707.10d). Multiple instances are redundant (CR 702.41c).
+   */
+  storm?: boolean;
+  /**
+   * Whether this stack object is a COPY of a spell rather than a spell that was
+   * cast (CR 707.10). Copies share the original's characteristics — name,
+   * oracle text, mana cost, targets, chosen modes, X values, controller — with
+   * no cost paid, but are not themselves "cast": they do not increment the
+   * storm count and do not trigger "when you cast" abilities. On resolution a
+   * permanent copy becomes a token (CR 707.10d / CR 111) and an instant/sorcery
+   * copy simply ceases to exist (see `resolveCopyCompletion`).
+   */
+  isCopy?: boolean;
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }

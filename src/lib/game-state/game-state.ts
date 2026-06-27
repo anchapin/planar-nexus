@@ -81,6 +81,7 @@ function createPlayer(
     landsPlayedThisTurn: 0,
     maxLandsPerTurn: 1,
     foretoldThisTurn: 0,
+    spellsCastThisTurn: 0,
     manaPool: {
       colorless: 0,
       white: 0,
@@ -568,6 +569,7 @@ function advanceToNextPhase(state: GameState): GameState {
         ...player,
         landsPlayedThisTurn: 0,
         foretoldThisTurn: 0,
+        spellsCastThisTurn: 0,
       });
     }
 

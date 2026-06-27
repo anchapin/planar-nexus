@@ -1692,6 +1692,43 @@ export function parseSplitSecond(oracleText: string): SplitSecondInfo {
 }
 
 /**
+ * Result of detecting Storm (CR 702.41).
+ */
+export interface StormInfo {
+  hasStorm: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Storm keyword from oracle text.
+ *
+ * CR 702.41: "Storm" is a triggered ability that functions only while the
+ * spell is on the stack. It reads, "When you cast this spell, copy it for each
+ * spell cast before it this turn. If the spell has any targets, you may choose
+ * new targets for any of the copies." Storm has no parameters and no cost, so
+ * a simple, word-boundary anchored, case-insensitive match is sufficient. The
+ * reminder-text variant is tolerated because the leading keyword word is
+ * always present regardless.
+ *
+ * Example oracle text: "Storm" (Grapeshot, Tendrils of Agony, Empty the Warrens).
+ */
+export function parseStorm(oracleText: string): StormInfo {
+  if (!oracleText) {
+    return { hasStorm: false, description: "" };
+  }
+
+  // Word-boundary anchored on both sides: "Storm" matches, but "Brainstorm"
+  // (no boundary before the 's') and a hypothetical "stormbound" (no boundary
+  // after the 'm') do not. Case-insensitive to be tolerant of casing.
+  const hasStorm = /\bstorm\b/i.test(oracleText);
+
+  return {
+    hasStorm,
+    description: hasStorm ? "Storm" : "",
+  };
+}
+
+/**
  * Result of detecting Attraction mechanic
  */
 export interface AttractionInfo {
