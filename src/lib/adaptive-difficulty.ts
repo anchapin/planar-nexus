@@ -230,3 +230,99 @@ export function getDifficultyInfo(difficulty: DifficultyLevel): {
   
   return info[difficulty];
 }
+
+// ===========================================================================
+// End-of-game learning loop (issue #1066)
+// ===========================================================================
+//
+// `analyzeDifficulty` above *recommends a different tier*; it never retunes the
+// AI's own weights, so the opponent never improved from game to game. The
+// helpers below close that loop: after each single-player match, the post-game
+// analysis is fed into the WeightLearner, which nudges the AI's evaluation
+// weights (bounded + EMA-smoothed, persisted per tier). This module stays the
+// orchestrator; the learner itself lives in `src/ai/weight-learning.ts` so it
+// can sit next to the weights it retunes.
+//
+// The two systems cooperate but stay distinct:
+//   - adaptive-difficulty  → picks WHICH tier the AI plays at (advisory)
+//   - weight-learning      → retunes the weights WITHIN that tier (learning)
+
+import {
+  WeightLearner,
+  defaultWeightLearner,
+  toDifficultyTier,
+  type AIGameOutcome,
+  type IngestResult,
+} from '@/ai/weight-learning';
+import type { GameAnalysisOutput } from '@/ai/flows/ai-post-game-analysis';
+import type { EvaluationWeights, DifficultyTier } from '@/ai/game-state-evaluator';
+
+/**
+ * Input to {@link ingestGameOutcomeIntoWeights}: the minimal bundle the post-game
+ * flow hands the learning loop once a match ends.
+ */
+export interface LearningLoopInput {
+  /** The UI difficulty the AI played at this game (any rung on the ladder). */
+  difficulty: DifficultyLevel | string;
+  /** The AI's result for the game (from the AI's perspective). */
+  outcome: AIGameOutcome;
+  /** The structured analysis produced by `analyzeGame` for this game. */
+  analysis: GameAnalysisOutput;
+}
+
+/**
+ * Close one iteration of the learning loop after a single-player game.
+ *
+ * This is the function the post-game flow (see
+ * `src/app/(app)/game-analysis/page.tsx`, which already runs `analyzeGame`)
+ * should call once the analysis is ready — it folds the outcome + analysis into
+ * the AI's per-tier evaluation weights and persists them locally for next game.
+ *
+ * @param input    outcome + analysis bundle
+ * @param learner  optional explicit learner (tests); defaults to the
+ *                 process-wide singleton used by the live game
+ *
+ * @returns an {@link IngestResult} describing what changed (and whether
+ *          persistence hit a quota limit). Never throws.
+ */
+export function ingestGameOutcomeIntoWeights(
+  input: LearningLoopInput,
+  learner: WeightLearner = defaultWeightLearner,
+): IngestResult {
+  const tier = toDifficultyTier(input.difficulty);
+  return learner.ingestGameOutcome(tier, input.outcome, input.analysis);
+}
+
+/**
+ * Fetch the evaluation weights the AI should actually play with for a given UI
+ * difficulty — i.e. the static defaults for that tier, overlaid with the
+ * locally-learned, bounded, EMA-smoothed adjustments. Feed the result to
+ * `GameStateEvaluator#setWeights` at game start to close the read side of the
+ * loop.
+ *
+ * Returns the static defaults unchanged when no learning has happened yet.
+ */
+export function getEvaluationWeightsForDifficulty(
+  difficulty: DifficultyLevel | string,
+  learner: WeightLearner = defaultWeightLearner,
+): EvaluationWeights {
+  const tier = toDifficultyTier(difficulty);
+  return learner.getLearnedEvaluationWeights(tier);
+}
+
+/**
+ * Reset the learned-weight adjustments. Pass a difficulty to clear a single
+ * tier, or omit to wipe all tiers back to static defaults. Quota-safe.
+ */
+export function resetLearnedWeightsForDifficulty(
+  difficulty?: DifficultyLevel | string,
+  learner: WeightLearner = defaultWeightLearner,
+): { ok: boolean; warning?: string } {
+  if (difficulty === undefined) return learner.reset();
+  const tier = toDifficultyTier(difficulty);
+  return learner.reset(tier);
+}
+
+/** Re-export the evaluator tier so callers don't need a second import path. */
+export type { DifficultyTier };
+

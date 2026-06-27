@@ -23,7 +23,7 @@ interface GameAnalysisInput {
 }
 
 // Output schema for game analysis
-interface GameAnalysisOutput {
+export interface GameAnalysisOutput {
   gameSummary: string;
   keyMoments: Array<{
     turn: number;

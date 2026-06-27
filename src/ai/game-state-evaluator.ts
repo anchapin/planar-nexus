@@ -115,11 +115,24 @@ export interface EvaluationWeights {
 }
 
 /**
+ * The four difficulty tiers that own a distinct set of static
+ * {@link EvaluationWeights}. This is the scope the end-of-game learning loop
+ * (issue #1066) retunes: learned weight deltas are persisted per tier so a
+ * stronger AI does not inherit the sloppy weights of a weaker one.
+ *
+ * It is intentionally narrower than the UI-facing `DifficultyLevel` from
+ * `src/lib/adaptive-difficulty.ts` (which also has `beginner`/`master`): those
+ * extra rungs collapse onto the nearest evaluator tier before learning is
+ * applied (see `toDifficultyTier` in `src/ai/weight-learning.ts`).
+ */
+export type DifficultyTier = "easy" | "medium" | "hard" | "expert";
+
+/**
  * Default evaluation weights for different difficulty levels
  * These weights are used by the AI to evaluate game states
  * Higher values = more importance placed on that factor
  */
-export const DefaultWeights: Record<string, EvaluationWeights> = {
+export const DefaultWeights: Record<DifficultyTier, EvaluationWeights> = {
   easy: {
     // Easy AI: Prioritizes survival, ignores strategic advantage
     lifeScore: 1.5,
@@ -217,6 +230,22 @@ export const DefaultWeights: Record<string, EvaluationWeights> = {
     tempoSwingScore: 1.0,
   },
 };
+
+/**
+ * Stable accessor for the static (untrained) {@link EvaluationWeights} of a
+ * given tier. Returns a fresh copy so callers (the learning loop, tests) can
+ * mutate freely without disturbing {@link DefaultWeights}.
+ *
+ * The end-of-game learning loop (issue #1066) uses this as the baseline that
+ * bounded, EMA-smoothed weight nudges are applied to. Returned weights are the
+ * defaults; to obtain the *learned* weights for a tier, call
+ * `getLearnedEvaluationWeights` from `src/ai/weight-learning.ts`.
+ */
+export function getDefaultEvaluationWeights(
+  tier: DifficultyTier,
+): EvaluationWeights {
+  return { ...DefaultWeights[tier] };
+}
 
 /**
  * Per-archetype scoring weight multipliers calibrated from expert gameplay data.
