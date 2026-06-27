@@ -37,8 +37,12 @@ import {
 import {
   estimateCombatTrickProbability,
   calculateCombatTrickDiscount,
+  decideCombatTrickHold,
   type OpponentManaState,
+  type CombatTrickHoldDecision,
+  type CombatTrickHoldInput,
 } from "./combat-trick-probability";
+import type { DifficultyFormat, DifficultyLevel } from "../ai-difficulty";
 import {
   LookaheadEngine,
   HeuristicTable,
@@ -311,6 +315,19 @@ export class CombatDecisionTree {
   private lookaheadEngine: LookaheadEngine;
   private archetype: DeckArchetype;
   private opponentArchetype: OpponentArchetype;
+  /**
+   * Skill tier this tree plays at. Threaded into the combat-trick module so
+   * that trick casting probability and bluff/hold behavior scale by difficulty
+   * (issue #1067). Stored separately from {@link config} because the base
+   * {@link CombatAIConfig} shape has no tier field and is overridden wholesale
+   * by {@link setConfig}.
+   */
+  private readonly difficulty: DifficultyLevel;
+  /**
+   * Optional format family used to fold the per-format difficulty overrides
+   * (#1069) into trick bluff/hold decisions. Set via {@link setDifficultyFormat}.
+   */
+  private difficultyFormat?: DifficultyFormat;
   constructor(
     gameState: GameState,
     aiPlayerId: string,
@@ -322,6 +339,7 @@ export class CombatDecisionTree {
     this.aiPlayerId = aiPlayerId;
     this.archetype = archetype;
     this.opponentArchetype = opponentArchetype;
+    this.difficulty = difficulty;
 
     const baseConfig = DefaultCombatConfigs[difficulty];
     // Wire the deck-specific playstyle weights into the live combat config.
@@ -373,6 +391,55 @@ export class CombatDecisionTree {
    */
   getOpponentArchetype(): OpponentArchetype {
     return this.opponentArchetype;
+  }
+
+  /**
+   * The skill tier this tree plays at. Drives difficulty-scaled combat-trick
+   * casting probability and bluff/hold behavior (issue #1067).
+   */
+  getDifficulty(): DifficultyLevel {
+    return this.difficulty;
+  }
+
+  /**
+   * The active format family used to fold per-format difficulty overrides
+   * (#1069) into trick decisions, if any.
+   */
+  getDifficultyFormat(): DifficultyFormat | undefined {
+    return this.difficultyFormat;
+  }
+
+  /**
+   * Set the active format family so trick bluff/hold decisions apply the
+   * per-format overrides (issue #1069). Pass `undefined` to clear overrides.
+   */
+  setDifficultyFormat(format?: DifficultyFormat): void {
+    this.difficultyFormat = format;
+  }
+
+  /**
+   * Decide whether to hold a combat trick for a higher-value window or cast it
+   * now, scaled by this tree's difficulty (issue #1067).
+   *
+   * Easy tiers frequently mis-time reveals (high `miscastChance`) and rarely
+   * hold for value (low `holdDiscipline`); Expert tiers hold for the
+   * highest-EV window and almost never mis-cast. The decision is deterministic
+   * when `rng` is supplied, which is how callers/tests assert per-tier
+   * monotonicity without flakiness.
+   */
+  decideCombatTrickBluffHold(
+    evNow: number,
+    evLater: number,
+    rng?: () => number,
+  ): CombatTrickHoldDecision {
+    const input: CombatTrickHoldInput = {
+      difficulty: this.difficulty,
+      format: this.difficultyFormat,
+      evNow,
+      evLater,
+      rng,
+    };
+    return decideCombatTrickHold(input);
   }
 
   /**
@@ -697,6 +764,7 @@ export class CombatDecisionTree {
         this.config.opponentArchetype,
         opponent.hand?.length,
         this.gameState.turnInfo?.currentTurn,
+        this.difficulty,
       );
 
       if (trickEstimate.probability > 0) {
@@ -744,6 +812,7 @@ export class CombatDecisionTree {
           this.config.opponentArchetype,
           opponent.hand?.length,
           this.gameState.turnInfo?.currentTurn,
+          this.difficulty,
         );
 
         if (trickEstimate.probability > 0) {
