@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { EnhancedReviewDisplay } from "./_components/enhanced-review-display";
 import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
+import { MultiDeckComparison } from "./_components/multi-deck-comparison";
 import {
   Select,
   SelectContent,
@@ -64,9 +65,9 @@ export default function DeckCoachPage() {
     null,
   );
   const [isPending, startTransition] = useTransition();
-  const [analysisType, setAnalysisType] = useState<"review" | "meta" | "chat">(
-    "review",
-  );
+  const [analysisType, setAnalysisType] = useState<
+    "review" | "meta" | "chat" | "compare"
+  >("review");
   const [, setSavedDecks] = useLocalStorage<SavedDeck[]>("saved-decks", []);
   const { toast } = useToast();
 
@@ -333,12 +334,15 @@ export default function DeckCoachPage() {
 
       <Tabs
         value={analysisType}
-        onValueChange={(v) => setAnalysisType(v as "review" | "meta" | "chat")}
+        onValueChange={(v) =>
+          setAnalysisType(v as "review" | "meta" | "chat" | "compare")
+        }
         className="mb-4"
       >
         <TabsList>
           <TabsTrigger value="review">Deck Review</TabsTrigger>
           <TabsTrigger value="meta">Meta Analysis</TabsTrigger>
+          <TabsTrigger value="compare">Compare Decks</TabsTrigger>
           <TabsTrigger value="chat">
             <MessageSquare className="w-4 h-4 mr-2" />
             Chat
@@ -346,6 +350,11 @@ export default function DeckCoachPage() {
         </TabsList>
       </Tabs>
 
+      {/* Compare Decks tab: a self-contained multi-deck flow (issue #1075),
+          rendered full-width instead of the single-deck review grid. */}
+      {analysisType === "compare" ? (
+        <MultiDeckComparison />
+      ) : (
       <main className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
@@ -612,6 +621,7 @@ export default function DeckCoachPage() {
             )}
         </div>
       </main>
+      )}
     </div>
   );
 }
