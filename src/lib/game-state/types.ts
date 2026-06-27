@@ -121,6 +121,22 @@ export interface CardInstance {
    */
   blitz?: boolean;
 
+  // Foretell-specific (CR 702.142)
+  /**
+   * Whether this card is currently foretold: exiled face down by its owner via
+   * the Foretell keyword action (CR 702.142b). While true the card lives in its
+   * owner's exile zone, face down (`isFaceDown === true`), hidden from other
+   * players but visible to its owner, and may be cast for its foretell cost on a
+   * later turn (CR 702.142c). Cleared when the card is cast or leaves exile.
+   */
+  foretold?: boolean;
+  /**
+   * The turn number on which this card was foretold (CR 702.142b). Used to
+   * enforce that a foretold card cannot be cast for its foretell cost on the
+   * same turn it was foretold — only on a later turn (CR 702.142c).
+   */
+  foretoldTurn?: number;
+
   // Prototype-specific (CR 702.152)
   /** Whether this permanent is currently in prototype form */
   isPrototype: boolean;
@@ -281,6 +297,15 @@ export interface Player {
   landsPlayedThisTurn: number;
   /** Maximum lands that can be played this turn */
   maxLandsPerTurn: number;
+
+  // Foretell tracking (CR 702.142b)
+  /**
+   * Number of cards this player has foretold this turn. CR 702.142b allows a
+   * player to foretell at most one card each turn. Reset to 0 at the start of
+   * each turn (mirrors `landsPlayedThisTurn`). Optional so legacy Player
+   * literals default to "no foretells yet" (read with `?? 0`).
+   */
+  foretoldThisTurn?: number;
 
   // Mana pool (internally tracked, displayed as "energy" to users)
   /** Available mana in each color */
