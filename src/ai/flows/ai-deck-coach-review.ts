@@ -187,12 +187,17 @@ export async function reviewDeck(
         const removeCount = cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
 
       if (addCount !== removeCount) {
-        // Adjust removals to match additions
+        // Adjust removals to match additions. Drop entries once their quantity
+        // reaches zero — otherwise the same zero-quantity tail item would be
+        // popped and re-pushed forever, looping infinitely while earlier items
+        // still hold quantity (regression found + fixed for issue #1078).
         const adjustedRemoves = [...cardsToRemove];
         while (adjustedRemoves.reduce((sum, c) => sum + c.quantity, 0) > addCount) {
           const last = adjustedRemoves.pop();
-          if (last) {
-            adjustedRemoves.push({ ...last, quantity: Math.max(0, last.quantity - 1) });
+          if (!last) break;
+          const newQuantity = Math.max(0, last.quantity - 1);
+          if (newQuantity > 0) {
+            adjustedRemoves.push({ ...last, quantity: newQuantity });
           }
         }
         return {
