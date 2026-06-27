@@ -113,6 +113,14 @@ export interface LookaheadConfig {
   minMatchQuality: number;
   /** Whether multi-turn lookahead is enabled */
   enabled: boolean;
+  /**
+   * External aggression bias added to the lookahead's aggression modifier
+   * (issue #1068). In `[-1, 1]`: positive shifts the engine toward more
+   * aggressive lines (used when the AI is behind and needs to press), negative
+   * toward conservative lines (used when ahead and protecting a lead). Defaults
+   * to 0 (no adjustment) so existing behavior is unchanged.
+   */
+  aggressionBias?: number;
 }
 
 /**

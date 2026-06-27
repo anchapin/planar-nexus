@@ -12,10 +12,14 @@ import {
   compareHoldVsPlay,
   DefaultWeights,
   ArchetypeWeights,
+  BoardSwingTracker,
+  BOARD_SWING_SCALE,
+  SWING_DEADBAND,
   type EvaluationWeights,
   type DetailedEvaluation,
   type ProposedPlay,
   type ProjectionResult,
+  type BoardSwing,
 } from "../game-state-evaluator";
 import type {
   AIGameState,
@@ -1978,5 +1982,162 @@ describe("tempoSwingScore", () => {
       expect(ArchetypeWeights[archetype]).toHaveProperty("tempoSwingScore");
       expect(typeof ArchetypeWeights[archetype].tempoSwingScore).toBe("number");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #1068 — BoardSwingTracker: the in-game board-state swing signal.
+//
+// The tracker is fed the evaluator's advantage score once per turn and exposes
+// a normalized swing (direction = who is ahead, trend = momentum, magnitude).
+// These tests cover swing detection (leading/trailing/stable), delta/trend
+// derivation, normalization/clamping, and hysteresis-state persistence.
+// ---------------------------------------------------------------------------
+
+describe("BoardSwingTracker (issue #1068)", () => {
+  it("returns a neutral baseline signal before any samples are recorded", () => {
+    const tracker = new BoardSwingTracker();
+    const swing = tracker.getSwing();
+
+    expect(swing.sampleCount).toBe(0);
+    expect(swing.advantage).toBe(0);
+    expect(swing.normalizedAdvantage).toBe(0);
+    expect(swing.delta).toBe(0);
+    expect(swing.direction).toBe("stable");
+    expect(swing.trend).toBe("steady");
+    expect(swing.magnitude).toBe(0);
+  });
+
+  it("classifies a single positive advantage as leading with no delta", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(BOARD_SWING_SCALE); // normalizedAdvantage == 1
+
+    const swing = tracker.getSwing();
+    expect(swing.sampleCount).toBe(1);
+    expect(swing.direction).toBe("leading");
+    expect(swing.trend).toBe("steady"); // no prior sample → no delta
+    expect(swing.delta).toBe(0);
+    expect(swing.normalizedAdvantage).toBeCloseTo(1, 5);
+  });
+
+  it("detects a trailing position from a strongly negative advantage", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(-BOARD_SWING_SCALE);
+
+    const swing = tracker.getSwing();
+    expect(swing.direction).toBe("trailing");
+    expect(swing.normalizedAdvantage).toBeCloseTo(-1, 5);
+  });
+
+  it("detects an improving trend when advantage rises across turns", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(-BOARD_SWING_SCALE); // far behind
+    tracker.record(BOARD_SWING_SCALE); // now ahead → big positive delta
+
+    const swing = tracker.getSwing();
+    expect(swing.direction).toBe("leading");
+    expect(swing.trend).toBe("improving");
+    expect(swing.delta).toBeGreaterThan(0);
+    expect(swing.normalizedDelta).toBeGreaterThan(0);
+  });
+
+  it("detects a worsening trend when advantage falls across turns", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(BOARD_SWING_SCALE); // ahead
+    tracker.record(-BOARD_SWING_SCALE); // now far behind → big negative delta
+
+    const swing = tracker.getSwing();
+    expect(swing.direction).toBe("trailing");
+    expect(swing.trend).toBe("worsening");
+    expect(swing.delta).toBeLessThan(0);
+  });
+
+  it("reports a stable/steady signal when advantage sits inside the deadband", () => {
+    const tracker = new BoardSwingTracker();
+    // Small advantage well inside the ±SWING_DEADBAND normalized window.
+    const small = SWING_DEADBAND * BOARD_SWING_SCALE * 0.5;
+    tracker.record(small);
+    tracker.record(small);
+
+    const swing = tracker.getSwing();
+    expect(swing.direction).toBe("stable");
+    expect(swing.trend).toBe("steady");
+    expect(swing.magnitude).toBeLessThan(SWING_DEADBAND);
+  });
+
+  it("clamps normalization so runaway advantages never exceed [-1, 1]", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(BOARD_SWING_SCALE * 100); // absurdly large
+    tracker.record(-BOARD_SWING_SCALE * 100);
+
+    const swing = tracker.getSwing();
+    expect(swing.normalizedAdvantage).toBeGreaterThanOrEqual(-1);
+    expect(swing.normalizedAdvantage).toBeLessThanOrEqual(1);
+    expect(swing.normalizedDelta).toBeGreaterThanOrEqual(-1);
+    expect(swing.normalizedDelta).toBeLessThanOrEqual(1);
+    expect(swing.magnitude).toBeLessThanOrEqual(1);
+  });
+
+  it("coerces non-finite advantage samples to 0 for signal stability", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(Number.NaN);
+    tracker.record(Infinity);
+
+    const swing = tracker.getSwing();
+    expect(Number.isFinite(swing.advantage)).toBe(true);
+    expect(swing.direction).toBe("stable");
+  });
+
+  it("caps the rolling window so stale history drops out", () => {
+    const tracker = new BoardSwingTracker(3);
+    tracker.record(BOARD_SWING_SCALE); // ahead (will age out)
+    tracker.record(BOARD_SWING_SCALE);
+    tracker.record(BOARD_SWING_SCALE);
+    tracker.record(-BOARD_SWING_SCALE); // now behind; window size 3
+
+    const swing = tracker.getSwing();
+    // Only the last 3 samples are retained; the latest is behind.
+    expect(swing.sampleCount).toBe(3);
+    expect(swing.direction).toBe("trailing");
+  });
+
+  it("persists and returns hysteresis multipliers across turns", () => {
+    const tracker = new BoardSwingTracker();
+    expect(tracker.getLastMultipliers()).toBeUndefined();
+
+    tracker.setLastMultipliers({ tempoMultiplier: 1.1, riskMultiplier: 0.9 });
+    const stored = tracker.getLastMultipliers();
+    expect(stored).toEqual({ tempoMultiplier: 1.1, riskMultiplier: 0.9 });
+
+    // Returned value is a copy — mutating it must not affect the tracker.
+    stored!.tempoMultiplier = 5;
+    expect(tracker.getLastMultipliers()?.tempoMultiplier).toBe(1.1);
+  });
+
+  it("reset() clears both the advantage window and the hysteresis state", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(BOARD_SWING_SCALE);
+    tracker.setLastMultipliers({ tempoMultiplier: 1.2, riskMultiplier: 1.2 });
+
+    tracker.reset();
+
+    expect(tracker.getSwing().sampleCount).toBe(0);
+    expect(tracker.getLastMultipliers()).toBeUndefined();
+  });
+
+  it("BoardSwing exposes every documented field with correct types", () => {
+    const tracker = new BoardSwingTracker();
+    tracker.record(5);
+    tracker.record(8);
+    const swing: BoardSwing = tracker.getSwing();
+
+    expect(typeof swing.advantage).toBe("number");
+    expect(typeof swing.normalizedAdvantage).toBe("number");
+    expect(typeof swing.delta).toBe("number");
+    expect(typeof swing.normalizedDelta).toBe("number");
+    expect(["leading", "trailing", "stable"]).toContain(swing.direction);
+    expect(["improving", "worsening", "steady"]).toContain(swing.trend);
+    expect(typeof swing.magnitude).toBe("number");
+    expect(typeof swing.sampleCount).toBe("number");
   });
 });

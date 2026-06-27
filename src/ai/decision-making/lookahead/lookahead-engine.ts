@@ -23,6 +23,7 @@ const DEFAULT_CONFIG: LookaheadConfig = {
   heuristicWeight: 0.4,
   minMatchQuality: 0.3,
   enabled: true,
+  aggressionBias: 0,
 };
 
 /**
@@ -94,6 +95,15 @@ export class LookaheadEngine {
     const combinedModifier =
       heuristicModifier + boardModifier * (1 - this.config.heuristicWeight);
 
+    // Issue #1068: apply the external aggression bias (board-state swing) on
+    // top of the internally-derived modifier, then clamp to [-1, 1] so the
+    // lookahead signal stays bounded regardless of the source.
+    const aggressionBias = this.config.aggressionBias ?? 0;
+    const aggressionModifier = Math.max(
+      -1,
+      Math.min(1, combinedModifier + aggressionBias),
+    );
+
     const lethal = projections.find((p) => p.hasLethal);
     const opponentLethal = projections.find((p) => p.opponentHasLethal);
 
@@ -107,7 +117,7 @@ export class LookaheadEngine {
       evaluated: true,
       bestScore: boardScore.bestScore,
       worstScore: boardScore.worstScore,
-      aggressionModifier: combinedModifier,
+      aggressionModifier,
       priorityAttackers: match.priorityAttackers,
       holdBack: match.holdBack,
       lethalFound: lethal !== undefined,
