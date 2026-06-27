@@ -1060,7 +1060,7 @@ export class StackInteractionAI {
     const currentEvaluation = evaluateGameState(
       this.gameState,
       this.playerId,
-      "medium",
+      this.difficulty,
     );
 
     // Evaluate the threat level of the current action
@@ -1245,7 +1245,7 @@ export class StackInteractionAI {
       const singleEval = this.evaluateResponseOption(
         affordableResponses[0],
         context,
-        evaluateGameState(this.gameState, this.playerId, "medium"),
+        evaluateGameState(this.gameState, this.playerId, this.difficulty),
       );
       return {
         orderedActions: [affordableResponses[0].cardId],
@@ -1283,7 +1283,7 @@ export class StackInteractionAI {
     const currentEvaluation = evaluateGameState(
       this.gameState,
       this.playerId,
-      "medium",
+      this.difficulty,
     );
     const threatLevel = this.assessActionThreat(context, currentEvaluation);
 
@@ -1325,7 +1325,7 @@ export class StackInteractionAI {
     const currentEvaluation = evaluateGameState(
       this.gameState,
       this.playerId,
-      "medium",
+      this.difficulty,
     );
 
     // Calculate total mana available
@@ -1465,7 +1465,7 @@ export class StackInteractionAI {
   async assessActionThreatWithTriggers(context: StackContext): Promise<number> {
     const baseThreat = this.assessActionThreat(
       context,
-      evaluateGameState(this.gameState, this.playerId, "medium"),
+      evaluateGameState(this.gameState, this.playerId, this.difficulty),
     );
     const triggerResult = await this.evaluateTriggerChains(context);
     const cascadeBonus = triggerResult.cascadeThreatBonus;
@@ -1622,7 +1622,7 @@ export class StackInteractionAI {
     const currentEvaluation = evaluateGameState(
       this.gameState,
       this.playerId,
-      "medium",
+      this.difficulty,
     );
 
     return {
@@ -1676,7 +1676,28 @@ export class StackInteractionAI {
       score += 0.3;
     }
 
-    return score > 2.0;
+    return score > this.getCounterspellThreshold();
+  }
+
+  /**
+   * Difficulty-aware counterspell threshold. Easier tiers pull the trigger
+   * more loosely (burning interaction on marginal targets), while expert play
+   * is more selective and conserves interaction for high-value disruption.
+   * Composes with the tiered ResponseWeights (#1070) and the difficulty-aware
+   * evaluateGameState evaluation so the whole stack lane scales with the
+   * constructor's difficulty (#989).
+   */
+  private getCounterspellThreshold(): number {
+    switch (this.difficulty) {
+      case "easy":
+        return 1.5;
+      case "hard":
+        return 2.4;
+      case "expert":
+        return 2.8;
+      default:
+        return 2.0;
+    }
   }
 
   /**
@@ -2620,7 +2641,7 @@ export class StackInteractionAI {
     const currentEvaluation = evaluateGameState(
       this.gameState,
       this.playerId,
-      "medium",
+      this.difficulty,
     );
     const manaAvailable = this.calculateAvailableMana(context);
 
@@ -2674,7 +2695,7 @@ export class StackInteractionAI {
     const currentEvaluation = evaluateGameState(
       this.gameState,
       this.playerId,
-      "medium",
+      this.difficulty,
     );
 
     // Score the choice based on game state
@@ -2767,7 +2788,7 @@ export function shouldBluffHoldMana(
   difficulty: DifficultyLevel = "medium",
 ): BluffHoldDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
-  const currentEvaluation = evaluateGameState(gameState, playerId, "medium");
+  const currentEvaluation = evaluateGameState(gameState, playerId, difficulty);
   return ai.shouldBluffHoldMana(context, currentEvaluation, opponentHistory);
 }
 

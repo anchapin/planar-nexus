@@ -1483,7 +1483,7 @@ export class GameStateEvaluator {
 export function evaluateGameState(
   gameState: GameState,
   playerId: string,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyTier = "medium",
   archetype?: DeckArchetype,
 ): DetailedEvaluation {
   const evaluator = new GameStateEvaluator(

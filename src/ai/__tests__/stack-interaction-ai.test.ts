@@ -968,6 +968,182 @@ describe("StackInteractionAI", () => {
       expect(threat).toBeLessThanOrEqual(1);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // #989: StackInteractionAI previously ignored its `difficulty` constructor
+  // argument. Every internal evaluateGameState() call was hardcoded to
+  // "medium" and the counterspell threshold was a flat constant, so the stack
+  // lane produced identical decisions regardless of the requested tier. These
+  // tests pin the fix: the constructor difficulty is stored and drives (a) the
+  // now-tier-aware evaluateGameState evaluation, (b) the tiered ResponseWeights
+  // set in the constructor, and (c) the new difficulty-aware counterspell
+  // threshold.
+  // ---------------------------------------------------------------------------
+  describe("Difficulty parameter drives stack-interaction decisions (#989)", () => {
+    const ALL_TIERS: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];
+
+    // High-threat stack that every tier commits to answering, so the response
+    // EV reflects the tiered weights + the (now tier-aware) game-state eval.
+    const buildHighThreat = (): {
+      action: StackAction;
+      context: StackContext;
+      response: AvailableResponse;
+    } => {
+      const action: StackAction = {
+        id: "stack_ht",
+        cardId: "opp_counter",
+        name: "Counterspell",
+        controller: "player2",
+        type: "spell",
+        manaValue: 5,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+        targets: [{ playerId: "player1" }],
+      };
+      const response: AvailableResponse = {
+        cardId: "cancel",
+        name: "Cancel",
+        type: "instant",
+        manaValue: 2,
+        manaCost: { blue: 2 },
+        canCounter: true,
+        canTarget: ["spell"],
+        effect: {
+          type: "counter",
+          value: 6,
+          targets: [action.id],
+        },
+      };
+      const context: StackContext = {
+        currentAction: action,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 3, colorless: 0 },
+        availableResponses: [response],
+        opponentsRemaining: [],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+      return { action, context, response };
+    };
+
+    test("evaluateResponse produces a strictly higher-EV decision for expert than easy on an identical stack", () => {
+      const { context } = buildHighThreat();
+      const easy = new StackInteractionAI(gameState, playerId, "easy");
+      const expert = new StackInteractionAI(gameState, playerId, "expert");
+
+      const easyDecision = easy.evaluateResponse(context);
+      const expertDecision = expert.evaluateResponse(context);
+
+      // Both tiers recognise the threat and commit to answering it.
+      expect(easyDecision.shouldRespond).toBe(true);
+      expect(expertDecision.shouldRespond).toBe(true);
+      // Difficulty now flows through evaluateGameState + the tiered weights, so
+      // expert's evaluation is strictly stronger than easy's.
+      expect(expertDecision.expectedValue).toBeGreaterThan(
+        easyDecision.expectedValue,
+      );
+    });
+
+    test("evaluateResponse decisions scale monotonically across all four tiers", () => {
+      const { context } = buildHighThreat();
+      const evs = ALL_TIERS.map(
+        (tier) =>
+          new StackInteractionAI(gameState, playerId, tier).evaluateResponse(
+            context,
+          ).expectedValue,
+      );
+      // easy < medium < hard < expert
+      for (let i = 1; i < evs.length; i++) {
+        expect(evs[i]).toBeGreaterThan(evs[i - 1]);
+      }
+    });
+
+    test("counterspell threshold varies by difficulty (easy fires, expert conserves on a borderline spell)", () => {
+      // A neutral, moderately-costed spell: high enough threat for easy/medium
+      // to counter, below the stricter expert/hard threshold. hasBackup is true
+      // so the score is deterministic regardless of the opponent-counter model.
+      const action: StackAction = {
+        id: "stack_border",
+        cardId: "hill_giant",
+        name: "Hill Giant",
+        controller: "player2",
+        type: "spell",
+        manaValue: 3,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+      };
+      const counterspell: AvailableResponse = {
+        cardId: "c1",
+        name: "Counterspell",
+        type: "instant",
+        manaValue: 2,
+        manaCost: { blue: 2 },
+        canCounter: true,
+        canTarget: ["spell"],
+        effect: { type: "counter", value: 4, targets: [action.id] },
+      };
+      const backup: AvailableResponse = {
+        cardId: "c2",
+        name: "Backup Counter",
+        type: "instant",
+        manaValue: 2,
+        manaCost: { blue: 2 },
+        canCounter: true,
+        canTarget: ["spell"],
+        effect: { type: "counter", value: 4, targets: [action.id] },
+      };
+      const context: StackContext = {
+        currentAction: action,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 4, colorless: 0 },
+        availableResponses: [counterspell, backup],
+        opponentsRemaining: [],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+
+      const easy = new StackInteractionAI(gameState, playerId, "easy");
+      const expert = new StackInteractionAI(gameState, playerId, "expert");
+
+      const easyDecision = easy.decideCounterspell(context, counterspell);
+      const expertDecision = expert.decideCounterspell(context, counterspell);
+
+      // Easy's looser threshold (1.5) fires on this borderline spell...
+      expect(easyDecision.shouldRespond).toBe(true);
+      // ...expert's stricter threshold (2.8) conserves interaction. This is the
+      // direct proof that the constructor difficulty is stored and read.
+      expect(expertDecision.shouldRespond).toBe(false);
+    });
+
+    test("decidePriorityPass and manageResources honour the stored difficulty without error across all tiers", () => {
+      const { context } = buildHighThreat();
+      for (const tier of ALL_TIERS) {
+        const ai = new StackInteractionAI(gameState, playerId, tier);
+        const pass = ai.decidePriorityPass(context);
+        const resources = ai.manageResources(context);
+        expect(pass.shouldPass).toBeDefined();
+        expect(resources.holdFor).toBeDefined();
+      }
+    });
+
+    test("instances without an explicit difficulty fall back to the medium default (no regression)", () => {
+      const { context } = buildHighThreat();
+      const implicit = new StackInteractionAI(gameState, playerId);
+      const explicit = new StackInteractionAI(gameState, playerId, "medium");
+
+      // The constructor stores the resolved difficulty, so omitting it must be
+      // indistinguishable from passing "medium".
+      expect(implicit.evaluateResponse(context)).toEqual(
+        explicit.evaluateResponse(context),
+      );
+    });
+  });
 });
 
 /**
