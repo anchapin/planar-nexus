@@ -25,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
+    "simulate": "jest src/ai/__tests__/simulation/ --verbose",
     "test:coverage": "jest --coverage",
     "test:coverage:ratchet": "npm run test:coverage && node scripts/ratchet-coverage.js",
     "test:e2e": "playwright test",
