@@ -30,6 +30,11 @@ import {
   untapCardAction,
 } from "@/lib/game-state/keyword-actions";
 import { passPriority } from "@/lib/game-state/game-state";
+import {
+  moveCardBetweenZones,
+  shuffleZone,
+  drawCards,
+} from "@/lib/game-state/zones";
 import { quickScore } from "./game-state-evaluator";
 import type { GameState } from "./game-state-evaluator";
 
@@ -699,4 +704,98 @@ export async function evaluateLookahead(
   // For depth === 1, just evaluate the resulting state
   const aiState = getAIGameState(result.newState);
   return quickScore(aiState as unknown as GameState, playerId, "medium");
+}
+
+// ---------------------------------------------------------------------------
+// Issue #1063 — opponent opening-hand mulligan mechanics.
+//
+// The engine's `"mulligan"` ActionType is an event/log descriptor, not a full
+// mechanic, so the opponent turn loop needs a dedicated executor that performs
+// the actual card movement: ship the current hand back into the library,
+// shuffle, and draw one fewer card. This keeps the mechanical action in the
+// executor module alongside every other engine action the AI performs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of mechanically executing one opponent mulligan.
+ */
+export interface OpponentMulliganResult {
+  success: boolean;
+  state: EngineGameState;
+  /** Hand size before the mulligan. */
+  fromHandSize: number;
+  /** Hand size after the mulligan (expected `fromHandSize - 1`). */
+  toHandSize: number;
+  error?: string;
+}
+
+/**
+ * Mechanically execute a single mulligan for the AI opponent: return the
+ * current hand to the library, shuffle, and draw one fewer card (issue #1063).
+ *
+ * This is the action half of the keep/ship decision made by
+ * {@link decideOpponentMulligan}; the decision/wiring lives in the turn loop.
+ * The function is a pure-ish state transform (it only shuffles, using
+ * `Math.random`) and never throws — degenerate states produce a failed result
+ * the caller can skip. It does not route through {@link executeAIAction}'s
+ * switch because `"mulligan"` is an event/log type there, not an AI action.
+ */
+export function executeOpponentMulligan(
+  state: EngineGameState,
+  playerId: PlayerId,
+): OpponentMulliganResult {
+  const handKey = `${playerId}-hand`;
+  const libraryKey = `${playerId}-library`;
+  const zones = new Map(state.zones);
+  const handZone = zones.get(handKey);
+  const libraryZone = zones.get(libraryKey);
+
+  if (!handZone || !libraryZone) {
+    return {
+      success: false,
+      state,
+      fromHandSize: handZone?.cardIds.length ?? 0,
+      toHandSize: handZone?.cardIds.length ?? 0,
+      error: `Missing ${playerId} hand or library zone`,
+    };
+  }
+
+  const fromHandSize = handZone.cardIds.length;
+  if (fromHandSize <= 0) {
+    return { success: true, state, fromHandSize: 0, toHandSize: 0 };
+  }
+
+  // 1) Put every hand card back into the library.
+  let hand = handZone;
+  let library = libraryZone;
+  for (const cardId of [...hand.cardIds]) {
+    const moved = moveCardBetweenZones(hand, library, cardId);
+    hand = moved.from;
+    library = moved.to;
+  }
+
+  // 2) Shuffle the library so the redraw is randomized.
+  library = shuffleZone(library);
+
+  // 3) Draw one fewer card than we shipped.
+  const toDraw = Math.max(0, fromHandSize - 1);
+  const drawn = drawCards(library, hand, toDraw);
+  library = drawn.library;
+  hand = drawn.hand;
+
+  zones.set(handKey, hand);
+  zones.set(libraryKey, library);
+
+  const newState: EngineGameState = {
+    ...state,
+    zones,
+    lastModifiedAt: Date.now(),
+  };
+
+  return {
+    success: true,
+    state: newState,
+    fromHandSize,
+    toHandSize: hand.cardIds.length,
+  };
 }

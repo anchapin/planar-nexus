@@ -13,6 +13,7 @@ import {
   detectPlayerArchetype,
   detectOpponentArchetype,
   runAITurn,
+  runOpeningHandMulligan,
   computeAdaptiveTempoRisk,
   adaptiveStrength,
   ADAPTIVE_MIN_MULT,
@@ -77,7 +78,7 @@ import {
 import { passPriority, drawCard } from "@/lib/game-state/game-state";
 import { advancePhase } from "@/lib/game-state/turn-phases";
 import { engineToAIState } from "@/lib/game-state/serialization";
-import { getMaxHandSize } from "@/lib/game-rules";
+import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
 
 const canPlayLandMock = canPlayLand as unknown as jest.Mock;
 const playLandMock = playLand as unknown as jest.Mock;
@@ -92,6 +93,7 @@ const drawCardMock = drawCard as unknown as jest.Mock;
 const advancePhaseMock = advancePhase as unknown as jest.Mock;
 const engineToAIStateMock = engineToAIState as unknown as jest.Mock;
 const getMaxHandSizeMock = getMaxHandSize as unknown as jest.Mock;
+const getMulliganRulesMock = getMulliganRules as unknown as jest.Mock;
 
 const AI: PlayerId = "player1";
 const OPP: PlayerId = "player2";
@@ -972,9 +974,15 @@ describe("computeAdaptiveTempoRisk (issue #1068) — bounds", () => {
   }
 
   it("exposes the documented per-tier strength curve (easy loudest, expert subtlest)", () => {
-    expect(adaptiveStrength("easy")).toBeGreaterThan(adaptiveStrength("medium"));
-    expect(adaptiveStrength("medium")).toBeGreaterThan(adaptiveStrength("hard"));
-    expect(adaptiveStrength("hard")).toBeGreaterThan(adaptiveStrength("expert"));
+    expect(adaptiveStrength("easy")).toBeGreaterThan(
+      adaptiveStrength("medium"),
+    );
+    expect(adaptiveStrength("medium")).toBeGreaterThan(
+      adaptiveStrength("hard"),
+    );
+    expect(adaptiveStrength("hard")).toBeGreaterThan(
+      adaptiveStrength("expert"),
+    );
   });
 });
 
@@ -1025,7 +1033,9 @@ describe("computeAdaptiveTempoRisk (issue #1068) — composition with difficulty
     const expert = computeAdaptiveTempoRisk(swing, { difficulty: "expert" });
 
     expect(easy.riskMultiplier - 1).toBeGreaterThan(expert.riskMultiplier - 1);
-    expect(easy.tempoMultiplier - 1).toBeGreaterThan(expert.tempoMultiplier - 1);
+    expect(easy.tempoMultiplier - 1).toBeGreaterThan(
+      expert.tempoMultiplier - 1,
+    );
   });
 });
 
@@ -1033,9 +1043,13 @@ describe("computeAdaptiveTempoRisk (issue #1068) — hysteresis / no oscillation
   it("does not move when the target change is inside the deadband", () => {
     const prev = { tempoMultiplier: 1.0, riskMultiplier: 1.0 };
     // Tiny shift in standing → target barely moves → multiplier frozen.
-    const r = computeAdaptiveTempoRisk(swingOf(0.01, 0), {
-      difficulty: "medium",
-    }, prev);
+    const r = computeAdaptiveTempoRisk(
+      swingOf(0.01, 0),
+      {
+        difficulty: "medium",
+      },
+      prev,
+    );
 
     expect(r.tempoMultiplier).toBe(prev.tempoMultiplier);
     expect(r.riskMultiplier).toBe(prev.riskMultiplier);
@@ -1046,12 +1060,20 @@ describe("computeAdaptiveTempoRisk (issue #1068) — hysteresis / no oscillation
     // would jump between ~0.82 and ~1.18; with smoothing (factor 0.5) the
     // amplitude must shrink and every step stay within the global bounds.
     let prev = { tempoMultiplier: 1, riskMultiplier: 1 };
-    const swings = [swingOf(-1, 0), swingOf(1, 0), swingOf(-1, 0), swingOf(1, 0)];
+    const swings = [
+      swingOf(-1, 0),
+      swingOf(1, 0),
+      swingOf(-1, 0),
+      swingOf(1, 0),
+    ];
     const tempoValues: number[] = [];
     for (const s of swings) {
       const r = computeAdaptiveTempoRisk(s, { difficulty: "medium" }, prev);
       tempoValues.push(r.tempoMultiplier);
-      prev = { tempoMultiplier: r.tempoMultiplier, riskMultiplier: r.riskMultiplier };
+      prev = {
+        tempoMultiplier: r.tempoMultiplier,
+        riskMultiplier: r.riskMultiplier,
+      };
     }
 
     // All within bounds.
@@ -1075,11 +1097,18 @@ describe("computeAdaptiveTempoRisk (issue #1068) — hysteresis / no oscillation
     let prevTempo = -Infinity;
     const tempoValues: number[] = [];
     for (let i = 0; i < 5; i++) {
-      const r = computeAdaptiveTempoRisk(swingOf(-1, 0), {
-        difficulty: "hard",
-      }, prev);
+      const r = computeAdaptiveTempoRisk(
+        swingOf(-1, 0),
+        {
+          difficulty: "hard",
+        },
+        prev,
+      );
       tempoValues.push(r.tempoMultiplier);
-      prev = { tempoMultiplier: r.tempoMultiplier, riskMultiplier: r.riskMultiplier };
+      prev = {
+        tempoMultiplier: r.tempoMultiplier,
+        riskMultiplier: r.riskMultiplier,
+      };
     }
     // Monotonic non-decreasing toward the (higher) press target.
     for (const v of tempoValues) {
@@ -1134,5 +1163,250 @@ describe("computeAdaptiveTempoRisk (issue #1068) — AdaptiveTempoRisk shape", (
       expect(r).toHaveProperty(key);
       expect(typeof r[key]).toBe("number");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #1063 — opponent opening-hand mulligan wired into the turn loop.
+//
+// `runOpeningHandMulligan` is the game-start step the orchestrator runs before
+// the first `runAITurn`. These tests exercise the REAL loop (decision via
+// decideOpponentMulligan + mechanical executeOpponentMulligan) against a real
+// engine state, controlling the blunder roll through the injected `rng` and
+// pinning the redraw shuffle via a Math.random spy so every assertion is
+// deterministic.
+// ---------------------------------------------------------------------------
+
+describe("runOpeningHandMulligan (issue #1063 wiring)", () => {
+  function mkCard(
+    id: string,
+    name: string,
+    typeLine: string,
+    cmc: number,
+    colors: string[],
+    oracleText = "",
+  ): CardInstance {
+    return {
+      id,
+      oracleId: id,
+      cardData: {
+        name,
+        type_line: typeLine,
+        cmc,
+        mana_cost: `{${cmc}}`,
+        colors,
+        oracle_text: oracleText,
+      } as any,
+      currentFaceIndex: 0,
+      isFaceDown: false,
+      controllerId: AI,
+      ownerId: AI,
+      isTapped: false,
+      isFlipped: false,
+      isTurnedFaceUp: false,
+      isPhasedOut: false,
+      hasSummoningSickness: false,
+    } as unknown as CardInstance;
+  }
+
+  /** A strong 3-land + low-curve opener the expert engine keeps. */
+  function strongOpener(prefix: string): CardInstance[] {
+    return [
+      mkCard(`${prefix}-h1`, "Forest", "Basic Land", 0, ["G"]),
+      mkCard(`${prefix}-h2`, "Plains", "Basic Land", 0, ["W"]),
+      mkCard(`${prefix}-h3`, "Mountain", "Basic Land", 0, ["R"]),
+      mkCard(`${prefix}-h4`, "Savannah Lions", "Creature", 1, ["W"]),
+      mkCard(`${prefix}-h5`, "Grizzly Bears", "Creature", 2, ["G"]),
+      mkCard(
+        `${prefix}-h6`,
+        "Lightning Bolt",
+        "Instant",
+        1,
+        ["R"],
+        "deals 3 damage",
+      ),
+      mkCard(`${prefix}-h7`, "Raging Goblin", "Creature", 1, ["R"]),
+    ];
+  }
+
+  /** A zero-land opener the expert engine ships. */
+  function zeroLandOpener(prefix: string): CardInstance[] {
+    return [
+      mkCard(`${prefix}-b1`, "Hill Giant", "Creature", 4, ["R"]),
+      mkCard(`${prefix}-b2`, "Air Elemental", "Creature", 4, ["U"]),
+      mkCard(`${prefix}-b3`, "Serra Angel", "Creature", 5, ["W"]),
+      mkCard(`${prefix}-b4`, "Craw Wurm", "Creature", 6, ["G"]),
+      mkCard(`${prefix}-b5`, "War Mammoth", "Creature", 3, ["G"]),
+      mkCard(`${prefix}-b6`, "Grizzly Bears", "Creature", 2, ["G"]),
+      mkCard(`${prefix}-b7`, "Gray Ogre", "Creature", 2, ["R"]),
+    ];
+  }
+
+  function buildMulliganState(opts: {
+    hand: CardInstance[];
+    library?: CardInstance[];
+  }): EngineGameState {
+    const cards = new Map<string, CardInstance>();
+    const handIds: string[] = [];
+    for (const c of opts.hand) {
+      cards.set(c.id, c);
+      handIds.push(c.id);
+    }
+    const libIds: string[] = [];
+    for (const c of opts.library ?? []) {
+      cards.set(c.id, c);
+      libIds.push(c.id);
+    }
+    const zones = new Map<string, { cardIds: string[] }>();
+    zones.set(`${AI}-hand`, { cardIds: handIds });
+    zones.set(`${AI}-library`, { cardIds: libIds });
+    zones.set(`${AI}-battlefield`, { cardIds: [] });
+    zones.set(`${OPP}-battlefield`, { cardIds: [] });
+    const players = new Map<PlayerId, unknown>();
+    players.set(AI, { id: AI });
+    players.set(OPP, { id: OPP });
+    return {
+      cards,
+      zones,
+      players,
+      turn: {
+        activePlayerId: AI,
+        currentPhase: "untap" as any,
+        turnNumber: 0,
+        extraTurns: 0,
+        isFirstTurn: true,
+        startedAt: 0,
+      },
+      combat: {
+        inCombatPhase: false,
+        attackers: [],
+        blockers: new Map(),
+        remainingCombatPhases: 0,
+      } as any,
+      priorityPlayerId: AI,
+    } as unknown as EngineGameState;
+  }
+
+  beforeEach(() => {
+    // game-rules is auto-mocked at the file level; supply the mulligan rules.
+    getMulliganRulesMock.mockReturnValue({ type: "london", minHandSize: 0 });
+  });
+
+  it("keeps a strong opener with zero mulligans (expert, no blunder)", async () => {
+    const state = buildMulliganState({ hand: strongOpener("keep") });
+    const result = await runOpeningHandMulligan(
+      state,
+      AI,
+      baseConfig({ difficulty: "expert" }),
+      () => 0.99, // above expert's 0.02 blunderChance -> never blunders
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.mulligansTaken).toBe(0);
+    expect(result.finalHandSize).toBe(7);
+    expect(result.decisions).toHaveLength(1);
+    expect(result.decisions[0].decision?.decision).toBe("keep");
+    expect(result.decisions[0].decision?.blundered).toBe(false);
+  });
+
+  it("a forced blunder chain mulligans down to the keep floor and stops", async () => {
+    // Easy + rng always blunders: every expert "keep" inverts to "ship", so the
+    // loop mulligans 7->6->5->4->3, where the floor forces a keep. The redraw
+    // shuffle is pinned so the count is deterministic.
+    const library: CardInstance[] = [];
+    for (let i = 0; i < 14; i++) {
+      library.push(
+        mkCard(`lib-${i}`, i % 2 ? "Forest" : "Plains", "Basic Land", 0, [
+          i % 2 ? "G" : "W",
+        ]),
+      );
+    }
+    const state = buildMulliganState({ hand: strongOpener("chain"), library });
+    const spy = jest.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const result = await runOpeningHandMulligan(
+      state,
+      AI,
+      baseConfig({ difficulty: "easy" }),
+      () => 0, // always under easy's 0.45 blunderChance -> always blunders
+    );
+
+    spy.mockRestore();
+
+    expect(result.success).toBe(true);
+    expect(result.mulligansTaken).toBe(4);
+    expect(result.finalHandSize).toBe(3);
+    const last = result.decisions[result.decisions.length - 1];
+    expect(last.forcedKeep).toBe(true);
+    // Every non-forced step shipped (blunder on a keepable hand).
+    for (const step of result.decisions) {
+      if (step.forcedKeep) continue;
+      expect(step.decision?.decision).toBe("ship");
+      expect(step.decision?.blundered).toBe(true);
+    }
+  });
+
+  it("ships a zero-land opener, re-evaluates, and terminates", async () => {
+    const library: CardInstance[] = [];
+    for (let i = 0; i < 10; i++) {
+      library.push(
+        mkCard(`gd-${i}`, i % 2 ? "Forest" : "Plains", "Basic Land", 0, [
+          i % 2 ? "G" : "W",
+        ]),
+      );
+    }
+    const state = buildMulliganState({
+      hand: zeroLandOpener("bad"),
+      library,
+    });
+    const spy = jest.spyOn(Math, "random").mockReturnValue(0.5);
+
+    const result = await runOpeningHandMulligan(
+      state,
+      AI,
+      baseConfig({ difficulty: "expert" }),
+      () => 0.99, // no blunder -> expert follows the advisor
+    );
+
+    spy.mockRestore();
+
+    expect(result.success).toBe(true);
+    expect(result.mulligansTaken).toBeGreaterThanOrEqual(1);
+    expect(result.finalHandSize).toBeLessThanOrEqual(6);
+    expect(result.finalHandSize).toBeGreaterThanOrEqual(3);
+    // The opener was correctly identified as a ship by the expert engine.
+    expect(result.decisions[0].decision?.expertDecision).toBe("ship");
+    expect(result.decisions[0].decision?.decision).toBe("ship");
+    expect(result.decisions[0].decision?.blundered).toBe(false);
+  });
+
+  it("expert mulligans a strong opener far less often than easy (per-difficulty)", async () => {
+    const N = 40;
+    const spy = jest.spyOn(Math, "random").mockReturnValue(0.5);
+    let easyMulligans = 0;
+    let expertMulligans = 0;
+    for (let i = 0; i < N; i++) {
+      const roll = (i + 1) / (N + 1); // deterministic, spread across (0,1)
+      const easyRes = await runOpeningHandMulligan(
+        buildMulliganState({ hand: strongOpener(`e${i}`) }),
+        AI,
+        baseConfig({ difficulty: "easy" }),
+        () => roll,
+      );
+      if (easyRes.mulligansTaken > 0) easyMulligans++;
+      const expertRes = await runOpeningHandMulligan(
+        buildMulliganState({ hand: strongOpener(`x${i}`) }),
+        AI,
+        baseConfig({ difficulty: "expert" }),
+        () => roll,
+      );
+      if (expertRes.mulligansTaken > 0) expertMulligans++;
+    }
+    spy.mockRestore();
+
+    // Easy (blunderChance 0.45) mulligans the strong opener far more than
+    // Expert (0.02). The wiring therefore scales mulligan quality by difficulty.
+    expect(easyMulligans).toBeGreaterThan(expertMulligans);
+    expect(expertMulligans).toBeLessThan(N * 0.15);
   });
 });
