@@ -115,6 +115,13 @@ export interface TriggeredAbilityInstance {
    * Context information about the trigger event (CR 603.2)
    */
   context?: TriggerContext;
+  /**
+   * An intervening "if" clause (CR 603.4) parsed from the trigger text, e.g.
+   * "When ~ enters the battlefield, if [condition], [effect]". Carried from the
+   * parsed ability onto the stack object so the condition can be re-checked at
+   * resolution time (the ability fizzles if it is no longer true).
+   */
+  interveningIf?: string;
 }
 
 /**
@@ -782,12 +789,13 @@ export function detectTriggeredAbilities(
           break;
       }
 
-      // Apply additional conditions based on trigger type (CR 603.2)
+      // CR 603.4 — intervening "if" clause: the ability only triggers when the
+      // clause is true at the moment the trigger event occurs.
       if (shouldTrigger && ability.interveningIf) {
-        // Handle "when X if Y" clauses - check condition
-        shouldTrigger = evaluateInterveningIf(
+        shouldTrigger = evaluateInterveningIfClause(
           ability.interveningIf,
           state,
+          card.controllerId,
           card,
           context,
         );
@@ -804,6 +812,7 @@ export function detectTriggeredAbilities(
           timestamp: Date.now(),
           sourceCardTimestamp,
           context,
+          interveningIf: ability.interveningIf,
         });
       }
     }
@@ -864,37 +873,133 @@ export function detectTriggeredAbilities(
 }
 
 /**
- * Evaluate an intervening "if" condition for a triggered ability (CR 603.2)
- * Intervening if clauses are conditions that must be true at the time of trigger
- * Example: "When X enters the battlefield, if Y, draw a card."
+ * Evaluate a CR 603.4 intervening "if" clause against the current game state.
+ *
+ * An intervening-if must be true BOTH when the ability would trigger AND when it
+ * would resolve; this single evaluator is therefore called at both points. The
+ * `controllerId` is the controller of the source card (the "you" in the clause).
+ *
+ * Recognised condition families (CR 603.4):
+ *  - Life total: "you have N or less life", "you have N or more life",
+ *    "your life total is N or less/greater".
+ *  - Poison: "you have N or more/fewer poison counters".
+ *  - Hand size: "you have N or more/fewer cards in hand".
+ *  - Permanents controlled: "you control a/an <Type>",
+ *    "you control N or more <Type>(s)", and their negations
+ *    ("you control no <Type>" / "you don't control a/an <Type>").
+ *
+ * For any clause that cannot be evaluated the function returns `false`. Per CR
+ * 603.4 an intervening-if that is not verifiably true must NOT let the ability
+ * fire or resolve, so defaulting to `false` is the rules-correct, conservative
+ * choice (the previous implementation defaulted to `true`, which let triggers
+ * fire illegally). The set of recognised conditions is intentionally limited;
+ * extending it only requires adding a new branch here.
  */
-function evaluateInterveningIf(
+export function evaluateInterveningIfClause(
   condition: string,
   state: GameState,
-  _card: CardInstance,
-  context?: TriggerContext,
+  controllerId: PlayerId,
+  _sourceCard?: CardInstance,
+  _context?: TriggerContext,
 ): boolean {
-  const lowerCondition = condition.toLowerCase();
+  const c = condition.toLowerCase().trim();
 
-  // Check life total conditions
-  // Example: "if you have 10 or less life"
-  const lifeMatch = lowerCondition.match(/you have (\d+) or less life/);
-  if (lifeMatch) {
-    const threshold = parseInt(lifeMatch[1], 10);
-    // The triggering player is the controller of the card with this trigger
-    // We need to find the controller - for now, check the context player
-    const playerId = context?.lifeLostPlayer || state.turn.activePlayerId;
-    const player = state.players.get(playerId);
-    if (player) {
-      return player.life <= threshold;
-    }
-    return false;
+  // Negation handling: detect leading "no" / "don't" forms up front so the
+  // affirmative matchers below can be inverted.
+  const negate = /^(you (?:do not|don't) control|you control no)\b/.test(c);
+
+  // --- Life total ---------------------------------------------------------
+  let m = c.match(/you have (\d+) or less life/);
+  if (m) {
+    const player = state.players.get(controllerId);
+    return player ? player.life <= parseInt(m[1], 10) : false;
+  }
+  m = c.match(/you have (\d+) or more life/);
+  if (m) {
+    const player = state.players.get(controllerId);
+    return player ? player.life >= parseInt(m[1], 10) : false;
+  }
+  m = c.match(/your life total is (\d+) or less/);
+  if (m) {
+    const player = state.players.get(controllerId);
+    return player ? player.life <= parseInt(m[1], 10) : false;
+  }
+  m = c.match(/your life total is (\d+) or (?:greater|more)/);
+  if (m) {
+    const player = state.players.get(controllerId);
+    return player ? player.life >= parseInt(m[1], 10) : false;
   }
 
-  // Check other conditions - for now, default to true
-  // This is a simplified implementation; full implementation would need
-  // to handle all possible intervening if conditions
-  return true;
+  // --- Poison counters ----------------------------------------------------
+  m = c.match(/you have (\d+) or more poison counters/);
+  if (m) {
+    const player = state.players.get(controllerId);
+    return player ? player.poisonCounters >= parseInt(m[1], 10) : false;
+  }
+  m = c.match(/you have (\d+) or (?:fewer|less) poison counters/);
+  if (m) {
+    const player = state.players.get(controllerId);
+    return player ? player.poisonCounters <= parseInt(m[1], 10) : false;
+  }
+
+  // --- Cards in hand ------------------------------------------------------
+  m = c.match(/you have (\d+) or more cards in (?:your )?hand/);
+  if (m) {
+    const zone = state.zones.get(`${controllerId}-hand`);
+    return zone ? zone.cardIds.length >= parseInt(m[1], 10) : false;
+  }
+  m = c.match(/you have (\d+) or (?:fewer|less) cards in (?:your )?hand/);
+  if (m) {
+    const zone = state.zones.get(`${controllerId}-hand`);
+    return zone ? zone.cardIds.length <= parseInt(m[1], 10) : false;
+  }
+
+  // --- Permanents you control --------------------------------------------
+  // "you control N or more <Type>(s)"
+  m = c.match(/you control (\d+) or more (\w+?)(?:s)?(?:\b|$)/);
+  if (m) {
+    const result =
+      countControlledByType(state, controllerId, m[2]) >= parseInt(m[1], 10);
+    return result;
+  }
+  // "you control a/an <Type>" (and its negation handled above)
+  m = c.match(/^you control (?:an?|another)\s+(\w+?)\b/);
+  if (m) {
+    const result = countControlledByType(state, controllerId, m[1]) >= 1;
+    return negate ? !result : result;
+  }
+  // Explicit negation without an affirmative matcher above ("you control no
+  // <Type>" / "you don't control a/an <Type>").
+  m = c.match(
+    /(?:you control no|you do not control a|you don't control an?)\s+(\w+?)\b/,
+  );
+  if (m) {
+    return countControlledByType(state, controllerId, m[1]) === 0;
+  }
+
+  // Unrecognised clause: conservatively do NOT let the ability fire/resolve
+  // (CR 603.4). Add a dedicated branch above to support new condition families.
+  return false;
+}
+
+/**
+ * Count permanents `playerId` controls on the battlefield whose type line
+ * contains `type` (case-insensitive). Used by intervening-if control checks.
+ */
+function countControlledByType(
+  state: GameState,
+  playerId: PlayerId,
+  type: string,
+): number {
+  const needle = type.toLowerCase();
+  let count = 0;
+  for (const [cardId, card] of state.cards) {
+    if (!isOnBattlefield(state, cardId)) continue;
+    if (card.controllerId !== playerId) continue;
+    const typeLine = (card.cardData.type_line || "").toLowerCase();
+    if (typeLine.includes(needle)) count++;
+  }
+  return count;
 }
 
 /**
@@ -933,6 +1038,7 @@ export function checkTriggeredAbilities(
       variableValues: new Map(),
       isCountered: false,
       timestamp: trigger.timestamp,
+      interveningIf: trigger.interveningIf,
     };
 
     const updatedStack = [...currentState.stack, stackObject];

@@ -38,7 +38,10 @@ import {
   isSplitCard,
   getSplitCardHalves,
 } from "./oracle-text-parser";
-import { checkTriggeredAbilities } from "./abilities";
+import {
+  checkTriggeredAbilities,
+  evaluateInterveningIfClause,
+} from "./abilities";
 import { detectStormTrigger, detectProwessTriggers } from "./trigger-system";
 import { completeHandTargeting } from "./hand-targeting";
 import { destroyCard, createTokenCard } from "./keyword-actions";
@@ -760,6 +763,28 @@ export function resolveTopOfStack(state: GameState): GameState {
   const wardResult = applyWardResolution(state, stackObject);
   if (wardResult.countered) {
     return removeFromStack(state, stackObject.id);
+  }
+
+  // CR 603.4 — intervening "if" clause re-check at resolution. A triggered
+  // ability ("When/Whenever/At X, if Y, Z") only triggers when Y is true at the
+  // trigger event, AND when it would resolve Y is checked again: if it is no
+  // longer true the ability is removed from the stack and does nothing. The
+  // clause was carried onto the StackObject when the trigger was put on the
+  // stack; re-evaluate it against the current (resolution-time) game state.
+  if (stackObject.type === "ability" && stackObject.interveningIf) {
+    const sourceCard = stackObject.sourceCardId
+      ? state.cards.get(stackObject.sourceCardId)
+      : undefined;
+    if (
+      !evaluateInterveningIfClause(
+        stackObject.interveningIf,
+        state,
+        stackObject.controllerId,
+        sourceCard,
+      )
+    ) {
+      return removeFromStack(state, stackObject.id);
+    }
   }
 
   let currentState = state;

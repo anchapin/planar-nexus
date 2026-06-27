@@ -514,6 +514,17 @@ export interface StackObject {
    * copy simply ceases to exist (see `resolveCopyCompletion`).
    */
   isCopy?: boolean;
+  /**
+   * Intervening "if" clause (CR 603.4).
+   *
+   * Set on a triggered ability's StackObject when its Oracle text is of the form
+   * "When/Whenever/At [trigger], if [condition], [effect]". The condition must be
+   * true when the ability is put on the stack AND is re-checked when it would
+   * resolve; if it is no longer true the ability is removed from the stack and
+   * does nothing (it "fizzles"). See `resolveTopOfStack` in spell-casting.ts and
+   * `evaluateInterveningIfClause` in abilities.ts.
+   */
+  interveningIf?: string;
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }

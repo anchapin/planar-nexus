@@ -963,6 +963,30 @@ function parseEffect(
  *
  * Triggered abilities use "when", "whenever", or "at"
  */
+/**
+ * Extract a CR 603.4 intervening "if" clause from the start of an effect text.
+ *
+ * A triggered ability of the form "When/Whenever/At [trigger], if [condition],
+ * [effect]" carries an intervening-if clause. The clause sits immediately after
+ * the trigger condition's comma and is itself followed by a comma. This helper
+ * splits a leading "if <condition>," off the effect text, returning the raw
+ * condition (for evaluation at trigger time AND resolution time, per CR 603.4)
+ * and the remaining effect.
+ *
+ * Returns `interveningIf: undefined` when the text does not begin with an
+ * intervening-if, so ordinary triggers are unaffected.
+ */
+function extractInterveningIfClause(effectText: string): {
+  interveningIf?: string;
+  effect: string;
+} {
+  const match = effectText.match(/^\s*if\s+(.+?),\s*(.+)/i);
+  if (match) {
+    return { interveningIf: match[1].trim(), effect: match[2].trim() };
+  }
+  return { effect: effectText.trim() };
+}
+
 export function parseTriggeredAbilities(
   oracleText: string,
 ): ParsedTriggeredAbility[] {
@@ -980,10 +1004,14 @@ export function parseTriggeredAbilities(
     const atMatch = sentence.match(/\bat\s+(?:the\s+)?(.+?),?\s*,\s*(.+)/i);
 
     if (whenMatch) {
-      const [, , triggerText, effectText] = whenMatch;
+      const [, , triggerText, rawEffect] = whenMatch;
       const trigger = parseTriggerText(triggerText);
 
       if (trigger) {
+        // CR 603.4: peel a leading "if <condition>," off the effect so it can be
+        // gated at trigger time and re-checked at resolution.
+        const { interveningIf, effect: effectText } =
+          extractInterveningIfClause(rawEffect);
         const effect = parseEffect(effectText);
         abilities.push({
           type: AbilityType.TRIGGERED,
@@ -992,13 +1020,16 @@ export function parseTriggeredAbilities(
           effectType: effect?.effectType || "generic",
           targets: effect?.targets || [],
           value: effect?.value,
+          interveningIf,
         });
       }
     } else if (atMatch) {
-      const [, triggerText, effectText] = atMatch;
+      const [, triggerText, rawEffect] = atMatch;
       const trigger = parseTriggerText(triggerText);
 
       if (trigger) {
+        const { interveningIf, effect: effectText } =
+          extractInterveningIfClause(rawEffect);
         const effect = parseEffect(effectText);
         abilities.push({
           type: AbilityType.TRIGGERED,
@@ -1007,6 +1038,7 @@ export function parseTriggeredAbilities(
           effectType: effect?.effectType || "generic",
           targets: effect?.targets || [],
           value: effect?.value,
+          interveningIf,
         });
       }
     }
@@ -1080,6 +1112,11 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
   // End of turn
   if (text.includes("end of turn")) {
     return { event: "turnEnds" };
+  }
+
+  // Untap step — "At the beginning of your untap step" (CR 502.3)
+  if (text.includes("untap step") || text.includes("beginning of your untap")) {
+    return { event: "untapStep" };
   }
 
   // Upkeep
