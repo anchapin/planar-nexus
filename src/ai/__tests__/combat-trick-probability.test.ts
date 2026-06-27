@@ -207,7 +207,11 @@ describe("calculateCombatTrickDiscount", () => {
   it("should never discount below -0.5", () => {
     const estimate = {
       probability: 0.9,
-      estimatedTypes: ["removal", "pump", "indestructible"] as CombatTrickType[],
+      estimatedTypes: [
+        "removal",
+        "pump",
+        "indestructible",
+      ] as CombatTrickType[],
       confidence: 0.9,
       reasoning: "worst case",
     };
@@ -223,9 +227,7 @@ describe("integration: combat trick discount in attack decisions", () => {
     const noManaState = createTestGameState(
       20,
       20,
-      [
-        createMockPermanent("c1", "Bear", "creature", 2, 2, false, 2),
-      ],
+      [createMockPermanent("c1", "Bear", "creature", 2, 2, false, 2)],
       [],
     );
     noManaState.players.player2.manaPool = {
@@ -241,9 +243,7 @@ describe("integration: combat trick discount in attack decisions", () => {
     const withManaState = createTestGameState(
       20,
       20,
-      [
-        createMockPermanent("c1", "Bear", "creature", 2, 2, false, 2),
-      ],
+      [createMockPermanent("c1", "Bear", "creature", 2, 2, false, 2)],
       [],
     );
     withManaState.players.player2.manaPool = {
@@ -269,11 +269,7 @@ describe("integration: combat trick discount in attack decisions", () => {
       opponentArchetype: "tempo",
     });
 
-    const withManaAI = new CombatDecisionTree(
-      withManaState,
-      "player1",
-      "hard",
-    );
+    const withManaAI = new CombatDecisionTree(withManaState, "player1", "hard");
     withManaAI.setConfig({
       useCombatTricks: true,
       opponentArchetype: "tempo",
@@ -282,10 +278,7 @@ describe("integration: combat trick discount in attack decisions", () => {
     const noManaPlan = noManaAI.generateAttackPlan();
     const withManaPlan = withManaAI.generateAttackPlan();
 
-    if (
-      noManaPlan.attacks.length > 0 &&
-      withManaPlan.attacks.length > 0
-    ) {
+    if (noManaPlan.attacks.length > 0 && withManaPlan.attacks.length > 0) {
       expect(withManaPlan.attacks[0].expectedValue).toBeLessThanOrEqual(
         noManaPlan.attacks[0].expectedValue,
       );
@@ -300,9 +293,7 @@ describe("integration: combat trick discount in attack decisions", () => {
     const state = createTestGameState(
       20,
       20,
-      [
-        createMockPermanent("c1", "Bear", "creature", 2, 2, false, 2),
-      ],
+      [createMockPermanent("c1", "Bear", "creature", 2, 2, false, 2)],
       [],
     );
     state.players.player2.manaPool = {
@@ -342,7 +333,13 @@ describe("estimateCombatTrickProbability — difficulty scaling (#1067)", () => 
     expect(explicit.probability).toBe(legacy.probability);
     // The unscaled multipliers are all 1, so expert must match legacy exactly
     // on the probability term (bluff/freq multipliers both 1 for expert).
-    const expert = estimateCombatTrickProbability(mana, "tempo", 4, 5, "expert");
+    const expert = estimateCombatTrickProbability(
+      mana,
+      "tempo",
+      4,
+      5,
+      "expert",
+    );
     expect(expert.probability).toBeCloseTo(legacy.probability, 10);
   });
 
@@ -481,11 +478,7 @@ describe("resolveTrickScaling — per-format composition (#1069)", () => {
 
     // Every resolved scaling must keep miscastChance within [0, 1].
     for (const level of DIFFICULTY_LEVELS) {
-      for (const format of [
-        "commander",
-        "constructed",
-        "limited",
-      ] as const) {
+      for (const format of ["commander", "constructed", "limited"] as const) {
         const m = resolveTrickScaling(level, format).miscastChance;
         expect(m).toBeGreaterThanOrEqual(0);
         expect(m).toBeLessThanOrEqual(1);
@@ -566,7 +559,7 @@ describe("decideCombatTrickHold — bluff/hold by difficulty (#1067)", () => {
       // Pair rolls: (miscast, discipline) — reuse the same ladder per tier.
       for (let i = 0; i < rolls.length - 1; i += 2) {
         let idx = 0;
-        const rng = () => rolls[i + idx++ % 2];
+        const rng = () => rolls[i + (idx++ % 2)];
         const d = decideCombatTrickHold({
           difficulty: level,
           evNow,
@@ -585,11 +578,7 @@ describe("decideCombatTrickHold — bluff/hold by difficulty (#1067)", () => {
 
   it("composes with per-format config via the format parameter", () => {
     // Same tier, different formats must remain valid and within bounds.
-    for (const format of [
-      "commander",
-      "constructed",
-      "limited",
-    ] as const) {
+    for (const format of ["commander", "constructed", "limited"] as const) {
       const d = decideCombatTrickHold({
         difficulty: "hard",
         format,
@@ -679,10 +668,18 @@ describe("CombatDecisionTree — difficulty plumbing into the trick module (#106
         colorless: 1,
       };
       state.players.player2.hand = [
-        { cardInstanceId: "h1", name: "Lightning Bolt", type: "Instant", manaValue: 1 },
+        {
+          cardInstanceId: "h1",
+          name: "Lightning Bolt",
+          type: "Instant",
+          manaValue: 1,
+        },
       ];
       const ai = new CombatDecisionTree(state, "player1", level);
       ai.setConfig({ useCombatTricks: true, opponentArchetype: "tempo" });
+      // This test isolates trick-EV ordering, not combat blunders (#994). Pin
+      // the combat RNG so the per-difficulty blunder roll never fires here.
+      ai.setCombatRng(() => 1);
       return ai.generateAttackPlan();
     };
 
