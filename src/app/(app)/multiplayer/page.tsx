@@ -20,15 +20,35 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { P2PDiagnosticsPanel } from "@/components/p2p-diagnostics-panel";
+import { P2PConnectionIndicatorSection } from "@/components/p2p-connection-indicator-section";
 
 export default function MultiplayerPage() {
   return (
     <div className="flex-1 p-4 md:p-6">
-      <header className="mb-6">
-        <h1 className="font-headline text-3xl font-bold">Multiplayer</h1>
-        <p className="text-muted-foreground mt-1">
-          Challenge others in peer-to-peer multiplayer battles.
-        </p>
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-headline text-3xl font-bold">Multiplayer</h1>
+          <p className="text-muted-foreground mt-1">
+            Challenge others in peer-to-peer multiplayer battles.
+          </p>
+        </div>
+        {/*
+          Persistent live-state indicator for the WebRTC P2P transport
+          (issue #986). Sits in the stable page header (no unstable callbacks
+          — #1209 lesson). The chip defaults to "Offline" when no P2P session
+          is active and reflects real-time state once a peer connection is
+          established elsewhere in the multiplayer flow.
+        */}
+        <div className="flex items-center gap-2 pt-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            P2P Status
+          </span>
+          <P2PConnectionIndicatorSection
+            playerId="multiplayer-lobby"
+            playerName="Multiplayer Lobby"
+            role="host"
+          />
+        </div>
       </header>
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
