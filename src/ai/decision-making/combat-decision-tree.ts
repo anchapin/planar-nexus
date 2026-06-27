@@ -121,6 +121,106 @@ export function deckArchetypeToOpponentArchetype(
 }
 
 /**
+ * Minimum number of observed non-land permanents the opponent must have on the
+ * battlefield before we are willing to classify their archetype from board
+ * state alone. Below this the signal is too noisy, so we keep "unknown".
+ */
+const MIN_BOARD_SIGNAL = 2;
+
+/**
+ * Infer the opponent's emerging {@link OpponentArchetype} from the cards they
+ * have actually revealed/played (their observed battlefield) inside an
+ * {@link AIGameState}.
+ *
+ * This is the fallback derivation path used by {@link CombatDecisionTree} when
+ * no explicit opponent archetype is supplied (issue #991). Previously the
+ * combat config always inherited the "unknown" baked into
+ * {@link DefaultCombatConfigs}, so every caller that did not wire detection
+ * itself (notably the in-game combat decider) modelled the opponent as unknown
+ * for the entire game and block prediction never adapted.
+ *
+ * The full-fidelity detector ({@link detectArchetype}) needs rich Scryfall card
+ * data that the simplified {@link AIPermanent} does not carry, so this infers
+ * from the shape of the observed board instead — creature count, curve and
+ * non-creature support. It deliberately returns "unknown" when there is too
+ * little to classify, so "unknown" remains the genuine fallback rather than the
+ * hardcoded default. Callers that supply an explicit archetype (e.g. the live
+ * turn loop, which detects from the full engine state) always take precedence.
+ */
+export function inferOpponentArchetype(
+  state: GameState,
+  aiPlayerId: string,
+): OpponentArchetype {
+  const opponent = Object.values(state.players).find(
+    (player) => player.id !== aiPlayerId,
+  );
+  if (!opponent) return "unknown";
+
+  const board = opponent.battlefield ?? [];
+  // Lands reveal very little about archetype, so classification keys off the
+  // non-land permanents the opponent has actually committed to the board.
+  const nonLand = board.filter((permanent) => permanent.type !== "land");
+  if (nonLand.length < MIN_BOARD_SIGNAL) return "unknown";
+
+  const creatures = nonLand.filter(
+    (permanent) => permanent.type === "creature",
+  );
+  const support = nonLand.filter(
+    (permanent) =>
+      permanent.type === "artifact" ||
+      permanent.type === "enchantment" ||
+      permanent.type === "planeswalker",
+  );
+  const planeswalkers = nonLand.filter(
+    (permanent) => permanent.type === "planeswalker",
+  );
+
+  const creatureCmcs = creatures
+    .map((creature) => creature.manaValue ?? 0)
+    .filter((value) => value > 0);
+  const averageCreatureCmc =
+    creatureCmcs.length > 0
+      ? creatureCmcs.reduce((sum, value) => sum + value, 0) /
+        creatureCmcs.length
+      : 0;
+
+  // Aggro: a wide board of cheap creatures with little non-creature support.
+  if (
+    creatures.length >= 3 &&
+    averageCreatureCmc > 0 &&
+    averageCreatureCmc <= 2 &&
+    support.length <= 1
+  ) {
+    return "aggro";
+  }
+
+  // Control: few creatures, leaning on planeswalkers / reactive permanents.
+  if (
+    creatures.length <= 2 &&
+    (planeswalkers.length >= 1 || support.length >= 2)
+  ) {
+    return "control";
+  }
+
+  // Tempo: cheap creatures backed by interactive non-creature permanents.
+  if (
+    creatures.length >= 2 &&
+    averageCreatureCmc > 0 &&
+    averageCreatureCmc <= 2 &&
+    support.length >= 1
+  ) {
+    return "tempo";
+  }
+
+  // Midrange: a healthy creature presence on a mid-to-high curve.
+  if (creatures.length >= 2 && averageCreatureCmc >= 2) {
+    return "midrange";
+  }
+
+  return "unknown";
+}
+
+/**
  * Card data interface for combat tricks
  * Extends the basic HandCard with combat-relevant information
  */
@@ -248,7 +348,14 @@ export interface CombatAIConfig {
   useCombatTricks: boolean;
   /** Whether to use predictive block modeling */
   useBlockPrediction: boolean;
-  /** Estimated opponent archetype for block prediction */
+  /**
+   * Estimated opponent archetype for block prediction. This is the generic
+   * fallback baked into {@link DefaultCombatConfigs}; the live
+   * {@link CombatDecisionTree} overrides it with an explicit value (when the
+   * caller supplies one) or a value derived from the opponent's observed board
+   * (issue #991), so "unknown" only survives when the archetype genuinely
+   * cannot be determined.
+   */
   opponentArchetype: OpponentArchetype;
   /** Whether to use multi-turn lookahead planning */
   useLookahead: boolean;
@@ -343,12 +450,11 @@ export class CombatDecisionTree {
     aiPlayerId: string,
     difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
     archetype: DeckArchetype = "unknown",
-    opponentArchetype: OpponentArchetype = "unknown",
+    opponentArchetype?: OpponentArchetype,
   ) {
     this.gameState = gameState;
     this.aiPlayerId = aiPlayerId;
     this.archetype = archetype;
-    this.opponentArchetype = opponentArchetype;
     this.difficulty = difficulty;
 
     const baseConfig = DefaultCombatConfigs[difficulty];
@@ -374,11 +480,17 @@ export class CombatDecisionTree {
     } else {
       this.config = { ...baseConfig };
     }
-    // Populate the opponent-archetype signal that block prediction consumes.
-    // DefaultCombatConfigs hardcodes this to "unknown", so without an explicit
-    // override the AI could never model how the opponent will block — the
-    // signal was effectively dead code (issue #912).
-    this.config.opponentArchetype = opponentArchetype;
+    // Resolve the opponent-archetype signal that block prediction consumes.
+    // DefaultCombatConfigs only carries a generic "unknown" fallback, so an
+    // explicit archetype always wins; when none is supplied we derive it from
+    // the opponent's observed battlefield so the AI models how they will block.
+    // Previously the config inherited "unknown" verbatim and block prediction
+    // could never adapt for any caller that did not wire detection itself
+    // (issues #912 and #991).
+    const resolvedOpponentArchetype =
+      opponentArchetype ?? inferOpponentArchetype(gameState, aiPlayerId);
+    this.opponentArchetype = resolvedOpponentArchetype;
+    this.config.opponentArchetype = resolvedOpponentArchetype;
     this.heuristicTable = new HeuristicTable();
     this.lookaheadEngine = new LookaheadEngine(
       this.heuristicTable,
@@ -2272,7 +2384,7 @@ export function generateAttackDecisions(
   aiPlayerId: string,
   difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
   archetype: DeckArchetype = "unknown",
-  opponentArchetype: OpponentArchetype = "unknown",
+  opponentArchetype?: OpponentArchetype,
 ): CombatPlan {
   const ai = new CombatDecisionTree(
     gameState,
@@ -2293,7 +2405,7 @@ export function generateBlockingDecisions(
   attackers: Permanent[],
   difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
   archetype: DeckArchetype = "unknown",
-  opponentArchetype: OpponentArchetype = "unknown",
+  opponentArchetype?: OpponentArchetype,
 ): CombatPlan {
   const ai = new CombatDecisionTree(
     gameState,
