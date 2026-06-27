@@ -1049,6 +1049,213 @@ const THEME_MODIFIERS: Record<StrategicTheme, ThemeCardPool> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Issue #992: Difficulty-scaled deck POWER
+//
+// Previously `difficulty` was only a light nudge (a small selection multiplier),
+// so an "easy" opponent fielded decks just as tuned as an "expert" one. The
+// infrastructure below makes the deck's *power* scale monotonically with
+// difficulty so the generated deck itself reflects the challenge:
+//   - `cardStrength`           deterministic per-card quality score in [0,1]
+//   - `DIFFICULTY_POWER_TIERS` per-difficulty selection bias / curve / mana / filler
+//   - `evaluateDeckPower`      deterministic deck-quality metric (0-100) for tests
+// Expert decks prefer the strongest cards, tighter curves, better mana and no
+// filler; easy decks prefer weaker picks, clunkier curves, worse mana and noise.
+// This composes with the sideboard work (#995) and the unified difficulty
+// taxonomy / per-format config (#1064 / #1069): the same `DifficultyLevel` is
+// used throughout, and the deck generator is only responsible for maindeck
+// power — the sideboard keeps its own (already difficulty-aware) logic.
+// ---------------------------------------------------------------------------
+
+/** Deterministic hash of a string in [0,1) (FNV-1a). Stable across runs. */
+function hashName(name: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+/**
+ * Base strength tier keyed by CARD_POOL category *suffix* (e.g. "W_removal" ->
+ * "removal"). Higher = objectively more impactful / efficient card type. Used
+ * when the selecting category is known so the bias has precise signal.
+ */
+const CATEGORY_STRENGTH_TIER: Record<string, number> = {
+  // premium interaction & card advantage
+  removal: 0.9,
+  kill: 0.9,
+  counter: 0.85,
+  draw: 0.85,
+  burn: 0.72,
+  ramp: 0.8,
+  rocks: 0.78,
+  // efficient threats (lower CMC = tighter, stronger curve)
+  one_drops: 0.72,
+  two_drops: 0.7,
+  three_drops: 0.66,
+  four_drops: 0.58,
+  big: 0.55,
+  trample: 0.6,
+  equipment: 0.5,
+  reanimate: 0.62,
+  tempo: 0.6,
+  discard: 0.6,
+  // tribal / situational
+  zombies: 0.45,
+  goblins: 0.45,
+  elves: 0.5,
+  utility: 0.6,
+  // weak / narrow
+  lifegain: 0.3,
+};
+
+/**
+ * Name-only strength fallback (used by {@link evaluateDeckPower} where the
+ * selecting category is unknown). Kept self-contained so the power-scaling
+ * block has no forward dependencies. Mirrors the role heuristics elsewhere.
+ */
+const NAME_TIER_FALLBACK: Array<{ re: RegExp; tier: number }> = [
+  { re: /\b(destroy|exile|remove|kill|burn|bolt|path|swords|doom|murder|decay|pulse|terminate|blast|strike|cut|downfall|push|verdict|wrath|damnation|annihilate)\b/i, tier: 0.88 },
+  { re: /\b(counter|negate|cancel|deny|dismiss|remand|interrupt|essence scatter|mana leak)\b/i, tier: 0.82 },
+  { re: /\b(draw|divination|ponder|preordain|brainstorm|inspiration|opportunity|fact or fiction|sign in blood|read the bones|catalog|foresight)\b/i, tier: 0.82 },
+  { re: /\b(ramp|growth|cultivate|kodama|signet|talisman|sol ring|mana vault|crypt|fellwar|mind stone|arcane signet)\b/i, tier: 0.78 },
+  { re: /\b(lifegain|healing|rest for the weary|revitalize|soul warden|soul's attendant|healing salve)\b/i, tier: 0.3 },
+  { re: /\b(land|forest|island|mountain|plains|swamp|tower|wastes)\b/i, tier: 0.12 },
+];
+
+function resolveStrengthTier(name: string, category?: string): number {
+  if (category) {
+    for (const suffix of Object.keys(CATEGORY_STRENGTH_TIER)) {
+      if (category.endsWith(suffix)) return CATEGORY_STRENGTH_TIER[suffix];
+    }
+  }
+  for (const { re, tier } of NAME_TIER_FALLBACK) {
+    if (re.test(name)) return tier;
+  }
+  return 0.6; // generic threat
+}
+
+function clamp01(n: number): number {
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+
+/**
+ * Deterministic card-quality score in [0,1]. When `category` is supplied (a
+ * CARD_POOL key such as "W_removal") the precise category tier is used;
+ * otherwise the tier is inferred from the card name. A stable per-name hash
+ * adds reproducible intra-tier ordering, so difficulty-scaled selection has a
+ * deterministic signal to bias on and tests are fully reproducible.
+ */
+export function cardStrength(name: string, category?: string): number {
+  const tier = resolveStrengthTier(name, category);
+  const jitter = (hashName(name) - 0.5) * 2 * 0.08; // [-0.08, +0.08]
+  return clamp01(tier + jitter);
+}
+
+/**
+ * Per-difficulty deck-power tuning (issue #992). Every field is monotonic in
+ * skill so that, as difficulty rises, the generator biases toward stronger
+ * cards, tighter mana curves, better mana fixing and less filler. Consumed by
+ * the card-selection, curve and land helpers.
+ */
+export interface DifficultyPowerTier {
+  /** Exponent on the strength weight. Higher = more ruthless preference. */
+  strengthBias: number;
+  /** true => favour HIGH-strength cards (expert); false => favour LOW (easy). */
+  preferStrong: boolean;
+  /** Fraction of non-land slots that may be filled with suboptimal "noise". */
+  fillerFraction: number;
+  /** Mana-curve slack: <1 tightens (leaner, lower CMC); >1 loosens (clunkier). */
+  curveTightness: number;
+  /** Dual-land share of the mana base scaling factor (0 = all basics, 1 = full). */
+  landQuality: number;
+  /** Commander land-count delta vs the 38% baseline (negative = fewer lands). */
+  commanderLandDelta: number;
+}
+
+export const DIFFICULTY_POWER_TIERS: Record<DifficultyLevel, DifficultyPowerTier> =
+  {
+    easy: {
+      strengthBias: 1.3,
+      preferStrong: false, // deliberately pick the weaker cards in each slot
+      fillerFraction: 0.18,
+      curveTightness: 1.3, // clunky, top-heavy curve
+      landQuality: 0.3,
+      commanderLandDelta: -3, // ~35 lands, shaky mana
+    },
+    medium: {
+      strengthBias: 0.6,
+      preferStrong: true,
+      fillerFraction: 0.1,
+      curveTightness: 1.1,
+      landQuality: 0.6,
+      commanderLandDelta: -1,
+    },
+    hard: {
+      strengthBias: 1.3,
+      preferStrong: true,
+      fillerFraction: 0.04,
+      curveTightness: 0.92,
+      landQuality: 0.85,
+      commanderLandDelta: 1,
+    },
+    expert: {
+      strengthBias: 2.2,
+      preferStrong: true, // ruthlessly prefer the strongest available picks
+      fillerFraction: 0.0,
+      curveTightness: 0.82, // tight, low-curve
+      landQuality: 1.0,
+      commanderLandDelta: 2, // ~40 lands, smooth mana
+    },
+  };
+
+/**
+ * Selection-weight contribution from a card's strength for a given difficulty.
+ * Expert strongly up-weights strong cards; easy up-weights WEAK cards (so its
+ * decks are measurably less powerful). Always returns a positive multiplier so
+ * every card stays selectable and deck legality/counts are preserved.
+ */
+function strengthWeight(
+  name: string,
+  category: string,
+  difficulty: DifficultyLevel,
+): number {
+  const tier = DIFFICULTY_POWER_TIERS[difficulty];
+  const s = cardStrength(name, category); // [0,1]
+  const biased = tier.preferStrong ? s : 1 - s; // [0,1]
+  return Math.max(0.05, Math.pow(biased, tier.strengthBias));
+}
+
+/** Land-name check for the power metric (self-contained; excludes mana from power). */
+function isLandCardName(name: string): boolean {
+  return /\b(land|forest|island|mountain|plains|swamp|tower|wastes|fetch|shock)\b/i.test(
+    name,
+  );
+}
+
+/**
+ * Deterministic deck-power metric in [0,100]: the quantity-weighted average of
+ * {@link cardStrength} over the NON-land cards (lands represent mana, not
+ * power, and their count varies by difficulty which would otherwise confound
+ * the score). Stable for a given card list, so tests can assert that
+ * expert-generated decks score strictly higher than easy-generated decks.
+ */
+export function evaluateDeckPower(
+  cards: Array<{ name: string; quantity: number }>,
+): number {
+  let weighted = 0;
+  let qty = 0;
+  for (const c of cards) {
+    if (isLandCardName(c.name)) continue;
+    weighted += cardStrength(c.name) * c.quantity;
+    qty += c.quantity;
+  }
+  if (qty === 0) return 0;
+  return Math.round(((weighted / qty) * 1000) / 10); // 0-100, one decimal
+}
+
 // Helper to get random items from array with weighting
 function getRandomItems<T>(arr: T[], count: number, weights?: number[]): T[] {
   if (count <= 0) return [];
@@ -1087,7 +1294,13 @@ function getRandomItems<T>(arr: T[], count: number, weights?: number[]): T[] {
   return shuffled.slice(0, count);
 }
 
-// Weighted random selection based on card quality/importance
+// Weighted random selection based on card quality/importance.
+//
+// Issue #992: the weight is now driven by the per-card `strengthWeight` so that
+// expert decks preferentially select the strongest cards in each category while
+// easy decks preferentially select the weakest (within-category ordering is
+// deterministic via the card-strength hash, so the effect is measurable and the
+// deck power scales monotonically with difficulty).
 function getWeightedCards(
   categories: string[],
   count: number,
@@ -1102,16 +1315,7 @@ function getWeightedCards(
 
     for (const card of cards) {
       allCards.push(card);
-      // Higher difficulty = higher weight for good cards
-      const baseWeight = 1;
-      const difficultyMultiplier = {
-        easy: 0.8,
-        medium: 1.0,
-        hard: 1.2,
-        expert: 1.4,
-      }[difficulty];
-
-      weights.push(baseWeight * difficultyMultiplier);
+      weights.push(strengthWeight(card, category, difficulty));
     }
   }
 
@@ -1140,7 +1344,10 @@ function getCardsForColors(
         if (cards) {
           for (const card of cards) {
             allCards.push(card);
-            weights.push(1.5); // Color-aligned cards get higher weight
+            // Color-aligned cards get a bonus, multiplied by the difficulty
+            // strength bias (issue #992) so expert still prefers the strongest
+            // color-aligned cards and easy the weakest.
+            weights.push(1.5 * strengthWeight(card, category, difficulty));
           }
         }
       }
@@ -1150,12 +1357,19 @@ function getCardsForColors(
   return getRandomItems(allCards, Math.min(count, allCards.length), weights);
 }
 
-// Calculate mana curve based on archetype and difficulty
+// Calculate mana curve based on archetype and difficulty.
+//
+// Issue #992: applies the per-difficulty `curveTightness` slack so expert decks
+// get a leaner, lower-curve distribution while easy decks get a clunkier,
+// top-heavy one (their average mana value drifts upward). The slack factor is
+// `tightness^(cmc/3 - 1)`: for tightness<1 low CMCs are boosted and high CMCs
+// trimmed; for tightness>1 the reverse.
 function calculateManaCurve(
   archetype: DeckArchetype,
   difficulty: DifficultyLevel,
 ): number[] {
   const baseCurve = DIFFICULTY_CONFIGS[difficulty].curve;
+  const tightness = DIFFICULTY_POWER_TIERS[difficulty].curveTightness;
   const archetypeMultiplier: Record<DeckArchetype, number> = {
     aggro: 1.0,
     tempo: 1.0,
@@ -1173,7 +1387,9 @@ function calculateManaCurve(
   const adjustedCurve: number[] = [];
 
   for (let cmc = 0; cmc <= 7; cmc++) {
-    adjustedCurve[cmc] = Math.floor(baseCurve[cmc] || 0 * multiplier);
+    const base = baseCurve[cmc] || 0;
+    const slack = Math.pow(tightness, cmc / 3 - 1);
+    adjustedCurve[cmc] = Math.max(0, Math.round(base * multiplier * slack));
   }
 
   return adjustedCurve;
@@ -1189,9 +1405,12 @@ function generateLands(
   const lands: Array<{ name: string; quantity: number }> = [];
 
   if (format === "legendary-commander") {
-    // Commander decks get more lands and dual lands
-    const basicLandCount = Math.floor(landCount * 0.6);
-    const dualLandCount = Math.floor(landCount * 0.4);
+    // Commander decks get more lands and dual lands. Issue #992: the dual-land
+    // share scales with difficulty `landQuality` so expert has smooth mana
+    // (more duals) and easy has clunky mana (mostly basics).
+    const dualFraction = Math.min(0.6, DIFFICULTY_POWER_TIERS[difficulty].landQuality * 0.5);
+    const basicLandCount = Math.floor(landCount * (1 - dualFraction));
+    const dualLandCount = Math.floor(landCount * dualFraction);
 
     // Add basic lands
     if (colorIdentity.length > 0) {
@@ -1219,9 +1438,13 @@ function generateLands(
       lands.push({ name: dualLand, quantity: 2 });
     }
   } else {
-    // 60-card formats
-    const basicLandCount = Math.floor(landCount * 0.7);
-    const dualLandCount = Math.floor(landCount * 0.3);
+    // 60-card formats. Issue #992: dual-land share scales with difficulty.
+    const dualFraction = Math.min(
+      0.45,
+      DIFFICULTY_POWER_TIERS[difficulty].landQuality * 0.4,
+    );
+    const basicLandCount = Math.floor(landCount * (1 - dualFraction));
+    const dualLandCount = Math.floor(landCount * dualFraction);
 
     // Add basic lands
     if (colorIdentity.length > 0) {
@@ -1296,6 +1519,27 @@ export function generateOpponentDeck(
 
   const archetypeConfig = ARCHETYPE_CONFIGS[archetype];
   const difficultyConfig = DIFFICULTY_CONFIGS[difficulty];
+  const powerTier = DIFFICULTY_POWER_TIERS[difficulty];
+
+  // Issue #992: difficulty-scaled filler pools. Easy decks inject weak "noise";
+  // expert decks fill with strong generic interaction only.
+  const weakFiller = [
+    "Healing Salve",
+    "Rest for the Weary",
+    "One with Nothing",
+    "Storm Crow",
+    "Fugitive Wizard",
+    "Goblin Piker",
+    "Wood Elemental",
+    "Oxidda Scrapmelter",
+  ];
+  const strongFiller = [
+    "Brainstorm",
+    "Ponder",
+    "Counterspell",
+    "Lightning Bolt",
+    "Swords to Plowshares",
+  ];
 
   // Determine colors if not specified
   let finalColorIdentity = colorIdentity;
@@ -1318,9 +1562,11 @@ export function generateOpponentDeck(
   const totalCards = formatRulesConfig.minCards;
   const isCommander = format === "legendary-commander";
 
-  // Calculate land count based on format and difficulty
+  // Calculate land count based on format and difficulty. Issue #992: commander
+  // land count scales with difficulty (expert ~40 smooth lands, easy ~35 shaky
+  // lands); 60-card formats use the per-difficulty landCount from the config.
   const landCount = isCommander
-    ? Math.floor(totalCards * 0.38)
+    ? Math.floor(totalCards * 0.38) + powerTier.commanderLandDelta
     : difficultyConfig.landCount;
 
   // Generate lands
@@ -1362,8 +1608,31 @@ export function generateOpponentDeck(
     }
   }
 
-  // Calculate mana curve based on archetype and difficulty
+  // Calculate mana curve based on archetype and difficulty. Issue #992: when the
+  // difficulty reserves filler slots (easy/medium), scale the creature curve
+  // down so that space is genuinely left for the weak-filler "noise" to land —
+  // otherwise the creature/spell fill saturates the deck and filler (the main
+  // power differentiator) is trimmed away by the final size pass.
   const manaCurve = calculateManaCurve(archetype, difficulty);
+  if (powerTier.fillerFraction > 0) {
+    const slotScale = 1 - powerTier.fillerFraction;
+    for (let cmc = 0; cmc < manaCurve.length; cmc++) {
+      manaCurve[cmc] = Math.floor(manaCurve[cmc] * slotScale);
+    }
+  }
+  // Issue #992: reserve filler space so easy/medium decks genuinely contain
+  // weak "noise" cards. The main build (creatures/spells) is capped at
+  // `buildTarget`; the reserved slots are filled afterwards with difficulty-
+  // appropriate filler. Without this the spell step saturates the deck and the
+  // filler — the main power differentiator — is trimmed away.
+  const fillerReserve =
+    powerTier.fillerFraction > 0
+      ? Math.min(
+          Math.round(nonLandSlots * powerTier.fillerFraction),
+          (isCommander ? 1 : 4) * weakFiller.length,
+        )
+      : 0;
+  const buildTarget = Math.max(0, totalCards - fillerReserve);
   let totalAdded = cards.reduce((sum, card) => sum + card.quantity, 0);
 
   for (let cmc = 0; cmc <= 7; cmc++) {
@@ -1391,9 +1660,9 @@ export function generateOpponentDeck(
           : Math.min(4, Math.floor(Math.random() * 3) + 1);
         if (
           !cards.find((c) => c.name === creature) &&
-          totalAdded < totalCards
+          totalAdded < buildTarget
         ) {
-          const actualQuantity = Math.min(quantity, totalCards - totalAdded);
+          const actualQuantity = Math.min(quantity, buildTarget - totalAdded);
           cards.push({ name: creature, quantity: actualQuantity });
           totalAdded += actualQuantity;
         }
@@ -1406,11 +1675,11 @@ export function generateOpponentDeck(
 
   // Add theme-specific spells
   for (const themeSpell of themeModifier.additionalSpells) {
-    if (totalAdded < totalCards && !cards.find((c) => c.name === themeSpell)) {
+    if (totalAdded < buildTarget && !cards.find((c) => c.name === themeSpell)) {
       const quantity = isCommander
         ? 1
         : Math.min(4, Math.floor(Math.random() * 3) + 1);
-      const actualQuantity = Math.min(quantity, totalCards - totalAdded);
+      const actualQuantity = Math.min(quantity, buildTarget - totalAdded);
       cards.push({ name: themeSpell, quantity: actualQuantity });
       totalAdded += actualQuantity;
     }
@@ -1420,16 +1689,16 @@ export function generateOpponentDeck(
   const archetypeSpells = getCardsForColors(
     finalColorIdentity,
     spellCategories,
-    Math.max(0, totalCards - totalAdded),
+    Math.max(0, buildTarget - totalAdded),
     difficulty,
   );
 
   for (const spell of archetypeSpells) {
-    if (totalAdded < totalCards && !cards.find((c) => c.name === spell)) {
+    if (totalAdded < buildTarget && !cards.find((c) => c.name === spell)) {
       const quantity = isCommander
         ? 1
         : Math.min(4, Math.floor(Math.random() * 3) + 1);
-      const actualQuantity = Math.min(quantity, totalCards - totalAdded);
+      const actualQuantity = Math.min(quantity, buildTarget - totalAdded);
       cards.push({ name: spell, quantity: actualQuantity });
       totalAdded += actualQuantity;
     }
@@ -1463,18 +1732,37 @@ export function generateOpponentDeck(
     }
   }
 
-  // Fill remaining slots with generic good cards if needed
+  // Issue #992: difficulty-scaled filler. Easy decks deliberately include weak
+  // "noise" cards (lowering their measurable power); expert decks fill only
+  // with strong generic interaction. The weak-filler reserve (capped by the
+  // pool's copy capacity) is injected first into the space reserved above.
   let currentTotal = cards.reduce((sum, card) => sum + card.quantity, 0);
-  if (currentTotal < totalCards) {
-    const fillerCards = [
-      "Brainstorm",
-      "Ponder",
-      "Counterspell",
-      "Lightning Bolt",
-      "Swords to Plowshares",
-    ];
 
-    for (const filler of fillerCards) {
+  // Inject the difficulty-scaled weak-filler reserve (easy/medium only) into
+  // the space reserved by `buildTarget` (already capped to the pool's capacity).
+  if (fillerReserve > 0) {
+    for (let i = 0; i < fillerReserve; i++) {
+      if (currentTotal >= totalCards) break;
+      const pick = weakFiller[i % weakFiller.length];
+      const cap = isCommander ? 1 : 4;
+      const already = cards.find((c) => c.name === pick);
+      if (already) {
+        if (already.quantity >= cap) continue;
+        already.quantity += 1;
+      } else {
+        cards.push({ name: pick, quantity: 1 });
+      }
+      currentTotal += 1;
+    }
+  }
+
+  // Fill remaining slots. Issue #992: easy decks fill with weak "noise" while
+  // expert decks fill with strong generic interaction, so a lower-difficulty
+  // deck's filler never accidentally outranks a higher-difficulty deck's filler
+  // (which previously let loose easy construction pull in extra premium cards).
+  const fillPool = powerTier.preferStrong ? strongFiller : weakFiller;
+  if (currentTotal < totalCards) {
+    for (const filler of fillPool) {
       if (currentTotal >= totalCards) break;
       if (!cards.find((c) => c.name === filler)) {
         const quantity = isCommander
