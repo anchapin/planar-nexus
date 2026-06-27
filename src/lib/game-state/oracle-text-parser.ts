@@ -507,6 +507,7 @@ export function extractKeywords(
     "renown",
     "revolt",
     "splice",
+    "split second",
     "storm",
     "support",
     "surge",
@@ -1652,6 +1653,40 @@ export function parseKicker(oracleText: string): KickerInfo {
     description: isMultiKicker
       ? `Multikicker ${costString}`
       : `Kicker ${costString}`,
+  };
+}
+
+/**
+ * Result of detecting Split second (CR 702.60).
+ */
+export interface SplitSecondInfo {
+  hasSplitSecond: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Split second keyword from oracle text.
+ *
+ * CR 702.60: "Split second" is a static ability that functions only while the
+ * spell with split second is on the stack. It has no parameters and no cost,
+ * so a simple, case-insensitive, word-boundary anchored match is sufficient.
+ * The reminder text variant ("(As you cast this spell, ...)") is matched too
+ * because the leading keyword word is always present regardless.
+ *
+ * Example oracle text: "Split second" (Sudden Shock, Krosan Grip, Wipe Away).
+ */
+export function parseSplitSecond(oracleText: string): SplitSecondInfo {
+  if (!oracleText) {
+    return { hasSplitSecond: false, description: "" };
+  }
+
+  // Word-boundary anchored so "split second" matches but a hypothetical
+  // "splitsecondish" would not. Case-insensitive to be tolerant of casing.
+  const hasSplitSecond = /\bsplit second\b/i.test(oracleText);
+
+  return {
+    hasSplitSecond,
+    description: hasSplitSecond ? "Split second" : "",
   };
 }
 

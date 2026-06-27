@@ -1,4 +1,4 @@
-import type { GameState, PlayerId } from "./types";
+import type { GameState, PlayerId, StackObject } from "./types";
 import { Phase } from "./types";
 
 /**
@@ -12,6 +12,26 @@ const HUMAN_INTERACTIVE_COMBAT_PHASES: ReadonlySet<Phase> = new Set([
   Phase.COMBAT_DAMAGE,
   Phase.COMBAT_DAMAGE_FIRST_STRIKE,
 ]);
+
+/**
+ * Whether any object currently on the stack grants Split second (CR 702.60).
+ *
+ * Split second is a spell characteristic that functions only while the spell
+ * with split second is on the stack (CR 702.60a). This helper scans the
+ * current stack and returns true if any object carries the `splitSecond`
+ * marker, which is the single source of truth used by the action-validation
+ * path (`ValidationService`, `canActivateAbility`) to reject casts and
+ * non-mana ability activations while such a spell is pending.
+ *
+ * CR 702.60b: players can't cast other spells or activate abilities that
+ * aren't mana abilities. Triggered abilities and special actions (e.g.
+ * turning a face-down creature face up) are NOT affected and remain legal.
+ */
+export function hasSplitSecondOnStack(state: GameState): boolean {
+  return state.stack.some(
+    (obj: StackObject) => obj.splitSecond === true,
+  );
+}
 
 export interface AutoPassContext {
   /** Player whose turn it is (the AI opponent in single-player mode). */
@@ -40,6 +60,10 @@ export function shouldAutoPassPriority(
   if (state.status !== "in_progress") return false;
 
   // Preserve the response window: never yield priority while the stack is live.
+  // This also implicitly handles Split second (CR 702.60): a split-second spell
+  // is itself on the stack, so the stack is non-empty and auto-pass is already
+  // suppressed; the legal-action restriction is enforced separately in
+  // ValidationService / canActivateAbility via hasSplitSecondOnStack().
   if (state.stack.length > 0) return false;
 
   // Only auto-pass on the opponent's turn when the human actually has priority.

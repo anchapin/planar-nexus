@@ -10,6 +10,7 @@ import {
   canTarget as canTargetKeyword,
   canBlockProtectedAttacker,
 } from "./evergreen-keywords";
+import { hasSplitSecondOnStack } from "./auto-pass-priority";
 
 /**
  * Validation result structure
@@ -315,6 +316,19 @@ export class ValidationService {
         isValid: false,
         reason: "Card not in hand",
         message: "Card is not in your hand.",
+      };
+    }
+
+    // CR 702.60b - Split second: while a spell with split second is on the
+    // stack, players can't cast other spells. (Triggered abilities and special
+    // actions remain legal.) This is checked before timing/mana so the
+    // restriction is reported as the operative reason.
+    if (hasSplitSecondOnStack(state)) {
+      return {
+        isValid: false,
+        reason: "Split second active",
+        message:
+          "A spell with split second is on the stack. You can't cast other spells.",
       };
     }
 

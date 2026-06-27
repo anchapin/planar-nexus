@@ -20,6 +20,7 @@ import { Phase, ZoneType } from "./types";
 import { moveCardBetweenZones } from "./zones";
 import { spendMana, getSpellManaCost } from "./mana";
 import { ValidationService } from "./validation-service";
+import { hasSplitSecondOnStack } from "./auto-pass-priority";
 import { initializePlaneswalkerLoyalty } from "./card-instance";
 import {
   parseKicker,
@@ -27,6 +28,7 @@ import {
   parseBuyback,
   parseFlashback,
   parseBestow,
+  parseSplitSecond,
   isModalSpell,
   getModesForModalSpell,
   hasFuse,
@@ -148,6 +150,17 @@ export function canCastSpell(
     currentPhase === Phase.POSTCOMBAT_MAIN;
   const stackIsEmpty = state.stack.length === 0;
   const isActivePlayer = state.turn.activePlayerId === playerId;
+
+  // CR 702.60b - Split second: while a spell with split second is on the
+  // stack, no other spells may be cast. Reported before sorcery-speed timing
+  // so the operative restriction is surfaced (instants/flash are otherwise
+  // legal timing-wise but are still barred by split second).
+  if (hasSplitSecondOnStack(state)) {
+    return {
+      canCast: false,
+      reason: "A spell with split second is on the stack",
+    };
+  }
 
   // Check if it's an instant
   const typeLine = card.cardData.type_line?.toLowerCase() || "";
@@ -447,6 +460,11 @@ export function castSpell(
     wasKicked: isKicked,
     buybackReturnZone,
     bestowTarget,
+    // CR 702.60 - Split second: parsed from Oracle text and stamped onto the
+    // spell's StackObject so the restriction can be enforced while it's on
+    // the stack (see hasSplitSecondOnStack / ValidationService).
+    splitSecond: parseSplitSecond(card.cardData.oracle_text || "")
+      .hasSplitSecond,
   };
 
   // Move card from hand (or graveyard for flashback) to stack

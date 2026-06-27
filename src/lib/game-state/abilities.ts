@@ -24,6 +24,7 @@ import {
 } from "./oracle-text-parser";
 import { spendMana, addMana, isManaAbility } from "./mana";
 import { destroyCard, discardCards } from "./keyword-actions";
+import { hasSplitSecondOnStack } from "./auto-pass-priority";
 
 /**
  * Event types that can trigger triggered abilities (CR 603.2)
@@ -233,10 +234,27 @@ export function canActivateAbility(
     return { canActivate: false, reason: "Card is not on the battlefield" };
   }
 
-  // Check for summoning sickness (unless the ability has no tap cost)
+  // Resolve the ability now so we can classify it (e.g. mana ability) for
+  // the Split second restriction below. A missing/invalid index is handled
+  // later by activateAbility; here we only short-circuit when we can.
   const abilities = getActivatedAbilities(card.cardData);
   const ability = abilities[abilityIndex];
 
+  // CR 702.60b - Split second: while a spell with split second is on the
+  // stack, players can't activate abilities that aren't mana abilities.
+  // Triggered abilities and special actions (e.g. turning a face-down
+  // creature face up) are NOT activated abilities and remain legal.
+  if (ability && hasSplitSecondOnStack(state)) {
+    if (!isManaAbility(cardId, ability.effect)) {
+      return {
+        canActivate: false,
+        reason:
+          "A spell with split second is on the stack. Only mana abilities may be activated.",
+      };
+    }
+  }
+
+  // Check for summoning sickness (unless the ability has no tap cost)
   if (ability && !ability.costs.tap && card.hasSummoningSickness) {
     // Some abilities can be activated despite summoning sickness
     // This would need more sophisticated checking
