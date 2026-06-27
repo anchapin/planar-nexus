@@ -17,10 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "@jest/globals";
-import {
-  canCastSpell,
-  castSpell,
-} from "../spell-casting";
+import { canCastSpell, castSpell } from "../spell-casting";
 import {
   canActivateAbility,
   activateAbility,
@@ -120,8 +117,7 @@ function etfTriggerCreature(): ScryfallCard {
     id: "mock-etb-trigger",
     name: "ETB Trigger",
     type_line: "Creature — Human",
-    oracle_text:
-      "When this creature enters the battlefield, draw a card.",
+    oracle_text: "When this creature enters the battlefield, draw a card.",
     mana_cost: "{1}{U}",
     cmc: 2,
     power: "1",
@@ -210,8 +206,8 @@ function pushSplitSecondSpell(
     sourceCardId: card.id,
     controllerId,
     name: data.name,
-    text: data.oracle_text,
-    manaCost: data.mana_cost,
+    text: data.oracle_text ?? "",
+    manaCost: data.mana_cost ?? null,
     targets: [],
     chosenModes: [],
     variableValues: new Map(),
@@ -224,10 +220,7 @@ function pushSplitSecondSpell(
 }
 
 /** Push a non-split-second spell onto the stack (control case). */
-function pushPlainSpell(
-  state: GameState,
-  controllerId: PlayerId,
-): StackObject {
+function pushPlainSpell(state: GameState, controllerId: PlayerId): StackObject {
   const obj: StackObject = {
     id: "plain-spell-on-stack",
     type: "spell",
@@ -350,9 +343,7 @@ describe("Split second — casting is blocked while active (CR 702.60b)", () => 
 
     // Resolve/counter/remove the split-second spell → stack empties.
     f.state.stack = [];
-    expect(canCastSpell(f.state, f.aliceId, responseCardId).canCast).toBe(
-      true,
-    );
+    expect(canCastSpell(f.state, f.aliceId, responseCardId).canCast).toBe(true);
   });
 });
 
