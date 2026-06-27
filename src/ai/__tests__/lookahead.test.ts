@@ -554,3 +554,98 @@ describe("Combat Decision Tree + Lookahead Integration", () => {
     expect(plan).toBeDefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #1068 — lookahead aggression bias.
+//
+// The engine accepts an external `aggressionBias` (driven by the board-state
+// swing) that is added to its internally-derived aggression modifier and
+// clamped to [-1, 1]. Positive bias → more aggressive lookahead signal (press
+// when behind); negative → conservative (protect a lead). Default 0 leaves the
+// historical signal unchanged.
+// ---------------------------------------------------------------------------
+
+describe("LookaheadEngine aggressionBias (issue #1068)", () => {
+  function symmetricBoard(): AIGameState {
+    // Symmetric, modest board → internal modifier near 0, so the additive bias
+    // is observable without being masked by clamping.
+    return createTestGameState(
+      20,
+      20,
+      [createMockPermanent("a1", "Bear", "creature", 2, 2)],
+      [createMockPermanent("d1", "Bear", "creature", 2, 2)],
+    );
+  }
+
+  it("defaults aggressionBias to 0 (no change to historical signal)", () => {
+    const baseline = new LookaheadEngine(new HeuristicTable());
+    const withZero = new LookaheadEngine(new HeuristicTable(), {
+      aggressionBias: 0,
+    });
+    const state = symmetricBoard();
+
+    const r1 = baseline.evaluate(state, "player1");
+    const r2 = withZero.evaluate(state, "player1");
+
+    expect(r1.evaluated).toBe(true);
+    expect(r2.aggressionModifier).toBeCloseTo(r1.aggressionModifier, 5);
+  });
+
+  it("a positive bias raises the aggression modifier by ~bias", () => {
+    const state = symmetricBoard();
+    const base = new LookaheadEngine(new HeuristicTable()).evaluate(
+      state,
+      "player1",
+    );
+    const pressed = new LookaheadEngine(new HeuristicTable(), {
+      aggressionBias: 0.4,
+    }).evaluate(state, "player1");
+
+    expect(pressed.aggressionModifier).toBeGreaterThan(base.aggressionModifier);
+    expect(pressed.aggressionModifier - base.aggressionModifier).toBeCloseTo(
+      0.4,
+      1,
+    );
+  });
+
+  it("a negative bias lowers the aggression modifier by ~bias", () => {
+    const state = symmetricBoard();
+    const base = new LookaheadEngine(new HeuristicTable()).evaluate(
+      state,
+      "player1",
+    );
+    const conservative = new LookaheadEngine(new HeuristicTable(), {
+      aggressionBias: -0.4,
+    }).evaluate(state, "player1");
+
+    expect(conservative.aggressionModifier).toBeLessThan(base.aggressionModifier);
+    expect(conservative.aggressionModifier - base.aggressionModifier).toBeCloseTo(
+      -0.4,
+      1,
+    );
+  });
+
+  it("clamps the final aggression modifier to [-1, 1] even with a large bias", () => {
+    const state = symmetricBoard();
+    const maxBias = new LookaheadEngine(new HeuristicTable(), {
+      aggressionBias: 5,
+    }).evaluate(state, "player1");
+    const minBias = new LookaheadEngine(new HeuristicTable(), {
+      aggressionBias: -5,
+    }).evaluate(state, "player1");
+
+    expect(maxBias.aggressionModifier).toBeLessThanOrEqual(1);
+    expect(minBias.aggressionModifier).toBeGreaterThanOrEqual(-1);
+  });
+
+  it("can be updated at runtime via setConfig", () => {
+    const state = symmetricBoard();
+    const engine = new LookaheadEngine(new HeuristicTable());
+    const before = engine.evaluate(state, "player1").aggressionModifier;
+
+    engine.setConfig({ aggressionBias: 0.5 });
+    const after = engine.evaluate(state, "player1").aggressionModifier;
+
+    expect(after).toBeGreaterThan(before);
+  });
+});

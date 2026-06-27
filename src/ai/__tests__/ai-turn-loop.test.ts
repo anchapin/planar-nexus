@@ -13,8 +13,22 @@ import {
   detectPlayerArchetype,
   detectOpponentArchetype,
   runAITurn,
+  computeAdaptiveTempoRisk,
+  adaptiveStrength,
+  ADAPTIVE_MIN_MULT,
+  ADAPTIVE_MAX_MULT,
   type AITurnConfig,
+  type AdaptiveTempoRisk,
 } from "../ai-turn-loop";
+import {
+  resolveDifficultyConfig,
+  type DifficultyLevel,
+} from "../ai-difficulty";
+import {
+  BoardSwingTracker,
+  BOARD_SWING_SCALE,
+  type BoardSwing,
+} from "../game-state-evaluator";
 import type { DeckCard } from "@/app/actions";
 import type {
   GameState as EngineGameState,
@@ -840,5 +854,285 @@ describe("runAITurn — error & edge handling", () => {
     const result = await runAITurn(state, AI, baseConfig());
     expect(result.success).toBe(false);
     expect(result.error).toBe("Unknown error");
+  });
+});
+
+// ===========================================================================
+// Issue #1068 — adaptive tempo/risk adjustment keyed to board-state swing.
+//
+// Pure-function coverage for {@link computeAdaptiveTempoRisk}: the swing→risk
+// direction, bounded multipliers, composition with the per-format/difficulty
+// config (#1069), and hysteresis (no turn-to-turn oscillation). These are the
+// deterministic core of the feature; the swing signal itself is covered in
+// game-state-evaluator.test.ts (BoardSwingTracker).
+// ===========================================================================
+
+/** Build a precise BoardSwing literal for parametric tests. */
+function swingOf(
+  normalizedAdvantage: number,
+  normalizedDelta: number,
+): BoardSwing {
+  return {
+    advantage: normalizedAdvantage * BOARD_SWING_SCALE,
+    normalizedAdvantage,
+    delta: normalizedDelta * BOARD_SWING_SCALE,
+    normalizedDelta,
+    direction:
+      normalizedAdvantage > 0.15
+        ? "leading"
+        : normalizedAdvantage < -0.15
+          ? "trailing"
+          : "stable",
+    trend:
+      normalizedDelta > 0.15
+        ? "improving"
+        : normalizedDelta < -0.15
+          ? "worsening"
+          : "steady",
+    magnitude: Math.min(
+      1,
+      Math.abs(normalizedAdvantage) * 0.7 + Math.abs(normalizedDelta) * 0.6,
+    ),
+    sampleCount: 4,
+  };
+}
+
+describe("computeAdaptiveTempoRisk (issue #1068) — direction", () => {
+  it("presses (raises risk/tempo) when the AI is trailing", () => {
+    const r = computeAdaptiveTempoRisk(swingOf(-1, 0), {
+      difficulty: "medium",
+    });
+
+    expect(r.pressure).toBeGreaterThan(0);
+    expect(r.riskMultiplier).toBeGreaterThan(1);
+    expect(r.tempoMultiplier).toBeGreaterThan(1);
+    expect(r.aggressionDelta).toBeGreaterThan(0);
+    expect(r.riskDelta).toBeGreaterThan(0);
+  });
+
+  it("consolidates (lowers risk/tempo) when the AI is leading", () => {
+    const r = computeAdaptiveTempoRisk(swingOf(1, 0), {
+      difficulty: "medium",
+    });
+
+    expect(r.pressure).toBeLessThan(0);
+    expect(r.riskMultiplier).toBeLessThan(1);
+    expect(r.tempoMultiplier).toBeLessThan(1);
+    expect(r.aggressionDelta).toBeLessThan(0);
+    expect(r.riskDelta).toBeLessThan(0);
+  });
+
+  it("stays at baseline when the board is at parity (stable)", () => {
+    const r = computeAdaptiveTempoRisk(swingOf(0, 0), {
+      difficulty: "medium",
+    });
+
+    expect(r.pressure).toBeCloseTo(0, 5);
+    expect(r.tempoMultiplier).toBeCloseTo(1, 5);
+    expect(r.riskMultiplier).toBeCloseTo(1, 5);
+    expect(r.aggressionDelta).toBeCloseTo(0, 5);
+  });
+
+  it("amplifies the press when losing ground (worsening trend)", () => {
+    const behindOnly = computeAdaptiveTempoRisk(swingOf(-0.6, 0), {
+      difficulty: "medium",
+    });
+    const behindAndFalling = computeAdaptiveTempoRisk(swingOf(-0.6, -0.6), {
+      difficulty: "medium",
+    });
+
+    expect(behindAndFalling.pressure).toBeGreaterThan(behindOnly.pressure);
+    expect(behindAndFalling.riskMultiplier).toBeGreaterThan(
+      behindOnly.riskMultiplier,
+    );
+  });
+});
+
+describe("computeAdaptiveTempoRisk (issue #1068) — bounds", () => {
+  const difficulties: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];
+
+  for (const difficulty of difficulties) {
+    it(`clamps multipliers to documented limits at ${difficulty}`, () => {
+      // Max-magnitude swing in both directions, first turn (no prev).
+      for (const swing of [swingOf(-1, -1), swingOf(1, 1)]) {
+        const r = computeAdaptiveTempoRisk(swing, { difficulty });
+        expect(r.tempoMultiplier).toBeGreaterThanOrEqual(ADAPTIVE_MIN_MULT);
+        expect(r.tempoMultiplier).toBeLessThanOrEqual(ADAPTIVE_MAX_MULT);
+        expect(r.riskMultiplier).toBeGreaterThanOrEqual(ADAPTIVE_MIN_MULT);
+        expect(r.riskMultiplier).toBeLessThanOrEqual(ADAPTIVE_MAX_MULT);
+        expect(r.tempoPriority).toBeGreaterThanOrEqual(0);
+        expect(r.tempoPriority).toBeLessThanOrEqual(1);
+        expect(r.riskTolerance).toBeGreaterThanOrEqual(0);
+        expect(r.riskTolerance).toBeLessThanOrEqual(1);
+        // Deltas bounded by the per-difficulty strength.
+        expect(Math.abs(r.aggressionDelta)).toBeLessThanOrEqual(r.strength);
+        expect(Math.abs(r.riskDelta)).toBeLessThanOrEqual(r.strength);
+      }
+    });
+  }
+
+  it("exposes the documented per-tier strength curve (easy loudest, expert subtlest)", () => {
+    expect(adaptiveStrength("easy")).toBeGreaterThan(adaptiveStrength("medium"));
+    expect(adaptiveStrength("medium")).toBeGreaterThan(adaptiveStrength("hard"));
+    expect(adaptiveStrength("hard")).toBeGreaterThan(adaptiveStrength("expert"));
+  });
+});
+
+describe("computeAdaptiveTempoRisk (issue #1068) — composition with difficulty (#1069)", () => {
+  it("multiplies the resolved base tempo/risk (does not replace them)", () => {
+    const difficulty: DifficultyLevel = "hard";
+    const format = "limited" as const;
+    const base = resolveDifficultyConfig(difficulty, format);
+
+    // First-turn press (no prev) so the multiplier is exactly the target.
+    const r = computeAdaptiveTempoRisk(swingOf(-1, 0), { difficulty, format });
+
+    expect(r.tempoPriority).toBeCloseTo(
+      Math.max(0, Math.min(1, base.tempoPriority * r.tempoMultiplier)),
+      6,
+    );
+    expect(r.riskTolerance).toBeCloseTo(
+      Math.max(0, Math.min(1, base.riskTolerance * r.riskMultiplier)),
+      6,
+    );
+  });
+
+  it("a neutral swing reproduces the base config exactly", () => {
+    for (const difficulty of ["easy", "medium", "hard", "expert"] as const) {
+      const base = resolveDifficultyConfig(difficulty);
+      const r = computeAdaptiveTempoRisk(swingOf(0, 0), { difficulty });
+      expect(r.tempoPriority).toBeCloseTo(base.tempoPriority, 6);
+      expect(r.riskTolerance).toBeCloseTo(base.riskTolerance, 6);
+    }
+  });
+
+  it("per-format overrides change the composed posture for the same swing", () => {
+    const difficulty: DifficultyLevel = "medium";
+    const rBase = computeAdaptiveTempoRisk(swingOf(-1, 0), { difficulty });
+    const rLimited = computeAdaptiveTempoRisk(swingOf(-1, 0), {
+      difficulty,
+      format: "limited",
+    });
+
+    // Limited raises medium's tempoPriority, so even with the same multiplier
+    // the composed posture differs from the no-format baseline.
+    expect(rLimited.tempoPriority).not.toBeCloseTo(rBase.tempoPriority, 1);
+  });
+
+  it("tier separation: easy adapts further than expert for the same swing", () => {
+    const swing = swingOf(-1, 0);
+    const easy = computeAdaptiveTempoRisk(swing, { difficulty: "easy" });
+    const expert = computeAdaptiveTempoRisk(swing, { difficulty: "expert" });
+
+    expect(easy.riskMultiplier - 1).toBeGreaterThan(expert.riskMultiplier - 1);
+    expect(easy.tempoMultiplier - 1).toBeGreaterThan(expert.tempoMultiplier - 1);
+  });
+});
+
+describe("computeAdaptiveTempoRisk (issue #1068) — hysteresis / no oscillation", () => {
+  it("does not move when the target change is inside the deadband", () => {
+    const prev = { tempoMultiplier: 1.0, riskMultiplier: 1.0 };
+    // Tiny shift in standing → target barely moves → multiplier frozen.
+    const r = computeAdaptiveTempoRisk(swingOf(0.01, 0), {
+      difficulty: "medium",
+    }, prev);
+
+    expect(r.tempoMultiplier).toBe(prev.tempoMultiplier);
+    expect(r.riskMultiplier).toBe(prev.riskMultiplier);
+  });
+
+  it("damps an alternating swing so it never oscillates at full amplitude", () => {
+    // Alternate trailing/leading every turn. Without smoothing the multiplier
+    // would jump between ~0.82 and ~1.18; with smoothing (factor 0.5) the
+    // amplitude must shrink and every step stay within the global bounds.
+    let prev = { tempoMultiplier: 1, riskMultiplier: 1 };
+    const swings = [swingOf(-1, 0), swingOf(1, 0), swingOf(-1, 0), swingOf(1, 0)];
+    const tempoValues: number[] = [];
+    for (const s of swings) {
+      const r = computeAdaptiveTempoRisk(s, { difficulty: "medium" }, prev);
+      tempoValues.push(r.tempoMultiplier);
+      prev = { tempoMultiplier: r.tempoMultiplier, riskMultiplier: r.riskMultiplier };
+    }
+
+    // All within bounds.
+    for (const v of tempoValues) {
+      expect(v).toBeGreaterThanOrEqual(ADAPTIVE_MIN_MULT);
+      expect(v).toBeLessThanOrEqual(ADAPTIVE_MAX_MULT);
+    }
+    // The peak-to-peak amplitude of the smoothed sequence is strictly smaller
+    // than the raw target amplitude (1 - strength*1 = 0.82 for medium trailing),
+    // proving the oscillation is damped rather than amplified.
+    const peakToPeak = Math.max(...tempoValues) - Math.min(...tempoValues);
+    expect(peakToPeak).toBeLessThan(1 - (1 - adaptiveStrength("medium"))); // < 1
+    // And specifically smaller than a single un-smoothed step's magnitude.
+    expect(peakToPeak).toBeLessThan(adaptiveStrength("medium"));
+  });
+
+  it("converges monotonically toward a sustained posture", () => {
+    // Hold a trailing board for several turns; the multiplier should march
+    // toward the press target without reversing direction each step.
+    let prev: { tempoMultiplier: number; riskMultiplier: number } | undefined;
+    let prevTempo = -Infinity;
+    const tempoValues: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = computeAdaptiveTempoRisk(swingOf(-1, 0), {
+        difficulty: "hard",
+      }, prev);
+      tempoValues.push(r.tempoMultiplier);
+      prev = { tempoMultiplier: r.tempoMultiplier, riskMultiplier: r.riskMultiplier };
+    }
+    // Monotonic non-decreasing toward the (higher) press target.
+    for (const v of tempoValues) {
+      expect(v).toBeGreaterThanOrEqual(prevTempo - 1e-9);
+      prevTempo = v;
+    }
+    // Converges upward, bounded by the max multiplier.
+    expect(tempoValues[tempoValues.length - 1]).toBeLessThanOrEqual(
+      ADAPTIVE_MAX_MULT,
+    );
+  });
+
+  it("round-trips hysteresis state through BoardSwingTracker", () => {
+    // Mirrors how the turn loop persists multipliers between turns.
+    const tracker = new BoardSwingTracker();
+    tracker.record(-BOARD_SWING_SCALE);
+    const swing = tracker.getSwing();
+    const r1 = computeAdaptiveTempoRisk(swing, { difficulty: "medium" });
+    tracker.setLastMultipliers({
+      tempoMultiplier: r1.tempoMultiplier,
+      riskMultiplier: r1.riskMultiplier,
+    });
+
+    tracker.record(-BOARD_SWING_SCALE);
+    const swing2 = tracker.getSwing();
+    const r2 = computeAdaptiveTempoRisk(
+      swing2,
+      { difficulty: "medium" },
+      tracker.getLastMultipliers(),
+    );
+
+    expect(r2.tempoMultiplier).toBeGreaterThanOrEqual(ADAPTIVE_MIN_MULT);
+    expect(r2.riskMultiplier).toBeLessThanOrEqual(ADAPTIVE_MAX_MULT);
+  });
+});
+
+describe("computeAdaptiveTempoRisk (issue #1068) — AdaptiveTempoRisk shape", () => {
+  it("exposes every documented field", () => {
+    const r: AdaptiveTempoRisk = computeAdaptiveTempoRisk(swingOf(-0.5, -0.2), {
+      difficulty: "medium",
+    });
+    for (const key of [
+      "pressure",
+      "tempoMultiplier",
+      "riskMultiplier",
+      "aggressionDelta",
+      "riskDelta",
+      "tempoPriority",
+      "riskTolerance",
+      "strength",
+    ] as const) {
+      expect(r).toHaveProperty(key);
+      expect(typeof r[key]).toBe("number");
+    }
   });
 });

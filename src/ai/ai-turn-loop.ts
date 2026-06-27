@@ -23,6 +23,7 @@ import {
 } from "./ai-action-executor";
 import {
   getDifficultyConfig,
+  resolveDifficultyConfig,
   type DifficultyLevel,
   type DifficultyFormat,
 } from "./ai-difficulty";
@@ -33,6 +34,9 @@ import { getMaxHandSize } from "@/lib/game-rules";
 import { discardCards } from "@/lib/game-state/keyword-actions";
 import {
   classifyArchetypeName,
+  GameStateEvaluator,
+  BoardSwingTracker,
+  type BoardSwing,
   type DeckArchetype,
 } from "./game-state-evaluator";
 import { detectArchetype } from "./archetype-detector";
@@ -63,6 +67,212 @@ export interface AITurnConfig {
    * loop (previously dead code — issue #911).
    */
   archetype?: DeckArchetype;
+  /**
+   * Optional per-game board-state swing tracker (issue #1068). When supplied,
+   * the turn loop records the AI's evaluated advantage each turn and adjusts
+   * its tempo/risk posture from the resulting swing signal: it presses when
+   * behind and consolidates when ahead, bounded and hysteresis-smoothed on top
+   * of the per-format/difficulty config.
+   *
+   * Omitting it disables in-game adaptation entirely — the AI falls back to its
+   * static difficulty posture, preserving the historical behavior.
+   */
+  swingTracker?: BoardSwingTracker;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #1068 — in-game adaptive tempo/risk adjustment.
+//
+// Maps a {@link BoardSwing} signal to bounded, hysteresis-smoothed tempo/risk
+// multipliers that compose on top of the per-format/difficulty config
+// (issue #1069). The mapping is pure and fully deterministic so it can be unit
+// tested in isolation.
+//
+// Posture: when the AI is behind / losing ground it presses (raises risk and
+// tempo to dig out); when ahead / gaining ground it consolidates (lowers risk
+// to protect the lead). The shift magnitude is bounded per difficulty so
+// Expert stays near-optimal and Easy stays beatable.
+// ---------------------------------------------------------------------------
+
+/** Lower/upper bounds for the adaptive multipliers (documented limits). */
+export const ADAPTIVE_MIN_MULT = 0.8;
+export const ADAPTIVE_MAX_MULT = 1.2;
+
+/**
+ * Hysteresis smoothing factor in `[0, 1)`. Each turn the multiplier moves a
+ * `(1 - ADAPTIVE_SMOOTHING)` fraction of the way toward its target, so 0.5
+ * means it closes half the gap per turn — strong damping against turn-to-turn
+ * oscillation.
+ */
+export const ADAPTIVE_SMOOTHING = 0.5;
+
+/**
+ * Multiplier deadband: target moves smaller than this are ignored entirely
+ * (the previous multiplier is kept). The second layer of anti-oscillation.
+ */
+export const ADAPTIVE_DEADBAND = 0.02;
+
+/**
+ * Per-difficulty adaptation strength. This is the maximum |multiplier - 1| the
+ * adaptive layer will reach (before the global {@link ADAPTIVE_MIN_MULT} /
+ * {@link ADAPTIVE_MAX_MULT} clamp). Easy adapts loudly (swingy, beatable);
+ * Expert adapts subtly (near-optimal).
+ */
+const ADAPTIVE_STRENGTH: Record<DifficultyLevel, number> = {
+  easy: 0.3,
+  medium: 0.18,
+  hard: 0.12,
+  expert: 0.08,
+};
+
+/**
+ * The adaptive layer's contribution to one turn's tempo/risk posture.
+ *
+ * The multipliers are hysteresis-smoothed and bounded; the absolute
+ * `tempoPriority`/`riskTolerance` are already composed with (multiplied over)
+ * the resolved per-format/difficulty config and clamped to `[0, 1]`.
+ */
+export interface AdaptiveTempoRisk {
+  /** Signed pressure signal in `[-1, 1]`: positive = press/risk, negative = consolidate. */
+  pressure: number;
+  /** Bounded tempo multiplier (hysteresis-smoothed). */
+  tempoMultiplier: number;
+  /** Bounded risk multiplier (hysteresis-smoothed). */
+  riskMultiplier: number;
+  /** Bounded signed delta to add to combat aggression. */
+  aggressionDelta: number;
+  /** Bounded signed delta to add to combat risk tolerance. */
+  riskDelta: number;
+  /** Composed absolute tempo priority, clamped to `[0, 1]`. */
+  tempoPriority: number;
+  /** Composed absolute risk tolerance, clamped to `[0, 1]`. */
+  riskTolerance: number;
+  /** Per-difficulty strength used (for inspection / tests). */
+  strength: number;
+}
+
+/** Look up the adaptation strength for a difficulty tier. */
+export function adaptiveStrength(difficulty: DifficultyLevel): number {
+  return ADAPTIVE_STRENGTH[difficulty] ?? ADAPTIVE_STRENGTH.medium;
+}
+
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+const clampMult = (v: number): number =>
+  Math.max(ADAPTIVE_MIN_MULT, Math.min(ADAPTIVE_MAX_MULT, v));
+
+/**
+ * Hysteresis-smooth a multiplier toward its target.
+ *
+ * - No previous value → adopt the target directly.
+ * - Target within {@link ADAPTIVE_DEADBAND} of the previous value → keep the
+ *   previous value (deadband, kills micro-oscillation).
+ * - Otherwise move a `(1 - ADAPTIVE_SMOOTHING)` fraction toward the target.
+ */
+function smoothMultiplier(
+  prev: number | undefined,
+  target: number,
+): number {
+  if (prev === undefined) return target;
+  if (Math.abs(target - prev) < ADAPTIVE_DEADBAND) return prev;
+  return prev + (target - prev) * (1 - ADAPTIVE_SMOOTHING);
+}
+
+/**
+ * Map a board-state swing to a bounded, hysteresis-smoothed adaptive
+ * tempo/risk posture that composes on top of the per-format/difficulty config.
+ *
+ * @param swing The current {@link BoardSwing} signal.
+ * @param opts Active difficulty tier and (optional) format family, used both for
+ *   the per-tier strength curve and to resolve the base config the multipliers
+ *   compose over.
+ * @param prev The previous turn's multipliers, for hysteresis. Omit on the
+ *   first turn (no smoothing applied).
+ */
+export function computeAdaptiveTempoRisk(
+  swing: BoardSwing,
+  opts: { difficulty: DifficultyLevel; format?: DifficultyFormat },
+  prev?: { tempoMultiplier: number; riskMultiplier: number },
+): AdaptiveTempoRisk {
+  const strength = adaptiveStrength(opts.difficulty);
+
+  // Signed pressure: behind/worsening → +press, ahead/improving → -consolidate.
+  // Standing (who is ahead) dominates; momentum amplifies it.
+  const pressure = Math.max(
+    -1,
+    Math.min(1, -(swing.normalizedAdvantage * 0.7 + swing.normalizedDelta * 0.3)),
+  );
+
+  // Risk reaches slightly further than tempo when digging out (commit harder),
+  // but both share the same global clamp.
+  const tempoTarget = clampMult(1 + pressure * strength);
+  const riskTarget = clampMult(1 + pressure * strength * 1.15);
+
+  const tempoMultiplier = smoothMultiplier(prev?.tempoMultiplier, tempoTarget);
+  const riskMultiplier = smoothMultiplier(prev?.riskMultiplier, riskTarget);
+
+  // Compose over the resolved base config (per-format + tier, issue #1069):
+  // the adaptive layer multiplies the base, it never replaces it.
+  const base = resolveDifficultyConfig(opts.difficulty, opts.format);
+  const tempoPriority = clamp01(base.tempoPriority * tempoMultiplier);
+  const riskTolerance = clamp01(base.riskTolerance * riskMultiplier);
+
+  return {
+    pressure,
+    tempoMultiplier,
+    riskMultiplier,
+    aggressionDelta: pressure * strength,
+    riskDelta: pressure * strength,
+    tempoPriority,
+    riskTolerance,
+    strength,
+  };
+}
+
+/**
+ * Evaluate the AI's board-state advantage for the current turn and fold it into
+ * an {@link AdaptiveTempoRisk} posture. Returns `null` when no swing tracker is
+ * configured (no adaptation → baseline posture).
+ *
+ * The advantage comes from the real {@link GameStateEvaluator}; if evaluation
+ * throws on a degenerate board the advantage defaults to 0 so the AI keeps a
+ * stable, neutral posture rather than crashing mid-turn.
+ */
+function computeAdaptiveContext(
+  state: EngineGameState,
+  aiPlayerId: PlayerId,
+  config: AITurnConfig,
+): AdaptiveTempoRisk | null {
+  const tracker = config.swingTracker;
+  if (!tracker) return null;
+
+  let advantage = 0;
+  try {
+    const aiState = engineToAIState(state);
+    const archetype =
+      config.archetype ?? detectPlayerArchetype(state, aiPlayerId);
+    const evaluator = new GameStateEvaluator(
+      aiState,
+      aiPlayerId,
+      config.difficulty,
+      archetype,
+    );
+    advantage = evaluator.evaluate().totalScore;
+  } catch {
+    advantage = 0;
+  }
+
+  tracker.record(advantage);
+  const swing = tracker.getSwing();
+  const adaptive = computeAdaptiveTempoRisk(
+    swing,
+    { difficulty: config.difficulty, format: config.format },
+    tracker.getLastMultipliers(),
+  );
+  tracker.setLastMultipliers({
+    tempoMultiplier: adaptive.tempoMultiplier,
+    riskMultiplier: adaptive.riskMultiplier,
+  });
+  return adaptive;
 }
 
 /**
@@ -200,6 +410,11 @@ export async function runAITurn(
   let currentState = gameState;
 
   try {
+    // Issue #1068: evaluate the AI's standing at the start of its turn and fold
+    // the board-state swing into an adaptive tempo/risk posture for this turn.
+    // Null when no swing tracker is configured (baseline posture, no change).
+    const adaptive = computeAdaptiveContext(currentState, aiPlayerId, config);
+
     // Phase 1: Untap
     const untapResult = await runUntapPhase(currentState, aiPlayerId, config);
     if (untapResult.success) {
@@ -230,6 +445,7 @@ export async function runAITurn(
       aiPlayerId,
       config,
       "precombat_main",
+      adaptive,
     );
     if (main1Result.success) {
       actionsTaken.push(...main1Result.actions);
@@ -240,7 +456,12 @@ export async function runAITurn(
     currentState = advanceToNextPhase(currentState, aiPlayerId);
 
     // Phase 5: Combat
-    const combatResult = await runCombatPhase(currentState, aiPlayerId, config);
+    const combatResult = await runCombatPhase(
+      currentState,
+      aiPlayerId,
+      config,
+      adaptive,
+    );
     if (combatResult.success) {
       actionsTaken.push(...combatResult.actions);
       currentState = combatResult.newState || currentState;
@@ -255,6 +476,7 @@ export async function runAITurn(
       aiPlayerId,
       config,
       "postcombat_main",
+      adaptive,
     );
     if (main2Result.success) {
       actionsTaken.push(...main2Result.actions);
@@ -400,6 +622,7 @@ async function runMainPhase(
   aiPlayerId: PlayerId,
   config: AITurnConfig,
   _phase: "precombat_main" | "postcombat_main",
+  adaptive?: AdaptiveTempoRisk | null,
 ): Promise<{
   success: boolean;
   actions: AIAction[];
@@ -421,7 +644,12 @@ async function runMainPhase(
   }
 
   // Step 2: Cast creatures (priority based on curve)
-  const creatureResult = await castCreatures(currentState, aiPlayerId, config);
+  const creatureResult = await castCreatures(
+    currentState,
+    aiPlayerId,
+    config,
+    adaptive,
+  );
   if (creatureResult.success) {
     actions.push(...creatureResult.actions);
     currentState = creatureResult.newState || currentState;
@@ -450,6 +678,7 @@ async function runCombatPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
+  adaptive?: AdaptiveTempoRisk | null,
 ): Promise<{
   success: boolean;
   actions: AIAction[];
@@ -485,6 +714,22 @@ async function runCombatPhase(
     archetype,
     opponentArchetype,
   );
+
+  // Issue #1068: fold the adaptive tempo/risk posture into the live combat
+  // config. Aggression/risk shift by a bounded delta (press when behind,
+  // consolidate when ahead) and the lookahead engine receives an aggression
+  // bias of the same sign. No-op when adaptation is disabled (null).
+  if (adaptive) {
+    const current = combatAI.getConfig();
+    combatAI.setConfig({
+      aggression: clamp01(current.aggression + adaptive.aggressionDelta),
+      riskTolerance: clamp01(current.riskTolerance + adaptive.riskDelta),
+      lookaheadConfig: {
+        ...(current.lookaheadConfig ?? {}),
+        aggressionBias: adaptive.pressure * adaptive.strength,
+      },
+    });
+  }
 
   // Generate attack plan using unified format
   const attackPlan = combatAI.generateAttackPlan();
@@ -654,6 +899,7 @@ async function castCreatures(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
+  adaptive?: AdaptiveTempoRisk | null,
 ): Promise<{
   success: boolean;
   actions: AIAction[];
@@ -688,7 +934,15 @@ async function castCreatures(
       config.difficulty,
       config.format,
     );
-    if (Math.random() < difficultyConfig.randomnessFactor * 0.3) {
+    // Issue #1068: divide the skip chance by the adaptive risk multiplier so a
+    // pressing (behind) AI commits more creatures and a consolidating (ahead)
+    // AI holds more back. riskMultiplier is bounded in [0.8, 1.2], so the gate
+    // only shifts modestly; null adaptive leaves the historical behavior.
+    const skipChance = clamp01(
+      (difficultyConfig.randomnessFactor * 0.3) /
+        (adaptive?.riskMultiplier ?? 1),
+    );
+    if (Math.random() < skipChance) {
       continue; // Skip some creatures based on difficulty
     }
 

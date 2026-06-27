@@ -1522,6 +1522,205 @@ export function quickScore(
   return evaluation.totalScore;
 }
 
+// ---------------------------------------------------------------------------
+// Issue #1068 — in-game adaptive tempo/risk signal.
+//
+// The evaluator is constructed fresh each turn and is therefore stateless
+// across turns. {@link BoardSwingTracker} is a small, deterministic, per-game
+// accumulator that keeps a rolling window of the evaluator's advantage score
+// ({@link DetailedEvaluation.totalScore}) and exposes a normalized "swing"
+// signal: who is currently ahead (direction) and how fast the advantage is
+// shifting turn-over-turn (trend + magnitude). The turn loop consumes this to
+// nudge tempo/risk within bounded, hysteresis-smoothed limits.
+// ---------------------------------------------------------------------------
+
+/**
+ * Direction of the current board-state advantage for the evaluating player.
+ *
+ * - `leading`  — the evaluating (AI) player is meaningfully ahead.
+ * - `trailing` — the evaluating player is meaningfully behind.
+ * - `stable`   — roughly at parity (inside the {@link SWING_DEADBAND}).
+ */
+export type SwingDirection = "leading" | "trailing" | "stable";
+
+/**
+ * Momentum of the advantage — how it is changing turn-over-turn.
+ *
+ * - `improving` — advantage is rising (delta above the deadband).
+ * - `worsening` — advantage is falling (delta below the deadband).
+ * - `steady`    — not changing meaningfully.
+ */
+export type SwingTrend = "improving" | "worsening" | "steady";
+
+/**
+ * A board-state "swing" signal derived from a rolling window of the
+ * evaluator's advantage score.
+ *
+ * All normalized fields are in `[-1, 1]`; `magnitude` is in `[0, 1]`. Positive
+ * `normalizedAdvantage`/`normalizedDelta` mean the evaluating player is ahead /
+ * gaining ground.
+ */
+export interface BoardSwing {
+  /** Latest raw advantage score (the evaluator's `totalScore`). */
+  advantage: number;
+  /** Advantage normalized to `[-1, 1]` (positive = evaluating player ahead). */
+  normalizedAdvantage: number;
+  /** Advantage change vs the rolling-window mean of prior samples. */
+  delta: number;
+  /** Delta normalized to `[-1, 1]`. */
+  normalizedDelta: number;
+  /** Who is currently ahead, derived from `normalizedAdvantage`. */
+  direction: SwingDirection;
+  /** Momentum of the swing, derived from `normalizedDelta`. */
+  trend: SwingTrend;
+  /** Combined swing magnitude in `[0, 1]` (drives how strongly risk shifts). */
+  magnitude: number;
+  /** Number of advantage samples recorded so far. */
+  sampleCount: number;
+}
+
+/**
+ * Bounded tempo/risk multipliers persisted between turns for hysteresis. Kept
+ * as plain numbers (no difficulty-config dependency) so the tracker never
+ * creates an import cycle with `ai-difficulty.ts`.
+ */
+export interface SwingMultipliers {
+  tempoMultiplier: number;
+  riskMultiplier: number;
+}
+
+/**
+ * Scale used to normalize raw evaluator scores into `[-1, 1]` comparability.
+ *
+ * The evaluator's `totalScore` is an unbounded weighted sum whose typical
+ * in-game magnitude is on the order of ±15 for decisive board states, so 15 is
+ * used as the divisor. Tuning this rescales sensitivity but does not change
+ * direction or bounds.
+ */
+export const BOARD_SWING_SCALE = 15;
+
+/**
+ * Deadband for direction/trend classification. Advantage or delta magnitudes
+ * inside this threshold are treated as parity / steady, which keeps the signal
+ * from flickering on noise and is the first layer of anti-oscillation.
+ */
+export const SWING_DEADBAND = 0.15;
+
+const clampSwing = (v: number, lo: number, hi: number): number =>
+  Math.max(lo, Math.min(hi, v));
+
+/**
+ * Per-game rolling tracker of the evaluator's advantage score.
+ *
+ * Deterministic and side-effect free: feed it the AI's `totalScore` once per
+ * turn via {@link BoardSwingTracker.record} and read the normalized swing via
+ * {@link BoardSwingTracker.getSwing}. The tracker also persists the previous
+ * turn's tempo/risk multipliers ({@link SwingMultipliers}) so the turn loop can
+ * apply hysteresis smoothing (the second layer of anti-oscillation).
+ */
+export class BoardSwingTracker {
+  private readonly windowSize: number;
+  private readonly samples: number[] = [];
+  private lastMultipliers?: SwingMultipliers;
+
+  /**
+   * @param windowSize How many recent advantage samples to retain. Must be >= 2
+   * so a delta can be formed; clamped upward otherwise. A small window (default
+   * 4) reacts to recent shifts without being dominated by stale history.
+   */
+  constructor(windowSize: number = 4) {
+    this.windowSize = Math.max(2, Math.floor(windowSize));
+  }
+
+  /**
+   * Record the evaluating player's advantage for the current turn. Non-finite
+   * values (NaN/Infinity from a degenerate board) are coerced to 0 so the
+   * signal stays stable.
+   */
+  record(advantage: number): void {
+    const value = Number.isFinite(advantage) ? advantage : 0;
+    this.samples.push(value);
+    while (this.samples.length > this.windowSize) {
+      this.samples.shift();
+    }
+  }
+
+  /**
+   * Compute the current swing signal from the recorded window.
+   *
+   * With fewer than two samples the delta is 0 and direction/trend are
+   * `stable`/`steady`, so the very first turn of a game produces a neutral
+   * (baseline) signal.
+   */
+  getSwing(): BoardSwing {
+    const n = this.samples.length;
+    const advantage = n > 0 ? this.samples[n - 1] : 0;
+    const normalizedAdvantage = clampSwing(
+      advantage / BOARD_SWING_SCALE,
+      -1,
+      1,
+    );
+
+    let delta = 0;
+    if (n >= 2) {
+      const prior = this.samples.slice(0, n - 1);
+      const priorMean = prior.reduce((sum, v) => sum + v, 0) / prior.length;
+      delta = advantage - priorMean;
+    }
+    const normalizedDelta = clampSwing(delta / BOARD_SWING_SCALE, -1, 1);
+
+    const direction: SwingDirection =
+      normalizedAdvantage > SWING_DEADBAND
+        ? "leading"
+        : normalizedAdvantage < -SWING_DEADBAND
+          ? "trailing"
+          : "stable";
+    const trend: SwingTrend =
+      normalizedDelta > SWING_DEADBAND
+        ? "improving"
+        : normalizedDelta < -SWING_DEADBAND
+          ? "worsening"
+          : "steady";
+
+    // Magnitude blends standing (how far from parity) with momentum (the size
+    // of the recent shift). Capped at 1.
+    const magnitude = clampSwing(
+      Math.abs(normalizedAdvantage) * 0.7 + Math.abs(normalizedDelta) * 0.6,
+      0,
+      1,
+    );
+
+    return {
+      advantage,
+      normalizedAdvantage,
+      delta,
+      normalizedDelta,
+      direction,
+      trend,
+      magnitude,
+      sampleCount: n,
+    };
+  }
+
+  /** Previous turn's hysteresis multipliers, if any were stored. */
+  getLastMultipliers(): SwingMultipliers | undefined {
+    return this.lastMultipliers
+      ? { ...this.lastMultipliers }
+      : undefined;
+  }
+
+  /** Persist this turn's multipliers for next turn's hysteresis smoothing. */
+  setLastMultipliers(multipliers: SwingMultipliers): void {
+    this.lastMultipliers = { ...multipliers };
+  }
+
+  /** Clear all history (e.g. between games). */
+  reset(): void {
+    this.samples.length = 0;
+    this.lastMultipliers = undefined;
+  }
+}
+
 export interface ProposedPlay {
   card: HandCard;
   type: "cast_creature" | "cast_instant" | "cast_sorcery" | "play_land";
