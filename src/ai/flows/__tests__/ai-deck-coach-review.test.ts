@@ -33,6 +33,13 @@ jest.mock("@/lib/rate-limiter", () => {
     aiRequestQueue: { add: (fn: () => Promise<unknown>) => fn() },
   };
 });
+// Issue #1072: the local citation verification gate resolves suggested cards
+// against the local card database. Mock it so the gate's behaviour is
+// deterministic without an IndexedDB store.
+jest.mock("@/lib/card-database", () => ({
+  getCardByName: jest.fn(),
+  getDatabaseStatus: jest.fn(),
+}));
 
 import { reviewDeck } from "../ai-deck-coach-review";
 import type { DeckReviewOutput } from "../ai-deck-coach-review";
@@ -40,6 +47,8 @@ import { reviewDeckHeuristic } from "@/lib/heuristic-deck-coach";
 import { validateCardLegality } from "@/lib/server-card-operations";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { enforceRateLimit, RateLimitError } from "@/lib/rate-limiter";
+import { getCardByName, getDatabaseStatus } from "@/lib/card-database";
+import type { MinimalCard } from "@/lib/card-database";
 
 const mockedHeuristic = reviewDeckHeuristic as jest.MockedFunction<
   typeof reviewDeckHeuristic
@@ -50,6 +59,12 @@ const mockedValidate = validateCardLegality as jest.MockedFunction<
 const mockedProxy = callAIProxy as jest.MockedFunction<typeof callAIProxy>;
 const mockedEnforce = enforceRateLimit as jest.MockedFunction<
   typeof enforceRateLimit
+>;
+const mockedGetCardByName = getCardByName as jest.MockedFunction<
+  typeof getCardByName
+>;
+const mockedGetDatabaseStatus = getDatabaseStatus as jest.MockedFunction<
+  typeof getDatabaseStatus
 >;
 
 const DECKLIST = "4 Lightning Bolt\n2 Blood Moon\n3 Forest";
@@ -93,6 +108,12 @@ beforeEach(() => {
   mockedValidate.mockResolvedValue({ found: [], notFound: [], illegal: [] });
   // By default the AI path is unavailable → falls through to heuristic.
   mockedProxy.mockResolvedValue({ success: false } as never);
+  // Issue #1072: default to an EMPTY local card database so the verification
+  // gate reports every suggestion as "unverifiable" and leaves them intact —
+  // this keeps the pre-existing heuristic-path assertions unchanged. Tests
+  // that exercise the populated-DB gate override these mocks locally.
+  mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0 });
+  mockedGetCardByName.mockResolvedValue(undefined);
   setOnline(true);
 });
 
@@ -224,6 +245,112 @@ describe("reviewDeck — card legality validation in the heuristic tail", () => 
     );
     await reviewDeck({ decklist: DECKLIST, format: "modern" });
     expect(mockedValidate).not.toHaveBeenCalled();
+  });
+});
+
+describe("reviewDeck — local citation verification gate (issue #1072)", () => {
+  function realCard(name: string): MinimalCard {
+    return {
+      id: name,
+      name,
+      cmc: 1,
+      type_line: "Instant",
+      colors: ["R"],
+      color_identity: ["R"],
+      legalities: { modern: "legal" },
+      mana_cost: "{R}",
+      oracle_text: "deal damage",
+    };
+  }
+
+  it("strips suggested cards that are not in a POPULATED local database", async () => {
+    // DB has cards; "Lightning Bolt" resolves but "Fabricated Dragon" does not.
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 42 });
+    mockedGetCardByName.mockImplementation(async (name: string) =>
+      name === "Lightning Bolt" ? realCard("Lightning Bolt") : undefined,
+    );
+    mockedHeuristic.mockReturnValue(
+      heuristicResult({
+        deckOptions: [
+          {
+            title: "Opt",
+            description: "d",
+            cardsToAdd: [
+              { name: "Lightning Bolt", quantity: 2 },
+              { name: "Fabricated Dragon", quantity: 1 },
+            ],
+            cardsToRemove: [{ name: "Slow Card", quantity: 3 }],
+          },
+        ],
+      }),
+    );
+
+    const out = await reviewDeck({ decklist: DECKLIST, format: "modern" });
+    const adds = out.deckOptions[0].cardsToAdd || [];
+    // Hallucinated card is removed; the real card survives.
+    expect(adds.map((c) => c.name)).toEqual(["Lightning Bolt"]);
+  });
+
+  it("leaves suggestions intact when the local database is empty (unverifiable)", async () => {
+    // Empty DB → cannot refute anything → must not strip legitimate advice.
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0 });
+    mockedGetCardByName.mockResolvedValue(undefined);
+    mockedHeuristic.mockReturnValue(
+      heuristicResult({
+        deckOptions: [
+          {
+            title: "Opt",
+            description: "d",
+            cardsToAdd: [{ name: "Lightning Bolt", quantity: 2 }],
+            cardsToRemove: [{ name: "Slow Card", quantity: 2 }],
+          },
+        ],
+      }),
+    );
+
+    const out = await reviewDeck({ decklist: DECKLIST, format: "modern" });
+    expect(out.deckOptions[0].cardsToAdd).toEqual([
+      { name: "Lightning Bolt", quantity: 2 },
+    ]);
+  });
+
+  it("runs the local gate before legality validation so survivors are still legality-checked", async () => {
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 10 });
+    // "Real Card" and "Keep Card" exist locally; "Ghost" does not (hallucination).
+    mockedGetCardByName.mockImplementation(async (name: string) =>
+      name === "Real Card" || name === "Keep Card"
+        ? realCard(name)
+        : undefined,
+    );
+    // Legality validation then flags "Real Card" as illegal, but leaves
+    // "Keep Card" (which survived the local gate) alone.
+    mockedValidate.mockResolvedValue({
+      found: [],
+      notFound: [],
+      illegal: ["Real Card"],
+    });
+    mockedHeuristic.mockReturnValue(
+      heuristicResult({
+        deckOptions: [
+          {
+            title: "Opt",
+            description: "d",
+            cardsToAdd: [
+              { name: "Ghost", quantity: 1 }, // stripped by local gate (hallucination)
+              { name: "Real Card", quantity: 1 }, // stripped by legality check
+              { name: "Keep Card", quantity: 1 }, // survives both
+            ],
+            cardsToRemove: [{ name: "Cut", quantity: 3 }],
+          },
+        ],
+      }),
+    );
+
+    const out = await reviewDeck({ decklist: DECKLIST, format: "modern" });
+    // Ghost (local gate) and Real Card (legality) both gone; Keep Card remains.
+    expect(out.deckOptions[0].cardsToAdd).toEqual([
+      { name: "Keep Card", quantity: 1 },
+    ]);
   });
 });
 
