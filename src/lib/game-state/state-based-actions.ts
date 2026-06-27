@@ -20,7 +20,11 @@ import {
   hasLethalDamage,
 } from "./card-instance";
 import { hasIndestructible, handlePersist } from "./keyword-actions";
-import { destroyCard, exileCard } from "./keyword-actions";
+import {
+  destroyCard,
+  exileCard,
+  resolveBlitzDeathDraw,
+} from "./keyword-actions";
 import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from "./commander-damage";
 import {
   findLegendaryViolations,
@@ -332,6 +336,21 @@ export function checkStateBasedActions(
       if (persistResult.persistedCards.length > 0) {
         updatedState = persistResult.state;
         descriptions.push(...persistResult.descriptions);
+        actionsPerformed = true;
+      }
+
+      // CR 702.150a — Blitz dies-draw: a creature cast for its blitz cost that
+      // dies (any cause) causes its controller to draw a card. This is the SBA
+      // death path (lethal damage / 0 toughness); sacrifice-driven deaths are
+      // handled by applyBlitzEndStepSacrifice which calls the same helper.
+      const blitzDraw = resolveBlitzDeathDraw(updatedState, cardId);
+      if (blitzDraw.applied) {
+        updatedState = blitzDraw.state;
+        const deadName =
+          updatedState.cards.get(cardId)?.cardData.name ?? "Creature";
+        descriptions.push(
+          `${deadName} was cast for its blitz cost: controller draws a card`,
+        );
         actionsPerformed = true;
       }
     }

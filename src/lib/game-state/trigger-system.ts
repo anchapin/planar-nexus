@@ -245,6 +245,79 @@ export function detectTurnEndTriggers(
     }
   }
 
+  // CR 702.150a — Blitz delayed sacrifice. Every battlefield creature carrying
+  // the blitz marker must be sacrificed "at the beginning of the next end
+  // step". This is surfaced as a triggered ability here; deterministic
+  // resolution also happens via applyBlitzEndStepSacrifice.
+  for (const blitzId of blitzEndStepSourceIds(state)) {
+    const card = state.cards.get(blitzId);
+    if (!card) continue;
+    const endContext: TriggerDetectionContext = {
+      sourceCardId: blitzId,
+      triggerType: TriggerConditionType.TURN_END,
+    };
+    triggers.push({
+      id: generateTriggeredAbilityId(),
+      sourceCardId: blitzId,
+      triggeringPlayerId: card.controllerId,
+      triggerCondition: "endOfTurn",
+      effect: "sacrifice this creature",
+      timestamp: Date.now(),
+      sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+      context: endContext as any,
+    });
+  }
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
+}
+
+/**
+ * IDs of battlefield creatures carrying the blitz marker (CR 702.150). These
+ * are the sources of the delayed "sacrifice at the beginning of the next end
+ * step" trigger.
+ */
+function blitzEndStepSourceIds(state: GameState): CardInstanceId[] {
+  const ids: CardInstanceId[] = [];
+  for (const [cardId, card] of state.cards) {
+    if (card.blitz === true && isOnBattlefield(state, cardId)) {
+      ids.push(cardId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Detect the delayed Blitz end-step sacrifice triggers (CR 702.150a).
+ *
+ * Returns a triggered-ability instance for each battlefield creature cast for
+ * its blitz cost, ordering them APNAP. (Mirrors detectTurnEndTriggers but
+ * scoped to the blitz delayed trigger.)
+ */
+export function detectBlitzEndStepTriggers(
+  state: GameState,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  for (const blitzId of blitzEndStepSourceIds(state)) {
+    const card = state.cards.get(blitzId);
+    if (!card) continue;
+    const context: TriggerDetectionContext = {
+      sourceCardId: blitzId,
+      triggerType: TriggerConditionType.TURN_END,
+    };
+    triggers.push({
+      id: generateTriggeredAbilityId(),
+      sourceCardId: blitzId,
+      triggeringPlayerId: card.controllerId,
+      triggerCondition: "endOfTurn",
+      effect: "sacrifice this creature",
+      timestamp: Date.now(),
+      sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+      context: context as any,
+    });
+  }
+
   return sortTriggersAPNAP(triggers, state, activePlayerId);
 }
 
@@ -368,6 +441,32 @@ export function detectCreatureDeathTriggers(
           context: context as any,
         });
       }
+    }
+  }
+
+  // CR 702.150a — Blitz dies-draw. A creature cast for its blitz cost has a
+  // "When this creature dies, draw a card" triggered ability. The dead card is
+  // already off the battlefield (so the ability loop above, which scans
+  // battlefield sources, won't see it), but it remains in state.cards, so we
+  // synthesize the trigger from its blitz marker. (Resolution/drawing is also
+  // handled deterministically via resolveBlitzDeathDraw in the SBA path.)
+  if (deadCardId) {
+    const deadCard = state.cards.get(deadCardId);
+    if (deadCard && deadCard.blitz === true) {
+      const deathContext: TriggerDetectionContext = {
+        sourceCardId: deadCardId,
+        triggerType: TriggerConditionType.CREATURE_DIES,
+      };
+      triggers.push({
+        id: generateTriggeredAbilityId(),
+        sourceCardId: deadCardId,
+        triggeringPlayerId: deadCard.controllerId,
+        triggerCondition: "dies",
+        effect: "draw a card",
+        timestamp: Date.now(),
+        sourceCardTimestamp: deadCard.enteredBattlefieldTimestamp,
+        context: deathContext as any,
+      });
     }
   }
 

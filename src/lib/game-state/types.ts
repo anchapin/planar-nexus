@@ -107,6 +107,20 @@ export interface CardInstance {
   /** For tokens, a copy of the token's defining characteristics */
   tokenData: ScryfallCard | null;
 
+  // Blitz-specific (CR 702.150)
+  /**
+   * Whether this permanent was cast for its blitz cost this turn.
+   *
+   * Set on a creature as it enters the battlefield via a blitz-cost cast. While
+   * true the creature gains haste, a "when this creature dies, draw a card"
+   * triggered ability, and is sacrificed at the beginning of the next end step
+   * (CR 702.150a). Only set when the blitz alternate cost was actually paid;
+   * normal casting never sets this (CR 702.150b — blitz effects apply only to
+   * the blitz-cost cast). Consumed/cleared when the creature leaves the
+   * battlefield.
+   */
+  blitz?: boolean;
+
   // Prototype-specific (CR 702.152)
   /** Whether this permanent is currently in prototype form */
   isPrototype: boolean;

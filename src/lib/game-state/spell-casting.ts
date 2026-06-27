@@ -28,6 +28,7 @@ import {
   parseBuyback,
   parseFlashback,
   parseBestow,
+  parseBlitz,
   parseSplitSecond,
   isModalSpell,
   getModesForModalSpell,
@@ -225,6 +226,7 @@ export function canCastSpell(
  * CR 702.8 - Buyback
  * CR 702.66 - Flashback
  * CR 702.99 - Bestow
+ * CR 702.150 - Blitz
  * CR 702.85 - Kicker
  */
 export function castSpell(
@@ -236,7 +238,7 @@ export function castSpell(
   xValue: number = 0,
   isKicked: boolean = false,
   alternativeCost?: {
-    type: "buyback" | "flashback" | "bestow" | "escape" | "spectacle";
+    type: "buyback" | "flashback" | "bestow" | "escape" | "spectacle" | "blitz";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
   },
@@ -391,6 +393,24 @@ export function castSpell(
           totalGreen += bestowInfo.bestowCost.green;
           alternativeCostsUsed.push("bestow");
           bestowTarget = alternativeCost.bestowTarget;
+        }
+        break;
+      }
+      case "blitz": {
+        // CR 702.150 - Blitz: an alternative cost that REPLACES the mana cost
+        // (not an additional cost). The spell's mana value is unchanged, but the
+        // mana paid is the blitz cost; other additional costs/taxes (e.g.
+        // kicker) still apply on top. Subtract the printed mana-cost component
+        // and add the blitz-cost component so additional costs are preserved.
+        const blitzInfo = parseBlitz(card.cardData.oracle_text || "");
+        if (blitzInfo.hasBlitz && blitzInfo.blitzCost) {
+          totalGeneric += blitzInfo.blitzCost.generic - manaCost.generic;
+          totalWhite += blitzInfo.blitzCost.white - manaCost.white;
+          totalBlue += blitzInfo.blitzCost.blue - manaCost.blue;
+          totalBlack += blitzInfo.blitzCost.black - manaCost.black;
+          totalRed += blitzInfo.blitzCost.red - manaCost.red;
+          totalGreen += blitzInfo.blitzCost.green - manaCost.green;
+          alternativeCostsUsed.push("blitz");
         }
         break;
       }
@@ -816,6 +836,27 @@ function resolveSpellCompletion(
             updatedCards.set(stackObject.sourceCardId!, {
               ...auraCard,
               attachedToId: stackObject.bestowTarget,
+            });
+            currentState = {
+              ...currentState,
+              cards: updatedCards,
+            };
+          }
+        }
+
+        // CR 702.150 - Blitz: a creature cast for its blitz cost gains haste
+        // and is marked so the engine can apply the coupled "when this creature
+        // dies, draw a card" trigger and the "sacrifice at the beginning of the
+        // next end step" delayed trigger. Haste = no summoning sickness; the
+        // marker is the single source of truth consumed by the trigger system.
+        if (stackObject.alternativeCostsUsed?.includes("blitz")) {
+          const blitzCard = currentState.cards.get(stackObject.sourceCardId!);
+          if (blitzCard) {
+            const updatedCards = new Map(currentState.cards);
+            updatedCards.set(stackObject.sourceCardId!, {
+              ...blitzCard,
+              blitz: true,
+              hasSummoningSickness: false,
             });
             currentState = {
               ...currentState,
