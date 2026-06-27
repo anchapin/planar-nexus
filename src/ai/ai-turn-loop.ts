@@ -17,10 +17,16 @@ import type {
 import { Phase } from "@/lib/game-state/types";
 import {
   executeAIAction,
+  executeOpponentMulligan,
   type AIAction,
   getAvailableAttackers,
   getAIGameState,
 } from "./ai-action-executor";
+import {
+  decideOpponentMulligan,
+  type OpponentMulliganDecision,
+  type Card,
+} from "./mulligan-advisor";
 import {
   getDifficultyConfig,
   resolveDifficultyConfig,
@@ -30,7 +36,7 @@ import {
 import { advancePhase } from "@/lib/game-state/turn-phases";
 import { drawCard } from "@/lib/game-state/game-state";
 import { engineToAIState } from "@/lib/game-state/serialization";
-import { getMaxHandSize } from "@/lib/game-rules";
+import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
 import { discardCards } from "@/lib/game-state/keyword-actions";
 import {
   classifyArchetypeName,
@@ -168,10 +174,7 @@ const clampMult = (v: number): number =>
  *   previous value (deadband, kills micro-oscillation).
  * - Otherwise move a `(1 - ADAPTIVE_SMOOTHING)` fraction toward the target.
  */
-function smoothMultiplier(
-  prev: number | undefined,
-  target: number,
-): number {
+function smoothMultiplier(prev: number | undefined, target: number): number {
   if (prev === undefined) return target;
   if (Math.abs(target - prev) < ADAPTIVE_DEADBAND) return prev;
   return prev + (target - prev) * (1 - ADAPTIVE_SMOOTHING);
@@ -199,7 +202,10 @@ export function computeAdaptiveTempoRisk(
   // Standing (who is ahead) dominates; momentum amplifies it.
   const pressure = Math.max(
     -1,
-    Math.min(1, -(swing.normalizedAdvantage * 0.7 + swing.normalizedDelta * 0.3)),
+    Math.min(
+      1,
+      -(swing.normalizedAdvantage * 0.7 + swing.normalizedDelta * 0.3),
+    ),
   );
 
   // Risk reaches slightly further than tempo when digging out (commit harder),
@@ -396,6 +402,152 @@ function advanceToNextPhase(
     priorityPlayerId: aiPlayerId,
     lastModifiedAt: Date.now(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Issue #1063 — opponent opening-hand mulligan, wired into the game-start path.
+//
+// Mulliganing happens before turn 1 (and after every mulligan), so it lives in
+// this module as a dedicated game-start step the orchestrator runs before the
+// first {@link runAITurn}. Each iteration evaluates the current hand with the
+// difficulty-scaled {@link decideOpponentMulligan}: a "keep" ends the loop; a
+// "ship" is executed mechanically ({@link executeOpponentMulligan}) and the
+// smaller hand is re-evaluated, exactly as the issue specifies.
+// ---------------------------------------------------------------------------
+
+/**
+ * One step of the opening-hand mulligan loop.
+ */
+export interface OpeningMulliganDecisionStep {
+  /** Hand size evaluated at this step. */
+  handSizeBefore: number;
+  /** The difficulty-scaled keep/ship decision (absent on a forced floor keep). */
+  decision?: OpponentMulliganDecision;
+  /** True when the loop stopped because the hand reached the keep-floor. */
+  forcedKeep?: boolean;
+}
+
+/**
+ * Result of the opponent's opening-hand mulligan sequence.
+ */
+export interface OpeningMulliganResult {
+  success: boolean;
+  state: EngineGameState;
+  /** Number of mulligans taken (0 = kept the opener). */
+  mulligansTaken: number;
+  /** One entry per hand evaluated, in order (the last is the keep). */
+  decisions: OpeningMulliganDecisionStep[];
+  /** Final opening hand size after all mulligans. */
+  finalHandSize: number;
+  error?: string;
+}
+
+/**
+ * Hard floor below which the opponent always keeps. Real players almost never
+ * mulligan below this; it also guarantees the loop terminates even if a
+ * degenerate hand kept scoring "ship".
+ */
+const MIN_KEEP_HAND_SIZE = 3;
+
+/**
+ * Pull the AI opponent's current hand out of the engine state as advisor
+ * {@link Card}s (the advisor reads the same fields the engine stores on
+ * `cardData`). Returns an empty array when the hand zone is missing.
+ */
+function extractOpponentHand(
+  state: EngineGameState,
+  playerId: PlayerId,
+): Card[] {
+  const handZone = state.zones.get(`${playerId}-hand`);
+  if (!handZone) return [];
+  const hand: Card[] = [];
+  for (const cardId of handZone.cardIds) {
+    const inst = state.cards.get(cardId);
+    if (inst?.cardData) hand.push(inst.cardData as unknown as Card);
+  }
+  return hand;
+}
+
+/**
+ * Run the AI opponent's opening-hand mulligan sequence (issue #1063).
+ *
+ * Invoked at game start (before turn 1) and after every mulligan: the current
+ * hand is evaluated by the difficulty-scaled {@link decideOpponentMulligan};
+ * a "keep" ends the loop, a "ship" is executed mechanically and the new,
+ * smaller hand is re-evaluated. Decision quality therefore scales by
+ * difficulty — Expert keeps/ships near-optimally while Easy blunders (keeping
+ * bad hands / shipping good ones) at a higher rate.
+ *
+ * The loop always terminates: the keep bar relaxes for smaller hands (see
+ * {@link decideOpponentMulligan}), a hard floor forces a keep, and a step cap
+ * guards against any degenerate cycle.
+ *
+ * @param rng Optional deterministic randomness source for the blunder rolls,
+ *   forwarded to {@link decideOpponentMulligan}. Defaults to `Math.random`.
+ */
+export async function runOpeningHandMulligan(
+  gameState: EngineGameState,
+  aiPlayerId: PlayerId,
+  config: AITurnConfig,
+  rng: () => number = Math.random,
+): Promise<OpeningMulliganResult> {
+  const decisions: OpeningMulliganDecisionStep[] = [];
+  let state = gameState;
+  let mulligansTaken = 0;
+
+  const minHandSize = getMulliganRules().minHandSize;
+  const floor = Math.max(minHandSize ?? 0, MIN_KEEP_HAND_SIZE);
+  const archetypeName = config.archetype;
+
+  // Step cap is a safety net only — the relaxing threshold + floor already
+  // guarantee termination.
+  for (let step = 0; step < 8; step++) {
+    const hand = extractOpponentHand(state, aiPlayerId);
+    const handSizeBefore = hand.length;
+
+    if (handSizeBefore <= floor) {
+      decisions.push({ handSizeBefore, forcedKeep: true });
+      break;
+    }
+
+    const decision = decideOpponentMulligan({
+      hand,
+      archetype: archetypeName,
+      difficulty: config.difficulty,
+      format: config.format,
+      onThePlay: true,
+      gameNumber: 1,
+      rng,
+    });
+    decisions.push({ handSizeBefore, decision });
+
+    config.onCommentary?.(
+      decision.decision === "keep"
+        ? `Keeps opening hand (${handSizeBefore})`
+        : `Mulligans to ${handSizeBefore - 1}`,
+    );
+
+    if (decision.decision === "keep") break;
+
+    const res = executeOpponentMulligan(state, aiPlayerId);
+    if (!res.success || !res.state) {
+      return {
+        success: false,
+        state,
+        mulligansTaken,
+        decisions,
+        finalHandSize: handSizeBefore,
+        error: res.error,
+      };
+    }
+    state = res.state;
+    mulligansTaken++;
+  }
+
+  const finalHandZone = state.zones.get(`${aiPlayerId}-hand`);
+  const finalHandSize = finalHandZone?.cardIds.length ?? 0;
+
+  return { success: true, state, mulligansTaken, decisions, finalHandSize };
 }
 
 /**
