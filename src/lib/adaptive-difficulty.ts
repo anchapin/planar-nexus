@@ -1,19 +1,35 @@
 /**
  * @fileoverview Adaptive Difficulty Service
- * 
+ *
  * Analyzes player performance to suggest difficulty adjustments.
  * Checks the last 5 games at the current difficulty and recommends
  * changes based on win rate thresholds.
+ *
+ * Issue #1064: this module no longer declares its own difficulty taxonomy. It
+ * imports the single canonical {@link DifficultyLevel} / {@link DIFFICULTY_LEVELS}
+ * from `src/ai/ai-difficulty.ts` and re-exports them, so the advisory service
+ * and the real AI configs can never disagree on the set of tiers. Legacy
+ * archival names (`beginner`/`normal`/`master`) are folded onto the canonical
+ * set via {@link normalizeDifficultyLevel} at the read boundary.
  */
 
-import type { GameRecord } from './game-history';
+import type { GameRecord } from "./game-history";
+import {
+  DIFFICULTY_LEVELS,
+  isValidDifficulty,
+  normalizeDifficultyLevel,
+  type DifficultyLevel,
+} from "@/ai/ai-difficulty";
 
-/**
- * Difficulty levels in order from easiest to hardest
- */
-export const DIFFICULTY_LEVELS = ['beginner', 'easy', 'normal', 'hard', 'expert', 'master'] as const;
-
-export type DifficultyLevel = typeof DIFFICULTY_LEVELS[number];
+// Re-export the canonical taxonomy so existing callers that import these
+// symbols from this module keep compiling — they now resolve to the one shared
+// source of truth in `src/ai/ai-difficulty.ts` (issue #1064).
+export {
+  DIFFICULTY_LEVELS,
+  isValidDifficulty,
+  normalizeDifficultyLevel,
+  type DifficultyLevel,
+};
 
 /**
  * Result of adaptive difficulty analysis
@@ -21,19 +37,19 @@ export type DifficultyLevel = typeof DIFFICULTY_LEVELS[number];
 export interface DifficultyAnalysis {
   /** Current difficulty level */
   currentDifficulty: DifficultyLevel;
-  
+
   /** Number of games analyzed */
   gamesAnalyzed: number;
-  
+
   /** Win rate percentage */
   winRate: number;
-  
+
   /** Recommendation */
-  recommendation: 'increase' | 'decrease' | 'maintain';
-  
+  recommendation: "increase" | "decrease" | "maintain";
+
   /** Reason for recommendation */
   reason: string;
-  
+
   /** Suggested next difficulty */
   suggestedDifficulty?: DifficultyLevel;
 }
@@ -63,15 +79,16 @@ export const DEFAULT_THRESHOLDS: DifficultyThresholds = {
 };
 
 /**
- * Get the next difficulty level
+ * Get the next difficulty level along the canonical ladder
+ * (`easy → medium → hard → expert`, issue #1064). Returns `null` at either end.
  */
 export function getNextDifficulty(
   current: DifficultyLevel,
-  direction: 'increase' | 'decrease'
+  direction: "increase" | "decrease",
 ): DifficultyLevel | null {
   const currentIndex = DIFFICULTY_LEVELS.indexOf(current);
-  
-  if (direction === 'increase') {
+
+  if (direction === "increase") {
     if (currentIndex >= DIFFICULTY_LEVELS.length - 1) {
       return null; // Already at max
     }
@@ -86,7 +103,7 @@ export function getNextDifficulty(
 
 /**
  * Analyze difficulty based on recent games
- * 
+ *
  * @param records - Game records to analyze
  * @param currentDifficulty - Current difficulty level
  * @param thresholds - Custom thresholds (optional)
@@ -94,54 +111,61 @@ export function getNextDifficulty(
 export function analyzeDifficulty(
   records: GameRecord[],
   currentDifficulty: DifficultyLevel,
-  thresholds: DifficultyThresholds = DEFAULT_THRESHOLDS
+  thresholds: DifficultyThresholds = DEFAULT_THRESHOLDS,
 ): DifficultyAnalysis {
-  // Filter to last N games at current difficulty
+  // Filter to last N games at current difficulty. `GameRecord.difficulty` is a
+  // free-form string, so normalize legacy archival names (e.g. "normal") onto
+  // the canonical tier before comparing — otherwise old saved games would stop
+  // counting toward the recommendation (issue #1064).
   const relevantRecords = records
-    .filter(r => r.difficulty === currentDifficulty && r.mode === 'vs_ai')
+    .filter(
+      (r) =>
+        r.mode === "vs_ai" &&
+        normalizeDifficultyLevel(r.difficulty) === currentDifficulty,
+    )
     .slice(0, thresholds.minGamesForRecommendation);
-  
+
   const gamesAnalyzed = relevantRecords.length;
-  
+
   // If not enough games, maintain current difficulty
   if (gamesAnalyzed < thresholds.minGamesForRecommendation) {
     return {
       currentDifficulty,
       gamesAnalyzed,
       winRate: 0,
-      recommendation: 'maintain',
+      recommendation: "maintain",
       reason: `Not enough games played at ${currentDifficulty} difficulty (need ${thresholds.minGamesForRecommendation})`,
     };
   }
-  
+
   // Calculate win rate
-  const wins = relevantRecords.filter(r => r.result === 'win').length;
+  const wins = relevantRecords.filter((r) => r.result === "win").length;
   const winRate = Math.round((wins / gamesAnalyzed) * 100);
-  
+
   // Determine recommendation based on thresholds
-  let recommendation: 'increase' | 'decrease' | 'maintain';
+  let recommendation: "increase" | "decrease" | "maintain";
   let reason: string;
-  
+
   if (winRate > thresholds.increaseThreshold) {
-    recommendation = 'increase';
+    recommendation = "increase";
     reason = `Strong performance: ${winRate}% win rate (threshold: >${thresholds.increaseThreshold}%)`;
   } else if (winRate < thresholds.decreaseThreshold) {
-    recommendation = 'decrease';
+    recommendation = "decrease";
     reason = `Struggling: ${winRate}% win rate (threshold: <${thresholds.decreaseThreshold}%)`;
   } else {
-    recommendation = 'maintain';
+    recommendation = "maintain";
     reason = `Balanced: ${winRate}% win rate (within ${thresholds.decreaseThreshold}-${thresholds.increaseThreshold}% range)`;
   }
-  
+
   // Calculate suggested next difficulty
   let suggestedDifficulty: DifficultyLevel | undefined;
-  if (recommendation !== 'maintain') {
+  if (recommendation !== "maintain") {
     const next = getNextDifficulty(currentDifficulty, recommendation);
     if (next) {
       suggestedDifficulty = next;
     }
   }
-  
+
   return {
     currentDifficulty,
     gamesAnalyzed,
@@ -154,7 +178,7 @@ export function analyzeDifficulty(
 
 /**
  * Get adaptive difficulty recommendation for the next game
- * 
+ *
  * @param records - All game records
  * @param currentDifficulty - Current difficulty (optional, inferred from last game if not provided)
  * @param thresholds - Custom thresholds (optional)
@@ -162,73 +186,75 @@ export function analyzeDifficulty(
 export function getAdaptiveDifficulty(
   records: GameRecord[],
   currentDifficulty?: DifficultyLevel,
-  thresholds?: DifficultyThresholds
+  thresholds?: DifficultyThresholds,
 ): DifficultyAnalysis {
   // If no difficulty provided, infer from most recent vs_ai game
   if (!currentDifficulty) {
     // Sort by date descending to get the most recent game
     const sortedRecords = [...records].sort((a, b) => b.date - a.date);
-    const lastVsAiGame = sortedRecords.find(r => r.mode === 'vs_ai' && r.difficulty);
+    const lastVsAiGame = sortedRecords.find(
+      (r) => r.mode === "vs_ai" && r.difficulty,
+    );
     if (lastVsAiGame && lastVsAiGame.difficulty) {
-      currentDifficulty = lastVsAiGame.difficulty as DifficultyLevel;
+      // Normalize the archival string onto the canonical tier (issue #1064).
+      currentDifficulty = normalizeDifficultyLevel(lastVsAiGame.difficulty);
     } else {
-      // Default to normal if no history
-      currentDifficulty = 'normal';
+      // Default to medium (the canonical mid-tier) if no history
+      currentDifficulty = "medium";
     }
   }
-  
+
   return analyzeDifficulty(records, currentDifficulty, thresholds);
 }
 
-/**
- * Check if a difficulty level is valid
- */
-export function isValidDifficulty(difficulty: string): difficulty is DifficultyLevel {
-  return DIFFICULTY_LEVELS.includes(difficulty as DifficultyLevel);
-}
+// `isValidDifficulty` is re-exported from `src/ai/ai-difficulty.ts` (see the
+// top of this file). It now accepts only the four canonical tiers — the local
+// declaration that previously recognized the divergent `beginner`/`normal`/
+// `master` rungs has been removed so there is a single validity rule (#1064).
 
 /**
- * Get difficulty level info for UI display
+ * Get difficulty level info for UI display.
+ *
+ * Accepts a free-form string (UI may iterate dynamic keys such as
+ * `winRateByDifficulty`) and normalizes legacy archival names onto the
+ * canonical tier before lookup, so old persisted data still renders instead of
+ * crashing (issue #1064). The info table is keyed by the canonical
+ * {@link DifficultyLevel} set, which also acts as a compile-time
+ * exhaustiveness guard.
  */
-export function getDifficultyInfo(difficulty: DifficultyLevel): {
+export function getDifficultyInfo(difficulty: DifficultyLevel | string): {
   label: string;
   description: string;
   color: string;
 } {
-  const info: Record<DifficultyLevel, { label: string; description: string; color: string }> = {
-    beginner: {
-      label: 'Beginner',
-      description: 'AI makes frequent mistakes, easy to win',
-      color: 'text-green-500',
-    },
+  const tier = normalizeDifficultyLevel(difficulty);
+  const info: Record<
+    DifficultyLevel,
+    { label: string; description: string; color: string }
+  > = {
     easy: {
-      label: 'Easy',
-      description: 'AI plays below optimal, good for learning',
-      color: 'text-green-400',
+      label: "Easy",
+      description: "AI makes frequent mistakes, good for learning",
+      color: "text-green-400",
     },
-    normal: {
-      label: 'Normal',
-      description: 'Balanced AI, fair challenge',
-      color: 'text-yellow-500',
+    medium: {
+      label: "Medium",
+      description: "Balanced AI, fair challenge",
+      color: "text-yellow-500",
     },
     hard: {
-      label: 'Hard',
-      description: 'Strong AI, requires good strategy',
-      color: 'text-orange-500',
+      label: "Hard",
+      description: "Strong AI, requires good strategy",
+      color: "text-orange-500",
     },
     expert: {
-      label: 'Expert',
-      description: 'Very skilled AI, for experienced players',
-      color: 'text-red-500',
-    },
-    master: {
-      label: 'Master',
-      description: 'Maximum challenge, near-perfect play',
-      color: 'text-red-600',
+      label: "Expert",
+      description: "Maximum challenge, near-perfect play",
+      color: "text-red-500",
     },
   };
-  
-  return info[difficulty];
+
+  return info[tier];
 }
 
 // ===========================================================================
@@ -253,9 +279,12 @@ import {
   toDifficultyTier,
   type AIGameOutcome,
   type IngestResult,
-} from '@/ai/weight-learning';
-import type { GameAnalysisOutput } from '@/ai/flows/ai-post-game-analysis';
-import type { EvaluationWeights, DifficultyTier } from '@/ai/game-state-evaluator';
+} from "@/ai/weight-learning";
+import type { GameAnalysisOutput } from "@/ai/flows/ai-post-game-analysis";
+import type {
+  EvaluationWeights,
+  DifficultyTier,
+} from "@/ai/game-state-evaluator";
 
 /**
  * Input to {@link ingestGameOutcomeIntoWeights}: the minimal bundle the post-game
@@ -325,4 +354,3 @@ export function resetLearnedWeightsForDifficulty(
 
 /** Re-export the evaluator tier so callers don't need a second import path. */
 export type { DifficultyTier };
-

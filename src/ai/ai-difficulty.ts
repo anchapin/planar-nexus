@@ -10,9 +10,69 @@
 import { EvaluationWeights, DefaultWeights } from "./game-state-evaluator";
 
 /**
- * Difficulty levels available in the game
+ * The canonical difficulty taxonomy — the single source of truth for AI
+ * difficulty tiers across the whole codebase (issue #1064).
+ *
+ * Both the combat/evaluator config in this module AND the advisory adaptive
+ * service in `src/lib/adaptive-difficulty.ts` reference this one union, so the
+ * two can never drift again. The companion {@link DIFFICULTY_LEVELS} array is
+ * the runtime source the type is derived from; the {@link DIFFICULTY_CONFIGS}
+ * map below (`Record<DifficultyLevel, …>`) doubles as a compile-time
+ * exhaustiveness guard — adding or removing a tier here fails the build until
+ * every keyed site is updated.
+ *
+ * Note: `DifficultyTier` in `src/ai/game-state-evaluator.ts` is the same
+ * four-value set used to key the evaluator's static weights; it is kept as a
+ * distinct type because it names a different concern (weight-owner vs.
+ * UI-level), and `toDifficultyTier` in `src/ai/weight-learning.ts` is the
+ * documented bridge between the two.
  */
-export type DifficultyLevel = "easy" | "medium" | "hard" | "expert";
+export const DIFFICULTY_LEVELS = ["easy", "medium", "hard", "expert"] as const;
+
+/**
+ * Difficulty levels available in the game (canonical, issue #1064).
+ */
+export type DifficultyLevel = (typeof DIFFICULTY_LEVELS)[number];
+
+/**
+ * Legacy / archival difficulty names that older persisted data may still carry,
+ * mapped onto the canonical {@link DifficultyLevel} set. This mirrors the
+ * `TIER_ALIAS` collapse already performed by `toDifficultyTier` in
+ * `src/ai/weight-learning.ts` so there is exactly one normalization rule in
+ * effect (issue #1064).
+ *
+ * - `beginner` → `easy`
+ * - `normal`   → `medium`
+ * - `master`   → `expert`
+ */
+export const LEGACY_DIFFICULTY_ALIASES: Readonly<
+  Record<string, DifficultyLevel>
+> = {
+  beginner: "easy",
+  normal: "medium",
+  master: "expert",
+};
+
+/**
+ * Normalize any UI / archival difficulty string onto the canonical
+ * {@link DifficultyLevel} set.
+ *
+ * Canonical values pass through unchanged. Known legacy names (see
+ * {@link LEGACY_DIFFICULTY_ALIASES}) are mapped to their canonical equivalent.
+ * Anything unrecognised (including `null`/`undefined`/`""`) falls back to
+ * `medium` — the evaluator's own default — so callers reading free-form
+ * persisted data (e.g. `GameRecord.difficulty`) never throw and never silently
+ * invent a non-existent tier (issue #1064).
+ */
+export function normalizeDifficultyLevel(
+  level: string | null | undefined,
+): DifficultyLevel {
+  const key = String(level ?? "").toLowerCase();
+  if ((DIFFICULTY_LEVELS as readonly string[]).includes(key)) {
+    return key as DifficultyLevel;
+  }
+  return LEGACY_DIFFICULTY_ALIASES[key] ?? "medium";
+}
 
 /**
  * Format families the AI difficulty system tunes for.
@@ -671,8 +731,13 @@ export function getDifficultyConfig(
 }
 
 /**
- * Validate a difficulty level string
+ * Validate a difficulty level string against the canonical
+ * {@link DifficultyLevel} set (issue #1064).
+ *
+ * Returns `true` only for the four canonical tiers. Legacy archival names
+ * (`beginner`/`normal`/`master`) are intentionally *not* considered valid
+ * canonical levels — feed them through {@link normalizeDifficultyLevel} first.
  */
 export function isValidDifficulty(level: string): level is DifficultyLevel {
-  return ["easy", "medium", "hard", "expert"].includes(level);
+  return (DIFFICULTY_LEVELS as readonly string[]).includes(level);
 }
