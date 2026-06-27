@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { P2PDiagnosticsPanel } from "@/components/p2p-diagnostics-panel";
-import { P2PReconnectionStatusSection } from "@/components/p2p-reconnection-status-section";
 
 export default function MultiplayerPage() {
   return (
@@ -222,40 +221,6 @@ export default function MultiplayerPage() {
         aria-label="Peer-to-peer connection diagnostics"
       >
         <P2PDiagnosticsPanel />
-      </section>
-
-      <section
-        className="mt-6"
-        aria-label="Peer-to-peer reconnection status"
-        data-testid="p2p-reconnection-status-section"
-      >
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wifi className="w-5 h-5" />
-              P2P Reconnection Status
-            </CardTitle>
-            <CardDescription>
-              Live feedback when a peer-to-peer connection drops and recovers
-              (issue #988). Mount this section on the active game board to see
-              reconnect attempts, recovery confirmations, and the recovery
-              prompt on terminal failure.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <P2PReconnectionStatusSection
-              playerId="lobby-preview"
-              playerName="Lobby Preview"
-              role="host"
-            />
-            <p className="text-sm text-muted-foreground">
-              The section is wired against a placeholder session and stays
-              hidden while the connection is stable. Once an active game is in
-              progress, replace these props with the live player identity and
-              role.
-            </p>
-          </CardContent>
-        </Card>
       </section>
     </div>
   );
