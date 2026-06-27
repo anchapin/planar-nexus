@@ -600,6 +600,42 @@ export function detectSpellCastTriggers(
 }
 
 /**
+ * Detect the Storm on-cast trigger (CR 702.41) for a spell on the stack.
+ *
+ * Storm is a triggered ability that reads: "When you cast this spell, copy it
+ * for each spell cast before it this turn. If the spell has any targets, you
+ * may choose new targets for any of the copies." This function is the detection
+ * half of the mechanic: given a spell already on the stack, it reports whether
+ * its storm trigger should fire and how many copies to create. The copy count
+ * equals the number of spells the spell's controller CAST before this spell
+ * this turn (the "storm count"), derived from `Player.spellsCastThisTurn`.
+ *
+ * `castSpell` increments `spellsCastThisTurn` AFTER pushing the spell onto the
+ * stack, so the count includes the storm spell itself — hence the `- 1` (the
+ * storm spell is never a copy of itself; CR 702.41a "spells cast BEFORE it").
+ * The copies themselves are created by `copySpellOnStack` (CR 707.10) in
+ * spell-casting.ts, which is also what enforces that copies do not re-trigger
+ * storm (copies are not "cast").
+ *
+ * @returns `{ shouldFire, copyCount }` — `copyCount` is 0 when no copies are
+ * created (e.g. the storm spell is the first spell cast this turn).
+ */
+export function detectStormTrigger(
+  state: GameState,
+  stackObjectId: string,
+): { shouldFire: boolean; copyCount: number } {
+  const obj = state.stack.find((o) => o.id === stackObjectId);
+  if (!obj || !obj.storm) {
+    return { shouldFire: false, copyCount: 0 };
+  }
+  const controller = state.players.get(obj.controllerId);
+  const castThisTurn = controller?.spellsCastThisTurn ?? 0;
+  // Subtract 1 for the storm spell itself, which was counted when it was cast.
+  const copyCount = Math.max(0, castThisTurn - 1);
+  return { shouldFire: copyCount > 0, copyCount };
+}
+
+/**
  * Detect state-based triggers
  * Example: "When you have 10 or less life"
  * These check continuously at SBA points

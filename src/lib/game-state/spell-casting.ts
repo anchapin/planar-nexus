@@ -31,6 +31,7 @@ import {
   parseBlitz,
   parseForetell,
   parseSplitSecond,
+  parseStorm,
   isModalSpell,
   getModesForModalSpell,
   hasFuse,
@@ -38,8 +39,9 @@ import {
   getSplitCardHalves,
 } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
+import { detectStormTrigger } from "./trigger-system";
 import { completeHandTargeting } from "./hand-targeting";
-import { destroyCard } from "./keyword-actions";
+import { destroyCard, createTokenCard } from "./keyword-actions";
 import {
   getPrototypeInfo,
   initializePrototype,
@@ -521,6 +523,10 @@ export function castSpell(
     // the stack (see hasSplitSecondOnStack / ValidationService).
     splitSecond: parseSplitSecond(card.cardData.oracle_text || "")
       .hasSplitSecond,
+    // CR 702.41 - Storm: parsed from Oracle text and stamped onto the spell's
+    // StackObject so the on-cast trigger can fire (see detectStormTrigger /
+    // copySpellOnStack below).
+    storm: parseStorm(card.cardData.oracle_text || "").hasStorm,
   };
 
   // Move card from hand (or graveyard for flashback) to stack
@@ -560,10 +566,16 @@ export function castSpell(
   // Reset the player's priority pass flag since they just cast something
   const updatedPlayer = currentState.players.get(playerId);
   const updatedPlayers = new Map(currentState.players);
+  // CR 702.41 - Storm count basis: a spell was cast this turn. Increment the
+  // per-player counter that storm reads from. (A spell COPY is not "cast" —
+  // CR 707.10 — so copySpellOnStack does NOT increment this, which is what
+  // stops storm copies from recursively re-triggering storm.)
+  const spellsCastBefore = updatedPlayer?.spellsCastThisTurn ?? 0;
   if (updatedPlayer) {
     updatedPlayers.set(playerId, {
       ...updatedPlayer,
       hasPassedPriority: false,
+      spellsCastThisTurn: spellsCastBefore + 1,
     });
   }
 
@@ -584,16 +596,122 @@ export function castSpell(
     nextIndex = (nextIndex + 1) % playerIds.length;
   }
 
+  let finalState: GameState = {
+    ...currentState,
+    zones: updatedZones,
+    cards: updatedCards,
+    stack: updatedStack,
+    players: updatedPlayers,
+    priorityPlayerId: playerIds[nextIndex],
+    consecutivePasses: 0,
+    lastModifiedAt: Date.now(),
+  };
+
+  // CR 702.41 - Storm: "When you cast this spell, copy it for each spell cast
+  // before it this turn." The storm trigger fires on cast; resolve it here by
+  // creating `spellsCastBefore` copies on top of the stack. Detection/count
+  // lives in trigger-system (detectStormTrigger); creation uses the shared
+  // copySpellOnStack primitive (CR 707.10). Each copy retains the original's
+  // targets by default — the controller MAY reselect, exposed via
+  // copySpellOnStack's `newTargets` argument (CR 702.41a / 707.10d).
+  if (stackObject.storm) {
+    const storm = detectStormTrigger(finalState, stackObject.id);
+    for (let i = 0; i < storm.copyCount; i++) {
+      const copyResult = copySpellOnStack(finalState, stackObject.id);
+      if (copyResult.success && copyResult.state) {
+        finalState = copyResult.state;
+      }
+    }
+  }
+
+  return { success: true, state: finalState };
+}
+
+/**
+ * Copy a spell on the stack (CR 707.10).
+ *
+ * Foundational primitive used by Storm (CR 702.41) and by general "copy target
+ * spell" effects (e.g. Twincast, Reverberate, Lithoform Engine). Creates a NEW
+ * spell on the stack, on top of the original, sharing the original's
+ * characteristics — name, oracle text, mana cost, chosen modes, X values,
+ * controller, split second/storm markers, and structured effects — with no cost
+ * paid (CR 707.10). The copy RETAINS the original's targets by default (CR
+ * 707.10c); pass `newTargets` to reselect them (CR 707.10d).
+ *
+ * A copy is not "cast" (CR 707.10), so it does NOT increment the storm count
+ * and does NOT trigger "when you cast" abilities — only `castSpell` does. On
+ * resolution a permanent copy becomes a token and an instant/sorcery copy
+ * ceases to exist (see `resolveCopyCompletion`).
+ *
+ * @returns the new copy's stack object id on success.
+ */
+export function copySpellOnStack(
+  state: GameState,
+  sourceStackObjectId: string,
+  newTargets?: Target[],
+): {
+  success: boolean;
+  state: GameState;
+  copiedStackObjectId?: string;
+  error?: string;
+} {
+  const sourceIndex = state.stack.findIndex(
+    (o) => o.id === sourceStackObjectId,
+  );
+  if (sourceIndex === -1) {
+    return {
+      success: false,
+      state,
+      error: "Source spell not found on the stack.",
+    };
+  }
+  const source = state.stack[sourceIndex];
+  if (source.type !== "spell") {
+    return {
+      success: false,
+      state,
+      error: "Only spells (not abilities) can be copied (CR 707.10).",
+    };
+  }
+
+  // CR 707.10 — copy the spell's characteristics. Targets default to the
+  // original's (707.10c) and may be overridden (707.10d). `isCopy` marks the
+  // object so resolution knows not to move a card and to create a token for
+  // permanents instead. `manaCost` is a characteristic and is copied (the "no
+  // cost paid" rule means only that the copy is never paid for, not that the
+  // value differs). `sourceCardId` is retained so the copy's oracle text / type
+  // line can still be looked up during effect resolution.
+  const copy: StackObject = {
+    id: generateStackObjectId(),
+    type: "spell",
+    sourceCardId: source.sourceCardId,
+    controllerId: source.controllerId,
+    name: source.name,
+    text: source.text,
+    manaCost: source.manaCost,
+    targets: newTargets
+      ? newTargets.map((t) => ({ ...t }))
+      : source.targets.map((t) => ({ ...t })),
+    chosenModes: [...source.chosenModes],
+    variableValues: new Map(source.variableValues),
+    isCountered: false,
+    timestamp: Date.now(),
+    alternativeCostsUsed: source.alternativeCostsUsed
+      ? [...source.alternativeCostsUsed]
+      : undefined,
+    wasKicked: source.wasKicked,
+    splitSecond: source.splitSecond,
+    storm: source.storm,
+    isCopy: true,
+    effects: source.effects,
+  };
+
   return {
     success: true,
+    copiedStackObjectId: copy.id,
     state: {
-      ...currentState,
-      zones: updatedZones,
-      cards: updatedCards,
-      stack: updatedStack,
-      players: updatedPlayers,
-      priorityPlayerId: playerIds[nextIndex],
-      consecutivePasses: 0,
+      ...state,
+      stack: [...state.stack, copy],
       lastModifiedAt: Date.now(),
     },
   };
@@ -700,6 +818,16 @@ function resolveSpellCompletion(
   state: GameState,
   stackObject: StackObject,
 ): GameState {
+  // CR 707.10 — a copy of a spell is not backed by a card. Its effects were
+  // already applied in resolveTopOfStack (which looks the source card up via
+  // `sourceCardId` to parse oracle-text effects). On completion a permanent
+  // copy becomes a token on the battlefield under its controller (CR 707.10d /
+  // CR 111) and an instant/sorcery copy simply ceases to exist. No card is
+  // moved because there is no card to move.
+  if (stackObject.isCopy) {
+    return resolveCopyCompletion(state, stackObject);
+  }
+
   // Get the card
   if (stackObject.sourceCardId) {
     const card = state.cards.get(stackObject.sourceCardId);
@@ -928,6 +1056,47 @@ function resolveSpellCompletion(
 
   // Fallback: just remove from stack
   return removeFromStack(state, stackObject.id);
+}
+
+/**
+ * Complete the resolution of a SPELL COPY (CR 707.10).
+ *
+ * Copies have no card backing them, so the normal "move card to graveyard /
+ * battlefield" path does not apply. A copy of a permanent spell enters the
+ * battlefield as a token under its controller (CR 707.10d → CR 111); a copy of
+ * an instant/sorcery spell simply ceases to exist once its effects have
+ * resolved. The copy is then removed from the stack.
+ */
+function resolveCopyCompletion(
+  state: GameState,
+  stackObject: StackObject,
+): GameState {
+  const sourceCard = stackObject.sourceCardId
+    ? state.cards.get(stackObject.sourceCardId)
+    : undefined;
+  const typeLine = sourceCard?.cardData.type_line?.toLowerCase() ?? "";
+  const isPermanent =
+    typeLine.length > 0 &&
+    !typeLine.includes("instant") &&
+    !typeLine.includes("sorcery");
+
+  let currentState = state;
+  if (isPermanent && sourceCard) {
+    // CR 707.10d — a copy of a permanent spell enters the battlefield as a
+    // token owned and controlled by the copy's controller.
+    const tokenResult = createTokenCard(
+      currentState,
+      sourceCard.cardData,
+      stackObject.controllerId,
+      stackObject.controllerId,
+      1,
+    );
+    if (tokenResult.success) {
+      currentState = tokenResult.state;
+    }
+  }
+
+  return removeFromStack(currentState, stackObject.id);
 }
 
 /**
