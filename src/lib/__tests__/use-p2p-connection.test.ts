@@ -130,6 +130,12 @@ describe("use-p2p-connection Hook Types", () => {
         saveForLocalResume: async () => ({ ok: true }),
         dismissTerminalFailure: () => {},
         droppedPendingActions: [],
+        // Issue #988: user-facing reconnection UI state.
+        reconnectionPhase: "stable",
+        reconnectAttempts: 0,
+        maxReconnectAttempts: 3,
+        reconnectedRecently: false,
+        acknowledgeReconnect: () => {},
       };
 
       expect(returnValue.connectionState).toBeDefined();

@@ -48,6 +48,16 @@ import { logger } from "@/lib/logger";
 
 const p2pLogger = logger.child("P2PConnection");
 
+/**
+ * Upper bound for the user-facing "attempt N of M" label in the reconnection
+ * UI (issue #988). The hook does not own the actual reconnection loop; this
+ * constant is the maximum displayed attempt number before the UI switches to
+ * the terminal "Reconnection failed" message. The underlying transport's
+ * own `maxReconnectAttempts` is plumbed via {@link P2PConnectionState}
+ * callers and may differ; this is purely a display bound.
+ */
+const MAX_RECONNECT_ATTEMPTS_DISPLAY = 3;
+
 export interface UseP2PConnectionOptions {
   playerId: string;
   playerName: string;
@@ -87,6 +97,32 @@ export interface LocalDegradeInfo {
   /** False when there was no in-progress game state to preserve. */
   hadGameState: boolean;
 }
+
+/**
+ * Reconnection lifecycle phase surfaced to the UI (issue #988).
+ *
+ * Derived from the connection state by {@link useP2PConnection}. The UI uses
+ * this to pick what to show:
+ *   - `stable`     — no reconnection activity; nothing to surface.
+ *   - `lost`       — the connection dropped after having been connected; the
+ *                    transport is attempting recovery. Shows a "Connection
+ *                    lost — reconnecting…" banner with attempt count.
+ *   - `reconnecting` — the transport reports the "reconnecting" state (used
+ *                    when the underlying WebRTC layer actively drives the
+ *                    cycle, e.g. via WebRTCConnection's ICE-restart loop).
+ *   - `recovered`  — transient: the transport recovered after a prior drop.
+ *                    Shows a brief "Reconnected" success message and
+ *                    auto-dismisses. Cleared by the consumer after handling.
+ *   - `failed`     — reconnection retries were exhausted and the user has not
+ *                    yet migrated or abandoned. Surfaces the recovery prompt
+ *                    that hands off to {@link P2PDegradeDialog}.
+ */
+export type ReconnectionPhase =
+  | "stable"
+  | "lost"
+  | "reconnecting"
+  | "recovered"
+  | "failed";
 
 /**
  * Result of {@link useP2PConnectionReturn.continueAsLocalHotSeat}.
@@ -162,6 +198,26 @@ export interface UseP2PConnectionReturn {
    * reconcile / close.
    */
   droppedPendingActions: PendingAction[];
+  // --- Issue #988: user-facing reconnection UI ---
+  /**
+   * Reconnection lifecycle phase derived from `connectionState` and the
+   * connection's reconnection attempt count. Drives the
+   * {@link P2PReconnectionStatus} component.
+   */
+  reconnectionPhase: ReconnectionPhase;
+  /** Number of reconnection attempts since the last successful connect. */
+  reconnectAttempts: number;
+  /** Maximum reconnection attempts before transitioning to the terminal `failed`
+   * phase. Matches the configured `maxReconnectAttempts` (defaults to 3). */
+  maxReconnectAttempts: number;
+  /**
+   * True for a short window after a successful reconnect so the UI can show a
+   * transient "Reconnected" message. Callers may clear it via
+   * {@link acknowledgeReconnect} once the message has been displayed.
+   */
+  reconnectedRecently: boolean;
+  /** Dismiss the transient "Reconnected" message once shown to the user. */
+  acknowledgeReconnect: () => void;
 }
 
 export function useP2PConnection(
@@ -195,6 +251,11 @@ export function useP2PConnection(
     useState<string>(fallbackHostId);
   const [connectionFailureReason, setConnectionFailureReason] =
     useState<ConnectionFailureDiagnostic | null>(null);
+  // --- Issue #988: reconnection UI state ---
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [reconnectedRecently, setReconnectedRecently] = useState(false);
+  const reconnectAttemptsRef = useRef(0);
+  const hadConnectedRef = useRef(false);
   // --- Issue #1090: graceful degradation to local hot-seat ---
   const [degradedToLocal, setDegradedToLocal] = useState(false);
   const [terminalFailureDismissed, setTerminalFailureDismissed] =
@@ -420,6 +481,13 @@ export function useP2PConnection(
   // `droppedPendingActions` surfaced for the adopt path come from the
   // onGameStateSync adoption below. See src/lib/p2p-reconciliation.ts.
   const handleReconnect = useCallback(() => {
+    // Issue #988: a successful reconnect deserves a transient "Reconnected"
+    // user-facing message. Reset attempt counters and arm the flag the UI
+    // consumes (cleared via `acknowledgeReconnect`).
+    reconnectAttemptsRef.current = 0;
+    setReconnectAttempts(0);
+    setReconnectedRecently(true);
+
     const coordinator = reconcileRef.current;
     const isHost = currentHostIdRef.current === playerId;
     const decision = coordinator.onReconnect({
@@ -445,6 +513,13 @@ export function useP2PConnection(
       connectionRef.current?.requestStateSync();
     }
   }, [playerId]);
+
+  // Acknowledge the transient "Reconnected" message — caller fires once the
+  // banner has been shown so the hook does not flip the flag back on. Issue
+  // #988.
+  const acknowledgeReconnect = useCallback(() => {
+    setReconnectedRecently(false);
+  }, []);
 
   // On a received game-state sync, if we are awaiting reconciliation, adopt
   // the host's authoritative state (source of truth) and drop the pending
@@ -488,6 +563,30 @@ export function useP2PConnection(
                 setConnectionFailureReason(
                   conn?.getLastFailureDiagnostic?.() ?? null,
                 );
+              }
+              // Issue #988: track reconnection attempts. The hook does not
+              // own the underlying reconnect loop — that lives in
+              // WebRTCConnection / the browser RTCPeerConnection — but it does
+              // own the user-facing count of how many times we have observed
+              // a drop after having been connected. Each observed drop
+              // increments; a successful reconnect resets to 0 via
+              // `handleReconnect` above. Capped at `maxReconnectAttempts + 1`
+              // so the UI can label the terminal attempt explicitly.
+              if (state === "disconnected" || state === "reconnecting") {
+                if (hadConnectedRef.current) {
+                  const next = Math.min(
+                    reconnectAttemptsRef.current + 1,
+                    MAX_RECONNECT_ATTEMPTS_DISPLAY + 1,
+                  );
+                  reconnectAttemptsRef.current = next;
+                  setReconnectAttempts(next);
+                }
+              } else if (state === "connected") {
+                // Successful recovery (or initial connect): clear the
+                // transient "Reconnected" message flag only if we are NOT in
+                // a recovery edge — the actual flag flip happens in
+                // handleReconnect so it survives handler re-binding.
+                hadConnectedRef.current = true;
               }
             },
             onReconnect: handleReconnect,
@@ -626,6 +725,20 @@ export function useP2PConnection(
                 setConnectionFailureReason(
                   conn?.getLastFailureDiagnostic?.() ?? null,
                 );
+              }
+              // Issue #988: same attempt tracking as the host path — see the
+              // matching comment in initializeAsHost above.
+              if (state === "disconnected" || state === "reconnecting") {
+                if (hadConnectedRef.current) {
+                  const next = Math.min(
+                    reconnectAttemptsRef.current + 1,
+                    MAX_RECONNECT_ATTEMPTS_DISPLAY + 1,
+                  );
+                  reconnectAttemptsRef.current = next;
+                  setReconnectAttempts(next);
+                }
+              } else if (state === "connected") {
+                hadConnectedRef.current = true;
               }
             },
             onReconnect: handleReconnect,
@@ -855,6 +968,11 @@ export function useP2PConnection(
     reconcileRef.current.clear();
     awaitingReconciliationRef.current = false;
     setDroppedPendingActions([]);
+    // Issue #988: reset reconnection UI state for a fresh session.
+    reconnectAttemptsRef.current = 0;
+    setReconnectAttempts(0);
+    setReconnectedRecently(false);
+    hadConnectedRef.current = false;
   }, [fallbackHostId]);
 
   // Get connection instance
@@ -982,6 +1100,28 @@ export function useP2PConnection(
     !degradedToLocal &&
     !terminalFailureDismissed;
 
+  // --- Issue #988: derive the user-facing reconnection phase ---
+  // Order of precedence (highest first):
+  //   1. Transient "Reconnected" message immediately after a recovery edge.
+  //   2. Terminal "failed" (after reconnection exhausted) and the user has
+  //      not yet migrated/abandoned — surface the recovery prompt.
+  //   3. Mid-flight "reconnecting" (the transport reports it actively).
+  //   4. Lost after having been connected (silent pre-#988 bug).
+  //   5. Stable — nothing to show.
+  const reconnectionPhase: ReconnectionPhase = (() => {
+    if (reconnectedRecently) return "recovered";
+    if (terminalFailure) return "failed";
+    if (connectionState === "reconnecting") return "reconnecting";
+    if (
+      connectionState === "disconnected" &&
+      hadConnectedRef.current &&
+      !degradedToLocal
+    ) {
+      return "lost";
+    }
+    return "stable";
+  })();
+
   return {
     connectionState,
     signalingState,
@@ -1010,6 +1150,12 @@ export function useP2PConnection(
     saveForLocalResume,
     dismissTerminalFailure,
     droppedPendingActions,
+    // --- Issue #988: user-facing reconnection UI ---
+    reconnectionPhase,
+    reconnectAttempts,
+    maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS_DISPLAY,
+    reconnectedRecently,
+    acknowledgeReconnect,
   };
 }
 
