@@ -783,6 +783,123 @@ describe("runAITurn — combat phase", () => {
 });
 
 // ===========================================================================
+// runAITurn — beginner-friendly AI telegraph (issue #993)
+//
+// Verifies the coaching "why" surfaces through onCommentary at easy difficulty
+// and is SILENT at expert (verbosity scales with the resolved config). The
+// generic action commentary ("Attacks with X") still fires at every tier; only
+// the telegraph coach line is difficulty-gated.
+// ===========================================================================
+describe("runAITurn — difficulty-gated AI telegraph", () => {
+  function buildAttackState() {
+    const bear = mkTurnCard("bear", "Creature", {
+      cardData: {
+        name: "bear",
+        type_line: "Creature",
+        cmc: 2,
+        mana_cost: "{2}",
+      } as any,
+    });
+    return buildTurnState({ hand: [], battlefield: ["bear"], cards: [bear] });
+  }
+
+  it("easy difficulty surfaces a detailed coaching telegraph for an attack", async () => {
+    const state = buildAttackState();
+    mockAttackPlan = {
+      attacks: [
+        {
+          shouldAttack: true,
+          creatureId: "bear",
+          target: OPP,
+          reasoning: "bear (2 power) - has evasion, high value attack",
+        },
+      ],
+    };
+    const commentary: string[] = [];
+    await runAITurn(
+      state,
+      AI,
+      baseConfig({
+        difficulty: "easy",
+        onCommentary: (t) => commentary.push(t),
+      }),
+    );
+
+    // Generic action commentary still present...
+    expect(commentary.some((m) => /Attacks with bear/.test(m))).toBe(true);
+    // ...plus the detailed coach line explaining the why.
+    expect(commentary.some((m) => /AI sends bear into combat/.test(m))).toBe(
+      true,
+    );
+    expect(
+      commentary.some((m) => /hard to block|press its advantage/i.test(m)),
+    ).toBe(true);
+  });
+
+  it("expert difficulty emits NO telegraph coach line (strategy stays hidden)", async () => {
+    const state = buildAttackState();
+    mockAttackPlan = {
+      attacks: [
+        {
+          shouldAttack: true,
+          creatureId: "bear",
+          target: OPP,
+          reasoning: "bear (2 power) - high value attack",
+        },
+      ],
+    };
+    const commentary: string[] = [];
+    await runAITurn(
+      state,
+      AI,
+      baseConfig({
+        difficulty: "expert",
+        onCommentary: (t) => commentary.push(t),
+      }),
+    );
+
+    // The bare action is still narrated...
+    expect(commentary.some((m) => /Attacks with bear/.test(m))).toBe(true);
+    // ...but no beginner coach line leaks at expert difficulty.
+    expect(commentary.some((m) => /AI sends .* into combat/.test(m))).toBe(
+      false,
+    );
+  });
+
+  it("easy difficulty surfaces a 'held back as a blocker' telegraph", async () => {
+    const bear = mkTurnCard("bear", "Creature");
+    const state = buildTurnState({
+      hand: [],
+      battlefield: ["bear"],
+      cards: [bear],
+    });
+    mockAttackPlan = {
+      attacks: [
+        {
+          shouldAttack: false,
+          creatureId: "bear",
+          target: "none",
+          reasoning: "bear (2/2) - low value, hold for defense",
+        },
+      ],
+    };
+    const commentary: string[] = [];
+    await runAITurn(
+      state,
+      AI,
+      baseConfig({
+        difficulty: "easy",
+        onCommentary: (t) => commentary.push(t),
+      }),
+    );
+
+    expect(
+      commentary.some((m) => /keeps bear in reserve|blocker/i.test(m)),
+    ).toBe(true);
+  });
+});
+
+// ===========================================================================
 // runAITurn — cleanup phase (discard to max hand size)
 // ===========================================================================
 describe("runAITurn — cleanup phase", () => {

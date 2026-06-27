@@ -114,6 +114,20 @@ export interface AIDifficultyConfig {
   tempoPriority: number;
   /** Risk tolerance: higher = more willing to take risks */
   riskTolerance: number;
+  /**
+   * Beginner-friendly "telegraph" verbosity (issue #993):
+   *   - 0 = none   — no AI reasoning surfaced (expert / challenge play)
+   *   - 1 = basic  — action-only one-liners ("AI attacks with Grizzly Bears")
+   *   - 2 = detailed — beginner coaching that explains the *why* ("AI holds
+   *                   Grizzly Bears back as a blocker to stay safe")
+   *
+   * Easy defaults to 2 (learn the game), expert to 0 (don't hand-hold). Like
+   * the other knobs it is resolved through {@link resolveDifficultyConfig} so
+   * the per-format overrides can tune it, and it lives on this config so the
+   * single canonical difficulty taxonomy (issue #1064/#1192) stays the one
+   * source of truth.
+   */
+  telegraphLevel: number;
 }
 
 /**
@@ -131,6 +145,8 @@ export interface AIDifficultyConfigOverride {
   blunderChance?: number;
   tempoPriority?: number;
   riskTolerance?: number;
+  /** Beginner-friendly telegraph verbosity override (0/1/2), see AIDifficultyConfig. */
+  telegraphLevel?: number;
   evaluationWeights?: Partial<EvaluationWeights>;
 }
 
@@ -186,6 +202,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
     blunderChance: 0.25,
     tempoPriority: 0.3,
     riskTolerance: 0.2,
+    telegraphLevel: 2, // Beginner coaching: explain the "why" of every decision
   },
   medium: {
     level: "medium",
@@ -222,6 +239,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
     blunderChance: 0.1,
     tempoPriority: 0.5,
     riskTolerance: 0.5,
+    telegraphLevel: 1, // Basic action-only telegraph for the middle tier
   },
   hard: {
     level: "hard",
@@ -257,6 +275,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
     blunderChance: 0.05,
     tempoPriority: 0.7,
     riskTolerance: 0.7,
+    telegraphLevel: 1, // Basic telegraph — experienced players still get the gist
   },
   expert: {
     level: "expert",
@@ -293,6 +312,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, AIDifficultyConfig> = {
     blunderChance: 0.02,
     tempoPriority: 0.9,
     riskTolerance: 0.85,
+    telegraphLevel: 0, // No hand-holding at the top tier — keep strategy hidden
   },
 };
 

@@ -47,6 +47,16 @@ import {
 } from "./game-state-evaluator";
 import { detectArchetype } from "./archetype-detector";
 import type { DeckCard } from "@/app/actions";
+import {
+  classifyStanding,
+  generateAttackTelegraph,
+  generateHoldTelegraph,
+  generateCastTelegraph,
+  getTelegraphLevel,
+  isRemovalSpell,
+  type TelegraphContext,
+  type TelegraphLevel,
+} from "./ai-telegraph";
 
 /**
  * AI Turn configuration
@@ -886,6 +896,15 @@ async function runCombatPhase(
   // Generate attack plan using unified format
   const attackPlan = combatAI.generateAttackPlan();
 
+  // Issue #993: resolve the telegraph verbosity + board standing once for the
+  // whole combat phase. easy → detailed coaching, expert → silent (the
+  // generators return null and emitTelegraph becomes a no-op).
+  const telegraphLevel: TelegraphLevel = getTelegraphLevel(
+    config.difficulty,
+    config.format,
+  );
+  const telegraphContext = computeTelegraphContext(currentState, aiPlayerId);
+
   // Execute attack decisions
   for (const attackDecision of attackPlan.attacks) {
     if (attackDecision.shouldAttack && attackDecision.target !== "none") {
@@ -910,9 +929,40 @@ async function runCombatPhase(
         const creature = currentState.cards.get(attackDecision.creatureId);
         if (creature) {
           config.onCommentary?.(`Attacks with ${creature.cardData.name}`);
+          // Beginner-friendly coaching: explain WHY this creature attacks,
+          // referenced against the AI's real standing (ahead/behind).
+          emitTelegraph(
+            config,
+            generateAttackTelegraph(
+              {
+                subject: creature.cardData.name,
+                internalReasoning: attackDecision.reasoning,
+                context: telegraphContext,
+              },
+              telegraphLevel,
+            ),
+          );
         }
         await delay(config.delayMs * 1.5); // Slightly longer delay for combat
       }
+    } else {
+      // The AI chose to hold this creature back. Holds are the most
+      // instructive decision for beginners ("kept as a blocker"), so they are
+      // surfaced only at the detailed (easy) level — basic/expert stay quiet
+      // rather than narrating every non-attack.
+      const creature = currentState.cards.get(attackDecision.creatureId);
+      const name = creature?.cardData.name ?? "a creature";
+      emitTelegraph(
+        config,
+        generateHoldTelegraph(
+          {
+            subject: name,
+            internalReasoning: attackDecision.reasoning,
+            context: telegraphContext,
+          },
+          telegraphLevel,
+        ),
+      );
     }
   }
 
@@ -1114,6 +1164,19 @@ async function castCreatures(
       const card = currentState.cards.get(cardId);
       if (card) {
         config.onCommentary?.(`Casts ${card.cardData.name}`);
+        // Issue #993: beginner coaching for creature casts — motive-driven
+        // ("to press its advantage" / "trying to stabilize"). Creatures are
+        // never removal, so the coach line frames development intent.
+        emitTelegraph(
+          config,
+          generateCastTelegraph(
+            {
+              subject: card.cardData.name,
+              context: computeTelegraphContext(currentState, aiPlayerId),
+            },
+            getTelegraphLevel(config.difficulty, config.format),
+          ),
+        );
       }
     }
   }
@@ -1163,6 +1226,23 @@ async function castOtherSpells(
           reasoning: `Cast ${card.cardData.name}`,
         });
         config.onCommentary?.(`Casts ${card.cardData.name}`);
+        // Issue #993: for non-creature spells, detect removal from the card
+        // text so the coach line gets the instructive "to remove your threat"
+        // framing instead of generic development copy.
+        emitTelegraph(
+          config,
+          generateCastTelegraph(
+            {
+              subject: card.cardData.name,
+              context: computeTelegraphContext(currentState, aiPlayerId),
+              isRemoval: isRemovalSpell(
+                card.cardData.type_line,
+                (card.cardData as { oracle_text?: string }).oracle_text,
+              ),
+            },
+            getTelegraphLevel(config.difficulty, config.format),
+          ),
+        );
         await delay(config.delayMs);
       }
     }
@@ -1180,6 +1260,65 @@ function getOpponentId(
 ): PlayerId {
   const playerIds = Array.from(gameState.players.keys());
   return playerIds.find((id) => id !== playerId) || playerId;
+}
+
+// ---------------------------------------------------------------------------
+// Issue #993 — beginner-friendly AI telegraph.
+//
+// The turn loop already emits generic, difficulty-agnostic action commentary
+// ("Attacks with Grizzly Bears"). The telegraph layer adds the *why* — but
+// only at beginner-friendly difficulties (easy = detailed coaching, expert =
+// silent). {@link getTelegraphLevel} reads `telegraphLevel` off the resolved
+// difficulty config (issue #1064/#1192), and the generators in
+// `ai-telegraph.ts` return `null` at level 0, so an `emitTelegraph` call is a
+// cheap no-op for expert play and a meaningful coach line for beginners.
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the AI's board standing (life + creature count on each side) out of the
+ * engine state and fold it into a {@link TelegraphContext}. Used as the "why"
+ * behind every telegraph this turn ("to press its advantage" vs "trying to claw
+ * back"). Defensive against missing players/zones — defaults to a neutral
+ * standing so a degenerate state never crashes the turn loop mid-combat.
+ */
+function computeTelegraphContext(
+  state: EngineGameState,
+  aiPlayerId: PlayerId,
+): TelegraphContext {
+  const opponentId = getOpponentId(state, aiPlayerId);
+  const aiPlayer = state.players.get(aiPlayerId);
+  const oppPlayer = state.players.get(opponentId);
+  const aiLife = aiPlayer?.life ?? 20;
+  const oppLife = oppPlayer?.life ?? 20;
+  return classifyStanding(
+    aiLife,
+    oppLife,
+    countCreatures(state, aiPlayerId),
+    countCreatures(state, opponentId),
+  );
+}
+
+/** Count the creatures a player controls on the battlefield (0 if no zone). */
+function countCreatures(state: EngineGameState, playerId: PlayerId): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  if (!zone) return 0;
+  let count = 0;
+  for (const cardId of zone.cardIds) {
+    const card = state.cards.get(cardId);
+    if (card?.cardData.type_line.toLowerCase().includes("creature")) count++;
+  }
+  return count;
+}
+
+/**
+ * Emit a telegraph line through the turn's commentary callback. A no-op when
+ * the text is null (expert difficulty / a generator that declined to comment),
+ * so call sites can pipe generator output straight through without branching.
+ */
+function emitTelegraph(config: AITurnConfig, text: string | null): void {
+  if (text !== null && text.length > 0) {
+    config.onCommentary?.(text);
+  }
 }
 
 /**
