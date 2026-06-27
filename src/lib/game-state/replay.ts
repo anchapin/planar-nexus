@@ -459,6 +459,8 @@ export function describeAction(action: GameAction, playerName: string): string {
       return `${playerName} drew a card`;
     case "discard_card":
       return `${playerName} discarded ${(actionData.cardName as string) || "a card"}`;
+    case "cycle_card":
+      return `${playerName} cycled ${(actionData.cardName as string) || "a card"}`;
     case "declare_attackers":
       return `${playerName} declared attackers`;
     case "declare_blockers":

@@ -914,6 +914,7 @@ export type ActionType =
   | "play_land"
   | "draw_card"
   | "discard_card"
+  | "cycle_card"
   | "tap_card"
   | "untap_card"
   | "destroy_card"
