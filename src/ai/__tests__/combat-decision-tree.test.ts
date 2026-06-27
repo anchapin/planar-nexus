@@ -915,6 +915,186 @@ describe("CombatDecisionTree", () => {
     });
   });
 
+  describe("live opponent-archetype derivation from board state (#991)", () => {
+    it("derives the opponent archetype from an observed aggro board when none is supplied", () => {
+      // No explicit opponentArchetype argument: the tree must infer from the
+      // opponent's battlefield instead of inheriting the "unknown" baked into
+      // DefaultCombatConfigs.
+      const opponentAggroBoard = [
+        createMockPermanent("o1", "Goblin Guide", "creature", 2, 2, false, 1),
+        createMockPermanent(
+          "o2",
+          "Monastery Swiftspear",
+          "creature",
+          1,
+          2,
+          false,
+          1,
+        ),
+        createMockPermanent("o3", "Ragavan", "creature", 2, 1, false, 1),
+      ];
+      const state = createTestGameState(20, 20, [], opponentAggroBoard);
+
+      const combatAI = new CombatDecisionTree(state, "player1", "hard");
+
+      expect(combatAI.getOpponentArchetype()).toBe("aggro");
+      // The derived archetype reaches the live combat config consumed by block
+      // prediction (DefaultCombatConfigs no longer forces "unknown").
+      expect(combatAI.getConfig().opponentArchetype).toBe("aggro");
+    });
+
+    it("derives control from a planeswalker-heavy opponent board", () => {
+      const opponentControlBoard = [
+        createMockPermanent("o1", "Teferi", "planeswalker", 0, 0, false, 4),
+        createMockPermanent(
+          "o2",
+          "Shark Typhoon",
+          "enchantment",
+          0,
+          0,
+          false,
+          6,
+        ),
+        createMockPermanent(
+          "o3",
+          "Solemn Simulacrum",
+          "creature",
+          1,
+          1,
+          false,
+          4,
+        ),
+      ];
+      const state = createTestGameState(20, 20, [], opponentControlBoard);
+
+      const combatAI = new CombatDecisionTree(state, "player1", "expert");
+
+      expect(combatAI.getOpponentArchetype()).toBe("control");
+      expect(combatAI.getConfig().opponentArchetype).toBe("control");
+    });
+
+    it("keeps 'unknown' when the opponent board is too sparse to classify", () => {
+      // Empty opponent board -> nothing observed -> genuine "unknown" fallback.
+      const empty = createTestGameState();
+      expect(
+        new CombatDecisionTree(
+          empty,
+          "player1",
+          "medium",
+        ).getOpponentArchetype(),
+      ).toBe("unknown");
+      expect(
+        new CombatDecisionTree(empty, "player1", "medium").getConfig()
+          .opponentArchetype,
+      ).toBe("unknown");
+
+      // A single non-land permanent is below the minimum signal threshold.
+      const thin = createTestGameState(
+        20,
+        20,
+        [],
+        [
+          createMockPermanent(
+            "o1",
+            "Birds of Paradise",
+            "creature",
+            0,
+            1,
+            false,
+            1,
+          ),
+        ],
+      );
+      expect(
+        new CombatDecisionTree(
+          thin,
+          "player1",
+          "medium",
+        ).getOpponentArchetype(),
+      ).toBe("unknown");
+    });
+
+    it("prefers an explicitly supplied archetype over board inference", () => {
+      // The caller knows best (e.g. the live turn loop detects from the full
+      // engine state). An explicit value must win even when the board suggests
+      // a different archetype.
+      const opponentAggroBoard = [
+        createMockPermanent("o1", "Goblin Guide", "creature", 2, 2, false, 1),
+        createMockPermanent("o2", "Ragavan", "creature", 2, 1, false, 1),
+        createMockPermanent("o3", "Pashalik Mons", "creature", 2, 1, false, 1),
+      ];
+      const state = createTestGameState(20, 20, [], opponentAggroBoard);
+
+      const combatAI = new CombatDecisionTree(
+        state,
+        "player1",
+        "hard",
+        "unknown",
+        "control",
+      );
+
+      expect(combatAI.getOpponentArchetype()).toBe("control");
+      expect(combatAI.getConfig().opponentArchetype).toBe("control");
+    });
+
+    it("flows the derived archetype into block prediction so combat adapts", () => {
+      // Same attacker/blocker and difficulty; only the opponent's observed
+      // board differs. The derived archetype must change the block-prediction
+      // weights the combat tree plans against, proving the real matchup
+      // context reaches combat decisions rather than a hardcoded "unknown".
+      const attacker = createMockPermanent("a1", "Bear", "creature", 2, 2);
+      const blocker = createMockPermanent("b1", "Bear", "creature", 2, 2);
+      const playerBoard = [attacker];
+
+      const vsAggro = new CombatDecisionTree(
+        createTestGameState(20, 20, playerBoard, [
+          createMockPermanent("o1", "Goblin", "creature", 2, 2, false, 1),
+          createMockPermanent("o2", "Goblin", "creature", 2, 2, false, 1),
+          createMockPermanent("o3", "Goblin", "creature", 2, 2, false, 1),
+        ]),
+        "player1",
+        "hard",
+      );
+      const vsControl = new CombatDecisionTree(
+        createTestGameState(20, 20, playerBoard, [
+          createMockPermanent("o1", "Jace", "planeswalker", 0, 0, false, 4),
+          createMockPermanent(
+            "o2",
+            "Engineered Explosives",
+            "artifact",
+            0,
+            0,
+            false,
+            2,
+          ),
+        ]),
+        "player1",
+        "hard",
+      );
+
+      expect(vsAggro.getOpponentArchetype()).toBe("aggro");
+      expect(vsControl.getOpponentArchetype()).toBe("control");
+
+      // The block-prediction weights differ because the real archetype flows
+      // through (control is far more willing to block than aggro).
+      const aggroPred = predictOpponentBlocks(
+        [attacker],
+        [blocker],
+        20,
+        vsAggro.getConfig().opponentArchetype,
+      );
+      const controlPred = predictOpponentBlocks(
+        [attacker],
+        [blocker],
+        20,
+        vsControl.getConfig().opponentArchetype,
+      );
+      expect(aggroPred.archetypeWeights.willingnessToBlock).toBeLessThan(
+        controlPred.archetypeWeights.willingnessToBlock,
+      );
+    });
+  });
+
   describe("combat blunder frequency by difficulty (#994)", () => {
     const TIERS: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];
 

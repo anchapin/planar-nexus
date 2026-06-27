@@ -11,6 +11,7 @@ export {
   DefaultCombatConfigs,
   ARCHETYPE_COMBAT_MODIFIERS,
   deckArchetypeToOpponentArchetype,
+  inferOpponentArchetype,
   type CombatAIConfig,
   type AttackDecision,
   type BlockDecision,
