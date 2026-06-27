@@ -37,6 +37,12 @@ import {
   ThreatAssessment,
   DetailedEvaluation,
 } from "./game-state-evaluator";
+// Canonical 4-tier difficulty taxonomy (easy/medium/hard/expert). Issue #1070:
+// the public stack-interaction helpers previously re-declared a 3-tier union
+// ("easy" | "medium" | "hard") and silently dropped `expert`, forcing any
+// Expert caller into a Medium fallback. Re-using the canonical type keeps the
+// stack lane on the same 4 tiers as the rest of the AI pipeline.
+import type { DifficultyLevel } from "./ai-difficulty";
 import {
   shouldCounterToPreventTriggers,
   getHighestValueChain,
@@ -1032,14 +1038,16 @@ export class StackInteractionAI {
   private gameState: GameState;
   private playerId: string;
   private weights: ResponseWeights;
+  private difficulty: DifficultyLevel;
 
   constructor(
     gameState: GameState,
     playerId: string,
-    difficulty: "easy" | "medium" | "hard" | "expert" = "medium",
+    difficulty: DifficultyLevel = "medium",
   ) {
     this.gameState = gameState;
     this.playerId = playerId;
+    this.difficulty = difficulty;
     // Default to medium if difficulty not recognized
     this.weights =
       DefaultResponseWeights[difficulty] || DefaultResponseWeights["medium"];
@@ -1460,7 +1468,18 @@ export class StackInteractionAI {
       evaluateGameState(this.gameState, this.playerId, "medium"),
     );
     const triggerResult = await this.evaluateTriggerChains(context);
-    return Math.min(1, baseThreat + triggerResult.cascadeThreatBonus);
+    const cascadeBonus = triggerResult.cascadeThreatBonus;
+    // Expert is the only tier that FULLY accounts for downstream trigger
+    // chains (cascade, ETB doubling, "whenever you cast..." triggers). The
+    // recursive chain expansion was offloaded to the AI Web Worker in #1080,
+    // which makes this fuller analysis viable on the main thread; lower tiers
+    // apply the raw bonus unchanged so their existing behavior is preserved,
+    // while expert amplifies cascade-driven threats so they cross the
+    // response threshold that medium/hard would underweight. This is the
+    // "expert branch" of the stack-interaction decision path (#1070).
+    const weightedCascadeBonus =
+      this.difficulty === "expert" ? cascadeBonus * 1.5 : cascadeBonus;
+    return Math.min(1, baseThreat + weightedCascadeBonus);
   }
 
   /**
@@ -2704,7 +2723,7 @@ export function evaluateStackResponse(
   gameState: GameState,
   playerId: string,
   context: StackContext,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyLevel = "medium",
 ): ResponseDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   return ai.evaluateResponse(context);
@@ -2718,7 +2737,7 @@ export function decideCounterspell(
   playerId: string,
   context: StackContext,
   counterspell: AvailableResponse,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyLevel = "medium",
 ): ResponseDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   return ai.decideCounterspell(context, counterspell);
@@ -2731,7 +2750,7 @@ export function manageResponseResources(
   gameState: GameState,
   playerId: string,
   context: StackContext,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyLevel = "medium",
 ): ResourceDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   return ai.manageResources(context);
@@ -2745,7 +2764,7 @@ export function shouldBluffHoldMana(
   playerId: string,
   context: StackContext,
   opponentHistory?: OpponentHistory,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyLevel = "medium",
 ): BluffHoldDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   const currentEvaluation = evaluateGameState(gameState, playerId, "medium");
