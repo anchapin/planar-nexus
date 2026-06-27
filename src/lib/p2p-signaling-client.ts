@@ -24,6 +24,7 @@ import type {
 import { WebRTCConnection, createP2PConnection } from "./webrtc-p2p";
 import { safeParseJson } from "./p2p-json-validation";
 import { redactSensitive } from "./p2p-log-redact";
+import { p2pLogger } from "./p2p-logger";
 
 /**
  * Connection information for P2P handshake
@@ -195,7 +196,7 @@ export class P2PSignalingClient {
       await this.connection.initialize();
     } catch (error) {
       // #982: redact — init errors may embed ICE config / TURN credentials.
-      console.error("[Signaling] Failed to initialize:", redactSensitive(error));
+      p2pLogger.error("[Signaling] Failed to initialize:", redactSensitive(error));
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to initialize"),
       );
@@ -230,7 +231,7 @@ export class P2PSignalingClient {
     } catch (error) {
       // #982: redact — QRCode errors may include the serialized connectionInfo
       // (which carries gameCode / hostName).
-      console.error(
+      p2pLogger.error(
         "[Signaling] Failed to generate QR code:",
         redactSensitive(error),
       );
@@ -268,7 +269,7 @@ export class P2PSignalingClient {
       return offer;
     } catch (error) {
       // #982: redact — offer creation errors may embed the local SDP offer.
-      console.error(
+      p2pLogger.error(
         "[Signaling] Failed to create offer:",
         redactSensitive(error),
       );
@@ -303,7 +304,7 @@ export class P2PSignalingClient {
       return answer;
     } catch (error) {
       // #982: redact — handle-offer errors may embed the remote SDP offer.
-      console.error(
+      p2pLogger.error(
         "[Signaling] Failed to handle offer:",
         redactSensitive(error),
       );
@@ -331,7 +332,7 @@ export class P2PSignalingClient {
       await this.connection.handleAnswer(answer);
     } catch (error) {
       // #982: redact — handle-answer errors may embed the remote SDP answer.
-      console.error(
+      p2pLogger.error(
         "[Signaling] Failed to handle answer:",
         redactSensitive(error),
       );
@@ -355,7 +356,7 @@ export class P2PSignalingClient {
       await this.connection.addIceCandidate(candidate);
     } catch (error) {
       // #982: redact — candidate errors may embed the ICE candidate blob.
-      console.error(
+      p2pLogger.error(
         "[Signaling] Failed to add ICE candidate:",
         redactSensitive(error),
       );
@@ -403,7 +404,7 @@ export class P2PSignalingClient {
    */
   sendMessage(message: P2PMessage): void {
     if (!this.connection || !this.connection.isConnected()) {
-      console.warn("[Signaling] Cannot send message: not connected");
+      p2pLogger.warn("[Signaling] Cannot send message: not connected");
       return;
     }
 
@@ -479,7 +480,7 @@ export function createClientSignalingClient(
 export function parseConnectionInfo(data: string): ConnectionInfo | null {
   const parsed = safeParseJson<ConnectionInfo>(data, isConnectionInfo);
   if (!parsed) {
-    console.error(
+    p2pLogger.error(
       "[Signaling] Failed to parse connection info: rejected malformed input",
     );
     return null;
@@ -500,7 +501,7 @@ export function serializeSignalingData(data: SignalingData): string {
 export function deserializeSignalingData(data: string): SignalingData | null {
   const parsed = safeParseJson<SignalingData>(data, isSignalingData);
   if (!parsed) {
-    console.error(
+    p2pLogger.error(
       "[Signaling] Failed to deserialize signaling data: rejected malformed input",
     );
     return null;
