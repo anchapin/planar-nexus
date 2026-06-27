@@ -13,6 +13,7 @@ import { reviewDeckHeuristic } from '@/lib/heuristic-deck-coach';
 import { validateCardLegality } from '@/lib/server-card-operations';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
 import { callAIProxy } from '@/lib/ai-proxy-client';
+import { createLocalCardLookup, verifyCitations } from './verify-citations';
 import {
   SECURITY_PREAMBLE,
   sanitizeUserInput,
@@ -160,11 +161,38 @@ export async function reviewDeck(
     // Use heuristic analysis instead of AI
     const result = reviewDeckHeuristic(input.decklist, input.format, cards);
 
+    // Issue #1072: local citation verification gate. A single resolver is
+    // reused across all options so the (cached) database-population probe
+    // runs once. Local-only — no network calls.
+    const localLookup = createLocalCardLookup();
+
     // Validate card suggestions for legality
     const validatedOptions = await Promise.all(
       result.deckOptions.map(async (option) => {
-        const cardsToAdd = option.cardsToAdd || [];
+        let cardsToAdd = option.cardsToAdd || [];
         const cardsToRemove = option.cardsToRemove || [];
+
+        // Issue #1072: strike suggested cards that do not exist in a POPULATED
+        // local card database — these are hallucinations. When the DB is empty
+        // (default state) the lookup degrades to "unverifiable" and suggestions
+        // are left intact, so legitimate advice is never stripped just because
+        // the user has not imported card data.
+        if (cardsToAdd.length > 0) {
+          const verifications = await verifyCitations(
+            cardsToAdd.map((c) => ({ name: c.name })),
+            localLookup,
+          );
+          const hallucinated = new Set(
+            verifications
+              .filter((v) => v.status === 'not-found')
+              .map((v) => v.cited.name.toLowerCase()),
+          );
+          if (hallucinated.size > 0) {
+            cardsToAdd = cardsToAdd.filter(
+              (c) => !hallucinated.has(c.name.toLowerCase()),
+            );
+          }
+        }
 
         // Validate cards to add
         let validatedCardsToAdd = cardsToAdd;
