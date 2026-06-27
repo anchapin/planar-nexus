@@ -19,6 +19,7 @@ import type {
   GameState,
   CardInstance,
   CardInstanceId,
+  Counter,
   PlayerId,
   Target,
   Zone,
@@ -1484,10 +1485,19 @@ export function untapCardAction(
  * Handle persist keyword when a creature dies
  * CR 702.78: When a creature with persist dies, if it had no -1/-1 counters on it,
  * return it to the battlefield with a -1/-1 counter on it.
+ *
+ * `countersAtDeath` is the counters the creature had on the battlefield at the
+ * moment it died. It MUST be supplied by death-path callers (e.g. state-based
+ * actions), because destroyCard()/moveCardToZone() clears counters when moving
+ * the card to the graveyard. Without it the intervening-"if" (CR 603.4) could
+ * never fail and persist would wrongly re-trigger on a creature that died with
+ * a -1/-1 counter. Callers that operate on a card whose counters are still
+ * intact (e.g. direct unit tests) may omit it.
  */
 export function handlePersist(
   state: GameState,
   deadCardId: CardInstanceId,
+  countersAtDeath?: Counter[],
 ): {
   state: GameState;
   persistedCards: CardInstanceId[];
@@ -1512,8 +1522,8 @@ export function handlePersist(
     return { state, persistedCards, descriptions };
   }
 
-  // Check if persist can trigger (creature must NOT have -1/-1 counter)
-  if (!canPersistTrigger(card)) {
+  // Check if persist can trigger (creature must NOT have -1/-1 counter at death)
+  if (!canPersistTrigger(card, countersAtDeath)) {
     descriptions.push(
       `${card.cardData.name} had a -1/-1 counter, persist did not trigger`,
     );

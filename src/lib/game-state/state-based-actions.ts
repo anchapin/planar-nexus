@@ -323,6 +323,13 @@ export function checkStateBasedActions(
 
   // Destroy all marked cards
   for (const cardId of cardsToDestroy) {
+    // Persist's intervening-"if" (CR 702.78a / 603.4) must be evaluated against
+    // the counters the creature had ON THE BATTLEFIELD when it died. destroyCard()
+    // -> moveCardToZone() clears counters on the zone change to the graveyard, so
+    // snapshot them now (before destruction) and hand them to handlePersist().
+    const dyingCard = updatedState.cards.get(cardId);
+    const countersAtDeath = dyingCard?.counters;
+
     const destroyResult = destroyCard(updatedState, cardId);
     if (destroyResult.success) {
       updatedState = destroyResult.state;
@@ -332,7 +339,11 @@ export function checkStateBasedActions(
       }
       // Handle persist keyword (CR 702.78)
       // Persist triggers when a creature dies without a -1/-1 counter on it
-      const persistResult = handlePersist(updatedState, cardId);
+      const persistResult = handlePersist(
+        updatedState,
+        cardId,
+        countersAtDeath,
+      );
       if (persistResult.persistedCards.length > 0) {
         updatedState = persistResult.state;
         descriptions.push(...persistResult.descriptions);
