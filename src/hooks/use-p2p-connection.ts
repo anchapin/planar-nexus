@@ -378,17 +378,36 @@ export function useP2PConnection(
     };
   }, []);
 
-  // Connection health monitoring
+  // Connection health monitoring.
+  //
+  // The callbacks passed to `useConnectionHealth` MUST be stable across
+  // renders — the hook wraps `updateHealth` in `useCallback` with these getters
+  // as deps and runs it from a `useEffect([updateHealth])` and an interval.
+  // If the getters are inline arrows, they get a new reference every render,
+  // `updateHealth` re-creates, the effect re-runs, `setHealth` triggers a
+  // re-render, and we are stuck in a "Maximum update depth exceeded" loop —
+  // which is exactly what was crashing the /multiplayer E2E when the
+  // persistent connection-state indicator (#986) was first mounted there.
+  // Wrapping each getter in `useCallback` keeps the references stable while
+  // still letting them observe live state (the refs always read the latest,
+  // and `connectionState` triggers a fresh closure on state changes only).
+  const getConnectionState = useCallback(
+    () => connectionState,
+    [connectionState],
+  );
+  const getReconnectAttempts = useCallback(() => {
+    const conn = connectionRef.current as any;
+    return conn?.["reconnectAttempts"] || 0;
+  }, []);
+  const getMaxReconnectAttempts = useCallback(() => {
+    const conn = connectionRef.current as any;
+    return conn?.["maxReconnectAttempts"] || 3;
+  }, []);
+
   const connectionHealth = useConnectionHealth({
-    getConnectionState: () => connectionState,
-    getReconnectAttempts: () => {
-      const conn = connectionRef.current as any;
-      return conn?.["reconnectAttempts"] || 0;
-    },
-    getMaxReconnectAttempts: () => {
-      const conn = connectionRef.current as any;
-      return conn?.["maxReconnectAttempts"] || 3;
-    },
+    getConnectionState,
+    getReconnectAttempts,
+    getMaxReconnectAttempts,
     enableMonitoring: true,
   });
 
