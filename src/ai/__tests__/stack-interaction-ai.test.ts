@@ -14,8 +14,11 @@ import {
   evaluateStackResponse,
   decideCounterspell,
   manageResponseResources,
+  shouldBluffHoldMana,
+  DefaultResponseWeights,
 } from "../stack-interaction-ai";
 import { GameState, PlayerState } from "../game-state-evaluator";
+import type { DifficultyLevel } from "../ai-difficulty";
 
 describe("StackInteractionAI", () => {
   let gameState: GameState;
@@ -537,6 +540,228 @@ describe("StackInteractionAI", () => {
       // This verifies that difficulty affects decisions
       expect(easyDecision).toBeDefined();
       expect(hardDecision).toBeDefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // #1070: restore the expert tier in stack-interaction public decision funcs.
+  // The public helpers previously narrowed difficulty to "easy"|"medium"|"hard"
+  // and silently dropped "expert" (falling back to medium). These tests pin the
+  // 4-tier contract: every public helper honors expert, expert is provably
+  // deeper than medium/hard, and lower tiers are unchanged.
+  // ---------------------------------------------------------------------------
+  describe("Expert tier restoration (#1070)", () => {
+    const ALL_TIERS: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];
+
+    // A high-threat opponent spell that both medium and expert will try to
+    // answer, so the response is non-trivial and the EV reflects the weights.
+    const buildHighThreatContext = (): {
+      action: StackAction;
+      context: StackContext;
+      counterspell: AvailableResponse;
+    } => {
+      const action: StackAction = {
+        id: "stack_threat",
+        cardId: "threat_spell",
+        name: "Counterspell", // "counter" keyword bumps the threat assessment
+        controller: "player2",
+        type: "spell",
+        manaValue: 5,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+        targets: [{ playerId: "player1" }],
+      };
+      const counterspell: AvailableResponse = {
+        cardId: "counter",
+        name: "Cancel",
+        type: "instant",
+        manaValue: 2,
+        manaCost: { blue: 2 },
+        canCounter: true,
+        canTarget: ["spell"],
+        effect: {
+          type: "counter",
+          value: 5,
+          targets: [action.id],
+        },
+      };
+      const context: StackContext = {
+        currentAction: action,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 3, colorless: 0 },
+        availableResponses: [counterspell],
+        opponentsRemaining: [],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+      return { action, context, counterspell };
+    };
+
+    test("DefaultResponseWeights defines an expert profile distinct from medium and hard", () => {
+      expect(DefaultResponseWeights.expert).toBeDefined();
+      expect(DefaultResponseWeights.hard).toBeDefined();
+      expect(DefaultResponseWeights.medium).toBeDefined();
+      // Expert is a genuinely different, more skilled profile (not an alias).
+      expect(DefaultResponseWeights.expert).not.toEqual(
+        DefaultResponseWeights.medium,
+      );
+      expect(DefaultResponseWeights.expert).not.toEqual(
+        DefaultResponseWeights.hard,
+      );
+      // Expert weights are strictly stronger on the skill-expressive axes.
+      expect(DefaultResponseWeights.expert.threatPrevention).toBeGreaterThan(
+        DefaultResponseWeights.hard.threatPrevention,
+      );
+      expect(
+        DefaultResponseWeights.expert.winConditionProtection,
+      ).toBeGreaterThan(DefaultResponseWeights.hard.winConditionProtection);
+      expect(DefaultResponseWeights.expert.responseEfficiency).toBeGreaterThan(
+        DefaultResponseWeights.medium.responseEfficiency,
+      );
+    });
+
+    test.each(ALL_TIERS)(
+      "evaluateStackResponse honors the %s tier through the public helper",
+      (tier) => {
+        const { context } = buildHighThreatContext();
+        const decision = evaluateStackResponse(gameState, playerId, context, tier);
+        expect(decision).toBeDefined();
+        expect(decision.shouldRespond).toBe(true);
+      },
+    );
+
+    test.each(ALL_TIERS)(
+      "decideCounterspell honors the %s tier through the public helper",
+      (tier) => {
+        const { context, counterspell } = buildHighThreatContext();
+        const decision = decideCounterspell(
+          gameState,
+          playerId,
+          context,
+          counterspell,
+          tier,
+        );
+        expect(decision).toBeDefined();
+        expect(decision.shouldRespond).toBeDefined();
+      },
+    );
+
+    test.each(ALL_TIERS)(
+      "manageResponseResources honors the %s tier through the public helper",
+      (tier) => {
+        const { context } = buildHighThreatContext();
+        const decision = manageResponseResources(
+          gameState,
+          playerId,
+          context,
+          tier,
+        );
+        expect(decision).toBeDefined();
+        expect(decision.useNow).toBeDefined();
+      },
+    );
+
+    test.each(ALL_TIERS)(
+      "shouldBluffHoldMana honors the %s tier through the public helper",
+      (tier) => {
+        const { context } = buildHighThreatContext();
+        const decision = shouldBluffHoldMana(
+          gameState,
+          playerId,
+          context,
+          undefined,
+          tier,
+        );
+        expect(decision).toBeDefined();
+      },
+    );
+
+    test("expert produces a deeper (higher-EV) response decision than medium on an identical stack state", () => {
+      const { context } = buildHighThreatContext();
+      const mediumDecision = evaluateStackResponse(
+        gameState,
+        playerId,
+        context,
+        "medium",
+      );
+      const expertDecision = evaluateStackResponse(
+        gameState,
+        playerId,
+        context,
+        "expert",
+      );
+
+      // Both commit to answering the threat...
+      expect(mediumDecision.shouldRespond).toBe(true);
+      expect(expertDecision.shouldRespond).toBe(true);
+      // ...but expert's evaluation is strictly stronger thanks to the heavier
+      // weights (threatPrevention / responseEfficiency / cardAdvantage).
+      expect(expertDecision.expectedValue).toBeGreaterThan(
+        mediumDecision.expectedValue,
+      );
+    });
+
+    test("hard sits between medium and expert (no regression to lower tiers)", () => {
+      const { context } = buildHighThreatContext();
+      const medium = evaluateStackResponse(gameState, playerId, context, "medium");
+      const hard = evaluateStackResponse(gameState, playerId, context, "hard");
+      const expert = evaluateStackResponse(
+        gameState,
+        playerId,
+        context,
+        "expert",
+      );
+      // Monotonic skill ordering: medium < hard < expert. Locks the dispatch so
+      // lower tiers are provably unchanged relative to one another.
+      expect(hard.expectedValue).toBeGreaterThan(medium.expectedValue);
+      expect(expert.expectedValue).toBeGreaterThan(hard.expectedValue);
+    });
+
+    test("the expert branch does the deeper trigger-chain analysis (async, worker-offloaded per #1080)", async () => {
+      // A cascade spell yields downstream trigger chains (cascadeThreatBonus > 0).
+      // Expert is the only tier that fully weighs those chains; medium applies
+      // the raw bonus, so expert's threat assessment must be strictly deeper.
+      const cascadeAction: StackAction = {
+        id: "stack_cascade",
+        cardId: "cascade_spell",
+        name: "Bloodbraid Cascade",
+        controller: "player2",
+        type: "spell",
+        manaValue: 4,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+      };
+      const context: StackContext = {
+        currentAction: cascadeAction,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 2, colorless: 1 },
+        availableResponses: [],
+        opponentsRemaining: ["player2"],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+
+      // Sanity-check the precondition: this scenario really produces chains.
+      const probe = new StackInteractionAI(gameState, playerId, "medium");
+      const chains = await probe.evaluateTriggerChains(context);
+      expect(chains.cascadeThreatBonus).toBeGreaterThan(0);
+
+      const mediumThreat = await probe.assessActionThreatWithTriggers(context);
+      const expertAi = new StackInteractionAI(gameState, playerId, "expert");
+      const expertThreat = await expertAi.assessActionThreatWithTriggers(context);
+
+      // Both clamped to [0, 1] (no regression of the clamp invariant).
+      expect(mediumThreat).toBeGreaterThanOrEqual(0);
+      expect(mediumThreat).toBeLessThanOrEqual(1);
+      expect(expertThreat).toBeLessThanOrEqual(1);
+      // Expert's deeper, fuller trigger-chain evaluation.
+      expect(expertThreat).toBeGreaterThan(mediumThreat);
     });
   });
 
