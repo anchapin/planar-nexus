@@ -80,6 +80,7 @@ function createPlayer(
     lossReason: null,
     landsPlayedThisTurn: 0,
     maxLandsPerTurn: 1,
+    foretoldThisTurn: 0,
     manaPool: {
       colorless: 0,
       white: 0,
@@ -563,7 +564,11 @@ function advanceToNextPhase(state: GameState): GameState {
     // Reset land plays for all players at the start of a new turn
     for (const playerId of updatedPlayers.keys()) {
       const player = updatedPlayers.get(playerId)!;
-      updatedPlayers.set(playerId, { ...player, landsPlayedThisTurn: 0 });
+      updatedPlayers.set(playerId, {
+        ...player,
+        landsPlayedThisTurn: 0,
+        foretoldThisTurn: 0,
+      });
     }
 
     // Reset Boast tracking (CR 702.131) - clear attackedLastTurn for all creatures

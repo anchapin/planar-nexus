@@ -2,7 +2,7 @@
  * Zone management for Magic: The Gathering game state
  */
 
-import type { CardInstanceId, PlayerId, Zone } from "./types";
+import type { CardInstance, CardInstanceId, PlayerId, Zone } from "./types";
 import { ZoneType, getZoneKey } from "./types";
 
 /**
@@ -355,4 +355,36 @@ export function exileCards(
     exile: updatedExile,
     exiledCards: cardIds,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Foretell zone representation (CR 702.142 / CR 713)
+//
+// A foretold card lives in its owner's public exile zone but is kept FACE DOWN
+// (`isFaceDown === true`) and flagged `foretold === true`. It is hidden from
+// other players but visible to its owner, who may cast it for its foretell cost
+// on a later turn (CR 702.142c). We model "foretold" as per-card markers rather
+// than a separate zone so the existing exile machinery (move/reveal/cleanup) is
+// reused unchanged.
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether a card is currently foretold (CR 702.142b): exiled face down by its
+ * owner via the Foretell keyword action. The owner may look at it; it is hidden
+ * from other players. A card that is merely exiled (not face down, or not
+ * flagged) is NOT foretold.
+ */
+export function isForetoldCard(card: CardInstance | undefined): boolean {
+  return card?.foretold === true && card.isFaceDown === true;
+}
+
+/**
+ * Return the IDs of all foretold cards currently in the given exile zone.
+ * CR 702.142b: a foretold card is exiled face down and flagged `foretold`.
+ */
+export function getForetoldCardIds(
+  exileZone: Zone,
+  cards: Map<CardInstanceId, CardInstance>,
+): CardInstanceId[] {
+  return exileZone.cardIds.filter((id) => isForetoldCard(cards.get(id)));
 }

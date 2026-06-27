@@ -29,6 +29,7 @@ import {
   parseFlashback,
   parseBestow,
   parseBlitz,
+  parseForetell,
   parseSplitSecond,
   isModalSpell,
   getModesForModalSpell,
@@ -238,7 +239,14 @@ export function castSpell(
   xValue: number = 0,
   isKicked: boolean = false,
   alternativeCost?: {
-    type: "buyback" | "flashback" | "bestow" | "escape" | "spectacle" | "blitz";
+    type:
+      | "buyback"
+      | "flashback"
+      | "bestow"
+      | "escape"
+      | "spectacle"
+      | "blitz"
+      | "foretell";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
   },
@@ -267,10 +275,12 @@ export function castSpell(
     return { success: false, state, error: "Card not found." };
   }
 
-  // Verify the card is in player's hand (or graveyard for Flashback)
+  // Verify the card is in player's hand (or graveyard for Flashback, or exile
+  // for a foretold card cast via Foretell — CR 702.142c).
   let sourceZone: string | null = null;
   const handZone = state.zones.get(`${playerId}-hand`);
   const graveZone = state.zones.get(`${playerId}-graveyard`);
+  const exileZone = state.zones.get(`${playerId}-exile`);
 
   if (handZone && handZone.cardIds.includes(cardId)) {
     sourceZone = `${playerId}-hand`;
@@ -280,6 +290,13 @@ export function castSpell(
     graveZone.cardIds.includes(cardId)
   ) {
     sourceZone = `${playerId}-graveyard`;
+  } else if (
+    alternativeCost?.type === "foretell" &&
+    exileZone &&
+    exileZone.cardIds.includes(cardId)
+  ) {
+    // CR 702.142c: a foretold card is cast from its owner's exile.
+    sourceZone = `${playerId}-exile`;
   } else if (!handZone || !handZone.cardIds.includes(cardId)) {
     return { success: false, state, error: "Card not in hand." };
   }
@@ -414,6 +431,25 @@ export function castSpell(
         }
         break;
       }
+      case "foretell": {
+        // CR 702.142c - Foretell: an alternative cost that REPLACES the mana
+        // cost (not an additional cost). The printed foretell cost is paid
+        // instead of the mana cost; the spell's mana value is unchanged and
+        // other additional costs/taxes still apply on top. Subtract the printed
+        // mana-cost component and add the foretell-cost component so additional
+        // costs are preserved (same treatment as Blitz).
+        const foretellInfo = parseForetell(card.cardData.oracle_text || "");
+        if (foretellInfo.hasForetell && foretellInfo.foretellCost) {
+          totalGeneric += foretellInfo.foretellCost.generic - manaCost.generic;
+          totalWhite += foretellInfo.foretellCost.white - manaCost.white;
+          totalBlue += foretellInfo.foretellCost.blue - manaCost.blue;
+          totalBlack += foretellInfo.foretellCost.black - manaCost.black;
+          totalRed += foretellInfo.foretellCost.red - manaCost.red;
+          totalGreen += foretellInfo.foretellCost.green - manaCost.green;
+          alternativeCostsUsed.push("foretell");
+        }
+        break;
+      }
     }
   }
 
@@ -504,6 +540,20 @@ export function castSpell(
   }
   updatedZones.set("stack", moved.to);
 
+  // CR 702.142c - Foretell: reveal the card as it is announced on the stack.
+  // Turn it face up and clear the foretold marker so it is visible to everyone
+  // and no longer treated as a foretold card while on the stack / resolving.
+  let updatedCards = currentState.cards;
+  if (alternativeCost?.type === "foretell") {
+    updatedCards = new Map(currentState.cards);
+    updatedCards.set(cardId, {
+      ...card,
+      isFaceDown: false,
+      foretold: false,
+      currentZoneKey: "stack",
+    });
+  }
+
   // Add stack object to stack
   const updatedStack = [...currentState.stack, stackObject];
 
@@ -539,6 +589,7 @@ export function castSpell(
     state: {
       ...currentState,
       zones: updatedZones,
+      cards: updatedCards,
       stack: updatedStack,
       players: updatedPlayers,
       priorityPlayerId: playerIds[nextIndex],

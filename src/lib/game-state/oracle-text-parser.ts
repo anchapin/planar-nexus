@@ -591,6 +591,7 @@ export function extractKeywords(
     // Deciduous mechanics
     "cycling",
     "flashback",
+    "foretell", // CR 702.142
     "kicker",
     "convoke",
     "proliferate",
@@ -1807,6 +1808,7 @@ export enum AlternativeCostType {
   SPECTACLE = "spectacle",
   BLAZE = "blaze",
   BLITZ = "blitz",
+  FORETELL = "foretell",
   OTHER = "other",
 }
 
@@ -1909,6 +1911,28 @@ export function parseAlternativeCost(oracleText: string): AlternativeCostInfo {
       additionalRequirement: "Gains haste, dies-draw, and is sacrificed at EOT",
       isAvailable: true,
       description: `Blitz ${blitzMatch[1]}`,
+    };
+  }
+
+  // Check for Foretell (CR 702.142)
+  // "Foretell [cost]" — the printed foretell cost is the alternative cost for
+  // casting a foretold card from exile. Foretell itself is a two-step mechanic:
+  // pay {2} to exile the card face down (CR 702.142b), then later cast it from
+  // exile for [cost] (CR 702.142c). This parser surfaces [cost]; the {2} exile
+  // cost is a constant of the keyword action, not part of this cost.
+  const foretellMatch = oracleText.match(
+    /foretell\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (foretellMatch) {
+    const manaCost = parseManaCost(foretellMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.FORETELL,
+      manaCost,
+      additionalRequirement:
+        "Cast from exile (must be foretold); revealed on cast",
+      isAvailable: true,
+      description: `Foretell ${foretellMatch[1]}`,
     };
   }
 
@@ -2104,5 +2128,44 @@ export function parseBlitz(oracleText: string): {
     hasBlitz: true,
     blitzCost,
     description: `Blitz ${blitzMatch[1]}`,
+  };
+}
+
+/**
+ * Parse the Foretell keyword from oracle text.
+ *
+ * CR 702.142: "Foretell [cost]" is a static ability. The printed [cost] is the
+ * alternative cost for casting a foretold card from exile on a later turn
+ * (CR 702.142c) — the spell's mana value is unchanged and other costs/taxes
+ * still apply. The {2} paid to exile the card face down (CR 702.142b) is a
+ * constant of the keyword action and is NOT part of this cost.
+ *
+ * Example oracle text: "Foretell {1}{U}" (e.g. Saw It Coming). The reminder
+ * text ("During your turn, you may pay {2} and exile this card from your hand
+ * face down...") is not part of the parsed cost.
+ */
+export function parseForetell(oracleText: string): {
+  hasForetell: boolean;
+  foretellCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasForetell: false, foretellCost: null, description: "" };
+  }
+
+  const foretellMatch = oracleText.match(
+    /foretell\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+
+  if (!foretellMatch) {
+    return { hasForetell: false, foretellCost: null, description: "" };
+  }
+
+  const foretellCost = parseManaCost(foretellMatch[1]);
+
+  return {
+    hasForetell: true,
+    foretellCost,
+    description: `Foretell ${foretellMatch[1]}`,
   };
 }

@@ -290,7 +290,10 @@ export class ValidationService {
     }
 
     // Get the card
-    const data = action.data as { cardId?: string };
+    const data = action.data as {
+      cardId?: string;
+      alternativeCost?: { type?: string };
+    };
     const cardId = data.cardId;
     if (!cardId) {
       return {
@@ -309,14 +312,23 @@ export class ValidationService {
       };
     }
 
-    // Verify the card is in player's hand
+    // Verify the card is in a zone the player may cast from. Default: hand.
+    // CR 702.142c - Foretell: a foretold card is cast from its owner's exile.
+    const altType = data.alternativeCost?.type;
     const handZone = state.zones.get(`${action.playerId}-hand`);
-    if (!handZone || !handZone.cardIds.includes(cardId)) {
-      return {
-        isValid: false,
-        reason: "Card not in hand",
-        message: "Card is not in your hand.",
-      };
+    const inHand = handZone?.cardIds.includes(cardId) ?? false;
+    if (!inHand) {
+      const exileZone = state.zones.get(`${action.playerId}-exile`);
+      const inExile = exileZone?.cardIds.includes(cardId) ?? false;
+      const isForetold =
+        inExile && card.foretold === true && card.isFaceDown === true;
+      if (!(altType === "foretell" && isForetold)) {
+        return {
+          isValid: false,
+          reason: "Card not in hand",
+          message: "Card is not in your hand.",
+        };
+      }
     }
 
     // CR 702.60b - Split second: while a spell with split second is on the
@@ -332,10 +344,15 @@ export class ValidationService {
       };
     }
 
-    // Validate mana costs are paid (check player has enough mana)
-    const manaValidation = this.validateManaCost(state, player, card);
-    if (!manaValidation.isValid) {
-      return manaValidation;
+    // Validate mana costs are paid (check player has enough mana). Foretell
+    // (CR 702.142c) REPLACES the mana cost with the printed foretell cost, so
+    // the printed-cost check here is not authoritative — castSpell recomputes
+    // and charges the foretell cost. Skip it to avoid a false rejection.
+    if (altType !== "foretell") {
+      const manaValidation = this.validateManaCost(state, player, card);
+      if (!manaValidation.isValid) {
+        return manaValidation;
+      }
     }
 
     // Check timing rules (Sorcery vs Instant)
