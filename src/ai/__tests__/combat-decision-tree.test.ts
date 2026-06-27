@@ -14,6 +14,11 @@ import {
   type BlockDecision,
 } from "../decision-making/combat-decision-tree";
 import { predictOpponentBlocks } from "../decision-making/block-prediction";
+import {
+  resolveDifficultyConfig,
+  type DifficultyLevel,
+  type DifficultyFormat,
+} from "../ai-difficulty";
 import type {
   AIGameState,
   AIPlayerState,
@@ -907,6 +912,234 @@ describe("CombatDecisionTree", () => {
       expect(aggroPred.predictions[0].blockProbability).not.toBe(
         controlPred.predictions[0].blockProbability,
       );
+    });
+  });
+
+  describe("combat blunder frequency by difficulty (#994)", () => {
+    const TIERS: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];
+
+    // mulberry32 — small, fast, deterministic PRNG so blunder-rate assertions
+    // are reproducible on every CI run (no Math.random flakiness).
+    function seededRng(seed: number): () => number {
+      let s = seed >>> 0;
+      return () => {
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    it("exposes the per-tier blunder chance from the unified difficulty config", () => {
+      for (const tier of TIERS) {
+        const ai = new CombatDecisionTree(
+          createTestGameState(),
+          "player1",
+          tier,
+        );
+        // Combat reads the SAME knob the rest of the AI uses (composition with
+        // the unified taxonomy #1064/#1192), via resolveDifficultyConfig.
+        expect(ai.getCombatBlunderChance()).toBe(
+          resolveDifficultyConfig(tier).blunderChance,
+        );
+      }
+    });
+
+    it("blunder chance is monotonic in skill: easy > medium > hard > expert", () => {
+      const chances = TIERS.map((tier) =>
+        new CombatDecisionTree(
+          createTestGameState(),
+          "player1",
+          tier,
+        ).getCombatBlunderChance(),
+      );
+      expect(chances[0]).toBeGreaterThan(chances[1]);
+      expect(chances[1]).toBeGreaterThan(chances[2]);
+      expect(chances[2]).toBeGreaterThan(chances[3]);
+    });
+
+    it("composes with per-format difficulty config through resolveDifficultyConfig", () => {
+      const formats: DifficultyFormat[] = [
+        "commander",
+        "constructed",
+        "limited",
+      ];
+      for (const tier of TIERS) {
+        for (const format of formats) {
+          const ai = new CombatDecisionTree(
+            createTestGameState(),
+            "player1",
+            tier,
+          );
+          ai.setDifficultyFormat(format);
+          // The combat path resolves through the same (tier, format) lookup, so
+          // any future per-format blunderChance override is picked up here.
+          expect(ai.getCombatBlunderChance()).toBe(
+            resolveDifficultyConfig(tier, format).blunderChance,
+          );
+        }
+      }
+    });
+
+    // --- Attack decisions: the optimal call is inverted at the per-tier rate ---
+    // Both the direct-EV path (easy) and the block-prediction path (medium+)
+    // run the same blunder roll.
+
+    it("inverts an optimal attack into a hold when the blunder roll fires (easy, direct-EV path)", () => {
+      // Uncontested 4/4 flyer vs an 8-life opponent: aggressive strategy, high
+      // EV (~1.2) -> optimal decision is to attack.
+      const state = createTestGameState(
+        20,
+        8,
+        [
+          createMockPermanent("a1", "Angel", "creature", 4, 4, false, 4, [
+            "flying",
+          ]),
+        ],
+        [],
+      );
+
+      const optimal = new CombatDecisionTree(state, "player1", "easy");
+      optimal.setCombatRng(() => 1); // never fires -> optimal attack stands
+      const optimalPlan = optimal.generateAttackPlan();
+      expect(optimalPlan.attacks).toHaveLength(1);
+      expect(optimalPlan.attacks[0].shouldAttack).toBe(true);
+
+      const ai = new CombatDecisionTree(state, "player1", "easy");
+      ai.setCombatRng(() => 0); // always fires -> attack blundered to hold
+      expect(ai.generateAttackPlan().attacks).toHaveLength(0);
+    });
+
+    it("inverts an optimal hold into an attack when the blunder roll fires (easy)", () => {
+      // 1/1 into a 5/5 blocker at even life: defensive strategy, EV ~-0.8 ->
+      // optimal decision is to hold the attacker back.
+      const state = createTestGameState(
+        20,
+        20,
+        [createMockPermanent("a1", "Llanowar", "creature", 1, 1, false, 1)],
+        [createMockPermanent("b1", "Serra", "creature", 5, 5, false, 5)],
+      );
+
+      const optimal = new CombatDecisionTree(state, "player1", "easy");
+      optimal.setCombatRng(() => 1); // never fires -> doomed attacker held back
+      expect(optimal.generateAttackPlan().attacks).toHaveLength(0);
+
+      const ai = new CombatDecisionTree(state, "player1", "easy");
+      ai.setCombatRng(() => 0); // always fires -> doomed attacker sent in
+      const blundered = ai.generateAttackPlan();
+      expect(blundered.attacks).toHaveLength(1);
+      expect(blundered.attacks[0].shouldAttack).toBe(true);
+    });
+
+    it("applies the blunder on the block-prediction attack path (medium+)", () => {
+      // medium enables useBlockPrediction, so evaluateAttacker resolves via the
+      // predicted-EV branch (buildAttackDecision). The same roll inverts there.
+      const state = createTestGameState(
+        20,
+        8,
+        [
+          createMockPermanent("a1", "Angel", "creature", 4, 4, false, 4, [
+            "flying",
+          ]),
+        ],
+        [],
+      );
+
+      const optimal = new CombatDecisionTree(state, "player1", "medium");
+      optimal.setCombatRng(() => 1);
+      expect(optimal.generateAttackPlan().attacks).toHaveLength(1);
+
+      const ai = new CombatDecisionTree(state, "player1", "medium");
+      ai.setCombatRng(() => 0);
+      expect(ai.generateAttackPlan().attacks).toHaveLength(0);
+    });
+
+    // --- Block decisions: the optimal call is inverted at the per-tier rate ---
+
+    it("inverts an optimal block into a no-block when the blunder roll fires", () => {
+      // 3/3 blocker vs a 2/2 attacker: blocker kills attacker and survives ->
+      // blockValue 0.8 -> optimal decision is to block.
+      const state = createTestGameState(
+        20,
+        20,
+        [createMockPermanent("b1", "Bear", "creature", 3, 3, false, 2)],
+        [],
+      );
+      const attackers = [createMockPermanent("a1", "Goblin", "creature", 2, 2)];
+
+      const optimal = new CombatDecisionTree(state, "player1", "easy");
+      optimal.setCombatRng(() => 1); // never fires -> profitable block made
+      expect(optimal.generateBlockingPlan(attackers).blocks).toHaveLength(1);
+
+      const ai = new CombatDecisionTree(state, "player1", "easy");
+      ai.setCombatRng(() => 0); // always fires -> lethal block missed
+      expect(ai.generateBlockingPlan(attackers).blocks).toHaveLength(0);
+    });
+
+    it("inverts an optimal no-block into a block when the blunder roll fires", () => {
+      // 2/2 blocker (mv 3) vs a 5/5 attacker at 20 life: chump that loses the
+      // blocker without killing the attacker -> blockValue -0.2 -> no block.
+      const state = createTestGameState(
+        20,
+        20,
+        [createMockPermanent("b1", "Bear", "creature", 2, 2, false, 3)],
+        [],
+      );
+      const attackers = [createMockPermanent("a1", "Giant", "creature", 5, 5)];
+
+      const optimal = new CombatDecisionTree(state, "player1", "easy");
+      optimal.setCombatRng(() => 1); // never fires -> harmless attacker ignored
+      expect(optimal.generateBlockingPlan(attackers).blocks).toHaveLength(0);
+
+      const ai = new CombatDecisionTree(state, "player1", "easy");
+      ai.setCombatRng(() => 0); // always fires -> harmless attacker chumped
+      expect(ai.generateBlockingPlan(attackers).blocks).toHaveLength(1);
+    });
+
+    // --- Statistical: the empirical rate scales (and is monotonic) by tier ---
+    // Uses the blocking path: it has no lookahead or tricks, so the decision is
+    // purely optimal + blunder, isolating the per-tier rate.
+
+    it("blunders combat more often as difficulty drops (monotonic, beginner >> expert)", () => {
+      // 3/3 blocker vs a 2/2 attacker -> blockValue 0.8 -> optimal block for
+      // every tier. An inversion = the optimal block is skipped (length 0).
+      const makeState = () =>
+        createTestGameState(
+          20,
+          20,
+          [createMockPermanent("b1", "Bear", "creature", 3, 3, false, 2)],
+          [],
+        );
+      const attackers = [createMockPermanent("a1", "Goblin", "creature", 2, 2)];
+
+      const trials = 400;
+      const countInversions = (tier: DifficultyLevel): number => {
+        let inversions = 0;
+        for (let i = 0; i < trials; i++) {
+          const ai = new CombatDecisionTree(makeState(), "player1", tier);
+          // Same fresh stream per trial index across tiers -> the only thing
+          // that changes is the per-tier blunderChance threshold.
+          ai.setCombatRng(seededRng(0x994 + i));
+          if (ai.generateBlockingPlan(attackers).blocks.length === 0)
+            inversions++;
+        }
+        return inversions;
+      };
+
+      const counts = TIERS.map(countInversions);
+
+      // Monotonic in skill: easy blunders most, expert least.
+      expect(counts[0]).toBeGreaterThan(counts[1]);
+      expect(counts[1]).toBeGreaterThan(counts[2]);
+      expect(counts[2]).toBeGreaterThan(counts[3]);
+
+      // Beginner collapses to easy (LEGACY_DIFFICULTY_ALIASES), so it blunders
+      // as much as easy and far more than expert.
+      expect(countInversions("easy")).toBe(counts[0]);
+
+      // Absolute bounds (issue acceptance: easy >= ~15%, expert <= ~5%).
+      expect(counts[0] / trials).toBeGreaterThanOrEqual(0.15);
+      expect(counts[3] / trials).toBeLessThanOrEqual(0.05);
     });
   });
 });

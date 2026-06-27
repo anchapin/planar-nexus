@@ -42,7 +42,11 @@ import {
   type CombatTrickHoldDecision,
   type CombatTrickHoldInput,
 } from "./combat-trick-probability";
-import type { DifficultyFormat, DifficultyLevel } from "../ai-difficulty";
+import {
+  resolveDifficultyConfig,
+  type DifficultyFormat,
+  type DifficultyLevel,
+} from "../ai-difficulty";
 import {
   LookaheadEngine,
   HeuristicTable,
@@ -328,6 +332,12 @@ export class CombatDecisionTree {
    * (#1069) into trick bluff/hold decisions. Set via {@link setDifficultyFormat}.
    */
   private difficultyFormat?: DifficultyFormat;
+  /**
+   * Injectable RNG for the combat blunder roll (issue #994). Defaults to
+   * {@link Math.random}; tests pass a seeded generator so per-difficulty
+   * blunder rates can be asserted deterministically without flakiness.
+   */
+  private combatRng: () => number = Math.random;
   constructor(
     gameState: GameState,
     aiPlayerId: string,
@@ -415,6 +425,40 @@ export class CombatDecisionTree {
    */
   setDifficultyFormat(format?: DifficultyFormat): void {
     this.difficultyFormat = format;
+  }
+
+  /**
+   * Inject a deterministic RNG for the combat blunder roll (issue #994).
+   *
+   * Production code leaves the default {@link Math.random}; tests pass a
+   * seeded generator to assert per-difficulty blunder rates without flakiness.
+   */
+  setCombatRng(rng: () => number): void {
+    this.combatRng = rng;
+  }
+
+  /**
+   * The per-tier probability that a single combat decision is blundered
+   * (issue #994).
+   *
+   * Resolved through {@link resolveDifficultyConfig} so it composes with the
+   * unified difficulty taxonomy (#1064/#1192) and the per-format override
+   * deltas (#1069) — combat blunders scale with exactly the same config the
+   * rest of the AI uses. Monotonic in skill: easy (0.25) > medium (0.10) >
+   * hard (0.05) > expert (0.02), so weaker tiers blunder more often.
+   */
+  getCombatBlunderChance(): number {
+    return resolveDifficultyConfig(this.difficulty, this.difficultyFormat)
+      .blunderChance;
+  }
+
+  /**
+   * Roll whether the current combat decision should be blundered (issue #994).
+   * Uses the injectable {@link combatRng} so the rate is deterministic and
+   * testable.
+   */
+  private shouldCombatBlunder(): boolean {
+    return this.combatRng() < this.getCombatBlunderChance();
   }
 
   /**
@@ -837,7 +881,19 @@ export class CombatDecisionTree {
       );
     }
 
-    if (trickDiscountedValue >= attackThreshold) {
+    // Optimal attack/hold call from the evaluated expected value.
+    let shouldAttackOptimal = trickDiscountedValue >= attackThreshold;
+
+    // Issue #994: lower tiers blunder combat decisions. With probability equal
+    // to the tier's blunderChance, invert the optimal call — easy AI attacks
+    // doomed creatures or holds back profitable attackers most often; expert
+    // almost never deviates. The roll uses the injectable combatRng so the
+    // per-difficulty rate is deterministic and testable.
+    if (this.shouldCombatBlunder()) {
+      shouldAttackOptimal = !shouldAttackOptimal;
+    }
+
+    if (shouldAttackOptimal) {
       shouldAttack = true;
       target = bestTarget!;
       expectedValue = Math.max(0, Math.min(1, trickDiscountedValue));
@@ -895,7 +951,14 @@ export class CombatDecisionTree {
 
     const hasEvasion = evasionBonus > 0;
     const expectedValue = Math.max(0, Math.min(1, predictedEV));
-    const shouldAttack = predictedEV >= attackThreshold;
+    // Optimal attack/hold from the predicted-EV path, then apply the
+    // per-difficulty combat blunder roll (issue #994) — same mechanism and
+    // rate as the non-block-prediction branch in evaluateAttacker, so blunder
+    // frequency is monotonic in skill across both paths.
+    let shouldAttack = predictedEV >= attackThreshold;
+    if (this.shouldCombatBlunder()) {
+      shouldAttack = !shouldAttack;
+    }
     const riskLevel = shouldAttack
       ? this.calculateAttackRisk(creature, opponentAnalyses)
       : 0;
@@ -1396,8 +1459,22 @@ export class CombatDecisionTree {
       }
     }
 
+    // Optimal block/hold call from the evaluated block value.
+    let shouldBlockOptimal = blockValue > 0;
+
+    // Issue #994: lower tiers blunder block decisions too. With probability
+    // equal to the tier's blunderChance, invert the optimal call — easy AI
+    // misses a profitable/lethal block or chump-blocks a harmless attacker;
+    // expert almost never deviates. Same roll + per-tier rate as the attack
+    // path, so combat blunder frequency is monotonic in skill across both
+    // attack and block decisions and composes with the unified difficulty
+    // config (#1064/#1192 + per-format #1069).
+    if (this.shouldCombatBlunder()) {
+      shouldBlockOptimal = !shouldBlockOptimal;
+    }
+
     // Decide whether to block
-    if (blockValue > 0) {
+    if (shouldBlockOptimal) {
       blocks.push({
         blockerId: bestBlocker.id,
         attackerId: attacker.id,
