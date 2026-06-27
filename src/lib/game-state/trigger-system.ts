@@ -25,7 +25,9 @@ import type {
 import { Phase, ZoneType, isOnBattlefield } from "./types";
 import { isCreature } from "./card-instance";
 import type { TriggeredAbilityInstance } from "./abilities";
+import { evaluateInterveningIfClause } from "./abilities";
 import { hasProwess, getProwessInstanceCount } from "./evergreen-keywords";
+import { parseTriggeredAbilities } from "./oracle-text-parser";
 
 /**
  * Trigger condition types for the new trigger system
@@ -127,6 +129,7 @@ export function detectTurnStartTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any, // Cast to existing TriggerContext type
         });
       }
@@ -185,6 +188,7 @@ export function detectUntapStepTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -240,6 +244,7 @@ export function detectTurnEndTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -383,6 +388,7 @@ export function detectDamageTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -439,6 +445,7 @@ export function detectCreatureDeathTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -522,6 +529,7 @@ export function detectLifeLossTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -591,6 +599,7 @@ export function detectSpellCastTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -740,6 +749,7 @@ export function detectStateTriggers(
           effect: ability.effect,
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+          interveningIf: ability.interveningIf,
           context: context as any,
         });
       }
@@ -777,6 +787,7 @@ export function putTriggersOnStack(
       variableValues: new Map(),
       isCountered: false,
       timestamp: trigger.timestamp,
+      interveningIf: trigger.interveningIf,
     };
 
     currentState = {
@@ -851,67 +862,19 @@ function sortTriggersAPNAP(
 }
 
 /**
- * Evaluate a state condition for intervening "if" clauses
- * Example: "if you have 10 or less life"
+ * Evaluate an intervening "if" clause for the trigger-system detect functions.
+ *
+ * Delegates to the shared {@link evaluateInterveningIfClause} in `abilities.ts`
+ * so the trigger-time gate (CR 603.4) uses exactly the same logic as the
+ * resolution-time re-check, and so that an unrecognised clause evaluates to
+ * `false` rather than the previous (illegal) `true`.
  */
 function evaluateStateCondition(
   condition: string,
   state: GameState,
   playerId: PlayerId,
 ): boolean {
-  const lowerCondition = condition.toLowerCase();
-
-  // Life total conditions
-  const lifeMatch = lowerCondition.match(/you have (\d+) or less life/);
-  if (lifeMatch) {
-    const threshold = parseInt(lifeMatch[1], 10);
-    const player = state.players.get(playerId);
-    if (player) {
-      return player.life <= threshold;
-    }
-    return false;
-  }
-
-  // Life total conditions (alternative phrasing)
-  const lifeMatch2 = lowerCondition.match(/your life total is (\d+) or less/);
-  if (lifeMatch2) {
-    const threshold = parseInt(lifeMatch2[1], 10);
-    const player = state.players.get(playerId);
-    if (player) {
-      return player.life <= threshold;
-    }
-    return false;
-  }
-
-  // Poison counter conditions
-  const poisonMatch = lowerCondition.match(
-    /you have (\d+) or more poison counters/,
-  );
-  if (poisonMatch) {
-    const threshold = parseInt(poisonMatch[1], 10);
-    const player = state.players.get(playerId);
-    if (player) {
-      return player.poisonCounters >= threshold;
-    }
-    return false;
-  }
-
-  // Cards in hand conditions
-  const handMatch = lowerCondition.match(
-    /you have (\d+) or more cards in hand/,
-  );
-  if (handMatch) {
-    const threshold = parseInt(handMatch[1], 10);
-    const handZone = state.zones.get(`${playerId}-hand`);
-    if (handZone) {
-      return handZone.cardIds.length >= threshold;
-    }
-    return false;
-  }
-
-  // Default to true if condition not recognized
-  // Full implementation would handle all possible conditions
-  return true;
+  return evaluateInterveningIfClause(condition, state, playerId);
 }
 
 /**
@@ -960,110 +923,28 @@ interface ParsedAbility {
 }
 
 /**
- * Get triggered abilities from card data
- * This is a simplified version - in production would use proper oracle text parsing
+ * Get triggered abilities from card data.
+ *
+ * Detection is delegated to {@link parseTriggeredAbilities} in
+ * `oracle-text-parser.ts` (resolves issue #1057): the previous implementation
+ * used a single inline regex that could not separate the trigger condition,
+ * the CR 603.4 intervening "if" clause, and the effect. The shared parser now
+ * produces typed `{ trigger, effect, interveningIf }` objects, including the
+ * intervening-if clause which the detect functions gate on at trigger time and
+ * which is re-checked at resolution (CR 603.4).
  */
 function getTriggeredAbilitiesFromCard(
   cardData: CardInstance["cardData"],
 ): ParsedAbility[] {
-  const abilities: ParsedAbility[] = [];
-  const oracleText = cardData.oracle_text || "";
-
-  // Simple pattern matching for triggered abilities
-  // This would be replaced with proper oracle text parsing in production
-
-  // Match "When X..." / "Whenever X..." / "At X..."
-  // Require a comma separator between the trigger clause and its effect (standard
-  // MTG oracle wording). The clause is group 2, the effect is group 3.
-  const triggerRegex = /(when|whenever|at)\s+(.+?),\s*(.+?)(?:\.|$)/gi;
-  let match;
-
-  while ((match = triggerRegex.exec(oracleText)) !== null) {
-    const [, , triggerClause, effect] = match;
-
-    // Parse trigger clause
-    if (
-      triggerClause.includes("enters the battlefield") ||
-      triggerClause.includes("enters battlefield")
-    ) {
-      abilities.push({
-        trigger: { event: "entersBattlefield" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("leaves the battlefield") ||
-      triggerClause.includes("leaves battlefield")
-    ) {
-      abilities.push({
-        trigger: { event: "leavesBattlefield" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("dies") ||
-      triggerClause.includes("creature dies")
-    ) {
-      abilities.push({
-        trigger: { event: "dies" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("deals damage") ||
-      triggerClause.includes("deal damage")
-    ) {
-      abilities.push({
-        trigger: { event: "damageDealt" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("beginning of your untap") ||
-      triggerClause.includes("beginning of your untap step")
-    ) {
-      abilities.push({
-        trigger: { event: "untapStep" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("beginning of your upkeep") ||
-      triggerClause.includes("at the beginning")
-    ) {
-      abilities.push({
-        trigger: { event: "upkeep" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("end of turn") ||
-      triggerClause.includes("at end of turn")
-    ) {
-      abilities.push({
-        trigger: { event: "endOfTurn" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("you lose life") ||
-      triggerClause.includes("loses life")
-    ) {
-      abilities.push({
-        trigger: { event: "lifeLost" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("you gain life") ||
-      triggerClause.includes("gains life")
-    ) {
-      abilities.push({
-        trigger: { event: "lifeGain" },
-        effect: effect.trim(),
-      });
-    } else if (
-      triggerClause.includes("you cast") ||
-      triggerClause.includes("cast a")
-    ) {
-      abilities.push({
-        trigger: { event: "spellCast" },
-        effect: effect.trim(),
-      });
-    }
-  }
-
-  return abilities;
+  return parseTriggeredAbilities(cardData.oracle_text || "").map((parsed) => ({
+    trigger: {
+      event: parsed.trigger.event,
+      source: parsed.trigger.source,
+      // The oracle parser does not emit a spellType; leaving it undefined makes
+      // the spellCast detect branch fall back to "matches any spell".
+      spellType: undefined,
+    },
+    effect: parsed.effect,
+    interveningIf: parsed.interveningIf,
+  }));
 }
