@@ -23,14 +23,14 @@ export {
   type OpportunityAssessment,
   type EvaluationWeights,
   type DetailedEvaluation,
-} from './game-state-evaluator';
+} from "./game-state-evaluator";
 
 // Examples
 export {
   runAllExamples,
   examples,
   sampleStates,
-} from './game-state-evaluator-example';
+} from "./game-state-evaluator-example";
 
 // Combat Decision Making
 export {
@@ -43,30 +43,36 @@ export {
   type BlockDecision,
   type CombatPlan,
   type CombatTrick,
-} from './decision-making/combat-decision-tree';
+} from "./decision-making/combat-decision-tree";
 
 // Combat Examples
 export {
   runAllCombatExamples,
   combatExamples,
-} from './decision-making/combat-examples';
+} from "./decision-making/combat-examples";
 
 // Combat Validation Tests
 export {
   runAllCombatValidationTests,
   combatValidationTests,
-} from './decision-making/__tests__/combat-ai.validation';
+} from "./decision-making/__tests__/combat-ai.validation";
 
 // AI Difficulty Tuning
 export {
   AIDifficultyManager,
   aiDifficultyManager,
   DIFFICULTY_CONFIGS,
+  FORMAT_DIFFICULTY_OVERRIDES,
   getDifficultyConfig,
+  resolveDifficultyConfig,
+  mergeDifficultyConfig,
+  classifyDifficultyFormat,
   isValidDifficulty,
   type AIDifficultyConfig,
+  type AIDifficultyConfigOverride,
   type DifficultyLevel,
-} from './ai-difficulty';
+  type DifficultyFormat,
+} from "./ai-difficulty";
 
 // Mulligan Advisor
 export {
@@ -80,4 +86,4 @@ export {
   type ExpertKeepShipRecord,
   type GameFormat as MulliganFormat,
   type ArchetypeCategory as MulliganArchetypeCategory,
-} from './mulligan-advisor';
+} from "./mulligan-advisor";
