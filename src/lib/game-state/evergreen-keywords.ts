@@ -18,6 +18,7 @@ import type {
   GameState,
   PlayerId,
 } from "./types";
+import { ZoneType } from "./types";
 
 /**
  * Check if a card has a specific keyword
@@ -649,6 +650,9 @@ function getToughnessValue(card: CardInstance): number {
 export function getEffectivePower(card: CardInstance): number {
   let power = getPowerValue(card);
   power += card.powerModifier || 0;
+  // CR 702.108 - Prowess: a continuous "+1/+1 until end of turn" effect applied
+  // in layer 7c (power/toughness). `prowessBoost` holds the active bonus count.
+  power += card.prowessBoost || 0;
   return Math.max(0, power);
 }
 
@@ -670,6 +674,9 @@ export function getEffectiveToughness(card: CardInstance): number {
   if (plusCounters) {
     toughness += plusCounters.count;
   }
+
+  // CR 702.108 - Prowess: continuous "+1/+1 until end of turn" effect (layer 7c).
+  toughness += card.prowessBoost || 0;
 
   return Math.max(0, toughness);
 }
@@ -1055,4 +1062,90 @@ export function getToxicLevel(card: CardInstance): number {
   }
 
   return 0;
+}
+
+// ============== PROWESS (CR 702.108) ==============
+
+/**
+ * Check if a card has the Prowess keyword.
+ *
+ * CR 702.108a: Prowess is a triggered ability. "Whenever you cast a noncreature
+ * spell, this creature gets +1/+1 until end of turn." Prowess is a creature
+ * keyword, so it has no effect on non-creatures.
+ */
+export function hasProwess(card: CardInstance): boolean {
+  if (!hasKeyword(card, "prowess")) {
+    return false;
+  }
+  // CR 702.108: prowess only does something on a creature.
+  const typeLine = card.cardData.type_line?.toLowerCase() || "";
+  return typeLine.includes("creature");
+}
+
+/**
+ * Count the number of prowess instances on a creature.
+ *
+ * CR 702.108b: "Multiple instances of prowess on the same creature trigger
+ * separately." A creature that somehow has prowess twice triggers twice (and
+ * thus gets +2/+2) off a single noncreature spell. Counts explicit keyword-list
+ * entries; falls back to 1 when prowess is present only in oracle text.
+ */
+export function getProwessInstanceCount(card: CardInstance): number {
+  const keywords = card.cardData.keywords || [];
+  const count = keywords.filter((k) => k.toLowerCase() === "prowess").length;
+  return count > 0 ? count : hasProwess(card) ? 1 : 0;
+}
+
+/**
+ * Get the prowess +1/+1 bonus currently active on a creature (for the layer
+ * system / effective power-toughness). Returns 0 when no bonus is active.
+ */
+export function getProwessBonus(card: CardInstance): number {
+  return card.prowessBoost || 0;
+}
+
+/**
+ * Add a prowess +1/+1 bonus to a creature (resolves one prowess trigger).
+ *
+ * Returns updated state with the creature's `prowessBoost` incremented by
+ * `amount` (default 1). The bonus is read by the layer-7 power/toughness path
+ * and removed at end of turn by `clearProwessBoosts`.
+ */
+export function applyProwessBoost(
+  state: GameState,
+  cardId: CardInstanceId,
+  amount = 1,
+): GameState {
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+
+  const updatedCards = new Map(state.cards);
+  updatedCards.set(cardId, {
+    ...card,
+    prowessBoost: (card.prowessBoost || 0) + amount,
+  });
+  return { ...state, cards: updatedCards };
+}
+
+/**
+ * Clear all active prowess bonuses (end-of-turn cleanup, CR 702.108a — the
+ * bonus lasts "until end of turn"). Resets `prowessBoost` to 0 for every
+ * creature on every battlefield zone.
+ */
+export function clearProwessBoosts(state: GameState): GameState {
+  let changed = false;
+  const updatedCards = new Map(state.cards);
+
+  for (const [, zone] of state.zones) {
+    if (zone.type !== ZoneType.BATTLEFIELD) continue;
+    for (const cardId of zone.cardIds) {
+      const card = updatedCards.get(cardId);
+      if (card && (card.prowessBoost || 0) !== 0) {
+        updatedCards.set(cardId, { ...card, prowessBoost: 0 });
+        changed = true;
+      }
+    }
+  }
+
+  return changed ? { ...state, cards: updatedCards } : state;
 }
