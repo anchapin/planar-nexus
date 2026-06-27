@@ -990,6 +990,8 @@ function describeGameAction(action: GameAction): string {
       return "Player drew a card";
     case "discard_card":
       return `Player discarded ${(actionData.cardName as string) || "a card"}`;
+    case "cycle_card":
+      return `Player cycled ${(actionData.cardName as string) || "a card"}`;
     case "tap_card":
       return `Player tapped ${(actionData.cardName as string) || "a card"}`;
     case "untap_card":
