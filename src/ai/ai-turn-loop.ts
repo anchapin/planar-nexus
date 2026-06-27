@@ -21,7 +21,11 @@ import {
   getAvailableAttackers,
   getAIGameState,
 } from "./ai-action-executor";
-import { DIFFICULTY_CONFIGS, type DifficultyLevel } from "./ai-difficulty";
+import {
+  getDifficultyConfig,
+  type DifficultyLevel,
+  type DifficultyFormat,
+} from "./ai-difficulty";
 import { advancePhase } from "@/lib/game-state/turn-phases";
 import { drawCard } from "@/lib/game-state/game-state";
 import { engineToAIState } from "@/lib/game-state/serialization";
@@ -42,6 +46,13 @@ export interface AITurnConfig {
   delayMs: number; // Delay between actions for natural pacing
   skipPhases?: Phase[]; // Phases to skip (for testing)
   onCommentary?: (text: string) => void; // Callback for commentary generation
+  /**
+   * Active format family. When provided, the per-format difficulty overrides
+   * (issue #1069) are applied to the live decision-making config (e.g. the
+   * randomness gate that decides which creatures to cast). Omitting it keeps
+   * the historical global-difficulty behavior.
+   */
+  format?: DifficultyFormat;
   /**
    * Deck-specific playstyle of the AI player. When provided, this drives the
    * per-archetype combat/evaluation weights so the AI adapts its decisions to
@@ -670,8 +681,13 @@ async function castCreatures(
   // Cast creatures we can afford
   for (const { cardId, cmc } of creatures) {
     // Check if we should cast based on difficulty randomness
-    // Higher difficulty = more likely to cast optimal creatures
-    const difficultyConfig = DIFFICULTY_CONFIGS[config.difficulty];
+    // Higher difficulty = more likely to cast optimal creatures.
+    // Resolves the per-format override (issue #1069) so, e.g., Limited's
+    // higher creature tempo influences the cast gate.
+    const difficultyConfig = getDifficultyConfig(
+      config.difficulty,
+      config.format,
+    );
     if (Math.random() < difficultyConfig.randomnessFactor * 0.3) {
       continue; // Skip some creatures based on difficulty
     }
