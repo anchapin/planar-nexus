@@ -35,6 +35,7 @@ import {
   type ICEDiagnosticsSnapshot,
 } from "./ice-diagnostics";
 import { redactSensitive } from "./p2p-log-redact";
+import { p2pLogger } from "./p2p-logger";
 import {
   MAX_MESSAGE_SIZE_BYTES,
   withinStructuralLimits,
@@ -452,7 +453,7 @@ export class WebRTCConnection {
       }
     } catch (error) {
       // #982: redact — RTCPeerConnection errors may embed SDP / ICE config.
-      console.error("[WebRTC] Failed to initialize:", redactSensitive(error));
+      p2pLogger.error("[WebRTC] Failed to initialize:", redactSensitive(error));
       this.updateConnectionState("failed");
       throw error;
     }
@@ -519,7 +520,7 @@ export class WebRTCConnection {
       this.updateConnectionState("reconnecting");
     } catch (error) {
       // #982: redact — relay fallback errors may reference TURN credentials.
-      console.error("[WebRTC] Relay fallback failed:", redactSensitive(error));
+      p2pLogger.error("[WebRTC] Relay fallback failed:", redactSensitive(error));
       this.handleConnectionFailure();
     }
   }
@@ -539,7 +540,7 @@ export class WebRTCConnection {
       return offer;
     } catch (error) {
       // #982: redact — offer creation errors may embed the SDP offer.
-      console.error("[WebRTC] Failed to create offer:", redactSensitive(error));
+      p2pLogger.error("[WebRTC] Failed to create offer:", redactSensitive(error));
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to create offer"),
         "",
@@ -568,7 +569,7 @@ export class WebRTCConnection {
       return answer;
     } catch (error) {
       // #982: redact — handleOffer errors may embed the remote SDP offer.
-      console.error("[WebRTC] Failed to handle offer:", redactSensitive(error));
+      p2pLogger.error("[WebRTC] Failed to handle offer:", redactSensitive(error));
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to handle offer"),
         "",
@@ -603,7 +604,7 @@ export class WebRTCConnection {
       await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (error) {
       // #982: redact — candidate errors may embed the ICE candidate blob.
-      console.error(
+      p2pLogger.error(
         "[WebRTC] Failed to add ICE candidate:",
         redactSensitive(error),
       );
@@ -653,7 +654,7 @@ export class WebRTCConnection {
       this.setupDataChannelEvents();
     } catch (error) {
       // #982: redact — data-channel setup errors may embed peer config.
-      console.error(
+      p2pLogger.error(
         "[WebRTC] Failed to connect to peer:",
         redactSensitive(error),
       );
@@ -684,7 +685,7 @@ export class WebRTCConnection {
 
     this.dataChannel.onerror = (event) => {
       // #982: redact — error events may include diagnostic data channel info.
-      console.error("[WebRTC] Data channel error:", redactSensitive(event));
+      p2pLogger.error("[WebRTC] Data channel error:", redactSensitive(event));
 
       let errorToReport: Error;
 
@@ -709,7 +710,7 @@ export class WebRTCConnection {
 
     this.dataChannel.onmessage = (event) => {
       if (typeof event.data !== "string") {
-        console.warn("[WebRTC] Received non-string message, ignoring");
+        p2pLogger.warn("[WebRTC] Received non-string message, ignoring");
         return;
       }
       this.handleMessage(event.data);
@@ -736,13 +737,13 @@ export class WebRTCConnection {
     try {
       // 1. Rate-limit first: never do parse work for a flooding peer.
       if (!this.rateLimiter.tryAcquire()) {
-        console.warn("[WebRTC] Rate limit exceeded; dropping peer message");
+        p2pLogger.warn("[WebRTC] Rate limit exceeded; dropping peer message");
         return;
       }
 
       // 2. Hard size cap before JSON.parse to bound parser memory allocation.
       if (data.length > MAX_MESSAGE_SIZE_BYTES) {
-        console.warn(
+        p2pLogger.warn(
           "[WebRTC] Rejected oversize peer message",
           data.length,
           ">",
@@ -756,7 +757,7 @@ export class WebRTCConnection {
       // 3. Structural caps: reject pathologically deep / wide payloads before
       // the recursive message handlers run.
       if (!withinStructuralLimits(message)) {
-        console.warn(
+        p2pLogger.warn(
           "[WebRTC] Rejected peer message exceeding structural limits",
         );
         return;
@@ -796,7 +797,7 @@ export class WebRTCConnection {
     } catch (error) {
       // #982: redact — JSON.parse errors include the raw (potentially
       // attacker-controlled, potentially sensitive) payload in their message.
-      console.error(
+      p2pLogger.error(
         "[WebRTC] Failed to parse message:",
         redactSensitive(error),
       );
@@ -1263,7 +1264,7 @@ export class WebRTCConnection {
    */
   send(message: P2PMessage): void {
     if (!this.dataChannel || this.dataChannel.readyState !== "open") {
-      console.warn("[WebRTC] Data channel not ready");
+      p2pLogger.warn("[WebRTC] Data channel not ready");
       return;
     }
 
@@ -1504,7 +1505,7 @@ export class WebRTCConnection {
       return await this.peerConnection.getStats();
     } catch (error) {
       // #982: redact — getStats errors may reference ICE candidates.
-      console.error("[WebRTC] Failed to get stats:", redactSensitive(error));
+      p2pLogger.error("[WebRTC] Failed to get stats:", redactSensitive(error));
       return null;
     }
   }

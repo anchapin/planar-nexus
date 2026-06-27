@@ -6,6 +6,8 @@
  * enabling P2P connectivity across various network configurations.
  */
 
+import { p2pLogger } from "./p2p-logger";
+
 /**
  * ICE Server configuration
  */
@@ -186,7 +188,7 @@ export function warnIfNoEnvTurnConfigured(
   if (!result.usedFallback) return;
   if (turnConfigWarningEmitted && !force) return;
   turnConfigWarningEmitted = true;
-  console.warn(
+  p2pLogger.warn(
     '[ICE] No TURN servers configured via NEXT_PUBLIC_TURN_URL / ' +
       'NEXT_PUBLIC_TURN_USER / NEXT_PUBLIC_TURN_PASS. Falling back to public ' +
       'OpenRelay TURN servers, which are rate-limited and not suitable for ' +
@@ -416,7 +418,7 @@ export class ICEConnectionMonitor {
     if (!this.connection) return;
 
     const state = this.connection.iceConnectionState;
-    console.info('[ICE] Connection state:', state);
+    p2pLogger.info('[ICE] Connection state:', state);
     
     this.onStateChange?.(state);
 
@@ -449,7 +451,7 @@ export class ICEConnectionMonitor {
   private startFailureTimeout(): void {
     this.clearFailureTimeout();
     this.failureTimeout = setTimeout(() => {
-      console.info('[ICE] Connection timeout - considering failed');
+      p2pLogger.info('[ICE] Connection timeout - considering failed');
       this.onFailed?.();
     }, this.failureTimeoutMs);
   }
