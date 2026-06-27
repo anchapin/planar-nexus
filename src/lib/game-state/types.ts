@@ -418,6 +418,17 @@ export interface StackObject {
    * in this list causes this spell/ability to be countered.
    */
   wardPaidTargetIds?: string[];
+  /**
+   * Split second (CR 702.60).
+   *
+   * Set on a spell's StackObject when its Oracle text contains "Split second".
+   * Functions only while the spell is on the stack: while any object with
+   * `splitSecond === true` is on the stack, players can't cast other spells or
+   * activate abilities that aren't mana abilities (CR 702.60b). Triggered
+   * abilities and special actions remain legal (CR 702.60b/c). Multiple
+   * instances are redundant (CR 702.60c).
+   */
+  splitSecond?: boolean;
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }
