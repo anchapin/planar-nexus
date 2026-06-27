@@ -15,6 +15,7 @@
 import type {
   CardInstance,
   CardInstanceId,
+  Counter,
   GameState,
   PlayerId,
 } from "./types";
@@ -913,10 +914,21 @@ export function hasPersist(card: CardInstance): boolean {
 
 /**
  * Check if a creature with persist can trigger its ability
- * Returns true if the creature dies WITHOUT a -1/-1 counter on it
+ * Returns true if the creature dies WITHOUT a -1/-1 counter on it.
+ *
+ * Per CR 702.78a / 603.4 this is an intervening-"if": the no-(-1/-1)-counter
+ * condition is checked at the moment the creature dies (and again at
+ * resolution). Because moving a card to the graveyard clears its counters
+ * (see moveCardToZone), callers on the death path MUST pass `countersAtDeath`
+ * — the counters the creature had on the battlefield when it died — otherwise
+ * the check would always pass for a card already in the graveyard.
  */
-export function canPersistTrigger(card: CardInstance): boolean {
-  const minusCounters = card.counters?.find((c) => c.type === "-1/-1");
+export function canPersistTrigger(
+  card: CardInstance,
+  countersAtDeath?: Counter[],
+): boolean {
+  const counters = countersAtDeath ?? card.counters ?? [];
+  const minusCounters = counters.find((c) => c.type === "-1/-1");
   return !minusCounters || minusCounters.count === 0;
 }
 

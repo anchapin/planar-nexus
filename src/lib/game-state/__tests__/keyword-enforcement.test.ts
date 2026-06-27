@@ -612,7 +612,14 @@ describe("Keyword Enforcement — Combat", () => {
     // fewer than two blockers against a menace attacker.
     it("rejects a single blocker assigned to a menace attacker (attacker stays unblocked)", () => {
       const { state, aliceId, bobId } = setupGameWithCreatures(
-        [{ name: "Dire Wolf Prowler", power: 3, toughness: 3, keywords: ["Menace"] }],
+        [
+          {
+            name: "Dire Wolf Prowler",
+            power: 3,
+            toughness: 3,
+            keywords: ["Menace"],
+          },
+        ],
         [{ name: "Solo Blocker", power: 2, toughness: 2 }],
       );
       const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
@@ -641,7 +648,14 @@ describe("Keyword Enforcement — Combat", () => {
 
     it("accepts two blockers assigned to a menace attacker", () => {
       const { state, aliceId, bobId } = setupGameWithCreatures(
-        [{ name: "Dire Wolf Prowler", power: 3, toughness: 3, keywords: ["Menace"] }],
+        [
+          {
+            name: "Dire Wolf Prowler",
+            power: 3,
+            toughness: 3,
+            keywords: ["Menace"],
+          },
+        ],
         [
           { name: "Blocker A", power: 2, toughness: 2 },
           { name: "Blocker B", power: 2, toughness: 2 },
@@ -697,7 +711,14 @@ describe("Keyword Enforcement — Combat", () => {
 
     it("a menace attacker left unblocked (0 blockers) is legal and not flagged as a menace violation", () => {
       const { state, aliceId, bobId } = setupGameWithCreatures(
-        [{ name: "Dire Wolf Prowler", power: 3, toughness: 3, keywords: ["Menace"] }],
+        [
+          {
+            name: "Dire Wolf Prowler",
+            power: 3,
+            toughness: 3,
+            keywords: ["Menace"],
+          },
+        ],
         [{ name: "Blocker", power: 2, toughness: 2 }],
       );
       const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
@@ -731,8 +752,18 @@ describe("Keyword Enforcement — Combat", () => {
           // A ground creature that cannot block flying
           { name: "Ground Blocker", power: 2, toughness: 2 },
           // Two flyers that can block the flying attacker
-          { name: "Flying Blocker A", power: 2, toughness: 2, keywords: ["Flying"] },
-          { name: "Flying Blocker B", power: 2, toughness: 2, keywords: ["Flying"] },
+          {
+            name: "Flying Blocker A",
+            power: 2,
+            toughness: 2,
+            keywords: ["Flying"],
+          },
+          {
+            name: "Flying Blocker B",
+            power: 2,
+            toughness: 2,
+            keywords: ["Flying"],
+          },
         ],
       );
       const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
@@ -756,7 +787,8 @@ describe("Keyword Enforcement — Combat", () => {
       );
       expect(oneFlyerResult.state.combat.blockers.has(attackerId)).toBe(false);
       expect(
-        oneFlyerResult.errors && oneFlyerResult.errors.some((e) => /menace/i.test(e)),
+        oneFlyerResult.errors &&
+          oneFlyerResult.errors.some((e) => /menace/i.test(e)),
       ).toBe(true);
 
       // (b) Ground blocker + flyer → ground blocker filtered out by flying
@@ -776,7 +808,9 @@ describe("Keyword Enforcement — Combat", () => {
           [attackerId, flyingBlockerIds],
         ]),
       );
-      expect(twoFlyersResult.state.combat.blockers.get(attackerId)).toHaveLength(2);
+      expect(
+        twoFlyersResult.state.combat.blockers.get(attackerId),
+      ).toHaveLength(2);
       expect(
         twoFlyersResult.errors &&
           twoFlyersResult.errors.some((e) => /menace/i.test(e)),
@@ -834,7 +868,12 @@ describe("Keyword Enforcement — Combat", () => {
     it("getLandwalkTypes detects the five basic landwalk variants", () => {
       const { state } = setupGameWithCreatures(
         [
-          { name: "Swamp Walker", power: 2, toughness: 2, keywords: ["Swampwalk"] },
+          {
+            name: "Swamp Walker",
+            power: 2,
+            toughness: 2,
+            keywords: ["Swampwalk"],
+          },
         ],
         [],
       );
@@ -849,18 +888,24 @@ describe("Keyword Enforcement — Combat", () => {
       const makeOracle = (text: string) =>
         createMockCreatureWithOracle("X", 1, 1, text);
       expect(
-        getLandwalkTypes({ cardData: makeOracle("Islandwalk") } as CardInstance),
+        getLandwalkTypes({
+          cardData: makeOracle("Islandwalk"),
+        } as CardInstance),
       ).toEqual(["island"]);
       expect(
-        getLandwalkTypes({ cardData: makeOracle("Plainswalk") } as CardInstance),
+        getLandwalkTypes({
+          cardData: makeOracle("Plainswalk"),
+        } as CardInstance),
       ).toEqual(["plains"]);
       expect(
-        getLandwalkTypes(
-          { cardData: makeOracle("Mountainwalk") } as CardInstance,
-        ),
+        getLandwalkTypes({
+          cardData: makeOracle("Mountainwalk"),
+        } as CardInstance),
       ).toEqual(["mountain"]);
       expect(
-        getLandwalkTypes({ cardData: makeOracle("Forestwalk") } as CardInstance),
+        getLandwalkTypes({
+          cardData: makeOracle("Forestwalk"),
+        } as CardInstance),
       ).toEqual(["forest"]);
     });
 
@@ -983,7 +1028,8 @@ describe("Keyword Enforcement — Combat", () => {
 
       expect(result.state.combat.blockers.has(attackerId)).toBe(false);
       expect(
-        result.errors && result.errors!.some((e) => /islandwalk|landwalk/i.test(e)),
+        result.errors &&
+          result.errors!.some((e) => /islandwalk|landwalk/i.test(e)),
       ).toBe(true);
     });
 
@@ -1026,7 +1072,14 @@ describe("Keyword Enforcement — Combat", () => {
             keywords: ["Swampwalk", "Flying"],
           },
         ],
-        [{ name: "Flying Blocker", power: 2, toughness: 2, keywords: ["Flying"] }],
+        [
+          {
+            name: "Flying Blocker",
+            power: 2,
+            toughness: 2,
+            keywords: ["Flying"],
+          },
+        ],
       );
       // Defender has both a Swamp (triggers swampwalk) — so even a flyer can't block.
       placeBasicLand(state, bobId, "swamp");
@@ -1049,7 +1102,8 @@ describe("Keyword Enforcement — Combat", () => {
       // Swampwalk takes priority: even a valid flyer cannot block.
       expect(result.state.combat.blockers.has(attackerId)).toBe(false);
       expect(
-        result.errors && result.errors.some((e) => /swampwalk|landwalk/i.test(e)),
+        result.errors &&
+          result.errors.some((e) => /swampwalk|landwalk/i.test(e)),
       ).toBe(true);
     });
 
@@ -1107,10 +1161,7 @@ describe("Keyword Enforcement — Combat", () => {
       const attacker = state.cards.get(
         state.zones.get(`${aliceId}-battlefield`)!.cardIds[0],
       )!;
-      expect(getLandwalkTypes(attacker).sort()).toEqual([
-        "island",
-        "swamp",
-      ]);
+      expect(getLandwalkTypes(attacker).sort()).toEqual(["island", "swamp"]);
 
       // Defender controls only a Mountain → neither landwalk applies → block legal.
       placeBasicLand(state, bobId, "mountain");
@@ -1560,6 +1611,131 @@ describe("Keyword Enforcement — Triggered Abilities", () => {
       expect(hasPersist(state.cards.get(creatureId)!)).toBe(false);
       const result = handlePersist(state, creatureId);
       expect(result.persistedCards).toHaveLength(0);
+    });
+
+    // ---- Integration through the state-based-action death path ----
+    // These exercise the real destroyCard() -> handlePersist() wiring, where
+    // moveCardToZone() clears the card's counters on the way to the graveyard.
+    // The persist intervening-"if" (CR 702.78a / 603.4) must therefore be
+    // evaluated against the counters the creature had at the moment of death.
+
+    function setupPersistCreatureOnBattlefield(
+      keywords: string[] = ["Persist"],
+      options: {
+        counters?: { type: string; count: number }[];
+        damage?: number;
+        typeLine?: string;
+        power?: number;
+        toughness?: number;
+      } = {},
+    ): { state: GameState; aliceId: PlayerId; creatureId: CardInstanceId } {
+      let state = createInitialGameState(["Alice", "Bob"], 20, false);
+      state = startGame(state);
+      const [aliceId] = Array.from(state.players.keys());
+
+      const data = createMockCreature(
+        "Persist Creature",
+        options.power ?? 2,
+        options.toughness ?? 2,
+        keywords,
+      );
+      if (options.typeLine) {
+        (data as { type_line: string }).type_line = options.typeLine;
+      }
+      const inst = createCardInstance(data, aliceId, aliceId);
+      inst.hasSummoningSickness = false;
+      if (options.counters) inst.counters = options.counters;
+      if (options.damage !== undefined) inst.damage = options.damage;
+      inst.currentZoneKey = `${aliceId}-battlefield`;
+      state.cards.set(inst.id, inst);
+      const bf = state.zones.get(`${aliceId}-battlefield`)!;
+      state.zones.set(`${aliceId}-battlefield`, {
+        ...bf,
+        cardIds: [...bf.cardIds, inst.id],
+      });
+      return { state, aliceId, creatureId: inst.id };
+    }
+
+    it("SBA: a persist creature that takes lethal damage with no -1/-1 counter returns to the battlefield with a -1/-1 counter", () => {
+      const { state, aliceId, creatureId } = setupPersistCreatureOnBattlefield(
+        ["Persist"],
+        { damage: 2 },
+      );
+
+      const result = checkStateBasedActions(state);
+      const bf = result.state.zones.get(`${aliceId}-battlefield`)!.cardIds;
+      const gy = result.state.zones.get(`${aliceId}-graveyard`)!.cardIds;
+
+      expect(bf).toContain(creatureId);
+      expect(gy).not.toContain(creatureId);
+      const counters = result.state.cards.get(creatureId)!.counters;
+      expect(counters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "-1/-1", count: 1 }),
+        ]),
+      );
+    });
+
+    it("SBA (regression): a persist creature that dies WITH a -1/-1 counter stays in the graveyard", () => {
+      const { state, aliceId, creatureId } = setupPersistCreatureOnBattlefield(
+        ["Persist"],
+        { damage: 2, counters: [{ type: "-1/-1", count: 1 }] },
+      );
+
+      const result = checkStateBasedActions(state);
+      const bf = result.state.zones.get(`${aliceId}-battlefield`)!.cardIds;
+      const gy = result.state.zones.get(`${aliceId}-graveyard`)!.cardIds;
+
+      // Persist's intervening-"if" must NOT trigger: it had a -1/-1 counter.
+      expect(gy).toContain(creatureId);
+      expect(bf).not.toContain(creatureId);
+    });
+
+    it("SBA: a creature returned by persist does not persist again on a second death", () => {
+      // First death: no counter -> persist returns it with a -1/-1 counter.
+      const { state, aliceId, creatureId } = setupPersistCreatureOnBattlefield(
+        ["Persist"],
+        { damage: 2 },
+      );
+      const first = checkStateBasedActions(state);
+      expect(
+        first.state.zones.get(`${aliceId}-battlefield`)!.cardIds,
+      ).toContain(creatureId);
+      expect(first.state.cards.get(creatureId)!.counters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "-1/-1", count: 1 }),
+        ]),
+      );
+
+      // Second death: it now has a -1/-1 counter, so persist must not retrigger.
+      const card = first.state.cards.get(creatureId)!;
+      first.state.cards.set(creatureId, { ...card, damage: 2 });
+      const second = checkStateBasedActions(first.state);
+
+      expect(second.state.zones.get(`${aliceId}-graveyard`)!.cardIds).toContain(
+        creatureId,
+      );
+      expect(
+        second.state.zones.get(`${aliceId}-battlefield`)!.cardIds,
+      ).not.toContain(creatureId);
+    });
+
+    it("SBA: a non-creature with persist text is never destroyed or returned by persist", () => {
+      const { state, aliceId, creatureId } = setupPersistCreatureOnBattlefield(
+        ["Persist"],
+        { damage: 5, typeLine: "Enchantment" },
+      );
+
+      expect(hasPersist(state.cards.get(creatureId)!)).toBe(false);
+
+      const result = checkStateBasedActions(state);
+      const bf = result.state.zones.get(`${aliceId}-battlefield`)!.cardIds;
+      const gy = result.state.zones.get(`${aliceId}-graveyard`)!.cardIds;
+
+      // Not a creature -> SBAs do not destroy it on lethal damage, and persist
+      // (creature-only) never applies.
+      expect(bf).toContain(creatureId);
+      expect(gy).not.toContain(creatureId);
     });
   });
 
