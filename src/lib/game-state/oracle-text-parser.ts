@@ -1806,6 +1806,7 @@ export enum AlternativeCostType {
   COMBAT = "combat",
   SPECTACLE = "spectacle",
   BLAZE = "blaze",
+  BLITZ = "blitz",
   OTHER = "other",
 }
 
@@ -1891,6 +1892,23 @@ export function parseAlternativeCost(oracleText: string): AlternativeCostInfo {
       additionalRequirement: "Becomes an Aura attached to target creature",
       isAvailable: true,
       description: `Bestow ${bestowMatch[1]}`,
+    };
+  }
+
+  // Check for Blitz (CR 702.150)
+  // Blitz [cost] — You may cast this card for its blitz cost rather than its
+  // mana cost. If you do, it gains haste and "When this creature dies, draw a
+  // card." Sacrifice it at the beginning of the next end step.
+  const blitzMatch = oracleText.match(/blitz\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+  if (blitzMatch) {
+    const manaCost = parseManaCost(blitzMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.BLITZ,
+      manaCost,
+      additionalRequirement: "Gains haste, dies-draw, and is sacrificed at EOT",
+      isAvailable: true,
+      description: `Blitz ${blitzMatch[1]}`,
     };
   }
 
@@ -2048,5 +2066,43 @@ export function parseBestow(oracleText: string): {
     hasBestow: true,
     bestowCost,
     description: `Bestow ${bestowMatch[1]}`,
+  };
+}
+
+/**
+ * Parse the Blitz keyword from oracle text.
+ *
+ * CR 702.150: "Blitz [cost]" is a static ability that functions while the
+ * spell is on the stack. It offers an alternative cost: "You may cast this
+ * card for [cost] rather than its mana cost." The parsed cost is an alternative
+ * cost (CR 702.150b) — the spell's mana value is unchanged and other costs and
+ * taxes still apply.
+ *
+ * Example oracle text: "Blitz {3}{R}" (e.g. Henchfiend of Korlash). The
+ * reminder text ("If you do, it gains haste and 'When this creature dies, draw
+ * a card.' Sacrifice it at the beginning of the next end step.") is not part of
+ * the cost and is applied by the spell-casting / trigger systems.
+ */
+export function parseBlitz(oracleText: string): {
+  hasBlitz: boolean;
+  blitzCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasBlitz: false, blitzCost: null, description: "" };
+  }
+
+  const blitzMatch = oracleText.match(/blitz\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+
+  if (!blitzMatch) {
+    return { hasBlitz: false, blitzCost: null, description: "" };
+  }
+
+  const blitzCost = parseManaCost(blitzMatch[1]);
+
+  return {
+    hasBlitz: true,
+    blitzCost,
+    description: `Blitz ${blitzMatch[1]}`,
   };
 }

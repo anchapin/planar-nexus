@@ -23,6 +23,7 @@ import type {
   Zone,
   ScryfallCard,
 } from "./types";
+import { ZoneType } from "./types";
 import {
   createToken,
   getToughness,
@@ -254,6 +255,114 @@ export function sacrificeCard(
 
   // Move to graveyard (sacrificed cards go to owner's graveyard)
   return moveCardToZone(state, cardId, "graveyard");
+}
+
+// ---------------------------------------------------------------------------
+// Blitz (CR 702.150)
+//
+// Blitz is an alternative cost. When a creature is cast for its blitz cost it
+// gains haste, a "When this creature dies, draw a card" triggered ability, and
+// a delayed "sacrifice it at the beginning of the next end step" trigger. The
+// `blitz` marker on the CardInstance (set in spell-casting at resolution) is
+// the single source of truth; the helpers below consume it so the effects fire
+// exactly once and only for creatures actually cast via the blitz cost.
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether this permanent was cast for its blitz cost (CR 702.150) this turn.
+ */
+export function hasBlitzMarker(card: CardInstance): boolean {
+  return card.blitz === true;
+}
+
+/**
+ * Result of a Blitz-coupled effect (dies-draw or end-step sacrifice).
+ */
+export interface BlitzEffectResult {
+  /** Updated game state */
+  state: GameState;
+  /** Card IDs that were sacrificed, or cards drawn from the dies-trigger */
+  affectedIds: CardInstanceId[];
+  /** Whether the blitz effect actually applied */
+  applied: boolean;
+}
+
+/**
+ * CR 702.150a — the "When this creature dies, draw a card" delayed trigger.
+ *
+ * Call whenever a creature dies (any cause: lethal damage, destroy, sacrifice,
+ * 0-toughness, etc.). If the dead creature carried the blitz marker, its
+ * controller draws a card and the marker is consumed (so a reanimated or
+ * re-played creature does not draw again).
+ */
+export function resolveBlitzDeathDraw(
+  state: GameState,
+  deadCardId: CardInstanceId,
+): BlitzEffectResult {
+  const card = state.cards.get(deadCardId);
+  if (!card || card.blitz !== true) {
+    return { state, affectedIds: [], applied: false };
+  }
+
+  const controllerId = card.controllerId;
+  // Consume the marker so the draw cannot fire more than once for this cast.
+  const clearedCards = new Map(state.cards);
+  clearedCards.set(deadCardId, { ...card, blitz: false });
+  let currentState: GameState = { ...state, cards: clearedCards };
+
+  const draw = drawCards(currentState, controllerId, 1);
+  currentState = draw.state;
+
+  return {
+    state: currentState,
+    affectedIds: draw.affectedCards ?? [],
+    applied: draw.success,
+  };
+}
+
+/**
+ * CR 702.150a — "Sacrifice it at the beginning of the next end step" delayed
+ * trigger.
+ *
+ * Sacrifices every battlefield creature carrying the blitz marker and resolves
+ * the coupled dies-draw for each (sacrificing a creature causes it to die, so
+ * the controller draws a card). Because sacrificed creatures leave the
+ * battlefield, this naturally fires exactly once — at the first end step the
+ * blitz creature survives to — modelling the "next end step" delayed trigger
+ * without a separate delayed-trigger registry.
+ */
+export function applyBlitzEndStepSacrifice(
+  state: GameState,
+): BlitzEffectResult {
+  const blitzIds: CardInstanceId[] = [];
+  for (const [, zone] of state.zones) {
+    if (zone.type !== ZoneType.BATTLEFIELD) continue;
+    for (const cardId of zone.cardIds) {
+      const card = state.cards.get(cardId);
+      if (card && card.blitz === true) {
+        blitzIds.push(cardId);
+      }
+    }
+  }
+
+  if (blitzIds.length === 0) {
+    return { state, affectedIds: [], applied: false };
+  }
+
+  let currentState = state;
+  const sacrificed: CardInstanceId[] = [];
+  for (const cardId of blitzIds) {
+    const sac = sacrificeCard(currentState, cardId);
+    if (sac.success) {
+      currentState = sac.state;
+      sacrificed.push(cardId);
+      // Sacrifice causes the creature to die → coupled dies-draw (CR 702.150a).
+      const draw = resolveBlitzDeathDraw(currentState, cardId);
+      currentState = draw.state;
+    }
+  }
+
+  return { state: currentState, affectedIds: sacrificed, applied: true };
 }
 
 /**
