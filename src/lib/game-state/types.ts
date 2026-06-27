@@ -151,6 +151,17 @@ export interface CardInstance {
   /** Whether this creature attacked during the previous turn */
   attackedLastTurn: boolean;
 
+  // Prowess keyword (CR 702.108) - +1/+1 bonus active this turn
+  /**
+   * Number of prowess +1/+1 bonuses currently active on this creature (CR
+   * 702.108). Each time the creature's controller casts a noncreature spell,
+   * a prowess trigger adds +1 to this counter (one per prowess instance, CR
+   * 702.108b); the layer-7 power/toughness read path adds `prowessBoost` to
+   * both power and toughness as a continuous "until end of turn" effect. It is
+   * cleared during the end-of-turn cleanup (see `clearProwessBoosts`).
+   */
+  prowessBoost?: number;
+
   // Performance optimization: zone lookup cache (CR 704 - SBA performance)
   /** The zone key where this card currently resides. Updated on zone changes for O(1) lookup */
   currentZoneKey: string | null;

@@ -25,6 +25,7 @@ import type {
 import { Phase, ZoneType, isOnBattlefield } from "./types";
 import { isCreature } from "./card-instance";
 import type { TriggeredAbilityInstance } from "./abilities";
+import { hasProwess, getProwessInstanceCount } from "./evergreen-keywords";
 
 /**
  * Trigger condition types for the new trigger system
@@ -633,6 +634,69 @@ export function detectStormTrigger(
   // Subtract 1 for the storm spell itself, which was counted when it was cast.
   const copyCount = Math.max(0, castThisTurn - 1);
   return { shouldFire: copyCount > 0, copyCount };
+}
+
+/**
+ * Detect the Prowess cast trigger (CR 702.108) for a spell being cast.
+ *
+ * Prowess is a triggered ability that reads: "Whenever you cast a noncreature
+ * spell, this creature gets +1/+1 until end of turn." (CR 702.108a). This
+ * function is the detection half: given the spell a player just cast, it
+ * reports one trigger per prowess instance on each creature that player
+ * controls on the battlefield — but ONLY when the cast spell is noncreature.
+ * "Whenever you cast" means the trigger's source must be controlled by the
+ * spell's caster (CR 702.108a). Multiple instances of prowess on the same
+ * creature trigger separately (CR 702.108b), so each instance yields its own
+ * trigger (and thus its own +1/+1).
+ *
+ * The +1/+1 is applied by `castSpell` (incrementing `prowessBoost`), read by
+ * the layer-7 power/toughness path, and removed at end of turn.
+ */
+export function detectProwessTriggers(
+  state: GameState,
+  spellCardId: CardInstanceId,
+  castingPlayerId: PlayerId,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  const spellCard = state.cards.get(spellCardId);
+  if (!spellCard) return triggers;
+
+  // CR 702.108a — only NONCREATURE spells trigger prowess.
+  const spellTypeLine = spellCard.cardData.type_line?.toLowerCase() || "";
+  if (spellTypeLine.includes("creature")) {
+    return triggers;
+  }
+
+  for (const [cardId, card] of state.cards) {
+    if (!isOnBattlefield(state, cardId)) continue;
+    // "Whenever YOU cast" — only the caster's own prowess creatures trigger.
+    if (card.controllerId !== castingPlayerId) continue;
+    if (!hasProwess(card)) continue;
+
+    // CR 702.108b — each instance of prowess triggers separately.
+    const instances = getProwessInstanceCount(card);
+    const context: TriggerDetectionContext = {
+      spellCardId,
+      triggerType: TriggerConditionType.SPELL_CAST,
+    };
+
+    for (let i = 0; i < instances; i++) {
+      triggers.push({
+        id: generateTriggeredAbilityId(),
+        sourceCardId: cardId,
+        triggeringPlayerId: card.controllerId,
+        triggerCondition: "spellCast",
+        effect: "Prowess — This creature gets +1/+1 until end of turn.",
+        timestamp: Date.now(),
+        sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+        context: context as any,
+      });
+    }
+  }
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
 }
 
 /**

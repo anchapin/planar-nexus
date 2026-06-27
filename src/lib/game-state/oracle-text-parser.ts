@@ -1729,6 +1729,41 @@ export function parseStorm(oracleText: string): StormInfo {
 }
 
 /**
+ * Result of detecting Prowess (CR 702.108).
+ */
+export interface ProwessInfo {
+  hasProwess: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Prowess keyword from oracle text.
+ *
+ * CR 702.108a: Prowess is a triggered ability. "Whenever you cast a noncreature
+ * spell, this creature gets +1/+1 until end of turn." Prowess has no parameters,
+ * so a word-boundary anchored, case-insensitive match is sufficient. The
+ * reminder-text variant is tolerated because the leading keyword word is always
+ * present regardless.
+ *
+ * Example oracle text: "Prowess" (e.g. Monastery Mentor, Soul-Scar Mage,
+ * Adeliz, the Cinder Wind).
+ */
+export function parseProwess(oracleText: string): ProwessInfo {
+  if (!oracleText) {
+    return { hasProwess: false, description: "" };
+  }
+
+  // Word-boundary anchored on both sides: "Prowess" matches, but substrings
+  // inside other words do not. Case-insensitive to be tolerant of casing.
+  const hasProwess = /\bprowess\b/i.test(oracleText);
+
+  return {
+    hasProwess,
+    description: hasProwess ? "Prowess" : "",
+  };
+}
+
+/**
  * Result of detecting Attraction mechanic
  */
 export interface AttractionInfo {

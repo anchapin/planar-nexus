@@ -39,7 +39,7 @@ import {
   getSplitCardHalves,
 } from "./oracle-text-parser";
 import { checkTriggeredAbilities } from "./abilities";
-import { detectStormTrigger } from "./trigger-system";
+import { detectStormTrigger, detectProwessTriggers } from "./trigger-system";
 import { completeHandTargeting } from "./hand-targeting";
 import { destroyCard, createTokenCard } from "./keyword-actions";
 import {
@@ -52,7 +52,7 @@ import {
   parseSpellEffects,
 } from "./effect-resolution";
 import type { CardInstance, StackEffect } from "./types";
-import { canTargetKeyword } from "./evergreen-keywords";
+import { canTargetKeyword, applyProwessBoost } from "./evergreen-keywords";
 import { applyWardResolution } from "./ward-system";
 
 /**
@@ -621,6 +621,26 @@ export function castSpell(
       if (copyResult.success && copyResult.state) {
         finalState = copyResult.state;
       }
+    }
+  }
+
+  // CR 702.108 - Prowess: "Whenever you cast a noncreature spell, this creature
+  // gets +1/+1 until end of turn." The trigger fires on cast for each prowess
+  // instance on each creature the caster controls. Detection lives in
+  // trigger-system (detectProwessTriggers); resolution here stamps the +1/+1
+  // onto each triggering creature's `prowessBoost`, which the layer-7
+  // power/toughness path reads and `clearProwessBoosts` removes at end of turn.
+  // Prowess triggers resolve like storm (on cast) rather than queuing on the
+  // stack, matching the engine's established on-cast-trigger convention.
+  const prowessTriggers = detectProwessTriggers(
+    finalState,
+    cardId,
+    playerId,
+    activePlayerId,
+  );
+  if (prowessTriggers.length > 0) {
+    for (const trigger of prowessTriggers) {
+      finalState = applyProwessBoost(finalState, trigger.sourceCardId, 1);
     }
   }
 

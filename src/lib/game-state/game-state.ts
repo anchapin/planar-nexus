@@ -38,7 +38,7 @@ import {
   checkStateBasedActions as checkSBAs,
   type StateBasedActionResult,
 } from "./state-based-actions";
-import { hasLifelink } from "./evergreen-keywords";
+import { hasLifelink, clearProwessBoosts } from "./evergreen-keywords";
 import { detectUntapStepTriggers, putTriggersOnStack } from "./trigger-system";
 import type { TriggeredAbilityInstance } from "./abilities";
 
@@ -559,7 +559,7 @@ function advanceToNextPhase(state: GameState): GameState {
       priorityPlayerId: nextPlayerId,
     });
     const resultState = untapResult.state;
-    const updatedCards = new Map(resultState.cards);
+    let updatedCards = new Map(resultState.cards);
     updatedPlayers = new Map(resultState.players);
 
     // Reset land plays for all players at the start of a new turn
@@ -582,6 +582,14 @@ function advanceToNextPhase(state: GameState): GameState {
         updatedCards.set(cardId, { ...card, attackedLastTurn: false });
       }
     }
+
+    // CR 702.108 - Prowess: the +1/+1 bonus lasts "until end of turn". Clear
+    // every active prowess bonus as the new turn begins (end-of-turn cleanup).
+    const prowessCleared = clearProwessBoosts({
+      ...resultState,
+      cards: updatedCards,
+    });
+    updatedCards = prowessCleared.cards;
 
     return {
       ...resultState,
