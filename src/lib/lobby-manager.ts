@@ -20,6 +20,10 @@ import { publicLobbyBrowser } from './public-lobby-browser';
 import { validateDeckForLobby } from './format-validator';
 import { getGameModeForPlayerCount, getGameModeConfig } from './game-mode';
 import type { SavedDeck } from '@/app/actions';
+import {
+  TokenBucket,
+  type RateLimitOptions,
+} from './security/rate-limit';
 
 // Default team configurations
 const DEFAULT_TEAMS: Team[] = [
@@ -45,12 +49,47 @@ const DEFAULT_TEAM_SETTINGS: TeamSettings = {
 };
 
 /**
+ * Issue #1277 — per-lobby mutation budget.
+ *
+ * The lobby manager normally processes a small number of player joins +
+ * ready-status flips, but a hostile script on the same origin can drive
+ * `addPlayer` / `updatePlayerStatus` in a tight loop. Cap each mutation
+ * at 60 events / minute with a 10 / second burst budget (token bucket).
+ */
+export const LOBBY_MUTATION_LIMIT: RateLimitOptions = {
+  maxEvents: 60,
+  windowMs: 60_000,
+};
+
+/**
+ * Maximum number of players a single lobby can hold across all of its
+ * state mutations. Issue #1277 row-count cap.
+ */
+export const LOBBY_MAX_PLAYERS = 16;
+
+/**
  * Client-side lobby manager for host game functionality
  * In production, this would sync with a signaling server/WebRTC
  */
 class LobbyManager {
   private currentLobby: GameLobby | null = null;
   private hostPlayerId: string | null = null;
+  /**
+   * Issue #1277 — token-bucket budget that gates every lobby mutation
+   * (`addPlayer`, `removePlayer`, `updatePlayerStatus`, `updatePlayerDeck`,
+   * etc.) so a same-origin script cannot drive the manager into an
+   * unbounded JSON.stringify / localStorage.setItem loop.
+   */
+  private mutationLimiter: TokenBucket;
+  /** Cumulative count of rejected mutations, exposed for tests. */
+  public mutationDropped = 0;
+
+  constructor(limits?: Partial<RateLimitOptions>) {
+    this.mutationLimiter = new TokenBucket({
+      ...LOBBY_MUTATION_LIMIT,
+      ...(limits ?? {}),
+    });
+  }
 
   /**
    * Create a new game lobby
@@ -59,6 +98,20 @@ class LobbyManager {
     const gameCode = generateGameCode();
     const lobbyId = generateLobbyId();
     const hostPlayerId = generatePlayerId();
+
+    // Issue #1277 — refuse to host a lobby with a maxPlayers rosters that
+    // exceed the row-count cap. A misconfigured host creates a lobby that
+    // could not be safely populated.
+    const requested = parseInt(config.maxPlayers);
+    if (
+      !Number.isFinite(requested) ||
+      requested <= 0 ||
+      requested > LOBBY_MAX_PLAYERS
+    ) {
+      throw new Error(
+        `Lobby maxPlayers must be in [1, ${LOBBY_MAX_PLAYERS}] (got ${config.maxPlayers})`,
+      );
+    }
 
     const hostPlayer: Player = {
       id: hostPlayerId,
@@ -140,7 +193,14 @@ class LobbyManager {
    * Add a player to the lobby (simulated for host view)
    */
   addPlayer(playerName: string): Player | null {
+    if (!this.tryConsumeMutation('addPlayer')) return null;
     if (!this.currentLobby) return null;
+
+    // Issue #1277 — bound the player roster so a flooder cannot push an
+    // unbounded number of entries into the lobby.
+    if (this.currentLobby.players.length >= LOBBY_MAX_PLAYERS) {
+      return null;
+    }
 
     // Check if lobby is full
     const maxPlayers = parseInt(this.currentLobby.maxPlayers);
@@ -172,6 +232,7 @@ class LobbyManager {
    * Remove a player from the lobby
    */
   removePlayer(playerId: string): boolean {
+    if (!this.tryConsumeMutation('removePlayer')) return false;
     if (!this.currentLobby) return false;
 
     // Cannot remove host
@@ -200,6 +261,7 @@ class LobbyManager {
    * Update player ready status
    */
   updatePlayerStatus(playerId: string, status: PlayerStatus): boolean {
+    if (!this.tryConsumeMutation('updatePlayerStatus')) return false;
     if (!this.currentLobby) return false;
 
     const player = this.currentLobby.players.find(p => p.id === playerId);
@@ -221,6 +283,13 @@ class LobbyManager {
     deckName: string,
     deck?: SavedDeck
   ): { success: boolean; isValid: boolean; errors: string[] } {
+    if (!this.tryConsumeMutation('updatePlayerDeck')) {
+      return {
+        success: false,
+        isValid: false,
+        errors: ['Lobby mutation budget exceeded'],
+      };
+    }
     if (!this.currentLobby) {
       return { success: false, isValid: false, errors: ['Lobby not found'] };
     }
@@ -255,6 +324,7 @@ class LobbyManager {
    * Update lobby status
    */
   updateLobbyStatus(status: LobbyStatus): boolean {
+    if (!this.tryConsumeMutation('updateLobbyStatus')) return false;
     if (!this.currentLobby) return false;
 
     this.currentLobby.status = status;
@@ -628,6 +698,19 @@ class LobbyManager {
     // This would need to be connected to actual game state
     // For now, return undefined as placeholder
     return undefined;
+  }
+
+  /**
+   * Issue #1277 — consume one token from the per-lobby mutation budget,
+   * incrementing {@link mutationDropped} when the budget is exhausted so
+   * callers (and tests) can observe the rejection.
+   */
+  private tryConsumeMutation(_op: string): boolean {
+    if (this.mutationLimiter.tryAcquire()) {
+      return true;
+    }
+    this.mutationDropped += 1;
+    return false;
   }
 }
 

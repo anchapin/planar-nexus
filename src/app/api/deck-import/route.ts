@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUnsupportedSiteSuggestion } from "@/lib/decklist-utils";
 
 /**
+ * Issue #1277 — body-size cap on the deck-import API.
+ *
+ * Next.js App Router `request.json()` does not enforce a body-size limit by
+ * default. A slow-loris–style client could open a connection, trickle a 10
+ * MB JSON body forever, and exhaust server memory / event-loop capacity.
+ * We cap the request body at 512 KB before deserializing, and we also cap
+ * the returned decklist at {@link MAX_CARDS} rows so the API cannot be
+ * coerced into returning an unbounded string.
+ */
+const MAX_REQUEST_BODY_BYTES = 512 * 1024;
+const MAX_CARDS = 250;
+
+/**
  * Supported deck hosting sites
  */
 interface SupportedSite {
@@ -348,6 +361,22 @@ function detectAndParseSite(
 }
 
 /**
+ * Issue #1277 — cap the number of rows we will accept (and emit) per request
+ * at {@link MAX_CARDS}. A parseable but unbounded decklist (e.g. a vendor
+ * page that embeds an entire collection page) is truncated here.
+ *
+ * `validateDecklist` first checks that at least one card was parsed, then
+ * `capDecklistRows` truncates to {@link MAX_CARDS} rows BEFORE returning the
+ * response so the API cannot be coerced into emitting a multi-megabyte
+ * text payload.
+ */
+function capDecklistRows(decklist: string): string {
+  const lines = decklist.split("\n");
+  if (lines.length <= MAX_CARDS) return decklist;
+  return lines.slice(0, MAX_CARDS).join("\n");
+}
+
+/**
  * Validate that the decklist has at least some cards
  */
 function validateDecklist(decklist: string): {
@@ -370,8 +399,51 @@ function validateDecklist(decklist: string): {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { url } = body;
+    // Issue #1277 — enforce a request body cap BEFORE deserialization so a
+    // streaming attacker cannot exhaust memory by holding the connection
+    // open with a multi-MB body. We use `request.text()` so we can stop
+    // reading as soon as the limit is exceeded; otherwise a malicious
+    // peer could keep the connection alive and starve the event loop.
+    const contentLengthHeader = request.headers.get("content-length");
+    if (
+      contentLengthHeader !== null &&
+      Number(contentLengthHeader) > MAX_REQUEST_BODY_BYTES
+    ) {
+      return NextResponse.json(
+        {
+          error: `Request body too large; max ${MAX_REQUEST_BODY_BYTES} bytes`,
+        },
+        { status: 413 },
+      );
+    }
+
+    const raw = await request.text();
+    if (raw.length > MAX_REQUEST_BODY_BYTES) {
+      return NextResponse.json(
+        {
+          error: `Request body too large; max ${MAX_REQUEST_BODY_BYTES} bytes`,
+        },
+        { status: 413 },
+      );
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400 },
+      );
+    }
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Body must be a JSON object" },
+        { status: 400 },
+      );
+    }
+    const { url } = body as { url?: unknown };
 
     // Validate URL
     if (!url || typeof url !== "string") {
@@ -462,15 +534,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Issue #1277 — truncate the decklist to MAX_CARDS rows before it
+    // crosses our response boundary so the API cannot be coerced into
+    // emitting an unbounded text payload.
+    const cappedDecklist = capDecklistRows(decklist);
+
     // Validate the parsed decklist
-    const validation = validateDecklist(decklist);
+    const validation = validateDecklist(cappedDecklist);
     if (!validation.valid) {
       return NextResponse.json({ error: validation.error }, { status: 422 });
     }
 
     return NextResponse.json({
       success: true,
-      decklist,
+      decklist: cappedDecklist,
       siteName: supportedSite.name,
       cardCount: validation.cardCount,
     });

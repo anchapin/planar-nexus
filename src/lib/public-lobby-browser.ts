@@ -17,6 +17,10 @@
 
 import { GameFormat, PlayerCount } from './multiplayer-types';
 import { TIMEOUTS } from './config/timeouts';
+import {
+  FixedWindowLimiter,
+  type RateLimitOptions,
+} from './security/rate-limit';
 
 export interface PublicGameInfo {
   id: string;
@@ -41,11 +45,63 @@ const STORAGE_KEY = 'planar_nexus_public_lobbies';
 const REFRESH_INTERVAL = TIMEOUTS.LOBBY_REFRESH_MS;
 const DEMO_DATA_KEY = 'planar_nexus_demo_data_added';
 
+/**
+ * Issue #1277 — public lobby-list refresh budget.
+ *
+ * The auto-refresh interval (`REFRESH_INTERVAL`) is the polite steady-state
+ * cadence, but a hostile tab or bookmark-import script can call
+ * `getPublicGames` / `searchGames` / `subscribe` at arbitrary speed. Cap
+ * reads at 6 / minute; cap write-side public-game mutations at 30 / minute
+ * to bound the JSON.stringify / localStorage.setItem work that a flood
+ * would otherwise drive.
+ */
+export const LOBBY_LIST_READ_LIMIT: RateLimitOptions = {
+  maxEvents: 6,
+  windowMs: 60_000,
+};
+
+export const LOBBY_WRITE_LIMIT: RateLimitOptions = {
+  maxEvents: 30,
+  windowMs: 60_000,
+};
+
+/**
+ * Maximum number of rows returned per read. Even legitimate callers
+ * shouldn't enumerate hundreds of public lobbies on every keystroke;
+ * issue #1277 row-count cap.
+ */
+export const LOBBY_MAX_ROWS_PER_READ = 200;
+
 class PublicLobbyBrowser {
   private listeners: Set<(games: PublicGameInfo[]) => void> = new Set();
   private refreshTimer: NodeJS.Timeout | null = null;
+  /**
+   * Issue #1277 — read & write rate limiters shared by every public-lobby
+   * code path. The browser typically makes 1 read / `REFRESH_INTERVAL`, so
+   * a 6 / minute fixed window is comfortable for normal browsing while
+   * cutting a sustained flood above and beyond the polling cadence.
+   */
+  private readLimiter: FixedWindowLimiter;
+  private writeLimiter: FixedWindowLimiter;
+  /** Cumulative count of read-side rate-limit drops, exposed for tests. */
+  public readDropped = 0;
+  /** Cumulative count of write-side rate-limit drops, exposed for tests. */
+  public writeDropped = 0;
 
-  constructor() {
+  constructor(
+    limits?: {
+      read?: Partial<RateLimitOptions>;
+      write?: Partial<RateLimitOptions>;
+    },
+  ) {
+    this.readLimiter = new FixedWindowLimiter({
+      ...LOBBY_LIST_READ_LIMIT,
+      ...(limits?.read ?? {}),
+    });
+    this.writeLimiter = new FixedWindowLimiter({
+      ...LOBBY_WRITE_LIMIT,
+      ...(limits?.write ?? {}),
+    });
     // Add demo games on first load if none exist
     this.initializeDemoGames();
   }
@@ -145,21 +201,31 @@ class PublicLobbyBrowser {
   }
 
   /**
-   * Get all public games from the registry
+   * Get all public games from the registry.
+   *
+   * Issue #1277 — returns `[]` if the per-browser read budget is exhausted.
+   * Internally capped at {@link LOBBY_MAX_ROWS_PER_READ} rows so a single
+   * read cannot return an unbounded enumeration even when the budget is
+   * generous.
    */
   getPublicGames(): PublicGameInfo[] {
+    if (!this.readLimiter.tryAcquire()) {
+      this.readDropped += 1;
+      return [];
+    }
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
 
     try {
       const games: PublicGameInfo[] = JSON.parse(stored);
       // Filter to only public games that are not full
-      return games.filter(
+      const filtered = games.filter(
         game =>
           game.isPublic &&
           game.currentPlayers < parseInt(game.maxPlayers) &&
           game.status === 'waiting'
       );
+      return filtered.slice(0, LOBBY_MAX_ROWS_PER_READ);
     } catch (e) {
       console.error('Failed to parse public games:', e);
       return [];
@@ -168,9 +234,14 @@ class PublicLobbyBrowser {
 
   /**
    * Register a new public game
-   * This would be called by the lobby manager when a public game is created
+   * This would be called by the lobby manager when a public game is created.
+   * Subject to the {@link LOBBY_WRITE_LIMIT} write budget (issue #1277).
    */
   registerPublicGame(game: PublicGameInfo): void {
+    if (!this.writeLimiter.tryAcquire()) {
+      this.writeDropped += 1;
+      return;
+    }
     const games = this.getAllStoredGames();
     games.push(game);
     this.saveGames(games);
@@ -178,9 +249,14 @@ class PublicLobbyBrowser {
   }
 
   /**
-   * Update a public game's info (player count, status, etc.)
+   * Update a public game's info (player count, status, etc.).
+   * Subject to the {@link LOBBY_WRITE_LIMIT} write budget (issue #1277).
    */
   updatePublicGame(gameId: string, updates: Partial<PublicGameInfo>): void {
+    if (!this.writeLimiter.tryAcquire()) {
+      this.writeDropped += 1;
+      return;
+    }
     const games = this.getAllStoredGames();
     const index = games.findIndex(g => g.id === gameId);
 
@@ -192,9 +268,14 @@ class PublicLobbyBrowser {
   }
 
   /**
-   * Remove a game from the public registry
+   * Remove a game from the public registry.
+   * Subject to the {@link LOBBY_WRITE_LIMIT} write budget (issue #1277).
    */
   unregisterPublicGame(gameId: string): void {
+    if (!this.writeLimiter.tryAcquire()) {
+      this.writeDropped += 1;
+      return;
+    }
     const games = this.getAllStoredGames();
     const filtered = games.filter(g => g.id !== gameId);
     this.saveGames(filtered);
@@ -295,6 +376,19 @@ class PublicLobbyBrowser {
     const games = this.getAllStoredGames().filter(g => !g.id.startsWith('demo_'));
     this.saveGames(games);
     this.notifyListeners();
+  }
+
+  /**
+   * Reset the read & write rate limiters and clear the drop counters. Used
+   * by the test suite to exercise the lobby browser without bumping into
+   * the fixed-window budgets shared across the whole jest run; not
+   * intended for production callers.
+   */
+  resetLimits(): void {
+    this.readLimiter.reset();
+    this.writeLimiter.reset();
+    this.readDropped = 0;
+    this.writeDropped = 0;
   }
 
   /**

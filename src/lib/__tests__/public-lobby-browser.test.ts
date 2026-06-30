@@ -34,6 +34,10 @@ describe('PublicLobbyBrowser', () => {
     localStorage.clear();
     // Reset the browser by creating a new instance
     jest.resetModules();
+    // Issue #1277 — the public-lobby-browser is a singleton with a
+    // 6-reads/minute rate limit. Reset the limiter between tests so each
+    // scenario starts with a clean budget.
+    publicLobbyBrowser.resetLimits();
   });
 
   describe('PublicGameInfo type', () => {
