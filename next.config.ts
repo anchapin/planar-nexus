@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { REMOTE_IMAGE_HOSTS } from "./src/lib/security/csp-allowlist";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -11,38 +12,16 @@ const nextConfig: NextConfig = {
   // Configure image optimization
   images: {
     unoptimized: true,
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "placehold.co",
-        port: "",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "images.unsplash.com",
-        port: "",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "picsum.photos",
-        port: "",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "cards.scryfall.io",
-        port: "",
-        pathname: "/**",
-      },
-      {
-        protocol: "https",
-        hostname: "img.scryfall.com",
-        port: "",
-        pathname: "/**",
-      },
-    ],
+    // Single source of truth: this list must stay in sync with the
+    // `img-src` directive in `src-tauri/tauri.conf.json`'s CSP
+    // (issue #1273). The `csp-audit` regression test asserts they
+    // match exactly.
+    remotePatterns: REMOTE_IMAGE_HOSTS.map((host) => ({
+      protocol: "https",
+      hostname: host.hostname,
+      port: "",
+      pathname: "/**",
+    })),
   },
 
   // Ensure trailing slashes for static hosting
