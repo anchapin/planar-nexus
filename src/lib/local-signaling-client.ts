@@ -8,6 +8,31 @@
  */
 
 import type { RTCSessionDescriptionInit, RTCIceCandidateInit } from '@/lib/webrtc-types';
+import {
+  FixedWindowLimiter,
+  TokenBucket,
+  type RateLimitOptions,
+} from '@/lib/security/rate-limit';
+
+/**
+ * Issue #1277 — per-connection signaling rate-limit defaults. The signaling
+ * client normally carries one connection-request + a handful of ICE
+ * candidates, so these limits are deliberately tolerant: 30 connection
+ * requests / minute (legacy #1111 traffic shape) and 10 ICE candidates /
+ * second (matches WebRTC's own trickle pace plus a small burst budget).
+ */
+export const SIGNALING_CONNECTION_REQUEST_LIMIT: RateLimitOptions = {
+  maxEvents: 30,
+  windowMs: 60_000,
+};
+
+export const SIGNALING_ICE_CANDIDATE_LIMIT: RateLimitOptions = {
+  maxEvents: 10,
+  windowMs: 1_000,
+};
+
+/** Row-count cap on an inbound connection-string JSON body. */
+export const SIGNALING_MAX_CONNECTION_STRING_BYTES = 8 * 1024;
 
 /**
  * Connection phase in the signaling process
@@ -62,6 +87,15 @@ export interface LocalSignalingClientOptions {
   role: SignalingRole;
   gameCode?: string;
   events?: Partial<LocalSignalingEvents>;
+  /**
+   * Optional overrides for the {@link SIGNALING_CONNECTION_REQUEST_LIMIT} /
+   * {@link SIGNALING_ICE_CANDIDATE_LIMIT} defaults. Provided primarily for
+   * tests; production callers should leave these unset.
+   */
+  signalingLimits?: {
+    connectionRequest?: Partial<RateLimitOptions>;
+    iceCandidate?: Partial<RateLimitOptions>;
+  };
 }
 
 /**
@@ -74,6 +108,15 @@ export class LocalSignalingClient {
   private state: LocalSignalingState;
   private events: LocalSignalingEvents;
   private peerConnection: RTCPeerConnection | null = null;
+  /**
+   * Per-connection rate limiters (issue #1277). The signaling client treats
+   * `connection-request` (parseConnectionString) and `ice-candidate`
+   * (addRemoteIceCandidate) as the peer-controlled entry surfaces; both
+   * gate further processing through these buckets before doing any
+   * allocation or parsing work.
+   */
+  private connectionRequestLimiter: FixedWindowLimiter;
+  private iceCandidateLimiter: TokenBucket;
 
   constructor(options: LocalSignalingClientOptions) {
     this.state = {
@@ -95,6 +138,17 @@ export class LocalSignalingClient {
     };
 
     this.events = options.events ? { ...defaultEvents, ...options.events } : defaultEvents;
+
+    const cr = options.signalingLimits?.connectionRequest ?? {};
+    const ice = options.signalingLimits?.iceCandidate ?? {};
+    this.connectionRequestLimiter = new FixedWindowLimiter({
+      ...SIGNALING_CONNECTION_REQUEST_LIMIT,
+      ...cr,
+    });
+    this.iceCandidateLimiter = new TokenBucket({
+      ...SIGNALING_ICE_CANDIDATE_LIMIT,
+      ...ice,
+    });
   }
 
   /**
@@ -199,6 +253,12 @@ export class LocalSignalingClient {
    * Add a remote ICE candidate
    */
   async addRemoteIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+    // Issue #1277 — per-connection token-bucket caps the inbound trickle
+    // rate; a peer that floods candidate() messages is dropped silently
+    // before we touch the peer connection.
+    if (!this.iceCandidateLimiter.tryAcquire()) {
+      return;
+    }
     if (!this.peerConnection) {
       // Queue candidates for later
       this.state.remoteIceCandidates.push(candidate);
@@ -240,7 +300,13 @@ export class LocalSignalingClient {
   }
 
   /**
-   * Parse a connection string received from the other player
+   * Parse a connection string received from the other player.
+   *
+   * Issue #1277 — a peer can craft a multi-megabyte connection-string and
+   * trick us into JSON.parse-ing it. Cap the raw byte length BEFORE parsing
+   * so the parser cannot be coerced into unbounded allocation. Returns
+   * `null` for oversize or malformed input (matches the pre-existing
+   * behavior for malformed JSON).
    */
   static parseConnectionString(connectionString: string): {
     type: 'offer' | 'answer';
@@ -249,6 +315,13 @@ export class LocalSignalingClient {
     answer?: RTCSessionDescriptionInit;
     ice: RTCIceCandidateInit[];
   } | null {
+    if (
+      typeof connectionString !== 'string' ||
+      connectionString.length === 0 ||
+      connectionString.length > SIGNALING_MAX_CONNECTION_STRING_BYTES
+    ) {
+      return null;
+    }
     try {
       return JSON.parse(connectionString);
     } catch {
@@ -289,7 +362,18 @@ export class LocalSignalingClient {
       remoteIceCandidates: [],
       gameCode: this.state.gameCode,
     };
+    this.connectionRequestLimiter.reset();
+    this.iceCandidateLimiter.reset();
     this.events.onStateChange(this.state);
+  }
+
+  /**
+   * Issue #1277 — gate a peer-supplied `connection-request` against the
+   * per-connection fixed-window limit. Returns `true` if the request is
+   * within budget (and now counted), `false` if it must be dropped.
+   */
+  acceptConnectionRequest(now: number = Date.now()): boolean {
+    return this.connectionRequestLimiter.tryAcquire(now);
   }
 
   /**
