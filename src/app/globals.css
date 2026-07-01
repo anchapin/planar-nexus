@@ -110,6 +110,123 @@
     }
   }
 
+  /* Accessibility: Forced colors mode / Windows High Contrast Mode (#1269)
+     Browsers in forced-colors mode (and Windows HCM users) ignore author
+     colors in favor of the user's palette. Without explicit system-color
+     fallbacks, state signals that depend on translucent gradients, opacity
+     layering, or muted borders disappear. The rules below restore critical
+     affordances across game chrome. Per WCAG, system colors used:
+       Canvas / CanvasText     — page surface / readable text
+       ButtonFace / ButtonText — chrome surfaces / labels
+       LinkText                — interactive references
+       Highlight               — focus rings, picking, "active" state
+       GrayText                — disabled / muted text
+     Components that intentionally opt out of HCM remapping must declare
+     `forced-color-adjust: none` on the affected node. */
+  @media (forced-colors: active) {
+    /* Default to letting system color adjustments apply; opt out only where
+       a class explicitly requests it via `forced-colors:keep` (handled
+       locally) or by adding `forced-color-adjust: none` in component CSS. */
+    :root {
+      forced-color-adjust: auto;
+    }
+
+    /* Surface colors — translucent overlays fall back to solid system colors
+       so layering doesn't wash out to white-on-white. */
+    .bg-primary\/5,
+    .bg-primary\/10,
+    .bg-yellow-500\/10,
+    .bg-red-500\/10,
+    .bg-amber-100,
+    .dark .bg-amber-900\/50,
+    .bg-muted,
+    .bg-secondary,
+    .bg-black\/50 {
+      background-color: ButtonFace !important;
+      color: ButtonText !important;
+    }
+
+    /* Borders that depend on `border-muted-foreground/30` or other translucent
+       Tailwind colors lose contrast — replace with the high-contrast system
+       border color so dashed/zone borders stay visible. */
+    .border,
+    .border-muted,
+    .border-muted-foreground\/30,
+    .border-yellow-500\/50,
+    .border-red-500\/50,
+    .border-primary,
+    [class*="border-muted-foreground"],
+    [class*="border-yellow-500"],
+    [class*="border-red-500"] {
+      border-color: CanvasText !important;
+      border-style: solid !important;
+    }
+
+    /* Force the dashed zone border in game-board.tsx to a visible solid
+       border — dashed strokes become invisible under HCM. */
+    .border-dashed {
+      border-style: solid !important;
+    }
+
+    /* Text colors anchored to gray-amber/destructive Tailwind shades will be
+       replaced by the user's palette; guarantee read access. */
+    .text-yellow-500,
+    .text-red-500,
+    .text-amber-800,
+    .text-amber-200,
+    .text-amber-900,
+    .text-orange-500,
+    .text-green-500,
+    .text-green-600,
+    .text-purple-500,
+    .text-blue-500,
+    .text-destructive,
+    .text-muted-foreground {
+      color: CanvasText !important;
+      forced-color-adjust: none;
+    }
+
+    /* Progress bars lose the colored `bg-*` indicator; promote it to a
+       Highlight-backed filled region. */
+    [role="progressbar"] > [data-state],
+    [role="progressbar"] > div,
+    [role="progressbar"] > span {
+      background-color: Highlight !important;
+      forced-color-adjust: none;
+    }
+    [role="progressbar"] {
+      background-color: ButtonFace !important;
+      border: 1px solid CanvasText !important;
+    }
+
+    /* Focus ring — use the system Highlight color so the focused element is
+       always visible regardless of theme. */
+    :focus-visible {
+      outline: 2px solid Highlight !important;
+      outline-offset: 2px !important;
+      box-shadow: none !important;
+    }
+
+    /* Ringing state indicators (AI picking, timer warning, connection states)
+       collapse onto a single Highlight border so motion + pulse do not need
+       to render. */
+    .hcm-affordance,
+    [data-hcm-affordance] {
+      outline: 2px solid Highlight !important;
+      outline-offset: 2px !important;
+    }
+
+    /* Disable animations that don't carry information once color is the
+       user's responsibility. Users who rely on forced colors often pair
+       the preference with reduced motion. */
+    .animate-pulse,
+    .animate-spin,
+    .animate-slide-up,
+    .animate-slide-down {
+      animation: none !important;
+    }
+  }
+
   /* Accessibility: Screen reader only */
   .sr-only {
     position: absolute;
@@ -127,7 +244,7 @@
   .skip-link {
     @apply absolute -top-10 left-4 z-50 bg-primary px-4 py-2 text-primary-foreground transition-all;
   }
-  
+
   .skip-link:focus {
     @apply top-4;
   }
@@ -202,7 +319,12 @@
   }
 
   /* Ensure text is readable */
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     page-break-after: avoid;
     color: black !important;
   }
