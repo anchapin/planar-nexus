@@ -1,11 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Least-privilege capability for the main window. Grants only the core sub-permissions actually exercised by this app's frontend (no @tauri-apps/plugin-* imports, no invoke() calls). See CONTRIBUTING.md § \"Adding a Tauri permission\" for the workflow.",
   "windows": [
     "main"
   ],
   "permissions": [
-    "core:default"
+    "core:app:default",
+    "core:event:default",
+    "core:webview:default",
+    "core:window:default"
   ]
 }
