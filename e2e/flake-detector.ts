@@ -364,7 +364,12 @@ function fmtMs(ms: number): string {
 }
 
 function escapeCell(s: string): string {
-  return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  // Escape backslashes first so we don't double-escape, then Markdown-reserved chars.
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\n/g, " ")
+    .replace(/\r/g, "");
 }
 
 function outcomeGlyph(o: SpecStatus): string {
