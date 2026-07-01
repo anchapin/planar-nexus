@@ -321,7 +321,18 @@ export function sanitizeMarkdown(value: unknown, maxLength: number = DEFAULT_MAX
   // Defensively strip any HTML tags up-front. This is belt-and-suspenders:
   // the inline renderers below also escape, so this is only protection
   // against accidental code paths that bypass them.
-  out = out.replace(HTML_TAG, "");
+  //
+  // CodeQL `js/incomplete-multi-character-sanitization`: a single
+  // `replace()` pass is not provably terminating — payloads like
+  // `<<script>` or `<scr<script>` can leave behind fragments that
+  // re-introduce dangerous tag prefixes after one sweep. We loop the
+  // replace until the string is stable, which is the recommended
+  // remediation in the CodeQL help text.
+  let prevStrip: string;
+  do {
+    prevStrip = out;
+    out = out.replace(HTML_TAG, "");
+  } while (out !== prevStrip);
   if (out.length > maxLength) {
     out = out.slice(0, maxLength) + "…[truncated]";
   }

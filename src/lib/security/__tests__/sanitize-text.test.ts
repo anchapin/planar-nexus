@@ -258,6 +258,25 @@ describe("security/sanitize-text", () => {
         payload: "Title\u202E<script>alert(1)</script>",
         mustNotContain: ["\u202E", "<script>"],
       },
+      {
+        // CodeQL js/incomplete-multi-character-sanitization regression —
+        // a leading `<` plus a tag like `<script>` can leave a stray
+        // `<` after a single strip pass. The sanitizer must loop until
+        // stable to defeat these.
+        name: "nested-tag prefix smuggle",
+        payload: "<<script>alert(1)</script>",
+        mustNotContain: ["<script>", "</script>"],
+      },
+      {
+        name: "bare script prefix (no closing >)",
+        payload: "<script",
+        mustNotContain: ["<script"],
+      },
+      {
+        name: "double-nested script smuggle",
+        payload: "<scr<script>ipt>alert(1)</script>",
+        mustNotContain: ["<script>", "ipt>"],
+      },
     ];
     for (const v of vectors) {
       it(`strips ${v.name}`, () => {
