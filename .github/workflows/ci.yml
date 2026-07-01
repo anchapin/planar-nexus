@@ -278,7 +278,7 @@ jobs:
         # `--locked` makes the toolchain installer pick the exact version
         # referenced in cargo-audit's own Cargo.toml, matching the homebrew
         # release that the docs runbook recommends.
-        run: cargo install cargo-audit --locked --version ^0.22
+        run: cargo install cargo-audit --locked --version ^0.22 --force
 
       - name: Run cargo audit
         working-directory: src-tauri
