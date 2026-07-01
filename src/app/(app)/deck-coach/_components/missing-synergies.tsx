@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, AlertCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 export interface MissingSynergyItem {
   synergy: string;
@@ -69,7 +70,7 @@ function MissingSynergyItemComponent({ item }: { item: MissingSynergyItem }) {
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
           <AlertTitle className={cn("font-semibold", styling.textClass)}>
-            {item.synergy}
+            {sanitizeCardText(item.synergy, 200)}
           </AlertTitle>
           <Badge variant={styling.badgeVariant} className="text-xs">
             {item.impact.toUpperCase()} IMPACT
@@ -77,12 +78,12 @@ function MissingSynergyItemComponent({ item }: { item: MissingSynergyItem }) {
         </div>
         <AlertDescription className="space-y-2">
           <p className="text-sm">
-            <span className="font-medium">Missing:</span> {item.description}
+            <span className="font-medium">Missing:</span> {sanitizeCardText(item.description, 1_000)}
           </p>
           <div className="bg-background/50 rounded p-2 mt-2">
             <p className="text-xs">
               <span className="font-medium text-primary">💡 Suggestion:</span>{" "}
-              <span className="text-muted-foreground">{item.suggestion}</span>
+              <span className="text-muted-foreground">{sanitizeCardText(item.suggestion, 1_000)}</span>
             </p>
           </div>
         </AlertDescription>

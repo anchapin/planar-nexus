@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Star, Target, Zap, Shield, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 export interface KeyCard {
   name: string;
@@ -49,12 +50,12 @@ function KeyCardItem({ card }: { card: KeyCard }) {
         </div>
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-sm">{card.name}</span>
+            <span className="font-semibold text-sm">{sanitizeCardText(card.name, 200)}</span>
             <Badge variant="secondary" className="text-xs h-5">
               x{card.count}
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">{card.reason}</p>
+          <p className="text-xs text-muted-foreground mt-1">{sanitizeCardText(card.reason, 1_000)}</p>
         </div>
       </div>
     </div>

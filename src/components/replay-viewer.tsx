@@ -2,15 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { 
-  generateShareableURL, 
-  decodeReplayFromURL, 
-  copyShareableLink, 
+import {
+  generateShareableURL,
+  decodeReplayFromURL,
+  copyShareableLink,
   exportReplayToFile,
   importReplayFromFile,
   getEstimatedURLLength
 } from '@/lib/replay-sharing';
 import type { Replay } from '@/lib/game-state/replay';
+import { sanitizeCardText } from '@/lib/security/sanitize-text';
 
 /**
  * Replay Viewer Component
@@ -266,7 +267,7 @@ export function ReplayViewer({
         {/* Action description */}
         {currentAction && (
           <div className="text-sm text-center text-muted-foreground">
-            {currentAction.description}
+            {sanitizeCardText(currentAction.description, 1_000)}
           </div>
         )}
       </div>
@@ -409,7 +410,7 @@ export function ReplayViewer({
               <span className="text-muted-foreground mr-2">
                 #{action.sequenceNumber}
               </span>
-              {action.description}
+              {sanitizeCardText(action.description, 1_000)}
             </button>
           ))}
         </div>

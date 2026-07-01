@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { ZoneType } from "@/types/game";
 import { cn } from "@/lib/utils";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 /**
  * Card data for display in zone viewers
@@ -221,7 +222,7 @@ const ZoneCardList = memo(function ZoneCardList({
               }}
               tabIndex={idx === activeIndex ? 0 : -1}
               onClick={() => onCardClick?.(card.id)}
-              aria-label={`${card.name}, ${card.typeLine}${card.manaCost ? `, cost ${card.manaCost}` : ""}${pt ? `, ${pt}` : ""}`}
+              aria-label={`${sanitizeCardText(card.name)}, ${sanitizeCardText(card.typeLine)}${card.manaCost ? `, cost ${sanitizeCardText(card.manaCost)}` : ""}${pt ? `, ${pt}` : ""}`}
               className="group relative flex flex-col items-center p-2 rounded-md border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {/* Color indicator */}
@@ -242,23 +243,23 @@ const ZoneCardList = memo(function ZoneCardList({
               {/* Card name */}
               <span
                 className="text-xs font-medium truncate w-full pl-2"
-                title={card.name}
+                title={sanitizeCardText(card.name)}
               >
-                {card.name}
+                {sanitizeCardText(card.name)}
               </span>
 
               {/* Card type */}
               <span
                 className="text-[10px] text-muted-foreground truncate w-full pl-2"
-                title={card.typeLine}
+                title={sanitizeCardText(card.typeLine)}
               >
-                {card.typeLine}
+                {sanitizeCardText(card.typeLine)}
               </span>
 
               {/* Mana cost if present */}
               {card.manaCost && (
                 <span className="text-[10px] text-muted-foreground mt-1">
-                  {card.manaCost}
+                  {sanitizeCardText(card.manaCost, 32)}
                 </span>
               )}
 

@@ -15,6 +15,7 @@ import { SynergyList, type SynergyItem as SynergyListItem } from "./synergy-list
 import { MissingSynergies, type MissingSynergyItem } from "./missing-synergies";
 import { KeyCards, identifyKeyCards, type KeyCard } from "./key-cards";
 import { ExportButton, type CoachReportData } from "./export-button";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -114,7 +115,7 @@ export function EnhancedReviewDisplay({ review, onSaveNewDeck, decklist }: Enhan
               />
               {review.archetype.description && (
                 <p className="text-sm text-muted-foreground mt-2">
-                  {review.archetype.description}
+                  {sanitizeCardText(review.archetype.description, 1_000)}
                 </p>
               )}
             </div>
@@ -125,69 +126,69 @@ export function EnhancedReviewDisplay({ review, onSaveNewDeck, decklist }: Enhan
           <ScrollArea className="h-[calc(100vh-24rem)]">
             <div className="pr-4 space-y-6 pt-4">
               {/* Overall Analysis */}
+<div>
+              <h3 className="font-headline text-lg font-bold mb-2">Overall Analysis</h3>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{sanitizeCardText(review.reviewSummary, 8_000)}</p>
+            </div>
+
+            {/* Key Cards */}
+            {keyCards.length > 0 && (
+              <KeyCards cards={keyCards} />
+            )}
+
+            {/* Synergies */}
+            {synergyItems.length > 0 && (
+              <SynergyList synergies={synergyItems} />
+            )}
+
+            {/* Missing Synergies */}
+            {missingSynergyItems.length > 0 && (
+              <MissingSynergies missing={missingSynergyItems} />
+            )}
+
+            {/* Suggested Deck Options */}
+            {review.deckOptions && review.deckOptions.length > 0 && (
               <div>
-                <h3 className="font-headline text-lg font-bold mb-2">Overall Analysis</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{review.reviewSummary}</p>
+                <h3 className="font-headline text-lg font-bold mb-2">Suggested Improvements</h3>
+                <Accordion type="single" collapsible className="w-full">
+                  {review.deckOptions.map((option, index) => (
+                    <AccordionItem value={`item-${index}`} key={index}>
+                      <AccordionTrigger className="font-semibold">{sanitizeCardText(option.title, 300)}</AccordionTrigger>
+                      <AccordionContent>
+                        <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-4">{sanitizeCardText(option.description, 4_000)}</p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
+                          {option.cardsToAdd && option.cardsToAdd.length > 0 && (
+                            <div>
+                              <h4 className="font-semibold text-green-500 mb-1">Cards to Add</h4>
+                              <ul className="list-disc pl-5">
+                                {option.cardsToAdd.map(card => (
+                                  <li key={`add-${card.name}`}>{card.quantity}x {sanitizeCardText(card.name, 200)}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                           {option.cardsToRemove && option.cardsToRemove.length > 0 && (
+                            <div>
+                              <h4 className="font-semibold text-red-500 mb-1">Cards to Remove</h4>
+                               <ul className="list-disc pl-5">
+                                {option.cardsToRemove.map(card => (
+                                  <li key={`remove-${card.name}`}>{card.quantity}x {sanitizeCardText(card.name, 200)}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+
+                        <Button onClick={() => handleOpenDialog(option)} size="sm">
+                          Create Deck from Suggestion
+                        </Button>
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
               </div>
-
-              {/* Key Cards */}
-              {keyCards.length > 0 && (
-                <KeyCards cards={keyCards} />
-              )}
-
-              {/* Synergies */}
-              {synergyItems.length > 0 && (
-                <SynergyList synergies={synergyItems} />
-              )}
-
-              {/* Missing Synergies */}
-              {missingSynergyItems.length > 0 && (
-                <MissingSynergies missing={missingSynergyItems} />
-              )}
-
-              {/* Suggested Deck Options */}
-              {review.deckOptions && review.deckOptions.length > 0 && (
-                <div>
-                  <h3 className="font-headline text-lg font-bold mb-2">Suggested Improvements</h3>
-                  <Accordion type="single" collapsible className="w-full">
-                    {review.deckOptions.map((option, index) => (
-                      <AccordionItem value={`item-${index}`} key={index}>
-                        <AccordionTrigger className="font-semibold">{option.title}</AccordionTrigger>
-                        <AccordionContent>
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-4">{option.description}</p>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
-                            {option.cardsToAdd && option.cardsToAdd.length > 0 && (
-                              <div>
-                                <h4 className="font-semibold text-green-500 mb-1">Cards to Add</h4>
-                                <ul className="list-disc pl-5">
-                                  {option.cardsToAdd.map(card => (
-                                    <li key={`add-${card.name}`}>{card.quantity}x {card.name}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                             {option.cardsToRemove && option.cardsToRemove.length > 0 && (
-                              <div>
-                                <h4 className="font-semibold text-red-500 mb-1">Cards to Remove</h4>
-                                 <ul className="list-disc pl-5">
-                                  {option.cardsToRemove.map(card => (
-                                    <li key={`remove-${card.name}`}>{card.quantity}x {card.name}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-
-                          <Button onClick={() => handleOpenDialog(option)} size="sm">
-                            Create Deck from Suggestion
-                          </Button>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </div>
-              )}
+            )}
             </div>
           </ScrollArea>
         </CardContent>

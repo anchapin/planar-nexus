@@ -33,6 +33,10 @@ const eslintConfig = [
       "no-empty": ["error", { allowEmptyCatch: false }],
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // Issue #1276: Forbid new dangerouslySetInnerHTML uses. The existing
+      // chart.tsx site is allow-listed via overrides below; all other code
+      // must sanitize text via `src/lib/security/sanitize-text.ts`.
+      "react/no-danger": "error",
       // Prevent console.log in production code (use logger utility instead)
       "no-console": ["warn", { allow: ["warn", "error", "info"] }],
       // Prevent direct API calls with Authorization headers in client code (security)
@@ -59,6 +63,15 @@ const eslintConfig = [
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-empty-function": "off",
+    },
+  },
+  {
+    // The Recharts chart primitive is the only existing
+    // dangerouslySetInnerHTML user and is allow-listed for that sink.
+    // All other new uses must route through `sanitizeMarkdown` (issue #1276).
+    files: ["src/components/ui/chart.tsx"],
+    rules: {
+      "react/no-danger": "off",
     },
   },
   {

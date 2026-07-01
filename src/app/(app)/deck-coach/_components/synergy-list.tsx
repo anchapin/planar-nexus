@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Button } from "@/components/ui/button";
 import { ChevronDown, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 export interface SynergyItem {
   name: string;
@@ -66,20 +67,20 @@ function SynergyItemComponent({ synergy }: { synergy: SynergyItem }) {
         <div className="flex items-center gap-2 flex-1">
           <Sparkles className={cn("h-4 w-4", indicator.color)} />
           <div>
-            <h4 className="font-semibold text-sm">{synergy.name}</h4>
-            <p className="text-xs text-muted-foreground">{synergy.description}</p>
+            <h4 className="font-semibold text-sm">{sanitizeCardText(synergy.name, 200)}</h4>
+            <p className="text-xs text-muted-foreground">{sanitizeCardText(synergy.description, 1_000)}</p>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Badge variant={categoryVariant} className="text-xs">
-            {synergy.category}
+            {sanitizeCardText(synergy.category, 64)}
           </Badge>
-          
+
           <div className={cn("px-2 py-1 rounded text-xs font-medium border", indicator.bg, indicator.color)}>
             {indicator.label} ({synergy.score})
           </div>
-          
+
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
               <ChevronDown className="h-4 w-4" />
@@ -87,7 +88,7 @@ function SynergyItemComponent({ synergy }: { synergy: SynergyItem }) {
           </CollapsibleTrigger>
         </div>
       </div>
-      
+
       <CollapsibleContent className="mt-3 pt-3 border-t">
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">
@@ -96,7 +97,7 @@ function SynergyItemComponent({ synergy }: { synergy: SynergyItem }) {
           <div className="flex flex-wrap gap-1">
             {synergy.cards.slice(0, 12).map((card, index) => (
               <Badge key={index} variant="outline" className="text-xs">
-                {card}
+                {sanitizeCardText(card, 200)}
               </Badge>
             ))}
             {synergy.cards.length > 12 && (
