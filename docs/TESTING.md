@@ -5,7 +5,7 @@ stack, where tests live, the patterns we expect, the video-derived fixture
 pipeline, and how coverage is measured and enforced.
 
 > If you are writing code, you are writing tests. See
-> [Contributing › Testing requirements](./CONTRIBUTING.md#7-testing) for the
+> [Contributing › Testing requirements](../CONTRIBUTING.md#7-testing) for the
 > rules that gate every pull request.
 
 ---
@@ -422,7 +422,7 @@ npm test -- --testPathPattern=video-derived --coverage
 
 - The **target** is 70% across all metrics (60% for branches). This is the
   documented project goal and is referenced from `README.md`,
-  `docs/CONTRIBUTING.md`, and `jest.config.js`.
+  `CONTRIBUTING.md`, and `jest.config.js`.
 - The **CI-enforced floor** is set _just below currently-measured coverage_ so
   the gate catches real regressions without being flaky. It is raised toward
   the 70% target as coverage improves (tracked via issue #922) — automatically,

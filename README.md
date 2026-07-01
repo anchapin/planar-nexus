@@ -202,7 +202,7 @@ _Create or join games with friends via P2P WebRTC connections_
 | ------------------------------------------------ | --------------------------------------------- |
 | [User Guide](docs/USER_GUIDE.md)                 | Complete guide to using Planar Nexus features |
 | [API Documentation](docs/API.md)                 | AI provider configuration and API reference   |
-| [Contributing Guide](docs/CONTRIBUTING.md)       | How to contribute code and documentation      |
+| [Contributing Guide](CONTRIBUTING.md)            | How to contribute code and documentation      |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)       | Common issues and solutions                   |
 | [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)     | Building and deploying for all platforms      |
 | [Distribution Guide](docs/DISTRIBUTION_GUIDE.md) | Release management and distribution channels  |

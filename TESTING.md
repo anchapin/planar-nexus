@@ -8,5 +8,5 @@ contributor testing requirements.
 
 See also:
 
-- [Contributing › Testing](./docs/CONTRIBUTING.md#7-testing)
+- [Contributing › Testing](../CONTRIBUTING.md#7-testing)
 - [Video-Derived Tests Workflow](./docs/VIDEO_DERIVED_TESTS_WORKFLOW.md)
