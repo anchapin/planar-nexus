@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to Planar Nexus! This guide will help you get started with contributing code, documentation, or bug reports.
 
-> **Documentation map** — companion guides: [README.md](README.md) (project overview), [TESTING.md](TESTING.md) (testing requirements & workflow), [docs/API.md](docs/API.md) (API reference), [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (end-user docs), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (FAQ), [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md) (release-engineering runbook). The Code of Conduct lives in [§1](#1-code-of-conduct) below.
+> **Documentation map** — companion guides: [README.md](README.md) (project overview), [TESTING.md](TESTING.md) (testing requirements & workflow), [docs/API.md](docs/API.md) (API reference), [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (end-user docs), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (FAQ), [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md) (release-engineering runbook), [docs/RUST_UPGRADE_STRATEGY.md](docs/RUST_UPGRADE_STRATEGY.md) (Tauri/Rust crate upgrade policy — mirrors the npm audit contract from #1108). The Code of Conduct lives in [§1](#1-code-of-conduct) below.
 
 ---
 
@@ -626,6 +626,7 @@ Update relevant documentation files when making changes:
 - `README.md` - Project overview and quick start
 - `docs/USER_GUIDE.md` - User-facing documentation
 - `docs/API.md` - API documentation
+- `docs/RUST_UPGRADE_STRATEGY.md` - Rust/Tauri dependency upgrade policy (#1275)
 - `CONTRIBUTING.md` - This file (lives at the repo root so GitHub's PR/issue banner can link to it)
 
 ### 10.3 Running Documentation Checks
