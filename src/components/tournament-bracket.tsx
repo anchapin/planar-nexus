@@ -1,23 +1,17 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-  Trophy, 
-  Crown, 
-  Check, 
-  Shuffle,
-  ArrowRight
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useState, useCallback, useRef, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Trophy, Crown, Check, Shuffle, ArrowRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Tournament types
-export type TournamentStatus = 'setup' | 'in-progress' | 'completed';
-export type MatchStatus = 'pending' | 'in-progress' | 'completed';
+export type TournamentStatus = "setup" | "in-progress" | "completed";
+export type MatchStatus = "pending" | "in-progress" | "completed";
 
 export interface TournamentPlayer {
   id: string;
@@ -59,27 +53,31 @@ function generateBracket(players: TournamentPlayer[]): TournamentRound[] {
   // Calculate number of rounds needed (next power of 2)
   const rounds = Math.ceil(Math.log2(playerCount));
   const bracketSize = Math.pow(2, rounds);
-  
-  const seededPlayers = [...players].sort((a, b) => (a.seed || 999) - (b.seed || 999));
-  
+
+  const seededPlayers = [...players].sort(
+    (a, b) => (a.seed || 999) - (b.seed || 999),
+  );
+
   // Generate first round matches
   const firstRound: TournamentMatch[] = [];
   for (let i = 0; i < bracketSize / 2; i++) {
     const player1 = seededPlayers[i * 2];
     const player2 = seededPlayers[i * 2 + 1];
-    
+
     firstRound.push({
       id: `match-r1-m${i + 1}`,
       round: 1,
       player1: player1,
       player2: player2,
-      status: player1 && player2 ? 'pending' : 'pending',
+      status: player1 && player2 ? "pending" : "pending",
     });
   }
 
   // Generate subsequent rounds (empty placeholders)
-  const tournamentRounds: TournamentRound[] = [{ roundNumber: 1, matches: firstRound }];
-  
+  const tournamentRounds: TournamentRound[] = [
+    { roundNumber: 1, matches: firstRound },
+  ];
+
   for (let r = 2; r <= rounds; r++) {
     const roundMatches: TournamentMatch[] = [];
     const matchCount = bracketSize / Math.pow(2, r);
@@ -87,7 +85,7 @@ function generateBracket(players: TournamentPlayer[]): TournamentRound[] {
       roundMatches.push({
         id: `match-r${r}-m${m + 1}`,
         round: r,
-        status: 'pending',
+        status: "pending",
       });
     }
     tournamentRounds.push({ roundNumber: r, matches: roundMatches });
@@ -106,6 +104,31 @@ function shufflePlayers(players: TournamentPlayer[]): TournamentPlayer[] {
   return shuffled.map((p, i) => ({ ...p, seed: i + 1 }));
 }
 
+// Helper: human-readable round label
+function roundLabel(roundNumber: number, totalRounds: number): string {
+  if (roundNumber === totalRounds) return "Final";
+  if (roundNumber === totalRounds - 1) return "Semifinals";
+  return `Round ${roundNumber}`;
+}
+
+// Helper: human-readable match label
+function buildMatchAriaLabel(
+  match: TournamentMatch,
+  totalRounds: number,
+  matchNumber: number,
+): string {
+  const round = roundLabel(match.round, totalRounds);
+  const player1Name = match.player1?.name || "TBD";
+  const player2Name = match.player2?.name || "TBD";
+  const statusSuffix =
+    match.status === "completed" && match.winner
+      ? `. Winner: ${match.winner.name}`
+      : match.status === "in-progress"
+        ? ". In progress"
+        : "";
+  return `Match ${matchNumber}: ${player1Name} vs ${player2Name}, ${round}${statusSuffix}`;
+}
+
 // Tournament bracket component
 interface TournamentBracketProps {
   tournament: Tournament;
@@ -113,29 +136,143 @@ interface TournamentBracketProps {
   className?: string;
 }
 
-export function TournamentBracket({ tournament, onMatchComplete, className }: TournamentBracketProps) {
+/**
+ * Tournament bracket with keyboard-accessible match navigation.
+ *
+ * Issue #1272: implements a roving tabindex across match cells so keyboard
+ * users can move between matches with the arrow keys while Tab moves into
+ * and out of the bracket as a whole. A polite live region announces the
+ * currently focused match so screen-reader users always know where they are.
+ */
+export function TournamentBracket({
+  tournament,
+  onMatchComplete,
+  className,
+}: TournamentBracketProps) {
+  // Flatten matches in document order for roving tabindex navigation.
+  const allMatches = useMemo(
+    () => tournament.rounds.flatMap((round) => round.matches),
+    [tournament.rounds],
+  );
+  const totalRounds = tournament.rounds.length;
+  const [activeMatchId, setActiveMatchId] = useState<string | null>(
+    allMatches[0]?.id ?? null,
+  );
+  const matchRefs = useRef<Map<string, HTMLElement | null>>(new Map());
+  const liveRegionRef = useRef<HTMLDivElement | null>(null);
+
+  const focusMatch = useCallback((matchId: string) => {
+    setActiveMatchId(matchId);
+    const node = matchRefs.current.get(matchId);
+    if (node) node.focus();
+  }, []);
+
+  const announce = useCallback((message: string) => {
+    if (liveRegionRef.current) {
+      liveRegionRef.current.textContent = message;
+    }
+  }, []);
+
+  const handleBracketKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (allMatches.length === 0) return;
+      const currentIndex = allMatches.findIndex((m) => m.id === activeMatchId);
+      if (currentIndex < 0) return;
+      const cols = tournament.rounds[0]?.matches.length || 1;
+
+      let nextIndex: number | null = null;
+      switch (e.key) {
+        case "ArrowRight":
+          nextIndex = Math.min(currentIndex + 1, allMatches.length - 1);
+          break;
+        case "ArrowLeft":
+          nextIndex = Math.max(currentIndex - 1, 0);
+          break;
+        case "ArrowDown":
+          nextIndex = Math.min(currentIndex + cols, allMatches.length - 1);
+          break;
+        case "ArrowUp":
+          nextIndex = Math.max(currentIndex - cols, 0);
+          break;
+        case "Home":
+          nextIndex = 0;
+          break;
+        case "End":
+          nextIndex = allMatches.length - 1;
+          break;
+        default:
+          return;
+      }
+      if (nextIndex === null || nextIndex === currentIndex) return;
+      e.preventDefault();
+      const nextMatch = allMatches[nextIndex];
+      focusMatch(nextMatch.id);
+      announce(buildMatchAriaLabel(nextMatch, totalRounds, nextIndex + 1));
+    },
+    [
+      activeMatchId,
+      allMatches,
+      focusMatch,
+      announce,
+      totalRounds,
+      tournament.rounds,
+    ],
+  );
+
   return (
-    <div className={cn('space-y-8 overflow-x-auto', className)}>
-      {tournament.rounds.map((round) => (
-        <div key={round.roundNumber} className="flex flex-col items-center">
-          <h3 className="text-sm font-semibold mb-4 text-muted-foreground">
-            {round.roundNumber === tournament.rounds.length
-              ? 'Finals'
-              : round.roundNumber === tournament.rounds.length - 1
-              ? 'Semifinals'
-              : `Round ${round.roundNumber}`}
-          </h3>
-          <div className="flex flex-col gap-4">
-            {round.matches.map((match) => (
-              <MatchCard
-                key={match.id}
-                match={match}
-                onWinnerSelect={(winnerId) => onMatchComplete?.(match.id, winnerId)}
-              />
-            ))}
+    <div className="space-y-3">
+      {/* Polite live region for current match announcements */}
+      <div
+        ref={liveRegionRef}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      />
+
+      <div
+        role="region"
+        aria-label={`Tournament bracket for ${tournament.name}. Use arrow keys to navigate between matches.`}
+        onKeyDown={handleBracketKeyDown}
+        className={cn("space-y-8 overflow-x-auto", className)}
+      >
+        {tournament.rounds.map((round) => (
+          <div key={round.roundNumber} className="flex flex-col items-center">
+            <h3 className="text-sm font-semibold mb-4 text-muted-foreground">
+              {roundLabel(round.roundNumber, totalRounds)}
+            </h3>
+            <div className="flex flex-col gap-4">
+              {round.matches.map((match) => {
+                const matchIndex = allMatches.findIndex(
+                  (m) => m.id === match.id,
+                );
+                return (
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    matchNumber={matchIndex + 1}
+                    totalRounds={totalRounds}
+                    isFocused={activeMatchId === match.id}
+                    onFocusMatch={() => {
+                      setActiveMatchId(match.id);
+                      announce(
+                        buildMatchAriaLabel(match, totalRounds, matchIndex + 1),
+                      );
+                    }}
+                    registerRef={(node) => {
+                      if (node) matchRefs.current.set(match.id, node);
+                      else matchRefs.current.delete(match.id);
+                    }}
+                    onWinnerSelect={(winnerId) =>
+                      onMatchComplete?.(match.id, winnerId)
+                    }
+                  />
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -143,80 +280,121 @@ export function TournamentBracket({ tournament, onMatchComplete, className }: To
 // Single match card
 interface MatchCardProps {
   match: TournamentMatch;
+  matchNumber: number;
+  totalRounds: number;
+  isFocused: boolean;
+  onFocusMatch: () => void;
+  registerRef: (node: HTMLElement | null) => void;
   onWinnerSelect?: (winnerId: string) => void;
 }
 
-function MatchCard({ match, onWinnerSelect }: MatchCardProps) {
-  const isComplete = match.status === 'completed';
-  
+function MatchCard({
+  match,
+  matchNumber,
+  totalRounds,
+  isFocused,
+  onFocusMatch,
+  registerRef,
+  onWinnerSelect,
+}: MatchCardProps) {
+  const isComplete = match.status === "completed";
+  const label = buildMatchAriaLabel(match, totalRounds, matchNumber);
+
   return (
-    <Card className={cn(
-      'w-48',
-      isComplete && 'opacity-70'
-    )}>
+    <Card
+      ref={registerRef}
+      role="group"
+      tabIndex={isFocused ? 0 : -1}
+      aria-label={label}
+      onFocus={onFocusMatch}
+      className={cn(
+        "w-48 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        isComplete && "opacity-70",
+      )}
+    >
       <CardContent className="p-3 space-y-2">
         {/* Player 1 */}
-        <div 
+        <div
           className={cn(
-            'flex items-center justify-between p-2 rounded',
-            match.winner?.id === match.player1?.id && 'bg-green-500/20 border border-green-500/50',
-            !isComplete && 'bg-muted'
+            "flex items-center justify-between p-2 rounded",
+            match.winner?.id === match.player1?.id &&
+              "bg-green-500/20 border border-green-500/50",
+            !isComplete && "bg-muted",
           )}
         >
           <div className="flex items-center gap-2">
             {match.player1?.seed && (
-              <span className="text-xs text-muted-foreground w-4">{match.player1.seed}</span>
+              <span className="text-xs text-muted-foreground w-4">
+                {match.player1.seed}
+              </span>
             )}
-            <span className={cn('text-sm', !match.player1 && 'text-muted-foreground')}>
-              {match.player1?.name || 'TBD'}
+            <span
+              className={cn(
+                "text-sm",
+                !match.player1 && "text-muted-foreground",
+              )}
+            >
+              {match.player1?.name || "TBD"}
             </span>
           </div>
           {isComplete && match.winner?.id === match.player1?.id && (
             <Crown className="w-4 h-4 text-yellow-500" />
           )}
         </div>
-        
+
         {/* VS divider */}
         <div className="flex items-center justify-center">
           <span className="text-xs text-muted-foreground">VS</span>
         </div>
-        
+
         {/* Player 2 */}
-        <div 
+        <div
           className={cn(
-            'flex items-center justify-between p-2 rounded',
-            match.winner?.id === match.player2?.id && 'bg-green-500/20 border border-green-500/50',
-            !isComplete && 'bg-muted'
+            "flex items-center justify-between p-2 rounded",
+            match.winner?.id === match.player2?.id &&
+              "bg-green-500/20 border border-green-500/50",
+            !isComplete && "bg-muted",
           )}
         >
           <div className="flex items-center gap-2">
             {match.player2?.seed && (
-              <span className="text-xs text-muted-foreground w-4">{match.player2.seed}</span>
+              <span className="text-xs text-muted-foreground w-4">
+                {match.player2.seed}
+              </span>
             )}
-            <span className={cn('text-sm', !match.player2 && 'text-muted-foreground')}>
-              {match.player2?.name || 'TBD'}
+            <span
+              className={cn(
+                "text-sm",
+                !match.player2 && "text-muted-foreground",
+              )}
+            >
+              {match.player2?.name || "TBD"}
             </span>
           </div>
           {isComplete && match.winner?.id === match.player2?.id && (
             <Crown className="w-4 h-4 text-yellow-500" />
           )}
         </div>
-        
+
         {/* Winner selection buttons (when in progress) */}
         {!isComplete && match.player1 && match.player2 && onWinnerSelect && (
           <div className="flex gap-2 mt-2">
-            <Button 
-              size="sm" 
-              variant="outline" 
+            <Button
+              size="sm"
+              variant="outline"
               className="flex-1"
+              aria-label={`Select ${match.player1.name} as the winner of match ${matchNumber}`}
+              aria-keyshortcuts="Enter"
               onClick={() => onWinnerSelect(match.player1!.id)}
             >
               <Check className="w-3 h-3 mr-1" />
             </Button>
-            <Button 
-              size="sm" 
-              variant="outline" 
+            <Button
+              size="sm"
+              variant="outline"
               className="flex-1"
+              aria-label={`Select ${match.player2.name} as the winner of match ${matchNumber}`}
+              aria-keyshortcuts="Enter"
               onClick={() => onWinnerSelect(match.player2!.id)}
             >
               <Check className="w-3 h-3 mr-1" />
@@ -249,30 +427,39 @@ export function Leaderboard({ players, className }: LeaderboardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
+        <div
+          className="space-y-2"
+          role="list"
+          aria-label="Tournament standings"
+        >
           {sortedPlayers.map((player, index) => (
             <div
               key={player.id}
+              role="listitem"
               className={cn(
-                'flex items-center justify-between p-2 rounded',
-                index === 0 && 'bg-yellow-500/10 border border-yellow-500/30',
-                index === 1 && 'bg-gray-400/10 border border-gray-400/30',
-                index === 2 && 'bg-amber-600/10 border border-amber-600/30'
+                "flex items-center justify-between p-2 rounded",
+                index === 0 && "bg-yellow-500/10 border border-yellow-500/30",
+                index === 1 && "bg-gray-400/10 border border-gray-400/30",
+                index === 2 && "bg-amber-600/10 border border-amber-600/30",
               )}
             >
               <div className="flex items-center gap-3">
-                <span className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold',
-                  index === 0 && 'bg-yellow-500 text-white',
-                  index === 1 && 'bg-gray-400 text-white',
-                  index === 2 && 'bg-amber-600 text-white',
-                  index > 2 && 'bg-muted'
-                )}>
+                <span
+                  className={cn(
+                    "w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold",
+                    index === 0 && "bg-yellow-500 text-white",
+                    index === 1 && "bg-gray-400 text-white",
+                    index === 2 && "bg-amber-600 text-white",
+                    index > 2 && "bg-muted",
+                  )}
+                >
                   {index + 1}
                 </span>
                 <span className="font-medium">{player.name}</span>
                 {player.seed && (
-                  <span className="text-xs text-muted-foreground">#{player.seed}</span>
+                  <span className="text-xs text-muted-foreground">
+                    #{player.seed}
+                  </span>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -298,22 +485,34 @@ interface TournamentSetupProps {
 }
 
 export function TournamentSetup({ onStart, className }: TournamentSetupProps) {
-  const [tournamentName, setTournamentName] = useState('My Tournament');
-  const [playersText, setPlayersText] = useState('');
+  const [tournamentName, setTournamentName] = useState("My Tournament");
+  const [playersText, setPlayersText] = useState("");
   const [shuffle, setShuffle] = useState(true);
 
   const handleStart = () => {
     const playerNames = playersText
-      .split('\n')
+      .split("\n")
       .map((name) => name.trim())
       .filter((name) => name.length > 0);
-    
+
     if (playerNames.length >= 2) {
-      onStart(tournamentName, shuffle ? shufflePlayers(playerNames.map((n, i) => ({ id: `p${i}`, name: n, wins: 0, losses: 0 }))).map(p => p.name) : playerNames);
+      onStart(
+        tournamentName,
+        shuffle
+          ? shufflePlayers(
+              playerNames.map((n, i) => ({
+                id: `p${i}`,
+                name: n,
+                wins: 0,
+                losses: 0,
+              })),
+            ).map((p) => p.name)
+          : playerNames,
+      );
     }
   };
 
-  const playerCount = playersText.split('\n').filter((n) => n.trim()).length;
+  const playerCount = playersText.split("\n").filter((n) => n.trim()).length;
 
   return (
     <Card className={className}>
@@ -344,7 +543,7 @@ export function TournamentSetup({ onStart, className }: TournamentSetupProps) {
             className="w-full h-40 px-3 py-2 border rounded-md resize-none"
           />
           <p className="text-xs text-muted-foreground">
-            {playerCount} player{playerCount !== 1 ? 's' : ''} entered
+            {playerCount} player{playerCount !== 1 ? "s" : ""} entered
           </p>
         </div>
 
@@ -362,8 +561,8 @@ export function TournamentSetup({ onStart, className }: TournamentSetupProps) {
           </Label>
         </div>
 
-        <Button 
-          onClick={handleStart} 
+        <Button
+          onClick={handleStart}
           disabled={playerCount < 2}
           className="w-full"
         >
@@ -400,7 +599,7 @@ export function useTournament(): UseTournamentReturn {
     setTournament({
       id: `tournament-${Date.now()}`,
       name,
-      status: 'in-progress',
+      status: "in-progress",
       players,
       rounds,
       currentRound: 1,
@@ -418,9 +617,8 @@ export function useTournament(): UseTournamentReturn {
           if (match.id !== matchId) return match;
 
           const winner = prev.players.find((p) => p.id === winnerId);
-          const loser = match.player1?.id === winnerId 
-            ? match.player2 
-            : match.player1;
+          const loser =
+            match.player1?.id === winnerId ? match.player2 : match.player1;
 
           // Update player stats
           const updatedPlayers = prev.players.map((p) => {
@@ -434,9 +632,9 @@ export function useTournament(): UseTournamentReturn {
           if (nextRound <= prev.rounds.length) {
             const matchIndex = round.matches.indexOf(match);
             const nextRoundMatchIndex = Math.floor(matchIndex / 2);
-            
+
             const isFirstPlayer = matchIndex % 2 === 0;
-            
+
             // Update next round match
             const updatedRounds = prev.rounds.map((r) => {
               if (r.roundNumber !== nextRound) return r;
@@ -446,39 +644,39 @@ export function useTournament(): UseTournamentReturn {
                   if (mi !== nextRoundMatchIndex) return m;
                   return {
                     ...m,
-                    [isFirstPlayer ? 'player1' : 'player2']: winner,
-                    status: m.player1 && m.player2 ? 'pending' : 'pending',
+                    [isFirstPlayer ? "player1" : "player2"]: winner,
+                    status: m.player1 && m.player2 ? "pending" : "pending",
                   };
                 }),
               };
             });
 
-            return { 
-              ...match, 
-              winner, 
-              status: 'completed' as MatchStatus,
+            return {
+              ...match,
+              winner,
+              status: "completed" as MatchStatus,
               players: updatedPlayers,
               rounds: updatedRounds,
             };
           }
 
-          return { 
-            ...match, 
-            winner, 
-            status: 'completed' as MatchStatus,
+          return {
+            ...match,
+            winner,
+            status: "completed" as MatchStatus,
           };
         }),
       }));
 
       // Check if tournament is complete
-      const allMatchesComplete = newRounds.every((r) => 
-        r.matches.every((m) => m.status === 'completed')
+      const allMatchesComplete = newRounds.every((r) =>
+        r.matches.every((m) => m.status === "completed"),
       );
 
       return {
         ...prev,
         rounds: newRounds,
-        status: allMatchesComplete ? 'completed' : 'in-progress',
+        status: allMatchesComplete ? "completed" : "in-progress",
       };
     });
   }, []);

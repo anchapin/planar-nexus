@@ -4,6 +4,13 @@
  * DRFT-03: Cards face-down until user opens pack
  * DRFT-04: Click to pick card from opened pack
  * DRFT-08: Hover tracking for auto-pick functionality
+ *
+ * Issue #1272: keyboard-accessible alternatives to pointer-only interactions.
+ * - DraftCard now mirrors onHover/onHoverEnd onto onFocus/onBlur so the
+ *   auto-pick state machine (#DRFT-08) works for keyboard users.
+ * - Hover-only overlays are mirrored with focus-visible so keyboard focus
+ *   reveals the same UI affordances.
+ * - All buttons advertise their keyboard shortcut via aria-keyshortcuts.
  */
 
 import { cn } from "@/lib/utils";
@@ -26,6 +33,10 @@ export interface FaceDownCardProps {
  * Renders a face-down card (card back)
  *
  * DRFT-03: Shows card back image with dashed border to indicate face-down
+ *
+ * Native <button> activates on Enter and Space, so no explicit onKeyDown
+ * handler is required for activation. aria-keyshortcuts advertises the
+ * shortcut to assistive tech.
  */
 export function FaceDownCard({
   onClick,
@@ -36,18 +47,20 @@ export function FaceDownCard({
     <button
       onClick={onClick}
       disabled={isDisabled}
+      aria-keyshortcuts="Enter Space"
+      aria-describedby="face-down-card-hint"
       className={cn(
-        "relative aspect-[2.5/3.5] rounded-md overflow-hidden",
+        "group relative aspect-[2.5/3.5] rounded-md overflow-hidden",
         "border-2 border-dashed border-muted-foreground/30",
         "bg-gradient-to-br from-muted to-muted/80",
         "transition-all duration-200",
         "hover:border-primary hover:border-solid hover:shadow-md",
-        "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
         "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-dashed",
-        className
+        className,
       )}
       type="button"
-      aria-label="Face-down card - click to reveal"
+      aria-label="Face-down card. Activate to reveal the pack."
     >
       {/* Card Back Image */}
       <img
@@ -58,12 +71,15 @@ export function FaceDownCard({
       />
 
       {/* Dashed Border Overlay */}
-      <div className="absolute inset-0 border-2 border-dashed border-muted-foreground/20 rounded-md" />
+      <div className="absolute inset-0 border-2 border-dashed border-muted-foreground/20 rounded-md pointer-events-none" />
 
-      {/* Hover Hint */}
-      <div className="absolute inset-0 bg-primary/0 hover:bg-primary/10 transition-colors flex items-center justify-center">
-        <span className="text-xs text-muted-foreground opacity-0 hover:opacity-100 transition-opacity font-medium">
-          Click to open
+      {/* Hint Overlay — visible on hover or keyboard focus */}
+      <div
+        id="face-down-card-hint"
+        className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 group-focus-visible:bg-primary/10 transition-colors flex items-center justify-center pointer-events-none"
+      >
+        <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity font-medium">
+          Activate to open
         </span>
       </div>
     </button>
@@ -94,6 +110,11 @@ export interface DraftCardProps {
  *
  * DRFT-04: Click to pick card, shows "Pick" overlay on hover
  * DRFT-08: Tracks hover state for auto-pick functionality
+ *
+ * Issue #1272: onHover / onHoverEnd are also fired from focus / blur so
+ * keyboard users trigger the same auto-pick state machine. Hover-only
+ * overlays are mirrored with focus-visible so focus reveals the same
+ * affordances as hover.
  */
 export function DraftCard({
   card,
@@ -105,9 +126,7 @@ export function DraftCard({
 }: DraftCardProps) {
   // Get card image URL
   const imageUrl =
-    card.image_uris?.normal ||
-    card.image_uris?.large ||
-    card.image_uris?.small;
+    card.image_uris?.normal || card.image_uris?.large || card.image_uris?.small;
 
   return (
     <button
@@ -115,17 +134,20 @@ export function DraftCard({
       disabled={isPicked}
       onMouseEnter={onHover}
       onMouseLeave={onHoverEnd}
+      onFocus={onHover}
+      onBlur={onHoverEnd}
+      aria-keyshortcuts="Enter Space"
       className={cn(
-        "relative aspect-[2.5/3.5] rounded-md overflow-hidden",
+        "group relative aspect-[2.5/3.5] rounded-md overflow-hidden",
         "border border-border bg-muted",
         "transition-all duration-200",
         "hover:shadow-lg hover:scale-105 hover:z-10",
-        "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:z-10",
         "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100",
-        className
+        className,
       )}
       type="button"
-      aria-label={`Pick ${card.name}`}
+      aria-label={`Pick ${card.name}. Press Enter to pick this card.`}
     >
       {/* Card Image */}
       {imageUrl ? (
@@ -145,22 +167,24 @@ export function DraftCard({
 
       {/* Picked Overlay */}
       {isPicked && (
-        <div className="absolute inset-0 bg-muted/80 flex items-center justify-center">
-          <span className="text-sm font-bold text-muted-foreground">Picked</span>
+        <div className="absolute inset-0 bg-muted/80 flex items-center justify-center pointer-events-none">
+          <span className="text-sm font-bold text-muted-foreground">
+            Picked
+          </span>
         </div>
       )}
 
-      {/* Pick Overlay on Hover */}
+      {/* Pick Overlay — visible on hover OR keyboard focus */}
       {!isPicked && (
-        <div className="absolute inset-0 bg-primary/70 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div className="absolute inset-0 bg-primary/70 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
           <span className="text-lg font-bold text-primary-foreground drop-shadow-md">
             Pick
           </span>
         </div>
       )}
 
-      {/* Card Name on Hover */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Card Name on Hover/Focus */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity pointer-events-none">
         <p className="text-[10px] text-white line-clamp-2 leading-tight">
           {card.name}
         </p>
