@@ -139,10 +139,13 @@ describe("Tauri capability allow-list (issue #1274)", () => {
         // Empty tree means no plugin imports — every non-core permission is
         // over-grant. A populated set narrows the check to "only what is
         // actually used".
-        expect(
-          importedPlugins.has(pluginName),
-          `permission ${perm} granted but @tauri-apps/plugin-${pluginName} is never imported by the frontend`,
-        ).toBe(true);
+        const hasImport = importedPlugins.has(pluginName);
+        if (!hasImport) {
+          throw new Error(
+            `permission ${perm} granted but @tauri-apps/plugin-${pluginName} is never imported by the frontend`,
+          );
+        }
+        expect(hasImport).toBe(true);
       }
     }
   });
