@@ -59,3 +59,75 @@ expect(
 See `src/components/__tests__/icon-button-a11y.test.tsx` for representative
 coverage of the icon-only buttons in `SpectatorView`, `LifeAdjustment`, and
 `CounterAdjustment`.
+
+## Forced colors / Windows High Contrast Mode
+
+Users on Windows High Contrast Mode, OS-level Contrast Boost, or browsers in
+forced-colors mode lose the author-supplied color palette. Anything that
+conveys game state through translucent gradients, opacity layering, or muted
+borders disappears. Game chrome must remain usable in this mode.
+
+### Rule
+
+- **Color-only state is forbidden** as the sole signal: every state that
+  carries information (selected, hovered, damaged, priority-passed, picking,
+  warning, reconnecting) must also include either an `outline`, a `border`,
+  an icon swap, or text. Components set a `data-state` / `data-*-state`
+  attribute and a `border` class so the global CSS rule can promote them to
+  system colors.
+- **Translucent utility classes** (`bg-primary/5`, `border-muted-foreground/30`,
+  `bg-amber-100`, `bg-black/50`, etc.) are remapped to solid system colors
+  inside the `@media (forced-colors: active)` block in `src/app/globals.css`.
+  The class names remain in source; the CSS is the system of record for
+  colors. Don't fight it with inline `style={{ background }}`.
+- **Dashed strokes** become invisible under HCM. The global rule promotes
+  `border-dashed` to a solid stroke in `src/app/globals.css`. Where a
+  component depends on the dashed look for semantic meaning (e.g. zone
+  separators), the global rule + border color is sufficient.
+- **Component authors** add `data-hcm-affordance` on surfaces that should
+  receive the `Highlight`-backed outline ring while they are informationally
+  relevant (e.g. the timer during its warning phase, the connection overlay).
+  The rule is keyed off this attribute so we don't outline every border in
+  the world.
+- **Opting out** is rare; when intentional, set `forced-color-adjust: none`
+  on the affected element only (e.g. custom card art with embedded brand
+  colors that must survive HCM). Document the choice with a code comment.
+
+### System colors used
+
+| Token        | Purpose                                    |
+| ------------ | ------------------------------------------ |
+| `Canvas`     | Default surface (page, cards)              |
+| `CanvasText` | Default text + the substitute border color |
+| `ButtonFace` | Chrome surfaces (panels, badges, progress) |
+| `ButtonText` | Labels paired with `ButtonFace`            |
+| `LinkText`   | Interactive references                     |
+| `Highlight`  | Focus rings, picking/active state outlines |
+| `GrayText`   | Disabled / muted text                      |
+
+See https://www.w3.org/TR/css-color-4/#css-system-colors for the canonical
+CSS Color 4 list.
+
+### Inspecting in DevTools
+
+Open Chrome DevTools → Rendering → "Emulate CSS media feature
+`forced-colors`" → `active`. The page should look unchanged at a low level
+(translucent layers turn solid) but interactive surfaces and progress
+bars should retain a visible `Highlight` outline and solid border.
+
+### Testing
+
+- Component tests: `src/components/__tests__/forced-colors-game-chrome.test.tsx`
+  verifies that each indicator exposes the markup the CSS rule needs
+  (`data-state`, persistent `border`, accessible role).
+- E2E: `e2e/forced-colors.spec.ts` runs `/single-player`, `/draft`, and
+  `/multiplayer/host` with `page.emulateMedia({ forcedColors: "active" })`
+  and asserts the pages hydrate and chrome controls stay focusable.
+
+### Adding new chrome
+
+When adding a new component to game chrome (zones, stacks, priority-passed
+indicators, mana pip rows, etc.), add it to the next entry of the table
+above with the `data-state` value(s) and the CSS classes you need the global
+HCM block to override. A single PR per new chrome entry keeps the rule
+maintainable.

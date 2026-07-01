@@ -73,14 +73,30 @@ export function ConnectionStatusIndicator({
 
     if (compact) {
       return (
-        <Badge variant={variant} className="gap-1">
+        <Badge
+          variant={variant}
+          data-testid="connection-status-indicator"
+          data-connection-state={health.state}
+          data-connection-quality={health.connectionQuality}
+          data-hcm-affordance={
+            !health.isHealthy || health.state === "connecting"
+          }
+          className="gap-1 border"
+        >
           {renderIcon()}
         </Badge>
       );
     }
 
     return (
-      <Badge variant={variant} className="gap-2">
+      <Badge
+        variant={variant}
+        data-testid="connection-status-indicator"
+        data-connection-state={health.state}
+        data-connection-quality={health.connectionQuality}
+        data-hcm-affordance={!health.isHealthy || health.state === "connecting"}
+        className="gap-2 border"
+      >
         {renderIcon()}
         <span>{statusMessage}</span>
       </Badge>
@@ -147,27 +163,46 @@ export function ReconnectingOverlay({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-background p-6 rounded-lg shadow-lg max-w-md mx-4">
+    <div
+      data-testid="connection-reconnecting-overlay"
+      data-connection-state={health.state}
+      role="alertdialog"
+      aria-labelledby="connection-reconnecting-title"
+      aria-describedby="connection-reconnecting-body"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50"
+    >
+      <div
+        data-hcm-affordance
+        className="bg-background p-6 rounded-lg shadow-lg max-w-md mx-4 border"
+      >
         <div className="flex items-center gap-3 mb-4">
           {health.isReconnecting ? (
-            <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+            <RefreshCw
+              className="w-8 h-8 animate-spin text-primary"
+              aria-hidden="true"
+            />
           ) : (
-            <AlertTriangle className="w-8 h-8 text-destructive" />
+            <AlertTriangle
+              className="w-8 h-8 text-destructive"
+              aria-hidden="true"
+            />
           )}
-          <h2 className="text-xl font-bold">
+          <h2 id="connection-reconnecting-title" className="text-xl font-bold">
             {health.isReconnecting ? "Reconnecting..." : "Connection Lost"}
           </h2>
         </div>
 
-        <p className="text-muted-foreground mb-4">
+        <p
+          id="connection-reconnecting-body"
+          className="text-muted-foreground mb-4"
+        >
           {health.isReconnecting
             ? `Attempting to restore connection (Attempt ${health.reconnectAttempts}/${health.maxReconnectAttempts})...`
             : "Unable to connect to the game. Please check your connection."}
         </p>
 
         {health.latency !== undefined && (
-          <div className="mb-4 p-3 bg-muted rounded-lg">
+          <div className="mb-4 p-3 bg-muted rounded-lg border">
             <div className="flex justify-between text-sm">
               <span>Connection Quality:</span>
               <span className="font-medium">{health.connectionQuality}</span>
@@ -182,7 +217,7 @@ export function ReconnectingOverlay({
         <div className="flex gap-2">
           {onRetry && (
             <Button onClick={onRetry} className="flex-1">
-              <RefreshCw className="w-4 h-4 mr-2" />
+              <RefreshCw className="w-4 h-4 mr-2" aria-hidden="true" />
               Retry
             </Button>
           )}
@@ -247,14 +282,35 @@ export function ConnectionQualityBar({ health }: { health: ConnectionHealth }) {
   };
 
   return (
-    <div className="w-full">
+    <div
+      className="w-full"
+      data-testid="connection-quality-bar"
+      data-connection-quality={health.connectionQuality}
+    >
       <div className="flex justify-between text-xs mb-1">
         <span>Connection Quality</span>
         <span className="text-muted-foreground">
           {health.connectionQuality}
         </span>
       </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
+      <div
+        className="h-2 bg-muted rounded-full overflow-hidden border"
+        role="progressbar"
+        aria-valuenow={
+          health.connectionQuality === "excellent"
+            ? 100
+            : health.connectionQuality === "good"
+              ? 75
+              : health.connectionQuality === "fair"
+                ? 50
+                : health.connectionQuality === "poor"
+                  ? 25
+                  : 0
+        }
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Connection quality ${health.connectionQuality}`}
+      >
         <div
           className={`h-full transition-all duration-300 ${getQualityColor()}`}
           style={{ width: getQualityWidth() }}
