@@ -158,7 +158,7 @@ export const TAURI_CSP = [
   // CONTRIBUTING.md § "Security model".
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://placehold.co",
-  "font-src 'self' data: https://fonts.gstatic.com",
+  "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
   // WebRTC signaling uses the PeerJS broker; the AI coach calls the
   // Google Generative AI API and the Scryfall API. All other HTTPS
   // calls happen from the same Origin as well. The `https:` token is
