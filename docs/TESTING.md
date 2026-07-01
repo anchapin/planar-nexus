@@ -500,26 +500,60 @@ ever sliding back.
 Line/branch coverage only proves a line _executed_; it says nothing about
 whether the tests would catch a logic change. **Mutation testing** (via
 [Stryker](https://stryker-mutator.io/) + `@stryker-mutator/jest-runner`, added
-in #1097) rewrites the source one small change at a time — flipping operators,
-inverting conditions, altering boundaries ("mutants") — and re-runs the suite.
-A mutant that still passes the tests is a **survivor**: a hole in the suite.
+in #1097, enforced in #1265) rewrites the source one small change at a time —
+flipping operators, inverting conditions, altering boundaries ("mutants") — and
+re-runs the suite. A mutant that still passes the tests is a **survivor**: a
+hole in the suite.
 
 Coverage measures _what ran_. Mutation score measures _what the tests prove_.
 
 Configuration lives in [`stryker.config.js`](../stryker.config.js). It is
 intentionally **scoped** to the rules-engine modules where ordering and boundary
-conditions are the correctness argument — not the whole repo:
+conditions are the correctness argument — not the whole repo.
 
-- `src/lib/game-state/layer-system.ts`
-- `src/lib/game-state/replacement-effects.ts`
-- `src/lib/game-state/spell-casting.ts`
+#### Per-file allowlist
+
+The `mutate` array in `stryker.config.js` is the allowlist. New modules are
+added one at a time once their tests harden the mutation score above the
+threshold:
+
+| Module                                      | Status                   |
+| ------------------------------------------- | ------------------------ |
+| `src/lib/game-state/layer-system.ts`        | 🟢 active — PR gate (CI) |
+| `src/lib/game-state/replacement-effects.ts` | 🟡 active — nightly      |
+| `src/lib/game-state/spell-casting.ts`       | 🟡 active — nightly      |
+
+Adding a new module:
+
+1. Run `npm run mutate -- src/lib/game-state/<new-file>.ts` locally.
+2. Tighten the test suite until the score is consistently **≥70%**.
+3. Append the path to the `mutate` array in `stryker.config.js` and open a PR.
+
+#### Threshold (CI-enforced floor)
+
+`stryker.config.js` sets `thresholds.break: 70` so Stryker exits non-zero when
+the aggregate score drops below 70% — the same floor as the Jest coverage
+ratchet (`scripts/ratchet-coverage.js`, issue #1099) and the documented project
+target. `thresholds.high: 80` / `thresholds.low: 60` only affect report
+coloring (green / yellow / red bands).
+
+| Metric         | Project target | CI-enforced floor (Stryker `thresholds.break`) |
+| -------------- | -------------- | ---------------------------------------------- |
+| Mutation score | **70%**        | **70%**                                        |
+
+#### Running locally
 
 ```bash
-# Run mutation testing for all configured modules:
+# Run mutation testing for all configured modules (full allowlist):
 npm run test:mutation
 
-# Iterate on a single module (much faster):
-npm run test:mutation -- --mutate src/lib/game-state/replacement-effects.ts
+# Per-module convenience scripts (faster, scoped to one file):
+npm run mutate:layer-system
+npm run mutate:replacement-effects
+npm run mutate:spell-casting
+
+# Generic single-module escape hatch:
+npm run mutate -- --mutate src/lib/game-state/<file>.ts
 
 # Reuse results from the previous run (skips already-killed mutants):
 npm run test:mutation:incremental
@@ -527,23 +561,35 @@ npm run test:mutation:incremental
 
 The HTML report is written to `reports/mutation/index.html`. Stryker uses
 `coverageAnalysis: "perTest"` so only the tests that cover each mutant are run
-for it — the single biggest performance lever on a large suite.
+for it — the single biggest performance lever on a large suite. Worker count
+defaults to 4; override with `STRYKER_CONCURRENCY=<n>` or `--concurrency <n>`.
 
-**Target mutation score: ≥70%** (the same floor as coverage). The config sets
-`thresholds.high/low` for report coloring only; it deliberately does **not** set
-`thresholds.break` yet, so the run reports the score without failing. Once the
-baseline is consistently ≥70% across all scoped modules, enable `break` to
-ratchet it (mirroring the coverage floor above).
+#### CI integration
 
-**Current baseline** (single-module run, `replacement-effects.ts`):
-**77.78%** — 293 killed, 85 survived, 50 timed out, 13 no-coverage of 441
-mutants. Most survivors are equivalent or non-behavioural (description strings,
-generated ids, empty-array initializers); the actionable ones are tracked as
-follow-up test improvements.
+Mutation testing is **two-tier** so PR feedback stays fast while nightly trends
+catch drift:
 
-Mutation testing is expensive (≈8 min per scoped module on 8 cores), so it runs
-as a **non-blocking nightly CI job** (`.github/workflows/mutation.yml`), never on
-every PR. See section [13. CI Integration](#13-ci-integration).
+| Tier                   | Workflow                                     | Trigger                                       | Scope                              | Threshold enforced?                     |
+| ---------------------- | -------------------------------------------- | --------------------------------------------- | ---------------------------------- | --------------------------------------- |
+| **PR gate**            | `.github/workflows/ci.yml` (`mutation-test`) | every pull request + push to `main`/`develop` | `layer-system.ts` only             | ✅ yes — blocks merge via `build.needs` |
+| **Nightly full suite** | `.github/workflows/mutation.yml`             | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (3 files) | ✅ yes — fails workflow on regression   |
+
+The PR gate is intentionally scoped to one module (`layer-system.ts`) so a
+single PR completes the run in ~15-20 min on a 2-core runner. Other modules
+are gated by the nightly run and surface as `mutation-report` artifacts.
+
+#### Baseline measurements
+
+- `replacement-effects.ts`: **77.78%** — 293 killed, 85 survived, 50 timed out,
+  13 no-coverage of 441 mutants.
+- `layer-system.ts`, `spell-casting.ts`: measured on each CI run; the latest
+  numbers are in the `mutation-report` workflow artifact.
+
+Most survivors are equivalent or non-behavioural (description strings, generated
+ids, empty-array initializers); the actionable ones are tracked as follow-up
+test improvements and surface as new issues linked from this section.
+
+See section [13. CI Integration](#13-ci-integration).
 
 ---
 
@@ -592,15 +638,25 @@ npx playwright test --headed --debug
 Tests run automatically on:
 
 - **Pull requests** and **pushes to `main`** — `.github/workflows/ci.yml`
-  (lint, typecheck, unit tests with coverage, enforcing `coverageThreshold`).
+  (lint, typecheck, unit tests with coverage, mutation test of
+  `layer-system.ts`, enforcing `coverageThreshold` and the Stryker
+  `thresholds.break: 70` floor).
 - **Video-derived tests** — `.github/workflows/video-derived-tests.yml`
   (generates + runs video-derived tests, posts coverage delta on PRs).
+- **Nightly mutation report** — `.github/workflows/mutation.yml` (runs the
+  full Stryker allowlist on a daily cron + `workflow_dispatch`; uploads
+  `reports/mutation/` as an artifact).
 - **Pre-commit** — `husky` + `lint-staged` (see `.husky/`).
 
 A coverage regression that drops a metric below the `coverageThreshold` floor
-will fail CI and block the merge.
+will fail CI and block the merge. A mutation-score regression on
+`src/lib/game-state/layer-system.ts` below the Stryker `thresholds.break: 70`
+floor will fail the `mutation-test` job, which is a `needs:` dependency of
+`build`, so it also blocks the merge. Nightly regressions surface as failed
+runs on the Actions tab and as `mutation-report` artifacts — they are
+investigated the next morning and either fixed or rolled back.
 
-To **raise** the floor after improving coverage, run
+To **raise** the coverage floor after improving coverage, run
 `npm run test:coverage:ratchet` (see
 [Ratcheting the coverage floor](#10-coverage)) and commit the resulting
 `jest.config.js` bump. This is how the floor moves toward the 70% target

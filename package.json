@@ -33,6 +33,10 @@
     "test:e2e": "playwright test",
     "test:mutation": "stryker run",
     "test:mutation:incremental": "stryker run --incremental",
+    "mutate": "stryker run",
+    "mutate:layer-system": "stryker run --mutate src/lib/game-state/layer-system.ts",
+    "mutate:replacement-effects": "stryker run --mutate src/lib/game-state/replacement-effects.ts",
+    "mutate:spell-casting": "stryker run --mutate src/lib/game-state/spell-casting.ts",
     "prepare": "husky"
   },
   "dependencies": {

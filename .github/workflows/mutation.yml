@@ -1,13 +1,19 @@
 name: Mutation Testing
 
-# Non-blocking mutation-testing report for the rules-engine invariants (#1097).
-# Stryker mutates the modules listed in stryker.config.js and reports the
-# mutation score. It is intentionally NOT run on every PR — each scoped module
-# takes several minutes — so the job runs on a nightly schedule and on manual
-# dispatch only. `continue-on-error` guarantees it can never block a merge; it
-# only surfaces a trend and an HTML report as a build artifact.
+# Full-suite mutation-testing gate for the rules-engine invariants (#1097,
+# #1265). Stryker mutates every module in the `mutate` allowlist in
+# stryker.config.js and reports the aggregate mutation score. The score is
+# enforced by `thresholds.break: 70` in the config — a nightly run that drops
+# below the threshold fails the workflow and surfaces a regression on the
+# Actions tab + the mutation-report artifact.
+#
+# Per-PR mutation runs are scoped to a single module in .github/workflows/ci.yml
+# (`mutation-test:layer-system`); the full allowlist (3 modules, ~30-40 min on
+# a 2-core runner) lives here on the nightly schedule so PR CI stays under
+# budget.
 #
 # Run locally instead with:  npm run test:mutation
+# Run a single module fast:  npm run mutate:layer-system
 
 on:
   schedule:
@@ -22,9 +28,9 @@ jobs:
   mutation:
     name: Stryker Mutation Report
     runs-on: ubuntu-latest
-    # Always continue so a low/missing score never fails the workflow. This job
-    # is informational only; enforce a floor locally once the baseline is stable.
-    continue-on-error: true
+    # The threshold is enforced by stryker.config.js (`thresholds.break: 70`).
+    # No `continue-on-error` — a regression below the floor fails the workflow
+    # and is visible on the Actions tab so it can be triaged the next morning.
 
     steps:
       - name: Configure git
