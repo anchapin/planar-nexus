@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
 
@@ -51,26 +52,26 @@ export function ReviewDisplay({ review, onSaveNewDeck }: ReviewDisplayProps) {
             <div className="pr-4 space-y-6">
               <div>
                 <h3 className="font-headline text-lg font-bold mb-2">Overall Analysis</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{review.reviewSummary}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{sanitizeCardText(review.reviewSummary, 8_000)}</p>
               </div>
-              
+
               {review.deckOptions && review.deckOptions.length > 0 && (
                 <div>
                   <h3 className="font-headline text-lg font-bold mb-2">Suggested Deck Options</h3>
                   <Accordion type="single" collapsible className="w-full">
                     {review.deckOptions.map((option, index) => (
                       <AccordionItem value={`item-${index}`} key={index}>
-                        <AccordionTrigger className="font-semibold">{option.title}</AccordionTrigger>
+                        <AccordionTrigger className="font-semibold">{sanitizeCardText(option.title, 300)}</AccordionTrigger>
                         <AccordionContent>
-                          <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-4">{option.description}</p>
-                          
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap mb-4">{sanitizeCardText(option.description, 4_000)}</p>
+
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
                             {option.cardsToAdd && option.cardsToAdd.length > 0 && (
                               <div>
                                 <h4 className="font-semibold text-green-500 mb-1">Cards to Add</h4>
                                 <ul className="list-disc pl-5">
                                   {option.cardsToAdd.map(card => (
-                                    <li key={`add-${card.name}`}>{card.quantity}x {card.name}</li>
+                                    <li key={`add-${card.name}`}>{card.quantity}x {sanitizeCardText(card.name, 200)}</li>
                                   ))}
                                 </ul>
                               </div>
@@ -80,7 +81,7 @@ export function ReviewDisplay({ review, onSaveNewDeck }: ReviewDisplayProps) {
                                 <h4 className="font-semibold text-red-500 mb-1">Cards to Remove</h4>
                                  <ul className="list-disc pl-5">
                                   {option.cardsToRemove.map(card => (
-                                    <li key={`remove-${card.name}`}>{card.quantity}x {card.name}</li>
+                                    <li key={`remove-${card.name}`}>{card.quantity}x {sanitizeCardText(card.name, 200)}</li>
                                   ))}
                                 </ul>
                               </div>

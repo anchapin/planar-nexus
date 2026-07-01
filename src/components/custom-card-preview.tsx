@@ -9,6 +9,7 @@ import {
   FRAME_STYLE_COLORS,
   RARITY_COLORS,
 } from '@/lib/custom-card';
+import { sanitizeCardText, sanitizeImageUrl } from '@/lib/security/sanitize-text';
 
 /**
  * Custom Card Preview Component
@@ -144,8 +145,41 @@ export const CustomCardPreview = memo(function CustomCardPreview({
   // Parse oracle text for reminder text formatting
   const formattedOracleText = useMemo(() => {
     if (!card.oracleText) return [];
-    return card.oracleText.split('\n');
+    return card.oracleText.split('\n').map((line) => sanitizeCardText(line));
   }, [card.oracleText]);
+
+  // Pre-sanitize every user-controllable field that flows into the DOM.
+  // Defense-in-depth: the data layer sanitizes on save/import, but we
+  // re-sanitize at render so a poisoned card that arrived via P2P import
+  // (which doesn't go through `saveCustomCard`) still cannot execute.
+  const safe = useMemo(
+    () => ({
+      name: sanitizeCardText(card.name, 200),
+      typeLine: sanitizeCardText(card.typeLine, 200),
+      artist: sanitizeCardText(card.artist, 200),
+      copyright: sanitizeCardText(card.copyright, 200),
+      flavorText: sanitizeCardText(card.flavorText, 1_000),
+      imageUrl: sanitizeImageUrl(card.art.imageUrl),
+      setCode: sanitizeCardText(card.setCode, 16),
+      collectorNumber: sanitizeCardText(card.collectorNumber, 16),
+      power: sanitizeCardText(card.power, 16),
+      toughness: sanitizeCardText(card.toughness, 16),
+      loyalty: sanitizeCardText(card.loyalty, 16),
+    }),
+    [
+      card.name,
+      card.typeLine,
+      card.artist,
+      card.copyright,
+      card.flavorText,
+      card.art.imageUrl,
+      card.setCode,
+      card.collectorNumber,
+      card.power,
+      card.toughness,
+      card.loyalty,
+    ],
+  );
 
   // Handle transform card back
   if (showBack && card.backFace) {
@@ -200,7 +234,7 @@ export const CustomCardPreview = memo(function CustomCardPreview({
             className="text-xs font-bold truncate"
             style={{ color: frameColors.text, fontSize: scale * 11 }}
           >
-            {card.name || 'Card Name'}
+            {safe.name || 'Card Name'}
           </span>
           {/* Mana cost */}
           <div className="flex items-center gap-0.5">
@@ -215,10 +249,10 @@ export const CustomCardPreview = memo(function CustomCardPreview({
           className="absolute top-[30px] left-2 right-2 h-[175px] rounded-sm overflow-hidden"
           style={{ border: `1px solid ${frameColors.border}` }}
         >
-          {card.art.imageUrl ? (
+          {safe.imageUrl ? (
             <img
-              src={card.art.imageUrl}
-              alt={card.name}
+              src={safe.imageUrl}
+              alt={safe.name}
               className="w-full h-full object-cover"
             />
           ) : (
@@ -255,14 +289,14 @@ export const CustomCardPreview = memo(function CustomCardPreview({
             className="text-xs truncate"
             style={{ color: frameColors.text, fontSize: scale * 9 }}
           >
-            {card.typeLine || 'Type Line'}
+            {safe.typeLine || 'Type Line'}
           </span>
           {/* Collector number / set info */}
           <span
             className="text-xs"
             style={{ color: frameColors.text, fontSize: scale * 8 }}
           >
-            {card.setCode}/{card.collectorNumber || '001'}
+            {safe.setCode}/{safe.collectorNumber || '001'}
           </span>
         </div>
 
@@ -292,17 +326,17 @@ export const CustomCardPreview = memo(function CustomCardPreview({
           </div>
           
           {/* Flavor text (if present) */}
-          {card.flavorText && (
+          {safe.flavorText && (
             <div
               className="mt-1 pt-1 border-t border-black/20 italic text-xs"
               style={{ color: '#555' }}
             >
-              {card.flavorText}
+              {safe.flavorText}
             </div>
           )}
           
           {/* Power/Toughness */}
-          {card.power && card.toughness && (
+          {safe.power && safe.toughness && (
             <div className="absolute bottom-1 right-1">
               <span
                 className="text-sm font-bold"
@@ -311,13 +345,13 @@ export const CustomCardPreview = memo(function CustomCardPreview({
                   fontSize: scale * 14,
                 }}
               >
-                {card.power}/{card.toughness}
+                {safe.power}/{safe.toughness}
               </span>
             </div>
           )}
           
           {/* Loyalty (planeswalkers) */}
-          {card.loyalty && (
+          {safe.loyalty && (
             <div className="absolute bottom-1 right-1">
               <span
                 className="text-sm font-bold px-1 rounded"
@@ -327,7 +361,7 @@ export const CustomCardPreview = memo(function CustomCardPreview({
                   fontSize: scale * 12,
                 }}
               >
-                {card.loyalty}
+                {safe.loyalty}
               </span>
             </div>
           )}
@@ -338,8 +372,8 @@ export const CustomCardPreview = memo(function CustomCardPreview({
           className="absolute bottom-1 left-2 right-2 flex justify-between text-[8px]"
           style={{ color: frameColors.text }}
         >
-          <span>{card.artist || 'Artist'}</span>
-          <span>{card.copyright || '© Custom'}</span>
+          <span>{safe.artist || 'Artist'}</span>
+          <span>{safe.copyright || '© Custom'}</span>
         </div>
 
         {/* Rarity indicator */}

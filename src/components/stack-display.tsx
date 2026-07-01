@@ -26,6 +26,7 @@ import {
   ChevronUp,
   AlertCircle,
 } from "lucide-react";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 /**
  * Stack item representing a spell or ability on the stack
@@ -212,7 +213,7 @@ const StackItemDisplay = memo(function StackItemDisplay({
         {item.oracleText && (
           <TooltipContent className="max-w-xs">
             <p className="font-medium">{item.name}</p>
-            <p className="text-sm mt-1">{item.oracleText}</p>
+            <p className="text-sm mt-1">{sanitizeCardText(item.oracleText)}</p>
           </TooltipContent>
         )}
       </Tooltip>

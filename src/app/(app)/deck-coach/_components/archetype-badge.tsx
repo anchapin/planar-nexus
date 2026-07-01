@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 export interface ArchetypeBadgeProps {
   archetype: string;
@@ -113,14 +114,14 @@ export function ArchetypeBadge({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge 
-              variant={variant} 
+            <Badge
+              variant={variant}
               className={cn(
                 "text-sm px-3 py-1 h-auto",
                 isHighConfidence && "ring-2 ring-green-500/50"
               )}
             >
-              {archetype}
+              {sanitizeCardText(archetype, 100)}
               {isHighConfidence && <CheckCircle2 className="ml-1 h-3 w-3" />}
             </Badge>
           </TooltipTrigger>
@@ -139,7 +140,7 @@ export function ArchetypeBadge({
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge variant="outline" className="text-xs px-2 py-0.5">
-                {secondary}
+                {sanitizeCardText(secondary, 100)}
               </Badge>
             </TooltipTrigger>
             <TooltipContent>

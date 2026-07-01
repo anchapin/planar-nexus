@@ -6,6 +6,7 @@
  */
 
 import type { CustomCardDefinition } from './custom-card';
+import { sanitizeCustomCardFields } from './security/sanitize-text';
 
 const STORAGE_KEY = 'planar-nexus-custom-cards';
 
@@ -28,19 +29,22 @@ export function getCustomCards(): CustomCardDefinition[] {
 }
 
 /**
- * Save a custom card to local storage
+ * Save a custom card to local storage. Every user-controllable string
+ * field is sanitized before being written so that an attacker cannot
+ * plant a stored-XSS payload that survives every render site.
  */
 export function saveCustomCard(card: CustomCardDefinition): void {
   if (typeof window === 'undefined') return;
   
   try {
+    const safe = sanitizeCustomCardFields(card);
     const cards = getCustomCards();
-    const existingIndex = cards.findIndex(c => c.id === card.id);
+    const existingIndex = cards.findIndex(c => c.id === safe.id);
     
     if (existingIndex >= 0) {
-      cards[existingIndex] = { ...card, updatedAt: Date.now() };
+      cards[existingIndex] = { ...safe, updatedAt: Date.now() };
     } else {
-      cards.push(card);
+      cards.push(safe);
     }
     
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cards));
@@ -83,7 +87,9 @@ export function exportAllCustomCards(): string {
 }
 
 /**
- * Import custom cards from JSON
+ * Import custom cards from JSON. Each imported card is sanitized before
+ * being merged into local storage so that an attacker-supplied `.json`
+ * file cannot be used to seed a stored-XSS payload.
  */
 export function importCustomCards(json: string): { success: boolean; count: number; errors: string[] } {
   const errors: string[] = [];
@@ -98,11 +104,13 @@ export function importCustomCards(json: string): { success: boolean; count: numb
     const existingCards = getCustomCards();
     let count = 0;
     
-    imported.forEach((card, index) => {
-      if (!card.id || !card.name) {
+    imported.forEach((rawCard, index) => {
+      if (!rawCard.id || !rawCard.name) {
         errors.push(`Card ${index + 1}: Missing required fields (id, name)`);
         return;
       }
+
+      const card = sanitizeCustomCardFields(rawCard);
       
       const existingIndex = existingCards.findIndex(c => c.id === card.id);
       if (existingIndex >= 0) {

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, MessageCircle, X, Minimize2, Maximize2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { sanitizeCardText } from '@/lib/security/sanitize-text';
 
 export interface ChatMessage {
   id: string;
@@ -203,7 +204,7 @@ export function GameChat({
                     return (
                       <div key={message.id} className="text-center">
                         <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                          {message.content}
+                          {sanitizeCardText(message.content, 1_000)}
                         </span>
                       </div>
                     );
@@ -223,9 +224,9 @@ export function GameChat({
                           'w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0',
                           getPlayerColor(message.playerId)
                         )}
-                        title={message.playerName}
+                        title={sanitizeCardText(message.playerName, 64)}
                       >
-                        {getPlayerInitial(message.playerName)}
+                        {getPlayerInitial(sanitizeCardText(message.playerName, 64))}
                       </div>
 
                       {/* Message bubble */}
@@ -239,10 +240,10 @@ export function GameChat({
                       >
                         {!isOwnMessage && (
                           <div className="text-xs font-semibold text-muted-foreground mb-0.5">
-                            {message.playerName}
+                            {sanitizeCardText(message.playerName, 64)}
                           </div>
                         )}
-                        <div className="text-sm break-words">{message.content}</div>
+                        <div className="text-sm break-words">{sanitizeCardText(message.content, 1_000)}</div>
                         <div
                           className={cn(
                             'text-[10px] mt-0.5',
