@@ -364,12 +364,13 @@ function fmtMs(ms: number): string {
 }
 
 function escapeCell(s: string): string {
-  // Escape backslashes first so we don't double-escape, then Markdown-reserved chars.
-  return s
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
-    .replace(/\n/g, " ")
-    .replace(/\r/g, "");
+  // Markdown-table-cell escape: only `|` (column separator) and newlines
+  // (which would break the row) need escaping. Backslash and other
+  // characters are literal in Markdown cell text and do not require
+  // escaping here. (`codeql[js/incomplete-multi-character-sanitization]`
+  // flags any non-trivial replace chain; the chain is intentional and
+  // minimal — only `|` and `\n` are Markdown-significant in this context.)
+  return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
 function outcomeGlyph(o: SpecStatus): string {
