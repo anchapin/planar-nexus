@@ -465,7 +465,9 @@ function DraftPageContent() {
       <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
+            <h2 className="text-2xl font-semibold leading-none tracking-tight text-destructive">
+              Error
+            </h2>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">

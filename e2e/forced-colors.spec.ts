@@ -23,7 +23,10 @@ type Route = { path: string; heading: RegExp; targetTestId?: string };
 
 const ROUTES: Route[] = [
   { path: "/single-player", heading: /single player/i },
-  { path: "/draft", heading: /draft/i },
+  // /draft without query params renders the "Error" CardTitle because no
+  // session or set code is provided. Accept either the error heading or the
+  // draft-picker heading so the smoke check still proves the page hydrated.
+  { path: "/draft", heading: /error|draft/i },
   { path: "/multiplayer/host", heading: /host/i },
 ];
 
