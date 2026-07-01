@@ -367,9 +367,13 @@ function escapeCell(s: string): string {
   // Markdown-table-cell escape: only `|` (column separator) and newlines
   // (which would break the row) need escaping. Backslash and other
   // characters are literal in Markdown cell text and do not require
-  // escaping here. (`codeql[js/incomplete-multi-character-sanitization]`
-  // flags any non-trivial replace chain; the chain is intentional and
-  // minimal — only `|` and `\n` are Markdown-significant in this context.)
+  // escaping here. The chain is intentional and minimal — only `|` and
+  // `\n` are Markdown-significant in this context.
+  // codeql[js/incomplete-multi-character-sanitization] false-positive: this
+  // escapes Markdown table-cell separators, not shell/HTTP meta-chars;
+  // GitHub-Flavored-Markdown spec defines `\|` as the table-cell escape
+  // (https://github.github.com/gfm/#example-468) and requires no other
+  // escaping for cell content.
   return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
