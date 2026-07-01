@@ -187,6 +187,17 @@ export default function GameBoardPage() {
     autoStart: true,
   });
 
+  // #1267 — the local player's engine id, derived from the playerNames
+  // tuple above. Used by <GameAnnouncer> to swap "You" / "Your" into the
+  // polite live region rather than the generic engine name.
+  const localPlayerEngineId = React.useMemo(() => {
+    if (!engineState) return null;
+    for (const [id, player] of engineState.players) {
+      if (player.name?.toLowerCase() === "you") return id;
+    }
+    return null;
+  }, [engineState]);
+
   // Track an action and check for mistakes
   const trackAction = React.useCallback(
     async (type: ActionType, data: any) => {
@@ -893,6 +904,8 @@ export default function GameBoardPage() {
               currentTurnIndex={gameState.currentTurnPlayerIndex}
               onCardClick={handleCardClick}
               onZoneClick={handleZoneClick}
+              engineState={engineState}
+              localPlayerId={localPlayerEngineId}
             />
           </GameBoardErrorBoundary>
         )}
