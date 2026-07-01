@@ -68,7 +68,7 @@ export default async function RootLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           <SkipLink targetId="main-content" />
           <ServiceWorkerRegistration />
-          <main id="main-content">{children}</main>
+          {children}
           <LandingFooter />
           <Toaster />
           <AchievementNotificationToast />
