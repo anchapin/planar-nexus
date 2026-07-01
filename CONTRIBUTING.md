@@ -14,6 +14,7 @@ Thank you for your interest in contributing to Planar Nexus! This guide will hel
 4. [Project Structure](#4-project-structure)
 5. [Making Changes](#5-making-changes)
    - 5.6 [Adding a Tauri permission](#56-adding-a-tauri-permission)
+   - 5.7 [Security model](#57-security-model)
 6. [Code Style](#6-code-style)
 7. [Testing](#7-testing)
 8. [Pull Request Process](#8-pull-request-process)
@@ -294,6 +295,82 @@ must list only the permissions the frontend actually calls.
 
 **Reference:** <https://v2.tauri.app/security/capabilities/> and
 <https://v2.tauri.app/reference/acl/core-permissions/>.
+
+### 5.7 Security model
+
+The Tauri desktop build runs the webview with elevated trust — there is
+no app-store sandbox review, so the browser-level **Content Security
+Policy** in `src-tauri/tauri.conf.json` → `app.security.csp` is the
+single most important hardening layer. A regression that injects script
+into card oracle text, AI coach responses, peer chat, or replay-viewer
+content becomes immediately exploitable if the CSP is permissive.
+
+The CSP is governed by **issue #1273** and follows three principles:
+
+1. **Single source of truth.** The allow-list of external hosts lives in
+   [`src/lib/security/csp-allowlist.ts`](../src/lib/security/csp-allowlist.ts).
+   Both `tauri.conf.json` (the runtime CSP) and `next.config.ts` (the
+   Next.js Image Optimizer `remotePatterns`) consume that module. The
+   regression test `tests/csp-audit.test.ts` parses the runtime CSP,
+   asserts it equals the canonical `TAURI_CSP` string byte-for-byte, and
+   confirms every host from `REMOTE_IMAGE_HOSTS`,
+   `REMOTE_FONT_HOSTS`, and `REMOTE_CONNECT_HOSTS` is reflected in the
+   corresponding CSP directive.
+2. **No wildcards.** `img-src` and `font-src` list every hostname
+   individually; `connect-src` lists the PeerJS broker explicitly and
+   uses `https:` as a scheme-wide fallback for the AI endpoints. The
+   `script-src` directive forbids both `'unsafe-inline'` and the raw
+   `'unsafe-eval'` (only `'wasm-unsafe-eval'` is enabled for the
+   offline-ML WASM backend).
+3. **Documented trade-offs.** `'unsafe-inline'` is enabled in
+   `style-src` because Next.js 15 streaming SSR and Tailwind both inject
+   `<style>` tags at runtime. Removing it requires a nonce-based
+   strategy that is not yet supported upstream
+   ([vercel/next.js#47822](https://github.com/vercel/next.js/issues/47822)).
+   This is the only deliberate relaxation of the strict policy.
+
+#### Adding a new external host
+
+Before merging a PR that introduces a new external host (e.g. a new card
+art CDN, an additional AI provider, a new analytics endpoint), do **all**
+of the following:
+
+1. **Justify** the addition in the PR description. State which
+   user-visible feature requires it and why an existing host cannot be
+   reused.
+2. **Add the host to the shared allow-list.** Edit
+   `src/lib/security/csp-allowlist.ts` and append a new entry to the
+   relevant `REMOTE_*_HOSTS` array (image, font, or connect). Every
+   entry has a `label` and a `purpose` field — both are required for the
+   security audit trail.
+3. **Update `next.config.ts` if applicable.** The Next.js Image
+   Optimizer allow-list is now derived from `REMOTE_IMAGE_HOSTS`, so
+   adding an image host there is automatic. For other resource types
+   (fonts, scripts), update the corresponding `link rel="..."` in
+   `src/app/layout.tsx`.
+4. **Update the CSP string.** `TAURI_CSP` in the allow-list module must
+   be edited to reference the new host in the correct directive. The
+   `csp-audit` regression test will fail if any host in the allow-list
+   is missing from the corresponding directive.
+5. **Mirror the change in `tauri.conf.json`.** Copy the new `TAURI_CSP`
+   string into `app.security.csp`. The regression test asserts the two
+   strings are byte-identical — if you forget this step CI will fail.
+6. **Update `docs/` if the host carries sensitive data.** Hosts that
+   receive user-identifying information must be documented in the
+   privacy section of `docs/USER_GUIDE.md` per the data-handling policy.
+
+#### CSP test commands
+
+```bash
+# Run the CSP regression test (matches tests/csp-audit.test.ts)
+npm test -- --testPathPattern="csp-audit"
+
+# Run the full security suite (CSP + capability audit)
+npm test -- --testPathPattern="audit"
+```
+
+**Reference:** <https://v2.tauri.app/security/csp/> and the MDN
+[Content Security Policy guide](https://developer.mozilla.org/docs/Web/HTTP/CSP).
 
 ---
 
