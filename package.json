@@ -31,6 +31,7 @@
     "test:coverage": "jest --coverage",
     "test:coverage:ratchet": "npm run test:coverage && node scripts/ratchet-coverage.js",
     "test:e2e": "playwright test",
+    "test:e2e:flake": "tsx e2e/flake-detector.ts",
     "test:mutation": "stryker run",
     "test:mutation:incremental": "stryker run --incremental",
     "mutate": "stryker run",
