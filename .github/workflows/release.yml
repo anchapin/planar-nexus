@@ -349,7 +349,7 @@ jobs:
           fi
 
       - name: Create/Update GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Planar Nexus ${{ steps.get_version.outputs.version }}
