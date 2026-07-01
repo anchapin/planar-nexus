@@ -24,9 +24,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <Sidebar collapsible="icon">
         <AppSidebar />
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset
+        id="main-content"
+        tabIndex={-1}
+        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      >
         <div className="h-svh flex flex-col overflow-hidden">
-          <main className="flex-1 min-h-0 overflow-auto">{children}</main>
+          <div className="flex-1 min-h-0 overflow-auto">{children}</div>
           {!isGamePage && <AppFooter />}
         </div>
       </SidebarInset>
