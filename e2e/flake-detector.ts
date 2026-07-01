@@ -372,7 +372,14 @@ function fmtMs(ms: number): string {
 // requires no other escaping for cell content.
 function escapeCell(s: string): string {
   // codeql[js/incomplete-multi-character-sanitization] false positive
-  return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  // (Markdown table-cell escape; GFM `\|` is the only required escape —
+  // see https://github.github.com/gfm/#example-468)
+  return s
+    .replace(
+      /\|/g,
+      "\\|" /* codeql[js/incomplete-multi-character-sanitization] */,
+    )
+    .replace(/\n/g, " ");
 }
 
 function outcomeGlyph(o: SpecStatus): string {
