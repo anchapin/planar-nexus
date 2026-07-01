@@ -370,8 +370,12 @@ function escapeCell(s: string): string {
   // escaping here. The GitHub-Flavored-Markdown spec defines `\|` as the
   // table-cell escape (https://github.github.com/gfm/#example-468) and
   // requires no other escaping for cell content.
-  // codeql[js/incomplete-multi-character-sanitization] false positive
-  return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  return (
+    s
+      // codeql[js/incomplete-multi-character-sanitization] false positive
+      .replace(/\|/g, "\\|")
+      .replace(/\n/g, " ")
+  );
 }
 
 function outcomeGlyph(o: SpecStatus): string {
