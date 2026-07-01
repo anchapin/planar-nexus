@@ -93,7 +93,7 @@ jobs:
         run: npx playwright test --project=chromium
       
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report
@@ -101,7 +101,7 @@ jobs:
           retention-days: 30
       
       - name: Upload Playwright screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-screenshots
@@ -167,7 +167,7 @@ jobs:
 
       - name: Upload flake report (always)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flake-detector-report
           path: reports/flake-detector/
@@ -249,7 +249,7 @@ jobs:
 
       - name: Upload contrast audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: contrast-audit-report
           path: docs/CONTRAST_AUDIT.md
@@ -347,7 +347,7 @@ jobs:
 
       - name: Upload mutation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report-layer-system
           path: reports/mutation/
@@ -455,7 +455,7 @@ jobs:
           fi
 
       - name: Upload cargo-audit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: cargo-audit-report
@@ -489,7 +489,7 @@ jobs:
         run: npm run build
       
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-output
           path: .next/
