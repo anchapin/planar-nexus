@@ -131,3 +131,70 @@ indicators, mana pip rows, etc.), add it to the next entry of the table
 above with the `data-state` value(s) and the CSS classes you need the global
 HCM block to override. A single PR per new chrome entry keeps the rule
 maintainable.
+
+## Live regions for dynamic game state
+
+Any game-state transition that screen-reader users must perceive (turn swap,
+phase change, priority passing, life totals) is published through a polite
+`aria-live` region next to the board. The component is
+`<GameAnnouncer>` (`src/components/game-announcer.tsx`, issue #1267) and the
+existing visual live region in `game-board.tsx` is intentionally kept for
+the "It is X's turn" line — both co-exist, both speak, screen-readers pick
+the newer one when they overlap.
+
+Rules of the road:
+
+- **Polite, not assertive.** Use `aria-live="polite"` so the screen-reader
+  finishes whatever else it's reading. Reserve `role="alert"` for
+  irreversible, blocking events (player eliminated, game ended).
+- **Throttle.** The announcer caps at one update per 750 ms. If you call
+  `announce()` five times in a tick, only the first surfaces immediately and
+  the rest are queued at one-per-throttle-window. Don't bypass this from
+  custom code — `useGameAnnouncer().announce()` already routes through the
+  throttle.
+- **Dedup identical text.** Calling `announce("X")` repeatedly produces a
+  single spoken "X". This prevents replacement-effect churn during damage
+  resolution from spamming the live region.
+- **User-facing strings.** Announcements are written so a non-MTG expert
+  can follow ("Opponent gains 3 life (now 23)", not
+  "PLAYER_2.life += 3"). When adding new transitions, ship the user-facing
+  sentence alongside the engine event.
+
+### Manual smoke checklist (NVDA / VoiceOver)
+
+Run these before shipping any change that touches game-state flow:
+
+- [ ] **NVDA + Firefox (Windows):** Start a single-player game, advance the
+      phase with the spacebar. NVDA should announce
+      `Now in <phase>` within the throttle window (≈1 s). Verify a second
+      announcement lands after a `passPriority` click without overlap.
+- [ ] **VoiceOver + Safari (macOS):** Use VO+Shift+Down to step through the
+      game board. The "game-announcer" element (DataTestId) should be
+      reported as `polite live region`. Each manual "advance phase" action
+      should re-spoke.
+- [ ] **Turn swap:** End the local turn (or trigger the AI to take its turn).
+      The announcer should speak `Your turn — <phase>` / `Opponent's turn —
+    <phase>`. The "you" pronoun is the contract; if the engine reports a
+      generic name (`"Player 1"`), the announcer falls back to the literal
+      name and emits `Player 1's turn — <phase>`.
+- [ ] **Life total:** Deal 5 damage to either player. The local player
+      expects `You loses 5 life (now <X>)`; an opponent expects
+      `Opponent loses 5 life (now <X>)`. Sub-1 deltas are intentionally
+      silent — confirm that a 0-delta replacement-effect tick does NOT
+      produce an announcement.
+- [ ] **Priority flip:** Pass priority twice in a row. The announcer should
+      speak `Opponent has priority` and then `You have priority`. The pair
+      must NOT overlap on the live region (visible in the rendered HTML
+      mid-flight if you `Inspect > Elements`).
+- [ ] **Reset:** Refresh the page (or hit "New game"). The first phase
+      transition in the new game must produce a fresh announcement; the
+      announcer must NOT carry over a stale message from the previous game.
+- [ ] **Forced colors mode:** With Chrome DevTools `forced-colors` set to
+      `active`, the live region remains visually hidden (sr-only) but
+      continues to receive `aria-live` updates. If a regression makes the
+      region visible, file an a11y bug — it must not steal focus or paint a
+      background.
+
+Automated coverage that mirrors this checklist lives in
+`src/components/__tests__/game-announcer.test.tsx` — keep those tests in
+sync when changing anything in this section.

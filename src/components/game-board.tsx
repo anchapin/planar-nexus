@@ -33,6 +33,11 @@ import {
   useDamageEvents,
   DamageEvent,
 } from "@/components/damage-indicator";
+import { GameAnnouncer } from "@/components/game-announcer";
+import type {
+  GameState as EngineGameState,
+  PlayerId,
+} from "@/lib/game-state/types";
 import {
   Skull,
   Ban,
@@ -86,6 +91,12 @@ interface GameBoardProps {
   // Damage indicator props
   damageEvents?: DamageEvent[];
   onDamageEventComplete?: (id: string) => void;
+  // Accessibility (#1267) — passing engine state enables the GameAnnouncer
+  // live region mounted next to the board. Both fields are optional; when
+  // omitted the existing live region (which tracks the active player only)
+  // remains in place and the announcer is inert.
+  engineState?: EngineGameState | null;
+  localPlayerId?: PlayerId | null;
 }
 
 interface PlayerAreaProps {
@@ -552,6 +563,8 @@ export function GameBoard({
   isGameOver = false,
   damageEvents = [],
   onDamageEventComplete,
+  engineState = null,
+  localPlayerId = null,
 }: GameBoardProps) {
   const isMobile = useIsMobile();
   const currentPlayer = players[currentTurnIndex];
@@ -739,6 +752,11 @@ export function GameBoard({
       >
         {currentPlayer && `It is ${currentPlayer.name}'s turn`}
       </div>
+
+      {/* #1267 — Game-state announcer (turn / phase / priority / life). Owns
+          its own live region so a transition can interrupt the more generic
+          "It is X's turn" line above. Inert when engineState is omitted. */}
+      <GameAnnouncer engineState={engineState} localPlayerId={localPlayerId} />
 
       {/* Skip to main content link for keyboard users */}
       <a
