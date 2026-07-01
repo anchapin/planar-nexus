@@ -13,6 +13,7 @@ Thank you for your interest in contributing to Planar Nexus! This guide will hel
 3. [Development Setup](#3-development-setup)
 4. [Project Structure](#4-project-structure)
 5. [Making Changes](#5-making-changes)
+   - 5.6 [Adding a Tauri permission](#56-adding-a-tauri-permission)
 6. [Code Style](#6-code-style)
 7. [Testing](#7-testing)
 8. [Pull Request Process](#8-pull-request-process)
@@ -247,6 +248,52 @@ git commit -m "feat: Add new card search filter"
 # Push to your fork
 git push origin feature/your-feature-name
 ```
+
+### 5.6 Adding a Tauri permission
+
+Tauri 2 capabilities are a syscall allow-list — every `invoke()` from the webview
+that is not declared in `src-tauri/capabilities/*.json` is rejected at runtime. We
+operate under **least privilege**: `core:default` is banned, and every capability
+must list only the permissions the frontend actually calls.
+
+**Workflow for adding a new Tauri plugin / permission**
+
+1. **Justify** the addition in the PR description or linked issue. State which
+   user-visible feature requires the new IPC surface.
+2. **Register the plugin in Rust.** Add the crate to `src-tauri/Cargo.toml` and
+   call `.plugin(...)` from `src-tauri/src/lib.rs`. Plugins registered in Rust
+   but not granted in the capability manifest will silently reject IPC calls.
+3. **Use it from the frontend.** Wrap the plugin in `src/lib/tauri-bridge.ts`
+   (or the call site directly) using `@tauri-apps/plugin-<name>` and call only
+   the commands you need.
+4. **Grant the minimum permission.** In `src-tauri/capabilities/default.json`,
+   add the smallest scoped identifier the plugin exposes — prefer
+   `plugin-name:allow-<command>` over the umbrella `plugin-name:default`.
+   Example for the dialog plugin:
+   ```json
+   "permissions": [
+     "core:app:default",
+     "core:event:default",
+     "core:webview:default",
+     "core:window:default",
+     "dialog:allow-open"
+   ]
+   ```
+5. **Keep `core:*` sub-permissions explicit.** Never use the umbrella
+   `core:default` — it includes `core:tray:default`, `core:menu:default`,
+   `core:image:default`, `core:resources:default`, and `core:path:default` even
+   though Planar Nexus exercises none of them.
+6. **Add or update an audit test.** Either extend
+   `src-tauri/capabilities/__tests__/capability-audit.test.ts` (which asserts
+   that the capability manifest never names `core:default` and lists only
+   permissions actually imported in `src/`) or add an integration test that
+   fails when an undeclared command is invoked.
+7. **Verify the build.** `cd src-tauri && cargo check && npm run build:tauri`
+   must succeed — `tauri build` itself diffs the manifest against the IPC
+   commands it can statically detect and fails on over-grant regressions.
+
+**Reference:** <https://v2.tauri.app/security/capabilities/> and
+<https://v2.tauri.app/reference/acl/core-permissions/>.
 
 ---
 
