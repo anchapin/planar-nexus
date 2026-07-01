@@ -1,6 +1,7 @@
 # Dependabot dependency-update configuration.
-# Keeps npm packages and GitHub Actions versions current on a weekly cadence
-# so known-vulnerable transitive deps are auto-bumped/reported. Resolves #1108.
+# Keeps npm packages, Rust crates, and GitHub Actions versions current on a
+# weekly cadence so known-vulnerable transitive deps are auto-bumped/reported.
+# Resolves #1108 (npm + actions) and #1280 (cargo + framework-major ignores).
 # Dependabot PRs are skipped by the CodeQL workflow (codeql.yml:
 # `if: github.actor != 'dependabot[bot]'`), so bumps are never blocked by SAST.
 version: 2
@@ -18,8 +19,42 @@ updates:
     labels:
       - "security"
       - "tech-debt"
+    # Major bumps for framework packages (Next.js, React, Tauri CLI) cross
+    # breaking-API lines and require a coordinated migration PR, so we ignore
+    # them here and surface them via the manual roadmap instead.
+    ignore:
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@tauri-apps/cli"
+        update-types: ["version-update:semver-major"]
     # Bundle semver-compatible minor/patch updates into a single PR; major
     # bumps (potential breaking changes) still get individual PRs for review.
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Rust crates consumed by the Tauri host (src-tauri/Cargo.toml + Cargo.lock).
+  # The frontend package.json does not carry Rust deps; all of them live here.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(rust)"
+      include: "scope"
+    labels:
+      - "security"
+      - "tech-debt"
+    # Bundle semver-compatible minor/patch updates into a single PR so reviewers
+    # only have to read one Cargo.lock diff per week.
     groups:
       minor-and-patch:
         update-types:
