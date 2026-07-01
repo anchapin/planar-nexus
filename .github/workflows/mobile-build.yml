@@ -110,7 +110,7 @@ jobs:
           security delete-keychain build.keychain || true
 
       - name: Upload iOS artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-app-${{ needs.setup-build.outputs.build_type }}
           path: src-tauri/target/*/bundle/ios/*.ipa
@@ -171,7 +171,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload Android artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-apk-${{ needs.setup-build.outputs.build_type }}
           path: |
@@ -179,7 +179,7 @@ jobs:
 
       - name: Upload Android Release AAB
         if: needs.setup-build.outputs.build_type == 'release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-aab-release
           path: |
