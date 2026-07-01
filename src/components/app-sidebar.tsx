@@ -32,6 +32,22 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Button } from "./ui/button";
 import { useTranslations } from "next-intl";
 
+function resolveAriaCurrent(
+  pathname: string | null,
+  href: string,
+): "page" | "true" | undefined {
+  if (!pathname) return undefined;
+  if (pathname === href) return "page";
+  // Treat `/foo` as the parent of `/foo/anything` and `/foo?...` so that
+  // nested routes (e.g. `/deck-builder/123`) still announce the section
+  // as current for assistive technology. The trailing-slash guard prevents
+  // `/deck-builder-other` from matching `/deck-builder`.
+  if (pathname.startsWith(`${href}/`) || pathname.startsWith(`${href}?`)) {
+    return "true";
+  }
+  return undefined;
+}
+
 export function AppSidebar() {
   const pathname = usePathname();
   const t = useTranslations("sidebar");
@@ -105,14 +121,20 @@ export function AppSidebar() {
         <SidebarMenu>
           {menuItems.map((item) => {
             const label = t(item.labelKey);
+            const ariaCurrent = resolveAriaCurrent(pathname, item.href);
+            const isActive = ariaCurrent !== undefined;
             return (
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === item.href}
+                  isActive={isActive}
                   tooltip={{ children: label }}
                 >
-                  <Link href={item.href} data-tour={item.tourId}>
+                  <Link
+                    href={item.href}
+                    data-tour={item.tourId}
+                    aria-current={ariaCurrent}
+                  >
                     <item.icon />
                     <span>{label}</span>
                   </Link>
