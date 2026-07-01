@@ -112,26 +112,65 @@ jobs:
     name: Lint
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Configure git
         run: |
           git config --global --add safe.directory '*'
-      
+
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Run ESLint
         run: npm run lint
+
+  a11y-contrast:
+    name: A11y Color Contrast
+    # WCAG 1.4.3 / 1.4.11 design-token audit (#1268). Runs scripts/check-color-contrast.ts
+    # which parses `src/app/globals.css`, computes WCAG contrast ratios for every
+    # documented foreground/background pair, and fails the build if any pair drops
+    # below the AA threshold. Also regenerates docs/CONTRAST_AUDIT.md and uploads
+    # it as a workflow artifact so reviewers can read the latest numbers without
+    # checking out the branch.
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit design-token contrast (WCAG 1.4.3 / 1.4.11)
+        run: npm run a11y:contrast:report
+
+      - name: Upload contrast audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contrast-audit-report
+          path: docs/CONTRAST_AUDIT.md
+          retention-days: 30
   
   typecheck:
     name: Type Check
@@ -215,7 +254,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, security, e2e]
+    needs: [test, lint, typecheck, commitlint, security, e2e, a11y-contrast]
     
     steps:
       - name: Configure git

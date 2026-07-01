@@ -22,6 +22,8 @@
     "build:linux:rpm": "tauri build --bundles rpm",
     "start": "next start",
     "lint": "eslint src --max-warnings 1000",
+    "a11y:contrast": "tsx scripts/check-color-contrast.ts",
+    "a11y:contrast:report": "tsx scripts/check-color-contrast.ts --report",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
