@@ -2,7 +2,7 @@
 
 Thank you for your interest in contributing to Planar Nexus! This guide will help you get started with contributing code, documentation, or bug reports.
 
-> **Documentation map** — companion guides: [README.md](README.md) (project overview), [TESTING.md](TESTING.md) (testing requirements & workflow), [docs/API.md](docs/API.md) (API reference), [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (end-user docs), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (FAQ). The Code of Conduct lives in [§1](#1-code-of-conduct) below.
+> **Documentation map** — companion guides: [README.md](README.md) (project overview), [TESTING.md](TESTING.md) (testing requirements & workflow), [docs/API.md](docs/API.md) (API reference), [docs/USER_GUIDE.md](docs/USER_GUIDE.md) (end-user docs), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) (FAQ), [docs/RELEASE_RUNBOOK.md](docs/RELEASE_RUNBOOK.md) (release-engineering runbook). The Code of Conduct lives in [§1](#1-code-of-conduct) below.
 
 ---
 
