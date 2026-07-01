@@ -371,6 +371,7 @@ function fmtMs(ms: number): string {
 // table-cell escape (https://github.github.com/gfm/#example-468) and
 // requires no other escaping for cell content.
 function escapeCell(s: string): string {
+  // codeql[js/incomplete-multi-character-sanitization] false positive
   return s.replace(/\|/g, "\\|").replace(/\n/g, " ");
 }
 
