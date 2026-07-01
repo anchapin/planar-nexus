@@ -393,3 +393,6 @@ jobs:
           echo "Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           echo ""
           echo "Please check the workflow logs for details."
+          echo ""
+          echo "Recovery runbook: https://github.com/${{ github.repository }}/blob/main/docs/RELEASE_RUNBOOK.md"
+          echo "Dry-run checklist: https://github.com/${{ github.repository }}/blob/main/docs/RELEASE_DRY_RUN.md"

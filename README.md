@@ -206,6 +206,7 @@ _Create or join games with friends via P2P WebRTC connections_
 | [Troubleshooting](docs/TROUBLESHOOTING.md)       | Common issues and solutions                   |
 | [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)     | Building and deploying for all platforms      |
 | [Distribution Guide](docs/DISTRIBUTION_GUIDE.md) | Release management and distribution channels  |
+| [Release Runbook](docs/RELEASE_RUNBOOK.md)       | Tauri signing, notarization, rollback policy  |
 
 ---
 

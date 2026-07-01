@@ -3,6 +3,13 @@
 **Created**: March 12, 2026  
 **Version**: 1.0.0
 
+> **Operational runbook**: this document describes *what the workflow
+> does*. For the *operational steps* a release engineer must perform
+> (signing certificates, secrets, notarization, rollback, key rotation),
+> see [`/docs/RELEASE_RUNBOOK.md`](../docs/RELEASE_RUNBOOK.md) and its
+> companion dry-run checklist
+> [`/docs/RELEASE_DRY_RUN.md`](../docs/RELEASE_DRY_RUN.md).
+
 ---
 
 ## Overview
