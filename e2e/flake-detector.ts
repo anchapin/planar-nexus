@@ -363,23 +363,18 @@ function fmtMs(ms: number): string {
   return `${m}m${s}s`;
 }
 
-// codeql[js/incomplete-multi-character-sanitization] false positive
-// Markdown-table-cell escape: only `|` (column separator) and newlines
-// (which would break the row) need escaping. Backslash and other
-// characters are literal in Markdown cell text and do not require
-// escaping here. The GitHub-Flavored-Markdown spec defines `\|` as the
-// table-cell escape (https://github.github.com/gfm/#example-468) and
-// requires no other escaping for cell content.
+// Markdown-table-cell escape: backslash first (so we don't double-escape
+// our own pipe escape), then the column separator `|`, then collapse
+// newlines/tabs that would otherwise break the GFM table row.
+// GitHub-Flavored-Markdown spec defines `\|` as the table-cell escape
+// (https://github.github.com/gfm/#example-468); backslash escaping is
+// included so the CodeQL `incomplete-multi-character-sanitization` query
+// does not flag this function as failing to handle backslashes.
 function escapeCell(s: string): string {
-  // codeql[js/incomplete-multi-character-sanitization] false positive
-  // (Markdown table-cell escape; GFM `\|` is the only required escape —
-  // see https://github.github.com/gfm/#example-468)
   return s
-    .replace(
-      /\|/g,
-      "\\|" /* codeql[js/incomplete-multi-character-sanitization] */,
-    )
-    .replace(/\n/g, " ");
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/[\n\r\t]/g, " ");
 }
 
 function outcomeGlyph(o: SpecStatus): string {
