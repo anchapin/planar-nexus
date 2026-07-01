@@ -311,4 +311,30 @@ describe("DraftCard — keyboard activation + hover/focus parity (#1272)", () =>
     );
     await runAxe(container);
   });
+
+  // Issue #1268 — WCAG 1.4.11 (Non-text Contrast). The previously-shipped
+  // "disabled:opacity-30" class dropped the card image below the 3:1
+  // non-text contrast threshold, making picked cards invisible against the
+  // board. The fix is to remove the opacity drop and rely on the "Picked"
+  // overlay for the affordance. This test guards against the class being
+  // reintroduced.
+  it("does not apply a low-opacity disabled style that would fail 1.4.11", () => {
+    const card = buildDraftCard();
+    const { container } = render(
+      <DraftCard
+        card={card}
+        onClick={jest.fn()}
+        onHover={jest.fn()}
+        isPicked={false}
+      />,
+    );
+    const btn = container.querySelector("button");
+    expect(btn).not.toBeNull();
+    const cls = btn!.className;
+    // The exact banned pattern from the original implementation.
+    expect(cls).not.toMatch(/\bdisabled:opacity-(1|2|3)\d\b/);
+    // Disabled affordance must still announce the picked state via the
+    // overlay, so we keep the cursor-not-allowed + scale reset.
+    expect(cls).toMatch(/\bcursor-not-allowed\b/);
+  });
 });

@@ -143,7 +143,14 @@ export function DraftCard({
         "transition-all duration-200",
         "hover:shadow-lg hover:scale-105 hover:z-10",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:z-10",
-        "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100",
+        // Issue #1268: WCAG 1.4.11 (Non-text contrast) requires that the
+        // visual state of disabled UI affordances is discernible against
+        // adjacent colors at >= 3:1. Reducing opacity to 30% wrecks that
+        // because the card image dissolves into the background. The "Picked"
+        // overlay below already provides a strong non-text affordance
+        // (`bg-muted/80` + bold "Picked" label), so we just suppress hover
+        // scale and keep the image at full opacity.
+        "disabled:cursor-not-allowed disabled:hover:scale-100",
         className,
       )}
       type="button"
