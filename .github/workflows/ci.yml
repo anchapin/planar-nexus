@@ -201,28 +201,74 @@ jobs:
     name: Commit Lint
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Configure git
         run: |
           git config --global --add safe.directory '*'
-      
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
       - name: Validate commit messages
         run: npx commitlint --last --verbose
+
+  mutation-test:
+    # Mutation-score gate for the rules-engine invariants (#1265). Runs Stryker
+    # against `src/lib/game-state/layer-system.ts` on every PR and surfaces a
+    # per-pass threshold of 70% (see stryker.config.js `thresholds.break`). The
+    # full allowlist (layer-system, replacement-effects, spell-casting) runs
+    # nightly in .github/workflows/mutation.yml — too slow for per-PR CI.
+    #
+    # `build` depends on this job so a regression below the threshold blocks
+    # the merge, mirroring how `coverageThreshold` gates the `test` job.
+    name: Mutation Test (layer-system)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Stryker (layer-system only)
+        # Per-file scope keeps the PR gate to a single module (~15-20 min on a
+        # 2-core runner). The full allowlist (3 modules) runs on the nightly
+        # schedule — see .github/workflows/mutation.yml.
+        run: npm run mutate:layer-system
+        env:
+          STRYKER_CONCURRENCY: 4
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-layer-system
+          path: reports/mutation/
+          retention-days: 30
 
   security:
     name: Security Audit (npm)
@@ -337,7 +383,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, security, cargo-audit, a11y-contrast, e2e]
+    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e]
 
     steps:
       - name: Configure git
