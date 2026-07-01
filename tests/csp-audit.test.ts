@@ -161,17 +161,17 @@ describe("Tauri CSP audit (issue #1273)", () => {
 });
 
 describe("next.config.ts agrees with the CSP img-src (issue #1273)", () => {
-  test("images.remotePatterns covers every REMOTE_IMAGE_HOSTS entry", () => {
+  test("remotePatterns is derived from the shared csp-allowlist (no drift)", () => {
     const text = readText(NEXT_CONFIG);
-    // Lightweight text-level check: every hostname in the allow-list
-    // must literally appear in next.config.ts. This is intentionally
-    // tolerant — we don't parse TypeScript here, just confirm the file
-    // is using the shared allow-list (no drift).
-    for (const host of REMOTE_IMAGE_HOSTS) {
-      expect(text).toContain(host.hostname);
-    }
-    // And the import for the shared module is present (so we know the
-    // list isn't hand-duplicated).
-    expect(text).toMatch(/from\s+["']\.\.?\/src\/lib\/security\/csp-allowlist["']/);
+    // The point of the allow-list is single-source-of-truth. We can't
+    // ast-parse here, but we can verify both:
+    //   (a) the file imports REMOTE_IMAGE_HOSTS from csp-allowlist, and
+    //   (b) the remotePatterns config is built from that import via .map
+    // If either is true, the literal hostname strings will never appear
+    // in next.config.ts — by design.
+    expect(text).toMatch(
+      /from\s+["']\.\.?\/src\/lib\/security\/csp-allowlist["']/,
+    );
+    expect(text).toMatch(/remotePatterns\s*:\s*REMOTE_IMAGE_HOSTS\.map/);
   });
 });
