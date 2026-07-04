@@ -14,9 +14,16 @@
  *   6. Stepper interactions keep working through the virtualizer.
  */
 
-import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  jest,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/jest-globals";
 
 jest.mock("@/components/ui/card", () => ({
   Card: ({ children, className }: any) => (
@@ -196,10 +203,14 @@ describe("DeckList — card control accessibility (#933)", () => {
   it("exposes accessible names for both stepper buttons", () => {
     renderList();
     expect(
-      screen.getByRole("button", { name: "Decrease quantity of Lightning Bolt" }),
+      screen.getByRole("button", {
+        name: "Decrease quantity of Lightning Bolt",
+      }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Increase quantity of Lightning Bolt" }),
+      screen.getByRole("button", {
+        name: "Increase quantity of Lightning Bolt",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -228,13 +239,7 @@ describe("DeckList — card control accessibility (#933)", () => {
 describe("DeckList — virtualization (#1081)", () => {
   /** Build a constructed-sized deck spread across several categories. */
   function makeDeck(n: number): DeckCard[] {
-    const types = [
-      "Creature",
-      "Instant",
-      "Sorcery",
-      "Artifact",
-      "Land",
-    ];
+    const types = ["Creature", "Instant", "Sorcery", "Artifact", "Land"];
     return Array.from({ length: n }, (_, i) => ({
       id: `card-${i}`,
       name: `Card ${i}`,
@@ -285,7 +290,9 @@ describe("DeckList — virtualization (#1081)", () => {
     expect(screen.queryByTestId("deck-item-card-0")).toBeNull();
     const mountedIndices = screen
       .getAllByTestId(/^deck-item-card-\d+$/)
-      .map((el) => Number(el.getAttribute("data-testid")!.replace("deck-item-card-", "")));
+      .map((el) =>
+        Number(el.getAttribute("data-testid")!.replace("deck-item-card-", "")),
+      );
     expect(Math.max(...mountedIndices)).toBeGreaterThan(80);
   });
 
@@ -308,6 +315,8 @@ describe("DeckList — virtualization (#1081)", () => {
     expect(onRemoveCard).toHaveBeenCalledWith("card-0");
     fireEvent.click(screen.getByTestId("increase-quantity-card-0"));
     expect(onAddCard).toHaveBeenCalledTimes(1);
-    expect(onAddCard).toHaveBeenCalledWith(expect.objectContaining({ id: "card-0" }));
+    expect(onAddCard).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "card-0" }),
+    );
   });
 });

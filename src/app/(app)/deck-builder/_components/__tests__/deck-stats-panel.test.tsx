@@ -7,7 +7,7 @@
 
 import { describe, it, expect, jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/jest-globals";
 
 jest.mock("@/components/ui/card", () => ({
   Card: ({ children, className, ...props }: any) => (
@@ -109,7 +109,10 @@ describe("DeckStatsPanel — collapse toggle accessibility", () => {
       name: "Expand deck statistics",
     });
     expect(expandBtn).toHaveAttribute("aria-expanded", "false");
-    expect(expandBtn).toHaveAttribute("aria-controls", "deck-statistics-content");
+    expect(expandBtn).toHaveAttribute(
+      "aria-controls",
+      "deck-statistics-content",
+    );
   });
 
   it("exposes the controlled region via the matching id when expanded", () => {

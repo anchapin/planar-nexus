@@ -9,7 +9,7 @@
 
 import { describe, it, expect, jest } from "@jest/globals";
 import { render } from "@testing-library/react";
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/jest-globals";
 
 // Stub recharts so charts render without jsdom layout dependencies.
 jest.mock("recharts", () => ({
@@ -64,9 +64,7 @@ import {
 
 function chartIsHiddenFromAT(container: HTMLElement): boolean {
   // The decorative SVG chart must live inside an aria-hidden wrapper.
-  return (
-    container.querySelector('[aria-hidden="true"] [data-testid]') !== null
-  );
+  return container.querySelector('[aria-hidden="true"] [data-testid]') !== null;
 }
 
 describe("ManaCurveChart — screen-reader alternative", () => {

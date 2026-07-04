@@ -6,7 +6,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/jest-globals";
 
 import { P2PDiagnosticsPanel } from "../p2p-diagnostics-panel";
 import type { ICEDiagnosticsSnapshot } from "@/lib/ice-diagnostics";

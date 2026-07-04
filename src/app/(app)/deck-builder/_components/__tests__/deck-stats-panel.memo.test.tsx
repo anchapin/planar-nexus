@@ -10,7 +10,7 @@
 
 import { describe, it, expect, jest } from "@jest/globals";
 import { render } from "@testing-library/react";
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/jest-globals";
 
 // `jest.mock` factories are hoisted; they may only reference bindings whose
 // names are prefixed with `mock`. The counters are read at render time, well
@@ -70,10 +70,9 @@ jest.mock("@/components/deck-statistics", () => ({
 jest.mock("@/hooks/use-deck-statistics", () => {
   // Preserve the real `getDeckSignature` (used by the panel's `React.memo`
   // comparator) while stubbing only the hook so the panel render is isolated.
-  const actual =
-    jest.requireActual<typeof import("@/hooks/use-deck-statistics")>(
-      "@/hooks/use-deck-statistics",
-    );
+  const actual = jest.requireActual<
+    typeof import("@/hooks/use-deck-statistics")
+  >("@/hooks/use-deck-statistics");
   return {
     ...actual,
     useDeckStatistics: () => ({
@@ -166,9 +165,7 @@ describe("DeckStatsPanel — memoization (issue #1083)", () => {
     );
     const initialRenderCount = mockManaRenders;
 
-    rerender(
-      <DeckStatsPanel deck={deck} format="commander" className="b" />,
-    );
+    rerender(<DeckStatsPanel deck={deck} format="commander" className="b" />);
     expect(mockManaRenders).toBeGreaterThan(initialRenderCount);
   });
 });
