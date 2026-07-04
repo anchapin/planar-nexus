@@ -8,7 +8,7 @@
 
 import { describe, it, expect, jest, beforeAll } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
-import "@testing-library/jest-dom";
+import "@testing-library/jest-dom/jest-globals";
 import { DeckCoachChatPanel } from "../chat-panel";
 import type { ChatMessage } from "@/types/chat";
 
