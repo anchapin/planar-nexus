@@ -1,9 +1,9 @@
 /**
  * Set Browser - MTG Set Selection for Limited Modes
- * 
+ *
  * Phase 14: Foundation
  * Requirements: SET-01, SET-02, SET-03
- * 
+ *
  * Features:
  * - Browse all MTG sets sorted by release date or name
  * - Display card count for each set
@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { format } from "date-fns";
+import { format } from "date-fns/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,18 +43,22 @@ import {
   getSetTypeDisplayName,
   filterPlayableSets,
 } from "@/lib/limited/set-service";
-import type { ScryfallSet, SetSortOption, LimitedMode } from "@/lib/limited/types";
+import type {
+  ScryfallSet,
+  SetSortOption,
+  LimitedMode,
+} from "@/lib/limited/types";
 
 export default function SetBrowserPage() {
   const router = useRouter();
-  
+
   // State
   const [sets, setSets] = useState<ScryfallSet[]>([]);
   const [filteredSets, setFilteredSets] = useState<ScryfallSet[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortOption, setSortOption] = useState<SetSortOption>("release_date");
-  
+
   // Selection state
   const [selectedSet, setSelectedSet] = useState<ScryfallSet | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -66,10 +70,10 @@ export default function SetBrowserPage() {
       try {
         setIsLoading(true);
         setError(null);
-        
+
         const allSets = await fetchAllSets();
         const playableSets = filterPlayableSets(allSets);
-        
+
         setSets(playableSets);
         setFilteredSets(sortSets(playableSets, sortOption));
       } catch (err) {
@@ -102,7 +106,7 @@ export default function SetBrowserPage() {
     if (!selectedSet) return;
 
     const setCode = selectedSet.code.toLowerCase();
-    
+
     if (selectedMode === "sealed") {
       router.push(`/sealed?set=${setCode}`);
     } else {
@@ -132,7 +136,7 @@ export default function SetBrowserPage() {
             Choose a Magic: The Gathering set for Draft or Sealed
           </p>
         </div>
-        
+
         {/* Sort Controls */}
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Sort by:</span>
@@ -192,7 +196,7 @@ export default function SetBrowserPage() {
           <div className="mb-4 text-sm text-muted-foreground">
             Showing {filteredSets.length} sets
           </div>
-          
+
           <ScrollArea className="flex-1">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-6">
               {filteredSets.map((set) => (
@@ -251,10 +255,7 @@ function SetCard({ set, onClick, formatReleaseDate }: SetCardProps) {
             {set.code.toUpperCase()}
           </div>
         )}
-        <Badge
-          variant="secondary"
-          className="absolute top-2 right-2"
-        >
+        <Badge variant="secondary" className="absolute top-2 right-2">
           {set.card_count} cards
         </Badge>
       </div>
