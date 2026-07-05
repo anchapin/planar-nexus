@@ -35,7 +35,7 @@ export const DeckCardSchema = z.object({
   type_line: z.string(),
   colors: z.array(z.string()),
   color_identity: z.array(z.string()),
-  legalities: z.record(z.string()),
+  legalities: z.record(z.string(), z.string()),
   oracle_text: z.string().optional(),
   mana_cost: z.string().optional(),
   count: z.number(),
@@ -46,7 +46,7 @@ export const DigestedCoachContextSchema = z.object({
   deckSummary: z
     .object({
       totalCards: z.number(),
-      typeCounts: z.record(z.number()),
+      typeCounts: z.record(z.string(), z.number()),
       averageCmc: z.number(),
       keyCards: z.array(z.string()),
       manaCurve: z.array(z.number()),

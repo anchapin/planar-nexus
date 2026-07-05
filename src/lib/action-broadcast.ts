@@ -1,10 +1,10 @@
 /**
  * Action Broadcasting System
  * Issue #287: Enhanced for deterministic game state synchronization
- * 
+ *
  * Handles serialization, broadcast, and acknowledgment of game actions
  * across multiplayer peers. This is the foundation for real-time multiplayer.
- * 
+ *
  * Enhanced features:
  * - Deterministic action ordering with sequence numbers
  * - State hash verification for sync detection
@@ -12,19 +12,19 @@
  * - Improved acknowledgment handling
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 // Action types for the game
-export type ActionType = 
-  | 'play-card'
-  | 'attack'
-  | 'cast-spell'
-  | 'activate-ability'
-  | 'pass-priority'
-  | 'concede'
-  | 'mulligan'
-  | 'sideboard'
-  | 'take-action';
+export type ActionType =
+  | "play-card"
+  | "attack"
+  | "cast-spell"
+  | "activate-ability"
+  | "pass-priority"
+  | "concede"
+  | "mulligan"
+  | "sideboard"
+  | "take-action";
 
 export interface GameAction {
   id: string;
@@ -41,22 +41,22 @@ export interface GameAction {
 export const GameActionSchema = z.object({
   id: z.string().uuid(),
   type: z.enum([
-    'play-card',
-    'attack',
-    'cast-spell',
-    'activate-ability',
-    'pass-priority',
-    'concede',
-    'mulligan',
-    'sideboard',
-    'take-action'
+    "play-card",
+    "attack",
+    "cast-spell",
+    "activate-ability",
+    "pass-priority",
+    "concede",
+    "mulligan",
+    "sideboard",
+    "take-action",
   ]),
   playerId: z.string(),
   timestamp: z.number(),
-  payload: z.record(z.unknown()),
+  payload: z.record(z.string(), z.unknown()),
   targetZone: z.string().optional(),
   targetCardId: z.string().optional(),
-  targetPlayerId: z.string().optional()
+  targetPlayerId: z.string().optional(),
 });
 
 export type SerializedGameAction = z.infer<typeof GameActionSchema>;
@@ -68,7 +68,7 @@ export interface ActionAck {
   actionId: string;
   peerId: string;
   receivedAt: number;
-  status: 'received' | 'applied' | 'failed';
+  status: "received" | "applied" | "failed";
   error?: string;
 }
 
@@ -103,7 +103,7 @@ export const DEFAULT_BROADCAST_OPTIONS: BroadcastOptions = {
   reliable: true,
   ordered: true,
   ackTimeout: 5000,
-  maxRetries: 3
+  maxRetries: 3,
 };
 
 /**
@@ -125,7 +125,9 @@ export class ActionBroadcaster {
   /**
    * Register a callback for received actions
    */
-  setActionHandler(handler: (action: GameAction, fromPeer: string) => void): void {
+  setActionHandler(
+    handler: (action: GameAction, fromPeer: string) => void,
+  ): void {
     this.onActionReceived = handler;
   }
 
@@ -171,10 +173,10 @@ export class ActionBroadcaster {
       if (result.success) {
         return result.data;
       }
-      console.error('Invalid action schema:', result.error);
+      console.error("Invalid action schema:", result.error);
       return null;
     } catch (error) {
-      console.error('Failed to deserialize action:', error);
+      console.error("Failed to deserialize action:", error);
       return null;
     }
   }
@@ -191,7 +193,7 @@ export class ActionBroadcaster {
       action,
       acknowledgedBy: new Set(),
       retries: 0,
-      addedAt: Date.now()
+      addedAt: Date.now(),
     };
     this.actionQueue.set(action.id, queueItem);
 
@@ -200,11 +202,11 @@ export class ActionBroadcaster {
 
     // Serialize and send to all peers
     const serialized = this.serializeAction(action);
-    
+
     this.peers.forEach((connection, peerId) => {
       this.sendToPeer(peerId, {
-        type: 'action',
-        payload: serialized
+        type: "action",
+        payload: serialized,
       });
     });
   }
@@ -212,7 +214,10 @@ export class ActionBroadcaster {
   /**
    * Send a message to a specific peer
    */
-  private sendToPeer(peerId: string, message: { type: string; payload: unknown }): void {
+  private sendToPeer(
+    peerId: string,
+    message: { type: string; payload: unknown },
+  ): void {
     const connection = this.peers.get(peerId);
     if (!connection) {
       console.warn(`Cannot send to unknown peer: ${peerId}`);
@@ -220,9 +225,15 @@ export class ActionBroadcaster {
     }
 
     try {
-      if (connection instanceof WebSocket && connection.readyState === WebSocket.OPEN) {
+      if (
+        connection instanceof WebSocket &&
+        connection.readyState === WebSocket.OPEN
+      ) {
         connection.send(JSON.stringify(message));
-      } else if (connection instanceof RTCDataChannel && connection.readyState === 'open') {
+      } else if (
+        connection instanceof RTCDataChannel &&
+        connection.readyState === "open"
+      ) {
         connection.send(JSON.stringify(message));
       } else {
         console.warn(`Connection not ready for peer: ${peerId}`);
@@ -235,18 +246,21 @@ export class ActionBroadcaster {
   /**
    * Handle incoming message from a peer
    */
-  handleMessage(peerId: string, message: { type: string; payload: unknown }): void {
+  handleMessage(
+    peerId: string,
+    message: { type: string; payload: unknown },
+  ): void {
     switch (message.type) {
-      case 'action':
+      case "action":
         this.handleIncomingAction(peerId, message.payload as string);
         break;
-      case 'ack':
+      case "ack":
         this.handleAck(peerId, message.payload as ActionAck);
         break;
-      case 'sync-request':
+      case "sync-request":
         this.handleSyncRequest(peerId);
         break;
-      case 'sync-response':
+      case "sync-response":
         this.handleSyncResponse(message.payload as GameAction[]);
         break;
     }
@@ -258,7 +272,7 @@ export class ActionBroadcaster {
   private handleIncomingAction(peerId: string, serialized: string): void {
     const action = this.deserializeAction(serialized);
     if (!action) {
-      console.error('Failed to deserialize incoming action');
+      console.error("Failed to deserialize incoming action");
       return;
     }
 
@@ -270,9 +284,9 @@ export class ActionBroadcaster {
       actionId: action.id,
       peerId,
       receivedAt: Date.now(),
-      status: 'received'
+      status: "received",
     };
-    this.sendToPeer(peerId, { type: 'ack', payload: ack });
+    this.sendToPeer(peerId, { type: "ack", payload: ack });
 
     // Notify handler
     if (this.onActionReceived) {
@@ -307,8 +321,8 @@ export class ActionBroadcaster {
   private handleSyncRequest(peerId: string): void {
     // Send full action history to the requesting peer
     this.sendToPeer(peerId, {
-      type: 'sync-response',
-      payload: this.actionHistory
+      type: "sync-response",
+      payload: this.actionHistory,
     });
   }
 
@@ -321,7 +335,7 @@ export class ActionBroadcaster {
       if (!this.actionHistory.find((a) => a.id === action.id)) {
         this.actionHistory.push(action);
         if (this.onActionReceived) {
-          this.onActionReceived(action, 'sync');
+          this.onActionReceived(action, "sync");
         }
       }
     });
@@ -332,7 +346,7 @@ export class ActionBroadcaster {
    */
   requestSync(): void {
     this.peers.forEach((_, peerId) => {
-      this.sendToPeer(peerId, { type: 'sync-request', payload: null });
+      this.sendToPeer(peerId, { type: "sync-request", payload: null });
     });
   }
 
@@ -378,7 +392,7 @@ export function createGameAction(
     targetZone?: string;
     targetCardId?: string;
     targetPlayerId?: string;
-  } = {}
+  } = {},
 ): GameAction {
   return {
     id: createActionId(),
@@ -386,7 +400,7 @@ export function createGameAction(
     playerId,
     timestamp: Date.now(),
     payload,
-    ...options
+    ...options,
   };
 }
 
@@ -395,7 +409,9 @@ export function createGameAction(
  */
 let broadcasterInstance: ActionBroadcaster | null = null;
 
-export function getBroadcaster(options?: Partial<BroadcastOptions>): ActionBroadcaster {
+export function getBroadcaster(
+  options?: Partial<BroadcastOptions>,
+): ActionBroadcaster {
   if (!broadcasterInstance) {
     broadcasterInstance = new ActionBroadcaster(options);
   }
