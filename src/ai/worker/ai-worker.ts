@@ -27,18 +27,21 @@ import type { DeckCard } from "@/app/actions";
  */
 export const aiWorker: AIWorkerAPI = {
   async analyzeGameState(payload: AnalyzeStatePayload) {
-    const { gameState, playerId } = payload;
-    return evaluateGameState(gameState, playerId);
+    // `difficulty` and `archetype` flow through so the worker result is
+    // value-identical to a direct main-thread `evaluateGameState` call
+    // (issue #1244). Omitted fields use the evaluator's documented defaults.
+    const { gameState, playerId, difficulty, archetype } = payload;
+    return evaluateGameState(gameState, playerId, difficulty, archetype);
   },
 
   async evaluateBoard(payload: AnalyzeStatePayload) {
-    const { gameState, playerId } = payload;
-    return evaluateGameState(gameState, playerId);
+    const { gameState, playerId, difficulty, archetype } = payload;
+    return evaluateGameState(gameState, playerId, difficulty, archetype);
   },
 
   async quickScore(payload: AnalyzeStatePayload) {
-    const { gameState, playerId } = payload;
-    return quickScore(gameState, playerId);
+    const { gameState, playerId, difficulty, archetype } = payload;
+    return quickScore(gameState, playerId, difficulty, archetype);
   },
 
   async detectArchetype(deck: unknown[]) {

@@ -57,6 +57,12 @@ import type {
 // off the main thread (#1080). The bridge falls back to identical main-thread
 // computation if the worker is unavailable.
 import { evaluateTriggerChainAsync } from "./worker/trigger-chain-worker-bridge";
+// Issue #1244: `evaluateGameState` is offloaded to the AI Web Worker too, so
+// the six call sites in this module (response evaluation, priority pass,
+// resource management, counterspell factors, variable cost, modal choice) do
+// not block the UI on a 10-permanent board. The bridge falls back to
+// identical main-thread computation when the worker is unavailable.
+import { evaluateGameStateAsync } from "./worker/game-state-evaluator-worker-bridge";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "./providers/types";
 import {
@@ -1032,6 +1038,22 @@ export class StackDependencyAnalyzer {
 }
 
 /**
+ * Async game-state-evaluator provider used by the `*Async` variants below.
+ *
+ * Issue #1244: callers that already operate in an `async` context can opt in
+ * to off-main-thread evaluation by using these variants. The default provider
+ * is the AI Web Worker bridge, which falls back to identical main-thread
+ * computation when the worker is unavailable (SSR, jsdom tests, init
+ * failure). Tests can inject a stub to assert that the async variants route
+ * through the bridge as expected.
+ */
+export type EvaluationProvider = (
+  gameState: GameState,
+  playerId: string,
+  difficulty: DifficultyLevel,
+) => Promise<DetailedEvaluation>;
+
+/**
  * Main stack interaction AI class
  */
 export class StackInteractionAI {
@@ -1039,15 +1061,26 @@ export class StackInteractionAI {
   private playerId: string;
   private weights: ResponseWeights;
   private difficulty: DifficultyLevel;
+  /**
+   * Issue #1244 — injection seam for the async evaluation path. The default
+   * provider routes through the AI Web Worker bridge (with main-thread
+   * fallback). Tests can pass a stub provider to assert offload behavior
+   * without needing a real `Worker` global.
+   */
+  private evaluationProvider: EvaluationProvider;
 
   constructor(
     gameState: GameState,
     playerId: string,
     difficulty: DifficultyLevel = "medium",
+    options: { evaluationProvider?: EvaluationProvider } = {},
   ) {
     this.gameState = gameState;
     this.playerId = playerId;
     this.difficulty = difficulty;
+    this.evaluationProvider =
+      options.evaluationProvider ??
+      ((state, id, diff) => evaluateGameStateAsync(state, id, diff));
     // Default to medium if difficulty not recognized
     this.weights =
       DefaultResponseWeights[difficulty] || DefaultResponseWeights["medium"];
@@ -1062,7 +1095,34 @@ export class StackInteractionAI {
       this.playerId,
       this.difficulty,
     );
+    return this.evaluateResponseWithEvaluation(context, currentEvaluation);
+  }
 
+  /**
+   * Async variant of {@link evaluateResponse} (issue #1244). Routes the
+   * `evaluateGameState` heuristic through the AI Web Worker via the injected
+   * `evaluationProvider` (default: the worker bridge with main-thread
+   * fallback). Use this from `async` callers that want to keep the UI
+   * responsive during priority decisions on a large board.
+   */
+  async evaluateResponseAsync(context: StackContext): Promise<ResponseDecision> {
+    const currentEvaluation = await this.evaluationProvider(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.evaluateResponseWithEvaluation(context, currentEvaluation);
+  }
+
+  /**
+   * Body of {@link evaluateResponse} given a precomputed `currentEvaluation`.
+   * Shared by the sync and async entry points so behavior stays identical
+   * (#1244).
+   */
+  private evaluateResponseWithEvaluation(
+    context: StackContext,
+    currentEvaluation: DetailedEvaluation,
+  ): ResponseDecision {
     // Evaluate the threat level of the current action
     const threatLevel = this.assessActionThreat(context, currentEvaluation);
 
@@ -1195,7 +1255,53 @@ export class StackInteractionAI {
     context: StackContext,
     counterspell: AvailableResponse,
   ): ResponseDecision {
-    const factors = this.evaluateCounterspellFactors(context, counterspell);
+    const currentEvaluation = evaluateGameState(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.decideCounterspellWithEvaluation(
+      context,
+      counterspell,
+      currentEvaluation,
+    );
+  }
+
+  /**
+   * Async variant of {@link decideCounterspell} (issue #1244). Routes the
+   * `evaluateGameState` heuristic through the injected `evaluationProvider`
+   * (default: the worker bridge with main-thread fallback).
+   */
+  async decideCounterspellAsync(
+    context: StackContext,
+    counterspell: AvailableResponse,
+  ): Promise<ResponseDecision> {
+    const currentEvaluation = await this.evaluationProvider(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.decideCounterspellWithEvaluation(
+      context,
+      counterspell,
+      currentEvaluation,
+    );
+  }
+
+  /**
+   * Body of {@link decideCounterspell} given a precomputed
+   * `currentEvaluation`. Shared by sync and async entry points (#1244).
+   */
+  private decideCounterspellWithEvaluation(
+    context: StackContext,
+    counterspell: AvailableResponse,
+    currentEvaluation: DetailedEvaluation,
+  ): ResponseDecision {
+    const factors = this.evaluateCounterspellFactorsWithEvaluation(
+      context,
+      counterspell,
+      currentEvaluation,
+    );
     const shouldCounter = this.shouldUseCounterspell(factors);
 
     if (!shouldCounter) {
@@ -1285,6 +1391,33 @@ export class StackInteractionAI {
       this.playerId,
       this.difficulty,
     );
+    return this.decidePriorityPassWithEvaluation(context, currentEvaluation);
+  }
+
+  /**
+   * Async variant of {@link decidePriorityPass} (issue #1244). Routes the
+   * `evaluateGameState` heuristic through the injected `evaluationProvider`
+   * (default: the worker bridge with main-thread fallback).
+   */
+  async decidePriorityPassAsync(
+    context: StackContext,
+  ): Promise<PriorityPassDecision> {
+    const currentEvaluation = await this.evaluationProvider(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.decidePriorityPassWithEvaluation(context, currentEvaluation);
+  }
+
+  /**
+   * Body of {@link decidePriorityPass} given a precomputed `currentEvaluation`.
+   * Shared by sync and async entry points (#1244).
+   */
+  private decidePriorityPassWithEvaluation(
+    context: StackContext,
+    currentEvaluation: DetailedEvaluation,
+  ): PriorityPassDecision {
     const threatLevel = this.assessActionThreat(context, currentEvaluation);
 
     // Evaluate risk of passing
@@ -1327,7 +1460,33 @@ export class StackInteractionAI {
       this.playerId,
       this.difficulty,
     );
+    return this.manageResourcesWithEvaluation(context, currentEvaluation);
+  }
 
+  /**
+   * Async variant of {@link manageResources} (issue #1244). Routes the
+   * `evaluateGameState` heuristic through the injected `evaluationProvider`
+   * (default: the worker bridge with main-thread fallback).
+   */
+  async manageResourcesAsync(
+    context: StackContext,
+  ): Promise<ResourceDecision> {
+    const currentEvaluation = await this.evaluationProvider(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.manageResourcesWithEvaluation(context, currentEvaluation);
+  }
+
+  /**
+   * Body of {@link manageResources} given a precomputed `currentEvaluation`.
+   * Shared by sync and async entry points (#1244).
+   */
+  private manageResourcesWithEvaluation(
+    context: StackContext,
+    currentEvaluation: DetailedEvaluation,
+  ): ResourceDecision {
     // Calculate total mana available
 
     // Check what instant-speed effects we have available
@@ -1459,14 +1618,17 @@ export class StackInteractionAI {
    * Assess threat including cascade/trigger-chain evaluation.
    * Use this when you need to account for downstream triggered abilities.
    *
-   * `async` because trigger-chain evaluation is offloaded to the AI Web Worker
-   * (#1080); callers must `await` the result.
+   * `async` because both the trigger-chain evaluation (#1080) and the
+   * `evaluateGameState` heuristic (#1244) are offloaded to the AI Web Worker;
+   * callers must `await` the result.
    */
   async assessActionThreatWithTriggers(context: StackContext): Promise<number> {
-    const baseThreat = this.assessActionThreat(
-      context,
-      evaluateGameState(this.gameState, this.playerId, this.difficulty),
+    const currentEvaluation = await evaluateGameStateAsync(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
     );
+    const baseThreat = this.assessActionThreat(context, currentEvaluation);
     const triggerResult = await this.evaluateTriggerChains(context);
     const cascadeBonus = triggerResult.cascadeThreatBonus;
     // Expert is the only tier that FULLY accounts for downstream trigger
@@ -1624,7 +1786,22 @@ export class StackInteractionAI {
       this.playerId,
       this.difficulty,
     );
+    return this.evaluateCounterspellFactorsWithEvaluation(
+      context,
+      counterspell,
+      currentEvaluation,
+    );
+  }
 
+  /**
+   * Body of {@link evaluateCounterspellFactors} given a precomputed
+   * `currentEvaluation`. Shared by sync and async entry points (#1244).
+   */
+  private evaluateCounterspellFactorsWithEvaluation(
+    context: StackContext,
+    counterspell: AvailableResponse,
+    currentEvaluation: DetailedEvaluation,
+  ): CounterspellFactors {
     return {
       threatLevel: this.assessActionThreat(context, currentEvaluation),
       cardAdvantageImpact: this.calculateCounterspellCardAdvantage(context),
@@ -2643,6 +2820,47 @@ export class StackInteractionAI {
       this.playerId,
       this.difficulty,
     );
+    return this.evaluateVariableCostWithEvaluation(
+      response,
+      context,
+      currentEvaluation,
+    );
+  }
+
+  /**
+   * Async variant of {@link evaluateVariableCost} (issue #1244). Routes the
+   * `evaluateGameState` heuristic through the injected `evaluationProvider`
+   * (default: the worker bridge with main-thread fallback).
+   */
+  async evaluateVariableCostAsync(
+    response: AvailableResponse,
+    context: StackContext,
+  ): Promise<{
+    xValue?: number;
+    shouldKick?: boolean;
+    recommendedCost: number;
+  }> {
+    const currentEvaluation = await this.evaluationProvider(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.evaluateVariableCostWithEvaluation(
+      response,
+      context,
+      currentEvaluation,
+    );
+  }
+
+  /**
+   * Body of {@link evaluateVariableCost} given a precomputed
+   * `currentEvaluation`. Shared by sync and async entry points (#1244).
+   */
+  private evaluateVariableCostWithEvaluation(
+    response: AvailableResponse,
+    context: StackContext,
+    currentEvaluation: DetailedEvaluation,
+  ): { xValue?: number; shouldKick?: boolean; recommendedCost: number } {
     const manaAvailable = this.calculateAvailableMana(context);
 
     // Default recommendations
@@ -2697,7 +2915,47 @@ export class StackInteractionAI {
       this.playerId,
       this.difficulty,
     );
+    return this.evaluateModalChoiceWithEvaluation(
+      response,
+      choice,
+      context,
+      currentEvaluation,
+    );
+  }
 
+  /**
+   * Async variant of {@link evaluateModalChoice} (issue #1244). Routes the
+   * `evaluateGameState` heuristic through the injected `evaluationProvider`
+   * (default: the worker bridge with main-thread fallback).
+   */
+  async evaluateModalChoiceAsync(
+    response: AvailableResponse,
+    choice: string,
+    context: StackContext,
+  ): Promise<number> {
+    const currentEvaluation = await this.evaluationProvider(
+      this.gameState,
+      this.playerId,
+      this.difficulty,
+    );
+    return this.evaluateModalChoiceWithEvaluation(
+      response,
+      choice,
+      context,
+      currentEvaluation,
+    );
+  }
+
+  /**
+   * Body of {@link evaluateModalChoice} given a precomputed
+   * `currentEvaluation`. Shared by sync and async entry points (#1244).
+   */
+  private evaluateModalChoiceWithEvaluation(
+    response: AvailableResponse,
+    choice: string,
+    context: StackContext,
+    currentEvaluation: DetailedEvaluation,
+  ): number {
     // Score the choice based on game state
     let score = 0.5;
 
@@ -2789,6 +3047,27 @@ export function shouldBluffHoldMana(
 ): BluffHoldDecision {
   const ai = new StackInteractionAI(gameState, playerId, difficulty);
   const currentEvaluation = evaluateGameState(gameState, playerId, difficulty);
+  return ai.shouldBluffHoldMana(context, currentEvaluation, opponentHistory);
+}
+
+/**
+ * Async variant of {@link shouldBluffHoldMana} (issue #1244). Routes the
+ * `evaluateGameState` heuristic through the AI Web Worker bridge (with
+ * main-thread fallback when unavailable).
+ */
+export async function shouldBluffHoldManaAsync(
+  gameState: GameState,
+  playerId: string,
+  context: StackContext,
+  opponentHistory?: OpponentHistory,
+  difficulty: DifficultyLevel = "medium",
+): Promise<BluffHoldDecision> {
+  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const currentEvaluation = await evaluateGameStateAsync(
+    gameState,
+    playerId,
+    difficulty,
+  );
   return ai.shouldBluffHoldMana(context, currentEvaluation, opponentHistory);
 }
 
