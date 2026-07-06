@@ -684,3 +684,220 @@ describe("ICE factory helpers & global singleton (#1094)", () => {
     setGlobalICEConfiguration({});
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #1261 — process.env resolution path + credential rotation edge cases.
+//
+// The earlier tests in this file exercise `resolveTurnServers()` and the
+// `ICEConfigurationManager` by passing values directly. The
+// `DEFAULT_TURN_SERVERS` constant, however, is evaluated **once at module
+// load** from `process.env`, so changing `process.env` after import has no
+// effect. This block uses `jest.resetModules()` + dynamic `import()` to
+// re-evaluate the module under different `process.env` shapes and pins:
+//   1. env-configured path: all three NEXT_PUBLIC_TURN_* env vars set
+//   2. fallback path:    all three NEXT_PUBLIC_TURN_* env vars absent
+//   3. partial-env path: only one or two of the three set (must NOT crash
+//      and must not leak a half-configured server)
+//   4. TURN credential rotation: setTurnCredentials replaces every server's
+//      username/credential atomically and is idempotent under repeated calls
+//   5. expiry-shape edge case: an empty TURN env URL list after split/filter
+//      must fall back, not yield a zero-URL server
+//   6. the resolved RTCConfiguration has the expected RTCConfiguration shape
+//      (iceServers array, iceCandidatePoolSize, bundlePolicy, rtcpMuxPolicy)
+// ---------------------------------------------------------------------------
+
+const TURN_ENV_KEYS = [
+  "NEXT_PUBLIC_TURN_URL",
+  "NEXT_PUBLIC_TURN_USER",
+  "NEXT_PUBLIC_TURN_PASS",
+] as const;
+
+function clearTurnEnv(): void {
+  for (const key of TURN_ENV_KEYS) delete process.env[key];
+}
+
+describe("Issue #1261 — process.env resolution & credential rotation", () => {
+  const originalEnv: Record<string, string | undefined> = {};
+
+  beforeAll(() => {
+    for (const key of TURN_ENV_KEYS) {
+      originalEnv[key] = process.env[key];
+    }
+  });
+
+  beforeEach(() => {
+    clearTurnEnv();
+  });
+
+  afterEach(() => {
+    clearTurnEnv();
+    jest.resetModules();
+  });
+
+  afterAll(() => {
+    for (const key of TURN_ENV_KEYS) {
+      if (originalEnv[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = originalEnv[key];
+      }
+    }
+  });
+
+  it("DEFAULT_TURN_SERVERS reflects NEXT_PUBLIC_TURN_* env vars after a module reset", async () => {
+    process.env.NEXT_PUBLIC_TURN_URL = "turn:env-a.example.com:3478";
+    process.env.NEXT_PUBLIC_TURN_USER = "envuser";
+    process.env.NEXT_PUBLIC_TURN_PASS = "envpass";
+
+    jest.resetModules();
+    const fresh = await import("../ice-config");
+
+    expect(fresh.DEFAULT_TURN_SERVERS).toHaveLength(1);
+    expect(fresh.DEFAULT_TURN_SERVERS[0]).toEqual({
+      urls: "turn:env-a.example.com:3478",
+      username: "envuser",
+      credential: "envpass",
+      credentialType: "password",
+    });
+  });
+
+  it("DEFAULT_TURN_SERVERS falls back to the public relay set when env vars are absent", async () => {
+    jest.resetModules();
+    const fresh = await import("../ice-config");
+
+    expect(fresh.DEFAULT_TURN_SERVERS.length).toBeGreaterThan(0);
+    expect(fresh.DEFAULT_TURN_SERVERS.length).toBe(
+      fresh.PUBLIC_FALLBACK_TURN_SERVERS.length,
+    );
+    for (const server of fresh.DEFAULT_TURN_SERVERS) {
+      expect(isTurnScheme(server.urls)).toBe(true);
+      expect(server.username).toBeTruthy();
+      expect(server.credential).toBeTruthy();
+      expect(server.credentialType).toBe("password");
+    }
+  });
+
+  it("a partial env (only URL, or URL+USER without PASS) does not leak a half-configured server", async () => {
+    // Only URL — should fall back.
+    process.env.NEXT_PUBLIC_TURN_URL = "turn:partial.example.com:3478";
+    jest.resetModules();
+    const firstFresh = await import("../ice-config");
+    expect(firstFresh.DEFAULT_TURN_SERVERS).toEqual(
+      firstFresh.PUBLIC_FALLBACK_TURN_SERVERS,
+    );
+
+    clearTurnEnv();
+    // URL + USER but no PASS — must still fall back, not produce a server
+    // with `undefined` credential.
+    process.env.NEXT_PUBLIC_TURN_URL = "turn:partial.example.com:3478";
+    process.env.NEXT_PUBLIC_TURN_USER = "u";
+    jest.resetModules();
+    const secondFresh = await import("../ice-config");
+    for (const server of secondFresh.DEFAULT_TURN_SERVERS) {
+      expect(server.credential).toBeTruthy();
+    }
+  });
+
+  it("TURN credential rotation: setTurnCredentials updates every server atomically and is idempotent", () => {
+    const manager = new ICEConfigurationManager({
+      customTurnServers: [
+        {
+          urls: "turn:a.example.com:3478",
+          username: "old",
+          credential: "old",
+          credentialType: "password",
+        },
+        {
+          urls: "turn:b.example.com:3478",
+          username: "old",
+          credential: "old",
+          credentialType: "password",
+        },
+        {
+          urls: "turn:c.example.com:3478",
+          username: "old",
+          credential: "old",
+          credentialType: "password",
+        },
+      ],
+    });
+
+    // Rotate once.
+    manager.setTurnCredentials("rotated-1", "rotated-1-pw");
+    for (const server of manager.getTurnServers()) {
+      expect(server.username).toBe("rotated-1");
+      expect(server.credential).toBe("rotated-1-pw");
+    }
+
+    // Rotate again — simulate credential expiry / re-issuance.
+    manager.setTurnCredentials("rotated-2", "rotated-2-pw");
+    const rotated = manager.getTurnServers();
+    expect(rotated).toHaveLength(3);
+    for (const server of rotated) {
+      expect(server.username).toBe("rotated-2");
+      expect(server.credential).toBe("rotated-2-pw");
+      // The urls and credentialType must be preserved through rotation.
+      expect(isTurnScheme(server.urls)).toBe(true);
+      expect(server.credentialType).toBe("password");
+    }
+
+    // Rotation must not mutate the previous return value (defensive copy).
+    manager.setTurnCredentials("rotated-3", "rotated-3-pw");
+    for (const server of rotated) {
+      expect(server.username).toBe("rotated-2");
+    }
+  });
+
+  it("an env URL list that splits to all-empty entries falls back rather than producing a zero-URL server", async () => {
+    process.env.NEXT_PUBLIC_TURN_URL = " , , ";
+    process.env.NEXT_PUBLIC_TURN_USER = "u";
+    process.env.NEXT_PUBLIC_TURN_PASS = "p";
+
+    jest.resetModules();
+    const fresh = await import("../ice-config");
+
+    expect(fresh.DEFAULT_TURN_SERVERS.length).toBe(
+      fresh.PUBLIC_FALLBACK_TURN_SERVERS.length,
+    );
+    for (const server of fresh.DEFAULT_TURN_SERVERS) {
+      const url = typeof server.urls === "string" ? server.urls : "";
+      expect(url.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("createDefaultICEConfiguration() returns a fully-shaped RTCConfiguration", () => {
+    const config = createDefaultICEConfiguration();
+
+    expect(Array.isArray(config.iceServers)).toBe(true);
+    expect((config.iceServers ?? []).length).toBeGreaterThan(0);
+    expect(config.iceCandidatePoolSize).toBe(10);
+    // Bundle and RTCP-mux policies default to 'balanced' and 'require'.
+    expect(config.bundlePolicy).toBe("balanced");
+    expect(config.rtcpMuxPolicy).toBe("require");
+    // No forced relay unless the consumer asked for it.
+    expect(config.iceTransportPolicy).toBeUndefined();
+  });
+
+  it("createDefaultICEConfiguration() reflects env-configured TURN servers when env is set at module load", async () => {
+    process.env.NEXT_PUBLIC_TURN_URL = "turn:env.example.com:3478";
+    process.env.NEXT_PUBLIC_TURN_USER = "envuser";
+    process.env.NEXT_PUBLIC_TURN_PASS = "envpass";
+
+    jest.resetModules();
+    const fresh = await import("../ice-config");
+    const config = fresh.createDefaultICEConfiguration();
+
+    const iceServers = config.iceServers ?? [];
+    const hasOurTurn = iceServers.some((server) => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      return urls.some(
+        (url) =>
+          typeof url === "string" &&
+          url === "turn:env.example.com:3478" &&
+          server.username === "envuser" &&
+          server.credential === "envpass",
+      );
+    });
+    expect(hasOurTurn).toBe(true);
+  });
+});
