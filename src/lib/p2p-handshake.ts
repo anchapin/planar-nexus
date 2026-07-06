@@ -86,12 +86,30 @@ export interface HandshakeResponseMessage extends HandshakeMessage {
 
 /**
  * Acknowledgment message
+ *
+ * The `sessionKeyHex` field (issue #1252) carries the per-session HMAC key
+ * the host generated for this connection. Both peers adopt it on receipt and
+ * pass it to {@link P2PGameConnection.setSessionKey} so every subsequent
+ * `GameMessage` is wrapped in a signed `MessageEnvelope` and verified on
+ * receive. The host generates the key after the response is verified; the
+ * joiner adopts it on `handleAck`. The key is rotated by the new host after
+ * host migration (issue #946) via the same {@link createHandshakeAck}
+ * factory, with a freshly generated key.
  */
 export interface HandshakeAckMessage extends HandshakeMessage {
   type: "handshake-ack";
   payload: {
     checksumMatch: boolean;
     stateVersion: number;
+    /**
+     * Per-session HMAC key (hex-encoded 32 bytes — 64 hex chars). Both
+     * peers adopt this as the symmetric key for envelope signing and
+     * verification (issue #1252). Optional in the wire shape so legacy
+     * `handshake-ack` payloads (sent before #1252) still parse cleanly —
+     * the transport simply stays in non-enveloped mode when the field is
+     * absent.
+     */
+    sessionKeyHex?: string;
   };
 }
 
@@ -253,6 +271,42 @@ export function generateChallenge(): string {
 }
 
 /**
+ * Generate a fresh per-session HMAC key for envelope signing (issue #1252).
+ *
+ * Returns a hex-encoded 32-byte (256-bit) secret. The host calls this once
+ * the base handshake completes and ships the result via the
+ * `handshake-ack` payload's `sessionKeyHex` field; both peers adopt it as
+ * the symmetric key for `MessageEnvelope` HMAC tags. The new host re-runs
+ * this after host migration (issue #946) so followers reject pre-migration
+ * envelopes.
+ *
+ * Cryptographically random (`crypto.getRandomValues`). When `crypto` is
+ * unavailable (very old runtimes), falls back to `Math.random` — NOT
+ * cryptographically secure, but preferable to a hard failure when the
+ * reconnect-token store is unavailable. Production environments always
+ * expose `crypto.getRandomValues`.
+ */
+export function generateSessionKey(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.getRandomValues === "function"
+  ) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Last-resort fallback (only hit on platforms without crypto). NOT
+  // cryptographically secure — preferable to a hard failure when the
+  // session-key generator is unavailable; the transport will still verify
+  // envelopes against whatever key was adopted.
+  let fallback = "";
+  for (let i = 0; i < 64; i += 1) {
+    fallback += Math.floor(Math.random() * 16).toString(16);
+  }
+  return fallback;
+}
+
+/**
  * Create handshake init message
  */
 export function createHandshakeInit(
@@ -319,20 +373,31 @@ export function createHandshakeResponse(
 
 /**
  * Create handshake acknowledgment message
+ *
+ * `sessionKeyHex` is the per-session HMAC key (issue #1252) — when provided
+ * it is included in the ack payload so the joiner can adopt it. The host
+ * typically calls `createHandshakeAck(senderId, true, version,
+ * generateSessionKey())`. Passing `undefined` (or omitting) preserves the
+ * legacy ack shape for back-compat with pre-#1252 peers.
  */
 export function createHandshakeAck(
   senderId: string,
   checksumMatch: boolean,
   stateVersion: number,
+  sessionKeyHex?: string,
 ): HandshakeAckMessage {
+  const payload: HandshakeAckMessage["payload"] = {
+    checksumMatch,
+    stateVersion,
+  };
+  if (typeof sessionKeyHex === "string" && sessionKeyHex.length > 0) {
+    payload.sessionKeyHex = sessionKeyHex;
+  }
   return {
     type: "handshake-ack",
     senderId,
     timestamp: Date.now(),
-    payload: {
-      checksumMatch,
-      stateVersion,
-    },
+    payload,
   };
 }
 

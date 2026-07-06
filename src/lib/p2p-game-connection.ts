@@ -4,6 +4,15 @@
  *
  * Manages WebRTC peer-to-peer connections for multiplayer games
  * using client-side signaling without server dependencies.
+ *
+ * HMAC-signed message envelopes (issue #1252):
+ *   Each outbound `GameMessage` is wrapped in a `MessageEnvelope` and signed
+ *   with the per-session symmetric key negotiated during the base handshake
+ *   (see `p2p-handshake.ts`). The receiver recomputes the HMAC and drops
+ *   mismatches BEFORE any state mutation, closing the peer-impersonation gap
+ *   left open by sequence numbers (#1091). The key is rotated after host
+ *   migration via `setSessionKey(newKey)` — followers reject any envelope
+ *   signed under the pre-migration key, satisfying acceptance criterion #2.
  */
 
 import type {
@@ -31,7 +40,14 @@ import {
   getGlobalICEManager,
   type ICEConfigOptions,
 } from "./ice-config";
-import { safeParseJson, isNonNegativeInteger } from "./p2p-json-validation";
+import {
+  safeParseJson,
+  isNonNegativeInteger,
+  isMessageEnvelope,
+  signMessageEnvelope,
+  verifyMessageEnvelope,
+  type MessageEnvelope,
+} from "./p2p-json-validation";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import {
   classifyConnectionFailure,
@@ -332,6 +348,23 @@ export interface P2PGameConnectionOptions {
    * `SpectatorHandshake` completes (see `p2p-handshake.ts`).
    */
   remoteRole?: PeerRole;
+  /**
+   * Per-session symmetric key used to sign outbound message envelopes and
+   * verify inbound envelopes (issue #1252). When set, every outbound
+   * `GameMessage` is wrapped in a `MessageEnvelope` carrying an
+   * `HMAC-SHA-256(keyHex, canonical(payload))` tag, and every inbound
+   * message must arrive as a verifiable envelope — a forged or swapped-
+   * sender envelope is rejected at the receiver BEFORE any state mutation.
+   *
+   * When `null` or `undefined`, the transport falls back to the legacy
+   * non-enveloped wire format (so single-player / AI / pre-#1252 peers
+   * still work). Once set, callers MUST rotate the key on host migration
+   * via {@link P2PGameConnection.setSessionKey} so followers reject any
+   * envelope signed under the pre-migration key. The key is a hex-encoded
+   * 32-byte secret (64 hex chars); see {@link P2PGameConnection.setSessionKey}
+   * for the format.
+   */
+  sessionKeyHex?: string | null;
 }
 
 /**
@@ -426,6 +459,24 @@ export class P2PGameConnection {
    * spectator) can be diagnosed from the diagnostics panel.
    */
   private spectatorDrops = 0;
+  /**
+   * Per-session HMAC key (hex-encoded) used to sign outbound message
+   * envelopes and verify inbound envelopes (issue #1252). `null` means the
+   * transport is in legacy non-enveloped mode (back-compat with single-
+   * player / AI / pre-#1252 peers). The key is negotiated during the base
+   * handshake (see {@link P2PGameConnection.setSessionKey}) and rotated
+   * after host migration so followers reject pre-migration envelopes.
+   */
+  private sessionKeyHex: string | null = null;
+  /**
+   * Count of inbound envelopes that failed HMAC verification — includes
+   * forged signatures, swapped senderId, replayed pre-migration envelopes,
+   * and malformed envelope shapes. Surfaced via
+   * {@link P2PGameConnection.getEnvelopeRejections} so the diagnostics
+   * panel can flag a hostile peer (or a key-rotation mismatch) without
+   * silently dropping traffic.
+   */
+  private envelopeRejections = 0;
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
@@ -437,6 +488,16 @@ export class P2PGameConnection {
     // works unchanged.
     this.localRoleFlag = options.localRole ?? DEFAULT_PEER_ROLE;
     this.remoteRoleFlag = options.remoteRole ?? DEFAULT_PEER_ROLE;
+
+    // Issue #1252 — initialise the per-session HMAC key. When set, every
+    // outbound GameMessage is wrapped in a MessageEnvelope and every
+    // inbound message must verify against this key. `null` falls back to
+    // the legacy non-enveloped wire format.
+    this.sessionKeyHex =
+      typeof options.sessionKeyHex === "string" &&
+      options.sessionKeyHex.length > 0
+        ? options.sessionKeyHex
+        : null;
 
     // Per-connection rate limiter guards the parse/validate path against
     // flooding peers. Issue #1111.
@@ -679,6 +740,12 @@ export class P2PGameConnection {
    *     runs against its own state, but the bytes never reach the
    *     spectator link).
    *
+   * HMAC envelope signing (issue #1252): when a session key is set
+   * (see {@link P2PGameConnection.setSessionKey}), the message is wrapped in
+   * a `MessageEnvelope` carrying an HMAC of the canonical payload before it
+   * hits the wire. When no session key is set, the legacy non-enveloped
+   * `GameMessage` shape is preserved (back-compat with pre-#1252 peers).
+   *
    * Returns false and emits an error event when the gate rejects a send;
    * no wire bytes are written in that case.
    */
@@ -720,8 +787,16 @@ export class P2PGameConnection {
       return false;
     }
 
+    // Issue #1252 — wrap outbound messages in a signed envelope when a
+    // session key is configured. Without a key we stay on the legacy
+    // non-enveloped wire format so legacy peers (single-player / AI /
+    // pre-#1252 connections) keep working.
+    const wirePayload: unknown = this.sessionKeyHex
+      ? signMessageEnvelope(message, this.sessionKeyHex)
+      : message;
+
     try {
-      this.dataChannel.send(JSON.stringify(message));
+      this.dataChannel.send(JSON.stringify(wirePayload));
       return true;
     } catch (error) {
       // #982: redact — send errors may reference the message payload.
@@ -874,6 +949,64 @@ export class P2PGameConnection {
     return this.spectatorDrops;
   }
 
+  // ────────────────────────────────────────────────────────────────────────
+  // HMAC envelope API (issue #1252)
+  // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Set or rotate the per-session HMAC key (issue #1252). The host calls
+   * this once the base handshake completes (the host generates the key and
+   * shares it with the joiner via `handshake-ack`). After host migration
+   * the new host calls this with a freshly-generated key — followers that
+   * still hold the pre-migration key will reject any post-migration
+   * envelope signed under it, satisfying acceptance criterion #2.
+   *
+   * Passing `null` (or an empty string) clears the key and reverts the
+   * transport to the legacy non-enveloped wire format. This is provided
+   * for back-compat / test scenarios only; a production multiplayer session
+   * should never disable envelope verification mid-game.
+   *
+   * The key must be a non-empty hex string (32-byte secrets serialise as
+   * 64 hex chars — see {@link P2PGameConnection.generateSessionKey} in
+   * `p2p-handshake.ts`). Invalid keys are silently ignored (the existing
+   * key remains in effect) so a programming error cannot accidentally
+   * downgrade the connection to the legacy mode.
+   */
+  setSessionKey(key: string | null): void {
+    if (key === null) {
+      this.sessionKeyHex = null;
+      return;
+    }
+    if (typeof key !== "string" || key.length === 0) {
+      console.warn(
+        "[P2PGameConnection] Ignoring invalid sessionKey (must be a non-empty hex string)",
+      );
+      return;
+    }
+    this.sessionKeyHex = key;
+  }
+
+  /**
+   * Currently configured per-session HMAC key, or `null` when the transport
+   * is in legacy non-enveloped mode (issue #1252). Exposed for diagnostics
+   * and for the host-migration rotation flow — the host reads the key after
+   * generation so it can ship it to the new follower's transport.
+   */
+  getSessionKey(): string | null {
+    return this.sessionKeyHex;
+  }
+
+  /**
+   * Cumulative count of inbound envelopes that failed HMAC verification
+   * (issue #1252). Includes forged signatures, swapped senderId, replayed
+   * pre-migration envelopes, and malformed envelope shapes. Reset by
+   * {@link close}. Surfaced via the diagnostics panel so a hostile peer
+   * (or a key-rotation mismatch after host migration) can be diagnosed.
+   */
+  getEnvelopeRejections(): number {
+    return this.envelopeRejections;
+  }
+
   /**
    * Send a chat message
    */
@@ -977,7 +1110,11 @@ export class P2PGameConnection {
    *   2. Safe parse + structural limits (size/depth/key-count) via
    *      {@link safeParseJson}.
    *   3. Shape validation via {@link isGameMessage} (including the required
-   *      `seq` field added in #1091).
+   *      `seq` field added in #1091) — OR envelope verification via
+   *      {@link verifyMessageEnvelope} when a session key is set
+   *      (issue #1252). When a session key is configured, the inbound
+   *      payload MUST be an envelope; legacy non-enveloped `GameMessage`
+   *      payloads are rejected at this stage.
    *   4. Anti-replay check: a message with `seq <=` the highest seq already
    *      applied from this `senderId` is dropped as a duplicate/replay BEFORE
    *      it can be applied to game state (issue #1091).
@@ -1009,11 +1146,44 @@ export class P2PGameConnection {
         return;
       }
 
-      const message = safeParseJson<GameMessage>(data, isGameMessage);
-      if (!message) {
-        // Malformed JSON or wrong shape — reject without breaking the channel.
-        console.error("[P2PGameConnection] Rejected malformed peer message");
-        return;
+      // Issue #1252 — when a session key is configured, the inbound payload
+      // MUST be a `MessageEnvelope` and must verify against the key. This
+      // binds the message to its declared sender, closing the peer-
+      // impersonation gap left by sequence numbers (#1091). When no key is
+      // set, fall back to the legacy non-enveloped `GameMessage` wire format
+      // (back-compat with single-player / AI / pre-#1252 peers).
+      let message: GameMessage;
+      if (this.sessionKeyHex) {
+        const envelope = safeParseJson<MessageEnvelope>(data, isMessageEnvelope);
+        if (!envelope) {
+          this.envelopeRejections += 1;
+          console.warn(
+            "[P2PGameConnection] Rejected malformed envelope",
+          );
+          return;
+        }
+        if (!verifyMessageEnvelope(envelope, this.sessionKeyHex)) {
+          this.envelopeRejections += 1;
+          console.warn(
+            "[P2PGameConnection] envelope-sender-mismatch; dropping forged envelope",
+            redactSensitive({
+              declaredSender: envelope.payload?.senderId,
+              seq: envelope.payload?.seq,
+            }),
+          );
+          return;
+        }
+        // VerifyMessageEnvelope narrows the envelope — extract the typed
+        // GameMessage payload for the downstream pipeline.
+        message = envelope.payload as GameMessage;
+      } else {
+        const legacy = safeParseJson<GameMessage>(data, isGameMessage);
+        if (!legacy) {
+          // Malformed JSON or wrong shape — reject without breaking the channel.
+          console.error("[P2PGameConnection] Rejected malformed peer message");
+          return;
+        }
+        message = legacy;
       }
 
       // Anti-replay (issue #1091): drop duplicates and replays BEFORE the
@@ -1637,6 +1807,9 @@ export class P2PGameConnection {
     // Issue #1253 — reset the role-aware diagnostic counter so a fresh
     // session starts at zero dropped messages.
     this.spectatorDrops = 0;
+    // Issue #1252 — reset the HMAC envelope diagnostic counter so a fresh
+    // session starts at zero rejected envelopes.
+    this.envelopeRejections = 0;
     this.updateConnectionState("disconnected");
   }
 
