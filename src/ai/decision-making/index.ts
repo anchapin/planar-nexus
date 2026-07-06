@@ -43,3 +43,16 @@ export {
   type CastCommanderDecision,
   type OpposingCommanderThreatInput,
 } from "./commander-math";
+
+// Issue #1233: multiplayer threat assessment for 2-4 player pods.
+export {
+  assessThreats,
+  chooseAttackTarget,
+  chooseResponseTarget,
+  _buildFixtureState,
+  type MultiplayerThreatAssessment,
+  type ChooseAttackTargetOptions,
+  type AttackTargetDecision,
+  type ChooseResponseTargetOptions,
+  type ResponseTargetDecision,
+} from "./multiplayer-threat";
