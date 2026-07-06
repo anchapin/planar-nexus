@@ -527,3 +527,375 @@ describe("useDeckCoachChat — export / import (#1242)", () => {
     expect(reloaded!.deckId).toBe("deck-original");
   });
 });
+
+// ============================================================================
+// issue #1241 — acceptance criteria coverage
+// ============================================================================
+//
+// The earlier suites cover streaming, cancel, persistence, and export/import.
+// This block closes the acceptance-criteria gaps named in the issue:
+//   - per-deckId storage isolation
+//   - streamed chunks accumulating into one assistant message
+//   - chat error fallback (the "Sorry, I encountered an error" path)
+//   - clearMessages behaviour (active id present vs. absent)
+//   - the >20-card digest branch setting `payloadDeck = undefined`
+//
+// Together these lift the hook's branch coverage toward the 70% target.
+
+describe("useDeckCoachChat — per-deckId storage isolation (#1241)", () => {
+  it("never bleeds a conversation from deck-A into deck-B", async () => {
+    // Seed a persisted conversation for deck-A only.
+    const a = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-iso-A" }),
+    );
+    await act(async () => {
+      await a.result.current.sendMessage("only-for-A", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    expect(a.result.current.activeConversationId).not.toBeNull();
+    a.unmount();
+
+    // Mount a fresh hook for deck-B; auto-resume must not surface deck-A.
+    const b = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-iso-B" }),
+    );
+    await act(async () => {
+      await flush();
+      await flush();
+    });
+
+    expect(b.result.current.messages).toEqual([]);
+    expect(b.result.current.activeConversationId).toBeNull();
+    expect(b.result.current.conversations).toEqual([]);
+
+    // Sending on deck-B must create a deck-B record (not reuse deck-A's id).
+    await act(async () => {
+      await b.result.current.sendMessage("only-for-B", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    const deckBId = b.result.current.activeConversationId;
+    expect(deckBId).not.toBeNull();
+
+    const storage = await import("@/lib/coach-conversation-storage");
+    const deckA = await storage.loadConversations("deck-iso-A");
+    const deckB = await storage.loadConversations("deck-iso-B");
+    expect(deckA).toHaveLength(1);
+    expect(deckA[0].deckId).toBe("deck-iso-A");
+    expect(deckA[0].id).not.toBe(deckBId);
+    expect(deckB).toHaveLength(1);
+    expect(deckB[0].deckId).toBe("deck-iso-B");
+    b.unmount();
+  });
+});
+
+describe("useDeckCoachChat — error fallback and clearMessages (#1241)", () => {
+  it("replaces the placeholder with the fallback message when fetch throws", async () => {
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+      async () => {
+        throw new Error("network down");
+      },
+    ) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-err" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("ping", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.content).toMatch(/Sorry, I encountered an error/i);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("replaces the placeholder when the route returns a non-OK response", async () => {
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+      async () => ({ ok: false, statusText: "Service Unavailable", body: null }),
+    ) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-500" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("ping", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.content).toMatch(/Sorry, I encountered an error/i);
+    expect(result.current.isStreaming).toBe(false);
+  });
+
+  it("clearMessages with an active conversation deletes that conversation by id", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-clear-active" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hello", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    const activeId = result.current.activeConversationId;
+    expect(activeId).not.toBeNull();
+    expect(result.current.messages.length).toBeGreaterThan(0);
+
+    act(() => {
+      result.current.clearMessages();
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    expect(result.current.messages).toEqual([]);
+    expect(result.current.activeConversationId).toBeNull();
+
+    // The persisted record is gone; the deck's list is now empty.
+    const storage = await import("@/lib/coach-conversation-storage");
+    const deleted = await storage.loadConversation(activeId!);
+    expect(deleted).toBeNull();
+    const remaining = await storage.loadConversations("deck-clear-active");
+    expect(remaining).toEqual([]);
+  });
+
+  it("clearMessages without an active conversation still wipes deck-scoped legacy data", async () => {
+    // Seed two persisted conversations for the deck and then mount fresh
+    // (auto-resume loads one of them — we'll start a new one to drop the
+    // resume pointer, then clearMessages hits the "no active id" branch).
+    const seed = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-clear-empty" }),
+    );
+    await act(async () => {
+      await seed.result.current.sendMessage("first", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+    seed.unmount();
+
+    const app = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-clear-empty" }),
+    );
+    await act(async () => {
+      await flush();
+      await flush();
+    });
+
+    // Start a brand-new conversation so there is no active id to delete.
+    act(() => {
+      app.result.current.startNewConversation();
+    });
+    await act(async () => {
+      await flush();
+    });
+    expect(app.result.current.activeConversationId).toBeNull();
+
+    const before = await (
+      await import("@/lib/coach-conversation-storage")
+    ).loadConversations("deck-clear-empty");
+    expect(before.length).toBeGreaterThan(0);
+
+    act(() => {
+      app.result.current.clearMessages();
+    });
+    await act(async () => {
+      await flush();
+    });
+
+    const after = await (
+      await import("@/lib/coach-conversation-storage")
+    ).loadConversations("deck-clear-empty");
+    expect(after).toEqual([]);
+    app.unmount();
+  });
+});
+
+describe("useDeckCoachChat — digest branch for large decks (#1241)", () => {
+  it("omits deckCards from the request body when the worker returns a digested context", async () => {
+    // Provide a worker API that digests the deck, so the hook sets
+    // `payloadDeck = undefined` (issue #1074/#1241 acceptance criterion).
+    const workerModule = await import("@/ai/worker/ai-worker-client");
+    (workerModule as unknown as {
+      aiWorkerClient: { api: unknown };
+    }).aiWorkerClient.api = {
+      prepareCoachContext: jest.fn(async () => ({
+        deckSummary: {
+          totalCards: 25,
+          typeCounts: { Creature: 12, Land: 13 },
+          averageCmc: 2.6,
+          keyCards: ["Sol Ring"],
+          manaCurve: [2, 6, 8, 5, 2, 1, 1],
+          colors: ["W", "U"],
+        },
+        timestamp: Date.now(),
+      })),
+    };
+
+    const bigDeck = Array.from({ length: 25 }, (_, i) => ({
+      name: `Card ${i}`,
+      count: 1,
+    }));
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-big" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("how is the curve?", {
+        deckCards: bigDeck as never,
+      });
+    });
+
+    // Digestion was requested, and the fetch payload omitted `deckCards`.
+    expect(
+      (
+        workerModule as unknown as {
+          aiWorkerClient: {
+            api: { prepareCoachContext: jest.Mock };
+          };
+        }
+      ).aiWorkerClient.api.prepareCoachContext,
+    ).toHaveBeenCalled();
+    // `payloadDeck` was set to undefined, so `deckCards` is absent from the
+    // JSON-serialised body (JSON.stringify drops undefined keys).
+    expect("deckCards" in lastRequestBody).toBe(false);
+    expect(lastRequestBody.format).toBe("modern");
+    // The digested context flowed through to the server payload.
+    expect(
+      (lastRequestBody as { digestedContext?: { deckSummary?: unknown } })
+        .digestedContext,
+    ).toBeDefined();
+
+    // Restore the default mock so subsequent tests see api = null again.
+    (workerModule as unknown as {
+      aiWorkerClient: { api: unknown };
+    }).aiWorkerClient.api = null;
+  });
+
+  it("falls back to sending the full deck when the worker's digest throws", async () => {
+    const workerModule = await import("@/ai/worker/ai-worker-client");
+    (workerModule as unknown as {
+      aiWorkerClient: { api: unknown };
+    }).aiWorkerClient.api = {
+      prepareCoachContext: jest.fn(async () => {
+        throw new Error("worker offline");
+      }),
+    };
+
+    const bigDeck = Array.from({ length: 25 }, (_, i) => ({
+      name: `Card ${i}`,
+      count: 1,
+    }));
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-digest-fail" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("help me tune the manabase", {
+        deckCards: bigDeck as never,
+      });
+    });
+
+    // Digest failed: payload falls back to the raw deck array (length 25).
+    const fallbackBody = lastRequestBody as {
+      deckCards?: unknown;
+    };
+    expect(Array.isArray(fallbackBody.deckCards)).toBe(true);
+    expect((fallbackBody.deckCards as unknown[]).length).toBe(25);
+    // The assistant message still rendered normally.
+    expect(
+      result.current.messages.some((m) => m.role === "assistant"),
+    ).toBe(true);
+
+    (workerModule as unknown as {
+      aiWorkerClient: { api: unknown };
+    }).aiWorkerClient.api = null;
+  });
+});
+
+describe("useDeckCoachChat — SSE edge cases (#1241)", () => {
+  it("ignores [DONE] sentinel events without crashing", async () => {
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+      async (_url: string, init?: RequestInit) => {
+        lastFetchOptions = { signal: init?.signal };
+        try {
+          lastRequestBody = JSON.parse(String(init?.body ?? "{}"));
+        } catch {
+          lastRequestBody = {};
+        }
+        const body = makeSseBody(
+          [
+            'data: {"type":"text","value":"Hi"}\n\n',
+            "data: [DONE]\n\n",
+            'data: {"type":"text","value":" there"}\n\n',
+            'data: {"type":"done"}\n\n',
+          ],
+          init?.signal,
+        );
+        return { ok: true, body };
+      },
+    ) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    // [DONE] was skipped; later chunks still rendered.
+    expect(assistant?.content).toBe("Hi there");
+  });
+
+  it("appends inline server errors to the assistant message rather than replacing it", async () => {
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+      async (_url: string, init?: RequestInit) => {
+        lastFetchOptions = { signal: init?.signal };
+        try {
+          lastRequestBody = JSON.parse(String(init?.body ?? "{}"));
+        } catch {
+          lastRequestBody = {};
+        }
+        const body = makeSseBody(
+          [
+            'data: {"type":"text","value":"partial answer"}\n\n',
+            'data: {"type":"error","value":"upstream timeout"}\n\n',
+            'data: {"type":"done"}\n\n',
+          ],
+          init?.signal,
+        );
+        return { ok: true, body };
+      },
+    ) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.content).toContain("partial answer");
+    expect(assistant?.content).toMatch(/upstream timeout/);
+  });
+});
