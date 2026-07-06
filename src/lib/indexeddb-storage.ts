@@ -239,8 +239,45 @@ export class IndexedDBStorage {
         resolve();
       };
 
+      // ============================================================================
+      // SCHEMA AUDIT (Phase 34)
+      // ============================================================================
+      // Database: PlanarNexusStorage
+      // Current version: 2
+      //
+      // Object stores (all use keyPath: "id"):
+      //
+      // | Store           | Purpose                                | Indexes (keyPath, unique)              |
+      // |-----------------|----------------------------------------|----------------------------------------|
+      // | decks           | User-authored decklists                | name, format, createdAt, updatedAt     |
+      // | saved-games     | In-progress / completed game snapshots | name, format, status, savedAt,         |
+      // |                 |                                        | isAutoSave                             |
+      // | preferences     | User preferences (key/value)           | (none — keyPath lookup only)           |
+      // | usage-tracking  | AI provider usage telemetry            | provider, timestamp                    |
+      // | achievements    | Per-player achievement progress        | (none — keyPath lookup only)           |
+      // | game-history    | Aggregated completed-game records      | date, result, mode                     |
+      //
+      // Version history:
+      //   v1 — initial schema (lazy onupgradeneeded creates stores on first open)
+      //   v2 — current; semantic-equivalent to v1, but adds documentation +
+      //        migration tests. No destructive changes; existing v1 data is
+      //        preserved because the onupgradeneeded handler only creates
+      //        stores/indexes that are missing.
+      //
+      // Migration rules when bumping the schema version:
+      //   1. Increment DEFAULT_STORAGE_CONFIG.version.
+      //   2. Add the new `else if (oldVersion < N)` branch in the upgrade
+      //      handler below. Read `event.oldVersion` to detect the source
+      //      version and migrate incrementally.
+      //   3. Update the table above.
+      //   4. Add a v(N-1)→vN test case to indexeddb-migration.test.ts.
+      //
+      // NEVER call db.deleteObjectStore() on a store that holds user data
+      // without an explicit export + user consent step first.
+      // ============================================================================
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const oldVersion = event.oldVersion;
 
         // Create object stores if they don't exist
         for (const storeName of this.config.stores) {
@@ -268,6 +305,14 @@ export class IndexedDBStorage {
               store.createIndex("mode", "mode", { unique: false });
             }
           }
+        }
+
+        // Reserved for future versioned migrations.
+        // v1 → v2: no-op (schema is unchanged; this audit + tests are the
+        // only delta). The branch is kept as a marker so future bumps have
+        // a clear insertion point.
+        if (oldVersion < 2) {
+          // intentional no-op
         }
       };
     });
