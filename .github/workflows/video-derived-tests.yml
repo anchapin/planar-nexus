@@ -183,7 +183,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: video-derived-coverage
           path: coverage/
