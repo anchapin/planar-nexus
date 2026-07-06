@@ -2,28 +2,35 @@
  * P2PDiagnosticsPanel
  *
  * Toggleable, accessible NAT-traversal / ICE diagnostics surface for the
- * multiplayer area. Issue #1088.
+ * multiplayer area. Issue #1088. Per-peer live RTT/packet-loss/bytes-per-sec
+ * table — Issue #1256.
  *
- * Two observation modes:
- *   1. **Live** — pass a `connection` (anything with a `getDiagnostics()`
- *      method, e.g. a `WebRTCConnection`). The panel polls it on an interval.
- *   2. **Self-test probe** — when no connection is supplied, a "Run connection
+ * Three observation modes:
+ *   1. **Per-peer mesh** — pass a `peerConnection` (anything with
+ *      `getPeerIds()` + `getPeerDiagnostics(id)`, e.g. a 3+ player mesh
+ *      `WebRTCConnection`). Renders a sortable per-peer table with live RTT,
+ *      bytes/sec, packet-loss %, and a 30-sample RTT sparkline per peer.
+ *   2. **Live** — pass a `connection` (anything with a `getDiagnostics()`
+ *      method, e.g. a single-peer `WebRTCConnection`). The panel polls it on
+ *      an interval.
+ *   3. **Self-test probe** — when no connection is supplied, a "Run connection
  *      test" button spins up an ephemeral RTCPeerConnection (using the app's
  *      ICE config) to classify the local NAT. This never touches game traffic.
  *
  * Reported data: gathered ICE candidate types (host/srflx/prflx/relay counts),
  * the selected candidate pair with RTT/packet-loss, the ICE connection
- * state/phase, an effective NAT-type heuristic, gathering timing, and candidate
- * errors. A restrictive NAT with no TURN configured surfaces an actionable
- * "TURN required" hint.
+ * state/phase, an effective NAT-type heuristic, gathering timing, candidate
+ * errors, and (when in mesh mode) per-peer live counters. A restrictive NAT
+ * with no TURN configured surfaces an actionable "TURN required" hint.
  *
- * The heavy logic lives in `@/lib/ice-diagnostics` (+ `useP2PDiagnostics`);
- * this component is presentational + light interaction only.
+ * The heavy logic lives in `@/lib/ice-diagnostics`, `@/lib/p2p-peer-stats`,
+ * and `@/hooks/use-p2p-diagnostics`; this component is presentational + light
+ * interaction only.
  */
 
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +43,9 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import {
   Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronDown,
   Loader2,
   RefreshCw,
@@ -55,15 +65,27 @@ import {
 } from "@/lib/ice-diagnostics";
 import {
   useP2PDiagnostics,
+  usePeerDiagnostics,
   type DiagnosticsSource,
+  type PeerDiagnosticsRow,
+  type PeerDiagnosticsSource,
 } from "@/hooks/use-p2p-diagnostics";
+import { rttSeries } from "@/lib/p2p-peer-stats";
 
 export interface P2PDiagnosticsPanelProps {
   /**
-   * Optional live connection to observe. When omitted the panel runs a
-   * self-contained NAT probe on demand.
+   * Optional live single-connection source to observe. When omitted (and no
+   * `peerConnection` is supplied either) the panel runs a self-contained NAT
+   * probe on demand.
    */
   connection?: DiagnosticsSource | null;
+  /**
+   * Optional per-peer mesh source (issue #1256). When supplied, the panel
+   * renders a sortable per-peer table with live RTT, bytes/sec, packet-loss,
+   * and a sparkline of the last 30 samples per peer. Takes precedence over
+   * `connection` when both are present.
+   */
+  peerConnection?: PeerDiagnosticsSource | null;
   /** Collapsed/expanded on first render. Defaults to collapsed. */
   defaultOpen?: boolean;
   /** Poll cadence (ms) for the live connection. Defaults to the hook default. */
@@ -303,6 +325,7 @@ function DiagnosticsReadout({
 
 export function P2PDiagnosticsPanel({
   connection,
+  peerConnection,
   defaultOpen = false,
   pollIntervalMs,
   className,
@@ -310,7 +333,12 @@ export function P2PDiagnosticsPanel({
   const [open, setOpen] = useState(defaultOpen);
 
   const live = useP2PDiagnostics({
-    connection: connection ?? null,
+    connection: peerConnection ? null : (connection ?? null),
+    pollIntervalMs,
+  });
+
+  const peerLive = usePeerDiagnostics({
+    connection: peerConnection ?? null,
     pollIntervalMs,
   });
 
@@ -320,8 +348,9 @@ export function P2PDiagnosticsPanel({
   const [probeRunning, setProbeRunning] = useState(false);
   const [probeError, setProbeError] = useState<Error | null>(null);
 
-  const liveMode = connection != null;
-  const supported = live.supported;
+  const peerMode = peerConnection != null;
+  const liveMode = !peerMode && connection != null;
+  const supported = peerMode ? peerLive.supported : live.supported;
 
   const runProbe = useCallback(async () => {
     setProbeRunning(true);
@@ -337,9 +366,27 @@ export function P2PDiagnosticsPanel({
     }
   }, []);
 
-  const activeSnapshot = liveMode ? live.snapshot : probeSnapshot;
-  const loading = liveMode ? live.loading : probeRunning;
-  const error = liveMode ? live.error : probeError;
+  const activeSnapshot = peerMode
+    ? null
+    : liveMode
+      ? live.snapshot
+      : probeSnapshot;
+  const loading = peerMode
+    ? peerLive.loading
+    : liveMode
+      ? live.loading
+      : probeRunning;
+  const error = peerMode
+    ? peerLive.error
+    : liveMode
+      ? live.error
+      : probeError;
+  const refresh = peerMode
+    ? () => peerLive.refresh()
+    : liveMode
+      ? () => live.refresh()
+      : null;
+  const peerSummary = peerMode ? peerLive.summary : null;
 
   return (
     <Collapsible
@@ -371,11 +418,11 @@ export function P2PDiagnosticsPanel({
             />
           </Button>
         </CollapsibleTrigger>
-        {supported && liveMode ? (
+        {supported && (liveMode || peerMode) && refresh ? (
           <Button
             variant="outline"
             size="icon"
-            onClick={() => live.refresh()}
+            onClick={() => refresh()}
             disabled={loading}
             aria-label="Refresh diagnostics"
             data-testid="p2p-diag-refresh"
@@ -386,7 +433,7 @@ export function P2PDiagnosticsPanel({
             />
           </Button>
         ) : null}
-        {!liveMode && supported ? (
+        {!liveMode && !peerMode && supported ? (
           <Button
             variant="outline"
             size="sm"
@@ -431,23 +478,401 @@ export function P2PDiagnosticsPanel({
             </Alert>
           ) : null}
 
-          {supported && !error && !activeSnapshot ? (
+          {supported && !error && !activeSnapshot && !peerSummary ? (
             <p
               className="text-sm text-muted-foreground"
               data-testid="p2p-diag-idle"
             >
-              {liveMode
-                ? "Waiting for a peer connection…"
-                : "Run a connection test to detect your NAT type and gather ICE candidates."}
+              {peerMode
+                ? "Waiting for peers to connect…"
+                : liveMode
+                  ? "Waiting for a peer connection…"
+                  : "Run a connection test to detect your NAT type and gather ICE candidates."}
             </p>
           ) : null}
 
-          {supported && activeSnapshot ? (
+          {supported && peerSummary ? (
+            <PeerDiagnosticsTable summary={peerSummary} />
+          ) : null}
+
+          {supported && !peerSummary && activeSnapshot ? (
             <DiagnosticsReadout snapshot={activeSnapshot} />
           ) : null}
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────── *
+ *  Per-peer table + sparkline — issue #1256.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Sortable columns exposed by the per-peer table. */
+type PeerSortKey =
+  | "name"
+  | "rtt"
+  | "bytesOut"
+  | "bytesIn"
+  | "loss"
+  | "queue";
+type SortDir = "asc" | "desc";
+
+/**
+ * Pure-SVG sparkline for the last 30 RTT samples of a single peer. Renders a
+ * polyline within a fixed-size viewport, with axes implicit (the line itself
+ * is the data). Empty / single-sample windows render a flat baseline.
+ */
+function RttSparkline({
+  samples,
+  width = 90,
+  height = 24,
+}: {
+  samples: number[];
+  width?: number;
+  height?: number;
+}) {
+  // Filter NaN placeholders but keep alignment by remembering the original
+  // index — only the position along the x axis matters, the y range is
+  // computed from finite values only.
+  const finite: number[] = samples.filter(
+    (v) => typeof v === "number" && Number.isFinite(v),
+  );
+  if (samples.length === 0 || finite.length === 0) {
+    return (
+      <svg
+        role="img"
+        aria-label="RTT sparkline (no data)"
+        width={width}
+        height={height}
+        data-testid="p2p-diag-sparkline"
+      >
+        <line
+          x1={0}
+          x2={width}
+          y1={height / 2}
+          y2={height / 2}
+          stroke="currentColor"
+          strokeOpacity={0.3}
+          strokeWidth={1}
+        />
+      </svg>
+    );
+  }
+
+  let min = finite[0];
+  let max = finite[0];
+  for (const v of finite) {
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  // Pad the range by 10% so a flat trace does not collapse onto a single line.
+  const span = max - min || Math.max(1, max);
+  const paddedMin = min - span * 0.1;
+  const paddedMax = max + span * 0.1;
+  const range = paddedMax - paddedMin || 1;
+
+  const stepX = samples.length > 1 ? width / (samples.length - 1) : 0;
+
+  // Build an SVG path that lifts the pen (move-to) between NaN samples so
+  // gaps render as discontinuities rather than a single zig-zag across the
+  // missing data. Each segment is `M x,y L x,y L x,y ...`.
+  const segments: string[] = [];
+  let current: string[] = [];
+  samples.forEach((v, i) => {
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+      if (current.length > 0) {
+        segments.push(current.join(" "));
+        current = [];
+      }
+      return;
+    }
+    const x = i * stepX;
+    const y = height - ((v - paddedMin) / range) * height;
+    const cmd = current.length === 0 ? "M" : "L";
+    current.push(`${cmd}${x.toFixed(1)},${y.toFixed(1)}`);
+  });
+  if (current.length > 0) segments.push(current.join(" "));
+
+  return (
+    <svg
+      role="img"
+      aria-label={`RTT sparkline (${finite.length} samples, ${Math.round(min)}–${Math.round(max)} ms)`}
+      width={width}
+      height={height}
+      className="text-primary"
+      data-testid="p2p-diag-sparkline"
+    >
+      {segments.map((d, i) => (
+        <path
+          key={i}
+          d={d}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
+    </svg>
+  );
+}
+
+function formatBytesPerSec(bytesPerSec: number | null): string {
+  if (bytesPerSec == null || !Number.isFinite(bytesPerSec)) return "—";
+  if (bytesPerSec < 1024) return `${bytesPerSec.toFixed(0)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(2)} MB/s`;
+}
+
+function formatPct(pct: number | null): string {
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  return `${pct.toFixed(1)}%`;
+}
+
+/**
+ * Sortable header button for the per-peer table.
+ */
+function SortableHeader({
+  label,
+  columnKey,
+  active,
+  dir,
+  onClick,
+  testId,
+}: {
+  label: string;
+  columnKey: PeerSortKey;
+  active: boolean;
+  dir: SortDir;
+  onClick: (key: PeerSortKey) => void;
+  testId?: string;
+}) {
+  const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(columnKey)}
+      className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      aria-label={`Sort by ${label}${
+        active ? ` (${dir === "asc" ? "ascending" : "descending"})` : ""
+      }`}
+      data-testid={testId}
+    >
+      {label}
+      <Icon className="h-3 w-3" aria-hidden="true" />
+    </button>
+  );
+}
+
+function sortRows(
+  rows: PeerDiagnosticsRow[],
+  key: PeerSortKey,
+  dir: SortDir,
+): PeerDiagnosticsRow[] {
+  const factor = dir === "asc" ? 1 : -1;
+  const compare = (a: PeerDiagnosticsRow, b: PeerDiagnosticsRow): number => {
+    switch (key) {
+      case "name":
+        return factor * (a.peerId.localeCompare(b.peerId));
+      case "rtt":
+        return (
+          factor *
+          ((a.aggregate.rttMs ?? Number.POSITIVE_INFINITY) -
+            (b.aggregate.rttMs ?? Number.POSITIVE_INFINITY))
+        );
+      case "bytesOut":
+        return (
+          factor *
+          ((a.aggregate.bytesOutPerSec ?? -1) -
+            (b.aggregate.bytesOutPerSec ?? -1))
+        );
+      case "bytesIn":
+        return (
+          factor *
+          ((a.aggregate.bytesInPerSec ?? -1) -
+            (b.aggregate.bytesInPerSec ?? -1))
+        );
+      case "loss":
+        return (
+          factor *
+          ((a.aggregate.packetLossPct ?? -1) -
+            (b.aggregate.packetLossPct ?? -1))
+        );
+      case "queue":
+        return (
+          factor *
+          ((a.aggregate.queueDepth ?? -1) - (b.aggregate.queueDepth ?? -1))
+        );
+      default:
+        return 0;
+    }
+  };
+  return rows.slice().sort(compare);
+}
+
+/**
+ * Per-peer live diagnostics table — issue #1256. Renders one row per peer
+ * with live RTT, bytes-in/out per second, packet-loss %, queue depth, and an
+ * RTT sparkline (last 30 samples). Columns are sortable by clicking the
+ * header button.
+ */
+function PeerDiagnosticsTable({
+  summary,
+}: {
+  summary: import("@/hooks/use-p2p-diagnostics").PeerDiagnosticsSummary;
+}) {
+  const [sortKey, setSortKey] = useState<PeerSortKey>("rtt");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const sortedPeers = useMemo(
+    () => sortRows(summary.peers, sortKey, sortDir),
+    [summary.peers, sortKey, sortDir],
+  );
+
+  const handleSort = useCallback((key: PeerSortKey) => {
+    setSortKey((prev) => {
+      if (prev === key) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return prev;
+      }
+      setSortDir(key === "name" ? "asc" : "desc");
+      return key;
+    });
+  }, []);
+
+  if (summary.peers.length === 0) {
+    return (
+      <p
+        className="text-sm text-muted-foreground"
+        data-testid="p2p-diag-peer-empty"
+      >
+        No peers connected yet.
+      </p>
+    );
+  }
+
+  return (
+    <section data-testid="p2p-diag-peer-table">
+      <h4 className="mb-2 text-sm font-semibold">
+        Per-peer live stats
+        <span className="ml-2 font-normal text-muted-foreground">
+          ({summary.peers.length})
+        </span>
+      </h4>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b text-left">
+              <th scope="col" className="py-2 pr-2">
+                <SortableHeader
+                  label="Peer"
+                  columnKey="name"
+                  active={sortKey === "name"}
+                  dir={sortDir}
+                  onClick={handleSort}
+                  testId="p2p-diag-sort-name"
+                />
+              </th>
+              <th scope="col" className="py-2 pr-2">
+                <SortableHeader
+                  label="RTT"
+                  columnKey="rtt"
+                  active={sortKey === "rtt"}
+                  dir={sortDir}
+                  onClick={handleSort}
+                  testId="p2p-diag-sort-rtt"
+                />
+              </th>
+              <th scope="col" className="py-2 pr-2">
+                <SortableHeader
+                  label="Out"
+                  columnKey="bytesOut"
+                  active={sortKey === "bytesOut"}
+                  dir={sortDir}
+                  onClick={handleSort}
+                  testId="p2p-diag-sort-bytesout"
+                />
+              </th>
+              <th scope="col" className="py-2 pr-2">
+                <SortableHeader
+                  label="In"
+                  columnKey="bytesIn"
+                  active={sortKey === "bytesIn"}
+                  dir={sortDir}
+                  onClick={handleSort}
+                  testId="p2p-diag-sort-bytesin"
+                />
+              </th>
+              <th scope="col" className="py-2 pr-2">
+                <SortableHeader
+                  label="Loss"
+                  columnKey="loss"
+                  active={sortKey === "loss"}
+                  dir={sortDir}
+                  onClick={handleSort}
+                  testId="p2p-diag-sort-loss"
+                />
+              </th>
+              <th scope="col" className="py-2 pr-2">
+                <SortableHeader
+                  label="Queue"
+                  columnKey="queue"
+                  active={sortKey === "queue"}
+                  dir={sortDir}
+                  onClick={handleSort}
+                  testId="p2p-diag-sort-queue"
+                />
+              </th>
+              <th scope="col" className="py-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Trend
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedPeers.map((peer) => (
+              <tr
+                key={peer.peerId}
+                className="border-b last:border-0"
+                data-testid={`p2p-diag-peer-row-${peer.peerId}`}
+              >
+                <td className="py-2 pr-2 align-top">
+                  <div
+                    className="font-medium"
+                    data-testid={`p2p-diag-peer-name-${peer.peerId}`}
+                  >
+                    {peer.displayName ?? peer.peerId}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {peer.peerId}
+                  </div>
+                </td>
+                <td className="py-2 pr-2 align-top tabular-nums">
+                  {formatMs(peer.aggregate.rttMs)}
+                </td>
+                <td className="py-2 pr-2 align-top tabular-nums">
+                  {formatBytesPerSec(peer.aggregate.bytesOutPerSec)}
+                </td>
+                <td className="py-2 pr-2 align-top tabular-nums">
+                  {formatBytesPerSec(peer.aggregate.bytesInPerSec)}
+                </td>
+                <td className="py-2 pr-2 align-top tabular-nums">
+                  {formatPct(peer.aggregate.packetLossPct)}
+                </td>
+                <td className="py-2 pr-2 align-top tabular-nums">
+                  {peer.aggregate.queueDepth ?? "—"}
+                </td>
+                <td className="py-2 align-top">
+                  <RttSparkline samples={rttSeries(peer.history)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
