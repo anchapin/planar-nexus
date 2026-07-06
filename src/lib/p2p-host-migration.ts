@@ -40,6 +40,19 @@
  *  does not apply it again, satisfying issue #1091's post-migration
  *  acceptance criterion. The `lastKnownGameState` cached here is the snapshot
  *  the successor ships in step 2.
+ *
+ * HMAC key rotation (issue #1252):
+ *  GameMessages are signed with a per-session symmetric key negotiated
+ *  during the base handshake (`p2p-handshake.ts`); the new host MUST
+ *  generate a fresh key after migration and call
+ *  `P2PGameConnection.setSessionKey(newKeyHex)` on every connection in the
+ *  session. Followers that still hold the pre-migration key will reject any
+ *  post-migration envelope signed under it, satisfying issue #1252's
+ *  post-migration acceptance criterion. This module is transport-agnostic
+ *  and does NOT rotate the key itself — the caller (e.g. the host layer in
+ *  `use-p2p-connection.ts`) wires the migration result into
+ *  `P2PGameConnection.setSessionKey` once it runs `applyMigration` /
+ *  `initiateMigration`.
  */
 
 /**

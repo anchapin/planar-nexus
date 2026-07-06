@@ -17,6 +17,7 @@ import {
   type PeerActionValidator,
   type LobbyControlPayload,
 } from "../p2p-game-connection";
+import { signMessageEnvelope } from "../p2p-json-validation";
 import { ValidationService } from "../game-state/validation-service";
 
 describe("P2P Game Connection Types", () => {
@@ -1845,6 +1846,439 @@ describe("P2PGameConnection lobby-control message (issue #1257)", () => {
         const payload: LobbyControlPayload = { kind };
         expect(payload.kind).toBe(kind);
       });
+    });
+  });
+});
+
+/**
+ * HMAC-signed envelope transport (issue #1252).
+ *
+ * The transport is opt-in: when `sessionKeyHex` is supplied, every outbound
+ * `GameMessage` is wrapped in a `MessageEnvelope` carrying an HMAC tag, and
+ * every inbound message must verify against the same key before any state
+ * mutation. These tests cover:
+ *
+ *   - Valid envelope acceptance
+ *   - Replayed / forged / senderId-swapped envelope rejection
+ *   - Key-rotation on host migration (acceptance criterion #2)
+ *   - Truncated payload rejection
+ *   - Legacy non-enveloped wire format is preserved when no key is set
+ *   - The transport stamps a freshly-signed envelope on `send()`
+ */
+describe("P2PGameConnection HMAC envelope signing/verification (issue #1252)", () => {
+  const SESSION_KEY = "a".repeat(64);
+  const OTHER_KEY = "b".repeat(64);
+  const POST_MIGRATION_KEY = "c".repeat(64);
+
+  const handleMessage = (conn: P2PGameConnection, raw: string): void => {
+    (
+      conn as unknown as { handleMessage: (d: string) => void }
+    ).handleMessage(raw);
+  };
+
+  /** Build a `game-action` message with a fresh seq. */
+  const actionMsg = (
+    senderId: string,
+    seq: number,
+    action = "pass_priority",
+    data: unknown = {},
+  ): GameMessage => ({
+    type: "game-action",
+    senderId,
+    timestamp: Date.now(),
+    seq,
+    data: { action, data },
+  });
+
+  /** Build an envelope wrapping a game-action message. */
+  const envelope = (message: GameMessage, keyHex = SESSION_KEY) =>
+    signMessageEnvelope(message, keyHex);
+
+  const makeConn = (
+    options: {
+      sessionKeyHex?: string | null;
+      events?: Partial<P2PGameConnectionEvents>;
+    } = {},
+  ): P2PGameConnection => {
+    const events: P2PGameConnectionEvents = {
+      onConnectionStateChange: () => {},
+      onSignalingStateChange: () => {},
+      onMessage: () => {},
+      onGameStateSync: () => {},
+      onChat: () => {},
+      onError: () => {},
+      onPlayerJoined: () => {},
+      onPlayerLeft: () => {},
+      ...options.events,
+    };
+    return createP2PGameConnection({
+      playerId: "local",
+      playerName: "Local",
+      role: "host",
+      sessionKeyHex: options.sessionKeyHex,
+      events,
+    });
+  };
+
+  describe("session key plumbing", () => {
+    it("defaults to no key (legacy mode) when none is supplied", () => {
+      const conn = makeConn();
+      expect(conn.getSessionKey()).toBeNull();
+    });
+
+    it("adopts a key passed via options", () => {
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      expect(conn.getSessionKey()).toBe(SESSION_KEY);
+    });
+
+    it("setSessionKey rotates the key at runtime (host migration path)", () => {
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      conn.setSessionKey(POST_MIGRATION_KEY);
+      expect(conn.getSessionKey()).toBe(POST_MIGRATION_KEY);
+    });
+
+    it("setSessionKey(null) clears the key (reverts to legacy mode)", () => {
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      conn.setSessionKey(null);
+      expect(conn.getSessionKey()).toBeNull();
+    });
+
+    it("setSessionKey ignores invalid keys (empty string)", () => {
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      conn.setSessionKey("");
+      // Empty key is rejected — the existing key remains in effect so a
+      // programming error cannot accidentally downgrade the connection.
+      expect(conn.getSessionKey()).toBe(SESSION_KEY);
+    });
+  });
+
+  describe("envelope acceptance", () => {
+    it("accepts a freshly-signed envelope and forwards the payload to onMessage", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      const msg = actionMsg("peer", 0);
+      handleMessage(conn, JSON.stringify(envelope(msg)));
+      expect(onMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ senderId: "peer", seq: 0 }),
+      );
+    });
+
+    it("accepts the same envelope after a re-announce of the same senderId", () => {
+      // Re-connect / re-announce — same key, same senderId, fresh seq.
+      // The HMAC over (type, senderId, seq, data) differs because seq
+      // advanced, so the envelope verifies and is forwarded.
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 0))));
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 1))));
+      const seqs = onMessage.mock.calls
+        .map((c) => c[0] as GameMessage)
+        .map((m) => m.seq)
+        .sort((a, b) => a - b);
+      expect(seqs).toEqual([0, 1]);
+    });
+  });
+
+  describe("envelope rejection", () => {
+    it("rejects a senderId swap (peer impersonation attempt)", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // Attacker captures a legitimate envelope from "victim" and re-emits
+      // it with a swapped senderId "attacker" — the HMAC binds senderId,
+      // so the signature is invalid and the message is dropped.
+      const captured = envelope(actionMsg("victim", 0));
+      const swapped = {
+        ...captured,
+        payload: { ...captured.payload, senderId: "attacker" },
+      };
+      handleMessage(conn, JSON.stringify(swapped));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("rejects a forged signature (signature was made with a different key)", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // Attacker signs with their own key — receiver has only SESSION_KEY,
+      // so verification fails.
+      const forged = envelope(actionMsg("attacker", 0), OTHER_KEY);
+      handleMessage(conn, JSON.stringify(forged));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("rejects a truncated payload (HMAC was computed over a longer message)", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      const captured = envelope(actionMsg("peer", 0));
+      // Drop the data fields — the signature no longer matches.
+      const truncated = {
+        ...captured,
+        payload: { ...captured.payload, data: { action: "pass" } },
+      };
+      handleMessage(conn, JSON.stringify(truncated));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("rejects a payload-tampered envelope (data field altered)", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      const captured = envelope(actionMsg("peer", 0));
+      const tampered = {
+        ...captured,
+        payload: {
+          ...captured.payload,
+          data: { action: "concede", data: {} },
+        },
+      };
+      handleMessage(conn, JSON.stringify(tampered));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("rejects a seq-tampered envelope (replay-with-bumped-seq)", () => {
+      // Sequence numbers (#1091) reject duplicates but a malicious peer
+      // could try to replay an envelope with a bumped seq. The HMAC binds
+      // seq, so the verifier catches it BEFORE the anti-replay check.
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      const captured = envelope(actionMsg("peer", 0));
+      const bumped = {
+        ...captured,
+        payload: { ...captured.payload, seq: 99 },
+      };
+      handleMessage(conn, JSON.stringify(bumped));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("rejects a malformed envelope (missing hmac field)", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // No `hmac` field — the envelope shape guard rejects it.
+      handleMessage(
+        conn,
+        JSON.stringify({ payload: actionMsg("peer", 0) }),
+      );
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("rejects a non-envelope payload when a key is configured (legacy message dropped)", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // A legacy non-enveloped GameMessage arrives on a session that
+      // expects envelopes — the transport must reject it.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("accepts a legacy non-enveloped GameMessage when no key is configured", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({ events: { onMessage } });
+      // No session key — the transport stays on the legacy wire format.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(onMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ senderId: "peer", seq: 0 }),
+      );
+      expect(conn.getEnvelopeRejections()).toBe(0);
+    });
+
+    it("increments the rejection counter on each failed verification", () => {
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      expect(conn.getEnvelopeRejections()).toBe(0);
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 0), OTHER_KEY)));
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 1), OTHER_KEY)));
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 2), OTHER_KEY)));
+      expect(conn.getEnvelopeRejections()).toBe(3);
+    });
+  });
+
+  describe("post-migration key rotation (issue #1252 acceptance criterion #2)", () => {
+    it("rejects pre-migration envelopes after the receiver rotates to a new key", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // Pre-migration envelope — signed with the OLD key.
+      const preMigration = envelope(actionMsg("peer", 0));
+      handleMessage(conn, JSON.stringify(preMigration));
+      expect(onMessage).toHaveBeenCalledTimes(1);
+
+      // Host migration: receiver rotates to the NEW key.
+      conn.setSessionKey(POST_MIGRATION_KEY);
+
+      // A new envelope signed with the new key is accepted.
+      handleMessage(
+        conn,
+        JSON.stringify(envelope(actionMsg("peer", 1), POST_MIGRATION_KEY)),
+      );
+      expect(onMessage).toHaveBeenCalledTimes(2);
+
+      // A replay of the pre-migration envelope is rejected — the new key
+      // does not verify the old signature.
+      handleMessage(conn, JSON.stringify(preMigration));
+      expect(onMessage).toHaveBeenCalledTimes(2);
+      expect(conn.getEnvelopeRejections()).toBe(1);
+    });
+
+    it("clear-then-set (legacy interlude) drops envelopes as malformed in legacy mode", () => {
+      // Defensive: when a key is cleared mid-session, the transport
+      // reverts to the legacy non-enveloped wire format. An envelope-
+      // shaped payload arriving in this state is treated as malformed
+      // (the legacy `isGameMessage` shape guard rejects it). The
+      // envelope-rejection counter is envelope-specific and stays at 0
+      // because no HMAC verification actually ran.
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      conn.setSessionKey(null);
+      // After clearing, a legacy non-enveloped message is accepted.
+      handleMessage(conn, JSON.stringify(actionMsg("peer", 0)));
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      // An envelope-shaped payload is rejected by the legacy shape guard.
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 1))));
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      // No HMAC verification ran, so the envelope-rejection counter is 0.
+      expect(conn.getEnvelopeRejections()).toBe(0);
+    });
+  });
+
+  describe("send() wraps outbound messages in a signed envelope", () => {
+    it("emits an envelope on the wire when a session key is configured", () => {
+      // Spy on the data-channel send by mocking RTCDataChannel — for the
+      // existing pattern used elsewhere in this file, we instead spy on
+      // `send()` itself and verify the wire JSON shape. We do that by
+      // standing up a fake data channel that captures the outbound bytes.
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      const sent: string[] = [];
+      const fakeChannel = {
+        readyState: "open",
+        send: (raw: string) => {
+          sent.push(raw);
+        },
+        close: () => {},
+      } as unknown as RTCDataChannel;
+      (conn as unknown as { dataChannel: RTCDataChannel | null }).dataChannel =
+        fakeChannel;
+      conn.sendGameAction("pass_priority", { foo: "bar" });
+      expect(sent).toHaveLength(1);
+      const wire = JSON.parse(sent[0]);
+      expect(wire).toHaveProperty("payload");
+      expect(wire).toHaveProperty("hmac");
+      expect(wire.payload.type).toBe("game-action");
+      expect(wire.payload.senderId).toBe("local");
+      expect(wire.payload.data).toEqual({
+        action: "pass_priority",
+        data: { foo: "bar" },
+      });
+      expect(wire.hmac).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it("emits a bare GameMessage (no envelope) on the wire when no key is configured", () => {
+      const conn = makeConn();
+      const sent: string[] = [];
+      const fakeChannel = {
+        readyState: "open",
+        send: (raw: string) => {
+          sent.push(raw);
+        },
+        close: () => {},
+      } as unknown as RTCDataChannel;
+      (conn as unknown as { dataChannel: RTCDataChannel | null }).dataChannel =
+        fakeChannel;
+      conn.sendGameAction("pass_priority", {});
+      expect(sent).toHaveLength(1);
+      const wire = JSON.parse(sent[0]);
+      // Legacy wire shape — no `payload` / `hmac` wrapping.
+      expect(wire).not.toHaveProperty("hmac");
+      expect(wire).not.toHaveProperty("payload");
+      expect(wire.type).toBe("game-action");
+      expect(wire.senderId).toBe("local");
+    });
+  });
+
+  describe("close() resets the rejection counter", () => {
+    it("resets envelopeRejections to zero on close()", () => {
+      const conn = makeConn({ sessionKeyHex: SESSION_KEY });
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 0), OTHER_KEY)));
+      expect(conn.getEnvelopeRejections()).toBe(1);
+      conn.close();
+      expect(conn.getEnvelopeRejections()).toBe(0);
+    });
+  });
+
+  describe("interaction with the rest of the receive pipeline", () => {
+    it("envelope verification runs BEFORE anti-replay (#1091)", () => {
+      // A replayed envelope (same senderId, same seq) under the wrong key
+      // is rejected at the envelope stage; the anti-replay check is
+      // strictly downstream. This guarantees a forgery cannot pollute
+      // the anti-replay tracker by masquerading as a duplicate.
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // Forge a "duplicate" with the WRONG key — must be rejected at the
+      // envelope stage, not the anti-replay stage.
+      const forged = envelope(actionMsg("peer", 0), OTHER_KEY);
+      handleMessage(conn, JSON.stringify(forged));
+      handleMessage(conn, JSON.stringify(forged));
+      expect(onMessage).not.toHaveBeenCalled();
+      // Both rejections were envelope-stage — the anti-replay high-water
+      // mark for "peer" was never advanced.
+      expect(conn.getEnvelopeRejections()).toBe(2);
+      expect(conn.getLastAppliedSeq("peer")).toBeNull();
+    });
+
+    it("after envelope verification, anti-replay continues to apply normally", () => {
+      const onMessage = jest.fn();
+      const conn = makeConn({
+        sessionKeyHex: SESSION_KEY,
+        events: { onMessage },
+      });
+      // Valid envelope — accepted, seq advanced.
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 0))));
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      // Replay of the same envelope — anti-replay drops it (even though
+      // the HMAC verifies; the seq is the same as the last applied).
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 0))));
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      // Higher seq — accepted.
+      handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 1))));
+      expect(onMessage).toHaveBeenCalledTimes(2);
     });
   });
 });
