@@ -56,7 +56,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSynergy } from "./synergy-context";
 import { checkCardLegality } from "@/hooks/use-format-legality-check";
 import { LegalityBadge } from "./legality-badge";
-import Image from "next/image";
+import { CardArt } from "@/components/card-art";
 
 interface CardSearchHandle {
   focus: () => void;
@@ -855,12 +855,22 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                     data-testid={`card-result-${card.name.toLowerCase().replace(/\s+/g, "-")}`}
                   >
                     {card.image_uris?.large || card.image_uris?.normal ? (
-                      <Image
-                        src={card.image_uris?.normal || ""}
-                        alt={card.name}
+                      <CardArt
+                        cardName={card.name}
+                        scryfallCard={{
+                          id: card.id,
+                          name: card.name,
+                          set: card.set,
+                          collector_number: card.collector_number,
+                          color_identity: card.color_identity,
+                          type_line: card.type_line,
+                          cmc: card.cmc,
+                          colors: card.colors,
+                        }}
+                        size="thumbnail"
+                        lazy
+                        showSkeleton
                         fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                        className="rounded-lg object-cover"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center rounded-lg bg-secondary text-center text-secondary-foreground p-2 text-sm">
