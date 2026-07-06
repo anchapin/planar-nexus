@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { P2PDiagnosticsPanel } from "@/components/p2p-diagnostics-panel";
 import { P2PConnectionIndicatorSection } from "@/components/p2p-connection-indicator-section";
+import { ReconnectTokenList } from "@/components/multiplayer/reconnect-token-list";
 
 export default function MultiplayerPage() {
   return (
@@ -235,6 +236,15 @@ export default function MultiplayerPage() {
           </Card>
         </div>
       </main>
+
+      {/*
+        Issue #1254 — list every persisted reconnect token so a returning
+        peer can resume a half-finished game with one click after a
+        browser refresh / Tauri window restart. Hidden when there is
+        nothing to show so it does not add visual noise on a fresh
+        device.
+      */}
+      <ReconnectTokenList />
 
       <section
         className="mt-6"

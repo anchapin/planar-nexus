@@ -136,6 +136,10 @@ describe("use-p2p-connection Hook Types", () => {
         maxReconnectAttempts: 3,
         reconnectedRecently: false,
         acknowledgeReconnect: () => {},
+        // Issue #1254: per-peer reconnect-token (IndexedDB-backed).
+        reconnectToken: null,
+        reconnectTokenLookupDone: true,
+        clearReconnectToken: async () => true,
       };
 
       expect(returnValue.connectionState).toBeDefined();

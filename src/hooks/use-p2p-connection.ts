@@ -44,6 +44,10 @@ import {
   type ConnectionHealth,
 } from "@/hooks/use-connection-health";
 import type { ConnectionFailureDiagnostic } from "@/lib/p2p-failure-diagnostics";
+import {
+  reconnectTokenStore,
+  type ReconnectToken,
+} from "@/lib/p2p-reconnect-store";
 import { logger } from "@/lib/logger";
 
 const p2pLogger = logger.child("P2PConnection");
@@ -218,6 +222,29 @@ export interface UseP2PConnectionReturn {
   reconnectedRecently: boolean;
   /** Dismiss the transient "Reconnected" message once shown to the user. */
   acknowledgeReconnect: () => void;
+  // --- Issue #1254: per-peer reconnect-token (IndexedDB-backed) ---
+  /**
+   * The persisted reconnect token for the current (gameCode, playerId)
+   * pair, or `null` when no token exists / has expired / has been
+   * purged. Surfaced so the lobby UI can attempt a silent rejoin
+   * (claim the held seat via the host-side seat reservation, replay
+   * missed messages) before falling through to the manual-entry lobby.
+   */
+  reconnectToken: ReconnectToken | null;
+  /**
+   * False until the initial store lookup completes. The lobby UI MUST
+   * gate on this before falling through to manual entry, otherwise a
+   * fast refresh could briefly flash the manual-entry screen before
+   * the IDB read resolves.
+   */
+  reconnectTokenLookupDone: boolean;
+  /**
+   * Proactively clear the stored token for this (gameCode, playerId)
+   * pair. Call on game end / lobby close so the 30-minute TTL is a
+   * worst-case bound rather than the typical one. Returns `true` when
+   * the delete succeeded (or there was nothing to delete).
+   */
+  clearReconnectToken: () => Promise<boolean>;
 }
 
 export function useP2PConnection(
@@ -256,6 +283,21 @@ export function useP2PConnection(
   const [reconnectedRecently, setReconnectedRecently] = useState(false);
   const reconnectAttemptsRef = useRef(0);
   const hadConnectedRef = useRef(false);
+  // --- Issue #1254: per-peer reconnect-token state ---
+  // `reconnectToken` mirrors the IndexedDB-persisted token (when one
+  // exists for this (gameCode, playerId) pair) so the lobby UI can show
+  // "Reconnecting to {gameCode} as {playerName}…" without making the
+  // caller wire up its own store consumer. `reconnectTokenLookupDone`
+  // distinguishes "we have not checked yet" from "we checked and found
+  // nothing" — important for the page mount race where the lobby
+  // should NOT fall through to the manual-entry UI before the lookup
+  // resolves.
+  const [reconnectToken, setReconnectToken] = useState<ReconnectToken | null>(
+    null,
+  );
+  const [reconnectTokenLookupDone, setReconnectTokenLookupDone] =
+    useState(false);
+  const reconnectTokenLookupRef = useRef<string | null>(null);
   // --- Issue #1090: graceful degradation to local hot-seat ---
   const [degradedToLocal, setDegradedToLocal] = useState(false);
   const [terminalFailureDismissed, setTerminalFailureDismissed] =
@@ -344,7 +386,13 @@ export function useP2PConnection(
     setCurrentHostIdState(hostId);
   }, []);
 
-  // Initialize handshake session when connection is established
+  // Initialize handshake session when connection is established.
+  // On successful handshake, persist a reconnect token (issue #1254) so the
+  // peer can silently rejoin the same game/seat after a browser refresh or
+  // Tauri window restart. The token is keyed by `${gameCode}::${peerId}`
+  // and carries the session key, the current authoritative host, and the
+  // anti-replay high-water mark so the reattaching peer can catch up
+  // without double-applying already-seen messages.
   useEffect(() => {
     if (
       enableHandshake &&
@@ -357,11 +405,97 @@ export function useP2PConnection(
         (success, errorReason) => {
           if (!success) {
             setError(`Handshake failed: ${errorReason}`);
+            return;
           }
+          // Persist the reconnect token on successful handshake. Failures
+          // here are non-fatal — the live session keeps working, we just
+          // lose the ability to silently rejoin after a refresh. Issue
+          // #1254 acceptance criteria: tokens are scoped to (gameCode,
+          // peerId) and never transferable across games.
+          const code = gameCode;
+          if (!code) {
+            p2pLogger.debug(
+              "Skipping reconnect-token save: no gameCode on connection",
+            );
+            return;
+          }
+          const sessionKey = generateSessionKey();
+          const conn = connectionRef.current;
+          const lastDeliveredSeq = conn?.getOutgoingSeq?.() ?? 0;
+          reconnectTokenStore
+            .save({
+              peerId: playerId,
+              sessionKey,
+              hostPeerId: currentHostIdRef.current,
+              gameCode: code,
+              lastDeliveredSeq,
+              playerName,
+            })
+            .then((ok) => {
+              if (ok) {
+                p2pLogger.info("Persisted reconnect token", code);
+              } else {
+                p2pLogger.warn(
+                  "Reconnect-token save failed; live session unaffected",
+                  code,
+                );
+              }
+            })
+            .catch((err) => {
+              p2pLogger.warn(
+                "Reconnect-token save threw; live session unaffected",
+                String(err),
+              );
+            });
         },
       );
     }
-  }, [enableHandshake, connectionState, playerId]);
+  }, [enableHandshake, connectionState, playerId, gameCode, playerName]);
+
+  // Issue #1254 — on mount (or whenever `gameCode` changes), look up a
+  // stored reconnect token for this (gameCode, playerId) pair. The lobby
+  // UI surfaces this so it can attempt a silent rejoin before falling
+  // through to the manual-entry lobby. We guard against double-firing
+  // with a ref so React strict-mode + dep-array churn does not trigger
+  // multiple IDB reads for the same code.
+  useEffect(() => {
+    if (!gameCode) {
+      setReconnectTokenLookupDone(true);
+      return;
+    }
+    if (reconnectTokenLookupRef.current === gameCode) {
+      return;
+    }
+    reconnectTokenLookupRef.current = gameCode;
+    let cancelled = false;
+    reconnectTokenStore
+      .get(gameCode, playerId)
+      .then((token) => {
+        if (cancelled) return;
+        setReconnectToken(token);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        p2pLogger.warn("Reconnect-token lookup threw", String(err));
+        setReconnectToken(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setReconnectTokenLookupDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gameCode, playerId]);
+
+  // Issue #1254 — drop a stored token once the host confirms the game has
+  // ended cleanly (e.g. on lobby close). Auto-purge expired tokens is
+  // handled inside the store; this is the proactive cleanup path so the
+  // 30-minute TTL is a worst-case bound, not the typical one.
+  const clearReconnectToken = useCallback(async () => {
+    if (!gameCode) return false;
+    return reconnectTokenStore.delete(gameCode, playerId);
+  }, [gameCode, playerId]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -1175,6 +1309,10 @@ export function useP2PConnection(
     maxReconnectAttempts: MAX_RECONNECT_ATTEMPTS_DISPLAY,
     reconnectedRecently,
     acknowledgeReconnect,
+    // --- Issue #1254: per-peer reconnect-token (IndexedDB-backed) ---
+    reconnectToken,
+    reconnectTokenLookupDone,
+    clearReconnectToken,
   };
 }
 
@@ -1190,4 +1328,29 @@ function verifyChecksum(gameState: GameState, checksum: string): boolean {
   }
   const computedChecksum = (hash >>> 0).toString(16);
   return computedChecksum === checksum;
+}
+
+/**
+ * Issue #1254 — generate a fresh per-session shared secret used by the
+ * reconnect-token store. Cryptographically random; never reused across
+ * sessions so a leaked token cannot resurrect a future game.
+ */
+function generateSessionKey(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.getRandomValues === "function"
+  ) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Last-resort fallback (only hit on platforms without crypto). NOT
+  // cryptographically secure — preferable to a hard failure when the
+  // reconnect-token store is unavailable, the caller will skip the save
+  // gracefully anyway.
+  let fallback = "";
+  for (let i = 0; i < 64; i += 1) {
+    fallback += Math.floor(Math.random() * 16).toString(16);
+  }
+  return fallback;
 }

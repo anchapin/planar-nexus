@@ -101,3 +101,142 @@ test.describe("Issue #1255 — lobby ready-check countdown", () => {
     ).toBeVisible();
   });
 });
+
+/**
+ * Issue #1254 — per-peer reconnect tokens persisted in IndexedDB.
+ *
+ * Validates the landing-page surface only. The full "refresh mid-game
+ * and rejoin the same seat" flow needs two cooperating browser
+ * contexts (host + peer), which the rest of `multiplayer-*.spec.ts`
+ * exercises. Here we pin the DOM contract the page exposes so a
+ * returning peer sees their previous seats:
+ *
+ *   - When the IndexedDB store has at least one live token, the
+ *     `data-testid="reconnect-token-list"` section is rendered with a
+ *     per-row `data-testid="reconnect-token-row-{gameCode}"` and a
+ *     Resume link that carries the code to `/multiplayer/p2p-join`.
+ *   - When the store is empty, the section is hidden so it does not
+ *     add visual noise on a fresh device.
+ *   - The Dismiss button drops the token from the store and removes
+ *     the row from the UI without a full page reload.
+ */
+test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.clear();
+      } catch {
+        /* ignore */
+      }
+    });
+  });
+
+  test("the resume section is hidden when there are no persisted tokens", async ({
+    page,
+  }) => {
+    await page.goto("/multiplayer");
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator('[data-testid="reconnect-token-list"]')).toHaveCount(
+      0,
+    );
+  });
+
+  test("the resume section renders when at least one token is persisted", async ({
+    page,
+    context,
+  }) => {
+    // Seed a live token directly into IndexedDB so the page surfaces it.
+    // This stands in for "post-handshake on a previous session" without
+    // requiring a full two-browser P2P flow inside this E2E.
+    await context.addInitScript(() => {
+      const dbName = "PlanarNexusReconnectTokens";
+      const open = indexedDB.open(dbName, 1);
+      open.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains("tokens")) {
+          db.createObjectStore("tokens", { keyPath: "id" });
+        }
+      };
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction("tokens", "readwrite");
+        const store = tx.objectStore("tokens");
+        const issuedAt = Date.now();
+        store.put({
+          id: "TESTGAME::peer-test",
+          peerId: "peer-test",
+          sessionKey: "k-test",
+          hostPeerId: "host-test",
+          gameCode: "TESTGAME",
+          lastDeliveredSeq: 0,
+          issuedAt,
+          expiresAt: issuedAt + 30 * 60 * 1000,
+          playerName: "Tester",
+        });
+        tx.oncomplete = () => db.close();
+      };
+    });
+
+    await page.goto("/multiplayer");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      page.locator('[data-testid="reconnect-token-list"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="reconnect-token-row-TESTGAME"]'),
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="reconnect-token-resume-TESTGAME"]'),
+    ).toHaveAttribute(
+      "href",
+      /\/multiplayer\/p2p-join\?code=TESTGAME(&|$)/,
+    );
+  });
+
+  test("the dismiss button removes the row without a full page reload", async ({
+    page,
+    context,
+  }) => {
+    await context.addInitScript(() => {
+      const open = indexedDB.open("PlanarNexusReconnectTokens", 1);
+      open.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains("tokens")) {
+          db.createObjectStore("tokens", { keyPath: "id" });
+        }
+      };
+      open.onsuccess = () => {
+        const db = open.result;
+        const tx = db.transaction("tokens", "readwrite");
+        const store = tx.objectStore("tokens");
+        const issuedAt = Date.now();
+        store.put({
+          id: "TESTGAME::peer-test",
+          peerId: "peer-test",
+          sessionKey: "k-test",
+          hostPeerId: "host-test",
+          gameCode: "TESTGAME",
+          lastDeliveredSeq: 0,
+          issuedAt,
+          expiresAt: issuedAt + 30 * 60 * 1000,
+          playerName: "Tester",
+        });
+        tx.oncomplete = () => db.close();
+      };
+    });
+
+    await page.goto("/multiplayer");
+    await page.waitForLoadState("networkidle");
+    await expect(
+      page.locator('[data-testid="reconnect-token-row-TESTGAME"]'),
+    ).toBeVisible();
+
+    await page
+      .locator('[data-testid="reconnect-token-dismiss-TESTGAME"]')
+      .click();
+
+    await expect(
+      page.locator('[data-testid="reconnect-token-row-TESTGAME"]'),
+    ).toHaveCount(0);
+  });
+});
