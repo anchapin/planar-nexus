@@ -40,12 +40,17 @@ import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
 import { discardCards } from "@/lib/game-state/keyword-actions";
 import {
   classifyArchetypeName,
-  GameStateEvaluator,
   BoardSwingTracker,
   type BoardSwing,
   type DeckArchetype,
 } from "./game-state-evaluator";
 import { detectArchetype } from "./archetype-detector";
+// Issue #1244: route the per-turn board-state evaluation through the AI Web
+// Worker when it is available so a "medium" turn loop (5–10 evaluations per
+// turn) does not block the main thread. Falls back to identical main-thread
+// computation when the worker is unavailable (SSR, jsdom tests, Worker init
+// failure).
+import { evaluateGameStateAsync } from "./worker/game-state-evaluator-worker-bridge";
 import type { DeckCard } from "@/app/actions";
 import {
   classifyStanding,
@@ -249,15 +254,19 @@ export function computeAdaptiveTempoRisk(
  * an {@link AdaptiveTempoRisk} posture. Returns `null` when no swing tracker is
  * configured (no adaptation → baseline posture).
  *
- * The advantage comes from the real {@link GameStateEvaluator}; if evaluation
- * throws on a degenerate board the advantage defaults to 0 so the AI keeps a
- * stable, neutral posture rather than crashing mid-turn.
+ * The advantage comes from {@link evaluateGameStateAsync} — issue #1244 — which
+ * routes through the AI Web Worker when available so a "medium" turn loop
+ * (5–10 evaluations per turn) does not block the main thread. Falls back to
+ * an identical main-thread computation when the worker is unavailable (SSR,
+ * tests, init failure). If evaluation throws on a degenerate board the
+ * advantage defaults to 0 so the AI keeps a stable, neutral posture rather
+ * than crashing mid-turn.
  */
-function computeAdaptiveContext(
+async function computeAdaptiveContext(
   state: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
-): AdaptiveTempoRisk | null {
+): Promise<AdaptiveTempoRisk | null> {
   const tracker = config.swingTracker;
   if (!tracker) return null;
 
@@ -266,13 +275,9 @@ function computeAdaptiveContext(
     const aiState = engineToAIState(state);
     const archetype =
       config.archetype ?? detectPlayerArchetype(state, aiPlayerId);
-    const evaluator = new GameStateEvaluator(
-      aiState,
-      aiPlayerId,
-      config.difficulty,
-      archetype,
-    );
-    advantage = evaluator.evaluate().totalScore;
+    advantage = (
+      await evaluateGameStateAsync(aiState, aiPlayerId, config.difficulty, archetype)
+    ).totalScore;
   } catch {
     advantage = 0;
   }
@@ -575,7 +580,10 @@ export async function runAITurn(
     // Issue #1068: evaluate the AI's standing at the start of its turn and fold
     // the board-state swing into an adaptive tempo/risk posture for this turn.
     // Null when no swing tracker is configured (baseline posture, no change).
-    const adaptive = computeAdaptiveContext(currentState, aiPlayerId, config);
+    // `computeAdaptiveContext` is async because issue #1244 routes the
+    // evaluator through the AI Web Worker (with identical main-thread
+    // fallback) so a "medium" turn loop does not block the UI.
+    const adaptive = await computeAdaptiveContext(currentState, aiPlayerId, config);
 
     // Phase 1: Untap
     const untapResult = await runUntapPhase(currentState, aiPlayerId, config);

@@ -1,5 +1,8 @@
 import type { AIGameState as GameState } from "@/lib/game-state/types";
-import type { DetailedEvaluation } from "@/ai/game-state-evaluator";
+import type {
+  DetailedEvaluation,
+  DeckArchetype,
+} from "@/ai/game-state-evaluator";
 import type {
   CascadeContext,
   BoardPermanent,
@@ -61,11 +64,18 @@ export interface DigestedCoachContext {
 /**
  * Payload for analyzing game state.
  * All fields must be transferable (no circular references).
+ *
+ * `difficulty` and `archetype` flow through to the worker's evaluator so the
+ * worker-computed result is value-identical to a direct `evaluateGameState`
+ * call on the main thread (issue #1244). Omitting them keeps the historical
+ * "medium / unknown" defaults — see `evaluateGameState()` in
+ * `game-state-evaluator.ts`.
  */
 export interface AnalyzeStatePayload {
   gameState: GameState;
   playerId: string;
   difficulty?: "easy" | "medium" | "hard" | "expert";
+  archetype?: DeckArchetype;
 }
 
 /**
