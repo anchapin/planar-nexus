@@ -6,8 +6,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { GameLobby, Player, HostGameConfig, PlayerStatus, TeamId, Team, TeamSettings } from '@/lib/multiplayer-types';
-import { lobbyManager, KickPeerResult, LobbyBanScope, LobbyBanEntry } from '@/lib/lobby-manager';
+import { GameLobby, Player, HostGameConfig, PlayerStatus, TeamId, Team, TeamSettings, LobbyState, ReadyCheckKind, ReadyCheckSession, SeatHold } from '@/lib/multiplayer-types';
+import { lobbyManager, KickPeerResult, LobbyBanScope, LobbyBanEntry, BeginReadyCheckResult, RecordReadyResponseResult, LOBBY_READY_CHECK_WINDOW_MS, LOBBY_LATE_JOINER_READY_CHECK_MS, LOBBY_SEAT_HOLD_DURATION_MS } from '@/lib/lobby-manager';
 import { formatGameCode } from '@/lib/game-code-generator';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import { getGameModeConfig } from '@/lib/game-mode';
@@ -51,6 +51,32 @@ export interface UseLobbyReturn {
   pauseGame: () => { pausedAt: number };
   resumeGame: () => { pausedDurationMs: number };
   getPauseElapsedMs: () => number;
+  // Issue #1255 — lobby state machine + ready-check + seat-hold helpers.
+  // The host page uses these to render the per-peer ready indicator and
+  // the 10 s countdown; the late-joiner check is opened by `joinMidGame`
+  // when a peer joins an in-progress game.
+  lobbyState: LobbyState;
+  activeReadyCheck: Readonly<ReadyCheckSession> | null;
+  readyCheckWindowMs: { full: number; lateJoiner: number };
+  seatHoldDurationMs: number;
+  beginReadyCheck: (kind?: ReadyCheckKind, targetPeerIds?: string[]) => BeginReadyCheckResult;
+  recordReadyResponse: (sessionId: string, peerId: string, ready: boolean) => RecordReadyResponseResult;
+  cancelReadyCheck: (reason?: string) => { cancelled: boolean; reason?: string };
+  advanceToStarting: (options?: { force?: boolean }) => boolean;
+  startInGame: () => boolean;
+  endGame: () => boolean;
+  evaluateReadyCheck: () => ReturnType<typeof lobbyManager.evaluateReadyCheck>;
+  holdSeatForRejoin: (peerId: string, originalName: string) => SeatHold;
+  releaseSeatHold: (peerId: string) => boolean;
+  isSeatHeld: (peerId: string) => boolean;
+  getActiveSeatHolds: () => Array<SeatHold & { remainingMs: number }>;
+  joinMidGame: (playerName: string) => {
+    accepted: boolean;
+    player?: Player;
+    readyCheckSessionId?: string;
+    reason?: string;
+    heldFor?: string;
+  };
 }
 
 export function useLobby(): UseLobbyReturn {
@@ -121,9 +147,13 @@ export function useLobby(): UseLobbyReturn {
   const canForceStart = lobby ? lobbyManager.canForceStart() : false;
 
   const startGame = useCallback(() => {
-    if (!lobby || !canStartGame) return false;
-
-    const success = lobbyManager.updateLobbyStatus('in-progress');
+    if (!lobby) return false;
+    // Issue #1255 — `canStartGame` is now gated on the state machine
+    // being in `STARTING`. The host must first call `beginReadyCheck`
+    // and either reach quorum or the 15 s window must expire before
+    // `startGame` will flip the lobby to `IN_GAME`.
+    if (!canStartGame) return false;
+    const success = lobbyManager.startInGame();
     if (success) {
       setLobby(lobbyManager.getCurrentLobby());
       router.push('/game-board');
@@ -134,8 +164,12 @@ export function useLobby(): UseLobbyReturn {
 
   const forceStartGame = useCallback(() => {
     if (!lobby || !canForceStart) return false;
-
-    const success = lobbyManager.updateLobbyStatus('in-progress');
+    // Issue #1255 — force-start bypasses the ready check. The host still
+    // gets to `IN_GAME` via the state machine (force-advance through
+    // `STARTING`).
+    const advanced = lobbyManager.advanceToStarting({ force: true });
+    if (!advanced) return false;
+    const success = lobbyManager.startInGame();
     if (success) {
       setLobby(lobbyManager.getCurrentLobby());
       router.push('/game-board');
@@ -259,6 +293,108 @@ export function useLobby(): UseLobbyReturn {
     return lobbyManager.getPauseElapsedMs();
   }, []);
 
+  // Issue #1255 — state machine + ready-check + seat-hold helpers. The
+  // hook mirrors the lobby manager's API surface and re-renders the
+  // `lobby` snapshot when the underlying state changes so React UI
+  // updates after each transition.
+  const beginReadyCheck = useCallback(
+    (kind: ReadyCheckKind = 'full', targetPeerIds?: string[]) => {
+      const result = lobbyManager.beginReadyCheck(kind, targetPeerIds);
+      if (result.started) {
+        setLobby(lobbyManager.getCurrentLobby());
+      }
+      return result;
+    },
+    [],
+  );
+
+  const recordReadyResponse = useCallback(
+    (sessionId: string, peerId: string, ready: boolean) => {
+      const result = lobbyManager.recordReadyResponse(
+        sessionId,
+        peerId,
+        ready,
+      );
+      if (result.accepted) {
+        setLobby(lobbyManager.getCurrentLobby());
+      }
+      return result;
+    },
+    [],
+  );
+
+  const cancelReadyCheck = useCallback((reason?: string) => {
+    const result = lobbyManager.cancelReadyCheck(reason);
+    setLobby(lobbyManager.getCurrentLobby());
+    return result;
+  }, []);
+
+  const advanceToStarting = useCallback(
+    (options?: { force?: boolean }) => {
+      const success = lobbyManager.advanceToStarting(options);
+      if (success) {
+        setLobby(lobbyManager.getCurrentLobby());
+      }
+      return success;
+    },
+    [],
+  );
+
+  const startInGame = useCallback(() => {
+    const success = lobbyManager.startInGame();
+    if (success) {
+      setLobby(lobbyManager.getCurrentLobby());
+    }
+    return success;
+  }, []);
+
+  const endGame = useCallback(() => {
+    const success = lobbyManager.endGame();
+    if (success) {
+      setLobby(lobbyManager.getCurrentLobby());
+    }
+    return success;
+  }, []);
+
+  const evaluateReadyCheck = useCallback(
+    () => lobbyManager.evaluateReadyCheck(),
+    [],
+  );
+
+  const holdSeatForRejoin = useCallback(
+    (peerId: string, originalName: string) => {
+      const hold = lobbyManager.holdSeatForRejoin(peerId, originalName);
+      setLobby(lobbyManager.getCurrentLobby());
+      return hold;
+    },
+    [],
+  );
+
+  const releaseSeatHold = useCallback((peerId: string) => {
+    const released = lobbyManager.releaseSeatHold(peerId);
+    if (released) {
+      setLobby(lobbyManager.getCurrentLobby());
+    }
+    return released;
+  }, []);
+
+  const isSeatHeld = useCallback((peerId: string) => {
+    return lobbyManager.isSeatHeld(peerId);
+  }, []);
+
+  const getActiveSeatHolds = useCallback(() => {
+    return lobbyManager.getActiveSeatHolds();
+  }, []);
+
+  const joinMidGame = useCallback((playerName: string) => {
+    const result = lobbyManager.joinMidGame(playerName);
+    setLobby(lobbyManager.getCurrentLobby());
+    return result;
+  }, []);
+
+  const lobbyState: LobbyState = lobbyManager.getLobbyState();
+  const activeReadyCheck = lobbyManager.getActiveReadyCheck();
+
   return {
     lobby,
     isHost,
@@ -296,5 +432,25 @@ export function useLobby(): UseLobbyReturn {
     pauseGame,
     resumeGame,
     getPauseElapsedMs,
+    // Issue #1255 — state machine + ready-check + seat-hold
+    lobbyState,
+    activeReadyCheck,
+    readyCheckWindowMs: {
+      full: LOBBY_READY_CHECK_WINDOW_MS,
+      lateJoiner: LOBBY_LATE_JOINER_READY_CHECK_MS,
+    },
+    seatHoldDurationMs: LOBBY_SEAT_HOLD_DURATION_MS,
+    beginReadyCheck,
+    recordReadyResponse,
+    cancelReadyCheck,
+    advanceToStarting,
+    startInGame,
+    endGame,
+    evaluateReadyCheck,
+    holdSeatForRejoin,
+    releaseSeatHold,
+    isSeatHeld,
+    getActiveSeatHolds,
+    joinMidGame,
   };
 }
