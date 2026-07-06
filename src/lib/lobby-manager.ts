@@ -68,6 +68,62 @@ export const LOBBY_MUTATION_LIMIT: RateLimitOptions = {
 export const LOBBY_MAX_PLAYERS = 16;
 
 /**
+ * Issue #1257 — session-scoped ban window.
+ *
+ * A peerId that the host kicks (or bans with `scope: 'session'`) is refused
+ * re-entry to the same game code for this duration. Stored as wall-clock ms
+ * so the expiry is independent of lobby close/reopen cycles within the
+ * window — the entry is purged when the timer lapses.
+ */
+export const LOBBY_BAN_DURATION_MS = 30 * 60 * 1000;
+
+/**
+ * Issue #1257 — scope of a ban. `'persistent'` is reserved for future
+ * cross-session moderation; the current implementation only honors
+ * `'session'` (in-memory + per-browser localStorage). Calling code can
+ * still pass `'persistent'` and the manager will store it for round-trip
+ * fidelity, but the expiry semantics are the same as `'session'` until a
+ * backend ships.
+ */
+export type LobbyBanScope = "session" | "persistent";
+
+/**
+ * Issue #1257 — single entry in the per-lobby ban list. Carries the kick
+ * reason verbatim so the host UI can show "Why was X banned?" later.
+ */
+export interface LobbyBanEntry {
+  peerId: string;
+  reason?: string;
+  scope: LobbyBanScope;
+  /** Wall-clock ms when the ban was issued. */
+  bannedAt: number;
+  /** Wall-clock ms when the ban expires (auto-purge past this point). */
+  expiresAt: number;
+}
+
+/**
+ * Issue #1257 — persisted snapshot of the ban list keyed by gameCode.
+ * Stored under one localStorage key so we can query the 30-minute window
+ * without per-lobby indexing logic.
+ */
+type LobbyBanStore = Record<string, LobbyBanEntry[]>;
+
+const LOBBY_BAN_STORAGE_KEY = "planar_nexus_lobby_bans";
+
+/**
+ * Issue #1257 — return payload from {@link LobbyManager.kickPeer}.
+ *
+ * `kick` is the host-driven removal + session-ban composite; the field is
+ * surfaced to the UI so callers can show "Player kicked (and banned for 30
+ * minutes)" or, if the kick failed, the failure reason.
+ */
+export interface KickPeerResult {
+  removed: boolean;
+  banned: boolean;
+  reason?: string;
+}
+
+/**
  * Client-side lobby manager for host game functionality
  * In production, this would sync with a signaling server/WebRTC
  */
@@ -83,6 +139,18 @@ class LobbyManager {
   private mutationLimiter: TokenBucket;
   /** Cumulative count of rejected mutations, exposed for tests. */
   public mutationDropped = 0;
+  /**
+   * Issue #1257 — ban list keyed by peerId for the current lobby. Each
+   * entry carries its own `expiresAt` so a slow-purge lazy cleanup is
+   * sufficient (we don't need a timer). The map holds both `session` and
+   * `persistent` scopes; only `session` is actively honored today.
+   */
+  private sessionBans: Map<string, LobbyBanEntry> = new Map();
+  /**
+   * Issue #1257 — wall-clock ms when the host issued a pause, or null when
+   * the game is not paused. Drives the priority-timer freeze clock math.
+   */
+  private pausedAt: number | null = null;
 
   constructor(limits?: Partial<RateLimitOptions>) {
     this.mutationLimiter = new TokenBucket({
@@ -142,6 +210,11 @@ class LobbyManager {
 
     this.currentLobby = lobby;
     this.hostPlayerId = hostPlayerId;
+    // Issue #1257 — a new game starts unpaused and re-hydrates any bans
+    // persisted under this game code (a previous host banning a peer for
+    // the same code within the 30-minute window).
+    this.pausedAt = null;
+    this.loadBanList();
 
     // Initialize teams for team-based modes
     const modeConfig = getGameModeConfig(gameMode);
@@ -426,6 +499,12 @@ class LobbyManager {
 
     this.currentLobby = null;
     this.hostPlayerId = null;
+    // Issue #1257 — reset transient game state but DO NOT clear the ban
+    // list. Bans persist for {@link LOBBY_BAN_DURATION_MS} per game code;
+    // they are re-hydrated by `loadBanList()` if the host reopens under
+    // the same code within the window. Pause is a game-scoped freeze and
+    // ends with the game.
+    this.pausedAt = null;
     localStorage.removeItem('planar_nexus_current_lobby');
   }
 
@@ -711,6 +790,260 @@ class LobbyManager {
     }
     this.mutationDropped += 1;
     return false;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Issue #1257 — host moderation (kick, ban, pause).
+  //
+  // These methods own the policy + persistence of the moderation state.
+  // The transport (`p2p-game-connection.ts`) is just an envelope — the host
+  // calls `kickPeer` / `banPeer` / `pauseGame`, then sends a `lobby-control`
+  // message so peers see the same authoritative view. The peer side applies
+  // the message via `onLobbyControl` and closes the data channel on kick.
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Issue #1257 — remove a peer from the lobby roster AND session-ban them
+   * for {@link LOBBY_BAN_DURATION_MS} so they cannot immediately rejoin via
+   * the same game code. The host's `reason` is surfaced to the kicked peer
+   * verbatim.
+   *
+   * Composed of:
+   *   1. {@link removePlayer} (host-side roster removal).
+   *   2. {@link banPeer} with `scope: 'session'` (refuse future joins for
+   *      the 30-minute window).
+   *
+   * Returns a {@link KickPeerResult} so the UI can show partial-success
+   * (e.g. peer was already gone but the ban still applies).
+   */
+  kickPeer(peerId: string, reason?: string): KickPeerResult {
+    if (!this.currentLobby) {
+      return { removed: false, banned: false, reason: "No active lobby" };
+    }
+    if (peerId === this.currentLobby.hostId) {
+      // The host cannot kick itself; `host migration` (#946) is the
+      // supported path for transferring host authority.
+      return { removed: false, banned: false, reason: "Cannot kick the host" };
+    }
+    const removed = this.removePlayer(peerId);
+    const banned = this.banPeer(peerId, "session", reason).added;
+    return { removed, banned, reason };
+  }
+
+  /**
+   * Issue #1257 — add a peer to the session-scoped ban list. The entry is
+   * persisted under the current game code so the 30-minute window survives
+   * a `closeLobby` cycle within the same browser session.
+   *
+   * `scope: 'persistent'` is accepted for forward compatibility (it is
+   * stored under the same expiry semantics today) — see {@link LobbyBanScope}.
+   *
+   * Returns `{ added: boolean }` — false when the ban list mutation budget
+   * is exhausted (issue #1277) so callers can surface the rejection.
+   */
+  banPeer(
+    peerId: string,
+    scope: LobbyBanScope,
+    reason?: string,
+  ): { added: boolean; entry: LobbyBanEntry | null } {
+    if (!this.tryConsumeMutation("banPeer")) {
+      return { added: false, entry: null };
+    }
+    if (!this.currentLobby) {
+      return { added: false, entry: null };
+    }
+    const now = Date.now();
+    const entry: LobbyBanEntry = {
+      peerId,
+      reason,
+      scope,
+      bannedAt: now,
+      expiresAt: now + LOBBY_BAN_DURATION_MS,
+    };
+    this.sessionBans.set(peerId, entry);
+    this.saveBanList();
+    return { added: true, entry };
+  }
+
+  /**
+   * Issue #1257 — `true` when the peerId is currently banned for the active
+   * lobby's game code. Expired entries are purged lazily on every check so
+   * the in-memory map never grows unbounded even without a timer.
+   *
+   * Safe to call when no lobby is active — returns false.
+   */
+  isPeerBanned(peerId: string): boolean {
+    this.purgeExpiredBans();
+    return this.sessionBans.has(peerId);
+  }
+
+  /**
+   * Issue #1257 — remove a peer from the ban list (e.g. host rescinds).
+   * Returns true when an entry was actually removed.
+   */
+  unbanPeer(peerId: string): boolean {
+    const had = this.sessionBans.delete(peerId);
+    if (had) this.saveBanList();
+    return had;
+  }
+
+  /**
+   * Issue #1257 — snapshot of the current ban list (post lazy purge) with
+   * each entry's remaining lifetime. The array is a copy — mutating it does
+   * not affect internal state.
+   */
+  getBanList(): Array<LobbyBanEntry & { remainingMs: number }> {
+    this.purgeExpiredBans();
+    const now = Date.now();
+    return Array.from(this.sessionBans.values()).map((e) => ({
+      ...e,
+      remainingMs: Math.max(0, e.expiresAt - now),
+    }));
+  }
+
+  /**
+   * Issue #1257 — sweep the in-memory ban list, dropping any entry past its
+   * `expiresAt`. Idempotent and safe to call repeatedly. Persists the
+   * trimmed state so localStorage does not accumulate tombstones.
+   */
+  purgeExpiredBans(): number {
+    const now = Date.now();
+    let removed = 0;
+    for (const [peerId, entry] of this.sessionBans) {
+      if (entry.expiresAt <= now) {
+        this.sessionBans.delete(peerId);
+        removed += 1;
+      }
+    }
+    if (removed > 0) this.saveBanList();
+    return removed;
+  }
+
+  /**
+   * Issue #1257 — freeze the priority timer. Returns the wall-clock ms
+   * that should be broadcast in the `lobby-control` pause payload so peers
+   * compute the same frozen elapsed time. No-op when already paused — the
+   * existing `pausedAt` is returned so peers don't lose the original start.
+   */
+  pauseGame(): { pausedAt: number } {
+    if (this.pausedAt === null) {
+      this.pausedAt = Date.now();
+    }
+    return { pausedAt: this.pausedAt };
+  }
+
+  /**
+   * Issue #1257 — lift the priority-timer freeze. Returns the elapsed
+   * milliseconds the game was paused so the host can adjust the local
+   * priority clock for the freeze window (pause-clock math).
+   */
+  resumeGame(): { pausedDurationMs: number } {
+    if (this.pausedAt === null) {
+      return { pausedDurationMs: 0 };
+    }
+    const pausedDurationMs = Date.now() - this.pausedAt;
+    this.pausedAt = null;
+    return { pausedDurationMs };
+  }
+
+  /**
+   * Issue #1257 — true when the host has issued a pause and not yet
+   * resumed. Used by the UI to render the "Game paused" badge.
+   */
+  isPaused(): boolean {
+    return this.pausedAt !== null;
+  }
+
+  /**
+   * Issue #1257 — wall-clock ms when the current pause began, or null
+   * when the game is not paused. Peers use this together with the
+   * `pausedDurationMs` returned by {@link resumeGame} to keep their
+   * priority-timer clocks consistent with the host's authoritative view.
+   */
+  getPausedAt(): number | null {
+    return this.pausedAt;
+  }
+
+  /**
+   * Issue #1257 — number of milliseconds the current pause has been held.
+   * Zero when not paused. Drives the pause-clock math tests:
+   *   elapsed = (now - pausedAt) - (sum of prior resume gaps)
+   * The host uses the simpler {@link resumeGame} return value.
+   */
+  getPauseElapsedMs(): number {
+    if (this.pausedAt === null) return 0;
+    return Date.now() - this.pausedAt;
+  }
+
+  /**
+   * Issue #1257 — hydrate the in-memory ban list from localStorage for the
+   * active game code. Called by `createLobby` so a host that bans a peer,
+   * closes the lobby, and reopens within the window still refuses the
+   * rejoin. No-op when no lobby is active.
+   */
+  private loadBanList(): void {
+    this.sessionBans.clear();
+    if (!this.currentLobby) return;
+    const store = this.readBanStore();
+    const entries = store[this.currentLobby.gameCode] ?? [];
+    const now = Date.now();
+    let kept = 0;
+    for (const entry of entries) {
+      if (entry.expiresAt > now) {
+        this.sessionBans.set(entry.peerId, entry);
+        kept += 1;
+      }
+    }
+    if (kept !== entries.length) {
+      // Some entries expired while we were closed — persist the trimmed set.
+      this.saveBanList();
+    }
+  }
+
+  /**
+   * Issue #1257 — write the current ban list to localStorage, keyed by
+   * the active game code. Best-effort: a quota error or a non-browser
+   * environment is swallowed so moderation never crashes the lobby.
+   */
+  private saveBanList(): void {
+    if (!this.currentLobby) return;
+    const store = this.readBanStore();
+    store[this.currentLobby.gameCode] = Array.from(this.sessionBans.values());
+    try {
+      localStorage.setItem(LOBBY_BAN_STORAGE_KEY, JSON.stringify(store));
+    } catch {
+      // Storage quota / privacy mode — ignore. The in-memory map is still
+      // authoritative for the active session.
+    }
+  }
+
+  /**
+   * Issue #1257 — read the persisted ban store. Returns an empty object
+   * when nothing is stored or the payload is corrupted (the corruption
+   * case clears the bad key so we do not crash on every subsequent call).
+   */
+  private readBanStore(): LobbyBanStore {
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(LOBBY_BAN_STORAGE_KEY);
+    } catch {
+      return {};
+    }
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as LobbyBanStore;
+      }
+    } catch {
+      // Corrupt payload — drop it and start fresh.
+      try {
+        localStorage.removeItem(LOBBY_BAN_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+    return {};
   }
 }
 
