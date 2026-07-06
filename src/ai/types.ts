@@ -69,6 +69,11 @@ export const DigestedCoachContextSchema = z.object({
       ),
     })
     .optional(),
+  /** Pre-rendered structured deck analysis (#1236) — same markdown block the
+   *  route embeds into the coach prompt when raw cards are present. Carried
+   *  by the worker digest so large/Commander decks keep full grounding without
+   *  re-sending the raw 100-card payload over the wire. */
+  structuredAnalysisText: z.string().optional(),
   timestamp: z.number(),
 });
 

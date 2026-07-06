@@ -90,10 +90,23 @@ export async function POST(request: NextRequest) {
     //    Resolves the structured deck analysis (archetype, synergy clusters,
     //    curve, roles, gaps) before the model is invoked, with caching so a
     //    coaching session asking many questions about the same deck skips
-    //    re-computation. When the client already supplied a digested context we
-    //    keep it; raw cards are enriched with the structured analysis.
-    let structuredAnalysis: string | undefined;
-    if (deckCards && Array.isArray(deckCards) && deckCards.length > 0) {
+    //    re-computation.
+    //
+    //    Issue #1236: the hook drops the raw deck payload from the wire for
+    //    decks > 20 cards (Commander default) and instead ships a digested
+    //    context. The worker that produced that digest now pre-computes the
+    //    same structured analysis the route would otherwise build, and
+    //    surfaces it as `digestedContext.structuredAnalysisText`. Prefer it
+    //    when present so large/Commander decks keep full grounding (archetype,
+    //    synergy clusters, role mix, gaps) without re-sending 100 cards.
+    //    Fall back to the local pre-fetcher only when raw cards are
+    //    available — e.g. for the < 20 card small-deck path.
+    let structuredAnalysis: string | undefined =
+      typeof digestedContext?.structuredAnalysisText === "string"
+        ? digestedContext.structuredAnalysisText
+        : undefined;
+
+    if (!structuredAnalysis && deckCards && Array.isArray(deckCards) && deckCards.length > 0) {
       try {
         const prefetched = await prefetchCoachContext({
           deckCards: deckCards as DeckCard[],
