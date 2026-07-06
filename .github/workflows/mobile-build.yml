@@ -51,7 +51,7 @@ jobs:
     if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'ios'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -122,7 +122,7 @@ jobs:
     if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'android'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -192,7 +192,7 @@ jobs:
     if: github.event_name == 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
