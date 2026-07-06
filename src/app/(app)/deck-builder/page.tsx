@@ -50,6 +50,7 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { deleteConversationsForDeck } from "@/lib/coach-conversation-storage";
 import { SavedDecksList } from "./_components/saved-decks-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SynergyProvider } from "./_components/synergy-context";
@@ -498,6 +499,13 @@ export default function DeckBuilderPage() {
     if (activeDeckId === deckId) {
       clearDeck();
     }
+    // Prune any coach sessions that were scoped to the deleted deck so the
+    // IndexedDB store doesn't accumulate orphaned transcripts (issue #1242).
+    // Fire-and-forget — the toast below surfaces success regardless of the
+    // async result so the UI never blocks on storage I/O.
+    void deleteConversationsForDeck(deckId).catch((error) => {
+      console.error("Failed to prune orphan coach sessions:", error);
+    });
     toast({ title: "Deck Deleted" });
   };
 

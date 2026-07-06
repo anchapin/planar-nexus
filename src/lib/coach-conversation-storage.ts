@@ -62,6 +62,37 @@ export interface CoachConversation {
   updatedAt: string;
 }
 
+/**
+ * JSON-serialisable envelope for one or more persisted coach conversations.
+ *
+ * Versioned and tagged so future schema changes can be detected and rejected
+ * by {@link parseCoachConversationExport}. The envelope is intentionally
+ * self-describing — a user opening the JSON in any editor can tell what it is
+ * and when it was produced without consulting external docs (issue #1242).
+ */
+export interface CoachConversationExport {
+  /** Discriminator that lets {@link parseCoachConversationExport} validate shape. */
+  type: "planar-nexus-coach-conversations";
+  /** Envelope schema version. Bumped when the on-disk shape changes. */
+  version: 1;
+  /** ISO timestamp at which the export was produced. */
+  exportedAt: string;
+  /** Deck id the conversations were scoped to, or `null` for multi-deck exports. */
+  deckId: string | null;
+  /** Conversations, newest-first (matches {@link loadConversations} ordering). */
+  conversations: CoachConversation[];
+}
+
+/** Result returned from {@link importConversationsFromJSON}. */
+export interface CoachConversationImportResult {
+  /** Number of conversations persisted to IndexedDB. */
+  imported: number;
+  /** Number of entries that were rejected (e.g. malformed). */
+  skipped: number;
+  /** Per-record error messages for the skipped entries (if any). */
+  errors: string[];
+}
+
 // ============================================================================
 // CONFIG
 // ============================================================================
@@ -74,6 +105,15 @@ export const DEFAULT_DECK_ID = "default";
 
 /** Max length of an auto-derived conversation title. */
 const TITLE_MAX_LENGTH = 60;
+
+/**
+ * Default cap on persisted conversations per deck (oldest are pruned first).
+ * Tuned to keep IndexedDB usage bounded without surprising users who chat a lot
+ * — 50 full transcripts comfortably fits under the IndexedDB quota even with
+ * large deck-context snapshots, while still pruning long-abandoned sessions
+ * (issue #1242).
+ */
+export const DEFAULT_MAX_CONVERSATIONS_PER_DECK = 50;
 
 /**
  * Dedicated IndexedDB database for coach conversations. Kept separate from the
@@ -295,4 +335,287 @@ export function createConversationRecord(opts: {
     createdAt: iso,
     updatedAt: iso,
   };
+}
+
+// ============================================================================
+// EXPORT / IMPORT (issue #1242 — portability across browsers/machines)
+// ============================================================================
+
+/**
+ * Validate a single conversation record from a parsed JSON payload. Returns
+ * `null` if the record is unusable; otherwise returns a normalised copy with
+ * `Date` timestamps and a sanitised `deckId`. The function never throws so the
+ * import helper can collect *all* bad records instead of bailing on the first.
+ */
+function sanitiseImportedConversation(
+  raw: unknown,
+  fallbackDeckId: string,
+): { ok: true; value: CoachConversation } | { ok: false; reason: string } {
+  if (!raw || typeof raw !== "object") {
+    return { ok: false, reason: "not an object" };
+  }
+  const rec = raw as Partial<CoachConversation> & {
+    messages?: unknown;
+    deckContext?: unknown;
+  };
+  if (typeof rec.id !== "string" || !rec.id) {
+    return { ok: false, reason: "missing id" };
+  }
+  if (!Array.isArray(rec.messages)) {
+    return { ok: false, reason: "missing messages array" };
+  }
+  const messages: ChatMessage[] = [];
+  for (const m of rec.messages) {
+    if (!m || typeof m !== "object") continue;
+    const msg = m as Partial<ChatMessage>;
+    if (typeof msg.role !== "string" || typeof msg.content !== "string") {
+      continue;
+    }
+    const ts =
+      msg.timestamp instanceof Date
+        ? msg.timestamp
+        : new Date(
+            (msg.timestamp as unknown as string | number | undefined) ??
+              Date.now(),
+          );
+    messages.push({
+      id: typeof msg.id === "string" && msg.id ? msg.id : crypto.randomUUID(),
+      role: msg.role as ChatMessage["role"],
+      content: msg.content,
+      timestamp: ts,
+      provider: typeof msg.provider === "string" ? msg.provider : undefined,
+      usage: msg.usage as ChatMessage["usage"] | undefined,
+      cancelled: typeof msg.cancelled === "boolean" ? msg.cancelled : undefined,
+    });
+  }
+  if (messages.length === 0) {
+    return { ok: false, reason: "no usable messages" };
+  }
+  const createdAt =
+    typeof rec.createdAt === "string" && rec.createdAt
+      ? rec.createdAt
+      : new Date().toISOString();
+  const updatedAt =
+    typeof rec.updatedAt === "string" && rec.updatedAt
+      ? rec.updatedAt
+      : createdAt;
+  const deckId =
+    typeof rec.deckId === "string" && rec.deckId ? rec.deckId : fallbackDeckId;
+  const ctx =
+    rec.deckContext && typeof rec.deckContext === "object"
+      ? (rec.deckContext as CoachConversationDeckContext)
+      : {};
+  return {
+    ok: true,
+    value: {
+      id: rec.id,
+      deckId,
+      title:
+        typeof rec.title === "string" && rec.title
+          ? rec.title
+          : deriveConversationTitle(messages),
+      deckContext: ctx,
+      messages,
+      createdAt,
+      updatedAt,
+    },
+  };
+}
+
+/**
+ * Build a JSON-safe export envelope for every conversation on a single deck.
+ * Returns an empty envelope when there are no conversations (still valid JSON).
+ */
+export async function exportConversationsForDeck(
+  deckId: string = DEFAULT_DECK_ID,
+): Promise<CoachConversationExport> {
+  const conversations = await loadConversations(deckId);
+  return {
+    type: "planar-nexus-coach-conversations",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    deckId,
+    conversations,
+  };
+}
+
+/**
+ * Build a JSON-safe export envelope for every conversation in the store
+ * (across all decks). Use this for full-backup-style exports; for per-deck
+ * portability prefer {@link exportConversationsForDeck}.
+ */
+export async function exportAllConversations(): Promise<CoachConversationExport> {
+  if (!indexedDBAvailable()) {
+    return {
+      type: "planar-nexus-coach-conversations",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deckId: null,
+      conversations: [],
+    };
+  }
+  try {
+    const conversations = await coachStorage.getAll<CoachConversation>(
+      COACH_CONVERSATION_STORE,
+    );
+    conversations.sort((a, b) =>
+      (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""),
+    );
+    return {
+      type: "planar-nexus-coach-conversations",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deckId: null,
+      conversations,
+    };
+  } catch (error) {
+    console.error("Failed to export coach conversations:", error);
+    return {
+      type: "planar-nexus-coach-conversations",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deckId: null,
+      conversations: [],
+    };
+  }
+}
+
+/**
+ * Validate + parse a JSON string into a {@link CoachConversationExport}.
+ *
+ * Returns `null` when the input is not the expected envelope (wrong `type` or
+ * unsupported `version`). On parse errors the thrown `SyntaxError` is caught
+ * and surfaced as `null` so the import UI can show a user-friendly error rather
+ * than crashing.
+ */
+export function parseCoachConversationExport(
+  raw: string,
+): CoachConversationExport | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Partial<CoachConversationExport>;
+  if (obj.type !== "planar-nexus-coach-conversations") return null;
+  if (obj.version !== 1) return null;
+  if (!Array.isArray(obj.conversations)) return null;
+  return {
+    type: "planar-nexus-coach-conversations",
+    version: 1,
+    exportedAt:
+      typeof obj.exportedAt === "string" ? obj.exportedAt : new Date().toISOString(),
+    deckId: typeof obj.deckId === "string" ? obj.deckId : null,
+    conversations: obj.conversations as CoachConversation[],
+  };
+}
+
+/**
+ * Import conversations from a parsed export envelope into IndexedDB.
+ *
+ * Each imported record is given a fresh `id` by default (preserves the original
+ * id when `replace: true`) so importing the same export twice does not clobber
+ * the local store. The `targetDeckId` parameter re-scopes every conversation
+ * to a specific deck — pass `null` to keep each record's original `deckId`.
+ *
+ * Returns counts so the UI can show a meaningful toast ("Imported 3, skipped 1").
+ */
+export async function importConversationsFromJSON(
+  envelope: CoachConversationExport,
+  opts: {
+    /** Deck to assign to imported conversations. `null` keeps the original deckId. */
+    targetDeckId?: string | null;
+    /** When true, overwrite an existing record with the same id. */
+    replace?: boolean;
+  } = {},
+): Promise<CoachConversationImportResult> {
+  const result: CoachConversationImportResult = {
+    imported: 0,
+    skipped: 0,
+    errors: [],
+  };
+  const { targetDeckId = null, replace = false } = opts;
+  const fallbackDeckId = targetDeckId ?? DEFAULT_DECK_ID;
+
+  for (let i = 0; i < envelope.conversations.length; i++) {
+    const raw = envelope.conversations[i];
+    const sanitised = sanitiseImportedConversation(raw, fallbackDeckId);
+    if (!sanitised.ok) {
+      result.skipped += 1;
+      result.errors.push(`conversation #${i + 1}: ${sanitised.reason}`);
+      continue;
+    }
+    let conv = sanitised.value;
+    if (targetDeckId !== null) {
+      conv = { ...conv, deckId: targetDeckId };
+    }
+    if (!replace) {
+      // Avoid clobbering a local record with the same id (e.g. user double-imports).
+      const existing = await loadConversation(conv.id);
+      if (existing) {
+        conv = { ...conv, id: crypto.randomUUID() };
+      }
+    }
+    const saved = await saveConversation(conv);
+    if (saved.ok) {
+      result.imported += 1;
+    } else {
+      result.skipped += 1;
+      result.errors.push(
+        `conversation #${i + 1}: ${saved.error.message ?? "save failed"}`,
+      );
+    }
+  }
+  return result;
+}
+
+// ============================================================================
+// BOUNDED RETENTION + ORPHAN CLEANUP (issue #1242)
+// ============================================================================
+
+/**
+ * Prune oldest conversations for a single deck so at most `maxConversations`
+ * records remain. Newest-first ordering is reused from
+ * {@link loadConversations}. Returns the number of records deleted so callers
+ * can surface a notice ("Pruned 4 old conversations").
+ */
+export async function pruneOldestConversationsForDeck(
+  deckId: string,
+  maxConversations: number = DEFAULT_MAX_CONVERSATIONS_PER_DECK,
+): Promise<number> {
+  if (maxConversations < 0) return 0;
+  const list = await loadConversations(deckId);
+  if (list.length <= maxConversations) return 0;
+  const toDelete = list.slice(maxConversations);
+  await Promise.all(toDelete.map((c) => deleteConversation(c.id)));
+  return toDelete.length;
+}
+
+/**
+ * Delete every conversation whose `deckId` is NOT in `validDeckIds`. Used to
+ * clean up orphaned per-deck histories when a saved deck is removed from the
+ * user's collection, preventing an unbounded growth of unreachable transcripts
+ * (issue #1242).
+ *
+ * The constant `DEFAULT_DECK_ID` is always preserved so unscoped ("default")
+ * sessions survive a deck deletion.
+ */
+export async function pruneOrphanedConversations(
+  validDeckIds: Iterable<string>,
+): Promise<number> {
+  if (!indexedDBAvailable()) return 0;
+  const valid = new Set<string>([DEFAULT_DECK_ID, ...validDeckIds]);
+  let all: CoachConversation[];
+  try {
+    all = await coachStorage.getAll<CoachConversation>(COACH_CONVERSATION_STORE);
+  } catch (error) {
+    console.error("Failed to read conversations for orphan pruning:", error);
+    return 0;
+  }
+  const orphans = all.filter((c) => c && !valid.has(c.deckId));
+  if (orphans.length === 0) return 0;
+  await Promise.all(orphans.map((c) => deleteConversation(c.id)));
+  return orphans.length;
 }
