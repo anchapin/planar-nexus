@@ -1,6 +1,6 @@
 /**
  * P2PDiagnosticsPanel tests.
- * Issue #1088.
+ * Issue #1088 (single-connection readout), Issue #1256 (per-peer mesh table).
  */
 
 import React from "react";
@@ -10,6 +10,10 @@ import "@testing-library/jest-dom/jest-globals";
 
 import { P2PDiagnosticsPanel } from "../p2p-diagnostics-panel";
 import type { ICEDiagnosticsSnapshot } from "@/lib/ice-diagnostics";
+import type {
+  PeerDiagnosticsSource,
+  PeerRawStats,
+} from "@/hooks/use-p2p-diagnostics";
 
 function makeSnapshot(
   overrides: Partial<ICEDiagnosticsSnapshot> = {},
@@ -246,5 +250,243 @@ describe("P2PDiagnosticsPanel", () => {
     expect(await screen.findByTestId("p2p-diag-error")).toHaveTextContent(
       /nope/,
     );
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ *  Per-peer mesh diagnostics — issue #1256.
+ * -------------------------------------------------------------------------- */
+
+/** Build a per-peer source that yields a fixed sample queue per peer. */
+function makePeerSource(seed: Record<string, PeerRawStats[]>) {
+  const state: Record<string, PeerRawStats[]> = JSON.parse(
+    JSON.stringify(seed),
+  );
+  return {
+    source: {
+      getPeerIds() {
+        return Object.keys(state);
+      },
+      async getPeerDiagnostics(peerId: string) {
+        const queue = state[peerId];
+        if (!queue || queue.length === 0) return null;
+        return queue.shift()!;
+      },
+    } satisfies PeerDiagnosticsSource,
+  };
+}
+
+describe("P2PDiagnosticsPanel — per-peer (issue #1256)", () => {
+  const originalRTCP = (window as { RTCPeerConnection?: unknown })
+    .RTCPeerConnection;
+
+  beforeEach(() => {
+    (window as any).RTCPeerConnection = function MockPC() {};
+  });
+
+  afterEach(() => {
+    (window as { RTCPeerConnection?: unknown }).RTCPeerConnection =
+      originalRTCP;
+  });
+
+  it("renders one row per peer with live RTT, bytes/sec, and packet loss", async () => {
+    // Each peer provides two samples so bytes/sec + loss have a delta to
+    // compute, then a third sentinel so the rolling window does not drain the
+    // first two before our assertions.
+    const { source } = makePeerSource({
+      alpha: [
+        {
+          peerId: "alpha",
+          displayName: "Alice",
+          phase: "connected",
+          rttMs: 40,
+          bytesSent: 1000,
+          bytesReceived: 500,
+          packetsLost: 1,
+          packetsReceived: 99,
+        },
+        {
+          peerId: "alpha",
+          rttMs: 60,
+          bytesSent: 3000,
+          bytesReceived: 1500,
+          packetsLost: 5,
+          packetsReceived: 95,
+        },
+        {
+          peerId: "alpha",
+          rttMs: 60,
+          bytesSent: 3001,
+          bytesReceived: 1501,
+          packetsLost: 5,
+          packetsReceived: 95,
+        },
+      ],
+      bravo: [
+        {
+          peerId: "bravo",
+          displayName: "Bob",
+          phase: "connected",
+          rttMs: 80,
+          bytesSent: 0,
+          bytesReceived: 0,
+          packetsLost: 0,
+          packetsReceived: 50,
+        },
+        {
+          peerId: "bravo",
+          rttMs: 90,
+          bytesSent: 4000,
+          bytesReceived: 2000,
+          packetsLost: 0,
+          packetsReceived: 100,
+        },
+        {
+          peerId: "bravo",
+          rttMs: 90,
+          bytesSent: 4001,
+          bytesReceived: 2001,
+          packetsLost: 0,
+          packetsReceived: 100,
+        },
+      ],
+      charlie: [
+        {
+          peerId: "charlie",
+          displayName: "Cara",
+          phase: "connected",
+          rttMs: 120,
+          bytesSent: 2000,
+          bytesReceived: 1000,
+          packetsLost: 10,
+          packetsReceived: 90,
+        },
+        {
+          peerId: "charlie",
+          rttMs: 130,
+          bytesSent: 2200,
+          bytesReceived: 1100,
+          packetsLost: 12,
+          packetsReceived: 88,
+        },
+        {
+          peerId: "charlie",
+          rttMs: 130,
+          bytesSent: 2201,
+          bytesReceived: 1101,
+          packetsLost: 12,
+          packetsReceived: 88,
+        },
+      ],
+    });
+
+    render(<P2PDiagnosticsPanel defaultOpen peerConnection={source} />);
+
+    await screen.findByTestId("p2p-diag-peer-table");
+    expect(
+      await screen.findByTestId("p2p-diag-peer-row-alpha"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("p2p-diag-peer-row-bravo")).toBeInTheDocument();
+    expect(screen.getByTestId("p2p-diag-peer-row-charlie")).toBeInTheDocument();
+
+    // Display names surface as the primary cell.
+    expect(screen.getByTestId("p2p-diag-peer-name-alpha")).toHaveTextContent(
+      "Alice",
+    );
+    expect(screen.getByTestId("p2p-diag-peer-name-bravo")).toHaveTextContent(
+      "Bob",
+    );
+    expect(screen.getByTestId("p2p-diag-peer-name-charlie")).toHaveTextContent(
+      "Cara",
+    );
+
+    // Sparklines: one per peer row.
+    const sparklines = screen.getAllByTestId("p2p-diag-sparkline");
+    expect(sparklines.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("sorts the per-peer table by RTT when the RTT header is clicked", async () => {
+    const { source } = makePeerSource({
+      slow: [
+        { peerId: "slow", rttMs: 200, bytesSent: 0, bytesReceived: 0 },
+        { peerId: "slow", rttMs: 200, bytesSent: 0, bytesReceived: 0 },
+        { peerId: "slow", rttMs: 200, bytesSent: 0, bytesReceived: 0 },
+      ],
+      fast: [
+        { peerId: "fast", rttMs: 20, bytesSent: 0, bytesReceived: 0 },
+        { peerId: "fast", rttMs: 20, bytesSent: 0, bytesReceived: 0 },
+        { peerId: "fast", rttMs: 20, bytesSent: 0, bytesReceived: 0 },
+      ],
+      mid: [
+        { peerId: "mid", rttMs: 80, bytesSent: 0, bytesReceived: 0 },
+        { peerId: "mid", rttMs: 80, bytesSent: 0, bytesReceived: 0 },
+        { peerId: "mid", rttMs: 80, bytesSent: 0, bytesReceived: 0 },
+      ],
+    });
+
+    render(<P2PDiagnosticsPanel defaultOpen peerConnection={source} />);
+    await screen.findByTestId("p2p-diag-peer-table");
+
+    // The RTT column defaults to ascending: fast (20) → mid (80) → slow (200).
+    const rows = await screen.findAllByTestId(/p2p-diag-peer-row-/);
+    expect(rows[0]).toHaveAttribute("data-testid", "p2p-diag-peer-row-fast");
+    expect(rows[2]).toHaveAttribute("data-testid", "p2p-diag-peer-row-slow");
+
+    // Click RTT header to flip to descending.
+    await userEvent.setup().click(screen.getByTestId("p2p-diag-sort-rtt"));
+    const rowsDesc = await screen.findAllByTestId(/p2p-diag-peer-row-/);
+    expect(rowsDesc[0]).toHaveAttribute("data-testid", "p2p-diag-peer-row-slow");
+  });
+
+  it("renders an empty-state message when no peers are connected", async () => {
+    const source: PeerDiagnosticsSource = {
+      getPeerIds: () => [],
+      async getPeerDiagnostics() {
+        return null;
+      },
+    };
+    render(<P2PDiagnosticsPanel defaultOpen peerConnection={source} />);
+    expect(
+      await screen.findByTestId("p2p-diag-peer-empty"),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the unsupported alert when WebRTC is unavailable", async () => {
+    (window as { RTCPeerConnection?: unknown }).RTCPeerConnection = undefined;
+    const source: PeerDiagnosticsSource = {
+      getPeerIds: () => ["x"],
+      async getPeerDiagnostics() {
+        return null;
+      },
+    };
+    render(<P2PDiagnosticsPanel defaultOpen peerConnection={source} />);
+    expect(
+      await screen.findByTestId("p2p-diag-unsupported"),
+    ).toBeInTheDocument();
+  });
+
+  it("peers take precedence over the legacy single-connection path", async () => {
+    // When both `peerConnection` and `connection` are supplied, the panel
+    // must show the per-peer table — not the single-connection readout.
+    const { source } = makePeerSource({
+      p1: [
+        { peerId: "p1", rttMs: 42 },
+        { peerId: "p1", rttMs: 42 },
+        { peerId: "p1", rttMs: 42 },
+      ],
+    });
+    const single = mockConnection(makeSnapshot()).source;
+
+    render(
+      <P2PDiagnosticsPanel
+        defaultOpen
+        peerConnection={source}
+        connection={single}
+      />,
+    );
+
+    await screen.findByTestId("p2p-diag-peer-table");
+    // The single-connection candidate grid must not be rendered.
+    expect(screen.queryByTestId("p2p-diag-candidate-grid")).toBeNull();
   });
 });
