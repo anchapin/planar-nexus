@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
+import type { StructuredDeckAnalysis } from "@/ai/flows/coach-deck-analysis";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -15,6 +16,7 @@ import { SynergyList, type SynergyItem as SynergyListItem } from "./synergy-list
 import { MissingSynergies, type MissingSynergyItem } from "./missing-synergies";
 import { KeyCards, identifyKeyCards, type KeyCard } from "./key-cards";
 import { ExportButton, type CoachReportData } from "./export-button";
+import { CurveRecommendationCard } from "./curve-recommendation";
 import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
@@ -23,9 +25,20 @@ interface EnhancedReviewDisplayProps {
   review: DeckReviewOutput;
   onSaveNewDeck: (option: DeckOption, newDeckName: string) => Promise<void>;
   decklist?: string;
+  /**
+   * Optional structured deck analysis (issue #1239). When provided, the
+   * mana-curve recommendation card is rendered inside the review. The parent
+   * is responsible for computing it — this component stays a pure renderer.
+   */
+  structuredAnalysis?: StructuredDeckAnalysis | null;
 }
 
-export function EnhancedReviewDisplay({ review, onSaveNewDeck, decklist }: EnhancedReviewDisplayProps) {
+export function EnhancedReviewDisplay({
+  review,
+  onSaveNewDeck,
+  decklist,
+  structuredAnalysis,
+}: EnhancedReviewDisplayProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOption, setSelectedOption] = useState<DeckOption | null>(null);
   const [newDeckName, setNewDeckName] = useState("");
@@ -123,7 +136,7 @@ export function EnhancedReviewDisplay({ review, onSaveNewDeck, decklist }: Enhan
         </CardHeader>
         
         <CardContent>
-          <ScrollArea className="h-[calc(100vh-24rem)]">
+<ScrollArea className="h-[calc(100vh-24rem)]">
             <div className="pr-4 space-y-6 pt-4">
               {/* Overall Analysis */}
 <div>
@@ -131,10 +144,20 @@ export function EnhancedReviewDisplay({ review, onSaveNewDeck, decklist }: Enhan
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{sanitizeCardText(review.reviewSummary, 8_000)}</p>
             </div>
 
-            {/* Key Cards */}
-            {keyCards.length > 0 && (
-              <KeyCards cards={keyCards} />
-            )}
+              {/* Mana-curve + land-count recommendation (issue #1239).
+                  Rendered as soon as the parent hands down the structured
+                  analysis; remains hidden otherwise so existing flows keep
+                  working unchanged. */}
+              {structuredAnalysis?.curveRecommendation && (
+                <CurveRecommendationCard
+                  recommendation={structuredAnalysis.curveRecommendation}
+                />
+              )}
+
+              {/* Key Cards */}
+              {keyCards.length > 0 && (
+                <KeyCards cards={keyCards} />
+              )}
 
             {/* Synergies */}
             {synergyItems.length > 0 && (

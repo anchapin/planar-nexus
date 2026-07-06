@@ -133,6 +133,9 @@ jest.mock("lucide-react", () => ({
   Download: () => <svg data-testid="download-icon" />,
   FileText: () => <svg data-testid="file-text-icon" />,
   Printer: () => <svg data-testid="printer-icon" />,
+  Layers: () => <svg data-testid="layers-icon" />,
+  Plus: () => <svg data-testid="plus-icon" />,
+  Minus: () => <svg data-testid="minus-icon" />,
 }));
 
 // Now import the components after mocks are set up
@@ -703,5 +706,142 @@ describe("formatReportAsText", () => {
     const text = formatReportAsText(mockReport, "Test/Deck@2024");
     // The function uses the deckName for display, sanitization happens in download
     expect(text).toContain("Test/Deck@2024");
+  });
+});
+
+// ─── CurveRecommendationCard (issue #1239) ────────────────────────────────
+import { CurveRecommendationCard } from "@/app/(app)/deck-coach/_components/curve-recommendation";
+import type { CurveRecommendation } from "@/ai/flows/coach-deck-analysis";
+
+function makeCurveRecommendation(
+  overrides: Partial<CurveRecommendation> = {},
+): CurveRecommendation {
+  return {
+    archetypeTarget: "Burn",
+    source: "archetype",
+    recommendedLands: 20,
+    minLands: 18,
+    maxLands: 21,
+    actualLands: 18,
+    landDelta: -2,
+    landAssessment: "Add 2 lands to hit 20 for this archetype.",
+    bucketStatus: [
+      { cmc: 0, label: "0", actual: 18, target: 0, delta: 18, status: "lands", advice: null },
+      { cmc: 1, label: "1", actual: 4, target: 12, delta: -8, status: "under", advice: "add 8 1-drops" },
+      { cmc: 2, label: "2", actual: 6, target: 9, delta: -3, status: "under", advice: "add 3 2-drops" },
+      { cmc: 3, label: "3", actual: 4, target: 5, delta: -1, status: "balanced", advice: null },
+      { cmc: 4, label: "4", actual: 2, target: 2, delta: 0, status: "balanced", advice: null },
+      { cmc: 5, label: "5", actual: 3, target: 0, delta: 3, status: "over", advice: "cut 3 5-drops" },
+      { cmc: 6, label: "6", actual: 1, target: 0, delta: 1, status: "balanced", advice: null },
+      { cmc: 7, label: "7+", actual: 1, target: 0, delta: 1, status: "balanced", advice: null },
+    ],
+    actions: [
+      "Add 2 lands to reach 20 (target for Burn).",
+      "Add 8 1-drops.",
+      "Add 3 2-drops.",
+      "Cut 3 5-drops.",
+    ],
+    summary: "4 curve adjustments suggested for Burn (target 20 lands).",
+    ...overrides,
+  };
+}
+
+describe("CurveRecommendationCard (issue #1239)", () => {
+  it("renders the recommendation card with summary and archetype", () => {
+    render(<CurveRecommendationCard recommendation={makeCurveRecommendation()} />);
+    expect(screen.getByTestId("curve-recommendation-card")).toBeInTheDocument();
+    expect(screen.getByText(/curve adjustments suggested/i)).toBeInTheDocument();
+    expect(screen.getByText(/Burn target/i)).toBeInTheDocument();
+  });
+
+  it("shows the actual / recommended / delta land counts", () => {
+    render(<CurveRecommendationCard recommendation={makeCurveRecommendation()} />);
+    expect(screen.getAllByText("20").length).toBeGreaterThan(0); // recommended
+    expect(screen.getAllByText("18").length).toBeGreaterThan(0); // actual + minLands
+    expect(screen.getByTestId("land-delta").textContent).toContain("-2");
+    expect(screen.getByText(/range 18.21/)).toBeInTheDocument();
+  });
+
+  it("renders an 'Add N lands' badge when the deck is under the target", () => {
+    render(<CurveRecommendationCard recommendation={makeCurveRecommendation()} />);
+    expect(screen.getAllByText(/Add 2 lands/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders a 'Cut N lands' badge when the deck is over the target", () => {
+    render(
+      <CurveRecommendationCard
+        recommendation={makeCurveRecommendation({
+          actualLands: 24,
+          landDelta: 4,
+          landAssessment: "Cut 4 lands to hit 20 for this archetype.",
+        })}
+      />,
+    );
+    expect(screen.getAllByText(/Cut 4 lands/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders the on-target badge when land count is within range", () => {
+    render(
+      <CurveRecommendationCard
+        recommendation={makeCurveRecommendation({
+          actualLands: 20,
+          landDelta: 0,
+          landAssessment: "Land count within archetype range (18–21).",
+        })}
+      />,
+    );
+    expect(screen.getByText(/On target/i)).toBeInTheDocument();
+  });
+
+  it("renders all 8 bucket tiles in the per-CMC grid", () => {
+    render(<CurveRecommendationCard recommendation={makeCurveRecommendation()} />);
+    expect(screen.getByTestId("bucket-grid").children).toHaveLength(8);
+    for (const cmc of [0, 1, 2, 3, 4, 5, 6, 7]) {
+      expect(screen.getByTestId(`bucket-${cmc}`)).toBeInTheDocument();
+    }
+  });
+
+  it("renders the bucket advice strings for over/under buckets", () => {
+    render(<CurveRecommendationCard recommendation={makeCurveRecommendation()} />);
+    // Bucket advice text appears in both the bucket tile AND the action list,
+    // so use getAllByText and verify at least one match exists.
+    expect(screen.getAllByText(/add 8 1-drops/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/cut 3 5-drops/i).length).toBeGreaterThan(0);
+  });
+
+  it("renders the concrete actions list", () => {
+    render(<CurveRecommendationCard recommendation={makeCurveRecommendation()} />);
+    const list = screen.getByTestId("curve-actions");
+    expect(list).toBeInTheDocument();
+    expect(list.textContent).toMatch(/Add 2 lands/);
+    expect(list.textContent).toMatch(/Add 8 1-drops/);
+    expect(list.textContent).toMatch(/Cut 3 5-drops/);
+  });
+
+  it("labels the source as 'Archetype data' when sourced from anti-meta", () => {
+    render(
+      <CurveRecommendationCard
+        recommendation={makeCurveRecommendation({ source: "archetype" })}
+      />,
+    );
+    expect(screen.getByText(/Archetype data/i)).toBeInTheDocument();
+  });
+
+  it("labels the source as 'Strategy profile' for the fallback path", () => {
+    render(
+      <CurveRecommendationCard
+        recommendation={makeCurveRecommendation({ source: "strategy" })}
+      />,
+    );
+    expect(screen.getByText(/Strategy profile/i)).toBeInTheDocument();
+  });
+
+  it("renders nothing when the recommendation is missing", () => {
+    const { container } = render(
+      <CurveRecommendationCard
+        recommendation={null as unknown as CurveRecommendation}
+      />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 });
