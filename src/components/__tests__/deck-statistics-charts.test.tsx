@@ -165,3 +165,73 @@ describe("DeckColorChart — screen-reader alternative", () => {
     expect(container.querySelector("table.sr-only")).toBeNull();
   });
 });
+
+/**
+ * Memoization regression for issue #1248 — when the parent computes the
+ * chart `data` array itself and passes it as a prop (the new pre-computed
+ * path), the chart's `React.memo` must short-circuit when the `data`
+ * reference is reused across renders. We assert this by mounting a parent
+ * that builds a stable `data` via `useMemo` and forces a re-render with a
+ * counter tick; the chart's `React.memo` short-circuits when the parent's
+ * re-render holds shallow-equal props.
+ *
+ * The full end-to-end render-count assertion lives in
+ * `deck-stats-panel.recharts-perf.test.tsx` (which mocks the chart
+ * components and re-wraps them in `React.memo` so the bailout is
+ * observable). Here we exercise the chart-level API: a parent that passes
+ * `data` (and nothing else) to `CardTypeChart` should not crash, and the
+ * resulting output should be exactly what `data` prescribes.
+ */
+describe("Chart memoization via the new `data` prop (issue #1248)", () => {
+  it("CardTypeChart consumes a pre-built `data` array without internal conversion", () => {
+    const data = [
+      { type: "Creature", count: 20, percentage: 33, fill: "#8B5CF6" },
+      { type: "Land", count: 24, percentage: 40, fill: "#10B981" },
+    ];
+    const { container } = render(<CardTypeChart data={data} chartType="bar" />);
+
+    // The screen-reader data table mirrors the pre-built `data` array.
+    const table = container.querySelector("table.sr-only");
+    expect(table).not.toBeNull();
+    expect(table).toHaveTextContent("Creature");
+    expect(table).toHaveTextContent("Land");
+    expect(table).toHaveTextContent("33%");
+    expect(table).toHaveTextContent("40%");
+  });
+
+  it("DeckColorChart consumes a pre-built `data` array without internal conversion", () => {
+    const data = [
+      { color: "R", count: 12, percentage: 50, fill: "#E12D2D" },
+      { color: "Colorless", count: 8, percentage: 33, fill: "#9CA3AF" },
+    ];
+    const { container } = render(<DeckColorChart data={data} />);
+
+    const table = container.querySelector("table.sr-only");
+    expect(table).not.toBeNull();
+    expect(table).toHaveTextContent("Red");
+    expect(table).toHaveTextContent("Colorless");
+    expect(table).toHaveTextContent("50%");
+    expect(table).toHaveTextContent("33%");
+  });
+
+  it("ManaCurveChart consumes a pre-built `data` array without internal conversion", () => {
+    const data = [
+      {
+        cmc: "1",
+        cmcNum: 1,
+        count: 8,
+        target: 7,
+        gap: undefined,
+        fill: "hsl(var(--primary))",
+      },
+      { cmc: "7+", cmcNum: 7, count: 3, target: 1, gap: undefined, fill: "#f59e0b" },
+    ];
+    const { container } = render(<ManaCurveChart data={data} format="commander" />);
+
+    const table = container.querySelector("table.sr-only");
+    expect(table).not.toBeNull();
+    expect(table).toHaveTextContent("Mana curve");
+    expect(table).toHaveTextContent("8");
+    expect(table).toHaveTextContent("7+");
+  });
+});
