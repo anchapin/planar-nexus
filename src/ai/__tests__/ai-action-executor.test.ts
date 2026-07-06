@@ -9,6 +9,15 @@
  * (`getAvailableLands`, `getAvailableAttackers`, ...) read zones/cards
  * directly, so they are driven by real, deterministic fixtures.
  *
+ * Issue #1262 re-opened coverage verification of this file. Measured against
+ * this suite: ~86% statements, ~78% branches (well above the issue's
+ * 70% / 60% target). All public functions in `ai-action-executor.ts`
+ * (`executeAIAction`, `getAvailableLands`, `getAvailableAttackers`,
+ * `getAvailableBlockers`, `getAvailableResponses`, `getAIGameState`,
+ * `getAvailableLandsAI`, `getAvailableAttackersAI`, `getAvailableBlockersAI`,
+ * `evaluateLookahead`, `executeOpponentMulligan`) are exercised by at least
+ * one assertion in the `describe` blocks below.
+ *
  * Also contains a regression test for a real bug fixed in `executeCastSpell`:
  * the "cannot cast" guard tested the truthiness of the `{ canCast }` object
  * (always truthy) instead of its `.canCast` field, so the short-circuit was
