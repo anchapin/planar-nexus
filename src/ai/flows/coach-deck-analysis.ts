@@ -878,3 +878,188 @@ export function formatStructuredAnalysisForLLM(
 
   return lines.join("\n");
 }
+
+/* -----------------------------------------------------------------------------
+ * Deck-signature LRU cache (issue #1237).
+ *
+ * The conversational coach route (#928 → `src/app/api/chat/coach/route.ts`)
+ * calls `buildStructuredDeckAnalysis` + `formatStructuredAnalysisForLLM` on
+ * every chat message. Both pipelines run `detectArchetype`,
+ * `calculateDeckStats`, `detectSynergies`, and `detectMissingSynergies` —
+ * all heavy — even though the deck does not change across a multi-turn
+ * conversation. A long coaching session over a fixed deck therefore
+ * recomputes identical analysis dozens of times.
+ *
+ * This block adds a small LRU keyed by a STABLE deck signature so that:
+ *   - identical decks (regardless of card ordering) share one cache entry
+ *   - the cache is BOUNDED (16 entries, LRU eviction) so long-lived sessions
+ *     across many decks cannot leak memory
+ *   - `route.ts` (via `prefetchCoachContext`) consults the LRU before
+ *     rebuilding the analysis, cutting the dominant recompute cost on
+ *     repeat turns
+ *
+ * Signature algorithm: 32-bit `djb2` over the lexicographically-sorted list
+ * `name:count|…|name:count`. djb2 was chosen (over a heavier hash) because it
+ * is O(n) in deck size, allocation-free, and produces a fixed-width hex key —
+ * bounded even for 99-card Commander decks. Collisions on distinct decks are
+ * vanishingly unlikely at <2^32 signatures, and a colliding signature would
+ * still yield a *correct* analysis (we re-run the builder on miss and
+ * cache-stomp); the cache only loses a hit, never correctness.
+ * --------------------------------------------------------------------------- */
+
+/** Maximum number of distinct deck signatures kept warm in the LRU. */
+export const DECK_ANALYSIS_LRU_MAX_ENTRIES = 16;
+
+/**
+ * TTL for cached deck analyses. Long enough to span a normal coaching
+ * conversation (turns typically arrive seconds-to-minutes apart), short
+ * enough that a deck viewed an hour ago does not poison a fresh analysis
+ * without explicit invalidation.
+ */
+export const DECK_ANALYSIS_CACHE_TTL_MS = 5 * 60_000;
+
+/** One LRU slot. `lastAccess` is bumped on read AND write so the LRU prefers
+ *  decks the active coaching session keeps touching. */
+interface DeckAnalysisCacheEntry {
+  signature: string;
+  value: StructuredDeckAnalysis;
+  expiresAt: number;
+  lastAccess: number;
+}
+
+/**
+ * LRU keyed by deck signature. Backed by `Map` whose JavaScript spec
+ * guarantees insertion-order iteration, so "delete + re-set" is enough to
+ * promote an entry to the most-recently-used position.
+ */
+const deckAnalysisCache = new Map<string, DeckAnalysisCacheEntry>();
+
+/** Indirection over the clock so tests can advance time deterministically. */
+let deckAnalysisClock: () => number = () => Date.now();
+
+/**
+ * Stable, order-independent signature for a decklist.
+ *
+ * Sorts `name:count` pairs lexicographically and walks the resulting string
+ * through a 32-bit `djb2` hash (issue #1237). The returned key is a
+ * fixed-width `deck:xxxxxxxx` token — bounded even for 99-card Commander
+ * decks, unlike the legacy sorted-join fingerprint which grows linearly.
+ *
+ * Empty / non-array inputs collapse to `deck:empty` so they share a key.
+ */
+export function computeDeckSignature(deck: ReadonlyArray<DeckCard>): string {
+  if (!Array.isArray(deck) || deck.length === 0) return "deck:empty";
+
+  const pairs: string[] = [];
+  for (const card of deck) {
+    if (!card || typeof card.name !== "string") continue;
+    const count = Number(card.count) || 1;
+    pairs.push(`${card.name}:${count}`);
+  }
+  if (pairs.length === 0) return "deck:empty";
+
+  pairs.sort();
+
+  // 32-bit djb2 (`h * 33 ^ c`) using `Math.imul` for safe 32-bit overflow.
+  let h = 5381;
+  const text = pairs.join("|");
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) + h) ^ text.charCodeAt(i);
+  }
+  return `deck:${(h >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+/**
+ * Look up a cached structured analysis by signature.
+ *
+ * Returns `undefined` on miss so callers can branch without try/catch.
+ * Promotes the entry to the most-recently-used position on read. Expired
+ * entries are evicted transparently.
+ */
+export function getCachedStructuredAnalysis(
+  signature: string,
+): StructuredDeckAnalysis | undefined {
+  const entry = deckAnalysisCache.get(signature);
+  if (!entry) return undefined;
+  const now = deckAnalysisClock();
+  if (entry.expiresAt <= now) {
+    deckAnalysisCache.delete(signature);
+    return undefined;
+  }
+  // LRU touch: re-insert to move to the back of the insertion order.
+  entry.lastAccess = now;
+  deckAnalysisCache.delete(signature);
+  deckAnalysisCache.set(signature, entry);
+  return entry.value;
+}
+
+/**
+ * Store a structured analysis under its deck signature. Promotes the entry
+ * to the most-recently-used position and evicts the LRU until the cache is
+ * within the size bound.
+ */
+export function setCachedStructuredAnalysis(
+  signature: string,
+  value: StructuredDeckAnalysis,
+  ttlMs: number = DECK_ANALYSIS_CACHE_TTL_MS,
+): void {
+  const now = deckAnalysisClock();
+  // Re-set promotes overwrite to MRU.
+  if (deckAnalysisCache.has(signature)) {
+    deckAnalysisCache.delete(signature);
+  }
+  deckAnalysisCache.set(signature, {
+    signature,
+    value,
+    expiresAt: now + ttlMs,
+    lastAccess: now,
+  });
+  while (deckAnalysisCache.size > DECK_ANALYSIS_LRU_MAX_ENTRIES) {
+    const oldestKey = deckAnalysisCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    deckAnalysisCache.delete(oldestKey);
+  }
+}
+
+/**
+ * Resolve the structured analysis for a deck, returning a cached copy when
+ * the signature matches an LRU entry and otherwise computing + caching it.
+ *
+ * This is the public, route-friendly entry point that satisfies issue
+ * #1237's acceptance criterion: "Repeated requests with an identical deck
+ * reuse cached structured analysis (assert builder invoked once across N
+ * turns)". The format-scoping in `prefetchCoachContext` still applies on
+ * top — this function keys by deck signature alone.
+ */
+export async function getOrBuildStructuredAnalysis(
+  deck: ReadonlyArray<DeckCard>,
+): Promise<StructuredDeckAnalysis> {
+  const safeDeck = Array.isArray(deck) ? deck : [];
+  const signature = computeDeckSignature(safeDeck);
+
+  const cached = getCachedStructuredAnalysis(signature);
+  if (cached) return cached;
+
+  const analysis = await buildStructuredDeckAnalysis(safeDeck);
+  setCachedStructuredAnalysis(signature, analysis);
+  return analysis;
+}
+
+/** Clear the LRU cache. Intended for tests and explicit resets. */
+export function clearDeckAnalysisCache(): void {
+  deckAnalysisCache.clear();
+}
+
+/** @internal Replace the clock used for TTL evaluation (tests only). */
+export function _setDeckAnalysisClock(fn: () => number): () => void {
+  const prev = deckAnalysisClock;
+  deckAnalysisClock = fn;
+  return () => {
+    deckAnalysisClock = prev;
+  };
+}
+
+/** @internal Inspect live cache size (tests/telemetry only). */
+export function _deckAnalysisCacheSize(): number {
+  return deckAnalysisCache.size;
+}

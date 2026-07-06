@@ -34,6 +34,10 @@ import { detectSynergiesAsync } from "@/ai/worker/synergy-worker-bridge";
 import {
   assembleStructuredAnalysis,
   formatStructuredAnalysisForLLM,
+  getCachedStructuredAnalysis,
+  setCachedStructuredAnalysis,
+  clearDeckAnalysisCache,
+  computeDeckSignature,
   type StructuredDeckAnalysis,
 } from "./coach-deck-analysis";
 
@@ -71,7 +75,10 @@ let clock: () => number = () => Date.now();
 /**
  * Stable, order-independent fingerprint for a deck so identical decks (even if
  * their card arrays are ordered differently between requests) hit the cache.
- * Cheap: a sorted join of `count x name` pairs.
+ *
+ * Preserved for backward compatibility — newer callers should prefer
+ * {@link computeDeckSignature} from `./coach-deck-analysis` (issue #1237),
+ * which produces a fixed-width `djb2` hash instead of a sorted-join string.
  */
 export function computeDeckFingerprint(deck: DeckCard[]): string {
   if (!Array.isArray(deck) || deck.length === 0) return "empty";
@@ -82,7 +89,13 @@ export function computeDeckFingerprint(deck: DeckCard[]): string {
 }
 
 function cacheKey(deck: DeckCard[], format: string): string {
-  return `${format}::${computeDeckFingerprint(deck)}`;
+  // Issue #1237: switch the deck-key portion of the cache key from a
+  // sorted-join string (which grows linearly with deck size and changes
+  // shape between minor reorderings of `name:count`) to a fixed-width
+  // `djb2` hash. Outer behavior is unchanged — same deck still maps to
+  // the same slot — but the key now has a bounded memory footprint and
+  // matches the signature used by the deck-analysis LRU below.
+  return `${format}::${computeDeckSignature(deck)}`;
 }
 
 function evictExpired(): void {
@@ -106,9 +119,17 @@ function evictIfFull(): void {
   if (oldestKey) cache.delete(oldestKey);
 }
 
-/** Clear the entire pre-fetch cache. Intended for tests and explicit resets. */
+/**
+ * Clear the entire pre-fetch cache (including the inner deck-signature LRU
+ * from `coach-deck-analysis.ts`). Intended for tests and explicit resets.
+ *
+ * Bundling both clears here means test setup only needs a single call to
+ * reset all of the coach's caching state, regardless of how the layers
+ * inside get reorganised in future.
+ */
 export function clearCoachContextCache(): void {
   cache.clear();
+  clearDeckAnalysisCache();
 }
 
 /** @internal Replace the clock used for TTL evaluation (tests only). */
@@ -207,8 +228,36 @@ export async function prefetchCoachContext(params: {
     };
   }
 
+  const signature = computeDeckSignature(deckCards);
+
+  // Inner LRU (issue #1237) — check BEFORE rebuilding. A long coaching
+  // session touching many distinct decks benefits from cross-deck
+  // warmth in the signature-keyed LRU even when the format-scoped outer
+  // cache forgets an entry.
+  const lruHit = getCachedStructuredAnalysis(signature);
+  if (lruHit) {
+    const analysisText = formatStructuredAnalysisForLLM(lruHit);
+    evictIfFull();
+    cache.set(key, {
+      analysis: lruHit,
+      analysisText,
+      archetype: lruHit.archetype,
+      expires: clock() + ttl,
+    });
+    return {
+      structuredAnalysis: lruHit,
+      structuredAnalysisText: analysisText,
+      archetype: lruHit.archetype,
+      format,
+      fromCache: false,
+    };
+  }
+
   const analysis = await buildStructuredDeckAnalysisParallel(deckCards);
   const analysisText = formatStructuredAnalysisForLLM(analysis);
+
+  // Warm the LRU so subsequent turns / different formats skip rebuild.
+  setCachedStructuredAnalysis(signature, analysis);
 
   evictIfFull();
   cache.set(key, {
