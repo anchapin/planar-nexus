@@ -77,7 +77,7 @@
     "comlink": "^4.4.2",
     "date-fns": "^4.4.0",
     "dexie": "^4.4.4",
-    "dexie-react-hooks": "^1.1.7",
+    "dexie-react-hooks": "^4.4.0",
     "dotenv": "^17.3.1",
     "embla-carousel-react": "^8.6.0",
     "lru-cache": "^11.5.1",
