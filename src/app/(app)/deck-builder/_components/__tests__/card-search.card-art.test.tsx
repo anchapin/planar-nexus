@@ -16,6 +16,11 @@
  * isolation by extracting the inner loop into a small render harness.
  * The full component flow is covered by the e2e `deck-builder.spec.ts` and
  * the in-repo integration tests.
+ *
+ * Note: as of issue #1246 the result-tile JSX lives in a separate
+ * `card-result-tile.tsx` file. The source-grep checks below inspect BOTH
+ * files so the wiring is verified end-to-end (the tile plus the
+ * `card-search.tsx` mount path that uses it).
  */
 
 import { describe, it, expect, jest } from "@jest/globals";
@@ -120,18 +125,26 @@ describe("CardSearch source wiring — CardArt adoption (issue #1247)", () => {
     expect(CardArt).toBeDefined();
 
     // Read the source and verify the result-tile path uses <CardArt, not <Image.
-    const source = readFileSync(
+    // As of issue #1246 the tile JSX was extracted into card-result-tile.tsx
+    // and card-search.tsx imports it; check both files for end-to-end coverage.
+    const tileSource = readFileSync(
+      join(__dirname, "..", "card-result-tile.tsx"),
+      "utf8",
+    );
+    const searchSource = readFileSync(
       join(__dirname, "..", "card-search.tsx"),
       "utf8",
     );
     // The result button's content must render <CardArt ….
-    expect(source).toMatch(/<CardArt\b[\s\S]*?\/>/);
+    expect(tileSource).toMatch(/<CardArt\b[\s\S]*?\/>/);
     // And the wrapper passes the lazy + showSkeleton + fill props.
-    expect(source).toMatch(/<CardArt[\s\S]*?lazy/);
-    expect(source).toMatch(/<CardArt[\s\S]*?showSkeleton/);
-    expect(source).toMatch(/<CardArt[\s\S]*?fill/);
+    expect(tileSource).toMatch(/<CardArt[\s\S]*?lazy/);
+    expect(tileSource).toMatch(/<CardArt[\s\S]*?showSkeleton/);
+    expect(tileSource).toMatch(/<CardArt[\s\S]*?fill/);
     // The size is set to thumbnail to match the existing thumbnail cell.
-    expect(source).toMatch(/size=["']thumbnail["']/);
+    expect(tileSource).toMatch(/size=["']thumbnail["']/);
+    // card-search.tsx mounts the extracted tile via CardResultTile.
+    expect(searchSource).toMatch(/<CardResultTile\b/);
   });
 });
 

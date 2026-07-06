@@ -9,7 +9,6 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ScryfallCard } from "@/app/actions";
 import {
   initializeCardDatabase,
@@ -39,7 +38,6 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useDebounce } from "use-debounce";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { CardGridSkeleton } from "./card-grid-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,8 +53,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useSynergy } from "./synergy-context";
 import { checkCardLegality } from "@/hooks/use-format-legality-check";
-import { LegalityBadge } from "./legality-badge";
-import { CardArt } from "@/components/card-art";
+import { VirtualizedCardGrid } from "@/components/shared/virtualized-card-grid";
+import type { VirtualizedCardGridHandle } from "@/components/shared/virtualized-card-grid";
+import { CardResultTile } from "./card-result-tile";
 
 interface CardSearchHandle {
   focus: () => void;
@@ -176,33 +175,16 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     // Flash state for visual feedback when card is added
     const [flashCardId, setFlashCardId] = useState<string | null>(null);
 
-    // Virtual scrolling refs and state
-    const parentRef = useRef<HTMLDivElement>(null);
-    const [columnCount, setColumnCount] = useState(3);
+    // Virtualized grid handle. The VirtualizedCardGrid owns its own scroll
+    // container and ResizeObserver-driven column count, so the deck-builder
+    // card-search panel no longer needs a parent ref or a window-resize effect
+    // to figure out how many columns to render. See issue #1246.
+    const gridRef = useRef<VirtualizedCardGridHandle>(null);
 
-    // Update column count based on window size
-    useEffect(() => {
-      const updateColumnCount = () => {
-        if (typeof window === "undefined") return;
-        if (window.innerWidth >= 1536) setColumnCount(5);
-        else if (window.innerWidth >= 1280) setColumnCount(4);
-        else if (window.innerWidth >= 1024) setColumnCount(3);
-        else if (window.innerWidth >= 768) setColumnCount(4);
-        else setColumnCount(3);
-      };
-
-      updateColumnCount();
-      window.addEventListener("resize", updateColumnCount);
-      return () => window.removeEventListener("resize", updateColumnCount);
-    }, []);
-
-    // Virtualizer for large result sets
-    const rowVirtualizer = useVirtualizer({
-      count: results.length,
-      getScrollElement: () => parentRef.current,
-      estimateSize: () => 280, // Card height + gap
-      overscan: 5,
-    });
+    // Initial column count used until the grid's ResizeObserver fires on
+    // mount. Three matches the previous default and keeps the first paint
+    // visually consistent with the prior layout.
+    const initialColumns = 3;
 
     // Trigger flash effect for a card
     const triggerFlash = useCallback((cardId: string) => {
@@ -402,12 +384,14 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       );
     }, [selectedIndex, results, onSelectedCardChange]);
 
-    // Scroll selected card into view using virtualizer
+    // Scroll selected card into view using the VirtualizedCardGrid's
+    // imperative handle. The grid maps the flat item index to a row index
+    // internally so callers keep passing the card index directly.
     useEffect(() => {
-      if (selectedIndex >= 0 && rowVirtualizer) {
-        rowVirtualizer.scrollToIndex(selectedIndex);
+      if (selectedIndex >= 0) {
+        gridRef.current?.scrollToIndex(selectedIndex);
       }
-    }, [selectedIndex, rowVirtualizer]);
+    }, [selectedIndex]);
 
     // Initialize database on mount
     useEffect(() => {
@@ -506,6 +490,59 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     ]);
 
     const { synergyData } = useSynergy();
+
+    // Stable callbacks for the memoized CardResultTile. `handleAddCard`
+    // preserves the legacy shift-click-for-4 behaviour that used to live
+    // inside the inline cell render.
+    const handleAddCard = useCallback(
+      (card: ScryfallCard, shift: boolean) => {
+        triggerFlash(card.id);
+        if (shift) {
+          const MAX_QUICK_ADD = 4;
+          for (let i = 0; i < MAX_QUICK_ADD; i++) {
+            onAddCard(card);
+          }
+        } else {
+          onAddCard(card);
+        }
+      },
+      [onAddCard, triggerFlash],
+    );
+
+    const handleSelect = useCallback((index: number) => {
+      setSelectedIndex(index);
+    }, []);
+
+    // Cell renderer. Wrapped in useCallback so the VirtualizedCardGrid
+    // doesn't see a new `renderItem` reference on every parent render —
+    // this is the linchpin of the React.memo short-circuit on
+    // CardResultTile. The visible-row window is rebuilt by the virtualizer
+    // itself, not by us, so this callback only fires for the small slice of
+    // rows in the current viewport.
+    const renderResult = useCallback(
+      (card: ScryfallCard, index: number) => (
+        <CardResultTile
+          card={card}
+          index={index}
+          isSelected={selectedIndex === index}
+          isFlashing={flashCardId === card.id}
+          synergy={synergyData.get(card.id)}
+          format={format}
+          hideLegality={formatFilter}
+          onAddCard={handleAddCard}
+          onSelect={handleSelect}
+        />
+      ),
+      [
+        selectedIndex,
+        flashCardId,
+        synergyData,
+        format,
+        formatFilter,
+        handleAddCard,
+        handleSelect,
+      ],
+    );
 
     return (
       <div
@@ -754,8 +791,7 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
 
         {/* Search Results - Virtualized for performance */}
         <div
-          ref={parentRef}
-          className="flex-grow rounded-lg border bg-card overflow-auto"
+          className="flex-grow rounded-lg border bg-card overflow-hidden"
           role="list"
           aria-label="Search results"
         >
@@ -804,111 +840,17 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
             </div>
           )}
 
-          {/* Virtualized card grid */}
+          {/* Virtualized card grid — owns its own scroll container. */}
           {!isInitializing && !isPending && results.length > 0 && (
-            <div
-              className="relative p-4"
-              style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
-            >
-              {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-                const rowIndex = Math.floor(virtualItem.index / columnCount);
-                const colIndex = virtualItem.index % columnCount;
-                const card = results[virtualItem.index];
-                const synergy = synergyData.get(card.id);
-                const isSelected = selectedIndex === virtualItem.index;
-                const hasHighSynergy = synergy && synergy.score >= 60;
-                // Legality for the active format (only when format is known).
-                // Hidden entirely when the format filter is on, since every
-                // visible card is guaranteed legal in that mode.
-                const legality = (!formatFilter && format)
-                  ? checkCardLegality(card, format, format)
-                  : undefined;
-
-                return (
-                  <button
-                    key={card.id}
-                    data-card-index={virtualItem.index}
-                    onClick={(e) => {
-                      // Trigger flash effect
-                      triggerFlash(card.id);
-                      // Shift+Click adds 4 copies (max allowed)
-                      if (e.shiftKey) {
-                        const MAX_QUICK_ADD = 4;
-                        for (let i = 0; i < MAX_QUICK_ADD; i++) {
-                          onAddCard(card);
-                        }
-                      } else {
-                        onAddCard(card);
-                      }
-                    }}
-                    className={`absolute aspect-[5/7] transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${isSelected ? "ring-4 ring-primary ring-offset-2" : ""} ${flashCardId === card.id ? "ring-4 ring-green-500 ring-offset-2" : ""}`}
-                    style={{
-                      height: `${virtualItem.size}px`,
-                      transform: `translateY(${virtualItem.start}px)`,
-                      left: `${(colIndex / columnCount) * 100}%`,
-                      width: `${100 / columnCount}%`,
-                      padding: "0 8px",
-                      boxSizing: "border-box",
-                    }}
-                    title={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ""} - Shift+Click for 4-of`}
-                    aria-label={`Add ${card.name} to deck${hasHighSynergy ? ` (Synergy: ${Math.round(synergy.score)}%)` : ""} - Shift+Click for 4-of${isSelected ? " (selected)" : ""}`}
-                    data-testid={`card-result-${card.name.toLowerCase().replace(/\s+/g, "-")}`}
-                  >
-                    {card.image_uris?.large || card.image_uris?.normal ? (
-                      <CardArt
-                        cardName={card.name}
-                        scryfallCard={{
-                          id: card.id,
-                          name: card.name,
-                          set: card.set,
-                          collector_number: card.collector_number,
-                          color_identity: card.color_identity,
-                          type_line: card.type_line,
-                          cmc: card.cmc,
-                          colors: card.colors,
-                        }}
-                        size="thumbnail"
-                        lazy
-                        showSkeleton
-                        fill
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center rounded-lg bg-secondary text-center text-secondary-foreground p-2 text-sm">
-                        {card.name}
-                      </div>
-                    )}
-
-                    {hasHighSynergy && (
-                      <div
-                        className="absolute top-2 right-2 z-10"
-                        data-testid="synergy-badge"
-                      >
-                        <Badge
-                          variant={
-                            synergy.score >= 80 ? "default" : "secondary"
-                          }
-                          className={`${synergy.score >= 80 ? "bg-green-600 hover:bg-green-700" : "bg-orange-500 hover:bg-orange-600"} text-white border-none shadow-sm text-[10px] px-1.5 py-0`}
-                        >
-                          {Math.round(synergy.score)}%
-                        </Badge>
-                      </div>
-                    )}
-
-                    {legality && (
-                      <div
-                        className="absolute top-2 left-2 z-10"
-                        data-testid={`search-legality-${legality.status}`}
-                      >
-                        <LegalityBadge
-                          status={legality.status}
-                          className="text-[10px] px-1.5 py-0 shadow-sm"
-                        />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <VirtualizedCardGrid
+              ref={gridRef}
+              items={results}
+              columns={initialColumns}
+              itemHeight={280}
+              renderItem={renderResult}
+              gap={16}
+              overscan={5}
+            />
           )}
         </div>
       </div>

@@ -20,26 +20,25 @@ export interface VirtualizedCardGridHandle {
 }
 
 /**
- * High-performance 2D grid virtualization component using @tanstack/react-virtual.
- * Efficiently renders large lists of items in a responsive grid layout.
+ * Internal implementation. Defined separately from the exported
+ * `VirtualizedCardGrid` so the component stays generic over `T` while still
+ * exposing the imperative `scrollToIndex` ref handle. Issue #1246 wires the
+ * deck-builder card-search panel into this component for the first time,
+ * which is the first production consumer to depend on the typed `renderItem`.
  */
-export const VirtualizedCardGrid = React.forwardRef<
-  VirtualizedCardGridHandle,
-  VirtualizedCardGridProps<unknown>
->(
-  (
-    {
-      items,
-      columns = 4,
-      itemHeight,
-      renderItem,
-      onScroll,
-      scrollElementRef,
-      gap = 16,
-      overscan = 3,
-    },
-    ref
-  ) => {
+function VirtualizedCardGridInner<T>(
+  {
+    items,
+    columns = 4,
+    itemHeight,
+    renderItem,
+    onScroll,
+    scrollElementRef,
+    gap = 16,
+    overscan = 3,
+  }: VirtualizedCardGridProps<T>,
+  ref: React.Ref<VirtualizedCardGridHandle>,
+) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [responsiveColumns, setResponsiveColumns] = useState(columns);
     const scrollElementToUse = scrollElementRef || containerRef;
@@ -155,7 +154,23 @@ export const VirtualizedCardGrid = React.forwardRef<
         </div>
       </div>
     );
-  }
-);
+}
 
-VirtualizedCardGrid.displayName = "VirtualizedCardGrid";
+/**
+ * High-performance 2D grid virtualization component using @tanstack/react-virtual.
+ * Efficiently renders large lists of items in a responsive grid layout.
+ *
+ * Generic over the item type so `renderItem` receives a typed `T` rather
+ * than `unknown`. The export is cast because React's `forwardRef` does not
+ * preserve generics in its type signature on its own.
+ */
+export const VirtualizedCardGrid = React.forwardRef(
+  VirtualizedCardGridInner,
+) as unknown as <T>(
+  props: VirtualizedCardGridProps<T> & {
+    ref?: React.Ref<VirtualizedCardGridHandle>;
+  },
+) => React.ReactElement;
+
+(VirtualizedCardGrid as unknown as { displayName: string }).displayName =
+  "VirtualizedCardGrid";
