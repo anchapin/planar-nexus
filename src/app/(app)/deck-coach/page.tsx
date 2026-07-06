@@ -15,6 +15,7 @@ import { getDeckReview, type SavedDeck, type DeckCard } from "@/app/actions";
 import { importDecklistClient } from "@/lib/client-card-operations";
 import { type Format } from "@/lib/game-rules";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
+import { buildStructuredDeckAnalysis, type StructuredDeckAnalysis } from "@/ai/flows/coach-deck-analysis";
 import {
   analyzeMetaAndSuggest,
   type MetaAnalysisOutput,
@@ -65,6 +66,11 @@ export default function DeckCoachPage() {
   const [originalDeckCards, setOriginalDeckCards] = useState<DeckCard[] | null>(
     null,
   );
+  // Structured deck analysis (issue #1239). Computed alongside the heuristic
+  // review so the review UI can render the curve-recommendation card without a
+  // second expensive pass.
+  const [structuredAnalysis, setStructuredAnalysis] =
+    useState<StructuredDeckAnalysis | null>(null);
   const [isPending, startTransition] = useTransition();
   const [analysisType, setAnalysisType] = useState<
     "review" | "meta" | "chat" | "compare"
@@ -113,6 +119,7 @@ export default function DeckCoachPage() {
       try {
         setReview(null);
         setMetaAnalysis(null);
+        setStructuredAnalysis(null);
 
         let initialCards: DeckCard[] = [];
         if (originalDeckCards) {
@@ -153,6 +160,20 @@ export default function DeckCoachPage() {
         if (type === "review") {
           const result = await getDeckReview({ decklist, format });
           setReview(result);
+
+          // Compute the structured analysis in parallel with the review
+          // (issue #1239) so the curve-recommendation card can render as soon
+          // as the review arrives. Errors are swallowed — the card simply
+          // stays hidden, which preserves the existing review UX.
+          try {
+            const analysis = await buildStructuredDeckAnalysis(initialCards);
+            setStructuredAnalysis(analysis);
+          } catch (analysisError) {
+            console.warn(
+              "Failed to compute structured analysis for curve recommendation:",
+              analysisError,
+            );
+          }
         } else {
           const result = await analyzeMetaAndSuggest({
             decklist,
@@ -494,6 +515,7 @@ export default function DeckCoachPage() {
                     review={review}
                     onSaveNewDeck={handleSaveNewDeck}
                     decklist={decklist}
+                    structuredAnalysis={structuredAnalysis}
                   />
                 </TabsContent>
                 <TabsContent value="mana-curve">

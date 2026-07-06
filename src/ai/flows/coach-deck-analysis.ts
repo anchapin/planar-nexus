@@ -25,6 +25,10 @@ import {
   type MissingSynergy,
 } from "@/ai/synergy-detector";
 import { detectSynergiesAsync } from "@/ai/worker/synergy-worker-bridge";
+import {
+  getAllManaBaseRecommendations,
+  type ManaBaseRecommendation,
+} from "@/lib/anti-meta";
 
 /** A single synergy cluster surfaced to the coach. */
 export interface SynergyCluster {
@@ -53,6 +57,75 @@ export interface KeyCard {
   reason: string;
 }
 
+/**
+ * Per-CMC-bucket over/under-loaded status vs an archetype-appropriate target.
+ *
+ * Issue #1239 asks the coach to STOP merely describing the curve and START
+ * recommending concrete over/under-loaded buckets and what to do about them.
+ *
+ * `cmc === 0` represents lands and is included so the UI can render a complete
+ * row; for the bucket-distribution analysis lands are excluded because the
+ * per-bucket action list is about non-land plays.
+ */
+export interface CurveBucketStatus {
+  /** CMC bucket index (0..7, where 7 represents the "7+" bucket). */
+  cmc: number;
+  /** Display label for the bucket ("0", "1", ..., "7+"). */
+  label: string;
+  /** Cards the deck currently has in this bucket (lands included at cmc=0). */
+  actual: number;
+  /** Archetype-target number of cards for this bucket (lands excluded). */
+  target: number;
+  /** Difference `actual - target`. Positive = over-loaded, negative = under-loaded. */
+  delta: number;
+  /** Coarse status: "over" / "under" / "balanced" / "lands". */
+  status: "over" | "under" | "balanced" | "lands";
+  /** Human-readable suggestion ("add 2", "cut 1") or null when balanced. */
+  advice: string | null;
+}
+
+/**
+ * Concrete mana-curve and land-count recommendation for a deck.
+ *
+ * Added in issue #1239 so the coach no longer just describes the curve
+ * (`assessCurve`) — it now RECOMMENDS concrete land counts vs the archetype's
+ * `recommendedLands` (consumed from `src/lib/anti-meta.ts` when available)
+ * and flags CMC buckets that are over- or under-loaded relative to an
+ * archetype-appropriate target shape (consumed from `src/lib/mana-curve.ts`).
+ */
+export interface CurveRecommendation {
+  /**
+   * Archetype the recommendation was built against. Defaults to the detected
+   * primary archetype; falls back to a strategy profile when no per-archetype
+   * mana-base data exists in `anti-meta.ts`.
+   */
+  archetypeTarget: string;
+  /**
+   * Where the recommendation came from.
+   *  - "archetype": per-archetype `recommendedLands` + bucket profile by name
+   *  - "strategy": generic aggro/midrange/control/combo fallback profile
+   */
+  source: "archetype" | "strategy";
+  /** Recommended land count for the archetype (mid-point of `min`/`max`). */
+  recommendedLands: number;
+  /** Lower bound on the acceptable land count. */
+  minLands: number;
+  /** Upper bound on the acceptable land count. */
+  maxLands: number;
+  /** Actual land count in the deck. */
+  actualLands: number;
+  /** `actualLands - recommendedLands`. Positive = over, negative = under. */
+  landDelta: number;
+  /** Short prose assessment of the land count ("within range", "add 2", ...). */
+  landAssessment: string;
+  /** Per-CMC-bucket over/under-loaded status vs the archetype target. */
+  bucketStatus: CurveBucketStatus[];
+  /** Concrete suggestions ("add 2 1-drops", "cut 1 5-drop"). */
+  actions: string[];
+  /** One-sentence summary for the coach prompt and the UI. */
+  summary: string;
+}
+
 /** The full structured analysis handed to the coach. */
 export interface StructuredDeckAnalysis {
   archetype: string;
@@ -68,6 +141,11 @@ export interface StructuredDeckAnalysis {
   gaps: string[];
   strengths: string[];
   keyCards: KeyCard[];
+  /**
+   * Actionable mana-curve + land-count recommendation block (issue #1239).
+   * Always present so downstream consumers can rely on it.
+   */
+  curveRecommendation: CurveRecommendation;
 }
 
 const MAX_SYNERGY_CLUSTERS = 5;
@@ -300,6 +378,318 @@ function buildKeyCards(
 }
 
 /**
+ * Format a CMC bucket index as a human label.
+ *
+ * Index 7 represents the rolled-up "7+" bucket so the UI can render it without
+ * a fake eighth slot.
+ */
+function bucketLabel(cmc: number): string {
+  return cmc >= MANA_CURVE_BUCKETS - 1 ? `${MANA_CURVE_BUCKETS - 1}+` : `${cmc}`;
+}
+
+/**
+ * Look up per-archetype mana-base data from `src/lib/anti-meta.ts` by matching
+ * the coach-detected archetype name against the archetype-name field of each
+ * `ManaBaseRecommendation` entry across all formats.
+ *
+ * The coach does not always know the deck's format (issue #1239), so we return
+ * the FIRST match across formats. This is good enough for a recommendation
+ * block: a "Burn" deck wants ~20 lands whether it's Modern or Standard; the
+ * bucket-distribution analysis that follows uses strategy profiles that are
+ * format-agnostic.
+ *
+ * Returns `null` when no entry matches — the caller falls back to a generic
+ * strategy-based profile.
+ */
+function lookupArchetypeManaProfile(
+  archetypeName: string,
+): { rec: ManaBaseRecommendation; format: string } | null {
+  if (!archetypeName || archetypeName.toLowerCase() === "unknown") return null;
+  const needle = archetypeName.toLowerCase();
+  const formats: Array<"standard" | "modern" | "commander"> = [
+    "standard",
+    "modern",
+    "commander",
+  ];
+  for (const fmt of formats) {
+    const all = getAllManaBaseRecommendations(fmt);
+    const hit = all.find((r) => r.archetypeName.toLowerCase() === needle);
+    if (hit) return { rec: hit, format: fmt };
+  }
+  return null;
+}
+
+/**
+ * Choose the strategy profile (`aggro`/`midrange`/`control`/`combo`) the
+ * recommendation block should target. Re-uses `mana-curve.ts`'s heuristic so
+ * coach and dashboard agree on what "midrange" means.
+ */
+function pickStrategyProfile(archetypeName: string): {
+  key: "aggro" | "midrange" | "control" | "combo";
+  description: string;
+} {
+  const lc = (archetypeName || "").toLowerCase();
+  if (
+    lc.includes("aggro") ||
+    lc.includes("burn") ||
+    lc.includes("zoo") ||
+    lc.includes("sligh")
+  ) {
+    return { key: "aggro", description: "low curve, win early" };
+  }
+  if (
+    lc.includes("control") ||
+    lc.includes("prison") ||
+    lc.includes("draw") ||
+    lc.includes("stax")
+  ) {
+    return { key: "control", description: "go late, win with big spells" };
+  }
+  if (
+    lc.includes("combo") ||
+    lc.includes("twin") ||
+    lc.includes("storm") ||
+    lc.includes("reanimator")
+  ) {
+    return { key: "combo", description: "execute the combo quickly" };
+  }
+  return { key: "midrange", description: "balance early plays with top-end" };
+}
+
+/**
+ * The ideal non-land distribution per CMC bucket, derived from
+ * `src/lib/mana-curve.ts` `STRATEGY_CURVES`. Inlined so the coach's
+ * recommendation logic does not add a runtime dependency on the dashboard's
+ * mana-curve module — and so it stays trivially testable.
+ *
+ * Values are normalised to a 20-non-land-card deck so they can be scaled to
+ * the actual deck size with a single multiply.
+ */
+const IDEAL_DISTRIBUTION: Record<
+  "aggro" | "midrange" | "control" | "combo",
+  number[]
+> = {
+  // indices 0..7 representing CMC 0..7 (where 7 = "7+").
+  // CMC 0 is included for shape-completeness but should remain 0 (no 0-CMC
+  // non-land spells in any of the standard profiles).
+  aggro: [0, 8, 6, 3, 1, 0, 0, 0],
+  midrange: [0, 4, 6, 5, 3, 2, 1, 1],
+  control: [0, 2, 4, 4, 5, 4, 3, 2],
+  combo: [0, 4, 5, 3, 2, 2, 2, 2],
+};
+
+/**
+ * How aggressively to flag a bucket as over- or under-loaded. A delta of
+ * `BUCKET_TOLERANCE` cards in either direction still counts as "balanced" —
+ * smaller differences are not worth a coach suggestion.
+ */
+const BUCKET_TOLERANCE = 2;
+
+/**
+ * How many cards a bucket can differ from the recommended LAND COUNT before
+ * we say the deck is "off" the archetype target. ±1 is normal variance.
+ */
+const LAND_TOLERANCE = 1;
+
+/**
+ * Build the {@link CurveRecommendation} block (issue #1239).
+ *
+ * Two sources of truth feed the recommendation:
+ *
+ *  1. Per-archetype mana-base data from `src/lib/anti-meta.ts` (preferred).
+ *     Provides a specific `recommendedLands` + `minLands`/`maxLands` range
+ *     when we recognise the detected archetype name in any format.
+ *
+ *  2. The generic strategy curve profile from `src/lib/mana-curve.ts`
+ *     (`aggro` / `midrange` / `control` / `combo`). Provides the per-bucket
+ *     ideal distribution and the fallback land-count formula when no
+ *     archetype-specific data exists.
+ *
+ * The output is the actionable coaching block the prompt + UI consume:
+ * concrete land-count delta, per-bucket over/under status, and a short list
+ * of "add N 1-drop" / "cut M 5-drop" style actions.
+ */
+export function buildCurveRecommendation(
+  deck: DeckCard[],
+  components: ResolvedAnalysisComponents,
+): CurveRecommendation {
+  const safeDeck = Array.isArray(deck) ? deck : [];
+  const { archetype, stats } = components;
+  const archetypeName = archetype.primary || "Unknown";
+
+  // Ensure we have 8 buckets available even when the upstream stats array is
+  // shorter, so the bucket loop is unconditional.
+  const curveBuckets = (stats.manaCurve || []).slice(0, MANA_CURVE_BUCKETS);
+  while (curveBuckets.length < MANA_CURVE_BUCKETS) curveBuckets.push(0);
+
+  const actualLands = stats.landCount || 0;
+  const totalCards = stats.totalCards || 0;
+  const nonLandCount = Math.max(totalCards - actualLands, 0);
+
+  const archetypeHit = lookupArchetypeManaProfile(archetypeName);
+  const strategy = pickStrategyProfile(archetypeName);
+  const idealBuckets = IDEAL_DISTRIBUTION[strategy.key];
+
+  // Land-count math: prefer the archetype-specific value, fall back to a
+  // formula on the strategy profile.
+  let recommendedLands: number;
+  let minLands: number;
+  let maxLands: number;
+  let source: "archetype" | "strategy";
+
+  if (archetypeHit) {
+    const r = archetypeHit.rec;
+    recommendedLands = r.recommendedLands;
+    minLands = r.manaCurve.minLands;
+    maxLands = r.manaCurve.maxLands;
+    source = "archetype";
+  } else {
+    // Generic formula, mirroring `getLandCountRecommendations` in mana-curve.ts
+    // but kept here so the coach has no module-level coupling to the dashboard.
+    const avg = stats.avgCmc || 0;
+    let base: number;
+    let reasoning: string;
+    if (avg < 2.0) {
+      base = Math.min(20, Math.floor(totalCards * 0.2));
+      reasoning = "low curve aggro — fewer lands needed";
+    } else if (avg < 3.0) {
+      base = Math.floor(totalCards * 0.23);
+      reasoning = "aggro-midrange — standard land count";
+    } else if (avg < 4.0) {
+      base = Math.floor(totalCards * 0.25);
+      reasoning = "midrange — more lands for bigger spells";
+    } else {
+      base = Math.min(30, Math.floor(totalCards * 0.28));
+      reasoning = "control — lands for expensive spells";
+    }
+    if (strategy.key === "aggro") base = Math.min(20, base);
+    if (strategy.key === "control") base = Math.max(24, base);
+    // Final clamp ensures the +/- 2 range stays inside the global bounds
+    // (17–35). Without this, a tiny `base` (e.g. 13 from a 60-card aggro
+    // midrange) yields minLands=17, maxLands=15 — an impossible range.
+    recommendedLands = Math.max(17, Math.min(35, base));
+    minLands = Math.max(17, recommendedLands - 2);
+    maxLands = Math.min(35, recommendedLands + 2);
+    source = "strategy";
+    // `reasoning` is exposed via `landAssessment` below so we don't store it.
+    void reasoning;
+  }
+
+  // Land-count assessment prose.
+  const landDelta = actualLands - recommendedLands;
+  let landAssessment: string;
+  if (actualLands >= minLands && actualLands <= maxLands) {
+    landAssessment = `Land count within archetype range (${minLands}–${maxLands}).`;
+  } else if (landDelta < 0) {
+    const need = Math.abs(landDelta);
+    landAssessment = `Add ${need} land${need === 1 ? "" : "s"} to hit ${recommendedLands} for this archetype (target ${minLands}–${maxLands}).`;
+  } else {
+    const cut = landDelta;
+    landAssessment = `Cut ${cut} land${cut === 1 ? "" : "s"} to hit ${recommendedLands} for this archetype (target ${minLands}–${maxLands}).`;
+  }
+
+  // Per-bucket analysis vs the ideal distribution (non-land cards only).
+  // Scale the ideal (which is normalised to 20 non-lands) up to the actual
+  // non-land count. Round to the nearest integer so the comparison stays
+  // integer-friendly.
+  const scale = nonLandCount > 0 ? nonLandCount / 20 : 0;
+  const bucketStatus: CurveBucketStatus[] = [];
+  const actions: string[] = [];
+
+  for (let i = 0; i < MANA_CURVE_BUCKETS; i++) {
+    const label = bucketLabel(i);
+    const isLandBucket = i === 0;
+    const actual = curveBuckets[i] || 0;
+    if (isLandBucket) {
+      // Lands are tracked at bucket 0 by `calculateDeckStats`. We render them
+      // as a row but mark `status: "lands"` so the UI knows not to show an
+      // add/cut suggestion for them.
+      bucketStatus.push({
+        cmc: i,
+        label,
+        actual,
+        target: 0,
+        delta: actual,
+        status: "lands",
+        advice: null,
+      });
+      continue;
+    }
+
+    const target = Math.round((idealBuckets[i] || 0) * scale);
+    const delta = actual - target;
+    let status: CurveBucketStatus["status"] = "balanced";
+    let advice: string | null = null;
+
+    if (delta > BUCKET_TOLERANCE) {
+      status = "over";
+      advice = `cut ${delta} ${label}-drop${delta === 1 ? "" : "s"}`;
+      actions.push(`Cut ${delta} ${label}-drop${delta === 1 ? "" : "s"}.`);
+    } else if (delta < -BUCKET_TOLERANCE) {
+      status = "under";
+      const need = Math.abs(delta);
+      advice = `add ${need} ${label}-drop${need === 1 ? "" : "s"}`;
+      actions.push(`Add ${need} ${label}-drop${need === 1 ? "" : "s"}.`);
+    }
+
+    bucketStatus.push({
+      cmc: i,
+      label,
+      actual,
+      target,
+      delta,
+      status,
+      advice,
+    });
+  }
+
+  // Push the land-count delta as a top-priority action so it isn't lost in the
+  // per-bucket noise.
+  if (Math.abs(landDelta) > LAND_TOLERANCE) {
+    const verb = landDelta < 0 ? "Add" : "Cut";
+    const n = Math.abs(landDelta);
+    actions.unshift(
+      `${verb} ${n} land${n === 1 ? "" : "s"} to reach ${recommendedLands} (target for ${archetypeName}).`,
+    );
+  }
+
+  // Trim the action list so the prompt doesn't drown in marginal suggestions.
+  const trimmedActions = actions.slice(0, 6);
+
+  // One-sentence summary suitable for the prompt + the UI title.
+  let summary: string;
+  if (nonLandCount === 0) {
+    summary = "No non-land cards to compare against the archetype curve.";
+  } else if (
+    Math.abs(landDelta) <= LAND_TOLERANCE &&
+    bucketStatus.filter((b) => b.status === "over" || b.status === "under")
+      .length === 0
+  ) {
+    summary = `Curve matches the ${archetypeName} target (${recommendedLands} lands).`;
+  } else {
+    const issueCount =
+      bucketStatus.filter(
+        (b) => b.status === "over" || b.status === "under",
+      ).length + (Math.abs(landDelta) > LAND_TOLERANCE ? 1 : 0);
+    summary = `${issueCount} curve adjustment${issueCount === 1 ? "" : "s"} suggested for ${archetypeName} (target ${recommendedLands} lands).`;
+  }
+
+  return {
+    archetypeTarget: archetypeName,
+    source,
+    recommendedLands,
+    minLands,
+    maxLands,
+    actualLands,
+    landDelta,
+    landAssessment,
+    bucketStatus,
+    actions: trimmedActions,
+    summary,
+  };
+}
+
+/**
  * The independently-computable analyses that feed a structured deck analysis.
  *
  * `archetype`, `stats` and `synergies` have NO inter-dependencies and can be
@@ -353,6 +743,11 @@ export function assembleStructuredAnalysis(
   const curveBuckets = stats.manaCurve.slice(0, MANA_CURVE_BUCKETS);
   while (curveBuckets.length < MANA_CURVE_BUCKETS) curveBuckets.push(0);
 
+  // Actionable curve + land-count recommendation (issue #1239). Always
+  // present so downstream consumers (coach prompt, UI) can rely on the
+  // shape without optional chaining.
+  const curveRecommendation = buildCurveRecommendation(safeDeck, components);
+
   return {
     archetype: archetype.primary,
     secondaryArchetype: archetype.secondary,
@@ -367,6 +762,7 @@ export function assembleStructuredAnalysis(
     gaps,
     strengths,
     keyCards,
+    curveRecommendation,
   };
 }
 
@@ -424,6 +820,25 @@ export function formatStructuredAnalysisForLLM(
   lines.push(
     `**Mana Curve**: ${curveLabels.join("  ")} — _${a.curveAssessment}_`,
   );
+
+  // Actionable curve + land-count recommendation (issue #1239). Surfaces
+  // concrete land-count delta vs archetype target and per-bucket over/under
+  // status so the model can give specific suggestions ("add 2 1-drops")
+  // rather than only describing the curve.
+  const cr = a.curveRecommendation;
+  lines.push(
+    `**Mana-Curve Recommendation (${cr.archetypeTarget})**: ${cr.actualLands} lands vs target ${cr.recommendedLands} (${cr.minLands}–${cr.maxLands}) — _${cr.landAssessment}_`,
+  );
+  const overUnder = cr.bucketStatus
+    .filter((b) => b.status === "over" || b.status === "under")
+    .map((b) => `${b.label}cmc:${b.actual}/${b.target} (${b.advice})`);
+  if (overUnder.length > 0) {
+    lines.push(`**Over/Under CMC Buckets**: ${overUnder.join("  ")}`);
+  }
+  if (cr.actions.length > 0) {
+    lines.push("**Curve Actions**:");
+    for (const action of cr.actions) lines.push(`- ${action}`);
+  }
 
   // Role distribution
   const r = a.roleDistribution;
