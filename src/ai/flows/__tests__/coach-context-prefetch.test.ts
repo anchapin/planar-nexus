@@ -246,8 +246,13 @@ describe("prefetchCoachContext", () => {
     });
     expect(cached!.fromCache).toBe(true);
 
-    // Advance past the TTL: must recompute.
+    // Advance past the TTL — and explicitly drop the signature-keyed LRU
+    // (issue #1237) so the next call truly misses EVERY layer. The LRU
+    // normally outlives the format-scoped TTL by design: a session with a
+    // gap of >60s on the same deck still hits the LRU. Here we want to
+    // observe the outer TTL behavior in isolation, so we clear everything.
     detectArchetypeMock.mockClear();
+    clearCoachContextCache();
     t += 6_000;
     const refreshed = await prefetchCoachContext({
       deckCards: deck,
