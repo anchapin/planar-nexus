@@ -53,16 +53,24 @@ jest.mock("@/components/deck-statistics", () => ({
   DeckColorChart: () => <div data-testid="deck-color-chart" />,
 }));
 
-jest.mock("@/hooks/use-deck-statistics", () => ({
-  useDeckStatistics: () => ({
-    totalCards: 60,
-    uniqueCards: 40,
-    averageManaValue: 2.1,
-    manaCurve: { 0: 2, 1: 8, 2: 10 },
-    typeDistribution: { creature: 20, instant: 8, land: 24 },
-    colorDistribution: { R: 30, Colorless: 24 },
-  }),
-}));
+jest.mock("@/hooks/use-deck-statistics", () => {
+  // Preserve real exports (`getDeckSignature`, `getColorDistributionData`,
+  // `getTypeDistributionData`) that the panel now consumes — issue #1248.
+  const actual = jest.requireActual<
+    typeof import("@/hooks/use-deck-statistics")
+  >("@/hooks/use-deck-statistics");
+  return {
+    ...actual,
+    useDeckStatistics: () => ({
+      totalCards: 60,
+      uniqueCards: 40,
+      averageManaValue: 2.1,
+      manaCurve: { 0: 2, 1: 8, 2: 10 },
+      typeDistribution: { creature: 20, instant: 8, land: 24 },
+      colorDistribution: { R: 30, Colorless: 24 },
+    }),
+  };
+});
 
 jest.mock("lucide-react", () => ({
   BarChart3: () => <svg />,

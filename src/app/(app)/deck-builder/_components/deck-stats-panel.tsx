@@ -19,9 +19,21 @@ import {
 } from 'lucide-react';
 import type { DeckCard } from '@/app/actions';
 import type { Format } from '@/lib/game-rules';
-import { useDeckStatistics, getDeckSignature } from '@/hooks/use-deck-statistics';
+import {
+  useDeckStatistics,
+  getDeckSignature,
+  getColorDistributionData,
+  getTypeDistributionData,
+} from '@/hooks/use-deck-statistics';
 import type { DeckLegalitySummary } from '@/hooks/use-format-legality-check';
-import { ManaCurveChart, CardTypeChart, DeckColorChart } from '@/components/deck-statistics';
+import {
+  ManaCurveChart,
+  CardTypeChart,
+  DeckColorChart,
+  type CardTypeChartDatum,
+  type DeckColorChartDatum,
+  type ManaCurveChartDatum,
+} from '@/components/deck-statistics';
 import {
   compareToOptimal,
   normalizeDeckFormat,
@@ -62,11 +74,26 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeChart, setActiveChart] = useState<'mana' | 'type' | 'color'>('mana');
 
+  // Content-signature for the deck. Used as the dependency for chart `data`
+  // memoization below — the parent's wrapper `React.memo` (see
+  // `areDeckStatsPanelPropsEqual`) already skips re-renders when only
+  // non-deck props change, but a freshly-allocated `deck` array holding
+  // identical contents would still re-render the panel. Keying on the
+  // signature (instead of the array reference) keeps the chart `data`
+  // arrays reference-stable across that flavor of input churn — issue #1248.
+  const deckSignature = useMemo(() => getDeckSignature(deck), [deck]);
+
   const stats = useDeckStatistics(deck);
   const deckFormat: DeckFormat = normalizeDeckFormat(format);
 
   // Compare the deck against the format-optimal curve for actionable gaps.
-  const comparison = useMemo(() => compareToOptimal(deck, deckFormat), [deck, deckFormat]);
+  // Keyed on `deckSignature` (not `deck`) so a fresh array reference holding
+  // identical cards does not invalidate the memo and downstream chart `data`.
+  const comparison = useMemo(
+    () => compareToOptimal(deck, deckFormat),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [deckSignature, deckFormat],
+  );
   const tips = useMemo(() => getManaCurveTips(deckFormat), [deckFormat]);
   const optimalTargets = useMemo(() => {
     const targets: Record<number, number> = {};
@@ -76,6 +103,41 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
     }
     return targets;
   }, [deckFormat]);
+
+  // Pre-compute chart `data` arrays via `useMemo` keyed only on the
+  // signature/deckFormat. Passing these to the chart components lets the
+  // charts' `React.memo` shallow-compare on a reference that only changes
+  // when the deck contents change — fixing the Recharts re-render storm
+  // described in issue #1248.
+  const manaCurveData = useMemo<ManaCurveChartDatum[]>(() => {
+    const gapByCmc = new Map<number, (typeof comparison.gaps)[number]>();
+    comparison.gaps.forEach((g) => gapByCmc.set(g.cmc, g));
+    return Object.entries(stats.manaCurve)
+      .filter(([cmc]) => parseInt(cmc) > 0) // exclude the land (0) bucket
+      .map(([cmc, count]) => {
+        const cmcNum = parseInt(cmc);
+        const gap = gapByCmc.get(cmcNum);
+        const target = optimalTargets[cmcNum];
+        return {
+          cmc: cmcNum >= 7 ? '7+' : cmc,
+          cmcNum,
+          count,
+          target,
+          gap,
+          fill: gap ? (gap.difference > 0 ? '#f59e0b' : '#ef4444') : 'hsl(var(--primary))',
+        };
+      });
+  }, [deckSignature, deckFormat, comparison.gaps, optimalTargets, stats.manaCurve]);
+
+  const typeChartData = useMemo<CardTypeChartDatum[]>(
+    () => Array.from(getTypeDistributionData(stats.typeDistribution)),
+    [deckSignature, stats.typeDistribution],
+  );
+
+  const colorChartData = useMemo<DeckColorChartDatum[]>(
+    () => Array.from(getColorDistributionData(stats.colorDistribution)),
+    [deckSignature, stats.colorDistribution],
+  );
 
   // Don't render if deck is empty
   if (deck.length === 0) {
@@ -201,7 +263,7 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
 
             <TabsContent value="mana" className="mt-4">
               <ManaCurveChart
-                manaCurve={stats.manaCurve}
+                data={manaCurveData}
                 format={deckFormat}
                 gaps={comparison.gaps}
                 optimalTargets={optimalTargets}
@@ -209,11 +271,11 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
             </TabsContent>
 
             <TabsContent value="type" className="mt-4">
-              <CardTypeChart typeDistribution={stats.typeDistribution} chartType="bar" />
+              <CardTypeChart data={typeChartData} chartType="bar" />
             </TabsContent>
 
             <TabsContent value="color" className="mt-4">
-              <DeckColorChart colorDistribution={stats.colorDistribution} />
+              <DeckColorChart data={colorChartData} />
             </TabsContent>
           </Tabs>
 

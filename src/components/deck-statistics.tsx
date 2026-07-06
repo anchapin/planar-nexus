@@ -105,13 +105,18 @@ function calculateWinRate(wins: number, total: number): number {
 }
 
 
-// Deck statistics display component
+// Deck statistics display component.
+//
+// Wrapped in `React.memo` (default shallow-equality) — the analytics dashboard
+// passes the same `stats` references for unchanged decks (see `DeckAnalytics`
+// below), so memoizing avoids a needless card-level re-render whenever the
+// dashboard re-renders for unrelated reasons. See issue #1248.
 interface DeckStatisticsCardProps {
   stats: DeckStatistics;
   className?: string;
 }
 
-export function DeckStatisticsCard({ stats, className }: DeckStatisticsCardProps) {
+export const DeckStatisticsCard = memo(function DeckStatisticsCard({ stats, className }: DeckStatisticsCardProps) {
   const winRateTrend = useMemo(() => {
     // Calculate recent 5 games win rate vs overall
     const recentGames = stats.records.slice(-5);
@@ -182,7 +187,7 @@ export function DeckStatisticsCard({ stats, className }: DeckStatisticsCardProps
       </CardContent>
     </Card>
   );
-}
+});
 
 // ============================================
 // RECHARTS-BASED CHART COMPONENTS
@@ -249,6 +254,28 @@ export function ColorDistributionChart({ distribution, className }: ColorDistrib
 // ============================================
 
 /**
+ * Shape of a single bar in `ManaCurveChart`.
+ *
+ * Exported so the deck-stats panel can pre-compute the data via `useMemo`
+ * keyed on the deck's content signature and pass it through verbatim
+ * (see issue #1248). When the panel already has `gaps`/`optimalTargets`
+ * resolved against the deck signature, it can fill in `target`/`gap`/`fill`
+ * here; otherwise those fields can be left undefined and the chart will
+ * fill them in via its internal decoration.
+ */
+export interface ManaCurveChartDatum {
+  cmc: string;
+  cmcNum: number;
+  count: number;
+  /** Optional — only set when `optimalTargets` were provided. */
+  target?: number;
+  /** Optional — only set when a gap exists for this CMC. */
+  gap?: ManaCurveGap;
+  /** Optional — chart computes a default when undefined. */
+  fill?: string;
+}
+
+/**
  * Recharts-based Mana Curve Chart
  * Displays the distribution of cards by converted mana cost.
  *
@@ -257,7 +284,9 @@ export function ColorDistributionChart({ distribution, className }: ColorDistrib
  * actionable add/cut suggestion.
  */
 interface ManaCurveChartProps {
-  manaCurve: Record<number, number>;
+  manaCurve?: Record<number, number>;
+  /** Pre-computed chart data. Takes precedence over `manaCurve`. */
+  data?: readonly ManaCurveChartDatum[];
   className?: string;
   /** Format used for the optimal-curve comparison (e.g. 'commander'). */
   format?: DeckFormat;
@@ -276,6 +305,7 @@ function gapFill(gap: ManaCurveGap | undefined): string {
 
 export const ManaCurveChart = memo(function ManaCurveChart({
   manaCurve,
+  data: dataProp,
   className,
   format,
   gaps,
@@ -284,7 +314,27 @@ export const ManaCurveChart = memo(function ManaCurveChart({
   const [selectedCmc, setSelectedCmc] = useState<number | null>(null);
 
   // Convert mana curve to array format for Recharts.
-  const data = useMemo(() => {
+  // When `data` is pre-computed by the parent (deck-stats panel pattern from
+  // issue #1248), skip the conversion entirely. Otherwise decorate
+  // `manaCurve` with `gaps`/`optimalTargets`/`fill` as before.
+  const data = useMemo<ManaCurveChartDatum[]>(() => {
+    if (dataProp) {
+      const base = Array.from(dataProp);
+      const interactive = Array.isArray(gaps) || !!optimalTargets;
+      if (!interactive) {
+        // Fill in default `fill` when caller pre-computed bare data only.
+        return base.map((d) => ({ ...d, fill: d.fill ?? 'hsl(var(--primary))' }));
+      }
+      const gapByCmc = new Map<number, ManaCurveGap>();
+      (gaps || []).forEach((g) => gapByCmc.set(g.cmc, g));
+      return base.map((d) => ({
+        ...d,
+        target: d.target ?? optimalTargets?.[d.cmcNum],
+        gap: d.gap ?? gapByCmc.get(d.cmcNum),
+        fill: d.fill ?? gapFill(d.gap ?? gapByCmc.get(d.cmcNum)),
+      }));
+    }
+    if (!manaCurve) return [];
     const gapByCmc = new Map<number, ManaCurveGap>();
     (gaps || []).forEach((g) => gapByCmc.set(g.cmc, g));
 
@@ -303,7 +353,7 @@ export const ManaCurveChart = memo(function ManaCurveChart({
           fill: gap ? gapFill(gap) : 'hsl(var(--primary))',
         };
       });
-  }, [manaCurve, gaps, optimalTargets]);
+  }, [dataProp, manaCurve, gaps, optimalTargets]);
 
   const interactive = Array.isArray(gaps) || !!optimalTargets;
   const selectedGap = useMemo(() => {
@@ -465,18 +515,41 @@ export const ManaCurveChart = memo(function ManaCurveChart({
 });
 
 /**
+ * Shape of a single bar in `CardTypeChart`.
+ *
+ * Exported so the deck-stats panel can pre-compute the data via `useMemo`
+ * keyed on a coarse dependency (the deck's content signature) and pass it
+ * through verbatim — the chart's `React.memo` then shallow-compares `data`
+ * by reference and skips the re-render when nothing changed.
+ */
+export interface CardTypeChartDatum {
+  type: string;
+  count: number;
+  percentage: number;
+  fill: string;
+}
+
+/**
  * Recharts-based Card Type Chart
  * Displays the distribution of cards by type (creature, instant, sorcery, etc.)
  */
 interface CardTypeChartProps {
-  typeDistribution: Record<string, number>;
+  typeDistribution?: Record<string, number>;
+  /** Pre-computed chart data. Takes precedence over `typeDistribution`. */
+  data?: readonly CardTypeChartDatum[];
   chartType?: 'pie' | 'bar';
   className?: string;
 }
 
-export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, chartType = 'pie', className }: CardTypeChartProps) {
-  // Convert type distribution to array format for Recharts
-  const data = useMemo(() => {
+export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, data: dataProp, chartType = 'pie', className }: CardTypeChartProps) {
+  // Convert type distribution to array format for Recharts.
+  // When `data` is pre-computed by the parent (deck-stats panel pattern from
+  // issue #1248), skip the conversion entirely so the chart's `React.memo`
+  // can shallow-compare on a reference that only changes when the deck's
+  // contents actually change.
+  const data = useMemo<CardTypeChartDatum[]>(() => {
+    if (dataProp) return Array.from(dataProp);
+    if (!typeDistribution) return [];
     const total = Object.values(typeDistribution).reduce((a, b) => a + b, 0);
     return Object.entries(typeDistribution)
       .filter(([, count]) => count > 0)
@@ -486,7 +559,7 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, cha
         percentage: total > 0 ? Math.round((count / total) * 100) : 0,
         fill: TYPE_COLORS[type] || '#6B7280',
       }));
-  }, [typeDistribution]);
+  }, [dataProp, typeDistribution]);
 
   if (data.length === 0) {
     return (
@@ -624,17 +697,39 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, cha
 });
 
 /**
+ * Shape of a single slice in `DeckColorChart`.
+ *
+ * Exported so the deck-stats panel can pre-compute the data via `useMemo`
+ * keyed on the deck's content signature and pass it through verbatim
+ * (see issue #1248).
+ */
+export interface DeckColorChartDatum {
+  color: string;
+  count: number;
+  percentage: number;
+  fill: string;
+}
+
+/**
  * Recharts-based Deck Color Chart
  * Displays the color distribution of the deck
  */
 interface DeckColorChartProps {
-  colorDistribution: Record<string, number>;
+  colorDistribution?: Record<string, number>;
+  /** Pre-computed chart data. Takes precedence over `colorDistribution`. */
+  data?: readonly DeckColorChartDatum[];
   className?: string;
 }
 
-export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, className }: DeckColorChartProps) {
-  // Convert color distribution to array format for Recharts
-  const data = useMemo(() => {
+export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, data: dataProp, className }: DeckColorChartProps) {
+  // Convert color distribution to array format for Recharts.
+  // When `data` is pre-computed by the parent (deck-stats panel pattern from
+  // issue #1248), skip the conversion entirely so the chart's `React.memo`
+  // can shallow-compare on a reference that only changes when the deck's
+  // contents actually change.
+  const data = useMemo<DeckColorChartDatum[]>(() => {
+    if (dataProp) return Array.from(dataProp);
+    if (!colorDistribution) return [];
     const total = Object.values(colorDistribution).reduce((a, b) => a + b, 0);
     return Object.entries(colorDistribution)
       .filter(([, count]) => count > 0)
@@ -644,7 +739,7 @@ export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, 
         percentage: total > 0 ? Math.round((count / total) * 100) : 0,
         fill: MAGIC_COLOR_HEX[color] || MAGIC_COLOR_HEX.Colorless,
       }));
-  }, [colorDistribution]);
+  }, [dataProp, colorDistribution]);
 
   // Color name mapping for display
   const colorNames: Record<string, string> = {
@@ -902,12 +997,22 @@ export function DeckAnalytics({ statistics, className }: DeckAnalyticsProps) {
   );
 }
 
-// Hook for managing deck statistics
-interface UseDeckStatisticsOptions {
+// Hook for managing deck statistics.
+//
+// Note: this hook used to be exported as `useDeckStatistics`, which collided
+// with the pure-memoization hook of the same name in `src/hooks/use-deck-
+// statistics.ts`. Issue #1248 renamed it to `usePersistedDeckStatistics` so
+// the local memoization helper (used by the deck-builder stats panel) and the
+// IndexedDB-backed analytics dashboard hook no longer share a single symbol.
+//
+// The legacy `useDeckStatistics` export is preserved as a thin alias for
+// existing analytics-dashboard callers; new consumers should import the
+// renamed `usePersistedDeckStatistics` directly.
+interface UsePersistedDeckStatisticsOptions {
   storageKey?: string;
 }
 
-interface UseDeckStatisticsReturn {
+interface UsePersistedDeckStatisticsReturn {
   statistics: DeckStatistics[];
   recordGame: (deckId: string, deckName: string, format: string, result: 'win' | 'loss' | 'draw', opponentName?: string, duration?: number) => void;
   getDeckStats: (deckId: string) => DeckStatistics | undefined;
@@ -917,7 +1022,7 @@ interface UseDeckStatisticsReturn {
   importStats: (json: string) => boolean;
 }
 
-export function useDeckStatistics({ storageKey = 'deck-statistics' }: UseDeckStatisticsOptions = {}): UseDeckStatisticsReturn {
+export function usePersistedDeckStatistics({ storageKey = 'deck-statistics' }: UsePersistedDeckStatisticsOptions = {}): UsePersistedDeckStatisticsReturn {
   const [statistics, setStatistics] = useState<DeckStatistics[]>([]);
 
   // Load from localStorage on mount
@@ -1051,6 +1156,17 @@ export function useDeckStatistics({ storageKey = 'deck-statistics' }: UseDeckSta
     importStats
   };
 }
+
+/**
+ * @deprecated Use {@link usePersistedDeckStatistics} instead.
+ *
+ * Legacy alias preserved for the analytics dashboard. Kept as a thin
+ * re-export so any existing import path keeps working while we migrate
+ * callers. New code should reach for `usePersistedDeckStatistics` directly
+ * to avoid colliding with the deck-builder memoization hook of the same
+ * name in `src/hooks/use-deck-statistics.ts`.
+ */
+export const useDeckStatistics = usePersistedDeckStatistics;
 
 // Import/Export controls component
 interface ImportExportControlsProps {
