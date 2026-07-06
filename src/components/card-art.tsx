@@ -58,6 +58,13 @@ export interface CardArtProps {
   highDpi?: boolean;
   /** Use procedural artwork instead of images */
   useProcedural?: boolean;
+  /**
+   * Fill the parent container instead of using the size-derived width/height.
+   * Mirrors `next/image`'s `fill` prop. The parent must be `position: relative`
+   * (or `absolute`/`fixed`). Useful inside virtualized list cells where the
+   * container dimensions are managed by the parent layout.
+   */
+  fill?: boolean;
 }
 
 // Size configurations with dimensions and quality
@@ -93,22 +100,25 @@ function getLazyLoadObserver() {
 }
 
 // Loading skeleton component
-const CardSkeleton = memo(function CardSkeleton({ 
-  size, 
-  className 
-}: { 
+const CardSkeleton = memo(function CardSkeleton({
+  size,
+  className,
+  fill = false,
+}: {
   size: keyof typeof SIZE_CONFIG;
   className?: string;
+  fill?: boolean;
 }) {
   const config = SIZE_CONFIG[size];
-  
+
   return (
     <div
       className={cn(
         'bg-gradient-to-br from-muted to-muted/50 animate-pulse rounded-lg',
+        fill && 'h-full w-full',
         className
       )}
-      style={{ width: config.width, height: config.height }}
+      style={fill ? undefined : { width: config.width, height: config.height }}
       role="presentation"
       aria-hidden="true"
     >
@@ -120,25 +130,28 @@ const CardSkeleton = memo(function CardSkeleton({
 });
 
 // Error fallback component
-const CardError = memo(function CardError({ 
-  cardName, 
-  size, 
-  className 
-}: { 
+const CardError = memo(function CardError({
+  cardName,
+  size,
+  className,
+  fill = false,
+}: {
   cardName: string;
   size: keyof typeof SIZE_CONFIG;
   className?: string;
+  fill?: boolean;
 }) {
   const config = SIZE_CONFIG[size];
-  
+
   return (
     <div
       className={cn(
         'bg-gradient-to-br from-destructive/20 to-destructive/10 border border-destructive/30 rounded-lg',
         'flex flex-col items-center justify-center p-2 text-center',
+        fill && 'h-full w-full',
         className
       )}
-      style={{ width: config.width, height: config.height }}
+      style={fill ? undefined : { width: config.width, height: config.height }}
       role="img"
       aria-label={`${cardName} - Image not available`}
     >
@@ -195,6 +208,7 @@ export const CardArt = memo(function CardArt({
   showSkeleton = true,
   highDpi = true,
   useProcedural = false,
+  fill = false,
 }: CardArtProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
@@ -302,12 +316,16 @@ export const CardArt = memo(function CardArt({
   if (showBack) {
     return <CardBack size={size} className={className} />;
   }
-  
+
   // Show skeleton while loading (if enabled)
   if (showSkeleton && isLoading && isVisible) {
     return (
-      <div ref={containerRef} className={cn('relative', className)}>
-        <CardSkeleton size={size} />
+      <div
+        ref={containerRef}
+        className={cn(fill && 'absolute inset-0', 'relative', className)}
+        style={fill ? undefined : { width: config.width, height: config.height }}
+      >
+        <CardSkeleton size={size} fill={fill} />
         {imageUrl && (
           <img
             src={imageUrl}
@@ -321,21 +339,25 @@ export const CardArt = memo(function CardArt({
       </div>
     );
   }
-  
+
   // Show error state
   if (hasError || !imageUrl) {
-    return <CardError cardName={cardName} size={size} className={className} />;
+    return <CardError cardName={cardName} size={size} className={className} fill={fill} />;
   }
-  
+
   // Not yet visible (lazy loading)
   if (!isVisible) {
     return (
-      <div ref={containerRef} className={className}>
-        <CardSkeleton size={size} />
+      <div
+        ref={containerRef}
+        className={cn(fill && 'absolute inset-0', className)}
+        style={fill ? undefined : { width: config.width, height: config.height }}
+      >
+        <CardSkeleton size={size} fill={fill} />
       </div>
     );
   }
-  
+
   return (
     <>
       <div
@@ -345,9 +367,10 @@ export const CardArt = memo(function CardArt({
           'hover:shadow-lg hover:shadow-primary/20',
           isHovering && 'ring-2 ring-primary/50',
           onClick && 'cursor-pointer',
+          fill && 'absolute inset-0 h-full w-full',
           className
         )}
-        style={{ width: config.width, height: config.height }}
+        style={fill ? undefined : { width: config.width, height: config.height }}
         onClick={onClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
