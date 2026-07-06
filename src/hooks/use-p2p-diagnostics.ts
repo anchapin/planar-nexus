@@ -169,6 +169,14 @@ export interface PeerRawStats {
   packetsReceived?: number | null;
   packetsLost?: number | null;
   queueDepth?: number | null;
+  /** Channel bufferedAmount in bytes (#1251). */
+  bufferedAmount?: number | null;
+  /** Total messages dropped by the per-peer send queue (#1251). */
+  dropCount?: number | null;
+  /** Per-message-type drop counters, e.g. `{chat: 4, emote: 1}` (#1251). */
+  droppedByType?: Record<string, number> | null;
+  /** Whether the per-peer send queue is currently stalled (#1251). */
+  queueStalled?: boolean | null;
 }
 
 /**
@@ -334,6 +342,8 @@ export function usePeerDiagnostics(
           packetsReceived: raw.packetsReceived ?? null,
           packetsLost: raw.packetsLost ?? null,
           queueDepth: raw.queueDepth ?? null,
+          bufferedAmount: raw.bufferedAmount ?? null,
+          dropCount: raw.dropCount ?? null,
         };
         let window = windowsRef.current.get(id);
         if (!window) {

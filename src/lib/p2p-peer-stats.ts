@@ -34,6 +34,10 @@ export interface PeerStatsSample {
   packetsLost: number | null;
   /** Outbound backpressure queue depth (messages or bytes — depends on caller). */
   queueDepth: number | null;
+  /** Channel bufferedAmount in bytes (#1251). */
+  bufferedAmount: number | null;
+  /** Cumulative messages dropped by the per-peer send queue (#1251). */
+  dropCount: number | null;
 }
 
 /**
@@ -56,6 +60,10 @@ export interface PeerStatsAggregate {
   packetLossPct: number | null;
   /** Latest queue depth (or `null`). */
   queueDepth: number | null;
+  /** Most recent bufferedAmount in bytes (#1251). */
+  bufferedAmount: number | null;
+  /** Most recent cumulative drop count (#1251). */
+  dropCount: number | null;
   /** Most recent sample timestamp (or `null`). */
   latestTimestamp: number | null;
 }
@@ -228,6 +236,8 @@ export function summarizePeerSamples(
       bytesInPerSec: null,
       packetLossPct: null,
       queueDepth: null,
+      bufferedAmount: null,
+      dropCount: null,
       latestTimestamp: null,
     };
   }
@@ -249,6 +259,8 @@ export function summarizePeerSamples(
     ),
     packetLossPct: computePacketLossPct(last.packetsLost, last.packetsReceived),
     queueDepth: last.queueDepth,
+    bufferedAmount: last.bufferedAmount,
+    dropCount: last.dropCount,
     latestTimestamp: last.timestamp,
   };
 }
