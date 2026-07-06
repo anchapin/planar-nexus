@@ -244,6 +244,13 @@ export function useStorageBackup() {
    *
    * Routes to {@link exportIncrementalData} when `backupMode` is
    * `'incremental'`; otherwise performs a full export.
+   *
+   * Issue #1249: progress is now reported in ≤5% increments. The pre-#1249
+   * implementation only updated `progress` at 0/20/60/80/100%, so the bar
+   * appeared to freeze during the long SHA-256 + JSON serialise phase. We
+   * now subscribe to the backup-checksum worker bridge's progress callback
+   * (mapped to the [30%, 70%] UI window) so the bar advances smoothly even
+   * for multi-megabyte exports.
    */
   const exportData = useCallback(
     async (filename?: string): Promise<void> => {
@@ -258,18 +265,33 @@ export function useStorageBackup() {
 
       try {
         setStatus("exporting");
-        setProgress(20);
+        setProgress(5);
 
-        // Get backup data
-        const backupData = await indexedDBStorage.exportBackup();
-        setProgress(60);
+        // Get backup data — pass a progress callback so the UI bar advances
+        // during the SHA-256 digest phase (#1249). Map the digest's
+        // 0-100% progress into the UI's 30-70% window so the bar starts
+        // moving the moment IndexedDB reads complete and reaches 70% as
+        // soon as the digest returns.
+        const backupData = await indexedDBStorage.exportBackup({
+          onChecksumProgress: (progress) => {
+            const uiProgress =
+              progress.totalBytes > 0
+                ? 30 +
+                  Math.floor(
+                    (progress.bytesProcessed / progress.totalBytes) * 40,
+                  )
+                : 70;
+            setProgress(Math.max(30, Math.min(70, uiProgress)));
+          },
+        });
+        setProgress(75);
 
         // Compress the backup (gzip) to keep export files small.
         const compressed = compressData(backupData);
         const blob = new Blob([compressed as BlobPart], {
           type: BACKUP_COMPRESSED_MIME,
         });
-        setProgress(80);
+        setProgress(85);
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");

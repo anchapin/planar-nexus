@@ -17,6 +17,11 @@ import {
   QUOTA_WARN_THRESHOLD,
   FALLBACK_QUOTA_BYTES,
 } from "./storage-quota";
+import {
+  calculateChecksumAsync,
+  type CalculateChecksumOptions,
+  type CalculateChecksumProgress,
+} from "./backup/backup-checksum-bridge";
 
 // ============================================================================
 // TYPES
@@ -781,9 +786,20 @@ export class IndexedDBStorage {
   }
 
   /**
-   * Export all user data as backup
+   * Export all user data as backup.
+   *
+   * Accepts an optional `onChecksumProgress` callback (issue #1249) so the
+   * UI can advance its progress bar in ≤5% increments during the SHA-256
+   * digest, instead of appearing to freeze while the worker computes the
+   * checksum off-thread.
+   *
+   * Backward-compatible: callers that pre-date #1249 can `await` this with
+   * no arguments; the checksum still completes successfully (the worker
+   * simply runs without a progress listener).
    */
-  async exportBackup(): Promise<BackupData> {
+  async exportBackup(options?: {
+    onChecksumProgress?: (progress: CalculateChecksumProgress) => void;
+  }): Promise<BackupData> {
     const decks = await this.getAll<StoredDeck>("decks");
     const savedGames = await this.getAll<StoredGame>("saved-games");
     const preferences =
@@ -813,8 +829,11 @@ export class IndexedDBStorage {
       checksum: "",
     };
 
-    // Calculate checksum
-    backupData.checksum = await this.calculateChecksum(backupData);
+    // Calculate checksum — delegates to the backup-checksum worker bridge
+    // (issue #1249) so the SHA-256 digest runs off the main thread.
+    backupData.checksum = await this.calculateChecksum(backupData, {
+      onProgress: options?.onChecksumProgress,
+    });
 
     await this.updateBackupManifest("full");
 
@@ -868,20 +887,26 @@ export class IndexedDBStorage {
   }
 
   /**
-   * Calculate checksum for backup integrity
+   * Calculate checksum for backup integrity.
+   *
+   * Delegates to the backup-checksum worker bridge (issue #1249) so the
+   * SHA-256 digest runs off the main thread. Falls back to a synchronous
+   * main-thread digest if the worker is unavailable (jsdom, SSR, worker
+   * init failure) so the checksum stays byte-identical to the pre-#1249
+   * implementation in all environments.
+   *
+   * Backward compatibility: callers that pre-date the worker integration
+   * (`exportBackup`, `importBackup`) can `await` this method without
+   * passing options and get identical behaviour. New callers that want
+   * progress feedback (e.g. `useStorageBackup`) pass an optional
+   * `onProgress` callback that receives `{phase, bytesProcessed, totalBytes}`
+   * ticks during the digest.
    */
-  private async calculateChecksum(data: BackupData): Promise<string> {
-    // Create a copy without the checksum field
-    const json = JSON.stringify(data, (key, value) =>
-      key === "checksum" ? undefined : value,
-    );
-
-    // Use Web Crypto API for SHA-256 hash
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(json);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  private async calculateChecksum(
+    data: BackupData,
+    options?: CalculateChecksumOptions,
+  ): Promise<string> {
+    return calculateChecksumAsync(data, options);
   }
 
   /**
