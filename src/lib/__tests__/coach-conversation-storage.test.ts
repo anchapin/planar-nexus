@@ -29,10 +29,17 @@ import {
   deleteConversation,
   deleteConversationsForDeck,
   deriveConversationTitle,
+  exportAllConversations,
+  exportConversationsForDeck,
+  importConversationsFromJSON,
   loadConversation,
   loadConversations,
   loadMostRecentConversation,
+  parseCoachConversationExport,
+  pruneOldestConversationsForDeck,
+  pruneOrphanedConversations,
   saveConversation,
+  DEFAULT_MAX_CONVERSATIONS_PER_DECK,
 } from "../coach-conversation-storage";
 
 function msg(
@@ -307,6 +314,229 @@ describe("coach-conversation-storage", () => {
       } finally {
         IDBObjectStore.prototype.put = realPut;
       }
+    });
+  });
+
+  describe("export / import (issue #1242)", () => {
+    it("exports every conversation for a deck as a versioned JSON envelope", async () => {
+      const a = makeConversation({ id: "exp-a", deckId: "deck-x" });
+      const b = makeConversation({ id: "exp-b", deckId: "deck-x" });
+      // Different deck so we can verify deck scoping in the envelope.
+      const other = makeConversation({ id: "exp-other", deckId: "deck-y" });
+      await saveConversation(a);
+      await saveConversation(b);
+      await saveConversation(other);
+
+      const envelope = await exportConversationsForDeck("deck-x");
+      expect(envelope.type).toBe("planar-nexus-coach-conversations");
+      expect(envelope.version).toBe(1);
+      expect(envelope.deckId).toBe("deck-x");
+      expect(envelope.conversations.map((c) => c.id).sort()).toEqual([
+        "exp-a",
+        "exp-b",
+      ]);
+
+      // JSON round-trip survives: every conversation re-parses identically.
+      const json = JSON.stringify(envelope);
+      const parsed = parseCoachConversationExport(json);
+      expect(parsed).not.toBeNull();
+      expect(parsed!.conversations).toHaveLength(2);
+    });
+
+    it("exports across every deck with deckId=null in the envelope", async () => {
+      await saveConversation(makeConversation({ id: "x", deckId: "d1" }));
+      await saveConversation(makeConversation({ id: "y", deckId: "d2" }));
+      const envelope = await exportAllConversations();
+      expect(envelope.deckId).toBeNull();
+      expect(envelope.conversations).toHaveLength(2);
+    });
+
+    it("parseCoachConversationExport rejects malformed JSON", () => {
+      expect(parseCoachConversationExport("not json")).toBeNull();
+      expect(parseCoachConversationExport("{}")).toBeNull();
+      expect(parseCoachConversationExport(JSON.stringify({ type: "other" }))).toBeNull();
+      expect(
+        parseCoachConversationExport(
+          JSON.stringify({ type: "planar-nexus-coach-conversations", version: 99 }),
+        ),
+      ).toBeNull();
+      expect(
+        parseCoachConversationExport(
+          JSON.stringify({
+            type: "planar-nexus-coach-conversations",
+            version: 1,
+            conversations: "not-an-array",
+          }),
+        ),
+      ).toBeNull();
+    });
+
+    it("imports a parsed envelope and re-loads every conversation", async () => {
+      const envelope = await exportConversationsForDeck("deck-from");
+      const result = await importConversationsFromJSON(envelope, {
+        targetDeckId: "deck-to",
+      });
+      expect(result.imported).toBe(envelope.conversations.length);
+      expect(result.skipped).toBe(0);
+
+      const reloaded = await loadConversations("deck-to");
+      expect(reloaded).toHaveLength(envelope.conversations.length);
+      for (const conv of reloaded) {
+        expect(conv.deckId).toBe("deck-to");
+        // Each imported conversation has a usable message trail.
+        expect(conv.messages.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("preserves the original deckId when targetDeckId is null", async () => {
+      const source = makeConversation({
+        id: "preserve-me",
+        deckId: "original-deck",
+      });
+      await saveConversation(source);
+
+      const envelope = {
+        type: "planar-nexus-coach-conversations" as const,
+        version: 1 as const,
+        exportedAt: new Date().toISOString(),
+        deckId: "original-deck",
+        conversations: [source],
+      };
+
+      const result = await importConversationsFromJSON(envelope, {
+        targetDeckId: null,
+      });
+      expect(result.imported).toBe(1);
+      const reloaded = await loadConversation("preserve-me");
+      expect(reloaded!.deckId).toBe("original-deck");
+    });
+
+    it("assigns a fresh id on import when the original id would clobber", async () => {
+      // Seed a local record with id "clash" so an import of the same id must
+      // not silently overwrite it.
+      const local = makeConversation({ id: "clash", deckId: "deck-local" });
+      await saveConversation(local);
+
+      const incoming = makeConversation({
+        id: "clash",
+        deckId: "deck-incoming",
+      });
+      const envelope = {
+        type: "planar-nexus-coach-conversations" as const,
+        version: 1 as const,
+        exportedAt: new Date().toISOString(),
+        deckId: "deck-incoming",
+        conversations: [incoming],
+      };
+
+      const result = await importConversationsFromJSON(envelope);
+      expect(result.imported).toBe(1);
+      // Original record survives untouched.
+      const original = await loadConversation("clash");
+      expect(original!.deckId).toBe("deck-local");
+      // Newly-imported record exists under a different id (deck-scoped to deck-incoming).
+      const list = await loadConversations("deck-incoming");
+      expect(list).toHaveLength(1);
+      expect(list[0].id).not.toBe("clash");
+      // Messages round-trip with matching content + role.
+      expect(list[0].messages.map((m) => ({ role: m.role, content: m.content }))).toEqual(
+        incoming.messages.map((m) => ({ role: m.role, content: m.content })),
+      );
+    });
+
+    it("skips malformed conversation entries without aborting the rest", async () => {
+      const good = makeConversation({ id: "ok-1", deckId: "deck-mix" });
+      const envelope = {
+        type: "planar-nexus-coach-conversations" as const,
+        version: 1 as const,
+        exportedAt: new Date().toISOString(),
+        deckId: "deck-mix",
+        conversations: [
+          good,
+          // missing-id: no `id` field at all -> "missing id" (skip)
+          { messages: [{ role: "user", content: "x", id: "m1", timestamp: new Date() }] },
+          // empty messages -> "no usable messages" (skip)
+          { id: "no-messages", messages: [] },
+          // not an object (skip)
+          "not-an-object",
+        ] as unknown as typeof good[],
+      };
+      const result = await importConversationsFromJSON(envelope, {
+        targetDeckId: "deck-mix",
+      });
+      expect(result.imported).toBe(1);
+      expect(result.skipped).toBe(3);
+      expect(result.errors.length).toBe(3);
+      const list = await loadConversations("deck-mix");
+      expect(list.map((c) => c.id)).toEqual(["ok-1"]);
+    });
+  });
+
+  describe("orphan cleanup (issue #1242)", () => {
+    it("prunes conversations whose deckId is not in the valid set", async () => {
+      await saveConversation(makeConversation({ id: "keep-1", deckId: "alive" }));
+      await saveConversation(makeConversation({ id: "keep-2", deckId: "alive" }));
+      await saveConversation(
+        makeConversation({ id: "orphan-1", deckId: "deleted-deck" }),
+      );
+      await saveConversation(
+        makeConversation({ id: "orphan-2", deckId: "another-gone" }),
+      );
+
+      const removed = await pruneOrphanedConversations(["alive"]);
+      expect(removed).toBe(2);
+
+      expect((await loadConversations("alive")).map((c) => c.id).sort()).toEqual([
+        "keep-1",
+        "keep-2",
+      ]);
+      expect(await loadConversation("orphan-1")).toBeNull();
+      expect(await loadConversation("orphan-2")).toBeNull();
+    });
+
+    it("always preserves the default (unscoped) bucket", async () => {
+      await saveConversation(
+        makeConversation({ id: "default-1", deckId: DEFAULT_DECK_ID }),
+      );
+      await saveConversation(
+        makeConversation({ id: "orphan-x", deckId: "never-was" }),
+      );
+      const removed = await pruneOrphanedConversations([]);
+      expect(removed).toBe(1);
+      const list = await loadConversations(DEFAULT_DECK_ID);
+      expect(list.map((c) => c.id)).toEqual(["default-1"]);
+    });
+
+    it("returns 0 when nothing is orphaned (no writes)", async () => {
+      await saveConversation(makeConversation({ id: "lone", deckId: "solo" }));
+      expect(await pruneOrphanedConversations(["solo"])).toBe(0);
+    });
+  });
+
+  describe("bounded retention (issue #1242)", () => {
+    it("prunes oldest conversations when a deck exceeds the per-deck cap", async () => {
+      const baseTs = Date.parse("2026-01-01T00:00:00Z");
+      for (let i = 0; i < 5; i++) {
+        const c = makeConversation({ id: `c-${i}`, deckId: "deck-cap" });
+        c.updatedAt = new Date(baseTs + i * 1000).toISOString();
+        await saveConversation(c);
+      }
+      const pruned = await pruneOldestConversationsForDeck("deck-cap", 3);
+      expect(pruned).toBe(2);
+      const remaining = await loadConversations("deck-cap");
+      expect(remaining.map((c) => c.id)).toEqual(["c-4", "c-3", "c-2"]);
+    });
+
+    it("does nothing when under the cap", async () => {
+      await saveConversation(makeConversation({ id: "a", deckId: "under" }));
+      await saveConversation(makeConversation({ id: "b", deckId: "under" }));
+      expect(await pruneOldestConversationsForDeck("under", 5)).toBe(0);
+      expect((await loadConversations("under")).length).toBe(2);
+    });
+
+    it("exposes a sensible default cap", () => {
+      expect(DEFAULT_MAX_CONVERSATIONS_PER_DECK).toBeGreaterThan(0);
+      expect(DEFAULT_MAX_CONVERSATIONS_PER_DECK).toBeLessThanOrEqual(100);
     });
   });
 });

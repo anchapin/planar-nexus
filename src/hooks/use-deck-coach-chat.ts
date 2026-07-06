@@ -14,14 +14,18 @@ import {
   DEFAULT_DECK_ID,
   type CoachConversation,
   type CoachConversationDeckContext,
+  type CoachConversationImportResult,
   clearAllCoachConversations,
   createConversationRecord,
   deleteConversation,
   deleteConversationsForDeck,
   deriveConversationTitle,
+  exportConversationsForDeck,
+  importConversationsFromJSON,
   loadConversation,
   loadConversations,
   loadMostRecentConversation,
+  parseCoachConversationExport,
   saveConversation,
 } from "@/lib/coach-conversation-storage";
 import {
@@ -114,6 +118,21 @@ export interface UseDeckCoachChatReturn {
   startNewConversation: () => void;
   /** Delete a persisted conversation by id. */
   removeConversation: (conversationId: string) => Promise<void>;
+  /**
+   * Serialize the active deck's conversations to a JSON string for portability
+   * (issue #1242). Returns `null` when there are no conversations to export.
+   */
+  exportActiveDeckToJSON: () => Promise<string | null>;
+  /**
+   * Parse + import a previously-exported JSON envelope. Imported conversations
+   * are scoped to the active deck by default (so they appear in the sidebar
+   * immediately); pass `scope: "original"` to preserve each record's original
+   * `deckId`. Returns counts so the UI can show a meaningful toast.
+   */
+  importFromJSON: (
+    json: string,
+    options?: { scope?: "active" | "original" },
+  ) => Promise<CoachConversationImportResult | { error: string }>;
 }
 
 export interface ChatRequestOptions {
@@ -629,6 +648,45 @@ export function useDeckCoachChat(
     [refreshConversations],
   );
 
+  /**
+   * Serialize the active deck's conversations to a JSON string. Returns `null`
+   * when there is nothing to export so the UI can skip the download prompt
+   * (issue #1242).
+   */
+  const exportActiveDeckToJSON = useCallback(async (): Promise<string | null> => {
+    const deckId = getDeckId();
+    const envelope = await exportConversationsForDeck(deckId);
+    if (envelope.conversations.length === 0) return null;
+    return JSON.stringify(envelope, null, 2);
+  }, [getDeckId]);
+
+  /**
+   * Parse + import a previously-exported JSON envelope. Imported records are
+   * re-scoped to the active deck by default so the sidebar updates immediately;
+   * the caller can opt back into preserving each record's original `deckId`.
+   */
+  const importFromJSON = useCallback(
+    async (
+      json: string,
+      options: { scope?: "active" | "original" } = {},
+    ): Promise<CoachConversationImportResult | { error: string }> => {
+      const envelope = parseCoachConversationExport(json);
+      if (!envelope) {
+        return { error: "That file isn't a recognised coach-session export." };
+      }
+      const targetDeckId =
+        options.scope === "original" ? null : getDeckId();
+      const result = await importConversationsFromJSON(envelope, {
+        targetDeckId,
+        replace: false,
+      });
+      // The sidebar just gained new entries — refresh it.
+      await refreshConversations();
+      return result;
+    },
+    [getDeckId, refreshConversations],
+  );
+
   return {
     messages,
     isLoading,
@@ -644,6 +702,8 @@ export function useDeckCoachChat(
     resumeConversation,
     startNewConversation,
     removeConversation,
+    exportActiveDeckToJSON,
+    importFromJSON,
   };
 }
 

@@ -388,3 +388,142 @@ describe("useDeckCoachChat — IndexedDB persistence (#1074)", () => {
     }
   });
 });
+
+describe("useDeckCoachChat — export / import (#1242)", () => {
+  it("exportActiveDeckToJSON returns null when there are no conversations", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-empty-export" }),
+    );
+    await act(async () => {
+      await flush();
+    });
+    expect(await result.current.exportActiveDeckToJSON()).toBeNull();
+  });
+
+  it("exportActiveDeckToJSON produces a parseable envelope containing the saved session", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-export" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("how do I beat aggro?", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const json = await result.current.exportActiveDeckToJSON();
+    expect(json).not.toBeNull();
+    const parsed = JSON.parse(json!);
+    expect(parsed.type).toBe("planar-nexus-coach-conversations");
+    expect(parsed.deckId).toBe("deck-export");
+    expect(parsed.conversations).toHaveLength(1);
+    expect(parsed.conversations[0].messages.some(
+      (m: { content: string }) => m.content === "how do I beat aggro?",
+    )).toBe(true);
+  });
+
+  it("importFromJSON surfaces a typed error for unrecognised JSON", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-import-bad" }),
+    );
+    await act(async () => {
+      await flush();
+    });
+    const r = await result.current.importFromJSON("not a coach export");
+    expect("error" in r).toBe(true);
+  });
+
+  it("importFromJSON imports conversations scoped to the active deck", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-import-target" }),
+    );
+    await act(async () => {
+      await flush();
+    });
+    const envelope = {
+      type: "planar-nexus-coach-conversations",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deckId: "deck-import-source",
+      conversations: [
+        {
+          id: "incoming-session",
+          deckId: "deck-import-source",
+          title: "sideboard help",
+          deckContext: { format: "modern" },
+          messages: [
+            {
+              id: "m1",
+              role: "user",
+              content: "How do I sideboard vs control?",
+              timestamp: new Date(),
+            },
+            {
+              id: "m2",
+              role: "assistant",
+              content: "Bring in more removal.",
+              timestamp: new Date(),
+            },
+          ],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    };
+    const r = await result.current.importFromJSON(JSON.stringify(envelope));
+    expect("imported" in r).toBe(true);
+    if ("imported" in r) {
+      expect(r.imported).toBe(1);
+      expect(r.skipped).toBe(0);
+    }
+    await act(async () => {
+      await flush();
+    });
+    expect(result.current.conversations.length).toBeGreaterThanOrEqual(1);
+    expect(
+      result.current.conversations.some((c) => c.id === "incoming-session"),
+    ).toBe(true);
+    // Re-scoped to the active deck.
+    expect(
+      result.current.conversations.find((c) => c.id === "incoming-session")
+        ?.deckId,
+    ).toBe("deck-import-target");
+  });
+
+  it("importFromJSON({ scope: 'original' }) preserves the original deckId", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "modern", deckId: "deck-active-keep" }),
+    );
+    await act(async () => {
+      await flush();
+    });
+    const envelope = {
+      type: "planar-nexus-coach-conversations",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      deckId: "deck-original",
+      conversations: [
+        {
+          id: "kept-original-deck",
+          deckId: "deck-original",
+          title: "kept",
+          deckContext: {},
+          messages: [
+            { id: "m1", role: "user", content: "q", timestamp: new Date() },
+          ],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    };
+    await result.current.importFromJSON(JSON.stringify(envelope), {
+      scope: "original",
+    });
+    await act(async () => {
+      await flush();
+    });
+    // Switch to the original deck and verify it shows up there.
+    const fromOriginal = await import("@/lib/coach-conversation-storage");
+    const reloaded = await fromOriginal.loadConversation("kept-original-deck");
+    expect(reloaded!.deckId).toBe("deck-original");
+  });
+});

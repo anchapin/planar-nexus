@@ -31,6 +31,7 @@ import {
 import { EnhancedReviewDisplay } from "./_components/enhanced-review-display";
 import { MetaAnalysisDisplay } from "./_components/meta-analysis-display";
 import { MultiDeckComparison } from "./_components/multi-deck-comparison";
+import { SessionExportImport } from "./_components/session-export-import";
 import {
   Select,
   SelectContent,
@@ -90,6 +91,8 @@ export default function DeckCoachPage() {
     resumeConversation,
     startNewConversation,
     removeConversation,
+    exportActiveDeckToJSON,
+    importFromJSON,
   } = useDeckCoachChat({
     deckId: selectedDeckId,
     format,
@@ -543,8 +546,11 @@ export default function DeckCoachPage() {
 
               {/* Conversation history: resume or delete prior sessions, or start
                   a new one. Persists across refresh/restart via IndexedDB
-                  (issue #1074). */}
-              {conversations.length > 0 && (
+                  (issue #1074). Export/Import lets users move sessions between
+                  browsers/machines (issue #1242). The card is always rendered
+                  when chat is the active tab so Import is reachable even when
+                  there are no conversations yet for the current deck. */}
+              {analysisType === "chat" && (
                 <div className="rounded-md border bg-card/60 p-2">
                   <div className="mb-2 flex items-center gap-2 px-1">
                     <History className="h-3.5 w-3.5 text-muted-foreground" />
@@ -561,40 +567,57 @@ export default function DeckCoachPage() {
                       New
                     </button>
                   </div>
-                  <ul className="max-h-32 space-y-1 overflow-y-auto pr-1">
-                    {conversations.map((conv) => {
-                      const active = conv.id === activeConversationId;
-                      return (
-                        <li key={conv.id}>
-                          <div
-                            className={`group flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
-                              active
-                                ? "bg-primary/10 text-primary"
-                                : "hover:bg-accent/50"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => resumeConversation(conv.id)}
-                              className="flex-1 truncate text-left"
-                              title={conv.title}
+                  {conversations.length > 0 && (
+                    <ul className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                      {conversations.map((conv) => {
+                        const active = conv.id === activeConversationId;
+                        return (
+                          <li key={conv.id}>
+                            <div
+                              className={`group flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                                active
+                                  ? "bg-primary/10 text-primary"
+                                  : "hover:bg-accent/50"
+                              }`}
                             >
-                              {conv.title}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeConversation(conv.id)}
-                              className="invisible inline-flex items-center rounded p-1 text-muted-foreground hover:text-destructive group-hover:visible"
-                              aria-label={`Delete conversation: ${conv.title}`}
-                              title="Delete conversation"
-                            >
-                              <Trash2 className="h-3 w-3" aria-hidden="true" />
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                              <button
+                                type="button"
+                                onClick={() => resumeConversation(conv.id)}
+                                className="flex-1 truncate text-left"
+                                title={conv.title}
+                              >
+                                {conv.title}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeConversation(conv.id)}
+                                className="invisible inline-flex items-center rounded p-1 text-muted-foreground hover:text-destructive group-hover:visible"
+                                aria-label={`Delete conversation: ${conv.title}`}
+                                title="Delete conversation"
+                              >
+                                <Trash2 className="h-3 w-3" aria-hidden="true" />
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {/* Export/Import is always shown when there is any chat
+                      history scope, even if the current deck has no
+                      conversations yet — Import is still useful for moving
+                      sessions in from another machine (#1242). */}
+                  <div className="mt-2 flex justify-end border-t border-border/40 pt-2">
+                    <SessionExportImport
+                      exportActiveDeckToJSON={exportActiveDeckToJSON}
+                      importFromJSON={importFromJSON}
+                      scopeLabel={
+                        selectedDeckId === DEFAULT_DECK_ID
+                          ? "default"
+                          : selectedDeckId
+                      }
+                    />
+                  </div>
                 </div>
               )}
 
