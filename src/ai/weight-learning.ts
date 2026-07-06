@@ -150,6 +150,33 @@ export const MAX_BAND_FRACTION = 1.6;
  */
 export const WIN_NORMALIZE_FRACTION = 0.1;
 
+/**
+ * Multiplier applied to the per-game nudge when the AI's cross-game trend
+ * (computed by {@link diffReplayHistory} in `ai-post-game-analysis.ts`,
+ * issue #1235) signals a structural problem:
+ *
+ *   - `worsening`         → multiplier > 1 (push harder so the AI catches on).
+ *   - `improving`         → multiplier < 1 (current weights are working; back off).
+ *   - `stable`            → multiplier = 1 (default behaviour).
+ *   - `insufficient_data` → multiplier = 1 (no signal, no change).
+ *
+ * The 25% amplification is well under {@link EMA_ALPHA} (which already
+ * bounds per-game movement to 25% of the gap), so even a maximally-bad
+ * streak + maximally-bad trend cannot compound into a runaway jump. The
+ * band clamp is unchanged — tiers never collapse.
+ *
+ * Exported for unit testing.
+ */
+export const OUTCOME_TREND_NUDGE_MULTIPLIER: Record<
+  "worsening" | "improving" | "stable" | "insufficient_data",
+  number
+> = {
+  worsening: 1.25,
+  improving: 0.85,
+  stable: 1.0,
+  insufficient_data: 1.0,
+};
+
 /** localStorage key (versioned for forward migration). */
 export const LEARNED_WEIGHTS_STORAGE_KEY = "planar-nexus:ai-learned-weights:v1";
 
@@ -505,12 +532,24 @@ export class WeightLearner {
    * Close one iteration of the loop: fold a finished game's outcome + analysis
    * into the learned weights for `tier`. Pure-update on the in-memory store;
    * call {@link flush} (or use {@link ingestGameOutcome}) to persist.
+   *
+   * Optional `outcomeTrend` (issue #1235): when supplied by the caller (e.g.
+   * from {@link diffReplayHistory}), the per-game EMA step is scaled by
+   * {@link OUTCOME_TREND_NUDGE_MULTIPLIER}. `worsening` amplifies the nudge
+   * so the AI catches on faster; `improving` softens it so we don't overshoot.
+   * When omitted, the multiplier defaults to `stable` (1.0) and the loop
+   * behaves identically to the pre-#1235 implementation.
    */
   update(
     tier: DifficultyTier,
     outcome: AIGameOutcome,
     analysis: GameAnalysisOutput,
-    ): IngestResult {
+    outcomeTrend?:
+      | "worsening"
+      | "improving"
+      | "stable"
+      | "insufficient_data",
+  ): IngestResult {
     const state = this.tierState(tier);
     const defaults = getDefaultEvaluationWeights(tier);
     const factors = extractDecisiveFactors(analysis);
@@ -522,10 +561,14 @@ export class WeightLearner {
       tier,
     );
 
+    const trendMultiplier =
+      OUTCOME_TREND_NUDGE_MULTIPLIER[outcomeTrend ?? "stable"];
+    const scaledAlpha = Math.min(1, Math.max(0, EMA_ALPHA * trendMultiplier));
+
     const changes: Partial<Record<keyof EvaluationWeights, number>> = {};
     const nextWeights: EvaluationWeights = { ...state.weights };
     for (const key of Object.keys(defaults) as (keyof EvaluationWeights)[]) {
-      const stepped = emaStep(nextWeights[key], target[key], EMA_ALPHA);
+      const stepped = emaStep(nextWeights[key], target[key], scaledAlpha);
       const clamped = clampToBand(
         stepped,
         defaults[key],
@@ -565,13 +608,21 @@ export class WeightLearner {
    * One-shot helper: update + flush. Returns the ingest summary with a
    * `persistenceWarning` if the write was rejected due to quota. This is the
    * primary entry point the post-game flow calls.
+   *
+   * Optional `outcomeTrend` (issue #1235) — forwarded to {@link update}; see
+   * that method for semantics.
    */
   ingestGameOutcome(
     tier: DifficultyTier,
     outcome: AIGameOutcome,
     analysis: GameAnalysisOutput,
+    outcomeTrend?:
+      | "worsening"
+      | "improving"
+      | "stable"
+      | "insufficient_data",
   ): IngestResult {
-    const result = this.update(tier, outcome, analysis);
+    const result = this.update(tier, outcome, analysis, outcomeTrend);
     const persisted = this.flush();
     if (!persisted.ok) {
       result.persistenceWarning = persisted.warning;
@@ -626,16 +677,25 @@ export function getLearnedEvaluationWeights(
 /**
  * Convenience: close the loop for one game using the singleton learner. Maps a
  * free-form difficulty name to a {@link DifficultyTier} first. Quota-safe.
+ *
+ * Optional `outcomeTrend` (issue #1235) — forwarded to the learner; see
+ * {@link WeightLearner.ingestGameOutcome}.
  */
 export function ingestGameOutcome(
   difficulty: string,
   outcome: AIGameOutcome,
   analysis: GameAnalysisOutput,
+  outcomeTrend?:
+    | "worsening"
+    | "improving"
+    | "stable"
+    | "insufficient_data",
 ): IngestResult {
   return defaultWeightLearner.ingestGameOutcome(
     toDifficultyTier(difficulty),
     outcome,
     analysis,
+    outcomeTrend,
   );
 }
 
