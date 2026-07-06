@@ -140,6 +140,10 @@ describe("use-p2p-connection Hook Types", () => {
         reconnectToken: null,
         reconnectTokenLookupDone: true,
         clearReconnectToken: async () => true,
+        // Issue #1253: per-peer role.
+        localRole: "player",
+        setLocalRole: () => {},
+        spectatorDrops: 0,
       };
 
       expect(returnValue.connectionState).toBeDefined();

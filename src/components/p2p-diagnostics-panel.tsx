@@ -47,6 +47,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   ChevronDown,
+  Eye,
   Loader2,
   RefreshCw,
   ShieldAlert,
@@ -91,6 +92,13 @@ export interface P2PDiagnosticsPanelProps {
   /** Poll cadence (ms) for the live connection. Defaults to the hook default. */
   pollIntervalMs?: number;
   className?: string;
+  /**
+   * Issue #1253 — optional spectator count surfaced in the diagnostics
+   * panel header. When supplied (and > 0) a `Spectators: N` badge is
+   * rendered next to the panel title so a host can see at a glance how
+   * many read-only peers are in the lobby. Defaults to `0` (no badge).
+   */
+  spectatorCount?: number;
 }
 
 const CANDIDATE_LABEL: Record<CandidateType, string> = {
@@ -329,6 +337,7 @@ export function P2PDiagnosticsPanel({
   defaultOpen = false,
   pollIntervalMs,
   className,
+  spectatorCount = 0,
 }: P2PDiagnosticsPanelProps) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -409,6 +418,16 @@ export function P2PDiagnosticsPanel({
           >
             <Activity className="h-4 w-4" aria-hidden="true" />
             Connection Diagnostics
+            {spectatorCount > 0 ? (
+              <Badge
+                variant="secondary"
+                className="ml-2 gap-1"
+                data-testid="p2p-diag-spectator-count"
+              >
+                <Eye className="h-3 w-3" aria-hidden="true" />
+                {spectatorCount} {spectatorCount === 1 ? "spectator" : "spectators"}
+              </Badge>
+            ) : null}
             <ChevronDown
               className={cn(
                 "ml-auto h-4 w-4 transition-transform",

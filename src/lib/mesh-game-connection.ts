@@ -73,6 +73,13 @@ import { safeParseJson } from "./p2p-json-validation";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import { redactSensitive } from "./p2p-log-redact";
 import { AntiReplayTracker } from "./anti-replay-tracker";
+import {
+  type PeerRole,
+  DEFAULT_PEER_ROLE,
+  isMessageAllowedForRole,
+  isRoleAllowedToSend,
+  rejectionReasonForSend,
+} from "./peer-role";
 
 /**
  * A handle the mesh uses to push bytes to one remote peer and query its
@@ -84,6 +91,14 @@ import { AntiReplayTracker } from "./anti-replay-tracker";
 export interface PeerLink {
   /** Stable identity of the remote peer this link reaches. */
   peerId: string;
+  /**
+   * Per-link role for the remote peer. Issue #1253. Defaults to
+   * {@link DEFAULT_PEER_ROLE} when omitted so legacy callers that do not
+   * know about the role concept keep working. The mesh uses this to filter
+   * outbound (per-peer allowlist) and inbound (`game-action` is dropped on
+   * a spectator-only link) traffic.
+   */
+  role?: PeerRole;
   /** Serialize + push a raw message string to the remote peer. */
   send(raw: string): boolean;
   /** Whether the underlying transport is currently usable. */
@@ -131,6 +146,15 @@ export interface MeshGameConnectionOptions {
   hostId: string;
   /** Whether the local client is the authoritative host. */
   isHost: boolean;
+  /**
+   * Local peer's role (issue #1253). Defaults to {@link DEFAULT_PEER_ROLE}
+   * (`'player'`) so legacy callers that do not know about the role concept
+   * keep working. When the local peer is a `'spectator'` the outbound
+   * `sendGameAction` / `broadcastGameAction` paths refuse to emit a
+   * `game-action`; when it is a `'moderator'` the same gate applies (a
+   * moderator is a read-only oversight role).
+   */
+  localRole?: PeerRole;
   /** Lifecycle events. `onMessage` defaults to a no-op. */
   events?: Partial<MeshGameConnectionEvents>;
   /**
@@ -161,9 +185,18 @@ export class MeshGameConnection {
   private readonly localPlayerName: string;
   private hostId: string;
   private isHostFlag: boolean;
+  /**
+   * Local peer's role (issue #1253). When the local peer is a spectator or
+   * moderator, `broadcastGameAction` / `sendGameActionToHost` refuse to emit
+   * a `game-action` (read-only role). Defaults to `'player'`.
+   */
+  private localRoleFlag: PeerRole;
 
   /** Registered peer links keyed by peer id (the mesh). */
   private readonly links: Map<string, PeerLink> = new Map();
+  /** Per-peer role overrides (issue #1253). Falls back to the link's
+   * declared role, then to {@link DEFAULT_PEER_ROLE}. */
+  private readonly peerRoles: Map<string, PeerRole> = new Map();
   /** One independent rate limiter per peer link (issue #1111, per-connection). */
   private readonly rateLimiters: Map<string, P2PRateLimiter> = new Map();
   private readonly rateLimitOptions: Partial<P2PRateLimitOptions>;
@@ -178,6 +211,14 @@ export class MeshGameConnection {
 
   /** Per-sender inbound anti-replay high-water marks. Issue #1091. */
   private readonly antiReplay: AntiReplayTracker = new AntiReplayTracker();
+
+  /**
+   * Counter of how many `game-action` messages were dropped on inbound
+   * because the local role disallows them. Surfaced via
+   * {@link MeshGameConnection.getSpectatorDrops} for the diagnostics panel
+   * so an unexpectedly-high drop count surfaces a misconfigured spectator.
+   */
+  private spectatorDrops = 0;
 
   private readonly validatePeerActions: boolean;
   private readonly validatePeerAction: PeerActionValidator | null;
@@ -194,10 +235,11 @@ export class MeshGameConnection {
     this.localPlayerName = options.localPlayerName;
     this.hostId = options.hostId;
     this.isHostFlag = options.isHost;
+    this.localRoleFlag = options.localRole ?? DEFAULT_PEER_ROLE;
     this.rateLimitOptions = options.rateLimit ?? {};
     this.validatePeerActions = options.validatePeerActions === true;
     this.validatePeerAction = options.validatePeerAction ?? null;
-
+ 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = (): void => {};
     const defaults: MeshGameConnectionEvents = {
@@ -243,6 +285,12 @@ export class MeshGameConnection {
    * existing peer id closes the previous link first so a transport never leaks.
    * The local player can never be added as a peer. Returns true when a NEW
    * peer was added (false on replace/self).
+   *
+   * The link MAY carry an optional `role` (issue #1253); if it does, the
+   * role is recorded in the per-peer role map and used to filter outbound
+   * and inbound traffic. If the link has no `role`, the peer defaults to
+   * {@link DEFAULT_PEER_ROLE} (`'player'`) — backward-compatible with
+   * legacy callers that do not know about the role concept.
    */
   addPeerLink(link: PeerLink): boolean {
     if (!link.peerId || link.peerId === this.localPlayerId) {
@@ -257,6 +305,12 @@ export class MeshGameConnection {
     this.rateLimiters.set(
       link.peerId,
       new P2PRateLimiter(this.rateLimitOptions),
+    );
+    // Record the link's declared role. `setPeerRole` can override this
+    // post-registration (e.g. once the spectator handshake completes).
+    this.peerRoles.set(
+      link.peerId,
+      link.role ?? DEFAULT_PEER_ROLE,
     );
     if (!isReplace) {
       this.events.onPeerJoined(link.peerId);
@@ -277,8 +331,84 @@ export class MeshGameConnection {
     link.close();
     this.links.delete(peerId);
     this.rateLimiters.delete(peerId);
+    this.peerRoles.delete(peerId);
     this.events.onPeerLeft(peerId);
     return true;
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Per-peer roles (issue #1253)
+  // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Local peer's role. The local role is the OUTBOUND gate — a spectator or
+   * moderator cannot originate a `game-action`. Returns
+   * {@link DEFAULT_PEER_ROLE} when the mesh was constructed without
+   * `localRole`.
+   */
+  getLocalRole(): PeerRole {
+    return this.localRoleFlag;
+  }
+
+  /**
+   * Update the local peer's role. Used after the spectator handshake
+   * completes (the host `ack`s the new role and the local client adopts
+   * it). Cross-boundary transitions (player ⇄ non-player) are allowed
+   * here because the caller has already completed the role-aware
+   * handshake — the mesh trusts the host's `spectator-handshake-ack`
+   * to set the new role.
+   */
+  setLocalRole(role: PeerRole): void {
+    this.localRoleFlag = role;
+  }
+
+  /**
+   * Per-peer role lookup. Returns the role the link was registered with
+   * (or {@link DEFAULT_PEER_ROLE} if the link had no role) when the peer
+   * is registered; `null` when the peer is unknown. Used by the
+   * diagnostics panel to render a per-peer role column.
+   */
+  getPeerRole(peerId: string): PeerRole | null {
+    if (!this.links.has(peerId)) return null;
+    return this.peerRoles.get(peerId) ?? DEFAULT_PEER_ROLE;
+  }
+
+  /**
+   * Update a peer's role post-registration. Used when the host-side
+   * spectator handshake completes and the mesh learns the peer is in
+   * fact a spectator (the link may have been registered before the
+   * handshake completed). Returns true when the role was applied.
+   */
+  setPeerRole(peerId: string, role: PeerRole): boolean {
+    if (!this.links.has(peerId)) return false;
+    this.peerRoles.set(peerId, role);
+    return true;
+  }
+
+  /**
+   * Count of registered spectator peers (issue #1253 — diagnostic surface
+   * for `P2PDiagnosticsPanel`). A spectator peer is one whose current
+   * role (per {@link getPeerRole}) is `'spectator'`. The count is
+   * recomputed on every call so a `setPeerRole` is reflected without
+   * manual book-keeping.
+   */
+  getSpectatorCount(): number {
+    let count = 0;
+    for (const role of this.peerRoles.values()) {
+      if (role === "spectator") count += 1;
+    }
+    return count;
+  }
+
+  /**
+   * Number of inbound `game-action` messages that were dropped because
+   * the local role disallows them (issue #1253). Surfaced in the
+   * diagnostics panel so a misconfigured spectator can be diagnosed
+   * (a non-zero count means a player is trying to push actions at a
+   * spectator, which is a misconfiguration, not a transport bug).
+   */
+  getSpectatorDrops(): number {
+    return this.spectatorDrops;
   }
 
   /** Whether a link to `peerId` is currently registered. */
@@ -323,30 +453,81 @@ export class MeshGameConnection {
   /**
    * Broadcast a message to every OPEN peer link. Returns the number of peers
    * the message was delivered to (closed links are skipped, not counted).
+   *
+   * The per-peer role allowlist is applied per link: a `game-action`
+   * sent to a 4-peer pod with 1 spectator reaches only the 3 player
+   * peers (issue #1253). The returned count reflects the actual
+   * delivery, not the mesh size, so a caller's "reached N peers" log
+   * surfaces the filtered count.
    */
   broadcast(payload: OutgoingGamePayload): number {
     if (this.links.size === 0) return 0;
+    // Local role gate: a spectator/moderator cannot originate ANY message
+    // that is not in the read-only allowlist. We refuse at the entry point
+    // so the caller's `sendGameAction` is a clean no-op (no wire bytes,
+    // no seq stamped).
+    if (!isRoleAllowedToSend(this.localRoleFlag, payload.type)) {
+      const reason = rejectionReasonForSend(
+        this.localRoleFlag,
+        payload.type,
+      );
+      this.events.onError(
+        new Error(reason ?? "Local role does not allow this send"),
+        this.localPlayerId,
+      );
+      return 0;
+    }
     const raw = this.serializeOutgoing(payload);
     let sent = 0;
     for (const link of this.links.values()) {
-      if (this.sendRawOnLink(link, raw)) sent++;
+      if (this.sendRawOnLink(link, raw, payload.type)) sent++;
     }
     return sent;
   }
 
   /**
    * Send a message to a single targeted peer. Returns true if delivered to an
-   * open link, false if the peer is unknown or its link is closed.
+   * open link, false if the peer is unknown or its link is closed, or the
+   * local role disallows the send.
    */
   sendToPeer(peerId: string, payload: OutgoingGamePayload): boolean {
     const link = this.links.get(peerId);
     if (!link) return false;
-    return this.sendRawOnLink(link, this.serializeOutgoing(payload));
+    if (!isRoleAllowedToSend(this.localRoleFlag, payload.type)) {
+      const reason = rejectionReasonForSend(
+        this.localRoleFlag,
+        payload.type,
+      );
+      this.events.onError(
+        new Error(reason ?? "Local role does not allow this send"),
+        this.localPlayerId,
+      );
+      return false;
+    }
+    return this.sendRawOnLink(link, this.serializeOutgoing(payload), payload.type);
   }
 
-  /** Push a pre-serialized string onto a link, swallowing transport errors. */
-  private sendRawOnLink(link: PeerLink, raw: string): boolean {
+  /**
+   * Push a pre-serialized string onto a link, swallowing transport errors.
+   * `type` is the source message type; when provided, the per-peer role
+   * allowlist is applied (a `game-action` is NOT delivered to a spectator
+   * peer even if the local node is a player — the spectator's allowlist
+   * filters it out at the wire). Returns true when the bytes were
+   * delivered, false on transport failure OR a role-allowlist filter.
+   */
+  private sendRawOnLink(
+    link: PeerLink,
+    raw: string,
+    type?: GameMessageType,
+  ): boolean {
     if (!link.isOpen()) return false;
+    if (type && !isMessageAllowedForRole(link.role ?? DEFAULT_PEER_ROLE, type)) {
+      // Per-peer inbound allowlist rejected this message type for the
+      // link's role. Silent drop — the spectator never sees the wire
+      // bytes, so a host pushing `game-action` to a 4-peer pod with
+      // spectators reaches only the player peers.
+      return false;
+    }
     try {
       return link.send(raw);
     } catch (error) {
@@ -377,6 +558,11 @@ export class MeshGameConnection {
    * (non-host path in the authoritative-host model). If the local client IS
    * the host this is a no-op return (the host applies its own actions locally).
    * Returns true if the action was sent to an open host link.
+   *
+   * Spectator / moderator (read-only) callers receive `false` and an
+   * `onError` event (issue #1253) — a `sendGameActionToHost` from a
+   * read-only peer is a programming error and the transport refuses
+   * rather than silently swallow the action.
    */
   sendGameActionToHost(action: string, data: unknown): boolean {
     if (this.isHostFlag) return false;
@@ -418,13 +604,19 @@ export class MeshGameConnection {
    *      (including the required `seq`, #1091).
    *   4. Anti-replay: a message with `seq <=` the highest seq already applied
    *      from this `senderId` is dropped BEFORE it can touch game state (#1091).
-   *   5. Host-side rules-engine legality (#1089): on the authoritative host, a
+   *   5. Per-peer role allowlist (issue #1253): if the LOCAL role is
+   *      `'spectator'` (or `'moderator'`), a `game-action` arriving on the
+   *      wire is dropped BEFORE it can touch the dispatch surface. This is
+   *      the read-only-stream contract: a `PlayerActionMessage` never
+   *      reaches a spectator's game state.
+   *   6. Host-side rules-engine legality (#1089): on the authoritative host, a
    *      `game-action` is validated against the host's own state; illegal
    *      actions are rejected (peer notified via a typed `error` message
    *      targeted back over the sender's link) BEFORE being emitted.
    *
-   * Malformed, oversize, rate-limited, replayed or illegal messages are
-   * rejected gracefully without breaking the mesh or any other peer's link.
+   * Malformed, oversize, rate-limited, replayed, role-blocked or illegal
+   * messages are rejected gracefully without breaking the mesh or any
+   * other peer's link.
    */
   handleIncoming(raw: string, fromPeerId: string): void {
     try {
@@ -458,7 +650,27 @@ export class MeshGameConnection {
       }
       this.antiReplay.markApplied(message.senderId, message.seq);
 
-      // 5. Host-side rules-engine legality for game-actions. Issue #1089.
+      // 5. Per-peer role allowlist (issue #1253). The local role is the
+      //    SINGLE source of truth for what the local node is willing to
+      //    receive. A `game-action` arriving on a spectator-only link is
+      //    dropped silently and counted via `getSpectatorDrops` so the
+      //    diagnostic surface can flag a misconfigured pod. Note we run
+      //    this AFTER anti-replay so a replayed `game-action` is still
+      //    counted once (the anti-replay check rejects it first).
+      if (!isMessageAllowedForRole(this.localRoleFlag, message.type)) {
+        this.spectatorDrops += 1;
+        console.warn(
+          "[MeshGameConnection] Dropped message disallowed for local role",
+          redactSensitive({
+            fromPeerId,
+            type: message.type,
+            localRole: this.localRoleFlag,
+          }),
+        );
+        return;
+      }
+
+      // 6. Host-side rules-engine legality for game-actions. Issue #1089.
       //    Auto-gated to the authoritative host: a non-host forwards actions
       //    untouched (the host is the only one with authoritative state), and
       //    a peer promoted by host migration (#946) begins validating
@@ -676,7 +888,9 @@ export class MeshGameConnection {
     }
     this.links.clear();
     this.rateLimiters.clear();
+    this.peerRoles.clear();
     this.antiReplay.clear();
+    this.spectatorDrops = 0;
   }
 }
 

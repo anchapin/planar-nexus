@@ -156,6 +156,15 @@ export interface GameLobby {
    * {@link LobbyState} defaults to 'WAITING' when absent.
    */
   state?: LobbyState;
+  /**
+   * Issue #1253 — read-only spectators in the lobby. The host mints a
+   * {@link import("./p2p-handshake").SpectatorCapabilityToken} for each
+   * entry; the spectator presents the token during the
+   * `SpectatorHandshake` to be admitted. Optional for backward
+   * compatibility with persisted lobbies that pre-date the spectator
+   * transport; defaults to `[]` when absent.
+   */
+  spectators?: import("./spectator").Spectator[];
 }
 
 export interface TeamSettings {
