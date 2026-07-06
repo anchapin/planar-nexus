@@ -37,6 +37,10 @@ import {
   Clock,
   Eye,
   Info,
+  Ban,
+  UserMinus,
+  Pause,
+  PlayCircle,
 } from "lucide-react";
 import { useLobby } from "@/hooks/use-lobby";
 import { HostGameConfig, PlayerStatus } from "@/lib/multiplayer-types";
@@ -76,6 +80,12 @@ export default function HostLobbyPage() {
     areTeamsValid,
     updateTeamSettings,
     updateTeamName,
+    // Issue #1257 — host moderation controls (kick/ban/pause)
+    kickPeer,
+    banPeer,
+    pauseGame,
+    resumeGame,
+    isPaused,
   } = useLobby();
   const { confirm, confirmDialog } = useConfirmDialog();
 
@@ -261,6 +271,47 @@ export default function HostLobbyPage() {
     if (confirmed) {
       closeLobby();
       window.location.href = "/multiplayer";
+    }
+  };
+
+  // Issue #1257 — host moderation handlers. The Kick action removes the
+  // peer from the lobby roster AND session-bans them for 30 minutes so
+  // they cannot immediately rejoin via the same game code. The Ban action
+  // adds the entry without a roster change (useful for banning a peer who
+  // already disconnected). Pause/Resume drive the priority-timer freeze.
+  const handleKickPeer = async (peerId: string, peerName: string) => {
+    const reasonInput = window.prompt(
+      `Reason for kicking ${peerName}? (sent to the kicked player)`,
+      "",
+    );
+    // Window.prompt can return null (cancelled) — treat as cancel without
+    // forcing a default. Empty string is allowed (no reason).
+    if (reasonInput === null) return;
+    const result = kickPeer(peerId, reasonInput || undefined);
+    if (!result.removed && !result.banned && result.reason) {
+      window.alert(result.reason);
+    }
+  };
+
+  const handleBanPeer = async (peerId: string, peerName: string) => {
+    const confirmed = await confirm({
+      title: `Ban ${peerName}?`,
+      description:
+        `${peerName} will be unable to rejoin this game code for 30 minutes. ` +
+        `Use this for repeat offenders — kick is sufficient for a single removal.`,
+      confirmLabel: "Ban (30 min)",
+      destructive: true,
+    });
+    if (confirmed) {
+      banPeer(peerId, "session");
+    }
+  };
+
+  const handleTogglePause = () => {
+    if (isPaused) {
+      resumeGame();
+    } else {
+      pauseGame();
     }
   };
 
@@ -677,19 +728,50 @@ export default function HostLobbyPage() {
                           )}
                       </div>
                     </div>
-                    <Badge
-                      variant={
-                        player.status === "ready" || player.status === "host"
-                          ? "default"
-                          : "secondary"
-                      }
-                    >
-                      {player.status === "ready"
-                        ? "Ready"
-                        : player.status === "host"
-                          ? "Host"
-                          : "Not Ready"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      {/* Issue #1257 — host-only moderation controls. Visible
+                          only when the local user IS the host and the row is
+                          a non-host peer. Non-hosts see neither button. */}
+                      {isHost && player.id !== lobby.hostId && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleKickPeer(player.id, player.name)}
+                            aria-label={`Kick ${player.name}`}
+                            title={`Remove ${player.name} from the lobby and ban them for 30 minutes`}
+                          >
+                            <UserMinus className="w-4 h-4 mr-1" />
+                            Kick
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleBanPeer(player.id, player.name)}
+                            aria-label={`Ban ${player.name}`}
+                            title={`Ban ${player.name} from re-joining this game code for 30 minutes`}
+                          >
+                            <Ban className="w-4 h-4 mr-1" />
+                            Ban
+                          </Button>
+                        </>
+                      )}
+                      <Badge
+                        variant={
+                          player.status === "ready" || player.status === "host"
+                            ? "default"
+                            : "secondary"
+                        }
+                      >
+                        {player.status === "ready"
+                          ? "Ready"
+                          : player.status === "host"
+                            ? "Host"
+                            : "Not Ready"}
+                      </Badge>
+                    </div>
                   </div>
                 ))}
 
@@ -732,6 +814,34 @@ export default function HostLobbyPage() {
                         Force Start
                       </Button>
                     )}
+                    {/* Issue #1257 — host-only pause/resume. Freezes all
+                        peer priority timers via a `lobby-control` pause
+                        broadcast (see p2p-game-connection.ts). */}
+                    <Button
+                      type="button"
+                      onClick={handleTogglePause}
+                      variant={isPaused ? "default" : "outline"}
+                      size="lg"
+                      aria-label={isPaused ? "Resume game" : "Pause game"}
+                      aria-pressed={isPaused}
+                      title={
+                        isPaused
+                          ? "Resume the priority timer"
+                          : "Pause the priority timer for all peers"
+                      }
+                    >
+                      {isPaused ? (
+                        <>
+                          <PlayCircle className="w-4 h-4 mr-2" />
+                          Resume
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="w-4 h-4 mr-2" />
+                          Pause
+                        </>
+                      )}
+                    </Button>
                   </>
                 ) : (
                   <Button

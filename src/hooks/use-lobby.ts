@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { GameLobby, Player, HostGameConfig, PlayerStatus, TeamId, Team, TeamSettings } from '@/lib/multiplayer-types';
-import { lobbyManager } from '@/lib/lobby-manager';
+import { lobbyManager, KickPeerResult, LobbyBanScope, LobbyBanEntry } from '@/lib/lobby-manager';
 import { formatGameCode } from '@/lib/game-code-generator';
 import { validateDeckForLobby } from '@/lib/format-validator';
 import { getGameModeConfig } from '@/lib/game-mode';
@@ -40,6 +40,17 @@ export interface UseLobbyReturn {
   updateTeamSettings: (settings: Partial<TeamSettings>) => boolean;
   updateTeamName: (teamId: TeamId, name: string) => boolean;
   canAttackPlayer: (attackerId: string, defenderId: string) => boolean;
+  // Issue #1257 — host moderation (kick, ban, pause). Host-only actions;
+  // the UI hides the controls for non-hosts (see `isHost` above).
+  kickPeer: (peerId: string, reason?: string) => KickPeerResult;
+  banPeer: (peerId: string, scope?: LobbyBanScope, reason?: string) => boolean;
+  isPeerBanned: (peerId: string) => boolean;
+  unbanPeer: (peerId: string) => boolean;
+  getBanList: () => Array<LobbyBanEntry & { remainingMs: number }>;
+  isPaused: boolean;
+  pauseGame: () => { pausedAt: number };
+  resumeGame: () => { pausedDurationMs: number };
+  getPauseElapsedMs: () => number;
 }
 
 export function useLobby(): UseLobbyReturn {
@@ -199,6 +210,55 @@ export function useLobby(): UseLobbyReturn {
     return lobbyManager.canAttackPlayer(attackerId, defenderId);
   }, []);
 
+  // Issue #1257 — host moderation (kick, ban, pause). The transport
+  // (`p2p-game-connection.ts`) is the envelope; the lobby manager owns the
+  // policy + ban list + pause clock. The UI calls these from the host page.
+  const [isPausedState, setIsPausedState] = useState(lobbyManager.isPaused());
+
+  const kickPeer = useCallback((peerId: string, reason?: string) => {
+    const result = lobbyManager.kickPeer(peerId, reason);
+    if (result.removed || result.banned) {
+      setLobby(lobbyManager.getCurrentLobby());
+    }
+    return result;
+  }, []);
+
+  const banPeer = useCallback(
+    (peerId: string, scope: LobbyBanScope = "session", reason?: string) => {
+      const result = lobbyManager.banPeer(peerId, scope, reason);
+      return result.added;
+    },
+    [],
+  );
+
+  const isPeerBanned = useCallback((peerId: string) => {
+    return lobbyManager.isPeerBanned(peerId);
+  }, []);
+
+  const unbanPeer = useCallback((peerId: string) => {
+    return lobbyManager.unbanPeer(peerId);
+  }, []);
+
+  const getBanList = useCallback(() => {
+    return lobbyManager.getBanList();
+  }, []);
+
+  const pauseGame = useCallback(() => {
+    const result = lobbyManager.pauseGame();
+    setIsPausedState(lobbyManager.isPaused());
+    return result;
+  }, []);
+
+  const resumeGame = useCallback(() => {
+    const result = lobbyManager.resumeGame();
+    setIsPausedState(lobbyManager.isPaused());
+    return result;
+  }, []);
+
+  const getPauseElapsedMs = useCallback(() => {
+    return lobbyManager.getPauseElapsedMs();
+  }, []);
+
   return {
     lobby,
     isHost,
@@ -226,5 +286,15 @@ export function useLobby(): UseLobbyReturn {
     updateTeamSettings,
     updateTeamName,
     canAttackPlayer,
+    // Issue #1257 — host moderation
+    kickPeer,
+    banPeer,
+    isPeerBanned,
+    unbanPeer,
+    getBanList,
+    isPaused: isPausedState,
+    pauseGame,
+    resumeGame,
+    getPauseElapsedMs,
   };
 }

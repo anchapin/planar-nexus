@@ -54,6 +54,12 @@ export interface P2PGameConnectionEvents {
   onPlayerJoined: (playerId: string, playerName: string) => void;
   onPlayerLeft: (playerId: string) => void;
   /**
+   * Emitted when the host (or an authoritative peer) sends a `lobby-control`
+   * message — kick, ban, pause, or resume. Issue #1257. Optional so existing
+   * single-player/AI call sites do not have to wire a no-op handler.
+   */
+  onLobbyControl?: (payload: LobbyControlPayload) => void;
+  /**
    * Emitted when the data channel / peer connection recovers AFTER a prior
    * disconnect (e.g. following an ICE-restart reconnect, issue #1086). This
    * is the canonical signal to reconcile authoritative game state: the host
@@ -94,6 +100,11 @@ export type { SignalingRole };
  * authoritative full `game-state-sync` snapshot from the host on demand. The
  * host responds via the {@link P2PGameConnectionOptions.onStateSyncRequest}
  * callback.
+ *
+ * `lobby-control` is the host-moderator channel (issue #1257): kick, ban,
+ * pause, and resume. Only the authoritative host emits these — receiving
+ * peers apply them and (for kick) close their data channel back to the lobby
+ * screen. See {@link LobbyControlPayload}.
  */
 export type GameMessageType =
   | "game-state-sync"
@@ -104,7 +115,8 @@ export type GameMessageType =
   | "ping"
   | "pong"
   | "error"
-  | "request-state-sync";
+  | "request-state-sync"
+  | "lobby-control";
 
 /**
  * Base game message.
@@ -144,6 +156,7 @@ const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "pong",
   "error",
   "request-state-sync",
+  "lobby-control",
 ]);
 
 /**
@@ -199,6 +212,40 @@ export interface PeerActionValidationResult {
 export interface PeerGameActionPayload {
   action: string;
   data: unknown;
+}
+
+/**
+ * Wire payload of a `lobby-control` message — the host's moderation channel
+ * (issue #1257). The discriminator `kind` selects the operation:
+ *
+ *   - `kick` — close the target peer's data channel and return them to the
+ *     lobby screen; `reason` is surfaced verbatim so the kicked player knows
+ *     why.
+ *   - `ban` — host-only side-effect: the target peerId is added to a
+ *     session-scoped ban list and refused future joins for the configured
+ *     window (see {@link LOBBY_BAN_DURATION_MS}). `scope` is reserved for
+ *     future persistent-bans (currently only `'session'` is honored).
+ *   - `pause` — freeze all peer priority timers; `pausedAt` is the host's
+ *     authoritative wall-clock so peers can compute the frozen elapsed time.
+ *   - `resume` — clear the freeze; `pausedDurationMs` lets peers adjust
+ *     their local timer clock for the elapsed freeze (pause-clock math).
+ *
+ * Sent only by the authoritative host; non-hosts receiving one should treat
+ * it as a protocol violation (the transport does not gate by role — the host
+ * is trusted as the source of truth and integrity is a peer concern).
+ */
+export interface LobbyControlPayload {
+  kind: "kick" | "ban" | "pause" | "resume";
+  /** Target peerId (kicked/ban) or omitted (broadcast pause/resume). */
+  target?: string;
+  /** Kick/ban reason — surfaced to the kicked peer. */
+  reason?: string;
+  /** Ban scope (issue #1257). Currently only `'session'` is honored. */
+  scope?: "session" | "persistent";
+  /** Host wall-clock when pause began (ms since epoch). */
+  pausedAt?: number;
+  /** How long the previous pause lasted (resume only). */
+  pausedDurationMs?: number;
 }
 
 /**
@@ -384,6 +431,7 @@ export class P2PGameConnection {
       onError: () => {},
       onPlayerJoined: () => {},
       onPlayerLeft: () => {},
+      onLobbyControl: () => {},
     };
 
     this.events = options.events
@@ -675,6 +723,22 @@ export class P2PGameConnection {
   }
 
   /**
+   * Send a host-moderator lobby-control message (issue #1257). Used by the
+   * host to kick/ban peers and pause/resume the game. Non-hosts do not need
+   * to call this — the transport does not gate by role, but the receiving
+   * peer trusts the sender as the authoritative host.
+   */
+  sendLobbyControl(payload: LobbyControlPayload): boolean {
+    return this.send({
+      type: "lobby-control",
+      senderId: this.playerId,
+      timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
+      data: payload,
+    });
+  }
+
+  /**
    * Send ping
    */
   private sendPing(): void {
@@ -854,6 +918,13 @@ export class P2PGameConnection {
           // reconnect, #1086) wants a fresh authoritative snapshot. Only the
           // host can answer; non-hosts ignore the request.
           this.handleRequestStateSync(message);
+          break;
+        case "lobby-control":
+          // Host-moderator channel (issue #1257). Forward to the optional
+          // event handler; malformed payloads are dropped silently (the
+          // application layer — `lobby-manager.ts` — owns the policy and
+          // ban list, the transport just delivers the envelope).
+          this.handleLobbyControl(message);
           break;
       }
 
@@ -1069,6 +1140,49 @@ export class P2PGameConnection {
     if (state) {
       this.sendGameState(state, true);
     }
+  }
+
+  /**
+   * Handle a `lobby-control` message from the host (issue #1257). Validates
+   * the wire shape defensively (a hostile peer could forge anything) and
+   * forwards a typed payload to the optional {@link onLobbyControl} handler.
+   * Malformed payloads are dropped silently — the application layer
+   * (`lobby-manager.ts`) owns the policy and ban-list state.
+   */
+  private handleLobbyControl(message: GameMessage): void {
+    const payload = message.data;
+    if (typeof payload !== "object" || payload === null) {
+      console.warn(
+        "[P2PGameConnection] Rejected malformed lobby-control payload",
+      );
+      return;
+    }
+    const raw = payload as Record<string, unknown>;
+    const kind = raw.kind;
+    if (kind !== "kick" && kind !== "ban" && kind !== "pause" && kind !== "resume") {
+      console.warn(
+        "[P2PGameConnection] Rejected lobby-control with invalid kind",
+        redactSensitive({ kind }),
+      );
+      return;
+    }
+    const validated: LobbyControlPayload = { kind };
+    if (typeof raw.target === "string") validated.target = raw.target;
+    if (typeof raw.reason === "string") validated.reason = raw.reason;
+    if (raw.scope === "session" || raw.scope === "persistent") {
+      validated.scope = raw.scope;
+    }
+    if (typeof raw.pausedAt === "number" && Number.isFinite(raw.pausedAt)) {
+      validated.pausedAt = raw.pausedAt;
+    }
+    if (
+      typeof raw.pausedDurationMs === "number" &&
+      Number.isFinite(raw.pausedDurationMs) &&
+      raw.pausedDurationMs >= 0
+    ) {
+      validated.pausedDurationMs = raw.pausedDurationMs;
+    }
+    this.events.onLobbyControl?.(validated);
   }
 
   /**

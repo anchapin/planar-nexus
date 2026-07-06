@@ -15,6 +15,7 @@ import {
   type GameMessageType,
   type ChatMessage,
   type PeerActionValidator,
+  type LobbyControlPayload,
 } from "../p2p-game-connection";
 import { ValidationService } from "../game-state/validation-service";
 
@@ -1513,6 +1514,337 @@ describe("P2PGameConnection reconnect reconciliation (issue #1086)", () => {
       expect(sent.senderId).toBe("peer");
       expect(typeof sent.seq).toBe("number");
       sendSpy.mockRestore();
+    });
+  });
+});
+
+/**
+ * Issue #1257 — host moderation wire-format tests.
+ *
+ * The lobby manager owns the policy + ban list. The transport only ships a
+ * typed `lobby-control` envelope (kick / ban / pause / resume) and validates
+ * the wire shape defensively — the receiving peer trusts the senderId as
+ * the authoritative host, but the payload itself can still be malformed and
+ * must be rejected without crashing the connection.
+ */
+describe("P2PGameConnection lobby-control message (issue #1257)", () => {
+  const handleMessage = (conn: P2PGameConnection, raw: string): void => {
+    (
+      conn as unknown as { handleMessage: (d: string) => void }
+    ).handleMessage(raw);
+  };
+
+  const msg = (
+    senderId: string,
+    seq: number,
+    data: unknown,
+  ): GameMessage => ({
+    type: "lobby-control",
+    senderId,
+    timestamp: Date.now(),
+    seq,
+    data,
+  });
+
+  const makeConn = (
+    events: Partial<P2PGameConnectionEvents> = {},
+  ): P2PGameConnection =>
+    createP2PGameConnection({
+      playerId: "local",
+      playerName: "Local",
+      role: "joiner",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+        onLobbyControl: () => {},
+        ...events,
+      },
+    });
+
+  describe("wire format", () => {
+    it("lobby-control is a valid GameMessage type accepted by isGameMessage", () => {
+      expect(
+        isGameMessage({
+          type: "lobby-control",
+          senderId: "host",
+          timestamp: Date.now(),
+          seq: 0,
+          data: { kind: "kick", target: "peer-1", reason: "abuse" },
+        }),
+      ).toBe(true);
+    });
+
+    it("sendLobbyControl() sends a typed lobby-control message with a stamped seq", () => {
+      const conn = makeConn();
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+      const ok = conn.sendLobbyControl({ kind: "pause", pausedAt: 12345 });
+      expect(ok).toBe(true);
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect(sent.type).toBe("lobby-control");
+      expect(sent.senderId).toBe("local");
+      expect(sent.seq).toBe(0);
+      expect(sent.data).toEqual({ kind: "pause", pausedAt: 12345 });
+      sendSpy.mockRestore();
+    });
+
+    it("sendLobbyControl returns false (and does not throw) when the data channel is not open", () => {
+      const conn = makeConn();
+      // No setupDataChannelEvents() — dataChannel stays null → send() warns and returns false.
+      const ok = conn.sendLobbyControl({ kind: "kick", target: "peer-x" });
+      expect(ok).toBe(false);
+    });
+  });
+
+  describe("dispatch and payload validation", () => {
+    it("dispatches a well-formed kick payload to onLobbyControl", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, {
+            kind: "kick",
+            target: "peer-1",
+            reason: "abusive chat",
+          }),
+        ),
+      );
+      expect(onLobbyControl).toHaveBeenCalledTimes(1);
+      expect(onLobbyControl).toHaveBeenCalledWith({
+        kind: "kick",
+        target: "peer-1",
+        reason: "abusive chat",
+      });
+    });
+
+    it("dispatches a pause payload with pausedAt", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, { kind: "pause", pausedAt: 1_700_000_000_000 }),
+        ),
+      );
+      expect(onLobbyControl).toHaveBeenCalledWith({
+        kind: "pause",
+        pausedAt: 1_700_000_000_000,
+      });
+    });
+
+    it("dispatches a resume payload with pausedDurationMs", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, { kind: "resume", pausedDurationMs: 12_500 }),
+        ),
+      );
+      expect(onLobbyControl).toHaveBeenCalledWith({
+        kind: "resume",
+        pausedDurationMs: 12_500,
+      });
+    });
+
+    it("dispatches a ban payload with scope and reason", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, {
+            kind: "ban",
+            target: "peer-2",
+            scope: "session",
+            reason: "stalling",
+          }),
+        ),
+      );
+      expect(onLobbyControl).toHaveBeenCalledWith({
+        kind: "ban",
+        target: "peer-2",
+        scope: "session",
+        reason: "stalling",
+      });
+    });
+
+    it("rejects a payload with an unknown kind (no onLobbyControl call)", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, { kind: "shuffle-decks" })),
+      );
+      expect(onLobbyControl).not.toHaveBeenCalled();
+    });
+
+    it("rejects a null payload", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(conn, JSON.stringify(msg("host", 0, null)));
+      expect(onLobbyControl).not.toHaveBeenCalled();
+    });
+
+    it("rejects a string payload", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(conn, JSON.stringify(msg("host", 0, "kick")));
+      expect(onLobbyControl).not.toHaveBeenCalled();
+    });
+
+    it("strips fields with the wrong type (does not pass them through)", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, {
+            kind: "kick",
+            // target should be a string — number is dropped.
+            target: 123,
+            // pausedDurationMs should be a non-negative number — negative is dropped.
+            pausedDurationMs: -5,
+            // scope must be 'session' or 'persistent' — unknown is dropped.
+            scope: "lifetime",
+          }),
+        ),
+      );
+      expect(onLobbyControl).toHaveBeenCalledTimes(1);
+      expect(onLobbyControl).toHaveBeenCalledWith({ kind: "kick" });
+    });
+
+    it("does not throw on a malformed JSON payload", () => {
+      const conn = makeConn();
+      expect(() => handleMessage(conn, "{ not json")).not.toThrow();
+    });
+
+    it("is not invoked when the receiver has no onLobbyControl wired", () => {
+      // Constructor leaves the default no-op onLobbyControl when the caller
+      // does not provide one — we verify the no-op default does not throw.
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "joiner",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          // No onLobbyControl provided → default no-op.
+        },
+      });
+      expect(() =>
+        handleMessage(
+          conn,
+          JSON.stringify(msg("host", 0, { kind: "kick", target: "p1" })),
+        ),
+      ).not.toThrow();
+    });
+
+    it("emits the lobby-control message to onMessage as well (audit trail)", () => {
+      const onMessage = jest.fn();
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onMessage, onLobbyControl });
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, { kind: "pause", pausedAt: 42 })),
+      );
+      // Both fires: onLobbyControl for the typed handler, onMessage for
+      // the generic envelope (consistent with every other message type).
+      expect(onLobbyControl).toHaveBeenCalledTimes(1);
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      const envelope = onMessage.mock.calls[0][0] as GameMessage;
+      expect(envelope.type).toBe("lobby-control");
+      expect(envelope.senderId).toBe("host");
+    });
+  });
+
+  describe("interaction with the message pipeline", () => {
+    it("the lobby-control message participates in anti-replay (issue #1091)", () => {
+      const onLobbyControl = jest.fn();
+      const conn = makeConn({ onLobbyControl });
+      // First delivery — accepted.
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, { kind: "pause", pausedAt: 1 })),
+      );
+      expect(onLobbyControl).toHaveBeenCalledTimes(1);
+      // Duplicate (same seq) — dropped as replay.
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, { kind: "pause", pausedAt: 2 })),
+      );
+      expect(onLobbyControl).toHaveBeenCalledTimes(1);
+      // New seq — accepted.
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 1, { kind: "resume", pausedDurationMs: 0 })),
+      );
+      expect(onLobbyControl).toHaveBeenCalledTimes(2);
+    });
+
+    it("rate-limiter applies to lobby-control messages (issue #1111)", () => {
+      // A flooding peer cannot drive the parse/validate path via
+      // lobby-control any more than via other message types.
+      const onLobbyControl = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "joiner",
+        rateLimit: { maxMessages: 2, windowMs: 1000 },
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          onLobbyControl,
+        },
+      });
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, { kind: "pause", pausedAt: 1 })),
+      );
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 1, { kind: "resume", pausedDurationMs: 0 })),
+      );
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 2, { kind: "pause", pausedAt: 3 })),
+      );
+      // 3rd message exceeds the configured budget of 2 events/sec.
+      expect(onLobbyControl).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("LobbyControlPayload typing", () => {
+    it("accepts all four kinds", () => {
+      const kinds: LobbyControlPayload["kind"][] = [
+        "kick",
+        "ban",
+        "pause",
+        "resume",
+      ];
+      kinds.forEach((kind) => {
+        const payload: LobbyControlPayload = { kind };
+        expect(payload.kind).toBe(kind);
+      });
     });
   });
 });
