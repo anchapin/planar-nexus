@@ -296,12 +296,14 @@ describe("analyzeMetaAndSuggest — quantity rebalancing", () => {
       (s, c) => s + c.quantity,
       0,
     );
-    // adds stayed at 2; removals (originally 5) were trimmed to <= adds.
+    // Issue #1240: adds and removes must net to an equal count for a valid
+    // 1-for-1 swap. adds stayed at 2; removals (originally 5) were trimmed
+    // down to match.
     expect(addCount).toBe(2);
-    expect(removeCount).toBeLessThanOrEqual(addCount);
+    expect(removeCount).toBe(2);
   });
 
-  it("leaves removals untouched when adds already meet or exceed them", async () => {
+  it("trims additions down to match removals when adds exceed removes (issue #1240)", async () => {
     mockedAnalyzeMeta.mockReturnValue(
       baseResult({
         recommendations: [
@@ -309,17 +311,89 @@ describe("analyzeMetaAndSuggest — quantity rebalancing", () => {
             title: "More Adds",
             description:
               "Your deck is naturally strong against Burn. Enhance this advantage.",
-            cardsToAdd: [{ name: "Bolt", quantity: 4 }],
+            cardsToAdd: [
+              { name: "Bolt", quantity: 3 },
+              { name: "Skullcrack", quantity: 2 },
+            ],
             cardsToRemove: [{ name: "Bad", quantity: 1 }],
             matchup: { against: "Burn", strategy: "Race" },
           },
         ],
       }),
     );
+
     const out = await analyzeMetaAndSuggest({ decklist: DECKLIST, format: "modern" });
+    const addCount = out.cardSuggestions.cardsToAdd.reduce(
+      (s, c) => s + c.quantity,
+      0,
+    );
+    const removeCount = out.cardSuggestions.cardsToRemove.reduce(
+      (s, c) => s + c.quantity,
+      0,
+    );
+    // The pre-#1240 code only handled removeCount > addCount and let this
+    // case leak through, growing the deck above its legal size. Adds (5)
+    // must now be trimmed down to match the single removal.
+    expect(removeCount).toBe(1);
+    expect(addCount).toBe(1);
     expect(out.cardSuggestions.cardsToRemove).toEqual([
       { name: "Bad", quantity: 1, reason: expect.any(String) },
     ]);
+  });
+
+  it("keeps both lists in balance for representative constructed decklists", async () => {
+    // 60-card Modern shell where the heuristic overshoots on the add side —
+    // a classic case the pre-#1240 bug would have silently shipped as a
+    // 62-card deck suggestion.
+    mockedAnalyzeMeta.mockReturnValue(
+      baseResult({
+        recommendations: [
+          {
+            title: "Pressure Lifegain",
+            description:
+              "Your deck struggles against Tron. Address these weaknesses.",
+            cardsToAdd: [
+              { name: "Skullcrack", quantity: 3 },
+              { name: "Searing Blaze", quantity: 2 },
+            ],
+            cardsToRemove: [{ name: "Lava Spike", quantity: 1 }],
+            matchup: { against: "Tron", strategy: "Race them down" },
+          },
+        ],
+      }),
+    );
+
+    const out = await analyzeMetaAndSuggest({ decklist: DECKLIST, format: "modern" });
+    const addCount = out.cardSuggestions.cardsToAdd.reduce(
+      (s, c) => s + c.quantity,
+      0,
+    );
+    const removeCount = out.cardSuggestions.cardsToRemove.reduce(
+      (s, c) => s + c.quantity,
+      0,
+    );
+    expect(addCount).toBe(removeCount);
+    expect(addCount).toBeGreaterThan(0);
+  });
+
+  it("produces no add/remove when both lists start empty", async () => {
+    mockedAnalyzeMeta.mockReturnValue(
+      baseResult({
+        recommendations: [
+          {
+            title: "No swap",
+            description:
+              "Your deck is naturally strong against Burn. Enhance this advantage.",
+            cardsToAdd: [],
+            cardsToRemove: [],
+            matchup: { against: "Burn", strategy: "Race" },
+          },
+        ],
+      }),
+    );
+    const out = await analyzeMetaAndSuggest({ decklist: DECKLIST, format: "modern" });
+    expect(out.cardSuggestions.cardsToAdd).toEqual([]);
+    expect(out.cardSuggestions.cardsToRemove).toEqual([]);
   });
 });
 

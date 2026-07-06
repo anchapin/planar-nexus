@@ -216,13 +216,22 @@ async function buildHeuristicOutput(
     }
   }
 
-  // Ensure equal counts in card suggestions
-  const addCount = validatedOutput.cardSuggestions.cardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
-  const removeCount = validatedOutput.cardSuggestions.cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
+  // Ensure equal counts in card suggestions. Constructed formats require a
+  // 1-for-1 swap: any imbalance between additions and removals would change
+  // the deck size. Issue #1240 made this rebalance symmetric — the previous
+  // implementation only trimmed removals when removeCount > addCount and let
+  // the inverse case leak through (e.g. a 60-card deck → 62 cards).
+  const sumQuantity = (cards: CardSuggestion[]): number =>
+    cards.reduce((sum, c) => sum + c.quantity, 0);
+
+  let addCount = sumQuantity(validatedOutput.cardSuggestions.cardsToAdd);
+  let removeCount = sumQuantity(validatedOutput.cardSuggestions.cardsToRemove);
 
   if (addCount !== removeCount) {
-    // Adjust removals to match additions
-    while (validatedOutput.cardSuggestions.cardsToRemove.reduce((sum, c) => sum + c.quantity, 0) > addCount) {
+    // Trim removals down to match additions when removals exceed adds.
+    while (
+      sumQuantity(validatedOutput.cardSuggestions.cardsToRemove) > addCount
+    ) {
       const last = validatedOutput.cardSuggestions.cardsToRemove.pop();
       if (last) {
         last.quantity = Math.max(0, last.quantity - 1);
@@ -230,6 +239,40 @@ async function buildHeuristicOutput(
           validatedOutput.cardSuggestions.cardsToRemove.push(last);
         }
       }
+    }
+    removeCount = sumQuantity(validatedOutput.cardSuggestions.cardsToRemove);
+
+    // Symmetric: trim additions down to match removals when adds exceed
+    // removals. Without this branch the heuristic could suggest a plan that
+    // grows the deck above its legal size, which is not actionable in any
+    // constructed format.
+    while (
+      sumQuantity(validatedOutput.cardSuggestions.cardsToAdd) > removeCount
+    ) {
+      const last = validatedOutput.cardSuggestions.cardsToAdd.pop();
+      if (last) {
+        last.quantity = Math.max(0, last.quantity - 1);
+        if (last.quantity > 0) {
+          validatedOutput.cardSuggestions.cardsToAdd.push(last);
+        }
+      }
+    }
+    addCount = sumQuantity(validatedOutput.cardSuggestions.cardsToAdd);
+  }
+
+  // Final invariant: addCount must equal removeCount whenever at least one
+  // side is non-empty. Both zero is a legitimate "no actionable swap" result.
+  if (
+    addCount !== removeCount &&
+    (addCount > 0 || removeCount > 0)
+  ) {
+    // Defensive: if quantities somehow became 0 on one side after trimming,
+    // collapse to the non-empty side so the returned plan is still a valid
+    // 1-for-1 swap.
+    if (addCount === 0 && removeCount > 0) {
+      validatedOutput.cardSuggestions.cardsToAdd = [];
+    } else if (removeCount === 0 && addCount > 0) {
+      validatedOutput.cardSuggestions.cardsToRemove = [];
     }
   }
 
