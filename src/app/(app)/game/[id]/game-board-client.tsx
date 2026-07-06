@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, RotateCcw, Play, SkipForward } from "lucide-react";
+import { ArrowLeft, RotateCcw, Play, SkipForward, Hourglass } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AiTelegraphDisplay,
@@ -25,6 +25,7 @@ import {
   shouldTelegraph,
 } from "@/ai/ai-telegraph";
 import type { DifficultyLevel } from "@/ai/ai-difficulty";
+import { subscribeLongTask } from "@/lib/perf/long-task-observer";
 
 interface GameBoardClientProps {
   gameId: string;
@@ -72,6 +73,18 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
     [],
   );
   const telegraphSeq = useRef(0);
+
+  // Issue #1245: surface AI stalls. While the AI is "thinking" we listen to
+  // the Long-Task API; if > 3 main-thread blocks >50ms land inside a 1s
+  // sliding window we flip `slowThinking` so the game bar can show
+  // "thinking slowly…" alongside the spinner. The subscription is mounted
+  // only while the AI is thinking (see effect below) and is torn down on
+  // unmount or when `aiThinking` flips back to false.
+  const [slowThinking, setSlowThinking] = useState(false);
+  const longTaskTimestampsRef = useRef<number[]>([]);
+  const SLOW_TASK_THRESHOLD = 3;
+  const SLOW_TASK_WINDOW_MS = 1000;
+  const unsubscribedRef = useRef<(() => void) | null>(null);
 
   const playerName = "Player 1";
   const aiPlayerName = "AI Opponent";
@@ -164,6 +177,48 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
 
     loadGame();
   }, [gameId, toast, playerName, aiPlayerName]);
+
+  // Issue #1245: mount the Long-Task observer only while the AI is
+  // thinking, and tear it down when thinking ends or the component
+  // unmounts. We count long-task entries in a 1s sliding window; if more
+  // than `SLOW_TASK_THRESHOLD` of them arrive, flip `slowThinking` so the
+  // UI can hint that the worker is working hard, not stuck.
+  useEffect(() => {
+    if (!aiThinking) {
+      // Reset state and unsubscribe if we had a subscription.
+      setSlowThinking(false);
+      longTaskTimestampsRef.current = [];
+      if (unsubscribedRef.current) {
+        unsubscribedRef.current();
+        unsubscribedRef.current = null;
+      }
+      return;
+    }
+
+    const unsubscribe = subscribeLongTask((entry) => {
+      const now =
+        typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now();
+      const timestamps = longTaskTimestampsRef.current;
+      timestamps.push(now);
+      // Drop entries that fell out of the trailing 1s window.
+      const cutoff = now - SLOW_TASK_WINDOW_MS;
+      while (timestamps.length > 0 && timestamps[0]! < cutoff) {
+        timestamps.shift();
+      }
+      if (timestamps.length >= SLOW_TASK_THRESHOLD) {
+        setSlowThinking(true);
+      }
+    });
+    unsubscribedRef.current = unsubscribe;
+    return () => {
+      unsubscribe();
+      unsubscribedRef.current = null;
+      setSlowThinking(false);
+      longTaskTimestampsRef.current = [];
+    };
+  }, [aiThinking]);
 
   // Handle card click
   const handleCardClick = useCallback(
@@ -419,8 +474,26 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
           </div>
 
           {aiThinking && (
-            <span className="text-amber-600 flex items-center gap-2">
-              <span className="animate-pulse">AI is thinking...</span>
+            <span
+              className="text-amber-600 flex items-center gap-2"
+              data-testid="ai-thinking-status"
+              data-slow={slowThinking ? "true" : undefined}
+              aria-live="polite"
+            >
+              <span className="animate-pulse">
+                {slowThinking ? "AI is thinking slowly..." : "AI is thinking..."}
+              </span>
+              {slowThinking && (
+                <Badge
+                  variant="outline"
+                  className="text-xs px-1.5 py-0"
+                  data-testid="ai-thinking-slow-badge"
+                  aria-label="Main thread blocked for more than 50ms at least three times in the last second"
+                >
+                  <Hourglass className="h-3 w-3 mr-1" aria-hidden="true" />
+                  thinking slowly
+                </Badge>
+              )}
             </span>
           )}
         </div>
