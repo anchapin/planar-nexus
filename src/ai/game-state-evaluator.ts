@@ -28,6 +28,11 @@ import {
   getSequencingRecommendation,
   computeCurveConformance,
 } from "./mana-sequencing";
+// Issue #1234: opposing-commander threat tracking. The module imports
+// `DifficultyTier` as a *type* from this file, so the import is
+// cycle-free at runtime — TypeScript erases the type-only import and the
+// remaining value import resolves cleanly.
+import { opposingCommanderThreat as opposingCommanderThreatFn } from "./decision-making/commander-math";
 
 // Re-export for backward compatibility
 export type {
@@ -48,13 +53,34 @@ export type DeckArchetype =
   | "unknown";
 
 /**
- * Represents a threat assessment for a permanent
+ * Represents a threat assessment for a permanent.
+ *
+ * `opposingCommander` is populated when this assessment is about the
+ * opponent's commander (issue #1234). It carries the threat score from
+ * {@link opposingCommanderThreat} so downstream consumers (stack
+ * interaction AI, mana-hold advisor) can prioritise interaction against
+ * Voltron-style ETBs without re-deriving the score. `shouldHoldInteraction`
+ * surfaces the decision the AI has already made about whether to hold
+ * mana/interaction up to answer that ETB — true at Hard/Expert for known
+ * Voltron commanders, false at Easy (matches the difficulty-floor acceptance
+ * criterion).
  */
 export interface ThreatAssessment {
   permanentId: string;
   threatLevel: number; // 0-1 scale
   reason: string;
   urgency: "immediate" | "soon" | "eventual" | "low";
+  /**
+   * Set when this threat is the opposing commander's ETB / presence
+   * (issue #1234). Value is the 0..1 score from `opposingCommanderThreat`.
+   */
+  opposingCommander?: number;
+  /**
+   * Whether the AI should hold mana/interaction up to answer the opposing
+   * commander ETB this turn. Only meaningful when `opposingCommander` is
+   * set. `true` at Hard/Expert against Voltron; `false` at Easy.
+   */
+  shouldHoldInteraction?: boolean;
 }
 
 /**
@@ -485,6 +511,7 @@ export class GameStateEvaluator {
   private evaluatingPlayerId: string;
   private gameState: GameState;
   private archetype: DeckArchetype;
+  private difficulty: DifficultyTier;
 
   constructor(
     gameState: GameState,
@@ -495,6 +522,7 @@ export class GameStateEvaluator {
     this.gameState = gameState;
     this.evaluatingPlayerId = evaluatingPlayerId;
     this.archetype = archetype ?? "unknown";
+    this.difficulty = difficulty;
 
     const baseWeights = DefaultWeights[difficulty];
     if (
@@ -1290,6 +1318,13 @@ export class GameStateEvaluator {
   ): ThreatAssessment[] {
     const threats: ThreatAssessment[] = [];
 
+    // Issue #1234: detect the opposing commander and surface it as a
+    // dedicated threat so the stack-interaction AI can decide whether to
+    // hold mana for the ETB. We do this *before* the battlefield walk so
+    // the commander threat is always considered, even when the commander
+    // is currently in the command zone (no battlefield permanent to scan).
+    this.collectOpposingCommanderThreats(threats, player, opponents);
+
     for (const opponent of opponents) {
       for (const permanent of opponent.battlefield) {
         let threatLevel = 0;
@@ -1343,6 +1378,51 @@ export class GameStateEvaluator {
     });
 
     return threats.slice(0, 10); // Return top 10 threats
+  }
+
+/**
+   * Issue #1234: for each opponent whose commander is in the command zone
+   * or on the battlefield, emit a {@link ThreatAssessment} carrying the
+   * Voltron-aware `opposingCommander` score so downstream consumers know
+   * to hold interaction for the ETB.
+   *
+   * The commander-math module imports `DifficultyTier` as a *type* from this
+   * file, so a top-level value import is cycle-free at runtime.
+   */
+  private collectOpposingCommanderThreats(
+    threats: ThreatAssessment[],
+    _player: PlayerState,
+    opponents: PlayerState[],
+  ): void {
+    if (!this.gameState.commandZone) return;
+    for (const opponent of opponents) {
+      const zone = this.gameState.commandZone[opponent.id];
+      if (!zone) continue;
+      const cmd = zone.commander ?? zone.partner;
+      if (!cmd) continue;
+      const opponentCast = (opponent as { commanderCastCount?: number })
+        .commanderCastCount;
+      const threat = opposingCommanderThreatFn(
+        { name: cmd.name, id: cmd.id, power: cmd.power, toughness: cmd.toughness },
+        this.difficulty,
+        {
+          opponentHasCast:
+            typeof opponentCast === "number" ? opponentCast > 0 : undefined,
+          aiLife: opponent.life === undefined ? undefined : opponent.life,
+        },
+      );
+      if (threat <= 0) continue;
+      const shouldHoldInteraction =
+        threat >= 0.7 && this.difficulty !== "easy";
+      threats.push({
+        permanentId: cmd.id,
+        threatLevel: threat,
+        reason: `Opposing commander (${cmd.name}) — Voltron signature`,
+        urgency: threat >= 0.7 ? "immediate" : "soon",
+        opposingCommander: threat,
+        shouldHoldInteraction,
+      });
+    }
   }
 
   /**
