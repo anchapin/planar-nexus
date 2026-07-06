@@ -41,6 +41,11 @@ import {
   withinStructuralLimits,
 } from "./p2p-json-validation";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
+import {
+  PeerSendQueue,
+  classifyMessagePriority,
+  type PeerQueueStats,
+} from "./peer-send-queue";
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -208,6 +213,21 @@ export interface P2PEvents {
    * the host produces a restart offer, before recovery is known). Optional.
    */
   onReconnect?: () => void;
+  /**
+   * Emitted when the per-peer send queue (#1251) is stalled: the channel's
+   * bufferedAmount crossed the high watermark and outbound messages are
+   * queueing. Pairs with {@link P2PEvents.onPeerQueueResumed} when the channel
+   * drains below the low watermark again. Optional — diagnostics panel hooks
+   * this to render a "peer X stalled" banner. Fires exactly once per
+   * transition.
+   */
+  onPeerQueueStalled?: (stats: PeerQueueStats) => void;
+  /**
+   * Emitted when a previously-stalled per-peer send queue (#1251) recovers:
+   * bufferedAmount fell back below the low watermark and queued messages are
+   * draining again. Fires exactly once per transition.
+   */
+  onPeerQueueResumed?: (stats: PeerQueueStats) => void;
 }
 
 /**
@@ -250,6 +270,30 @@ export interface P2PConnectionOptions {
    * Issue #1021.
    */
   externalPing?: boolean;
+  /**
+   * Per-peer send queue high watermark in bytes (issue #1251). When the
+   * channel's `bufferedAmount` crosses this, the queue is marked stalled
+   * and `onPeerQueueStalled` fires. Defaults to 1 MiB.
+   */
+  sendQueueHighWatermarkBytes?: number;
+  /**
+   * Per-peer send queue low watermark in bytes (issue #1251). When the
+   * channel's `bufferedAmount` falls back below this, the queue resumes
+   * draining and `onPeerQueueResumed` fires. Defaults to 256 KiB. Must be
+   * strictly less than the high watermark.
+   */
+  sendQueueLowWatermarkBytes?: number;
+  /**
+   * Per-peer send queue hard byte cap (issue #1251). Defaults to 8 MiB.
+   * Must be >= the high watermark. New critical/normal messages evict
+   * oldest droppable messages until they fit; if they still don't fit
+   * the message is rejected.
+   */
+  sendQueueMaxBytes?: number;
+  /**
+   * Per-peer send queue hard message cap (issue #1251). Defaults to 1000.
+   */
+  sendQueueMaxMessages?: number;
 }
 
 /**
@@ -322,6 +366,15 @@ export class WebRTCConnection {
    * through the parse path. Issue #1111.
    */
   private rateLimiter: P2PRateLimiter;
+  /**
+   * Per-peer priority send queue with backpressure awareness. Issue #1251.
+   * Wraps the synchronous `dataChannel.send(...)` call site so a stalled
+   * peer's outgoing SCTP buffer no longer head-of-line-blocks sends to the
+   * rest of the mesh. Critical and normal messages queue; chat / emotes are
+   * dropped under sustained pressure with a per-type counter exposed via
+   * {@link WebRTCConnection.getQueueStats}.
+   */
+  private sendQueue: PeerSendQueue;
 
   constructor(options: P2PConnectionOptions) {
     this.localPlayerId = options.playerId;
@@ -338,6 +391,26 @@ export class WebRTCConnection {
     // Per-connection rate limiter guards the parse path against flooding
     // peers. Issue #1111.
     this.rateLimiter = new P2PRateLimiter(options.rateLimit);
+
+    // Per-peer priority send queue (#1251). Listeners forward stalled /
+    // resumed transitions to the diagnostics surface so a host can see a
+    // banner when one peer's outgoing buffer is full.
+    this.sendQueue = new PeerSendQueue(
+      {
+        highWatermarkBytes: options.sendQueueHighWatermarkBytes,
+        lowWatermarkBytes: options.sendQueueLowWatermarkBytes,
+        maxQueueBytes: options.sendQueueMaxBytes,
+        maxQueueMessages: options.sendQueueMaxMessages,
+      },
+      {
+        onStalled: (stats) => {
+          this.events.onPeerQueueStalled?.(stats);
+        },
+        onResumed: (stats) => {
+          this.events.onPeerQueueResumed?.(stats);
+        },
+      },
+    );
 
     // Initialize ICE configuration
     if (options.iceConfig) {
@@ -671,6 +744,14 @@ export class WebRTCConnection {
    */
   private setupDataChannelEvents(): void {
     if (!this.dataChannel) return;
+
+    // Forward the channel's `bufferedamountlow` event to the send queue
+    // (#1251). The threshold is owned by the channel (set at channel
+    // creation); we treat any low notification as a signal to resume
+    // draining. onbufferedamountlow is `null` until the channel is open.
+    this.dataChannel.onbufferedamountlow = () => {
+      this.notifyChannelBufferLow();
+    };
 
     this.dataChannel.onopen = () => {
       this.updateConnectionState("connected");
@@ -1260,15 +1341,109 @@ export class WebRTCConnection {
   }
 
   /**
-   * Send a message through the data channel
+   * Send a message through the data channel.
+   *
+   * Issue #1251: wraps the synchronous `dataChannel.send(...)` call in a
+   * priority send queue with backpressure awareness. When the channel's
+   * `bufferedAmount` is below the high watermark the message is sent
+   * immediately; otherwise it is queued in priority order. Droppable
+   * messages (chat / emotes) are dropped under sustained pressure with a
+   * per-type counter exposed via {@link WebRTCConnection.getQueueStats}.
+   *
+   * Note: this method is `void` for backward compatibility with every
+   * existing call site. Callers that need to know whether the message was
+   * actually delivered should consult `getQueueStats()`.
    */
   send(message: P2PMessage): void {
     if (!this.dataChannel || this.dataChannel.readyState !== "open") {
       p2pLogger.warn("[WebRTC] Data channel not ready");
       return;
     }
+    this.enqueueOutbound(message);
+  }
 
-    this.dataChannel.send(JSON.stringify(message));
+  /**
+   * Enqueue a message via the per-peer send queue (#1251) and drain. The
+   * queue tracks `bufferedAmount` via the onbufferedamountlow event so a
+   * slow peer's outgoing buffer no longer head-of-line-blocks sends.
+   */
+  private enqueueOutbound(message: P2PMessage): void {
+    if (!this.dataChannel) return;
+    const payload = JSON.stringify(message);
+    const priority = classifyMessagePriority(message.type);
+    const inFlight = this.dataChannel.bufferedAmount ?? 0;
+    // Surface the current channel pressure to the queue so the stalled
+    // flag flips on the rising edge even before the next drain runs.
+    if (inFlight >= this.sendQueue.getStats().highWatermarkBytes) {
+      this.sendQueue.notifyBackpressured(inFlight);
+    } else if (inFlight <= this.sendQueue.getStats().lowWatermarkBytes) {
+      this.sendQueue.notifyBufferLow(inFlight);
+    }
+    const accepted = this.sendQueue.enqueue(
+      payload,
+      message.type,
+      priority,
+      inFlight,
+    );
+    if (!accepted) {
+      // Queue rejected (closed, or even-after-eviction cap exceeded for
+      // critical/normal). Surface via the standard onError path so callers
+      // know the wire write didn't happen.
+      this.events.onError(
+        new Error(
+          `[WebRTC] Send queue rejected outbound ${message.type} (depth=${this.sendQueue.depth}, inFlight=${inFlight})`,
+        ),
+        "",
+      );
+      return;
+    }
+    this.drainSendQueue();
+  }
+
+  /**
+   * Drain queued messages to the wire. Called after every enqueue and
+   * after the channel's `bufferedamountlow` event (forwarded via
+   * `notifyChannelBufferLow`).
+   */
+  private drainSendQueue(): void {
+    if (!this.dataChannel) return;
+    this.sendQueue.drain((payload) => {
+      if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+        return false;
+      }
+      try {
+        this.dataChannel.send(payload);
+        return true;
+      } catch (error) {
+        // #982: redact — send errors may reference the payload.
+        p2pLogger.error(
+          "[WebRTC] Failed to send queued message:",
+          redactSensitive(error),
+        );
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Forward the channel's `bufferedamountlow` event into the queue. Hooked
+   * up in `setupDataChannelEvents`. The threshold is owned by the channel
+   * (set when the channel was created); we treat any low notification as
+   * a signal to resume draining.
+   */
+  private notifyChannelBufferLow(): void {
+    if (!this.dataChannel) return;
+    this.sendQueue.notifyBufferLow(this.dataChannel.bufferedAmount ?? 0);
+    this.drainSendQueue();
+  }
+
+  /**
+   * Snapshot of the per-peer send queue for diagnostics (issue #1251).
+   * Consumed by the P2P diagnostics panel via
+   * {@link WebRTCConnection.getPeerDiagnostics}.
+   */
+  getQueueStats(): PeerQueueStats {
+    return this.sendQueue.getStats();
   }
 
   /**
@@ -1452,6 +1627,22 @@ export class WebRTCConnection {
   }
 
   /**
+   * Get the local player's id. Exposed for diagnostics (issue #1251).
+   */
+  getPlayerId(): string {
+    return this.localPlayerId;
+  }
+
+  /**
+   * Get the data channel's current readyState, or null when no channel is
+   * attached. Exposed for diagnostics (issue #1251) so the panel can decide
+   * whether to render queue stats.
+   */
+  getDataChannelState(): RTCDataChannelState | null {
+    return this.dataChannel?.readyState ?? null;
+  }
+
+  /**
    * Check if connected
    */
   isConnected(): boolean {
@@ -1464,6 +1655,10 @@ export class WebRTCConnection {
   close(): void {
     this.stopPingInterval();
     this.cancelReconnection();
+
+    // Flush + close the per-peer send queue (#1251). Any in-flight messages
+    // are discarded — the transport is going away.
+    this.sendQueue.close();
 
     // Clean up ICE monitor
     if (this.iceMonitor) {
@@ -1567,4 +1762,45 @@ export function createP2PConnection(
   options: P2PConnectionOptions,
 ): WebRTCConnection {
   return new WebRTCConnection(options);
+}
+
+/**
+ * Minimal structural type for the per-peer mesh diagnostics surface
+ * (issue #1251). Lets {@link usePeerDiagnostics} observe the queue depth,
+ * bufferedAmount, and drop count from a single-connection source without
+ * coupling the hook to the concrete class.
+ */
+export interface WebRTCPeerDiagnosticsRow {
+  peerId: string;
+  displayName: string | null;
+  phase: string | null;
+  queueDepth: number;
+  queueDepthBytes: number;
+  bufferedAmount: number;
+  totalDropped: number;
+  droppedByType: Record<string, number>;
+  stalled: boolean;
+}
+
+/**
+ * Build a per-peer diagnostics row from the live connection (#1251).
+ * Returns null when the connection is not in a state where stats are
+ * observable (no data channel / transport).
+ */
+export function buildWebRTCPeerDiagnostics(
+  conn: WebRTCConnection,
+): WebRTCPeerDiagnosticsRow | null {
+  if (!conn.getDataChannelState()) return null;
+  const stats = conn.getQueueStats();
+  return {
+    peerId: conn.getPlayerId(),
+    displayName: null,
+    phase: conn.getConnectionState(),
+    queueDepth: stats.depth,
+    queueDepthBytes: stats.depthBytes,
+    bufferedAmount: stats.inFlightBytes,
+    totalDropped: stats.totalDropped,
+    droppedByType: stats.droppedByType,
+    stalled: stats.stalled,
+  };
 }

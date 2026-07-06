@@ -64,6 +64,12 @@ import {
   rejectionReasonForSend,
   REJECT_SENT_AS_SPECTATOR,
 } from "./peer-role";
+import {
+  PeerSendQueue,
+  classifyMessagePriority,
+  type PeerQueueStats,
+  type SendPriority,
+} from "./peer-send-queue";
 
 /**
  * P2P connection events
@@ -92,6 +98,19 @@ export interface P2PGameConnectionEvents {
    * Distinct from the initial connect. Optional. Issue #1086.
    */
   onReconnect?: () => void;
+  /**
+   * Emitted when the per-peer send queue (#1251) is stalled: the channel's
+   * bufferedAmount crossed the high watermark and outbound messages are
+   * queueing. Pairs with {@link P2PGameConnectionEvents.onPeerQueueResumed}.
+   * Optional — diagnostics panel hooks this to render a "peer X stalled"
+   * banner. Fires exactly once per transition.
+   */
+  onPeerQueueStalled?: (stats: PeerQueueStats) => void;
+  /**
+   * Emitted when a previously-stalled per-peer send queue (#1251) recovers.
+   * Fires exactly once per transition.
+   */
+  onPeerQueueResumed?: (stats: PeerQueueStats) => void;
 }
 
 /**
@@ -365,6 +384,25 @@ export interface P2PGameConnectionOptions {
    * for the format.
    */
   sessionKeyHex?: string | null;
+  /**
+   * Per-peer send queue high watermark in bytes (issue #1251). When the
+   * channel's `bufferedAmount` crosses this, the queue is marked stalled
+   * and `onPeerQueueStalled` fires. Defaults to 1 MiB.
+   */
+  sendQueueHighWatermarkBytes?: number;
+  /**
+   * Per-peer send queue low watermark in bytes (issue #1251). Defaults to
+   * 256 KiB. Must be strictly less than the high watermark.
+   */
+  sendQueueLowWatermarkBytes?: number;
+  /**
+   * Per-peer send queue hard byte cap (issue #1251). Defaults to 8 MiB.
+   */
+  sendQueueMaxBytes?: number;
+  /**
+   * Per-peer send queue hard message cap (issue #1251). Defaults to 1000.
+   */
+  sendQueueMaxMessages?: number;
 }
 
 /**
@@ -409,6 +447,15 @@ export class P2PGameConnection {
    * `p2p-host-migration.ts`.
    */
   private lastAppliedSeqByPeer: Map<string, number> = new Map();
+  /**
+   * Per-peer priority send queue with backpressure awareness (#1251).
+   * Wraps the synchronous `dataChannel.send(...)` call site so a stalled
+   * peer's outgoing SCTP buffer no longer head-of-line-blocks subsequent
+   * sends. Critical and normal messages queue; chat / emotes are dropped
+   * under sustained pressure with a per-type counter surfaced via
+   * {@link P2PGameConnection.getQueueStats}.
+   */
+  private sendQueue: PeerSendQueue;
   /**
    * Authoritative-host game-action validation gate (issue #1089). When true,
    * incoming peer `game-action`s are validated by {@link validatePeerAction}
@@ -502,6 +549,26 @@ export class P2PGameConnection {
     // Per-connection rate limiter guards the parse/validate path against
     // flooding peers. Issue #1111.
     this.rateLimiter = new P2PRateLimiter(options.rateLimit);
+
+    // Per-peer priority send queue (#1251). Forwards stalled / resumed
+    // transitions to the diagnostics surface so the host can see a banner
+    // when one peer's outgoing buffer is full.
+    this.sendQueue = new PeerSendQueue(
+      {
+        highWatermarkBytes: options.sendQueueHighWatermarkBytes,
+        lowWatermarkBytes: options.sendQueueLowWatermarkBytes,
+        maxQueueBytes: options.sendQueueMaxBytes,
+        maxQueueMessages: options.sendQueueMaxMessages,
+      },
+      {
+        onStalled: (stats) => {
+          this.events.onPeerQueueStalled?.(stats);
+        },
+        onResumed: (stats) => {
+          this.events.onPeerQueueResumed?.(stats);
+        },
+      },
+    );
 
     // Authoritative-host action validation (issue #1089). Opt-in; disabled by
     // default so single-player/AI paths are unaffected.
@@ -794,18 +861,91 @@ export class P2PGameConnection {
     const wirePayload: unknown = this.sessionKeyHex
       ? signMessageEnvelope(message, this.sessionKeyHex)
       : message;
+    const serialized = JSON.stringify(wirePayload);
 
-    try {
-      this.dataChannel.send(JSON.stringify(wirePayload));
-      return true;
-    } catch (error) {
-      // #982: redact — send errors may reference the message payload.
+    // Issue #1251 — feed the wire payload through the per-peer priority
+    // send queue. The queue watches `bufferedAmount` and only flushes
+    // when the channel is below the high watermark, so a stalled peer's
+    // outgoing SCTP buffer no longer head-of-line-blocks subsequent sends
+    // to the rest of the mesh. Returns true iff the queue accepted the
+    // payload (it may still be waiting to flush).
+    const priority = classifyMessagePriority(message.type);
+    const inFlight = this.dataChannel.bufferedAmount ?? 0;
+    // Surface the current channel pressure to the queue so the stalled
+    // flag flips on the rising edge even before the next drain runs (#1251).
+    const qStats = this.sendQueue.getStats();
+    if (inFlight >= qStats.highWatermarkBytes) {
+      this.sendQueue.notifyBackpressured(inFlight);
+    } else if (inFlight <= qStats.lowWatermarkBytes) {
+      this.sendQueue.notifyBufferLow(inFlight);
+    }
+    const accepted = this.sendQueue.enqueue(
+      serialized,
+      message.type,
+      priority,
+      inFlight,
+    );
+    if (!accepted) {
       console.error(
-        "[P2PGameConnection] Failed to send message:",
-        redactSensitive(error),
+        "[P2PGameConnection] Send queue rejected outbound message",
+        redactSensitive({
+          type: message.type,
+          depth: this.sendQueue.depth,
+          inFlight,
+        }),
+      );
+      this.events.onError(
+        new Error(
+          `[P2PGameConnection] Send queue rejected outbound ${message.type} (depth=${this.sendQueue.depth}, inFlight=${inFlight})`,
+        ),
       );
       return false;
     }
+    this.drainSendQueue();
+    return true;
+  }
+
+  /**
+   * Drain queued messages to the wire (#1251). Called after every enqueue
+   * and after the channel's `bufferedamountlow` event (forwarded via
+   * `notifyChannelBufferLow`).
+   */
+  private drainSendQueue(): void {
+    if (!this.dataChannel) return;
+    this.sendQueue.drain((payload) => {
+      if (!this.dataChannel || this.dataChannel.readyState !== "open") {
+        return false;
+      }
+      try {
+        this.dataChannel.send(payload);
+        return true;
+      } catch (error) {
+        // #982: redact — send errors may reference the payload.
+        console.error(
+          "[P2PGameConnection] Failed to send queued message:",
+          redactSensitive(error),
+        );
+        return false;
+      }
+    });
+  }
+
+  /**
+   * Forward the channel's `bufferedamountlow` event into the queue (#1251).
+   * Hooked up in {@link setupDataChannel}.
+   */
+  private notifyChannelBufferLow(): void {
+    if (!this.dataChannel) return;
+    this.sendQueue.notifyBufferLow(this.dataChannel.bufferedAmount ?? 0);
+    this.drainSendQueue();
+  }
+
+  /**
+   * Snapshot of the per-peer send queue for diagnostics (#1251). Consumed
+   * by the P2P diagnostics panel via {@link P2PGameConnection.getPeerDiagnostics}.
+   */
+  getQueueStats(): PeerQueueStats {
+    return this.sendQueue.getStats();
   }
 
   /**
@@ -1070,6 +1210,14 @@ export class P2PGameConnection {
    */
   private setupDataChannelEvents(): void {
     if (!this.dataChannel) return;
+
+    // Forward the channel's `bufferedamountlow` event to the send queue
+    // (#1251). The threshold is owned by the channel (set at channel
+    // creation); we treat any low notification as a signal to resume
+    // draining. onbufferedamountlow is `null` until the channel is open.
+    this.dataChannel.onbufferedamountlow = () => {
+      this.notifyChannelBufferLow();
+    };
 
     this.dataChannel.onopen = () => {
       this.updateConnectionState("connected");
@@ -1785,6 +1933,10 @@ export class P2PGameConnection {
    */
   close(): void {
     this.stopPingInterval();
+
+    // Flush + close the per-peer send queue (#1251). Any in-flight messages
+    // are discarded — the transport is going away.
+    this.sendQueue.close();
 
     if (this.dataChannel) {
       this.dataChannel.close();

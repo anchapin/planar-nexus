@@ -25,6 +25,8 @@ function sample(overrides: Partial<PeerStatsSample> = {}): PeerStatsSample {
     packetsReceived: 0,
     packetsLost: 0,
     queueDepth: 0,
+    bufferedAmount: 0,
+    dropCount: 0,
     ...overrides,
   };
 }
@@ -182,6 +184,8 @@ describe("summarizePeerSamples", () => {
       bytesInPerSec: null,
       packetLossPct: null,
       queueDepth: null,
+      bufferedAmount: null,
+      dropCount: null,
       latestTimestamp: null,
     });
   });
