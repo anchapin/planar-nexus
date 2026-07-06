@@ -15,6 +15,7 @@
  */
 
 import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, Team, TeamId, TeamSettings, LobbyState, ReadyCheckKind, ReadyCheckSession, ReadyCheckResponse, SeatHold } from './multiplayer-types';
+import type { Spectator } from './spectator';
 import { generateGameCode, generateLobbyId, generatePlayerId } from './game-code-generator';
 import { publicLobbyBrowser } from './public-lobby-browser';
 import { validateDeckForLobby } from './format-validator';
@@ -24,6 +25,10 @@ import {
   TokenBucket,
   type RateLimitOptions,
 } from './security/rate-limit';
+import {
+  signSpectatorCapabilityToken,
+  type SpectatorCapabilityToken,
+} from './p2p-handshake';
 
 // Default team configurations
 const DEFAULT_TEAMS: Team[] = [
@@ -66,6 +71,17 @@ export const LOBBY_MUTATION_LIMIT: RateLimitOptions = {
  * state mutations. Issue #1277 row-count cap.
  */
 export const LOBBY_MAX_PLAYERS = 16;
+
+/**
+ * Issue #1253 — hard cap on the `spectators[]` roster. The operator
+ * controls the operator-side cap via `LobbySettings.allowSpectators`
+ * (the existing flag from #75); this constant is a defence-in-depth
+ * upper bound so a malicious lobby config cannot request an
+ * unbounded roster. 32 is a comfortable upper bound for the
+ * 8-player Commander / 2HG pod use case (4 player seats + 28
+ * spectators is more than enough for tournament broadcasts).
+ */
+export const LOBBY_MAX_SPECTATORS = 32;
 
 /**
  * Issue #1257 — session-scoped ban window.
@@ -239,6 +255,19 @@ class LobbyManager {
    * surface this to detect a peer that is silently missing messages.
    */
   public readyCheckDropped = 0;
+  /**
+   * Issue #1253 — per-lobby capability secret used to sign
+   * `SpectatorCapabilityToken`s. Generated lazily on first use via
+   * {@link getSpectatorCapabilitySecret} so a `lobbyManager` that is
+   * never asked for a token never burns entropy. The secret is
+   * per-lobby (not global) so a leaked lobby secret cannot mint
+   * tokens for a different game.
+   *
+   * The secret is held in memory only; a refresh wipes it (the
+   * spectator's capability token is now invalid, which is the
+   * intended behavior — the joining peer must request a new one).
+   */
+  private spectatorCapabilitySecret: string | null = null;
 
   constructor(limits?: Partial<RateLimitOptions>) {
     this.mutationLimiter = new TokenBucket({
@@ -614,7 +643,142 @@ class LobbyManager {
     // object is dropped below so the saved `state` is gone with it.
     this.readyCheck = null;
     this.seatHolds.clear();
+    // Issue #1253 — wipe the per-lobby capability secret so a refresh
+    // invalidates every previously-issued `SpectatorCapabilityToken`. The
+    // `spectators[]` roster itself is part of `this.currentLobby` and is
+    // gone with it.
+    this.spectatorCapabilitySecret = null;
     localStorage.removeItem('planar_nexus_current_lobby');
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Issue #1253 — spectator roster + capability-token minting.
+  //
+  // The host owns the `spectators[]` roster; the joining peer presents a
+  // {@link import("./p2p-handshake").SpectatorCapabilityToken} during
+  // `SpectatorHandshake`, and the host verifies the token against the
+  // roster via `validateSpectatorTokenForLobby` (issue #1253 acceptance
+  // criteria: "exchanges a capability token proving the joining peer is
+  // in the lobby's `spectators[]` roster").
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Issue #1253 — add a spectator to the lobby's roster. Returns the
+   * generated `Spectator` record (with a stable `id` and `joinedAt`
+   * timestamp) or `null` when the lobby is full / spectators are
+   * disabled.
+   *
+   * Note: a spectator is NOT counted against the player roster — the
+   * 4-player Commander pod acceptance criterion allows 3 spectators in
+   * addition to the 4 player seats. The roster is bounded only by the
+   * {@link LOBBY_MAX_SPECTATORS} hard cap (defence in depth — the
+   * settings `allowSpectators` flag is the operator-controlled cap).
+   */
+  addSpectator(name: string): Spectator | null {
+    if (!this.currentLobby) return null;
+    if (!this.currentLobby.settings.allowSpectators) return null;
+    const roster = this.currentLobby.spectators ?? [];
+    if (roster.length >= LOBBY_MAX_SPECTATORS) return null;
+    const trimmedName = name.trim() || "Spectator";
+    const spectator: Spectator = {
+      id: generateSpectatorId(),
+      name: trimmedName,
+      joinedAt: Date.now(),
+    };
+    if (!this.currentLobby.spectators) {
+      this.currentLobby.spectators = [];
+    }
+    this.currentLobby.spectators.push(spectator);
+    this.saveLobbyToStorage();
+    return spectator;
+  }
+
+  /**
+   * Issue #1253 — remove a spectator from the lobby's roster (e.g.
+   * they disconnected, or the host kicked them). Returns true when a
+   * roster entry was removed. Does NOT issue a new capability token
+   * (caller is expected to mint one explicitly via
+   * {@link mintSpectatorCapabilityToken} when the spectator rejoins).
+   */
+  removeSpectator(spectatorId: string): boolean {
+    if (!this.currentLobby?.spectators) return false;
+    const before = this.currentLobby.spectators.length;
+    this.currentLobby.spectators = this.currentLobby.spectators.filter(
+      (s) => s.id !== spectatorId,
+    );
+    if (this.currentLobby.spectators.length === before) return false;
+    this.saveLobbyToStorage();
+    return true;
+  }
+
+  /**
+   * Issue #1253 — current spectators[] roster (defensive copy). Returns
+   * an empty array when the lobby has none / is closed.
+   */
+  getSpectators(): Spectator[] {
+    if (!this.currentLobby?.spectators) return [];
+    return [...this.currentLobby.spectators];
+  }
+
+  /**
+   * Issue #1253 — spectator count for the lobby UI and the diagnostics
+   * panel. Returns 0 when no lobby is active.
+   */
+  getSpectatorCount(): number {
+    return this.currentLobby?.spectators?.length ?? 0;
+  }
+
+  /**
+   * Issue #1253 — mint a fresh `SpectatorCapabilityToken` for `spectatorId`.
+   * The host calls this when a spectator arrives (or requests a fresh
+   * token); the spectator carries the token into the `SpectatorHandshake`.
+   *
+   * Returns `null` when the lobby is closed, the spectator is not in
+   * the roster, or the host has not enabled spectators.
+   */
+  mintSpectatorCapabilityToken(
+    spectatorId: string,
+  ): SpectatorCapabilityToken | null {
+    if (!this.currentLobby) return null;
+    if (!this.currentLobby.settings.allowSpectators) return null;
+    const roster = this.currentLobby.spectators ?? [];
+    if (!roster.some((s) => s.id === spectatorId)) return null;
+    return signSpectatorCapabilityToken({
+      lobbyId: this.currentLobby.id,
+      spectatorId,
+      gameCode: this.currentLobby.gameCode,
+      secret: this.getSpectatorCapabilitySecret(),
+    });
+  }
+
+  /**
+   * Issue #1253 — look up a {@link Spectator} by id. Used by the host's
+   * `SpectatorHandshake` evaluator to confirm the token's `spectatorId`
+   * matches a roster entry. Returns `null` when the spectator is unknown.
+   */
+  getSpectatorById(spectatorId: string): Spectator | null {
+    const roster = this.currentLobby?.spectators ?? [];
+    return roster.find((s) => s.id === spectatorId) ?? null;
+  }
+
+  /**
+   * Issue #1253 — host-side roster membership check used by the
+   * spectator handshake (`p2p-handshake.ts → validateSpectatorTokenForLobby`).
+   */
+  isSpectatorInRoster(spectatorId: string): boolean {
+    return this.getSpectatorById(spectatorId) !== null;
+  }
+
+  /**
+   * Issue #1253 — get (creating if necessary) the per-lobby capability
+   * secret used to sign `SpectatorCapabilityToken`s. Stored in memory
+   * only; never persisted. The secret is wiped on `closeLobby`.
+   */
+  private getSpectatorCapabilitySecret(): string {
+    if (this.spectatorCapabilitySecret === null) {
+      this.spectatorCapabilitySecret = generateSpectatorCapabilitySecret();
+    }
+    return this.spectatorCapabilitySecret;
   }
 
   /**
@@ -634,6 +798,15 @@ class LobbyManager {
     if (stored) {
       try {
         this.currentLobby = JSON.parse(stored);
+        // Issue #1253 — older persisted lobbies (pre-spectator) have no
+        // `spectators` field. Default to an empty array so the host's
+        // `addSpectator` / `getSpectatorCount` / `mintSpectatorCapabilityToken`
+        // paths do not have to special-case `undefined`. The roster is
+        // ephemeral (refresh wipes it together with the per-lobby
+        // capability secret), so a missing field is a safe default.
+        if (this.currentLobby && !this.currentLobby.spectators) {
+          this.currentLobby.spectators = [];
+        }
       } catch (e) {
         console.error('Failed to load lobby from storage:', e);
         localStorage.removeItem('planar_nexus_current_lobby');
@@ -1644,3 +1817,42 @@ const LOBBY_STATE_TO_STATUS: Record<LobbyState, LobbyStatus> = {
 
 // Singleton instance
 export const lobbyManager = new LobbyManager();
+
+/**
+ * Issue #1253 — generate a stable, URL-safe spectator id. Format:
+ * `spec-<6 base36 chars>` so the id is short enough to fit in a
+ * capability-token `spectatorId` field without bloating the
+ * canonical payload. Distinct from the player id generator so the
+ * two namespaces cannot collide (a player id and a spectator id
+ * share no prefix).
+ */
+function generateSpectatorId(): string {
+  const rand = Math.floor(Math.random() * 0xffffffff).toString(36);
+  return `spec-${rand.padStart(7, "0")}`;
+}
+
+/**
+ * Issue #1253 — generate a cryptographically-random per-lobby
+ * capability secret. Used to sign `SpectatorCapabilityToken`s so a
+ * leaked token from one lobby cannot be replayed in another. Hex
+ * encoded (so it survives JSON round-tripping and matches the
+ * `secretHex` argument expected by `hmacSha256Hex`).
+ */
+function generateSpectatorCapabilitySecret(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.getRandomValues === "function"
+  ) {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Last-resort fallback. Not cryptographically secure, but only
+  // hit on platforms without `crypto.getRandomValues` (very rare in
+  // 2024+ browsers; present for jsdom interop).
+  let fallback = "";
+  for (let i = 0; i < 64; i += 1) {
+    fallback += Math.floor(Math.random() * 16).toString(16);
+  }
+  return fallback;
+}

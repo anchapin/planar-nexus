@@ -11,7 +11,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   Gamepad2,
   Users,
-  Clock,
   Wifi,
   Shield,
   Share2,
@@ -22,6 +21,7 @@ import Link from "next/link";
 import { P2PDiagnosticsPanel } from "@/components/p2p-diagnostics-panel";
 import { P2PConnectionIndicatorSection } from "@/components/p2p-connection-indicator-section";
 import { ReconnectTokenList } from "@/components/multiplayer/reconnect-token-list";
+import { LobbySpectatorCount } from "@/components/multiplayer/lobby-spectator-count";
 
 export default function MultiplayerPage() {
   return (
@@ -33,22 +33,32 @@ export default function MultiplayerPage() {
             Challenge others in peer-to-peer multiplayer battles.
           </p>
         </div>
-        {/*
-          Persistent live-state indicator for the WebRTC P2P transport
-          (issue #986). Sits in the stable page header (no unstable callbacks
-          — #1209 lesson). The chip defaults to "Offline" when no P2P session
-          is active and reflects real-time state once a peer connection is
-          established elsewhere in the multiplayer flow.
-        */}
-        <div className="flex items-center gap-2 pt-1">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            P2P Status
-          </span>
-          <P2PConnectionIndicatorSection
-            playerId="multiplayer-lobby"
-            playerName="Multiplayer Lobby"
-            role="host"
-          />
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {/*
+            Issue #1253 — spectator count badge. Reads from the host's
+            `lobbyManager` so a freshly-hosted lobby with N spectators
+            surfaces the count without a full page reload. Hidden when
+            no lobby is active (count = 0) so the page does not show
+            "0 spectators" by default.
+          */}
+          <LobbySpectatorCount />
+          {/*
+            Persistent live-state indicator for the WebRTC P2P transport
+            (issue #986). Sits in the stable page header (no unstable callbacks
+            — #1209 lesson). The chip defaults to "Offline" when no P2P session
+            is active and reflects real-time state once a peer connection is
+            established elsewhere in the multiplayer flow.
+          */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              P2P Status
+            </span>
+            <P2PConnectionIndicatorSection
+              playerId="multiplayer-lobby"
+              playerName="Multiplayer Lobby"
+              role="host"
+            />
+          </div>
         </div>
       </header>
       <main className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -78,6 +78,13 @@ function makeMockConnection() {
       .fn()
       .mockReturnValue({ localOffer: { type: "offer", sdp: "x" } }),
     getLastFailureDiagnostic: jest.fn().mockReturnValue(null),
+    // Issue #1253 — mock the role-aware hooks the hook reads on every
+    // connection-state change. Default to `'player'` / 0 so legacy
+    // (non-spectator) call sites are unaffected.
+    getLocalRole: jest.fn().mockReturnValue("player"),
+    getRemoteRole: jest.fn().mockReturnValue("player"),
+    setLocalRole: jest.fn(),
+    getSpectatorDrops: jest.fn().mockReturnValue(0),
   };
 }
 

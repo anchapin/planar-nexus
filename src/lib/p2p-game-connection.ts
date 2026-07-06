@@ -40,6 +40,14 @@ import {
   type ConnectionFailureDiagnostic,
 } from "./p2p-failure-diagnostics";
 import { redactSensitive } from "./p2p-log-redact";
+import {
+  type PeerRole,
+  DEFAULT_PEER_ROLE,
+  isMessageAllowedForRole,
+  isRoleAllowedToSend,
+  rejectionReasonForSend,
+  REJECT_SENT_AS_SPECTATOR,
+} from "./peer-role";
 
 /**
  * P2P connection events
@@ -309,6 +317,21 @@ export interface P2PGameConnectionOptions {
    * delegates to this callback.
    */
   onStateSyncRequest?: () => GameState | null | undefined;
+  /**
+   * Local peer's role (issue #1253). When the local peer is a spectator or
+   * moderator, the outbound path refuses to emit a `game-action` (read-only
+   * role). Defaults to {@link DEFAULT_PEER_ROLE} (`'player'`) so legacy
+   * callers that do not know about the role concept keep working.
+   */
+  localRole?: PeerRole;
+  /**
+   * Remote peer's role (issue #1253). When the remote is a spectator, the
+   * inbound path drops `game-action` messages before they touch the
+   * dispatch surface, and the outbound path suppresses `game-action` from
+   * reaching the spectator's link. The host sets this after the
+   * `SpectatorHandshake` completes (see `p2p-handshake.ts`).
+   */
+  remoteRole?: PeerRole;
 }
 
 /**
@@ -382,11 +405,38 @@ export class P2PGameConnection {
    * {@link P2PGameConnectionEvents.onReconnect}. Issue #1086.
    */
   private wasDisconnected = false;
+  /**
+   * Local peer's role (issue #1253). When the local peer is a spectator /
+   * moderator the outbound path refuses to emit a `game-action`. Defaults
+   * to {@link DEFAULT_PEER_ROLE} so existing single-player / 1:1 AI
+   * call sites are unaffected.
+   */
+  private localRoleFlag: PeerRole;
+  /**
+   * Remote peer's role (issue #1253). When the remote is a spectator, a
+   * `game-action` arriving from the remote is dropped before the dispatch
+   * surface AND the local `game-action` outbound path is suppressed from
+   * reaching the remote. Updated after the `SpectatorHandshake` completes.
+   */
+  private remoteRoleFlag: PeerRole;
+  /**
+   * Cumulative count of inbound messages dropped because the local role
+   * disallowed them. Surfaced via {@link P2PGameConnection.getSpectatorDrops}
+   * so a misconfigured spectator (or a hostile peer pushing actions at a
+   * spectator) can be diagnosed from the diagnostics panel.
+   */
+  private spectatorDrops = 0;
 
   constructor(options: P2PGameConnectionOptions) {
     this.playerId = options.playerId;
     this.playerName = options.playerName;
     this.connectionState = "disconnected";
+    // Issue #1253 — initialise the role flags. The host sets the remote
+    // role after the `SpectatorHandshake` completes; until then, both
+    // default to the legacy `'player'` so a 1:1 game-action call site
+    // works unchanged.
+    this.localRoleFlag = options.localRole ?? DEFAULT_PEER_ROLE;
+    this.remoteRoleFlag = options.remoteRole ?? DEFAULT_PEER_ROLE;
 
     // Per-connection rate limiter guards the parse/validate path against
     // flooding peers. Issue #1111.
@@ -617,8 +667,54 @@ export class P2PGameConnection {
    * the receiver can reject duplicates and replays. The caller does not need
    * to supply `seq`; the few internal helpers below call
    * {@link nextOutgoingSeq} when constructing the message.
+   *
+   * Per the role-aware allowlist (issue #1253):
+   *
+   *   - If the LOCAL role is a non-player (spectator / moderator), any
+   *     `game-action` send is refused with a "spectators may not originate
+   *     game actions" error surfaced via {@link P2PGameConnectionEvents.onError}.
+   *   - If the REMOTE role is a non-player, the OUTBOUND `game-action` is
+   *     suppressed (a host pushing actions to a spectator pod would be a
+   *     misconfiguration; the host's `validatePeerActions` gate still
+   *     runs against its own state, but the bytes never reach the
+   *     spectator link).
+   *
+   * Returns false and emits an error event when the gate rejects a send;
+   * no wire bytes are written in that case.
    */
   send(message: GameMessage): boolean {
+    // Local role gate (issue #1253). Refuse to send any message type the
+    // local role is not allowed to originate.
+    if (!isRoleAllowedToSend(this.localRoleFlag, message.type)) {
+      const reason = rejectionReasonForSend(
+        this.localRoleFlag,
+        message.type,
+      );
+      console.warn(
+        "[P2PGameConnection] Refusing outbound message: local role disallows it",
+        redactSensitive({
+          type: message.type,
+          localRole: this.localRoleFlag,
+          reason,
+        }),
+      );
+      this.events.onError(
+        new Error(reason ?? "Local role does not allow this send"),
+      );
+      return false;
+    }
+    // Remote role gate. If the remote is a non-player, suppress the
+    // types the remote is not allowed to RECEIVE (currently `game-action`).
+    if (!isMessageAllowedForRole(this.remoteRoleFlag, message.type)) {
+      console.warn(
+        "[P2PGameConnection] Refusing outbound message: remote role disallows it",
+        redactSensitive({
+          type: message.type,
+          remoteRole: this.remoteRoleFlag,
+        }),
+      );
+      return false;
+    }
     if (!this.dataChannel || this.dataChannel.readyState !== "open") {
       console.warn("[P2PGameConnection] Data channel not ready");
       return false;
@@ -692,8 +788,28 @@ export class P2PGameConnection {
 
   /**
    * Send a game action
+   *
+   * Refused when the local role is `'spectator'` or `'moderator'` (read-only
+   * role, issue #1253). The send returns `false` AND emits an `onError`
+   * event so the UI can show a "Spectators cannot play — watch only" hint.
+   * No wire bytes are written in that case.
    */
   sendGameAction(action: string, data: unknown): boolean {
+    if (
+      this.localRoleFlag === "spectator" ||
+      this.localRoleFlag === "moderator"
+    ) {
+      const reason =
+        this.localRoleFlag === "spectator"
+          ? REJECT_SENT_AS_SPECTATOR
+          : "Moderator peers may not originate game actions";
+      console.warn(
+        "[P2PGameConnection] Refusing game-action: local role is read-only",
+        redactSensitive({ localRole: this.localRoleFlag, action }),
+      );
+      this.events.onError(new Error(reason));
+      return false;
+    }
     return this.send({
       type: "game-action",
       senderId: this.playerId,
@@ -704,6 +820,58 @@ export class P2PGameConnection {
         data,
       },
     });
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Per-peer role API (issue #1253)
+  // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Local peer's role. Issue #1253. Defaults to
+   * {@link DEFAULT_PEER_ROLE} when the connection was constructed without
+   * `localRole`.
+   */
+  getLocalRole(): PeerRole {
+    return this.localRoleFlag;
+  }
+
+  /**
+   * Set the local peer's role. Used after the spectator handshake completes
+   * (the host `ack`s the role and the local client adopts it). The host
+   * will reject a cross-boundary `PeerRole` change without a fresh
+   * handshake — the local client simply trusts the host's `ack` to
+   * validate the new role.
+   */
+  setLocalRole(role: PeerRole): void {
+    this.localRoleFlag = role;
+  }
+
+  /**
+   * Remote peer's role. The host sets this after the
+   * `SpectatorHandshake` completes (`spectator-handshake-ack`'s
+   * `assignedRole` is the value).
+   */
+  getRemoteRole(): PeerRole {
+    return this.remoteRoleFlag;
+  }
+
+  /**
+   * Update the remote peer's role. Used by the host after the spectator
+   * handshake completes; the new role drives the outbound `game-action`
+   * suppression and (transitively) the per-peer allowlist at the wire.
+   */
+  setRemoteRole(role: PeerRole): void {
+    this.remoteRoleFlag = role;
+  }
+
+  /**
+   * Count of inbound messages dropped because the local role disallowed
+   * them. Surfaced via `P2PDiagnosticsPanel` (issue #1253) so a
+   * misconfigured spectator (or a hostile peer pushing actions at a
+   * spectator) can be diagnosed. Reset by {@link close}.
+   */
+  getSpectatorDrops(): number {
+    return this.spectatorDrops;
   }
 
   /**
@@ -813,17 +981,23 @@ export class P2PGameConnection {
    *   4. Anti-replay check: a message with `seq <=` the highest seq already
    *      applied from this `senderId` is dropped as a duplicate/replay BEFORE
    *      it can be applied to game state (issue #1091).
-   *   5. Rules-engine legality (issue #1089): on the authoritative host, a
+   *   5. Per-peer role allowlist (issue #1253): if the local role is
+   *      `'spectator'` (or `'moderator'`), a `game-action` arriving on the
+   *      wire is dropped BEFORE it can touch the dispatch surface. This is
+   *      the read-only-stream contract: a `PlayerActionMessage` never reaches
+   *      a spectator's game state.
+   *   6. Rules-engine legality (issue #1089): on the authoritative host, a
    *      `game-action` is validated against the host's own state; illegal
    *      actions are rejected (peer notified via an `error` message) BEFORE
    *      they are applied.
    *
-   * The legality stage (#5) runs strictly AFTER anti-replay (#4) and
-   * structural/shape checks (#2/#3) and strictly BEFORE the action is emitted
-   * for application, so an illegal action can never touch host game state.
+   * The legality stage (#6) runs strictly AFTER anti-replay (#4),
+   * role-allowlist (#5) and structural/shape checks (#2/#3) and strictly
+   * BEFORE the action is emitted for application, so an illegal action
+   * can never touch host game state.
    *
-   * Malformed, oversize, rate-limited, replayed, or illegal messages are
-   * rejected gracefully without breaking the connection.
+   * Malformed, oversize, rate-limited, replayed, role-blocked, or illegal
+   * messages are rejected gracefully without breaking the connection.
    */
   private handleMessage(data: string): void {
     try {
@@ -853,6 +1027,25 @@ export class P2PGameConnection {
         return;
       }
       this.markApplied(message);
+
+      // Per-peer role allowlist (issue #1253). The local role is the
+      // SINGLE source of truth for what the local node is willing to
+      // receive. A `game-action` arriving on a spectator-only link is
+      // dropped silently and counted via `getSpectatorDrops` so the
+      // diagnostic surface can flag a misconfigured pod. Note we run
+      // this AFTER anti-replay so a replayed `game-action` is still
+      // counted once (the anti-replay check rejects it first).
+      if (!isMessageAllowedForRole(this.localRoleFlag, message.type)) {
+        this.spectatorDrops += 1;
+        console.warn(
+          "[P2PGameConnection] Dropped message disallowed for local role",
+          redactSensitive({
+            type: message.type,
+            localRole: this.localRoleFlag,
+          }),
+        );
+        return;
+      }
 
       // Update remote player info
       if (this.remotePlayerId === null) {
@@ -1441,6 +1634,9 @@ export class P2PGameConnection {
     // connect never fires a spurious onReconnect. Issue #1086.
     this.hadConnectedOnce = false;
     this.wasDisconnected = false;
+    // Issue #1253 — reset the role-aware diagnostic counter so a fresh
+    // session starts at zero dropped messages.
+    this.spectatorDrops = 0;
     this.updateConnectionState("disconnected");
   }
 

@@ -49,6 +49,7 @@ import {
   type ReconnectToken,
 } from "@/lib/p2p-reconnect-store";
 import { logger } from "@/lib/logger";
+import { type PeerRole, DEFAULT_PEER_ROLE } from "@/lib/peer-role";
 
 const p2pLogger = logger.child("P2PConnection");
 
@@ -90,6 +91,14 @@ export interface UseP2PConnectionOptions {
    * the migrated game, or nulls when there was no game state to migrate.
    */
   onDegradedToLocal?: (result: LocalDegradeInfo) => void;
+  /**
+   * Local peer's role (issue #1253). When the local peer is a spectator or
+   * moderator, the hook gates `sendGameAction` and routes inbound
+   * `game-action` messages through the read-only allowlist. Defaults to
+   * {@link DEFAULT_PEER_ROLE} (`'player'`) so existing 1:1 / host call sites
+   * are unaffected.
+   */
+  localRole?: PeerRole;
 }
 
 /**
@@ -245,6 +254,29 @@ export interface UseP2PConnectionReturn {
    * the delete succeeded (or there was nothing to delete).
    */
   clearReconnectToken: () => Promise<boolean>;
+  // --- Issue #1253: per-peer role ---
+  /**
+   * Local peer's role. Mirrored from the `localRole` option so the UI
+   * can render a spectator-specific layout (e.g. "Watching as Alex —
+   * read only") without re-deriving it from the transport.
+   */
+  localRole: PeerRole;
+  /**
+   * Set the local peer's role. Called after the spectator handshake
+   * completes (the host `ack`s the role and the local client adopts
+   * it). A cross-boundary change (player ⇄ non-player) requires a
+   * fresh handshake — the hook does not enforce that here, it trusts
+   * the host's `ack` to validate the new role.
+   */
+  setLocalRole: (role: PeerRole) => void;
+  /**
+   * Cumulative count of inbound messages dropped because the local
+   * role disallowed them (issue #1253). Surfaced in the diagnostics
+   * panel so a misconfigured spectator (or a hostile peer pushing
+   * actions at a spectator) can be diagnosed. Reset on
+   * `closeConnection`.
+   */
+  spectatorDrops: number;
 }
 
 export function useP2PConnection(
@@ -264,6 +296,12 @@ export function useP2PConnection(
     onHostMigrated,
     onGameTerminated,
     onDegradedToLocal,
+    // Issue #1253 — local peer's role. Defaults to `'player'` (the
+    // legacy behaviour) so existing 1:1 / host call sites are
+    // unaffected. Surfaced as `localRole` on the return value so the
+    // UI can render spectator-specific affordances without reading
+    // the transport directly.
+    localRole,
   } = options;
 
   const fallbackHostId =
@@ -309,6 +347,21 @@ export function useP2PConnection(
   const handshakeSessionRef = useRef<HandshakeSession | null>(null);
   const conflictManagerRef = useRef<ConflictResolutionManager | null>(null);
   const hostMigrationRef = useRef<HostMigrationManager | null>(null);
+  // Issue #1253 — local peer's role. Mirrored in a ref so the
+  // once-created connection event handlers read the latest role without
+  // re-binding. Defaults to `'player'` (legacy behaviour) so existing
+  // 1:1 / host call sites are unaffected.
+  const localRoleRef = useRef<PeerRole>(localRole ?? DEFAULT_PEER_ROLE);
+  localRoleRef.current = localRole ?? DEFAULT_PEER_ROLE;
+  // Issue #1253 — `localRole` is also exposed via state so the UI can
+  // re-render when the role flips (e.g. after a `spectator-handshake-ack`
+  // adopts a new role). Updated only via `setLocalRole` (mirrored onto
+  // the ref + the live connection).
+  const [localRoleState, setLocalRoleState] = useState<PeerRole>(
+    localRole ?? DEFAULT_PEER_ROLE,
+  );
+  // Issue #1253 — diagnostic counter surfaced to the diagnostics panel.
+  const [spectatorDrops, setSpectatorDrops] = useState(0);
   // Keep latest callbacks in refs so the connection event handlers (created
   // once per initialize) always see the current props without re-creating.
   const onHostMigratedRef = useRef(onHostMigrated);
@@ -708,6 +761,10 @@ export function useP2PConnection(
           playerName,
           role,
           gameCode,
+          // Issue #1253 — spectator / moderator roles are read-only; the
+          // transport gates `sendGameAction` and inbound filtering on the
+          // local role flag.
+          localRole: localRoleRef.current,
           events: {
             onConnectionStateChange: (state) => {
               setConnectionState(state);
@@ -740,6 +797,13 @@ export function useP2PConnection(
                 // a recovery edge — the actual flag flip happens in
                 // handleReconnect so it survives handler re-binding.
                 hadConnectedRef.current = true;
+              }
+              // Issue #1253 — refresh the role-aware diagnostic counter on
+              // every state change so the diagnostics panel always shows
+              // the latest drop count.
+              const conn = connectionRef.current as any;
+              if (conn && typeof conn.getSpectatorDrops === "function") {
+                setSpectatorDrops(conn.getSpectatorDrops() ?? 0);
               }
             },
             onReconnect: handleReconnect,
@@ -870,6 +934,10 @@ export function useP2PConnection(
           playerName,
           role,
           gameCode,
+          // Issue #1253 — spectator / moderator roles are read-only; the
+          // transport gates `sendGameAction` and inbound filtering on the
+          // local role flag.
+          localRole: localRoleRef.current,
           events: {
             onConnectionStateChange: (state) => {
               setConnectionState(state);
@@ -1034,9 +1102,33 @@ export function useP2PConnection(
     (
       action: string,
       data: unknown,
-    ): { success: boolean; action?: TimestampedAction; queued?: boolean } => {
+    ): {
+      success: boolean;
+      action?: TimestampedAction;
+      queued?: boolean;
+      /** Issue #1253 — `spectator` when the local role is read-only and the
+       * action was refused; otherwise undefined. */
+      reason?: string;
+    } => {
       if (!connectionRef.current) {
         return { success: false };
+      }
+
+      // Issue #1253 — refuse `game-action` from a read-only role. The
+      // transport ALSO refuses (defence in depth) but gating here lets
+      // the hook return a typed `reason` so the UI can surface a
+      // "Spectators cannot play — watch only" hint without a
+      // round-trip through the transport's `onError` event.
+      if (localRoleRef.current !== "player") {
+        const reason =
+          localRoleRef.current === "spectator"
+            ? "Spectator peers may not originate game actions"
+            : "Moderator peers may not originate game actions";
+        p2pLogger.warn(
+          "Refusing game-action: local role is read-only",
+          { localRole: localRoleRef.current, action },
+        );
+        return { success: false, reason };
       }
 
       // Issue #1086: while the transport is down, record the action as
@@ -1126,7 +1218,21 @@ export function useP2PConnection(
     setReconnectAttempts(0);
     setReconnectedRecently(false);
     hadConnectedRef.current = false;
+    // Issue #1253: reset the role-aware diagnostic counter.
+    setSpectatorDrops(0);
   }, [fallbackHostId]);
+
+  // Issue #1253 — set the local peer's role. Mirrors the value onto the
+  // ref (so the connection event handlers see the latest) and onto the
+  // live transport (so subsequent sends / inbound filters use the new
+  // role). Cross-boundary transitions (player ⇄ non-player) require a
+  // fresh `SpectatorHandshake`; the hook does NOT enforce that here —
+  // the host's `ack` is the trust boundary.
+  const setLocalRole = useCallback((role: PeerRole) => {
+    localRoleRef.current = role;
+    setLocalRoleState(role);
+    connectionRef.current?.setLocalRole(role);
+  }, []);
 
   // Get connection instance
   const getConnection = useCallback(() => {
@@ -1313,6 +1419,10 @@ export function useP2PConnection(
     reconnectToken,
     reconnectTokenLookupDone,
     clearReconnectToken,
+    // --- Issue #1253: per-peer role ---
+    localRole: localRoleState,
+    setLocalRole,
+    spectatorDrops,
   };
 }
 
