@@ -14,7 +14,7 @@
  * Handles local lobby state for hosting games before connecting to signaling server
  */
 
-import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, Team, TeamId, TeamSettings } from './multiplayer-types';
+import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, Team, TeamId, TeamSettings, LobbyState, ReadyCheckKind, ReadyCheckSession, ReadyCheckResponse, SeatHold } from './multiplayer-types';
 import { generateGameCode, generateLobbyId, generatePlayerId } from './game-code-generator';
 import { publicLobbyBrowser } from './public-lobby-browser';
 import { validateDeckForLobby } from './format-validator';
@@ -124,6 +124,67 @@ export interface KickPeerResult {
 }
 
 /**
+ * Issue #1255 — duration of a full-roster ready check. The host opens a
+ * 15 s window after the 2nd peer joins (or whenever the host triggers
+ * `beginReadyCheck`); if every non-spectator peer has answered within the
+ * window, the lobby advances to `STARTING`. If the window expires with at
+ * least one peer missing (or affirmatively `ready: false`), the host may
+ * either cancel back to `WAITING` or force-advance via the existing
+ * `canForceStart` path.
+ */
+export const LOBBY_READY_CHECK_WINDOW_MS = 15_000;
+
+/**
+ * Issue #1255 — duration of a late-joiner ready check. When a peer joins
+ * during `IN_GAME` the host opens a brief single-peer gate so the joining
+ * peer can confirm their deck is loaded + they're ready to play. The window
+ * is shorter than the full check (10 s vs 15 s) so the existing players
+ * are not blocked for a long time waiting for a single new peer.
+ */
+export const LOBBY_LATE_JOINER_READY_CHECK_MS = 10_000;
+
+/**
+ * Issue #1255 — duration of a seat hold. When a peer disconnects mid-game
+ * (e.g. browser refresh, network blip) the host reserves their seat for
+ * 30 s so the reconnect-token store (issue #1087) can reattach the same
+ * player slot. A late joiner arriving while a seat is held is rejected
+ * with `seat-held` so the joiner knows the seat will reopen soon.
+ */
+export const LOBBY_SEAT_HOLD_DURATION_MS = 30_000;
+
+/**
+ * Issue #1255 — return payload from {@link LobbyManager.beginReadyCheck}.
+ *
+ * `started` is true when the host entered `READY_CHECK`; `reason` carries
+ * a human-readable explanation when the request was rejected (e.g. "not
+ * enough players", "already in-game"). The sessionId is stable for the
+ * lifetime of the check so peers can correlate their
+ * `READY_CHECK_RESPONSE` with the request they received.
+ */
+export interface BeginReadyCheckResult {
+  started: boolean;
+  reason?: string;
+  sessionId?: string;
+}
+
+/**
+ * Issue #1255 — return payload from {@link LobbyManager.recordReadyResponse}.
+ *
+ * `accepted` is true when the response was recorded against the active
+ * session. `quorumReached` is true when this response completed the
+ * required set of answers and the host should transition to `STARTING`.
+ * `late` is true when the response arrived after the session was
+ * cancelled or expired — the host ignores it but surfaces the count so
+ * peers can detect lost messages.
+ */
+export interface RecordReadyResponseResult {
+  accepted: boolean;
+  quorumReached: boolean;
+  late: boolean;
+  reason?: string;
+}
+
+/**
  * Client-side lobby manager for host game functionality
  * In production, this would sync with a signaling server/WebRTC
  */
@@ -151,6 +212,33 @@ class LobbyManager {
    * the game is not paused. Drives the priority-timer freeze clock math.
    */
   private pausedAt: number | null = null;
+  /**
+   * Issue #1255 — the active ready-check session, or null when no check is
+   * in progress. Only the host owns the session; peers receive a
+   * `ReadyCheckRequestMessage` and reply with a
+   * `ReadyCheckResponseMessage` that the host applies via
+   * {@link recordReadyResponse}.
+   */
+  private readyCheck: ReadyCheckSession | null = null;
+  /**
+   * Issue #1255 — monotonic counter that guarantees every sessionId is
+   * unique within the lifetime of the host. Useful for telemetry and
+   * for the late-response detector (`late` field in
+   * {@link RecordReadyResponseResult}).
+   */
+  private readyCheckCounter = 0;
+  /**
+   * Issue #1255 — seat-hold map keyed by peerId. Each entry is created
+   * when a peer disconnects mid-game and auto-purges past its
+   * `expiresAt`. See {@link LOBBY_SEAT_HOLD_DURATION_MS}.
+   */
+  private seatHolds: Map<string, SeatHold> = new Map();
+  /**
+   * Issue #1255 — counter of dropped ready-check responses (late or
+   * against an unknown sessionId). Exposed for tests; the host UI can
+   * surface this to detect a peer that is silently missing messages.
+   */
+  public readyCheckDropped = 0;
 
   constructor(limits?: Partial<RateLimitOptions>) {
     this.mutationLimiter = new TokenBucket({
@@ -215,6 +303,13 @@ class LobbyManager {
     // the same code within the 30-minute window).
     this.pausedAt = null;
     this.loadBanList();
+    // Issue #1255 — a fresh lobby starts in `WAITING` with no active
+    // ready-check and no seat-holds. The state is set on the lobby object
+    // (not just the field) so it round-trips through localStorage.
+    this.currentLobby.state = 'WAITING';
+    this.readyCheck = null;
+    this.seatHolds.clear();
+    this.readyCheckDropped = 0;
 
     // Initialize teams for team-based modes
     const modeConfig = getGameModeConfig(gameMode);
@@ -442,9 +537,18 @@ class LobbyManager {
   /**
    * Check if lobby can start
    * Now includes format validation check
+   *
+   * Issue #1255 — also gated on the state machine: the lobby must have
+   * already passed the ready-check consensus (`STARTING`) for
+   * `canStartGame` to return true. The previous implementation let a
+   * host race a peer's first `PlayerActionMessage` because the
+   * "start" signal was timestamp-based, not consensus-based. The
+   * ready check is the atomic gate; the host can only call
+   * {@link startGame} from `STARTING`.
    */
   canStartGame(): boolean {
     if (!this.currentLobby) return false;
+    if (this.getLobbyState() !== 'STARTING') return false;
 
     const hasEnoughPlayers = this.currentLobby.players.length >= 2;
     const allReady = this.allPlayersReady();
@@ -505,6 +609,11 @@ class LobbyManager {
     // the same code within the window. Pause is a game-scoped freeze and
     // ends with the game.
     this.pausedAt = null;
+    // Issue #1255 — close tears down the state machine: any in-flight
+    // ready check is cancelled and seat-holds are released. The lobby
+    // object is dropped below so the saved `state` is gone with it.
+    this.readyCheck = null;
+    this.seatHolds.clear();
     localStorage.removeItem('planar_nexus_current_lobby');
   }
 
@@ -780,7 +889,7 @@ class LobbyManager {
   }
 
   /**
-   * Issue #1277 — consume one token from the per-lobby mutation budget,
+   * Issue #1257 — consume one token from the per-lobby mutation budget,
    * incrementing {@link mutationDropped} when the budget is exhausted so
    * callers (and tests) can observe the rejection.
    */
@@ -790,6 +899,20 @@ class LobbyManager {
     }
     this.mutationDropped += 1;
     return false;
+  }
+
+  /**
+   * Reset the per-lobby mutation budget. Intended for tests that share
+   * the singleton {@link lobbyManager} across many cases — without this
+   * the cumulative mutations from a long test file would exhaust the
+   * 60-events-per-minute token bucket and later tests would see false
+   * rejections on `addPlayer` / `updatePlayerStatus`. Safe to call from
+   * production code (e.g. after a peer disconnect) but the budget is
+   * normally self-regulating.
+   */
+  resetMutationBudget(): void {
+    this.mutationLimiter.reset();
+    this.mutationDropped = 0;
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -1045,7 +1168,479 @@ class LobbyManager {
     }
     return {};
   }
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Issue #1255 — lobby state machine + ready-check + seat-hold semantics.
+  //
+  // The state machine is the single source of truth for the lobby's
+  // lifecycle phase. `canStartGame` (above) is gated on the state being
+  // `STARTING` (which only {@link advanceToStarting} can set), so a
+  // half-formed lobby can never race a peer's first action into the game.
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Issue #1255 — read the lobby's current state. Defaults to `'WAITING'`
+   * when the lobby predates the state machine (the persisted `state`
+   * field is optional — see `GameLobby.state`).
+   */
+  getLobbyState(): LobbyState {
+    return this.currentLobby?.state ?? 'WAITING';
+  }
+
+  /**
+   * Issue #1255 — open a ready-check session. The host calls this when
+   * the 2nd peer joins (or any time the host wants to take a fresh
+   * consensus). For a single-peer check (e.g. a late joiner during
+   * IN_GAME) pass `kind: 'late-joiner'` and an explicit
+   * `targetPeerIds: [joinerId]`; the check will use
+   * `LOBBY_LATE_JOINER_READY_CHECK_MS` as the window.
+   *
+   * The sessionId is `rc-<counter>` and is unique within the lifetime of
+   * the host process. It is returned so the caller can route the
+   * `READY_CHECK_REQUEST` envelope to peers and so peers can correlate
+   * their `READY_CHECK_RESPONSE` with the right session.
+   *
+   * Re-entrancy: calling `beginReadyCheck` while a session is already
+   * open is a no-op and returns `{ started: false, reason: 'in-progress' }`
+   * with the existing sessionId. This protects the host from
+   * accidentally double-opening a check (e.g. rapid addPlayer events).
+   */
+  beginReadyCheck(
+    kind: ReadyCheckKind = 'full',
+    targetPeerIds?: string[],
+  ): BeginReadyCheckResult {
+    if (!this.currentLobby) {
+      return { started: false, reason: 'No active lobby' };
+    }
+    if (this.readyCheck) {
+      return {
+        started: false,
+        reason: 'A ready check is already in progress',
+        sessionId: this.readyCheck.id,
+      };
+    }
+    const state = this.getLobbyState();
+    if (state === 'IN_GAME' && kind !== 'late-joiner') {
+      // The host cannot open a full check during an active game; only the
+      // single-peer late-joiner check is permitted mid-game.
+      return {
+        started: false,
+        reason: 'Cannot open a full ready check during an active game',
+      };
+    }
+    if (state === 'STARTING') {
+      // STARTING is a transient lock — the host is already advancing.
+      return { started: false, reason: 'Lobby is already starting' };
+    }
+    if (state === 'ENDED') {
+      return { started: false, reason: 'Lobby has ended' };
+    }
+
+    // For a full check, every non-spectator player (status !== 'host' is
+    // not the rule — the host is included so the lobby's own start
+    // button is gated by the same consensus) must be a target. The
+    // check covers every player in the roster.
+    const targets =
+      targetPeerIds ?? this.currentLobby.players.map((p) => p.id);
+    if (targets.length === 0) {
+      return { started: false, reason: 'No targets for the ready check' };
+    }
+
+    this.readyCheckCounter += 1;
+    const windowMs =
+      kind === 'late-joiner'
+        ? LOBBY_LATE_JOINER_READY_CHECK_MS
+        : LOBBY_READY_CHECK_WINDOW_MS;
+    this.readyCheck = {
+      id: `rc-${this.readyCheckCounter}`,
+      kind,
+      startedAt: Date.now(),
+      windowMs,
+      targetPeerIds: [...targets],
+      responses: {},
+      cancelledAt: null,
+    };
+    this.transitionTo('READY_CHECK');
+    return { started: true, sessionId: this.readyCheck.id };
+  }
+
+  /**
+   * Issue #1255 — record a peer's response to the active ready check. The
+   * host correlates on `sessionId`; an unknown or expired session is
+   * counted in {@link readyCheckDropped} and the response is ignored.
+   *
+   * `quorumReached` is true when every target peer has now responded. The
+   * host should call {@link advanceToStarting} when this is true (the
+   * state machine does NOT auto-advance so the host can apply side
+   * effects like broadcasting the start signal in the same tick).
+   */
+  recordReadyResponse(
+    sessionId: string,
+    peerId: string,
+    ready: boolean,
+  ): RecordReadyResponseResult {
+    const session = this.readyCheck;
+    if (!session) {
+      this.readyCheckDropped += 1;
+      return {
+        accepted: false,
+        quorumReached: false,
+        late: true,
+        reason: 'No active ready check',
+      };
+    }
+    if (session.id !== sessionId) {
+      this.readyCheckDropped += 1;
+      return {
+        accepted: false,
+        quorumReached: false,
+        late: true,
+        reason: 'Unknown sessionId',
+      };
+    }
+    if (session.cancelledAt !== null) {
+      this.readyCheckDropped += 1;
+      return {
+        accepted: false,
+        quorumReached: false,
+        late: true,
+        reason: 'Session was cancelled',
+      };
+    }
+    if (Date.now() - session.startedAt > session.windowMs) {
+      // The window has expired; this is a late response. Don't accept it
+      // (the auto-advance path will fire from the host's timer), but
+      // count it for visibility.
+      this.readyCheckDropped += 1;
+      return {
+        accepted: false,
+        quorumReached: false,
+        late: true,
+        reason: 'Response arrived after the window expired',
+      };
+    }
+    if (!session.targetPeerIds.includes(peerId)) {
+      // Not a target (e.g. a spectator answered, or a stale peerId).
+      return {
+        accepted: false,
+        quorumReached: false,
+        late: false,
+        reason: 'Peer is not a target of this ready check',
+      };
+    }
+    const response: ReadyCheckResponse = {
+      peerId,
+      ready,
+      respondedAt: Date.now(),
+    };
+    session.responses[peerId] = response;
+    const quorumReached = session.targetPeerIds.every(
+      (id) => session.responses[id] !== undefined,
+    );
+    return { accepted: true, quorumReached, late: false };
+  }
+
+  /**
+   * Issue #1255 — evaluate the active ready check against the
+   * wall-clock. If the window has expired and quorum is not yet reached,
+   * the host may decide to either force-advance (treating missing
+   * responses as `ready: true`) or cancel back to `WAITING`. Returns
+   * `null` when no check is active; otherwise returns a snapshot the
+   * host can use to drive the auto-advance path.
+   */
+  evaluateReadyCheck(now: number = Date.now()): {
+    sessionId: string;
+    kind: ReadyCheckKind;
+    elapsedMs: number;
+    remainingMs: number;
+    windowExpired: boolean;
+    quorumReached: boolean;
+    pendingPeerIds: string[];
+  } | null {
+    const session = this.readyCheck;
+    if (!session) return null;
+    const elapsedMs = now - session.startedAt;
+    const remainingMs = Math.max(0, session.windowMs - elapsedMs);
+    const windowExpired = elapsedMs >= session.windowMs;
+    const quorumReached = session.targetPeerIds.every(
+      (id) => session.responses[id] !== undefined,
+    );
+    const pendingPeerIds = session.targetPeerIds.filter(
+      (id) => session.responses[id] === undefined,
+    );
+    return {
+      sessionId: session.id,
+      kind: session.kind,
+      elapsedMs,
+      remainingMs,
+      windowExpired,
+      quorumReached,
+      pendingPeerIds,
+    };
+  }
+
+  /**
+   * Issue #1255 — cancel the active ready check without advancing. Used
+   * when a peer drops mid-check (and the host does not want to wait for
+   * the rest of the window) or when the host wants to reset the
+   * consensus attempt. Transitions the lobby back to `WAITING`.
+   */
+  cancelReadyCheck(reason: string = 'host-cancelled'): {
+    cancelled: boolean;
+    reason?: string;
+  } {
+    const session = this.readyCheck;
+    if (!session) {
+      return { cancelled: false, reason: 'No active ready check' };
+    }
+    session.cancelledAt = Date.now();
+    this.readyCheck = null;
+    this.transitionTo('WAITING');
+    return { cancelled: true, reason };
+  }
+
+  /**
+   * Issue #1255 — advance the lobby to `STARTING` once quorum is reached
+   * (or the host has decided to force-advance). Clears the ready-check
+   * session and transitions the state. Returns false when no session is
+   * active, when the state machine refuses the transition, or when
+   * quorum is not yet reached and the host did not explicitly opt in to
+   * force-advance.
+   */
+  advanceToStarting(options: { force?: boolean } = {}): boolean {
+    if (!this.currentLobby) return false;
+    if (!this.readyCheck) return false;
+    if (this.readyCheck.cancelledAt !== null) return false;
+    const state = this.getLobbyState();
+    if (state !== 'READY_CHECK') return false;
+    if (!options.force) {
+      const evalResult = this.evaluateReadyCheck();
+      if (!evalResult || !evalResult.quorumReached) {
+        return false;
+      }
+    }
+    this.readyCheck = null;
+    this.transitionTo('STARTING');
+    return true;
+  }
+
+  /**
+   * Issue #1255 — mark the lobby as `IN_GAME`. Called by the host once
+   * the start signal has been echoed by every peer. The previous
+   * `updateLobbyStatus('in-progress')` path still works for backward
+   * compatibility, but the state machine gives the host a single
+   * authoritative call site.
+   */
+  startInGame(): boolean {
+    if (!this.currentLobby) return false;
+    if (this.getLobbyState() !== 'STARTING') return false;
+    this.transitionTo('IN_GAME');
+    return true;
+  }
+
+  /**
+   * Issue #1255 — mark the lobby as `ENDED` when the game is over. This
+   * is a terminal state; the host should follow up with `closeLobby` to
+   * tear down the lobby and unregister from the public browser.
+   */
+  endGame(): boolean {
+    if (!this.currentLobby) return false;
+    if (this.getLobbyState() !== 'IN_GAME') return false;
+    this.transitionTo('ENDED');
+    return true;
+  }
+
+  /**
+   * Issue #1255 — explicit state transition with a strict allow-list.
+   * `WAITING → READY_CHECK` is allowed only via
+   * {@link beginReadyCheck}; `READY_CHECK → STARTING` is allowed only via
+   * {@link advanceToStarting}; etc. This is the central choke-point for
+   * lifecycle changes and is the right place to add logging or
+   * telemetry later.
+   */
+  private transitionTo(next: LobbyState): boolean {
+    if (!this.currentLobby) return false;
+    const current = this.getLobbyState();
+    if (current === next) return true;
+    const allowed = STATE_TRANSITIONS[current] ?? new Set();
+    if (!allowed.has(next)) {
+      return false;
+    }
+    this.currentLobby.state = next;
+    // Mirror the state into the existing `status` field so the
+    // public-lobby-browser, the host page, and the host status banner
+    // all keep their existing semantics (status is the user-visible
+    // phase; state is the strict machine phase).
+    this.currentLobby.status = LOBBY_STATE_TO_STATUS[next];
+    this.saveLobbyToStorage();
+    return true;
+  }
+
+  /**
+   * Issue #1255 — the active ready-check session, or null. Read-only:
+   * callers should mutate state through the public methods above. Used
+   * by the host UI to render the countdown and the per-peer indicator.
+   */
+  getActiveReadyCheck(): Readonly<ReadyCheckSession> | null {
+    return this.readyCheck;
+  }
+
+  /**
+   * Issue #1255 — reserve a peer's seat for the reconnect-token window.
+   * Called by the host when a peer disconnects mid-game. A late joiner
+   * arriving while a seat is held is rejected via {@link isSeatHeld}
+   * (with a `peer-held-by` reason so the joiner can be told whose seat
+   * is held). Idempotent: holding the same peer twice updates the
+   * `expiresAt` and `reason` (the most recent disconnect wins).
+   *
+   * The hold is auto-purged on every {@link getActiveSeatHolds} / 
+   * {@link isSeatHeld} call so the in-memory map never grows unbounded.
+   */
+  holdSeatForRejoin(peerId: string, originalName: string): SeatHold {
+    const now = Date.now();
+    const hold: SeatHold = {
+      peerId,
+      originalName,
+      heldAt: now,
+      expiresAt: now + LOBBY_SEAT_HOLD_DURATION_MS,
+      reason: 'peer-disconnected',
+    };
+    this.seatHolds.set(peerId, hold);
+    this.saveLobbyToStorage();
+    return hold;
+  }
+
+  /**
+   * Issue #1255 — release a seat hold. Called by the reconnect-token
+   * store when the peer successfully rejoins (the hold is consumed and
+   * the player reattaches to the same slot) or by the host when the
+   * hold window has elapsed and the host wants to free the seat
+   * immediately rather than wait for lazy purge.
+   */
+  releaseSeatHold(peerId: string): boolean {
+    const had = this.seatHolds.delete(peerId);
+    if (had) this.saveLobbyToStorage();
+    return had;
+  }
+
+  /**
+   * Issue #1255 — true when a seat is held for the given peerId AND the
+   * hold has not yet expired. Lazy-purges expired entries as a side
+   * effect so the in-memory map never grows unbounded. The
+   * `originalName` (returned via {@link getActiveSeatHolds}) is what the
+   * host UI shows in the "Waiting for X to reconnect" message.
+   */
+  isSeatHeld(peerId: string): boolean {
+    this.purgeExpiredSeatHolds();
+    return this.seatHolds.has(peerId);
+  }
+
+  /**
+   * Issue #1255 — snapshot of all active seat holds with each entry's
+   * remaining lifetime. Returns a fresh array; mutating it does not
+   * affect internal state. Used by the host UI to render the "seat
+   * held" badge and by `addPlayer` to refuse a joiner that would
+   * collide with a held seat.
+   */
+  getActiveSeatHolds(): Array<SeatHold & { remainingMs: number }> {
+    this.purgeExpiredSeatHolds();
+    const now = Date.now();
+    return Array.from(this.seatHolds.values()).map((h) => ({
+      ...h,
+      remainingMs: Math.max(0, h.expiresAt - now),
+    }));
+  }
+
+  /**
+   * Issue #1255 — sweep the in-memory seat-hold map, dropping any entry
+   * past its `expiresAt`. Idempotent and cheap (O(n) over a small map).
+   */
+  private purgeExpiredSeatHolds(): number {
+    const now = Date.now();
+    let removed = 0;
+    for (const [peerId, hold] of this.seatHolds) {
+      if (hold.expiresAt <= now) {
+        this.seatHolds.delete(peerId);
+        removed += 1;
+      }
+    }
+    if (removed > 0) this.saveLobbyToStorage();
+    return removed;
+  }
+
+  /**
+   * Issue #1255 — register a late-joiner against the current lobby
+   * during `IN_GAME`. The joiner is added to the roster AND a brief
+   * single-peer ready check is opened so the joiner can confirm their
+   * deck is loaded before the host releases them into the active game.
+   * If a seat is held (issue #1255 AC: refresh-mid-game peer holds the
+   * seat for 30 s), the joiner is rejected with `seat-held` so the
+   * joiner can be told "Waiting for {originalName} to reconnect".
+   */
+  joinMidGame(playerName: string): {
+    accepted: boolean;
+    player?: Player;
+    readyCheckSessionId?: string;
+    reason?: string;
+    heldFor?: string;
+  } {
+    if (!this.currentLobby) {
+      return { accepted: false, reason: 'No active lobby' };
+    }
+    this.purgeExpiredSeatHolds();
+    for (const hold of this.seatHolds.values()) {
+      return {
+        accepted: false,
+        reason: 'seat-held',
+        heldFor: hold.originalName,
+      };
+    }
+    const player = this.addPlayer(playerName);
+    if (!player) {
+      return { accepted: false, reason: 'Lobby is full' };
+    }
+    const result = this.beginReadyCheck('late-joiner', [player.id]);
+    if (!result.started) {
+      // Fall through — the joiner is in the roster but the brief
+      // ready check could not be opened (e.g. lobby state is ENDED).
+      // Returning the rejection reason is still useful for the UI.
+      return { accepted: true, player, reason: result.reason };
+    }
+    return {
+      accepted: true,
+      player,
+      readyCheckSessionId: result.sessionId,
+    };
+  }
 }
+
+/**
+ * Issue #1255 — state-machine transition allow-list. Each key is a
+ * current state; the value is the set of states reachable in one
+ * transition. Centralizing this table makes the machine auditable
+ * and easy to test.
+ */
+const STATE_TRANSITIONS: Record<LobbyState, Set<LobbyState>> = {
+  WAITING: new Set<LobbyState>(['READY_CHECK', 'ENDED']),
+  READY_CHECK: new Set<LobbyState>(['WAITING', 'STARTING', 'ENDED']),
+  STARTING: new Set<LobbyState>(['IN_GAME', 'WAITING', 'ENDED']),
+  IN_GAME: new Set<LobbyState>(['ENDED']),
+  ENDED: new Set<LobbyState>(['WAITING']),
+};
+
+/**
+ * Issue #1255 — mirror the strict state machine to the existing
+ * user-visible `status` field. The public-lobby-browser and host page
+ * both read `status` for the user-facing label, so we keep that field
+ * aligned with the machine.
+ */
+const LOBBY_STATE_TO_STATUS: Record<LobbyState, LobbyStatus> = {
+  WAITING: 'waiting',
+  READY_CHECK: 'waiting',
+  STARTING: 'ready',
+  IN_GAME: 'in-progress',
+  ENDED: 'in-progress',
+};
 
 // Singleton instance
 export const lobbyManager = new LobbyManager();

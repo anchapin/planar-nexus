@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -86,6 +86,14 @@ export default function HostLobbyPage() {
     pauseGame,
     resumeGame,
     isPaused,
+    // Issue #1255 — lobby state machine + ready-check + seat-hold
+    lobbyState,
+    activeReadyCheck,
+    beginReadyCheck,
+    recordReadyResponse,
+    cancelReadyCheck,
+    advanceToStarting,
+    evaluateReadyCheck,
   } = useLobby();
   const { confirm, confirmDialog } = useConfirmDialog();
 
@@ -115,6 +123,17 @@ export default function HostLobbyPage() {
   const [p2pConnectionState, setP2pConnectionState] =
     useState<DirectConnectionState>("idle");
   const [showP2pSetup, setShowP2pSetup] = useState(false);
+  // Issue #1255 — ready-check countdown state. We tick once per second
+  // while a session is active so the UI shows a live remaining-time
+  // indicator. The tick is also the auto-advance trigger: when the
+  // window elapses we evaluate the check and force-advance if the host
+  // has opted in (or we just cancel back to WAITING).
+  const [readyCheckRemainingMs, setReadyCheckRemainingMs] = useState<
+    number | null
+  >(null);
+  const readyCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   const gameCode = getGameCode();
 
@@ -124,6 +143,70 @@ export default function HostLobbyPage() {
       return () => clearTimeout(timeout);
     }
   }, [copied]);
+
+  // Issue #1255 — drive the ready-check countdown UI. When a session
+  // is active, tick every 250 ms (snappier than 1 s for the visible
+  // countdown), recompute the remaining window, and auto-advance when
+  // the window expires. The interval is torn down on session change.
+  useEffect(() => {
+    if (!activeReadyCheck) {
+      setReadyCheckRemainingMs(null);
+      if (readyCheckIntervalRef.current) {
+        clearInterval(readyCheckIntervalRef.current);
+        readyCheckIntervalRef.current = null;
+      }
+      return;
+    }
+    const tick = () => {
+      const evalResult = evaluateReadyCheck();
+      if (!evalResult) {
+        setReadyCheckRemainingMs(null);
+        return;
+      }
+      setReadyCheckRemainingMs(evalResult.remainingMs);
+      if (evalResult.windowExpired && !evalResult.quorumReached) {
+        // Window elapsed without quorum. Auto-advance (the host can
+        // still cancel from the UI if they prefer). This is the
+        // single source of truth for "the 15 s timer expired".
+        advanceToStarting({ force: true });
+        if (readyCheckIntervalRef.current) {
+          clearInterval(readyCheckIntervalRef.current);
+          readyCheckIntervalRef.current = null;
+        }
+      }
+    };
+    tick();
+    readyCheckIntervalRef.current = setInterval(tick, 250);
+    return () => {
+      if (readyCheckIntervalRef.current) {
+        clearInterval(readyCheckIntervalRef.current);
+        readyCheckIntervalRef.current = null;
+      }
+    };
+  }, [activeReadyCheck, evaluateReadyCheck, advanceToStarting]);
+
+  // Issue #1255 — host-side handler for the "Start Ready Check" button.
+  // Opens a full-roster check (15 s window) and the host is implicitly
+  // marked as having affirmed ready (peers are expected to respond over
+  // the signaling channel; for now we record the host's `ready: true`
+  // immediately so the UI shows their indicator).
+  const handleStartReadyCheck = useCallback(() => {
+    if (!lobby) return;
+    const result = beginReadyCheck();
+    if (result.started && result.sessionId) {
+      // The host is implicitly ready by clicking the button; this also
+      // makes the per-host ready indicator in the player list flip from
+      // "pending" to "answered" without waiting for a round-trip.
+      recordReadyResponse(result.sessionId, lobby.hostId, true);
+    }
+  }, [lobby, beginReadyCheck, recordReadyResponse]);
+
+  // Issue #1255 — host-side handler for the "Cancel Ready Check" button.
+  // Drops the in-flight session and returns the lobby to WAITING so the
+  // host can re-open the check or address the missing peer.
+  const handleCancelReadyCheck = useCallback(() => {
+    cancelReadyCheck("host-cancelled");
+  }, [cancelReadyCheck]);
 
   const handleCreateLobby = () => {
     if (!gameName.trim()) {
@@ -239,6 +322,17 @@ export default function HostLobbyPage() {
   };
 
   const handleStartGame = () => {
+    // Issue #1255 — the host's "Start Game" button drives the state
+    // machine. In WAITING, the first click opens a full ready check;
+    // in READY_CHECK, the button is disabled until quorum is reached
+    // (the auto-advance path on window-expiry handles the timeout).
+    // In STARTING, the button is enabled and flips the lobby to
+    // IN_GAME via `startGame` (which now goes through the state
+    // machine).
+    if (lobbyState === "WAITING") {
+      handleStartReadyCheck();
+      return;
+    }
     const success = startGame();
     if (success) {
       // Navigate to game board
@@ -690,6 +784,64 @@ export default function HostLobbyPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Issue #1255 — ready-check countdown banner. Rendered
+                  only when an active ready check is in flight. Shows
+                  the remaining window (15 s for a full check, 10 s for
+                  a late-joiner check) and lets the host cancel. */}
+              {activeReadyCheck && (
+                <Alert
+                  className="mb-4"
+                  data-testid="ready-check-banner"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <Clock className="w-4 h-4" />
+                  <AlertDescription className="flex items-center justify-between gap-2">
+                    <span>
+                      <strong>
+                        {activeReadyCheck.kind === "late-joiner"
+                          ? "Late joiner ready check"
+                          : "Ready check"}
+                      </strong>{" "}
+                      in progress — waiting on{" "}
+                      {activeReadyCheck.targetPeerIds.filter(
+                        (id) => !activeReadyCheck.responses[id],
+                      ).length}{" "}
+                      of {activeReadyCheck.targetPeerIds.length} peer
+                      {activeReadyCheck.targetPeerIds.length === 1 ? "" : "s"}
+                      {readyCheckRemainingMs !== null && (
+                        <>
+                          {" "}
+                          ·{" "}
+                          <span
+                            className="font-mono"
+                            data-testid="ready-check-countdown"
+                          >
+                            {Math.max(
+                              0,
+                              Math.ceil(readyCheckRemainingMs / 1000),
+                            )}
+                            s
+                          </span>{" "}
+                          remaining
+                        </>
+                      )}
+                    </span>
+                    {isHost && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleCancelReadyCheck}
+                        aria-label="Cancel ready check"
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
                 {lobby.players.map((player) => (
                   <div
@@ -771,6 +923,29 @@ export default function HostLobbyPage() {
                             ? "Host"
                             : "Not Ready"}
                       </Badge>
+                      {/* Issue #1255 — per-player ready-check indicator.
+                          When a ready check is active and this player is
+                          a target, render a small ✓ / ⏳ badge so the
+                          host can see at a glance who has answered. */}
+                      {activeReadyCheck &&
+                        activeReadyCheck.targetPeerIds.includes(player.id) && (
+                          <Badge
+                            variant="outline"
+                            data-testid={`ready-check-status-${player.id}`}
+                            aria-label={
+                              activeReadyCheck.responses[player.id]
+                                ? `${player.name} answered ready check`
+                                : `${player.name} pending ready check`
+                            }
+                            className="text-xs"
+                          >
+                            {activeReadyCheck.responses[player.id]
+                              ? activeReadyCheck.responses[player.id].ready
+                                ? "✓ answered"
+                                : "✗ declined"
+                              : "⏳ pending"}
+                          </Badge>
+                        )}
                     </div>
                   </div>
                 ))}
@@ -795,12 +970,27 @@ export default function HostLobbyPage() {
                   <>
                     <Button
                       onClick={handleStartGame}
-                      disabled={!canStartGame}
+                      disabled={
+                        lobbyState === "READY_CHECK" ||
+                        (lobbyState === "WAITING" &&
+                          (lobby.players.length < 2 ||
+                            !lobby.players.every(
+                              (p) =>
+                                p.deckId && p.deckName &&
+                                (!p.deckValidationErrors ||
+                                  p.deckValidationErrors.length === 0),
+                            )))
+                      }
                       className="flex-1"
                       size="lg"
+                      data-testid="start-game-button"
                     >
                       <Play className="w-4 h-4 mr-2" />
-                      Start Game
+                      {lobbyState === "WAITING"
+                        ? "Start Ready Check"
+                        : lobbyState === "READY_CHECK"
+                          ? "Waiting for peers…"
+                          : "Start Game"}
                     </Button>
                     {canForceStart && !canStartGame && (
                       <Button
