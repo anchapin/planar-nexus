@@ -1,9 +1,17 @@
 import * as Comlink from "comlink";
 import { evaluateGameState, quickScore } from "../game-state-evaluator";
 import { detectArchetype } from "../archetype-detector";
+import { calculateDeckStats } from "../archetype-signatures";
+import {
+  detectMissingSynergies,
+  detectSynergies as runSynergyDetection,
+} from "../synergy-detector";
 import { evaluateTriggerChain as runTriggerChainEvaluation } from "../trigger-chain-evaluator";
-import { detectSynergies as runSynergyDetection } from "../synergy-detector";
 import { reviewDeckHeuristic as runHeuristicDeckReview } from "@/lib/heuristic-deck-coach";
+import {
+  assembleStructuredAnalysis,
+  formatStructuredAnalysisForLLM,
+} from "../flows/coach-deck-analysis";
 import type {
   AIWorkerAPI,
   AnalyzeStatePayload,
@@ -97,6 +105,45 @@ export const aiWorker: AIWorkerAPI = {
           }
         : undefined;
 
+    // Issue #1236: the digest used to ship only deck stats + key cards. For
+    // large/Commander decks (the default format in the hook) the route then
+    // had no archetype / synergy / role / curve data to feed the model, so
+    // the 100-card path received strictly weaker grounding than a 20-card
+    // sketch — defeating #923. We now pre-compute the same structured
+    // analysis the route would otherwise rebuild from raw cards, and ship the
+    // rendered markdown block alongside the digest so the client never has to
+    // re-send a 100-card payload to recover that grounding.
+    //
+    // We bypass the synergy worker bridge (`detectSynergiesAsync`) because
+    // we ARE the worker — using the bridge would postMessage back to
+    // ourselves for no reason. Direct `detectSynergies` is the same function
+    // the bridge falls back to (#1079), so the result is identical.
+    let structuredAnalysisText: string | undefined;
+    if (cards.length > 0) {
+      try {
+        const archetype = detectArchetype(cards);
+        const stats = calculateDeckStats(cards);
+        const synergies = runSynergyDetection(cards);
+        const missing = detectMissingSynergies(cards, archetype.primary);
+        const analysis = assembleStructuredAnalysis(cards, {
+          archetype,
+          stats,
+          synergies,
+          missing,
+        });
+        structuredAnalysisText = formatStructuredAnalysisForLLM(analysis);
+      } catch (error) {
+        // Never fail the digest because of an analysis error — fall back to
+        // the stats-only digest and let the route re-run its own pre-fetch
+        // if it ever sees raw cards. Logged for observability.
+        console.warn(
+          "[ai-worker] structured analysis failed during digest; omitting:",
+          error,
+        );
+        structuredAnalysisText = undefined;
+      }
+    }
+
     const gameSummary = gameState
       ? {
           turn: gameState.turnInfo?.currentTurn || 1,
@@ -125,6 +172,7 @@ export const aiWorker: AIWorkerAPI = {
     return {
       deckSummary,
       gameSummary,
+      structuredAnalysisText,
       timestamp: Date.now(),
     };
   },

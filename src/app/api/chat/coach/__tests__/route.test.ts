@@ -436,6 +436,61 @@ describe("POST /api/chat/coach — structured analysis wiring (#923/#928)", () =
     expect(captured.systemPrompt).not.toContain("Structured Deck Analysis");
     // No deck cards → pre-fetch is skipped entirely, so no analysis is produced.
   });
+
+  it("embeds structured analysis carried in digestedContext (#1236)", async () => {
+    // Issue #1236: the hook drops the raw 100-card deck payload for large
+    // decks and ships a digested context instead. The route previously had
+    // no archetype / synergy / role data to feed the model in that path.
+    // The worker digest now carries a pre-rendered structured analysis on
+    // `digestedContext.structuredAnalysisText`; the route must use it
+    // (preferring it over re-running its own pre-fetch) so Commander decks
+    // receive the same grounding as a 20-card sketch.
+    const captured = yieldEvents([{ type: "done" }]);
+
+    const carriedAnalysis = [
+      "### Structured Deck Analysis",
+      "**Archetype**: Elf-ramp — confidence 80%",
+      "**Colours**: G | 60 cards | Avg CMC 2.10",
+      "**Mana Curve**: 0cmc:0  1cmc:8  2cmc:8  3cmc:6  4cmc:2  5cmc:0  6cmc:0  7cmc+:2",
+      "**Role Mix**: Threats 24 · Ramp 12 · Removal 0 · Draw 0 · Disruption 0 · Lands 24 · Other 0",
+      "**Synergy Clusters**:",
+      "- _Elf Tribal_ (tribal, score 90): Llanowar Elves, Elvish Mystic, Elvish Archdruid — lords pump elves",
+    ].join("\n");
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ id: "1", role: "user", content: "help me tune this" }],
+        // `deckCards` is OMITTED — the Commander path. The structured
+        // grounding travels inside `digestedContext.structuredAnalysisText`.
+        digestedContext: {
+          deckSummary: {
+            totalCards: 60,
+            typeCounts: { Creature: 36, Land: 24 },
+            averageCmc: 2.1,
+            keyCards: ["Craterhoof Behemoth", "Ezuri, Renegade Leader"],
+            manaCurve: [0, 8, 8, 6, 2, 0, 0, 2],
+            colors: ["G"],
+          },
+          structuredAnalysisText: carriedAnalysis,
+          timestamp: Date.now(),
+        },
+        format: "commander",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    // The carried text is embedded into the guardrailed system prompt the
+    // coach reasons over (#923/#928 wiring preserved for the digest path).
+    expect(captured.systemPrompt).toContain("Structured Deck Analysis");
+    expect(captured.systemPrompt).toContain("Archetype");
+    expect(captured.systemPrompt).toContain("Synergy Clusters");
+    // The exact text from the digest must appear verbatim so downstream
+    // formatting / fences (`structured_analysis`) still wrap it.
+    expect(captured.systemPrompt).toContain("Elf-ramp");
+    expect(captured.systemPrompt).toContain("Craterhoof Behemoth");
+  });
 });
 
 describe("POST /api/chat/coach — conversation pruning (#1238)", () => {

@@ -37,6 +37,18 @@ export interface CoachContextPayload {
 
 /**
  * Digested context optimized for LLM consumption.
+ *
+ * Issue #1236: when the deck is too large to send over the wire (Commander
+ * defaults to 100 cards), the worker digest previously carried only deck stats
+ * + key cards — no archetype, synergy clusters, role distribution, or gaps.
+ * Because the route only computed the structured analysis from RAW cards, the
+ * digest path silently received weaker grounding than a 20-card sketch,
+ * defeating #923 for exactly the decks that need it most.
+ *
+ * The worker now pre-computes the full structured analysis alongside the
+ * digest and surfaces it as {@link DigestedCoachContext.structuredAnalysisText}
+ * (the same markdown block the route would otherwise rebuild from raw cards).
+ * The route prefers this field over re-running its own pre-fetch when present.
  */
 export interface DigestedCoachContext {
   deckSummary?: {
@@ -59,6 +71,13 @@ export interface DigestedCoachContext {
       keyPermanents: string[];
     }>;
   };
+  /**
+   * Pre-rendered structured deck analysis (archetype, mana curve, role mix,
+   * synergy clusters, key cards, strengths/gaps). Optional so older digests
+   * remain backward-compatible — but the worker populates it whenever cards
+   * are supplied (#1236).
+   */
+  structuredAnalysisText?: string;
   timestamp: number;
 }
 
