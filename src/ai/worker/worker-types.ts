@@ -23,6 +23,7 @@ export enum AIWorkerAction {
   PREPARE_COACH_CONTEXT = "PREPARE_COACH_CONTEXT",
   EVALUATE_TRIGGER_CHAIN = "EVALUATE_TRIGGER_CHAIN",
   DETECT_SYNERGIES = "DETECT_SYNERGIES",
+  REVIEW_DECK = "REVIEW_DECK",
 }
 
 /**
@@ -114,6 +115,52 @@ export interface DetectSynergiesPayload {
 }
 
 /**
+ * Per-card input accepted by the heuristic deck-coach worker payload.
+ *
+ * Mirrors the file-local `HeuristicCard` interface in
+ * `src/lib/heuristic-deck-coach.ts`. All fields are optional except `name`
+ * and `count`; the rest are best-effort metadata the heuristic engine reads
+ * opportunistically. They are all structured-cloneable plain data so the
+ * payload can cross the worker boundary via Comlink without surprises.
+ *
+ * Issue #1243: this is the wire format used when offloading the heuristic
+ * deck review to the AI Web Worker.
+ */
+export interface HeuristicDeckCard {
+  name: string;
+  count: number;
+  id?: string;
+  cmc?: number;
+  colors?: string[];
+  legalities?: Record<string, string>;
+  type_line?: string;
+  mana_cost?: string;
+  color_identity?: string[];
+  oracle_text?: string;
+}
+
+/**
+ * Payload for offloading the heuristic deck coach review to the worker.
+ *
+ * `reviewDeckHeuristic` (in `src/lib/heuristic-deck-coach.ts`) iterates 6
+ * archetype templates, runs archetype + synergy + missing-synergy detection,
+ * and composes a `DeckReviewOutput`. On a 100-card deck it is comfortably
+ * >50ms on the main thread, blocking the deck-coach UI. Offloading it to the
+ * AI Web Worker keeps the UI responsive (issue #1243, roadmap Phase 32 —
+ * Off-Main-Thread Intelligence).
+ *
+ * All fields are structured-cloneable plain data so the payload can be posted
+ * to the worker via Comlink. The heuristic engine has no DOM / main-thread
+ * dependencies (it only imports the same pure archetype + synergy detectors
+ * the worker already loads), so it is safe to run inside the worker.
+ */
+export interface ReviewDeckPayload {
+  decklist: string;
+  format: string;
+  cards: HeuristicDeckCard[];
+}
+
+/**
  * Response from the AI Worker.
  */
 export interface AIWorkerResponse<T = unknown> {
@@ -169,8 +216,17 @@ export interface AIWorkerAPI {
   /**
    * Detects card-to-card synergies across an entire deck. Offloaded from the
    * main thread to keep deck-coach analysis responsive (#1079). Returns the
-   * exact `SynergyResult[]` the in-thread detector would produce (no behavior
+   * exact `SynergyResult[]` the in-thread detector produces (no behavior
    * change), so callers can treat the result identically.
    */
   detectSynergies(payload: DetectSynergiesPayload): Promise<SynergyResult[]>;
+
+  /**
+   * Runs the full heuristic deck-coach review off the main thread. Offloaded
+   * from the deck-coach UI to eliminate >50ms long tasks on 100-card decks
+   * (issue #1243, roadmap Phase 32 — Off-Main-Thread Intelligence). Returns
+   * the exact `DeckReviewOutput` the in-thread `reviewDeckHeuristic` produces
+   * (no behavior change), so callers can treat the result identically.
+   */
+  reviewDeck(payload: ReviewDeckPayload): Promise<unknown>;
 }

@@ -9,7 +9,7 @@
  * - DeckReviewOutput - The return type for reviewDeck function.
  */
 
-import { reviewDeckHeuristic } from '@/lib/heuristic-deck-coach';
+import { reviewDeckHeuristicAsync } from '@/ai/worker/heuristic-deck-coach-worker-bridge';
 import { validateCardLegality } from '@/lib/server-card-operations';
 import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
 import { callAIProxy } from '@/lib/ai-proxy-client';
@@ -158,8 +158,16 @@ export async function reviewDeck(
       }
     }
 
-    // Use heuristic analysis instead of AI
-    const result = reviewDeckHeuristic(input.decklist, input.format, cards);
+    // Use heuristic analysis instead of AI. The review runs off the main
+    // thread via the heuristic-deck-coach worker bridge (#1243) when the AI
+    // Web Worker is available, and falls back to an in-process computation
+    // (value-identical) when it is not — so SSR / Node / Jest paths keep
+    // working.
+    const result = await reviewDeckHeuristicAsync(
+      input.decklist,
+      input.format,
+      cards,
+    );
 
     // Issue #1072: local citation verification gate. A single resolver is
     // reused across all options so the (cached) database-population probe
