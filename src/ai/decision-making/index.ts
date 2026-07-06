@@ -31,3 +31,15 @@ export {
 } from "./block-prediction";
 
 export { runAllCombatExamples, combatExamples } from "./combat-examples";
+
+// Issue #1234: commander tax + opposing-commander threat tracking.
+export {
+  KNOWN_VOLTRON_COMMANDERS,
+  computeCommanderTax,
+  shouldCastCommander,
+  opposingCommanderThreat,
+  commanderStateFromPlayer,
+  type CommanderState,
+  type CastCommanderDecision,
+  type OpposingCommanderThreatInput,
+} from "./commander-math";
