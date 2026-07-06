@@ -10,11 +10,15 @@
  * `globals.css` with `Highlight`) and a `data-state` attribute so the active
  * state is distinguishable without relying on translucent amber gradients or
  * the loader spin.
+ *
+ * Issue #1245: when the AI worker reports main-thread blocks > 50ms
+ * (Long-Task API) we surface a subtle `slowThinking` badge so the user
+ * knows the indicator reflects real activity, not a stuck event loop.
  */
 
 "use client";
 
-import { Loader2, Bot } from "lucide-react";
+import { Loader2, Bot, Hourglass } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface AiPickingIndicatorProps {
@@ -24,22 +28,43 @@ interface AiPickingIndicatorProps {
   difficulty?: "easy" | "medium";
   /** Additional class names */
   className?: string;
+  /**
+   * Surface a subtle "thinking slowly" hint when the AI is still picking
+   * but the Long-Task API has reported >3 main-thread blocks >50ms in the
+   * last second. Lets the user know the worker is alive, just working hard.
+   * No effect when `isPicking` is false.
+   * (issue #1245 — Phase 32 non-blocking status indicator)
+   */
+  slowThinking?: boolean;
 }
 
 /**
  * Visual indicator showing AI picking state
  * - Shows spinning loader when AI is picking
  * - Shows static bot icon when AI is waiting
+ * - Adds a subtle hourglass + "thinking slowly" hint when Long-Task API
+ *   reports >3 main-thread blocks in the last second (#1245).
  */
 export function AiPickingIndicator({
   isPicking,
   difficulty = "medium",
   className,
+  slowThinking = false,
 }: AiPickingIndicatorProps) {
+  // The slow-thinking hint only matters while the AI is actively picking.
+  // Reading the data-state-driven HCM override off `data-slow` keeps the
+  // global `forced-colors` block in `globals.css` in sync with the visible
+  // state without forking the styling logic.
+  const dataState = isPicking
+    ? slowThinking
+      ? "slow"
+      : "picking"
+    : "idle";
   return (
     <div
       data-testid="ai-picking-indicator"
-      data-state={isPicking ? "picking" : "idle"}
+      data-state={dataState}
+      data-slow={isPicking && slowThinking ? "true" : undefined}
       aria-live={isPicking ? "polite" : undefined}
       // `border` is the HCM-visible affordance — `globals.css` promotes it
       // to Highlight when `forced-colors: active`.
@@ -54,7 +79,19 @@ export function AiPickingIndicator({
       {isPicking ? (
         <>
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          <span className="text-sm font-medium">AI Picking...</span>
+          <span className="text-sm font-medium">
+            {slowThinking ? "AI Thinking Slowly..." : "AI Picking..."}
+          </span>
+          {slowThinking && (
+            <span
+              data-testid="ai-picking-slow-badge"
+              className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-200/60 dark:bg-amber-800/60"
+              aria-label="Main thread has been blocked for more than 50ms at least three times in the last second"
+            >
+              <Hourglass className="h-3 w-3" aria-hidden="true" />
+              <span>thinking slowly</span>
+            </span>
+          )}
         </>
       ) : (
         <>
@@ -74,15 +111,23 @@ export function AiPickingBadge({
   isPicking,
   poolSize = 0,
   difficulty = "medium",
+  slowThinking = false,
 }: {
   isPicking: boolean;
   poolSize?: number;
   difficulty?: "easy" | "medium";
+  /**
+   * Surface a "thinking slowly" hint when Long-Task API reports a stalled
+   * main thread. See `AiPickingIndicator` for the full description
+   * (issue #1245).
+   */
+  slowThinking?: boolean;
 }) {
   return (
     <span
       data-testid="ai-picking-badge"
       data-state={isPicking ? "picking" : "idle"}
+      data-slow={isPicking && slowThinking ? "true" : undefined}
       className={cn(
         "inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border",
         isPicking
@@ -93,7 +138,14 @@ export function AiPickingBadge({
       {isPicking ? (
         <>
           <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-          <span>🤖 Picking...</span>
+          <span>🤖 {slowThinking ? "Thinking slowly..." : "Picking..."}</span>
+          {slowThinking && (
+            <Hourglass
+              className="h-3 w-3"
+              aria-hidden="true"
+              data-testid="ai-picking-slow-badge"
+            />
+          )}
         </>
       ) : (
         <>
