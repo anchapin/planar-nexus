@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { DeckCard } from "@/app/actions";
 import { prefetchCoachContext } from "@/ai/flows/coach-context-prefetch";
-import { buildCoachSystemPrompt } from "@/ai/flows/context-builder";
+import {
+  buildCoachSystemPrompt,
+  prepareConversationHistory,
+} from "@/ai/flows/context-builder";
 import {
   streamCoachResponse,
   eventToSse,
@@ -33,6 +36,12 @@ import { sanitizeUserInput } from "@/ai/prompt-security";
  *
  * Issue #928: context is PRE-FETCHED (in parallel, with caching) before the
  * model is invoked, so request→model latency meets the WORKER-03 target.
+ *
+ * Issue #1238: the sanitized history is pruned against a token budget before
+ * being forwarded to the stream layer (`prepareConversationHistory`), so long
+ * coaching sessions cannot exceed the model's context window. The system
+ * prompt (which carries the structured deck analysis) is reserved against the
+ * budget and the latest user turn is always retained intact.
  */
 
 export const dynamic = "force-dynamic";
@@ -124,15 +133,34 @@ export async function POST(request: NextRequest) {
       })
       .filter((m): m is CoachStreamMessage => m !== null);
 
-    // 6. Resolve the ordered provider failover chain (issue #1077).
+    // 6. Prune the conversation history against the token budget (issue
+    //    #1238). `systemContent` is reserved against the budget so the
+    //    structured-analysis / SECURITY_PREAMBLE block is always preserved.
+    //    The latest turn is always retained intact; oldest turns are dropped
+    //    first until the combined size fits within the configured budget.
+    const prunedMessages = prepareConversationHistory(
+      sanitizedMessages.map((m) => ({
+        id: `${m.role}-${m.content.length}`,
+        role: m.role,
+        content: m.content,
+        timestamp: new Date(),
+      })),
+      {
+        maxMessages: body.maxHistoryMessages,
+        maxTokens: body.maxHistoryTokens,
+        systemContent: systemPrompt,
+      },
+    );
+
+    // 7. Resolve the ordered provider failover chain (issue #1077).
     const providers = getProviderFailoverChain(body.provider);
 
-    // 7. Stream the response as SSE. `request.signal` aborts when the client
+    // 8. Stream the response as SSE. `request.signal` aborts when the client
     //    cancels its fetch (AbortController) — threading it through stops
     //    server-side generation and prevents further provider attempts.
     const eventStream = streamCoachResponse({
       systemPrompt,
-      messages: sanitizedMessages,
+      messages: prunedMessages,
       providers,
       modelId: body.modelId,
       signal: request.signal,
