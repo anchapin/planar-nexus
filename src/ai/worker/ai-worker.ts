@@ -3,6 +3,7 @@ import { evaluateGameState, quickScore } from "../game-state-evaluator";
 import { detectArchetype } from "../archetype-detector";
 import { evaluateTriggerChain as runTriggerChainEvaluation } from "../trigger-chain-evaluator";
 import { detectSynergies as runSynergyDetection } from "../synergy-detector";
+import { reviewDeckHeuristic as runHeuristicDeckReview } from "@/lib/heuristic-deck-coach";
 import type {
   AIWorkerAPI,
   AnalyzeStatePayload,
@@ -10,6 +11,7 @@ import type {
   DigestedCoachContext,
   EvaluateTriggerChainPayload,
   DetectSynergiesPayload,
+  ReviewDeckPayload,
 } from "./worker-types";
 import type { TriggerChain } from "../trigger-chain-evaluator";
 import type { SynergyResult } from "../synergy-detector";
@@ -152,6 +154,27 @@ export const aiWorker: AIWorkerAPI = {
   ): Promise<SynergyResult[]> {
     const { deck, minScore, maxResults } = payload;
     return runSynergyDetection(deck, minScore, maxResults);
+  },
+
+  /**
+   * Runs the full heuristic deck-coach review off the main thread (#1243).
+   *
+   * `reviewDeckHeuristic` (in `src/lib/heuristic-deck-coach.ts`) iterates 6
+   * archetype templates, runs archetype + synergy + missing-synergy detection,
+   * and composes a `DeckReviewOutput`. On a 100-card deck it is comfortably
+   * >50ms on the main thread, blocking the deck-coach UI. Offloading it to
+   * the AI Web Worker keeps the UI responsive (roadmap Phase 32 —
+   * Off-Main-Thread Intelligence).
+   *
+   * The heuristic engine has no DOM / main-thread dependencies (it only
+   * imports the same pure archetype + synergy detectors the worker already
+   * loads), so it is safe to run inside the worker. Returns the exact
+   * `DeckReviewOutput` the in-thread `reviewDeckHeuristic` produces (no
+   * behavior change), so callers can treat the result identically.
+   */
+  async reviewDeck(payload: ReviewDeckPayload): Promise<unknown> {
+    const { decklist, format, cards } = payload;
+    return runHeuristicDeckReview(decklist, format, cards);
   },
 };
 

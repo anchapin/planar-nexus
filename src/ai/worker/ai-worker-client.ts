@@ -5,6 +5,8 @@ import type {
   DetailedEvaluation,
   EvaluateTriggerChainPayload,
   DetectSynergiesPayload,
+  HeuristicDeckCard,
+  ReviewDeckPayload,
 } from "./worker-types";
 import type {
   CascadeContext,
@@ -15,6 +17,7 @@ import type { SynergyResult } from "../synergy-detector";
 import type { DeckCard } from "@/app/actions";
 import type { AIGameState as GameState } from "@/lib/game-state/types";
 import type { DeckArchetype } from "../game-state-evaluator";
+import type { DeckReviewOutput } from "@/lib/heuristic-deck-coach";
 
 /**
  * Main Thread Client for AI Web Worker
@@ -209,6 +212,38 @@ class AIWorkerClient {
     }
     const payload: DetectSynergiesPayload = { deck, minScore, maxResults };
     return proxy.detectSynergies(payload);
+  }
+
+  /**
+   * Offloads the heuristic deck-coach review to the AI Web Worker (#1243).
+   *
+   * Returns the worker-computed `DeckReviewOutput`, or `null` when the worker
+   * is unavailable (no proxy / not a browser). Callers MUST treat `null` or a
+   * thrown error as "compute on the main thread" — the heuristic-deck-coach
+   * worker bridge (`heuristic-deck-coach-worker-bridge.ts`) centralizes that
+   * fallback so the coach never breaks if the worker fails to initialize or
+   * errors mid-call.
+   *
+   * The result is typed as `unknown` (then narrowed to `DeckReviewOutput` at
+   * the bridge boundary) because Comlink's `Remote<AIWorkerAPI>` would
+   * otherwise force this client to know the worker's `DeckReviewOutput`
+   * shape, which would re-introduce a circular type dependency between the
+   * worker and the heuristic module.
+   */
+  public async reviewDeck(
+    decklist: string,
+    format: string,
+    cards: HeuristicDeckCard[],
+  ): Promise<DeckReviewOutput | null> {
+    if (!this.proxy) {
+      this.init();
+    }
+    const proxy = this.proxy;
+    if (!proxy) {
+      return null;
+    }
+    const payload: ReviewDeckPayload = { decklist, format, cards };
+    return proxy.reviewDeck(payload) as Promise<DeckReviewOutput>;
   }
 
   /**

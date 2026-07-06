@@ -17,6 +17,17 @@
 jest.mock("@/lib/heuristic-deck-coach", () => ({
   reviewDeckHeuristic: jest.fn(),
 }));
+// Issue #1243: `reviewDeck` now routes the heuristic review through the AI
+// Worker bridge, which transparently falls back to the in-process
+// `reviewDeckHeuristic` when the worker is unavailable (jsdom / SSR). Mock the
+// bridge so the test stays deterministic and does not depend on the worker
+// runtime — the existing heuristic assertions still pass because the bridge
+// default resolver is itself a passthrough to `reviewDeckHeuristic`.
+jest.mock("@/ai/worker/heuristic-deck-coach-worker-bridge", () => ({
+  reviewDeckHeuristicAsync: jest.fn(),
+  _setHeuristicDeckCoachClientResolver: jest.fn(),
+  _resetHeuristicDeckCoachClientResolver: jest.fn(),
+}));
 jest.mock("@/lib/server-card-operations", () => ({
   validateCardLegality: jest.fn(),
 }));
@@ -44,6 +55,7 @@ jest.mock("@/lib/card-database", () => ({
 import { reviewDeck } from "../ai-deck-coach-review";
 import type { DeckReviewOutput } from "../ai-deck-coach-review";
 import { reviewDeckHeuristic } from "@/lib/heuristic-deck-coach";
+import { reviewDeckHeuristicAsync } from "@/ai/worker/heuristic-deck-coach-worker-bridge";
 import { validateCardLegality } from "@/lib/server-card-operations";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { enforceRateLimit, RateLimitError } from "@/lib/rate-limiter";
@@ -52,6 +64,9 @@ import type { MinimalCard } from "@/lib/card-database";
 
 const mockedHeuristic = reviewDeckHeuristic as jest.MockedFunction<
   typeof reviewDeckHeuristic
+>;
+const mockedHeuristicAsync = reviewDeckHeuristicAsync as jest.MockedFunction<
+  typeof reviewDeckHeuristicAsync
 >;
 const mockedValidate = validateCardLegality as jest.MockedFunction<
   typeof validateCardLegality
@@ -105,6 +120,13 @@ beforeEach(() => {
   errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
   mockedEnforce.mockImplementation(() => {});
   mockedHeuristic.mockReturnValue(heuristicResult());
+  // Issue #1243: the flow now goes through the heuristic-deck-coach worker
+  // bridge. The default test setup resolves the bridge to a stub returning
+  // the same canned heuristic result so the existing flow assertions
+  // (parity, prefixing, filtering, rebalancing) stay meaningful. Individual
+  // tests can override `mockedHeuristicAsync` to exercise the worker / null
+  // / error paths.
+  mockedHeuristicAsync.mockResolvedValue(heuristicResult());
   mockedValidate.mockResolvedValue({ found: [], notFound: [], illegal: [] });
   // By default the AI path is unavailable → falls through to heuristic.
   mockedProxy.mockResolvedValue({ success: false } as never);
@@ -166,7 +188,10 @@ describe("reviewDeck — heuristic path", () => {
 
   it("parses the decklist and passes card objects to the heuristic engine", async () => {
     await reviewDeck({ decklist: DECKLIST, format: "modern" });
-    expect(mockedHeuristic).toHaveBeenCalledWith(
+    // Issue #1243: the flow now goes through the heuristic-deck-coach worker
+    // bridge. The bridge is responsible for routing the review to the worker
+    // (or to the in-process fallback); the flow only knows the bridge.
+    expect(mockedHeuristicAsync).toHaveBeenCalledWith(
       DECKLIST,
       "modern",
       expect.arrayContaining([
@@ -176,7 +201,7 @@ describe("reviewDeck — heuristic path", () => {
   });
 
   it("handles an empty decklist without throwing", async () => {
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({ deckOptions: [] }),
     );
     const out = await reviewDeck({ decklist: "", format: "modern" });
@@ -184,7 +209,7 @@ describe("reviewDeck — heuristic path", () => {
   });
 
   it("filters out deck options that propose no card changes", async () => {
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -213,7 +238,7 @@ describe("reviewDeck — card legality validation in the heuristic tail", () => 
       notFound: ["Lightning Bolt"],
       illegal: ["Blood Moon"],
     });
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -236,7 +261,7 @@ describe("reviewDeck — card legality validation in the heuristic tail", () => 
   });
 
   it("does not call validateCardLegality when an option has no cards to add", async () => {
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           { title: "Removes only", description: "d", cardsToRemove: [{ name: "Cut", quantity: 1 }] },
@@ -269,7 +294,7 @@ describe("reviewDeck — local citation verification gate (issue #1072)", () => 
     mockedGetCardByName.mockImplementation(async (name: string) =>
       name === "Lightning Bolt" ? realCard("Lightning Bolt") : undefined,
     );
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -295,7 +320,7 @@ describe("reviewDeck — local citation verification gate (issue #1072)", () => 
     // Empty DB → cannot refute anything → must not strip legitimate advice.
     mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0 });
     mockedGetCardByName.mockResolvedValue(undefined);
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -329,7 +354,7 @@ describe("reviewDeck — local citation verification gate (issue #1072)", () => 
       notFound: [],
       illegal: ["Real Card"],
     });
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -358,7 +383,7 @@ describe("reviewDeck — quantity rebalancing (issue #1078 regression)", () => {
   it("trims removals down to the add count without looping forever", async () => {
     // removes (5) exceed adds (2). Pre-fix this hung forever because the
     // zero-quantity tail item was re-pushed and never let earlier items shrink.
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -385,7 +410,7 @@ describe("reviewDeck — quantity rebalancing (issue #1078 regression)", () => {
   });
 
   it("leaves a single oversized removal entry correctly trimmed", async () => {
-    mockedHeuristic.mockReturnValue(
+    mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
         deckOptions: [
           {
@@ -418,8 +443,10 @@ describe("reviewDeck — AI vs heuristic branch selection", () => {
 
     expect(mockedProxy).toHaveBeenCalled();
     expect(out.reviewSummary).toBe("AI summary.");
-    // Heuristic engine must not run when the AI response is used.
+    // Heuristic engine (and its worker bridge) must not run when the AI
+    // response is used (issue #1243).
     expect(mockedHeuristic).not.toHaveBeenCalled();
+    expect(mockedHeuristicAsync).not.toHaveBeenCalled();
   });
 
   it("falls back to the heuristic when the AI payload is malformed (validator rejects it)", async () => {
@@ -431,7 +458,7 @@ describe("reviewDeck — AI vs heuristic branch selection", () => {
 
     const out = await reviewDeck({ decklist: DECKLIST, format: "modern" }, true);
 
-    expect(mockedHeuristic).toHaveBeenCalled();
+    expect(mockedHeuristicAsync).toHaveBeenCalled();
     // useAI=true → heuristic summary carries the unavailable-mode prefix.
     expect(out.reviewSummary).toContain("Heuristic Mode");
   });
@@ -441,7 +468,7 @@ describe("reviewDeck — AI vs heuristic branch selection", () => {
 
     const out = await reviewDeck({ decklist: DECKLIST, format: "modern" }, true);
 
-    expect(mockedHeuristic).toHaveBeenCalled();
+    expect(mockedHeuristicAsync).toHaveBeenCalled();
     expect(out.reviewSummary).toContain("Heuristic Mode");
   });
 
@@ -450,7 +477,7 @@ describe("reviewDeck — AI vs heuristic branch selection", () => {
 
     const out = await reviewDeck({ decklist: DECKLIST, format: "modern" }, true);
 
-    expect(mockedHeuristic).toHaveBeenCalled();
+    expect(mockedHeuristicAsync).toHaveBeenCalled();
     expect(out.reviewSummary).toContain("Heuristic Mode");
   });
 
@@ -459,5 +486,33 @@ describe("reviewDeck — AI vs heuristic branch selection", () => {
     const out = await reviewDeck({ decklist: DECKLIST, format: "modern" }, true);
     expect(mockedProxy).not.toHaveBeenCalled();
     expect(out.reviewSummary).toContain("Heuristic Mode");
+  });
+});
+
+describe("reviewDeck — heuristic offload via worker bridge (issue #1243)", () => {
+  it("uses the worker bridge as the heuristic entry point", async () => {
+    // The flow is intentionally agnostic of the worker: the bridge decides
+    // whether the review runs in the AI Web Worker or on the main thread.
+    // Asserting the bridge is the only call surface keeps the offload seam
+    // honest — regressing this means the heavy heuristic has slipped back
+    // onto the main thread.
+    await reviewDeck({ decklist: DECKLIST, format: "modern" });
+    expect(mockedHeuristicAsync).toHaveBeenCalledTimes(1);
+    // The in-process engine must NOT be called directly by the flow anymore
+    // — the bridge is the only allowed caller.
+    expect(mockedHeuristic).not.toHaveBeenCalled();
+  });
+
+  it("forwards the parsed decklist, format, and parsed cards to the bridge", async () => {
+    await reviewDeck({ decklist: DECKLIST, format: "commander" });
+    expect(mockedHeuristicAsync).toHaveBeenCalledWith(
+      DECKLIST,
+      "commander",
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Lightning Bolt", count: 4 }),
+        expect.objectContaining({ name: "Blood Moon", count: 2 }),
+        expect.objectContaining({ name: "Forest", count: 3 }),
+      ]),
+    );
   });
 });
