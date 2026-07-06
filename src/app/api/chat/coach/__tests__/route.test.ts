@@ -437,3 +437,102 @@ describe("POST /api/chat/coach — structured analysis wiring (#923/#928)", () =
     // No deck cards → pre-fetch is skipped entirely, so no analysis is produced.
   });
 });
+
+describe("POST /api/chat/coach — conversation pruning (#1238)", () => {
+  function makeLongHistory(turns: number, filler = "x"): Array<{
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+  }> {
+    const out: Array<{ id: string; role: "user" | "assistant"; content: string }> = [];
+    for (let i = 0; i < turns; i++) {
+      out.push({
+        id: `m-${i}`,
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: `turn-${i}: ${filler.repeat(400)}`,
+      });
+    }
+    return out;
+  }
+
+  it("prunes a long history before streaming to the provider (#1238)", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+
+    // 50 turns × ~100 tokens each ≈ 5_000 tokens; budget of 1_000 forces
+    // pruning. The structured analysis / SECURITY_PREAMBLE block in the
+    // system prompt is also reserved against the budget.
+    const messages = makeLongHistory(50);
+
+    const res = await POST(
+      makeRequest({
+        messages,
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+        maxHistoryTokens: 1_000,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    // The provider must see strictly fewer than the raw 50 messages.
+    expect(captured.messages.length).toBeLessThan(50);
+    expect(captured.messages.length).toBeGreaterThan(0);
+
+    // The user's latest prompt is always retained intact.
+    expect(captured.messages[captured.messages.length - 1].content).toBe(
+      messages[messages.length - 1].content,
+    );
+  });
+
+  it("respects a client-supplied maxHistoryMessages cap", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+
+    const messages = makeLongHistory(20, "x"); // ~100 tokens each = 2_000 total.
+
+    const res = await POST(
+      makeRequest({
+        messages,
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+        maxHistoryTokens: 10_000, // Generous; the message cap is the constraint.
+        maxHistoryMessages: 4,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    expect(captured.messages.length).toBeLessThanOrEqual(4);
+    // Latest message preserved.
+    expect(captured.messages[captured.messages.length - 1].content).toBe(
+      messages[messages.length - 1].content,
+    );
+  });
+
+  it("does not modify messages that already fit the budget", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+
+    // 3 small turns ≪ budget; the route should pass them through unchanged.
+    const messages = [
+      { id: "1", role: "user", content: "hi" },
+      { id: "2", role: "assistant", content: "hello! how can I help?" },
+      { id: "3", role: "user", content: "is my deck good?" },
+    ];
+
+    await POST(
+      makeRequest({
+        messages,
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+      }),
+    );
+
+    expect(captured.messages).toHaveLength(3);
+    expect(captured.messages.map((m) => m.content)).toEqual([
+      "hi",
+      "hello! how can I help?",
+      "is my deck good?",
+    ]);
+  });
+});

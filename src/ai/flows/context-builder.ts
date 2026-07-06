@@ -190,19 +190,148 @@ export function buildCoachSystemPrompt(
 }
 
 /**
+ * Default token budget for the coach conversation history (issue #1238).
+ * Reserved against the *combined* size of the system prompt + retained
+ * messages, leaving headroom for the model's response. Conservative default
+ * for the chat context window; tune via {@link PrepareConversationHistoryOptions.maxTokens}.
+ */
+export const DEFAULT_CONVERSATION_TOKEN_BUDGET = 8_000;
+
+/**
+ * Default hard cap on the number of retained turns, independent of the token
+ * budget. Prevents pathological inputs (e.g. many tiny messages) from blowing
+ * up the request size.
+ */
+export const DEFAULT_CONVERSATION_MAX_MESSAGES = 50;
+
+/**
+ * Default heuristic for estimating token count from raw text.
+ * The "characters per token" rule of thumb is ~4 for English/code; the coach
+ * payload is English prose plus structured-analysis blocks, so 4 is a safe
+ * average.
+ */
+export const DEFAULT_CHARS_PER_TOKEN = 4;
+
+/** Options that control how {@link prepareConversationHistory} prunes history. */
+export interface PrepareConversationHistoryOptions {
+  /**
+   * Hard cap on retained messages. Independent of the token budget — even
+   * tiny messages count toward this so we never ship an unbounded array.
+   * Defaults to {@link DEFAULT_CONVERSATION_MAX_MESSAGES}.
+   */
+  maxMessages?: number;
+  /**
+   * Token budget. Reserved against the *combined* size of `systemContent`
+   * (typically the guardrailed system prompt) and the retained messages,
+   * so we never exceed the model's context window. Defaults to
+   * {@link DEFAULT_CONVERSATION_TOKEN_BUDGET}.
+   */
+  maxTokens?: number;
+  /** Characters-per-token heuristic (see {@link estimateTokens}). */
+  charsPerToken?: number;
+  /**
+   * Content of the system prompt that will be sent alongside the messages.
+   * Reserved against the token budget so the budget reflects the *full*
+   * prompt size, not just the visible conversation. Typically passed by the
+   * coach route after `buildCoachSystemPrompt` runs.
+   */
+  systemContent?: string;
+}
+
+/**
+ * Estimates the token count of an arbitrary string using a chars/4 heuristic.
+ * Exported so callers (and tests) can audit or override the budget math.
+ */
+export function estimateTokens(
+  text: string | undefined | null,
+  charsPerToken: number = DEFAULT_CHARS_PER_TOKEN,
+): number {
+  if (!text) return 0;
+  if (charsPerToken <= 0) return 0;
+  return Math.ceil(text.length / charsPerToken);
+}
+
+/**
  * Prepares the conversation history for the LLM.
- * Ensures the most recent messages are prioritized within the context window.
+ *
+ * Issue #1238: the prior implementation sliced to a fixed `maxMessages` (10),
+ * which is fragile for long sessions — a single deck-analysis answer can be
+ * several thousand characters and ten of them easily blows past the model's
+ * context window. This version is **token-aware**:
+ *
+ *   - Reserves room for `systemContent` (the structured-analysis + SECURITY_PREAMBLE
+ *     block built by `buildCoachSystemPrompt`) against `maxTokens`.
+ *   - Walks the history backwards from the **newest** message, always
+ *     retaining the latest turn intact (issue acceptance criteria).
+ *   - Drops the oldest non-system messages until the retained slice fits
+ *     inside both the message cap and the token budget.
+ *   - Honors backward compatibility: a numeric second argument is still
+ *     accepted and treated as `maxMessages` with the default token budget.
+ *
+ * The structured-analysis context is preserved by always reserving
+ * `systemContent` in the budget — pruning never erases the system prompt,
+ * only old turns.
  */
 export function prepareConversationHistory(
   messages: ChatMessage[],
-  maxMessages: number = 10,
+  optionsOrMax: PrepareConversationHistoryOptions | number = {},
 ): Array<{ role: "user" | "assistant" | "system"; content: string }> {
+  // Backward-compat overload: `prepareConversationHistory(msgs, 10)` still works.
+  const opts: PrepareConversationHistoryOptions =
+    typeof optionsOrMax === "number" ? { maxMessages: optionsOrMax } : optionsOrMax;
+
+  const {
+    maxMessages = DEFAULT_CONVERSATION_MAX_MESSAGES,
+    maxTokens = DEFAULT_CONVERSATION_TOKEN_BUDGET,
+    charsPerToken = DEFAULT_CHARS_PER_TOKEN,
+    systemContent,
+  } = opts;
+
   // Map ChatMessage to Vercel AI SDK message format
   const mapped = messages.map((m) => ({
     role: m.role as "user" | "assistant" | "system",
     content: m.content,
   }));
 
-  // Take the last N messages
-  return mapped.slice(-maxMessages);
+  if (mapped.length === 0) return mapped;
+
+  // Fast path: under both caps → return as-is.
+  const systemTokens = estimateTokens(systemContent, charsPerToken);
+  const remainingBudget = maxTokens - systemTokens;
+  if (mapped.length <= maxMessages && remainingBudget > 0) {
+    const totalTokens = mapped.reduce(
+      (sum, m) => sum + estimateTokens(m.content, charsPerToken),
+      0,
+    );
+    if (totalTokens <= remainingBudget) return mapped;
+  }
+
+  // Pruning pass: walk backwards from the latest message, always keeping the
+  // newest turn intact. Older turns are admitted only if both the message cap
+  // and the token budget allow. Non-system messages are the only candidates
+  // for pruning (defensive — system messages here would be the result of a
+  // misconfigured caller, since the route already drops them).
+  const retained: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+  let tokensUsed = 0;
+
+  for (let i = mapped.length - 1; i >= 0; i--) {
+    const msg = mapped[i];
+    const msgTokens = estimateTokens(msg.content, charsPerToken);
+
+    // Latest message is always preserved — guarantees the user's prompt
+    // reaches the model even if it is the only thing that fits.
+    if (i === mapped.length - 1) {
+      retained.unshift(msg);
+      tokensUsed += msgTokens;
+      continue;
+    }
+
+    if (retained.length >= maxMessages) break;
+    if (tokensUsed + msgTokens > remainingBudget) continue;
+
+    retained.unshift(msg);
+    tokensUsed += msgTokens;
+  }
+
+  return retained;
 }
