@@ -3,6 +3,9 @@ import type {
   DetailedEvaluation,
   DeckArchetype,
 } from "@/ai/game-state-evaluator";
+// Re-export so consumers (`ai-worker-client.ts`, tests) can import the type
+// through this module — keeps the worker-facing API surface in one place.
+export type { DetailedEvaluation };
 import type {
   CascadeContext,
   BoardPermanent,

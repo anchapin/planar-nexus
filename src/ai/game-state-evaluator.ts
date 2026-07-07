@@ -45,12 +45,7 @@ export type {
 };
 
 export type DeckArchetype =
-  | "aggro"
-  | "control"
-  | "combo"
-  | "midrange"
-  | "ramp"
-  | "unknown";
+  "aggro" | "control" | "combo" | "midrange" | "ramp" | "unknown";
 
 /**
  * Represents a threat assessment for a permanent.
@@ -1380,7 +1375,7 @@ export class GameStateEvaluator {
     return threats.slice(0, 10); // Return top 10 threats
   }
 
-/**
+  /**
    * Issue #1234: for each opponent whose commander is in the command zone
    * or on the battlefield, emit a {@link ThreatAssessment} carrying the
    * Voltron-aware `opposingCommander` score so downstream consumers know
@@ -1403,7 +1398,12 @@ export class GameStateEvaluator {
       const opponentCast = (opponent as { commanderCastCount?: number })
         .commanderCastCount;
       const threat = opposingCommanderThreatFn(
-        { name: cmd.name, id: cmd.id, power: cmd.power, toughness: cmd.toughness },
+        {
+          name: cmd.name,
+          id: cmd.id,
+          power: cmd.power,
+          toughness: cmd.toughness,
+        },
         this.difficulty,
         {
           opponentHasCast:
@@ -1412,8 +1412,7 @@ export class GameStateEvaluator {
         },
       );
       if (threat <= 0) continue;
-      const shouldHoldInteraction =
-        threat >= 0.7 && this.difficulty !== "easy";
+      const shouldHoldInteraction = threat >= 0.7 && this.difficulty !== "easy";
       threats.push({
         permanentId: cmd.id,
         threatLevel: threat,
@@ -1579,7 +1578,7 @@ export function compareGameStates(
   state1: GameState,
   state2: GameState,
   playerId: string,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyTier = "medium",
   archetype?: DeckArchetype,
 ): number {
   const eval1 = evaluateGameState(state1, playerId, difficulty, archetype);
@@ -1590,7 +1589,7 @@ export function compareGameStates(
 export function quickScore(
   gameState: GameState,
   playerId: string,
-  difficulty: "easy" | "medium" | "hard" = "medium",
+  difficulty: DifficultyTier = "medium",
   archetype?: DeckArchetype,
 ): number {
   const evaluation = evaluateGameState(
@@ -1784,9 +1783,7 @@ export class BoardSwingTracker {
 
   /** Previous turn's hysteresis multipliers, if any were stored. */
   getLastMultipliers(): SwingMultipliers | undefined {
-    return this.lastMultipliers
-      ? { ...this.lastMultipliers }
-      : undefined;
+    return this.lastMultipliers ? { ...this.lastMultipliers } : undefined;
   }
 
   /** Persist this turn's multipliers for next turn's hysteresis smoothing. */

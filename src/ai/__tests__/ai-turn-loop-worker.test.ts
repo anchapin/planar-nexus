@@ -12,7 +12,14 @@
  * worker offload). We inject a stub client via the bridge's resolver hook so
  * the test does not require a real `Worker` global.
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 
 // Engine stubs identical to ai-turn-loop.test.ts so the real turn-loop
 // orchestration runs against deterministic no-op phases.
@@ -61,12 +68,10 @@ import {
   _resetEvaluatorClientResolver,
   type GameStateEvaluatorWorkerClient,
 } from "../worker/game-state-evaluator-worker-bridge";
-import {
-  runAITurn,
-  type AITurnConfig,
-} from "../ai-turn-loop";
+import { runAITurn, type AITurnConfig } from "../ai-turn-loop";
 import type {
   GameState as EngineGameState,
+  AIGameState,
   CardInstance,
   CardInstanceId,
   PlayerId,
@@ -205,7 +210,7 @@ afterEach(() => {
 describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
   it("awaits the worker client when a swing tracker is configured", async () => {
     const analyzeMock = jest
-      .fn<Promise<DetailedEvaluation | null>, []>()
+      .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
       .mockResolvedValue({
         totalScore: 2.5,
         factors: {} as any,
@@ -215,7 +220,9 @@ describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
       });
     const fakeClient: GameStateEvaluatorWorkerClient = {
       analyzeGameState: analyzeMock,
-      quickScore: jest.fn(),
+      quickScore: jest
+        .fn<GameStateEvaluatorWorkerClient["quickScore"]>()
+        .mockResolvedValue(0),
     };
     _setEvaluatorClientResolver(async () => fakeClient);
 
@@ -242,11 +249,13 @@ describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
 
   it("does not invoke the worker when no swing tracker is configured", async () => {
     const analyzeMock = jest
-      .fn<Promise<DetailedEvaluation | null>, []>()
+      .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
       .mockResolvedValue(null);
     const fakeClient: GameStateEvaluatorWorkerClient = {
       analyzeGameState: analyzeMock,
-      quickScore: jest.fn(),
+      quickScore: jest
+        .fn<GameStateEvaluatorWorkerClient["quickScore"]>()
+        .mockResolvedValue(0),
     };
     _setEvaluatorClientResolver(async () => fakeClient);
 
@@ -263,10 +272,7 @@ describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
     // still succeed and produce a stable result.
     _setEvaluatorClientResolver(async () => null);
 
-    const mainThreadSpy = jest.spyOn(
-      gameStateEvaluator,
-      "evaluateGameState",
-    );
+    const mainThreadSpy = jest.spyOn(gameStateEvaluator, "evaluateGameState");
 
     const result = await runAITurn(
       buildTurnState(),
@@ -283,16 +289,15 @@ describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     const throwingClient: GameStateEvaluatorWorkerClient = {
       analyzeGameState: jest
-        .fn()
+        .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
         .mockRejectedValue(new Error("worker crashed")),
-      quickScore: jest.fn(),
+      quickScore: jest
+        .fn<GameStateEvaluatorWorkerClient["quickScore"]>()
+        .mockResolvedValue(0),
     };
     _setEvaluatorClientResolver(async () => throwingClient);
 
-    const mainThreadSpy = jest.spyOn(
-      gameStateEvaluator,
-      "evaluateGameState",
-    );
+    const mainThreadSpy = jest.spyOn(gameStateEvaluator, "evaluateGameState");
 
     const result = await runAITurn(
       buildTurnState(),
@@ -307,4 +312,7 @@ describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
     warnSpy.mockRestore();
   });
 });
-void ({} as AIGameState);
+// Reference `AIGameState` so the import is not elided by the bundler when
+// stripping the dead-code `void` expression. This file uses the type through
+// imports in other test files but the compiler checks imports here.
+type _AIGameStateRef = AIGameState;
