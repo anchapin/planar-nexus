@@ -376,19 +376,22 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       await host.evaluate((seq) => {
         const w = window as unknown as {
           __peer: {
-            send: (msg: {
+            broadcast: (msg: {
               type: string;
               senderId: string;
               timestamp: number;
               seq: number;
               data: unknown;
-            }) => boolean;
+            }) => number;
           };
         };
         // The harness's sendChat stamps a fresh seq from the local
-        // counter, so we have to use the lower-level send() to forge
-        // a duplicate seq.
-        w.__peer.send({
+        // counter, so we have to use the lower-level broadcast() with a
+        // forged seq. (Previously this used __peer.send, which goes via
+        // channel.send → window.__p2pOutgoing; that binding is NOT wired
+        // in the mesh harness, only __p2pFanout is. broadcast() routes
+        // through __p2pFanout which is why it actually delivers.)
+        w.__peer.broadcast({
           type: "chat",
           senderId: "host-player",
           timestamp: Date.now(),
