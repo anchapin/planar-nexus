@@ -5,7 +5,13 @@
 
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Info, AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
@@ -19,7 +25,10 @@ interface FormatRulesDisplayProps {
   className?: string;
 }
 
-export function FormatRulesDisplay({ format, className }: FormatRulesDisplayProps) {
+export function FormatRulesDisplay({
+  format,
+  className,
+}: FormatRulesDisplayProps) {
   const { formatName, rules } = getFormatRulesSummary(format);
 
   return (
@@ -37,7 +46,7 @@ export function FormatRulesDisplay({ format, className }: FormatRulesDisplayProp
         <ul className="space-y-2">
           {rules.map((rule, index) => (
             <li key={index} className="flex items-start gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
+              <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 shrink-0" />
               <span className="text-sm">{rule}</span>
             </li>
           ))}
@@ -79,7 +88,8 @@ export function DeckValidationResult({
         <AlertTriangle className="w-4 h-4 text-yellow-500" />
         <AlertDescription>
           <div>
-            <strong>{deckName}</strong> is mostly valid for {formatName}, but has warnings:
+            <strong>{deckName}</strong> is mostly valid for {formatName}, but
+            has warnings:
             <ul className="mt-2 space-y-1">
               {result.warnings.map((warning, index) => (
                 <li key={index} className="text-sm text-muted-foreground">

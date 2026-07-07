@@ -31,11 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  getSession,
-  saveDeck,
-  updateDeck,
-} from "@/lib/limited/pool-storage";
+import { getSession, saveDeck, updateDeck } from "@/lib/limited/pool-storage";
 import {
   validateLimitedDeck,
   canAddCardToDeck,
@@ -74,12 +70,14 @@ const COLOR_OPTIONS = [
 
 export default function LimitedDeckBuilderPage() {
   return (
-    <Suspense fallback={
-      <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Loading...</p>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex h-full min-h-svh w-full flex-col items-center justify-center p-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      }
+    >
       <LimitedDeckBuilderPageContent />
     </Suspense>
   );
@@ -149,7 +147,7 @@ function LimitedDeckBuilderPageContent() {
     // Apply color filter
     if (selectedColors.length > 0) {
       filtered = filtered.filter((card) =>
-        selectedColors.some((color) => card.colors.includes(color))
+        selectedColors.some((color) => card.colors.includes(color)),
       );
     }
 
@@ -157,8 +155,8 @@ function LimitedDeckBuilderPageContent() {
     if (selectedTypes.length > 0) {
       filtered = filtered.filter((card) =>
         selectedTypes.some((type) =>
-          card.type_line?.toLowerCase().includes(type.toLowerCase())
-        )
+          card.type_line?.toLowerCase().includes(type.toLowerCase()),
+        ),
       );
     }
 
@@ -168,7 +166,7 @@ function LimitedDeckBuilderPageContent() {
       filtered = filtered.filter(
         (card) =>
           card.name.toLowerCase().includes(query) ||
-          card.type_line?.toLowerCase().includes(query)
+          card.type_line?.toLowerCase().includes(query),
       );
     }
 
@@ -186,7 +184,7 @@ function LimitedDeckBuilderPageContent() {
     }
 
     return Array.from(groups.entries()).sort((a, b) =>
-      a[0].localeCompare(b[0])
+      a[0].localeCompare(b[0]),
     );
   }, [filteredPool]);
 
@@ -223,13 +221,11 @@ function LimitedDeckBuilderPageContent() {
     }
 
     setDeck((prevDeck) => {
-      const existingIndex = prevDeck.findIndex(
-        (d) => d.card.id === cardId
-      );
+      const existingIndex = prevDeck.findIndex((d) => d.card.id === cardId);
 
       if (existingIndex >= 0) {
         return prevDeck.map((d, i) =>
-          i === existingIndex ? { ...d, count: d.count + 1 } : d
+          i === existingIndex ? { ...d, count: d.count + 1 } : d,
         );
       } else {
         return [
@@ -293,16 +289,14 @@ function LimitedDeckBuilderPageContent() {
   // Toggle color filter
   const toggleColor = (color: string) => {
     setSelectedColors((prev) =>
-      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
+      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color],
     );
   };
 
   // Toggle type filter
   const toggleType = (type: string) => {
     setSelectedTypes((prev) =>
-      prev.includes(type)
-        ? prev.filter((t) => t !== type)
-        : [...prev, type]
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
     );
   };
 
@@ -422,7 +416,7 @@ function LimitedDeckBuilderPageContent() {
                       color.className,
                       selectedColors.includes(color.value)
                         ? "ring-2 ring-primary ring-offset-2"
-                        : "opacity-60 hover:opacity-100"
+                        : "opacity-60 hover:opacity-100",
                     )}
                     title={color.label}
                   />
@@ -433,23 +427,29 @@ function LimitedDeckBuilderPageContent() {
             {/* Type Filters */}
             <div className="flex flex-wrap items-center gap-2">
               <Label className="text-sm">Types:</Label>
-              {["creature", "instant", "sorcery", "enchantment", "artifact", "planeswalker", "land"].map(
-                (type) => (
-                  <button
-                    key={type}
-                    onClick={() => toggleType(type)}
-                    disabled={!isLimitedMode}
-                    className={cn(
-                      "px-2 py-0.5 text-xs rounded-md border transition-all disabled:opacity-50 capitalize",
-                      selectedTypes.includes(type)
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-background border-input hover:bg-accent"
-                    )}
-                  >
-                    {type}
-                  </button>
-                )
-              )}
+              {[
+                "creature",
+                "instant",
+                "sorcery",
+                "enchantment",
+                "artifact",
+                "planeswalker",
+                "land",
+              ].map((type) => (
+                <button
+                  key={type}
+                  onClick={() => toggleType(type)}
+                  disabled={!isLimitedMode}
+                  className={cn(
+                    "px-2 py-0.5 text-xs rounded-md border transition-all disabled:opacity-50 capitalize",
+                    selectedTypes.includes(type)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-input hover:bg-accent",
+                  )}
+                >
+                  {type}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -534,11 +534,7 @@ function LimitedDeckBuilderPageContent() {
 
             {/* Play Button (Phase 17) */}
             <div className="mt-3 pt-3 border-t">
-              <Button
-                className="w-full"
-                disabled
-                variant="secondary"
-              >
+              <Button className="w-full" disabled variant="secondary">
                 Play Game — Coming in Phase 17
               </Button>
             </div>
@@ -569,9 +565,7 @@ function PoolCardButton({
   disabled,
 }: PoolCardButtonProps) {
   const imageUrl =
-    card.image_uris?.normal ||
-    card.image_uris?.large ||
-    card.image_uris?.small;
+    card.image_uris?.normal || card.image_uris?.large || card.image_uris?.small;
 
   return (
     <button
@@ -579,7 +573,7 @@ function PoolCardButton({
       disabled={disabled}
       className={cn(
         "relative group aspect-[2.5/3.5] rounded-md overflow-hidden border bg-muted transition-all",
-        disabled && "opacity-50 cursor-not-allowed"
+        disabled && "opacity-50 cursor-not-allowed",
       )}
     >
       {imageUrl ? (
@@ -600,12 +594,18 @@ function PoolCardButton({
       {/* Quantity and Deck Count */}
       <div className="absolute top-0 left-0 right-0 flex justify-between p-1">
         {quantity > 1 && (
-          <Badge variant="secondary" className="h-5 w-5 p-0 flex items-center justify-center text-xs">
+          <Badge
+            variant="secondary"
+            className="h-5 w-5 p-0 flex items-center justify-center text-xs"
+          >
             {quantity}
           </Badge>
         )}
         {inDeck > 0 && (
-          <Badge variant="default" className="h-5 px-1 flex items-center justify-center text-xs">
+          <Badge
+            variant="default"
+            className="h-5 px-1 flex items-center justify-center text-xs"
+          >
             {inDeck}
           </Badge>
         )}
@@ -632,7 +632,7 @@ function DeckCardRow({ card, onAdd, onRemove, canAdd }: DeckCardRowProps) {
   return (
     <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group">
       {/* Card Image Thumbnail */}
-      <div className="w-10 h-14 rounded overflow-hidden bg-muted flex-shrink-0">
+      <div className="w-10 h-14 rounded overflow-hidden bg-muted shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}
@@ -700,15 +700,21 @@ function DeckValidationStatus({
           <div
             className={cn(
               "h-full transition-all",
-              totalCards >= requiredCards ? "bg-green-500" : "bg-primary"
+              totalCards >= requiredCards ? "bg-green-500" : "bg-primary",
             )}
-            style={{ width: `${Math.min(100, (totalCards / requiredCards) * 100)}%` }}
+            style={{
+              width: `${Math.min(100, (totalCards / requiredCards) * 100)}%`,
+            }}
           />
         </div>
         <span
           className={cn(
             "text-sm font-medium",
-            isComplete ? "text-green-500" : totalCards >= requiredCards - 5 ? "text-yellow-500" : ""
+            isComplete
+              ? "text-green-500"
+              : totalCards >= requiredCards - 5
+                ? "text-yellow-500"
+                : "",
           )}
         >
           {totalCards}/{requiredCards}
@@ -723,7 +729,7 @@ function DeckValidationStatus({
               key={i}
               className="flex items-center gap-2 text-sm text-destructive"
             >
-              <X className="h-4 w-4 flex-shrink-0" />
+              <X className="h-4 w-4 shrink-0" />
               <span>{error}</span>
             </div>
           ))}
@@ -737,7 +743,7 @@ function DeckValidationStatus({
               key={i}
               className="flex items-center gap-2 text-sm text-yellow-500"
             >
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <AlertTriangle className="h-4 w-4 shrink-0" />
               <span>{warning}</span>
             </div>
           ))}

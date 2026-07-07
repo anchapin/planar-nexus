@@ -62,12 +62,7 @@ interface ZoneViewerProps {
   companion?: ZoneCard[];
   /** Currently open tab */
   defaultTab?:
-    | "graveyard"
-    | "exile"
-    | "command"
-    | "stack"
-    | "sideboard"
-    | "companion";
+    "graveyard" | "exile" | "command" | "stack" | "sideboard" | "companion";
   /** Callback when a card is clicked */
   onCardClick?: (cardId: string) => void;
   /** Callback when the viewer is closed */
@@ -223,7 +218,7 @@ const ZoneCardList = memo(function ZoneCardList({
               tabIndex={idx === activeIndex ? 0 : -1}
               onClick={() => onCardClick?.(card.id)}
               aria-label={`${sanitizeCardText(card.name)}, ${sanitizeCardText(card.typeLine)}${card.manaCost ? `, cost ${sanitizeCardText(card.manaCost)}` : ""}${pt ? `, ${pt}` : ""}`}
-              className="group relative flex flex-col items-center p-2 rounded-md border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="group relative flex flex-col items-center p-2 rounded-md border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left w-full focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
               {/* Color indicator */}
               {card.colors && card.colors.length > 0 && (
@@ -422,7 +417,7 @@ const StackItemList = memo(function StackItemList({
           }}
           tabIndex={idx === activeIndex ? 0 : -1}
           aria-label={`${item.name}, ${item.typeLine}, controlled by ${item.controllerName}`}
-          className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+          className="focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
         >
           <StackItemDisplay item={item} />
         </div>

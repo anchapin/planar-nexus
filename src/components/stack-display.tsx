@@ -176,7 +176,7 @@ const StackItemDisplay = memo(function StackItemDisplay({
             className={`
               w-full flex items-center gap-2 p-2 rounded-md border cursor-pointer
               transition-all hover:scale-[1.02] hover:shadow-md
-              focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+              focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
               ${isTop ? "bg-primary/10 border-primary/30" : "bg-muted/30 border-border/50"}
               ${item.isCountered ? "opacity-50" : ""}
             `}
@@ -413,7 +413,7 @@ export const StackDisplay = memo(function StackDisplay({
                 <button
                   type="button"
                   onClick={onToggleExpand}
-                  className="w-full mt-2 flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
+                  className="w-full mt-2 flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
                 >
                   {expanded ? (
                     <>

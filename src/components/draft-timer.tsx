@@ -1,29 +1,29 @@
-'use client';
+"use client";
 
-import { Clock, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { TimerColorState } from '@/hooks/use-draft-timer';
+import { Clock, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { TimerColorState } from "@/hooks/use-draft-timer";
 
 /**
  * Draft timer color configuration
  */
 const TIMER_COLORS = {
   green: {
-    border: 'border-green-500',
-    text: 'text-green-500',
-    bg: 'bg-green-500',
+    border: "border-green-500",
+    text: "text-green-500",
+    bg: "bg-green-500",
     pulse: false,
   },
   yellow: {
-    border: 'border-yellow-500',
-    text: 'text-yellow-500',
-    bg: 'bg-yellow-500',
+    border: "border-yellow-500",
+    text: "text-yellow-500",
+    bg: "bg-yellow-500",
     pulse: true,
   },
   red: {
-    border: 'border-red-500',
-    text: 'text-red-500',
-    bg: 'bg-red-500',
+    border: "border-red-500",
+    text: "text-red-500",
+    bg: "bg-red-500",
     pulse: true,
   },
 } as const;
@@ -50,15 +50,15 @@ export interface DraftTimerProps {
 function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
 /**
  * Draft Timer Component
- * 
+ *
  * DRFT-06: Displays countdown from 45 seconds per pick
  * DRFT-07: Visual warnings with color states (green → yellow → red)
- * 
+ *
  * Features:
  * - Large timer display showing MM:SS
  * - Progress bar showing time remaining
@@ -78,10 +78,10 @@ export function DraftTimer({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors',
+        "flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors",
         colors.border,
-        isPaused && 'opacity-60',
-        className
+        isPaused && "opacity-60",
+        className,
       )}
       role="timer"
       aria-live="polite"
@@ -91,9 +91,9 @@ export function DraftTimer({
       {/* Clock icon with color */}
       <Clock
         className={cn(
-          'w-6 h-6 flex-shrink-0',
+          "w-6 h-6 shrink-0",
           colors.text,
-          colors.pulse && 'animate-pulse'
+          colors.pulse && "animate-pulse",
         )}
         aria-hidden="true"
       />
@@ -101,9 +101,9 @@ export function DraftTimer({
       {/* Timer display */}
       <span
         className={cn(
-          'text-3xl font-mono font-bold min-w-[80px]',
+          "text-3xl font-mono font-bold min-w-[80px]",
           colors.text,
-          colors.pulse && 'animate-pulse'
+          colors.pulse && "animate-pulse",
         )}
       >
         {formatTime(timeRemaining)}
@@ -113,8 +113,8 @@ export function DraftTimer({
       <div className="flex-1 h-3 bg-muted rounded-full overflow-hidden">
         <div
           className={cn(
-            'h-full transition-all duration-1000 ease-linear',
-            colors.bg
+            "h-full transition-all duration-1000 ease-linear",
+            colors.bg,
           )}
           style={{ width: `${progress}%` }}
           role="progressbar"
@@ -125,9 +125,9 @@ export function DraftTimer({
       </div>
 
       {/* Warning indicator when in critical state */}
-      {colorState === 'red' && (
+      {colorState === "red" && (
         <AlertTriangle
-          className={cn('w-5 h-5 flex-shrink-0', colors.text, 'animate-pulse')}
+          className={cn("w-5 h-5 shrink-0", colors.text, "animate-pulse")}
           aria-hidden="true"
         />
       )}
@@ -160,29 +160,29 @@ export function CompactDraftTimer({
   const progress = (timeRemaining / maxSeconds) * 100;
 
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <Clock
         className={cn(
-          'w-4 h-4 flex-shrink-0',
+          "w-4 h-4 shrink-0",
           colors.text,
-          colors.pulse && 'animate-pulse'
+          colors.pulse && "animate-pulse",
         )}
         aria-hidden="true"
       />
       <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
         <div
           className={cn(
-            'h-full transition-all duration-1000 ease-linear',
-            colors.bg
+            "h-full transition-all duration-1000 ease-linear",
+            colors.bg,
           )}
           style={{ width: `${progress}%` }}
         />
       </div>
       <span
         className={cn(
-          'text-sm font-mono min-w-[40px]',
+          "text-sm font-mono min-w-[40px]",
           colors.text,
-          colors.pulse && 'animate-pulse'
+          colors.pulse && "animate-pulse",
         )}
       >
         {formatTime(timeRemaining)}

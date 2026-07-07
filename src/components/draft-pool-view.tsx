@@ -202,7 +202,7 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
   return (
     <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group">
       {/* Card Thumbnail */}
-      <div className="w-8 h-11 rounded overflow-hidden bg-muted flex-shrink-0">
+      <div className="w-8 h-11 rounded overflow-hidden bg-muted shrink-0">
         {imageUrl ? (
           <img
             src={imageUrl}

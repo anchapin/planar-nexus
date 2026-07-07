@@ -92,21 +92,17 @@ function CardResultTileImpl({
       data-card-index={index}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
-      className={`relative w-full h-full transform transition-transform duration-200 hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${
+      className={`relative w-full h-full transform transition-transform duration-200 hover:scale-105 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${
         isSelected ? "ring-4 ring-primary ring-offset-2" : ""
       } ${isFlashing ? "ring-4 ring-green-500 ring-offset-2" : ""}`}
       style={{
         aspectRatio: "5 / 7",
       }}
       title={`Add ${card.name} to deck${
-        hasHighSynergy
-          ? ` (Synergy: ${Math.round(synergy!.score)}%)`
-          : ""
+        hasHighSynergy ? ` (Synergy: ${Math.round(synergy!.score)}%)` : ""
       } - Shift+Click for 4-of`}
       aria-label={`Add ${card.name} to deck${
-        hasHighSynergy
-          ? ` (Synergy: ${Math.round(synergy!.score)}%)`
-          : ""
+        hasHighSynergy ? ` (Synergy: ${Math.round(synergy!.score)}%)` : ""
       } - Shift+Click for 4-of${isSelected ? " (selected)" : ""}`}
       data-testid={`card-result-${card.name
         .toLowerCase()

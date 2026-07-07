@@ -11,12 +11,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  PlayerState,
-  PlayerCount,
-  ZoneType,
-  CardState,
-} from "@/types/game";
+import { PlayerState, PlayerCount, ZoneType, CardState } from "@/types/game";
 import { HandDisplay } from "@/components/hand-display";
 import {
   DamageOverlay,
@@ -365,7 +360,7 @@ export function MobileGameLayout({
 
       {/* Game Controls — fixed at top, touch-friendly */}
       {!isGameOver && (
-        <div className="flex-shrink-0 flex items-center justify-between gap-2 px-2 py-2 border-b bg-background/95 backdrop-blur">
+        <div className="shrink-0 flex items-center justify-between gap-2 px-2 py-2 border-b bg-background/95 backdrop-blur">
           <Badge variant="outline" className="px-3 py-1.5 text-sm">
             <Swords className="h-4 w-4 mr-1.5" />
             {players[currentTurnIndex]?.name}&apos;s Turn

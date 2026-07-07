@@ -55,7 +55,7 @@ export function FaceDownCard({
         "bg-gradient-to-br from-muted to-muted/80",
         "transition-all duration-200",
         "hover:border-primary hover:border-solid hover:shadow-md",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+        "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
         "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-dashed",
         className,
       )}
@@ -142,7 +142,7 @@ export function DraftCard({
         "border border-border bg-muted",
         "transition-all duration-200",
         "hover:shadow-lg hover:scale-105 hover:z-10",
-        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:z-10",
+        "focus:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:z-10",
         // Issue #1268: WCAG 1.4.11 (Non-text contrast) requires that the
         // visual state of disabled UI affordances is discernible against
         // adjacent colors at >= 3:1. Reducing opacity to 30% wrecks that

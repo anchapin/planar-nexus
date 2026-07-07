@@ -125,7 +125,7 @@ export function VirtualizedBattlefield({
     <div
       ref={parentRef}
       className={cn(
-        "overflow-x-auto overflow-y-hidden outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "overflow-x-auto overflow-y-hidden outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
       role="list"
