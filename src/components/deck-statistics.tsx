@@ -1,9 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useMemo, memo } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   TrendingUp,
   TrendingDown,
@@ -22,9 +28,9 @@ import {
   Plus,
   Minus as MinusIcon,
   Check,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { ManaCurveGap, DeckFormat } from '@/lib/deck-analyzer';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { ManaCurveGap, DeckFormat } from "@/lib/deck-analyzer";
 import {
   BarChart,
   Bar,
@@ -36,27 +42,27 @@ import {
   Pie,
   Cell,
   Legend,
-} from 'recharts';
+} from "recharts";
 
 // Magic color hex codes for charts
 const MAGIC_COLOR_HEX: Record<string, string> = {
-  W: '#F9F99A',
-  U: '#0E68AB',
-  B: '#150B00',
-  R: '#E12D2D',
-  G: '#00733E',
-  Colorless: '#9CA3AF',
+  W: "#F9F99A",
+  U: "#0E68AB",
+  B: "#150B00",
+  R: "#E12D2D",
+  G: "#00733E",
+  Colorless: "#9CA3AF",
 };
 
 // Card type colors for charts
 const TYPE_COLORS: Record<string, string> = {
-  Creature: '#8B5CF6',
-  Instant: '#3B82F6',
-  Sorcery: '#EF4444',
-  Enchantment: '#F59E0B',
-  Artifact: '#6B7280',
-  Planeswalker: '#EC4899',
-  Land: '#10B981',
+  Creature: "#8B5CF6",
+  Instant: "#3B82F6",
+  Sorcery: "#EF4444",
+  Enchantment: "#F59E0B",
+  Artifact: "#6B7280",
+  Planeswalker: "#EC4899",
+  Land: "#10B981",
 };
 
 // Deck statistics types
@@ -65,7 +71,7 @@ export interface DeckRecord {
   deckId: string;
   deckName: string;
   format: string;
-  result: 'win' | 'loss' | 'draw';
+  result: "win" | "loss" | "draw";
   opponentName?: string;
   date: number;
   duration?: number; // in seconds
@@ -88,7 +94,8 @@ export interface DeckStatistics {
 }
 
 // Color types for card analysis
-export type CardColor = 'white' | 'blue' | 'black' | 'red' | 'green' | 'colorless';
+export type CardColor =
+  "white" | "blue" | "black" | "red" | "green" | "colorless";
 
 export interface CardAnalysis {
   totalCards: number;
@@ -104,7 +111,6 @@ function calculateWinRate(wins: number, total: number): number {
   return Math.round((wins / total) * 100);
 }
 
-
 // Deck statistics display component.
 //
 // Wrapped in `React.memo` (default shallow-equality) — the analytics dashboard
@@ -116,11 +122,14 @@ interface DeckStatisticsCardProps {
   className?: string;
 }
 
-export const DeckStatisticsCard = memo(function DeckStatisticsCard({ stats, className }: DeckStatisticsCardProps) {
+export const DeckStatisticsCard = memo(function DeckStatisticsCard({
+  stats,
+  className,
+}: DeckStatisticsCardProps) {
   const winRateTrend = useMemo(() => {
     // Calculate recent 5 games win rate vs overall
     const recentGames = stats.records.slice(-5);
-    const recentWins = recentGames.filter(r => r.result === 'win').length;
+    const recentWins = recentGames.filter((r) => r.result === "win").length;
     const recentWinRate = calculateWinRate(recentWins, recentGames.length);
     return recentWinRate - stats.winRate;
   }, [stats]);
@@ -133,29 +142,43 @@ export const DeckStatisticsCard = memo(function DeckStatisticsCard({ stats, clas
           <Badge variant="outline">{stats.format}</Badge>
         </CardTitle>
         <CardDescription>
-          Last played: {stats.lastPlayed ? new Date(stats.lastPlayed).toLocaleDateString() : 'Never'}
+          Last played:{" "}
+          {stats.lastPlayed
+            ? new Date(stats.lastPlayed).toLocaleDateString()
+            : "Never"}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Win rate display */}
         <div className="flex items-center justify-center">
           <div className="text-center">
-            <div className={cn(
-              'text-4xl font-bold',
-              stats.winRate >= 60 ? 'text-green-500' : 
-              stats.winRate >= 40 ? 'text-yellow-500' : 'text-red-500'
-            )}>
+            <div
+              className={cn(
+                "text-4xl font-bold",
+                stats.winRate >= 60
+                  ? "text-green-500"
+                  : stats.winRate >= 40
+                    ? "text-yellow-500"
+                    : "text-red-500",
+              )}
+            >
               {stats.winRate}%
             </div>
             <div className="text-sm text-muted-foreground">
               Win Rate ({stats.totalGames} games)
             </div>
             {winRateTrend !== 0 && (
-              <div className={cn(
-                'flex items-center justify-center gap-1 text-sm mt-1',
-                winRateTrend > 0 ? 'text-green-500' : 'text-red-500'
-              )}>
-                {winRateTrend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              <div
+                className={cn(
+                  "flex items-center justify-center gap-1 text-sm mt-1",
+                  winRateTrend > 0 ? "text-green-500" : "text-red-500",
+                )}
+              >
+                {winRateTrend > 0 ? (
+                  <TrendingUp className="w-3 h-3" />
+                ) : (
+                  <TrendingDown className="w-3 h-3" />
+                )}
                 {Math.abs(winRateTrend)}% recent trend
               </div>
             )}
@@ -173,7 +196,9 @@ export const DeckStatisticsCard = memo(function DeckStatisticsCard({ stats, clas
             <div className="text-xs text-muted-foreground">Losses</div>
           </div>
           <div className="p-2 rounded bg-yellow-500/10">
-            <div className="text-xl font-bold text-yellow-500">{stats.draws}</div>
+            <div className="text-xl font-bold text-yellow-500">
+              {stats.draws}
+            </div>
             <div className="text-xs text-muted-foreground">Draws</div>
           </div>
         </div>
@@ -181,7 +206,8 @@ export const DeckStatisticsCard = memo(function DeckStatisticsCard({ stats, clas
         {/* Average game duration */}
         {stats.averageGameDuration > 0 && (
           <div className="text-center text-sm text-muted-foreground">
-            Average game: {Math.floor(stats.averageGameDuration / 60)}m {Math.round(stats.averageGameDuration % 60)}s
+            Average game: {Math.floor(stats.averageGameDuration / 60)}m{" "}
+            {Math.round(stats.averageGameDuration % 60)}s
           </div>
         )}
       </CardContent>
@@ -199,15 +225,37 @@ interface ColorDistributionChartProps {
   className?: string;
 }
 
-export function ColorDistributionChart({ distribution, className }: ColorDistributionChartProps) {
-  const colorConfig: Record<string, { color: string; icon: React.ReactNode }> = {
-    white: { color: 'bg-yellow-100 border-yellow-400', icon: <Shield className="w-4 h-4 text-yellow-600" /> },
-    blue: { color: 'bg-blue-100 border-blue-400', icon: <Droplets className="w-4 h-4 text-blue-600" /> },
-    black: { color: 'bg-gray-200 border-gray-500', icon: <Skull className="w-4 h-4 text-gray-700" /> },
-    red: { color: 'bg-red-100 border-red-400', icon: <Flame className="w-4 h-4 text-red-600" /> },
-    green: { color: 'bg-green-100 border-green-400', icon: <Activity className="w-4 h-4 text-green-600" /> },
-    colorless: { color: 'bg-slate-100 border-slate-400', icon: <Minus className="w-4 h-4 text-slate-600" /> },
-  };
+export function ColorDistributionChart({
+  distribution,
+  className,
+}: ColorDistributionChartProps) {
+  const colorConfig: Record<string, { color: string; icon: React.ReactNode }> =
+    {
+      white: {
+        color: "bg-yellow-100 border-yellow-400",
+        icon: <Shield className="w-4 h-4 text-yellow-600" />,
+      },
+      blue: {
+        color: "bg-blue-100 border-blue-400",
+        icon: <Droplets className="w-4 h-4 text-blue-600" />,
+      },
+      black: {
+        color: "bg-gray-200 border-gray-500",
+        icon: <Skull className="w-4 h-4 text-gray-700" />,
+      },
+      red: {
+        color: "bg-red-100 border-red-400",
+        icon: <Flame className="w-4 h-4 text-red-600" />,
+      },
+      green: {
+        color: "bg-green-100 border-green-400",
+        icon: <Activity className="w-4 h-4 text-green-600" />,
+      },
+      colorless: {
+        color: "bg-slate-100 border-slate-400",
+        icon: <Minus className="w-4 h-4 text-slate-600" />,
+      },
+    };
 
   const total = Object.values(distribution).reduce((a, b) => a + b, 0);
 
@@ -223,20 +271,30 @@ export function ColorDistributionChart({ distribution, className }: ColorDistrib
         {Object.entries(distribution).map(([color, count]) => {
           const config = colorConfig[color] || colorConfig.colorless;
           const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-          
+
           return (
             <div key={color} className="flex items-center gap-2">
-              <div className={cn('w-8 h-8 rounded flex items-center justify-center', config.color)}>
+              <div
+                className={cn(
+                  "w-8 h-8 rounded flex items-center justify-center",
+                  config.color,
+                )}
+              >
                 {config.icon}
               </div>
               <div className="flex-1">
                 <div className="flex justify-between text-sm">
                   <span className="capitalize">{color}</span>
-                  <span className="text-muted-foreground">{count} ({percentage}%)</span>
+                  <span className="text-muted-foreground">
+                    {count} ({percentage}%)
+                  </span>
                 </div>
                 <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div 
-                    className={cn('h-full transition-all', config.color.split(' ')[0])}
+                  <div
+                    className={cn(
+                      "h-full transition-all",
+                      config.color.split(" ")[0],
+                    )}
                     style={{ width: `${percentage}%` }}
                   />
                 </div>
@@ -298,9 +356,9 @@ interface ManaCurveChartProps {
 
 // Map a gap to a bar fill color.
 function gapFill(gap: ManaCurveGap | undefined): string {
-  if (!gap) return 'hsl(var(--primary))';
-  if (gap.difference > 0) return '#f59e0b'; // too few — amber
-  return '#ef4444'; // too many — red
+  if (!gap) return "hsl(var(--primary))";
+  if (gap.difference > 0) return "#f59e0b"; // too few — amber
+  return "#ef4444"; // too many — red
 }
 
 export const ManaCurveChart = memo(function ManaCurveChart({
@@ -323,7 +381,10 @@ export const ManaCurveChart = memo(function ManaCurveChart({
       const interactive = Array.isArray(gaps) || !!optimalTargets;
       if (!interactive) {
         // Fill in default `fill` when caller pre-computed bare data only.
-        return base.map((d) => ({ ...d, fill: d.fill ?? 'hsl(var(--primary))' }));
+        return base.map((d) => ({
+          ...d,
+          fill: d.fill ?? "hsl(var(--primary))",
+        }));
       }
       const gapByCmc = new Map<number, ManaCurveGap>();
       (gaps || []).forEach((g) => gapByCmc.set(g.cmc, g));
@@ -345,12 +406,12 @@ export const ManaCurveChart = memo(function ManaCurveChart({
         const gap = gapByCmc.get(cmcNum);
         const target = optimalTargets?.[cmcNum];
         return {
-          cmc: cmcNum >= 7 ? '7+' : cmc,
+          cmc: cmcNum >= 7 ? "7+" : cmc,
           cmcNum,
           count,
           target,
           gap,
-          fill: gap ? gapFill(gap) : 'hsl(var(--primary))',
+          fill: gap ? gapFill(gap) : "hsl(var(--primary))",
         };
       });
   }, [dataProp, manaCurve, gaps, optimalTargets]);
@@ -386,48 +447,65 @@ export const ManaCurveChart = memo(function ManaCurveChart({
         </CardTitle>
         {interactive && (
           <CardDescription className="text-xs">
-            Click a bar for add/cut suggestions. Amber = too few, red = too many.
+            Click a bar for add/cut suggestions. Amber = too few, red = too
+            many.
           </CardDescription>
         )}
       </CardHeader>
       <CardContent className="space-y-3">
         <div aria-hidden="true">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <BarChart
+              data={data}
+              margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+            >
               <XAxis
                 dataKey="cmc"
                 tick={{ fontSize: 12 }}
                 tickLine={false}
-                axisLine={{ stroke: 'hsl(var(--border))' }}
+                axisLine={{ stroke: "hsl(var(--border))" }}
               />
               <YAxis
                 tick={{ fontSize: 12 }}
                 tickLine={false}
-                axisLine={{ stroke: 'hsl(var(--border))' }}
+                axisLine={{ stroke: "hsl(var(--border))" }}
                 width={30}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "8px",
                 }}
-                formatter={(value: number, _name: string, props: { payload?: { target?: number; gap?: ManaCurveGap } }) => {
-                  const target = props?.payload?.target;
-                  const lines = [`${value} cards`];
-                  if (typeof target === 'number') lines.push(`Target: ~${target}`);
-                  return [lines.join(' • '), 'Count'];
+                formatter={(value, _name, item) => {
+                  // recharts v3: value is `ValueType | undefined`; the data
+                  // point with our custom fields now lives on `item.payload`.
+                  const numericValue =
+                    typeof value === "number" ? value : Number(value);
+                  const target = (
+                    item?.payload as { target?: number } | undefined
+                  )?.target;
+                  const lines = [`${numericValue} cards`];
+                  if (typeof target === "number")
+                    lines.push(`Target: ~${target}`);
+                  return [lines.join(" • "), "Count"];
                 }}
               />
               <Bar
                 dataKey="count"
                 radius={[4, 4, 0, 0]}
-                cursor={interactive ? 'pointer' : undefined}
+                cursor={interactive ? "pointer" : undefined}
                 onClick={
                   interactive
-                    ? (payload: { cmcNum?: number }) => {
-                        if (payload && typeof payload.cmcNum === 'number') {
-                          setSelectedCmc(payload.cmcNum);
+                    ? (data) => {
+                        // recharts v3: BarMouseEvent passes `BarRectangleItem`,
+                        // not the raw chart datum; the original datum is
+                        // available on `data.payload`.
+                        const cmcNum = (
+                          data?.payload as { cmcNum?: number } | undefined
+                        )?.cmcNum;
+                        if (typeof cmcNum === "number") {
+                          setSelectedCmc(cmcNum);
                         }
                       }
                     : undefined
@@ -437,7 +515,11 @@ export const ManaCurveChart = memo(function ManaCurveChart({
                   <Cell
                     key={`cell-${index}`}
                     fill={entry.fill}
-                    opacity={selectedCmc == null || selectedCmc === entry.cmcNum ? 1 : 0.4}
+                    opacity={
+                      selectedCmc == null || selectedCmc === entry.cmcNum
+                        ? 1
+                        : 0.4
+                    }
                   />
                 ))}
               </Bar>
@@ -445,7 +527,9 @@ export const ManaCurveChart = memo(function ManaCurveChart({
           </ResponsiveContainer>
         </div>
         <table className="sr-only">
-          <caption>Mana curve: number of cards at each converted mana cost</caption>
+          <caption>
+            Mana curve: number of cards at each converted mana cost
+          </caption>
           <thead>
             <tr>
               <th scope="col">Converted Mana Cost</th>
@@ -467,17 +551,19 @@ export const ManaCurveChart = memo(function ManaCurveChart({
           <div className="rounded-md border bg-muted/40 p-3 text-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium capitalize">
-                {selectedCmc >= 7 ? '7+ CMC' : `${selectedCmc}-drop`} spells
+                {selectedCmc >= 7 ? "7+ CMC" : `${selectedCmc}-drop`} spells
               </span>
               <Badge variant="outline">
-                {selectedDetail.count} / target ~{selectedDetail.target ?? '—'}
+                {selectedDetail.count} / target ~{selectedDetail.target ?? "—"}
               </Badge>
             </div>
             {selectedGap ? (
               <div
                 className={cn(
-                  'mt-2 flex items-start gap-2',
-                  selectedGap.difference > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400',
+                  "mt-2 flex items-start gap-2",
+                  selectedGap.difference > 0
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-red-600 dark:text-red-400",
                 )}
               >
                 {selectedGap.difference > 0 ? (
@@ -486,11 +572,12 @@ export const ManaCurveChart = memo(function ManaCurveChart({
                   <MinusIcon className="w-4 h-4 mt-0.5 shrink-0" />
                 )}
                 <span>
-                  {selectedGap.difference > 0 ? 'Add' : 'Cut'}{' '}
+                  {selectedGap.difference > 0 ? "Add" : "Cut"}{" "}
                   {Math.abs(selectedGap.difference) <= 1
                     ? Math.abs(selectedGap.difference)
-                    : `${Math.max(1, Math.abs(selectedGap.difference) - 1)}-${Math.abs(selectedGap.difference)}`}{' '}
-                  {selectedGap.difference > 0 ? 'more' : 'fewer'} to reach the optimal {format} curve.
+                    : `${Math.max(1, Math.abs(selectedGap.difference) - 1)}-${Math.abs(selectedGap.difference)}`}{" "}
+                  {selectedGap.difference > 0 ? "more" : "fewer"} to reach the
+                  optimal {format} curve.
                 </span>
               </div>
             ) : (
@@ -537,11 +624,16 @@ interface CardTypeChartProps {
   typeDistribution?: Record<string, number>;
   /** Pre-computed chart data. Takes precedence over `typeDistribution`. */
   data?: readonly CardTypeChartDatum[];
-  chartType?: 'pie' | 'bar';
+  chartType?: "pie" | "bar";
   className?: string;
 }
 
-export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, data: dataProp, chartType = 'pie', className }: CardTypeChartProps) {
+export const CardTypeChart = memo(function CardTypeChart({
+  typeDistribution,
+  data: dataProp,
+  chartType = "pie",
+  className,
+}: CardTypeChartProps) {
   // Convert type distribution to array format for Recharts.
   // When `data` is pre-computed by the parent (deck-stats panel pattern from
   // issue #1248), skip the conversion entirely so the chart's `React.memo`
@@ -557,7 +649,7 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, dat
         type: type.charAt(0).toUpperCase() + type.slice(1),
         count,
         percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-        fill: TYPE_COLORS[type] || '#6B7280',
+        fill: TYPE_COLORS[type] || "#6B7280",
       }));
   }, [dataProp, typeDistribution]);
 
@@ -581,7 +673,9 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, dat
   // Screen-reader text alternative mirroring the chart data (WCAG 1.1.1)
   const typeDataTable = (
     <table className="sr-only">
-      <caption>Card type breakdown: number and percentage of cards by type</caption>
+      <caption>
+        Card type breakdown: number and percentage of cards by type
+      </caption>
       <thead>
         <tr>
           <th scope="col">Card Type</th>
@@ -601,7 +695,7 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, dat
     </table>
   );
 
-  if (chartType === 'bar') {
+  if (chartType === "bar") {
     return (
       <Card className={className}>
         <CardHeader>
@@ -612,39 +706,44 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, dat
         <CardContent>
           <div aria-hidden="true">
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={data} layout="vertical" margin={{ top: 10, right: 30, left: 60, bottom: 0 }}>
-              <XAxis
-                type="number"
-                tick={{ fontSize: 12 }}
-                tickLine={false}
-                axisLine={{ stroke: 'hsl(var(--border))' }}
-              />
-              <YAxis
-                type="category"
-                dataKey="type"
-                tick={{ fontSize: 12 }}
-                tickLine={false}
-                axisLine={{ stroke: 'hsl(var(--border))' }}
-                width={60}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                }}
-                formatter={(value: number, name: string) => [
-                  `${value} cards`,
-                  name === 'count' ? 'Count' : name,
-                ]}
-              />
-              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+              <BarChart
+                data={data}
+                layout="vertical"
+                margin={{ top: 10, right: 30, left: 60, bottom: 0 }}
+              >
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="type"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                  width={60}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                  }}
+                  formatter={(value, name) => [
+                    // recharts v3: value is `ValueType | undefined`.
+                    `${typeof value === "number" ? value : Number(value ?? 0)} cards`,
+                    name === "count" ? "Count" : name,
+                  ]}
+                />
+                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
           {typeDataTable}
         </CardContent>
@@ -671,7 +770,14 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, dat
                 outerRadius={80}
                 dataKey="count"
                 nameKey="type"
-                label={({ type, percentage }) => `${type}: ${percentage}%`}
+                // recharts v3: label is `PieLabelRenderProps`; the original
+                // datum (with our custom `type`/`percentage` fields) is on
+                // `payload`.
+                label={({ payload }) => {
+                  const datum = payload as
+                    { type?: string; percentage?: number } | undefined;
+                  return `${datum?.type ?? ""}: ${datum?.percentage ?? 0}%`;
+                }}
                 labelLine={false}
               >
                 {data.map((entry, index) => (
@@ -680,11 +786,15 @@ export const CardTypeChart = memo(function CardTypeChart({ typeDistribution, dat
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "8px",
                 }}
-                formatter={(value: number) => [`${value} cards`, 'Count']}
+                formatter={(value) => [
+                  // recharts v3: value is `ValueType | undefined`.
+                  `${typeof value === "number" ? value : Number(value ?? 0)} cards`,
+                  "Count",
+                ]}
               />
               <Legend />
             </PieChart>
@@ -721,7 +831,11 @@ interface DeckColorChartProps {
   className?: string;
 }
 
-export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, data: dataProp, className }: DeckColorChartProps) {
+export const DeckColorChart = memo(function DeckColorChart({
+  colorDistribution,
+  data: dataProp,
+  className,
+}: DeckColorChartProps) {
   // Convert color distribution to array format for Recharts.
   // When `data` is pre-computed by the parent (deck-stats panel pattern from
   // issue #1248), skip the conversion entirely so the chart's `React.memo`
@@ -743,12 +857,12 @@ export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, 
 
   // Color name mapping for display
   const colorNames: Record<string, string> = {
-    W: 'White',
-    U: 'Blue',
-    B: 'Black',
-    R: 'Red',
-    G: 'Green',
-    Colorless: 'Colorless',
+    W: "White",
+    U: "Blue",
+    B: "Black",
+    R: "Red",
+    G: "Green",
+    Colorless: "Colorless",
   };
 
   if (data.length === 0) {
@@ -787,27 +901,46 @@ export const DeckColorChart = memo(function DeckColorChart({ colorDistribution, 
                 outerRadius={90}
                 dataKey="count"
                 nameKey="color"
-                label={({ color, percentage }) => `${colorNames[color] || color}: ${percentage}%`}
+                // recharts v3: label is `PieLabelRenderProps`; the original
+                // datum (with our custom `color`/`percentage` fields) is on
+                // `payload`.
+                label={({ payload }) => {
+                  const datum = payload as
+                    { color?: string; percentage?: number } | undefined;
+                  const color = datum?.color ?? "";
+                  return `${colorNames[color] || color}: ${datum?.percentage ?? 0}%`;
+                }}
                 labelLine={false}
               >
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} stroke="hsl(var(--card))" strokeWidth={2} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.fill}
+                    stroke="hsl(var(--card))"
+                    strokeWidth={2}
+                  />
                 ))}
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
+                  backgroundColor: "hsl(var(--card))",
+                  border: "1px solid hsl(var(--border))",
+                  borderRadius: "8px",
                 }}
-                formatter={(value: number) => [`${value} cards`, 'Count']}
+                formatter={(value) => [
+                  // recharts v3: value is `ValueType | undefined`.
+                  `${typeof value === "number" ? value : Number(value ?? 0)} cards`,
+                  "Count",
+                ]}
               />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
         </div>
         <table className="sr-only">
-          <caption>Color distribution: number and percentage of cards by color</caption>
+          <caption>
+            Color distribution: number and percentage of cards by color
+          </caption>
           <thead>
             <tr>
               <th scope="col">Color</th>
@@ -836,7 +969,10 @@ interface MatchHistoryTableProps {
   className?: string;
 }
 
-export function MatchHistoryTable({ records, className }: MatchHistoryTableProps) {
+export function MatchHistoryTable({
+  records,
+  className,
+}: MatchHistoryTableProps) {
   const sortedRecords = [...records].sort((a, b) => b.date - a.date);
 
   return (
@@ -860,13 +996,20 @@ export function MatchHistoryTable({ records, className }: MatchHistoryTableProps
                 className="flex items-center justify-between p-2 rounded bg-muted"
               >
                 <div className="flex items-center gap-2">
-                  <Badge className={cn(
-                    record.result === 'win' ? 'bg-green-500' : 
-                    record.result === 'loss' ? 'bg-red-500' : 'bg-yellow-500'
-                  )}>
+                  <Badge
+                    className={cn(
+                      record.result === "win"
+                        ? "bg-green-500"
+                        : record.result === "loss"
+                          ? "bg-red-500"
+                          : "bg-yellow-500",
+                    )}
+                  >
                     {record.result.toUpperCase()}
                   </Badge>
-                  <span className="text-sm">{record.opponentName || 'Unknown opponent'}</span>
+                  <span className="text-sm">
+                    {record.opponentName || "Unknown opponent"}
+                  </span>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {new Date(record.date).toLocaleDateString()}
@@ -894,35 +1037,37 @@ export function DeckAnalytics({ statistics, className }: DeckAnalyticsProps) {
     const totalWins = statistics.reduce((sum, s) => sum + s.wins, 0);
     const totalLosses = statistics.reduce((sum, s) => sum + s.losses, 0);
     const totalDraws = statistics.reduce((sum, s) => sum + s.draws, 0);
-    
+
     return {
       totalGames,
       totalWins,
       totalLosses,
       totalDraws,
-      overallWinRate: calculateWinRate(totalWins, totalGames)
+      overallWinRate: calculateWinRate(totalWins, totalGames),
     };
   }, [statistics]);
 
   // Get best/worst decks
   const { bestDeck, worstDeck } = useMemo(() => {
     if (statistics.length === 0) return { bestDeck: null, worstDeck: null };
-    
+
     const sorted = [...statistics].sort((a, b) => b.winRate - a.winRate);
     return {
       bestDeck: sorted[0],
-      worstDeck: sorted[sorted.length - 1]
+      worstDeck: sorted[sorted.length - 1],
     };
   }, [statistics]);
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn("space-y-6", className)}>
       {/* Overview stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-3xl font-bold">{overallStats.totalGames}</div>
+              <div className="text-3xl font-bold">
+                {overallStats.totalGames}
+              </div>
               <div className="text-sm text-muted-foreground">Total Games</div>
             </div>
           </CardContent>
@@ -930,7 +1075,9 @@ export function DeckAnalytics({ statistics, className }: DeckAnalyticsProps) {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-3xl font-bold text-green-500">{overallStats.totalWins}</div>
+              <div className="text-3xl font-bold text-green-500">
+                {overallStats.totalWins}
+              </div>
               <div className="text-sm text-muted-foreground">Wins</div>
             </div>
           </CardContent>
@@ -938,7 +1085,9 @@ export function DeckAnalytics({ statistics, className }: DeckAnalyticsProps) {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-3xl font-bold text-red-500">{overallStats.totalLosses}</div>
+              <div className="text-3xl font-bold text-red-500">
+                {overallStats.totalLosses}
+              </div>
               <div className="text-sm text-muted-foreground">Losses</div>
             </div>
           </CardContent>
@@ -946,11 +1095,16 @@ export function DeckAnalytics({ statistics, className }: DeckAnalyticsProps) {
         <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className={cn(
-                'text-3xl font-bold',
-                overallStats.overallWinRate >= 60 ? 'text-green-500' : 
-                overallStats.overallWinRate >= 40 ? 'text-yellow-500' : 'text-red-500'
-              )}>
+              <div
+                className={cn(
+                  "text-3xl font-bold",
+                  overallStats.overallWinRate >= 60
+                    ? "text-green-500"
+                    : overallStats.overallWinRate >= 40
+                      ? "text-yellow-500"
+                      : "text-red-500",
+                )}
+              >
                 {overallStats.overallWinRate}%
               </div>
               <div className="text-sm text-muted-foreground">Win Rate</div>
@@ -1014,7 +1168,14 @@ interface UsePersistedDeckStatisticsOptions {
 
 interface UsePersistedDeckStatisticsReturn {
   statistics: DeckStatistics[];
-  recordGame: (deckId: string, deckName: string, format: string, result: 'win' | 'loss' | 'draw', opponentName?: string, duration?: number) => void;
+  recordGame: (
+    deckId: string,
+    deckName: string,
+    format: string,
+    result: "win" | "loss" | "draw",
+    opponentName?: string,
+    duration?: number,
+  ) => void;
   getDeckStats: (deckId: string) => DeckStatistics | undefined;
   clearDeckStats: (deckId: string) => void;
   clearAllStats: () => void;
@@ -1022,7 +1183,9 @@ interface UsePersistedDeckStatisticsReturn {
   importStats: (json: string) => boolean;
 }
 
-export function usePersistedDeckStatistics({ storageKey = 'deck-statistics' }: UsePersistedDeckStatisticsOptions = {}): UsePersistedDeckStatisticsReturn {
+export function usePersistedDeckStatistics({
+  storageKey = "deck-statistics",
+}: UsePersistedDeckStatisticsOptions = {}): UsePersistedDeckStatisticsReturn {
   const [statistics, setStatistics] = useState<DeckStatistics[]>([]);
 
   // Load from localStorage on mount
@@ -1032,95 +1195,103 @@ export function usePersistedDeckStatistics({ storageKey = 'deck-statistics' }: U
       try {
         setStatistics(JSON.parse(stored));
       } catch (e) {
-        console.error('Failed to parse deck statistics:', e);
+        console.error("Failed to parse deck statistics:", e);
       }
     }
   }, [storageKey]);
 
-
-  const recordGame = useCallback((
-    deckId: string, 
-    deckName: string, 
-    format: string, 
-    result: 'win' | 'loss' | 'draw',
-    opponentName?: string,
-    duration?: number
-  ) => {
-    const newRecord: DeckRecord = {
-      id: `record-${Date.now()}`,
-      deckId,
-      deckName,
-      format,
-      result,
-      opponentName,
-      date: Date.now(),
-      duration
-    };
-
-    setStatistics((prev) => {
-      // Find or create deck stats
-      let deckStats = prev.find(s => s.deckId === deckId);
-      
-      if (!deckStats) {
-        deckStats = {
-          deckId,
-          deckName,
-          format,
-          totalGames: 0,
-          wins: 0,
-          losses: 0,
-          draws: 0,
-          winRate: 0,
-          averageGameDuration: 0,
-          records: [],
-          colorDistribution: {},
-          manaCurve: {} // Also known as "energy curve" in generic terminology
-        };
-      }
-
-      // Update stats
-      const newWins = result === 'win' ? deckStats.wins + 1 : deckStats.wins;
-      const newLosses = result === 'loss' ? deckStats.losses + 1 : deckStats.losses;
-      const newDraws = result === 'draw' ? deckStats.draws + 1 : deckStats.draws;
-      const newTotal = deckStats.totalGames + 1;
-      
-      // Calculate new average duration
-      let newAvgDuration = deckStats.averageGameDuration;
-      if (duration) {
-        const totalDuration = (deckStats.averageGameDuration * deckStats.totalGames) + duration;
-        newAvgDuration = totalDuration / newTotal;
-      }
-
-      const updatedDeckStats: DeckStatistics = {
-        ...deckStats,
-        totalGames: newTotal,
-        wins: newWins,
-        losses: newLosses,
-        draws: newDraws,
-        winRate: calculateWinRate(newWins, newTotal),
-        averageGameDuration: newAvgDuration,
-        records: [...deckStats.records, newRecord],
-        lastPlayed: Date.now()
+  const recordGame = useCallback(
+    (
+      deckId: string,
+      deckName: string,
+      format: string,
+      result: "win" | "loss" | "draw",
+      opponentName?: string,
+      duration?: number,
+    ) => {
+      const newRecord: DeckRecord = {
+        id: `record-${Date.now()}`,
+        deckId,
+        deckName,
+        format,
+        result,
+        opponentName,
+        date: Date.now(),
+        duration,
       };
 
-      // Replace or add deck stats
-      const existingIndex = prev.findIndex(s => s.deckId === deckId);
-      if (existingIndex >= 0) {
-        const newStats = [...prev];
-        newStats[existingIndex] = updatedDeckStats;
-        return newStats;
-      } else {
-        return [...prev, updatedDeckStats];
-      }
-    });
-  }, []);
+      setStatistics((prev) => {
+        // Find or create deck stats
+        let deckStats = prev.find((s) => s.deckId === deckId);
 
-  const getDeckStats = useCallback((deckId: string) => {
-    return statistics.find(s => s.deckId === deckId);
-  }, [statistics]);
+        if (!deckStats) {
+          deckStats = {
+            deckId,
+            deckName,
+            format,
+            totalGames: 0,
+            wins: 0,
+            losses: 0,
+            draws: 0,
+            winRate: 0,
+            averageGameDuration: 0,
+            records: [],
+            colorDistribution: {},
+            manaCurve: {}, // Also known as "energy curve" in generic terminology
+          };
+        }
+
+        // Update stats
+        const newWins = result === "win" ? deckStats.wins + 1 : deckStats.wins;
+        const newLosses =
+          result === "loss" ? deckStats.losses + 1 : deckStats.losses;
+        const newDraws =
+          result === "draw" ? deckStats.draws + 1 : deckStats.draws;
+        const newTotal = deckStats.totalGames + 1;
+
+        // Calculate new average duration
+        let newAvgDuration = deckStats.averageGameDuration;
+        if (duration) {
+          const totalDuration =
+            deckStats.averageGameDuration * deckStats.totalGames + duration;
+          newAvgDuration = totalDuration / newTotal;
+        }
+
+        const updatedDeckStats: DeckStatistics = {
+          ...deckStats,
+          totalGames: newTotal,
+          wins: newWins,
+          losses: newLosses,
+          draws: newDraws,
+          winRate: calculateWinRate(newWins, newTotal),
+          averageGameDuration: newAvgDuration,
+          records: [...deckStats.records, newRecord],
+          lastPlayed: Date.now(),
+        };
+
+        // Replace or add deck stats
+        const existingIndex = prev.findIndex((s) => s.deckId === deckId);
+        if (existingIndex >= 0) {
+          const newStats = [...prev];
+          newStats[existingIndex] = updatedDeckStats;
+          return newStats;
+        } else {
+          return [...prev, updatedDeckStats];
+        }
+      });
+    },
+    [],
+  );
+
+  const getDeckStats = useCallback(
+    (deckId: string) => {
+      return statistics.find((s) => s.deckId === deckId);
+    },
+    [statistics],
+  );
 
   const clearDeckStats = useCallback((deckId: string) => {
-    setStatistics((prev) => prev.filter(s => s.deckId !== deckId));
+    setStatistics((prev) => prev.filter((s) => s.deckId !== deckId));
   }, []);
 
   const clearAllStats = useCallback(() => {
@@ -1132,19 +1303,22 @@ export function usePersistedDeckStatistics({ storageKey = 'deck-statistics' }: U
     return JSON.stringify(statistics, null, 2);
   }, [statistics]);
 
-  const importStats = useCallback((json: string): boolean => {
-    try {
-      const parsed = JSON.parse(json);
-      if (Array.isArray(parsed)) {
-        setStatistics(parsed);
-        localStorage.setItem(storageKey, JSON.stringify(parsed));
-        return true;
+  const importStats = useCallback(
+    (json: string): boolean => {
+      try {
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed)) {
+          setStatistics(parsed);
+          localStorage.setItem(storageKey, JSON.stringify(parsed));
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
       }
-      return false;
-    } catch {
-      return false;
-    }
-  }, [storageKey]);
+    },
+    [storageKey],
+  );
 
   return {
     statistics,
@@ -1153,7 +1327,7 @@ export function usePersistedDeckStatistics({ storageKey = 'deck-statistics' }: U
     clearDeckStats,
     clearAllStats,
     exportStats,
-    importStats
+    importStats,
   };
 }
 
@@ -1176,13 +1350,18 @@ interface ImportExportControlsProps {
   className?: string;
 }
 
-export function ImportExportControls({ onImport, onExport, onClear, className }: ImportExportControlsProps) {
-  const [importText, setImportText] = useState('');
+export function ImportExportControls({
+  onImport,
+  onExport,
+  onClear,
+  className,
+}: ImportExportControlsProps) {
+  const [importText, setImportText] = useState("");
 
   const handleImport = () => {
     if (importText.trim()) {
       onImport(importText);
-      setImportText('');
+      setImportText("");
     }
   };
 
@@ -1201,7 +1380,7 @@ export function ImportExportControls({ onImport, onExport, onClear, className }:
             Export Statistics
           </Button>
         </div>
-        
+
         <div className="space-y-2">
           <textarea
             value={importText}
@@ -1209,9 +1388,9 @@ export function ImportExportControls({ onImport, onExport, onClear, className }:
             placeholder="Paste exported JSON here..."
             className="w-full h-24 px-3 py-2 border rounded-md text-xs resize-none"
           />
-          <Button 
-            onClick={handleImport} 
-            variant="outline" 
+          <Button
+            onClick={handleImport}
+            variant="outline"
             disabled={!importText.trim()}
             className="w-full"
           >
@@ -1221,11 +1400,7 @@ export function ImportExportControls({ onImport, onExport, onClear, className }:
         </div>
 
         <div className="border-t pt-4">
-          <Button 
-            onClick={onClear} 
-            variant="destructive" 
-            className="w-full"
-          >
+          <Button onClick={onClear} variant="destructive" className="w-full">
             <Trash2 className="w-4 h-4 mr-2" />
             Clear All Statistics
           </Button>
