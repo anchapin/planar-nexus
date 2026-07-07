@@ -84,7 +84,9 @@ test.describe("Issue #1255 — lobby ready-check countdown", () => {
     // so screen readers announce the countdown. We assert the
     // data-testid is present in the DOM (even when not visible) so a
     // test run that does not exercise the ready-check still passes.
-    await expect(page.locator('[data-testid="ready-check-banner"]')).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="ready-check-banner"]'),
+    ).toHaveCount(0);
   });
 
   test("navigating to the host page keeps the lobby in WAITING by default", async ({
@@ -125,6 +127,11 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
     await page.addInitScript(() => {
       try {
         window.localStorage.clear();
+        // Mark the user as onboarded BEFORE the OnboardingTour's first
+        // effect runs (600ms after mount). Otherwise the tour auto-opens
+        // its overlay on first visit and intercepts pointer events on the
+        // dismiss button below.
+        window.localStorage.setItem("planar-nexus:onboarded", "true");
       } catch {
         /* ignore */
       }
@@ -136,9 +143,9 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
   }) => {
     await page.goto("/multiplayer");
     await page.waitForLoadState("networkidle");
-    await expect(page.locator('[data-testid="reconnect-token-list"]')).toHaveCount(
-      0,
-    );
+    await expect(
+      page.locator('[data-testid="reconnect-token-list"]'),
+    ).toHaveCount(0);
   });
 
   test("the resume section renders when at least one token is persisted", async ({
@@ -187,10 +194,7 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
     ).toBeVisible();
     await expect(
       page.locator('[data-testid="reconnect-token-resume-TESTGAME"]'),
-    ).toHaveAttribute(
-      "href",
-      /\/multiplayer\/p2p-join\?code=TESTGAME(&|$)/,
-    );
+    ).toHaveAttribute("href", /\/multiplayer\/p2p-join\?code=TESTGAME(&|$)/);
   });
 
   test("the dismiss button removes the row without a full page reload", async ({
@@ -279,7 +283,9 @@ test.describe("Issue #1253 — spectator slot wiring on the multiplayer page", (
   test("the page-header spectator badge is hidden when no lobby is active", async ({
     page,
   }) => {
-    await expect(page.locator('[data-testid="spectator-count"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="spectator-count"]')).toHaveCount(
+      0,
+    );
     await expect(
       page.locator('[data-testid="p2p-diag-spectator-count"]'),
     ).toHaveCount(0);
@@ -298,4 +304,3 @@ test.describe("Issue #1253 — spectator slot wiring on the multiplayer page", (
     ).toHaveCount(0);
   });
 });
-

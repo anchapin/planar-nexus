@@ -2,9 +2,12 @@ import { test, expect, seedCardDatabase } from "./test-utils";
 
 test.describe("AI Deck Assistant", () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to deck builder first
+    // Navigate to deck builder first. Use `domcontentloaded` rather than
+    // `networkidle`: the dev server's HMR websocket + the deck-builder's
+    // background sync keep the network busy indefinitely, so `networkidle`
+    // times out at 30s on CI runners and the beforeEach hook hangs.
     await page.goto("/deck-builder");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     // Seed the database with test cards (runs in page context)
     await seedCardDatabase(page);

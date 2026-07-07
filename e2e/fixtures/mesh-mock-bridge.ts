@@ -184,11 +184,17 @@ function buildMeshPeerHarness(opts: MeshPeerOptions): string {
     addNeighbor: function (toPeerId) {
       if (!toPeerId || toPeerId === playerId) return false;
       if (openPeers[toPeerId]) return false;
-      // Capture the current set of open peers at add-time. The outbound
-      // always re-reads the snapshot via the closure, so removing a
-      // neighbor does not race an in-flight send.
-      var snapshotFn = function () { return Object.keys(openPeers); };
-      openPeers[toPeerId] = makeOutbound(snapshotFn);
+      // Each outbound represents a single logical link to one peer. The
+      // target list is closed over toPeerId (not Object.keys(openPeers))
+      // so broadcast(msg), which iterates over openPeers and calls each
+      // outbound's send() once per message, fans out exactly once per
+      // neighbor instead of N^2 times. Previously the snapshot was the
+      // full openPeers set, which caused peer-b to receive a 3-peer
+      // broadcast three times (once per outer iteration times three
+      // inner targets), making the mesh test flake with 3 identical
+      // messages on peer-b.
+      var targetIdsFn = function () { return [toPeerId]; };
+      openPeers[toPeerId] = makeOutbound(targetIdsFn);
       return true;
     },
     removeNeighbor: function (toPeerId) {
