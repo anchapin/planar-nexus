@@ -77,7 +77,7 @@ export function DeckCoachChatPanel({
               onClick={onCancel}
               aria-label="Cancel generation"
               title="Cancel generation"
-              className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Square className="w-3 h-3" aria-hidden="true" />
               Cancel

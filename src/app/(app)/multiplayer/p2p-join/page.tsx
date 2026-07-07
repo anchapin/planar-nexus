@@ -5,30 +5,34 @@
  * Allows players to join P2P games using QR code scanning or manual code entry
  */
 
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, QrCode, Type, Users, Play } from 'lucide-react';
-import { useP2PSignaling } from '@/hooks/use-p2p-signaling';
-import type { P2PMessage } from '@/lib/webrtc-p2p';
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, QrCode, Type, Users, Play } from "lucide-react";
+import { useP2PSignaling } from "@/hooks/use-p2p-signaling";
+import type { P2PMessage } from "@/lib/webrtc-p2p";
 
 export default function P2PJoinPage() {
-  const [playerName, setPlayerName] = useState('');
-  const [connectionCode, setConnectionCode] = useState('');
+  const [playerName, setPlayerName] = useState("");
+  const [connectionCode, setConnectionCode] = useState("");
   const [showManualEntry, setShowManualEntry] = useState(false);
 
   const signaling = useP2PSignaling({
-    onConnected: () => {
-    },
-    onMessage: (message: P2PMessage) => {
-    },
+    onConnected: () => {},
+    onMessage: (message: P2PMessage) => {},
     onError: (error) => {
-      console.error('Signaling error:', error);
+      console.error("Signaling error:", error);
     },
   });
 
@@ -42,7 +46,7 @@ export default function P2PJoinPage() {
       const answer = await signaling.startClientConnection(connectionCode);
       void answer; // acknowledge generated answer
     } catch (error) {
-      console.error('Failed to join:', error);
+      console.error("Failed to join:", error);
     }
   };
 
@@ -56,12 +60,12 @@ export default function P2PJoinPage() {
       // QR scanning would be handled here - for now just show manual entry
       setShowManualEntry(true);
     } catch (error) {
-      console.error('Failed to initialize:', error);
+      console.error("Failed to initialize:", error);
     }
   };
 
   const handleStartGame = () => {
-    window.location.href = '/game-board';
+    window.location.href = "/game-board";
   };
 
   // Connected state
@@ -94,7 +98,11 @@ export default function P2PJoinPage() {
               </div>
             </div>
 
-            <Button onClick={handleStartGame} size="lg" className="w-full max-w-md">
+            <Button
+              onClick={handleStartGame}
+              size="lg"
+              className="w-full max-w-md"
+            >
               <Play className="w-4 h-4 mr-2" />
               Start Game
             </Button>
@@ -106,7 +114,11 @@ export default function P2PJoinPage() {
 
   return (
     <div className="flex-1 p-4 md:p-6 max-w-4xl mx-auto">
-      <Button variant="ghost" onClick={() => window.location.href = '/multiplayer'} className="mb-4">
+      <Button
+        variant="ghost"
+        onClick={() => (window.location.href = "/multiplayer")}
+        className="mb-4"
+      >
         <ArrowLeft className="w-4 h-4 mr-2" />
         Back
       </Button>
@@ -133,18 +145,22 @@ export default function P2PJoinPage() {
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 maxLength={20}
-                disabled={signaling.connectionState === 'connecting'}
+                disabled={signaling.connectionState === "connecting"}
               />
             </div>
 
             <Button
               onClick={handleScanQR}
-              disabled={!playerName.trim() || signaling.connectionState === 'connecting'}
+              disabled={
+                !playerName.trim() || signaling.connectionState === "connecting"
+              }
               className="w-full"
               size="lg"
             >
               <QrCode className="w-4 h-4 mr-2" />
-              {signaling.connectionState === 'connecting' ? 'Connecting...' : 'Scan QR Code'}
+              {signaling.connectionState === "connecting"
+                ? "Connecting..."
+                : "Scan QR Code"}
             </Button>
           </CardContent>
         </Card>
@@ -162,23 +178,30 @@ export default function P2PJoinPage() {
                 placeholder="Paste host's connection code here..."
                 value={connectionCode}
                 onChange={(e) => setConnectionCode(e.target.value)}
-                disabled={signaling.connectionState === 'connecting'}
+                disabled={signaling.connectionState === "connecting"}
               />
             </div>
 
             <Button
               onClick={handleManualJoin}
-              disabled={!playerName.trim() || !connectionCode.trim() || signaling.connectionState === 'connecting'}
-              variant={showManualEntry ? 'default' : 'outline'}
+              disabled={
+                !playerName.trim() ||
+                !connectionCode.trim() ||
+                signaling.connectionState === "connecting"
+              }
+              variant={showManualEntry ? "default" : "outline"}
               className="w-full"
               size="lg"
             >
               <Type className="w-4 h-4 mr-2" />
-              {signaling.connectionState === 'connecting' ? 'Connecting...' : 'Join Game'}
+              {signaling.connectionState === "connecting"
+                ? "Connecting..."
+                : "Join Game"}
             </Button>
 
             <div className="text-xs text-muted-foreground text-center">
-              Connection codes are shared by the host via QR code, Discord, or any messaging app.
+              Connection codes are shared by the host via QR code, Discord, or
+              any messaging app.
             </div>
           </CardContent>
         </Card>
@@ -193,27 +216,43 @@ export default function P2PJoinPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">1</div>
+            <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+              1
+            </div>
             <div>
-              <h4 className="font-medium text-sm">Ask your opponent to host a game</h4>
+              <h4 className="font-medium text-sm">
+                Ask your opponent to host a game
+              </h4>
             </div>
           </div>
           <div className="flex gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">2</div>
+            <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+              2
+            </div>
             <div>
-              <h4 className="font-medium text-sm">They will generate a connection code</h4>
+              <h4 className="font-medium text-sm">
+                They will generate a connection code
+              </h4>
             </div>
           </div>
           <div className="flex gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">3</div>
+            <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+              3
+            </div>
             <div>
-              <h4 className="font-medium text-sm">Share the code with you (scan QR or paste)</h4>
+              <h4 className="font-medium text-sm">
+                Share the code with you (scan QR or paste)
+              </h4>
             </div>
           </div>
           <div className="flex gap-3">
-            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">4</div>
+            <div className="shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-bold">
+              4
+            </div>
             <div>
-              <h4 className="font-medium text-sm">Paste the code above and connect!</h4>
+              <h4 className="font-medium text-sm">
+                Paste the code above and connect!
+              </h4>
             </div>
           </div>
         </CardContent>
@@ -226,8 +265,9 @@ export default function P2PJoinPage() {
       )}
 
       <p className="text-xs text-muted-foreground mt-6 text-center">
-        Planar Nexus uses direct peer-to-peer connections (WebRTC) for multiplayer.
-        No server is required - your data stays between you and your opponent.
+        Planar Nexus uses direct peer-to-peer connections (WebRTC) for
+        multiplayer. No server is required - your data stays between you and
+        your opponent.
       </p>
     </div>
   );

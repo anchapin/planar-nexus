@@ -50,12 +50,31 @@ function CardDisplay({
 
   // Color indicators
   const colorBadges = colors.map((color) => {
-    const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-      W: { bg: "bg-yellow-100", text: "text-yellow-700", border: "border-yellow-400" },
-      U: { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-400" },
-      B: { bg: "bg-gray-800", text: "text-gray-100", border: "border-gray-600" },
+    const colorMap: Record<
+      string,
+      { bg: string; text: string; border: string }
+    > = {
+      W: {
+        bg: "bg-yellow-100",
+        text: "text-yellow-700",
+        border: "border-yellow-400",
+      },
+      U: {
+        bg: "bg-blue-100",
+        text: "text-blue-700",
+        border: "border-blue-400",
+      },
+      B: {
+        bg: "bg-gray-800",
+        text: "text-gray-100",
+        border: "border-gray-600",
+      },
       R: { bg: "bg-red-100", text: "text-red-700", border: "border-red-400" },
-      G: { bg: "bg-green-100", text: "text-green-700", border: "border-green-400" },
+      G: {
+        bg: "bg-green-100",
+        text: "text-green-700",
+        border: "border-green-400",
+      },
     };
     const style = colorMap[color];
     return style ? (
@@ -65,7 +84,7 @@ function CardDisplay({
         title={color}
       >
         <span className={`text-[10px] font-bold ${style.text}`}>
-          {style.text.includes('gray-100') ? color : color}
+          {style.text.includes("gray-100") ? color : color}
         </span>
       </div>
     ) : null;
@@ -80,11 +99,11 @@ function CardDisplay({
             disabled={!isSelectable}
             className={`
               relative aspect-[5/7] w-full min-w-[60px] max-w-[90px] sm:min-w-[80px] sm:max-w-[120px] md:min-w-[100px] md:max-w-[140px] lg:max-w-[160px]
-              flex-shrink-0
+              shrink-0
               transform transition-all duration-300 ease-out
               hover:scale-[1.75] hover:-translate-y-12 hover:z-50 hover:shadow-2xl
               origin-center
-              focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background
+              focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background
               ${isSelectable ? "cursor-pointer" : "cursor-default"}
               ${isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-105" : ""}
               touch-manipulation min-h-[60px] sm:min-h-[80px] md:min-h-[100px]

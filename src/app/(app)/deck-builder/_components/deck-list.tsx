@@ -4,10 +4,21 @@ import * as React from "react";
 import { useMemo, useState, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { DeckCard } from "@/app/actions";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Minus, Plus, MinusCircle, AlertTriangle, ShieldAlert } from "lucide-react";
+import {
+  Minus,
+  Plus,
+  MinusCircle,
+  AlertTriangle,
+  ShieldAlert,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -73,7 +84,10 @@ function ColorIdentityBadge({ identity }: { identity: string[] }) {
  * Build a human-readable description of which colors a card violates.
  * e.g. "Has Blue but Commander is W/G only"
  */
-function describeViolation(violation: ColorIdentityViolation, commanderIdentity: string[]): string {
+function describeViolation(
+  violation: ColorIdentityViolation,
+  commanderIdentity: string[],
+): string {
   const violatedNames = violation.violatedColors
     .map((c) => MANA_COLOR_NAMES[c] || c)
     .join("/");
@@ -147,18 +161,43 @@ const DeckCardRow = memo(function DeckCardRow({
           />
         )}
         {isViolation && (
-          <ShieldAlert className="size-3.5 ml-1.5 text-destructive" data-testid="violation-icon" />
+          <ShieldAlert
+            className="size-3.5 ml-1.5 text-destructive"
+            data-testid="violation-icon"
+          />
         )}
         {isWarning && (
-          <AlertTriangle className="size-3.5 ml-1.5 text-amber-500" data-testid="warning-icon" />
+          <AlertTriangle
+            className="size-3.5 ml-1.5 text-amber-500"
+            data-testid="warning-icon"
+          />
         )}
       </span>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon" className="size-6" aria-label={`Decrease quantity of ${card.name}`} onClick={() => onRemoveCard(card.id)} data-testid={`decrease-quantity-${card.id}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={`Decrease quantity of ${card.name}`}
+          onClick={() => onRemoveCard(card.id)}
+          data-testid={`decrease-quantity-${card.id}`}
+        >
           <Minus className="size-4" />
         </Button>
-        <span className="w-5 text-center tabular-nums" aria-label={`Quantity ${card.count}`}>{card.count}</span>
-        <Button variant="ghost" size="icon" className="size-6" aria-label={`Increase quantity of ${card.name}`} onClick={() => onAddCard(card)} data-testid={`increase-quantity-${card.id}`}>
+        <span
+          className="w-5 text-center tabular-nums"
+          aria-label={`Quantity ${card.count}`}
+        >
+          {card.count}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          aria-label={`Increase quantity of ${card.name}`}
+          onClick={() => onAddCard(card)}
+          data-testid={`increase-quantity-${card.id}`}
+        >
           <Plus className="size-4" />
         </Button>
       </div>
@@ -202,7 +241,10 @@ export function DeckList({
   commanderColorIdentity,
   cardLegality,
 }: DeckListProps) {
-  const totalCards = useMemo(() => deck.reduce((sum, card) => sum + card.count, 0), [deck]);
+  const totalCards = useMemo(
+    () => deck.reduce((sum, card) => sum + card.count, 0),
+    [deck],
+  );
   const [fixMode, setFixMode] = useState(false);
 
   // Pre-compute a per-card color-identity status lookup keyed by card id.
@@ -210,7 +252,10 @@ export function DeckList({
     const map = new Map<string, CardIdentityStatus>();
     if (!commanderColorIdentity) return map;
     deck.forEach((card) => {
-      map.set(card.id, getCardColorIdentityStatus(card, commanderColorIdentity));
+      map.set(
+        card.id,
+        getCardColorIdentityStatus(card, commanderColorIdentity),
+      );
     });
     return map;
   }, [deck, commanderColorIdentity]);
@@ -243,7 +288,16 @@ export function DeckList({
     }, {} as CategorizedDeck);
   }, [deck]);
 
-  const categoryOrder = ["Creatures", "Instants", "Sorceries", "Artifacts", "Enchantments", "Planeswalkers", "Lands", "Other"];
+  const categoryOrder = [
+    "Creatures",
+    "Instants",
+    "Sorceries",
+    "Artifacts",
+    "Enchantments",
+    "Planeswalkers",
+    "Lands",
+    "Other",
+  ];
 
   // Look up a card id for a suggestion name so the fix-mode remove button
   // can target the actual deck entry.
@@ -267,7 +321,9 @@ export function DeckList({
     for (const category of categoryOrder) {
       const categoryCards = categorizedDeck[category];
       if (!categoryCards) continue;
-      const sorted = [...categoryCards].sort((a, b) => a.name.localeCompare(b.name));
+      const sorted = [...categoryCards].sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
       const categoryCount = sorted.reduce((sum, card) => sum + card.count, 0);
       out.push({ kind: "category-header", category, count: categoryCount });
       for (const card of sorted) {
@@ -299,16 +355,19 @@ export function DeckList({
     <Card className="flex flex-col h-full">
       <CardHeader>
         <Input
-            className="text-lg font-headline font-bold border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto"
-            value={deckName}
-            onChange={(e) => onDeckNameChange(e.target.value)}
+          className="text-lg font-headline font-bold border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto"
+          value={deckName}
+          onChange={(e) => onDeckNameChange(e.target.value)}
         />
         <CardDescription className="flex items-center justify-between">
           <span data-testid="deck-count">{totalCards} cards</span>
           {commanderColorIdentity && commanderColorIdentity.length > 0 && (
             <span className="text-xs">
               Commander:{" "}
-              <span className="font-mono" data-testid="commander-color-identity">
+              <span
+                className="font-mono"
+                data-testid="commander-color-identity"
+              >
                 {commanderColorIdentity.join("")}
               </span>
             </span>
@@ -324,7 +383,7 @@ export function DeckList({
         ) : (
           <div
             ref={scrollRef}
-            className="h-[calc(100vh-20rem)] overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="h-[calc(100vh-20rem)] overflow-y-auto overflow-x-hidden outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
             role="list"
             aria-label="Deck cards"
             tabIndex={0}
@@ -366,15 +425,24 @@ export function DeckList({
                               aria-label="Toggle color identity fix mode"
                               data-testid="color-fix-mode-switch"
                             />
-                            <Label htmlFor="color-fix-mode" className="text-sm cursor-pointer">
+                            <Label
+                              htmlFor="color-fix-mode"
+                              className="text-sm cursor-pointer"
+                            >
                               Color Identity Fix
                             </Label>
                             {hasViolations ? (
-                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0" data-testid="color-violation-count">
+                              <Badge
+                                variant="destructive"
+                                className="text-[10px] px-1.5 py-0"
+                                data-testid="color-violation-count"
+                              >
                                 {fixSuggestions.length}
                               </Badge>
                             ) : (
-                              <span className="text-xs text-muted-foreground">No violations</span>
+                              <span className="text-xs text-muted-foreground">
+                                No violations
+                              </span>
                             )}
                           </div>
                         </div>
@@ -392,12 +460,13 @@ export function DeckList({
                           <ul className="space-y-1">
                             {fixSuggestions.map((suggestion) => {
                               const cardId = idByName.get(suggestion.name);
-                              const isHardViolation = suggestion.severity === "violation";
+                              const isHardViolation =
+                                suggestion.severity === "violation";
                               return (
                                 <li
                                   key={suggestion.name}
                                   className="flex items-center justify-between text-sm p-1 rounded-md hover:bg-secondary"
-                                  data-testid={`color-fix-item-${suggestion.name.toLowerCase().replace(/\s+/g, '-')}`}
+                                  data-testid={`color-fix-item-${suggestion.name.toLowerCase().replace(/\s+/g, "-")}`}
                                 >
                                   <span className="flex items-center gap-1.5">
                                     {isHardViolation ? (
@@ -406,11 +475,16 @@ export function DeckList({
                                       <AlertTriangle className="size-3.5 text-amber-500" />
                                     )}
                                     <span>{suggestion.name}</span>
-                                    <ColorIdentityBadge identity={suggestion.colorIdentity} />
+                                    <ColorIdentityBadge
+                                      identity={suggestion.colorIdentity}
+                                    />
                                   </span>
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs text-muted-foreground hidden sm:inline">
-                                      {describeViolation(suggestion, commanderColorIdentity!)}
+                                      {describeViolation(
+                                        suggestion,
+                                        commanderColorIdentity!,
+                                      )}
                                     </span>
                                     {cardId && (
                                       <Button

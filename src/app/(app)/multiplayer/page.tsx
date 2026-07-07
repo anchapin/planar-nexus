@@ -140,7 +140,7 @@ export default function MultiplayerPage() {
                 <h3 className="font-semibold mb-4">How to Connect</h3>
                 <div className="space-y-4">
                   <div className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                       1
                     </div>
                     <div>
@@ -151,7 +151,7 @@ export default function MultiplayerPage() {
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                       2
                     </div>
                     <div>
@@ -163,7 +163,7 @@ export default function MultiplayerPage() {
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                       3
                     </div>
                     <div>
@@ -175,7 +175,7 @@ export default function MultiplayerPage() {
                     </div>
                   </div>
                   <div className="flex gap-4">
-                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
                       4
                     </div>
                     <div>
@@ -214,7 +214,7 @@ export default function MultiplayerPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-start gap-3">
-                <QrCode className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <QrCode className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
                 <div>
                   <h4 className="font-medium">QR Code</h4>
                   <p className="text-sm text-muted-foreground">
@@ -224,7 +224,7 @@ export default function MultiplayerPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Share2 className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <Share2 className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
                 <div>
                   <h4 className="font-medium">Copy & Paste</h4>
                   <p className="text-sm text-muted-foreground">
@@ -234,7 +234,7 @@ export default function MultiplayerPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <Users className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                <Users className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
                 <div>
                   <h4 className="font-medium">Discord/Chat</h4>
                   <p className="text-sm text-muted-foreground">

@@ -383,11 +383,8 @@ function convertToAIGameState(
       .map((card) => {
         const typeLine = card.cardData.type_line.toLowerCase();
         let permanentType:
-          | "creature"
-          | "land"
-          | "artifact"
-          | "enchantment"
-          | "planeswalker" = "creature";
+          "creature" | "land" | "artifact" | "enchantment" | "planeswalker" =
+          "creature";
         if (typeLine.includes("land")) permanentType = "land";
         else if (typeLine.includes("artifact")) permanentType = "artifact";
         else if (typeLine.includes("enchantment"))
@@ -633,12 +630,7 @@ class AIOpponent {
     aiPlayerId: string,
   ): {
     action:
-      | "play_land"
-      | "cast_spell"
-      | "attack"
-      | "block"
-      | "pass"
-      | "tap_mana";
+      "play_land" | "cast_spell" | "attack" | "block" | "pass" | "tap_mana";
     data?: AIDecisionData;
   } {
     const config = getDifficultyConfig(this.difficulty);
@@ -694,10 +686,7 @@ interface ManaDecisionData {
 }
 
 type AIDecisionData =
-  | AttackDecisionData
-  | BlockDecisionData
-  | ManaDecisionData
-  | undefined;
+  AttackDecisionData | BlockDecisionData | ManaDecisionData | undefined;
 
 /**
  * Get or create active game from storage
@@ -3059,7 +3048,7 @@ function GameBoardContent() {
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Header */}
       <header
-        className="flex-shrink-0 bg-background/95 backdrop-blur border-b"
+        className="shrink-0 bg-background/95 backdrop-blur border-b"
         data-tutorial="phase-info"
       >
         <div className="flex items-center justify-between px-2 py-1.5 md:px-4 md:py-2">
@@ -3114,7 +3103,7 @@ function GameBoardContent() {
       </header>
 
       {/* Phase Tracker */}
-      <div className="flex-shrink-0">
+      <div className="shrink-0">
         <PhaseTracker
           currentPhase={gameState.turn.currentPhase}
           isPlayerTurn={isPlayerTurn}
@@ -3145,7 +3134,7 @@ function GameBoardContent() {
 
       {/* Game Controls Footer */}
       <footer
-        className="flex-shrink-0 bg-background/95 backdrop-blur border-t p-1.5 md:p-2"
+        className="shrink-0 bg-background/95 backdrop-blur border-t p-1.5 md:p-2"
         data-tutorial="actions"
       >
         <div className="flex items-center justify-between gap-2 flex-wrap">

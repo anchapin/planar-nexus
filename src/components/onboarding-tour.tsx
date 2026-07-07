@@ -344,7 +344,7 @@ export function OnboardingTour() {
             onKeyDown={onKeyDown}
             style={getPopupStyle(step.side, targetRect)}
             className={cn(
-              "z-50 w-[min(380px,calc(100vw-2rem))] outline-none",
+              "z-50 w-[min(380px,calc(100vw-2rem))] outline-hidden",
               reduceMotion ? "" : "transition-all duration-200",
             )}
           >
@@ -417,7 +417,10 @@ export function OnboardingTour() {
                     disabled={isFirst}
                     className="h-8 text-xs"
                   >
-                    <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                    <ChevronLeft
+                      className="mr-1 h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
                     Back
                   </Button>
 
@@ -440,7 +443,10 @@ export function OnboardingTour() {
                     >
                       {isLast ? "Get started" : "Next"}
                       {!isLast && (
-                        <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                        <ChevronRight
+                          className="h-3.5 w-3.5"
+                          aria-hidden="true"
+                        />
                       )}
                     </Button>
                   </div>

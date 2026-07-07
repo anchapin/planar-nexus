@@ -27,7 +27,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <SidebarInset
         id="main-content"
         tabIndex={-1}
-        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <div className="h-svh flex flex-col overflow-hidden">
           <div className="flex-1 min-h-0 overflow-auto">{children}</div>

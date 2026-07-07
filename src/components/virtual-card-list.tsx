@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import * as React from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import type { CollectionCard } from '@/hooks/use-collection';
-import { cn } from '@/lib/utils';
+import * as React from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import type { CollectionCard } from "@/hooks/use-collection";
+import { cn } from "@/lib/utils";
 
 export interface VirtualCardListProps {
   cards: CollectionCard[];
@@ -52,7 +52,10 @@ export function VirtualCardList({
   return (
     <div
       ref={parentRef}
-      className={cn('overflow-y-auto overflow-x-hidden outline-none focus-visible:ring-2 focus-visible:ring-ring', className)}
+      className={cn(
+        "overflow-y-auto overflow-x-hidden outline-hidden focus-visible:ring-2 focus-visible:ring-ring",
+        className,
+      )}
       role="list"
       aria-label="Collection cards"
       tabIndex={0}
@@ -61,8 +64,8 @@ export function VirtualCardList({
         <div
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,
-            width: '100%',
-            position: 'relative',
+            width: "100%",
+            position: "relative",
           }}
         >
           {virtualItems.map((virtualRow) => {
@@ -74,10 +77,10 @@ export function VirtualCardList({
                 ref={rowVirtualizer.measureElement}
                 role="listitem"
                 style={{
-                  position: 'absolute',
+                  position: "absolute",
                   top: 0,
                   left: 0,
-                  width: '100%',
+                  width: "100%",
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >

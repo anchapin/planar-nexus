@@ -308,7 +308,7 @@ function MatchCard({
       aria-label={label}
       onFocus={onFocusMatch}
       className={cn(
-        "w-48 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "w-48 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         isComplete && "opacity-70",
       )}
     >

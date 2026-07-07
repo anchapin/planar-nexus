@@ -445,7 +445,7 @@ export function CardChoiceDialog({
 
           {validTargetIds.length === 0 && (
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-lg p-4">
-              <AlertCircle className="h-5 w-5 flex-shrink-0" />
+              <AlertCircle className="h-5 w-5 shrink-0" />
               <p className="text-sm">
                 No valid targets in opponent&apos;s hand. You must still
                 confirm.
@@ -673,7 +673,7 @@ export function ModeChoiceDialog({
                   <div className="flex items-start gap-3">
                     <div
                       className={cn(
-                        "w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5",
+                        "w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5",
                         isSelected && mode.isValid
                           ? "bg-primary border-primary text-primary-foreground"
                           : "border-muted-foreground/30",
