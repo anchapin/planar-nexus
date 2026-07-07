@@ -2,7 +2,10 @@
 require("fake-indexeddb/auto");
 
 // Testing Library matchers
-require("@testing-library/jest-dom");
+// Use the `jest-globals` subpath so the matcher augmentations extend
+// `@jest/expect` (Jest 30) rather than the global `jest` namespace (Jest 29).
+// See https://github.com/testing-library/jest-dom/issues/...
+require("@testing-library/jest-dom/jest-globals");
 
 // Polyfill for TextEncoder/TextDecoder
 global.TextEncoder = require("util").TextEncoder;

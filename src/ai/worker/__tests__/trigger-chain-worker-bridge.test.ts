@@ -16,7 +16,7 @@
  * Plus ordering preservation (chains stay sorted by totalValue) and that the
  * default resolver degrades gracefully to the fallback in jsdom.
  */
-import { describe, test, expect, afterEach } from "@jest/globals";
+import { describe, test, expect, afterEach, jest } from "@jest/globals";
 
 import {
   evaluateTriggerChainAsync,
@@ -85,7 +85,7 @@ describe("trigger-chain-worker-bridge (#1080)", () => {
   describe("client invocation (worker path)", () => {
     test("forwards to the worker client and returns its result", async () => {
       const evaluateMock = jest
-        .fn<Promise<TriggerChain[]>, []>()
+        .fn<TriggerChainWorkerClient["evaluateTriggerChain"]>()
         .mockResolvedValue(mainThreadResult.map((c) => ({ ...c })));
       const fakeClient: TriggerChainWorkerClient = {
         evaluateTriggerChain: evaluateMock,
@@ -119,7 +119,9 @@ describe("trigger-chain-worker-bridge (#1080)", () => {
         },
       ];
       const fakeClient: TriggerChainWorkerClient = {
-        evaluateTriggerChain: jest.fn().mockResolvedValue(sentinel),
+        evaluateTriggerChain: jest
+          .fn<TriggerChainWorkerClient["evaluateTriggerChain"]>()
+          .mockResolvedValue(sentinel),
       };
       _setTriggerChainClientResolver(async () => fakeClient);
 
@@ -131,7 +133,7 @@ describe("trigger-chain-worker-bridge (#1080)", () => {
 
     test("forwards maxDepth to the worker client", async () => {
       const evaluateMock = jest
-        .fn<Promise<TriggerChain[]>, []>()
+        .fn<TriggerChainWorkerClient["evaluateTriggerChain"]>()
         .mockResolvedValue(mainThreadResult);
       _setTriggerChainClientResolver(async () => ({
         evaluateTriggerChain: evaluateMock,
@@ -156,7 +158,7 @@ describe("trigger-chain-worker-bridge (#1080)", () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: TriggerChainWorkerClient = {
         evaluateTriggerChain: jest
-          .fn()
+          .fn<TriggerChainWorkerClient["evaluateTriggerChain"]>()
           .mockRejectedValue(new Error("worker boom")),
       };
       _setTriggerChainClientResolver(async () => throwingClient);
@@ -170,7 +172,9 @@ describe("trigger-chain-worker-bridge (#1080)", () => {
 
     test("falls back when the worker returns null (no proxy)", async () => {
       const nullClient: TriggerChainWorkerClient = {
-        evaluateTriggerChain: jest.fn().mockResolvedValue(null),
+        evaluateTriggerChain: jest
+          .fn<TriggerChainWorkerClient["evaluateTriggerChain"]>()
+          .mockResolvedValue(null),
       };
       _setTriggerChainClientResolver(async () => nullClient);
 
@@ -193,7 +197,7 @@ describe("trigger-chain-worker-bridge (#1080)", () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: TriggerChainWorkerClient = {
         evaluateTriggerChain: jest
-          .fn()
+          .fn<TriggerChainWorkerClient["evaluateTriggerChain"]>()
           .mockRejectedValue(new Error("worker boom")),
       };
       _setTriggerChainClientResolver(async () => throwingClient);

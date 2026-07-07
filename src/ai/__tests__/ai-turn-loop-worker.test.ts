@@ -239,8 +239,11 @@ describe("runAITurn offloads evaluation to the AI worker (issue #1244)", () => {
     expect(result.success).toBe(true);
     expect(analyzeMock).toHaveBeenCalledTimes(1);
     // The bridge forwards (gameState, playerId, difficulty, archetype).
+    // engineToAIStateMock returns {} so the first arg is whatever the mock
+    // produced — use expect.anything() because jest@30's stricter CalledWith
+    // inference rejects bare `{}` as a structural GameState.
     expect(analyzeMock).toHaveBeenCalledWith(
-      {}, // engineToAIStateMock returns {}
+      expect.anything(), // engineToAIStateMock returns {}
       AI,
       "medium",
       "midrange",
