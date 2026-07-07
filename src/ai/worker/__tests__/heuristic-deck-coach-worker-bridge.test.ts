@@ -16,7 +16,7 @@
  *
  * Plus that the default resolver degrades gracefully to the fallback in jsdom.
  */
-import { describe, test, expect, afterEach } from "@jest/globals";
+import { describe, test, expect, afterEach, jest } from "@jest/globals";
 
 import {
   reviewDeckHeuristicAsync,
@@ -52,7 +52,10 @@ function makeHeuristicCard(
 
 function buildControlDeck(): HeuristicDeckCard[] {
   return [
-    makeHeuristicCard("Sol Ring", 1, { type_line: "Artifact", mana_cost: "{1}" }),
+    makeHeuristicCard("Sol Ring", 1, {
+      type_line: "Artifact",
+      mana_cost: "{1}",
+    }),
     makeHeuristicCard("Counterspell", 4, {
       type_line: "Instant",
       cmc: 2,
@@ -77,7 +80,8 @@ function buildControlDeck(): HeuristicDeckCard[] {
   ];
 }
 
-const decklist = "1 Sol Ring\n4 Counterspell\n2 Cryptic Command\n2 Thoughtseize";
+const decklist =
+  "1 Sol Ring\n4 Counterspell\n2 Cryptic Command\n2 Thoughtseize";
 const format = "commander";
 const cards = buildControlDeck();
 const mainThreadResult: DeckReviewOutput = reviewDeckHeuristic(
@@ -94,7 +98,7 @@ describe("heuristic-deck-coach-worker-bridge (#1243)", () => {
   describe("client invocation (worker path)", () => {
     test("forwards to the worker client and returns its result", async () => {
       const reviewMock = jest
-        .fn<Promise<DeckReviewOutput | null>, []>()
+        .fn<HeuristicDeckCoachWorkerClient["reviewDeck"]>()
         .mockResolvedValue(mainThreadResult);
       const fakeClient: HeuristicDeckCoachWorkerClient = {
         reviewDeck: reviewMock,
@@ -125,7 +129,9 @@ describe("heuristic-deck-coach-worker-bridge (#1243)", () => {
         synergies: { present: [], missing: [] },
       };
       const fakeClient: HeuristicDeckCoachWorkerClient = {
-        reviewDeck: jest.fn().mockResolvedValue(sentinel),
+        reviewDeck: jest
+          .fn<HeuristicDeckCoachWorkerClient["reviewDeck"]>()
+          .mockResolvedValue(sentinel),
       };
       _setHeuristicDeckCoachClientResolver(async () => fakeClient);
 
@@ -148,7 +154,9 @@ describe("heuristic-deck-coach-worker-bridge (#1243)", () => {
     test("falls back when the client throws (worker error)", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: HeuristicDeckCoachWorkerClient = {
-        reviewDeck: jest.fn().mockRejectedValue(new Error("worker boom")),
+        reviewDeck: jest
+          .fn<HeuristicDeckCoachWorkerClient["reviewDeck"]>()
+          .mockRejectedValue(new Error("worker boom")),
       };
       _setHeuristicDeckCoachClientResolver(async () => throwingClient);
 
@@ -161,7 +169,9 @@ describe("heuristic-deck-coach-worker-bridge (#1243)", () => {
 
     test("falls back when the worker returns null (no proxy)", async () => {
       const nullClient: HeuristicDeckCoachWorkerClient = {
-        reviewDeck: jest.fn().mockResolvedValue(null),
+        reviewDeck: jest
+          .fn<HeuristicDeckCoachWorkerClient["reviewDeck"]>()
+          .mockResolvedValue(null),
       };
       _setHeuristicDeckCoachClientResolver(async () => nullClient);
 
@@ -183,7 +193,9 @@ describe("heuristic-deck-coach-worker-bridge (#1243)", () => {
     test("fallback warning is emitted at most once across calls", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: HeuristicDeckCoachWorkerClient = {
-        reviewDeck: jest.fn().mockRejectedValue(new Error("worker boom")),
+        reviewDeck: jest
+          .fn<HeuristicDeckCoachWorkerClient["reviewDeck"]>()
+          .mockRejectedValue(new Error("worker boom")),
       };
       _setHeuristicDeckCoachClientResolver(async () => throwingClient);
 

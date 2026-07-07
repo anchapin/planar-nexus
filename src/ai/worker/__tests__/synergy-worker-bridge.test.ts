@@ -16,7 +16,7 @@
  * Plus ordering preservation (results stay sorted by score) and that the
  * default resolver degrades gracefully to the fallback in jsdom.
  */
-import { describe, test, expect, afterEach } from "@jest/globals";
+import { describe, test, expect, afterEach, jest } from "@jest/globals";
 
 import {
   detectSynergiesAsync,
@@ -85,7 +85,7 @@ describe("synergy-worker-bridge (#1079)", () => {
   describe("client invocation (worker path)", () => {
     test("forwards to the worker client and returns its result", async () => {
       const detectMock = jest
-        .fn<Promise<SynergyResult[]>, []>()
+        .fn<SynergyWorkerClient["detectSynergies"]>()
         .mockResolvedValue(mainThreadResult.map((s) => ({ ...s })));
       const fakeClient: SynergyWorkerClient = {
         detectSynergies: detectMock,
@@ -113,7 +113,9 @@ describe("synergy-worker-bridge (#1079)", () => {
         },
       ];
       const fakeClient: SynergyWorkerClient = {
-        detectSynergies: jest.fn().mockResolvedValue(sentinel),
+        detectSynergies: jest
+          .fn<SynergyWorkerClient["detectSynergies"]>()
+          .mockResolvedValue(sentinel),
       };
       _setSynergyClientResolver(async () => fakeClient);
 
@@ -125,7 +127,7 @@ describe("synergy-worker-bridge (#1079)", () => {
 
     test("forwards minScore and maxResults to the worker client", async () => {
       const detectMock = jest
-        .fn<Promise<SynergyResult[]>, []>()
+        .fn<SynergyWorkerClient["detectSynergies"]>()
         .mockResolvedValue(mainThreadResult);
       _setSynergyClientResolver(async () => ({
         detectSynergies: detectMock,
@@ -149,7 +151,9 @@ describe("synergy-worker-bridge (#1079)", () => {
     test("falls back when the client throws (worker error)", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: SynergyWorkerClient = {
-        detectSynergies: jest.fn().mockRejectedValue(new Error("worker boom")),
+        detectSynergies: jest
+          .fn<SynergyWorkerClient["detectSynergies"]>()
+          .mockRejectedValue(new Error("worker boom")),
       };
       _setSynergyClientResolver(async () => throwingClient);
 
@@ -162,7 +166,9 @@ describe("synergy-worker-bridge (#1079)", () => {
 
     test("falls back when the worker returns null (no proxy)", async () => {
       const nullClient: SynergyWorkerClient = {
-        detectSynergies: jest.fn().mockResolvedValue(null),
+        detectSynergies: jest
+          .fn<SynergyWorkerClient["detectSynergies"]>()
+          .mockResolvedValue(null),
       };
       _setSynergyClientResolver(async () => nullClient);
 
@@ -184,7 +190,9 @@ describe("synergy-worker-bridge (#1079)", () => {
     test("fallback warning is emitted at most once across calls", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: SynergyWorkerClient = {
-        detectSynergies: jest.fn().mockRejectedValue(new Error("worker boom")),
+        detectSynergies: jest
+          .fn<SynergyWorkerClient["detectSynergies"]>()
+          .mockRejectedValue(new Error("worker boom")),
       };
       _setSynergyClientResolver(async () => throwingClient);
 

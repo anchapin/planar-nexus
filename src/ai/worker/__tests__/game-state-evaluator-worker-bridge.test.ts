@@ -16,7 +16,7 @@
  * Plus the `quickScoreAsync` path, and that the default resolver degrades
  * gracefully to the fallback in jsdom (mirrors #1080 trigger-chain tests).
  */
-import { describe, test, expect, afterEach } from "@jest/globals";
+import { describe, test, expect, afterEach, jest } from "@jest/globals";
 
 import {
   evaluateGameStateAsync,
@@ -89,15 +89,19 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
   describe("client invocation (worker path)", () => {
     test("forwards to the worker client and returns its result", async () => {
       const analyzeMock = jest
-        .fn<Promise<DetailedEvaluation | null>, []>()
+        .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
         .mockResolvedValue(mainThreadEvaluation);
       const fakeClient: GameStateEvaluatorWorkerClient = {
         analyzeGameState: analyzeMock,
-        quickScore: jest.fn(),
+        quickScore: jest.fn<GameStateEvaluatorWorkerClient["quickScore"]>(),
       };
       _setEvaluatorClientResolver(async () => fakeClient);
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       expect(result).toEqual(mainThreadEvaluation);
       expect(analyzeMock).toHaveBeenCalledTimes(1);
@@ -118,12 +122,18 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
         totalScore: 999,
       };
       const fakeClient: GameStateEvaluatorWorkerClient = {
-        analyzeGameState: jest.fn().mockResolvedValue(sentinel),
-        quickScore: jest.fn(),
+        analyzeGameState: jest
+          .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
+          .mockResolvedValue(sentinel),
+        quickScore: jest.fn<GameStateEvaluatorWorkerClient["quickScore"]>(),
       };
       _setEvaluatorClientResolver(async () => fakeClient);
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       expect(result).toEqual(sentinel);
       expect(result.totalScore).not.toBe(mainThreadEvaluation.totalScore);
@@ -131,11 +141,11 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
 
     test("forwards archetype to the worker client", async () => {
       const analyzeMock = jest
-        .fn<Promise<DetailedEvaluation | null>, []>()
+        .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
         .mockResolvedValue(mainThreadEvaluation);
       _setEvaluatorClientResolver(async () => ({
         analyzeGameState: analyzeMock,
-        quickScore: jest.fn(),
+        quickScore: jest.fn<GameStateEvaluatorWorkerClient["quickScore"]>(),
       }));
 
       await evaluateGameStateAsync(gameState, "player1", "hard", "aggro");
@@ -153,7 +163,11 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
     test("falls back to main-thread compute when client resolves to null", async () => {
       _setEvaluatorClientResolver(async () => null);
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       expect(result).toEqual(mainThreadEvaluation);
     });
@@ -162,13 +176,17 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: GameStateEvaluatorWorkerClient = {
         analyzeGameState: jest
-          .fn()
+          .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
           .mockRejectedValue(new Error("worker boom")),
-        quickScore: jest.fn(),
+        quickScore: jest.fn<GameStateEvaluatorWorkerClient["quickScore"]>(),
       };
       _setEvaluatorClientResolver(async () => throwingClient);
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       expect(result).toEqual(mainThreadEvaluation);
       expect(warnSpy).toHaveBeenCalledTimes(1);
@@ -177,12 +195,18 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
 
     test("falls back when the worker returns null (no proxy)", async () => {
       const nullClient: GameStateEvaluatorWorkerClient = {
-        analyzeGameState: jest.fn().mockResolvedValue(null),
-        quickScore: jest.fn(),
+        analyzeGameState: jest
+          .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
+          .mockResolvedValue(null),
+        quickScore: jest.fn<GameStateEvaluatorWorkerClient["quickScore"]>(),
       };
       _setEvaluatorClientResolver(async () => nullClient);
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       expect(result).toEqual(mainThreadEvaluation);
     });
@@ -192,7 +216,11 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
         throw new Error("resolver exploded");
       });
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       expect(result).toEqual(mainThreadEvaluation);
     });
@@ -201,9 +229,9 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const throwingClient: GameStateEvaluatorWorkerClient = {
         analyzeGameState: jest
-          .fn()
+          .fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>()
           .mockRejectedValue(new Error("worker boom")),
-        quickScore: jest.fn(),
+        quickScore: jest.fn<GameStateEvaluatorWorkerClient["quickScore"]>(),
       };
       _setEvaluatorClientResolver(async () => throwingClient);
 
@@ -218,9 +246,12 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
 
   describe("quickScoreAsync", () => {
     test("forwards to the worker client", async () => {
-      const quickScoreMock = jest.fn().mockResolvedValue(7.5);
+      const quickScoreMock = jest
+        .fn<GameStateEvaluatorWorkerClient["quickScore"]>()
+        .mockResolvedValue(7.5);
       const fakeClient: GameStateEvaluatorWorkerClient = {
-        analyzeGameState: jest.fn(),
+        analyzeGameState:
+          jest.fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>(),
         quickScore: quickScoreMock,
       };
       _setEvaluatorClientResolver(async () => fakeClient);
@@ -246,8 +277,11 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
 
     test("falls back when the worker returns null", async () => {
       const fakeClient: GameStateEvaluatorWorkerClient = {
-        analyzeGameState: jest.fn(),
-        quickScore: jest.fn().mockResolvedValue(null),
+        analyzeGameState:
+          jest.fn<GameStateEvaluatorWorkerClient["analyzeGameState"]>(),
+        quickScore: jest
+          .fn<GameStateEvaluatorWorkerClient["quickScore"]>()
+          .mockResolvedValue(null),
       };
       _setEvaluatorClientResolver(async () => fakeClient);
 
@@ -262,7 +296,11 @@ describe("game-state-evaluator-worker-bridge (#1244)", () => {
       // Reset to the default resolver explicitly.
       _resetEvaluatorClientResolver();
 
-      const result = await evaluateGameStateAsync(gameState, "player1", "medium");
+      const result = await evaluateGameStateAsync(
+        gameState,
+        "player1",
+        "medium",
+      );
 
       // jsdom provides no `Worker`, so the real client exposes no proxy and
       // the dynamic import path resolves to null → main-thread fallback.
