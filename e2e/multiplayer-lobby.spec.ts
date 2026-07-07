@@ -194,7 +194,7 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
     ).toBeVisible();
     await expect(
       page.locator('[data-testid="reconnect-token-resume-TESTGAME"]'),
-    ).toHaveAttribute("href", /\/multiplayer\/p2p-join\?code=TESTGAME(&|$)/);
+    ).toHaveAttribute("href", /\/multiplayer\/p2p-join\??code=TESTGAME/);
   });
 
   test("the dismiss button removes the row without a full page reload", async ({
