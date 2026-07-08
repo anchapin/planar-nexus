@@ -50,7 +50,7 @@ test.describe("Onboarding tour", () => {
     await expectTourTitle(page, "Welcome to Planar Nexus");
 
     // Each step exposes a primary "Next" / final "Get started" button.
-    const next = page.locator('[data-tour-primary]');
+    const next = page.locator("[data-tour-primary]");
 
     // Step through the whole tour (8 steps total).
     for (let i = 0; i < 8; i++) {
@@ -77,7 +77,7 @@ test.describe("Onboarding tour", () => {
     await expectTourTitle(page, "Welcome to Planar Nexus");
 
     // Primary button receives focus on open; Enter then advances the step.
-    const next = page.locator('[data-tour-primary]');
+    const next = page.locator("[data-tour-primary]");
     await next.focus();
     await page.keyboard.press("Enter");
 
@@ -87,6 +87,14 @@ test.describe("Onboarding tour", () => {
   test("Escape dismisses the tour and marks it seen", async ({ page }) => {
     await expect(page.locator(DIALOG)).toBeVisible({ timeout: 10000 });
 
+    // Focus the primary button before pressing Escape so the keydown
+    // bubbles from a known-focused element up to the dialog's onKeyDown
+    // handler. The OnboardingTour focus management does this on its own
+    // 80ms after open, but under CI load that focus may not be in place
+    // by the time the test reaches this line.
+    const primary = page.locator("[data-tour-primary]");
+    await expect(primary).toBeVisible();
+    await primary.focus();
     await page.keyboard.press("Escape");
     await expect(page.locator(DIALOG)).toBeHidden();
 
@@ -118,7 +126,7 @@ test.describe("Onboarding tour", () => {
   test("can be restarted from Settings", async ({ page }) => {
     // Complete it once so we are in the "seen" state.
     await expect(page.locator(DIALOG)).toBeVisible({ timeout: 10000 });
-    const next = page.locator('[data-tour-primary]');
+    const next = page.locator("[data-tour-primary]");
     for (let i = 0; i < 8; i++) {
       await expect(next).toBeVisible();
       await next.click();
