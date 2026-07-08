@@ -473,8 +473,10 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
     try {
       const opts = [HOST_OPTS, PEER_B_OPTS, PEER_C_OPTS, PEER_D_OPTS];
       // Activate links for the first 3 peers only (host, B, C). D is loaded
-      // but has no outbound links to anyone.
-      await linkMeshPeers(pages, opts, [0, 1, 2]);
+      // but has no links to anyone (neither inbound nor outbound). The
+      // 4th arg restricts the link targets so the first 3 don't add D as
+      // an outbound neighbor — D is "loaded but not joined".
+      await linkMeshPeers(pages, opts, [0, 1, 2], [0, 1, 2]);
 
       // Verify D is not yet reachable from the mesh.
       const hostPeersBefore = (await getKnownPeers(host)).sort();

@@ -379,6 +379,14 @@ export async function linkMeshPeers(
   pages: Page[],
   allOpts: MeshPeerOptions[],
   linkFromIndices: number[],
+  /**
+   * Optional restriction on the link targets. When provided, each "from"
+   * peer only registers outbound links to peers whose index is in this
+   * set. Useful for tests that need a partial mesh (e.g. mid-game join:
+   * link the first 3 peers to each other but NOT to peer-d, which is
+   * loaded but not yet joined). Defaults to all peers.
+   */
+  linkToIndices: number[] = allOpts.map((_, i) => i),
 ): Promise<LinkSummary> {
   const outboundByPlayerId: Record<string, number> = {};
   const inboundByPlayerId: Record<string, number> = {};
@@ -387,11 +395,12 @@ export async function linkMeshPeers(
     inboundByPlayerId[allOpts[i].playerId] = 0;
     outboundByPlayerId[allOpts[i].playerId] = 0;
   }
-  // For each "from" peer, register an outbound link to every other peer.
+  // For each "from" peer, register an outbound link to every peer in
+  // `linkToIndices` except itself.
   for (const i of linkFromIndices) {
     const fromPage = pages[i];
     const fromId = allOpts[i].playerId;
-    for (let j = 0; j < allOpts.length; j++) {
+    for (const j of linkToIndices) {
       if (i === j) continue;
       const toId = allOpts[j].playerId;
       await fromPage.evaluate(
