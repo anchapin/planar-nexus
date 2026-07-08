@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useRef } from 'react';
-import { Bot, User } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import type { ChatMessage } from '@/types/chat';
+import { useEffect, useRef } from "react";
+import { Bot, User } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { ChatMessage } from "@/types/chat";
 
 interface ChatMessageListProps {
   messages: ChatMessage[];
@@ -12,14 +12,18 @@ interface ChatMessageListProps {
 }
 
 function formatTimestamp(date: Date): string {
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
     hour12: true,
   }).format(date);
 }
 
-export function ChatMessageList({ messages, isLoading, className }: ChatMessageListProps) {
+export function ChatMessageList({
+  messages,
+  isLoading,
+  className,
+}: ChatMessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
 
@@ -45,7 +49,7 @@ export function ChatMessageList({ messages, isLoading, className }: ChatMessageL
       role="log"
       aria-label="Chat messages"
       aria-live="polite"
-      className={cn('flex-1 overflow-y-auto p-4 space-y-4', className)}
+      className={cn("flex-1 overflow-y-auto p-4 space-y-4", className)}
     >
       {messages.length === 0 && !isLoading && (
         <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground py-8">
@@ -57,14 +61,14 @@ export function ChatMessageList({ messages, isLoading, className }: ChatMessageL
       )}
 
       {messages.map((message) => {
-        const isUser = message.role === 'user';
-        
+        const isUser = message.role === "user";
+
         return (
           <div
             key={message.id}
             className={cn(
-              'flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300',
-              isUser ? 'justify-end' : 'justify-start'
+              "flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300",
+              isUser ? "justify-end" : "justify-start",
             )}
           >
             {!isUser && (
@@ -72,22 +76,22 @@ export function ChatMessageList({ messages, isLoading, className }: ChatMessageL
                 <Bot className="w-4 h-4 text-primary" />
               </div>
             )}
-            
+
             <div
               className={cn(
-                'max-w-[80%] rounded-2xl px-4 py-2 shadow-sm',
-                isUser 
-                  ? 'bg-primary text-primary-foreground rounded-tr-none' 
-                  : 'bg-muted rounded-tl-none'
+                "max-w-[80%] rounded-2xl px-4 py-2 shadow-xs",
+                isUser
+                  ? "bg-primary text-primary-foreground rounded-tr-none"
+                  : "bg-muted rounded-tl-none",
               )}
             >
               <div className="whitespace-pre-wrap leading-relaxed text-sm">
                 {message.content}
               </div>
-              <div 
+              <div
                 className={cn(
-                  'text-[10px] mt-1 opacity-60',
-                  isUser ? 'text-primary-foreground' : 'text-muted-foreground'
+                  "text-[10px] mt-1 opacity-60",
+                  isUser ? "text-primary-foreground" : "text-muted-foreground",
                 )}
               >
                 {formatTimestamp(message.timestamp)}

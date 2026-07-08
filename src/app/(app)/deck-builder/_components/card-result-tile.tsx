@@ -143,7 +143,7 @@ function CardResultTileImpl({
               synergy!.score >= 80
                 ? "bg-green-600 hover:bg-green-700"
                 : "bg-orange-500 hover:bg-orange-600"
-            } text-white border-none shadow-sm text-[10px] px-1.5 py-0`}
+            } text-white border-none shadow-xs text-[10px] px-1.5 py-0`}
           >
             {Math.round(synergy!.score)}%
           </Badge>
@@ -157,7 +157,7 @@ function CardResultTileImpl({
         >
           <LegalityBadge
             status={legality.status}
-            className="text-[10px] px-1.5 py-0 shadow-sm"
+            className="text-[10px] px-1.5 py-0 shadow-xs"
           />
         </div>
       )}

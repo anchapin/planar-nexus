@@ -87,7 +87,7 @@ export function AICoachChatPanel({
     >
       <div
         className={cn(
-          "flex flex-col h-[500px] border rounded-lg bg-card shadow-sm overflow-hidden",
+          "flex flex-col h-[500px] border rounded-lg bg-card shadow-xs overflow-hidden",
           className,
         )}
       >
@@ -155,7 +155,7 @@ export function AICoachChatPanel({
 
                   <div
                     className={cn(
-                      "max-w-[85%] rounded-2xl px-4 py-2 shadow-sm",
+                      "max-w-[85%] rounded-2xl px-4 py-2 shadow-xs",
                       isAI
                         ? "bg-muted rounded-tl-none"
                         : "bg-primary text-primary-foreground rounded-tr-none",

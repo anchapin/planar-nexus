@@ -42,7 +42,7 @@ export function DeckCoachChatPanel({
   return (
     <div
       className={cn(
-        "flex flex-col h-[500px] border rounded-lg bg-card shadow-sm",
+        "flex flex-col h-[500px] border rounded-lg bg-card shadow-xs",
         className,
       )}
     >

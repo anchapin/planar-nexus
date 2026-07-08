@@ -1,19 +1,22 @@
-'use client';
+"use client";
 
-import { memo, useMemo } from 'react';
-import { cn } from '@/lib/utils';
+import { memo, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import {
   type CustomCardDefinition,
   type CardColor,
   CARD_COLORS,
   FRAME_STYLE_COLORS,
   RARITY_COLORS,
-} from '@/lib/custom-card';
-import { sanitizeCardText, sanitizeImageUrl } from '@/lib/security/sanitize-text';
+} from "@/lib/custom-card";
+import {
+  sanitizeCardText,
+  sanitizeImageUrl,
+} from "@/lib/security/sanitize-text";
 
 /**
  * Custom Card Preview Component
- * 
+ *
  * Renders a custom Magic: The Gathering card with WYSIWYG styling
  * Used in the Custom Card Creation Studio (Issue #593)
  */
@@ -47,73 +50,78 @@ export const CustomCardPreview = memo(function CustomCardPreview({
 
   // Determine frame colors based on card colors
   const frameColors = useMemo(() => {
-    if (card.colors.length === 0 || card.colors.includes('colorless')) {
+    if (card.colors.length === 0 || card.colors.includes("colorless")) {
       return FRAME_STYLE_COLORS[card.frameStyle];
     }
-    
+
     // Determine frame based on color identity
     const colorSet = new Set(card.colors);
-    const hasWhite = colorSet.has('white');
-    const hasBlue = colorSet.has('blue');
-    const hasBlack = colorSet.has('black');
-    const hasRed = colorSet.has('red');
-    const hasGreen = colorSet.has('green');
-    
+    const hasWhite = colorSet.has("white");
+    const hasBlue = colorSet.has("blue");
+    const hasBlack = colorSet.has("black");
+    const hasRed = colorSet.has("red");
+    const hasGreen = colorSet.has("green");
+
     // Multi-color frame
     if (card.colors.length > 1) {
       return {
-        background: '#e8d8b8',
-        border: '#000000',
-        text: '#000000',
+        background: "#e8d8b8",
+        border: "#000000",
+        text: "#000000",
       };
     }
-    
+
     // Single color frames
-    if (hasWhite) return { background: '#f8f6d8', border: '#000000', text: '#000000' };
-    if (hasBlue) return { background: '#c8d8e8', border: '#000000', text: '#000000' };
-    if (hasBlack) return { background: '#c8c8c8', border: '#000000', text: '#000000' };
-    if (hasRed) return { background: '#e8c8c8', border: '#000000', text: '#000000' };
-    if (hasGreen) return { background: '#c8e8c8', border: '#000000', text: '#000000' };
-    
+    if (hasWhite)
+      return { background: "#f8f6d8", border: "#000000", text: "#000000" };
+    if (hasBlue)
+      return { background: "#c8d8e8", border: "#000000", text: "#000000" };
+    if (hasBlack)
+      return { background: "#c8c8c8", border: "#000000", text: "#000000" };
+    if (hasRed)
+      return { background: "#e8c8c8", border: "#000000", text: "#000000" };
+    if (hasGreen)
+      return { background: "#c8e8c8", border: "#000000", text: "#000000" };
+
     return FRAME_STYLE_COLORS[card.frameStyle];
   }, [card.colors, card.frameStyle]);
 
   // Parse mana cost into symbols
   const manaSymbols = useMemo(() => {
     if (!card.manaCost) return [];
-    
+
     const symbols: { type: string; value: string }[] = [];
     const cost = card.manaCost;
-    
+
     // Match hybrid mana
     const hybridMatch = cost.match(/\{([0-9WUBRGC])\/([WUBRGC])\}/g);
     if (hybridMatch) {
-      hybridMatch.forEach(match => {
-        symbols.push({ type: 'hybrid', value: match });
+      hybridMatch.forEach((match) => {
+        symbols.push({ type: "hybrid", value: match });
       });
     }
-    
+
     // Match Phyrexian mana
     const phyrexianMatch = cost.match(/\{[WUBRG]\/P\}/gi);
     if (phyrexianMatch) {
-      phyrexianMatch.forEach(match => {
-        symbols.push({ type: 'phyrexian', value: match });
+      phyrexianMatch.forEach((match) => {
+        symbols.push({ type: "phyrexian", value: match });
       });
     }
-    
+
     // Match regular mana
     const regularMatch = cost.match(/\{[0-9WUBRGC]\}/gi);
     if (regularMatch) {
-      regularMatch.forEach(match => {
-        const value = match.replace(/[{}]/g, '');
+      regularMatch.forEach((match) => {
+        const value = match.replace(/[{}]/g, "");
         if (!isNaN(parseInt(value))) {
-          symbols.push({ type: 'numeric', value });
+          symbols.push({ type: "numeric", value });
         } else {
-          symbols.push({ type: 'color', value });
+          symbols.push({ type: "color", value });
         }
       });
     }
-    
+
     return symbols;
   }, [card.manaCost]);
 
@@ -122,30 +130,35 @@ export const CustomCardPreview = memo(function CustomCardPreview({
     if (!card.colorIndicator || card.colorIndicator.length === 0) {
       return null;
     }
-    
+
     if (card.colorIndicator.length === 1) {
       return CARD_COLORS[card.colorIndicator[0]].hex;
     }
-    
+
     // Multi-color indicator
-    return `linear-gradient(to right, ${card.colorIndicator.map(c => CARD_COLORS[c].hex).join(', ')})`;
+    return `linear-gradient(to right, ${card.colorIndicator.map((c) => CARD_COLORS[c].hex).join(", ")})`;
   }, [card.colorIndicator]);
 
   // Get rarity symbol
   const raritySymbol = useMemo(() => {
     switch (card.rarity) {
-      case 'common': return '●';
-      case 'uncommon': return '◆';
-      case 'rare': return '★';
-      case 'mythic': return '★';
-      default: return '●';
+      case "common":
+        return "●";
+      case "uncommon":
+        return "◆";
+      case "rare":
+        return "★";
+      case "mythic":
+        return "★";
+      default:
+        return "●";
     }
   }, [card.rarity]);
 
   // Parse oracle text for reminder text formatting
   const formattedOracleText = useMemo(() => {
     if (!card.oracleText) return [];
-    return card.oracleText.split('\n').map((line) => sanitizeCardText(line));
+    return card.oracleText.split("\n").map((line) => sanitizeCardText(line));
   }, [card.oracleText]);
 
   // Pre-sanitize every user-controllable field that flows into the DOM.
@@ -197,34 +210,35 @@ export const CustomCardPreview = memo(function CustomCardPreview({
   return (
     <div
       className={cn(
-        'relative rounded-lg overflow-hidden select-none',
-        interactive && 'hover:shadow-2xl hover:shadow-primary/20 transition-all duration-200 cursor-pointer',
-        className
+        "relative rounded-lg overflow-hidden select-none",
+        interactive &&
+          "hover:shadow-2xl hover:shadow-primary/20 transition-all duration-200 cursor-pointer",
+        className,
       )}
       style={{
         width,
         height,
         background: frameColors.background,
         border: `2px solid ${frameColors.border}`,
-        fontFamily: 'Beleren, Matrix, sans-serif',
+        fontFamily: "Beleren, Matrix, sans-serif",
       }}
     >
       {/* Card border frame */}
       <div
-        className="absolute inset-1 rounded-sm"
+        className="absolute inset-1 rounded-xs"
         style={{ border: `1px solid ${frameColors.border}` }}
       >
         {/* Color indicator bar (for older frames) */}
-        {card.frameStyle === 'old' && colorIndicatorStyle && (
+        {card.frameStyle === "old" && colorIndicatorStyle && (
           <div
             className="absolute top-1 left-1 right-1 h-1.5"
             style={{ background: colorIndicatorStyle }}
           />
         )}
-        
+
         {/* Card name bar */}
         <div
-          className="absolute top-1.5 left-2 right-2 h-5 rounded-sm flex items-center justify-between px-1"
+          className="absolute top-1.5 left-2 right-2 h-5 rounded-xs flex items-center justify-between px-1"
           style={{
             background: frameColors.background,
             border: `1px solid ${frameColors.border}`,
@@ -234,7 +248,7 @@ export const CustomCardPreview = memo(function CustomCardPreview({
             className="text-xs font-bold truncate"
             style={{ color: frameColors.text, fontSize: scale * 11 }}
           >
-            {safe.name || 'Card Name'}
+            {safe.name || "Card Name"}
           </span>
           {/* Mana cost */}
           <div className="flex items-center gap-0.5">
@@ -246,7 +260,7 @@ export const CustomCardPreview = memo(function CustomCardPreview({
 
         {/* Card art area */}
         <div
-          className="absolute top-[30px] left-2 right-2 h-[175px] rounded-sm overflow-hidden"
+          className="absolute top-[30px] left-2 right-2 h-[175px] rounded-xs overflow-hidden"
           style={{ border: `1px solid ${frameColors.border}` }}
         >
           {safe.imageUrl ? (
@@ -260,18 +274,26 @@ export const CustomCardPreview = memo(function CustomCardPreview({
               className="w-full h-full flex items-center justify-center"
               style={{
                 background: card.art.useProceduralArt
-                  ? `linear-gradient(135deg, ${card.art.proceduralColors?.map(c => CARD_COLORS[c]?.hex || '#ccc').join(', ') || '#ccc'})`
+                  ? `linear-gradient(135deg, ${card.art.proceduralColors?.map((c) => CARD_COLORS[c]?.hex || "#ccc").join(", ") || "#ccc"})`
                   : frameColors.background,
               }}
             >
               <span className="text-3xl" style={{ fontSize: scale * 40 }}>
-                {card.cardTypes.includes('creature') ? '🦄' :
-                 card.cardTypes.includes('instant') ? '⚡' :
-                 card.cardTypes.includes('sorcery') ? '🔮' :
-                 card.cardTypes.includes('artifact') ? '⚙️' :
-                 card.cardTypes.includes('enchantment') ? '✨' :
-                 card.cardTypes.includes('planeswalker') ? '🧙' :
-                 card.cardTypes.includes('land') ? '🏔️' : '🃏'}
+                {card.cardTypes.includes("creature")
+                  ? "🦄"
+                  : card.cardTypes.includes("instant")
+                    ? "⚡"
+                    : card.cardTypes.includes("sorcery")
+                      ? "🔮"
+                      : card.cardTypes.includes("artifact")
+                        ? "⚙️"
+                        : card.cardTypes.includes("enchantment")
+                          ? "✨"
+                          : card.cardTypes.includes("planeswalker")
+                            ? "🧙"
+                            : card.cardTypes.includes("land")
+                              ? "🏔️"
+                              : "🃏"}
               </span>
             </div>
           )}
@@ -279,7 +301,7 @@ export const CustomCardPreview = memo(function CustomCardPreview({
 
         {/* Type line */}
         <div
-          className="absolute top-[212px] left-2 right-2 h-4 rounded-sm flex items-center justify-between px-1"
+          className="absolute top-[212px] left-2 right-2 h-4 rounded-xs flex items-center justify-between px-1"
           style={{
             background: frameColors.background,
             border: `1px solid ${frameColors.border}`,
@@ -289,22 +311,22 @@ export const CustomCardPreview = memo(function CustomCardPreview({
             className="text-xs truncate"
             style={{ color: frameColors.text, fontSize: scale * 9 }}
           >
-            {safe.typeLine || 'Type Line'}
+            {safe.typeLine || "Type Line"}
           </span>
           {/* Collector number / set info */}
           <span
             className="text-xs"
             style={{ color: frameColors.text, fontSize: scale * 8 }}
           >
-            {safe.setCode}/{safe.collectorNumber || '001'}
+            {safe.setCode}/{safe.collectorNumber || "001"}
           </span>
         </div>
 
         {/* Oracle text box */}
         <div
-          className="absolute top-[242px] left-2 right-2 bottom-10 rounded-sm p-1.5 overflow-hidden"
+          className="absolute top-[242px] left-2 right-2 bottom-10 rounded-xs p-1.5 overflow-hidden"
           style={{
-            background: '#d8d8c8',
+            background: "#d8d8c8",
             border: `1px solid ${frameColors.border}`,
           }}
         >
@@ -317,24 +339,24 @@ export const CustomCardPreview = memo(function CustomCardPreview({
                 style={{
                   color: card.typography?.textColor || frameColors.text,
                   fontSize: scale * (card.typography?.textSize || 9),
-                  fontFamily: card.typography?.textFont || 'Beleren',
+                  fontFamily: card.typography?.textFont || "Beleren",
                 }}
               >
                 {line}
               </p>
             ))}
           </div>
-          
+
           {/* Flavor text (if present) */}
           {safe.flavorText && (
             <div
               className="mt-1 pt-1 border-t border-black/20 italic text-xs"
-              style={{ color: '#555' }}
+              style={{ color: "#555" }}
             >
               {safe.flavorText}
             </div>
           )}
-          
+
           {/* Power/Toughness */}
           {safe.power && safe.toughness && (
             <div className="absolute bottom-1 right-1">
@@ -349,14 +371,14 @@ export const CustomCardPreview = memo(function CustomCardPreview({
               </span>
             </div>
           )}
-          
+
           {/* Loyalty (planeswalkers) */}
           {safe.loyalty && (
             <div className="absolute bottom-1 right-1">
               <span
                 className="text-sm font-bold px-1 rounded"
                 style={{
-                  background: '#e8e8d8',
+                  background: "#e8e8d8",
                   color: frameColors.text,
                   fontSize: scale * 12,
                 }}
@@ -372,8 +394,8 @@ export const CustomCardPreview = memo(function CustomCardPreview({
           className="absolute bottom-1 left-2 right-2 flex justify-between text-[8px]"
           style={{ color: frameColors.text }}
         >
-          <span>{safe.artist || 'Artist'}</span>
-          <span>{safe.copyright || '© Custom'}</span>
+          <span>{safe.artist || "Artist"}</span>
+          <span>{safe.copyright || "© Custom"}</span>
         </div>
 
         {/* Rarity indicator */}
@@ -389,36 +411,48 @@ export const CustomCardPreview = memo(function CustomCardPreview({
 });
 
 // Mana symbol component
-function ManaSymbol({ symbol, size }: { symbol: { type: string; value: string }; size: number }) {
+function ManaSymbol({
+  symbol,
+  size,
+}: {
+  symbol: { type: string; value: string };
+  size: number;
+}) {
   const getSymbolColor = () => {
     switch (symbol.type) {
-      case 'color':
+      case "color":
         switch (symbol.value.toUpperCase()) {
-          case 'W': return '#f9f9f9';
-          case 'U': return '#0e68ab';
-          case 'B': return '#150b00';
-          case 'R': return '#d3202a';
-          case 'G': return '#00733e';
-          default: return '#000';
+          case "W":
+            return "#f9f9f9";
+          case "U":
+            return "#0e68ab";
+          case "B":
+            return "#150b00";
+          case "R":
+            return "#d3202a";
+          case "G":
+            return "#00733e";
+          default:
+            return "#000";
         }
-      case 'hybrid':
-        return '#ccc';
-      case 'phyrexian':
-        return '#69f';
+      case "hybrid":
+        return "#ccc";
+      case "phyrexian":
+        return "#69f";
       default:
-        return '#000';
+        return "#000";
     }
   };
 
   const getBackground = () => {
-    if (symbol.type === 'color' || symbol.type === 'phyrexian') {
+    if (symbol.type === "color" || symbol.type === "phyrexian") {
       const color = getSymbolColor();
       return `radial-gradient(circle at 30% 30%, ${color}, #000)`;
     }
-    if (symbol.type === 'hybrid') {
-      return 'linear-gradient(135deg, #fff 50%, #000 50%)';
+    if (symbol.type === "hybrid") {
+      return "linear-gradient(135deg, #fff 50%, #000 50%)";
     }
-    return '#000';
+    return "#000";
   };
 
   return (
@@ -427,14 +461,18 @@ function ManaSymbol({ symbol, size }: { symbol: { type: string; value: string };
       style={{
         width: size,
         height: size,
-        background: symbol.type === 'numeric' ? '#000' : getBackground(),
-        color: symbol.type === 'color' || symbol.type === 'phyrexian' ? '#fff' : 
-               symbol.type === 'numeric' ? '#fff' : '#000',
+        background: symbol.type === "numeric" ? "#000" : getBackground(),
+        color:
+          symbol.type === "color" || symbol.type === "phyrexian"
+            ? "#fff"
+            : symbol.type === "numeric"
+              ? "#fff"
+              : "#000",
         fontSize: size * 0.7,
-        border: '1px solid #000',
+        border: "1px solid #000",
       }}
     >
-      {symbol.type === 'numeric' ? symbol.value : ''}
+      {symbol.type === "numeric" ? symbol.value : ""}
     </div>
   );
 }

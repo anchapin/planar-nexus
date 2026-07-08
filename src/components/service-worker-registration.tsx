@@ -297,7 +297,7 @@ export function ServiceWorkerRegistration() {
         <div className="fixed bottom-4 left-4 z-50">
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="px-3 py-2 bg-background/80 backdrop-blur-sm border border-border rounded-lg shadow-lg hover:bg-background/90 transition-colors text-xs font-medium flex items-center gap-2"
+            className="px-3 py-2 bg-background/80 backdrop-blur-xs border border-border rounded-lg shadow-lg hover:bg-background/90 transition-colors text-xs font-medium flex items-center gap-2"
             aria-label="Open service worker settings"
           >
             <div

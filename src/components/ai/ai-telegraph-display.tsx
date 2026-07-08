@@ -83,7 +83,7 @@ export function AiTelegraphDisplay({
       aria-hidden={false}
       aria-label="AI coach tips"
       data-testid="ai-telegraph-display"
-      className={`w-full max-w-sm border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/30 p-3 shadow-sm ${className ?? ""}`}
+      className={`w-full max-w-sm border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/30 p-3 shadow-xs ${className ?? ""}`}
     >
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">

@@ -1,8 +1,8 @@
 /**
  * @fileOverview Auto-save settings component
- * 
+ *
  * Issue #269: Auto-save functionality for game states
- * 
+ *
  * Provides:
  * - UI for configuring auto-save settings
  * - Toggle switches for triggers
@@ -12,9 +12,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, Clock, RotateCcw, Bell, Trash2, Check, AlertTriangle } from "lucide-react";
+import {
+  Save,
+  Clock,
+  RotateCcw,
+  Bell,
+  Trash2,
+  Check,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
@@ -43,58 +57,60 @@ interface TriggerConfig {
 
 const TRIGGER_CONFIGS: TriggerConfig[] = [
   {
-    id: 'end_of_turn',
-    label: 'End of Turn',
-    description: 'Auto-save when a turn ends',
+    id: "end_of_turn",
+    label: "End of Turn",
+    description: "Auto-save when a turn ends",
     recommended: true,
   },
   {
-    id: 'after_combat',
-    label: 'After Combat',
-    description: 'Auto-save after combat phase completes',
+    id: "after_combat",
+    label: "After Combat",
+    description: "Auto-save after combat phase completes",
     recommended: true,
   },
   {
-    id: 'pass_priority',
-    label: 'Pass Priority',
-    description: 'Auto-save when passing priority',
+    id: "pass_priority",
+    label: "Pass Priority",
+    description: "Auto-save when passing priority",
     recommended: true,
   },
   {
-    id: 'before_modal',
-    label: 'Before Modal',
-    description: 'Auto-save before showing modal dialogs',
+    id: "before_modal",
+    label: "Before Modal",
+    description: "Auto-save before showing modal dialogs",
     recommended: true,
   },
   {
-    id: 'card_played',
-    label: 'Card Played',
-    description: 'Auto-save after playing a card',
+    id: "card_played",
+    label: "Card Played",
+    description: "Auto-save after playing a card",
     recommended: false,
   },
   {
-    id: 'spell_resolved',
-    label: 'Spell Resolved',
-    description: 'Auto-save after a spell resolves',
+    id: "spell_resolved",
+    label: "Spell Resolved",
+    description: "Auto-save after a spell resolves",
     recommended: false,
   },
   {
-    id: 'player_gained_life',
-    label: 'Life Gain',
-    description: 'Auto-save after a player gains life',
+    id: "player_gained_life",
+    label: "Life Gain",
+    description: "Auto-save after a player gains life",
     recommended: false,
   },
   {
-    id: 'creature_died',
-    label: 'Creature Died',
-    description: 'Auto-save after a creature dies',
+    id: "creature_died",
+    label: "Creature Died",
+    description: "Auto-save after a creature dies",
     recommended: false,
   },
 ];
 
 export function AutoSaveSettings() {
   const { toast } = useToast();
-  const [config, setConfigState] = useState<AutoSaveConfig>(DEFAULT_AUTO_SAVE_CONFIG);
+  const [config, setConfigState] = useState<AutoSaveConfig>(
+    DEFAULT_AUTO_SAVE_CONFIG,
+  );
   const [autoSaveCount, setAutoSaveCount] = useState(0);
   const [isResetting, setIsResetting] = useState(false);
 
@@ -114,7 +130,7 @@ export function AutoSaveSettings() {
   // Toggle a trigger
   const toggleTrigger = (trigger: AutoSaveTrigger) => {
     const triggers = config.triggers.includes(trigger)
-      ? config.triggers.filter(t => t !== trigger)
+      ? config.triggers.filter((t) => t !== trigger)
       : [...config.triggers, trigger];
     updateConfig({ triggers });
   };
@@ -125,7 +141,7 @@ export function AutoSaveSettings() {
       const autoSaves = await savedGamesManager.getAutoSaves();
       setAutoSaveCount(autoSaves.length);
     } catch (error) {
-      console.error('Failed to update auto-save count:', error);
+      console.error("Failed to update auto-save count:", error);
     }
   };
 
@@ -148,15 +164,15 @@ export function AutoSaveSettings() {
 
       updateAutoSaveCount();
       toast({
-        title: 'Auto-Saves Cleared',
-        description: `Deleted ${deleted} auto-save${deleted !== 1 ? 's' : ''}.`,
+        title: "Auto-Saves Cleared",
+        description: `Deleted ${deleted} auto-save${deleted !== 1 ? "s" : ""}.`,
       });
     } catch (error) {
-      console.error('Failed to clear auto-saves:', error);
+      console.error("Failed to clear auto-saves:", error);
       toast({
-        title: 'Error',
-        description: 'Failed to clear auto-saves.',
-        variant: 'destructive',
+        title: "Error",
+        description: "Failed to clear auto-saves.",
+        variant: "destructive",
       });
     }
   };
@@ -167,8 +183,8 @@ export function AutoSaveSettings() {
     resetAutoSaveConfig();
     setConfigState(DEFAULT_AUTO_SAVE_CONFIG);
     toast({
-      title: 'Settings Reset',
-      description: 'Auto-save settings have been reset to defaults.',
+      title: "Settings Reset",
+      description: "Auto-save settings have been reset to defaults.",
     });
     setIsResetting(false);
   };
@@ -206,7 +222,8 @@ export function AutoSaveSettings() {
           {/* Status */}
           <div className="flex items-center gap-4 text-sm">
             <span className="text-muted-foreground">
-              Current auto-saves: <strong>{autoSaveCount}</strong> / {config.maxAutoSaves}
+              Current auto-saves: <strong>{autoSaveCount}</strong> /{" "}
+              {config.maxAutoSaves}
             </span>
             {autoSaveCount > 0 && (
               <Button
@@ -234,7 +251,7 @@ export function AutoSaveSettings() {
           <div className="grid gap-3">
             {TRIGGER_CONFIGS.map((trigger) => {
               const isEnabled = config.triggers.includes(trigger.id);
-              
+
               return (
                 <div
                   key={trigger.id}
@@ -254,7 +271,10 @@ export function AutoSaveSettings() {
                       >
                         {trigger.label}
                         {trigger.recommended && (
-                          <Badge variant="secondary" className="text-xs bg-green-500/20 text-green-500">
+                          <Badge
+                            variant="secondary"
+                            className="text-xs bg-green-500/20 text-green-500"
+                          >
                             <Check className="h-3 w-3 mr-1" />
                             Recommended
                           </Badge>
@@ -277,9 +297,13 @@ export function AutoSaveSettings() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateConfig({
-                triggers: TRIGGER_CONFIGS.filter(t => t.recommended).map(t => t.id),
-              })}
+              onClick={() =>
+                updateConfig({
+                  triggers: TRIGGER_CONFIGS.filter((t) => t.recommended).map(
+                    (t) => t.id,
+                  ),
+                })
+              }
             >
               Use Recommended
             </Button>
@@ -293,9 +317,11 @@ export function AutoSaveSettings() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => updateConfig({
-                triggers: TRIGGER_CONFIGS.map(t => t.id),
-              })}
+              onClick={() =>
+                updateConfig({
+                  triggers: TRIGGER_CONFIGS.map((t) => t.id),
+                })
+              }
             >
               Enable All
             </Button>
@@ -310,9 +336,7 @@ export function AutoSaveSettings() {
             <Clock className="h-5 w-5" />
             Advanced Settings
           </CardTitle>
-          <CardDescription>
-            Fine-tune auto-save behavior
-          </CardDescription>
+          <CardDescription>Fine-tune auto-save behavior</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Max Auto-Saves */}
@@ -327,15 +351,25 @@ export function AutoSaveSettings() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => updateConfig({ maxAutoSaves: Math.max(1, config.maxAutoSaves - 1) })}
+                onClick={() =>
+                  updateConfig({
+                    maxAutoSaves: Math.max(1, config.maxAutoSaves - 1),
+                  })
+                }
               >
                 -
               </Button>
-              <span className="w-8 text-center font-mono">{config.maxAutoSaves}</span>
+              <span className="w-8 text-center font-mono">
+                {config.maxAutoSaves}
+              </span>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => updateConfig({ maxAutoSaves: Math.min(10, config.maxAutoSaves + 1) })}
+                onClick={() =>
+                  updateConfig({
+                    maxAutoSaves: Math.min(10, config.maxAutoSaves + 1),
+                  })
+                }
               >
                 +
               </Button>
@@ -355,7 +389,9 @@ export function AutoSaveSettings() {
             <Switch
               id="slot-rotation"
               checked={config.useSlotRotation}
-              onCheckedChange={(checked) => updateConfig({ useSlotRotation: checked })}
+              onCheckedChange={(checked) =>
+                updateConfig({ useSlotRotation: checked })
+              }
             />
           </div>
 
@@ -372,7 +408,9 @@ export function AutoSaveSettings() {
             <Switch
               id="show-indicator"
               checked={config.showIndicator}
-              onCheckedChange={(checked) => updateConfig({ showIndicator: checked })}
+              onCheckedChange={(checked) =>
+                updateConfig({ showIndicator: checked })
+              }
             />
           </div>
 
@@ -392,7 +430,9 @@ export function AutoSaveSettings() {
             <Switch
               id="play-sound"
               checked={config.playSound}
-              onCheckedChange={(checked) => updateConfig({ playSound: checked })}
+              onCheckedChange={(checked) =>
+                updateConfig({ playSound: checked })
+              }
             />
           </div>
 
@@ -412,7 +452,9 @@ export function AutoSaveSettings() {
             <Switch
               id="auto-cleanup"
               checked={config.autoCleanup}
-              onCheckedChange={(checked) => updateConfig({ autoCleanup: checked })}
+              onCheckedChange={(checked) =>
+                updateConfig({ autoCleanup: checked })
+              }
             />
           </div>
 
@@ -430,10 +472,12 @@ export function AutoSaveSettings() {
               <Switch
                 id="periodic-save"
                 checked={config.enablePeriodic}
-                onCheckedChange={(checked) => updateConfig({ enablePeriodic: checked })}
+                onCheckedChange={(checked) =>
+                  updateConfig({ enablePeriodic: checked })
+                }
               />
             </div>
-            
+
             {config.enablePeriodic && (
               <div className="flex items-center gap-2 pl-4">
                 <Label htmlFor="periodic-interval" className="text-sm">
@@ -441,9 +485,13 @@ export function AutoSaveSettings() {
                 </Label>
                 <select
                   id="periodic-interval"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
                   value={config.periodicIntervalMs || 300000}
-                  onChange={(e) => updateConfig({ periodicIntervalMs: parseInt(e.target.value) })}
+                  onChange={(e) =>
+                    updateConfig({
+                      periodicIntervalMs: parseInt(e.target.value),
+                    })
+                  }
                 >
                   <option value={60000}>1 minute</option>
                   <option value={180000}>3 minutes</option>
@@ -461,20 +509,18 @@ export function AutoSaveSettings() {
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>About Auto-Save</AlertTitle>
         <AlertDescription>
-          Auto-saves are stored locally in your browser. They are separate from manual saves
-          and can be managed independently. Auto-saves use a rotating slot system to prevent
-          excessive storage usage.
+          Auto-saves are stored locally in your browser. They are separate from
+          manual saves and can be managed independently. Auto-saves use a
+          rotating slot system to prevent excessive storage usage.
         </AlertDescription>
       </Alert>
 
       {/* Reset Button */}
       <div className="flex justify-end">
-        <Button
-          variant="outline"
-          onClick={handleReset}
-          disabled={isResetting}
-        >
-          <RotateCcw className={cn("mr-2 h-4 w-4", isResetting && "animate-spin")} />
+        <Button variant="outline" onClick={handleReset} disabled={isResetting}>
+          <RotateCcw
+            className={cn("mr-2 h-4 w-4", isResetting && "animate-spin")}
+          />
           Reset to Defaults
         </Button>
       </div>
@@ -484,5 +530,5 @@ export function AutoSaveSettings() {
 
 // Helper for cn import
 function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(' ');
+  return classes.filter(Boolean).join(" ");
 }

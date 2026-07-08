@@ -28,12 +28,7 @@ import { toast } from "@/hooks/use-toast";
 
 // Sleeve patterns
 export type SleevePattern =
-  | "gradient"
-  | "stripes"
-  | "dots"
-  | "diamond"
-  | "swirl"
-  | "solid";
+  "gradient" | "stripes" | "dots" | "diamond" | "swirl" | "solid";
 
 // Default sleeve options
 export type SleeveType =
@@ -404,7 +399,7 @@ export function SleevePreview({
       <div className="w-full h-full flex items-center justify-center">
         <div
           className={cn(
-            "border-2 border-white/30 rounded-sm flex items-center justify-center",
+            "border-2 border-white/30 rounded-xs flex items-center justify-center",
             size === "sm"
               ? "w-8 h-12"
               : size === "md"

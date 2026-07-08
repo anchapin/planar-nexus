@@ -80,7 +80,7 @@ function CardDisplay({
     return style ? (
       <div
         key={color}
-        className={`flex items-center justify-center size-4 rounded-full border ${style.bg} ${style.border} shadow-sm`}
+        className={`flex items-center justify-center size-4 rounded-full border ${style.bg} ${style.border} shadow-xs`}
         title={color}
       >
         <span className={`text-[10px] font-bold ${style.text}`}>

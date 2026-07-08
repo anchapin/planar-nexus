@@ -1,6 +1,6 @@
 /**
  * Pack Passing Animation Component
- * 
+ *
  * Provides visual feedback for pack passing between user and AI.
  * NEIB-05: Pack passing animation shows cards moving between user and AI
  */
@@ -15,7 +15,7 @@ interface PackPassingAnimationProps {
   /** Is pack currently passing */
   isPassing: boolean;
   /** Direction of pack movement */
-  direction: 'to-ai' | 'to-user';
+  direction: "to-ai" | "to-user";
   /** Children to render (the pack/cards) */
   children: React.ReactNode;
   /** Duration of animation in ms */
@@ -43,13 +43,20 @@ export function PackPassingAnimation({
     <div
       className={cn(
         motionEnabled && "transition-all ease-in-out",
-        motionEnabled && isPassing && direction === 'to-ai' && "-translate-x-8 opacity-50 scale-95",
-        motionEnabled && isPassing && direction === 'to-user' && "translate-x-8 opacity-50 scale-95",
+        motionEnabled &&
+          isPassing &&
+          direction === "to-ai" &&
+          "-translate-x-8 opacity-50 scale-95",
+        motionEnabled &&
+          isPassing &&
+          direction === "to-user" &&
+          "translate-x-8 opacity-50 scale-95",
         // Reduced-motion fallback: dim only, no transform / no slide.
-        !motionEnabled && isPassing && "opacity-50"
+        !motionEnabled && isPassing && "opacity-50",
       )}
       style={{
-        transitionDuration: motionEnabled && isPassing ? `${duration}ms` : '0ms',
+        transitionDuration:
+          motionEnabled && isPassing ? `${duration}ms` : "0ms",
       }}
     >
       {children}
@@ -60,23 +67,25 @@ export function PackPassingAnimation({
 /**
  * Direction arrow indicator
  */
-export function PackDirectionIndicator({ 
+export function PackDirectionIndicator({
   direction,
-  isVisible 
-}: { 
-  direction: 'to-ai' | 'to-user';
+  isVisible,
+}: {
+  direction: "to-ai" | "to-user";
   isVisible: boolean;
 }) {
   if (!isVisible) return null;
-  
+
   return (
-    <div className={cn(
-      "flex items-center justify-center w-8 h-8 rounded-full",
-      direction === 'to-ai' 
-        ? "bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300" 
-        : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300"
-    )}>
-      {direction === 'to-ai' ? (
+    <div
+      className={cn(
+        "flex items-center justify-center w-8 h-8 rounded-full",
+        direction === "to-ai"
+          ? "bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300"
+          : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300",
+      )}
+    >
+      {direction === "to-ai" ? (
         <ArrowRight className="h-4 w-4" />
       ) : (
         <ArrowLeft className="h-4 w-4" />
@@ -88,23 +97,25 @@ export function PackDirectionIndicator({
 /**
  * Pack holder indicator badge
  */
-export function PackHolderBadge({ 
+export function PackHolderBadge({
   holder,
-  isAiEnabled 
-}: { 
-  holder: 'user' | 'ai';
+  isAiEnabled,
+}: {
+  holder: "user" | "ai";
   isAiEnabled: boolean;
 }) {
   if (!isAiEnabled) return null;
-  
+
   return (
-    <span className={cn(
-      "absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium shadow-sm",
-      holder === 'user' 
-        ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100" 
-        : "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100"
-    )}>
-      {holder === 'user' ? "Your pack" : "AI's pack"}
+    <span
+      className={cn(
+        "absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium shadow-xs",
+        holder === "user"
+          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100"
+          : "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100",
+      )}
+    >
+      {holder === "user" ? "Your pack" : "AI's pack"}
     </span>
   );
 }
@@ -112,26 +123,26 @@ export function PackHolderBadge({
 /**
  * Turn indicator - shows whose turn it is to pick
  */
-export function TurnIndicator({ 
+export function TurnIndicator({
   isUserTurn,
-  isAiEnabled 
-}: { 
+  isAiEnabled,
+}: {
   isUserTurn: boolean;
   isAiEnabled: boolean;
 }) {
   if (!isAiEnabled) return null;
-  
+
   return (
-    <div className={cn(
-      "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium",
-      isUserTurn 
-        ? "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200" 
-        : "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200"
-    )}>
+    <div
+      className={cn(
+        "flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium",
+        isUserTurn
+          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200"
+          : "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200",
+      )}
+    >
       <Package className="h-4 w-4" />
-      <span>
-        {isUserTurn ? "Your turn to pick" : "AI is thinking..."}
-      </span>
+      <span>{isUserTurn ? "Your turn to pick" : "AI is thinking..."}</span>
     </div>
   );
 }
