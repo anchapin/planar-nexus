@@ -31,9 +31,16 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@tauri-apps/cli"
         update-types: ["version-update:semver-major"]
-    # Bundle semver-compatible minor/patch updates into a single PR; major
-    # bumps (potential breaking changes) still get individual PRs for review.
+    # Bundle updates into a single PR per group:
+    # - "security": CVE fixes for known-vulnerable deps. Gets its own group so
+    #   it can be reviewed and merged quickly without dragging minor/patch
+    #   noise into the security fix.
+    # - "minor-and-patch": backward-compatible bumps (the historical default).
+    # Major bumps are intentionally NOT grouped — each gets its own PR for
+    # review since they cross the breaking-change line.
     groups:
+      security:
+        applies-to: security-updates
       minor-and-patch:
         update-types:
           - "minor"
@@ -54,8 +61,11 @@ updates:
       - "security"
       - "tech-debt"
     # Bundle semver-compatible minor/patch updates into a single PR so reviewers
-    # only have to read one Cargo.lock diff per week.
+    # only have to read one Cargo.lock diff per week. Security fixes get their
+    # own group for fast-track review.
     groups:
+      security:
+        applies-to: security-updates
       minor-and-patch:
         update-types:
           - "minor"
@@ -63,6 +73,10 @@ updates:
 
   # GitHub Actions used across .github/workflows/* (actions/checkout,
   # actions/setup-node, dtolnay/rust-toolchain, codecov-action, etc.).
+  #
+  # Without grouping, dependabot opened one PR per action (5+ per week — e.g.
+  # PRs #1314-#1318 all bumped a single action in the same window). Bundling
+  # cuts the weekly PR stream from N to 1 per category here.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -75,3 +89,16 @@ updates:
     labels:
       - "security"
       - "tech-debt"
+    groups:
+      # Single weekly PR for all GitHub Actions updates. Action version bumps
+      # are essentially never breaking in practice (the actions/* ecosystem
+      # uses major bumps for behaviour changes, not API breaks), so a single
+      # bundled weekly PR is the right cadence. Reviewers see one diff per
+      # week instead of 5+.
+      all-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
