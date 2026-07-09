@@ -16,7 +16,7 @@ import {
   createDestroyReplacementEffect,
   createAsThoughEffect,
 } from "../replacement-effects";
-import type { GameState } from "../types";
+import type { GameState, PlayerId } from "../types";
 
 // Module-level rem variable shared across all describe blocks
 let rem: ReplacementEffectManager;
@@ -1356,3 +1356,583 @@ describe("ReplacementEffectManager - Multiple Game Instances", () => {
     expect(result2.amount).toBe(20); // 5 * 4
   });
 });
+
+/**
+ * Issue #1227 — CR 616.1: when two or more non-self replacement /
+ * prevention effects could apply to the same event, the affected
+ * player or the controller of the affected permanent chooses which
+ * one applies. The previous `chooseBestEffect` silently auto-resolved
+ * via APNAP + timestamp tiebreakers; the new API surfaces a
+ * `WaitingChoice` and provides a deterministic AI heuristic.
+ */
+describe("ReplacementEffectManager - CR 616.1 Interactive Controller Choice", () => {
+  let rem: ReplacementEffectManager;
+
+  const buildCompetingDamageEffects = () => {
+    const prevention: ReplacementAbility = {
+      id: "prevent-2",
+      sourceCardId: "ward-creature",
+      controllerId: "player1",
+      effectType: "damage_prevention",
+      description: "If ~ would be dealt damage, prevent 2 of it",
+      layer: 1,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: Math.max(0, e.amount - 2) },
+        description: "Prevented 2",
+        instead: true,
+      }),
+    };
+
+    const redirect: ReplacementAbility = {
+      id: "redirect-1",
+      sourceCardId: "shield-creature",
+      controllerId: "player2",
+      effectType: "damage_replacement",
+      description: "If ~ would be dealt damage, redirect it to player2",
+      layer: 5,
+      timestamp: 200,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, targetId: "player2" as PlayerId },
+        description: "Redirected",
+        instead: true,
+      }),
+    };
+
+    return { prevention, redirect };
+  };
+
+  beforeEach(() => {
+    rem = new ReplacementEffectManager();
+  });
+
+  test("surfaces requiresChoice when two non-self replacement effects compete", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    rem.registerEffect(prevention);
+    rem.registerEffect(redirect);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+      sourceId: "attacker",
+    };
+
+    const outcome = rem.processEventInteractive(event, undefined, {
+      affectedPlayerId: "player1",
+    });
+
+    expect(outcome.requiresChoice).toBe(true);
+    expect(outcome.candidates).toHaveLength(2);
+    expect(outcome.appliedEffects).toEqual([]);
+    expect(outcome.affectedPlayerId).toBe("player1");
+    const ids = (outcome.candidates ?? []).map((c) => c.id).sort();
+    expect(ids).toEqual(["prevent-2", "redirect-1"]);
+  });
+
+  test("does NOT surface a choice when only one non-self replacement effect applies", () => {
+    const { prevention } = buildCompetingDamageEffects();
+    rem.registerEffect(prevention);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const outcome = rem.processEventInteractive(event, undefined, {
+      affectedPlayerId: "player1",
+    });
+
+    expect(outcome.requiresChoice).toBe(false);
+    expect(outcome.appliedEffects).toHaveLength(1);
+    expect(outcome.appliedEffects[0].id).toBe("prevent-2");
+    expect(outcome.event.amount).toBe(2); // 4 - 2
+  });
+
+  test("does NOT surface a choice when self-replacement is the only competing effect", () => {
+    const selfReplacement: ReplacementAbility = {
+      id: "self-replace",
+      sourceCardId: "self-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "If this creature would be dealt damage, double it",
+      layer: 5,
+      timestamp: 100,
+      isSelfReplacement: true,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: e.amount * 2 },
+        description: "Doubled by self",
+        instead: true,
+      }),
+    };
+    rem.registerEffect(selfReplacement);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 3,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const outcome = rem.processEventInteractive(event, undefined, {
+      affectedPlayerId: "player1",
+    });
+
+    expect(outcome.requiresChoice).toBe(false);
+    expect(outcome.appliedEffects).toHaveLength(1);
+    expect(outcome.event.amount).toBe(6);
+  });
+
+  test("self-replacement applies first even when non-self competition exists later", () => {
+    const selfReplacement: ReplacementAbility = {
+      id: "self-add",
+      sourceCardId: "self-card",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "Self: +1",
+      layer: 5,
+      timestamp: 100,
+      isSelfReplacement: true,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: e.amount + 1 },
+        description: "+1",
+        instead: true,
+      }),
+    };
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    rem.registerEffect(selfReplacement);
+    rem.registerEffect(prevention);
+    rem.registerEffect(redirect);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const outcome = rem.processEventInteractive(event, undefined, {
+      affectedPlayerId: "player1",
+    });
+
+    // Self applies first: 4 + 1 = 5. Then 2 non-self compete → choice.
+    expect(outcome.requiresChoice).toBe(true);
+    expect(outcome.appliedEffects.map((e) => e.id)).toEqual(["self-add"]);
+    expect(outcome.candidates?.map((c) => c.id).sort()).toEqual([
+      "prevent-2",
+      "redirect-1",
+    ]);
+  });
+
+  test("each competing candidate can be picked and applied individually", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    rem.registerEffect(prevention);
+    rem.registerEffect(redirect);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    // Pick the prevention effect
+    const pickedPrevention = rem.resolveReplacementChoice("prevent-2", {
+      event,
+      applied: [],
+      affectedPlayerId: "player1",
+    });
+    expect(pickedPrevention.requiresChoice).toBe(false);
+    expect(pickedPrevention.appliedEffects.map((e) => e.id)).toContain(
+      "prevent-2",
+    );
+    expect(pickedPrevention.event.amount).toBe(2);
+
+    // Pick the redirect effect on a fresh event
+    const pickedRedirect = rem.resolveReplacementChoice("redirect-1", {
+      event,
+      applied: [],
+      affectedPlayerId: "player1",
+    });
+    expect(pickedRedirect.requiresChoice).toBe(false);
+    expect(pickedRedirect.appliedEffects.map((e) => e.id)).toContain(
+      "redirect-1",
+    );
+    expect(pickedRedirect.event.targetId).toBe("player2");
+    expect(pickedRedirect.event.amount).toBe(4);
+  });
+
+  test("resolveReplacementChoice continues the chain after picking one effect", () => {
+    // Setup: one picked effect (prevention) + one follow-up effect (halve)
+    // that the chain should apply automatically without re-prompting.
+    // The CR 616.1 player choice is resolved, the picked effect applies,
+    // and the next iteration runs the follow-up by itself because no
+    // other candidates remain for that modified event.
+    const prevention: ReplacementAbility = {
+      id: "prevent-2",
+      sourceCardId: "ward-creature",
+      controllerId: "player1",
+      effectType: "damage_prevention",
+      description: "If ~ would be dealt damage, prevent 2 of it",
+      layer: 1,
+      timestamp: 100,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: Math.max(0, e.amount - 2) },
+        description: "Prevented 2",
+        instead: true,
+      }),
+    };
+
+    const followupHalve: ReplacementAbility = {
+      id: "halve-after",
+      sourceCardId: "post-pick-card",
+      controllerId: "player2",
+      effectType: "damage_replacement",
+      description: "After the choice, halve damage",
+      layer: 3,
+      timestamp: 300,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, amount: Math.ceil(e.amount / 2) },
+        description: "Halved",
+        instead: true,
+      }),
+    };
+
+    // Single competitor (the redirect) lets us isolate the choice.
+    const redirect: ReplacementAbility = {
+      id: "redirect-only",
+      sourceCardId: "shield-creature",
+      controllerId: "player2",
+      effectType: "damage_replacement",
+      description: "redirect",
+      layer: 5,
+      timestamp: 200,
+      isInstead: true,
+      canApply: (e) =>
+        e.type === "damage" && e.targetId === "creature1" && e.amount === 4,
+      apply: (e) => ({
+        modified: true,
+        modifiedEvent: { ...e, targetId: "player2" as PlayerId },
+        description: "redirected",
+        instead: true,
+      }),
+    };
+
+    rem.registerEffect(prevention);
+    rem.registerEffect(followupHalve);
+    rem.registerEffect(redirect);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const outcome = rem.resolveReplacementChoice("prevent-2", {
+      event,
+      applied: [],
+      affectedPlayerId: "player1",
+    });
+
+    // Prevention reduces to 2; halve-after: ceil(2 / 2) = 1.
+    // The redirect no longer applies (its canApply requires amount === 4).
+    // The chain resumes without re-prompting.
+    expect(outcome.requiresChoice).toBe(false);
+    expect(outcome.event.amount).toBe(1);
+    expect(outcome.appliedEffects.map((e) => e.id)).toEqual([
+      "prevent-2",
+      "halve-after",
+    ]);
+  });
+
+  test("resolveReplacementChoice records the picked effect exactly once and excludes unpicked peers", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    // Restrict redirect so post-pick the chain resolves automatically
+    // (no second competing effect to re-prompt).
+    const redirectScoped: ReplacementAbility = {
+      ...redirect,
+      canApply: (e) =>
+        e.type === "damage" && e.targetId === "creature1" && e.amount === 4,
+    };
+
+    rem.registerEffect(prevention);
+    rem.registerEffect(redirectScoped);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const outcome = rem.resolveReplacementChoice("prevent-2", {
+      event,
+      applied: [],
+      affectedPlayerId: "player1",
+    });
+
+    // The picked effect (prevent-2) is applied exactly once.
+    const pickedOccurrences = outcome.appliedEffects.filter(
+      (e) => e.id === "prevent-2",
+    ).length;
+    expect(pickedOccurrences).toBe(1);
+    // The unpicked competitor (redirect) does NOT appear in appliedEffects,
+    // because the picked effect dominated the original event and the
+    // scoped competitor can no longer apply to the modified event.
+    const unpickedOccurrences = outcome.appliedEffects.filter(
+      (e) => e.id === "redirect-1",
+    ).length;
+    expect(unpickedOccurrences).toBe(0);
+    expect(outcome.event.amount).toBe(2);
+  });
+
+  test("resolveReplacementChoice throws when the picked id is not in the candidate set", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    rem.registerEffect(prevention);
+    rem.registerEffect(redirect);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    expect(() =>
+      rem.resolveReplacementChoice("not-a-real-id", {
+        event,
+        applied: [],
+        affectedPlayerId: "player1",
+      }),
+    ).toThrow(/not-a-real-id/);
+  });
+
+  test("autoResolveReplacementChoice prefers the affected player's own effect (CR 616.1)", () => {
+    const apnapOrder: APNAPOrder = {
+      activePlayerId: "player1",
+      playerOrder: ["player1", "player2"],
+    };
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    // prevention is controlled by player1 (the affected player)
+    // redirect  is controlled by player2
+
+    const picked = rem.autoResolveReplacementChoice(
+      [prevention, redirect],
+      "player1",
+      apnapOrder,
+    );
+    expect(picked).toBe("prevent-2");
+  });
+
+  test("autoResolveReplacementChoice falls back to APNAP when neither candidate is owned by the affected player", () => {
+    const apnapOrder: APNAPOrder = {
+      activePlayerId: "player1",
+      playerOrder: ["player1", "player2", "player3"],
+    };
+    const competingNonPlayer1: ReplacementAbility[] = [
+      {
+        id: "p3-effect",
+        sourceCardId: "card3",
+        controllerId: "player3",
+        effectType: "damage_replacement",
+        description: "p3",
+        layer: 5,
+        timestamp: 100,
+        isInstead: true,
+        canApply: () => true,
+        apply: (e) => ({ modified: false, description: "noop" }),
+      },
+      {
+        id: "p2-effect",
+        sourceCardId: "card2",
+        controllerId: "player2",
+        effectType: "damage_replacement",
+        description: "p2",
+        layer: 5,
+        timestamp: 100,
+        isInstead: true,
+        canApply: () => true,
+        apply: (e) => ({ modified: false, description: "noop" }),
+      },
+    ];
+    // Affected player is player2 — player2 owns one of them.
+    const picked = rem.autoResolveReplacementChoice(
+      competingNonPlayer1,
+      "player2",
+      apnapOrder,
+    );
+    expect(picked).toBe("p2-effect");
+  });
+
+  test("autoResolveReplacementChoice uses layer then timestamp tiebreaker", () => {
+    const a: ReplacementAbility = {
+      id: "layer-2-ts-200",
+      sourceCardId: "card-a",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "a",
+      layer: 2,
+      timestamp: 200,
+      isInstead: true,
+      canApply: () => true,
+      apply: (e) => ({ modified: false, description: "noop" }),
+    };
+    const b: ReplacementAbility = {
+      id: "layer-1-ts-100",
+      sourceCardId: "card-b",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "b",
+      layer: 1,
+      timestamp: 100,
+      isInstead: true,
+      canApply: () => true,
+      apply: (e) => ({ modified: false, description: "noop" }),
+    };
+    const picked = rem.autoResolveReplacementChoice([a, b], "player3");
+    expect(picked).toBe("layer-1-ts-100");
+  });
+
+  test("autoResolveReplacementChoice is deterministic across multiple invocations", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    const apnapOrder: APNAPOrder = {
+      activePlayerId: "player1",
+      playerOrder: ["player1", "player2"],
+    };
+    const first = rem.autoResolveReplacementChoice(
+      [redirect, prevention],
+      "player1",
+      apnapOrder,
+    );
+    const second = rem.autoResolveReplacementChoice(
+      [prevention, redirect],
+      "player1",
+      apnapOrder,
+    );
+    expect(first).toBe(second);
+  });
+
+  test("createReplacementWaitingChoice builds a WaitingChoice of type choose_replacement", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    const choice = rem.createReplacementWaitingChoice(
+      [prevention, redirect],
+      "player1",
+      "Pick one:",
+    );
+    expect(choice.type).toBe("choose_replacement");
+    expect(choice.playerId).toBe("player1");
+    expect(choice.choices).toHaveLength(2);
+    expect(choice.minChoices).toBe(1);
+    expect(choice.maxChoices).toBe(1);
+    expect(choice.prompt).toBe("Pick one:");
+    const labels = choice.choices.map((c) => c.label).sort();
+    expect(labels).toEqual(
+      [
+        "If ~ would be dealt damage, prevent 2 of it",
+        "If ~ would be dealt damage, redirect it to player2",
+      ].sort(),
+    );
+  });
+
+  test("getCompetingReplacementEffects returns [] when fewer than 2 non-self effects apply", () => {
+    const { prevention } = buildCompetingDamageEffects();
+    rem.registerEffect(prevention);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const competing = rem.getCompetingReplacementEffects(event);
+    expect(competing).toEqual([]);
+  });
+
+  test("getCompetingReplacementEffects excludes self-replacements", () => {
+    const selfReplace: ReplacementAbility = {
+      id: "self-only",
+      sourceCardId: "card-self",
+      controllerId: "player1",
+      effectType: "damage_replacement",
+      description: "self only",
+      layer: 5,
+      timestamp: 100,
+      isSelfReplacement: true,
+      isInstead: true,
+      canApply: (e) => e.type === "damage" && e.targetId === "creature1",
+      apply: (e) => ({ modified: false, description: "noop" }),
+    };
+    const { prevention } = buildCompetingDamageEffects();
+    rem.registerEffect(selfReplace);
+    rem.registerEffect(prevention);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const competing = rem.getCompetingReplacementEffects(event);
+    // Only the one non-self effect — not enough to trigger a choice.
+    expect(competing).toEqual([]);
+  });
+
+  test("end-to-end: AI uses autoResolve then resolveReplacementChoice with the same id", () => {
+    const { prevention, redirect } = buildCompetingDamageEffects();
+    rem.registerEffect(prevention);
+    rem.registerEffect(redirect);
+
+    const event: ReplacementEvent = {
+      type: "damage",
+      amount: 4,
+      timestamp: Date.now(),
+      targetId: "creature1",
+    };
+
+    const survey = rem.processEventInteractive(event, undefined, {
+      affectedPlayerId: "player1",
+    });
+    expect(survey.requiresChoice).toBe(true);
+    const candidates = survey.candidates ?? [];
+    expect(candidates).toHaveLength(2);
+
+    const pickedId = rem.autoResolveReplacementChoice(
+      candidates,
+      "player1",
+    );
+    const outcome = rem.resolveReplacementChoice(pickedId, {
+      event,
+      applied: [],
+      affectedPlayerId: "player1",
+    });
+
+    expect(outcome.requiresChoice).toBe(false);
+    expect(outcome.appliedEffects.map((e) => e.id)).toContain(pickedId);
+    expect(outcome.event.amount).toBeLessThanOrEqual(4);
+  });
+});
+
