@@ -74,3 +74,18 @@ export {
   type ComboThreatAssessment,
   type DetectComboOptions,
 } from "./combo-threat-detector";
+
+// Issue #1231: tutor / library-search target selection scaled by difficulty.
+export {
+  selectTutorTarget,
+  scoreTutorCandidate,
+  isTutorOracle,
+  ARCHETYPE_TUTOR_WEIGHTS,
+  UNKNOWN_ARCHETYPE_WEIGHTS,
+  DIFFICULTY_NOISE,
+  type TutorCandidate,
+  type TutorTargetContext,
+  type TutorTargetDecision,
+  type ScoredTutorCandidate,
+  type TutorRng,
+} from "./tutor-decision";
