@@ -28,6 +28,7 @@ import type { TriggeredAbilityInstance } from "./abilities";
 import { evaluateInterveningIfClause } from "./abilities";
 import { hasProwess, getProwessInstanceCount } from "./evergreen-keywords";
 import { parseTriggeredAbilities } from "./oracle-text-parser";
+import type { DungeonRoomCompletion } from "../cards/dungeons";
 
 /**
  * Trigger condition types for the new trigger system
@@ -72,6 +73,43 @@ export interface TriggerResult {
   state: GameState;
   triggeredAbilities: TriggeredAbilityInstance[];
   descriptions: string[];
+}
+
+export interface DungeonRoomCompletionTrigger {
+  id: string;
+  playerId: PlayerId;
+  dungeonId: string;
+  dungeonName: string;
+  roomId: string;
+  roomName: string;
+  effect: string;
+  roomIndex: number;
+  isFinalRoom: boolean;
+  timestamp: number;
+}
+
+export function hasVentureIntoDungeonText(oracleText: string): boolean {
+  return /\bventure into the dungeon\b/i.test(oracleText);
+}
+
+export function detectDungeonRoomCompletionTriggers(
+  completion?: DungeonRoomCompletion | DungeonRoomCompletion[],
+  playerId?: PlayerId,
+): DungeonRoomCompletionTrigger[] {
+  if (!completion || !playerId) return [];
+  const completions = Array.isArray(completion) ? completion : [completion];
+  return completions.map((room) => ({
+    id: generateTriggeredAbilityId(),
+    playerId,
+    dungeonId: room.dungeonId,
+    dungeonName: room.dungeonName,
+    roomId: room.roomId,
+    roomName: room.roomName,
+    effect: room.effect,
+    roomIndex: room.roomIndex,
+    isFinalRoom: room.isFinalRoom,
+    timestamp: Date.now(),
+  }));
 }
 
 /**

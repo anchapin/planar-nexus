@@ -24,6 +24,15 @@ export type CardInstanceId = string;
  */
 export type PlayerId = string;
 
+export type DungeonId = string;
+export type DungeonRoomId = string;
+
+export interface DungeonProgress {
+  dungeonId: DungeonId;
+  roomIndex: number;
+  roomId?: DungeonRoomId;
+}
+
 /**
  * Unique identifier for an ability or effect on the stack
  */
@@ -331,6 +340,9 @@ export interface Player {
    * recursively re-triggering storm.
    */
   spellsCastThisTurn?: number;
+
+  dungeonProgress?: DungeonProgress | null;
+  completedDungeonIds?: DungeonId[];
 
   // Mana pool (internally tracked, displayed as "energy" to users)
   /** Available mana in each color */
@@ -659,7 +671,8 @@ export type StackEffectType =
   | "draw"
   | "createToken"
   | "gainLife"
-  | "loseLife";
+  | "loseLife"
+  | "venture_dungeon";
 
 /**
  * Structured effect data for resolution
@@ -698,7 +711,13 @@ export type StackEffect =
       controllerId: PlayerId;
     }
   | { effectType: "gainLife"; amount: number; targetId: PlayerId }
-  | { effectType: "loseLife"; amount: number; targetId: PlayerId };
+  | { effectType: "loseLife"; amount: number; targetId: PlayerId }
+  | {
+      effectType: "venture_dungeon";
+      dungeonId?: DungeonId;
+      nextRoomId?: DungeonRoomId;
+      targetId?: PlayerId;
+    };
 
 /**
  * Combat state
@@ -927,6 +946,7 @@ export type ActionType =
   | "move_card"
   | "gain_life"
   | "lose_life"
+  | "venture_into_dungeon"
   | "deal_damage"
   | "pay_mana"
   | "add_mana"
@@ -955,12 +975,7 @@ export interface AIPermanent {
   name: string;
   /** Permanent type */
   type:
-    | "creature"
-    | "land"
-    | "artifact"
-    | "enchantment"
-    | "planeswalker"
-    | "other";
+    "creature" | "land" | "artifact" | "enchantment" | "planeswalker" | "other";
   /** Controller player ID */
   controller: PlayerId;
   /** Whether the permanent is tapped */
