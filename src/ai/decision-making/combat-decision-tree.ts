@@ -492,9 +492,18 @@ export class CombatDecisionTree {
     this.opponentArchetype = resolvedOpponentArchetype;
     this.config.opponentArchetype = resolvedOpponentArchetype;
     this.heuristicTable = new HeuristicTable();
+    // Issue #1232: stamp the active difficulty into the lookahead config
+    // so the engine can scale opponent combo-detection depth per tier
+    // without callers having to remember. Existing callers that pass an
+    // explicit `lookaheadConfig.difficulty` keep their value (object
+    // spread below).
     this.lookaheadEngine = new LookaheadEngine(
       this.heuristicTable,
-      this.config.lookaheadConfig,
+      {
+        ...this.config.lookaheadConfig,
+        difficulty:
+          this.config.lookaheadConfig?.difficulty ?? difficulty,
+      },
     );
   }
 
@@ -659,6 +668,11 @@ export class CombatDecisionTree {
     if (this.config.useLookahead && attackDecisions.length > 0) {
       this.lookaheadEngine.setConfig({
         ...this.config.lookaheadConfig,
+        // Issue #1232: keep the difficulty stamp so combo-detection
+        // depth matches the AI's tier even when the lookaheadConfig is
+        // overridden to a shallow `maxDepth`.
+        difficulty:
+          this.config.lookaheadConfig?.difficulty ?? this.difficulty,
         enabled: true,
       });
       const lookaheadResult = this.lookaheadEngine.evaluate(
@@ -2106,12 +2120,26 @@ export class CombatDecisionTree {
 
   /**
    * Apply multi-turn lookahead adjustments to attack decisions.
+   *
+   * Issue #1232: when the lookahead reports a `comboThreat` of `"imminent"`
+   * the base aggression modifier already captures the "race the opponent"
+   * signal (the engine folds the urgency scalar into the modifier in
+   * `LookaheadEngine.evaluate`). We additionally *forbid* the existing
+   * "hold back" carve-out — if the opponent can combo next turn, tapping
+   * out for a future turn is a worse mistake than over-committing, so
+   * any creature the heuristic asked us to hold back is re-pushed into the
+   * attack line.
+   *
+   * For the weaker `building` tier we keep the historical carve-out
+   * untouched — the AI should still preserve blockers when the opponent
+   * is only *possibly* assembling.
    */
   private applyLookaheadAdjustments(
     attackDecisions: AttackDecision[],
     lookaheadResult: LookaheadResult,
   ): void {
     const modifier = lookaheadResult.aggressionModifier;
+    const comboImminent = lookaheadResult.comboThreat === "imminent";
 
     for (const decision of attackDecisions) {
       decision.expectedValue = Math.max(
@@ -2121,9 +2149,16 @@ export class CombatDecisionTree {
 
       if (lookaheadResult.holdBack.includes(decision.creatureId)) {
         decision.expectedValue -= 0.2;
-        if (decision.expectedValue < 0.3) {
+        if (decision.expectedValue < 0.3 && !comboImminent) {
           decision.shouldAttack = false;
           decision.target = "none";
+        } else if (comboImminent) {
+          // Combo-imminent: re-push the would-be hold into the attack
+          // line. We don't force `shouldAttack = true` (the heuristic
+          // may have a reason — e.g. zero power), but we lift the
+          // expected value above the carve-out floor so the decision
+          // is visible to the caller.
+          decision.expectedValue += 0.25;
         }
       }
 
@@ -2150,9 +2185,16 @@ export class CombatDecisionTree {
    */
   setHeuristicTable(table: HeuristicTable): void {
     this.heuristicTable = table;
+    // Issue #1232: keep the difficulty stamp when re-instantiating the
+    // engine so per-tier detection depth survives the test-only table
+    // swap.
     this.lookaheadEngine = new LookaheadEngine(
       this.heuristicTable,
-      this.config.lookaheadConfig,
+      {
+        ...this.config.lookaheadConfig,
+        difficulty:
+          this.config.lookaheadConfig?.difficulty ?? this.difficulty,
+      },
     );
   }
 

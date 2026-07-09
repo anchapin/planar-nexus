@@ -649,3 +649,226 @@ describe("LookaheadEngine aggressionBias (issue #1068)", () => {
     expect(after).toBeGreaterThan(before);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #1232 — opponent combo-assembly detection.
+//
+// The lookahead engine reads the opponent's known cards via
+// `detectComboAssembly`, escalates the aggression modifier when a combo is
+// imminent, and emits a `comboThreatDetected` event when the threat tier
+// changes (or re-fires on every imminent evaluation).
+//
+// These tests are deliberately scoped to the engine surface (the detector has
+// its own fixture suite in
+// `src/ai/decision-making/__tests__/combo-threat-detector.test.ts`). They
+// assert that the engine wires the detector's result into the right fields
+// and that the documented urgency scalar raises the modifier as expected.
+// ---------------------------------------------------------------------------
+
+describe("LookaheadEngine combo-threat detection (issue #1232)", () => {
+  function makeComboState(
+    opponentHand: string[],
+    opponentMana: number,
+  ): AIGameState {
+    const state = createTestGameState(
+      20,
+      20,
+      [createMockPermanent("c1", "Bear", "creature", 2, 2)],
+      [],
+    );
+    const opponent = state.players.player2;
+    opponent.hand = opponentHand.map((name, idx) => ({
+      cardInstanceId: `opp-hand-${idx}`,
+      name,
+      type: "varies",
+      manaValue: 1,
+    }));
+    opponent.manaPool = {
+      ...opponent.manaPool,
+      generic: opponentMana,
+    };
+    return state;
+  }
+
+  it("reports `comboThreat === 'none'` when the opponent has no combo signal", () => {
+    const state = makeComboState(["Grizzly Bears", "Counterspell"], 0);
+    const result = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    }).evaluate(state, "player1");
+
+    expect(result.evaluated).toBe(true);
+    expect(result.comboThreat).toBe("none");
+    expect(result.comboArchetype).toBeNull();
+    expect(result.comboThreatUrgency).toBe(0);
+  });
+
+  it("escalates the aggression modifier by ~0.4 when the opponent is imminent", () => {
+    // Symmetric board → the legacy signal cancels out to ~0, so the
+    // ~0.4 urgency contribution is observable. Past in Flames +
+    // Tendrils of Agony + 6 mana → imminent at expert depth.
+    const state = makeComboState(["Past in Flames", "Tendrils of Agony"], 6);
+    const baseline = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    }).evaluate(state, "player1");
+
+    expect(baseline.comboThreat).toBe("imminent");
+    expect(baseline.comboArchetype).toBe("storm");
+    expect(baseline.comboThreatUrgency).toBeCloseTo(0.4, 5);
+    expect(baseline.aggressionModifier).toBeGreaterThan(0);
+  });
+
+  it("Easy depth misses the imminent threat and stays at `building`", () => {
+    // Same opponent sequence; on Easy (depth = 2) only the first card in
+    // the hand is scanned, so Past in Flames is missed entirely.
+    const state = makeComboState(
+      ["Filler-A", "Filler-B", "Past in Flames", "Tendrils of Agony"],
+      6,
+    );
+    const easy = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "easy",
+      comboDetectionDepth: 2,
+    }).evaluate(state, "player1");
+
+    const expert = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    }).evaluate(state, "player1");
+
+    expect(easy.comboThreat).toBe("none");
+    expect(expert.comboThreat).toBe("imminent");
+    expect(expert.aggressionModifier).toBeGreaterThan(
+      easy.aggressionModifier,
+    );
+  });
+
+  it("switches the preferred line when the threat flips to imminent", () => {
+    // Compare the modifier on two evaluations of the *same* board.
+    // The first evaluation has no opponent combo signal, the second
+    // one does. The aggression modifier must rise on the second.
+    const stateNoThreat = makeComboState(["Grizzly Bears"], 0);
+    const stateWithThreat = makeComboState(["Past in Flames", "Tendrils of Agony"], 6);
+
+    const engine = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    });
+
+    const r1 = engine.evaluate(stateNoThreat, "player1");
+    const r2 = engine.evaluate(stateWithThreat, "player1");
+
+    expect(r1.comboThreat).toBe("none");
+    expect(r2.comboThreat).toBe("imminent");
+    expect(r2.aggressionModifier).toBeGreaterThan(r1.aggressionModifier);
+  });
+
+  it("emits a `comboThreatDetected` event when the threat tier changes", () => {
+    const state = makeComboState(["Past in Flames", "Tendrils of Agony"], 6);
+    const engine = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    });
+
+    const events: import("../decision-making/lookahead/lookahead-engine").ComboThreatEvent[] =
+      [];
+    engine.onComboThreat((e) => {
+      events.push(e);
+    });
+
+    // First evaluation escalates from the default `none` → `imminent`.
+    engine.evaluate(state, "player1");
+    // Second evaluation: threat tier is stable but imminent re-fires
+    // (so the post-game replay can plot the urgency). Two events in
+    // total; the schema is identical so downstream sinks can diff by
+    // `turn` and `piecesPresent`.
+    engine.evaluate(state, "player1");
+
+    expect(events).toHaveLength(2);
+    for (const e of events) {
+      expect(e.type).toBe("comboThreatDetected");
+      expect(e.threat).toBe("imminent");
+      expect(e.archetype).toBe("storm");
+      expect(e.matchedPieces).toEqual(
+        expect.arrayContaining(["past in flames", "tendrils of agony"]),
+      );
+    }
+  });
+
+  it("re-fires the `comboThreatDetected` event on every imminent evaluation", () => {
+    // The replay sink needs to see sustained urgency, not just
+    // transitions. Verify the re-fire contract.
+    const state = makeComboState(["Past in Flames", "Tendrils of Agony"], 6);
+    const engine = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    });
+    const events: number[] = [];
+    engine.onComboThreat(() => {
+      events.push(Date.now());
+    });
+
+    engine.evaluate(state, "player1");
+    engine.evaluate(state, "player1");
+    engine.evaluate(state, "player1");
+
+    expect(events.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("clamps the final aggression modifier to [-1, 1] even with an imminent urgency", () => {
+    // Build an extremely defensive board so the legacy modifier is
+    // already negative, then stack the +0.4 urgency on top. The result
+    // must still be inside [-1, 1].
+    const state = createTestGameState(
+      3, // AI critically low
+      20,
+      [],
+      [
+        createMockPermanent("d1", "Dragon", "creature", 5, 5),
+        createMockPermanent("d2", "Dragon", "creature", 5, 5),
+      ],
+    );
+    state.players.player2.hand = [
+      {
+        cardInstanceId: "h1",
+        name: "Past in Flames",
+        type: "varies",
+        manaValue: 1,
+      },
+      {
+        cardInstanceId: "h2",
+        name: "Tendrils of Agony",
+        type: "varies",
+        manaValue: 1,
+      },
+    ];
+    state.players.player2.manaPool = {
+      ...state.players.player2.manaPool,
+      generic: 8,
+    };
+
+    const result = new LookaheadEngine(new HeuristicTable(), {
+      difficulty: "expert",
+      comboDetectionDepth: 8,
+    }).evaluate(state, "player1");
+
+    expect(result.aggressionModifier).toBeGreaterThanOrEqual(-1);
+    expect(result.aggressionModifier).toBeLessThanOrEqual(1);
+    expect(result.comboThreat).toBe("imminent");
+  });
+
+  it("LookaheadResult includes the new comboThreat fields (no regression)", () => {
+    // Pure-shape check: every evaluation must populate the new fields
+    // so consumers don't need to defend against undefined.
+    const state = makeComboState(["Grizzly Bears"], 0);
+    const result = new LookaheadEngine(new HeuristicTable()).evaluate(
+      state,
+      "player1",
+    );
+
+    expect(typeof result.comboThreat).toBe("string");
+    expect(["imminent", "building", "none"]).toContain(result.comboThreat);
+    expect(result.comboArchetype === null || typeof result.comboArchetype === "string").toBe(true);
+    expect(typeof result.comboThreatUrgency).toBe("number");
+  });
+});

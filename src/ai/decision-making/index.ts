@@ -56,3 +56,21 @@ export {
   type ChooseResponseTargetOptions,
   type ResponseTargetDecision,
 } from "./multiplayer-threat";
+
+// Issue #1232: opponent combo-assembly detection across turns.
+// Drives the lookahead engine's "spot the Thassa's Oracle / Kiki combo
+// and pressure it before it resolves" behaviour. Re-export the
+// detector, threat shapes, and per-tier depth table so the live turn
+// loop can wire the replay sink without dipping into the module path.
+export {
+  detectComboAssembly,
+  detectComboFromNames,
+  isImminentComboThreat,
+  comboThreatUrgency,
+  detectionDepthForTier,
+  comboDetectionDepthForArchetype,
+  COMBO_PATTERNS,
+  COMBO_IMMINENT_MANA,
+  type ComboThreatAssessment,
+  type DetectComboOptions,
+} from "./combo-threat-detector";
