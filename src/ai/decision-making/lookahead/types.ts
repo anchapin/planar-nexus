@@ -121,6 +121,23 @@ export interface LookaheadConfig {
    * to 0 (no adjustment) so existing behavior is unchanged.
    */
   aggressionBias?: number;
+  /**
+   * Difficulty tier used to scale opponent combo-assembly detection depth
+   * (issue #1232). Lower tiers scan fewer opponent cards per zone and so
+   * declare `imminent` threats less often; hard/expert widen the window so
+   * the engine spots Thassa's Oracle / Kiki / Past in Flames two cards deep
+   * in the opponent's hand.
+   *
+   * Optional — the engine defaults to `"medium"` when omitted so existing
+   * callers keep their historical behaviour.
+   */
+  difficulty?: "easy" | "medium" | "hard" | "expert";
+  /**
+   * Cap on opponent cards scanned per zone by the combo detector (issue
+   * #1232). Defaults to the per-tier value from
+   * `detectionDepthForTier(difficulty)`. Override only in tests.
+   */
+  comboDetectionDepth?: number;
 }
 
 /**
@@ -145,4 +162,21 @@ export interface LookaheadResult {
   opponentLethalRisk: boolean;
   /** Number of turns to the earliest lethal (Infinity if none) */
   turnsToLethal: number;
+  /**
+   * Detected opponent combo-assembly threat tier (issue #1232). Defaults
+   * to `"none"` so existing consumers see a stable shape.
+   */
+  comboThreat: "imminent" | "building" | "none";
+  /**
+   * The combo family that triggered the highest scoring threat (e.g.
+   * "storm", "infinite", "reanimator", "consultation"). `null` when no
+   * signal was found.
+   */
+  comboArchetype: string | null;
+  /**
+   * Urgency scalar the engine applied to the aggression modifier because
+   * of the detected threat — see `comboThreatUrgency`. Always 0 when
+   * `comboThreat === "none"`.
+   */
+  comboThreatUrgency: number;
 }

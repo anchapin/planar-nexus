@@ -4,6 +4,12 @@
  * Issue #667: Simulates future board states to evaluate combat decisions
  * beyond the current turn. Combines heuristic table matching with projected
  * board evaluation to adjust aggression weights in ai-difficulty.ts.
+ *
+ * Issue #1232: Layers opponent combo-assembly detection on top of the
+ * existing heuristic/projection mix. When the opponent is assembling a
+ * known combo (Thassa's Oracle / Splinter Twin / Storm / Reanimator) the
+ * engine raises its aggression modifier so the AI disrupts or pressures
+ * instead of developing its own board.
  */
 
 import type { AIGameState, AIPermanent } from "@/lib/game-state/types";
@@ -16,6 +22,11 @@ import type {
 } from "./types";
 import { createBoardStateSignature } from "./board-state-signature";
 import { HeuristicTable } from "./heuristic-table";
+import {
+  detectComboAssembly,
+  comboThreatUrgency,
+  type ComboThreatAssessment,
+} from "../combo-threat-detector";
 
 const DEFAULT_CONFIG: LookaheadConfig = {
   maxDepth: 2,
@@ -24,7 +35,50 @@ const DEFAULT_CONFIG: LookaheadConfig = {
   minMatchQuality: 0.3,
   enabled: true,
   aggressionBias: 0,
+  difficulty: "medium",
 };
+
+/**
+ * Listener shape for combo-threat events that the engine emits into the
+ * replay (issue #1232 acceptance criterion: "emit a `comboThreatDetected`
+ * event into the replay for post-game review"). Production callers wire
+ * this to whatever replay sink the host game uses; tests use it to assert
+ * the exact event payload without needing a real replay.
+ */
+export type ComboThreatEventListener = (
+  event: ComboThreatEvent,
+) => void;
+
+/**
+ * The event payload emitted whenever the lookahead engine finishes an
+ * `evaluate` and the opponent's combo-assembly threat has changed since
+ * the last emission. The engine also emits on the very first `evaluate`
+ * so a post-game reviewer always has a record.
+ */
+export interface ComboThreatEvent {
+  /** Stable event type — always `"comboThreatDetected"` so consumers can
+   *  filter without an additional discriminator. */
+  type: "comboThreatDetected";
+  /** Engine turn the event is attached to (issue #1232 says "across turns"). */
+  turn: number;
+  /** Threat tier at the time of the event. `"none"` events are still
+   *  surfaced so consumers can plot threat transitions. */
+  threat: "imminent" | "building" | "none";
+  /** Detected combo family — null when no signal. */
+  archetype: string | null;
+  /** Number of pieces matched (0-6). */
+  piecesPresent: number;
+  /** Cards the AI observed that triggered the match. */
+  matchedPieces: string[];
+  /**
+   * Difficulty the engine was operating under. Useful for the post-game
+   * reviewer to explain why a `building` event became `imminent` on Expert
+   * but not on Easy.
+   */
+  difficulty: "easy" | "medium" | "hard" | "expert";
+  /** Detection depth actually used for this evaluation. */
+  detectionDepth: number;
+}
 
 /**
  * Multi-turn lookahead engine.
@@ -36,6 +90,8 @@ const DEFAULT_CONFIG: LookaheadConfig = {
 export class LookaheadEngine {
   private config: LookaheadConfig;
   private heuristicTable: HeuristicTable;
+  private comboListeners: Set<ComboThreatEventListener> = new Set();
+  private lastEmittedThreat: "imminent" | "building" | "none" = "none";
 
   constructor(
     heuristicTable: HeuristicTable,
@@ -43,6 +99,23 @@ export class LookaheadEngine {
   ) {
     this.heuristicTable = heuristicTable;
     this.config = { ...DEFAULT_CONFIG, ...config };
+  }
+
+  /**
+   * Subscribe to `comboThreatDetected` events (issue #1232).
+   *
+   * The listener fires once per `evaluate` call where either:
+   *   - the threat changed tier since the last emission, or
+   *   - the threat is `imminent` (imminent events always re-fire so the
+   *     reviewer sees the urgency even if the tier is stable).
+   *
+   * Returns an unsubscribe function for symmetric lifecycle control.
+   */
+  onComboThreat(listener: ComboThreatEventListener): () => void {
+    this.comboListeners.add(listener);
+    return () => {
+      this.comboListeners.delete(listener);
+    };
   }
 
   /**
@@ -67,6 +140,10 @@ export class LookaheadEngine {
    * - priorityAttackers: creatures to prefer attacking with
    * - holdBack: creatures to prefer holding back
    * - lethalFound: whether a lethal line exists within the window
+   * - comboThreat / comboArchetype / comboThreatUrgency (issue #1232):
+   *   the detector's read on whether the opponent is assembling a
+   *   known combo and how urgently the engine wants the AI to apply
+   *   pressure.
    *
    * @param gameState - Current game state
    * @param aiPlayerId - The AI player's ID
@@ -95,13 +172,19 @@ export class LookaheadEngine {
     const combinedModifier =
       heuristicModifier + boardModifier * (1 - this.config.heuristicWeight);
 
+    // Issue #1232: detect opponent combo assembly before we apply the
+    // aggression bias so the urgency scalar is folded into the same
+    // modify → clamp → return flow as the other inputs.
+    const combo = this.detectOpponentCombo(gameState, aiPlayerId);
+    const comboUrgency = comboThreatUrgency(combo);
+
     // Issue #1068: apply the external aggression bias (board-state swing) on
     // top of the internally-derived modifier, then clamp to [-1, 1] so the
     // lookahead signal stays bounded regardless of the source.
     const aggressionBias = this.config.aggressionBias ?? 0;
     const aggressionModifier = Math.max(
       -1,
-      Math.min(1, combinedModifier + aggressionBias),
+      Math.min(1, combinedModifier + aggressionBias + comboUrgency),
     );
 
     const lethal = projections.find((p) => p.hasLethal);
@@ -113,6 +196,11 @@ export class LookaheadEngine {
         ? -opponentLethal.turnsAhead
         : 0;
 
+    // Issue #1232 acceptance #4: emit `comboThreatDetected` so the
+    // post-game replay can show "spot the combo and pressure it" as a
+    // teachable moment.
+    this.maybeEmitComboEvent(combo, gameState, aiPlayerId);
+
     return {
       evaluated: true,
       bestScore: boardScore.bestScore,
@@ -123,6 +211,9 @@ export class LookaheadEngine {
       lethalFound: lethal !== undefined,
       opponentLethalRisk: opponentLethal !== undefined,
       turnsToLethal: turnsToLethal > 0 ? turnsToLethal : Infinity,
+      comboThreat: combo.threat,
+      comboArchetype: combo.archetype,
+      comboThreatUrgency: comboUrgency,
     };
   }
 
@@ -487,6 +578,79 @@ export class LookaheadEngine {
       lethalFound: false,
       opponentLethalRisk: false,
       turnsToLethal: Infinity,
+      comboThreat: "none",
+      comboArchetype: null,
+      comboThreatUrgency: 0,
     };
+  }
+
+  /**
+   * Resolve opponent combo-assembly (issue #1232). Reads the lookahead
+   * config for the active difficulty / depth cap and returns the
+   * detector's {@link ComboThreatAssessment}.
+   *
+   * Defensive against a missing opponent (two-player 1v1 so an opponent
+   * is always present in practice, but the engine does not enforce
+   * that): an empty zone list returns the detector's `none` shape.
+   */
+  private detectOpponentCombo(
+    gameState: AIGameState,
+    aiPlayerId: string,
+  ): ComboThreatAssessment {
+    const difficulty = this.config.difficulty ?? "medium";
+    return detectComboAssembly(gameState, aiPlayerId, {
+      difficulty,
+      detectionDepth: this.config.comboDetectionDepth,
+    });
+  }
+
+  /**
+   * Emit a `comboThreatDetected` event whenever:
+   *   - the threat tier changed since the last evaluation, or
+   *   - the current threat is `imminent` (urgency always re-fires so
+   *     the post-game replay can plot sustained pressure runs).
+   *
+   * No-op when there are no listeners (the default state), so callers
+   * that don't care about events pay nothing.
+   */
+  private maybeEmitComboEvent(
+    combo: ComboThreatAssessment,
+    gameState: AIGameState,
+    aiPlayerId: string,
+  ): void {
+    if (this.comboListeners.size === 0) return;
+    const tierChanged = combo.threat !== this.lastEmittedThreat;
+    const imminentReFire = combo.threat === "imminent";
+    if (!tierChanged && !imminentReFire) return;
+
+    this.lastEmittedThreat = combo.threat;
+
+    const event: ComboThreatEvent = {
+      type: "comboThreatDetected",
+      turn: gameState.turnInfo?.currentTurn ?? 0,
+      threat: combo.threat,
+      archetype: combo.archetype,
+      piecesPresent: combo.piecesPresent,
+      matchedPieces: [...combo.matchedPieces],
+      difficulty: this.config.difficulty ?? "medium",
+      detectionDepth: combo.detectionDepth,
+    };
+
+    // Snapshot the listener set so a listener removing itself mid-emit
+    // (e.g. a teardown hook) does not destabilise iteration.
+    const listeners = Array.from(this.comboListeners);
+    for (const listener of listeners) {
+      try {
+        listener(event);
+      } catch {
+        // Events must never fail the lookahead evaluation. Swallow and
+        // continue — the worst case is one missing replay frame.
+      }
+    }
+
+    // aiPlayerId is currently unused in the event payload but kept in
+    // scope so future multi-AI scenarios (parallel agents in a game,
+    // wave-2 tutor work) can extend the event without re-plumbing.
+    void aiPlayerId;
   }
 }
