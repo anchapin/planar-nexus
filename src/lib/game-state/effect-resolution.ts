@@ -13,10 +13,17 @@
  * - Protection/shroud checking during resolution
  */
 
-import type { GameState, PlayerId, CardInstanceId, StackEffect } from "./types";
+import type {
+  GameState,
+  PlayerId,
+  CardInstanceId,
+  StackEffect,
+  StackObject,
+} from "./types";
 import { drawCards, createTokenCard, counterSpell } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
+import { getModesForModalSpell } from "./oracle-text-parser";
 
 /**
  * Apply lifelink life gain for damage dealt by a source with lifelink.
@@ -545,6 +552,69 @@ export function parseSpellEffects(
   }
 
   return effects;
+}
+
+/**
+ * Filter the effects of a modal spell down to only those produced by the
+ * modes the controller chose (CR 700.2).
+ *
+ * Modal spells ("Choose one —" / "Choose two —" / "Choose three —") resolve
+ * only the chosen modes. Naively parsing the spell's full oracle text with
+ * `parseSpellEffects` returns ALL modes' effects at once, which is wrong:
+ * `Abrade` would deal damage AND destroy its target. This helper inspects the
+ * stack object's `chosenModes` (labels that match a mode's parsed description)
+ * and returns only those modes' effects, in the order they appear on the card.
+ *
+ * If the source card is not modal, has no chosen modes, or has no resolvable
+ * effects, an empty array is returned (the caller can fall back to
+ * `parseSpellEffects` or its existing effects list as appropriate).
+ *
+ * @param stackObject The spell on the stack whose effects we want to filter.
+ * @param state The current game state (used only to look up the source card).
+ * @param variableValues X / variable values for the spell — defaults to the
+ *                       stack object&apos;s own `variableValues`.
+ * @returns The union of `parseSpellEffects` outputs, one per chosen mode, in
+ *          declared order on the card.
+ */
+export function getEffectsForChosenModes(
+  stackObject: StackObject,
+  state: GameState,
+  variableValues?: Map<string, number>,
+): StackEffect[] {
+  const chosen = stackObject.chosenModes ?? [];
+  if (chosen.length === 0) {
+    return [];
+  }
+
+  const sourceCard = stackObject.sourceCardId
+    ? state.cards.get(stackObject.sourceCardId)
+    : undefined;
+  if (!sourceCard) {
+    return [];
+  }
+
+  const modes = getModesForModalSpell(sourceCard.cardData);
+  if (!modes || modes.length === 0) {
+    return [];
+  }
+
+  const xVals =
+    variableValues ?? stackObject.variableValues ?? new Map<string, number>();
+
+  const filtered: StackEffect[] = [];
+  for (const chosenLabel of chosen) {
+    const match = modes.find(
+      (m) => m.description.trim() === chosenLabel.trim(),
+    );
+    if (!match) {
+      // A chosen mode label that does not match any parsed mode is a
+      // misconfiguration in the caller (e.g. a stale UI choice). Skip it
+      // rather than resolve the wrong effect.
+      continue;
+    }
+    filtered.push(...parseSpellEffects(match.description, xVals));
+  }
+  return filtered;
 }
 
 /**
