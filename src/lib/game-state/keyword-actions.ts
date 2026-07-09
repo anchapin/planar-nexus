@@ -1254,7 +1254,36 @@ export function dealDamageToCard(
     state.turn.activePlayerId,
     Array.from(state.players.keys()),
   );
-  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
+  // CR 616.1 — Use the interactive path so competing replacement /
+  // prevention effects surface a choice for the affected player's
+  // controller instead of being silently auto-resolved.
+  const interactiveOutcome = rem.processEventInteractive(
+    replacementEvent,
+    apnapOrder,
+    {
+      affectedPlayerId: card.controllerId,
+    },
+  );
+
+  if (interactiveOutcome.requiresChoice && interactiveOutcome.candidates) {
+    const waitingChoice = rem.createReplacementWaitingChoice(
+      interactiveOutcome.candidates,
+      card.controllerId,
+      "Multiple damage replacement effects could apply. Choose one:",
+    );
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice,
+        lastModifiedAt: Date.now(),
+      },
+      description: `Awaiting replacement effect choice from controller of ${card.cardData.name}`,
+      affectedCards: [cardId],
+    };
+  }
+
+  const processedEvent = interactiveOutcome.event;
   const actualDamage = processedEvent.amount;
 
   // Apply damage
