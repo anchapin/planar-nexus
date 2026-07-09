@@ -1,4 +1,4 @@
-#!/usr/bin/env ts-node
+#!/usr/bin/env tsx
 /**
  * Generate Jest Test Fixtures from Video-Derived Game States
  *
@@ -6,7 +6,7 @@
  * corresponding Jest test files for automated validation.
  *
  * Usage:
- *   npx ts-node scripts/generate-test-fixture.ts --fixtures-dir path/to/fixtures
+ *   npx tsx scripts/generate-test-fixture.ts --fixtures-dir path/to/fixtures
  */
 
 import * as fs from "fs";
@@ -53,7 +53,7 @@ function parseArgs(): TestGenerationOptions {
       options.dryRun = true;
     } else if (arg === "--help") {
       console.log(`
-Usage: npx ts-node scripts/generate-test-fixture.ts [options]
+Usage: npx tsx scripts/generate-test-fixture.ts [options]
 
 Options:
   --fixtures-dir <path>   Directory containing video-derived fixture JSON files (default: src/lib/__fixtures__/video-derived)
@@ -62,7 +62,7 @@ Options:
   --help                  Show this help message
 
 Example:
-  npx ts-node scripts/generate-test-fixture.ts --fixtures-dir src/lib/__fixtures__/video-derived
+  npx tsx scripts/generate-test-fixture.ts --fixtures-dir src/lib/__fixtures__/video-derived
       `);
       process.exit(0);
     }
