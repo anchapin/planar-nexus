@@ -41,6 +41,9 @@ jobs:
       - name: Run unit tests with coverage
         run: npm test -- --coverage --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MB
       
+      - name: QA coverage gate (#1394)
+        run: node scripts/qa-coverage-gate.js
+      
       - name: Upload coverage to Codecov
         if: github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v7
