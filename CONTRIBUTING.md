@@ -94,7 +94,10 @@ npm install
 cp .env.example .env.local
 
 # Edit .env.local and add your API keys if testing AI features
-# GOOGLE_AI_API_KEY=your_key_here
+# OPENAI_API_KEY=your_key_here
+# ANTHROPIC_API_KEY=your_key_here
+# GOOGLE_API_KEY=your_key_here
+# ZAI_API_KEY=your_key_here
 ```
 
 ### 3.4 Start Development Server
