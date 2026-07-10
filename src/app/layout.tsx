@@ -5,6 +5,7 @@ import { ServiceWorkerRegistration } from "@/components/service-worker-registrat
 import { LandingFooter } from "@/components/landing-footer";
 import { SkipLink } from "@/components/skip-link";
 import { AchievementNotificationToast } from "@/components/achievement-notification";
+import { DesktopUpdateBanner } from "@/components/desktop-update-banner";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 
@@ -72,6 +73,7 @@ export default async function RootLayout({
           <LandingFooter />
           <Toaster />
           <AchievementNotificationToast />
+          <DesktopUpdateBanner />
         </NextIntlClientProvider>
       </body>
     </html>
