@@ -7,6 +7,40 @@
 
 import { MagicFormat, ArchetypeCategory } from './meta';
 
+// Alias map: dashboard archetype IDs (`src/lib/meta.ts`) → anti-meta
+// archetype IDs. The two modules originally shipped with different naming
+// schemes (`std-aggro-1` vs `std-aggro-red`), which made the
+// Counter/Sideboard/Mana Base tabs in `AntiMetaRecommendations` render empty
+// for every archetype. Resolving through this map keeps `meta.ts` stable
+// (smallest blast radius) while letting both ID styles coexist.
+//
+// For Commander the existing records (cmdr-aggro-red Krenko Aggro,
+// cmdr-combo-twin Thrasios) target a different set of decks than the
+// dashboard archetypes (Edgar Markov, Teferi, Chatterfang, Krenko Mob Boss,
+// Malcolm), so this map points each dashboard commander at its own dedicated
+// record added below (`cmdr-aggro-markov`, `cmdr-control-teferi`, etc.).
+const ARCHETYPE_ALIASES: Record<string, string> = {
+  'std-aggro-1': 'std-aggro-red',
+  'std-control-1': 'std-control-blue',
+  'std-midrange-1': 'std-midrange-black',
+  'std-combo-1': 'std-combo-temur',
+  'std-tempo-1': 'std-tempo-blue-red',
+  'mod-aggro-1': 'mod-aggro-red',
+  'mod-control-1': 'mod-control-blue',
+  'mod-midrange-1': 'mod-midrange-jund',
+  'mod-combo-1': 'mod-combo-twin',
+  'mod-tempo-1': 'mod-aggro-shadow',
+  'edh-aggro-1': 'cmdr-aggro-markov',
+  'edh-control-1': 'cmdr-control-teferi',
+  'edh-midrange-1': 'cmdr-midrange-chatterfang',
+  'edh-combo-1': 'cmdr-combo-krenko',
+  'edh-tempo-1': 'cmdr-tempo-malcolm',
+};
+
+function resolveArchetypeId(archetypeId: string): string {
+  return ARCHETYPE_ALIASES[archetypeId] ?? archetypeId;
+}
+
 export interface CounterRecommendation {
   archetypeId: string;
   archetypeName: string;
@@ -204,6 +238,56 @@ const antiMetaData: Record<MagicFormat, CounterRecommendation[]> = {
       keyCards: ['Toxic Deluge', 'Damnation', 'Karn the Great Creator'],
       sideboardNotes: 'Wraths are key, fly over tokens',
       manaBaseNotes: '38 lands, black sources'
+    },
+    {
+      archetypeId: 'cmdr-aggro-markov',
+      archetypeName: 'Edgar Markov',
+      counterArchetypeId: 'cmdr-control-teferi',
+      counterArchetypeName: 'Teferi Control',
+      matchupWinRate: 56,
+      keyCards: ['Teferi, Hero of Dominaria', 'Path to Exile', 'Wrath of God'],
+      sideboardNotes: 'Sweepers handle the Vampire wave, exile the general',
+      manaBaseNotes: '37-39 lands, white/blue'
+    },
+    {
+      archetypeId: 'cmdr-control-teferi',
+      archetypeName: 'Teferi, Temporal Archmage',
+      counterArchetypeId: 'cmdr-aggro-markov',
+      counterArchetypeName: 'Edgar Markov Aggro',
+      matchupWinRate: 54,
+      keyCards: ['Vampire Nocturnus', 'Captivating Crew', 'Legions Landing'],
+      sideboardNotes: 'Race under the lock, pressure before Stax lands',
+      manaBaseNotes: '36-38 lands, white/black vampire count matters'
+    },
+    {
+      archetypeId: 'cmdr-midrange-chatterfang',
+      archetypeName: 'Chatterfang',
+      counterArchetypeId: 'cmdr-control-teferi',
+      counterArchetypeName: 'Teferi Control',
+      matchupWinRate: 52,
+      keyCards: ['Toxic Deluge', 'Counterspell', 'Cyclonic Rift'],
+      sideboardNotes: 'Board wipes before the squirrel engine pops off',
+      manaBaseNotes: '36-38 lands, black/green with blue splash'
+    },
+    {
+      archetypeId: 'cmdr-combo-krenko',
+      archetypeName: 'Krenko, Mob Boss',
+      counterArchetypeId: 'cmdr-control-white-blue',
+      counterArchetypeName: 'W/U Control',
+      matchupWinRate: 55,
+      keyCards: ['Terminus', 'Counterspell', 'Teferi, Hero of Dominaria'],
+      sideboardNotes: 'Sweepers on the token chain, counter the chain payoff',
+      manaBaseNotes: '37-39 lands, white/blue'
+    },
+    {
+      archetypeId: 'cmdr-tempo-malcolm',
+      archetypeName: 'Malcolm, Keen-Eyed Navigator',
+      counterArchetypeId: 'cmdr-midrange-chatterfang',
+      counterArchetypeName: 'Chatterfang Midrange',
+      matchupWinRate: 51,
+      keyCards: ['Tortured Existence', 'Squirrel Nest', 'Acornitage'],
+      sideboardNotes: 'Out-grind the treasures, race them on value',
+      manaBaseNotes: '35-37 lands, blue/red with black/green splash'
     }
   ]
 };
@@ -243,6 +327,29 @@ const manaBaseRecommendations: Record<MagicFormat, ManaBaseRecommendation[]> = {
       ],
       manaCurve: { minLands: 23, maxLands: 25, ideal: 24, reasoning: 'Balanced curve typical' },
       notes: '24 lands handles 3-4 drop curve'
+    },
+    {
+      archetypeId: 'std-combo-temur',
+      archetypeName: 'Temur Combo',
+      recommendedLands: 25,
+      colorRequirements: [
+        { color: 'Blue', sources: 14, notes: 'Primary engine color' },
+        { color: 'Red', sources: 10, notes: 'Burn/removal' },
+        { color: 'Green', sources: 8, notes: 'Ramp and finders' }
+      ],
+      manaCurve: { minLands: 24, maxLands: 27, ideal: 25, reasoning: 'Spell-heavy combo wants 25' },
+      notes: 'Wilderness Reclamation lowers effective mana needs'
+    },
+    {
+      archetypeId: 'std-tempo-blue-red',
+      archetypeName: 'Izzet Tempo',
+      recommendedLands: 20,
+      colorRequirements: [
+        { color: 'Blue', sources: 14, notes: 'Counters and card draw' },
+        { color: 'Red', sources: 12, notes: 'Burn and tempo threats' }
+      ],
+      manaCurve: { minLands: 18, maxLands: 22, ideal: 20, reasoning: 'Tempo wants low curve' },
+      notes: '20 lands with Delver is the sweet spot'
     }
   ],
   modern: [
@@ -279,6 +386,30 @@ const manaBaseRecommendations: Record<MagicFormat, ManaBaseRecommendation[]> = {
       ],
       manaCurve: { minLands: 23, maxLands: 25, ideal: 24, reasoning: 'Three colors need fixing' },
       notes: 'Fetchlands help with color consistency'
+    },
+    {
+      archetypeId: 'mod-combo-twin',
+      archetypeName: 'Grixis Twin',
+      recommendedLands: 23,
+      colorRequirements: [
+        { color: 'Blue', sources: 12, notes: 'Cantrips + combo enabler' },
+        { color: 'Red', sources: 10, notes: 'Combo payoff and removal' },
+        { color: 'Black', sources: 8, notes: 'Discard and removal' }
+      ],
+      manaCurve: { minLands: 21, maxLands: 24, ideal: 23, reasoning: 'Cantrips compress the deck' },
+      notes: 'Lower with Serum Visions + cantrip density'
+    },
+    {
+      archetypeId: 'mod-aggro-shadow',
+      archetypeName: 'Grief Shadow',
+      recommendedLands: 19,
+      colorRequirements: [
+        { color: 'Blue', sources: 12, notes: 'Counters and DRC' },
+        { color: 'Black', sources: 10, notes: 'Grief + removal' },
+        { color: 'Red', sources: 4, notes: 'Lightning + sideboard splash' }
+      ],
+      manaCurve: { minLands: 17, maxLands: 21, ideal: 19, reasoning: 'Ultra low for tempo shell' },
+      notes: '19 lands with Mishra\'s Bauble + Bauble-fueled cantrips'
     }
   ],
   commander: [
@@ -315,19 +446,80 @@ const manaBaseRecommendations: Record<MagicFormat, ManaBaseRecommendation[]> = {
       ],
       manaCurve: { minLands: 33, maxLands: 36, ideal: 35, reasoning: 'Low curve but many cheap spells, tokens dont need much mana' },
       notes: 'Can go lower with artifact ramp'
+    },
+    {
+      archetypeId: 'cmdr-aggro-markov',
+      archetypeName: 'Edgar Markov',
+      recommendedLands: 36,
+      colorRequirements: [
+        { color: 'White', sources: 18, notes: 'Anthem enabler' },
+        { color: 'Black', sources: 18, notes: 'Vampire lords and removal' }
+      ],
+      manaCurve: { minLands: 34, maxLands: 38, ideal: 36, reasoning: 'Two color vampire tribal is greedy but manageable' },
+      notes: 'Cavern of Souls + Unclaimed Territory help the tribal count'
+    },
+    {
+      archetypeId: 'cmdr-control-teferi',
+      archetypeName: 'Teferi, Temporal Archmage',
+      recommendedLands: 38,
+      colorRequirements: [
+        { color: 'White', sources: 16, notes: 'Stax and removal' },
+        { color: 'Blue', sources: 20, notes: 'Counters and card draw' }
+      ],
+      manaCurve: { minLands: 36, maxLands: 40, ideal: 38, reasoning: 'Stax wants land drops for tax effects' },
+      notes: 'Null Rod / Stony Silence targets are critical sideboard considerations'
+    },
+    {
+      archetypeId: 'cmdr-midrange-chatterfang',
+      archetypeName: 'Chatterfang',
+      recommendedLands: 36,
+      colorRequirements: [
+        { color: 'Black', sources: 16, notes: 'Sacrifice and tutor effects' },
+        { color: 'Green', sources: 18, notes: 'Squirrel engine and ramp' }
+      ],
+      manaCurve: { minLands: 34, maxLands: 38, ideal: 36, reasoning: 'Midrange curve wants consistency' },
+      notes: 'Pitiless Plunderer + squirrel token chain is the mana sink'
+    },
+    {
+      archetypeId: 'cmdr-combo-krenko',
+      archetypeName: 'Krenko, Mob Boss',
+      recommendedLands: 35,
+      colorRequirements: [
+        { color: 'Red', sources: 24, notes: 'Mono-red wants heavy red count' }
+      ],
+      manaCurve: { minLands: 33, maxLands: 37, ideal: 35, reasoning: 'Mana-positive tokens lower needs' },
+      notes: 'Skirk Prospector + Conspicuous Snoop engine wants rituals, not lands'
+    },
+    {
+      archetypeId: 'cmdr-tempo-malcolm',
+      archetypeName: 'Malcolm, Keen-Eyed Navigator',
+      recommendedLands: 36,
+      colorRequirements: [
+        { color: 'Blue', sources: 18, notes: 'Cantrips and tempo threats' },
+        { color: 'Red', sources: 14, notes: 'Treasure generation' }
+      ],
+      manaCurve: { minLands: 34, maxLands: 38, ideal: 36, reasoning: 'Treasure ramp lowers land needs' },
+      notes: 'Dockside Extortionist covers the gap; cut lands before threats'
     }
   ]
 };
 
 /**
- * Get counter recommendations for a specific archetype
+ * Get counter recommendations for a specific archetype.
+ *
+ * `archetypeId` is the dashboard archetype id (`src/lib/meta.ts`, e.g.
+ * `std-aggro-1`). The internal record keys live under the anti-meta naming
+ * scheme (e.g. `std-aggro-red`); `ARCHETYPE_ALIASES` reconciles the two so the
+ * Counter / Sideboard / Mana Base tabs in `AntiMetaRecommendations` actually
+ * populate. (Issue #1405.)
  */
 export function getCounterRecommendations(
   archetypeId: string,
   format: MagicFormat
 ): CounterRecommendation[] {
   const data = antiMetaData[format];
-  return data.filter(r => r.archetypeId === archetypeId);
+  const resolved = resolveArchetypeId(archetypeId);
+  return data.filter(r => r.archetypeId === resolved);
 }
 
 /**
@@ -372,14 +564,16 @@ export function getSideboardRecommendations(
 }
 
 /**
- * Get mana base recommendations for an archetype
+ * Get mana base recommendations for an archetype. See `getCounterRecommendations`
+ * for why we route through the alias resolver (issue #1405).
  */
 export function getManaBaseRecommendations(
   archetypeId: string,
   format: MagicFormat
 ): ManaBaseRecommendation | null {
   const data = manaBaseRecommendations[format];
-  return data.find(r => r.archetypeId === archetypeId) || null;
+  const resolved = resolveArchetypeId(archetypeId);
+  return data.find(r => r.archetypeId === resolved) || null;
 }
 
 /**
