@@ -53,6 +53,7 @@ import {
 import {
   resolveStackObjectEffects,
   parseSpellEffects,
+  getEffectsForChosenModes,
 } from "./effect-resolution";
 import type { CardInstance, StackEffect } from "./types";
 import { canTargetKeyword, applyProwessBoost } from "./evergreen-keywords";
@@ -832,10 +833,18 @@ export function resolveTopOfStack(state: GameState): GameState {
 
       // Parse effects from oracle text if no structured effects present
       if (!stackObject.effects || stackObject.effects.length === 0) {
-        const parsedEffects = parseSpellEffects(
-          oracleText,
-          stackObject.variableValues,
-        );
+        // CR 700.2: modal spells ("Choose one —", "Choose two —",
+        // "Choose three —") resolve only the modes the controller chose.
+        // When the stack object's chosenModes is populated, restrict the
+        // parsed effects to those modes; otherwise parse the full oracle
+        // text (legacy / choose-none-yet behavior — the modal choice is
+        // expected to set chosenModes before resolution for the modal
+        // branch to fire).
+        const isModalWithChoice =
+          stackObject.chosenModes && stackObject.chosenModes.length > 0;
+        const parsedEffects = isModalWithChoice
+          ? getEffectsForChosenModes(stackObject, currentState)
+          : parseSpellEffects(oracleText, stackObject.variableValues);
 
         if (parsedEffects.length > 0) {
           // Apply effects with target information
@@ -1394,13 +1403,53 @@ export function validateSpellTargets(
 }
 
 /**
+ * Normalize a choose_mode payload into a `string[]` regardless of whether the
+ * UI passed a single value or an array. Multi-select modal spells
+ * (`choose_two`, `choose_three`) pass an array; legacy callers passing a
+ * single string still work for `choose_one` spells. Returns null if the
+ * payload cannot be normalized.
+ */
+function normalizeModeSelection(
+  selectedValue: unknown,
+  minChoices: number,
+  maxChoices: number,
+): string[] | null {
+  let raw: string[] = [];
+  if (Array.isArray(selectedValue)) {
+    raw = selectedValue.map((v) => String(v));
+  } else if (
+    typeof selectedValue === "string" ||
+    typeof selectedValue === "number" ||
+    typeof selectedValue === "boolean"
+  ) {
+    raw = [String(selectedValue)];
+  } else {
+    return null;
+  }
+  // Distinguish between duplicates ("same mode twice") and unselected slots.
+  // Modal rules (CR 700.2) require distinct modes for choose-N when N > 1, so
+  // we collapse dupes defensively and treat the resulting count as the chosen
+  // set.
+  const unique = Array.from(new Set(raw));
+  if (unique.length > maxChoices || unique.length < minChoices) {
+    return null;
+  }
+  return unique;
+}
+
+/**
  * Resolve a waiting choice made by the player
  * Called when player selects cards/options in a choice dialog
+ *
+ * Modal-spell (CR 700.2) payloads are widened to also accept a `string[]` so
+ * that choose-two / choose-three choices deliver the full set of selected
+ * modes — see `normalizeModeSelection`. The single string form is preserved
+ * for backward compatibility with choose-one callers and existing tests.
  */
 export function resolveWaitingChoice(
   state: GameState,
   playerId: PlayerId,
-  selectedValue: string | number | boolean,
+  selectedValue: string | readonly string[] | number | boolean,
 ): { success: boolean; state: GameState; error?: string } {
   if (!state.waitingChoice) {
     return { success: false, state, error: "No waiting choice to resolve" };
@@ -1414,7 +1463,7 @@ export function resolveWaitingChoice(
     };
   }
 
-  const { type, stackObjectId } = state.waitingChoice;
+  const { type, stackObjectId, minChoices, maxChoices } = state.waitingChoice;
 
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
@@ -1479,13 +1528,24 @@ export function resolveWaitingChoice(
       return { success: false, state, error: "Stack object not found" };
     }
 
+    const chosenModes = normalizeModeSelection(
+      selectedValue,
+      minChoices,
+      maxChoices,
+    );
+    if (!chosenModes) {
+      return {
+        success: false,
+        state,
+        error: `choose_mode requires between ${minChoices} and ${maxChoices} distinct modes`,
+      };
+    }
+
     const newState = {
       ...state,
       waitingChoice: null,
       stack: state.stack.map((obj) =>
-        obj.id === stackObjectId
-          ? { ...obj, chosenModes: [String(selectedValue)] }
-          : obj,
+        obj.id === stackObjectId ? { ...obj, chosenModes } : obj,
       ),
     };
 
