@@ -345,14 +345,63 @@ function extractArchidektCardsFromState(data: any): string | null {
 }
 
 /**
- * Detect which site the URL is from and parse the decklist
+ * Issue #1392 — strict hostname matching against the allow-list.
+ *
+ * The previous check used `parsedUrl.hostname.includes(site.domain)`, a
+ * positional substring match. That accepted attacker-controlled hostnames
+ * such as `moxfield.com.attacker.com` or `evil-moxfield.com` because they
+ * merely *contain* the allowed domain as a substring. Combined with the
+ * route fetching the URL server-side, this was an SSRF / origin-spoofing
+ * vector: an attacker registers a look-alike domain, posts its URL, and
+ * the route fetches and reflects attacker-controlled content.
+ *
+ * `isSupportedHostname` performs an exact-match that also permits
+ * well-formed subdomains (`www.moxfield.com`) but rejects everything else.
+ * The leading dot in the suffix test is what defeats the spoofing variants
+ * — `moxfield.com.attacker.com` does not end with `.moxfield.com`. IDN
+ * homoglyph labels (`xn--…`) are rejected outright since none of the
+ * supported sites use internationalized names.
+ */
+function isSupportedHostname(
+  hostname: string,
+  allowedDomain: string,
+): boolean {
+  const h = hostname.toLowerCase();
+  const d = allowedDomain.toLowerCase();
+
+  // Reject IDN homoglyph labels (`xn--…`) that could visually impersonate
+  // the allowed domain.
+  if (h.split(".").some((label) => label.startsWith("xn--"))) return false;
+
+  // Exact match: "moxfield.com" === "moxfield.com".
+  if (h === d) return true;
+
+  // Subdomain match: "www.moxfield.com" ends with ".moxfield.com".
+  // The leading dot guarantees "evil-moxfield.com",
+  // "moxfieldcom.attacker.com", and "moxfield.com.attacker.com" do NOT match.
+  if (h.endsWith("." + d)) return true;
+
+  return false;
+}
+
+/**
+ * Detect which site the URL is from and parse the decklist.
+ *
+ * Uses {@link isSupportedHostname} (issue #1392) rather than a substring
+ * match so a spoofed hostname can never select an unrelated parser.
  */
 function detectAndParseSite(
   url: string,
   html: string,
 ): { decklist: string | null; siteName: string } | null {
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return null;
+  }
   for (const site of SUPPORTED_SITES) {
-    if (url.includes(site.domain)) {
+    if (isSupportedHostname(parsedUrl.hostname, site.domain)) {
       const decklist = site.parseDecklist ? site.parseDecklist(html) : null;
       return { decklist, siteName: site.name };
     }
@@ -461,9 +510,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if URL is from a supported site
+    // Issue #1392 — block URL schemes that are SSRF vectors (file:, data:,
+    // gopher:, …) and reject embedded credentials, which can confuse origin
+    // checks or exfiltrate secrets to an attacker-controlled host.
+    if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+      return NextResponse.json(
+        { error: "Unsupported URL scheme" },
+        { status: 400 },
+      );
+    }
+    if (parsedUrl.username || parsedUrl.password) {
+      return NextResponse.json(
+        { error: "URL must not contain credentials" },
+        { status: 400 },
+      );
+    }
+
+    // Check if URL is from a supported site. Strict hostname match — #1392:
+    // an exact / subdomain match only, defeating origin-spoofing via
+    // look-alike domains such as `moxfield.com.attacker.com`.
     const supportedSite = SUPPORTED_SITES.find((site) =>
-      parsedUrl.hostname.includes(site.domain),
+      isSupportedHostname(parsedUrl.hostname, site.domain),
     );
     if (!supportedSite) {
       return NextResponse.json(
