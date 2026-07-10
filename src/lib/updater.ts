@@ -145,7 +145,7 @@ export async function checkForDesktopUpdate(): Promise<DesktopUpdateResult> {
   }
 
   try {
-    const { check } = await import("@tauri-apps/plugin-updater");
+      const { check } = await import("@tauri-apps/plugin-updater");
     const update = await check();
 
     if (!update) {

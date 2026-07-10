@@ -1,6 +1,6 @@
 /**
  * Meta Analysis Types and Mock Data
- * 
+ *
  * Provides deck archetype data, win rates, meta share, and card inclusion rates
  * for the Meta Analysis dashboard.
  */
@@ -8,6 +8,19 @@
 export type MagicFormat = 'standard' | 'modern' | 'commander';
 
 export type DateRange = '7days' | '30days' | 'alltime';
+
+/**
+ * Optional dependency-injection hooks for `getMetaData`.
+ *
+ * - `now` lets tests pin `lastUpdated` so assertions are reproducible.
+ * - `random` lets tests assert against a specific seeded PRNG when probing the
+ *   noise band around trend values. Defaults to a deterministic seeded PRNG
+ *   so production output is also reproducible across calls.
+ */
+export interface MetaDataOptions {
+  now?: () => Date;
+  random?: () => number;
+}
 
 export type ArchetypeCategory = 'aggro' | 'control' | 'midrange' | 'combo' | 'tempo';
 
@@ -406,17 +419,25 @@ const commanderHealth: FormatHealth = {
   },
 };
 
-// Mock Trend Data
-const generateTrendData = (archetypes: DeckArchetype[]): { rising: TrendData[]; declining: TrendData[] } => {
+// Mock Trend Data — range-dependent (issue #1446).
+const generateTrendData = (
+  archetypes: DeckArchetype[],
+  dateRange: DateRange,
+): { rising: TrendData[]; declining: TrendData[] } => {
+  // Range-dependent change magnitudes so 7days / 30days / alltime produce
+  // observably distinct trend data.
+  const risingDelta = dateRange === '7days' ? 0.6 : dateRange === '30days' ? 1.8 : 2.5;
+  const decliningDelta = dateRange === '7days' ? 0.4 : dateRange === '30days' ? 1.2 : 1.8;
+
   const rising: TrendData[] = archetypes
     .filter(a => a.topCards.some(c => c.trend === 'rising'))
     .slice(0, 3)
     .map(a => ({
       archetypeId: a.id,
       archetypeName: a.name,
-      previousMetaShare: a.metaShare - 2.5,
+      previousMetaShare: round1(a.metaShare - risingDelta),
       currentMetaShare: a.metaShare,
-      change: 2.5,
+      change: round1(risingDelta),
       direction: 'rising' as TrendDirection,
     }));
 
@@ -426,60 +447,87 @@ const generateTrendData = (archetypes: DeckArchetype[]): { rising: TrendData[]; 
     .map(a => ({
       archetypeId: a.id,
       archetypeName: a.name,
-      previousMetaShare: a.metaShare + 1.8,
+      previousMetaShare: round1(a.metaShare + decliningDelta),
       currentMetaShare: a.metaShare,
-      change: -1.8,
+      change: round1(-decliningDelta),
       direction: 'declining' as TrendDirection,
     }));
 
   return { rising, declining };
 };
 
-// Mock Card Trends
-const generateCardTrends = (): CardTrend[] => {
-  const weeks = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'];
-  
-  return [
-    {
-      cardName: 'Delver of Secrets',
-      data: weeks.map((week, i) => ({
-        week,
-        inclusionRate: 65 + i * 3.5 + Math.random() * 2,
-      })),
-    },
-    {
-      cardName: 'Wilderness Reclamation',
-      data: weeks.map((week, i) => ({
-        week,
-        inclusionRate: 88 - i * 1.2 + Math.random() * 2,
-      })),
-    },
-    {
-      cardName: 'Dockside Extortionist',
-      data: weeks.map((week, i) => ({
-        week,
-        inclusionRate: 70 + i * 3.2 + Math.random() * 2,
-      })),
-    },
-    {
-      cardName: 'Blood Moon',
-      data: weeks.map((week, i) => ({
-        week,
-        inclusionRate: 72 + i * 2.1 + Math.random() * 2,
-      })),
-    },
-    {
-      cardName: 'Tarmogoyf',
-      data: weeks.map((week, i) => ({
-        week,
-        inclusionRate: 95 + Math.random() * 2,
-      })),
-    },
-  ];
+// Mock Card Trends — deterministic, range-dependent (issue #1446).
+//
+// Each call constructs a single seeded mulberry32 PRNG and walks it once per
+// data point. That gives stable, deep-equal output across repeated calls with
+// the same `dateRange`, while switching `dateRange` changes the week window
+// length and the per-card slope so the dashboard actually reflects the toggle.
+const TREND_CARDS: { cardName: string; baseRate: number; slope: number }[] = [
+  { cardName: 'Delver of Secrets', baseRate: 65, slope: 3.5 },
+  { cardName: 'Wilderness Reclamation', baseRate: 88, slope: -1.2 },
+  { cardName: 'Dockside Extortionist', baseRate: 70, slope: 3.2 },
+  { cardName: 'Blood Moon', baseRate: 72, slope: 2.1 },
+  { cardName: 'Tarmogoyf', baseRate: 95, slope: 0 },
+];
+
+const WEEK_COUNTS: Record<DateRange, number> = {
+  '7days': 4,
+  '30days': 8,
+  alltime: 12,
 };
 
+const SLOPE_MULTIPLIERS: Record<DateRange, number> = {
+  '7days': 0.4,
+  '30days': 0.7,
+  alltime: 1.0,
+};
+
+const generateCardTrends = (
+  dateRange: DateRange,
+  random?: () => number,
+): CardTrend[] => {
+  const rng = random ?? mulberry32(0x9e3779b9);
+  const weekCount = WEEK_COUNTS[dateRange];
+  const weeks = Array.from({ length: weekCount }, (_, i) => `W${i + 1}`);
+  const slopeMul = SLOPE_MULTIPLIERS[dateRange];
+
+  return TREND_CARDS.map(card => ({
+    cardName: card.cardName,
+    data: weeks.map((week, i) => ({
+      week,
+      inclusionRate: round1(card.baseRate + i * card.slope * slopeMul + rng() * 2),
+    })),
+  }));
+};
+
+// --- deterministic helpers -------------------------------------------------
+
+/**
+ * mulberry32 — small, fast, well-distributed 32-bit PRNG. Returns a function
+ * that yields a float in [0, 1). Used to replace `Math.random()` so card-trend
+ * noise is reproducible run-to-run.
+ */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 // Helper Functions
-export function getMetaData(format: MagicFormat, dateRange: DateRange): MetaData {
+export function getMetaData(
+  format: MagicFormat,
+  dateRange: DateRange,
+  options: MetaDataOptions = {},
+): MetaData {
   let archetypes: DeckArchetype[];
   let formatHealth: FormatHealth;
 
@@ -498,17 +546,18 @@ export function getMetaData(format: MagicFormat, dateRange: DateRange): MetaData
       break;
   }
 
-  const { rising, declining } = generateTrendData(archetypes);
+  const { rising, declining } = generateTrendData(archetypes, dateRange);
+  const nowFn = options.now ?? (() => new Date());
 
   return {
     format,
     dateRange,
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: nowFn().toISOString(),
     archetypes,
     formatHealth,
     risingArchetypes: rising,
     decliningArchetypes: declining,
-    cardTrends: generateCardTrends(),
+    cardTrends: generateCardTrends(dateRange, options.random),
   };
 }
 
