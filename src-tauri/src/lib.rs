@@ -2,6 +2,14 @@
 pub fn run() {
   tauri::Builder::default()
     .setup(|app| {
+      // Issue #1403: register the updater plugin on desktop only — mobile
+      // builds skip it entirely because the in-app update UX is desktop-
+      // scoped and the plugin is marked unsupported on Android/iOS.
+      #[cfg(desktop)]
+      {
+        app.handle()
+          .plugin(tauri_plugin_updater::Builder::new().build())?;
+      }
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

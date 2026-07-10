@@ -36,6 +36,15 @@ venv/
 # misc
 .DS_Store
 *.pem
+# Tauri updater signing keys (issue #1403). The PRIVATE key must NEVER be
+# committed — only the PUBLIC .pub counterpart belongs in the repo (as the
+# value of src-tauri/tauri.conf.json `plugins.updater.pubkey`). The CI
+# pipeline reads the private key from the TAURI_SIGNING_PRIVATE_KEY secret.
+*.key
+*.key.pub
+.tauri/
+src-tauri/target/
+src-tauri/gen/
 *.json
 # i18n message catalogs must be tracked
 !src/messages/*.json
