@@ -81,6 +81,16 @@ import {
   isTutorOracle,
   type TutorCandidate,
 } from "./decision-making/tutor-decision";
+// Issue #1386: difficulty-scaled activated-ability selection. The turn loop
+// consults these pure selectors to decide whether and when to activate
+// planeswalker loyalty abilities, equipment, and repeatable mana abilities.
+import {
+  parseLoyaltyAbilities,
+  chooseLoyaltyAbility,
+  chooseAbilityTiming,
+  classifyAbility,
+  type AbilityBoardContext,
+} from "./ability-activation";
 
 /**
  * AI Turn configuration
@@ -925,7 +935,25 @@ async function runMainPhase(
     }
   }
 
-  // Step 3: Cast other spells
+  // Step 3: Activate abilities (issue #1386) — planeswalker loyalty, equipment,
+  // repeatable mana abilities. Placed after creatures are cast so freshly-cast
+  // walkers can activate the turn they come down, and before other spells so
+  // tempo-positive activations (removal, buff) shape the combat step.
+  const abilityResult = await runAbilityActivation(
+    currentState,
+    aiPlayerId,
+    config,
+    _phase,
+  );
+  if (abilityResult.success) {
+    actions.push(...abilityResult.actions);
+    currentState = abilityResult.newState || currentState;
+    for (let i = 0; i < abilityResult.actions.length; i++) {
+      await delay(config.delayMs);
+    }
+  }
+
+  // Step 4: Cast other spells
   const spellResult = await castOtherSpells(currentState, aiPlayerId, config);
   if (spellResult.success) {
     actions.push(...spellResult.actions);
@@ -1459,6 +1487,274 @@ function resolveTutorTarget(
   config.onCommentary?.(decision.reason);
   return decision.choice;
 }
+/**
+ * Run activated-ability activation for the AI (issue #1386).
+ *
+ * Iterates the AI-controlled permanents on the battlefield and, for each one
+ * with a usable activated ability, consults the difficulty-scaled selectors in
+ * `ability-activation.ts`:
+ *
+ * - **Planeswalkers** — parse loyalty abilities and call {@link
+ *   chooseLoyaltyAbility} to pick the ability + timing.
+ * - **Equipment** — if the oracle text contains an `Equip` cost and there is an
+ *   unattached friendly creature, activate at a difficulty-scaled rate.
+ * - **Mana sources** (creatures/lands/artifacts with `{T}: Add ...`) — call
+ *   {@link chooseAbilityTiming} with kind `"mana"`.
+ *
+ * Only abilities whose timing matches the current phase are emitted. The
+ * function is defensive: missing zones, cards, or counters never crash the
+ * turn loop (mirrors the convention of `castCreatures` / `castOtherSpells`).
+ */
+async function runAbilityActivation(
+  gameState: EngineGameState,
+  aiPlayerId: PlayerId,
+  config: AITurnConfig,
+  phase: "precombat_main" | "postcombat_main",
+): Promise<{
+  success: boolean;
+  actions: AIAction[];
+  newState?: EngineGameState;
+}> {
+  const actions: AIAction[] = [];
+  let currentState = gameState;
+
+  const battlefield = currentState.zones.get(`${aiPlayerId}-battlefield`);
+  if (!battlefield) return { success: true, actions: [] };
+
+  const boardContext = buildAbilityBoardContext(
+    currentState,
+    aiPlayerId,
+  );
+
+  for (const cardId of battlefield.cardIds) {
+    const card = currentState.cards.get(cardId);
+    if (!card) continue;
+    if (card.isTapped) continue; // Tapped permanents cannot activate {T} abilities.
+
+    const typeLine = card.cardData.type_line.toLowerCase();
+    const oracleText =
+      (card.cardData as { oracle_text?: string }).oracle_text ?? "";
+
+    // --- Planeswalker loyalty abilities ---
+    if (typeLine.includes("planeswalker")) {
+      const abilities = parseLoyaltyAbilities(oracleText);
+      if (abilities.length === 0) continue;
+
+      // Read the current loyalty off the counters (defaults to the printed
+      // loyalty if counters aren't initialised yet).
+      const counters = Array.isArray(card.counters) ? card.counters : [];
+      const loyaltyCounter = counters.find((c) => c.type === "loyalty");
+      const loyalty =
+        loyaltyCounter?.count ??
+        parseInt(String(card.cardData.loyalty ?? "0"), 10) ??
+        0;
+
+      const walkerContext: AbilityBoardContext = {
+        ...boardContext,
+        loyalty,
+      };
+
+      const decision = chooseLoyaltyAbility(
+        abilities,
+        walkerContext,
+        config.difficulty,
+        config.format,
+        phase,
+      );
+
+      // Only emit if the timing matches the current phase.
+      const phaseMatch =
+        (phase === "precombat_main" && decision.timing === "pre_combat") ||
+        (phase === "postcombat_main" &&
+          (decision.timing === "post_combat" ||
+            decision.timing === "end_step"));
+      if (
+        decision.abilityIndex === null ||
+        decision.ability === null ||
+        !phaseMatch
+      ) {
+        continue;
+      }
+
+      const result = await executeAIAction(
+        currentState,
+        {
+          type: "activate_ability",
+          cardId,
+          parameters: { loyaltyDelta: decision.ability.delta },
+          reasoning: decision.reason,
+        },
+        aiPlayerId,
+      );
+
+      if (result.success && result.newState) {
+        currentState = result.newState;
+        actions.push({
+          type: "activate_ability",
+          cardId,
+          parameters: { loyaltyDelta: decision.ability.delta },
+          reasoning: decision.reason,
+        });
+        config.onCommentary?.(
+          `${card.cardData.name}: ${formatLoyaltyDelta(decision.ability.delta)}`,
+        );
+      }
+      continue;
+    }
+
+    // --- Equipment activation (Equip cost) ---
+    if (
+      typeLine.includes("equipment") ||
+      (/equip/i.test(oracleText) && typeLine.includes("artifact"))
+    ) {
+      // Equipment needs a friendly creature to attach to.
+      if (!boardContext.aiHasCreature) continue;
+      const equipKind = classifyAbility("equip");
+      const timing = chooseAbilityTiming(
+        equipKind,
+        boardContext,
+        config.difficulty,
+        config.format,
+        phase,
+      );
+      const phaseMatch =
+        (phase === "precombat_main" && timing === "pre_combat") ||
+        (phase === "postcombat_main" && timing === "post_combat");
+      if (timing === "not_activated" || !phaseMatch) continue;
+
+      const result = await executeAIAction(
+        currentState,
+        {
+          type: "activate_ability",
+          cardId,
+          parameters: { abilityKind: "equip" },
+          reasoning: `${config.difficulty} AI equips (${timing}).`,
+        },
+        aiPlayerId,
+      );
+      if (result.success && result.newState) {
+        currentState = result.newState;
+        actions.push({
+          type: "activate_ability",
+          cardId,
+          parameters: { abilityKind: "equip" },
+          reasoning: `${config.difficulty} AI equips.`,
+        });
+        config.onCommentary?.(`Equips ${card.cardData.name}`);
+      }
+      continue;
+    }
+
+    // --- Repeatable mana abilities ({T}: Add ...) ---
+    if (/\{t\}:\s*add/i.test(oracleText)) {
+      const timing = chooseAbilityTiming(
+        "mana",
+        boardContext,
+        config.difficulty,
+        config.format,
+        phase,
+      );
+      const phaseMatch =
+        (phase === "precombat_main" && timing === "pre_combat") ||
+        (phase === "postcombat_main" && timing === "post_combat");
+      if (timing === "not_activated" || !phaseMatch) continue;
+
+      const result = await executeAIAction(
+        currentState,
+        {
+          type: "activate_ability",
+          cardId,
+          parameters: { abilityKind: "mana" },
+          reasoning: `${config.difficulty} AI activates mana ability.`,
+        },
+        aiPlayerId,
+      );
+      if (result.success && result.newState) {
+        currentState = result.newState;
+        actions.push({
+          type: "activate_ability",
+          cardId,
+          parameters: { abilityKind: "mana" },
+          reasoning: `${config.difficulty} AI activates mana ability.`,
+        });
+      }
+    }
+  }
+
+  return { success: true, actions, newState: currentState };
+}
+
+/**
+ * Build the board-snapshot {@link AbilityBoardContext} the ability selectors
+ * need, projected out of the engine game state. Defensive against missing
+ * zones/players so a degenerate board never crashes the turn loop.
+ */
+function buildAbilityBoardContext(
+  state: EngineGameState,
+  aiPlayerId: PlayerId,
+): AbilityBoardContext {
+  const opponentId = getOpponentId(state, aiPlayerId);
+  const oppMaxToughness = bestCreatureToughness(state, opponentId);
+
+  const aiPlayer = state.players.get(aiPlayerId);
+  const oppPlayer = state.players.get(opponentId);
+  const aiLife = aiPlayer?.life ?? 20;
+  const oppLife = oppPlayer?.life ?? 20;
+
+  const aiCreatureCount = countCreatures(state, aiPlayerId);
+  const oppCreatureCount = countCreatures(state, opponentId);
+
+  return {
+    loyalty: 0, // Overridden per-walker by the caller.
+    opponentHasCreature: oppCreatureCount > 0,
+    opponentMaxToughness: oppMaxToughness,
+    aiHasCreature: aiCreatureCount > 0,
+    aiBehind:
+      aiCreatureCount < oppCreatureCount || aiLife < oppLife - 5,
+  };
+}
+
+/**
+ * Read the highest toughness among a player's creatures, or `0` if none.
+ * Used to judge whether a removal ability can actually kill something.
+ */
+function bestCreatureToughness(
+  state: EngineGameState,
+  playerId: PlayerId,
+): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  if (!zone) return 0;
+  let best = 0;
+  for (const cardId of zone.cardIds) {
+    const card = state.cards.get(cardId);
+    if (!card) continue;
+    const typeLine = card.cardData.type_line.toLowerCase();
+    if (!typeLine.includes("creature")) continue;
+    const toughness = parseStat(card.cardData.toughness);
+    if (toughness > best) best = toughness;
+  }
+  return best;
+}
+
+/**
+ * Parse a power/toughness string like `"3"` or `"*"` into a number. Star and
+ * non-numeric values fall back to `0` so they never break the comparison.
+ */
+function parseStat(value: string | number | undefined): number {
+  if (value === undefined) return 0;
+  if (typeof value === "number") return value;
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? 0 : n;
+}
+
+/**
+ * Format a loyalty delta for commentary ("+1", "-2"). The unicode minus is
+ * avoided so the log stays ASCII-clean.
+ */
+function formatLoyaltyDelta(delta: number): string {
+  return delta > 0 ? `+${delta}` : `${delta}`;
+}
+
 function getOpponentId(
   gameState: EngineGameState,
   playerId: PlayerId,

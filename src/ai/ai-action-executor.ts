@@ -127,6 +127,15 @@ export async function executeAIAction(
       case "pass_priority":
         return executePassPriority(gameState, aiPlayerId);
 
+      // Issue #1386: activated-ability action (planeswalker loyalty, equipment,
+      // mana-ability activation). The turn loop emits this after consulting the
+      // difficulty-scaled selectors in `ability-activation.ts`. We model the
+      // activation as a no-mutation success: the underlying rules engine
+      // resolves the loyalty/equipment effect separately (the AI is recording
+      // its *intent* here, mirroring how `cast_spell` delegates to the engine).
+      case "activate_ability":
+        return executeActivateAbility(gameState, action);
+
       case "no_action":
         return { success: true, newState: gameState, action };
 
@@ -432,6 +441,86 @@ function executePassPriority(
     success: true,
     newState,
     action: { type: "pass_priority" },
+  };
+}
+
+/**
+ * Execute an activated-ability action (issue #1386).
+ *
+ * Planeswalker loyalty abilities, equipment activation, and repeatable mana
+ * abilities are activated abilities. The AI records its intent via this
+ * action; the underlying rules engine resolves the effect (loyalty counter
+ * adjustment, equip, mana production) separately.
+ *
+ * For planeswalker loyalty abilities, we adjust the loyalty counters here so
+ * the AI's decision is reflected on the board (the walker gains/loses loyalty
+ * per the chosen ability's delta, exposed via `parameters.loyaltyDelta`).
+ * This keeps the replay self-consistent without requiring a full
+ * activated-ability resolver in the engine.
+ *
+ * Defensive: returns a no-mutation success when the card or counters are
+ * missing so the turn loop never crashes on a degenerate state.
+ */
+function executeActivateAbility(
+  gameState: EngineGameState,
+  action: AIAction,
+): AIActionResult {
+  const cardId = action.cardId;
+  if (!cardId) {
+    return {
+      success: false,
+      error: "activate_ability requires a cardId",
+      action,
+    };
+  }
+
+  const card = gameState.cards.get(cardId);
+  if (!card) {
+    return {
+      success: false,
+      error: `Card not found: ${cardId}`,
+      action,
+    };
+  }
+
+  let newState = gameState;
+
+  // Planeswalker loyalty abilities: apply the loyalty delta so the walker's
+  // counters reflect the activation. The delta is threaded through
+  // `parameters.loyaltyDelta` by the turn loop.
+  const loyaltyDelta = action.parameters?.loyaltyDelta;
+  if (
+    typeof loyaltyDelta === "number" &&
+    card.cardData.type_line.toLowerCase().includes("planeswalker")
+  ) {
+    const counters = Array.isArray(card.counters) ? card.counters : [];
+    const loyaltyCounter = counters.find((c) => c.type === "loyalty");
+    const current = loyaltyCounter?.count ?? 0;
+    const next = Math.max(0, current + loyaltyDelta);
+
+    // Return a new state with the updated loyalty counters (immutable update).
+    const updatedCard = {
+      ...card,
+      counters: [
+        ...counters.filter((c) => c.type !== "loyalty"),
+        { type: "loyalty", count: next },
+      ],
+    };
+    const updatedCards = new Map(gameState.cards);
+    updatedCards.set(cardId, updatedCard);
+    newState = { ...gameState, cards: updatedCards };
+  }
+
+  return {
+    success: true,
+    newState,
+    action: {
+      ...action,
+      type: "activate_ability",
+      reasoning:
+        action.reasoning ??
+        `Activated ability on ${card.cardData.name}`,
+    },
   };
 }
 
