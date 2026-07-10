@@ -300,6 +300,17 @@
       outline-offset: 2px !important;
     }
 
+    /* Confidence tier badge (issue #1447): the colored tier pill from
+       sideboard-recommender-panel.tsx carries its meaning in color +
+       icon + word, but under forced colors the color cue is wiped. Promote
+       the pill to a visible Highlight outline so the screen-reader node
+       (role="status", aria-label="… confidence") still has an obvious
+       visual border tied to its tier. */
+    [data-confidence] {
+      outline: 2px solid Highlight !important;
+      outline-offset: 2px !important;
+    }
+
     /* Disable animations that don't carry information once color is the
        user's responsibility. Users who rely on forced colors often pair
        the preference with reduced motion. */

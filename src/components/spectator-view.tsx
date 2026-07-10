@@ -12,6 +12,7 @@ import {
   MessageCircle,
   Settings,
   Crown,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Spectator, SpectatorPermissions } from "@/lib/spectator";
@@ -50,7 +51,11 @@ export function SpectatorView({
   }, [spectators, permissions.isHidden, currentSpectatorId]);
 
   return (
-    <Card className={className}>
+    <Card
+      className={className}
+      role="region"
+      aria-label={`Spectator list (${visibleSpectators.length})`}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -103,37 +108,71 @@ export function SpectatorView({
             <p className="text-sm">No spectators yet</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {visibleSpectators.map((spectator) => (
-              <div
-                key={spectator.id}
-                className={cn(
-                  "flex items-center justify-between p-2 rounded-md",
-                  spectator.id === currentSpectatorId && "bg-primary/10",
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                    <span className="text-sm font-medium">
-                      {spectator.name.charAt(0).toUpperCase()}
-                    </span>
+          <ul
+            // `role="list"` is paired with the semantic <ul> so screen readers
+            // expose the list structure even when CSS strips the marker.
+            // Issue #1447 — WCAG 1.3.1 (Info and Relationships).
+            role="list"
+            aria-label={`Spectators (${visibleSpectators.length})`}
+            className="space-y-2"
+          >
+            {visibleSpectators.map((spectator) => {
+              const isCurrent = spectator.id === currentSpectatorId;
+              return (
+                <li
+                  key={spectator.id}
+                  aria-current={isCurrent ? "true" : undefined}
+                  // The previous build conveyed "you are this spectator" with
+                  // a `bg-primary/10` background only — invisible to SR users
+                  // and forbidden by WCAG 1.4.1 (Use of Color). We now pair
+                  // the tint with a visible ring + a leading icon plus a
+                  // sr-only phrase so the same state is conveyed three ways.
+                  // Issue #1447 — WCAG 1.4.1.
+                  data-current={isCurrent ? "true" : undefined}
+                  className={cn(
+                    "flex items-center justify-between p-2 rounded-md border border-transparent",
+                    isCurrent &&
+                      "bg-primary/10 border-primary ring-2 ring-primary/40",
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                      <span className="text-sm font-medium">
+                        {spectator.name.charAt(0).toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium flex items-center gap-1">
+                        {isCurrent && (
+                          <User
+                            className="w-3 h-3 text-primary"
+                            aria-hidden="true"
+                          />
+                        )}
+                        <span>
+                          {isCurrent && (
+                            <span className="sr-only">
+                              Current spectator —{" "}
+                            </span>
+                          )}
+                          {spectator.name}
+                        </span>
+                      </p>
+                      {isCurrent && (
+                        <p className="text-xs text-muted-foreground">You</p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">{spectator.name}</p>
-                    {spectator.id === currentSpectatorId && (
-                      <p className="text-xs text-muted-foreground">You</p>
-                    )}
-                  </div>
-                </div>
-                {spectator.isHidden && (
-                  <Badge variant="outline" className="text-xs">
-                    <EyeOff className="w-3 h-3 mr-1" />
-                    Hidden
-                  </Badge>
-                )}
-              </div>
-            ))}
-          </div>
+                  {spectator.isHidden && (
+                    <Badge variant="outline" className="text-xs">
+                      <EyeOff className="w-3 h-3 mr-1" />
+                      Hidden
+                    </Badge>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </CardContent>
     </Card>

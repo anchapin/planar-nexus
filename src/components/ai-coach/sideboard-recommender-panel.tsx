@@ -4,15 +4,52 @@ import { useSideboardRecommender } from '@/hooks/use-sideboard-recommender';
 import type { MagicFormat } from '@/lib/meta';
 import type { SideboardSwap, MatchupSideboardGuide } from '@/lib/sideboard-recommender';
 
-function ConfidenceBadge({ confidence }: { confidence: SideboardSwap['confidence'] }) {
+/**
+ * Confidence badge — adds accessibility attributes mandated by issue #1447:
+ * - `role="status"` so screen readers announce tier changes as a polite update.
+ * - `aria-label="<tier> confidence"` because the visible word alone ("high")
+ *   is a bare status without noun context.
+ * - A leading icon (✓ ⚠ ✗) paired with the color so WCAG 1.4.1
+ *   (Use of Color) is satisfied: the tier is conveyed by three cues
+ *   (color, icon, word), not by color alone.
+ * - `data-confidence` is the hook the global forced-colors CSS rule
+ *   (`src/app/globals.css`) keys off to promote the badge to a Highlight
+ *   outline under Windows High Contrast Mode (issue #1269).
+ */
+function ConfidenceBadge({
+  confidence,
+}: {
+  confidence: SideboardSwap['confidence'];
+}) {
   const colors: Record<SideboardSwap['confidence'], string> = {
     high: 'bg-green-100 text-green-800 border-green-200',
     medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     low: 'bg-red-100 text-red-800 border-red-200',
   };
+  const icon: Record<SideboardSwap['confidence'], string> = {
+    high: '✓',
+    medium: '⚠',
+    low: '✗',
+  };
+  const iconLabel: Record<SideboardSwap['confidence'], string> = {
+    high: 'check',
+    medium: 'warning',
+    low: 'cross',
+  };
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium border ${colors[confidence]}`}>
-      {confidence}
+    <span
+      role="status"
+      aria-label={`${confidence} confidence`}
+      data-confidence={confidence}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium border ${colors[confidence]}`}
+    >
+      {/* Decorative glyph — the `aria-label` on the wrapper carries the
+          spoken form ("high confidence"). Marking the glyph `aria-hidden`
+          prevents double-reading by screen readers. */}
+      <span aria-hidden="true" title={iconLabel[confidence]}>
+        {icon[confidence]}
+      </span>
+      <span>{confidence}</span>
     </span>
   );
 }
@@ -40,7 +77,16 @@ function SwapList({
       <h4 className="text-sm font-semibold text-gray-700">
         {icon} {label} ({swaps.reduce((sum, s) => sum + s.count, 0)} cards)
       </h4>
-      <ul className="space-y-1">
+      <ul
+        // `role="list"` is paired with the semantic <ul> so screen readers
+        // expose the list structure even when CSS resets the marker.
+        // Issue #1447 — WCAG 1.3.1 (Info and Relationships).
+        role="list"
+        aria-label={
+          direction === 'in' ? 'Cards to bring in' : 'Cards to take out'
+        }
+        className="space-y-1"
+      >
         {swaps.map((swap, i) => (
           <li key={`${swap.cardName}-${i}`} className="flex items-start gap-2 text-sm">
             <span className="font-mono text-xs bg-gray-100 rounded px-1.5 py-0.5 shrink-0">
