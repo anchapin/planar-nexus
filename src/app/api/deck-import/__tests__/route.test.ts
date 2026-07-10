@@ -409,3 +409,97 @@ describe("POST /api/deck-import — failure paths", () => {
     expect(data.decklist).toContain("4 Llanowar Elves");
   });
 });
+
+describe("POST /api/deck-import — SSRF / origin-spoofing (issue #1392)", () => {
+  // These cases must be rejected BEFORE any outbound fetch occurs, so no
+  // fetch mock is configured — a fetch call would fail the test.
+  it.each([
+    "https://moxfield.com.attacker.com/x",
+    "https://attacker-moxfield.com/x",
+    "https://moxfieldcom.attacker.com/x",
+    "https://moxfield.com.evil.tld/decks/abc",
+    "https://mtggoldfish.com.attacker.io/deck/1",
+    "https://archidekt.attacker.com/decks/42",
+    "https://tappedout.net.evil.net/mtg-decks/x/",
+  ])(
+    "rejects the spoofed hostname %s with 400 'Unsupported website'",
+    async (url) => {
+      const res = await POST(makeRequest({ url }));
+      expect(res.status).toBe(400);
+      const data = (await (res as unknown as TestResponse).json()) as any;
+      expect(data.error).toBe("Unsupported website");
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    "https://moxfield.com/decks/abc123",
+    "https://www.moxfield.com/decks/abc123",
+    "https://MTGGOLDFISH.COM/deck/123",
+    "https://www.tappedout.net/mtg-decks/some-deck/",
+    "https://archidekt.com/decks/42",
+  ])("accepts the valid origin %s (no fetch rejection on hostname)", async (
+    url,
+  ) => {
+    // A valid hostname must clear the origin check and proceed to fetch.
+    // Provide a generic 200 so the pipeline does not 500; we only assert
+    // here that the request was NOT rejected as "Unsupported website".
+    fetchMock.mockResolvedValue(
+      new TestResponse("<html><body>no deck here</body></html>", {
+        status: 200,
+        statusText: "OK",
+      }) as unknown as Response,
+    );
+
+    const res = await POST(makeRequest({ url }));
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).not.toBe("Unsupported website");
+    expect(data.error).not.toBe("Unsupported URL scheme");
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("rejects a URL whose origin/hostname is missing entirely (no url field)", async () => {
+    const res = await POST(makeRequest({}));
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toBe("URL is required");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "file:///etc/passwd",
+    "data:text/html,<script>evil</script>",
+    "gopher://internal-host:6379/_FLUSHALL",
+    "ftp://moxfield.com/decks/abc",
+  ])("rejects the unsafe URL scheme %s with 400", async (url) => {
+    const res = await POST(makeRequest({ url }));
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toBe("Unsupported URL scheme");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects embedded credentials in the URL with 400", async () => {
+    const res = await POST(
+      makeRequest({ url: "https://user:pass@moxfield.com/decks/abc" }),
+    );
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toBe("URL must not contain credentials");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an IDN homoglyph subdomain of a supported domain with 400", async () => {
+    // xn--c1yn36f.moxfield.com is a valid punycode hostname that ends with
+    // ".moxfield.com", so the suffix test alone would ACCEPT it. The xn--
+    // homoglyph guard in isSupportedHostname must reject it. This is the
+    // exact spoofing vector the guard exists to defeat.
+    const res = await POST(
+      makeRequest({ url: "https://xn--c1yn36f.moxfield.com/decks/abc" }),
+    );
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toBe("Unsupported website");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
