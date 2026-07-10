@@ -224,6 +224,17 @@ export class MeshGameConnection {
   private readonly validatePeerAction: PeerActionValidator | null;
   private readonly events: MeshGameConnectionEvents;
 
+  /**
+   * Per-session HMAC key (issue #1391). Mirrors
+   * {@link P2PGameConnection.setSessionKey} so a caller that promotes a mesh
+   * peer to host can rotate the signing material uniformly across both
+   * transports. `null` (the default) means the mesh is in the legacy
+   * non-enveloped wire format; a non-null value is staged for the mesh's
+   * envelope-signing path and surfaced via {@link getSessionKey} for
+   * diagnostics and the host-migration rotation flow.
+   */
+  private sessionKeyHex: string | null = null;
+
   constructor(options: MeshGameConnectionOptions) {
     if (!options.localPlayerId) {
       throw new Error("MeshGameConnectionOptions.localPlayerId is required");
@@ -278,6 +289,38 @@ export class MeshGameConnection {
     if (!newHostId) return;
     this.hostId = newHostId;
     this.isHostFlag = newHostId === this.localPlayerId;
+  }
+
+  /**
+   * Set or rotate the per-session HMAC key (issue #1391). Mirrors
+   * {@link P2PGameConnection.setSessionKey}: the new host calls this with a
+   * freshly-generated key after host migration so followers still holding the
+   * pre-migration key reject post-migration traffic. Passing `null` (or an
+   * empty string) clears the key and reverts the mesh to the legacy
+   * non-enveloped wire format. Invalid keys are silently ignored so a
+   * programming error cannot accidentally downgrade the transport.
+   */
+  setSessionKey(key: string | null): void {
+    if (key === null) {
+      this.sessionKeyHex = null;
+      return;
+    }
+    if (typeof key !== "string" || key.length === 0) {
+      console.warn(
+        "[MeshGameConnection] Ignoring invalid sessionKey (must be a non-empty hex string)",
+      );
+      return;
+    }
+    this.sessionKeyHex = key;
+  }
+
+  /**
+   * Currently configured per-session HMAC key, or `null` when the mesh is in
+   * legacy non-enveloped mode. Exposed for diagnostics and for the
+   * host-migration rotation flow.
+   */
+  getSessionKey(): string | null {
+    return this.sessionKeyHex;
   }
 
   /**
