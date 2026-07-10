@@ -359,24 +359,49 @@ export function SideboardPlanEditor({
               </Button>
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
-              {inCards.map((card, index) => (
-                <Badge
-                  key={index}
-                  variant="outline"
-                  className="bg-green-50 pl-2 pr-1 py-1"
+              {inCards.length === 0 ? (
+                <p
+                  className="text-xs text-muted-foreground italic"
+                  // Visually-hidden cue so SR users get the same "no cards
+                  // yet" message that sighted users read. Mirrors the
+                  // empty-state convention established in `SpectatorView`.
+                  aria-label="No cards to side in yet"
                 >
-                  {card.cardName} x{card.count}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 ml-1 text-muted-foreground hover:text-red-500"
-                    onClick={() => handleRemoveInCard(index)}
-                    aria-label="Remove card from side in"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </Badge>
-              ))}
+                  No cards to side in yet
+                </p>
+              ) : (
+                <ul
+                  // `role="list"` is paired with the semantic <ul> so screen
+                  // readers expose the list structure even when CSS resets
+                  // the marker. Issue #1447 — WCAG 1.3.1.
+                  role="list"
+                  aria-label="Cards to side in"
+                  className="flex flex-wrap gap-2"
+                >
+                  {inCards.map((card, index) => (
+                    <li
+                      key={index}
+                      className="inline-flex"
+                    >
+                      <Badge
+                        variant="outline"
+                        className="bg-green-50 pl-2 pr-1 py-1"
+                      >
+                        {card.cardName} x{card.count}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 ml-1 text-muted-foreground hover:text-red-500"
+                          onClick={() => handleRemoveInCard(index)}
+                          aria-label="Remove card from side in"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 
@@ -419,24 +444,43 @@ export function SideboardPlanEditor({
               </Button>
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
-              {outCards.map((card, index) => (
-                <Badge
-                  key={index}
-                  variant="outline"
-                  className="bg-red-50 pl-2 pr-1 py-1"
+              {outCards.length === 0 ? (
+                <p
+                  className="text-xs text-muted-foreground italic"
+                  aria-label="No cards to side out yet"
                 >
-                  {card.cardName} x{card.count}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 ml-1 text-muted-foreground hover:text-red-500"
-                    onClick={() => handleRemoveOutCard(index)}
-                    aria-label="Remove card from side out"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </Badge>
-              ))}
+                  No cards to side out yet
+                </p>
+              ) : (
+                <ul
+                  role="list"
+                  aria-label="Cards to side out"
+                  className="flex flex-wrap gap-2"
+                >
+                  {outCards.map((card, index) => (
+                    <li
+                      key={index}
+                      className="inline-flex"
+                    >
+                      <Badge
+                        variant="outline"
+                        className="bg-red-50 pl-2 pr-1 py-1"
+                      >
+                        {card.cardName} x{card.count}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-4 w-4 ml-1 text-muted-foreground hover:text-red-500"
+                          onClick={() => handleRemoveOutCard(index)}
+                          aria-label="Remove card from side out"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 
