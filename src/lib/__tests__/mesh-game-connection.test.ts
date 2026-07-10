@@ -888,3 +888,43 @@ describe("MeshGameConnection — teardown", () => {
     }).not.toThrow();
   });
 });
+
+describe("MeshGameConnection — session-key rotation API (#1391)", () => {
+  it("defaults to no key (legacy mode)", () => {
+    const { mesh } = newMesh();
+    expect(mesh.getSessionKey()).toBeNull();
+  });
+
+  it("setSessionKey adopts a fresh key at runtime (host-migration path)", () => {
+    const { mesh } = newMesh();
+    const freshKey = "d".repeat(64);
+    mesh.setSessionKey(freshKey);
+    expect(mesh.getSessionKey()).toBe(freshKey);
+  });
+
+  it("setSessionKey rotates an existing key so the previous key is replaced", () => {
+    const { mesh } = newMesh();
+    const oldKey = "a".repeat(64);
+    const newKey = "c".repeat(64);
+    mesh.setSessionKey(oldKey);
+    expect(mesh.getSessionKey()).toBe(oldKey);
+    mesh.setSessionKey(newKey);
+    expect(mesh.getSessionKey()).toBe(newKey);
+    expect(mesh.getSessionKey()).not.toBe(oldKey);
+  });
+
+  it("setSessionKey(null) clears the key (reverts to legacy mode)", () => {
+    const { mesh } = newMesh();
+    mesh.setSessionKey("a".repeat(64));
+    mesh.setSessionKey(null);
+    expect(mesh.getSessionKey()).toBeNull();
+  });
+
+  it("setSessionKey ignores invalid keys (empty string) so the existing key survives", () => {
+    const { mesh } = newMesh();
+    const existing = "a".repeat(64);
+    mesh.setSessionKey(existing);
+    mesh.setSessionKey("");
+    expect(mesh.getSessionKey()).toBe(existing);
+  });
+});
