@@ -63,6 +63,12 @@ interface ImportExportControlsProps {
   isImporting?: boolean;
   deckName?: string;
   deckCards?: Array<{ name: string; quantity: number }>;
+  /**
+   * Optional sideboard pool rendered as a separate "Sideboard" key in the
+   * JSON export. Omit (or pass []) for formats that don't use a sideboard
+   * (Commander). See #1402.
+   */
+  sideboardCards?: Array<{ name: string; quantity: number }>;
 }
 
 export function ImportExportControls({
@@ -74,6 +80,7 @@ export function ImportExportControls({
   isImporting = false,
   deckName,
   deckCards,
+  sideboardCards,
 }: ImportExportControlsProps) {
   const [importText, setImportText] = useState("");
   const [importFormat, setImportFormat] = useState<DecklistFormat>("standard");
@@ -221,12 +228,21 @@ export function ImportExportControls({
       return;
     }
 
-    const exportData = {
+    // Round-trip the sideboard alongside mainboard so constructed formats
+    // can re-import without losing best-of-3 sideboard plans. Issue #1402.
+    const exportData: {
+      name: string;
+      cards: Array<{ name: string; quantity: number }>;
+      sideboard?: Array<{ name: string; quantity: number }>;
+      exportedAt: string;
+    } = {
       name: deckName || "My Deck",
-      format: "commander",
       cards: deckCards,
       exportedAt: new Date().toISOString(),
     };
+    if (sideboardCards && sideboardCards.length > 0) {
+      exportData.sideboard = sideboardCards;
+    }
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: "application/json",

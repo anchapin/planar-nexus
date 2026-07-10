@@ -11,6 +11,7 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
 import {
   importDecklistClient,
@@ -19,8 +20,10 @@ import {
 import { type DecklistFormat } from "@/lib/decklist-utils";
 import {
   formatRules,
+  formatUsesSideboard,
   getCommanderFromDeck,
   getGameModeIdFromFormatName,
+  getSideboardSize,
   validateDeckFormat,
   getFormatDisplayName,
   validateStandardRotation,
@@ -35,6 +38,7 @@ import { CardSearch } from "./_components/card-search";
 import { CardGridSkeleton } from "./_components/card-grid-skeleton";
 import { DeckBuilderSkeleton } from "./_components/deck-builder-skeleton";
 import { DeckList } from "./_components/deck-list";
+import { SideboardList } from "./_components/sideboard-list";
 import { ImportExportControls } from "./_components/import-export-controls";
 import { useDeckBuilderShortcuts } from "./_lib/use-deck-builder-shortcuts";
 import { BannedCardAlternatives } from "./_components/banned-card-alternatives";
@@ -79,6 +83,11 @@ const EMPTY_DECKS: SavedDeck[] = [];
 
 export default function DeckBuilderPage() {
   const [deck, setDeck] = useState<DeckCard[]>([]);
+  /**
+   * Constructed-format sideboard pool. Empty for Commander-family formats
+   * (they don't have a sideboard per the format rules). See issue #1402.
+   */
+  const [sideboard, setSideboard] = useState<DeckCard[]>([]);
   const [deckName, setDeckName] = useState("New Deck");
   const [format, setFormat] = useState<Format>("commander");
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
@@ -149,14 +158,33 @@ export default function DeckBuilderPage() {
               .map((c) => ({ id: c.id, count: c.count }))
               .sort((a, b) => a.id.localeCompare(b.id)),
           );
+        // Sideboard round-trips per #1402; pre-#1402 SavedDecks have no
+        // sideboard field so we compare against [] in that case.
+        const activeSideboard = activeDeck.sideboard ?? [];
+        const isSideboardChanged =
+          JSON.stringify(
+            activeSideboard
+              .map((c) => ({ id: c.id, count: c.count }))
+              .sort((a, b) => a.id.localeCompare(b.id)),
+          ) !==
+          JSON.stringify(
+            sideboard
+              .map((c) => ({ id: c.id, count: c.count }))
+              .sort((a, b) => a.id.localeCompare(b.id)),
+          );
 
-        setIsDeckSaved(!isNameChanged && !isFormatChanged && !isCardsChanged);
+        setIsDeckSaved(
+          !isNameChanged &&
+            !isFormatChanged &&
+            !isCardsChanged &&
+            !isSideboardChanged,
+        );
       }
     } else {
       // New deck is never "saved"
       setIsDeckSaved(false);
     }
-  }, [deck, deckName, format, activeDeckId, savedDecks]);
+  }, [deck, sideboard, deckName, format, activeDeckId, savedDecks]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -279,6 +307,7 @@ export default function DeckBuilderPage() {
 
   const clearDeck = useCallback(() => {
     setDeck([]);
+    setSideboard([]);
     setDeckName("New Deck");
     setActiveDeckId(null);
     toast({
@@ -309,6 +338,106 @@ export default function DeckBuilderPage() {
     },
     [removeCardFromDeck, handleDeckChange],
   );
+
+  // Whether the active format supports a sideboard (Modern/Standard/etc).
+  // The flag drives the Sideboard tab visibility, the sideboard-array
+  // round-trip and the JSON export.
+  const supportsSideboard = formatUsesSideboard(format);
+  const sideboardMaxSize = getSideboardSize(format);
+
+  /**
+   * Increments one copy of a card in the sideboard, enforcing both the
+   * per-card copy limit (rules.maxCopies, e.g. 4) and the format's
+   * sideboardSize cap. Mirrors the addCardToDeck toast pattern so the user
+   * gets the same descriptive feedback. See issue #1402.
+   */
+  const addCardToSideboard = useCallback(
+    (card: ScryfallCard) => {
+      if (!supportsSideboard) return;
+
+      const gameModeId = getGameModeIdFromFormatName(format);
+      const rules = formatRules[gameModeId as keyof typeof formatRules];
+
+      const legality = checkCardLegality(card, format, formatLabel);
+      if (legality.isIllegal) {
+        toast({
+          variant: "destructive",
+          title:
+            legality.status === "banned"
+              ? "Banned Card"
+              : "Format-Illegal Card",
+          description: `${legality.reason} It cannot be added to a ${formatLabel} sideboard.`,
+        });
+        return;
+      }
+
+      setSideboard((prevSideboard) => {
+        const existingCard = prevSideboard.find((c) => c.id === card.id);
+        const isBasicResource = card.type_line?.includes("Basic Resource");
+
+        if (
+          !isBasicResource &&
+          existingCard &&
+          existingCard.count >= rules.maxCopies
+        ) {
+          toast({
+            variant: "destructive",
+            title: "Card Limit Reached",
+            description: `You can only have ${rules.maxCopies} cop${rules.maxCopies > 1 ? "ies" : "y"} of "${card.name}" in a sideboard.`,
+          });
+          return prevSideboard;
+        }
+
+        const totalCards = prevSideboard.reduce(
+          (sum, c) => sum + c.count,
+          0,
+        );
+        if (
+          sideboardMaxSize > 0 &&
+          totalCards >= sideboardMaxSize
+        ) {
+          toast({
+            variant: "destructive",
+            title: "Sideboard Limit Reached",
+            description: `A ${formatLabel} sideboard cannot have more than ${sideboardMaxSize} cards.`,
+          });
+          return prevSideboard;
+        }
+
+        if (existingCard) {
+          return prevSideboard.map((c) =>
+            c.id === card.id ? { ...c, count: c.count + 1 } : c,
+          );
+        }
+        return [...prevSideboard, { ...card, count: 1 }];
+      });
+      setIsDeckSaved(false);
+    },
+    [
+      supportsSideboard,
+      format,
+      formatLabel,
+      sideboardMaxSize,
+      toast,
+    ],
+  );
+
+  /**
+   * Decrement one copy of a card from the sideboard, removing the row
+   * entirely when the count reaches zero. Mirrors `removeCardFromDeck`.
+   */
+  const removeCardFromSideboard = useCallback((cardId: string) => {
+    setSideboard((prevSideboard) => {
+      const existingCard = prevSideboard.find((c) => c.id === cardId);
+      if (existingCard && existingCard.count > 1) {
+        return prevSideboard.map((c) =>
+          c.id === cardId ? { ...c, count: c.count - 1 } : c,
+        );
+      }
+      return prevSideboard.filter((c) => c.id !== cardId);
+    });
+    setIsDeckSaved(false);
+  }, []);
 
   // Ctrl/Cmd+N — documented as "New Deck". Wraps clearDeck so a future confirm
   // prompt can be added in one place.
@@ -455,7 +584,14 @@ export default function DeckBuilderPage() {
       // Update existing deck
       const updatedDecks = savedDecks.map((d) =>
         d.id === activeDeckId
-          ? { ...d, name: deckName, format, cards: deck, updatedAt: now }
+          ? {
+              ...d,
+              name: deckName,
+              format,
+              cards: deck,
+              sideboard,
+              updatedAt: now,
+            }
           : d,
       );
       setSavedDecks(updatedDecks);
@@ -470,6 +606,7 @@ export default function DeckBuilderPage() {
         name: deckName,
         format,
         cards: deck,
+        sideboard,
         createdAt: now,
         updatedAt: now,
       };
@@ -485,6 +622,9 @@ export default function DeckBuilderPage() {
 
   const loadDeck = (deckToLoad: SavedDeck) => {
     setDeck(deckToLoad.cards);
+    // Pre-#1402 SavedDecks have no sideboard field — fall back to an empty
+    // pool so the round-trip is non-destructive for legacy payloads.
+    setSideboard(deckToLoad.sideboard ?? []);
     setDeckName(deckToLoad.name);
     setFormat(deckToLoad.format);
     setActiveDeckId(deckToLoad.id);
@@ -574,6 +714,10 @@ export default function DeckBuilderPage() {
               name: card.name,
               quantity: card.count,
             }))}
+            sideboardCards={sideboard.map((card) => ({
+              name: card.name,
+              quantity: card.count,
+            }))}
           />
         </div>
         <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -609,13 +753,28 @@ export default function DeckBuilderPage() {
               </Alert>
             )}
             <Tabs defaultValue="deck" className="w-full">
-              <TabsList className="w-full">
+              <TabsList
+                className={cn(
+                  "w-full",
+                  supportsSideboard ? "grid grid-cols-3" : undefined,
+                )}
+                data-testid="deck-builder-tabs"
+              >
                 <TabsTrigger value="deck" className="flex-1">
                   Deck List
                 </TabsTrigger>
                 <TabsTrigger value="mana-curve" className="flex-1">
                   Mana Curve
                 </TabsTrigger>
+                {supportsSideboard && (
+                  <TabsTrigger
+                    value="sideboard"
+                    className="flex-1"
+                    data-testid="sideboard-tab-trigger"
+                  >
+                    Sideboard
+                  </TabsTrigger>
+                )}
               </TabsList>
               <TabsContent value="deck" className="mt-4">
                 <ComponentErrorBoundary
@@ -644,6 +803,21 @@ export default function DeckBuilderPage() {
                   </Card>
                 )}
               </TabsContent>
+              {supportsSideboard && (
+                <TabsContent value="sideboard" className="mt-4">
+                  <ComponentErrorBoundary
+                    title="Sideboard List Error"
+                    description="The sideboard list failed to render. Your cards are saved — try reloading the sideboard tab."
+                  >
+                    <SideboardList
+                      sideboard={sideboard}
+                      maxSize={sideboardMaxSize}
+                      onRemoveCard={removeCardFromSideboard}
+                      onAddCard={addCardToSideboard}
+                    />
+                  </ComponentErrorBoundary>
+                </TabsContent>
+              )}
             </Tabs>
           </div>
           <div className="lg:col-span-1 flex flex-col gap-6">
