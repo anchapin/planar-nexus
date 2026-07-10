@@ -227,6 +227,59 @@ describe("MeshGameConnection — broadcast delivery to all peers", () => {
     }
   });
 
+  it("delivers a broadcast to every open link (4 players — full pod)", () => {
+    // Issue #1087 acceptance criterion: a 4-player pod (e.g. Commander) must
+    // reach every peer through one host broadcast, without N separate
+    // host-to-peer hops.
+    const { mesh } = newMesh();
+    const a = new MockLink("a");
+    const b = new MockLink("b");
+    const c = new MockLink("c");
+    const d = new MockLink("d");
+    mesh.addPeerLink(a);
+    mesh.addPeerLink(b);
+    mesh.addPeerLink(c);
+    mesh.addPeerLink(d);
+
+    const delivered = mesh.broadcastGameAction("start_game", {
+      seed: 42,
+      players: ["host", "a", "b", "c", "d"],
+    });
+
+    expect(delivered).toBe(4);
+    for (const link of [a, b, c, d]) {
+      expect(link.messages()).toHaveLength(1);
+      const m = link.messages()[0];
+      expect(m.type).toBe("game-action");
+      expect(m.senderId).toBe("host");
+      expect(m.seq).toBe(0);
+      expect(m.data).toEqual({
+        action: "start_game",
+        data: {
+          seed: 42,
+          players: ["host", "a", "b", "c", "d"],
+        },
+      });
+    }
+  });
+
+  it("scales broadcast delivery to 6 players (stress)", () => {
+    // Belt-and-suspenders beyond the acceptance-criteria N=4: the mesh must
+    // not artificially cap at 3 peers.
+    const { mesh } = newMesh();
+    const links: MockLink[] = [];
+    for (const id of ["p1", "p2", "p3", "p4", "p5", "p6"]) {
+      const l = new MockLink(id);
+      links.push(l);
+      mesh.addPeerLink(l);
+    }
+
+    expect(mesh.broadcastGameAction("kickoff", {})).toBe(6);
+    for (const l of links) {
+      expect(l.messages()).toHaveLength(1);
+    }
+  });
+
   it("stamps one shared monotonic seq per broadcast across all peers", () => {
     const { mesh } = newMesh();
     const a = new MockLink("a");
@@ -691,6 +744,121 @@ describe("MeshGameConnection — host-migration rewiring (#946)", () => {
     mesh.adoptOutgoingSeq(100);
     mesh.adoptOutgoingSeq(5); // ignored
     expect(mesh.getOutgoingSeq()).toBe(100);
+  });
+});
+
+describe("MeshGameConnection — peer disconnect / reconnect", () => {
+  it("a peer that drops mid-game stops receiving broadcasts, then resumes after reconnect", () => {
+    // Issue #1087 acceptance criterion: per-peer reconnection (#943) runs
+    // independently for each link in the mesh. At the mesh layer the
+    // observable contract is: a dropped peer misses broadcasts while
+    // disconnected, and a re-added peer (same id, fresh transport) is
+    // delivered subsequent broadcasts again — without disturbing the
+    // other peers' links.
+    const { mesh, events } = newMesh();
+    const a = new MockLink("a");
+    const b = new MockLink("b");
+    const c = new MockLink("c");
+    mesh.addPeerLink(a);
+    mesh.addPeerLink(b);
+    mesh.addPeerLink(c);
+
+    // Turn 1: all 3 peers receive.
+    expect(mesh.broadcastGameAction("turn-1", { turn: 1 })).toBe(3);
+    expect(a.messages()).toHaveLength(1);
+    expect(b.messages()).toHaveLength(1);
+    expect(c.messages()).toHaveLength(1);
+
+    // Peer B "disconnects": removePeerLink closes the link and emits
+    // onPeerLeft. The mesh still has peers a + c.
+    expect(mesh.removePeerLink("b")).toBe(true);
+    expect(b.closed).toBe(true);
+    expect(mesh.hasPeer("b")).toBe(false);
+    expect(events.onPeerLeft).toHaveBeenCalledWith("b");
+
+    // Turn 2: a + c receive, b does not.
+    expect(mesh.broadcastGameAction("turn-2", { turn: 2 })).toBe(2);
+    expect(a.messages()).toHaveLength(2);
+    expect(c.messages()).toHaveLength(2);
+    expect(b.messages()).toHaveLength(1); // only the turn-1 message
+
+    // Peer B "reconnects": addPeerLink with the same id installs a fresh
+    // transport. The link's seq counter is per-broadcast so b resumes
+    // receiving monotonically increasing seqs from the host.
+    const bReconnected = new MockLink("b");
+    expect(mesh.addPeerLink(bReconnected)).toBe(true);
+    expect(mesh.hasPeer("b")).toBe(true);
+
+    // Turn 3: all 3 peers receive again.
+    const turn3Delivered = mesh.broadcastGameAction("turn-3", { turn: 3 });
+    expect(turn3Delivered).toBe(3);
+    expect(a.messages()).toHaveLength(3);
+    expect(c.messages()).toHaveLength(3);
+    // The reconnected link received exactly the new turn-3 broadcast.
+    expect(bReconnected.messages()).toHaveLength(1);
+    expect(bReconnected.messages()[0].data).toEqual({
+      action: "turn-3",
+      data: { turn: 3 },
+    });
+    // The OLD (closed) link got nothing more after the disconnect.
+    expect(b.messages()).toHaveLength(1);
+  });
+
+  it("reconnect of one peer does not disturb the other peers' transport", () => {
+    // The mesh must isolate per-peer reconnect: closing+reopening b's
+    // link must not close a or c's links, and must not reset their
+    // outgoing seq.
+    const { mesh } = newMesh();
+    const a = new MockLink("a");
+    const b = new MockLink("b");
+    const c = new MockLink("c");
+    mesh.addPeerLink(a);
+    mesh.addPeerLink(b);
+    mesh.addPeerLink(c);
+
+    mesh.broadcastGameAction("t1", {}); // seq 0 to all 3
+    mesh.removePeerLink("b");
+    mesh.broadcastGameAction("t2", {}); // seq 1 to a + c
+    mesh.addPeerLink(new MockLink("b"));
+    mesh.broadcastGameAction("t3", {}); // seq 2 to all 3
+
+    // a and c each received all 3 broadcasts (their seqs are contiguous).
+    expect(a.messages().map((m) => m.seq)).toEqual([0, 1, 2]);
+    expect(c.messages().map((m) => m.seq)).toEqual([0, 1, 2]);
+    // a and c's links are still open.
+    expect(a.closed).toBe(false);
+    expect(c.closed).toBe(false);
+    // Host's outgoing seq counter never regressed (3 broadcasts total).
+    expect(mesh.getOutgoingSeq()).toBe(3);
+  });
+
+  it("the reconnecting peer keeps its anti-replay history across the drop", () => {
+    // The mesh's anti-replay state is keyed by senderId, NOT by link
+    // identity. A reconnecting peer that re-delivers a stale message from
+    // before the drop MUST still be rejected — the per-sender
+    // high-water-mark survives the link teardown (this is the
+    // reconnect-token handoff invariant that prevents replay across
+    // disconnects).
+    const { mesh, events } = newMesh();
+    const b = new MockLink("b");
+    mesh.addPeerLink(b);
+
+    // Peer b sends a fresh game-action at seq 5.
+    mesh.handleIncoming(inbound("b", 5), "b");
+    expect(events.onMessage).toHaveBeenCalledTimes(1);
+    expect(mesh.getLastAppliedSeq("b")).toBe(5);
+
+    // Peer b "drops" and "reconnects" with a fresh link.
+    mesh.removePeerLink("b");
+    mesh.addPeerLink(new MockLink("b"));
+
+    // A re-delivery of seq 5 (e.g. from a transport replay buffer) is
+    // rejected — anti-replay state was intentionally retained.
+    mesh.handleIncoming(inbound("b", 5), "b");
+    // A higher seq is still accepted.
+    mesh.handleIncoming(inbound("b", 6), "b");
+    expect(events.onMessage).toHaveBeenCalledTimes(2);
+    expect(mesh.getLastAppliedSeq("b")).toBe(6);
   });
 });
 
