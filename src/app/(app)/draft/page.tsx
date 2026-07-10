@@ -35,7 +35,11 @@ import { DraftPoolView } from "@/components/draft-pool-view";
 import { DraftTimer } from "@/components/draft-timer";
 import { SkipPickDialog } from "@/components/skip-pick-dialog";
 import { useDraftTimer, DRAFT_TIMER_CONFIG } from "@/hooks/use-draft-timer";
-import type { DraftSession, AiDifficulty } from "@/lib/limited/types";
+import type {
+  DraftSession,
+  AiDifficulty,
+  ArchetypeSignal,
+} from "@/lib/limited/types";
 import {
   createDraftSession,
   isDraftComplete,
@@ -673,6 +677,10 @@ function DraftHeader({
               <span className="text-xs text-muted-foreground">
                 Pool: {aiPoolSize}
               </span>
+              {/* Issue #1404: live AI archetype signal chip */}
+              <AiArchetypeSignalChip
+                signal={session.aiNeighbor.state.lastPickReason}
+              />
             </div>
           )}
         </div>
@@ -716,6 +724,52 @@ function MobilePoolBar({ pool }: MobilePoolBarProps) {
           ? "Ready to build"
           : `${40 - pool.length} more needed`}
       </Badge>
+    </div>
+  );
+}
+
+// ============================================================================
+// AI Archetype Signal Chip (Issue #1404)
+// ============================================================================
+
+interface AiArchetypeSignalChipProps {
+  signal: ArchetypeSignal | null;
+}
+
+/**
+ * Inline badge that surfaces the AI neighbor's most recent archetype signal
+ * (axis + dominant color + confidence). Renders nothing until the AI has
+ * completed its first pick. Hidden when signal is null so the header stays
+ * uncluttered during early picks. Issue #1404.
+ */
+export function AiArchetypeSignalChip({ signal }: AiArchetypeSignalChipProps) {
+  if (!signal) {
+    return (
+      <Badge variant="outline" className="text-xs">
+        AI signaling: undecided
+      </Badge>
+    );
+  }
+
+  const axisLabel =
+    signal.archetypeAxis === "undecided" ? "undecided" : signal.archetypeAxis;
+  const colorLabel = signal.dominantColor ? ` ${signal.dominantColor}` : "";
+  const confidencePct = Math.round(signal.confidence * 100);
+
+  return (
+    <div
+      className="flex items-center gap-1"
+      data-testid="ai-archetype-signal-chip"
+    >
+      <Badge variant="secondary" className="text-xs">
+        AI signaling: {axisLabel}
+        {colorLabel}
+      </Badge>
+      {signal.confidence > 0 && (
+        <Badge variant="outline" className="text-xs font-mono">
+          {confidencePct}%
+        </Badge>
+      )}
     </div>
   );
 }

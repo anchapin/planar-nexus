@@ -8,8 +8,8 @@
  * session management, and limited deck building.
  */
 
-import type { MinimalCard } from '@/lib/card-database';
-import type { ScryfallCard } from '@/app/actions';
+import type { MinimalCard } from "@/lib/card-database";
+import type { ScryfallCard } from "@/app/actions";
 
 // ============================================================================
 // Scryfall Types (for Set Browser)
@@ -39,7 +39,7 @@ export interface ScryfallSet {
 /**
  * Sort options for set browser
  */
-export type SetSortOption = 'release_date' | 'name' | 'card_count';
+export type SetSortOption = "release_date" | "name" | "card_count";
 
 // ============================================================================
 // Draft Types (Phase 15)
@@ -49,15 +49,71 @@ export type SetSortOption = 'release_date' | 'name' | 'card_count';
  * Draft state machine states
  * DRFT-04: Visual states for draft flow
  */
-export type DraftState = 'intro' | 'picking' | 'pack_complete' | 'draft_complete';
+export type DraftState =
+  "intro" | "picking" | "pack_complete" | "draft_complete";
 
 /**
  * AI neighbor difficulty levels (NEIB-03)
  */
-export type AiDifficulty = 'easy' | 'medium';
+export type AiDifficulty = "easy" | "medium";
+
+/**
+ * Archetype axis the AI is telegraphing during a draft pick.
+ *
+ * - 'aggro'    — low-curve, aggressive creatures / burn
+ * - 'control'  — high-curve, removal / counters
+ * - 'midrange' — flexible curve, value creatures
+ * - 'combo'    — synergy / engine pieces
+ * - 'undecided'— pool too sparse or colors too mixed to classify
+ *
+ * Mapped from the existing `archetype-detector` pipeline (`detectArchetype`).
+ * Issue #1404.
+ */
+export type ArchetypeAxis =
+  "aggro" | "control" | "midrange" | "combo" | "undecided";
+
+/**
+ * Curve shift direction for a single pick.
+ * 'faster' = pick dropped average CMC vs the prior pool; 'slower' = raised it; 'flat' = no change.
+ */
+export type CurveShift = "faster" | "slower" | "flat";
+
+/**
+ * Reason tag for why the AI made a particular pick.
+ */
+export type PickReason =
+  "color-fix" | "curve" | "premium" | "removal" | "random";
+
+/**
+ * Real-time archetype signal emitted by the AI neighbor after each pick.
+ *
+ * Consumed by the draft UI to surface "what is the AI signaling?" chips and
+ * by the post-deck `archetype-detector` for the final deck-classification
+ * round. Issue #1404.
+ */
+export interface ArchetypeSignal {
+  /** Which archetype axis the running pool is telegraphing. */
+  archetypeAxis: ArchetypeAxis;
+  /** Single most-dominant color in the pool after this pick (lowercase), null if none. */
+  dominantColor: string | null;
+  /** Confidence from `detectArchetype`, 0-1. Sparse pools report ~0. */
+  confidence: number;
+  /** How this pick shifted the pool's average CMC. */
+  curveShift: CurveShift;
+  /** Tag for the heuristic that drove this pick. */
+  reason: PickReason;
+  /** Wall-clock time of the pick (ms since epoch). */
+  pickedAt: number;
+  /** 1-based pick number within the AI's run (1 = first AI pick). */
+  pickNumber: number;
+}
 
 /**
  * AI neighbor state during drafting (NEIB-01, NEIB-03)
+ *
+ * Extended by issue #1404 with `lastPickReason` (the most recent signal) and a
+ * rolling `archetypeSignals` buffer (capped at {@link ARCHETYPE_SIGNAL_BUFFER_SIZE})
+ * that downstream UI / analytics can replay.
  */
 export interface AiNeighborState {
   /** Current pool of cards the AI has picked */
@@ -66,7 +122,21 @@ export interface AiNeighborState {
   isPicking: boolean;
   /** Time when AI started current pick */
   pickStartTime: number | null;
+  /** Most recent archetype signal (null until the first AI pick completes). Issue #1404. */
+  lastPickReason: ArchetypeSignal | null;
+  /**
+   * Rolling buffer of the last few archetype signals, oldest first. Capped at
+   * {@link ARCHETYPE_SIGNAL_BUFFER_SIZE}. Issue #1404.
+   */
+  archetypeSignals: ArchetypeSignal[];
 }
+
+/**
+ * Maximum number of recent archetype signals retained in `AiNeighborState.archetypeSignals`.
+ * Five picks gives enough context to spot a pivot without unbounded growth.
+ * Issue #1404.
+ */
+export const ARCHETYPE_SIGNAL_BUFFER_SIZE = 5;
 
 /**
  * AI neighbor configuration and state (NEIB-01, NEIB-03)
@@ -85,7 +155,7 @@ export interface AiNeighbor {
 /**
  * Who currently has the active pack (NEIB-05)
  */
-export type PackHolder = 'user' | 'ai';
+export type PackHolder = "user" | "ai";
 
 /**
  * A card in draft (with draft-specific metadata)
@@ -135,7 +205,7 @@ export interface DraftDisplayCard {
  * NEIB-05: Pack holder tracking
  */
 export interface DraftSession extends LimitedSession {
-  mode: 'draft'; // Override to 'draft'
+  mode: "draft"; // Override to 'draft'
   /** Current state in draft flow */
   draftState: DraftState;
   /** 0-2 for 3 packs */
@@ -189,12 +259,12 @@ export interface LimitedDeckCard {
 /**
  * Limited session mode
  */
-export type LimitedMode = 'sealed' | 'draft';
+export type LimitedMode = "sealed" | "draft";
 
 /**
  * Limited session status
  */
-export type SessionStatus = 'in_progress' | 'completed' | 'abandoned';
+export type SessionStatus = "in_progress" | "completed" | "abandoned";
 
 /**
  * A sealed/draft session
@@ -243,7 +313,7 @@ export interface CreateSessionOptions {
 export interface PoolFilters {
   /** Color filter */
   color?: {
-    mode: 'exact' | 'include' | 'exclude';
+    mode: "exact" | "include" | "exclude";
     colors: string[];
     matchColorIdentity?: boolean;
   };
@@ -255,7 +325,7 @@ export interface PoolFilters {
   };
   /** CMC filter */
   cmc?: {
-    mode: 'exact' | 'range';
+    mode: "exact" | "range";
     value?: number;
     min?: number;
     max?: number;
@@ -298,7 +368,7 @@ export interface DeckValidationResult {
 // Export Types
 // ============================================================================
 
-export type { MinimalCard } from '@/lib/card-database';
+export type { MinimalCard } from "@/lib/card-database";
 // Note: AiDifficulty, AiNeighborState, AiNeighbor, PackHolder are exported inline above
 
 /**
