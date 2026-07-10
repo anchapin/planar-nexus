@@ -33,16 +33,14 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { PlayerState, GameState } from "@/types/game";
 
 // Judge role types
 export type JudgeRole = "judge" | "head-judge" | "spectator-privileged";
 
 // Warning/Penalty types
 export type PenaltyType =
-  | "warning"
-  | "game-loss"
-  | "match-loss"
-  | "disqualification";
+  "warning" | "game-loss" | "match-loss" | "disqualification";
 
 export interface Warning {
   id: string;
@@ -55,24 +53,34 @@ export interface Warning {
   issuedBy: string;
 }
 
-// Player state for judge intervention
-export interface JudgePlayerState {
-  id: string;
-  name: string;
-  life: number;
-  poisonCounters: number;
-  energyCounters: number;
+// Player view-model for the judge panel. Derived from the canonical
+// `PlayerState` in `@/types/game` (issue #1398) to eliminate the duplicate
+// `PlayerState` declaration that caused "Duplicate identifier" errors when a
+// sibling component imported the canonical type. The canonical `PlayerState`
+// uses `lifeTotal`; the judge panel historically exposed this as `life` for
+// UI brevity, but the view-model uses the canonical field name so the two
+// stay structurally aligned. The judge panel adds `isActive` and an optional
+// `energyCounters` (canonical PlayerState has neither today).
+export type JudgeViewPlayer = Pick<
+  PlayerState,
+  "id" | "name" | "lifeTotal" | "poisonCounters"
+> & {
+  energyCounters?: number;
   isActive: boolean;
-}
+};
 
-// Game state for inspection
-export interface JudgeGameState {
+// Game-state view-model for the judge panel. Canonical `GameState` tracks
+// the active player as `players[currentTurnPlayerIndex]` and does not carry
+// a `step` field, so the judge panel keeps its own view-model rather than
+// aliasing the canonical type. The `players` array uses `JudgeViewPlayer`
+// so all duplicate interface declarations are gone (issue #1398).
+export interface JudgeViewGameState {
   turn: number;
   phase: string;
   step: string;
   activePlayerId: string;
   priorityPlayerId: string;
-  players: JudgePlayerState[];
+  players: JudgeViewPlayer[];
 }
 
 // Judge tools configuration
@@ -193,7 +201,7 @@ export function WarningLog({
 
 // Life adjustment component
 interface LifeAdjustmentProps {
-  player: JudgePlayerState;
+  player: JudgeViewPlayer;
   onAdjust: (playerId: string, amount: number) => void;
   disabled?: boolean;
 }
@@ -209,7 +217,7 @@ export function LifeAdjustment({
         variant="outline"
         size="icon"
         onClick={() => onAdjust(player.id, -1)}
-        disabled={disabled || player.life <= 0}
+        disabled={disabled || player.lifeTotal <= 0}
         className="h-8 w-8"
         aria-label="Decrease life"
       >
@@ -219,14 +227,16 @@ export function LifeAdjustment({
         <Heart
           className={cn(
             "w-4 h-4",
-            player.life > 10
+            player.lifeTotal > 10
               ? "text-green-500"
-              : player.life > 5
+              : player.lifeTotal > 5
                 ? "text-yellow-500"
                 : "text-red-500",
           )}
         />
-        <span className="font-bold text-lg w-8 text-center">{player.life}</span>
+        <span className="font-bold text-lg w-8 text-center">
+          {player.lifeTotal}
+        </span>
       </div>
       <Button
         variant="outline"
@@ -246,7 +256,9 @@ export function LifeAdjustment({
             variant="outline"
             size="sm"
             onClick={() => onAdjust(player.id, amount)}
-            disabled={disabled || (player.life + amount <= 0 && amount < 0)}
+            disabled={
+              disabled || (player.lifeTotal + amount <= 0 && amount < 0)
+            }
             className="h-7 text-xs"
           >
             {amount > 0 ? "+" : ""}
@@ -260,7 +272,7 @@ export function LifeAdjustment({
 
 // Counter adjustment component
 interface CounterAdjustmentProps {
-  player: JudgePlayerState;
+  player: JudgeViewPlayer;
   counterType: "poison" | "energy";
   onAdjust: (
     playerId: string,
@@ -277,7 +289,9 @@ export function CounterAdjustment({
   disabled,
 }: CounterAdjustmentProps) {
   const value =
-    counterType === "poison" ? player.poisonCounters : player.energyCounters;
+    counterType === "poison"
+      ? player.poisonCounters
+      : (player.energyCounters ?? 0);
   const icon =
     counterType === "poison" ? (
       <Skull className="w-4 h-4 text-purple-500" />
@@ -317,7 +331,7 @@ export function CounterAdjustment({
 
 // Game state inspector component
 interface GameStateInspectorProps {
-  gameState: JudgeGameState;
+  gameState: JudgeViewGameState;
   className?: string;
 }
 
@@ -383,14 +397,14 @@ export function GameStateInspector({
                   <Heart
                     className={cn(
                       "w-3 h-3",
-                      player.life > 10
+                      player.lifeTotal > 10
                         ? "text-green-500"
-                        : player.life > 5
+                        : player.lifeTotal > 5
                           ? "text-yellow-500"
                           : "text-red-500",
                     )}
                   />
-                  <span>{player.life}</span>
+                  <span>{player.lifeTotal}</span>
                 </div>
                 {player.poisonCounters > 0 && (
                   <div className="flex items-center gap-1">
@@ -514,7 +528,7 @@ export function IssuePenalty({
 // Main Judge Panel component
 interface JudgePanelProps {
   config: JudgeToolsConfig;
-  gameState: JudgeGameState;
+  gameState: JudgeViewGameState;
   warnings: Warning[];
   onConfigChange: (config: JudgeToolsConfig) => void;
   onLifeAdjust: (playerId: string, amount: number) => void;

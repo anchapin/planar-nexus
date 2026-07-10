@@ -1,19 +1,42 @@
 import { ScryfallCard } from "@/app/actions";
 
 /**
- * Game state types for the Planar Nexus game board
+ * Game state types for the Planar Nexus game board.
+ *
+ * `PlayerState` and `GameState` are the canonical domain types — do not
+ * redeclare them locally. If you need a view-specific shape (e.g. for a
+ * judge panel or replay scrubber), derive it from these via `Pick`,
+ * `Partial`, or `& { … }`. See issue #1398.
  */
 
 export type PlayerCount = 1 | 2 | 4;
 
-export type GameFormat = "commander" | "standard" | "modern" | "pioneer" | "legacy" | "vintage" | "pauper";
+export type GameFormat =
+  | "commander"
+  | "standard"
+  | "modern"
+  | "pioneer"
+  | "legacy"
+  | "vintage"
+  | "pauper";
 
-export type TurnPhase = "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end";
+export type TurnPhase =
+  "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end";
 
-export type ZoneType = "battlefield" | "hand" | "graveyard" | "exile" | "library" | "commandZone" | "companion" | "stack" | "sideboard" | "anticipate";
+export type ZoneType =
+  | "battlefield"
+  | "hand"
+  | "graveyard"
+  | "exile"
+  | "library"
+  | "commandZone"
+  | "companion"
+  | "stack"
+  | "sideboard"
+  | "anticipate";
 
 // Team-related types for 2v2 mode
-export type TeamId = 'team-a' | 'team-b';
+export type TeamId = "team-a" | "team-b";
 
 export interface TeamState {
   id: TeamId;
