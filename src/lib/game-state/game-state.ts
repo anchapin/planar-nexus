@@ -82,6 +82,8 @@ function createPlayer(
     maxLandsPerTurn: 1,
     foretoldThisTurn: 0,
     spellsCastThisTurn: 0,
+    dungeonProgress: null,
+    completedDungeonIds: [],
     manaPool: {
       colorless: 0,
       white: 0,
@@ -759,8 +761,7 @@ export function dealDamageToPlayer(
     amount: damage,
     isCombatDamage,
     damageTypes: (isCombatDamage ? ["combat"] : ["noncombat"]) as (
-      | "combat"
-      | "noncombat"
+      "combat" | "noncombat"
     )[],
   };
 

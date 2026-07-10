@@ -20,7 +20,12 @@ import type {
   StackEffect,
   StackObject,
 } from "./types";
-import { drawCards, createTokenCard, counterSpell } from "./keyword-actions";
+import {
+  drawCards,
+  createTokenCard,
+  counterSpell,
+  ventureIntoDungeon,
+} from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
 import { getModesForModalSpell } from "./oracle-text-parser";
@@ -551,6 +556,12 @@ export function parseSpellEffects(
     });
   }
 
+  if (lowerText.includes("venture into the dungeon")) {
+    effects.push({
+      effectType: "venture_dungeon",
+    });
+  }
+
   return effects;
 }
 
@@ -668,6 +679,25 @@ export function resolveEffect(
 
     case "counter_spell":
       return resolveCounterEffect(state, sourceId, effect.targetStackObjectId);
+
+    case "venture_dungeon": {
+      const targetPlayerId =
+        effect.targetId ??
+        (sourceId ? state.cards.get(sourceId)?.controllerId : undefined) ??
+        state.turn.activePlayerId;
+      const result = ventureIntoDungeon(
+        state,
+        targetPlayerId,
+        effect.dungeonId,
+        effect.nextRoomId,
+      );
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description,
+        error: result.error,
+      };
+    }
 
     case "damage": {
       // Route damage to a card or player based on what the target actually is
