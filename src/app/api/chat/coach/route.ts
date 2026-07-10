@@ -12,6 +12,7 @@ import {
 } from "@/ai/flows/coach-stream";
 import { getProviderFailoverChain } from "@/ai/providers/factory";
 import { sanitizeUserInput } from "@/ai/prompt-security";
+import { classifyCoachIntent } from "@/ai/coach-intent";
 
 /**
  * API Route for the Conversational AI Coach.
@@ -124,18 +125,12 @@ export async function POST(request: NextRequest) {
     //    prepends SECURITY_PREAMBLE and sanitizes/wraps every deck-controlled
     //    field. We pass the empty decklist (the structured analysis carries the
     //    deck context per issue #923), matching the prior stub behaviour.
-    const systemPrompt = buildCoachSystemPrompt(
-      format,
-      "",
-      body.archetype,
-      body.strategy,
-      digestedContext ? JSON.stringify(digestedContext) : undefined,
-      structuredAnalysis,
-    );
-
-    // 5. Defense-in-depth: sanitize each message's content and drop any
-    //    client-supplied `system` role. Only the server-built `systemPrompt`
-    //    above is allowed to set system instructions.
+    //
+    //    Issue #1387: classify the latest user turn AFTER sanitization and
+    //    thread the result into the prompt. Classification is
+    //    server-authoritative — any client-supplied `intent` field is ignored
+    //    (it never reaches the classifier or the prompt). The intent block and
+    //    tier-specific guidance are injected by `buildCoachSystemPrompt`.
     const sanitizedMessages: CoachStreamMessage[] = (messages as unknown[])
       .map((raw): CoachStreamMessage | null => {
         if (typeof raw !== "object" || raw === null) return null;
@@ -145,6 +140,42 @@ export async function POST(request: NextRequest) {
         return { role: m.role, content };
       })
       .filter((m): m is CoachStreamMessage => m !== null);
+
+    // Classify the most recent *user* message (after sanitization, per the
+    // acceptance criteria — injection phrases are already redacted). Falls
+    // back to `unknown` when there is no user turn or confidence is low.
+    const latestUserMessage = [...sanitizedMessages]
+      .reverse()
+      .find((m) => m.role === "user");
+    const deckCardNames = Array.isArray(deckCards)
+      ? (deckCards as Array<{ name?: unknown }>)
+          .map((c) => (c && typeof c.name === "string" ? c.name : null))
+          .filter((n): n is string => Boolean(n))
+      : [];
+    const intent =
+      latestUserMessage != null
+        ? classifyCoachIntent(latestUserMessage.content, {
+            format,
+            archetype: typeof body.archetype === "string" ? body.archetype : undefined,
+            deckCardNames,
+          })
+        : undefined;
+
+    const systemPrompt = buildCoachSystemPrompt(
+      format,
+      "",
+      body.archetype,
+      body.strategy,
+      digestedContext ? JSON.stringify(digestedContext) : undefined,
+      structuredAnalysis,
+      intent,
+      typeof body.difficulty === "string" ? body.difficulty : undefined,
+    );
+
+    // 5. Defense-in-depth: sanitize each message's content and drop any
+    //    client-supplied `system` role. Only the server-built `systemPrompt`
+    //    above is allowed to set system instructions. (Sanitization already
+    //    ran above for classification; the `sanitizedMessages` array is reused.)
 
     // 6. Prune the conversation history against the token budget (issue
     //    #1238). `systemContent` is reserved against the budget so the
