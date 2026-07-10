@@ -10,8 +10,8 @@
  * Reuses generatePack() from sealed-generator for authentic card distribution.
  */
 
-import type { ScryfallCard } from '@/app/actions';
-import { generatePack } from './sealed-generator';
+import type { ScryfallCard } from "@/app/actions";
+import { generatePack } from "./sealed-generator";
 import type {
   DraftSession,
   DraftPack,
@@ -19,8 +19,8 @@ import type {
   PoolCard,
   AiDifficulty,
   AiNeighbor,
-} from './types';
-import { saveDraftSession } from './pool-storage';
+} from "./types";
+import { saveDraftSession } from "./pool-storage";
 
 // Re-export types for convenience
 export type { DraftSession, DraftPack, DraftCard };
@@ -82,7 +82,7 @@ function shuffle<T>(array: T[]): T[] {
  */
 export function packToDraftCards(
   cards: ScryfallCard[],
-  packIndex: number
+  packIndex: number,
 ): DraftCard[] {
   const now = new Date().toISOString();
 
@@ -117,7 +117,7 @@ export { packToDraftCards as packToPoolCards };
  * @returns Cards for one pack
  */
 async function generateDraftPackCards(
-  setCode: string
+  setCode: string,
 ): Promise<ScryfallCard[]> {
   const packContents = await generatePack(setCode);
   return packContentsToCards(packContents);
@@ -166,7 +166,7 @@ export function openPack(pack: DraftPack): DraftPack {
  * @returns Array of 3 DraftPacks
  */
 export async function generateDraftPacks(
-  setCode: string
+  setCode: string,
 ): Promise<DraftPack[]> {
   const packs: DraftPack[] = [];
 
@@ -220,7 +220,7 @@ interface CreateDraftSessionOptions {
 export async function createDraftSession(
   setCode: string,
   setName: string,
-  options?: CreateDraftSessionOptions
+  options?: CreateDraftSessionOptions,
 ): Promise<DraftSession> {
   // Generate packs
   const packs = await generateDraftPacks(setCode);
@@ -237,6 +237,8 @@ export async function createDraftSession(
           pool: [],
           isPicking: false,
           pickStartTime: null,
+          lastPickReason: null,
+          archetypeSignals: [],
         },
       }
     : undefined;
@@ -246,15 +248,15 @@ export async function createDraftSession(
     id: crypto.randomUUID(), // DRFT-01
     setCode,
     setName,
-    mode: 'draft',
-    status: 'in_progress',
+    mode: "draft",
+    status: "in_progress",
     pool: [],
     deck: [],
     createdAt: now,
     updatedAt: now,
 
     // Draft-specific fields
-    draftState: 'intro', // DRFT-04: Start with intro
+    draftState: "intro", // DRFT-04: Start with intro
     currentPackIndex: 0, // First pack
     currentPickIndex: 0, // First pick
     packs,
@@ -264,7 +266,7 @@ export async function createDraftSession(
     // AI neighbor (NEIB-01)
     aiNeighbor,
     // Pack holder - user starts with pack (NEIB-05)
-    currentPackHolder: 'user',
+    currentPackHolder: "user",
   };
 
   // DRFT-10: Save to IndexedDB immediately
@@ -308,7 +310,8 @@ export function isDraftComplete(session: DraftSession): boolean {
  * In draft: pack passes left, then right, alternating
  */
 export function passPack(session: DraftSession): DraftSession {
-  const newHolder: 'user' | 'ai' = session.currentPackHolder === 'user' ? 'ai' : 'user';
+  const newHolder: "user" | "ai" =
+    session.currentPackHolder === "user" ? "ai" : "user";
 
   return {
     ...session,
@@ -320,7 +323,9 @@ export function passPack(session: DraftSession): DraftSession {
  * Check if it's the AI's turn to pick
  */
 export function isAiPickTurn(session: DraftSession): boolean {
-  return Boolean(session.aiNeighbor?.enabled && session.currentPackHolder === 'ai');
+  return Boolean(
+    session.aiNeighbor?.enabled && session.currentPackHolder === "ai",
+  );
 }
 
 /**
@@ -328,7 +333,7 @@ export function isAiPickTurn(session: DraftSession): boolean {
  */
 export function isUserPickTurn(session: DraftSession): boolean {
   // User picks when AI is disabled OR when pack holder is user
-  return !session.aiNeighbor?.enabled || session.currentPackHolder === 'user';
+  return !session.aiNeighbor?.enabled || session.currentPackHolder === "user";
 }
 
 /**
@@ -336,22 +341,18 @@ export function isUserPickTurn(session: DraftSession): boolean {
  * Handles pack rotation direction changes per round
  */
 export function getNextPackHolder(
-  currentHolder: 'user' | 'ai',
-  pickIndex: number,  // 0-13
-  aiEnabled: boolean
-): 'user' | 'ai' {
-  if (!aiEnabled) return 'user';
+  currentHolder: "user" | "ai",
+  pickIndex: number, // 0-13
+  aiEnabled: boolean,
+): "user" | "ai" {
+  if (!aiEnabled) return "user";
 
   // For 2-player: user picks, passes to AI, AI picks, passes back
-  return currentHolder === 'user' ? 'ai' : 'user';
+  return currentHolder === "user" ? "ai" : "user";
 }
 
 // ============================================================================
 // Exports
 // ============================================================================
 
-export {
-  PACKS_PER_DRAFT,
-  CARDS_PER_PACK,
-  DEFAULT_TIMER_SECONDS,
-};
+export { PACKS_PER_DRAFT, CARDS_PER_PACK, DEFAULT_TIMER_SECONDS };
