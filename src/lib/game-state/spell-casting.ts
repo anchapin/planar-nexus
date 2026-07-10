@@ -256,13 +256,39 @@ export function castSpell(
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
   },
+  /**
+   * CR 702.85 — number of times the kicker (or multikicker) cost was paid.
+   * For single-kicker cards this is 0 or 1; for multikicker cards this can
+   * be any non-negative integer bounded by available mana. When provided,
+   * takes precedence over `isKicked` (the latter is treated as a hint that
+   * `timesKicked >= 1`).
+   */
+  timesKicked?: number,
 ): { success: boolean; state: GameState; error?: string } {
+  // Canonicalize the kicker count: an explicit `timesKicked` argument wins;
+  // otherwise derive from the boolean `isKicked` flag (1 if true, 0 if false).
+  const effectiveTimesKicked =
+    typeof timesKicked === "number"
+      ? Math.max(0, Math.floor(timesKicked))
+      : isKicked
+        ? 1
+        : 0;
+  const effectiveIsKicked = effectiveTimesKicked > 0;
+
   // Create a game action for validation
   const action = {
     type: "cast_spell" as const,
     playerId,
     timestamp: Date.now(),
-    data: { cardId, targets, chosenModes, xValue, isKicked, alternativeCost },
+    data: {
+      cardId,
+      targets,
+      chosenModes,
+      xValue,
+      isKicked: effectiveIsKicked,
+      timesKicked: effectiveTimesKicked,
+      alternativeCost,
+    },
   };
 
   // Validate the action before executing
@@ -353,17 +379,23 @@ export function castSpell(
   // Track alternative costs used
   const alternativeCostsUsed: string[] = [];
 
-  // Add kicker cost if spell is kicked (CR 702.85)
-  if (isKicked) {
+  // Add kicker cost if spell is kicked (CR 702.85).
+  // For multikicker (CR 702.85 multikicker variant) the cost is paid N times
+  // where N = `effectiveTimesKicked`; the bonus effect scales linearly with N
+  // during resolution (see `StackObject.timesKicked`).
+  let kickerChargeCount = 0;
+  if (effectiveIsKicked) {
     const kickerInfo = parseKicker(card.cardData.oracle_text || "");
     if (kickerInfo.hasKicker && kickerInfo.kickerCost) {
-      totalGeneric += kickerInfo.kickerCost.generic;
-      totalWhite += kickerInfo.kickerCost.white;
-      totalBlue += kickerInfo.kickerCost.blue;
-      totalBlack += kickerInfo.kickerCost.black;
-      totalRed += kickerInfo.kickerCost.red;
-      totalGreen += kickerInfo.kickerCost.green;
+      const n = effectiveTimesKicked;
+      totalGeneric += kickerInfo.kickerCost.generic * n;
+      totalWhite += kickerInfo.kickerCost.white * n;
+      totalBlue += kickerInfo.kickerCost.blue * n;
+      totalBlack += kickerInfo.kickerCost.black * n;
+      totalRed += kickerInfo.kickerCost.red * n;
+      totalGreen += kickerInfo.kickerCost.green * n;
       alternativeCostsUsed.push("kicker");
+      kickerChargeCount = n;
     }
   }
 
@@ -519,7 +551,11 @@ export function castSpell(
     isCountered: false,
     timestamp: Date.now(),
     alternativeCostsUsed,
-    wasKicked: isKicked,
+    wasKicked: kickerChargeCount > 0,
+    // `timesKicked` records how many kicks were actually paid on the spell
+    // (0 for non-kicker cards; 1+ for kicker/multikicker). Resolution code
+    // uses this to scale the additional effect N times.
+    timesKicked: kickerChargeCount,
     buybackReturnZone,
     bestowTarget,
     // CR 702.60 - Split second: parsed from Oracle text and stamped onto the
@@ -724,6 +760,7 @@ export function copySpellOnStack(
       ? [...source.alternativeCostsUsed]
       : undefined,
     wasKicked: source.wasKicked,
+    timesKicked: source.timesKicked,
     splitSecond: source.splitSecond,
     storm: source.storm,
     isCopy: true,
