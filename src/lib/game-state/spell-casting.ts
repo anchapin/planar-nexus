@@ -551,10 +551,18 @@ export function castSpell(
     isCountered: false,
     timestamp: Date.now(),
     alternativeCostsUsed,
-    wasKicked: kickerChargeCount > 0,
-    // `timesKicked` records how many kicks were actually paid on the spell
-    // (0 for non-kicker cards; 1+ for kicker/multikicker). Resolution code
-    // uses this to scale the additional effect N times.
+    // `wasKicked` preserves the caller's intent: when the legacy `isKicked`
+    // boolean is the only signal (no explicit `timesKicked`) we stamp it
+    // directly so callers see their declaration retained even on cards where
+    // parseKicker returns no kicker (caller-declared flag retained per
+    // kicker-end-to-end suite). When `timesKicked` is provided explicitly,
+    // `wasKicked` is derived from the actual charge count so non-kicker
+    // cards stay false even if a caller passes timesKicked>0 (multikicker
+    // suite). `timesKicked` itself records how many kicks were actually
+    // paid (0 for non-kicker cards; 1+ for kicker/multikicker) and is what
+    // resolution code scales the additional effect by.
+    wasKicked:
+      typeof timesKicked === "number" ? kickerChargeCount > 0 : isKicked,
     timesKicked: kickerChargeCount,
     buybackReturnZone,
     bestowTarget,
