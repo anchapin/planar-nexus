@@ -142,6 +142,21 @@ export interface DraftCard {
   rarity?: string;
 }
 
+/**
+ * Per-turn opponent bluff-signal observation (issue #1230). Mirrors the
+ * `OpponentBluffSignals` from `opponent-bluff-history.ts`. Kept as a local
+ * standalone shape so flow consumers (Genkit / post-game analysis) do not
+ * have to import the AI module to type their Zod / schema-bound records.
+ */
+export interface OpponentBluffSignalSnapshot {
+  turnNumber: number;
+  representCounterspellOnStack: number;
+  heldManaPreCombat: number;
+  passedWithMana: number;
+  didCounterOnStack: number;
+  cardsPlayed: number;
+}
+
 /** Turn data for post-game analysis */
 export interface TurnData {
   turnNumber: number;
@@ -154,6 +169,13 @@ export interface TurnData {
     type: string;
     description: string;
   }>;
+  /**
+   * Issue #1230 — per-turn opponent-bluff observations recorded by the AI
+   * turn loop. The post-game review pane renders this so reviewers can see
+   * "AI started reading opponent's bluff pattern on turn N". Optional /
+   * empty for replays that pre-date the accumulator or for non-AI sources.
+   */
+  opponentBluffSignals?: OpponentBluffSignalSnapshot[];
 }
 
 /** Extended turn data for game analysis with additional metrics */
