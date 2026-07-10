@@ -30,9 +30,18 @@ export default function FormatHealthGauge({ score }: FormatHealthGaugeProps) {
   const progress = (score / 100) * circumference;
   const strokeDashoffset = circumference - progress;
 
+  const healthLabel = getHealthLabel(score);
+
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative size-32">
+    <div
+      className="flex flex-col items-center"
+      role="img"
+      aria-label={`Format health gauge: ${score} out of 100, ${healthLabel.toLowerCase()}`}
+    >
+      <p className="sr-only">
+        Format health score is {score} out of 100, rated {healthLabel.toLowerCase()}.
+      </p>
+      <div className="relative size-32" aria-hidden="true">
         <svg className="size-full -rotate-90" viewBox="0 0 100 100">
           {/* Background circle */}
           <circle
@@ -68,7 +77,7 @@ export default function FormatHealthGauge({ score }: FormatHealthGaugeProps) {
       </div>
       <div className="mt-2 text-center">
         <span className={cn('font-medium', getScoreColor(score))}>
-          {getHealthLabel(score)}
+          {healthLabel}
         </span>
         <p className="text-xs text-muted-foreground">Format Health Score</p>
       </div>
