@@ -835,6 +835,12 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   let currentState = state;
 
+  // CR 702.85 — number of additional effects owed to the kicker / multikicker
+  // cost. Single-kicker stamps `timesKicked = 1` when paid; multikicker stamps
+  // any non-negative integer. Non-kicker spells and spells cast without paying
+  // the kicker cost leave `timesKicked` undefined / 0, so the bonus is a no-op.
+  const kickerBonus = stackObject.timesKicked ?? 0;
+
   // Handle structured effects if present
   if (stackObject.effects && stackObject.effects.length > 0) {
     // Resolve each effect in order
@@ -843,6 +849,7 @@ export function resolveTopOfStack(state: GameState): GameState {
       stackObject.effects,
       stackObject.sourceCardId || undefined,
       stackObject.targets,
+      kickerBonus,
     );
     currentState = result;
   }
@@ -892,12 +899,15 @@ export function resolveTopOfStack(state: GameState): GameState {
           : parseSpellEffects(oracleText, stackObject.variableValues);
 
         if (parsedEffects.length > 0) {
-          // Apply effects with target information
+          // Apply effects with target information. CR 702.85 — pass the
+          // kicker bonus so each scalable base effect (damage / card_draw
+          // / token_creation) gets +N when the spell was kicked.
           const result = resolveStackObjectEffects(
             currentState,
             parsedEffects,
             stackObject.sourceCardId,
             stackObject.targets,
+            kickerBonus,
           );
           currentState = result;
         }
@@ -1065,9 +1075,16 @@ function resolveSpellCompletion(
           ).state;
         }
 
-        // CR 702.85 - Apply kicker effects if spell was kicked
+        // CR 702.85 — the kicker additional effect (damage / card_draw /
+        // token_creation bonus) is applied in `resolveTopOfStack` above,
+        // where `stackObject.timesKicked` is forwarded to
+        // `resolveStackObjectEffects` as the `kickerBonus` argument. By the
+        // time we reach spell completion the kicker clause has already fired
+        // and the effects list has been scaled; no extra work is needed here.
+        // The conditional below is retained as a marker that kicker was paid
+        // for downstream introspection / logs (e.g. game-replay serialization).
         if (stackObject.alternativeCostsUsed?.includes("kicker")) {
-          // Additional effect handled by spell's own effect processing
+          // Kicker bonus already applied during effect resolution.
         }
 
         // CR 702.8 - Buyback: Return spell to hand instead of graveyard

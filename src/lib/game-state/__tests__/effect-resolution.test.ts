@@ -668,6 +668,127 @@ describe("Effect Resolution - Stack Object Effects", () => {
 
       expect(bobLifeAfter).toBe(bobLifeBefore - 4);
     });
+
+    // CR 702.85 — kicker bonus scales damage / card_draw / token_creation
+    // amounts on top of the parsed base. The +N is sourced from
+    // `StackObject.timesKicked` in `resolveTopOfStack` and forwarded to
+    // `resolveStackObjectEffects` via the `kickerBonus` argument. The tests
+    // below exercise that scaling for each supported effect type.
+
+    it("kickerBonus=1 (kicker) adds 1 to a card_draw effect (CR 702.85)", () => {
+      const { state, aliceId } = setupBasicGame();
+      const effects = [
+        { effectType: "card_draw" as const, amount: 1, targetId: aliceId },
+      ];
+      const handBefore = state.zones.get(`${aliceId}-hand`)!.cardIds.length;
+
+      const result = resolveStackObjectEffects(
+        state,
+        effects,
+        undefined as any,
+        undefined,
+        1,
+      );
+
+      const handAfter = result.zones.get(`${aliceId}-hand`)!.cardIds.length;
+      // base 1 + kicker 1 = 2 cards drawn
+      expect(handAfter - handBefore).toBe(2);
+    });
+
+    it("kickerBonus=N scales card_draw by N (multikicker variant)", () => {
+      const { state, aliceId } = setupBasicGame();
+      const effects = [
+        { effectType: "card_draw" as const, amount: 1, targetId: aliceId },
+      ];
+      // Pre-load Alice's library with at least 4 cards so 4 draws succeed.
+      for (let i = 0; i < 4; i++) {
+        const card = createCardInstance(
+          {
+            id: `fill-n-${i}`,
+            name: `Filler N${i}`,
+            type_line: "Creature — Test",
+            power: "1",
+            toughness: "1",
+            keywords: [],
+            oracle_text: "",
+            mana_cost: "{1}",
+            cmc: 1,
+            colors: ["G"],
+            color_identity: ["G"],
+            legalities: { standard: "legal", commander: "legal" },
+            card_faces: undefined,
+            layout: "normal",
+          } as any,
+          aliceId,
+          aliceId,
+        );
+        state.cards.set(card.id, card);
+        const lib = state.zones.get(`${aliceId}-library`)!;
+        state.zones.set(`${aliceId}-library`, {
+          ...lib,
+          cardIds: [...lib.cardIds, card.id],
+        });
+      }
+      const handBefore = state.zones.get(`${aliceId}-hand`)!.cardIds.length;
+
+      const result = resolveStackObjectEffects(
+        state,
+        effects,
+        undefined as any,
+        undefined,
+        3,
+      );
+
+      const handAfter = result.zones.get(`${aliceId}-hand`)!.cardIds.length;
+      // base 1 + multikicker 3 = 4 cards drawn
+      expect(handAfter - handBefore).toBe(4);
+    });
+
+    it("kickerBonus=0 leaves the effect amount unchanged (no-kick path)", () => {
+      const { state, aliceId } = setupBasicGame();
+      const effects = [
+        { effectType: "card_draw" as const, amount: 1, targetId: aliceId },
+      ];
+      const handBefore = state.zones.get(`${aliceId}-hand`)!.cardIds.length;
+
+      const result = resolveStackObjectEffects(
+        state,
+        effects,
+        undefined as any,
+        undefined,
+        0,
+      );
+
+      const handAfter = result.zones.get(`${aliceId}-hand`)!.cardIds.length;
+      expect(handAfter - handBefore).toBe(1);
+    });
+
+    it("kickerBonus scales player damage from a player target", () => {
+      const { state, bobId } = setupBasicGame();
+      const effects = [
+        {
+          effectType: "damage" as const,
+          amount: 2,
+          targetId: bobId,
+          isCombatDamage: false,
+        },
+      ];
+      const targets = [
+        { type: "player" as const, targetId: bobId, isValid: true },
+      ];
+      const bobBefore = state.players.get(bobId)!.life;
+
+      const result = resolveStackObjectEffects(
+        state,
+        effects,
+        undefined as any,
+        targets,
+        1,
+      );
+
+      const bobAfter = result.players.get(bobId)!.life;
+      expect(bobBefore - bobAfter).toBe(3);
+    });
   });
 });
 
