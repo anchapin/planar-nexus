@@ -53,6 +53,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useSynergy } from "./synergy-context";
 import { checkCardLegality } from "@/hooks/use-format-legality-check";
+import { useSearchWorker } from "@/hooks/use-search-worker";
 import { VirtualizedCardGrid } from "@/components/shared/virtualized-card-grid";
 import type { VirtualizedCardGridHandle } from "@/components/shared/virtualized-card-grid";
 import { CardResultTile } from "./card-result-tile";
@@ -129,6 +130,11 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       cardCount: number;
     }>({ loaded: false, cardCount: 0 });
     const { toast } = useToast();
+
+    // Off-main-thread search worker hook (issue #1389). The worker's
+    // search proxy is used inside `searchCardsOffline`; `isReady` drives a
+    // status badge so users can see when background search is active.
+    const { isReady: isWorkerReady, status: workerStatus } = useSearchWorker();
 
     // "Match Commander Color Identity" filter toggle. Only has an effect when a
     // commander color identity is available.
@@ -573,7 +579,12 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
             </span>
           </div>
           {dbStatus.loaded && (
-            <span className="text-xs text-muted-foreground">Offline ready</span>
+            <span
+              className="text-xs text-muted-foreground"
+              data-search-worker-status={workerStatus}
+            >
+              {isWorkerReady ? "Background search" : "Offline ready"}
+            </span>
           )}
         </div>
 

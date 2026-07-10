@@ -6,6 +6,7 @@
  */
 
 import { cardSearchIndex } from "./search/card-search-index";
+import { searchWorkerClient } from "./search/search-worker-client";
 import {
   classifyWriteError,
   getStorageEstimate,
@@ -156,6 +157,11 @@ export async function initializeCardDatabase(): Promise<void> {
         }
       }
 
+      // Feed the same card data to the off-main-thread search worker so
+      // that searchCardsOffline can route queries through the worker
+      // instead of blocking the main thread (issue #1389).
+      void indexCardsInWorker();
+
       searchReady = true;
     } catch (error) {
       console.error("Failed to initialize card database:", error);
@@ -223,6 +229,37 @@ async function getAllCardsFromDB(): Promise<MinimalCard[]> {
 }
 
 /**
+ * Feed all cards from IndexedDB into the off-main-thread Orama worker.
+ * Called after the main-thread index is built so that `searchCardsOffline`
+ * can route queries through the worker (issue #1389). Fire-and-forget —
+ * the worker supplements the main-thread index; searchCardsOffline falls
+ * back to `cardSearchIndex.search` when the worker is not ready yet.
+ *
+ * @internal
+ */
+export async function indexCardsInWorker(): Promise<void> {
+  const api = searchWorkerClient.getSearchApi();
+  if (!api) return;
+  try {
+    const allCards = await getAllCardsFromDB();
+    if (allCards.length === 0) return;
+    const documents = allCards.map((card) => ({
+      id: card.id,
+      name: card.name,
+      type_line: card.type_line || "",
+      oracle_text: card.oracle_text || "",
+      colors: (card.colors || []).join(","),
+      set: card.set,
+      cmc: card.cmc,
+    }));
+    await api.clear();
+    await api.index(documents);
+  } catch (error) {
+    console.warn("[card-database] worker indexing failed:", error);
+  }
+}
+
+/**
  * Search cards using Orama indexed search (instant, no network required)
  */
 export async function searchCardsOffline(
@@ -237,10 +274,28 @@ export async function searchCardsOffline(
 
   const maxCards = options?.maxCards ?? 20;
 
-  // Perform Orama indexed search
-  const searchResults = await cardSearchIndex.search(query, {
-    limit: maxCards * 2,
-  });
+  // Route through the off-main-thread worker when available; fall back to
+  // the main-thread cardSearchIndex when the worker is not ready or fails
+  // (issue #1389). Both paths return identical {id, name}[] hits.
+  const workerApi = searchWorkerClient.getSearchApi();
+  let searchResults: { id: string; name: string }[];
+  if (workerApi) {
+    try {
+      searchResults = await workerApi.search(query, { limit: maxCards * 2 });
+    } catch (err) {
+      console.warn(
+        "[card-database] worker search failed; falling back to main thread:",
+        err,
+      );
+      searchResults = await cardSearchIndex.search(query, {
+        limit: maxCards * 2,
+      });
+    }
+  } else {
+    searchResults = await cardSearchIndex.search(query, {
+      limit: maxCards * 2,
+    });
+  }
 
   // Get full card data from IndexedDB
   const cards: MinimalCard[] = [];
