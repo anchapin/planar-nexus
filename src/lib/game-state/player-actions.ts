@@ -26,8 +26,7 @@ export function dealDamageToPlayer(
     amount: damage,
     isCombatDamage,
     damageTypes: (isCombatDamage ? ["combat"] : ["noncombat"]) as (
-      | "combat"
-      | "noncombat"
+      "combat" | "noncombat"
     )[],
   };
 
@@ -41,9 +40,23 @@ export function dealDamageToPlayer(
 
   if (actualDamage <= 0) return state;
 
+  // Monarchy tracking (CR 704.5p): remember the most recent opponent who
+  // dealt COMBAT damage to this player. The state-based action that
+  // transfers the monarchy reads this field. Reset whenever combat damage
+  // is dealt from a fresh opponent so we always attribute monarchy to the
+  // last source rather than the first.
+  let lastCombatDamageFromPlayer = player.lastCombatDamageFromPlayer ?? null;
+  if (isCombatDamage && sourceId) {
+    const sourceCard = state.cards.get(sourceId);
+    if (sourceCard && sourceCard.controllerId !== playerId) {
+      lastCombatDamageFromPlayer = sourceCard.controllerId;
+    }
+  }
+
   const updatedPlayer = {
     ...player,
     life: Math.max(0, player.life - actualDamage),
+    lastCombatDamageFromPlayer,
   };
 
   const updatedPlayers = new Map(state.players);

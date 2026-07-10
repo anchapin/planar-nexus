@@ -363,6 +363,15 @@ export interface Player {
   // Monarchy (CR 704.5p)
   /** Whether this player is the monarch */
   isMonarch: boolean;
+  /**
+   * Most recent opponent player who dealt COMBAT damage to this player.
+   * Used by the CR 704.5p state-based action to transfer the monarchy.
+   * Reset to `null` when no opponent has dealt combat damage yet this turn.
+   *
+   * Optional so legacy Player literals default to "no recent combat damage
+   * source" (read with `?? null`).
+   */
+  lastCombatDamageFromPlayer?: PlayerId | null;
 }
 
 /**
@@ -954,12 +963,7 @@ export interface AIPermanent {
   name: string;
   /** Permanent type */
   type:
-    | "creature"
-    | "land"
-    | "artifact"
-    | "enchantment"
-    | "planeswalker"
-    | "other";
+    "creature" | "land" | "artifact" | "enchantment" | "planeswalker" | "other";
   /** Controller player ID */
   controller: PlayerId;
   /** Whether the permanent is tapped */
