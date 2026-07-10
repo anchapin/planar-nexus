@@ -3,8 +3,8 @@
 **Free open-source tabletop card game deck builder and AI-powered playtester**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-140%20passing-brightgreen)](https://github.com/planar-nexus/planar-nexus/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)](https://github.com/planar-nexus/planar-nexus/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/anchapin/planar-nexus/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)](https://github.com/anchapin/planar-nexus/actions/workflows/ci.yml)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
 
@@ -174,25 +174,14 @@ chmod +x Planar-Nexus.AppImage
 
 ## Screenshots
 
-### Deck Builder
+> **Note:** In-app screenshots are not yet committed. The captures below are
+> planned for the Deck Builder, AI Coach Report, AI Opponent gameplay, and
+> Multiplayer lobby once the `docs/screenshots/` directory is added (#1396).
 
-![Deck Builder](docs/screenshots/deck-builder.png)
-_Build and validate decks with instant card search and format checking_
-
-### AI Coach Report
-
-![AI Coach](docs/screenshots/ai-coach.png)
-_Get intelligent deck analysis with archetype detection and synergy suggestions_
-
-### AI Opponent Gameplay
-
-![AI Opponent](docs/screenshots/ai-opponent.png)
-_Play against AI with 4 difficulty levels and distinct behavioral profiles_
-
-### Multiplayer Lobby
-
-![Multiplayer](docs/screenshots/multiplayer.png)
-_Create or join games with friends via P2P WebRTC connections_
+- **Deck Builder** — build and validate decks with instant card search and format checking
+- **AI Coach Report** — intelligent deck analysis with archetype detection and synergy suggestions
+- **AI Opponent Gameplay** — play against AI with 4 difficulty levels and distinct behavioral profiles
+- **Multiplayer Lobby** — create or join games with friends via P2P WebRTC connections
 
 ---
 
@@ -356,8 +345,8 @@ planar-nexus/
 Planar Nexus starts with an empty card database. Import cards for personal use:
 
 ```bash
-# Fetch 500 Commander-legal cards
-npx tsx scripts/fetch-cards-for-db.ts --format=commander --limit=500
+# Fetch Commander-legal cards to a JSON file you then import in the app
+npx tsx scripts/fetch-cards-for-db.ts --format=commander --limit=10001000 --output=./my-cards.json
 
 # Import via UI: Settings → Database Management → Select JSON File
 ```
@@ -424,10 +413,9 @@ SOFTWARE.
 ## Support and Community
 
 - **Bug Reports**: [GitHub Issues](https://github.com/anchapin/planar-nexus/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/anchapin/planar-nexus/discussions)
 - **Documentation**: [Wiki](https://github.com/anchapin/planar-nexus/wiki)
 
 ---
 
-**Version**: 0.1.0  
-**Last Updated**: May 1, 2026
+**Version**: v1.7+ (v1.8 Performance & Scale in progress)  
+**Last Updated**: July 10, 2026
