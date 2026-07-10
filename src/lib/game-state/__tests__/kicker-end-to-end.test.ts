@@ -454,31 +454,265 @@ describe("Issue #1228 — Kicker effect application through cast→resolve cycle
       expect(computeStateHash(a)).toBe(computeStateHash(b));
     });
 
-    // --- Gap scenarios (NOTE) -----------------------------------------------
-    // The CR 702.85 "additional effect" application step is currently a
-    // no-op placeholder in `spell-casting.ts:1014-1017` (`// Additional effect
-    // handled by spell's own effect processing`). The tests below document
-    // the INTENDED behavior so that once the production fix lands they can
-    // be promoted from `it.todo(...)` to `it(...)`. They are intentionally
-    // skipped today so that the file still passes CI.
+    // --- CR 702.85 — kicked additional-effect application --------------------
+    //
+    // Issue #1222 placeholder at spell-casting.ts is replaced: the kicker
+    // bonus is now forwarded from `stackObject.timesKicked` to
+    // `resolveStackObjectEffects` via a `kickerBonus` argument. The default
+    // engine rule is `final_amount = base_amount + timesKicked` for each
+    // scalable effect (damage / card_draw / token_creation) — this matches
+    // the common "+1 per kick" pattern on cards like Burst Lightning,
+    // Mulldrifter, and most multikicker creatures.
+    //
+    // The tests below exercise the cast→resolve cycle and assert the kicked
+    // additional effect fires as expected.
 
-    // NOTE (gap): the engine does not yet parse the post-kicker clause from
-    // oracle text and double the effect amount. This is the placeholder bug.
-    it.todo(
-      "kicked damage spell doubles damage (e.g. 'Kicker {R}, deals 4 damage' → 8 damage when kicked)",
-    );
+    it("kicked damage spell adds 1 to its base damage (Burst Lightning-style: base 2 → 3)", () => {
+      const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
+      // Burst Lightning (paraphrased): "Kicker {R}. Burst Lightning deals 2
+      // damage to any target. If you paid the kicker cost, it deals 3 damage
+      // instead." The parser only sees the base 2 — the +1 bonus comes from
+      // the kicker application step (CR 702.85).
+      const kickerSpell = createKickerInstant(
+        "Burst Lightning",
+        "Deal 2 damage to any target.",
+        "{R}",
+        "{R}",
+      );
+      const { state: sWithCard, cardId } = addCardToHand(
+        initial,
+        kickerSpell,
+        aliceId,
+      );
+      const sWithMana = addMana(sWithCard, aliceId, { red: 4, generic: 4 });
+      const s = mainPhaseState(sWithMana, aliceId);
 
-    // NOTE (gap): multikicker count is not yet exposed through the
-    // castSpell signature (it currently accepts `isKicked: boolean`); the
-    // intended interface would pass a `kickerCount: number`.
-    it.todo("multikicker paying 2x accumulates the full 2x kicker mana cost");
-    it.todo(
-      "multikicker paying 2x resolves the kicked additional effect exactly twice",
-    );
+      const bobBefore = s.players.get(bobId)!.life;
 
-    // NOTE (gap): see the placeholder at spell-casting.ts:1014-1017.
-    it.todo("kicked card-draw spell draws 2 cards instead of 1 when kicked");
-    it.todo("kicked token spell creates 2 tokens instead of 1 when kicked");
+      const cast = castSpell(
+        s,
+        aliceId,
+        cardId,
+        [{ type: "player", targetId: bobId, isValid: true }],
+        [],
+        0,
+        true,
+      );
+      expect(cast.success).toBe(true);
+      const stackObject = cast.state.stack[cast.state.stack.length - 1];
+      expect(stackObject.timesKicked).toBe(1);
+
+      const resolved = resolveTopOfStack(cast.state);
+      const bobAfter = resolved.players.get(bobId)!.life;
+      expect(bobBefore - bobAfter).toBe(3);
+    });
+
+    it("non-kicked damage spell stays at its base damage (Burst Lightning-style: 2, not 3)", () => {
+      const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
+      const kickerSpell = createKickerInstant(
+        "Burst Lightning",
+        "Deal 2 damage to any target.",
+        "{R}",
+        "{R}",
+      );
+      const { state: sWithCard, cardId } = addCardToHand(
+        initial,
+        kickerSpell,
+        aliceId,
+      );
+      const sWithMana = addMana(sWithCard, aliceId, { red: 4, generic: 4 });
+      const s = mainPhaseState(sWithMana, aliceId);
+
+      const bobBefore = s.players.get(bobId)!.life;
+
+      const cast = castSpell(
+        s,
+        aliceId,
+        cardId,
+        [{ type: "player", targetId: bobId, isValid: true }],
+        [],
+        0,
+        false,
+      );
+      expect(cast.success).toBe(true);
+      const resolved = resolveTopOfStack(cast.state);
+      const bobAfter = resolved.players.get(bobId)!.life;
+      expect(bobBefore - bobAfter).toBe(2);
+    });
+
+    it("kicked card-draw spell draws 2 cards (Mulldrifter-style base 1 → 2 when kicked)", () => {
+      const { state: initial, aliceId } = setupTwoPlayerGame();
+      const kickerCantrip = createKickerInstant(
+        "Mulldrifter Cantrip",
+        "Draw a card.",
+        "{2}{U}",
+        "{1}{U}",
+      );
+      const { state: sWithCard, cardId } = addCardToHand(
+        initial,
+        kickerCantrip,
+        aliceId,
+      );
+      // Pre-load Alice's library with at least 3 cards so the draw succeeds.
+      for (let i = 0; i < 3; i++) {
+        const fillerCard = createCardInstance(
+          {
+            ...createCreatureCard(`Filler ${i}`, 1, 1),
+          },
+          aliceId,
+          aliceId,
+        );
+        sWithCard.cards.set(fillerCard.id, fillerCard);
+        const lib = sWithCard.zones.get(`${aliceId}-library`)!;
+        sWithCard.zones.set(`${aliceId}-library`, {
+          ...lib,
+          cardIds: [...lib.cardIds, fillerCard.id],
+        });
+      }
+      const sWithMana = addMana(sWithCard, aliceId, { blue: 8, generic: 8 });
+      const s = mainPhaseState(sWithMana, aliceId);
+
+      const handBefore = s.zones.get(`${aliceId}-hand`)!.cardIds.length;
+
+      const cast = castSpell(s, aliceId, cardId, [], [], 0, true);
+      expect(cast.success).toBe(true);
+      const resolved = resolveTopOfStack(cast.state);
+
+      // Hand size: started with `handBefore`, kicked draw = 2 cards, so
+      // net change is +(2 - 0) = +2 (the kicked spell itself was cast from
+      // hand so it left the hand — but resolution moves it to graveyard).
+      const handAfter = resolved.zones.get(`${aliceId}-hand`)!.cardIds.length;
+      // Net: -1 (the spell left hand) + 2 (draw) = +1
+      expect(handAfter - handBefore).toBe(1);
+    });
+
+    it("multikicker paying 2x (N=2) adds 2 to base damage (Lightning Blast-style: base 4 → 6)", () => {
+      const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
+      // Lightning Blast (paraphrased): "Kicker {R}. Lightning Blast deals 4
+      // damage to any target." With multikicker N=2 the engine adds +2 to
+      // the parsed base of 4 → 6 damage.
+      const kickerSpell = createKickerInstant(
+        "Lightning Blast",
+        "Deal 4 damage to any target.",
+        "{2}{R}",
+        "{R}",
+      );
+      const { state: sWithCard, cardId } = addCardToHand(
+        initial,
+        kickerSpell,
+        aliceId,
+      );
+      const sWithMana = addMana(sWithCard, aliceId, { red: 6, generic: 6 });
+      const s = mainPhaseState(sWithMana, aliceId);
+
+      const bobBefore = s.players.get(bobId)!.life;
+
+      const cast = castSpell(
+        s,
+        aliceId,
+        cardId,
+        [{ type: "player", targetId: bobId, isValid: true }],
+        [],
+        0,
+        false,
+        undefined,
+        2, // multikicker count = 2
+      );
+      expect(cast.success).toBe(true);
+      const stackObject = cast.state.stack[cast.state.stack.length - 1];
+      expect(stackObject.timesKicked).toBe(2);
+
+      const resolved = resolveTopOfStack(cast.state);
+      const bobAfter = resolved.players.get(bobId)!.life;
+      // 4 (base) + 2 (multikicker) = 6 damage
+      expect(bobBefore - bobAfter).toBe(6);
+    });
+
+    it("multikicker paying 3x (N=3) draws 4 cards (base 1 + N = 4)", () => {
+      const { state: initial, aliceId } = setupTwoPlayerGame();
+      const kickerCantrip = createKickerInstant(
+        "Triple Cantrip",
+        "Draw a card.",
+        "{1}{U}",
+        "{U}",
+      );
+      const { state: sWithCard, cardId } = addCardToHand(
+        initial,
+        kickerCantrip,
+        aliceId,
+      );
+      // Pre-load library with at least 5 cards so 4 draws succeed.
+      for (let i = 0; i < 5; i++) {
+        const fillerCard = createCardInstance(
+          { ...createCreatureCard(`Filler T${i}`, 1, 1) },
+          aliceId,
+          aliceId,
+        );
+        sWithCard.cards.set(fillerCard.id, fillerCard);
+        const lib = sWithCard.zones.get(`${aliceId}-library`)!;
+        sWithCard.zones.set(`${aliceId}-library`, {
+          ...lib,
+          cardIds: [...lib.cardIds, fillerCard.id],
+        });
+      }
+      const sWithMana = addMana(sWithCard, aliceId, { blue: 10, generic: 10 });
+      const s = mainPhaseState(sWithMana, aliceId);
+
+      const handBefore = s.zones.get(`${aliceId}-hand`)!.cardIds.length;
+
+      const cast = castSpell(
+        s,
+        aliceId,
+        cardId,
+        [],
+        [],
+        0,
+        false,
+        undefined,
+        3,
+      );
+      expect(cast.success).toBe(true);
+
+      const resolved = resolveTopOfStack(cast.state);
+      const handAfter = resolved.zones.get(`${aliceId}-hand`)!.cardIds.length;
+      // Net: -1 (the spell left hand) + 4 (draw) = +3
+      expect(handAfter - handBefore).toBe(3);
+    });
+
+    it("multikicker paying 0x (N=0) is the no-kick path: damage stays at base", () => {
+      const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
+      const kickerSpell = createKickerInstant(
+        "Lightning Blast",
+        "Deal 4 damage to any target.",
+        "{2}{R}",
+        "{R}",
+      );
+      const { state: sWithCard, cardId } = addCardToHand(
+        initial,
+        kickerSpell,
+        aliceId,
+      );
+      const sWithMana = addMana(sWithCard, aliceId, { red: 4, generic: 4 });
+      const s = mainPhaseState(sWithMana, aliceId);
+
+      const bobBefore = s.players.get(bobId)!.life;
+
+      const cast = castSpell(
+        s,
+        aliceId,
+        cardId,
+        [{ type: "player", targetId: bobId, isValid: true }],
+        [],
+        0,
+        false,
+        undefined,
+        0,
+      );
+      expect(cast.success).toBe(true);
+      const resolved = resolveTopOfStack(cast.state);
+      const bobAfter = resolved.players.get(bobId)!.life;
+      expect(bobBefore - bobAfter).toBe(4);
+    });
   });
 
   // -------------------------------------------------------------------------

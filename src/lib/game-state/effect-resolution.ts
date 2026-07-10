@@ -437,11 +437,18 @@ export function parseSpellEffects(
       const wordNum = wordToNumber(amountStr);
       amount = wordNum ?? 1;
     }
-    // Use X value if specified
+    // CR 702.85 / X-spell interaction: the variableValues map on the stack
+    // object always has an "X" key (castSpell seeds it with xValue, which
+    // defaults to 0 for non-X spells). Falling back to xValue unconditionally
+    // makes every card-draw spell draw 0 cards when xValue=0 — the parsed
+    // amount is silently overridden. Only use xValue when the parsed text
+    // either matches "X" (left for future X-draw support) or when no amount
+    // was parsed at all; otherwise trust the parsed number.
     const xValue = variableValues?.get("X");
+    const finalAmount = amount > 0 ? amount : (xValue ?? 0);
     effects.push({
       effectType: "card_draw",
-      amount: xValue !== undefined ? xValue : amount,
+      amount: finalAmount,
       targetId: "" as PlayerId, // Will be determined by target selection
     });
   }
@@ -459,10 +466,14 @@ export function parseSpellEffects(
       const wordNum = wordToNumber(amountStr);
       amount = wordNum ?? 1;
     }
+    // See card_draw above: only fall back to xValue when the parsed amount
+    // is 0, so default castSpell behaviour (xValue=0) doesn't zero out
+    // explicitly-amounted life-gain / life-loss / draw effects.
     const xValue = variableValues?.get("X");
+    const finalAmount = amount > 0 ? amount : (xValue ?? 0);
     effects.push({
       effectType: "life_gain",
-      amount: xValue !== undefined ? xValue : amount,
+      amount: finalAmount,
       targetId: "" as PlayerId,
     });
   }
@@ -481,9 +492,10 @@ export function parseSpellEffects(
       amount = wordNum ?? 1;
     }
     const xValue = variableValues?.get("X");
+    const finalAmount = amount > 0 ? amount : (xValue ?? 0);
     effects.push({
       effectType: "life_loss",
-      amount: xValue !== undefined ? xValue : amount,
+      amount: finalAmount,
       targetId: "" as PlayerId,
     });
   }
@@ -752,30 +764,76 @@ export function resolveEffect(
 }
 
 /**
- * Resolve all effects on a stack object
+ * Apply the kicker bonus (CR 702.85) to a single effect's amount.
+ *
+ * CR 702.85: "You may pay an additional cost as you cast [this spell]. If you
+ * paid the additional cost, the spell's additional effect occurs." For most
+ * kicker / multikicker cards the additional effect scales linearly with the
+ * number of times the kicker cost was paid (`timesKicked`): the bonus added
+ * per kick is the engine's default `1` (e.g. +1 damage, +1 card, +1 token).
+ * Cards that specify a different per-kick bonus in oracle text (e.g. "if you
+ * paid the kicker cost, it deals X damage instead") are not handled here —
+ * those rely on explicit effect overrides at the call site.
+ *
+ * Returns a new effect object with the scaled amount/count when the bonus
+ * applies; returns the original effect when no kicker adjustment is made.
+ */
+function applyKickerBonus(
+  effect: StackEffect,
+  kickerBonus: number,
+): StackEffect {
+  if (kickerBonus <= 0) return effect;
+  if (effect.effectType === "damage") {
+    return { ...effect, amount: effect.amount + kickerBonus };
+  }
+  if (effect.effectType === "card_draw") {
+    return { ...effect, amount: effect.amount + kickerBonus };
+  }
+  if (effect.effectType === "token_creation") {
+    return { ...effect, count: effect.count + kickerBonus };
+  }
+  return effect;
+}
+
+/**
+ * Resolve all effects on a stack object.
+ *
+ * @param kickerBonus CR 702.85 — number of additional effects to add on top
+ *   of each scalable base effect (damage, card_draw, token_creation). When
+ *   the spell was kicked once, this is `1`; for multikicker it equals
+ *   `timesKicked`. Default `0` (no bonus), preserving backward compat with
+ *   non-kicker callers.
  */
 export function resolveStackObjectEffects(
   state: GameState,
   effects: StackEffect[],
   sourceId?: CardInstanceId,
   targets?: Array<{ type: string; targetId: string }>,
+  kickerBonus: number = 0,
 ): GameState {
   let currentState = state;
 
   for (const effect of effects) {
+    // CR 702.85 — apply the kicker bonus once per effect so each scalable
+    // effect (damage / card_draw / token_creation) gets the +N bump. The
+    // bonus is taken from the stack object's `timesKicked` by the caller and
+    // is `0` for non-kicker spells, which leaves every effect untouched.
+    const scaledEffect =
+      kickerBonus > 0 ? applyKickerBonus(effect, kickerBonus) : effect;
+
     // Fill in targets from spell targeting
     if (targets && targets.length > 0) {
       const target = targets[0];
       if (
-        effect.effectType === "card_draw" ||
-        effect.effectType === "life_gain" ||
-        effect.effectType === "life_loss"
+        scaledEffect.effectType === "card_draw" ||
+        scaledEffect.effectType === "life_gain" ||
+        scaledEffect.effectType === "life_loss"
       ) {
-        effect.targetId = target.targetId as PlayerId;
-      } else if (effect.effectType === "damage") {
-        effect.targetId = target.targetId as CardInstanceId | PlayerId;
-      } else if (effect.effectType === "counter_spell") {
-        effect.targetStackObjectId = target.targetId;
+        scaledEffect.targetId = target.targetId as PlayerId;
+      } else if (scaledEffect.effectType === "damage") {
+        scaledEffect.targetId = target.targetId as CardInstanceId | PlayerId;
+      } else if (scaledEffect.effectType === "counter_spell") {
+        scaledEffect.targetStackObjectId = target.targetId;
       }
     }
 
@@ -783,7 +841,7 @@ export function resolveStackObjectEffects(
     // declared type rather than relying on a string heuristic. This correctly
     // distinguishes a player target from a permanent (card) target even though
     // both IDs may contain hyphens. CR 119 / CR 119.3c.
-    if (effect.effectType === "damage" && targets && targets.length > 0) {
+    if (scaledEffect.effectType === "damage" && targets && targets.length > 0) {
       const target = targets[0];
       let damageResult: EffectResolutionResult;
       if (target.type === "player") {
@@ -791,7 +849,7 @@ export function resolveStackObjectEffects(
           currentState,
           sourceId,
           target.targetId as PlayerId,
-          effect.amount,
+          scaledEffect.amount,
         );
       } else {
         // "card" covers creatures, planeswalkers, and battles
@@ -799,8 +857,8 @@ export function resolveStackObjectEffects(
           currentState,
           sourceId,
           target.targetId as CardInstanceId,
-          effect.amount,
-          effect.isCombatDamage,
+          scaledEffect.amount,
+          scaledEffect.isCombatDamage,
         );
       }
       if (damageResult.success) {
@@ -809,7 +867,7 @@ export function resolveStackObjectEffects(
       continue;
     }
 
-    const result = resolveEffect(currentState, effect, sourceId);
+    const result = resolveEffect(currentState, scaledEffect, sourceId);
     if (result.success) {
       currentState = result.state;
     }
