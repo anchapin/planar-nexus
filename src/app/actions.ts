@@ -21,6 +21,13 @@ export interface SavedDeck {
   name:string;
   format: Format;
   cards: DeckCard[];
+  /**
+   * Optional constructed-format sideboard pool (Modern/Standard/etc).
+   * Optional so SavedDecks persisted before sideboard editing shipped
+   * continue to round-trip cleanly. Reads default to [] for pre-#1402
+   * decks. See issue #1402.
+   */
+  sideboard?: DeckCard[];
   createdAt: string;
   updatedAt: string;
 }
