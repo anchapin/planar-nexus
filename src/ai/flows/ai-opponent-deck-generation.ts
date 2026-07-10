@@ -13,6 +13,7 @@ import {
   generateOpponentDeck,
   generateRandomDeck,
   generateThemedDeck,
+  type CounterTargetArchetype,
 } from "@/lib/opponent-deck-generator";
 import type { Format } from "@/lib/game-rules";
 import type {
@@ -31,6 +32,15 @@ interface AIOpponentDeckGenerationInput {
   difficulty?: DifficultyLevel;
   format?: Format;
   colorIdentity?: string[];
+  /**
+   * Detected archetype of the human player (issue #1229). When supplied the
+   * generator injects a tuned hate package targeting that archetype — e.g.
+   * Grafdigger's Cage, Deafening Silence, Pithing Needle for combo; lifegain
+   * + sweepers for aggro. Omit it (or pass nothing) to keep the pre-#1229
+   * behavior. Plumbed through from the single-player game-setup path after
+   * `archetype-detector.detectArchetype()` produces a result.
+   */
+  targetArchetype?: CounterTargetArchetype;
 }
 
 interface AIOpponentDeckGenerationOutput {
@@ -90,15 +100,19 @@ export async function generateAIOpponentDeck(
       difficulty = "medium",
       format = "commander",
       colorIdentity,
+      targetArchetype,
     } = input;
 
-    // Generate deck using heuristic algorithms
+    // Generate deck using heuristic algorithms. Issue #1229: forward the
+    // detected player archetype so the generator injects a tuned hate
+    // package (combo -> cage/effect hate, aggro -> lifegain/sweepers, etc.).
     const generatedDeck = theme
       ? generateThemedDeck(theme, format, difficulty)
       : generateOpponentDeck({
           format,
           difficulty,
           colorIdentity: colorIdentity,
+          targetArchetype,
         });
 
     // Convert card objects to string format for backward compatibility

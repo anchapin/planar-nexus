@@ -216,11 +216,11 @@ describe("Opponent Deck Generator", () => {
       const cardSet2 = new Set(deck2.cards.map((c: any) => c.name));
       const cardSet3 = new Set(deck3.cards.map((c: any) => c.name));
 
-      // At least one card should be different
+      // At least one deck should differ from another by card name
+      const setToSorted = (s: Set<string>) => [...s].sort().join("|");
       const allDifferent =
-        cardSet1.size !== cardSet2.size ||
-        cardSet2.size !== cardSet3.size ||
-        cardSet1.size !== cardSet3.size;
+        setToSorted(cardSet1) !== setToSorted(cardSet2) ||
+        setToSorted(cardSet2) !== setToSorted(cardSet3);
 
       expect(allDifferent).toBe(true);
     });
