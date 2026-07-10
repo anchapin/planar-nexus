@@ -9,6 +9,12 @@ import {
   sanitizeUserInput,
   wrapUntrusted,
 } from "@/ai/prompt-security";
+import type { CoachIntentResult } from "@/ai/coach-intent";
+import { COACH_INTENT_LABELS } from "@/ai/coach-intent";
+import {
+  normalizeDifficultyLevel,
+  type DifficultyLevel,
+} from "@/ai/ai-difficulty";
 
 // Reuse types from actions.ts to avoid duplication or circular deps
 export interface MinimalCard {
@@ -122,6 +128,20 @@ export function formatDigestedContextForLLM(context: any): string {
 }
 
 /**
+ * Tier-specific response guidance for the coach (issue #1387). The difficulty
+ * tier is normalized to the canonical four-value set before lookup, with
+ * anything unknown defaulting to `medium`.
+ */
+const TIER_GUIDANCE: Record<DifficultyLevel, string> = {
+  easy: "Response depth: EASY tier. Define any jargon you use with a short glossary note. End with exactly ONE concrete next action the player should take. Keep explanations simple, encouraging, and beginner-friendly.",
+  medium:
+    "Response depth: MEDIUM tier. Give a concise rationale for each recommendation — explain the 'why' in a sentence or two. Avoid deep tangent analysis unless the player asks.",
+  hard: "Response depth: HARD tier. Provide trade-off analysis: weigh alternatives, note opportunity costs, and cover the relevant edge cases. Assume the player understands the fundamentals.",
+  expert:
+    "Response depth: EXPERT tier. Assume tournament-level knowledge. Discuss matchups, meta assumptions, optimal lines, and niche interactions. Skip beginner explanations.",
+};
+
+/**
  * Builds the system context for the AI coach.
  *
  * Issue #923: prefers a STRUCTURED deck analysis (archetype, synergy clusters,
@@ -129,6 +149,12 @@ export function formatDigestedContextForLLM(context: any): string {
  * advice is specific and grounded. When `structuredAnalysis` is provided it is
  * the primary context; a raw `deckList` is only included as a terse reference
  * (and omitted entirely when structured analysis is present).
+ *
+ * Issue #1387: classifies the latest user turn's intent (via the caller) and
+ * injects a sanitized **intent block** so the coach's behaviour is routed to
+ * intent-specific guidance instead of relying on the model to infer the task.
+ * A normalized difficulty tier adds tier-specific response-depth guidance;
+ * unknown/missing difficulty defaults to `medium`.
  */
 export function buildCoachSystemPrompt(
   format: string,
@@ -137,6 +163,8 @@ export function buildCoachSystemPrompt(
   strategy?: string,
   digestedContext?: string,
   structuredAnalysis?: string,
+  intent?: CoachIntentResult,
+  difficulty?: string,
 ): string {
   let prompt = `You are an expert Magic: The Gathering coach. You are helping a player improve their deck.\n\n`;
 
@@ -179,12 +207,38 @@ export function buildCoachSystemPrompt(
   prompt += `\nYou have access to the searchCardsTool. Use it to find cards that might be better than the current choices or to explore new options. `;
   prompt += `Focus on identifying win conditions and ensuring the deck has a consistent game plan.\n\n`;
 
-  prompt += `Handle the following intents based on user messages:\n`;
+  // Issue #1387: inject the classified intent block so the coach routes to the
+  // right mode of response. Only the canonical intent id and its human label
+  // are surfaced (sanitized) — no client-controlled prompt text is trusted.
+  // The confidence + matched signals give the model calibration context
+  // without leaking classifier internals.
+  if (intent) {
+    const intentLabel =
+      COACH_INTENT_LABELS[intent.intent] ??
+      COACH_INTENT_LABELS.unknown;
+    prompt += `\n**Classified Intent**: ${sanitizeUserInput(intent.intent)} — ${sanitizeUserInput(intentLabel)}\n`;
+    prompt += `Confidence: ${intent.confidence.toFixed(2)} (matched: ${sanitizeUserInput(
+      intent.matchedSignals.join(", ") || "none",
+    )})\n`;
+    prompt += `Tailor your answer to this intent. If the intent is \`unknown\`, answer the player's question directly and naturally.\n\n`;
+  }
+
+  // Issue #1387: tier-specific response-depth guidance. Unknown/missing
+  // difficulty is normalized to `medium` per the issue's acceptance criteria.
+  const tier = normalizeDifficultyLevel(difficulty);
+  prompt += `${TIER_GUIDANCE[tier]}\n`;
+
+  prompt += `\nHandle the following intents based on user messages:\n`;
   prompt += `- **Analyze/Review**: Give a general overview of the deck's strengths and weaknesses.\n`;
   prompt += `- **Wincon**: Identify the primary and secondary ways the deck wins games.\n`;
   prompt += `- **Cut**: Recommend specific cards to remove, prioritizing those that don't fit the deck's goals.\n`;
   prompt += `- **Swap/Add**: Suggest new cards to add, either to fill holes or improve overall power level.\n`;
-  prompt += `- **Card Analysis**: Provide a detailed breakdown of a specific card's role in the current deck context.`;
+  prompt += `- **Card Analysis**: Provide a detailed breakdown of a specific card's role in the current deck context.\n`;
+  prompt += `- **Sideboard**: Advise on sideboard construction and boarding plans against specific decks.\n`;
+  prompt += `- **Mulligan**: Advise on keeping or mulliganing an opening hand.\n`;
+  prompt += `- **Rules**: Clarify rules, interactions, and timing; cite the relevant rule briefly.\n`;
+  prompt += `- **Matchup**: Analyse how the deck fares against a specific opponent archetype.\n`;
+  prompt += `- **Meta**: Discuss the deck's positioning in the current metagame.`;
 
   return prompt;
 }
