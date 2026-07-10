@@ -24,6 +24,8 @@ import {
   destroyCard,
   exileCard,
   resolveBlitzDeathDraw,
+  setMonarch,
+  getMonarchId,
 } from "./keyword-actions";
 import { DEFAULT_COMMANDER_DAMAGE_THRESHOLD } from "./commander-damage";
 import {
@@ -125,6 +127,76 @@ export function checkStateBasedActions(
         break; // Only need to mark once per player
       }
     }
+  }
+
+  // SBA 704.5p: Monarchy transfer.
+  //
+  // "If a player has been dealt combat damage by the monarch and combat
+  // damage has been dealt to the monarch, the player who dealt combat
+  // damage to the monarch becomes the monarch."
+  //
+  // We resolve this with a per-player `lastCombatDamageFromPlayer` field
+  // populated by `dealDamageToPlayer` whenever a creature source deals
+  // combat damage to another player. The helper `setMonarch` performs the
+  // canonical transition — clearing the old monarch, marking the new
+  // monarch, and returning whether the flag actually changed.
+  //
+  // We iterate while the SBA fires so that back-to-back combat damage
+  // events (a single attack chain that produces multiple events) all
+  // eventually settle on the latest source.
+  let safetyIterations = updatedState.players.size + 1;
+  while (safetyIterations-- > 0) {
+    const currentMonarchId = getMonarchId(updatedState);
+    const pendingTransfers: Array<{
+      targetId: PlayerId;
+      sourceId: PlayerId;
+    }> = [];
+
+    if (currentMonarchId !== null) {
+      const monarch = updatedState.players.get(currentMonarchId);
+      if (
+        monarch &&
+        monarch.lastCombatDamageFromPlayer &&
+        monarch.lastCombatDamageFromPlayer !== currentMonarchId
+      ) {
+        pendingTransfers.push({
+          targetId: currentMonarchId,
+          sourceId: monarch.lastCombatDamageFromPlayer,
+        });
+      }
+    } else {
+      // No monarch exists yet — the very first opponent to deal combat
+      // damage to anyone becomes the first monarch. Players whose
+      // `lastCombatDamageFromPlayer` is populated are queued; if more
+      // than one candidate exists we still pick deterministically (the
+      // first one iterated) since SBA convergence is order-independent
+      // for the in-game-effect.
+      for (const [candidateId, candidate] of updatedState.players) {
+        const sourceId = candidate.lastCombatDamageFromPlayer;
+        if (sourceId && sourceId !== candidateId) {
+          pendingTransfers.push({ targetId: candidateId, sourceId });
+          break;
+        }
+      }
+    }
+
+    if (pendingTransfers.length === 0) break;
+
+    let progressed = false;
+    for (const transfer of pendingTransfers) {
+      const result = setMonarch(updatedState, transfer.sourceId);
+      if (result.changed) {
+        const next = result.state.players.get(transfer.sourceId);
+        descriptions.push(
+          `${next?.name ?? transfer.sourceId} becomes the monarch (CR 704.5p)`,
+        );
+        actionsPerformed = true;
+        progressed = true;
+        updatedState = result.state;
+        break;
+      }
+    }
+    if (!progressed) break;
   }
 
   // Check cards for SBAs

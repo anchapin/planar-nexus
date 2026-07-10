@@ -44,6 +44,10 @@ export enum TriggerConditionType {
   SPELL_CAST = "spellCast", // When a spell is cast
   ETB = "etb", // Enters battlefield (already exists)
   STATE_CHANGE = "stateChange", // State-based trigger condition
+  // Issue #1225 — monarchy (CR 704.5p). Fired when a player becomes the
+  // monarch so that cards like `Regal Behemoth` and `Archpriest of Iona`
+  // resolve their "Whenever you become the monarch" triggers.
+  MONARCHY_CHANGE = "monarchyChange",
 }
 
 /**
@@ -792,6 +796,65 @@ export function detectStateTriggers(
         });
       }
     }
+  }
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
+}
+
+/**
+ * Issue #1225 — detect "Whenever you become the monarch" triggers.
+ *
+ * Fires on each battlefield permanent whose controller IS the current monarch
+ * AND whose oracle text mentions becoming the monarch (e.g. `Regal Behemoth`,
+ * `Calamity of the Ether`, `Akoum Hellhound`). The caller should invoke this
+ * immediately after `setMonarch` so the trigger resolves as part of the same
+ * SBA batch.
+ *
+ * We deliberately do not pull this through `parseTriggeredAbilities` because
+ * that orchestrator would emit a generic "triggered ability" node whose
+ * event category isn't yet wired through `oracle-text-parser`. Keeping a
+ * dedicated, regex-based matcher contained here keeps the change surgical
+ * (avoids touching `oracle-text-parser.ts` or downstream consumers).
+ */
+const BECOMES_MONARCH_PATTERN =
+  /(?:whenever|when)\s+you\s+become(?:s)?\s+the\s+monarch/i;
+
+export function detectMonarchyChangeTriggers(
+  state: GameState,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  // Identify the player who currently holds the monarchy.
+  const monarchId = (() => {
+    for (const [id, player] of state.players) {
+      if (player.isMonarch) return id;
+    }
+    return null;
+  })();
+  if (monarchId === null) return triggers;
+
+  for (const [cardId, card] of state.cards) {
+    if (!isOnBattlefield(state, cardId)) continue;
+    if (card.controllerId !== monarchId) continue;
+    const oracle = card.cardData.oracle_text || "";
+    if (!BECOMES_MONARCH_PATTERN.test(oracle)) continue;
+
+    const context: TriggerDetectionContext = {
+      triggerType: TriggerConditionType.MONARCHY_CHANGE,
+      damageTarget: monarchId,
+    };
+
+    triggers.push({
+      id: generateTriggeredAbilityId(),
+      sourceCardId: cardId,
+      triggeringPlayerId: card.controllerId,
+      triggerCondition: "becomesMonarch",
+      effect: oracle,
+      timestamp: Date.now(),
+      sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+      context: context as any,
+    });
   }
 
   return sortTriggersAPNAP(triggers, state, activePlayerId);
