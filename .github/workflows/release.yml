@@ -152,22 +152,125 @@ jobs:
         run: npm install -g @tauri-apps/cli@latest
         if: success()
 
-      # Build Tauri macOS app (Universal)
-      # Note: For proper code signing and notarization, configure APPLE_SIGNING_IDENTITY, 
-      # APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID secrets in your repository.
-      # Without these, ad-hoc signing will be used (app will work but won't pass Gatekeeper).
-      # We always use build without --ci to skip notarization which requires Apple credentials.
-      # Issue #1403: the updater signing envvars must also be present here so
-      # the .app.tar.gz updater artifact (Tauri 2 emits this for macOS) gets
-      # a matching .sig; otherwise the manifest cannot validate macOS
-      # updates and the desktop client silently skips them.
+      # Build Tauri macOS app (Universal).
+      #
+      # Code signing is driven by the APPLE_SIGNING_IDENTITY environment
+      # variable (Tauri reads it when `bundle.macOS.signingIdentity` is
+      # null in tauri.conf.json). Hardened Runtime is enabled in
+      # `bundle.macOS.hardenedRuntime` so the binary is eligible for
+      # notarization through `xcrun notarytool` in the next steps.
+      #
+      # Issue #1403: the updater signing envvars must also be present
+      # here so the .app.tar.gz updater artifact (Tauri 2 emits this for
+      # macOS) gets a matching .sig; otherwise the manifest cannot
+      # validate macOS updates and the desktop client silently skips
+      # them.
+      # Issue #1399: when APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID are set
+      # in the `Releases` GitHub Environment, the steps below submit the
+      # .app and .dmg to notarytool and staple the ticket so the
+      # artifact passes Gatekeeper on a fresh macOS install. The steps
+      # self-skip when the secrets are absent so contributors can still
+      # run ad-hoc builds on their own fork.
       - name: Build Tauri macOS app (Universal)
         run: tauri build --target universal-apple-darwin
         if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Issue #1399: notarize the macOS .app bundle. Without a stapled
+      # notarization ticket a fresh macOS Sequoia/Sonoma install blocks
+      # the .dmg with Gatekeeper's "damaged or can't be opened" wall.
+      # The entire step is skipped if any of the three Apple secrets are
+      # missing so PR builds from forks (or pre-secret org runs) still
+      # ship the .app/.dmg unsigned-notarized rather than failing.
+      - name: Locate signed .app bundle
+        id: locate_app
+        if: success() && env.APPLE_ID != '' && env.APPLE_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        run: |
+          set -euo pipefail
+          APP_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos"
+          if [[ ! -d "$APP_DIR" ]]; then
+            echo "::error::No .app bundle produced under $APP_DIR"
+            exit 1
+          fi
+          # Use -print -quit (BSD find) so the assignment is null-safe
+          # when zero or many matches exist.
+          APP="$(find "$APP_DIR" -maxdepth 1 -name '*.app' -print -quit)"
+          if [[ -z "$APP" ]]; then
+            echo "::error::Could not find a .app bundle in $APP_DIR"
+            exit 1
+          fi
+          echo "app-path=$APP" >> "$GITHUB_OUTPUT"
+          echo "Located app bundle: $APP"
+
+      - name: Submit .app bundle to notarytool
+        if: steps.locate_app.conclusion == 'success'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "${{ steps.locate_app.outputs.app-path }}" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Staple notarization ticket onto .app bundle
+        if: steps.locate_app.conclusion == 'success'
+        run: |
+          set -euo pipefail
+          xcrun stapler staple "${{ steps.locate_app.outputs.app-path }}"
+
+      - name: Locate signed .dmg
+        id: locate_dmg
+        if: steps.locate_app.conclusion == 'success'
+        run: |
+          set -euo pipefail
+          DMG_DIR="src-tauri/target/universal-apple-darwin/release/bundle/dmg"
+          DMG="$(find "$DMG_DIR" -maxdepth 1 -name '*.dmg' -print -quit)"
+          if [[ -z "$DMG" ]]; then
+            echo "::error::Could not find a .dmg in $DMG_DIR"
+            exit 1
+          fi
+          echo "dmg-path=$DMG" >> "$GITHUB_OUTPUT"
+          echo "Located dmg: $DMG"
+
+      - name: Submit .dmg to notarytool
+        if: steps.locate_dmg.conclusion == 'success'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          xcrun notarytool submit "${{ steps.locate_dmg.outputs.dmg-path }}" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      - name: Staple notarization ticket onto .dmg
+        if: steps.locate_dmg.conclusion == 'success'
+        run: |
+          set -euo pipefail
+          xcrun stapler staple "${{ steps.locate_dmg.outputs.dmg-path }}"
+
+      # Diagnostic: surface a one-line summary even when notarization was
+      # skipped so a future maintainer can spot a missing-secret run
+      # without re-reading the full workflow log.
+      - name: Notarization status
+        if: always()
+        run: |
+          if [[ "${{ steps.locate_app.conclusion }}" == "success" ]]; then
+            echo "::notice::macOS notarization completed for ${{ steps.locate_app.outputs.app-path }}"
+          else
+            echo "::warning::macOS notarization skipped — APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID secrets are not configured. See docs/RELEASE_RUNBOOK.md §5."
+          fi
 
       - name: Upload macOS DMG
         uses: actions/upload-artifact@v7

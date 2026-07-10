@@ -34,18 +34,18 @@ The release workflow lives at `.github/workflows/release.yml`.
 All secrets live under **Settings → Secrets and variables → Actions** on
 the `Releases` GitHub Environment (never repository-wide).
 
-| Secret | Owner | Scope | Notes |
-|---|---|---|---|
-| `TAURI_SIGNING_PRIVATE_KEY` | Release lead | All | base64 of `.key` from `tauri signer generate -p "$PW"`. Rotated yearly. |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Release lead | All | Password used above. Stored in 1Password. |
-| `WINDOWS_CERTIFICATE` | Release lead | Win | base64 of `.pfx`. Use EV or Azure Trusted Signing — see §4. |
-| `WINDOWS_CERTIFICATE_PASSWORD` | Release lead | Win | `.pfx` export password. |
-| `APPLE_SIGNING_IDENTITY` | Release lead | macOS | `Developer ID Application: Planar Nexus (TEAMID)`. |
-| `APPLE_ID` | Release lead | macOS | Apple ID email for notarytool. |
-| `APPLE_PASSWORD` | Release lead | macOS | App-specific password (NOT the Apple ID password). |
-| `APPLE_TEAM_ID` | Release lead | macOS | 10-char team identifier. |
-| `GPG_SIGNING_KEY_FINGERPRINT` | Release lead | Linux | 40-char subkey fingerprint for `.deb`/`.rpm` signing. |
-| `GPG_SIGNING_KEY_PASSPHRASE` | Release lead | Linux | Passphrase for the above key. |
+| Secret                               | Owner        | Scope | Notes                                                                   |
+| ------------------------------------ | ------------ | ----- | ----------------------------------------------------------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY`          | Release lead | All   | base64 of `.key` from `tauri signer generate -p "$PW"`. Rotated yearly. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Release lead | All   | Password used above. Stored in 1Password.                               |
+| `WINDOWS_CERTIFICATE`                | Release lead | Win   | base64 of `.pfx`. Use EV or Azure Trusted Signing — see §4.             |
+| `WINDOWS_CERTIFICATE_PASSWORD`       | Release lead | Win   | `.pfx` export password.                                                 |
+| `APPLE_SIGNING_IDENTITY`             | Release lead | macOS | `Developer ID Application: Planar Nexus (TEAMID)`.                      |
+| `APPLE_ID`                           | Release lead | macOS | Apple ID email for notarytool.                                          |
+| `APPLE_PASSWORD`                     | Release lead | macOS | App-specific password (NOT the Apple ID password).                      |
+| `APPLE_TEAM_ID`                      | Release lead | macOS | 10-char team identifier.                                                |
+| `GPG_SIGNING_KEY_FINGERPRINT`        | Release lead | Linux | 40-char subkey fingerprint for `.deb`/`.rpm` signing.                   |
+| `GPG_SIGNING_KEY_PASSPHRASE`         | Release lead | Linux | Passphrase for the above key.                                           |
 
 Secrets are **never** echoed in logs. The `notify-failure` job posts the
 runbook URL so on-call can recover without reading secrets.
@@ -55,15 +55,15 @@ runbook URL so on-call can recover without reading secrets.
 A new release engineer must complete every row before their first tag
 push.
 
-| Step | Action | Verified |
-|---|---|---|
-| 1 | Added as environment reviewer on `Releases` | ☐ |
-| 2 | Added to `@anchapin/planar-nexus` team with `Maintain` role | ☐ |
-| 3 | Received 1Password vault invite; downloaded Tauri `.key` and `.pfx` locally for dry-run | ☐ |
-| 4 | Created an Apple Developer app-specific password at <https://appleid.apple.com> | ☐ |
-| 5 | Ran `docs/RELEASE_DRY_RUN.md` end-to-end on a throwaway `v0.0.0-rc.X` tag | ☐ |
-| 6 | Confirmed GitHub notification routing for `release.yml` failures | ☐ |
-| 7 | Read this runbook end-to-end | ☐ |
+| Step | Action                                                                                  | Verified |
+| ---- | --------------------------------------------------------------------------------------- | -------- |
+| 1    | Added as environment reviewer on `Releases`                                             | ☐        |
+| 2    | Added to `@anchapin/planar-nexus` team with `Maintain` role                             | ☐        |
+| 3    | Received 1Password vault invite; downloaded Tauri `.key` and `.pfx` locally for dry-run | ☐        |
+| 4    | Created an Apple Developer app-specific password at <https://appleid.apple.com>         | ☐        |
+| 5    | Ran `docs/RELEASE_DRY_RUN.md` end-to-end on a throwaway `v0.0.0-rc.X` tag               | ☐        |
+| 6    | Confirmed GitHub notification routing for `release.yml` failures                        | ☐        |
+| 7    | Read this runbook end-to-end                                                            | ☐        |
 
 ## 4. Windows Code-Signing Flow
 
@@ -87,31 +87,56 @@ fed in as a base64 secret and rehydrated at build time.
    ```
 5. Tauri reads `bundle.windows.certificateThumbprint` +
    `timestampUrl` from `src-tauri/tauri.conf.json` — keep `http://
-   timestamp.digicert.com` or move to `http://timestamp.sectigo.com`.
+timestamp.digicert.com` or move to `http://timestamp.sectigo.com`.
 6. EV certs on a USB token cannot leave the host; rotate the matrix to
    `windows-2019` self-hosted runner with the token attached.
 
 ## 5. macOS Code-Signing & Notarization Flow
 
-`tauri build --target universal-apple-darwin` calls `codesign` then
-`notarytool`. Entitlements live in
+`tauri build --target universal-apple-darwin` calls `codesign` (using
+`APPLE_SIGNING_IDENTITY`) and then the release workflow submits the
+resulting `.app` and `.dmg` to `xcrun notarytool` before stapling.
+Hardened Runtime is permanently enabled in
+`src-tauri/tauri.conf.json` (`bundle.macOS.hardenedRuntime: true`) —
+without it, the notarization ticket Apple issues is unusable on a fresh
+macOS install. Entitlements live in
 [`/src-tauri/entitlements.plist`](../../src-tauri/entitlements.plist).
 
-1. Generate a `Developer ID Application` cert in App Store Connect.
-2. Save the identity name (e.g. `Developer ID Application: Planar Nexus
-   (TEAMID)`) into `APPLE_SIGNING_IDENTITY`.
-3. Create an app-specific password and store in `APPLE_PASSWORD`.
-4. In `release.yml::build-macos` add, *after* `tauri build`:
-   ```bash
-   APP="src-tauri/target/universal-apple-darwin/release/bundle/macos/Planar-Nexus.app"
-   xcrun notarytool submit "$APP" --apple-id "$APPLE_ID" \
-     --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-   xcrun stapler staple "$APP"
-   ```
-5. Verify: `xcrun stapler validate "$APP"` and
-   `spctl --assess --verbose=4 "$APP"` — both must return `accepted`.
-6. Zip the app *after* stapling: `ditto -c -k --sequesterRsrc --keepParent
-   "$APP" Planar-Nexus.zip` for direct download alongside the DMG.
+> **Status (issue #1399):** the workflow wiring (notarytool submit +
+> stapler + `hardenedRuntime: true`) is live. Until the four `APPLE_*`
+> secrets in §2 are populated in the `Releases` GitHub Environment, the
+> notarization steps self-skip and the build still emits a DMG — it just
+> won't pass Gatekeeper on a fresh install. This is a docs/secret
+> rollout gap, not a code gap.
+
+1. Generate a `Developer ID Application` certificate in App Store
+   Connect (or via Xcode → Settings → Accounts → Manage Certificates).
+2. Save the **identity name** as printed by `security find-identity -v
+-p codesigning` (e.g. `Developer ID Application: Planar Nexus
+(TEAMID)`) into `APPLE_SIGNING_IDENTITY`.
+3. Create an **app-specific password** at
+   <https://appleid.apple.com/account/manage/security> and store it as
+   `APPLE_PASSWORD`. **Never reuse the Apple-ID password.**
+4. Set the team's 10-character identifier as `APPLE_TEAM_ID` (find it in
+   App Store Connect → Membership).
+5. Set the Apple ID email address as `APPLE_ID`.
+6. The workflow in `.github/workflows/release.yml::build-macos` runs
+   `xcrun notarytool submit` followed by `xcrun stapler staple` for both
+   the `.app` and `.dmg`. Re-check after any signing-identity rotation.
+7. Verify a tagged build locally with
+   `xcrun stapler validate "Planar-Nexus.app"` and
+   `spctl --assess --verbose=4 "Planar-Nexus.app"` — both must return
+   `accepted`.
+8. Zip the .app _after_ stapling (optional, for direct download):
+   `ditto -c -k --sequesterRsrc --keepParent Planar-Nexus.app
+Planar-Nexus.zip`.
+
+> **Alternative: App Store Connect API key.** If you switch from an
+> Apple-ID password to an API key, replace the three
+> `--apple-id/--password/--team-id` flags with
+> `--key /path/to/AuthKey.p8 --key-id "$APPLE_API_KEY_ID" --issuer
+"$APPLE_API_ISSUER_ID"` in the workflow. The `tauri.conf.json`
+> changes for this issue remain unchanged.
 
 ## 6. Linux Packaging & GPG Signing
 
@@ -153,20 +178,20 @@ in.
    Save the **public key** into `tauri.conf.json` → `plugins.updater.pubkey`.
 2. Host the manifest at e.g.
    `https://github.com/anchapin/planar-nexus/releases/latest/download/
-   update.json`. List it under `plugins.updater.endpoints`.
+update.json`. List it under `plugins.updater.endpoints`.
 3. To rotate: generate a new keypair, update `pubkey`, ship a release
    signed by **both** the old and new keys (Tauri supports multiple
    pubkeys during overlap), then drop the old one after 90 days.
 
 ## 8. Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `signtool` `0x800B0100` | Cert expired or wrong chain | Re-export `.pfx` with full chain, re-upload secret |
-| `notarytool` `Package Invalid` | Entitlements misaligned | Diff `entitlements.plist` against last green build |
-| `gpg: signing failed: No passphrase` | Secret missing in `Releases` env | Re-add `GPG_SIGNING_KEY_PASSPHRASE` |
-| Build green but Gatekeeper rejects | Staple step skipped | Re-run stapling, rebuild DMG |
-| Updater never fires | Empty `pubkey`/`endpoints` | Complete §7 before tagging |
+| Symptom                              | Likely cause                     | Fix                                                |
+| ------------------------------------ | -------------------------------- | -------------------------------------------------- |
+| `signtool` `0x800B0100`              | Cert expired or wrong chain      | Re-export `.pfx` with full chain, re-upload secret |
+| `notarytool` `Package Invalid`       | Entitlements misaligned          | Diff `entitlements.plist` against last green build |
+| `gpg: signing failed: No passphrase` | Secret missing in `Releases` env | Re-add `GPG_SIGNING_KEY_PASSPHRASE`                |
+| Build green but Gatekeeper rejects   | Staple step skipped              | Re-run stapling, rebuild DMG                       |
+| Updater never fires                  | Empty `pubkey`/`endpoints`       | Complete §7 before tagging                         |
 
 ## 9. Rollback Procedure
 
@@ -180,12 +205,12 @@ in.
 
 ## 10. Signing-Key Rotation Policy
 
-| Key | Max age | Trigger |
-|---|---|---|
-| Tauri updater key | 2 years | Planned; on key-compromise escalate to immediate |
-| Windows code-signing cert | 1 year (EV hardware) / 3 years (Azure TS) | Vendor expiry; immediate on tamper |
-| Apple Developer ID | 5 years | Apple expiry; immediate on tamper |
-| GPG maintainer key | 2 years | Planned; immediate on tamper |
+| Key                       | Max age                                   | Trigger                                          |
+| ------------------------- | ----------------------------------------- | ------------------------------------------------ |
+| Tauri updater key         | 2 years                                   | Planned; on key-compromise escalate to immediate |
+| Windows code-signing cert | 1 year (EV hardware) / 3 years (Azure TS) | Vendor expiry; immediate on tamper               |
+| Apple Developer ID        | 5 years                                   | Apple expiry; immediate on tamper                |
+| GPG maintainer key        | 2 years                                   | Planned; immediate on tamper                     |
 
 **Compromise playbook** (any key): (a) revoke the key with the vendor;
 (b) publish a `SECURITY.md` advisory; (c) re-cut all three platforms
