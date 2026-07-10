@@ -39,7 +39,8 @@ export type ReplacementEffectType =
   | "exile_replacement" // Replace exile
   | "counters" // Add/remove counters
   | "as_though" // "As though" effects
-  | "sacrifice_replacement"; // Replace sacrifice
+  | "sacrifice_replacement" // Replace sacrifice
+  | "command_zone_replacement"; // Commander redirect (CR 903.9)
 
 /**
  * A replacement or prevention ability
@@ -99,7 +100,9 @@ export type ReplacementEventType =
   | "remove_counter"
   | "sacrifice"
   | "tap"
-  | "untap";
+  | "untap"
+  | "put_into_hand" // CR 903.9a — commander bounced to hand
+  | "put_into_library"; // CR 903.9a — commander shuffled into library
 
 export interface ReplacementEvent {
   type: ReplacementEventType;
@@ -764,15 +767,17 @@ export class ReplacementEffectManager {
       life_gain: ["life_gain_replacement"],
       life_loss: ["life_loss_replacement"],
       draw_card: ["draw_replacement"],
-      move_to_graveyard: ["destroy_replacement"],
-      exile: ["exile_replacement"],
-      destroy: ["destroy_replacement"],
+      move_to_graveyard: ["destroy_replacement", "command_zone_replacement"],
+      exile: ["exile_replacement", "command_zone_replacement"],
+      destroy: ["destroy_replacement", "command_zone_replacement"],
       create_token: ["token_creation"],
       add_counter: ["counter_movement", "counters"],
       remove_counter: ["counters"],
       sacrifice: ["sacrifice_replacement"],
       tap: [],
       untap: [],
+      put_into_hand: ["command_zone_replacement"],
+      put_into_library: ["command_zone_replacement"],
     };
     return mapping[eventType]?.includes(effectType) || false;
   }
@@ -1014,6 +1019,119 @@ export function createDestroyReplacementEffect(
           }
         : { modified: false, description: "Cannot apply" };
     },
+  };
+}
+
+/**
+ * CR 903.9a — Commander Zone Replacement Effect
+ *
+ * Builds a self-replacement effect (CR 614.6) that fires whenever the named
+ * commander would be put into its owner's hand, graveyard, exile, or library.
+ * The affected owner decides whether to let the effect fire (CR 903.9a — "that
+ * player may instead put it into the command zone"), and the replacement is
+ * applied with APNAP ordering in favour of the commander owner
+ * (`isSelfReplacement: true` makes CR 614.6 route the owner's effect through
+ * before any competing non-self replacement can run).
+ *
+ * IMPORTANT — the effect carries the redirection intent via the event's
+ * `context.replacedToCommandZone = true` flag and stamps `commandZoneOwnerId`
+ * so callers can move the card to the command zone instead of performing the
+ * original zone change. The ReplacementEffectManager itself does NOT mutate
+ * game zones (it only rewrites the event); the integrator (state-based
+ * actions, moveCardToZone, destroyCard, etc.) is responsible for honouring the
+ * flag. See {@link resolveCommanderZoneRedirect} for the helper that performs
+ * the actual move.
+ */
+export function createCommandZoneReplacementEffect(
+  commanderCardId: CardInstanceId,
+  ownerId: PlayerId,
+  fromZone?: string,
+): ReplacementAbility {
+  const eventTypes: ReplacementEventType[] = [
+    "destroy",
+    "move_to_graveyard",
+    "exile",
+    "put_into_hand",
+    "put_into_library",
+  ];
+  return {
+    id: `cmdr-zone-replace-${commanderCardId}-${Date.now()}`,
+    sourceCardId: commanderCardId,
+    controllerId: ownerId,
+    effectType: "command_zone_replacement",
+    description: "Commander redirects to command zone (CR 903.9)",
+    layer: 3,
+    timestamp: Date.now(),
+    isSelfReplacement: true,
+    isInstead: true,
+    canApply: (e) =>
+      eventTypes.includes(e.type) &&
+      (e.sourceId === commanderCardId || e.targetId === commanderCardId) &&
+      (!fromZone ||
+        (typeof e.context?.fromZone === "string" &&
+          e.context.fromZone === fromZone)),
+    apply: (e) => ({
+      modified: true,
+      modifiedEvent: {
+        ...e,
+        amount: 0,
+        type: "tap",
+        context: {
+          ...(e.context ?? {}),
+          replacedToCommandZone: true,
+          commandZoneOwnerId: ownerId,
+          originalCardId: commanderCardId,
+          originalEventType: e.type,
+        },
+      },
+      description: `Commander ${commanderCardId} redirected to command zone (CR 903.9)`,
+      instead: true,
+    }),
+  };
+}
+
+/**
+ * CR 903.9a — Helper for downstream callers (state-based-actions, destroyCard,
+ * moveCardToZone, etc.). Inspects the processed {@link ReplacementEvent} and,
+ * if the commander zone replacement redirected the event, performs the
+ * commander-zone move and returns the new state. Returns `null` when no
+ * commander redirect applies so callers fall through to the original zone
+ * change.
+ *
+ * The caller must supply the active {@link GameState} and a `moveFn` capable
+ * of moving the card to the command zone (e.g. `moveCardToZone`). This shape
+ * keeps the replacement-effect module free of zone-mutation logic.
+ */
+export interface CommanderZoneRedirectOutcome {
+  state: GameState;
+  redirected: true;
+  originalEventType: ReplacementEventType;
+  ownerId: PlayerId;
+  originalCardId: CardInstanceId;
+}
+
+export function resolveCommanderZoneRedirect<
+  T extends { state: GameState; success?: boolean },
+>(
+  event: ReplacementEvent,
+  state: GameState,
+  moveFn: (state: GameState, cardId: CardInstanceId) => T,
+): CommanderZoneRedirectOutcome | null {
+  const ctx = event.context as Record<string, unknown> | undefined;
+  if (!ctx || ctx.replacedToCommandZone !== true) return null;
+  const commanderCardId = (ctx.originalCardId as CardInstanceId) ??
+    (event.sourceId as CardInstanceId) ??
+    (event.targetId as CardInstanceId);
+  const ownerId = ctx.commandZoneOwnerId as PlayerId;
+  const originalEventType = ctx.originalEventType as ReplacementEventType;
+  if (!commanderCardId || !ownerId) return null;
+  const result = moveFn(state, commanderCardId);
+  return {
+    state: result.state,
+    redirected: true,
+    originalEventType,
+    ownerId,
+    originalCardId: commanderCardId,
   };
 }
 
