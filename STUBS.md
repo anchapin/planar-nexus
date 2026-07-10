@@ -29,7 +29,7 @@ Debug diagnostics are gated by `isDebugStubMode()`:
 | `genkit-ai`                      | `src/ai/genkit.ts`                               | Backend | Stub           | `ai` is `null`; `googleAiPlugin` is a no-op configure. Genkit dependency removed in #446.                   |
 | `genkit-coach-flow`              | `src/ai/flows/genkit-coach-flow.ts`              | Backend | Stub           | `coachFlow.stream()` yields a friendly "coming soon" message. Structured-analysis prompt is still built for forward-compat/tests. |
 | `coach-api-route`                | `src/app/api/chat/coach/route.ts`                | API     | Stub           | Validates input + builds structured analysis, then streams the stub flow message. Will work as-is once Genkit is restored. |
-| `search-worker-client`           | `src/lib/search/search-worker-client.ts`         | Backend | Stub           | Orama-powered background search not implemented. Returns empty results (no-op `indexCards`/`search`/`clear`). |
+| `search-worker-client`           | `src/lib/search/search-worker-client.ts`         | Backend | Implemented (issue #1389) | Real Orama Web Worker ships via `search.worker.ts`; client lazy-spawns the worker and falls back to main-thread `cardSearchIndex` when unavailable. |
 
 ## Detail
 
@@ -78,10 +78,14 @@ Debug diagnostics are gated by `isDebugStubMode()`:
 
 - **What it is:** Client for an Orama-powered Web Worker doing background card
   search.
-- **Current state:** All methods are no-ops returning empty results. Satisfies
-  type-checking for `use-search-worker.ts`.
-- **To finish:** Implement the Orama index + worker, then replace the no-op
-  methods. No consumer changes required while the empty-result contract holds.
+- **Current state:** **Implemented** (issue #1389). The real worker lives in
+  `src/lib/search/search.worker.ts` (Comlink-exposed Orama index with
+  `init` / `index` / `search` / `clear` / `count`). The client lazy-spawns the
+  worker via `import.meta.url`, exposes `getStatus()` returning
+  `"ready" | "initializing" | "fallback" | "error"`, and falls back to the
+  main-thread `cardSearchIndex.search()` when the worker is unavailable
+  (jsdom, SSR, CSP-blocked). `searchCardsOffline` routes through the worker
+  when ready; `useSearchWorker` hook + `card-search.tsx` call site wired.
 
 ## Decision: stubs remain in place (not moved to `src/stubs/`)
 
