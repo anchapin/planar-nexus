@@ -82,6 +82,16 @@ export type {
   ManaTier,
   StackPressure,
 } from "./counterspell-frequency-model";
+// Issue #1230: persistent opponent-bluff accumulator. Stores the per-opponent
+// signal log across turns and feeds it into the stack / counterspell decisions
+// so Expert play can read "represents counterspell but never has it" trends.
+import {
+  opponentHistoryMatters,
+  toOpponentHistory,
+  counterspellTighteningFactor,
+  counterspellConfidenceBump,
+  type OpponentBluffHistory,
+} from "./opponent-bluff-history";
 
 // Re-export GameState for backward compatibility
 export type { GameState };
@@ -142,13 +152,7 @@ export interface AvailableResponse {
  */
 export interface ResponseEffect {
   type:
-    | "counter"
-    | "destroy"
-    | "bounce"
-    | "exile"
-    | "damage"
-    | "draw"
-    | "other";
+    "counter" | "destroy" | "bounce" | "exile" | "damage" | "draw" | "other";
   value: number; // Magnitude of effect (1-10)
   targets: string[];
 }
@@ -200,12 +204,7 @@ export interface ResourceDecision {
  * Deck archetype classification for bluffing decisions
  */
 export type DeckArchetype =
-  | "control"
-  | "tempo"
-  | "aggro"
-  | "midrange"
-  | "combo"
-  | "unknown";
+  "control" | "tempo" | "aggro" | "midrange" | "combo" | "unknown";
 
 /**
  * Opponent behavioral history for bluffing decisions
@@ -402,11 +401,7 @@ export interface StackDependencyAnalysis {
 }
 
 export type ResolutionPriority =
-  | "critical"
-  | "high"
-  | "medium"
-  | "low"
-  | "irrelevant";
+  "critical" | "high" | "medium" | "low" | "irrelevant";
 
 export interface DependencyChain {
   chain: string[];
@@ -1068,12 +1063,22 @@ export class StackInteractionAI {
    * without needing a real `Worker` global.
    */
   private evaluationProvider: EvaluationProvider;
+  /**
+   * Issue #1230 — persistent opponent-bluff accumulator. Optional; when set
+   * (and difficulty != easy) the stack decisions consult it instead of
+   * constructing a fresh empty history per call. The AI turn loop owns the
+   * canonical instance and updates it at end-of-turn from observed actions.
+   */
+  private opponentBluffHistory: OpponentBluffHistory | undefined;
 
   constructor(
     gameState: GameState,
     playerId: string,
     difficulty: DifficultyLevel = "medium",
-    options: { evaluationProvider?: EvaluationProvider } = {},
+    options: {
+      evaluationProvider?: EvaluationProvider;
+      opponentBluffHistory?: OpponentBluffHistory;
+    } = {},
   ) {
     this.gameState = gameState;
     this.playerId = playerId;
@@ -1081,9 +1086,23 @@ export class StackInteractionAI {
     this.evaluationProvider =
       options.evaluationProvider ??
       ((state, id, diff) => evaluateGameStateAsync(state, id, diff));
+    this.opponentBluffHistory = options.opponentBluffHistory;
     // Default to medium if difficulty not recognized
     this.weights =
       DefaultResponseWeights[difficulty] || DefaultResponseWeights["medium"];
+  }
+
+  /**
+   * Issue #1230 — let external owners (the AI turn loop) hot-swap the
+   * accumulator mid-game. Returns the previous value so the caller can keep
+   * a snapshot for replays / debugging.
+   */
+  setOpponentBluffHistory(
+    history: OpponentBluffHistory | undefined,
+  ): OpponentBluffHistory | undefined {
+    const previous = this.opponentBluffHistory;
+    this.opponentBluffHistory = history;
+    return previous;
   }
 
   /**
@@ -1105,7 +1124,9 @@ export class StackInteractionAI {
    * fallback). Use this from `async` callers that want to keep the UI
    * responsive during priority decisions on a large board.
    */
-  async evaluateResponseAsync(context: StackContext): Promise<ResponseDecision> {
+  async evaluateResponseAsync(
+    context: StackContext,
+  ): Promise<ResponseDecision> {
     const currentEvaluation = await this.evaluationProvider(
       this.gameState,
       this.playerId,
@@ -1468,9 +1489,7 @@ export class StackInteractionAI {
    * `evaluateGameState` heuristic through the injected `evaluationProvider`
    * (default: the worker bridge with main-thread fallback).
    */
-  async manageResourcesAsync(
-    context: StackContext,
-  ): Promise<ResourceDecision> {
+  async manageResourcesAsync(context: StackContext): Promise<ResourceDecision> {
     const currentEvaluation = await this.evaluationProvider(
       this.gameState,
       this.playerId,
@@ -1838,9 +1857,16 @@ export class StackInteractionAI {
     // Win condition disruption is critical
     score += factors.winConditionDisruption * 2.5;
 
-    // Penalty if opponent can counter our counterspell
+    // Penalty if opponent can counter our counterspell — scaled down by the
+    // issue #1230 bluff-history tightening factor when the opponent has been
+    // representing counters they don't actually have. Easy tier keeps the full
+    // penalty (counterspellTighteningFactor returns 1 for easy).
     if (factors.opponentHasCounterspell && !factors.hasBackup) {
-      score -= 2.0;
+      const tightening = counterspellTighteningFactor(
+        this.opponentBluffHistory,
+        this.difficulty,
+      );
+      score -= 2.0 * tightening;
     }
 
     // Bonus if we have backup
@@ -1940,6 +1966,17 @@ export class StackInteractionAI {
     // Extra confidence for high threat level (which includes targeting us with low life)
     if (factors.threatLevel > 0.5) confidence += 0.15;
 
+    // Issue #1230: when the persistent bluff accumulator shows the opponent
+    // has represented counters they never actually cast (≥ 2 occurrences),
+    // bump the AI's confidence so it commits to the counter instead of
+    // deferring. Bounded by the helper's ceiling so Expert play stays
+    // calibrated; Easy tier is unchanged because opponentHistoryMatters() is
+    // false for easy, returning a 0 bump.
+    confidence += counterspellConfidenceBump(
+      this.opponentBluffHistory,
+      this.difficulty,
+    );
+
     return Math.min(1, confidence);
   }
 
@@ -2027,6 +2064,15 @@ export class StackInteractionAI {
     currentEvaluation: DetailedEvaluation,
     opponentHistory?: OpponentHistory,
   ): BluffHoldDecision {
+    // Issue #1230: fall back to the constructor-injected bluff-history-derived
+    // view when no explicit `opponentHistory` argument is supplied. Easy tier
+    // still ignores it (opponentHistoryMatters gate) so the legacy baseline
+    // behavior is preserved.
+    const effectiveHistory =
+      opponentHistory ??
+      (opponentHistoryMatters(this.difficulty)
+        ? toOpponentHistory(this.opponentBluffHistory)
+        : undefined);
     const totalMana = Object.values(context.availableMana).reduce(
       (sum, m) => sum + m,
       0,
@@ -2119,21 +2165,21 @@ export class StackInteractionAI {
 
     bluffStrength += archetypeBonus;
 
-    if (opponentHistory) {
-      if (opponentHistory.playsAroundOpenMana) {
+    if (effectiveHistory) {
+      if (effectiveHistory.playsAroundOpenMana) {
         bluffStrength += 0.25;
       }
-      if (opponentHistory.hesitationCount > 2) {
+      if (effectiveHistory.hesitationCount > 2) {
         bluffStrength += 0.15;
       }
-      if (opponentHistory.avgPlaysPerTurn < 1.5) {
+      if (effectiveHistory.avgPlaysPerTurn < 1.5) {
         bluffStrength += 0.1;
       }
     }
 
     bluffStrength = Math.min(1, Math.max(0, bluffStrength));
 
-    const threshold = opponentHistory?.wasBaited ? 0.45 : 0.35;
+    const threshold = effectiveHistory?.wasBaited ? 0.45 : 0.35;
     const shouldBluff = bluffStrength >= threshold;
 
     if (shouldBluff) {
@@ -2144,7 +2190,7 @@ export class StackInteractionAI {
       if (totalMana >= 4) reasons.push("significant mana open");
       if (currentEvaluation.totalScore > 0.5)
         reasons.push("favorable board state");
-      if (opponentHistory?.playsAroundOpenMana)
+      if (effectiveHistory?.playsAroundOpenMana)
         reasons.push("opponent respects open mana");
 
       return {
@@ -2499,6 +2545,14 @@ export class StackInteractionAI {
         manaMap,
         stackActions,
         context.currentAction,
+        // Issue #1230: pass through the difficulty-aware bluff tightening so
+        // the frequency model's probability is scaled down when the persistent
+        // accumulator says the opponent has been bluffing counters. Easy tier
+        // passes 1.0 (no change), preserving the prior baseline.
+        counterspellTighteningFactor(
+          this.opponentBluffHistory,
+          this.difficulty,
+        ),
       );
 
       if (result.probability >= 0.3) return true;
@@ -3003,8 +3057,11 @@ export function evaluateStackResponse(
   playerId: string,
   context: StackContext,
   difficulty: DifficultyLevel = "medium",
+  opponentBluffHistory?: OpponentBluffHistory,
 ): ResponseDecision {
-  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const ai = new StackInteractionAI(gameState, playerId, difficulty, {
+    opponentBluffHistory,
+  });
   return ai.evaluateResponse(context);
 }
 
@@ -3017,8 +3074,11 @@ export function decideCounterspell(
   context: StackContext,
   counterspell: AvailableResponse,
   difficulty: DifficultyLevel = "medium",
+  opponentBluffHistory?: OpponentBluffHistory,
 ): ResponseDecision {
-  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const ai = new StackInteractionAI(gameState, playerId, difficulty, {
+    opponentBluffHistory,
+  });
   return ai.decideCounterspell(context, counterspell);
 }
 
@@ -3030,8 +3090,11 @@ export function manageResponseResources(
   playerId: string,
   context: StackContext,
   difficulty: DifficultyLevel = "medium",
+  opponentBluffHistory?: OpponentBluffHistory,
 ): ResourceDecision {
-  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const ai = new StackInteractionAI(gameState, playerId, difficulty, {
+    opponentBluffHistory,
+  });
   return ai.manageResources(context);
 }
 
@@ -3044,8 +3107,11 @@ export function shouldBluffHoldMana(
   context: StackContext,
   opponentHistory?: OpponentHistory,
   difficulty: DifficultyLevel = "medium",
+  opponentBluffHistory?: OpponentBluffHistory,
 ): BluffHoldDecision {
-  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const ai = new StackInteractionAI(gameState, playerId, difficulty, {
+    opponentBluffHistory,
+  });
   const currentEvaluation = evaluateGameState(gameState, playerId, difficulty);
   return ai.shouldBluffHoldMana(context, currentEvaluation, opponentHistory);
 }
@@ -3061,8 +3127,11 @@ export async function shouldBluffHoldManaAsync(
   context: StackContext,
   opponentHistory?: OpponentHistory,
   difficulty: DifficultyLevel = "medium",
+  opponentBluffHistory?: OpponentBluffHistory,
 ): Promise<BluffHoldDecision> {
-  const ai = new StackInteractionAI(gameState, playerId, difficulty);
+  const ai = new StackInteractionAI(gameState, playerId, difficulty, {
+    opponentBluffHistory,
+  });
   const currentEvaluation = await evaluateGameStateAsync(
     gameState,
     playerId,

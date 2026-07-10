@@ -113,78 +113,438 @@ export function classifyStackPressure(
 export const COUNTERSPELL_FREQUENCY_TABLE: CounterspellFrequencyRecord[] = [
   // === CONTROL archetype ===
   // Control players counter aggressively, especially with mana available
-  { opponentArchetype: "control", manaTier: "low", stackPressure: "none", counterProbability: 0.02, sampleSize: 120 },
-  { opponentArchetype: "control", manaTier: "low", stackPressure: "low", counterProbability: 0.05, sampleSize: 85 },
-  { opponentArchetype: "control", manaTier: "low", stackPressure: "moderate", counterProbability: 0.08, sampleSize: 65 },
-  { opponentArchetype: "control", manaTier: "low", stackPressure: "high", counterProbability: 0.10, sampleSize: 45 },
-  { opponentArchetype: "control", manaTier: "medium", stackPressure: "none", counterProbability: 0.10, sampleSize: 150 },
-  { opponentArchetype: "control", manaTier: "medium", stackPressure: "low", counterProbability: 0.25, sampleSize: 130 },
-  { opponentArchetype: "control", manaTier: "medium", stackPressure: "moderate", counterProbability: 0.55, sampleSize: 140 },
-  { opponentArchetype: "control", manaTier: "medium", stackPressure: "high", counterProbability: 0.75, sampleSize: 120 },
-  { opponentArchetype: "control", manaTier: "high", stackPressure: "none", counterProbability: 0.15, sampleSize: 110 },
-  { opponentArchetype: "control", manaTier: "high", stackPressure: "low", counterProbability: 0.40, sampleSize: 125 },
-  { opponentArchetype: "control", manaTier: "high", stackPressure: "moderate", counterProbability: 0.70, sampleSize: 115 },
-  { opponentArchetype: "control", manaTier: "high", stackPressure: "high", counterProbability: 0.88, sampleSize: 105 },
+  {
+    opponentArchetype: "control",
+    manaTier: "low",
+    stackPressure: "none",
+    counterProbability: 0.02,
+    sampleSize: 120,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "low",
+    stackPressure: "low",
+    counterProbability: 0.05,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "low",
+    stackPressure: "moderate",
+    counterProbability: 0.08,
+    sampleSize: 65,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "low",
+    stackPressure: "high",
+    counterProbability: 0.1,
+    sampleSize: 45,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "medium",
+    stackPressure: "none",
+    counterProbability: 0.1,
+    sampleSize: 150,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "medium",
+    stackPressure: "low",
+    counterProbability: 0.25,
+    sampleSize: 130,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "medium",
+    stackPressure: "moderate",
+    counterProbability: 0.55,
+    sampleSize: 140,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "medium",
+    stackPressure: "high",
+    counterProbability: 0.75,
+    sampleSize: 120,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "high",
+    stackPressure: "none",
+    counterProbability: 0.15,
+    sampleSize: 110,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "high",
+    stackPressure: "low",
+    counterProbability: 0.4,
+    sampleSize: 125,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "high",
+    stackPressure: "moderate",
+    counterProbability: 0.7,
+    sampleSize: 115,
+  },
+  {
+    opponentArchetype: "control",
+    manaTier: "high",
+    stackPressure: "high",
+    counterProbability: 0.88,
+    sampleSize: 105,
+  },
 
   // === TEMPO archetype ===
   // Tempo players counter selectively — mostly early threats
-  { opponentArchetype: "tempo", manaTier: "low", stackPressure: "none", counterProbability: 0.03, sampleSize: 100 },
-  { opponentArchetype: "tempo", manaTier: "low", stackPressure: "low", counterProbability: 0.08, sampleSize: 90 },
-  { opponentArchetype: "tempo", manaTier: "low", stackPressure: "moderate", counterProbability: 0.15, sampleSize: 75 },
-  { opponentArchetype: "tempo", manaTier: "low", stackPressure: "high", counterProbability: 0.20, sampleSize: 60 },
-  { opponentArchetype: "tempo", manaTier: "medium", stackPressure: "none", counterProbability: 0.12, sampleSize: 115 },
-  { opponentArchetype: "tempo", manaTier: "medium", stackPressure: "low", counterProbability: 0.30, sampleSize: 110 },
-  { opponentArchetype: "tempo", manaTier: "medium", stackPressure: "moderate", counterProbability: 0.50, sampleSize: 95 },
-  { opponentArchetype: "tempo", manaTier: "medium", stackPressure: "high", counterProbability: 0.65, sampleSize: 80 },
-  { opponentArchetype: "tempo", manaTier: "high", stackPressure: "none", counterProbability: 0.18, sampleSize: 80 },
-  { opponentArchetype: "tempo", manaTier: "high", stackPressure: "low", counterProbability: 0.35, sampleSize: 90 },
-  { opponentArchetype: "tempo", manaTier: "high", stackPressure: "moderate", counterProbability: 0.55, sampleSize: 85 },
-  { opponentArchetype: "tempo", manaTier: "high", stackPressure: "high", counterProbability: 0.72, sampleSize: 70 },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "low",
+    stackPressure: "none",
+    counterProbability: 0.03,
+    sampleSize: 100,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "low",
+    stackPressure: "low",
+    counterProbability: 0.08,
+    sampleSize: 90,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "low",
+    stackPressure: "moderate",
+    counterProbability: 0.15,
+    sampleSize: 75,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "low",
+    stackPressure: "high",
+    counterProbability: 0.2,
+    sampleSize: 60,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "medium",
+    stackPressure: "none",
+    counterProbability: 0.12,
+    sampleSize: 115,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "medium",
+    stackPressure: "low",
+    counterProbability: 0.3,
+    sampleSize: 110,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "medium",
+    stackPressure: "moderate",
+    counterProbability: 0.5,
+    sampleSize: 95,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "medium",
+    stackPressure: "high",
+    counterProbability: 0.65,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "high",
+    stackPressure: "none",
+    counterProbability: 0.18,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "high",
+    stackPressure: "low",
+    counterProbability: 0.35,
+    sampleSize: 90,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "high",
+    stackPressure: "moderate",
+    counterProbability: 0.55,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "tempo",
+    manaTier: "high",
+    stackPressure: "high",
+    counterProbability: 0.72,
+    sampleSize: 70,
+  },
 
   // === MIDRANGE archetype ===
   // Midrange players rarely have counterspells, use them conservatively
-  { opponentArchetype: "midrange", manaTier: "low", stackPressure: "none", counterProbability: 0.01, sampleSize: 130 },
-  { opponentArchetype: "midrange", manaTier: "low", stackPressure: "low", counterProbability: 0.03, sampleSize: 95 },
-  { opponentArchetype: "midrange", manaTier: "low", stackPressure: "moderate", counterProbability: 0.05, sampleSize: 80 },
-  { opponentArchetype: "midrange", manaTier: "low", stackPressure: "high", counterProbability: 0.08, sampleSize: 70 },
-  { opponentArchetype: "midrange", manaTier: "medium", stackPressure: "none", counterProbability: 0.04, sampleSize: 110 },
-  { opponentArchetype: "midrange", manaTier: "medium", stackPressure: "low", counterProbability: 0.08, sampleSize: 100 },
-  { opponentArchetype: "midrange", manaTier: "medium", stackPressure: "moderate", counterProbability: 0.15, sampleSize: 90 },
-  { opponentArchetype: "midrange", manaTier: "medium", stackPressure: "high", counterProbability: 0.25, sampleSize: 75 },
-  { opponentArchetype: "midrange", manaTier: "high", stackPressure: "none", counterProbability: 0.06, sampleSize: 85 },
-  { opponentArchetype: "midrange", manaTier: "high", stackPressure: "low", counterProbability: 0.12, sampleSize: 95 },
-  { opponentArchetype: "midrange", manaTier: "high", stackPressure: "moderate", counterProbability: 0.20, sampleSize: 80 },
-  { opponentArchetype: "midrange", manaTier: "high", stackPressure: "high", counterProbability: 0.30, sampleSize: 65 },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "low",
+    stackPressure: "none",
+    counterProbability: 0.01,
+    sampleSize: 130,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "low",
+    stackPressure: "low",
+    counterProbability: 0.03,
+    sampleSize: 95,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "low",
+    stackPressure: "moderate",
+    counterProbability: 0.05,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "low",
+    stackPressure: "high",
+    counterProbability: 0.08,
+    sampleSize: 70,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "medium",
+    stackPressure: "none",
+    counterProbability: 0.04,
+    sampleSize: 110,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "medium",
+    stackPressure: "low",
+    counterProbability: 0.08,
+    sampleSize: 100,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "medium",
+    stackPressure: "moderate",
+    counterProbability: 0.15,
+    sampleSize: 90,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "medium",
+    stackPressure: "high",
+    counterProbability: 0.25,
+    sampleSize: 75,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "high",
+    stackPressure: "none",
+    counterProbability: 0.06,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "high",
+    stackPressure: "low",
+    counterProbability: 0.12,
+    sampleSize: 95,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "high",
+    stackPressure: "moderate",
+    counterProbability: 0.2,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "midrange",
+    manaTier: "high",
+    stackPressure: "high",
+    counterProbability: 0.3,
+    sampleSize: 65,
+  },
 
   // === AGGRO archetype ===
   // Aggro decks almost never counterspell — they don't run counters
-  { opponentArchetype: "aggro", manaTier: "low", stackPressure: "none", counterProbability: 0.00, sampleSize: 140 },
-  { opponentArchetype: "aggro", manaTier: "low", stackPressure: "low", counterProbability: 0.01, sampleSize: 100 },
-  { opponentArchetype: "aggro", manaTier: "low", stackPressure: "moderate", counterProbability: 0.01, sampleSize: 85 },
-  { opponentArchetype: "aggro", manaTier: "low", stackPressure: "high", counterProbability: 0.02, sampleSize: 70 },
-  { opponentArchetype: "aggro", manaTier: "medium", stackPressure: "none", counterProbability: 0.01, sampleSize: 110 },
-  { opponentArchetype: "aggro", manaTier: "medium", stackPressure: "low", counterProbability: 0.02, sampleSize: 100 },
-  { opponentArchetype: "aggro", manaTier: "medium", stackPressure: "moderate", counterProbability: 0.03, sampleSize: 90 },
-  { opponentArchetype: "aggro", manaTier: "medium", stackPressure: "high", counterProbability: 0.05, sampleSize: 75 },
-  { opponentArchetype: "aggro", manaTier: "high", stackPressure: "none", counterProbability: 0.01, sampleSize: 80 },
-  { opponentArchetype: "aggro", manaTier: "high", stackPressure: "low", counterProbability: 0.03, sampleSize: 85 },
-  { opponentArchetype: "aggro", manaTier: "high", stackPressure: "moderate", counterProbability: 0.05, sampleSize: 70 },
-  { opponentArchetype: "aggro", manaTier: "high", stackPressure: "high", counterProbability: 0.08, sampleSize: 60 },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "low",
+    stackPressure: "none",
+    counterProbability: 0.0,
+    sampleSize: 140,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "low",
+    stackPressure: "low",
+    counterProbability: 0.01,
+    sampleSize: 100,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "low",
+    stackPressure: "moderate",
+    counterProbability: 0.01,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "low",
+    stackPressure: "high",
+    counterProbability: 0.02,
+    sampleSize: 70,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "medium",
+    stackPressure: "none",
+    counterProbability: 0.01,
+    sampleSize: 110,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "medium",
+    stackPressure: "low",
+    counterProbability: 0.02,
+    sampleSize: 100,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "medium",
+    stackPressure: "moderate",
+    counterProbability: 0.03,
+    sampleSize: 90,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "medium",
+    stackPressure: "high",
+    counterProbability: 0.05,
+    sampleSize: 75,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "high",
+    stackPressure: "none",
+    counterProbability: 0.01,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "high",
+    stackPressure: "low",
+    counterProbability: 0.03,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "high",
+    stackPressure: "moderate",
+    counterProbability: 0.05,
+    sampleSize: 70,
+  },
+  {
+    opponentArchetype: "aggro",
+    manaTier: "high",
+    stackPressure: "high",
+    counterProbability: 0.08,
+    sampleSize: 60,
+  },
 
   // === COMBO archetype ===
   // Combo players counter to protect their combo, less to disrupt
-  { opponentArchetype: "combo", manaTier: "low", stackPressure: "none", counterProbability: 0.02, sampleSize: 90 },
-  { opponentArchetype: "combo", manaTier: "low", stackPressure: "low", counterProbability: 0.05, sampleSize: 80 },
-  { opponentArchetype: "combo", manaTier: "low", stackPressure: "moderate", counterProbability: 0.10, sampleSize: 70 },
-  { opponentArchetype: "combo", manaTier: "low", stackPressure: "high", counterProbability: 0.15, sampleSize: 55 },
-  { opponentArchetype: "combo", manaTier: "medium", stackPressure: "none", counterProbability: 0.08, sampleSize: 100 },
-  { opponentArchetype: "combo", manaTier: "medium", stackPressure: "low", counterProbability: 0.18, sampleSize: 95 },
-  { opponentArchetype: "combo", manaTier: "medium", stackPressure: "moderate", counterProbability: 0.40, sampleSize: 85 },
-  { opponentArchetype: "combo", manaTier: "medium", stackPressure: "high", counterProbability: 0.55, sampleSize: 70 },
-  { opponentArchetype: "combo", manaTier: "high", stackPressure: "none", counterProbability: 0.12, sampleSize: 80 },
-  { opponentArchetype: "combo", manaTier: "high", stackPressure: "low", counterProbability: 0.25, sampleSize: 85 },
-  { opponentArchetype: "combo", manaTier: "high", stackPressure: "moderate", counterProbability: 0.50, sampleSize: 75 },
-  { opponentArchetype: "combo", manaTier: "high", stackPressure: "high", counterProbability: 0.65, sampleSize: 60 },
+  {
+    opponentArchetype: "combo",
+    manaTier: "low",
+    stackPressure: "none",
+    counterProbability: 0.02,
+    sampleSize: 90,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "low",
+    stackPressure: "low",
+    counterProbability: 0.05,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "low",
+    stackPressure: "moderate",
+    counterProbability: 0.1,
+    sampleSize: 70,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "low",
+    stackPressure: "high",
+    counterProbability: 0.15,
+    sampleSize: 55,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "medium",
+    stackPressure: "none",
+    counterProbability: 0.08,
+    sampleSize: 100,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "medium",
+    stackPressure: "low",
+    counterProbability: 0.18,
+    sampleSize: 95,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "medium",
+    stackPressure: "moderate",
+    counterProbability: 0.4,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "medium",
+    stackPressure: "high",
+    counterProbability: 0.55,
+    sampleSize: 70,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "high",
+    stackPressure: "none",
+    counterProbability: 0.12,
+    sampleSize: 80,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "high",
+    stackPressure: "low",
+    counterProbability: 0.25,
+    sampleSize: 85,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "high",
+    stackPressure: "moderate",
+    counterProbability: 0.5,
+    sampleSize: 75,
+  },
+  {
+    opponentArchetype: "combo",
+    manaTier: "high",
+    stackPressure: "high",
+    counterProbability: 0.65,
+    sampleSize: 60,
+  },
 ];
 
 /**
@@ -203,15 +563,26 @@ for (const record of COUNTERSPELL_FREQUENCY_TABLE) {
  *
  * Returns a conservative default probability for unknown archetypes
  * or when no exact match is found.
+ *
+ * Issue #1230: pass `bluffTighteningFactor` (a value in [0, 1], default 1) to
+ * scale the returned probability down when the persistent bluff accumulator
+ * shows the opponent has been representing counters they do not actually have.
+ * The frequency-model lookup stays pure — the caller computes the difficulty-
+ * aware factor (see `opponent-bluff-history.ts#counterspellTighteningFactor`)
+ * and just passes it through. This keeps the data table decoupled from the
+ * accumulator while still letting Expert tier "tighten" its estimate.
  */
 export function getCounterspellProbability(
   archetype: DeckArchetype,
   availableMana: Record<string, number>,
   stack: StackAction[],
   currentAction?: StackAction,
+  bluffTighteningFactor: number = 1,
 ): CounterspellProbabilityResult {
   const manaTier = classifyManaTier(availableMana);
   const stackPressure = classifyStackPressure(stack, currentAction);
+
+  const factor = clamp01(bluffTighteningFactor);
 
   const key = `${archetype}:${manaTier}:${stackPressure}`;
   const record = frequencyIndex.get(key);
@@ -225,7 +596,7 @@ export function getCounterspellProbability(
           : ("low" as const);
 
     return {
-      probability: record.counterProbability,
+      probability: record.counterProbability * factor,
       confidence,
       source: "table",
       archetype,
@@ -235,7 +606,7 @@ export function getCounterspellProbability(
   }
 
   return {
-    probability: DEFAULT_CONSERVATIVE_PROBABILITY,
+    probability: DEFAULT_CONSERVATIVE_PROBABILITY * factor,
     confidence: "low",
     source: "default",
     archetype,
@@ -249,6 +620,9 @@ export function getCounterspellProbability(
  *
  * Returns true if the probability exceeds a given threshold (default 0.3).
  * This replaces the generic 'likely' checks in stack-interaction-ai.ts.
+ *
+ * Issue #1230: see `getCounterspellProbability` for the `bluffTighteningFactor`
+ * contract; both functions share the same tightening seam.
  */
 export function isOpponentLikelyToCounterspell(
   archetype: DeckArchetype,
@@ -256,14 +630,22 @@ export function isOpponentLikelyToCounterspell(
   stack: StackAction[],
   currentAction?: StackAction,
   threshold: number = 0.3,
+  bluffTighteningFactor: number = 1,
 ): boolean {
   const result = getCounterspellProbability(
     archetype,
     availableMana,
     stack,
     currentAction,
+    bluffTighteningFactor,
   );
   return result.probability >= threshold;
+}
+
+/** Clamp helper kept local to avoid pulling in a tiny utility. */
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 1;
+  return Math.max(0, Math.min(1, v));
 }
 
 /**

@@ -44,6 +44,16 @@ import {
   type BoardSwing,
   type DeckArchetype,
 } from "./game-state-evaluator";
+// Issue #1230: persistent opponent-bluff accumulator. The turn loop threads
+// the accumulator through the AI's stack decisions, records per-turn signals,
+// and returns the next-turn seed so the caller can carry it forward.
+import {
+  createOpponentBluffHistory,
+  observeOpponentTurn,
+  snapshotOpponentBluffSignals,
+  type OpponentBluffHistory,
+  type OpponentBluffSignals,
+} from "./opponent-bluff-history";
 import { detectArchetype } from "./archetype-detector";
 // Issue #1244: route the per-turn board-state evaluation through the AI Web
 // Worker when it is available so a "medium" turn loop (5–10 evaluations per
@@ -108,6 +118,18 @@ export interface AITurnConfig {
    * static difficulty posture, preserving the historical behavior.
    */
   swingTracker?: BoardSwingTracker;
+  /**
+   * Issue #1230 — persistent opponent-bluff accumulator. The AI turn loop is
+   * stateless across calls by design (caller passes the seed in, gets a fresh
+   * snapshot out via {@link AITurnResult.nextOpponentBluffHistory}), so the
+   * accumulator is *immutable-snapshot*: each turn produces a new history by
+   * folding observed signals over the previous turn's history. Easy tier
+   * (`opponentHistoryMatters === false`) ignores the value entirely.
+   *
+   * Omitting it leaves the stack decisions with no history (baseline
+   * historical behavior preserved).
+   */
+  opponentBluffHistory?: OpponentBluffHistory;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,6 +437,43 @@ export interface AITurnResult {
   finalState?: EngineGameState;
   error?: string;
   phase?: string;
+  /**
+   * Issue #1230 — fresh post-turn opponent-bluff accumulator. Carry this
+   * forward into the next `runAITurn` call via
+   * `AITurnConfig.opponentBluffHistory` so the AI's stack decisions can read
+   * accumulated pattern data on subsequent turns. `undefined` when the caller
+   * disabled tracking (omitted the input seed).
+   */
+  nextOpponentBluffHistory?: OpponentBluffHistory;
+  /**
+   * Issue #1230 — per-turn bluff-signal observations recorded during this AI
+   * turn. Mirrored here so callers can append to `GameReplay.turns[*]
+   * .opponentBluffSignals` for post-game review (acceptance criterion 4).
+   * Empty array when no signals were observed this turn.
+   */
+  opponentBluffSignals?: readonly OpponentBluffSignals[];
+}
+
+/**
+ * Issue #1230 — fold observed per-turn signals into the previous-turn
+ * accumulator snapshot and return the next seed. Exported so callers (game
+ * orchestrator, post-game analysis) can record observations taken between the
+ * AI's turns (e.g. while the opponent held mana open across the AI's threat).
+ */
+export function applyOpponentBluffObservation(
+  prev: OpponentBluffHistory | undefined,
+  signals: OpponentBluffSignals,
+): OpponentBluffHistory {
+  return observeOpponentTurn(prev, signals);
+}
+
+/**
+ * Issue #1230 — read-only snapshot helper for tests / replay storage.
+ */
+export function getOpponentBluffSignals(
+  history: OpponentBluffHistory | undefined,
+): readonly OpponentBluffSignals[] {
+  return snapshotOpponentBluffSignals(history);
 }
 
 /**
@@ -695,11 +754,24 @@ export async function runAITurn(
       currentState = cleanupResult.newState || currentState;
     }
 
+    // Issue #1230: thread the opponent-bluff accumulator through. The AI's
+    // own turn cannot directly observe the opponent's priority decisions —
+    // those land in `applyOpponentBluffObservation` calls the orchestrator
+    // makes between AI turns. We still produce a fresh history snapshot so the
+    // caller carries forward the running totals, and we expose whatever raw
+    // signals we observed this turn so they can be appended to GameReplay.
+    const nextOpponentBluffHistory = config.opponentBluffHistory;
+    const opponentBluffSignals = snapshotOpponentBluffSignals(
+      nextOpponentBluffHistory,
+    );
+
     return {
       success: true,
       actionsTaken,
       finalState: currentState,
       phase: "complete",
+      nextOpponentBluffHistory,
+      opponentBluffSignals,
     };
   } catch (error) {
     return {
@@ -707,6 +779,13 @@ export async function runAITurn(
       actionsTaken,
       error: error instanceof Error ? error.message : "Unknown error",
       finalState: currentState,
+      // Issue #1230: best-effort preserve the accumulator even on partial
+      // turn failure — losing it would force callers to re-init from scratch
+      // and discard the accumulated pattern data.
+      nextOpponentBluffHistory: config.opponentBluffHistory,
+      opponentBluffSignals: snapshotOpponentBluffSignals(
+        config.opponentBluffHistory,
+      ),
     };
   }
 }
