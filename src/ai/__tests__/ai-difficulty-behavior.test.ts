@@ -32,6 +32,11 @@ import {
   scoreSequencing,
 } from "../mana-sequencing";
 import type { HandCard } from "../game-state-evaluator";
+// Issue #1386: the ability-timing test now exercises the REAL production
+// helper from `ability-activation.ts` instead of a self-contained stub, so
+// the assertion actually validates production behavior.
+import { chooseAbilityTiming } from "../ability-activation";
+import type { AbilityBoardContext } from "../ability-activation";
 
 const DIFFICULTIES: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];
 
@@ -400,43 +405,53 @@ describe("AI difficulty behavior — non-combat decisions (#1016)", () => {
   // + higher pressure weight => the ability is worth firing pre-combat.
   // -------------------------------------------------------------------------
   describe("ability activation timing", () => {
-    type Timing = "pre_combat" | "post_combat" | "not_activated";
+    type Timing = "pre_combat" | "post_combat" | "end_step" | "not_activated";
+
+    // Issue #1386: this now drives the REAL production helper
+    // (`chooseAbilityTiming` from `ability-activation.ts`) instead of the
+    // former self-contained stub. The stub passed only because it was a
+    // closed loop driven by `Math.random()` — it never exercised any
+    // production code path. The real helper is gated by the same
+    // difficulty config (tempo priority, skip chance) so the statistical
+    // shape of the assertion is preserved.
+    //
+    // We feed a "removal" ability against a board where the opponent has a
+    // creature, because removal is the canonical tempo-positive ability that
+    // hard/expert fire pre-combat and easy/medium defer.
+    const REMOVAL_CONTEXT: AbilityBoardContext = {
+      loyalty: 3,
+      opponentHasCreature: true,
+      opponentMaxToughness: 2,
+      aiHasCreature: false,
+      aiBehind: false,
+    };
 
     function decideAbilityTiming(level: DifficultyLevel): Timing {
-      const manager = new AIDifficultyManager(level);
-      const config = manager.getDifficulty();
-      // An ability whose value scales with how early it fires.
-      const preCombatUrgency = config.tempoPriority; // 0.3 .. 0.9
-      const pressureWeight = manager.getEvaluationWeights()
-        .stackPressureScore;
-      // Activate pre-combat when urgency * pressure clears the bar. Random
-      // component models the AI occasionally mis-timing.
-      const threshold = (1 - config.tempoPriority) * 0.5;
-      if (Math.random() < threshold) {
-        return Math.random() < 0.5 ? "post_combat" : "not_activated";
-      }
-      if (preCombatUrgency * Math.min(1, pressureWeight) >= threshold) {
-        return "pre_combat";
-      }
-      return Math.random() < 0.5 ? "post_combat" : "not_activated";
+      return chooseAbilityTiming(
+        "removal",
+        REMOVAL_CONTEXT,
+        level,
+        undefined,
+        "precombat_main",
+      );
     }
 
     it("expert activates abilities pre-combat; easy defers or skips", () => {
       const counts: Record<DifficultyLevel, Record<Timing, number>> = {
-        easy: { pre_combat: 0, post_combat: 0, not_activated: 0 },
-        medium: { pre_combat: 0, post_combat: 0, not_activated: 0 },
-        hard: { pre_combat: 0, post_combat: 0, not_activated: 0 },
-        expert: { pre_combat: 0, post_combat: 0, not_activated: 0 },
+        easy: { pre_combat: 0, post_combat: 0, end_step: 0, not_activated: 0 },
+        medium: { pre_combat: 0, post_combat: 0, end_step: 0, not_activated: 0 },
+        hard: { pre_combat: 0, post_combat: 0, end_step: 0, not_activated: 0 },
+        expert: { pre_combat: 0, post_combat: 0, end_step: 0, not_activated: 0 },
       };
       for (const level of DIFFICULTIES) {
         for (let i = 0; i < TRIALS; i++) {
           counts[level][decideAbilityTiming(level)]++;
         }
       }
-      // Expert strongly prefers pre-combat activation.
+      // Expert strongly prefers pre-combat activation (tempo-positive removal).
       expect(counts.expert.pre_combat).toBeGreaterThan(counts.expert.post_combat);
       expect(counts.expert.pre_combat).toBeGreaterThan(counts.expert.not_activated);
-      // Easy fires pre-combat no more often than it defers/skips.
+      // Easy fires pre-combat no more often than it defers/skips (skip gate).
       expect(counts.easy.pre_combat).toBeLessThanOrEqual(
         counts.easy.post_combat + counts.easy.not_activated,
       );
