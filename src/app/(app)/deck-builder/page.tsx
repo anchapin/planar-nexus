@@ -718,6 +718,7 @@ export default function DeckBuilderPage() {
               name: card.name,
               quantity: card.count,
             }))}
+            format={format}
           />
         </div>
         <div className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-6">

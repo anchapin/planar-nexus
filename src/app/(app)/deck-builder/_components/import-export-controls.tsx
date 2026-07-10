@@ -47,6 +47,7 @@ import {
   detectDeckSite,
   IMPORT_ERROR_MESSAGES,
 } from "@/lib/decklist-utils";
+import type { Format } from "@/lib/game-rules";
 import { AlertCircle, CheckCircle2, HelpCircle } from "lucide-react";
 
 type ImportDeckResult = ImportDeckResultType;
@@ -63,6 +64,14 @@ interface ImportExportControlsProps {
   isImporting?: boolean;
   deckName?: string;
   deckCards?: Array<{ name: string; quantity: number }>;
+  /**
+   * Active deck format (commander, standard, modern, ...). Written verbatim
+   * to the exported JSON so downstream tools (Moxfield, our own
+   * /api/deck-import, third-party trackers) can apply the right copy limits
+   * and banned-list checks. Falls back to "unknown" when omitted.
+   * See issue #1401.
+   */
+  format?: Format;
   /**
    * Optional sideboard pool rendered as a separate "Sideboard" key in the
    * JSON export. Omit (or pass []) for formats that don't use a sideboard
@@ -81,6 +90,7 @@ export function ImportExportControls({
   deckName,
   deckCards,
   sideboardCards,
+  format,
 }: ImportExportControlsProps) {
   const [importText, setImportText] = useState("");
   const [importFormat, setImportFormat] = useState<DecklistFormat>("standard");
@@ -230,13 +240,19 @@ export function ImportExportControls({
 
     // Round-trip the sideboard alongside mainboard so constructed formats
     // can re-import without losing best-of-3 sideboard plans. Issue #1402.
+    // The `format` field is prop-driven so Modern / Standard / Pioneer /
+    // Legacy / Vintage / Pauper decks export with their actual format
+    // instead of being silently labelled as Commander. Falls back to
+    // "unknown" when no format is supplied. Issue #1401.
     const exportData: {
       name: string;
+      format: Format | "unknown";
       cards: Array<{ name: string; quantity: number }>;
       sideboard?: Array<{ name: string; quantity: number }>;
       exportedAt: string;
     } = {
       name: deckName || "My Deck",
+      format: format ?? "unknown",
       cards: deckCards,
       exportedAt: new Date().toISOString(),
     };
