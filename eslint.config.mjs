@@ -87,6 +87,8 @@ const eslintConfig = [
       // the flat config has no Node environment for), same class of file as
       // jest.config.js above.
       "scripts/ratchet-coverage.js",
+      // Plain Node ESM tooling for the issue #1397 fixture regenerator.
+      "scripts/regen-video-fixtures.mjs",
       ".claude/skills/pr-automation/**",
     ],
   },
