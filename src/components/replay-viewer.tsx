@@ -1,23 +1,23 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { cn } from '@/lib/utils';
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import {
   generateShareableURL,
   decodeReplayFromURL,
   copyShareableLink,
   exportReplayToFile,
   importReplayFromFile,
-  getEstimatedURLLength
-} from '@/lib/replay-sharing';
-import type { Replay } from '@/lib/game-state/replay';
-import { sanitizeCardText } from '@/lib/security/sanitize-text';
+  getEstimatedURLLength,
+} from "@/lib/replay-sharing";
+import type { Replay } from "@/lib/game-state/replay";
+import { sanitizeCardText } from "@/lib/security/sanitize-text";
 
 /**
  * Replay Viewer Component
- * 
+ *
  * Issue #291: Feature: Add replay system with shareable links
- * 
+ *
  * Provides:
  * - Game replay recording
  * - Replay playback controls (play, pause, step, speed)
@@ -29,7 +29,7 @@ import { sanitizeCardText } from '@/lib/security/sanitize-text';
 const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2, 4] as const;
 
 // Game state type for replay viewer - use the actual GameState type
-import type { GameState as ReplayGameState } from '@/lib/game-state/types';
+import type { GameState as ReplayGameState } from "@/lib/game-state/types";
 
 // Replay viewer props
 export interface ReplayViewerProps {
@@ -39,8 +39,11 @@ export interface ReplayViewerProps {
   className?: string;
 }
 
-// Replay player state
-interface PlayerState {
+// Replay player media-controls state — distinct from the canonical MTG
+// `PlayerState` in `@/types/game`. Issue #1398: previously named `PlayerState`
+// and collided with the canonical import path; renamed to make its semantics
+// (HTML5-media-style scrubber) explicit.
+interface ReplayPlayerControls {
   isPlaying: boolean;
   position: number;
   speed: number;
@@ -48,24 +51,24 @@ interface PlayerState {
 }
 
 // Main replay viewer component
-export function ReplayViewer({ 
-  replay, 
-  onPositionChange, 
+export function ReplayViewer({
+  replay,
+  onPositionChange,
   onStateChange,
-  className 
+  className,
 }: ReplayViewerProps) {
-  const [playerState, setPlayerState] = useState<PlayerState>({
+  const [playerState, setPlayerState] = useState<ReplayPlayerControls>({
     isPlaying: false,
     position: 0,
     speed: 1,
     volume: 1,
   });
-  
+
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [showActionList, setShowActionList] = useState(false);
-  
+
   const playbackRef = useRef<NodeJS.Timeout | null>(null);
   const totalActions = replay?.totalActions || 0;
 
@@ -73,7 +76,7 @@ export function ReplayViewer({
   useEffect(() => {
     if (playerState.isPlaying && replay) {
       playbackRef.current = setInterval(() => {
-        setPlayerState(prev => {
+        setPlayerState((prev) => {
           const newPosition = prev.position + 1;
           if (newPosition >= totalActions) {
             return { ...prev, isPlaying: false, position: totalActions - 1 };
@@ -93,44 +96,72 @@ export function ReplayViewer({
         clearInterval(playbackRef.current);
       }
     };
-  }, [playerState.isPlaying, playerState.speed, replay, totalActions, onPositionChange, onStateChange]);
+  }, [
+    playerState.isPlaying,
+    playerState.speed,
+    replay,
+    totalActions,
+    onPositionChange,
+    onStateChange,
+  ]);
 
   // Play/pause toggle
   const togglePlay = useCallback(() => {
     if (!replay) return;
-    
+
     if (playerState.position >= totalActions - 1 && !playerState.isPlaying) {
       // Restart from beginning if at end
-      setPlayerState(prev => ({ ...prev, position: 0, isPlaying: true }));
+      setPlayerState((prev) => ({ ...prev, position: 0, isPlaying: true }));
       onPositionChange?.(0);
       const action = replay.actions[0];
       if (action) {
         onStateChange?.(action.resultingState);
       }
     } else {
-      setPlayerState(prev => ({ ...prev, isPlaying: !prev.isPlaying }));
+      setPlayerState((prev) => ({ ...prev, isPlaying: !prev.isPlaying }));
     }
-  }, [replay, playerState.position, playerState.isPlaying, totalActions, onPositionChange, onStateChange]);
+  }, [
+    replay,
+    playerState.position,
+    playerState.isPlaying,
+    totalActions,
+    onPositionChange,
+    onStateChange,
+  ]);
 
   // Step forward
   const stepForward = useCallback(() => {
     if (!replay || playerState.position >= totalActions - 1) return;
-    
+
     const newPosition = playerState.position + 1;
-    setPlayerState(prev => ({ ...prev, position: newPosition, isPlaying: false }));
+    setPlayerState((prev) => ({
+      ...prev,
+      position: newPosition,
+      isPlaying: false,
+    }));
     onPositionChange?.(newPosition);
     const action = replay.actions[newPosition];
     if (action) {
       onStateChange?.(action.resultingState);
     }
-  }, [replay, playerState.position, totalActions, onPositionChange, onStateChange]);
+  }, [
+    replay,
+    playerState.position,
+    totalActions,
+    onPositionChange,
+    onStateChange,
+  ]);
 
   // Step backward
   const stepBackward = useCallback(() => {
     if (!replay || playerState.position <= 0) return;
-    
+
     const newPosition = playerState.position - 1;
-    setPlayerState(prev => ({ ...prev, position: newPosition, isPlaying: false }));
+    setPlayerState((prev) => ({
+      ...prev,
+      position: newPosition,
+      isPlaying: false,
+    }));
     onPositionChange?.(newPosition);
     const action = replay.actions[newPosition];
     if (action) {
@@ -139,27 +170,34 @@ export function ReplayViewer({
   }, [replay, playerState.position, onPositionChange, onStateChange]);
 
   // Jump to position
-  const jumpToPosition = useCallback((position: number) => {
-    if (!replay) return;
-    
-    const validPosition = Math.max(0, Math.min(position, totalActions - 1));
-    setPlayerState(prev => ({ ...prev, position: validPosition, isPlaying: false }));
-    onPositionChange?.(validPosition);
-    const action = replay.actions[validPosition];
-    if (action) {
-      onStateChange?.(action.resultingState);
-    }
-  }, [replay, totalActions, onPositionChange, onStateChange]);
+  const jumpToPosition = useCallback(
+    (position: number) => {
+      if (!replay) return;
+
+      const validPosition = Math.max(0, Math.min(position, totalActions - 1));
+      setPlayerState((prev) => ({
+        ...prev,
+        position: validPosition,
+        isPlaying: false,
+      }));
+      onPositionChange?.(validPosition);
+      const action = replay.actions[validPosition];
+      if (action) {
+        onStateChange?.(action.resultingState);
+      }
+    },
+    [replay, totalActions, onPositionChange, onStateChange],
+  );
 
   // Change speed
   const changeSpeed = useCallback((speed: number) => {
-    setPlayerState(prev => ({ ...prev, speed }));
+    setPlayerState((prev) => ({ ...prev, speed }));
   }, []);
 
   // Generate shareable link
   const handleShare = useCallback(async () => {
     if (!replay) return;
-    
+
     const url = generateShareableURL(replay);
     if (url) {
       setShareUrl(url);
@@ -173,7 +211,7 @@ export function ReplayViewer({
   // Copy link to clipboard
   const handleCopyLink = useCallback(async () => {
     if (!shareUrl || !replay) return;
-    
+
     const success = await copyShareableLink(replay);
     if (success) {
       setCopySuccess(true);
@@ -198,16 +236,18 @@ export function ReplayViewer({
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
-    
+
     if (hours > 0) {
-      return `${hours}:${String(minutes % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+      return `${hours}:${String(minutes % 60).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
     }
-    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+    return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
   }, []);
 
   if (!replay) {
     return (
-      <div className={cn('p-4 bg-card border rounded-lg text-center', className)}>
+      <div
+        className={cn("p-4 bg-card border rounded-lg text-center", className)}
+      >
         <p className="text-muted-foreground">No replay loaded</p>
         <p className="text-sm text-muted-foreground mt-1">
           Start a game to record a replay
@@ -220,13 +260,19 @@ export function ReplayViewer({
   const currentReplay = replay;
 
   return (
-    <div className={cn('flex flex-col gap-4 p-4 bg-card border rounded-lg', className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-4 p-4 bg-card border rounded-lg",
+        className,
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-semibold text-lg">Game Replay</h3>
           <p className="text-sm text-muted-foreground">
-            {currentReplay.metadata.format} • {currentReplay.metadata.playerNames.join(' vs ')}
+            {currentReplay.metadata.format} •{" "}
+            {currentReplay.metadata.playerNames.join(" vs ")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -263,7 +309,7 @@ export function ReplayViewer({
             {totalActions}
           </span>
         </div>
-        
+
         {/* Action description */}
         {currentAction && (
           <div className="text-sm text-center text-muted-foreground">
@@ -281,8 +327,18 @@ export function ReplayViewer({
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Skip to start"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+            />
           </svg>
         </button>
 
@@ -293,8 +349,18 @@ export function ReplayViewer({
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Step backward"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z"
+            />
           </svg>
         </button>
 
@@ -302,16 +368,41 @@ export function ReplayViewer({
         <button
           onClick={togglePlay}
           className="p-3 bg-primary text-primary-foreground rounded-full hover:bg-primary/90"
-          title={playerState.isPlaying ? 'Pause' : 'Play'}
+          title={playerState.isPlaying ? "Pause" : "Play"}
         >
           {playerState.isPlaying ? (
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           ) : (
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           )}
         </button>
@@ -323,8 +414,18 @@ export function ReplayViewer({
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Step forward"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z"
+            />
           </svg>
         </button>
 
@@ -335,8 +436,18 @@ export function ReplayViewer({
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Skip to end"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 5l7 7-7 7M5 5l7 7-7 7"
+            />
           </svg>
         </button>
       </div>
@@ -350,10 +461,10 @@ export function ReplayViewer({
               key={speed}
               onClick={() => changeSpeed(speed)}
               className={cn(
-                'px-2 py-1 text-xs rounded',
+                "px-2 py-1 text-xs rounded",
                 playerState.speed === speed
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-muted hover:bg-muted/80'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted hover:bg-muted/80",
               )}
             >
               {speed}x
@@ -364,23 +475,22 @@ export function ReplayViewer({
 
       {/* Game info */}
       <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-3">
-        <div>
-          Turn {currentAction?.resultingState?.turn?.turnNumber || 1}
-        </div>
+        <div>Turn {currentAction?.resultingState?.turn?.turnNumber || 1}</div>
         <div>
           {currentReplay.metadata.winners ? (
             <span className="text-green-500">
-              Winner: {currentReplay.metadata.winners.join(', ')}
+              Winner: {currentReplay.metadata.winners.join(", ")}
             </span>
           ) : (
-            'In progress'
+            "In progress"
           )}
         </div>
         <div>
           {formatDuration(
-            currentReplay.metadata.gameEndDate 
-              ? currentReplay.metadata.gameEndDate - currentReplay.metadata.gameStartDate
-              : Date.now() - currentReplay.metadata.gameStartDate
+            currentReplay.metadata.gameEndDate
+              ? currentReplay.metadata.gameEndDate -
+                  currentReplay.metadata.gameStartDate
+              : Date.now() - currentReplay.metadata.gameStartDate,
           )}
         </div>
       </div>
@@ -390,7 +500,7 @@ export function ReplayViewer({
         onClick={() => setShowActionList(!showActionList)}
         className="text-sm text-primary hover:underline"
       >
-        {showActionList ? 'Hide' : 'Show'} action history
+        {showActionList ? "Hide" : "Show"} action history
       </button>
 
       {/* Action list */}
@@ -401,10 +511,10 @@ export function ReplayViewer({
               key={action.sequenceNumber}
               onClick={() => jumpToPosition(index)}
               className={cn(
-                'w-full text-left px-2 py-1 rounded text-sm',
+                "w-full text-left px-2 py-1 rounded text-sm",
                 index === playerState.position
-                  ? 'bg-primary/20 text-primary'
-                  : 'hover:bg-muted'
+                  ? "bg-primary/20 text-primary"
+                  : "hover:bg-muted",
               )}
             >
               <span className="text-muted-foreground mr-2">
@@ -421,7 +531,7 @@ export function ReplayViewer({
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-card border rounded-lg p-6 max-w-md w-full mx-4">
             <h3 className="font-semibold text-lg mb-4">Share Replay</h3>
-            
+
             {shareUrl ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
@@ -437,13 +547,13 @@ export function ReplayViewer({
                   <button
                     onClick={handleCopyLink}
                     className={cn(
-                      'px-4 py-2 rounded text-sm',
-                      copySuccess 
-                        ? 'bg-green-500 text-white'
-                        : 'bg-primary text-primary-foreground'
+                      "px-4 py-2 rounded text-sm",
+                      copySuccess
+                        ? "bg-green-500 text-white"
+                        : "bg-primary text-primary-foreground",
                     )}
                   >
-                    {copySuccess ? 'Copied!' : 'Copy'}
+                    {copySuccess ? "Copied!" : "Copy"}
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -453,7 +563,8 @@ export function ReplayViewer({
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  This replay is too large to share via URL. Export it as a file instead:
+                  This replay is too large to share via URL. Export it as a file
+                  instead:
                 </p>
                 <button
                   onClick={handleExport}
@@ -463,7 +574,7 @@ export function ReplayViewer({
                 </button>
               </div>
             )}
-            
+
             <button
               onClick={() => setShowShareDialog(false)}
               className="mt-4 w-full px-4 py-2 bg-muted rounded hover:bg-muted/80"
@@ -485,39 +596,47 @@ export interface ReplayListProps {
   className?: string;
 }
 
-export function ReplayList({ replays, onSelect, onDelete, className }: ReplayListProps) {
+export function ReplayList({
+  replays,
+  onSelect,
+  onDelete,
+  className,
+}: ReplayListProps) {
   const [importing, setImporting] = useState(false);
 
-  const handleImport = useCallback(async (file: File) => {
-    setImporting(true);
-    try {
-      const replay = await importReplayFromFile(file);
-      if (replay) {
-        onSelect(replay);
+  const handleImport = useCallback(
+    async (file: File) => {
+      setImporting(true);
+      try {
+        const replay = await importReplayFromFile(file);
+        if (replay) {
+          onSelect(replay);
+        }
+      } catch (error) {
+        console.error("Failed to import replay:", error);
+      } finally {
+        setImporting(false);
       }
-    } catch (error) {
-      console.error('Failed to import replay:', error);
-    } finally {
-      setImporting(false);
-    }
-  }, [onSelect]);
+    },
+    [onSelect],
+  );
 
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
   return (
-    <div className={cn('space-y-4', className)}>
+    <div className={cn("space-y-4", className)}>
       {/* Import button */}
       <div className="flex justify-end">
         <label className="px-4 py-2 bg-primary text-primary-foreground rounded cursor-pointer hover:bg-primary/90">
-          {importing ? 'Importing...' : 'Import Replay'}
+          {importing ? "Importing..." : "Import Replay"}
           <input
             type="file"
             accept=".json"
@@ -546,14 +665,15 @@ export function ReplayList({ replays, onSelect, onDelete, className }: ReplayLis
             >
               <div>
                 <h4 className="font-medium">
-                  {replay.metadata.format} - {replay.metadata.playerNames.join(' vs ')}
+                  {replay.metadata.format} -{" "}
+                  {replay.metadata.playerNames.join(" vs ")}
                 </h4>
                 <p className="text-sm text-muted-foreground">
                   {formatDate(replay.createdAt)} • {replay.totalActions} actions
                 </p>
                 {replay.metadata.winners && (
                   <p className="text-sm text-green-500">
-                    Winner: {replay.metadata.winners.join(', ')}
+                    Winner: {replay.metadata.winners.join(", ")}
                   </p>
                 )}
               </div>
@@ -566,8 +686,18 @@ export function ReplayList({ replays, onSelect, onDelete, className }: ReplayLis
                     }}
                     className="p-2 text-destructive hover:bg-destructive/10 rounded"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
                     </svg>
                   </button>
                 )}
@@ -583,27 +713,27 @@ export function ReplayList({ replays, onSelect, onDelete, className }: ReplayLis
 // Hook for managing replay storage
 export function useReplayStorage() {
   const [replays, setReplays] = useState<Replay[]>([]);
-  const STORAGE_KEY = 'planar-nexus-replays';
+  const STORAGE_KEY = "planar-nexus-replays";
 
   // Load replays from localStorage
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
+    if (typeof window === "undefined") return;
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         setReplays(JSON.parse(stored));
       }
     } catch (error) {
-      console.error('Failed to load replays:', error);
+      console.error("Failed to load replays:", error);
     }
   }, []);
 
   // Save replay
   const saveReplay = useCallback((replay: Replay) => {
-    setReplays(prev => {
+    setReplays((prev) => {
       const updated = [...prev, replay];
-      if (typeof window !== 'undefined') {
+      if (typeof window !== "undefined") {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       }
       return updated;
@@ -612,9 +742,9 @@ export function useReplayStorage() {
 
   // Delete replay
   const deleteReplay = useCallback((replayId: string) => {
-    setReplays(prev => {
-      const updated = prev.filter(r => r.id !== replayId);
-      if (typeof window !== 'undefined') {
+    setReplays((prev) => {
+      const updated = prev.filter((r) => r.id !== replayId);
+      if (typeof window !== "undefined") {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       }
       return updated;
@@ -624,7 +754,7 @@ export function useReplayStorage() {
   // Clear all replays
   const clearReplays = useCallback(() => {
     setReplays([]);
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
       localStorage.removeItem(STORAGE_KEY);
     }
   }, []);
@@ -644,10 +774,10 @@ export function useReplayFromURL() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const encoded = urlParams.get('replay');
+    const encoded = urlParams.get("replay");
 
     if (encoded) {
       try {
@@ -655,10 +785,10 @@ export function useReplayFromURL() {
         if (decoded) {
           setReplay(decoded);
         } else {
-          setError('Failed to decode replay from URL');
+          setError("Failed to decode replay from URL");
         }
       } catch {
-        setError('Invalid replay data in URL');
+        setError("Invalid replay data in URL");
       }
     }
 

@@ -4,7 +4,7 @@ import { SpectatorView } from "../spectator-view";
 import {
   LifeAdjustment,
   CounterAdjustment,
-  type JudgePlayerState,
+  type JudgeViewPlayer,
 } from "../judge-tools";
 import type { Spectator, SpectatorPermissions } from "@/lib/spectator";
 
@@ -18,10 +18,10 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = RO;
 }
 
-const basePlayer: JudgePlayerState = {
+const basePlayer: JudgeViewPlayer = {
   id: "p1",
   name: "Alice",
-  life: 20,
+  lifeTotal: 20,
   poisonCounters: 0,
   energyCounters: 2,
   isActive: true,
