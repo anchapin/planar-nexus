@@ -34,48 +34,71 @@ export default function ColorDistributionChart({
   }));
 
   return (
-    <div className="h-40">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={chartData}
-            cx="50%"
-            cy="50%"
-            innerRadius={35}
-            outerRadius={55}
-            paddingAngle={2}
-            dataKey="value"
-          >
-            {chartData.map((entry, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={COLOR_MAP[entry.name] || "#9CA3A6"}
-                stroke="none"
-              />
-            ))}
-          </Pie>
-          <Tooltip
-            // recharts v3: formatter `value` is `ValueType | undefined`.
-            formatter={(value) => [
-              `${(typeof value === "number" ? value : Number(value ?? 0)).toFixed(1)}%`,
-              "Share",
-            ]}
-            contentStyle={{
-              backgroundColor: "var(--background)",
-              border: "1px solid var(--border)",
-              borderRadius: "8px",
-              fontSize: "12px",
-            }}
-          />
-          <Legend
-            verticalAlign="bottom"
-            height={20}
-            formatter={(value) => (
-              <span className="text-xs text-muted-foreground">{value}</span>
-            )}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+    <div>
+      <div className="h-40" aria-hidden="true">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={35}
+              outerRadius={55}
+              paddingAngle={2}
+              dataKey="value"
+            >
+              {chartData.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={COLOR_MAP[entry.name] || "#9CA3A6"}
+                  stroke="none"
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              // recharts v3: formatter `value` is `ValueType | undefined`.
+              formatter={(value) => [
+                `${(typeof value === "number" ? value : Number(value ?? 0)).toFixed(1)}%`,
+                "Share",
+              ]}
+              contentStyle={{
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                fontSize: "12px",
+              }}
+            />
+            <Legend
+              verticalAlign="bottom"
+              height={20}
+              formatter={(value) => (
+                <span className="text-xs text-muted-foreground">{value}</span>
+              )}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <table className="sr-only">
+        <caption>
+          Color distribution: share of decks by card color
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Color</th>
+            <th scope="col">Deck Count</th>
+            <th scope="col">Percentage</th>
+          </tr>
+        </thead>
+        <tbody>
+          {chartData.map((entry) => (
+            <tr key={entry.name}>
+              <th scope="row">{entry.name}</th>
+              <td>{entry.count}</td>
+              <td>{entry.value.toFixed(1)}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
