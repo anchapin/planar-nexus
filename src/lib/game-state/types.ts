@@ -491,8 +491,16 @@ export interface StackObject {
   timestamp: number;
   /** Alternative costs used for this spell (e.g., Flashback, Buyback) */
   alternativeCostsUsed?: string[];
-  /** Whether kicker was paid */
+  /** Whether kicker was paid (CR 702.85). Backward-compat shim; prefer
+   *  `timesKicked` for new code. `true` iff `timesKicked > 0`. */
   wasKicked?: boolean;
+  /**
+   * Number of times the kicker cost (CR 702.85) was paid on this spell.
+   * For single-kicker cards, this is 0 or 1. For multikicker cards
+   * (e.g. "Multikicker {1}"), this may be any non-negative integer
+   * bounded by the controller's available mana. Used at resolution time
+   * to scale the additional effect N times. */
+  timesKicked?: number;
   /** Buyback return zone (if used) */
   buybackReturnZone?: string;
   /** Bestow attachment target (if cast as aura) */
