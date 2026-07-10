@@ -56,14 +56,15 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileGameLayout } from "@/components/mobile-game-layout";
 import {
   BattlefieldCard,
-  VirtualizedBattlefield,
-} from "@/components/virtualized-battlefield";
+  VirtualizedZoneStrip,
+  getZoneThreshold,
+} from "@/components/virtualized-zone-strip";
 
-// Performance optimization constants
-// Only the visible window of battlefield permanents is mounted once a board
-// exceeds this size; below it every permanent renders directly (no overhead).
-// See #1082 — windowing the game-board permanent list for large board states.
-const BATTLEFIELD_WINDOWING_THRESHOLD = 20;
+// Performance optimization: each player's battlefield is windowed
+// independently once it exceeds its per-zone threshold, so a 4-player
+// Commander board no longer mounts 100+ card thumbnails at once (#1390).
+// The threshold table lives in `virtualized-zone-strip.tsx`; the battlefield
+// default (20) is preserved from #1082.
 
 interface GameBoardProps {
   players: PlayerState[];
@@ -144,14 +145,14 @@ const ZoneDisplay = memo(function ZoneDisplay({
     onZoneClick?.(zone, playerId);
   }, [onZoneClick, zone, playerId]);
 
-  // Window the battlefield once the board is large enough to matter (#1082).
-  // Below the threshold every permanent renders directly; above it the
-  // `VirtualizedBattlefield` mounts only the visible window (+ overscan) and
-  // reveals the rest via horizontal scroll. This also replaces the previous
-  // approach that silently sliced off overflow permanents (making them
-  // untargetable); every permanent is now reachable by scroll.
-  const isWindowedBattlefield =
-    zone === "battlefield" && count > BATTLEFIELD_WINDOWING_THRESHOLD;
+  // Window the zone once it is large enough to matter (#1082 battlefield,
+  // #1390 generalized to every zone). Below the threshold every card renders
+  // directly; above it the `VirtualizedZoneStrip` mounts only the visible
+  // window (+ overscan) and reveals the rest via scroll. This also replaces
+  // the previous approach that silently sliced off overflow permanents
+  // (making them untargetable); every permanent is now reachable by scroll.
+  const threshold = getZoneThreshold(zone);
+  const isWindowed = zone === "battlefield" && count > threshold;
 
   const zoneIcons: Record<ZoneType, React.ReactNode> = useMemo(
     () => ({
@@ -190,10 +191,11 @@ const ZoneDisplay = memo(function ZoneDisplay({
             {count > 0 && (
               <div className="absolute inset-0 flex items-center justify-center gap-1 flex-wrap p-1">
                 {zone === "battlefield" &&
-                  (isWindowedBattlefield ? (
-                    <VirtualizedBattlefield
+                  (isWindowed ? (
+                    <VirtualizedZoneStrip
                       cards={cards}
                       zone={zone}
+                      orientation="horizontal"
                       onCardClick={onCardClick}
                       className="absolute inset-0 p-1"
                     />
@@ -338,7 +340,7 @@ const PlayerInfo = memo(function PlayerInfo({
   );
 });
 
-function PlayerArea({
+const PlayerArea = memo(function PlayerArea({
   player,
   isCurrentTurn,
   position,
@@ -546,7 +548,50 @@ function PlayerArea({
       )}
     </div>
   );
+}, arePlayerAreaPropsEqual);
+
+/**
+ * Custom comparator for `PlayerArea` (#1390). A player area only needs to
+ * re-render when one of its own zone card arrays changed reference, or when
+ * turn/position/callbacks changed. Combined with the already-memoized
+ * `ZoneDisplay`, a delta that touches a single zone re-renders only that
+ * zone's strip — the other three players' strips are skipped entirely.
+ */
+function arePlayerAreaPropsEqual(
+  prev: PlayerAreaProps & { allPlayers?: PlayerState[] },
+  next: PlayerAreaProps & { allPlayers?: PlayerState[] },
+): boolean {
+  if (prev === next) return true;
+  const a = prev.player;
+  const b = next.player;
+  if (a !== b) {
+    if (a.id !== b.id) return false;
+    if (
+      a.lifeTotal !== b.lifeTotal ||
+      a.poisonCounters !== b.poisonCounters ||
+      a.isCurrentTurn !== b.isCurrentTurn ||
+      a.hasPriority !== b.hasPriority ||
+      a.commanderDamage !== b.commanderDamage ||
+      a.hand !== b.hand ||
+      a.battlefield !== b.battlefield ||
+      a.graveyard !== b.graveyard ||
+      a.exile !== b.exile ||
+      a.library !== b.library ||
+      a.commandZone !== b.commandZone
+    ) {
+      return false;
+    }
+  }
+  return (
+    prev.isCurrentTurn === next.isCurrentTurn &&
+    prev.position === next.position &&
+    prev.orientation === next.orientation &&
+    prev.onCardClick === next.onCardClick &&
+    prev.onZoneClick === next.onZoneClick &&
+    prev.allPlayers === next.allPlayers
+  );
 }
+export { arePlayerAreaPropsEqual };
 
 export function GameBoard({
   players,
