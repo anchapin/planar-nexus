@@ -391,7 +391,7 @@ describe("POST /api/ai-proxy — rate limiting", () => {
     expect(getRateLimitHeaders).toHaveBeenCalled();
   });
 
-  it("uses x-forwarded-for as the client identifier when no userId is given", async () => {
+  it("uses x-forwarded-for as the client identifier only behind a trusted proxy", async () => {
     getProviderConfig.mockReturnValue({
       provider: "openai",
       apiKey: "sk-test",
@@ -409,22 +409,28 @@ describe("POST /api/ai-proxy — rate limiting", () => {
       usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
     });
 
-    await POST(
-      makeRequest(
-        {
-          provider: "openai",
-          endpoint: "/chat",
-          body: { messages: [{ role: "user", content: "hi" }] },
-        },
-        "http://localhost/api/ai-proxy",
-        { "x-forwarded-for": "203.0.113.5, 10.0.0.1" },
-      ),
-    );
-
-    expect(enforceRateLimit).toHaveBeenCalledWith(
-      "ip:203.0.113.5",
-      expect.any(Object),
-    );
+    const prev = process.env.TRUSTED_PROXY;
+    process.env.TRUSTED_PROXY = "true";
+    try {
+      await POST(
+        makeRequest(
+          {
+            provider: "openai",
+            endpoint: "/chat",
+            body: { messages: [{ role: "user", content: "hi" }] },
+          },
+          "http://localhost/api/ai-proxy",
+          { "x-forwarded-for": "203.0.113.5, 10.0.0.1" },
+        ),
+      );
+      expect(enforceRateLimit).toHaveBeenCalledWith(
+        "ip:203.0.113.5",
+        expect.any(Object),
+      );
+    } finally {
+      if (prev === undefined) delete process.env.TRUSTED_PROXY;
+      else process.env.TRUSTED_PROXY = prev;
+    }
   });
 });
 
@@ -562,5 +568,150 @@ describe("POST /api/ai-proxy — internal errors", () => {
     const data = (await (res as unknown as TestResponse).json()) as any;
     expect(data.errorCode).toBe("INTERNAL_ERROR");
     expect(data.error).toBe("sdk exploded");
+  });
+});
+
+// ----------------------------------------------------------------------------
+// POST /api/ai-proxy — Issue #1393: do not trust client-supplied userId
+// ----------------------------------------------------------------------------
+
+describe("POST /api/ai-proxy — userId trust (Issue #1393)", () => {
+  beforeEach(() => {
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-test",
+      enabled: true,
+      rateLimit: { maxRequests: 100, windowMs: 60_000 },
+    });
+    enforceRateLimit.mockReturnValue({
+      success: true,
+      remaining: 99,
+      resetAt: Date.now() + 60_000,
+    });
+    generateText.mockResolvedValue({
+      text: "ok",
+      finishReason: "stop",
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+    });
+  });
+
+  it("ignores a rotating body userId — all requests map to ONE rate-limit key", async () => {
+    // An attacker sending userId: "bot-1", "bot-2", … from the same source
+    // must NOT get a fresh bucket per request.
+    for (let i = 1; i <= 50; i++) {
+      await POST(
+        makeRequest(
+          {
+            provider: "openai",
+            endpoint: "/chat",
+            body: { messages: [{ role: "user", content: "hi" }] },
+            userId: `bot-${i}`,
+          },
+          "http://localhost/api/ai-proxy",
+          { "user-agent": "attacker/1.0" },
+        ),
+      );
+    }
+
+    // Every call used the same UA-derived key (no request.ip in the test
+    // harness, no TRUSTED_PROXY), so there must be exactly one distinct key.
+    const keys = new Set(enforceRateLimit.mock.calls.map((c: any[]) => c[0]));
+    expect(keys.size).toBe(1);
+    expect([...keys][0]).toMatch(/^session:/);
+    // None of the keys are the attacker-controlled "user:bot-N".
+    expect([...keys][0]).not.toContain("bot");
+  });
+
+  it("does not propagate body userId into the rate-limit key", async () => {
+    await POST(
+      makeRequest({
+        provider: "openai",
+        endpoint: "/chat",
+        body: { messages: [] },
+        userId: "attacker-123",
+      }),
+    );
+    const key = enforceRateLimit.mock.calls[0][0] as string;
+    expect(key).not.toContain("attacker-123");
+    expect(key.startsWith("user:")).toBe(false);
+  });
+
+  it("ignores x-forwarded-for when TRUSTED_PROXY is not set", async () => {
+    const prev = process.env.TRUSTED_PROXY;
+    delete process.env.TRUSTED_PROXY;
+    try {
+      await POST(
+        makeRequest(
+          {
+            provider: "openai",
+            endpoint: "/chat",
+            body: { messages: [] },
+          },
+          "http://localhost/api/ai-proxy",
+          {
+            "x-forwarded-for": "198.51.100.7",
+            "user-agent": "curl/8.0",
+          },
+        ),
+      );
+      const key = enforceRateLimit.mock.calls[0][0] as string;
+      // The spoofable XFF value must not appear in the bucket key.
+      expect(key).not.toContain("198.51.100.7");
+      expect(key.startsWith("ip:")).toBe(false);
+      expect(key.startsWith("session:")).toBe(true);
+    } finally {
+      if (prev !== undefined) process.env.TRUSTED_PROXY = prev;
+    }
+  });
+
+  it("honors x-forwarded-for when TRUSTED_PROXY=true is set", async () => {
+    const prev = process.env.TRUSTED_PROXY;
+    process.env.TRUSTED_PROXY = "true";
+    try {
+      await POST(
+        makeRequest(
+          {
+            provider: "openai",
+            endpoint: "/chat",
+            body: { messages: [] },
+          },
+          "http://localhost/api/ai-proxy",
+          { "x-forwarded-for": "203.0.113.9" },
+        ),
+      );
+      expect(enforceRateLimit).toHaveBeenCalledWith(
+        "ip:203.0.113.9",
+        expect.any(Object),
+      );
+    } finally {
+      if (prev === undefined) delete process.env.TRUSTED_PROXY;
+      else process.env.TRUSTED_PROXY = prev;
+    }
+  });
+
+  it("prefers request.ip over forwarded headers when present", async () => {
+    const prev = process.env.TRUSTED_PROXY;
+    process.env.TRUSTED_PROXY = "true";
+    try {
+      const req = makeRequest(
+        {
+          provider: "openai",
+          endpoint: "/chat",
+          body: { messages: [] },
+        },
+        "http://localhost/api/ai-proxy",
+        { "x-forwarded-for": "203.0.113.9" },
+      );
+      // Simulate Next.js runtime setting the verified peer IP.
+      (req as unknown as { ip: string }).ip = "100.64.0.1";
+      await POST(req);
+      expect(enforceRateLimit).toHaveBeenCalledWith(
+        "ip:100.64.0.1",
+        expect.any(Object),
+      );
+    } finally {
+      if (prev === undefined) delete process.env.TRUSTED_PROXY;
+      else process.env.TRUSTED_PROXY = prev;
+    }
   });
 });
