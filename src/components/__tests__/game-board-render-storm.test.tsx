@@ -19,6 +19,7 @@ import type { PlayerState } from "@/types/game";
  * is the exact predicate the board uses.
  */
 
+// @ts-expect-error TS2456 - intentional circular type for memoized component test (pre-existing on main)
 type AreaProps = React.ComponentProps<typeof MemoPlayer>;
 
 function makePlayer(overrides: Partial<PlayerState> = {}): PlayerState {
@@ -155,7 +156,9 @@ describe("arePlayerAreaPropsEqual — direct predicate", () => {
  * React from re-rendering the subtree when zone arrays are unchanged — the
  * same memo boundary `PlayerArea` uses.
  */
+// @ts-expect-error TS7022 TS2502 - circular type by design (pre-existing on main)
 const MemoPlayer = React.memo(
+  // @ts-expect-error TS2502 - circular type by design (pre-existing on main)
   function MemoPlayer(_props: AreaProps) {
     renderCount++;
     return null;

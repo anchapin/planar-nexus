@@ -1206,7 +1206,7 @@ async function runMainPhase(
     currentState,
     aiPlayerId,
     config,
-    _phase,
+    phase,
   );
   if (abilityResult.success) {
     actions.push(...abilityResult.actions);
