@@ -18,6 +18,8 @@ import {
   adaptiveStrength,
   ADAPTIVE_MIN_MULT,
   ADAPTIVE_MAX_MULT,
+  chooseMain2Action,
+  buildMain2Context,
   type AITurnConfig,
   type AdaptiveTempoRisk,
 } from "../ai-turn-loop";
@@ -1525,5 +1527,147 @@ describe("runOpeningHandMulligan (issue #1063 wiring)", () => {
     // Expert (0.02). The wiring therefore scales mulligan quality by difficulty.
     expect(easyMulligans).toBeGreaterThan(expertMulligans);
     expect(expertMulligans).toBeLessThan(N * 0.15);
+  });
+});
+
+// ===========================================================================
+// Issue #1385 — difficulty-scaled post-combat (main 2) mana retention.
+//
+// chooseMain2Action is a pure, deterministic policy. The per-tier coverage
+// below fixes a board (AI 4 lands + creature + instant vs opponent with 2 open
+// mana + a planeswalker, no opposing creatures) and asserts each tier's return
+// value. buildMain2Context is exercised against a richer engine fixture.
+// ===========================================================================
+describe("chooseMain2Action (issue #1385) — per-tier policy", () => {
+  // Fixed acceptance board: AI holds an instant + a creature; the opponent
+  // has 2 open mana and a planeswalker, and presents no creature lethality.
+  const fixedBoard = {
+    difficulty: "easy" as const,
+    opponentThreatScore: 0.5,
+    opponentOpenMana: 2,
+    opponentHasPlaneswalker: true,
+    aiLife: 20,
+    opponentLife: 20,
+    opponentLethalThreat: 0,
+    handHasInstant: true,
+    handHasPermanent: true,
+  };
+
+  it("easy always deploys (dumps every spell)", () => {
+    expect(chooseMain2Action({ ...fixedBoard, difficulty: "easy" })).toBe(
+      "deploy",
+    );
+  });
+
+  it("medium holds when the opponent has a planeswalker", () => {
+    const ctx = { ...fixedBoard, difficulty: "medium" as const };
+    expect(chooseMain2Action(ctx)).toBe("hold_for_opponent_turn");
+  });
+
+  it("medium holds when the opponent has >=2 open mana (no planeswalker)", () => {
+    const ctx = {
+      ...fixedBoard,
+      difficulty: "medium" as const,
+      opponentHasPlaneswalker: false,
+      opponentOpenMana: 2,
+    };
+    expect(chooseMain2Action(ctx)).toBe("hold_for_opponent_turn");
+  });
+
+  it("medium deploys when the opponent has no planeswalker and <2 open mana", () => {
+    const ctx = {
+      ...fixedBoard,
+      difficulty: "medium" as const,
+      opponentHasPlaneswalker: false,
+      opponentOpenMana: 1,
+    };
+    expect(chooseMain2Action(ctx)).toBe("deploy");
+  });
+
+  it("hard holds when not on a clock (opponent has 2 open mana)", () => {
+    const ctx = { ...fixedBoard, difficulty: "hard" as const };
+    expect(chooseMain2Action(ctx)).toBe("hold_for_opponent_turn");
+  });
+
+  it("hard deploys when on a clock (life <= opponent lethal threat)", () => {
+    const ctx = {
+      ...fixedBoard,
+      difficulty: "hard" as const,
+      aiLife: 4,
+      opponentLethalThreat: 5,
+    };
+    expect(chooseMain2Action(ctx)).toBe("deploy");
+  });
+
+  it("expert defers an instant to the end step (deploy_end_step_spell)", () => {
+    const ctx = { ...fixedBoard, difficulty: "expert" as const };
+    expect(chooseMain2Action(ctx)).toBe("deploy_end_step_spell");
+  });
+
+  it("expert deploys when the hand holds only permanents", () => {
+    const ctx = {
+      ...fixedBoard,
+      difficulty: "expert" as const,
+      handHasInstant: false,
+      handHasPermanent: true,
+    };
+    expect(chooseMain2Action(ctx)).toBe("deploy");
+  });
+
+  it("is pure: identical context yields identical output across calls", () => {
+    const a = chooseMain2Action({ ...fixedBoard, difficulty: "hard" });
+    const b = chooseMain2Action({ ...fixedBoard, difficulty: "hard" });
+    expect(a).toBe(b);
+  });
+});
+
+describe("buildMain2Context (issue #1385) — engine projection", () => {
+  it("reads opponent open mana, planeswalker, and hand types from the engine state", () => {
+    const gidion = mkTurnCard("gid", "Planeswalker", {
+      cardData: { name: "gid", type_line: "Planeswalker", cmc: 4 } as any,
+    });
+    const bear = mkTurnCard("bear", "Creature", {
+      cardData: { name: "bear", type_line: "Creature", cmc: 2 } as any,
+    });
+    const bolt = mkTurnCard("bolt", "Instant", {
+      cardData: { name: "bolt", type_line: "Instant", cmc: 1 } as any,
+    });
+    const forest = mkTurnCard("f", "Land");
+
+    const cards = new Map<string, CardInstance>();
+    for (const c of [gidion, bear, bolt, forest]) cards.set(c.id, c);
+
+    const zones = new Map<string, { cardIds: CardInstanceId[] }>();
+    zones.set(`${AI}-hand`, { cardIds: ["bear", "bolt"] });
+    zones.set(`${AI}-battlefield`, { cardIds: ["f"] });
+    zones.set(`${OPP}-battlefield`, { cardIds: ["gid"] });
+
+    const players = new Map<PlayerId, unknown>();
+    players.set(AI, { id: AI, life: 18 });
+    players.set(OPP, { id: OPP, life: 22, manaPool: { blue: 2 } });
+
+    const state = {
+      cards,
+      zones,
+      players,
+    } as unknown as EngineGameState;
+
+    const ctx = buildMain2Context(state, AI, baseConfig({ difficulty: "expert" }));
+    expect(ctx.opponentOpenMana).toBe(2);
+    expect(ctx.opponentHasPlaneswalker).toBe(true);
+    expect(ctx.aiLife).toBe(18);
+    expect(ctx.opponentLife).toBe(22);
+    expect(ctx.handHasInstant).toBe(true);
+    expect(ctx.handHasPermanent).toBe(true);
+    expect(ctx.opponentLethalThreat).toBe(0); // opponent has no creatures
+  });
+
+  it("is defensive: missing players/zones yield safe defaults", () => {
+    const bare = { zones: new Map(), players: new Map() } as unknown as EngineGameState;
+    const ctx = buildMain2Context(bare, AI, baseConfig());
+    expect(ctx.aiLife).toBe(20);
+    expect(ctx.opponentOpenMana).toBe(0);
+    expect(ctx.opponentHasPlaneswalker).toBe(false);
+    expect(ctx.handHasInstant).toBe(false);
   });
 });
