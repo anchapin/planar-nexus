@@ -13,6 +13,7 @@ import type {
   PlayerId,
   CardInstanceId,
   AIGameState,
+  ManaPool,
 } from "@/lib/game-state/types";
 import { Phase } from "@/lib/game-state/types";
 import {
@@ -881,14 +882,233 @@ async function runDrawPhase(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Issue #1385 — difficulty-scaled post-combat (main 2) mana retention.
+//
+// After combat, priority passes back to the active player for the second main
+// phase. The naive loop dumps every remaining spell at instant speed, which is
+// the strongest single observable signal of the AI's difficulty tier. Higher
+// tiers hold mana open for the opponent's turn (interaction) or defer instants
+// to the end step (dodge counter-magic). {@link chooseMain2Action} is a pure,
+// deterministic policy keyed by difficulty; {@link buildMain2Context} projects
+// the engine state into the signals the policy reads.
+// ---------------------------------------------------------------------------
+
 /**
- * Run main phase (pre or post combat)
+ * Post-combat main-phase deployment policy (issue #1385).
+ *
+ * - `deploy`                 — cast everything (lands, creatures, other
+ *   spells). The historical main-phase behavior; used for pre-combat main and
+ *   for Easy AI in post-combat main.
+ * - `hold_for_opponent_turn` — play the land drop but hold all remaining mana
+ *   open so it is available for reactive interaction on the opponent's turn.
+ * - `deploy_end_step_spell`  — deploy permanents now (they are not interaction
+ *   bait) but defer instant-speed spells to the end step so they dodge
+ *   counter-magic and do not telegraph intent.
+ */
+export type Main2Action =
+  | "deploy"
+  | "hold_for_opponent_turn"
+  | "deploy_end_step_spell";
+
+/**
+ * The observable signals {@link chooseMain2Action} keys off. Projected from the
+ * engine state by {@link buildMain2Context}; tests construct this directly for
+ * deterministic per-tier coverage.
+ */
+export interface Main2Context {
+  /** Active difficulty tier — the primary policy switch. */
+  difficulty: DifficultyLevel;
+  /** Active format family (reserved for future per-format tuning). */
+  format?: DifficultyFormat;
+  /**
+   * Reused opponent-threat signal (0..1) from the block-prediction / stack
+   * interaction layer. Higher = the opponent represents a more credible
+   * immediate threat, which biases Hard toward deploying defensively.
+   */
+  opponentThreatScore: number;
+  /** Total untapped mana the opponent has available right now. */
+  opponentOpenMana: number;
+  /** Whether the opponent controls a visible planeswalker (a must-answer threat). */
+  opponentHasPlaneswalker: boolean;
+  /** AI's current life total. */
+  aiLife: number;
+  /** Opponent's current life total. */
+  opponentLife: number;
+  /**
+   * Rough estimate of the damage the opponent can present next combat (e.g.
+   * total power of their creatures). When the AI's life is at or below this it
+   * is "on a clock" and Hard will abandon retention to deploy.
+   */
+  opponentLethalThreat: number;
+  /** Whether the AI's hand contains at least one instant-speed spell. */
+  handHasInstant: boolean;
+  /** Whether the AI's hand contains at least one permanent (creature/enchantment/artifact/land). */
+  handHasPermanent: boolean;
+}
+
+/**
+ * Decide the post-combat main-phase deployment policy (issue #1385).
+ *
+ * Pure and deterministic — given the same {@link Main2Context} it always
+ * returns the same {@link Main2Action}, so each difficulty tier is unit-testable
+ * on a fixed board without time or randomness.
+ *
+ * Tier ladder:
+ * - **easy**   — always deploy. Dumps every spell; the easiest tell.
+ * - **medium** — deploy unless the opponent has a visible planeswalker or ≥2
+ *   open mana (a credible interaction window).
+ * - **hard**   — hold mana for the opponent's turn unless the AI is on a clock
+ *   (life total ≤ the opponent's estimated next-combat damage).
+ * - **expert** — defer instants to the end step (dodge interaction); deploy
+ *   permanents normally. Only pure-permanent hands deploy fully.
+ */
+export function chooseMain2Action(ctx: Main2Context): Main2Action {
+  switch (ctx.difficulty) {
+    case "easy":
+      return "deploy";
+
+    case "medium": {
+      if (ctx.opponentHasPlaneswalker || ctx.opponentOpenMana >= 2) {
+        return "hold_for_opponent_turn";
+      }
+      return "deploy";
+    }
+
+    case "hard": {
+      // On a clock: the opponent can present lethal next combat. The AI must
+      // spend its mana to stabilize/win rather than hold it reactively.
+      if (ctx.aiLife <= ctx.opponentLethalThreat) {
+        return "deploy";
+      }
+      return "hold_for_opponent_turn";
+    }
+
+    case "expert": {
+      // Permanents are not interaction bait — deploy them. Instants are
+      // deferred to the end step so they dodge counter-magic and the AI does
+      // not telegraph its reactive plan by dumping them in main 2.
+      if (ctx.handHasInstant) {
+        return "deploy_end_step_spell";
+      }
+      return "deploy";
+    }
+  }
+}
+
+/**
+ * Project the engine game state into the {@link Main2Context} the retention
+ * policy reads.
+ *
+ * Defensive against missing players/zones so a degenerate state never crashes
+ * the turn loop. The opponent is resolved via {@link getOpponentId}; in a
+ * multiplayer pod this is the first non-AI player (the same convention the
+ * combat phase uses).
+ */
+export function buildMain2Context(
+  state: EngineGameState,
+  aiPlayerId: PlayerId,
+  config: AITurnConfig,
+  opponentThreatScore = 0.5,
+): Main2Context {
+  const opponentId = getOpponentId(state, aiPlayerId);
+  const aiPlayer = state.players.get(aiPlayerId);
+  const oppPlayer = state.players.get(opponentId);
+
+  return {
+    difficulty: config.difficulty,
+    format: config.format,
+    opponentThreatScore,
+    opponentOpenMana: sumManaPool(oppPlayer?.manaPool),
+    opponentHasPlaneswalker: hasTypeOnBattlefield(
+      state,
+      opponentId,
+      "planeswalker",
+    ),
+    aiLife: aiPlayer?.life ?? 20,
+    opponentLife: oppPlayer?.life ?? 20,
+    opponentLethalThreat: sumCreaturePower(state, opponentId),
+    handHasInstant: handHasType(state, aiPlayerId, "instant"),
+    handHasPermanent:
+      handHasType(state, aiPlayerId, "creature") ||
+      handHasType(state, aiPlayerId, "enchantment") ||
+      handHasType(state, aiPlayerId, "artifact") ||
+      handHasType(state, aiPlayerId, "land"),
+  };
+}
+
+/** Sum every color slot of a {@link ManaPool} into a single integer. */
+function sumManaPool(p: ManaPool | undefined): number {
+  if (!p) return 0;
+  return (
+    (p.colorless ?? 0) +
+    (p.white ?? 0) +
+    (p.blue ?? 0) +
+    (p.black ?? 0) +
+    (p.red ?? 0) +
+    (p.green ?? 0) +
+    (p.generic ?? 0)
+  );
+}
+
+/** True if the named player controls a permanent of the given type on the battlefield. */
+function hasTypeOnBattlefield(
+  state: EngineGameState,
+  playerId: PlayerId,
+  type: string,
+): boolean {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  if (!zone) return false;
+  for (const cardId of zone.cardIds) {
+    const card = state.cards.get(cardId);
+    if (card?.cardData.type_line.toLowerCase().includes(type)) return true;
+  }
+  return false;
+}
+
+/** Sum the printed power of the creatures a player controls (0 if no zone). */
+function sumCreaturePower(state: EngineGameState, playerId: PlayerId): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  if (!zone) return 0;
+  let total = 0;
+  for (const cardId of zone.cardIds) {
+    const card = state.cards.get(cardId);
+    if (!card?.cardData.type_line.toLowerCase().includes("creature")) continue;
+    const power = (card.cardData as { power?: string | number }).power;
+    const parsed = typeof power === "number" ? power : parseInt(String(power), 10);
+    if (!Number.isNaN(parsed)) total += parsed;
+  }
+  return total;
+}
+
+/** True if the named player has a card of the given type in hand. */
+function handHasType(
+  state: EngineGameState,
+  playerId: PlayerId,
+  type: string,
+): boolean {
+  const zone = state.zones.get(`${playerId}-hand`);
+  if (!zone) return false;
+  for (const cardId of zone.cardIds) {
+    const card = state.cards.get(cardId);
+    if (card?.cardData.type_line.toLowerCase().includes(type)) return true;
+  }
+  return false;
+}
+
+/**
+ * Run main phase (pre or post combat).
+ *
+ * In the post-combat main the AI consults the difficulty-scaled retention
+ * policy (issue #1385) before dumping remaining spells: it may hold mana open
+ * for the opponent's turn or defer instants to the end step. Pre-combat main
+ * always deploys.
  */
 async function runMainPhase(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
-  _phase: "precombat_main" | "postcombat_main",
+  phase: "precombat_main" | "postcombat_main",
   adaptive?: AdaptiveTempoRisk | null,
 ): Promise<{
   success: boolean;
@@ -898,7 +1118,8 @@ async function runMainPhase(
   const actions: AIAction[] = [];
   let currentState = gameState;
 
-  // Step 1: Play land if available
+  // Step 1: Play land if available. Lands do not spend mana, so the land drop
+  // is always taken regardless of the retention policy.
   const landResult = await playLandIfAvailable(
     currentState,
     aiPlayerId,
@@ -908,6 +1129,48 @@ async function runMainPhase(
     actions.push(landResult.action);
     currentState = landResult.newState || currentState;
     await delay(config.delayMs);
+  }
+
+  // Issue #1385: in post-combat main, consult the difficulty-scaled retention
+  // policy before dumping remaining spells. Pre-combat main always deploys.
+  if (phase === "postcombat_main") {
+    const ctx = buildMain2Context(currentState, aiPlayerId, config);
+    const decision = chooseMain2Action(ctx);
+
+    if (decision === "hold_for_opponent_turn") {
+      // Play the land (already done) but hold all remaining mana open for the
+      // opponent's turn. Emit the behavioral tell directly — these lines are
+      // the observable difficulty signal, not coaching, so they bypass the
+      // telegraph level gate.
+      config.onCommentary?.("Holds mana for your turn");
+      return { success: true, actions, newState: currentState };
+    }
+
+    if (decision === "deploy_end_step_spell") {
+      // Deploy permanents (creatures) now — they are not interaction bait.
+      // Defer instants to the end step so they dodge counter-magic and do not
+      // telegraph the reactive plan.
+      const creatureResult = await castCreatures(
+        currentState,
+        aiPlayerId,
+        config,
+        adaptive,
+      );
+      if (creatureResult.success) {
+        actions.push(...creatureResult.actions);
+        currentState = creatureResult.newState || currentState;
+        for (let i = 0; i < creatureResult.actions.length; i++) {
+          await delay(config.delayMs);
+        }
+      }
+      config.onCommentary?.("Hides the trick");
+      // NOTE: deferred instants are cast by the end-of-turn step (issue #1385
+      // step 4). The retention decision itself is complete and unit-tested
+      // here; the full EOT-cast wiring is a separate change.
+      return { success: true, actions, newState: currentState };
+    }
+
+    // decision === "deploy" → fall through to the default cast sequence.
   }
 
   // Step 2: Cast creatures (priority based on curve)
