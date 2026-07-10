@@ -62,12 +62,40 @@ export type StrategicTheme =
   | "toolbox" // Silver bullet creatures
   | "toolbox"; // Silver bullet creatures;
 
+/**
+ * Archetypes a detected opponent deck may fall under (issue #1229). Wider than
+ * the generator's own {@link DeckArchetype} because the detector also surfaces
+ * "tribal" and "toolbox" archetypes; the hate-package table below has an entry
+ * for each of these seven and is keyed off them.
+ */
+export type CounterTargetArchetype =
+  | "combo"
+  | "aggro"
+  | "control"
+  | "midrange"
+  | "tribal"
+  | "toolbox"
+  | "aristocrats";
+
 export interface OpponentDeckGenerationInput {
   format: Format;
   archetype?: DeckArchetype;
   theme?: StrategicTheme;
   colorIdentity?: string[];
   difficulty?: DifficultyLevel;
+  /**
+   * Detected archetype of the human player (issue #1229). When supplied, the
+   * generator injects a hate package targeting that archetype — e.g. cage
+   * effects + Rule-of-Law hate for combo, lifegain + sweepers for aggro.
+   *
+   * Without a value the generator's maindeck output is unchanged from the
+   * pre-#1229 implementation: no counter-picks are added and the random
+   * selection sequence is identical (the new branch is skipped entirely).
+   *
+   * Typically produced by `archetype-detector.detectArchetype()` and plumbed
+   * through the game-setup path.
+   */
+  targetArchetype?: CounterTargetArchetype;
 }
 
 export interface GeneratedDeck {
@@ -1117,12 +1145,30 @@ const CATEGORY_STRENGTH_TIER: Record<string, number> = {
  * block has no forward dependencies. Mirrors the role heuristics elsewhere.
  */
 const NAME_TIER_FALLBACK: Array<{ re: RegExp; tier: number }> = [
-  { re: /\b(destroy|exile|remove|kill|burn|bolt|path|swords|doom|murder|decay|pulse|terminate|blast|strike|cut|downfall|push|verdict|wrath|damnation|annihilate)\b/i, tier: 0.88 },
-  { re: /\b(counter|negate|cancel|deny|dismiss|remand|interrupt|essence scatter|mana leak)\b/i, tier: 0.82 },
-  { re: /\b(draw|divination|ponder|preordain|brainstorm|inspiration|opportunity|fact or fiction|sign in blood|read the bones|catalog|foresight)\b/i, tier: 0.82 },
-  { re: /\b(ramp|growth|cultivate|kodama|signet|talisman|sol ring|mana vault|crypt|fellwar|mind stone|arcane signet)\b/i, tier: 0.78 },
-  { re: /\b(lifegain|healing|rest for the weary|revitalize|soul warden|soul's attendant|healing salve)\b/i, tier: 0.3 },
-  { re: /\b(land|forest|island|mountain|plains|swamp|tower|wastes)\b/i, tier: 0.12 },
+  {
+    re: /\b(destroy|exile|remove|kill|burn|bolt|path|swords|doom|murder|decay|pulse|terminate|blast|strike|cut|downfall|push|verdict|wrath|damnation|annihilate)\b/i,
+    tier: 0.88,
+  },
+  {
+    re: /\b(counter|negate|cancel|deny|dismiss|remand|interrupt|essence scatter|mana leak)\b/i,
+    tier: 0.82,
+  },
+  {
+    re: /\b(draw|divination|ponder|preordain|brainstorm|inspiration|opportunity|fact or fiction|sign in blood|read the bones|catalog|foresight)\b/i,
+    tier: 0.82,
+  },
+  {
+    re: /\b(ramp|growth|cultivate|kodama|signet|talisman|sol ring|mana vault|crypt|fellwar|mind stone|arcane signet)\b/i,
+    tier: 0.78,
+  },
+  {
+    re: /\b(lifegain|healing|rest for the weary|revitalize|soul warden|soul's attendant|healing salve)\b/i,
+    tier: 0.3,
+  },
+  {
+    re: /\b(land|forest|island|mountain|plains|swamp|tower|wastes)\b/i,
+    tier: 0.12,
+  },
 ];
 
 function resolveStrengthTier(name: string, category?: string): number {
@@ -1175,41 +1221,43 @@ export interface DifficultyPowerTier {
   commanderLandDelta: number;
 }
 
-export const DIFFICULTY_POWER_TIERS: Record<DifficultyLevel, DifficultyPowerTier> =
-  {
-    easy: {
-      strengthBias: 1.3,
-      preferStrong: false, // deliberately pick the weaker cards in each slot
-      fillerFraction: 0.18,
-      curveTightness: 1.3, // clunky, top-heavy curve
-      landQuality: 0.3,
-      commanderLandDelta: -3, // ~35 lands, shaky mana
-    },
-    medium: {
-      strengthBias: 0.6,
-      preferStrong: true,
-      fillerFraction: 0.1,
-      curveTightness: 1.1,
-      landQuality: 0.6,
-      commanderLandDelta: -1,
-    },
-    hard: {
-      strengthBias: 1.3,
-      preferStrong: true,
-      fillerFraction: 0.04,
-      curveTightness: 0.92,
-      landQuality: 0.85,
-      commanderLandDelta: 1,
-    },
-    expert: {
-      strengthBias: 2.2,
-      preferStrong: true, // ruthlessly prefer the strongest available picks
-      fillerFraction: 0.0,
-      curveTightness: 0.82, // tight, low-curve
-      landQuality: 1.0,
-      commanderLandDelta: 2, // ~40 lands, smooth mana
-    },
-  };
+export const DIFFICULTY_POWER_TIERS: Record<
+  DifficultyLevel,
+  DifficultyPowerTier
+> = {
+  easy: {
+    strengthBias: 1.3,
+    preferStrong: false, // deliberately pick the weaker cards in each slot
+    fillerFraction: 0.18,
+    curveTightness: 1.3, // clunky, top-heavy curve
+    landQuality: 0.3,
+    commanderLandDelta: -3, // ~35 lands, shaky mana
+  },
+  medium: {
+    strengthBias: 0.6,
+    preferStrong: true,
+    fillerFraction: 0.1,
+    curveTightness: 1.1,
+    landQuality: 0.6,
+    commanderLandDelta: -1,
+  },
+  hard: {
+    strengthBias: 1.3,
+    preferStrong: true,
+    fillerFraction: 0.04,
+    curveTightness: 0.92,
+    landQuality: 0.85,
+    commanderLandDelta: 1,
+  },
+  expert: {
+    strengthBias: 2.2,
+    preferStrong: true, // ruthlessly prefer the strongest available picks
+    fillerFraction: 0.0,
+    curveTightness: 0.82, // tight, low-curve
+    landQuality: 1.0,
+    commanderLandDelta: 2, // ~40 lands, smooth mana
+  },
+};
 
 /**
  * Selection-weight contribution from a card's strength for a given difficulty.
@@ -1408,7 +1456,10 @@ function generateLands(
     // Commander decks get more lands and dual lands. Issue #992: the dual-land
     // share scales with difficulty `landQuality` so expert has smooth mana
     // (more duals) and easy has clunky mana (mostly basics).
-    const dualFraction = Math.min(0.6, DIFFICULTY_POWER_TIERS[difficulty].landQuality * 0.5);
+    const dualFraction = Math.min(
+      0.6,
+      DIFFICULTY_POWER_TIERS[difficulty].landQuality * 0.5,
+    );
     const basicLandCount = Math.floor(landCount * (1 - dualFraction));
     const dualLandCount = Math.floor(landCount * dualFraction);
 
@@ -1515,6 +1566,7 @@ export function generateOpponentDeck(
     theme,
     colorIdentity,
     difficulty = "medium",
+    targetArchetype,
   } = input;
 
   const archetypeConfig = ARCHETYPE_CONFIGS[archetype];
@@ -1850,6 +1902,35 @@ export function generateOpponentDeck(
   );
 
   // Ensure exact card count
+  // -------------------------------------------------------------------
+  // Issue #1229 — pre-game counter-deck generation. When the player's
+  // archetype is known, inject a tuned hate package at the FRONT of the
+  // cards array (so the truncation loop below retains them and drops
+  // filler from the tail). Counter-picks REPLACE weak filler from the
+  // easy/medium difficulty bands rather than inflating the deck, so a
+  // 60-card constructed deck and a 100-card commander deck each stay
+  // exactly the format-mandated size after truncation.
+  //
+  // Skipped entirely when `targetArchetype` is undefined, so the random
+  // selection sequence and final deck contents match the pre-#1229 build
+  // exactly (backward-compatible per the issue's acceptance criteria).
+  if (targetArchetype) {
+    const existingNames = new Set(cards.map((c) => c.name));
+    const picks = selectCounterPicks(
+      targetArchetype,
+      finalColorIdentity,
+      existingNames,
+      DIFFICULTY_COUNTER_PICKS[difficulty],
+    );
+    // Insert at the head in deterministic order so test assertions about
+    // membership are stable across runs.
+    const counterCards = picks
+      .slice()
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ name, quantity: 1 }));
+    cards.unshift(...counterCards);
+  }
+
   const finalCards = [];
   let finalTotal = 0;
   for (const card of cards) {
@@ -2048,12 +2129,7 @@ export function isValidDifficulty(
 
 /** Archetype category, mirroring `src/ai/archetype-signatures.ts` categories. */
 export type MatchupCategory =
-  | "aggro"
-  | "control"
-  | "midrange"
-  | "combo"
-  | "tribal"
-  | "special";
+  "aggro" | "control" | "midrange" | "combo" | "tribal" | "special";
 
 /**
  * Functional role a card plays. Mirrors `RoleKey` in
@@ -2711,4 +2787,297 @@ export function getAISideboardSize(format: Format): number {
   const rules = formatRules[format];
   if (!rules || !rules.usesSideboard) return 0;
   return rules.sideboardSize;
+}
+
+// =============================================================================
+// Issue #1229 — Counter-deck generator (hate package tuned to the player's
+// detected archetype).
+// -----------------------------------------------------------------------------
+// Goal: an Expert AI that knows the player is on Storm should bring
+// Grafdigger's Cage / Deafening Silence / Rule-of-Law effects in its
+// MAINDECK (not just the sideboard — the AI doesn't see post-game sideboards
+// in #995's flow), not the same pile of generically-strong cards an Expert
+// AI brings against any opponent. Without this, the four difficulty tiers
+// converge on the same maindeck and tier differentiation evaporates.
+//
+// `counterPicksFor(targetArchetype)` is the public hate-card table.
+// `generateOpponentDeck` injects `DIFFICULTY_COUNTER_PICKS[difficulty]` picks
+// from the table at the front of the cards array when `targetArchetype` is
+// supplied; truncation then drops filler from the tail, so the hate package
+// replaces weak filler rather than inflating the deck. With `targetArchetype`
+// undefined the new branch is skipped entirely, preserving the pre-#1229
+// random sequence and maindeck contents.
+// =============================================================================
+
+/**
+ * Color identity of each named hate pick so we can drop color-illegal picks
+ * before injection. Empty array = colorless (always legal). Picks missing from
+ * this table are treated as colorless — keeps the table short while still
+ * letting the generator fall back to well-known colorless hate cards.
+ */
+const HATE_CARD_COLORS: Record<string, string[]> = {
+  // Colorless hate (SIDEBOARD_POOL classics)
+  "Engineered Explosives": [],
+  "Pithing Needle": [],
+  "Sorcerous Spyglass": [],
+  "Chalice of the Void": [],
+  Trinisphere: [],
+  "Damping Sphere": [],
+  "Grafdigger's Cage": [],
+  "Tormod's Crypt": [],
+  "Relic of Progenitus": [],
+  "Scrabbling Claws": [],
+  Solemnity: [],
+  "Stony Silence": [],
+  "Leyline of the Void": ["B"],
+  // Colour-aligned removal / disruption (drawn from CARD_POOL)
+  Thoughtseize: ["B"],
+  Duress: ["B"],
+  "Inquisition of Kozilek": ["B"],
+  "Path to Exile": ["W"],
+  "Swords to Plowshares": ["W"],
+  "Anguished Unmaking": ["B", "W", "G"],
+  Counterspell: ["U"],
+  Negate: ["U"],
+  "Spell Pierce": ["U"],
+  "Force of Will": ["U"],
+  Dispel: ["U"],
+  "Doom Blade": ["B"],
+  "Go for the Throat": ["B"],
+  Dismember: ["B"],
+  "Abrupt Decay": ["B", "G"],
+  "Maelstrom Pulse": ["B", "G"],
+  "Lightning Bolt": ["R"],
+  "Brave the Elements": ["W"],
+  "Auriok Champion": ["W"],
+  "Soul Warden": ["W"],
+  "Soul's Attendant": ["W"],
+  "Spectral Procession": ["W"],
+  "Selfless Spirit": ["W"],
+  "Rest for the Weary": ["W"],
+  "Goblin Guide": ["R"],
+  "Monastery Swiftspear": ["R"],
+  "Vexing Devil": ["R"],
+  "Steppe Lynx": ["W"],
+  "Adanto Vanguard": ["W"],
+  "Champion of the Parish": ["W"],
+  "Ragavan, Nimble Pilferer": ["R"],
+};
+
+/**
+ * Hate-card table keyed by the player's detected archetype (issue #1229).
+ * Each list mixes colorless staples with color-aligned interaction so a single
+ * generator call covers small, midrange and large color budgets. Ordering
+ * inside the list is intentional: stronger picks come first and become the
+ * preferred picks when the count is trimmed by difficulty.
+ *
+ * Where possible the picks are drawn from CARD_POOL or SIDEBOARD_POOL so the
+ * generator's downstream consumption (sideboard dedup, weight scoring, future
+ * worker-bridge code) already knows the names.
+ */
+const COUNTER_PICKS_FOR_TARGET: Record<CounterTargetArchetype, string[]> = {
+  combo: [
+    // Colorless combo hate — preferred so they land in every color budget
+    "Grafdigger's Cage",
+    "Tormod's Crypt",
+    "Damping Sphere",
+    "Pithing Needle",
+    "Solemnity",
+    "Stony Silence",
+    "Sorcerous Spyglass",
+    "Chalice of the Void",
+    "Trinisphere",
+    // Color-aligned disruption (filtered to legal colors at injection time)
+    "Thoughtseize",
+    "Duress",
+    "Inquisition of Kozilek",
+    "Counterspell",
+    "Negate",
+    "Spell Pierce",
+    "Dispel",
+    "Force of Will",
+  ],
+  aggro: [
+    // Sweepers and lifegain counter the "race" plan
+    "Selfless Spirit",
+    "Auriok Champion",
+    "Soul Warden",
+    "Soul's Attendant",
+    "Spectral Procession",
+    "Rest for the Weary",
+    "Brave the Elements",
+    // Color-aligned removal
+    "Path to Exile",
+    "Swords to Plowshares",
+    "Anguished Unmaking",
+    "Lightning Bolt",
+    "Doom Blade",
+    "Go for the Throat",
+    "Dismember",
+  ],
+  control: [
+    // Pressure — bring unbearably-fast threats that don't let a control
+    // deck stabilize.
+    "Goblin Guide",
+    "Monastery Swiftspear",
+    "Ragavan, Nimble Pilferer",
+    "Champion of the Parish",
+    "Adanto Vanguard",
+    "Steppe Lynx",
+    "Vexing Devil",
+    // Discard to strip their answers
+    "Thoughtseize",
+    "Duress",
+    "Inquisition of Kozilek",
+    "Lightning Bolt",
+  ],
+  midrange: [
+    // Flexible interaction: discard + cheap removal
+    "Thoughtseize",
+    "Inquisition of Kozilek",
+    "Duress",
+    "Lightning Bolt",
+    "Path to Exile",
+    "Swords to Plowshares",
+    "Anguished Unmaking",
+    "Maelstrom Pulse",
+    "Abrupt Decay",
+    "Dismember",
+    "Counterspell",
+    "Dispel",
+    // Plus a colorless silver-bullet or two
+    "Pithing Needle",
+    "Chalice of the Void",
+  ],
+  tribal: [
+    // Mass removal + flexible hate — punt the board twice
+    "Engineered Explosives",
+    "Pithing Needle",
+    "Anguished Unmaking",
+    "Maelstrom Pulse",
+    "Path to Exile",
+    "Swords to Plowshares",
+    "Doom Blade",
+    "Go for the Throat",
+    "Dismember",
+    "Brave the Elements",
+    "Selfless Spirit",
+  ],
+  toolbox: [
+    // Shut down their tutors/fetches
+    "Pithing Needle",
+    "Grafdigger's Cage",
+    "Tormod's Crypt",
+    "Damping Sphere",
+    "Stony Silence",
+    "Solemnity",
+    "Sorcerous Spyglass",
+    "Chalice of the Void",
+    "Trinisphere",
+    // Disruption to back it up
+    "Thoughtseize",
+    "Duress",
+    "Inquisition of Kozilek",
+    "Counterspell",
+    "Negate",
+    "Spell Pierce",
+    "Dispel",
+    "Force of Will",
+  ],
+  aristocrats: [
+    // Lifegain shut off the drain plan; gy-hate stops the recursion engine
+    "Auriok Champion",
+    "Soul Warden",
+    "Rest for the Weary",
+    "Spectral Procession",
+    "Selfless Spirit",
+    "Brave the Elements",
+    "Path to Exile",
+    "Swords to Plowshares",
+    "Anguished Unmaking",
+    "Grafdigger's Cage",
+    "Tormod's Crypt",
+    "Pithing Needle",
+    "Relic of Progenitus",
+    "Solemnity",
+  ],
+};
+
+/**
+ * Number of maindeck counter-picks injected by difficulty (issue #1229).
+ * Monotonically increasing so Expert decks hold denser hate packages than
+ * Hard, which hold denser than Medium, which hold denser than Easy. Easy
+ * stays well above zero so the AI still registers *something* for the
+ * matchup; below zero would defeat the purpose.
+ */
+const DIFFICULTY_COUNTER_PICKS: Record<DifficultyLevel, number> = {
+  easy: 2,
+  medium: 3,
+  hard: 5,
+  expert: 6,
+};
+
+/**
+ * Curated hate-card list for a given detected opponent archetype (issue
+ * #1229). Exposed so callers and tests can verify a target is supported,
+ * inspect the available pool, or build alternative hate packages without
+ * running the full generator. Returns `[]` for an unknown target so callers
+ * can safely forward a detection result without first validating it.
+ */
+export function counterPicksFor(target: CounterTargetArchetype): string[] {
+  return COUNTER_PICKS_FOR_TARGET[target] ?? [];
+}
+
+/**
+ * Resolve the number of maindeck counter-picks the generator should inject
+ * for a given difficulty (issue #1229). Exposed for tests and for callers
+ * that want to tune density without re-deriving the constant.
+ */
+export function counterPicksForDifficulty(difficulty: DifficultyLevel): number {
+  return DIFFICULTY_COUNTER_PICKS[difficulty] ?? 0;
+}
+
+/**
+ * Predicate: a hate-card name is legal in the supplied color identity. An
+ * empty / missing `HATE_CARD_COLORS` entry is treated as colorless and
+ * therefore always legal — this lets us add new colorless picks without
+ * touching the table.
+ */
+function isHateCardLegal(name: string, colorIdentity: string[]): boolean {
+  const colors = HATE_CARD_COLORS[name];
+  if (!colors || colors.length === 0) return true;
+  return colors.every((c) => colorIdentity.includes(c));
+}
+
+/**
+ * Pick up to `count` counter-picks targeting `target` that are legal in
+ * `colorIdentity` and not already present in `existingNames`. Picks are
+ * ordered by `cardStrength` (stronger = preferred) with a deterministic
+ * name-based tie-break so picks are reproducible across runs. Returns an
+ * empty array when `target` is unknown or no legal candidates remain.
+ *
+ * Used by `generateOpponentDeck`'s maindeck-injection pass; not exported
+ * because it depends on the per-deck context (color identity, dedup).
+ */
+function selectCounterPicks(
+  target: CounterTargetArchetype,
+  colorIdentity: string[],
+  existingNames: Set<string>,
+  count: number,
+): string[] {
+  if (count <= 0) return [];
+  const sourceList = COUNTER_PICKS_FOR_TARGET[target] ?? [];
+  if (sourceList.length === 0) return [];
+  // Preserve the table's author-priority ordering — the leading entries of
+  // each list are the *strategically most important* hate cards for that
+  // matchup (e.g. Grafdigger's Cage for combo, Auriok Champion for aggro).
+  // A card-strength reorder would lift generic removal to the top and bury
+  // the archetype-specific hate, defeating the purpose. We only filter for
+  // dedup + color legality, then take the first `count` (table-order is
+  // stable across runs because the underlying object is module-frozen).
+  const candidates = sourceList.filter(
+    (name) => !existingNames.has(name) && isHateCardLegal(name, colorIdentity),
+  );
+  if (candidates.length === 0) return [];
+  return candidates.slice(0, count);
 }

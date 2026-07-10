@@ -46,7 +46,10 @@ import {
   generateRandomDeck,
   generateThemedDeck,
 } from "@/lib/opponent-deck-generator";
-import { classifyDifficultyFormat, getDifficultyConfig } from "@/ai/ai-difficulty";
+import {
+  classifyDifficultyFormat,
+  getDifficultyConfig,
+} from "@/ai/ai-difficulty";
 
 const mockedGenerateOpponent = generateOpponentDeck as jest.MockedFunction<
   typeof generateOpponentDeck
@@ -101,8 +104,12 @@ beforeEach(() => {
     },
   } as never);
   mockedGenerateOpponent.mockReturnValue(generatedDeck() as never);
-  mockedGenerateRandom.mockReturnValue(generatedDeck({ name: "Random Deck" }) as never);
-  mockedGenerateThemed.mockReturnValue(generatedDeck({ name: "Themed Deck" }) as never);
+  mockedGenerateRandom.mockReturnValue(
+    generatedDeck({ name: "Random Deck" }) as never,
+  );
+  mockedGenerateThemed.mockReturnValue(
+    generatedDeck({ name: "Themed Deck" }) as never,
+  );
 });
 
 describe("generateAIOpponentDeck — defaults and branching", () => {
@@ -117,7 +124,11 @@ describe("generateAIOpponentDeck — defaults and branching", () => {
 
   it("forwards theme through the themed-deck path", async () => {
     await generateAIOpponentDeck({ theme: "burn" });
-    expect(mockedGenerateThemed).toHaveBeenCalledWith("burn", "commander", "medium");
+    expect(mockedGenerateThemed).toHaveBeenCalledWith(
+      "burn",
+      "commander",
+      "medium",
+    );
     expect(mockedGenerateOpponent).not.toHaveBeenCalled();
   });
 
@@ -128,12 +139,46 @@ describe("generateAIOpponentDeck — defaults and branching", () => {
     );
   });
 
+  it("forwards targetArchetype to the underlying generator (issue #1229)", async () => {
+    await generateAIOpponentDeck({ targetArchetype: "combo" });
+    expect(mockedGenerateOpponent).toHaveBeenCalledWith(
+      expect.objectContaining({ targetArchetype: "combo" }),
+    );
+  });
+
+  it("forwards targetArchetype alongside colorIdentity and difficulty (issue #1229)", async () => {
+    await generateAIOpponentDeck({
+      difficulty: "expert",
+      colorIdentity: ["U", "B"],
+      targetArchetype: "combo",
+    });
+    expect(mockedGenerateOpponent).toHaveBeenCalledWith({
+      format: "commander",
+      difficulty: "expert",
+      colorIdentity: ["U", "B"],
+      targetArchetype: "combo",
+    });
+  });
+
+  it("does not forward targetArchetype when theme is set (themed path is opaque)", async () => {
+    // Themed generation builds a curated deck for one strategy; layering a
+    // counter-package on top would corrupt the theme. The themed path
+    // ignores targetArchetype by design — verify the call shape.
+    await generateAIOpponentDeck({
+      theme: "burn",
+      targetArchetype: "combo",
+    });
+    expect(mockedGenerateThemed).toHaveBeenCalledWith(
+      "burn",
+      "commander",
+      "medium",
+    );
+    expect(mockedGenerateOpponent).not.toHaveBeenCalled();
+  });
+
   it("flattens the generated card list to a string[]", async () => {
     const out = await generateAIOpponentDeck({});
-    expect(out.deckList).toEqual([
-      "Lightning Bolt x4",
-      "Counterspell x3",
-    ]);
+    expect(out.deckList).toEqual(["Lightning Bolt x4", "Counterspell x3"]);
   });
 
   it("uses the bare card name when quantity is 1", async () => {
