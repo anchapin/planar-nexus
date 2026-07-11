@@ -12,6 +12,10 @@ on:
     - cron: '27 4 * * 1'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -22,21 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-      
-      - name: Checkout code
-        uses: actions/checkout@v7
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
       
       - name: Run unit tests with coverage
         run: npm test -- --coverage --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MB
@@ -62,21 +53,8 @@ jobs:
     needs: [test, lint, typecheck]
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-      
-      - name: Checkout code
-        uses: actions/checkout@v7
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
       
       - name: Cache Playwright browsers
         uses: actions/cache@v6
@@ -125,21 +103,8 @@ jobs:
       contents: read
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@v6
@@ -200,21 +165,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Run ESLint
         run: npm run lint
@@ -231,21 +183,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Audit design-token contrast (WCAG 1.4.3 / 1.4.11)
         run: npm run a11y:contrast:report
@@ -264,21 +203,8 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-      
-      - name: Checkout code
-        uses: actions/checkout@v7
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
       
       - name: Run TypeScript type check
         run: npm run typecheck
@@ -289,23 +215,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Validate commit messages
         run: npx commitlint --last --verbose
@@ -324,21 +237,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Run Stryker (layer-system only)
         # Per-file scope keeps the PR gate to a single module (~15-20 min on a
@@ -361,21 +261,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Run npm audit
         # Fail on high/critical advisories. Previously `critical`, which let
@@ -465,28 +352,61 @@ jobs:
           path: src-tauri/cargo-audit.json
           retention-days: 14
 
+  workflow-lint:
+    name: Workflow Lint
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Run actionlint
+        uses: rhysd/actionlint@v1
+
+      - name: Enforce shared Node setup action
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const workflowDir = path.join(process.cwd(), '.github', 'workflows');
+          const workflows = fs.readdirSync(workflowDir).filter((file) => file.endsWith('.yml'));
+          const failures = [];
+          let setupActionUses = 0;
+
+          for (const file of workflows) {
+            const content = fs.readFileSync(path.join(workflowDir, file), 'utf8');
+            setupActionUses += (content.match(/uses:\s*\.\/\.github\/actions\/setup-node-npm-ci/g) || []).length;
+
+            if (/run:\s*npm ci(?:\s|$)/.test(content)) {
+              failures.push(`${file}: replace direct npm ci with ./.github/actions/setup-node-npm-ci`);
+            }
+
+            if (/actions\/setup-node@v[0-5](?:\s|$)/.test(content)) {
+              failures.push(`${file}: actions/setup-node must be v6 or centralized in setup-node-npm-ci`);
+            }
+          }
+
+          if (setupActionUses < 11) {
+            failures.push(`expected at least 11 setup-node-npm-ci uses, found ${setupActionUses}`);
+          }
+
+          if (failures.length > 0) {
+            console.error(failures.join('\n'));
+            process.exit(1);
+          }
+          NODE
+  
   build:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e]
+    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint]
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-      
-      - name: Checkout code
-        uses: actions/checkout@v7
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
       
       - name: Build application
         run: npm run build

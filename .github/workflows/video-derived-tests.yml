@@ -16,6 +16,10 @@ on:
       - 'scripts/generate-test-fixture.ts'
       - '.github/workflows/video-derived-tests.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   BASELINE_COVERAGE: 70
@@ -26,23 +30,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Generate test fixtures from video states
         run: |
