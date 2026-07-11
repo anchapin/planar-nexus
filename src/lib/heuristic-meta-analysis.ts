@@ -406,7 +406,11 @@ function detectDeckArchetype(deck: DeckCard[]): string {
   const aggroKeywords = ['attack', 'haste', 'battlefield', 'damage', 'fast', 'aggressive', 'burn', 'pump', 'warrior', 'knight'];
   const midrangeKeywords = ['value', 'efficient', 'threat', 'mid', 'versatile', 'removal', 'draw', 'advantage'];
   const comboKeywords = ['combo', 'infinite', 'loop', 'assemble', 'win condition', 'pieces', 'laboratory', 'engine'];
-  const rampKeywords = ['mana', 'ramp', 'land', 'forest', 'island', 'swamp', 'mountain', 'plains', 'creatures', 'mana value', 'x'];
+  // Issue #1445: the bare `'x'` keyword matched the substring `x` in a huge
+  // fraction of card names (e.g. "explore", "expansion", "tax"), inflating the
+  // ramp score arbitrarily. Drop it. Real ramp signals come from the longer
+  // tokens below plus the type_line creature/instant ratio bonuses.
+  const rampKeywords = ['mana', 'ramp', 'land', 'forest', 'island', 'swamp', 'mountain', 'plains', 'creatures', 'mana value'];
   const tribalKeywords = ['tribe', 'lord', 'goblin', 'elf', 'vampire', 'warrior', 'human', 'knight', 'soldier'];
 
   controlKeywords.forEach(kw => {
@@ -461,6 +465,13 @@ function detectDeckArchetype(deck: DeckCard[]): string {
   return sortedArchetypes[0]?.[0] || 'midrange';
 }
 
+// Capitalize the first letter of a lowercase archetype key so it matches the
+// MATCHUP_GUIDE lookup keys. Returns the input unchanged when empty.
+function capitalizeArchetype(archetype: string): string {
+  if (!archetype) return archetype;
+  return archetype.charAt(0).toUpperCase() + archetype.slice(1);
+}
+
 // Generate recommendations based on metagame
 function generateMetaRecommendations(
   deckArchetype: string,
@@ -483,13 +494,20 @@ function generateMetaRecommendations(
     }
   }
 
+  // Issue #1445: `detectDeckArchetype` returns a lowercase key
+  // (`'control'`, `'aggro'`, ...) but MATCHUP_GUIDE is keyed with capitalized
+  // names. Look up via the capitalized form so the strategy text reflects
+  // the actual detected archetype instead of silently falling through to
+  // Midrange for every deck.
+  const deckArchetypeDisplay = capitalizeArchetype(deckArchetype);
+
   // Generate matchup-specific recommendations
   targetArchetypes.slice(0, 3).forEach(targetArchetype => {
     if (targetArchetype.name.toLowerCase() === deckArchetype.toLowerCase()) {
       return; // Skip mirror matchups
     }
 
-    const matchup = MATCHUP_GUIDE[deckArchetype] || MATCHUP_GUIDE['Midrange'];
+    const matchup = MATCHUP_GUIDE[deckArchetypeDisplay] || MATCHUP_GUIDE['Midrange'];
     const isStrongAgainst = matchup.strength.includes(targetArchetype.name);
 
     const cardsToAdd: Array<{ name: string; quantity: number }> = [];
@@ -544,8 +562,8 @@ function generateMetaRecommendations(
     recommendations.push({
       title: `Improve ${targetArchetype.name} Matchup`,
       description: isStrongAgainst
-        ? `Your ${deckArchetype} deck is naturally strong against ${targetArchetype.name}. Enhance this advantage.`
-        : `Your ${deckArchetype} deck struggles against ${targetArchetype.name}. Address these weaknesses.`,
+        ? `Your ${deckArchetypeDisplay} deck is naturally strong against ${targetArchetype.name}. Enhance this advantage.`
+        : `Your ${deckArchetypeDisplay} deck struggles against ${targetArchetype.name}. Address these weaknesses.`,
       cardsToAdd: cardsToAdd.slice(0, 5),
       cardsToRemove: cardsToRemove.slice(0, 3),
       matchup: {

@@ -566,19 +566,54 @@ export async function analyzeMetaAndSuggest(
   input: MetaAnalysisInput,
   opts: AnalyzeMetaOptions = {}
 ): Promise<MetaAnalysisOutput> {
-  // Parse the decklist to get card data
+  // Parse the decklist to get card names + quantities
   const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
-  const cards: HeuristicCard[] = [];
-
-  // Simple parser
+  const parsed: Array<{ name: string; quantity: number }> = [];
   for (const line of lines) {
     const match = line.match(/^(\d+)\s+(.+)$/);
     if (match) {
       const [, quantity, name] = match;
+      parsed.push({ name: name.trim(), quantity: parseInt(quantity, 10) });
+    }
+  }
+
+  // Issue #1445: the previous implementation fed `analyzeMetaHeuristic` cards
+  // with `type_line: 'Unknown'` placeholders, so the creature/instant ratio
+  // bonuses inside `detectDeckArchetype` (`type_line?.includes('Creature')`)
+  // could never fire from the AI flow path. Resolve real card data via
+  // `importDecklist` first; if the import fails (offline, DB not initialized,
+  // all cards unknown) fall back to the original placeholder parsing so the
+  // heuristic still runs.
+  let cards: HeuristicCard[] = [];
+  try {
+    const importResult = await importDecklist(
+      input.decklist,
+      input.format as Parameters<typeof importDecklist>[1],
+    );
+    if (importResult.found.length > 0) {
+      cards = importResult.found.map(c => ({
+        name: c.name,
+        count: c.count,
+        id: c.id,
+        cmc: c.cmc,
+        colors: c.colors,
+        legalities: c.legalities,
+        type_line: c.type_line || 'Unknown',
+        mana_cost: c.mana_cost ?? '{0}',
+        color_identity: c.color_identity ?? [],
+      }));
+    }
+  } catch {
+    // Swallow and fall back to placeholder parsing below.
+  }
+
+  if (cards.length === 0) {
+    // Placeholder parsing — mirrors the pre-#1445 behavior so callers without
+    // a card DB still get archetype detection (name-keyword only).
+    for (const card of parsed) {
       cards.push({
-        name: name.trim(),
-        count: parseInt(quantity, 10),
-        // Add placeholder properties to satisfy DeckCard type
+        name: card.name,
+        count: card.quantity,
         id: crypto.randomUUID(),
         cmc: 0,
         colors: [],
