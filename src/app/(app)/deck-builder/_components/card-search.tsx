@@ -15,6 +15,7 @@ import {
   getDatabaseStatus,
   searchCardsOffline,
   getAllCards,
+  getCardById,
 } from "@/lib/card-database";
 import type { MinimalCard } from "@/lib/card-database";
 import { type Format } from "@/lib/game-rules";
@@ -25,8 +26,28 @@ import {
   getPresetsByCategory,
   type QuickPreset,
 } from "@/lib/search/quick-presets";
+import {
+  parseCardQuery,
+  type QueryParseError,
+} from "@/lib/search/query-parser";
+import { cardSearchIndex } from "@/lib/search/card-search-index";
+import { Switch } from "@/components/ui/switch";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Search, Database, Loader2, X, Save, Trash2 } from "lucide-react";
+import {
+  Search,
+  Database,
+  Loader2,
+  X,
+  Save,
+  Trash2,
+  HelpCircle,
+  AlertCircle,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -141,6 +162,21 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     const [matchCommanderIdentity, setMatchCommanderIdentity] = useState(false);
     const canMatchCommanderIdentity =
       !!commanderColorIdentity && commanderColorIdentity.length > 0;
+
+    // Power mode: when true, the search input is parsed as a structured
+    // Scryfall-style query (issue #1440) instead of a fuzzy name search.
+    // Defaults to off so the existing UX is preserved; the toggle is
+    // opt-in.
+    const [powerMode, setPowerMode] = useState(false);
+    // Parsed query AST (kept in state so the error chip can react to
+    // query edits without re-running the index). `null` until the user
+    // types something.
+    const [parsedQuery, setParsedQuery] = useState<ReturnType<
+      typeof parseCardQuery
+    > | null>(null);
+    // Capture parse errors as a memoised array so the error chip can
+    // re-render only when the list changes.
+    const parseErrors: QueryParseError[] = parsedQuery?.errors ?? [];
 
     // Initialize filter hook for advanced filtering
     const {
@@ -423,6 +459,17 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     // Debounce the query for search
     const [debouncedQuery] = useDebounce(query, 300);
 
+    // Re-parse the query on every edit when Power mode is on so the
+    // inline error chip stays in sync with what the user typed. The
+    // parser is pure and cheap (<1ms) so we run it inline.
+    useEffect(() => {
+      if (!powerMode) {
+        setParsedQuery(null);
+        return;
+      }
+      setParsedQuery(parseCardQuery(debouncedQuery));
+    }, [debouncedQuery, powerMode]);
+
     // Apply search and filtering when query or filters change
     useEffect(() => {
       if (!dbStatus.loaded) return;
@@ -431,12 +478,37 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
         let searchResults: ScryfallCard[];
 
         if (debouncedQuery.length >= 2) {
-          // Perform name-based search first
-          searchResults = (await searchCardsOffline(debouncedQuery, {
-            maxCards: 50,
-            format: "commander" as Format,
-            includeImages: true,
-          })) as ScryfallCard[];
+          if (powerMode) {
+            // Power mode: route through the structured parser, then
+            // the Orama `where` clause directly. The hook would add
+            // another debounce layer we don't need here because the
+            // outer `useDebounce` already smooths typing.
+            const parsed = parseCardQuery(debouncedQuery);
+            // If the parser bailed out (e.g. unbalanced quotes), keep
+            // the existing results rather than flashing an empty grid.
+            if (parsed.errors.some((e) => /Unbalanced quote/.test(e.message))) {
+              // Do nothing — preserve previous results.
+              return;
+            }
+            const hits = await cardSearchIndex.search(parsed.term, {
+              where: parsed.where,
+              limit: 50,
+            });
+            const cards: MinimalCard[] = [];
+            for (const hit of hits) {
+              const card = await getCardById(hit.id);
+              if (card) cards.push(card);
+              if (cards.length >= 50) break;
+            }
+            searchResults = cards as unknown as ScryfallCard[];
+          } else {
+            // Fuzzy mode (default): existing offline name search.
+            searchResults = (await searchCardsOffline(debouncedQuery, {
+              maxCards: 50,
+              format: "commander" as Format,
+              includeImages: true,
+            })) as ScryfallCard[];
+          }
         } else {
           // No query - get a subset of cards or empty
           searchResults = [];
@@ -493,6 +565,7 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       commanderColorIdentity,
       format,
       formatFilter,
+      powerMode,
     ]);
 
     const { synergyData } = useSynergy();
@@ -599,16 +672,120 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
             <Input
               ref={inputRef}
               type="search"
-              placeholder="Search for cards (e.g., 'Sol Ring') + Ctrl+F"
+              placeholder={
+                powerMode
+                  ? "Power search — e.g. 'c:red t:instant cmc<=3'"
+                  : "Search for cards (e.g., 'Sol Ring') + Ctrl+F"
+              }
               className="pl-10"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              aria-label="Search cards by name"
+              aria-label={
+                powerMode
+                  ? "Power card search (Scryfall-style syntax)"
+                  : "Search cards by name"
+              }
               aria-describedby="search-hint"
               disabled={isInitializing}
               data-testid="card-search-input"
             />
+          </div>
+
+          {/* Power mode toggle + syntax help. Issue #1440 surfaces the
+              Scryfall-style query language behind a single opt-in
+              toggle. Off by default so the existing fuzzy UX is
+              preserved. */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="power-search-toggle"
+                checked={powerMode}
+                onCheckedChange={(checked) => {
+                  setPowerMode(checked === true);
+                  if (!checked) {
+                    // Reset parse state so the error chip fades out.
+                    setParsedQuery(null);
+                  }
+                }}
+                data-testid="power-search-toggle"
+                aria-label="Enable power search syntax"
+              />
+              <Label
+                htmlFor="power-search-toggle"
+                className="text-xs cursor-pointer"
+              >
+                Power search
+              </Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center h-6 w-6 rounded-md text-muted-foreground hover:bg-muted"
+                    aria-label="Show power search syntax help"
+                    data-testid="power-search-syntax-help"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="max-w-[320px] text-xs space-y-2"
+                >
+                  <p className="font-medium text-foreground">
+                    Scryfall-style syntax
+                  </p>
+                  <ul className="space-y-1 text-muted-foreground">
+                    <li>
+                      <code className="text-foreground">c:red</code>,{" "}
+                      <code className="text-foreground">c:wubrg</code> — color
+                      inclusion (OR semantics)
+                    </li>
+                    <li>
+                      <code className="text-foreground">
+                        t:instant,sorcery
+                      </code>{" "}
+                      — type inclusion
+                    </li>
+                    <li>
+                      <code className="text-foreground">
+                        cmc&lt;=3
+                      </code>{""},{" "}
+                      <code className="text-foreground">cmc&gt;=4</code>,{" "}
+                      <code className="text-foreground">cmc=2</code>,{" "}
+                      <code className="text-foreground">mv:5</code> —
+                      mana-value comparisons
+                    </li>
+                    <li>
+                      <code className="text-foreground">s:mh2</code> — set
+                      code
+                    </li>
+                    <li>Free words: matched against name, type, oracle text</li>
+                  </ul>
+                  <p className="text-muted-foreground">
+                    Examples:{" "}
+                    <code className="text-foreground">
+                      c:red t:instant cmc&lt;=3
+                    </code>{" "}
+                    ·{" "}
+                    <code className="text-foreground">
+                      c:wubrg t:creature
+                    </code>
+                  </p>
+                </PopoverContent>
+              </Popover>
+            </div>
+            {powerMode && parseErrors.length > 0 && (
+              <span
+                role="status"
+                aria-live="polite"
+                data-testid="power-search-parse-error"
+                className="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive"
+              >
+                <AlertCircle className="h-3 w-3" />
+                {parseErrors[0]?.message}
+              </span>
+            )}
           </div>
 
           {/* Quick Presets Dropdown */}
