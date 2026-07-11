@@ -28,6 +28,8 @@ jobs:
   video-derived-tests:
     name: Video-Derived Game State Tests
     runs-on: ubuntu-latest
+    outputs:
+      video-fixtures-count: ${{ steps.count-fixtures.outputs.video-fixtures-count }}
 
     steps:
       - name: Checkout code
