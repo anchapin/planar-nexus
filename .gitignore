@@ -81,3 +81,8 @@ firestore-debug.log
 *.bak
 *.backup
 *.orig
+
+# Claude Code worktrees — these must live OUTSIDE the repo (issue #1479).
+# When committed they appear as gitlinks (mode 160000) with no .gitmodules
+# entry, which makes `git submodule status` fail and spams every CI job.
+.claude/worktrees/
