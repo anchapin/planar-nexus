@@ -267,6 +267,13 @@ must list only the permissions the frontend actually calls.
 2. **Register the plugin in Rust.** Add the crate to `src-tauri/Cargo.toml` and
    call `.plugin(...)` from `src-tauri/src/lib.rs`. Plugins registered in Rust
    but not granted in the capability manifest will silently reject IPC calls.
+   **Register order matters.** `tauri-plugin-single-instance` (issue #1441)
+   must be the first plugin wired into the builder — before the `Updater`,
+   `Logging`, or any plugin that owns the main window. The plugin runs at
+   builder-construction time; if a plugin that claims the window handle is
+   installed first, the second-instance hand-off cannot focus it. The
+   `#[cfg(desktop)]` guard is required because the upstream plugin does not
+   build for Android/iOS.
 3. **Use it from the frontend.** Wrap the plugin in `src/lib/tauri-bridge.ts`
    (or the call site directly) using `@tauri-apps/plugin-<name>` and call only
    the commands you need.
