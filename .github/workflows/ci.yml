@@ -415,7 +415,7 @@ jobs:
         uses: ./.github/actions/setup-node-npm-ci
 
       - name: Run actionlint
-        uses: rhysd/actionlint@v1
+        uses: rhysd/actionlint@v1.7.7
 
       - name: Enforce shared Node setup action
         run: |
