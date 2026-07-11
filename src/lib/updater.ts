@@ -145,6 +145,7 @@ export async function checkForDesktopUpdate(): Promise<DesktopUpdateResult> {
   }
 
   try {
+      // @ts-expect-error TS2307 - lazy Tauri import
       const { check } = await import("@tauri-apps/plugin-updater");
     const update = await check();
 
@@ -197,6 +198,7 @@ export async function checkForDesktopUpdate(): Promise<DesktopUpdateResult> {
  */
 export async function downloadAndInstallDesktopUpdate(): Promise<void> {
   if (!isTauriEnvironment()) return;
+  // @ts-expect-error TS2307 - lazy Tauri import
   const { check } = await import("@tauri-apps/plugin-updater");
   const update = await check();
   if (!update) return;
@@ -209,6 +211,7 @@ export async function downloadAndInstallDesktopUpdate(): Promise<void> {
  */
 export async function relaunchDesktop(): Promise<void> {
   if (!isTauriEnvironment()) return;
+  // @ts-expect-error TS2307 - lazy Tauri import
   const { relaunch } = await import("@tauri-apps/plugin-process");
   await relaunch();
 }
