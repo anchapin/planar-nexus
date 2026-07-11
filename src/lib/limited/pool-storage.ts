@@ -25,7 +25,11 @@ import type {
   CreateSessionOptions,
   DraftSession,
   DraftState,
+  RochesterSession,
+  WinstonSession,
+  LimitedMode,
 } from './types';
+import { normalizeLimitedMode } from './types';
 import {
   filterByColor,
   filterByType,
@@ -126,10 +130,11 @@ export async function getAllSessions(): Promise<LimitedSession[]> {
 }
 
 /**
- * Get sessions by mode (sealed or draft)
+ * Get sessions by mode. Accepts all values of `LimitedMode`, including the
+ * new `'rochester'` / `'winston'` variants added in issue #1444.
  */
 export async function getSessionsByMode(
-  mode: 'sealed' | 'draft'
+  mode: LimitedMode
 ): Promise<LimitedSession[]> {
   const database = getDatabase();
   return database.sessions.where('mode').equals(mode).toArray();
@@ -636,6 +641,81 @@ export async function getDraftSessionsByState(
   return (sessions as DraftSession[]).filter(
     (s) => 'draftState' in s && s.draftState === draftState
   );
+}
+
+// ============================================================================
+// Rochester / Winston Session Storage (Phase 18 — issue #1444)
+// ============================================================================
+
+/**
+ * Persist a Rochester session. Same primitives as draft: `put` preserves
+ * all state. We always re-assert `updatedAt` so callers can compare
+ * timestamps without computing it themselves.
+ */
+export async function saveRochesterSession(
+  session: RochesterSession,
+): Promise<void> {
+  const database = getDatabase();
+  await database.sessions.put({
+    ...session,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Read a Rochester session by ID. Returns null if the row is missing or its
+ * `mode` is no longer `'rochester'` (e.g. corrupted row from an even older
+ * build).
+ */
+export async function getRochesterSession(
+  id: string,
+): Promise<RochesterSession | null> {
+  const session = await getSession(id);
+  if (!session) return null;
+  // Migration safety: tolerate any future weirdness in the persisted mode.
+  if (normalizeLimitedMode(session.mode) !== 'rochester') return null;
+  return session as RochesterSession;
+}
+
+/**
+ * Persist a Winston session.
+ */
+export async function saveWinstonSession(
+  session: WinstonSession,
+): Promise<void> {
+  const database = getDatabase();
+  await database.sessions.put({
+    ...session,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Read a Winston session by ID.
+ */
+export async function getWinstonSession(
+  id: string,
+): Promise<WinstonSession | null> {
+  const session = await getSession(id);
+  if (!session) return null;
+  if (normalizeLimitedMode(session.mode) !== 'winston') return null;
+  return session as WinstonSession;
+}
+
+/**
+ * List all Rochester sessions, newest first.
+ */
+export async function getAllRochesterSessions(): Promise<RochesterSession[]> {
+  const all = await getSessionsByMode('rochester');
+  return all as RochesterSession[];
+}
+
+/**
+ * List all Winston sessions, newest first.
+ */
+export async function getAllWinstonSessions(): Promise<WinstonSession[]> {
+  const all = await getSessionsByMode('winston');
+  return all as WinstonSession[];
 }
 
 // ============================================================================

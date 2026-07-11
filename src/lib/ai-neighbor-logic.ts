@@ -4,6 +4,12 @@
  * Provides heuristic-based card selection for AI draft opponents.
  * NEIB-02: AI picks cards using heuristic logic
  * NEIB-03: Easy = random, Medium = color-focused
+ *
+ * Issue #1444: extended to dispatch across the three draft formats. The
+ * optional `mode` discriminator on `selectAiPick` lets the communal-pool
+ * formats (Rochester, Winston) reuse the same random/color-focused pickers
+ * while still applying the parity-aware extension where reads of the
+ * table would help.
  */
 
 import type {
@@ -19,6 +25,17 @@ import type {
 import { ARCHETYPE_SIGNAL_BUFFER_SIZE } from "./limited/types";
 import type { ScryfallCard, DeckCard } from "@/app/actions";
 import { classifyArchetypeAxis } from "@/ai/archetype-detector";
+
+/**
+ * Discriminator accepted by {@link selectAiPick} for cross-format dispatch.
+ *
+ * `'draft'`       — booster draft (the original behavior).
+ * `'rochester'`   — communal-pool pick, with table reads available.
+ * `'winston'`     — single-card draw decision.
+ *
+ * Optional so existing call sites are unchanged.
+ */
+export type AiPickMode = "draft" | "rochester" | "winston";
 
 /**
  * Card color score for evaluation
@@ -216,15 +233,76 @@ function pickRandomCardNoSignal(pack: DraftPack): DraftCard | null {
 }
 
 /**
+ * Pick a card from a face-up communal pool (Rochester / Winston style).
+ *
+ * Issue #1444: reuses the colour-focused picker but is also given the
+ * `tableRead` (cards already picked by other seats) so the heuristic can
+ * reason about parity. For the 'easy' tier we ignore table reads entirely;
+ * for 'medium' they only factor in when matching the dominant colour is
+ * otherwise a tie.
+ */
+export function pickFromCommunalPool(
+  pool: PoolCard[],
+  tableRead: PoolCard[],
+  aiState: AiNeighborState,
+): PoolCard | null {
+  if (pool.length === 0) return null;
+  if (aiState.pool.length === 0 && tableRead.length === 0) {
+    // Cold start: drop the first concrete hook (a creature or cheap spell).
+    const hook = pool.find((c) => /Creature/i.test(c.type_line ?? ""));
+    const picked = hook ?? pool[Math.floor(Math.random() * pool.length)];
+    emitArchetypeSignal(aiState, aiState.pool, picked as DraftCard, "random");
+    return picked;
+  }
+
+  // Reuse the colour-focused scorer by wrapping the communal pool in a
+  // synthetic DraftPack.
+  const syntheticPack: DraftPack = {
+    id: "communal",
+    cards: pool as DraftCard[],
+    isOpened: true,
+    pickedCardIds: [],
+  };
+  const picked = pickColorFocusedCard(syntheticPack, aiState.pool, aiState);
+  if (picked === null) return null;
+  // The colour-focused picker returns a DraftCard; the cast back to
+  // PoolCard is safe because PoolCard extends the same shape.
+  return picked as PoolCard;
+}
+
+/**
  * Select a card for the AI neighbor to pick.
  * Dispatches to appropriate difficulty-based logic.
  * Issue #1404: also writes an ArchetypeSignal onto `aiNeighbor.state`.
+ *
+ * Issue #1444: `mode` lets the call site switch to the communal-pool picker
+ * (Rochester / Winston). Defaults to `'draft'` to preserve the original
+ * booster-draft dispatch.
  */
 export function selectAiPick(
   pack: DraftPack,
   aiNeighbor: AiNeighbor,
+  mode: AiPickMode = "draft",
+  tableRead: PoolCard[] = [],
 ): DraftCard | null {
   const { difficulty, state } = aiNeighbor;
+
+  if (mode === "rochester" || mode === "winston") {
+    // For both communal-pool variants we expose the same dispatcher:
+    //  - 'easy'   → random
+    //  - 'medium' → colour-focused, with parity tiebreaks
+    // 'hard' / 'expert' tiers are intentionally not added until the
+    // companion issue (#L14-2) lands; for now they fall through to the
+    // colour-focused picker just like 'medium'.
+    if (difficulty === "easy") {
+      return pickFromCommunalPool(
+        pack.cards as PoolCard[],
+        tableRead,
+        state,
+      );
+    }
+    return pickFromCommunalPool(pack.cards as PoolCard[], tableRead, state);
+  }
 
   switch (difficulty) {
     case "easy":

@@ -257,9 +257,47 @@ export interface LimitedDeckCard {
 }
 
 /**
- * Limited session mode
+ * Limited session mode.
+ *
+ * Issue #1444 widens the union from `'sealed' | 'draft'` to also include the
+ * two side-event draft formats — Rochester and Winston. Existing rows in
+ * IndexedDB only contain the legacy values; persisted reads must be routed
+ * through {@link normalizeLimitedMode} so old data can never crash new code.
  */
-export type LimitedMode = "sealed" | "draft";
+export type LimitedMode = "sealed" | "draft" | "rochester" | "winston";
+
+/**
+ * Legacy `LimitedMode` values. Anything outside this set is treated as
+ * `'sealed'` (the safest default) by {@link normalizeLimitedMode} so that
+ * rows from older builds never crash newer readers (issue #1444).
+ */
+const LEGACY_LIMITED_MODES = ["sealed", "draft"] as const;
+
+/**
+ * Normalize a persisted `LimitedMode` to a value the current build accepts.
+ *
+ * Issue #1444: existing rows only ever stored `'sealed' | 'draft'`. After the
+ * Rochester / Winston expansion an unrecognised value must default to
+ * `'sealed'` (a pool with no AI neighbour and no in-progress pack state), not
+ * throw, so users on older data never see a blocker.
+ */
+export function normalizeLimitedMode(value: unknown): LimitedMode {
+  if (
+    value === "sealed" ||
+    value === "draft" ||
+    value === "rochester" ||
+    value === "winston"
+  ) {
+    return value;
+  }
+  if (
+    typeof value === "string" &&
+    (LEGACY_LIMITED_MODES as readonly string[]).includes(value)
+  ) {
+    return value as LimitedMode;
+  }
+  return "sealed";
+}
 
 /**
  * Limited session status
@@ -382,4 +420,133 @@ export interface CreateDraftSessionOptions {
     difficulty: AiDifficulty;
     pickDelay?: number;
   };
+}
+
+// ============================================================================
+// Rochester Draft (issue #1444)
+// ============================================================================
+
+/**
+ * Rochester draft is a communal-pool side-event: N players sit around a
+ * single face-up pack of `playerCount × PICKS_PER_ROCHESTER_SEAT` cards and
+ * pick in clockwise order until the pool is dry. Visible picks means AI bots
+ * at 'hard' / 'expert' difficulty must factor in the table's revealed picks
+ * — see the parity-aware variants in `ai-neighbor-logic.ts`.
+ *
+ * Phase 18 (issue #1444).
+ */
+export type RochesterState =
+  | "intro"
+  | "picking"
+  | "rochester_complete";
+
+/**
+ * Standard Rochester draft picks per seat. Issue #1444 acceptance criteria
+ * references (45 / 60 / 75)-card pools for (3 / 4 / 5) players = 15 picks each.
+ */
+export const PICKS_PER_ROCHESTER_SEAT = 15;
+
+/** Valid Rochester seat counts per the issue's acceptance criteria. */
+export const ROCHESTER_PLAYER_COUNTS = [3, 4, 5] as const;
+export type RochesterPlayerCount = (typeof ROCHESTER_PLAYER_COUNTS)[number];
+
+/**
+ * Persistent Rochester session. Extends `LimitedSession` with the
+ * communal-pool state machine. AIs for non-user seats are tracked in a
+ * per-seat map so each AI can keep its own archetype-signal buffer.
+ */
+export interface RochesterSession extends LimitedSession {
+  mode: "rochester";
+  /** State in the Rochester flow. */
+  rochesterState: RochesterState;
+  /** Number of seats (3–5). */
+  playerCount: RochesterPlayerCount;
+  /** Cards remaining face-up in the centre of the table. */
+  communalPool: PoolCard[];
+  /** Picks each seat has accumulated, indexed by seat 0..playerCount-1. */
+  picksBySeat: Record<number, PoolCard[]>;
+  /** Whose turn it is to pick from the communal pool (0..playerCount-1). */
+  currentSeatIndex: number;
+  /** Number of picks taken so far across all seats. */
+  picksTaken: number;
+  /** AI neighbour state per AI-controlled seat, if any. */
+  aiNeighbors?: Record<number, AiNeighbor>;
+  /** Optional human-readable session name. Inherited from LimitedSession. */
+}
+
+/**
+ * Options accepted by `createRochesterSession`. `playerCount` defaults to 3.
+ */
+export interface CreateRochesterSessionOptions {
+  playerCount?: RochesterPlayerCount;
+  aiDifficulty?: AiDifficulty;
+}
+
+// ============================================================================
+// Winston Draft (issue #1444)
+// ============================================================================
+
+/**
+ * Winston draft is a face-down pile-picking format. Three piles of varying
+ * sizes sit on the table; the active seat flips the top card of one pile
+ * face-up and either takes the entire pile or burns it. After each
+ * draw-decide cycle the seat passes and the next neighbour picks.
+ *
+ * Standard MTG Winston pile sizes are `(6, 4, 3)` cards. Issue #1444.
+ */
+export type WinstonState =
+  | "intro"
+  | "drawing"
+  | "deciding"
+  | "winston_complete";
+
+/** Standard MTG Winston pile sizes, in the order they sit on the table. */
+export const WINSTON_PILE_SIZES = [6, 4, 3] as const;
+
+/** A single Winston pile (face-down stack of cards). */
+export interface WinstonPile {
+  /** Stable ID for persistence. */
+  id: string;
+  /** Remaining face-down cards in the pile. Empty after the pile is taken. */
+  cards: PoolCard[];
+  /** True once the pile has been taken or burned. */
+  isExhausted: boolean;
+  /** True if the pile was burned (no cards were given to a seat). */
+  isBurned: boolean;
+  /** If non-null, the pile's top card is currently face-up awaiting a decision. */
+  revealedCard: PoolCard | null;
+  /** Which seat, if any, currently holds the active decision. */
+  awaitingSeat: number | null;
+  /** Size of the pile as it started. Used by the completion predicate. */
+  initialSize: number;
+}
+
+/**
+ * Persistent Winston session. Multiple seats can rotate around the piles;
+ * each seat ends with whatever pile contents they collected.
+ */
+export interface WinstonSession extends LimitedSession {
+  mode: "winston";
+  /** State in the Winston flow. */
+  winstonState: WinstonState;
+  /** Pile sizes in seating order. Defaults to `(6, 4, 3)`. */
+  pileSizes: readonly number[];
+  /** The three piles (face-down cards, replaced by revealed top cards during decide). */
+  piles: WinstonPile[];
+  /** Whose seat is the active decision-maker right now (0-indexed). */
+  currentSeatIndex: number;
+  /** Picks accumulated per seat. */
+  picksBySeat: Record<number, PoolCard[]>;
+  /** Per-seat AI neighbor state (optional). */
+  aiNeighbors?: Record<number, AiNeighbor>;
+}
+
+/**
+ * Options accepted by `createWinstonSession`. `pileSizes` defaults to the
+ * standard `[6, 4, 3]`. The number of seats is inferred from `pileSizes.length`
+ * (3 by default).
+ */
+export interface CreateWinstonSessionOptions {
+  pileSizes?: readonly number[];
+  aiDifficulty?: AiDifficulty;
 }
