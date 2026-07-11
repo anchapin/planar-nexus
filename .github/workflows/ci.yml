@@ -29,7 +29,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -61,7 +61,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -116,7 +116,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -183,7 +183,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -206,7 +206,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -231,7 +231,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -248,7 +248,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Checkout code
         uses: actions/checkout@v7
@@ -278,7 +278,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -307,7 +307,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -409,7 +409,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
@@ -461,7 +461,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+          fetch-depth: 1
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
