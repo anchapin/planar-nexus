@@ -186,6 +186,7 @@ jobs:
 
       - name: Update README badge
         run: |
+          # shellcheck disable=SC2034 # total_lines is read for parity with the coverage job; badge uses fixture_count.
           if [ -f coverage/coverage-summary.json ]; then
             total_lines=$(cat coverage/coverage-summary.json | grep -o '"total".*"lines".*{[^}]*' | grep -o '"pct":[0-9.]*' | cut -d: -f2)
             fixture_count=$(find src/lib/__fixtures__/video-derived -name "*.json" -type f 2>/dev/null | wc -l || echo "0")
