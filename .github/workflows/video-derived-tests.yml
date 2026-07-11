@@ -16,6 +16,10 @@ on:
       - 'scripts/generate-test-fixture.ts'
       - '.github/workflows/video-derived-tests.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   BASELINE_COVERAGE: 70
@@ -24,25 +28,17 @@ jobs:
   video-derived-tests:
     name: Video-Derived Game State Tests
     runs-on: ubuntu-latest
+    outputs:
+      video-fixtures-count: ${{ steps.count-fixtures.outputs.video-fixtures-count }}
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
         with:
           fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Generate test fixtures from video states
         run: |
@@ -190,6 +186,7 @@ jobs:
 
       - name: Update README badge
         run: |
+          # shellcheck disable=SC2034 # total_lines is read for parity with the coverage job; badge uses fixture_count.
           if [ -f coverage/coverage-summary.json ]; then
             total_lines=$(cat coverage/coverage-summary.json | grep -o '"total".*"lines".*{[^}]*' | grep -o '"pct":[0-9.]*' | cut -d: -f2)
             fixture_count=$(find src/lib/__fixtures__/video-derived -name "*.json" -type f 2>/dev/null | wc -l || echo "0")

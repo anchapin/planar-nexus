@@ -1,0 +1,48 @@
+name: Setup Node with npm ci
+description: Configure git, check out the repository, install Node.js, and run npm ci.
+
+inputs:
+  node-version:
+    description: Node.js version passed to actions/setup-node.
+    required: false
+    default: '22'
+  fetch-depth:
+    description: Git fetch depth passed to actions/checkout.
+    required: false
+    default: '1'
+  npm-ci-args:
+    description: Additional arguments appended to npm ci.
+    required: false
+    default: ''
+
+outputs:
+  node-modules-cache-key:
+    description: Cache key for downstream node_modules consumers.
+    value: ${{ steps.cache-key.outputs.value }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure git
+      shell: bash
+      run: git config --global --add safe.directory '*'
+
+    - name: Checkout code
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    - name: Compute node_modules cache key
+      id: cache-key
+      shell: bash
+      run: echo "value=${{ runner.os }}-node-${{ inputs.node-version }}-npm-${{ hashFiles('package-lock.json') }}" >> "$GITHUB_OUTPUT"
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci ${{ inputs.npm-ci-args }}

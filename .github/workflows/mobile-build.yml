@@ -23,6 +23,10 @@ on:
           - debug
           - release
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   NODE_VERSION: '20'
   CARGO_TERM_COLOR: always
@@ -50,17 +54,18 @@ jobs:
     needs: setup-build
     if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'ios'
     steps:
-      - name: Checkout
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Build Next.js
         run: npm run build
@@ -121,17 +126,18 @@ jobs:
     needs: setup-build
     if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'android'
     steps:
-      - name: Checkout
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Build Next.js
         run: npm run build

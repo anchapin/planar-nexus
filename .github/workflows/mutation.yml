@@ -25,6 +25,10 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -37,21 +41,13 @@ jobs:
     # and is visible on the Actions tab so it can be triaged the next morning.
 
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
       - name: Checkout code
         uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'npm'
+          fetch-depth: 1
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Run Stryker mutation testing
         run: npm run test:mutation
