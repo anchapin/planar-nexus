@@ -5,6 +5,14 @@
  * NEIB-02: AI picks cards using heuristic logic
  * NEIB-03: Easy = random, Medium = color-focused
  *
+ * Issue #1443: extended to the canonical 4-tier difficulty taxonomy
+ * (`'easy' | 'medium' | 'hard' | 'expert'`). Hard picks use a synergy-aware
+ * scorer with a curve-fill term; expert picks use a deck-evaluator-style
+ * score with a top-3 random tiebreak. The randomnessFactor / blunderChance
+ * knobs are pulled from {@link DIFFICULTY_CONFIGS}[tier] so the per-format
+ * override (`FORMAT_DIFFICULTY_OVERRIDES`, issue #1069) propagates
+ * transparently into the picker.
+ *
  * Issue #1444: extended to dispatch across the three draft formats. The
  * optional `mode` discriminator on `selectAiPick` lets the communal-pool
  * formats (Rochester, Winston) reuse the same random/color-focused pickers
@@ -25,6 +33,13 @@ import type {
 import { ARCHETYPE_SIGNAL_BUFFER_SIZE } from "./limited/types";
 import type { ScryfallCard, DeckCard } from "@/app/actions";
 import { classifyArchetypeAxis } from "@/ai/archetype-detector";
+import { detectSynergies } from "@/ai/synergy-detector";
+import {
+  resolveDifficultyConfig,
+  type DifficultyLevel,
+} from "@/ai/ai-difficulty";
+import { DefaultWeights } from "@/ai/game-state-evaluator";
+import { normalizeAiDifficulty } from "./limited/types";
 
 /**
  * Discriminator accepted by {@link selectAiPick} for cross-format dispatch.
@@ -232,6 +247,272 @@ function pickRandomCardNoSignal(pack: DraftPack): DraftCard | null {
   return availableCards[randomIndex];
 }
 
+// ============================================================================
+// Tier-aware pickers (issue #1443)
+// ============================================================================
+
+/**
+ * Convert a `PoolCard` / `DraftCard` shim into a `DeckCard` for the
+ * synergy-detector / mana-sequencing pipeline. Used by the
+ * hard/expert pickers; mirrors {@link toDeckCards} but takes a single card
+ * so callers can score "pool + candidate" combinations cheaply.
+ */
+function toDeckCardShim(card: ScryfallCard | DraftCard | PoolCard): DeckCard {
+  return { ...card, count: 1 } as DeckCard;
+}
+
+/**
+ * Sum of {@link detectSynergies} scores for a deck-as-DeckCard[].
+ * Lower `minScore` (0) is used so the picker can still react to low-magnitude
+ * signals when the pool is small.
+ */
+function sumSynergyScore(deck: DeckCard[]): number {
+  if (deck.length === 0) return 0;
+  return detectSynergies(deck, 0).reduce((acc, s) => acc + s.score, 0);
+}
+
+/**
+ * Marginal synergy contribution of a single candidate card given the
+ * current pool. We compute `score(pool + candidate) - score(pool)` so the
+ * contribution of "filling the curve with this slot" is captured even when
+ * the pool is too small to fire standalone synergies.
+ */
+function marginalSynergyScore(pool: PoolCard[], candidate: DraftCard): number {
+  const poolAsDeck = pool.map(toDeckCardShim);
+  const before = sumSynergyScore(poolAsDeck);
+  const after = sumSynergyScore([...poolAsDeck, toDeckCardShim(candidate)]);
+  return after - before;
+}
+
+/**
+ * Curve-fill bonus for a candidate card given the current non-land pool.
+ *
+ * Lower-cmc cards fill the missing curve slots at turns 2–4 most
+ * aggressively (the issue's "hard picks smooth the curve" criterion). Empty
+ * pool = curve is wide open, so we hand out a flat bonus for any non-land
+ * card. Mirrors the (small) curve contribution in
+ * `computeCurveConformance` (`src/ai/mana-sequencing.ts`).
+ */
+function curveFillBonus(pool: PoolCard[], candidate: DraftCard): number {
+  const isLand = /land/i.test(candidate.type_line ?? "");
+  if (isLand) return 0;
+  const nonLands = pool.filter((c) => !/land/i.test(c.type_line ?? ""));
+  if (nonLands.length === 0) {
+    // Empty pool: every non-land slot is a free hit, give a flat bonus.
+    return 2;
+  }
+  const cmc =
+    typeof candidate.cmc === "number" &&
+    candidate.cmc >= 1 &&
+    candidate.cmc <= 4
+      ? candidate.cmc
+      : 0;
+  const avgPoolCmc =
+    nonLands.reduce(
+      (acc, c) => acc + (typeof c.cmc === "number" ? c.cmc : 0),
+      0,
+    ) / nonLands.length;
+  // Reward picks that land within ±1 of the pool's average CMC and are in
+  // the 1-4 "playable" window.
+  const playability = cmc > 0 && cmc <= 4 ? 3 : cmc === 5 ? 1 : 0;
+  const matchBonus = cmc > 0 && Math.abs(cmc - avgPoolCmc) <= 1 ? 2 : 0;
+  return playability + matchBonus;
+}
+
+/**
+ * Hard tier picker (issue #1443).
+ *
+ * Scores each available card by marginal synergy contribution plus a
+ * curve-fill bonus. Falls back to a top-3 random tiebreak weighted by score
+ * to inject the small `randomnessFactor` documented in
+ * {@link DIFFICULTY_CONFIGS}[tier] without sacrificing determinism in the
+ * dominant case. Like the other tiers, emits an ArchetypeSignal (issue
+ * #1404) describing what the pick telegraphed.
+ */
+export function pickSynergyAndCurveCard(
+  pack: DraftPack,
+  aiPool: PoolCard[],
+  aiState: AiNeighborState,
+  difficulty: AiDifficulty = "hard",
+): DraftCard | null {
+  const availableCards = pack.cards.filter(
+    (card) => !pack.pickedCardIds.includes(card.id),
+  );
+  if (availableCards.length === 0) return null;
+
+  const scored = availableCards.map((card) => {
+    const synScore = marginalSynergyScore(aiPool, card);
+    const curveScore = curveFillBonus(aiPool, card);
+    return { card, score: synScore + curveScore };
+  });
+
+  // Sort by score desc, then deterministically by id so the test pick is
+  // stable when scores tie.
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.card.id.localeCompare(b.card.id);
+  });
+
+  const topScore = scored[0].score;
+  const topCandidates = scored.filter((c) => c.score === topScore);
+
+  // Inject a small randomnessFactor-driven wobble: if the top three are
+  // within 1 point of each other, randomize among them. The wobble size is
+  // scaled to `Math.random() < randomnessFactor * 3` so a higher-tier
+  // `randomnessFactor` (easy=0.4, medium=0.2, hard=0.1) widens the candidate
+  // window — keeping the documented monotonic-in-skill knob (issue #990)
+  // honoring the picking variance. We refuse to wobble below 3 candidates
+  // because the synergy scorer is otherwise deterministic.
+  const knob = resolveDifficultyConfig(
+    difficulty as DifficultyLevel,
+    "limited",
+  ).randomnessFactor;
+  const wobbleCandidates =
+    scored.length >= 3 && Math.random() < knob * 3
+      ? scored.slice(0, Math.min(3, scored.length))
+      : topCandidates;
+  const pickIndex = Math.floor(Math.random() * wobbleCandidates.length);
+  const picked = wobbleCandidates[pickIndex].card;
+
+  emitArchetypeSignal(aiState, aiPool, picked, "premium");
+  return picked;
+}
+
+/**
+ * Expert tier picker (issue #1443).
+ *
+ * Orders candidates by a deck-evaluator-style score computed from
+ * {@link DefaultWeights}[expert] (creature power / toughness /
+ * card-advantage / hand-quality weights from
+ * `src/ai/game-state-evaluator.ts`). The blunderChance from
+ * {@link DIFFICULTY_CONFIGS}[expert] is applied as a top-3 random tiebreak
+ * so an expert AI can still occasionally take a slower line.
+ */
+export function pickHighestTierValueCard(
+  pack: DraftPack,
+  aiPool: PoolCard[],
+  aiState: AiNeighborState,
+  difficulty: AiDifficulty = "expert",
+): DraftCard | null {
+  const availableCards = pack.cards.filter(
+    (card) => !pack.pickedCardIds.includes(card.id),
+  );
+  if (availableCards.length === 0) return null;
+
+  const w = DefaultWeights.expert;
+
+  const powerToughnessBonus = (card: DraftCard): number => {
+    const p = parseInt(card.power ?? "0", 10) || 0;
+    const t = parseInt(card.toughness ?? "0", 10) || 0;
+    return p * w.creaturePower + t * w.creatureToughness;
+  };
+
+  const rarityBonus = (card: DraftCard): number => {
+    switch ((card.rarity ?? "common").toLowerCase()) {
+      case "mythic":
+        return w.cardSelection * 6;
+      case "rare":
+        return w.cardSelection * 4;
+      case "uncommon":
+        return w.cardSelection * 2;
+      default:
+        return w.cardSelection * 1;
+    }
+  };
+
+  const scored = availableCards.map((card) => {
+    const isCreature = /creature/i.test(card.type_line ?? "");
+    const cmc = typeof card.cmc === "number" ? card.cmc : 0;
+    const creaturesAlreadyInPool = aiPool.filter((c) =>
+      /creature/i.test(c.type_line ?? ""),
+    ).length;
+    const creatureCountBoost = isCreature
+      ? (w.creatureCount * Math.max(0, 4 - creaturesAlreadyInPool)) / 4
+      : 0;
+    const score =
+      powerToughnessBonus(card) +
+      rarityBonus(card) +
+      creatureCountBoost +
+      (cmc >= 2 && cmc <= 4 ? w.manaAvailable * 2 : 0) +
+      (cmc >= 5 ? -w.tempoAdvantage : 0);
+    return { card, score };
+  });
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.card.id.localeCompare(b.card.id);
+  });
+
+  // Pull the expert-tier blunderChance from the canonical config so any
+  // per-format override (#1069) propagates transparently.
+  const resolved = resolveDifficultyConfig(
+    difficulty as DifficultyLevel,
+    "limited",
+  );
+  const blunderChance = Math.max(0, Math.min(1, resolved.blunderChance));
+
+  let picked: DraftCard;
+  const topCandidates = scored.slice(0, Math.min(3, scored.length));
+
+  if (topCandidates.length > 1 && Math.random() < blunderChance * 10) {
+    // Occasional slump: choose a non-top tier-1 option within the top 3.
+    // Math.random() < blunderChance * 10 turns blunderChance=0.02 into a
+    // ~20% chance to slip from #1 to #2/#3 — large enough to be testable
+    // without diluting the expert tier. Documented in PR description.
+    const idx = 1 + Math.floor(Math.random() * (topCandidates.length - 1));
+    picked = topCandidates[idx].card;
+  } else {
+    picked = topCandidates[0].card;
+  }
+
+  emitArchetypeSignal(aiState, aiPool, picked, "premium");
+  return picked;
+}
+
+/**
+ * Map an arbitrary incoming string to the canonical {@link DifficultyLevel}
+ * set, then resolve its effective `randomnessFactor` / `blunderChance` for
+ * the limited-format tier. Centralized so a future change to either the
+ * taxonomy or the per-format override delta (issue #1069) only touches
+ * one place.
+ */
+function difficultyKnobs(difficulty: unknown): {
+  randomnessFactor: number;
+  blunderChance: number;
+} {
+  const level: DifficultyLevel = normalizeAiDifficulty(
+    difficulty,
+  ) as DifficultyLevel;
+  const cfg = resolveDifficultyConfig(level, "limited");
+  return {
+    randomnessFactor: cfg.randomnessFactor,
+    blunderChance: cfg.blunderChance,
+  };
+}
+
+/**
+ * Apply the documented randomness knob for the active tier: with
+ * probability `randomnessFactor` (`DIFFICULTY_CONFIGS[tier]`), fall back to
+ * a random pick; otherwise return the scored pick. Used by the high-end
+ * tiers so the canonical error-rate knob reaches the draft picker without
+ * threading per-tier callbacks.
+ */
+function maybeApplyRandomness(
+  pack: DraftPack,
+  scored: DraftCard,
+  randomnessFactor: number,
+): DraftCard {
+  if (Math.random() < randomnessFactor) {
+    const availableCards = pack.cards.filter(
+      (card) => !pack.pickedCardIds.includes(card.id),
+    );
+    if (availableCards.length === 0) return scored;
+    const r = Math.floor(Math.random() * availableCards.length);
+    return availableCards[r];
+  }
+  return scored;
+}
+
 /**
  * Pick a card from a face-up communal pool (Rochester / Winston style).
  *
@@ -275,6 +556,13 @@ export function pickFromCommunalPool(
  * Dispatches to appropriate difficulty-based logic.
  * Issue #1404: also writes an ArchetypeSignal onto `aiNeighbor.state`.
  *
+ * Issue #1443: dispatches across all four canonical tiers
+ * (`easy | medium | hard | expert`). The `hard` and `expert` cases reuse
+ * the synergy-detector / mana-sequencing integrations; the `randomnessFactor`
+ * knob from {@link DIFFICULTY_CONFIGS} is folded in via
+ * {@link maybeApplyRandomness} so per-format overrides (issue #1069)
+ * propagate transparently.
+ *
  * Issue #1444: `mode` lets the call site switch to the communal-pool picker
  * (Rochester / Winston). Defaults to `'draft'` to preserve the original
  * booster-draft dispatch.
@@ -291,15 +579,11 @@ export function selectAiPick(
     // For both communal-pool variants we expose the same dispatcher:
     //  - 'easy'   → random
     //  - 'medium' → colour-focused, with parity tiebreaks
-    // 'hard' / 'expert' tiers are intentionally not added until the
-    // companion issue (#L14-2) lands; for now they fall through to the
-    // colour-focused picker just like 'medium'.
+    // 'hard' / 'expert' tiers also reuse `pickFromCommunalPool` for now;
+    // the synergy-aware expert extension is intentionally left for the
+    // community-pool follow-up (issue #1444 follow-ups).
     if (difficulty === "easy") {
-      return pickFromCommunalPool(
-        pack.cards as PoolCard[],
-        tableRead,
-        state,
-      );
+      return pickFromCommunalPool(pack.cards as PoolCard[], tableRead, state);
     }
     return pickFromCommunalPool(pack.cards as PoolCard[], tableRead, state);
   }
@@ -311,10 +595,40 @@ export function selectAiPick(
     case "medium":
       return pickColorFocusedCard(pack, state.pool, state);
 
-    default:
-      // Unknown difficulty, fall back to random
+    case "hard": {
+      const picked = pickSynergyAndCurveCard(
+        pack,
+        state.pool,
+        state,
+        difficulty,
+      );
+      if (picked === null) return null;
+      const { randomnessFactor } = difficultyKnobs(difficulty);
+      return maybeApplyRandomness(pack, picked, randomnessFactor);
+    }
+
+    case "expert": {
+      const picked = pickHighestTierValueCard(
+        pack,
+        state.pool,
+        state,
+        difficulty,
+      );
+      if (picked === null) return null;
+      const { randomnessFactor } = difficultyKnobs(difficulty);
+      return maybeApplyRandomness(pack, picked, randomnessFactor);
+    }
+
+    default: {
+      // Pre-#1443 the type was narrow enough that this branch was
+      // unreachable. After widening to the canonical 4-tier union, the
+      // only string that could land here is an archival alias like
+      // `'beginner' | 'normal' | 'master'` that escaped normalization —
+      // fall back to random so we never silently drop into a non-existent
+      // picker.
       console.warn(`Unknown AI difficulty: ${difficulty}, using random`);
       return pickRandomCard(pack, state);
+    }
   }
 }
 

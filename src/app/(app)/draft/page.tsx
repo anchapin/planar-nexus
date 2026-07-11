@@ -539,7 +539,7 @@ function DraftPageContent() {
                     onValueChange={(value) =>
                       setAiDifficulty(value as AiDifficulty)
                     }
-                    className="flex gap-4"
+                    className="flex flex-wrap gap-4"
                   >
                     <div className="flex items-center space-x-2">
                       <RadioGroupItem value="easy" id="difficulty-easy" />
@@ -557,6 +557,24 @@ function DraftPageContent() {
                         className="cursor-pointer"
                       >
                         Medium (Color-focused)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="hard" id="difficulty-hard" />
+                      <Label
+                        htmlFor="difficulty-hard"
+                        className="cursor-pointer"
+                      >
+                        Hard (Synergy-aware)
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="expert" id="difficulty-expert" />
+                      <Label
+                        htmlFor="difficulty-expert"
+                        className="cursor-pointer"
+                      >
+                        Expert (Deck-value picker)
                       </Label>
                     </div>
                   </RadioGroup>
