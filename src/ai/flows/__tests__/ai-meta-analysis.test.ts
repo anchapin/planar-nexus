@@ -251,7 +251,12 @@ describe("analyzeMetaAndSuggest — card legality validation", () => {
     );
   });
 
-  it("does not call importDecklist when there are no cards to add", async () => {
+  it("does call importDecklist up front so the heuristic gets real type_line data (issue #1445)", async () => {
+    // Pre-#1445 this was an optimization: importDecklist was only called when
+    // there were cards to add. The fix for #1445 requires calling
+    // importDecklist BEFORE analyzeMetaHeuristic so that real type_line data
+    // drives the creature/instant ratio bonuses inside detectDeckArchetype.
+    // The old skip-on-empty-add optimization is therefore no longer valid.
     mockedAnalyzeMeta.mockReturnValue(
       baseResult({
         recommendations: [
@@ -266,7 +271,7 @@ describe("analyzeMetaAndSuggest — card legality validation", () => {
       }),
     );
     await analyzeMetaAndSuggest({ decklist: DECKLIST, format: "modern" });
-    expect(mockedImportDecklist).not.toHaveBeenCalled();
+    expect(mockedImportDecklist).toHaveBeenCalled();
   });
 });
 
@@ -741,5 +746,124 @@ describe("analyzeMetaAndSuggest — LLM provider routing (#1073)", () => {
     const out = await analyzeMetaAndSuggest({ decklist: DECKLIST, format: "modern" });
     expect(out.metaOverview).toBe("The modern metagame is dominated by Burn.");
     expect(isHeuristic(out)).toBe(true);
+  });
+});
+
+/**
+ * Issue #1445 — `analyzeMetaAndSuggest` previously fed `analyzeMetaHeuristic`
+ * cards with `type_line: 'Unknown'` placeholders so the creature/instant ratio
+ * bonuses inside `detectDeckArchetype` could never fire from the AI flow path.
+ * The flow now calls `importDecklist` first to resolve real card data and
+ * only falls back to placeholder parsing when the import returns nothing (or
+ * throws). These tests pin the new wiring at the public-API boundary.
+ */
+describe("analyzeMetaAndSuggest — issue #1445 type_line threading", () => {
+  /** Card shape returned by the (mocked) `importDecklist` resolver. */
+  type ResolvedCard = {
+    id: string;
+    name: string;
+    count: number;
+    cmc: number;
+    colors: string[];
+    legalities: Record<string, string>;
+    type_line: string;
+    mana_cost: string;
+    color_identity: string[];
+  };
+
+  /** Build a minimal resolved card with sensible defaults. */
+  function resolved(
+    name: string,
+    type_line: string,
+    count = 4,
+    overrides: Partial<ResolvedCard> = {},
+  ): ResolvedCard {
+    return {
+      id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      name,
+      count,
+      cmc: 0,
+      colors: [],
+      legalities: {},
+      type_line,
+      mana_cost: "{0}",
+      color_identity: [],
+      ...overrides,
+    };
+  }
+
+  it("passes real type_line from importDecklist into analyzeMetaHeuristic", async () => {
+    // First importDecklist call = card resolution; returns real type_line.
+    // Second importDecklist call = legality validation inside buildHeuristicOutput.
+    mockedImportDecklist
+      .mockResolvedValueOnce({
+        found: [
+          resolved("Lightning Bolt", "Instant"),
+          resolved("Goblin Guide", "Creature — Goblin Scout"),
+        ],
+        notFound: [],
+        illegal: [],
+      })
+      .mockResolvedValueOnce({ found: [], notFound: [], illegal: [] });
+
+    await analyzeMetaAndSuggest({
+      decklist: "4 Lightning Bolt\n4 Goblin Guide",
+      format: "modern",
+    });
+
+    // Verify the cards passed into the heuristic engine carry the resolved
+    // type_line values rather than the old 'Unknown' placeholder.
+    const cards = mockedAnalyzeMeta.mock.calls[0][2];
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toMatchObject({ name: "Lightning Bolt", type_line: "Instant" });
+    expect(cards[1]).toMatchObject({
+      name: "Goblin Guide",
+      type_line: "Creature — Goblin Scout",
+    });
+    cards.forEach((c) => {
+      expect(c.type_line).not.toBe("Unknown");
+    });
+  });
+
+  it("falls back to placeholder parsing when importDecklist throws", async () => {
+    // The heuristic path catches importDecklist rejection and falls back to
+    // placeholder parsing. The card-validation path (buildHeuristicOutput)
+    // may still call importDecklist when cardsToAdd > 0; for this test we
+    // only want the first call (the new up-front call) to throw, then let
+    // the validation call succeed with an empty result.
+    mockedImportDecklist
+      .mockRejectedValueOnce(new Error("DB not initialized"))
+      .mockResolvedValueOnce({ found: [], notFound: [], illegal: [] });
+    const out = await analyzeMetaAndSuggest({
+      decklist: "4 Lightning Bolt",
+      format: "modern",
+    });
+    expect(out).toBeDefined();
+    // When importDecklist throws on the up-front call, the heuristic is
+    // still called with a placeholder card (no real type_line). This
+    // preserves the legacy behavior so callers without a card DB still
+    // get archetype detection.
+    const calls = mockedAnalyzeMeta.mock.calls;
+    const lastCards = calls[calls.length - 1][2];
+    expect(lastCards.length).toBeGreaterThanOrEqual(1);
+    expect(lastCards[0]).toMatchObject({ name: "Lightning Bolt" });
+  });
+
+  it("aggregates multiple lines for the same resolved card name", async () => {
+    // importDecklist already aggregates prints via its cardMap. The cards
+    // passed to the heuristic should reflect that aggregated count, not the
+    // raw line count from the decklist.
+    mockedImportDecklist
+      .mockResolvedValueOnce({
+        found: [resolved("Lightning Bolt", "Instant", 4)],
+        notFound: [],
+        illegal: [],
+      })
+      .mockResolvedValueOnce({ found: [], notFound: [], illegal: [] });
+
+    await analyzeMetaAndSuggest({ decklist: "4 Lightning Bolt", format: "modern" });
+    const cards = mockedAnalyzeMeta.mock.calls[0][2];
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ name: "Lightning Bolt", count: 4, type_line: "Instant" });
   });
 });
