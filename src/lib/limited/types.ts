@@ -54,8 +54,64 @@ export type DraftState =
 
 /**
  * AI neighbor difficulty levels (NEIB-03)
+ *
+ * Issue #1443 widens the union to match the canonical 4-tier taxonomy in
+ * `src/ai/ai-difficulty.ts` (`DIFFICULTY_LEVELS = ['easy', 'medium', 'hard',
+ * 'expert']`). The prior two-tier union silently fell into the
+ * `console.warn` default branch of `selectAiPick` the moment any UI or
+ * persisted session wrote `'hard'` or `'expert'`. Migration of legacy
+ * archival strings (`'beginner' | 'normal' | 'master'`) goes through
+ * {@link normalizeAiDifficulty}.
  */
-export type AiDifficulty = "easy" | "medium";
+export type AiDifficulty = "easy" | "medium" | "hard" | "expert";
+
+/**
+ * Legacy / archival strings that older persisted data may still carry,
+ * mapped onto the canonical {@link AiDifficulty} set (issue #1443).
+ *
+ * Mirrors the alias map in `src/ai/ai-difficulty.ts`
+ * (`LEGACY_DIFFICULTY_ALIASES`) so there is exactly one normalization rule
+ * in effect across the codebase.
+ *
+ * - `beginner` → `easy`
+ * - `normal`   → `medium`
+ * - `master`   → `expert`
+ *
+ * (Other strings such as `'hard'` are not aliases — they are valid canonical
+ * values that pass through unchanged.)
+ */
+const LEGACY_AI_DIFFICULTY_ALIASES: Readonly<Record<string, AiDifficulty>> = {
+  beginner: "easy",
+  normal: "medium",
+  master: "expert",
+};
+
+const AI_DIFFICULTY_LEVELS: readonly AiDifficulty[] = [
+  "easy",
+  "medium",
+  "hard",
+  "expert",
+];
+
+/**
+ * Normalize any UI / archival difficulty string onto the canonical
+ * {@link AiDifficulty} set (issue #1443).
+ *
+ * Canonical values pass through unchanged. Known legacy names
+ * (`'beginner' | 'normal' | 'master'`) collapse onto their canonical
+ * equivalent via {@link LEGACY_AI_DIFFICULTY_ALIASES}. Anything else
+ * (including `null` / `undefined` / `""` / typos) falls back to `'medium'` —
+ * the canonical default — so calls reading free-form persisted data never
+ * throw and never silently invent a non-existent tier.
+ */
+export function normalizeAiDifficulty(value: unknown): AiDifficulty {
+  if (typeof value !== "string") return "medium";
+  const key = value.toLowerCase();
+  if ((AI_DIFFICULTY_LEVELS as readonly string[]).includes(key)) {
+    return key as AiDifficulty;
+  }
+  return LEGACY_AI_DIFFICULTY_ALIASES[key] ?? "medium";
+}
 
 /**
  * Archetype axis the AI is telegraphing during a draft pick.
@@ -435,10 +491,7 @@ export interface CreateDraftSessionOptions {
  *
  * Phase 18 (issue #1444).
  */
-export type RochesterState =
-  | "intro"
-  | "picking"
-  | "rochester_complete";
+export type RochesterState = "intro" | "picking" | "rochester_complete";
 
 /**
  * Standard Rochester draft picks per seat. Issue #1444 acceptance criteria
@@ -495,10 +548,7 @@ export interface CreateRochesterSessionOptions {
  * Standard MTG Winston pile sizes are `(6, 4, 3)` cards. Issue #1444.
  */
 export type WinstonState =
-  | "intro"
-  | "drawing"
-  | "deciding"
-  | "winston_complete";
+  "intro" | "drawing" | "deciding" | "winston_complete";
 
 /** Standard MTG Winston pile sizes, in the order they sit on the table. */
 export const WINSTON_PILE_SIZES = [6, 4, 3] as const;

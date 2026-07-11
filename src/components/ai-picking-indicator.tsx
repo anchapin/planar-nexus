@@ -2,7 +2,7 @@
  * AI Picking Indicator Component
  *
  * Shows visual feedback when AI is picking cards in draft mode.
- * NEIB-05: Visual indicator shows when AI neighbor is actively picking
+ * NEIB-05: Visual indicator shows when AI is actively picking
  *
  * Accessibility (#1269): the picking/idle states must be perceivable under
  * forced-colors / Windows High Contrast Mode. The container carries a
@@ -14,18 +14,23 @@
  * Issue #1245: when the AI worker reports main-thread blocks > 50ms
  * (Long-Task API) we surface a subtle `slowThinking` badge so the user
  * knows the indicator reflects real activity, not a stuck event loop.
+ *
+ * Issue #1443: the `difficulty` prop now spans the canonical 4-tier union
+ * (`'easy' | 'medium' | 'hard' | 'expert'`) instead of the legacy
+ * 2-tier set, so the badge can label `'hard'` / `'expert'` sessions.
  */
 
 "use client";
 
 import { Loader2, Bot, Hourglass } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { AiDifficulty } from "@/lib/limited/types";
 
 interface AiPickingIndicatorProps {
   /** Is the AI currently picking */
   isPicking: boolean;
   /** AI difficulty level */
-  difficulty?: "easy" | "medium";
+  difficulty?: AiDifficulty;
   /** Additional class names */
   className?: string;
   /**
@@ -55,11 +60,7 @@ export function AiPickingIndicator({
   // Reading the data-state-driven HCM override off `data-slow` keeps the
   // global `forced-colors` block in `globals.css` in sync with the visible
   // state without forking the styling logic.
-  const dataState = isPicking
-    ? slowThinking
-      ? "slow"
-      : "picking"
-    : "idle";
+  const dataState = isPicking ? (slowThinking ? "slow" : "picking") : "idle";
   return (
     <div
       data-testid="ai-picking-indicator"
@@ -115,7 +116,7 @@ export function AiPickingBadge({
 }: {
   isPicking: boolean;
   poolSize?: number;
-  difficulty?: "easy" | "medium";
+  difficulty?: AiDifficulty;
   /**
    * Surface a "thinking slowly" hint when Long-Task API reports a stalled
    * main thread. See `AiPickingIndicator` for the full description
