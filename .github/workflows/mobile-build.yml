@@ -54,6 +54,14 @@ jobs:
     needs: setup-build
     if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'ios'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
         with:
@@ -118,6 +126,14 @@ jobs:
     needs: setup-build
     if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'android'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
         with:

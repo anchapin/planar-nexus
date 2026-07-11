@@ -26,6 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
       
@@ -53,6 +58,11 @@ jobs:
     needs: [test, lint, typecheck]
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
       
@@ -103,6 +113,11 @@ jobs:
       contents: read
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
@@ -165,6 +180,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
@@ -183,6 +203,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
@@ -203,6 +228,11 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
       
@@ -215,6 +245,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
+      - name: Checkout code
+        uses: actions/checkout@v7
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
         with:
@@ -237,6 +275,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
@@ -261,6 +304,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
@@ -358,6 +406,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
@@ -405,6 +458,11 @@ jobs:
     needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint]
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
       

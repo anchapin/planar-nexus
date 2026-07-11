@@ -41,6 +41,11 @@ jobs:
     # and is visible on the Actions tab so it can be triaged the next morning.
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: ${{ inputs.fetch-depth || 1 }}
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
