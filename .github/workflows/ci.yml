@@ -420,7 +420,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run actionlint
-        uses: rhysd/actionlint@v1.7.7
+        uses: rhysd/actionlint@v1.7.12
         with:
           # actionlint has no severity flag; use -ignore (regex on messages)
           # to keep SC2086 (quote vars) / SC2015 (A&&B||C) info-level nits
