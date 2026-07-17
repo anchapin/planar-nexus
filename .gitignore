@@ -10,6 +10,10 @@
 !.yarn/releases
 !.yarn/versions
 
+# This repo is npm-only (`package-lock.json` + `npm ci`). pnpm-lock.yaml is
+# stale/unused and must not be re-introduced (issue #1496).
+pnpm-lock.yaml
+
 # Virtual environments
 venv/
 .venv/
