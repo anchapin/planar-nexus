@@ -306,12 +306,12 @@ export function compressData<T>(data: T): Uint8Array {
   const json = JSON.stringify(data);
   const checksum = sha256Hex(new TextEncoder().encode(json));
   // pako's gzip() honors `header.comment` at runtime (it sets the gzip
-  // FCOMMENT field), but its `DeflateFunctionOptions` type omits `header`.
-  // Typing the options as the wider `DeflateOptions` keeps the `comment`
-  // field type-checked while remaining assignable to the gzip() parameter.
-  const gzipOptions: Pako.DeflateOptions = {
+  // FCOMMENT field), but its DeflateOptions type omits `header`. Cast through
+  // `unknown` so the runtime behavior is preserved while staying assignable to
+  // the gzip() parameter type.
+  const gzipOptions = {
     header: { comment: `${BACKUP_CHECKSUM_PREFIX}${checksum}` },
-  };
+  } as unknown as Pako.DeflateOptions;
   return gzip(json, gzipOptions);
 }
 
@@ -337,7 +337,7 @@ export function decompressData<T>(input: ArrayBuffer | Uint8Array): T {
 
   let text: string;
   if (isGzipBackup(bytes)) {
-    text = ungzip(bytes, { to: "string" }) as string;
+    text = new TextDecoder().decode(ungzip(bytes));
 
     const comment = readGzipComment(bytes);
     const match = comment ? comment.match(CHECKSUM_PATTERN) : null;
