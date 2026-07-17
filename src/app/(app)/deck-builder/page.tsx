@@ -60,6 +60,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SynergyProvider } from "./_components/synergy-context";
 import { DeckStatsPanel } from "./_components/deck-stats-panel";
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
+import { GoldfishSimulator } from "./_components/goldfish-simulator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ComponentErrorBoundary } from "@/components/error-boundaries";
 
@@ -104,6 +105,9 @@ export default function DeckBuilderPage() {
   // When true, the card search hides any card that is not legal in the
   // active format. Off by default so users can still browse the full pool.
   const [formatFilter, setFormatFilter] = useState(false);
+  // Bumped by the `H` shortcut to request a fresh Hand Test opening hand in the
+  // goldfish simulator (issue #1439). The component re-runs on each change.
+  const [handTestDrawSignal, setHandTestDrawSignal] = useState(0);
   const searchInputRef = useRef<{
     focus: () => void;
     search: (q: string) => void;
@@ -388,14 +392,8 @@ export default function DeckBuilderPage() {
           return prevSideboard;
         }
 
-        const totalCards = prevSideboard.reduce(
-          (sum, c) => sum + c.count,
-          0,
-        );
-        if (
-          sideboardMaxSize > 0 &&
-          totalCards >= sideboardMaxSize
-        ) {
+        const totalCards = prevSideboard.reduce((sum, c) => sum + c.count, 0);
+        if (sideboardMaxSize > 0 && totalCards >= sideboardMaxSize) {
           toast({
             variant: "destructive",
             title: "Sideboard Limit Reached",
@@ -413,13 +411,7 @@ export default function DeckBuilderPage() {
       });
       setIsDeckSaved(false);
     },
-    [
-      supportsSideboard,
-      format,
-      formatLabel,
-      sideboardMaxSize,
-      toast,
-    ],
+    [supportsSideboard, format, formatLabel, sideboardMaxSize, toast],
   );
 
   /**
@@ -443,12 +435,21 @@ export default function DeckBuilderPage() {
   // prompt can be added in one place.
   const handleNewDeck = useCallback(() => clearDeck(), [clearDeck]);
 
-  // Documented deck-builder shortcuts: +, -, Shift++/Shift+-, Enter, Ctrl/Cmd+N.
+  // H — documented as "Draw another opening hand" for the Hand Test tab. Bumps
+  // a signal the GoldfishSimulator consumes to re-run with a fresh seed.
+  const handleDrawSample = useCallback(
+    () => setHandTestDrawSignal((n) => n + 1),
+    [],
+  );
+
+  // Documented deck-builder shortcuts: +, -, Shift++/Shift+-, Enter,
+  // Ctrl/Cmd+N, H (Hand Test).
   useDeckBuilderShortcuts({
     selectedCard,
     addCard: handleShortcutAdd,
     removeCard: handleShortcutRemove,
     newDeck: handleNewDeck,
+    drawSample: handleDrawSample,
   });
 
   // Detect banned cards in the current deck and surface curated legal
@@ -757,7 +758,7 @@ export default function DeckBuilderPage() {
               <TabsList
                 className={cn(
                   "w-full",
-                  supportsSideboard ? "grid grid-cols-3" : undefined,
+                  supportsSideboard ? "grid grid-cols-4" : "grid grid-cols-3",
                 )}
                 data-testid="deck-builder-tabs"
               >
@@ -766,6 +767,9 @@ export default function DeckBuilderPage() {
                 </TabsTrigger>
                 <TabsTrigger value="mana-curve" className="flex-1">
                   Mana Curve
+                </TabsTrigger>
+                <TabsTrigger value="hand-test" className="flex-1">
+                  Hand Test
                 </TabsTrigger>
                 {supportsSideboard && (
                   <TabsTrigger
@@ -803,6 +807,19 @@ export default function DeckBuilderPage() {
                     </CardContent>
                   </Card>
                 )}
+              </TabsContent>
+              <TabsContent value="hand-test" className="mt-4">
+                <ComponentErrorBoundary
+                  title="Hand Test Error"
+                  description="The goldfish simulator failed to render. Your deck is saved — try reloading the Hand Test tab."
+                >
+                  <GoldfishSimulator
+                    deck={deck}
+                    sideboard={sideboard}
+                    format={format}
+                    drawTrigger={handTestDrawSignal}
+                  />
+                </ComponentErrorBoundary>
               </TabsContent>
               {supportsSideboard && (
                 <TabsContent value="sideboard" className="mt-4">

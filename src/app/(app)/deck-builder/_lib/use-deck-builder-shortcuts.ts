@@ -14,6 +14,11 @@ export interface UseDeckBuilderShortcutsHandlers {
   removeCard: (card: ScryfallCard, all: boolean) => void;
   /** Create a fresh, empty deck. */
   newDeck: () => void;
+  /**
+   * Draw another opening hand in the Hand Test simulator (optional; only the
+   * deck-builder page wires this up). Issue #1439.
+   */
+  drawSample?: () => void;
 }
 
 export interface UseDeckBuilderShortcutsOptions
@@ -21,7 +26,7 @@ export interface UseDeckBuilderShortcutsOptions
 
 /**
  * Installs a scoped (window-level) keydown listener that maps the documented
- * deck-builder shortcuts (+, -, Shift++/Shift+-, Enter, Ctrl/Cmd+N) onto the
+ * deck-builder shortcuts (+, -, Shift++/Shift+-, Enter, Ctrl/Cmd+N, H) onto the
  * provided handlers. Shortcuts are suppressed while typing in form fields.
  *
  * Scoping: this hook is only mounted by the deck-builder page, so the listener
@@ -30,7 +35,7 @@ export interface UseDeckBuilderShortcutsOptions
 export function useDeckBuilderShortcuts(
   options: UseDeckBuilderShortcutsOptions,
 ): void {
-  const { selectedCard, addCard, removeCard, newDeck } = options;
+  const { selectedCard, addCard, removeCard, newDeck, drawSample } = options;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -49,6 +54,10 @@ export function useDeckBuilderShortcuts(
           event.preventDefault();
           newDeck();
           break;
+        case "drawSample":
+          event.preventDefault();
+          drawSample?.();
+          break;
         case "none":
           break;
       }
@@ -56,5 +65,5 @@ export function useDeckBuilderShortcuts(
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedCard, addCard, removeCard, newDeck]);
+  }, [selectedCard, addCard, removeCard, newDeck, drawSample]);
 }
