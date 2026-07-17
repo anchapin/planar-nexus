@@ -27,6 +27,11 @@ import {
   BACKUP_COMPRESSED_MIME,
   BACKUP_COMPRESSED_EXTENSION,
 } from "@/lib/backup-compression";
+import {
+  predictQuotaHeadroom,
+  QUOTA_SAFETY_MARGIN_BYTES,
+} from "@/lib/storage-quota";
+import { toast } from "@/hooks/use-toast";
 
 // ============================================================================
 // TYPES
@@ -267,6 +272,35 @@ export function useStorageBackup() {
         setStatus("exporting");
         setProgress(5);
 
+        // Predictive quota pre-flight (issue #1424). A full backup serialises
+        // every stored record, so its in-memory footprint is roughly the
+        // origin's current usage. Before we pay the cost of building that JSON
+        // (and updating the backup manifest), check that the projected write
+        // won't blow the remaining quota. When ok:false we abort cleanly with
+        // an actionable error; on the warning band we point the user at the
+        // existing Incremental mode and still attempt the export.
+        const projectedBackupBytes =
+          (quota?.usage ?? 0) + QUOTA_SAFETY_MARGIN_BYTES;
+        const headroom =
+          projectedBackupBytes > 0
+            ? await predictQuotaHeadroom(projectedBackupBytes)
+            : null;
+        if (headroom && !headroom.ok) {
+          throw new Error(
+            `Storage is too full to export a full backup safely ` +
+              `(free: ${headroom.available < 0 ? 0 : headroom.available} bytes). ` +
+              `Switch to Incremental mode or free up space.`,
+          );
+        }
+        if (headroom && headroom.level === "warning") {
+          toast({
+            title: "Storage almost full",
+            description:
+              "This full backup may push you over the storage limit. " +
+              "Consider switching to Incremental mode for a smaller export.",
+          });
+        }
+
         // Get backup data — pass a progress callback so the UI bar advances
         // during the SHA-256 digest phase (#1249). Map the digest's
         // 0-100% progress into the UI's 30-70% window so the bar starts
@@ -330,6 +364,7 @@ export function useStorageBackup() {
       exportIncrementalData,
       loadStorageQuota,
       refreshBackupManifest,
+      quota,
     ],
   );
 

@@ -17,6 +17,9 @@ import {
 import {
   QUOTA_WARN_THRESHOLD,
   QUOTA_CRITICAL_THRESHOLD,
+  QUOTA_SAFETY_MARGIN_BYTES,
+  AVG_CARD_BYTES,
+  FALLBACK_QUOTA_BYTES,
   QuotaExceededError,
   getQuotaLevel,
   isQuotaExceededError,
@@ -25,19 +28,18 @@ import {
   requestPersistentStorage,
   isStoragePersistent,
   withQuotaGuard,
+  predictQuotaHeadroom,
+  estimateCardWriteBytes,
   getQuotaRemediationMessage,
 } from "../storage-quota";
 
 // jsdom + jest.setup.js provide navigator.storage.estimate, but each test needs
 // deterministic control, so we swap the whole storage object per test.
-const originalStorage = (
-  global.navigator as unknown as { storage?: unknown }
-).storage;
+const originalStorage = (global.navigator as unknown as { storage?: unknown })
+  .storage;
 
 function setStorage(storage: unknown): void {
-  (
-    global.navigator as unknown as { storage?: unknown }
-  ).storage = storage;
+  (global.navigator as unknown as { storage?: unknown }).storage = storage;
 }
 
 describe("storage-quota", () => {
@@ -185,7 +187,11 @@ describe("storage-quota", () => {
     });
 
     it("keeps non-quota errors as plain Errors with context", () => {
-      const err = classifyWriteError(new Error("network"), "tx failed", "decks");
+      const err = classifyWriteError(
+        new Error("network"),
+        "tx failed",
+        "decks",
+      );
       expect(err).not.toBeInstanceOf(QuotaExceededError);
       expect(err).toBeInstanceOf(Error);
       expect(err.message).toContain("tx failed");
@@ -282,6 +288,148 @@ describe("storage-quota", () => {
     it("returns a non-empty warning message", () => {
       const m = getQuotaRemediationMessage("warning");
       expect(m.length).toBeGreaterThan(10);
+    });
+  });
+
+  describe("estimateCardWriteBytes", () => {
+    it("returns 0 for non-positive counts", () => {
+      expect(estimateCardWriteBytes(0)).toBe(0);
+      expect(estimateCardWriteBytes(-5)).toBe(0);
+    });
+
+    it("scales linearly with card count and includes the safety margin", () => {
+      const expected = 1000 * AVG_CARD_BYTES + QUOTA_SAFETY_MARGIN_BYTES;
+      expect(estimateCardWriteBytes(1000)).toBe(expected);
+    });
+  });
+
+  describe("predictQuotaHeadroom", () => {
+    it("returns ok when the write fits comfortably within quota", async () => {
+      // 100 MB quota, 10 MB used, 5 MB write → plenty of room.
+      setStorage({
+        estimate: async () => ({
+          usage: 10 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+      });
+      const h = await predictQuotaHeadroom(5 * 1024 * 1024);
+      expect(h.ok).toBe(true);
+      expect(h.level).toBe("ok");
+      expect(h.available).toBeGreaterThan(0);
+      expect(h.requiredBytes).toBe(5 * 1024 * 1024);
+      expect(h.reason).toBeUndefined();
+      // projectedRatio = (10 + 5) / 100 = 0.15
+      expect(h.projectedRatio).toBeCloseTo(0.15, 5);
+    });
+
+    it("returns !ok with a reason when the write exceeds remaining quota", async () => {
+      // 100 MB quota, 95 MB used, 10 MB write → 5 MB over budget.
+      setStorage({
+        estimate: async () => ({
+          usage: 95 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+      });
+      const h = await predictQuotaHeadroom(10 * 1024 * 1024);
+      expect(h.ok).toBe(false);
+      expect(h.available).toBeLessThan(0);
+      expect(h.reason).toBeTruthy();
+      expect(h.reason).toMatch(/more space than is available/i);
+    });
+
+    it("returns !ok when the projected ratio crosses the critical threshold", async () => {
+      // 100 MB quota, 97 MB used, 2 MB write → fits nominally (1 MB free) but
+      // projected ratio = 0.99 ≥ QUOTA_CRITICAL_THRESHOLD → critical/!ok.
+      setStorage({
+        estimate: async () => ({
+          usage: 97 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+      });
+      const h = await predictQuotaHeadroom(2 * 1024 * 1024);
+      expect(h.ok).toBe(false);
+      expect(h.level).toBe("critical");
+      expect(h.projectedRatio).toBeGreaterThanOrEqual(QUOTA_CRITICAL_THRESHOLD);
+      expect(h.reason).toMatch(/critically full/i);
+    });
+
+    it("returns ok but level=warning when projected ratio crosses warn threshold", async () => {
+      // 100 MB quota, 88 MB used, 3 MB write → projected 0.91 (warn band).
+      setStorage({
+        estimate: async () => ({
+          usage: 88 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+      });
+      const h = await predictQuotaHeadroom(3 * 1024 * 1024);
+      expect(h.ok).toBe(true);
+      expect(h.level).toBe("warning");
+      expect(h.projectedRatio).toBeGreaterThanOrEqual(QUOTA_WARN_THRESHOLD);
+    });
+
+    it("gracefully allows (ok:true, level:unknown) when estimate() is unavailable", async () => {
+      // Mirrors Tauri webviews / private mode with no Storage API. Callers
+      // must fall back to the reactive error path — we never block the write
+      // when we cannot measure.
+      setStorage(undefined);
+      const h = await predictQuotaHeadroom(50 * 1024 * 1024);
+      expect(h.ok).toBe(true);
+      expect(h.level).toBe("unknown");
+      expect(h.available).toBe(FALLBACK_QUOTA_BYTES);
+      expect(h.usage).toBe(0);
+      expect(h.quota).toBe(0);
+      expect(h.reason).toBeUndefined();
+    });
+
+    it("gracefully allows when estimate() rejects", async () => {
+      setStorage({
+        estimate: async () => {
+          throw new Error("denied");
+        },
+      });
+      const h = await predictQuotaHeadroom(1024);
+      expect(h.ok).toBe(true);
+      expect(h.level).toBe("unknown");
+    });
+
+    it("treats a zero-byte write as ok with no projected change", async () => {
+      setStorage({
+        estimate: async () => ({
+          usage: 10 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+      });
+      const h = await predictQuotaHeadroom(0);
+      expect(h.ok).toBe(true);
+      expect(h.requiredBytes).toBe(0);
+      expect(h.projectedRatio).toBeCloseTo(0.1, 5);
+    });
+
+    it("clamps projectedRatio to 1 when the write would far exceed quota", async () => {
+      setStorage({
+        estimate: async () => ({ usage: 90, quota: 100 }),
+      });
+      const h = await predictQuotaHeadroom(1_000_000);
+      expect(h.ok).toBe(false);
+      expect(h.projectedRatio).toBe(1);
+    });
+
+    it("cooperates with persisted-storage state without changing the decision", async () => {
+      // persistence is orthogonal to the headroom prediction; a persisted
+      // origin still reports usage/quota via estimate(). We only assert the
+      // decision ignores persist state (the persisted() probe is exercised in
+      // the persistence describe block above).
+      setStorage({
+        estimate: async () => ({
+          usage: 10 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+        persisted: async () => true,
+        persist: async () => true,
+      });
+      const h = await predictQuotaHeadroom(5 * 1024 * 1024);
+      expect(h.ok).toBe(true);
+      expect(await isStoragePersistent()).toBe(true);
     });
   });
 });

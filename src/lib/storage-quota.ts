@@ -13,6 +13,9 @@
  *  - a typed, recoverable QuotaExceededError plus classification helpers so
  *    callers can distinguish quota exhaustion from other failures and degrade
  *  - a no-throw write guard (withQuotaGuard) for the graceful read-only degrade
+ *  - a predictive pre-flight check (predictQuotaHeadroom, issue #1424) so large
+ *    batched writes can be aborted *before* opening an IDB transaction instead
+ *    of failing opaquely mid-write
  *
  * Designed to be unit-testable with no React/DOM coupling.
  */
@@ -29,6 +32,23 @@ export const QUOTA_CRITICAL_THRESHOLD = 0.98;
 
 /** Bytes assumed as the quota when the browser cannot report one (fallback heuristic). */
 export const FALLBACK_QUOTA_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Average serialized byte size assumed per {@link MinimalCard} row written to
+ * the offline card database. Used by {@link estimateCardWriteBytes} to predict
+ * the footprint of a bulk card import before any transaction opens. Chosen
+ * conservatively from sampling Scryfall `MinimalCard` payloads (name, type
+ * line, oracle text, legalities, image uris) — most rows land in 300–700 B.
+ */
+export const AVG_CARD_BYTES = 512;
+
+/**
+ * Extra bytes reserved on top of a predicted write to absorb IDB bookkeeping
+ * (B+tree index growth, transaction journals) and drift in the browser's
+ * `navigator.storage.estimate()` figures. Writes that fit nominally but leave
+ * less free space than this margin are downgraded to a warning.
+ */
+export const QUOTA_SAFETY_MARGIN_BYTES = 5 * 1024 * 1024;
 
 // ============================================================================
 // TYPES
@@ -50,8 +70,7 @@ export interface StorageQuotaEstimate {
 }
 
 export type QuotaGuardResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; error: QuotaExceededError };
+  { ok: true; value: T } | { ok: false; error: QuotaExceededError };
 
 // ============================================================================
 // TYPED ERROR
@@ -100,7 +119,8 @@ export function isQuotaExceededError(err: unknown): err is QuotaExceededError {
   const name = (err as { name?: unknown }).name;
   const message = (err as { message?: unknown }).message;
   if (typeof name === "string" && name === "QuotaExceededError") return true;
-  if (typeof message === "string" && /quotaexceeded/i.test(message)) return true;
+  if (typeof message === "string" && /quotaexceeded/i.test(message))
+    return true;
   return false;
 }
 
@@ -219,6 +239,125 @@ export async function withQuotaGuard<T>(
     }
     throw err;
   }
+}
+
+// ============================================================================
+// PRE-FLIGHT PREDICTION
+// ============================================================================
+
+/**
+ * Result of a predictive quota pre-flight check (issue #1424).
+ *
+ * Callers run {@link predictQuotaHeadroom} *before* opening a large batched
+ * IndexedDB write so they can warn or abort early instead of hitting a
+ * `QuotaExceededError` mid-transaction (which can leave a partially-written
+ * store).
+ */
+export interface QuotaHeadroom {
+  /** Whether the write should proceed. `false` only when the estimate is available AND the write is predicted to fail. */
+  ok: boolean;
+  /** Free bytes remaining after the projected write (`quota - usage - requiredBytes`). Negative when over budget. */
+  available: number;
+  /** Predicted usage ratio after the write lands, in [0, 1] (clamped). 0 when the Storage API is unavailable. */
+  projectedRatio: number;
+  /** Coarse classification derived from {@link projectedRatio}. `unknown` when the Storage API is unavailable. */
+  level: QuotaLevel;
+  /** Current usage in bytes (0 when unavailable). */
+  usage: number;
+  /** Quota in bytes (0 when unknown). */
+  quota: number;
+  /** Bytes the caller told us it intends to write. */
+  requiredBytes: number;
+  /** Human-readable reason present when `ok === false`. */
+  reason?: string;
+}
+
+/**
+ * Predict whether a write of `bytesNeeded` bytes will fit in the origin's
+ * remaining storage quota, *before* the write begins.
+ *
+ * Decision rule (issue #1424):
+ *  - When `navigator.storage.estimate()` is unavailable (private mode, old
+ *    browsers, some Tauri webviews) the check degrades to `ok: true` with
+ *    `level: "unknown"` so callers fall back to the existing reactive error
+ *    path — there is nothing to predict against, and blocking the write would
+ *    regress environments that legitimately have no Storage API.
+ *  - `ok: false` when the write would push projected usage to/above
+ *    {@link QUOTA_CRITICAL_THRESHOLD}, or when it nominally exceeds the
+ *    remaining quota (`available < 0`).
+ *  - Otherwise `ok: true`; callers can still inspect `level` to surface a
+ *    non-blocking warning when the projected ratio crosses
+ *    {@link QUOTA_WARN_THRESHOLD}.
+ *
+ * Pure with respect to its inputs aside from reading `navigator.storage` (via
+ * {@link getStorageEstimate}), so it is trivially unit-testable.
+ */
+export async function predictQuotaHeadroom(
+  bytesNeeded: number,
+): Promise<QuotaHeadroom> {
+  const requiredBytes = Math.max(0, bytesNeeded);
+  const est = await getStorageEstimate();
+
+  // Graceful allow when the Storage API is unavailable — callers fall back to
+  // the existing reactive QuotaExceededError path. Returning ok:true here is
+  // intentional (see decision rule above) and is covered by tests.
+  if (!est.available) {
+    return {
+      ok: true,
+      available: FALLBACK_QUOTA_BYTES,
+      projectedRatio: 0,
+      level: "unknown",
+      usage: 0,
+      quota: 0,
+      requiredBytes,
+    };
+  }
+
+  const projectedUsage = est.usage + requiredBytes;
+  const projectedRatio =
+    est.quota > 0 ? Math.min(1, projectedUsage / est.quota) : 0;
+  const projectedLevel = getQuotaLevel(projectedRatio, true);
+  const available = est.quota - projectedUsage;
+
+  // The write is predicted to fail: it either exceeds the raw remaining quota
+  // or pushes projected usage into the critical band where the browser is very
+  // likely to reject the transaction.
+  if (available < 0 || projectedLevel === "critical") {
+    return {
+      ok: false,
+      available,
+      projectedRatio,
+      level: projectedLevel,
+      usage: est.usage,
+      quota: est.quota,
+      requiredBytes,
+      reason:
+        available < 0
+          ? "This write needs more space than is available in browser storage."
+          : "Browser storage is critically full; this write is very likely to fail.",
+    };
+  }
+
+  return {
+    ok: true,
+    available,
+    projectedRatio,
+    level: projectedLevel,
+    usage: est.usage,
+    quota: est.quota,
+    requiredBytes,
+  };
+}
+
+/**
+ * Estimate the byte footprint of writing `count` card rows to the offline card
+ * database, using {@link AVG_CARD_BYTES} plus the {@link QUOTA_SAFETY_MARGIN_BYTES}
+ * headroom. Exposed so call sites (bulk import, populate) and their tests share
+ * one prediction formula.
+ */
+export function estimateCardWriteBytes(count: number): number {
+  if (count <= 0) return 0;
+  return count * AVG_CARD_BYTES + QUOTA_SAFETY_MARGIN_BYTES;
 }
 
 /**
