@@ -1,9 +1,13 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useMemo, memo, useRef } from 'react';
-import { cn } from '@/lib/utils';
-import { resolveCardImageWithFallback, getCardBackImage, isCustomImagesEnabled } from '@/lib/card-image-resolver';
-import { useAutoStyledArtwork } from '@/hooks/use-procedural-artwork';
+import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react";
+import { cn } from "@/lib/utils";
+import {
+  resolveCardImageWithFallback,
+  getCardBackImage,
+  isCustomImagesEnabled,
+} from "@/lib/card-image-resolver";
+import { useAutoStyledArtwork } from "@/hooks/use-procedural-artwork";
 
 /**
  * Card Art Display Component
@@ -39,7 +43,7 @@ export interface CardArtProps {
     colors?: string[];
   };
   /** Image size variant */
-  size?: 'thumbnail' | 'small' | 'normal' | 'large' | 'full';
+  size?: "thumbnail" | "small" | "normal" | "large" | "full";
   /** Enable lazy loading */
   lazy?: boolean;
   /** Show card back (face down) */
@@ -69,31 +73,31 @@ export interface CardArtProps {
 
 // Size configurations with dimensions and quality
 const SIZE_CONFIG = {
-  thumbnail: { width: 146, height: 204, quality: 60, scryfallSize: 'small' },
-  small: { width: 204, height: 285, quality: 70, scryfallSize: 'small' },
-  normal: { width: 244, height: 340, quality: 80, scryfallSize: 'normal' },
-  large: { width: 488, height: 680, quality: 90, scryfallSize: 'large' },
-  full: { width: 744, height: 1039, quality: 95, scryfallSize: 'large' },
+  thumbnail: { width: 146, height: 204, quality: 60, scryfallSize: "small" },
+  small: { width: 204, height: 285, quality: 70, scryfallSize: "small" },
+  normal: { width: 244, height: 340, quality: 80, scryfallSize: "normal" },
+  large: { width: 488, height: 680, quality: 90, scryfallSize: "large" },
+  full: { width: 744, height: 1039, quality: 95, scryfallSize: "large" },
 } as const;
 
 // Intersection Observer for lazy loading
 let lazyLoadObserver: IntersectionObserver | null = null;
 
 function getLazyLoadObserver() {
-  if (typeof window === 'undefined') return null;
-  
+  if (typeof window === "undefined") return null;
+
   if (!lazyLoadObserver) {
     lazyLoadObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const target = entry.target as HTMLElement;
-            target.dataset.visible = 'true';
+            target.dataset.visible = "true";
             lazyLoadObserver?.unobserve(target);
           }
         });
       },
-      { rootMargin: '100px', threshold: 0.1 }
+      { rootMargin: "100px", threshold: 0.1 },
     );
   }
   return lazyLoadObserver;
@@ -114,9 +118,9 @@ const CardSkeleton = memo(function CardSkeleton({
   return (
     <div
       className={cn(
-        'bg-gradient-to-br from-muted to-muted/50 animate-pulse rounded-lg',
-        fill && 'h-full w-full',
-        className
+        "bg-gradient-to-br from-muted to-muted/50 animate-pulse rounded-lg",
+        fill && "h-full w-full",
+        className,
       )}
       style={fill ? undefined : { width: config.width, height: config.height }}
       role="presentation"
@@ -146,10 +150,10 @@ const CardError = memo(function CardError({
   return (
     <div
       className={cn(
-        'bg-gradient-to-br from-destructive/20 to-destructive/10 border border-destructive/30 rounded-lg',
-        'flex flex-col items-center justify-center p-2 text-center',
-        fill && 'h-full w-full',
-        className
+        "bg-gradient-to-br from-destructive/20 to-destructive/10 border border-destructive/30 rounded-lg",
+        "flex flex-col items-center justify-center p-2 text-center",
+        fill && "h-full w-full",
+        className,
       )}
       style={fill ? undefined : { width: config.width, height: config.height }}
       role="img"
@@ -164,29 +168,29 @@ const CardError = memo(function CardError({
 });
 
 // Card back component
-const CardBack = memo(function CardBack({ 
-  size, 
-  className 
-}: { 
+const CardBack = memo(function CardBack({
+  size,
+  className,
+}: {
   size: keyof typeof SIZE_CONFIG;
   className?: string;
 }) {
   const config = SIZE_CONFIG[size];
-  
+
   return (
     <div
       className={cn(
-        'bg-gradient-to-br from-primary/30 to-primary/10 border border-primary/30 rounded-lg',
-        'flex items-center justify-center',
-        className
+        "bg-gradient-to-br from-primary/30 to-primary/10 border border-primary/30 rounded-lg",
+        "flex items-center justify-center",
+        className,
       )}
       style={{ width: config.width, height: config.height }}
       role="img"
       aria-label="Card back"
     >
-      <img 
-        src={getCardBackImage()} 
-        alt="Card back" 
+      <img
+        src={getCardBackImage()}
+        alt="Card back"
         className="w-full h-full object-contain rounded-lg"
       />
     </div>
@@ -198,7 +202,7 @@ export const CardArt = memo(function CardArt({
   cardName,
   imageUri,
   scryfallCard,
-  size = 'normal',
+  size = "normal",
   lazy = true,
   showBack = false,
   enableZoom = false,
@@ -224,29 +228,29 @@ export const CardArt = memo(function CardArt({
     cardName,
     cardId: scryfallCard?.id || cardName,
     colors: scryfallCard?.color_identity || scryfallCard?.colors || [],
-    typeLine: scryfallCard?.type_line || '',
+    typeLine: scryfallCard?.type_line || "",
     cmc: scryfallCard?.cmc || 0,
     width: config.width,
     height: config.height,
   });
-  
+
   // Setup lazy loading observer
   useEffect(() => {
     if (!lazy || isVisible) return;
-    
+
     const observer = getLazyLoadObserver();
     const element = containerRef.current;
-    
+
     if (observer && element) {
       observer.observe(element);
-      
+
       // Check if already visible
       const checkVisibility = () => {
-        if (element.dataset.visible === 'true') {
+        if (element.dataset.visible === "true") {
           setIsVisible(true);
         }
       };
-      
+
       const interval = setInterval(checkVisibility, 100);
       return () => {
         observer.unobserve(element);
@@ -254,7 +258,7 @@ export const CardArt = memo(function CardArt({
       };
     }
   }, [lazy, isVisible]);
-  
+
   // Build image URL
   const imageUrl = useMemo(() => {
     if (showBack) return null;
@@ -276,42 +280,53 @@ export const CardArt = memo(function CardArt({
 
     // Try local image resolution (respects BYOI - only returns local paths)
     if (scryfallCard) {
-      return resolveCardImageWithFallback(scryfallCard, undefined, config.scryfallSize);
+      return resolveCardImageWithFallback(
+        scryfallCard,
+        undefined,
+        config.scryfallSize,
+      );
     }
 
     return null;
-  }, [imageUri, scryfallCard, showBack, config.scryfallSize, useProcedural, proceduralUrl]);
-  
+  }, [
+    imageUri,
+    scryfallCard,
+    showBack,
+    config.scryfallSize,
+    useProcedural,
+    proceduralUrl,
+  ]);
+
   // Handle image load
   const handleLoad = useCallback(() => {
     setIsLoading(false);
     setHasError(false);
   }, []);
-  
+
   // Handle image error
   const handleError = useCallback(() => {
     setIsLoading(false);
     setHasError(true);
   }, []);
-  
+
   // Handle zoom toggle
   const handleZoomToggle = useCallback(() => {
     if (enableZoom) {
-      setIsZoomed(prev => !prev);
+      setIsZoomed((prev) => !prev);
     }
   }, [enableZoom]);
-  
+
   // Handle hover
   const handleMouseEnter = useCallback(() => {
     setIsHovering(true);
     onHover?.(true);
   }, [onHover]);
-  
+
   const handleMouseLeave = useCallback(() => {
     setIsHovering(false);
     onHover?.(false);
   }, [onHover]);
-  
+
   // Show card back if requested
   if (showBack) {
     return <CardBack size={size} className={className} />;
@@ -322,8 +337,10 @@ export const CardArt = memo(function CardArt({
     return (
       <div
         ref={containerRef}
-        className={cn(fill && 'absolute inset-0', 'relative', className)}
-        style={fill ? undefined : { width: config.width, height: config.height }}
+        className={cn(fill && "absolute inset-0", "relative", className)}
+        style={
+          fill ? undefined : { width: config.width, height: config.height }
+        }
       >
         <CardSkeleton size={size} fill={fill} />
         {imageUrl && (
@@ -333,7 +350,7 @@ export const CardArt = memo(function CardArt({
             className="absolute inset-0 opacity-0"
             onLoad={handleLoad}
             onError={handleError}
-            loading={lazy ? 'lazy' : 'eager'}
+            loading={lazy ? "lazy" : "eager"}
           />
         )}
       </div>
@@ -342,7 +359,14 @@ export const CardArt = memo(function CardArt({
 
   // Show error state
   if (hasError || !imageUrl) {
-    return <CardError cardName={cardName} size={size} className={className} fill={fill} />;
+    return (
+      <CardError
+        cardName={cardName}
+        size={size}
+        className={className}
+        fill={fill}
+      />
+    );
   }
 
   // Not yet visible (lazy loading)
@@ -350,8 +374,10 @@ export const CardArt = memo(function CardArt({
     return (
       <div
         ref={containerRef}
-        className={cn(fill && 'absolute inset-0', className)}
-        style={fill ? undefined : { width: config.width, height: config.height }}
+        className={cn(fill && "absolute inset-0", className)}
+        style={
+          fill ? undefined : { width: config.width, height: config.height }
+        }
       >
         <CardSkeleton size={size} fill={fill} />
       </div>
@@ -363,14 +389,16 @@ export const CardArt = memo(function CardArt({
       <div
         ref={containerRef}
         className={cn(
-          'relative overflow-hidden rounded-lg transition-all duration-200',
-          'hover:shadow-lg hover:shadow-primary/20',
-          isHovering && 'ring-2 ring-primary/50',
-          onClick && 'cursor-pointer',
-          fill && 'absolute inset-0 h-full w-full',
-          className
+          "relative overflow-hidden rounded-lg transition-all duration-200",
+          "hover:shadow-lg hover:shadow-primary/20",
+          isHovering && "ring-2 ring-primary/50",
+          onClick && "cursor-pointer",
+          fill && "absolute inset-0 h-full w-full",
+          className,
         )}
-        style={fill ? undefined : { width: config.width, height: config.height }}
+        style={
+          fill ? undefined : { width: config.width, height: config.height }
+        }
         onClick={onClick}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -381,15 +409,15 @@ export const CardArt = memo(function CardArt({
           src={imageUrl}
           alt={cardName}
           className={cn(
-            'w-full h-full object-contain transition-transform duration-200',
-            isHovering && 'scale-105'
+            "w-full h-full object-contain transition-transform duration-200",
+            isHovering && "scale-105",
           )}
           onLoad={handleLoad}
           onError={handleError}
-          loading={lazy ? 'lazy' : 'eager'}
+          loading={lazy ? "lazy" : "eager"}
           srcSet={highDpi ? `${imageUrl} 1x, ${imageUrl} 2x` : undefined}
         />
-        
+
         {/* Zoom button */}
         {enableZoom && (
           <button
@@ -398,10 +426,10 @@ export const CardArt = memo(function CardArt({
               handleZoomToggle();
             }}
             className={cn(
-              'absolute bottom-2 right-2 p-1.5 rounded-full',
-              'bg-background/80 hover:bg-background transition-opacity',
-              'opacity-0 group-hover:opacity-100',
-              isHovering && 'opacity-100'
+              "absolute bottom-2 right-2 p-1.5 rounded-full",
+              "bg-background/80 hover:bg-background transition-opacity",
+              "opacity-0 group-hover:opacity-100",
+              isHovering && "opacity-100",
             )}
             aria-label="Zoom card"
           >
@@ -424,7 +452,7 @@ export const CardArt = memo(function CardArt({
           </button>
         )}
       </div>
-      
+
       {/* Zoomed modal */}
       {isZoomed && enableZoom && (
         <div
@@ -478,7 +506,7 @@ export interface CardArtGalleryProps {
     imageUri?: string;
     scryfallCard?: ScryfallCardData;
   }>;
-  size?: 'thumbnail' | 'small' | 'normal';
+  size?: "thumbnail" | "small" | "normal";
   enableZoom?: boolean;
   className?: string;
   onCardClick?: (cardId: string) => void;
@@ -486,7 +514,7 @@ export interface CardArtGalleryProps {
 
 export const CardArtGallery = memo(function CardArtGallery({
   cards,
-  size = 'small',
+  size = "small",
   enableZoom = true,
   className,
   onCardClick,
@@ -494,11 +522,11 @@ export const CardArtGallery = memo(function CardArtGallery({
   return (
     <div
       className={cn(
-        'grid gap-2',
-        size === 'thumbnail' && 'grid-cols-6 sm:grid-cols-8 md:grid-cols-10',
-        size === 'small' && 'grid-cols-4 sm:grid-cols-6 md:grid-cols-8',
-        size === 'normal' && 'grid-cols-3 sm:grid-cols-4 md:grid-cols-6',
-        className
+        "grid gap-2",
+        size === "thumbnail" && "grid-cols-6 sm:grid-cols-8 md:grid-cols-10",
+        size === "small" && "grid-cols-4 sm:grid-cols-6 md:grid-cols-8",
+        size === "normal" && "grid-cols-3 sm:grid-cols-4 md:grid-cols-6",
+        className,
       )}
     >
       {cards.map((card) => (
@@ -516,24 +544,5 @@ export const CardArtGallery = memo(function CardArtGallery({
     </div>
   );
 });
-
-// Hook for preloading card images
-export function useCardImagePreloader() {
-  const [preloadedImages, setPreloadedImages] = useState<Set<string>>(new Set());
-  
-  const preloadImages = useCallback((urls: string[]) => {
-    urls.forEach((url) => {
-      if (!preloadedImages.has(url)) {
-        const img = new Image();
-        img.src = url;
-        img.onload = () => {
-          setPreloadedImages((prev) => new Set(prev).add(url));
-        };
-      }
-    });
-  }, [preloadedImages]);
-  
-  return { preloadedImages, preloadImages };
-}
 
 export default CardArt;
