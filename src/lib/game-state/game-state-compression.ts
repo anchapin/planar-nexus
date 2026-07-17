@@ -83,5 +83,5 @@ export function decompressGameStateJson(value: string): string {
     return value;
   }
   const b64 = value.slice(COMPRESSED_MARKER.length);
-  return ungzip(base64ToBytes(b64), { to: "string" }) as string;
+  return new TextDecoder().decode(ungzip(base64ToBytes(b64)));
 }
