@@ -6,6 +6,7 @@ import { LandingFooter } from "@/components/landing-footer";
 import { SkipLink } from "@/components/skip-link";
 import { AchievementNotificationToast } from "@/components/achievement-notification";
 import { DesktopUpdateBanner } from "@/components/desktop-update-banner";
+import { TauriDevFallback } from "@/components/tauri-dev-fallback";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 
@@ -69,6 +70,13 @@ export default async function RootLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           <SkipLink targetId="main-content" />
           <ServiceWorkerRegistration />
+          {/*
+            Tauri dev/test IPC shim (issue #1433). No-op in production and
+            whenever NEXT_PUBLIC_TAURI_FALLBACK is unset; see
+            src/lib/tauri-mock.ts. Mounted once here so the desktop code
+            paths engage against the dev server for the Tauri E2E spec.
+          */}
+          <TauriDevFallback />
           {children}
           <LandingFooter />
           <Toaster />
