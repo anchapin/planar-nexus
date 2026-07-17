@@ -45,14 +45,14 @@ jobs:
           if [ "${{ github.event_name }}" == "release" ]; then
             echo "build_type=release" >> $GITHUB_OUTPUT
           else
-            echo "build_type=${{ github.inputs.build_type }}" >> $GITHUB_OUTPUT
+            echo "build_type=${{ inputs.build_type }}" >> $GITHUB_OUTPUT
           fi
 
   build-ios:
     name: Build iOS
     runs-on: macos-latest
     needs: setup-build
-    if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'ios'
+    if: github.event_name == 'release' || inputs.platform == 'all' || inputs.platform == 'ios'
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -124,7 +124,7 @@ jobs:
     name: Build Android
     runs-on: ubuntu-22.04
     needs: setup-build
-    if: github.event_name == 'release' || github.inputs.platform == 'all' || github.inputs.platform == 'android'
+    if: github.event_name == 'release' || inputs.platform == 'all' || inputs.platform == 'android'
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
