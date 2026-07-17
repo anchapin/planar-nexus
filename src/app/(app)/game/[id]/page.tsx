@@ -102,6 +102,13 @@ import {
   parseKicker,
   parseAttraction,
 } from "@/lib/game-state/oracle-text-parser";
+// DEV/TEST ONLY — free-cast hook (issue #1431). The factory call below is
+// guarded by a NODE_ENV compile-time check and a runtime opt-in flag, so this
+// import is never reachable from a production build.
+import {
+  createFreeCastApi,
+  shouldAttachFreeCastHook,
+} from "@/lib/dev/free-cast-test-mode";
 
 // AI imports
 import {
@@ -953,6 +960,28 @@ function GameBoardContent() {
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
+
+  // DEV/TEST ONLY — attach the free-cast hook (issue #1431). The entire block
+  // is dead-code-eliminated in production builds (`process.env.NODE_ENV` is a
+  // compile-time constant), and additionally requires a runtime opt-in flag
+  // (`?testMode=free-cast` URL param or `planar-nexus:test-mode` localStorage).
+  // The hook therefore has zero production surface: it can never activate in a
+  // `next build` / `next start` deployment even if the localStorage flag is set.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    if (!shouldAttachFreeCastHook()) return;
+    const api = createFreeCastApi({
+      getState: () => gameStateRef.current,
+      setState: (next) => setGameState(next),
+    });
+    (window as unknown as Record<string, unknown>).__TEST__ = api;
+    (window as unknown as Record<string, unknown>).__TEST_freeCast__ =
+      api.freeCast;
+    return () => {
+      delete (window as unknown as Record<string, unknown>).__TEST__;
+      delete (window as unknown as Record<string, unknown>).__TEST_freeCast__;
+    };
+  }, []);
 
   // Get game parameters from URL
   const gameId = searchParams.get("id");
