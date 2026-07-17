@@ -21,11 +21,17 @@ jest.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: any) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  LineChart: ({ children }: any) => <div data-testid="line-chart">{children}</div>,
+  LineChart: ({ children }: any) => (
+    <div data-testid="line-chart">{children}</div>
+  ),
   Line: () => <div data-testid="line" />,
-  BarChart: ({ children }: any) => <div data-testid="bar-chart">{children}</div>,
+  BarChart: ({ children }: any) => (
+    <div data-testid="bar-chart">{children}</div>
+  ),
   Bar: () => <div data-testid="bar" />,
-  PieChart: ({ children }: any) => <div data-testid="pie-chart">{children}</div>,
+  PieChart: ({ children }: any) => (
+    <div data-testid="pie-chart">{children}</div>
+  ),
   Pie: () => <div data-testid="pie" />,
   XAxis: () => null,
   YAxis: () => null,
@@ -158,20 +164,51 @@ describe("ColorDistributionChart — screen-reader alternative", () => {
 });
 
 describe("FormatHealthGauge — screen-reader alternative", () => {
-  it("exposes a role=img with an accessible name describing the score", () => {
+  it("exposes a role=progressbar with name, value, and value-range attributes", () => {
     const { container } = render(<FormatHealthGauge score={82} />);
 
-    const img = container.querySelector('[role="img"]');
-    expect(img).not.toBeNull();
-    expect(img).toHaveAttribute(
+    const gauge = container.querySelector('[role="progressbar"]');
+    expect(gauge).not.toBeNull();
+    expect(gauge).toHaveAttribute(
       "aria-label",
-      expect.stringMatching(/format health gauge/i),
+      expect.stringMatching(/format health score/i),
     );
-    expect(img).toHaveAttribute("aria-label", expect.stringContaining("82"));
-    expect(img).toHaveAttribute(
-      "aria-label",
-      expect.stringContaining("healthy"),
+    expect(gauge).toHaveAttribute("aria-valuenow", "82");
+    expect(gauge).toHaveAttribute("aria-valuemin", "0");
+    expect(gauge).toHaveAttribute("aria-valuemax", "100");
+    // aria-valuetext conveys the tier + score so SRs speak
+    // "Healthy, 82 out of 100" rather than just "82".
+    expect(gauge).toHaveAttribute(
+      "aria-valuetext",
+      expect.stringMatching(/healthy, 82 out of 100/i),
     );
+  });
+
+  it("is queryable via getByRole('progressbar') with a descriptive name", () => {
+    const { getByRole } = render(<FormatHealthGauge score={55} />);
+
+    const gauge = getByRole("progressbar", {
+      name: /format health score/i,
+    });
+    expect(gauge).toHaveAttribute("aria-valuenow", "55");
+    expect(gauge).toHaveAttribute(
+      "aria-valuetext",
+      expect.stringMatching(/moderate, 55 out of 100/i),
+    );
+  });
+
+  it("clamps the value-range semantics to the 0-100 bounds", () => {
+    const { container } = render(<FormatHealthGauge score={20} />);
+
+    const gauge = container.querySelector('[role="progressbar"]');
+    expect(gauge).not.toBeNull();
+    const now = Number(gauge?.getAttribute("aria-valuenow"));
+    const min = Number(gauge?.getAttribute("aria-valuemin"));
+    const max = Number(gauge?.getAttribute("aria-valuemax"));
+    expect(min).toBe(0);
+    expect(max).toBe(100);
+    expect(now).toBeGreaterThanOrEqual(min);
+    expect(now).toBeLessThanOrEqual(max);
   });
 
   it("renders an sr-only description of the score", () => {
@@ -179,7 +216,7 @@ describe("FormatHealthGauge — screen-reader alternative", () => {
 
     const desc = container.querySelector(".sr-only");
     expect(desc).not.toBeNull();
-    expect(desc).toHaveTextContent(/format health score is 50/i);
+    expect(desc).toHaveTextContent(/format health score: 50/i);
     expect(desc).toHaveTextContent(/moderate/i);
   });
 
