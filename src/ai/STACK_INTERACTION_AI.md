@@ -17,14 +17,16 @@ The Stack Interaction AI provides intelligent decision-making for responding to 
 ### Key Interfaces
 
 #### StackAction
+
 Represents a spell or ability on the stack:
+
 ```typescript
 interface StackAction {
   id: string;
   cardId: string;
   name: string;
   controller: string;
-  type: 'spell' | 'ability';
+  type: "spell" | "ability";
   manaValue: number;
   colors?: string[];
   targets?: Target[];
@@ -34,12 +36,14 @@ interface StackAction {
 ```
 
 #### AvailableResponse
+
 Represents a response available to the AI:
+
 ```typescript
 interface AvailableResponse {
   cardId: string;
   name: string;
-  type: 'instant' | 'flash' | 'ability';
+  type: "instant" | "flash" | "ability";
   manaValue: number;
   manaCost: { [color: string]: number };
   canCounter: boolean;
@@ -49,11 +53,13 @@ interface AvailableResponse {
 ```
 
 #### ResponseDecision
+
 The AI's decision for stack interaction:
+
 ```typescript
 interface ResponseDecision {
   shouldRespond: boolean;
-  action: 'pass' | 'respond' | 'hold_priority';
+  action: "pass" | "respond" | "hold_priority";
   responseCardId?: string;
   targetActionId?: string;
   reasoning: string;
@@ -65,7 +71,9 @@ interface ResponseDecision {
 ```
 
 #### StackContext
+
 Context for stack interaction decisions:
+
 ```typescript
 interface StackContext {
   currentAction: StackAction;
@@ -119,13 +127,13 @@ Counterspells are a special category of responses with additional considerations
 
 ```typescript
 interface CounterspellFactors {
-  threatLevel: number;              // How dangerous is the spell?
-  cardAdvantageImpact: number;      // Will countering gain card advantage?
-  tempoImpact: number;              // Does this improve our tempo?
-  lifeImpact: number;               // Does this prevent damage?
-  winConditionDisruption: number;   // Does this protect our win condition?
-  canBeRecurred: boolean;           // Can we get this counterspell back?
-  hasBackup: boolean;               // Do we have other answers?
+  threatLevel: number; // How dangerous is the spell?
+  cardAdvantageImpact: number; // Will countering gain card advantage?
+  tempoImpact: number; // Does this improve our tempo?
+  lifeImpact: number; // Does this prevent damage?
+  winConditionDisruption: number; // Does this protect our win condition?
+  canBeRecurred: boolean; // Can we get this counterspell back?
+  hasBackup: boolean; // Do we have other answers?
   opponentHasCounterspell: boolean; // Will they counter our counter?
 }
 ```
@@ -142,6 +150,7 @@ interface CounterspellFactors {
 ### 3. Resource Management
 
 The AI must decide whether to:
+
 - Use mana now
 - Hold mana for end step
 - Hold mana for opponent's turn
@@ -176,18 +185,21 @@ When multiple responses are available, the AI optimizes the order:
 ## Difficulty Levels
 
 ### Easy
+
 - Prioritizes threat prevention
 - Less consideration of card advantage
 - Simple heuristics
 - More likely to use resources
 
 ### Medium
+
 - Balanced approach
 - Considers card advantage and tempo
 - Some resource conservation
 - Basic counterplay awareness
 
 ### Hard
+
 - Heavy card advantage focus
 - Advanced resource management
 - Sophisticated counterplay awareness
@@ -208,13 +220,13 @@ The Stack Interaction AI uses the Game State Evaluator to:
 ### Basic Response Decision
 
 ```typescript
-import { evaluateStackResponse } from '@/ai/stack-interaction-ai';
+import { evaluateStackResponse } from "@/ai/stack-interaction-ai";
 
 const decision = evaluateStackResponse(
   gameState,
   playerId,
   stackContext,
-  'medium'
+  "medium",
 );
 
 if (decision.shouldRespond) {
@@ -229,14 +241,14 @@ if (decision.shouldRespond) {
 ### Counterspell Decision
 
 ```typescript
-import { decideCounterspell } from '@/ai/stack-interaction-ai';
+import { decideCounterspell } from "@/ai/stack-interaction-ai";
 
 const decision = decideCounterspell(
   gameState,
   playerId,
   stackContext,
   counterspell,
-  'hard'
+  "hard",
 );
 
 if (decision.shouldRespond) {
@@ -248,13 +260,13 @@ if (decision.shouldRespond) {
 ### Resource Management
 
 ```typescript
-import { manageResponseResources } from '@/ai/stack-interaction-ai';
+import { manageResponseResources } from "@/ai/stack-interaction-ai";
 
 const decision = manageResponseResources(
   gameState,
   playerId,
   stackContext,
-  'medium'
+  "medium",
 );
 
 if (decision.useNow) {
@@ -293,6 +305,7 @@ if (decision.useNow) {
 ### Counter Wars
 
 When both players have counterspells:
+
 - Consider if we have backup
 - Evaluate card advantage impact
 - Assess who will "win" the counter war
@@ -301,6 +314,7 @@ When both players have counterspells:
 ### Stack Building
 
 With multiple items on the stack:
+
 - Items on top resolve first
 - Plan responses in reverse order
 - Consider holding priority to add more responses
@@ -315,7 +329,7 @@ With multiple items on the stack:
 
 ## Testing and Examples
 
-See `stack-interaction-example.ts` for comprehensive examples including:
+See `tests/examples/ai-stack-interaction-examples.ts` for comprehensive examples including:
 
 1. Basic counterspell decisions
 2. When NOT to counter
@@ -327,8 +341,9 @@ See `stack-interaction-example.ts` for comprehensive examples including:
 8. Card advantage considerations
 
 Run examples:
+
 ```typescript
-import { runAllStackInteractionExamples } from '@/ai/stack-interaction-example';
+import { runAllStackInteractionExamples } from "../tests/examples/ai-stack-interaction-examples";
 
 runAllStackInteractionExamples();
 ```

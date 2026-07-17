@@ -25,13 +25,6 @@ export {
   type DetailedEvaluation,
 } from "./game-state-evaluator";
 
-// Examples
-export {
-  runAllExamples,
-  examples,
-  sampleStates,
-} from "./game-state-evaluator-example";
-
 // Combat Decision Making
 export {
   CombatDecisionTree,
