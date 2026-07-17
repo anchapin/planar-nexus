@@ -149,6 +149,18 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   window.matchMedia = (query) => ({ ...mediaQueryList, media: String(query) });
 }
 
+// ResizeObserver — jsdom does not implement it, but several Radix UI primitives
+// (Slider, Switch, Progress, ...) read it at module-eval/render time via
+// @radix-ui/react-use-size. Provide a no-op so components that measure size
+// render under jsdom without throwing.
+if (typeof global.ResizeObserver === "undefined") {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // ============================================================================
 // Test Data Seeding Utilities
 // ============================================================================

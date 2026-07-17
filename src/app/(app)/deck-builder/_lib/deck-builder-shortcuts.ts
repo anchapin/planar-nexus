@@ -4,6 +4,7 @@ export type DeckBuilderShortcutAction =
   | { type: "addCard"; card: ScryfallCard; max: boolean }
   | { type: "removeCard"; card: ScryfallCard; all: boolean }
   | { type: "newDeck" }
+  | { type: "drawSample" }
   | { type: "none" };
 
 export interface DeckBuilderShortcutContext {
@@ -32,6 +33,7 @@ export function isEditableTarget(target: EventTarget | null): boolean {
  *   Shift+-          Remove All Copies
  *   Enter            Confirm / add the focused card
  *   Ctrl/Cmd+N       New Deck
+ *   H                Draw another opening hand (Hand Test)
  *
  * On a US keyboard the unshifted "+/=" key reports "=". Shift+"=" reports "+",
  * and Shift+"-" reports "_". We therefore treat "=" as "add one" and "+" as
@@ -81,6 +83,12 @@ export function resolveDeckBuilderShortcut(
   if (key === "Enter") {
     if (!selectedCard) return { type: "none" };
     return { type: "addCard", card: selectedCard, max: false };
+  }
+
+  // H — draw another opening hand in the Hand Test goldfish simulator
+  // (issue #1439). No card selection required.
+  if (key === "h" || key === "H") {
+    return { type: "drawSample" };
   }
 
   return { type: "none" };
