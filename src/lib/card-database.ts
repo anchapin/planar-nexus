@@ -10,6 +10,9 @@ import { searchWorkerClient } from "./search/search-worker-client";
 import {
   classifyWriteError,
   getStorageEstimate,
+  predictQuotaHeadroom,
+  estimateCardWriteBytes,
+  QuotaExceededError,
 } from "./storage-quota";
 
 // Minimal card data for offline use (subset of Scryfall data)
@@ -174,9 +177,27 @@ export async function initializeCardDatabase(): Promise<void> {
 
 /**
  * Populate database with cards
+ *
+ * Issue #1424: runs a predictive quota pre-flight check *before* opening the
+ * readwrite transaction. When the projected write is predicted to exceed the
+ * origin quota (or push it into the critical band), a typed
+ * {@link QuotaExceededError} is thrown synchronously without ever opening the
+ * transaction — so the caller never observes a half-populated store.
  */
 async function populateDatabase(cards: MinimalCard[]): Promise<void> {
   if (!db) throw new Error("Database not initialized");
+
+  // Predictive pre-flight (issue #1424). When the Storage API is unavailable
+  // this degrades to ok:true and we proceed as before.
+  const headroom = await predictQuotaHeadroom(
+    estimateCardWriteBytes(cards.length),
+  );
+  if (!headroom.ok) {
+    throw new QuotaExceededError(
+      `Cannot populate card database: ${headroom.reason ?? "insufficient storage"}`,
+      STORE_NAME,
+    );
+  }
 
   const transaction = db.transaction([STORE_NAME], "readwrite");
   const store = transaction.objectStore(STORE_NAME);
@@ -474,7 +495,9 @@ export async function addCard(card: MinimalCard): Promise<void> {
 
     request.onsuccess = () => resolve();
     request.onerror = () =>
-      reject(classifyWriteError(request.error, "Failed to add card", STORE_NAME));
+      reject(
+        classifyWriteError(request.error, "Failed to add card", STORE_NAME),
+      );
 
     // Reinitialize search index after adding a card
     transaction.oncomplete = async () => {
@@ -503,7 +526,11 @@ export async function addCards(cards: MinimalCard[]): Promise<void> {
   return new Promise((resolve, reject) => {
     transaction.onerror = () =>
       reject(
-        classifyWriteError(transaction.error, "Failed to add cards", STORE_NAME),
+        classifyWriteError(
+          transaction.error,
+          "Failed to add cards",
+          STORE_NAME,
+        ),
       );
     transaction.oncomplete = async () => {
       // Reinitialize search index after adding cards
@@ -667,10 +694,33 @@ export async function importCardsFromJSON(
 
   if (!db) throw new Error("Database not initialized");
 
-  // Capacity awareness (#1085): probe the storage estimate before the bulk
-  // write so we (and the UI hook) can warn the user before writes start failing.
-  // Non-blocking — we still attempt the write; an actual quota failure is
-  // surfaced as a typed QuotaExceededError by the transaction handlers below.
+  // Predictive quota pre-flight (issue #1424). Before opening the bulk write
+  // transaction, predict whether the projected card payload will fit in the
+  // remaining origin quota. When ok:false, throw a typed QuotaExceededError
+  // synchronously so the UI can surface the failure *before* any rows are
+  // written — avoiding the partial-populate state the reactive-only path
+  // (#1085) could not prevent. When the Storage API is unavailable this
+  // degrades to ok:true and we fall through to the reactive error path below.
+  const headroom = await predictQuotaHeadroom(
+    estimateCardWriteBytes(cards.length),
+  );
+  if (!headroom.ok) {
+    throw new QuotaExceededError(
+      `Cannot import ${cards.length} cards: ${headroom.reason ?? "insufficient storage"}`,
+      STORE_NAME,
+    );
+  }
+  if (headroom.level === "warning") {
+    // Non-blocking advisory — the write is still likely to succeed, but the
+    // user is approaching the quota. Kept as a console warn so the UI layer
+    // (database-management page) can opt to surface a toast if desired.
+    console.warn(
+      `[card-database] Storage approaching quota before bulk import ` +
+        `(${Math.round(headroom.projectedRatio * 100)}% projected after write).`,
+    );
+  }
+  // Legacy non-blocking estimate probe (#1085) retained as a defence-in-depth
+  // log for environments where predictQuotaHeadroom degraded to unknown.
   const estimate = await getStorageEstimate();
   if (estimate.available && estimate.level === "critical") {
     console.warn(

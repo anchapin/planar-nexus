@@ -48,8 +48,10 @@ import {
   addCards,
   clearDatabase,
   getAllCards,
+  importCardsFromJSON,
   MinimalCard,
 } from "../card-database";
+import { QuotaExceededError } from "../storage-quota";
 
 import {
   testCards,
@@ -378,6 +380,85 @@ describe("Card Database", () => {
       await clearDatabase();
       const result = await searchCardsOffline("Sol Ring");
       expect(result).toEqual([]);
+    });
+  });
+
+  describe("Quota pre-flight (issue #1424)", () => {
+    // The default jest.setup.js navigator.storage.estimate mock returns a
+    // roomy 1MB/50MB estimate. We swap it per-test to simulate a near-full
+    // origin and assert importCardsFromJSON aborts *before* writing.
+    const originalStorage = (
+      global.navigator as unknown as { storage?: unknown }
+    ).storage;
+
+    function setStorageEstimate(usage: number, quota: number): void {
+      (global.navigator as unknown as { storage?: unknown }).storage = {
+        estimate: async () => ({ usage, quota }),
+      };
+    }
+
+    function buildCards(n: number): MinimalCard[] {
+      const cards: MinimalCard[] = [];
+      for (let i = 0; i < n; i++) {
+        cards.push({
+          id: `quota-card-${i}`,
+          name: `Quota Card ${i}`,
+          cmc: 1,
+          type_line: "Creature",
+          oracle_text: "x".repeat(64),
+          colors: ["R"],
+          color_identity: ["R"],
+          legalities: { commander: "legal", modern: "legal" },
+        });
+      }
+      return cards;
+    }
+
+    afterEach(() => {
+      (global.navigator as unknown as { storage?: unknown }).storage =
+        originalStorage;
+    });
+
+    it("aborts importCardsFromJSON with a typed QuotaExceededError when the projected write exceeds quota", async () => {
+      // 100B quota, 95B used, importing 100 cards → projected footprint is
+      // 100 * AVG_CARD_BYTES + safety margin, which vastly exceeds the 5B
+      // remaining. Must throw synchronously (before any row is written).
+      setStorageEstimate(95, 100);
+      const cards = buildCards(100);
+      const before = await getDatabaseStatus();
+
+      await expect(importCardsFromJSON(cards)).rejects.toBeInstanceOf(
+        QuotaExceededError,
+      );
+
+      // Nothing was written — the count is unchanged.
+      const after = await getDatabaseStatus();
+      expect(after.cardCount).toBe(before.cardCount);
+    });
+
+    it("proceeds with importCardsFromJSON when there is ample headroom", async () => {
+      // 50MB quota, ~0 used → plenty of room for 100 cards.
+      setStorageEstimate(0, 50 * 1024 * 1024);
+      await clearDatabase();
+      const cards = buildCards(10);
+      await expect(importCardsFromJSON(cards)).resolves.toBeUndefined();
+      const status = await getDatabaseStatus();
+      expect(status.cardCount).toBe(10);
+      // Restore fixtures for subsequent tests.
+      await clearDatabase();
+      await seedTestData();
+    });
+
+    it("still imports when navigator.storage.estimate is unavailable (graceful allow)", async () => {
+      (global.navigator as unknown as { storage?: unknown }).storage =
+        undefined;
+      await clearDatabase();
+      const cards = buildCards(3);
+      await expect(importCardsFromJSON(cards)).resolves.toBeUndefined();
+      const status = await getDatabaseStatus();
+      expect(status.cardCount).toBe(3);
+      await clearDatabase();
+      await seedTestData();
     });
   });
 });
