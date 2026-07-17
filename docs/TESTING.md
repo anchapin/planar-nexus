@@ -277,6 +277,50 @@ Run a single spec:
 npx playwright test deck-builder.spec.ts
 ```
 
+### Desktop E2E (Tauri) via the dev server — Option A
+
+Issue #1433 replaced the `.spec.ts.skip` filename workaround with a real,
+CI-runnable Tauri desktop E2E that **does not require a Tauri binary, webkit2gtk,
+or a virtual display**. The strategy:
+
+- The Tauri 2 webview loads the _same_ Next.js dev server (`localhost:9002`,
+  the `devUrl` in `src-tauri/tauri.conf.json`) that Playwright boots. The
+  deck-builder UI is identical in both contexts — what differs is the presence
+  of the Tauri IPC bridge.
+- `e2e/tauri-deck-builder.spec.ts` injects a minimal, **rejecting** IPC shim
+  (`window.__TAURI_INTERNALS__` + `window.__TAURI__`) via `page.addInitScript`
+  _before_ any app JS evaluates, so the desktop code branches
+  (`isTauriEnvironment()` in `src/lib/updater.ts`, `isTauri()` in
+  `src/lib/indexeddb-storage.ts`) are taken deterministically. Every existing
+  IPC call site already swallows errors and degrades to a no-op, so the app
+  stays fully usable under the shim.
+- The shim itself lives in `src/lib/tauri-mock.ts` and is mounted client-side
+  by `<TauriDevFallback/>` in `src/app/layout.tsx`. It is **double-gated**
+  (zero production surface): it activates only when
+  `NEXT_PUBLIC_TAURI_FALLBACK=1` **and** `NODE_ENV !== 'production'`. A
+  production build compiled without the flag contains dead code that
+  tree-shakes to nothing.
+- The CI `e2e` and nightly `flake-detector` jobs set
+  `NEXT_PUBLIC_TAURI_FALLBACK=1` so the dev server boots with the desktop
+  path engaged. The spec's own `addInitScript` is the deterministic
+  backstop, so the spec passes even if the flag is unset.
+
+Run the desktop spec locally:
+
+```bash
+# The spec self-installs the shim, so this passes without the flag:
+npx playwright test tauri-deck-builder.spec.ts --project=chromium
+
+# To also exercise the layout-mounted shim (full fidelity), boot the dev
+# server with the flag, matching CI:
+NEXT_PUBLIC_TAURI_FALLBACK=1 npx playwright test tauri-deck-builder.spec.ts --project=chromium
+```
+
+Why not Option B (`tauri build --debug --no-bundle` + `xvfb-run` + WebDriver)?
+It requires webkit2gtk system deps, a headless WebDriver binary, and root in
+the CI image — a far heavier, flakier surface for the same UI coverage. The
+dev-server path covers every desktop-aware branch without any of that.
+
 ---
 
 ## 8. Test Utilities (`@/test-utils`)
