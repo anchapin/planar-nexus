@@ -1,0 +1,48 @@
+name: Stub Inventory
+
+# Issue #1435: enforce that the `Active stubs` table in STUBS.md stays in
+# sync with the source tree. Catches three drift modes:
+#   1. A row references a file that no longer exists under src/.
+#   2. A file under src/ matches `*stub*` / `*placeholder*` and is not
+#      listed in the table.
+#   3. A source file (outside __tests__) calls PlaceholderComponent or
+#      StubDebugBanner without a matching Active stubs row.
+#
+# The script also warns when any row's `Verified` date is older than 30 days
+# so future audits do not silently go stale. See scripts/stubs-inventory.js
+# for the full contract.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  stubs-inventory:
+    name: Stub Inventory Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Run stubs inventory check
+        # No `npm ci` dependencies are required: scripts/stubs-inventory.js
+        # uses only Node.js built-ins (fs, path) so it can run before the
+        # dependency cache is populated. This keeps the gate fast and
+        # decoupled from the npm test stack.
+        run: node scripts/stubs-inventory.js

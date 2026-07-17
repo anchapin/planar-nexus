@@ -40,6 +40,7 @@
     "mutate:spell-casting": "stryker run --mutate src/lib/game-state/spell-casting.ts",
     "mutate:trigger-system": "stryker run --mutate src/lib/game-state/trigger-system.ts",
     "mutate:state-based-actions": "stryker run --mutate src/lib/game-state/state-based-actions.ts",
+    "stubs:inventory": "node scripts/stubs-inventory.js",
     "prepare": "husky"
   },
   "dependencies": {
