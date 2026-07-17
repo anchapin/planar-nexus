@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 
 interface FormatHealthGaugeProps {
   score: number;
@@ -8,21 +8,21 @@ interface FormatHealthGaugeProps {
 
 export default function FormatHealthGauge({ score }: FormatHealthGaugeProps) {
   const getScoreColor = (score: number) => {
-    if (score >= 70) return 'text-green-500';
-    if (score >= 40) return 'text-yellow-500';
-    return 'text-red-500';
+    if (score >= 70) return "text-green-500";
+    if (score >= 40) return "text-yellow-500";
+    return "text-red-500";
   };
 
   const getArcColor = (score: number) => {
-    if (score >= 70) return '#22c55e';
-    if (score >= 40) return '#eab308';
-    return '#ef4444';
+    if (score >= 70) return "#22c55e";
+    if (score >= 40) return "#eab308";
+    return "#ef4444";
   };
 
   const getHealthLabel = (score: number) => {
-    if (score >= 70) return 'Healthy';
-    if (score >= 40) return 'Moderate';
-    return 'Unhealthy';
+    if (score >= 70) return "Healthy";
+    if (score >= 40) return "Moderate";
+    return "Unhealthy";
   };
 
   const radius = 40;
@@ -35,11 +35,16 @@ export default function FormatHealthGauge({ score }: FormatHealthGaugeProps) {
   return (
     <div
       className="flex flex-col items-center"
-      role="img"
-      aria-label={`Format health gauge: ${score} out of 100, ${healthLabel.toLowerCase()}`}
+      role="progressbar"
+      aria-label="Format health score"
+      aria-valuenow={score}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuetext={`${healthLabel}, ${score} out of 100`}
     >
       <p className="sr-only">
-        Format health score is {score} out of 100, rated {healthLabel.toLowerCase()}.
+        Format health score: {score} out of 100, rated{" "}
+        {healthLabel.toLowerCase()}.
       </p>
       <div className="relative size-32" aria-hidden="true">
         <svg className="size-full -rotate-90" viewBox="0 0 100 100">
@@ -69,14 +74,14 @@ export default function FormatHealthGauge({ score }: FormatHealthGaugeProps) {
         </svg>
         {/* Score text in center */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={cn('text-3xl font-bold', getScoreColor(score))}>
+          <span className={cn("text-3xl font-bold", getScoreColor(score))}>
             {score}
           </span>
           <span className="text-xs text-muted-foreground">/ 100</span>
         </div>
       </div>
       <div className="mt-2 text-center">
-        <span className={cn('font-medium', getScoreColor(score))}>
+        <span className={cn("font-medium", getScoreColor(score))}>
           {healthLabel}
         </span>
         <p className="text-xs text-muted-foreground">Format Health Score</p>
