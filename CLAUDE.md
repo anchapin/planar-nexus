@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Planar Nexus is a digital Magic: The Gathering tabletop experience built with Next.js, featuring deck building, AI coaching, and multiplayer functionality. The app integrates with the Scryfall API for card data and uses Google's Gemini AI via Genkit for deck analysis and opponent generation.
+Planar Nexus is a digital Magic: The Gathering tabletop experience built with Next.js, featuring deck building, AI coaching, and multiplayer functionality. The app integrates with the Scryfall API for card data and uses a multi-provider AI layer (OpenAI, Anthropic, and Google via the Vercel AI SDK) for deck analysis and opponent generation.
 
 ## Development Commands
 
@@ -15,11 +15,8 @@ npm install
 # Development server (runs on port 9002 with Turbopack)
 npm run dev
 
-# AI development environment (Genkit dev UI)
-npm run genkit:dev
-
-# AI development with hot-reload (restarts on file changes)
-npm run genkit:watch
+# AI simulation suite (src/ai/__tests__/simulation/)
+npm run simulate
 
 # Build for production
 NODE_ENV=production npm run build
@@ -38,7 +35,7 @@ npm run typecheck
 
 ### Next.js App Router Structure
 
-The app uses Next.js 15 with the App Router pattern:
+The app uses Next.js 16 (with React 19) and the App Router pattern:
 - `/src/app/(app)/` - Protected application routes with a shared layout
   - `dashboard/` - Main dashboard with feature cards
   - `deck-builder/` - Card search and deck management interface
@@ -48,26 +45,28 @@ The app uses Next.js 15 with the App Router pattern:
 
 ### Server Actions
 
-Server actions in `/src/app/actions.ts` handle:
+`/src/app/actions.ts` is named "actions" but is **not** a Next.js server actions file — it exports client-side wrappers around the AI flows (no `"use server"` directive). It handles:
 - Scryfall API integration for card search and legality validation
 - AI deck reviews and opponent generation
-- Deck persistence (local storage)
+- Deck persistence (IndexedDB via Dexie; tests use `fake-indexeddb`)
 
-All server actions are marked with `"use server"` and can be called directly from client components.
+These wrappers are called directly from client components.
 
-### AI Integration (Genkit)
+### AI Integration (Multi-Provider)
 
-AI functionality is implemented using Google's Genkit framework:
-- Configuration: `/src/ai/genkit.ts` - Initializes Genkit with Google AI plugin
-- Flows: `/src/ai/flows/` - AI operations
+AI functionality is multi-provider via the Vercel AI SDK (`@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/react`):
+- Unified proxy route: `/src/app/api/ai-proxy/` — all provider calls go through this server-side route so API keys are never exposed to the client
+- Provider factory: `/src/ai/providers/` — selects the active provider/model from env config (defaults per provider in `factory.ts`)
+- Flows: `/src/ai/flows/` — AI operations
   - `ai-deck-coach-review.ts` - Analyzes decklists, generates strategic suggestions
   - `ai-opponent-deck-generation.ts` - Creates AI opponent decks
 
 AI flows use:
-- Model: `gemini-1.5-flash-latest`
-- Zod schemas for input validation and structured output (import from `genkit`, not `zod`)
+- Zod schemas for input validation and structured output
 - Retry logic for handling AI errors
-- Server actions (`'use server'`) for client-side invocation
+- Client-side wrappers in `actions.ts` for invocation
+
+Provider keys are optional — deck coaching has a heuristic fallback that needs no API key. Configure providers in `.env` (`OPENAI_* / ANTHROPIC_* / GOOGLE_* / ZAI_*`); see `docs/API.md` for details.
 
 ### UI Components
 
@@ -95,14 +94,14 @@ When adding card-related functionality, ensure types align with Scryfall's API r
 
 Magic: The Gathering rules are defined in `/src/lib/game-rules.ts`. This includes format definitions, deck construction rules, and legality checks. When modifying game behavior, update this file accordingly.
 
-Note: The `game-rules.ts` file imports a `GameState` type from a non-existent `./game-state` file. This should be resolved if implementing game state management.
+Note: The MTG rules engine is a large, live module at `/src/lib/game-state/` (layer-system, trigger-system, state-based-actions, spell-casting, combat, mana, …). It is the correctness-critical core and the only place mutation testing runs. `game-rules.ts` imports its `GameState` type from there.
 
 ## AI Development
 
-The Genkit dev UI provides tools for testing AI flows:
-- Run `npm run genkit:dev` to start the dev server
-- Access the UI to test prompts and flows interactively
-- Use this when modifying AI prompts or flow logic
+AI flows live in `/src/ai/flows/` (deck-coach review, opponent generation, draft assistant, and others), backed by the multi-provider Vercel AI SDK and the unified proxy at `/src/app/api/ai-proxy/`:
+- Run `npm run simulate` to execute the AI simulation suite (`src/ai/__tests__/simulation/`)
+- Each flow has co-located tests under `/src/ai/flows/__tests__/`
+- Provider keys are optional — deck coaching falls back to a heuristic that needs no API key
 
 ## Deployment
 
