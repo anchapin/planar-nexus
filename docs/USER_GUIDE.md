@@ -1,7 +1,7 @@
 # Planar Nexus User Guide
 
-**Version**: 1.0.0  
-**Last Updated**: March 12, 2026
+**Version**: v1.7+ (pre-v1.8)  
+**Last Updated**: July 17, 2026
 
 ---
 
@@ -15,6 +15,10 @@
 6. [Import/Export](#6-importexport)
 7. [Settings](#7-settings)
 8. [Keyboard Shortcuts](#8-keyboard-shortcuts)
+9. [Draft & Sealed (v1.4)](#9-draft--sealed-v14)
+10. [Meta & Strategy AI (v1.5)](#10-meta--strategy-ai-v15)
+11. [Conversational AI Coach (v1.7)](#11-conversational-ai-coach-v17)
+12. [Standard Rotation & Ban List (v1.6)](#12-standard-rotation--ban-list-v16)
 
 ---
 
@@ -719,6 +723,289 @@ Suggestions:
 | `T`      | Target Selection     |
 | `U`      | Untap Permanent      |
 | `Ctrl+Z` | Undo Last Action     |
+
+---
+
+## 9. Draft & Sealed (v1.4)
+
+> Shipped 2026-03-19 (Phases 14-17). Limited-format play: build a deck from a
+> generated pool instead of your collection. Driven by the limited engine in
+> [`src/lib/limited/`](../src/lib/limited) (`draft-generator.ts`,
+> `sealed-generator.ts`, `pool-storage.ts`, `set-service.ts`,
+> `limited-validator.ts`).
+
+### 9.1 Draft
+
+A draft sends three packs around the table; you pick one card per pass and
+build a 40+ card deck from what you keep.
+
+1. Navigate to **Draft** in the dashboard (route
+   [`/draft`](../src/app/(app)/draft/page.tsx)).
+2. **Choose a set** to draft from (served by `set-service.ts`, which reads the
+   card data already imported via **Settings → Card Database**).
+3. The draft generates three packs of 15 face-down cards via
+   `generateDraftPacks` / `createDraftSession` in
+   [`src/lib/limited/draft-generator.ts`](../src/lib/limited/draft-generator.ts).
+4. **Pick a card** each time a pack is in front of you. The pack then rotates
+   to the next seat (AI bots fill the other seats) via `passPack`.
+
+#### Pick Timer
+
+Each pick has a countdown. The timer ring transitions through three colour
+states so you can feel the pressure without watching the clock:
+
+| Time remaining | Ring colour | Behaviour                                |
+| -------------- | ----------- | ---------------------------------------- |
+| > 50%          | Green       | Normal — take your time                  |
+| 20% – 50%      | Yellow      | Speed up; decide soon                    |
+| < 20%          | Red         | Final warning; auto-pick fires at zero   |
+
+When the timer hits zero the engine **auto-picks** the highest-rated card still
+in the pack so the draft never stalls.
+
+5. After all three packs are empty, the session completes (see
+   [`/draft/complete`](../src/app/(app)/draft/complete/page.tsx)) and your pool
+   is persisted to IndexedDB (`pool-storage.ts`) for deck building.
+
+### 9.2 Sealed
+
+Sealed gives you one fixed pool to build from — no passing.
+
+1. Navigate to **Sealed** (route
+   [`/sealed`](../src/app/(app)/sealed/page.tsx)).
+2. Pick a set; `sealed-generator.ts` produces a pool (typically 6 packs worth).
+3. The pool gets a unique session ID and **persists across page refresh**, so
+   you can leave and come back to the same sealed pool.
+
+### 9.3 Building the Limited Deck
+
+Open **Limited Deck Builder** ([`/limited-deck-builder`](../src/app/(app)/limited-deck-builder/page.tsx))
+to assemble your pool into a legal deck:
+
+- Minimum 40 cards (enforced by `validateLimitedDeck` in
+  [`src/lib/limited/limited-validator.ts`](../src/lib/limited/limited-validator.ts)).
+- You may add any number of basic lands (supplied separately from your pool).
+- Cards can only come from your pool — the validator rejects cards you didn't
+  open via `canAddCardToDeck` / `isPoolCard`.
+
+### 9.4 Draft Assistant
+
+Stuck on a pick? **Draft Assistant** ([`/draft-assistant`](../src/app/(app)/draft-assistant/page.tsx))
+reads the current pack and suggests the strongest pick based on synergy with
+the cards you've already taken. It runs through the same AI provider stack as
+the coach (see [Section 3](#3-ai-coach)); no provider key is required for the
+heuristic baseline.
+
+### 9.5 Set Browser
+
+**Set Browser** ([`/set-browser`](../src/app/(app)/set-browser/page.tsx)) lists
+the sets available for drafting and sealed, showing card counts and the format
+each set feeds. Use it to decide which set to draft before starting a session.
+
+---
+
+## 10. Meta & Strategy AI (v1.5)
+
+> Shipped 2026-03-19 (Phases 18-20). Quantitative analysis of *constructed*
+> decks: what archetype a list is, how it matches up, and how to sideboard.
+
+These four routes share the same AI provider stack as the coach (see
+[Section 3](#3-ai-coach) and [docs/API.md](./API.md)). The heuristic baseline
+runs without an API key; configuring a provider sharpens the recommendations.
+
+### 10.1 Archetype Detection
+
+Every deck you open is auto-classified by
+[`detectArchetype`](../src/ai/archetype-detector.ts) against the signature
+library in [`src/ai/archetype-signatures.ts`](../src/ai/archetype-signatures.ts).
+The detected archetype powers the badge shown across the meta views and feeds
+the recommendations below.
+
+- **Primary + secondary archetype** with a confidence score (70%+ is reliable).
+- **Axis classification** (`classifyArchetypeAxis`) positions the deck on the
+  aggro↔control and proactive↔reactive axes.
+- **Deck stats** (`getDeckStats`) — curve, role mix, colour distribution — are
+  surfaced wherever an archetype badge appears.
+
+If the detector mislabels a brew, refine the list and re-open the deck; the
+classification recomputes from the current cards.
+
+### 10.2 Matchup Guides
+
+**Matchup** ([`/matchup`](../src/app/(app)/matchup/page.tsx)) takes two decks
+and produces a head-to-head breakdown:
+
+- **Expected win rate** for the chosen decks and format.
+- **Key cards** on each side — the threats the opponent must answer and vice
+  versa.
+- **Turning points** — the decisions and permanents that most swing the game.
+
+Use it before a league match or to sanity-check a sideboard plan against the
+field you expect to face.
+
+### 10.3 Meta Overview
+
+**Meta** ([`/meta`](../src/app/(app)/meta/page.tsx)) shows the detected
+archetypes across your decks plus a health score for each, so you can see at a
+glance which archetypes are over- or under-represented in your testing pool.
+
+- **Health score** summarises curve, land count, and interaction density into a
+  single 0–100 rating; decks below ~60 usually need work.
+- **Trends** track how a deck's score moves as you edit it, so you can tell
+  whether a change helped or hurt.
+
+### 10.4 Sideboard Plans
+
+**Sideboards** ([`/sideboards`](../src/app/(app)/sideboards/page.tsx))
+generates a 15-card sideboard plan for a deck against a target field, using the
+anti-meta engine in
+[`src/lib/anti-meta.ts`](../src/lib/anti-meta.ts)
+(`getCounterRecommendations`, `getSideboardRecommendations`,
+`getManaBaseRecommendations`). Each suggestion explains which opposing threat
+it answers, so you can cut cards you don't own and still keep the plan coherent.
+
+### 10.5 Strategy Recommendations
+
+**Strategy** ([`/strategy`](../src/app/(app)/strategy/page.tsx)) ties the
+pieces together: mulligan guidance, pacing notes, and anti-meta tech cards to
+consider for your local field. Visual styling follows the tokens in
+[`docs/design-tokens.md`](./design-tokens.md).
+
+### 10.6 Typical Workflow
+
+A common session moves across the four views in order:
+
+1. Open a deck on **Meta** to read its archetype and health score.
+2. Switch to **Matchup** against your expected opponent to find the losing
+   lines.
+3. Take those lines to **Sideboards** to generate the 15-card plan.
+4. Finish on **Strategy** for mulligan and pacing notes tuned to the matchup.
+
+---
+
+## 11. Conversational AI Coach (v1.7)
+
+> Shipped 2026-03-20 (Phases 27-30). A streaming chat coach you can ask
+> follow-up questions of, mounted next to the one-shot report on the deck-coach
+> page.
+
+### 11.1 Opening the Chat
+
+1. Open a deck in **AI Coach** as usual (see [Section 3](#3-ai-coach)).
+2. The page now shows a **chat panel** beside the structured report
+   ([`DeckCoachChatPanel`](../src/components/ai-coach/chat-panel.tsx), mounted
+   on [`/deck-coach`](../src/app/(app)/deck-coach/page.tsx)).
+3. Type a question and press **Enter** to send.
+
+### 11.2 What You Can Ask
+
+The coach classifies each turn by intent (implemented in
+`src/ai/coach-intent.ts`) and answers in the context of the open deck. Typical
+asks:
+
+- "What's my weakest card?"
+- "How do I beat Mono-Red?"
+- "Should I cut the third copy of X?"
+- "Build me a sideboard plan vs. control."
+
+### 11.3 Streaming Responses
+
+Answers stream token-by-token over Server-Sent Events from
+`POST /api/chat/coach` (see [docs/API.md](./API.md)), so text appears as it is
+generated. You can **Cancel** an in-flight answer mid-stream; the server stops
+generating within one chunk.
+
+### 11.4 Reliability Safeguards
+
+- **Provider failover**: if the primary AI provider errors before any token is
+  delivered, the route transparently retries the next provider in the failover
+  chain.
+- **Prompt-injection guardrails**: every user message is sanitized, and the
+  system prompt is always rebuilt server-side — you cannot override it from the
+  chat box.
+- **Context pruning**: long sessions are pruned against a token budget so the
+  conversation never exceeds the model's context window; your most recent turn
+  is always retained intact.
+
+### 11.5 Persistent Conversation History
+
+Conversations are saved per-deck in IndexedDB (store `coach-conversations`,
+managed by [`src/lib/coach-conversation-storage.ts`](../src/lib/coach-conversation-storage.ts))
+so they survive page refresh and app restart:
+
+- The most recent conversation for a deck reopens automatically.
+- You can **export** conversations for a deck (or all decks) to JSON and
+  **import** them back, useful for moving a coaching history between machines.
+- Old conversations are pruned automatically (default cap: 50 per deck).
+
+### 11.6 No-API-Key Mode
+
+If no AI provider key is configured, the heuristic coach from
+[Section 3](#3-ai-coach) still produces the structured report; the
+conversational panel waits until a key is added in **Settings → AI**.
+
+---
+
+## 12. Standard Rotation & Ban List (v1.6)
+
+> Shipped 2026-03-19 (QA/QC milestone, Phases 21-26). The in-app "Standard"
+> format now tracks set rotation, not just the banned list.
+
+### 12.1 How Rotation Works
+
+Standard legality is computed from a canonical rotation schedule in
+[`src/lib/game-rules.ts`](../src/lib/game-rules.ts):
+
+- `STANDARD_ROTATION_SCHEDULE` — the list of sets, their release dates, and the
+  dates they rotate out of Standard.
+- `getStandardLegalSets(referenceDate?)` — returns the set codes legal in
+  Standard as of a given date (defaults to today).
+
+When you build a Standard deck, the deck builder flags any card whose printing
+has rotated out, even if the card name itself isn't on a ban list.
+
+### 12.2 Reading the Schedule
+
+The full, human-readable schedule — including the next rotation date and the
+sets leaving — lives in [`docs/standard-rotation.md`](./standard-rotation.md).
+Check there before a big event to confirm your list is still legal. The doc is
+generated from the same `STANDARD_ROTATION_SCHEDULE` constant the validator
+reads, so it always matches what the app enforces.
+
+### 12.3 Spot-Checking a Card
+
+When you add a card to a Standard deck, the status panel reports one of three
+outcomes:
+
+| Marker | Meaning                                                              |
+| ------ | -------------------------------------------------------------------- |
+| ✓ Legal | Card's most recent Standard-legal printing is from a current set     |
+| ⚠ Rotated | Card's sets have all rotated out — replace it with a legal equivalent |
+| ✗ Banned | Card is on the format ban list regardless of set                    |
+
+To find the exact set that aged a card out, open the card detail view; the
+**Format Legality** section lists each printing and whether that set is still
+in Standard as of today (computed via `getStandardLegalSets`).
+
+### 12.4 Ban List
+
+Banned cards (independent of rotation) are still enforced by the format
+validator used in [Section 2.3](#23-deck-validation). A card that is legal by
+rotation but banned in the format will show a **✗ Illegal** marker with the
+reason in the deck status panel. The ban list is maintained separately from the
+rotation schedule, so a card can return to legality on a future un-ban even if
+its original set has rotated.
+
+### 12.5 Worked Example
+
+Suppose Standard rotates on the first Friday of September, removing set `DMU`:
+
+1. Before rotation, a deck running four `DMU` cards shows all **✓ Legal**.
+2. On rotation day, the same deck suddenly shows four **⚠ Rotated** markers
+   without you touching it — `getStandardLegalSets(now)` now excludes `DMU`.
+3. Replace each rotated card (the detail view suggests Standard-legal
+   equivalents), and the markers clear. Any card that is *also* banned stays
+   **✗ Banned** even after you swap the printing.
 
 ---
 
