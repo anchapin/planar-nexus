@@ -7,7 +7,7 @@
  * Phase 15: Draft Core
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Package, Layers, Trash2 } from "lucide-react";
+import { Package, Layers, Trash2, CheckCircle2 } from "lucide-react";
 import type { PoolCard } from "@/lib/limited/types";
 
 // ============================================================================
@@ -95,6 +95,32 @@ export function DraftPoolView({
     return { uniqueCards, totalCards, progress, isDeckReady, colorCounts };
   }, [pool, groupedPool]);
 
+  // ARIA live region: announce deck-readiness transitions only (not every
+  // render). WCAG 4.1.3 (Status Messages). The ref pair tracks the previous
+  // readiness/total so the announcement fires on change, and the initial
+  // mount seeds the refs without announcing.
+  const [announcement, setAnnouncement] = useState("");
+  const prevReadyRef = useRef<boolean | null>(null);
+  const prevTotalRef = useRef<number>(stats.totalCards);
+  useEffect(() => {
+    if (prevReadyRef.current === null) {
+      prevReadyRef.current = stats.isDeckReady;
+      prevTotalRef.current = stats.totalCards;
+      return;
+    }
+    const readinessChanged = stats.isDeckReady !== prevReadyRef.current;
+    const totalChanged = stats.totalCards !== prevTotalRef.current;
+    prevReadyRef.current = stats.isDeckReady;
+    prevTotalRef.current = stats.totalCards;
+    if (!readinessChanged && !totalChanged) return;
+
+    setAnnouncement(
+      stats.isDeckReady
+        ? `Draft deck ready — ${stats.totalCards} of ${MINIMUM_DECK_SIZE} cards`
+        : `Still need ${MINIMUM_DECK_SIZE - stats.totalCards} cards — ${stats.totalCards} of ${MINIMUM_DECK_SIZE} cards`,
+    );
+  }, [stats.isDeckReady, stats.totalCards]);
+
   // Navigate to deck builder
   const handleBuildDeck = () => {
     if (sessionId) {
@@ -104,6 +130,8 @@ export function DraftPoolView({
 
   return (
     <Card
+      role="region"
+      aria-label="Draft card pool"
       className={cn(
         "flex flex-col h-full border-l-4 border-l-primary",
         className,
@@ -113,7 +141,7 @@ export function DraftPoolView({
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Package className="h-5 w-5" />
+            <Package className="h-5 w-5" aria-hidden="true" />
             Draft Pool
           </CardTitle>
           <Badge variant="secondary">{stats.totalCards} cards</Badge>
@@ -123,16 +151,39 @@ export function DraftPoolView({
         <div className="mt-2 space-y-1">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Progress</span>
-            <span
-              className={cn(
-                "font-medium",
-                stats.isDeckReady && "text-green-500",
+            <div className="flex items-center gap-2">
+              {/* Count text. Color reinforces ready state but is NOT the only
+                  signal — the "Ready to build" badge (text + icon) and the
+                  aria-live region below also convey it (WCAG 1.4.1). */}
+              <span
+                className={cn(
+                  "font-medium",
+                  stats.isDeckReady && "text-green-500",
+                )}
+              >
+                {stats.totalCards} / {MINIMUM_DECK_SIZE}
+              </span>
+              {stats.isDeckReady && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 text-green-600 border-green-600"
+                >
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  Ready to build
+                </Badge>
               )}
-            >
-              {stats.totalCards} / {MINIMUM_DECK_SIZE}
-            </span>
+            </div>
           </div>
-          <Progress value={stats.progress} className="h-2" />
+          <Progress
+            value={stats.progress}
+            className="h-2"
+            aria-label="Deck completion"
+            aria-valuetext={`${stats.totalCards} of ${MINIMUM_DECK_SIZE} cards${
+              stats.isDeckReady
+                ? ""
+                : `, ${MINIMUM_DECK_SIZE - stats.totalCards} to go`
+            }`}
+          />
         </div>
       </CardHeader>
 
@@ -142,7 +193,10 @@ export function DraftPoolView({
           {groupedPool.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="space-y-1">
+            <ul
+              className="space-y-1 list-none p-0 m-0"
+              aria-label={`Draft pool: ${stats.totalCards} cards`}
+            >
               {groupedPool.map(([name, cards]) => (
                 <PoolCardRow
                   key={name}
@@ -153,7 +207,7 @@ export function DraftPoolView({
                   }
                 />
               ))}
-            </div>
+            </ul>
           )}
 
           {/* Show indicator if truncated */}
@@ -172,7 +226,7 @@ export function DraftPoolView({
           disabled={!sessionId || !stats.isDeckReady}
           className="w-full"
         >
-          <Layers className="h-4 w-4 mr-2" />
+          <Layers className="h-4 w-4 mr-2" aria-hidden="true" />
           Build Deck
         </Button>
         {!stats.isDeckReady && sessionId && (
@@ -180,6 +234,18 @@ export function DraftPoolView({
             Pick {MINIMUM_DECK_SIZE - stats.totalCards} more cards
           </p>
         )}
+      </div>
+
+      {/* Visually-hidden polite live region for deck-readiness transitions.
+          Announces only when readiness or total card count changes
+          (WCAG 4.1.3 Status Messages). */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {announcement}
       </div>
     </Card>
   );
@@ -200,7 +266,7 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
   const imageUrl = card.image_uris?.small;
 
   return (
-    <div className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group">
+    <li className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group">
       {/* Card Thumbnail */}
       <div className="w-8 h-11 rounded overflow-hidden bg-muted shrink-0">
         {imageUrl ? (
@@ -229,6 +295,7 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
         <Badge
           variant="secondary"
           className="h-5 w-5 p-0 flex items-center justify-center"
+          aria-label={`${quantity} copies`}
         >
           {quantity}
         </Badge>
@@ -239,14 +306,14 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity focus-visible:opacity-100"
           onClick={onRemove}
-          aria-label="Remove card"
+          aria-label={`Remove ${card.name} from pool`}
         >
-          <Trash2 className="h-3 w-3" />
+          <Trash2 className="h-3 w-3" aria-hidden="true" />
         </Button>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -257,7 +324,10 @@ function PoolCardRow({ card, quantity, onRemove }: PoolCardRowProps) {
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center">
-      <Package className="h-12 w-12 text-muted-foreground/50 mb-3" />
+      <Package
+        className="h-12 w-12 text-muted-foreground/50 mb-3"
+        aria-hidden="true"
+      />
       <p className="text-sm text-muted-foreground">
         Pick cards to build your pool
       </p>
