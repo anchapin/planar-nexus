@@ -296,19 +296,27 @@ export function HandDisplay({
   // Don't render anything if no cards
   if (cards.length === 0) {
     return (
-      <div className={`flex items-center justify-center ${className}`}>
+      <section
+        role="region"
+        aria-label={isCurrentPlayer ? "Your hand" : "Opponent hand"}
+        className={`flex items-center justify-center ${className}`}
+      >
         <div className="text-center text-muted-foreground">
           <Hand className="h-8 w-8 mx-auto mb-2 opacity-30" />
           <p className="text-sm">Empty hand</p>
         </div>
-      </div>
+      </section>
     );
   }
 
   const selectedCount = internalSelection.size;
 
   return (
-    <div className={`flex flex-col gap-2 ${className}`}>
+    <section
+      role="region"
+      aria-label={isCurrentPlayer ? "Your hand" : "Opponent hand"}
+      className={`flex flex-col gap-2 ${className}`}
+    >
       {/* Header with controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -333,6 +341,7 @@ export function HandDisplay({
                     variant="ghost"
                     size="sm"
                     className="h-11 w-11 p-0 md:h-7 md:w-7"
+                    aria-label={`Sort hand, currently by ${sortOption}`}
                     onClick={() => {
                       const options: HandSortOption[] = [
                         "name",
@@ -362,6 +371,11 @@ export function HandDisplay({
                     variant="ghost"
                     size="sm"
                     className="h-11 w-11 p-0 md:h-7 md:w-7"
+                    aria-label={
+                      displayMode === "overlapping"
+                        ? "Switch to spread layout"
+                        : "Switch to overlapping layout"
+                    }
                     onClick={() =>
                       setDisplayMode(
                         displayMode === "overlapping"
@@ -391,6 +405,7 @@ export function HandDisplay({
                       variant="ghost"
                       size="sm"
                       className="h-11 w-11 p-0 md:h-7 md:w-7"
+                      aria-label={`Clear ${selectedCount} selected card${selectedCount === 1 ? "" : "s"}`}
                       onClick={handleClearSelection}
                     >
                       <X className="h-3.5 w-3.5" />
@@ -433,18 +448,20 @@ export function HandDisplay({
             } else {
               // Show card backs for opponents
               return (
-                <div
+                <button
                   key={card.id}
+                  type="button"
+                  aria-label="Opponent card (face down)"
                   onClick={() => onCardClick?.(card.id)}
-                  className="transition-transform hover:scale-105 cursor-pointer"
+                  className="transition-transform hover:scale-105 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   <CardBack />
-                </div>
+                </button>
               );
             }
           })}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
