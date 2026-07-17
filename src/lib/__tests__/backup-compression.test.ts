@@ -6,10 +6,13 @@
  * - Issue #1084: compressed backups embed a SHA-256 integrity checksum;
  *   restore verifies it and refuses corrupted backups. Round-trip and
  *   corruption-detection tests prove lossless restore and tamper rejection.
+ * - Issue #1423: the compress/decompress entry points are now `async` (they
+ *   drive the native `CompressionStream` / `DecompressionStream` APIs); the
+ *   integrity contract (the `pn1:sha256=<hex>` FCOMMENT marker) is preserved.
  */
 
 import { describe, it, expect, jest } from "@jest/globals";
-import { gzip } from "pako";
+import { gzipCompress } from "../compression/native-gzip";
 import {
   compressBackup,
   decompressBackup,
@@ -91,9 +94,9 @@ function tamperChecksum(bytes: Uint8Array): Uint8Array {
 
 describe("backup-compression", () => {
   describe("isGzipBackup", () => {
-    it("detects the gzip magic header", () => {
+    it("detects the gzip magic header", async () => {
       const backup = makeBackup();
-      const compressed = compressBackup(backup);
+      const compressed = await compressBackup(backup);
       expect(isGzipBackup(compressed)).toBe(true);
     });
 
@@ -109,15 +112,15 @@ describe("backup-compression", () => {
   });
 
   describe("compressBackup", () => {
-    it("produces a gzip stream (magic 0x1f 0x8b)", () => {
-      const compressed = compressBackup(makeBackup());
+    it("produces a gzip stream (magic 0x1f 0x8b)", async () => {
+      const compressed = await compressBackup(makeBackup());
       expect(compressed[0]).toBe(0x1f);
       expect(compressed[1]).toBe(0x8b);
     });
 
-    it("produces bytes smaller than the raw pretty-printed JSON", () => {
+    it("produces bytes smaller than the raw pretty-printed JSON", async () => {
       const backup = makeBackup();
-      const compressed = compressBackup(backup);
+      const compressed = await compressBackup(backup);
       const rawPretty = new TextEncoder().encode(
         JSON.stringify(backup, null, 2),
       );
@@ -133,55 +136,55 @@ describe("backup-compression", () => {
   });
 
   describe("decompressBackup", () => {
-    it("round-trips a compressed backup with identical data", () => {
+    it("round-trips a compressed backup with identical data", async () => {
       const original = makeBackup();
-      const restored = decompressBackup(compressBackup(original));
+      const restored = await decompressBackup(await compressBackup(original));
       expect(restored).toEqual(original);
     });
 
-    it("reads legacy uncompressed JSON (backward compatibility)", () => {
+    it("reads legacy uncompressed JSON (backward compatibility)", async () => {
       const original = makeBackup();
       const legacyBytes = new TextEncoder().encode(
         JSON.stringify(original, null, 2),
       );
-      const restored = decompressBackup(legacyBytes);
+      const restored = await decompressBackup(legacyBytes);
       expect(restored).toEqual(original);
     });
 
-    it("reads compact (non-pretty) legacy JSON too", () => {
+    it("reads compact (non-pretty) legacy JSON too", async () => {
       const original = makeBackup();
       const legacyBytes = new TextEncoder().encode(JSON.stringify(original));
-      expect(decompressBackup(legacyBytes)).toEqual(original);
+      expect(await decompressBackup(legacyBytes)).toEqual(original);
     });
 
-    it("accepts an ArrayBuffer as well as a Uint8Array", () => {
+    it("accepts an ArrayBuffer as well as a Uint8Array", async () => {
       const original = makeBackup();
-      const compressed = compressBackup(original);
+      const compressed = await compressBackup(original);
       const buffer = compressed.buffer.slice(
         compressed.byteOffset,
         compressed.byteOffset + compressed.byteLength,
       );
-      expect(decompressBackup(buffer as ArrayBuffer)).toEqual(original);
+      expect(await decompressBackup(buffer as ArrayBuffer)).toEqual(original);
     });
 
-    it("throws on invalid (non-JSON) legacy input", () => {
+    it("throws on invalid (non-JSON) legacy input", async () => {
       const bytes = new TextEncoder().encode("not valid json at all");
-      expect(() => decompressBackup(bytes)).toThrow();
+      await expect(decompressBackup(bytes)).rejects.toThrow();
     });
   });
 
   describe("round-trip integrity", () => {
-    it("preserves deck array contents through compress -> decompress", () => {
+    it("preserves deck array contents through compress -> decompress", async () => {
       const original = makeBackup();
-      const restored = decompressBackup(compressBackup(original));
+      const restored = await decompressBackup(await compressBackup(original));
       expect(restored.decks).toHaveLength(original.decks.length);
       expect(restored.decks[3].id).toBe(original.decks[3].id);
       expect(restored.decks[10]).toEqual(original.decks[10]);
     });
 
-    it("preserves checksum, version, and preferences", () => {
+    it("preserves checksum, version, and preferences", async () => {
       const original = makeBackup();
-      const restored = decompressBackup(compressBackup(original));
+      const restored = await decompressBackup(await compressBackup(original));
       expect(restored.checksum).toBe(original.checksum);
       expect(restored.version).toBe(original.version);
       expect(restored.preferences).toEqual(original.preferences);
@@ -219,8 +222,8 @@ describe("backup-compression", () => {
   });
 
   describe("integrity checksum presence", () => {
-    it("embeds a pn1:sha256 checksum in new compressed backups", () => {
-      const compressed = compressBackup(makeBackup());
+    it("embeds a pn1:sha256 checksum in new compressed backups", async () => {
+      const compressed = await compressBackup(makeBackup());
       expect(hasIntegrityChecksum(compressed)).toBe(true);
       // The marker should also be readable from the raw comment bytes.
       const asLatin1 = Array.from(compressed)
@@ -229,8 +232,10 @@ describe("backup-compression", () => {
       expect(asLatin1).toContain(BACKUP_CHECKSUM_PREFIX);
     });
 
-    it("reports no checksum for old compressed backups (pre-#1084)", () => {
-      const oldCompressed = gzip(JSON.stringify(makeBackup()));
+    it("reports no checksum for old compressed backups (pre-#1084)", async () => {
+      // Pre-#1084 backups are bare gzip streams with no FCOMMENT field.
+      // `gzipCompress` (native CompressionStream) produces exactly that shape.
+      const oldCompressed = await gzipCompress(JSON.stringify(makeBackup()));
       expect(hasIntegrityChecksum(oldCompressed)).toBe(false);
     });
 
@@ -239,9 +244,9 @@ describe("backup-compression", () => {
       expect(hasIntegrityChecksum(legacy)).toBe(false);
     });
 
-    it("computes the checksum over the decompressed JSON payload", () => {
+    it("computes the checksum over the decompressed JSON payload", async () => {
       const backup = makeBackup();
-      const compressed = compressBackup(backup);
+      const compressed = await compressBackup(backup);
       const expected = sha256Hex(utf8(JSON.stringify(backup)));
       const comment = Array.from(compressed)
         .map((b) => String.fromCharCode(b))
@@ -251,29 +256,29 @@ describe("backup-compression", () => {
   });
 
   describe("round-trip restore (deep equality)", () => {
-    it("compress -> restore === original for nested structures", () => {
+    it("compress -> restore === original for nested structures", async () => {
       const original = makeBackup();
-      const restored = decompressBackup(compressBackup(original));
+      const restored = await decompressBackup(await compressBackup(original));
       expect(restored).toEqual(original); // deep equality
     });
 
-    it("preserves unicode strings losslessly", () => {
+    it("preserves unicode strings losslessly", async () => {
       const original = makeBackup();
       original.decks[0].name = "⚡ Lantern 日本語 café — Sørling";
-      original.decks[0].metadata = { glyph: "Æ\nΩ\t\"" };
-      const restored = decompressBackup(compressBackup(original));
+      original.decks[0].metadata = { glyph: 'Æ\nΩ\t"' };
+      const restored = await decompressBackup(await compressBackup(original));
       expect(restored).toEqual(original);
       expect(restored.decks[0].name).toBe("⚡ Lantern 日本語 café — Sørling");
     });
 
-    it("preserves large arrays element-for-element", () => {
+    it("preserves large arrays element-for-element", async () => {
       const original = makeBackup();
       const big = Array.from({ length: 5000 }, (_, i) => ({
         id: `bulk-${i}`,
         value: i * 2,
       }));
       original.decks[0].metadata = { bulk: big };
-      const restored = decompressBackup(compressBackup(original));
+      const restored = await decompressBackup(await compressBackup(original));
       expect(restored).toEqual(original);
       const bulk = restored.decks[0].metadata.bulk as Array<{
         id: string;
@@ -286,50 +291,49 @@ describe("backup-compression", () => {
       });
     });
 
-    it("works generically via compressData/decompressData for any payload", () => {
+    it("works generically via compressData/decompressData for any payload", async () => {
       const payload = {
         arbitrary: true,
         nested: { a: [1, 2, { b: "x" }], unicode: "🚀" },
         n: 42,
       };
-      const restored = decompressData(compressData(payload));
+      const restored = await decompressData(await compressData(payload));
       expect(restored).toEqual(payload);
     });
   });
 
   describe("corruption detection", () => {
-    it("rejects a backup whose stored checksum does not match the payload", () => {
-      const compressed = compressBackup(makeBackup());
+    it("rejects a backup whose stored checksum does not match the payload", async () => {
+      const compressed = await compressBackup(makeBackup());
       const tampered = tamperChecksum(compressed);
       // gzip is still valid here, so decompression succeeds; the integrity
       // check itself must catch the mismatch.
-      expect(() => decompressBackup(tampered)).toThrow(BackupIntegrityError);
-      expect(() => decompressBackup(tampered)).toThrow(/integrity/i);
+      await expect(decompressBackup(tampered)).rejects.toThrow(
+        BackupIntegrityError,
+      );
+      await expect(decompressBackup(tampered)).rejects.toThrow(/integrity/i);
     });
 
-    it("rejects a backup with a byte-flipped payload", () => {
-      const compressed = new Uint8Array(compressBackup(makeBackup()));
+    it("rejects a backup with a byte-flipped payload", async () => {
+      const compressed = new Uint8Array(await compressBackup(makeBackup()));
       // Flip a byte in the deflate payload region (past the header).
       const mid = Math.floor(compressed.length / 2);
       compressed[mid] ^= 0xff;
-      expect(() => decompressBackup(compressed)).toThrow();
+      await expect(decompressBackup(compressed)).rejects.toThrow();
     });
 
-    it("rejects a truncated (incomplete) backup", () => {
-      const compressed = compressBackup(makeBackup());
-      const truncated = compressed.slice(
-        0,
-        Math.floor(compressed.length / 2),
-      );
-      expect(() => decompressBackup(truncated)).toThrow();
+    it("rejects a truncated (incomplete) backup", async () => {
+      const compressed = await compressBackup(makeBackup());
+      const truncated = compressed.slice(0, Math.floor(compressed.length / 2));
+      await expect(decompressBackup(truncated)).rejects.toThrow();
     });
 
-    it("does not return partial or incorrect data on corruption", () => {
-      const compressed = compressBackup(makeBackup());
+    it("does not return partial or incorrect data on corruption", async () => {
+      const compressed = await compressBackup(makeBackup());
       const tampered = tamperChecksum(compressed);
       let leaked: unknown = "untouched";
       try {
-        leaked = decompressBackup(tampered);
+        leaked = await decompressBackup(tampered);
       } catch {
         // expected
       }
@@ -338,33 +342,34 @@ describe("backup-compression", () => {
   });
 
   describe("backward compatibility", () => {
-    it("restores an old checksum-less compressed backup with a warning", () => {
+    it("restores an old checksum-less compressed backup with a warning", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const original = makeBackup();
       // Simulate a pre-#1084 backup: gzip without the integrity comment.
-      const oldCompressed = gzip(JSON.stringify(original));
+      // Native CompressionStream("gzip") emits exactly that shape (FLG=0).
+      const oldCompressed = await gzipCompress(JSON.stringify(original));
       expect(hasIntegrityChecksum(oldCompressed)).toBe(false);
 
-      const restored = decompressBackup(oldCompressed);
+      const restored = await decompressBackup(oldCompressed);
       expect(restored).toEqual(original);
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 
-    it("restores legacy raw JSON with a warning", () => {
+    it("restores legacy raw JSON with a warning", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const original = makeBackup();
       const legacy = new TextEncoder().encode(JSON.stringify(original));
-      const restored = decompressBackup(legacy);
+      const restored = await decompressBackup(legacy);
       expect(restored).toEqual(original);
       expect(warnSpy).toHaveBeenCalled();
       warnSpy.mockRestore();
     });
 
-    it("does not warn when restoring a verified (checksummed) backup", () => {
+    it("does not warn when restoring a verified (checksummed) backup", async () => {
       const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
       const original = makeBackup();
-      decompressBackup(compressBackup(original));
+      await decompressBackup(await compressBackup(original));
       expect(warnSpy).not.toHaveBeenCalled();
       warnSpy.mockRestore();
     });

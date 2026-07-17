@@ -122,11 +122,14 @@ class SavedGamesManager {
    * this storage boundary so IndexedDB holds a much smaller payload. The
    * in-memory {@link SavedGame} contract (a directly JSON-parseable string)
    * is preserved by {@link fromStoredGame} on read.
+   *
+   * Issue #1423: `async` because {@link compressGameStateJson} drives the
+   * native `CompressionStream` API.
    */
-  private toStoredGame(game: SavedGame): StoredGame {
+  private async toStoredGame(game: SavedGame): Promise<StoredGame> {
     return {
       ...game,
-      gameStateJson: compressGameStateJson(game.gameStateJson),
+      gameStateJson: await compressGameStateJson(game.gameStateJson),
       metadata: {},
     };
   }
@@ -137,12 +140,15 @@ class SavedGamesManager {
    * Decompresses the {@code gameStateJson} written by {@link toStoredGame}.
    * Legacy uncompressed saves (pretty-printed or compact JSON) pass through
    * unchanged for backward compatibility.
+   *
+   * Issue #1423: `async` because {@link decompressGameStateJson} drives the
+   * native `DecompressionStream` API.
    */
-  private fromStoredGame(stored: StoredGame): SavedGame {
+  private async fromStoredGame(stored: StoredGame): Promise<SavedGame> {
     const { metadata: _, gameStateJson, ...rest } = stored;
     return {
       ...rest,
-      gameStateJson: decompressGameStateJson(gameStateJson),
+      gameStateJson: await decompressGameStateJson(gameStateJson),
     };
   }
 
@@ -156,7 +162,7 @@ class SavedGamesManager {
       await this.initialize();
       const storedGames =
         await indexedDBStorage.getAll<StoredGame>("saved-games");
-      return storedGames.map(this.fromStoredGame);
+      return await Promise.all(storedGames.map((s) => this.fromStoredGame(s)));
     } catch (error) {
       console.error("Failed to get saved games from IndexedDB:", error);
 
@@ -184,7 +190,7 @@ class SavedGamesManager {
         "saved-games",
         id,
       );
-      return storedGame ? this.fromStoredGame(storedGame) : null;
+      return storedGame ? await this.fromStoredGame(storedGame) : null;
     } catch (error) {
       console.error("Failed to get saved game from IndexedDB:", error);
 
@@ -200,7 +206,7 @@ class SavedGamesManager {
   async saveGame(game: SavedGame): Promise<SavedGame> {
     try {
       await this.initialize();
-      const storedGame = this.toStoredGame(game);
+      const storedGame = await this.toStoredGame(game);
       await indexedDBStorage.set("saved-games", storedGame);
       return game;
     } catch (error) {

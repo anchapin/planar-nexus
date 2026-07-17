@@ -31,18 +31,21 @@
  *
  * ## Why a synchronous SHA-256?
  *
- * The compress/decompress entry points are intentionally synchronous: they
- * have several synchronous call sites in the storage hook, and converting
- * them to `async` would cascade through callers and tests. The Web Crypto
+ * The compress/decompress entry points are `async` because they drive the
+ * streaming `CompressionStream` / `DecompressionStream` APIs (issue #1423),
+ * but the SHA-256 itself stays synchronous: the Web Crypto
  * `crypto.subtle.digest` API is asynchronous-only, so a self-contained
  * synchronous implementation ({@link sha256Hex}) is used instead. It runs in
  * every runtime (browser, Tauri, Node) without environment-specific bindings,
  * and backups are small enough that hashing is negligible next to gzip.
  */
 
-import { gzip, ungzip } from "pako";
-import type Pako from "pako";
 import type { BackupData } from "./indexeddb-storage";
+import {
+  gzipCompress,
+  gzipDecompress,
+  injectGzipComment,
+} from "./compression/native-gzip";
 
 /** MIME type for compressed backup exports. */
 export const BACKUP_COMPRESSED_MIME = "application/gzip";
@@ -239,7 +242,11 @@ export function isGzipBackup(bytes: Uint8Array): boolean {
  */
 function readGzipComment(bytes: Uint8Array): string | null {
   // Minimum gzip header is 10 bytes: ID1 ID2 CM FLG MTIME(4) XFL OS.
-  if (bytes.length < 10 || bytes[0] !== GZIP_MAGIC_0 || bytes[1] !== GZIP_MAGIC_1) {
+  if (
+    bytes.length < 10 ||
+    bytes[0] !== GZIP_MAGIC_0 ||
+    bytes[1] !== GZIP_MAGIC_1
+  ) {
     return null;
   }
 
@@ -301,18 +308,17 @@ export function hasIntegrityChecksum(input: ArrayBuffer | Uint8Array): boolean {
  * compression. The SHA-256 of the JSON's UTF-8 bytes is stored in the gzip
  * `FCOMMENT` field so restore can detect corruption. Generic so it can back
  * both full ({@link BackupData}) and incremental backup payloads.
+ *
+ * Issue #1423: gzip is performed by the native `CompressionStream("gzip")`
+ * API, then {@link injectGzipComment} splices the `pn1:sha256=<hex>` marker
+ * into the resulting header (preserving the integrity contract from #1084).
+ * The entry point is `async` because the native compression stream is async.
  */
-export function compressData<T>(data: T): Uint8Array {
+export async function compressData<T>(data: T): Promise<Uint8Array> {
   const json = JSON.stringify(data);
   const checksum = sha256Hex(new TextEncoder().encode(json));
-  // pako's gzip() honors `header.comment` at runtime (it sets the gzip
-  // FCOMMENT field), but its DeflateOptions type omits `header`. Cast through
-  // `unknown` so the runtime behavior is preserved while staying assignable to
-  // the gzip() parameter type.
-  const gzipOptions = {
-    header: { comment: `${BACKUP_CHECKSUM_PREFIX}${checksum}` },
-  } as unknown as Pako.DeflateOptions;
-  return gzip(json, gzipOptions);
+  const compressed = await gzipCompress(json);
+  return injectGzipComment(compressed, `${BACKUP_CHECKSUM_PREFIX}${checksum}`);
 }
 
 /**
@@ -331,13 +337,19 @@ export function compressData<T>(data: T): Uint8Array {
  * A corrupted backup is therefore either rejected explicitly (checksum
  * mismatch) or fails during decompression/parse — it is never silently
  * restored as wrong data.
+ *
+ * Issue #1423: gzip is performed by the native `DecompressionStream("gzip")`
+ * API; the entry point is `async` because the stream is async.
  */
-export function decompressData<T>(input: ArrayBuffer | Uint8Array): T {
+export async function decompressData<T>(
+  input: ArrayBuffer | Uint8Array,
+): Promise<T> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
 
   let text: string;
   if (isGzipBackup(bytes)) {
-    text = new TextDecoder().decode(ungzip(bytes));
+    const decompressed = await gzipDecompress(bytes);
+    text = new TextDecoder().decode(decompressed);
 
     const comment = readGzipComment(bytes);
     const match = comment ? comment.match(CHECKSUM_PATTERN) : null;
@@ -375,7 +387,7 @@ export function decompressData<T>(input: ArrayBuffer | Uint8Array): T {
  *
  * Thin typed wrapper around the generic {@link compressData}.
  */
-export function compressBackup(data: BackupData): Uint8Array {
+export function compressBackup(data: BackupData): Promise<Uint8Array> {
   return compressData(data);
 }
 
@@ -385,6 +397,8 @@ export function compressBackup(data: BackupData): Uint8Array {
  *
  * Thin typed wrapper around the generic {@link decompressData}.
  */
-export function decompressBackup(input: ArrayBuffer | Uint8Array): BackupData {
+export function decompressBackup(
+  input: ArrayBuffer | Uint8Array,
+): Promise<BackupData> {
   return decompressData<BackupData>(input);
 }
