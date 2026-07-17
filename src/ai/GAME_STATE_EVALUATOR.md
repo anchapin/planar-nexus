@@ -21,30 +21,36 @@ The AI Game State Evaluation System is a comprehensive heuristic evaluation fram
 The system evaluates the following factors (all normalized to -1 to 1 scale):
 
 #### Survival Factors
+
 - **Life Score**: Comparison of life total vs opponents
 - **Poison Score**: Poison counter assessment
 
 #### Card Advantage
+
 - **Card Advantage**: Hand + battlefield + graveyard vs opponents
 - **Hand Quality**: Mana value curve and mana sources in hand
 - **Library Depth**: Remaining cards in library (decking prevention)
 - **Card Selection**: Quality of cards in hand (instants, efficiency)
 
 #### Board Presence
+
 - **Creature Power**: Total power of untapped creatures
 - **Creature Toughness**: Total toughness of untapped creatures
 - **Creature Count**: Number of creatures on battlefield
 - **Permanent Advantage**: Total permanent count vs opponents
 
 #### Mana & Tempo
+
 - **Mana Available**: Current mana pool evaluation
 - **Tempo Advantage**: Turn priority, phase, and untapped resources
 
 #### Commander-Specific
+
 - **Commander Damage**: Damage dealt with commanders (21 is lethal)
 - **Commander Presence**: Whether commander is on battlefield
 
 #### Strategic Factors
+
 - **Graveyard Value**: Resources in graveyard for recursion
 - **Synergy**: Interactions between cards and permanents
 - **Win Condition Progress**: Progress toward winning (aggro, mill, poison, commander)
@@ -55,22 +61,22 @@ The system evaluates the following factors (all normalized to -1 to 1 scale):
 ### Basic Evaluation
 
 ```typescript
-import { evaluateGameState, GameState } from '@/ai/game-state-evaluator';
+import { evaluateGameState, GameState } from "@/ai/game-state-evaluator";
 
 // Assuming you have a GameState object
-const evaluation = evaluateGameState(gameState, 'player1', 'medium');
+const evaluation = evaluateGameState(gameState, "player1", "medium");
 
-console.log('Total Score:', evaluation.totalScore);
-console.log('Threats:', evaluation.threats);
-console.log('Recommendations:', evaluation.recommendedActions);
+console.log("Total Score:", evaluation.totalScore);
+console.log("Threats:", evaluation.threats);
+console.log("Recommendations:", evaluation.recommendedActions);
 ```
 
 ### Advanced Usage with Custom Weights
 
 ```typescript
-import { GameStateEvaluator } from '@/ai/game-state-evaluator';
+import { GameStateEvaluator } from "@/ai/game-state-evaluator";
 
-const evaluator = new GameStateEvaluator(gameState, 'player1', 'medium');
+const evaluator = new GameStateEvaluator(gameState, "player1", "medium");
 
 // Customize weights for aggressive playstyle
 evaluator.setWeights({
@@ -85,24 +91,24 @@ const evaluation = evaluator.evaluate();
 ### Comparing Game States
 
 ```typescript
-import { compareGameStates } from '@/ai/game-state-evaluator';
+import { compareGameStates } from "@/ai/game-state-evaluator";
 
 // Compare two potential game states
 // Positive result means state2 is better for player1
-const improvement = compareGameStates(currentState, nextState, 'player1');
+const improvement = compareGameStates(currentState, nextState, "player1");
 
 if (improvement > 0) {
-  console.log('Next state is better!');
+  console.log("Next state is better!");
 }
 ```
 
 ### Quick Scoring
 
 ```typescript
-import { quickScore } from '@/ai/game-state-evaluator';
+import { quickScore } from "@/ai/game-state-evaluator";
 
 // Get a quick score without full evaluation details
-const score = quickScore(gameState, 'player1', 'medium');
+const score = quickScore(gameState, "player1", "medium");
 ```
 
 ## Game State Structure
@@ -113,8 +119,8 @@ const score = quickScore(gameState, 'player1', 'medium');
 interface GameState {
   players: { [playerId: string]: PlayerState };
   turnInfo: TurnInfo;
-  stack: Array<{ /* ... */ }>;
-  commandZone?: { /* ... */ };
+  stack: Array<{/* ... */}>;
+  commandZone?: {/* ... */};
 }
 ```
 
@@ -142,7 +148,7 @@ interface Permanent {
   id: string;
   cardId: string;
   name: string;
-  type: 'creature' | 'land' | 'artifact' | 'enchantment' | 'planeswalker';
+  type: "creature" | "land" | "artifact" | "enchantment" | "planeswalker";
   controller: string;
   tapped?: boolean;
   power?: number;
@@ -159,16 +165,19 @@ interface Permanent {
 The system includes three preset difficulty configurations:
 
 ### Easy
+
 - Lower weights on strategic factors
 - Focuses on basic board presence and life
 - Simpler decision-making
 
 ### Medium
+
 - Balanced weights across all factors
 - Considers card advantage and tempo
 - Standard strategic play
 
 ### Hard
+
 - Higher weights on advanced factors
 - Values card selection, synergy, and inevitability
 - Sophisticated threat assessment
@@ -224,16 +233,21 @@ function minimax(
   state: GameState,
   depth: number,
   maximizingPlayer: string,
-  isMaximizing: boolean
+  isMaximizing: boolean,
 ): number {
   if (depth === 0 || isTerminal(state)) {
-    return quickScore(state, maximizingPlayer, 'hard');
+    return quickScore(state, maximizingPlayer, "hard");
   }
 
   if (isMaximizing) {
     let maxEval = -Infinity;
     for (const childState of getChildStates(state, maximizingPlayer)) {
-      const evaluation = minimax(childState, depth - 1, maximizingPlayer, false);
+      const evaluation = minimax(
+        childState,
+        depth - 1,
+        maximizingPlayer,
+        false,
+      );
       maxEval = Math.max(maxEval, evaluation);
     }
     return maxEval;
@@ -242,7 +256,12 @@ function minimax(
     const opponents = getOpponents(state, maximizingPlayer);
     for (const opponent of opponents) {
       for (const childState of getChildStates(state, opponent.id)) {
-        const evaluation = minimax(childState, depth - 1, maximizingPlayer, true);
+        const evaluation = minimax(
+          childState,
+          depth - 1,
+          maximizingPlayer,
+          true,
+        );
         minEval = Math.min(minEval, evaluation);
       }
     }
@@ -257,14 +276,14 @@ The evaluation system can also guide MCTS:
 
 ```typescript
 function evaluateNode(state: GameState, player: string): number {
-  const evaluation = evaluateGameState(state, player, 'hard');
+  const evaluation = evaluateGameState(state, player, "hard");
   return evaluation.totalScore;
 }
 ```
 
 ## Examples
 
-See `game-state-evaluator-example.ts` for comprehensive usage examples including:
+See `tests/examples/ai-game-state-evaluator-examples.ts` for comprehensive usage examples including:
 
 1. Basic evaluation
 2. Difficulty level comparison
@@ -282,11 +301,13 @@ See `game-state-evaluator-example.ts` for comprehensive usage examples including
 Main class for game state evaluation.
 
 **Constructor:**
+
 ```typescript
 constructor(gameState: GameState, evaluatingPlayerId: string, difficulty: 'easy' | 'medium' | 'hard')
 ```
 
 **Methods:**
+
 - `evaluate(): DetailedEvaluation` - Full evaluation with all factors
 - `setWeights(weights: Partial<EvaluationWeights>): void` - Customize weights
 - `getWeights(): EvaluationWeights` - Get current weights
@@ -314,7 +335,7 @@ Complete evaluation result:
 ```typescript
 interface DetailedEvaluation {
   totalScore: number;
-  factors: { /* 17+ factor scores */ };
+  factors: {/* 17+ factor scores */};
   threats: ThreatAssessment[];
   opportunities: OpportunityAssessment[];
   recommendedActions: string[];
@@ -330,7 +351,7 @@ interface ThreatAssessment {
   permanentId: string;
   threatLevel: number; // 0-1
   reason: string;
-  urgency: 'immediate' | 'soon' | 'eventual' | 'low';
+  urgency: "immediate" | "soon" | "eventual" | "low";
 }
 ```
 
@@ -372,7 +393,7 @@ Run the example file to see the system in action:
 
 ```bash
 npm run dev
-# Then import and run examples from game-state-evaluator-example.ts
+# Then import and run examples from tests/examples/ai-game-state-evaluator-examples.ts
 ```
 
 ## Contributing

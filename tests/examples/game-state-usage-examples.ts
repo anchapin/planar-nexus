@@ -15,7 +15,7 @@ import {
   gainLife,
   getPlayerLibrary,
   getPlayerHand,
-} from "./game-state";
+} from "@/lib/game-state/game-state";
 import {
   createCardInstance,
   createToken,
@@ -43,14 +43,14 @@ import {
   hasCounter,
   getCounterCount,
   isAttached,
-} from "./card-instance";
+} from "@/lib/game-state/card-instance";
 import {
   createZone,
   moveCardBetweenZones,
   getTopCard,
   shuffleZone,
   countCards,
-} from "./zones";
+} from "@/lib/game-state/zones";
 import {
   createTurn,
   advancePhase,
@@ -58,8 +58,8 @@ import {
   isCombatPhase,
   getPhaseName,
   getPhaseShortName,
-} from "./turn-phases";
-import { ZoneType } from "./types";
+} from "@/lib/game-state/turn-phases";
+import { ZoneType } from "@/lib/game-state/types";
 import { ScryfallCard } from "@/app/actions";
 
 /**

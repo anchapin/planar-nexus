@@ -7,27 +7,32 @@ This implementation provides comprehensive stack interaction AI for Magic: The G
 ## Features Implemented
 
 ### 1. Response Evaluation
+
 - **Threat Assessment**: Evaluates how dangerous each stack action is
 - **Response Scoring**: Scores each possible response based on multiple factors
 - **Decision Making**: Determines whether to respond or pass priority
 
 ### 2. Counterspell Decisions
+
 - **When to Counter**: Intelligent decisions on when to use counterspells
 - **Target Selection**: Which spells are worth countering
 - **Counterplay Awareness**: Considers whether opponents might counter our counterspell
 - **Resource Management**: Balances using counterspells vs. saving them
 
 ### 3. Response Timing
+
 - **Instant Speed Assessment**: Evaluates instant-speed effects
 - **End of Turn Plays**: Decides when to use effects at end of turn
 - **Priority Holding**: Determines when to hold priority for additional responses
 
 ### 4. Resource Management
+
 - **Mana Holding Decisions**: Whether to hold mana for later or use now
 - **Efficiency Calculation**: Evaluates mana efficiency of responses
 - **Opportunity Cost**: Considers what else mana could be used for
 
 ### 5. Complex Stack Interactions
+
 - **Stack Ordering**: Optimizes order when adding multiple items to stack
 - **Stack Depth Awareness**: Considers how deep the stack is
 - **Multiple Response Optimization**: Coordinates multiple responses
@@ -37,7 +42,6 @@ This implementation provides comprehensive stack interaction AI for Magic: The G
 ```
 src/ai/
 ├── stack-interaction-ai.ts           # Main stack interaction AI implementation
-├── stack-interaction-example.ts      # Comprehensive usage examples
 ├── STACK_INTERACTION_AI.md          # Full documentation
 ├── __tests__/
 │   ├── stack-interaction-ai.test.ts # Jest unit tests
@@ -50,7 +54,7 @@ src/ai/
 ### Basic Response Decision
 
 ```typescript
-import { evaluateStackResponse } from '@/ai/stack-interaction-ai';
+import { evaluateStackResponse } from "@/ai/stack-interaction-ai";
 
 const stackContext: StackContext = {
   currentAction: stackAction,
@@ -60,8 +64,8 @@ const stackContext: StackContext = {
   availableResponses: [myCounterspell],
   opponentsRemaining: [],
   isMyTurn: false,
-  phase: 'precombat_main',
-  step: 'main',
+  phase: "precombat_main",
+  step: "main",
   respondingToOpponent: true,
 };
 
@@ -69,7 +73,7 @@ const decision = evaluateStackResponse(
   gameState,
   playerId,
   stackContext,
-  'medium'
+  "medium",
 );
 
 if (decision.shouldRespond) {
@@ -84,14 +88,14 @@ if (decision.shouldRespond) {
 ### Counterspell Decision
 
 ```typescript
-import { decideCounterspell } from '@/ai/stack-interaction-ai';
+import { decideCounterspell } from "@/ai/stack-interaction-ai";
 
 const decision = decideCounterspell(
   gameState,
   playerId,
   stackContext,
   counterspell,
-  'hard'
+  "hard",
 );
 
 console.log(`Should counter: ${decision.shouldRespond}`);
@@ -102,13 +106,13 @@ console.log(`Confidence: ${decision.confidence * 100}%`);
 ### Resource Management
 
 ```typescript
-import { manageResponseResources } from '@/ai/stack-interaction-ai';
+import { manageResponseResources } from "@/ai/stack-interaction-ai";
 
 const decision = manageResponseResources(
   gameState,
   playerId,
   stackContext,
-  'medium'
+  "medium",
 );
 
 if (decision.useNow) {
@@ -123,12 +127,14 @@ if (decision.useNow) {
 ## Key Decision Factors
 
 ### Threat Assessment
+
 - Mana value of the spell
 - Targets (especially our permanents)
 - Card type and keywords
 - Current game state (life, board position, etc.)
 
 ### Counterspell Considerations
+
 - Threat level of the spell
 - Card advantage impact
 - Tempo swing potential
@@ -137,6 +143,7 @@ if (decision.useNow) {
 - If counterspell can be recurred
 
 ### Resource Management
+
 - Game state (winning vs. losing)
 - Instant-speed options available
 - Opponent's turn considerations
@@ -146,18 +153,21 @@ if (decision.useNow) {
 ## Difficulty Levels
 
 ### Easy
+
 - Prioritizes threat prevention
 - Less strategic resource management
 - More likely to use resources
 - Simpler heuristics
 
 ### Medium (Default)
+
 - Balanced approach
 - Considers card advantage and tempo
 - Basic resource conservation
 - Moderate counterplay awareness
 
 ### Hard
+
 - Heavy card advantage focus
 - Advanced resource management
 - Sophisticated counterplay awareness
@@ -167,14 +177,16 @@ if (decision.useNow) {
 ## Testing
 
 ### Run Integration Tests
+
 ```bash
 npx tsx src/ai/__tests__/stack-integration-test.ts
 ```
 
 ### Run Examples
+
 ```bash
 npx tsx -e "
-import { runAllStackInteractionExamples } from './src/ai/stack-interaction-example';
+import { runAllStackInteractionExamples } from './tests/examples/ai-stack-interaction-examples';
 runAllStackInteractionExamples();
 "
 ```
@@ -182,6 +194,7 @@ runAllStackInteractionExamples();
 ## Integration with Game State Evaluator
 
 The Stack Interaction AI integrates with the existing Game State Evaluator to:
+
 - Assess current position (winning vs. losing)
 - Identify threats on the battlefield
 - Calculate available resources
@@ -197,21 +210,27 @@ The Stack Interaction AI integrates with the existing Game State Evaluator to:
 ## Design Decisions
 
 ### Heuristic-Based Approach
+
 Chose heuristic evaluation over tree search because:
+
 - Stack interactions are time-sensitive
 - Full game tree is too large
 - Heuristics work well for MTG decisions
 - Allows for explainable reasoning
 
 ### Modular Design
+
 Each decision type is separate for:
+
 - Easier testing
 - Better maintainability
 - Clear separation of concerns
 - Independent optimization
 
 ### Difficulty Scaling
+
 Three difficulty levels provide:
+
 - Accessibility for new players
 - Challenge for experienced players
 - Tunable AI behavior
@@ -244,13 +263,14 @@ Three difficulty levels provide:
 ## Documentation
 
 - **API Documentation**: See `STACK_INTERACTION_AI.md`
-- **Usage Examples**: See `stack-interaction-example.ts`
+- **Usage Examples**: See `tests/examples/ai-stack-interaction-examples.ts`
 - **Integration Tests**: See `stack-integration-test.ts`
 - **Unit Tests**: See `stack-interaction-ai.test.ts`
 
 ## Contributing
 
 When modifying the Stack Interaction AI:
+
 1. Maintain existing interface contracts
 2. Add examples for new behavior
 3. Test with various game states
