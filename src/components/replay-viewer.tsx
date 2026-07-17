@@ -12,6 +12,7 @@ import {
 } from "@/lib/replay-sharing";
 import type { Replay } from "@/lib/game-state/replay";
 import { sanitizeCardText } from "@/lib/security/sanitize-text";
+import { safeParseJson, ReplayArraySchema } from "@/lib/storage-schemas";
 
 /**
  * Replay Viewer Component
@@ -719,13 +720,17 @@ export function useReplayStorage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        setReplays(JSON.parse(stored));
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      // Validate before state. Poisoned / cross-version replay JSON falls back
+      // to an empty list instead of crashing the viewer on mount.
+      const result = safeParseJson(stored, ReplayArraySchema, {
+        label: "replays",
+        removeOnFailure: STORAGE_KEY,
+      });
+      if (result.success) {
+        setReplays(result.value as Replay[]);
       }
-    } catch (error) {
-      console.error("Failed to load replays:", error);
     }
   }, []);
 

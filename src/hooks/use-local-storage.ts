@@ -8,6 +8,8 @@ import {
   useCallback,
 } from "react";
 import { indexedDBStorage } from "@/lib/indexeddb-storage";
+import type { ZodType } from "zod";
+import { safeParseJson } from "@/lib/storage-schemas";
 
 /**
  * IndexedDB-based storage hook
@@ -23,6 +25,14 @@ import { indexedDBStorage } from "@/lib/indexeddb-storage";
 export function useLocalStorage<T>(
   key: string,
   initialValue: T,
+  /**
+   * Optional Zod schema. When provided, a value read from the localStorage
+   * fallback is validated with `schema.safeParse`; on failure the hook resets
+   * to `initialValue` (and clears the poisoned key) instead of feeding
+   * untrusted JSON into React state. When omitted, behavior is unchanged.
+   * Opt-in by design so existing callers are not forced to supply a schema.
+   */
+  schema?: ZodType<T>,
 ): [T, Dispatch<SetStateAction<T>>, { loading: boolean; error: Error | null }] {
   const [storedValue, setStoredValue] = useState<T>(initialValue);
   const [loading, setLoading] = useState(true);
@@ -123,8 +133,16 @@ export function useLocalStorage<T>(
           );
           const item = window.localStorage.getItem(key);
           if (item && isMounted) {
-            const parsed = JSON.parse(item);
-            setStoredValue(validateLoadedValue(parsed));
+            if (schema) {
+              const result = safeParseJson(item, schema, {
+                label: key,
+                removeOnFailure: key,
+              });
+              setStoredValue(result.success ? result.value : initialValue);
+            } else {
+              const parsed = JSON.parse(item);
+              setStoredValue(validateLoadedValue(parsed));
+            }
           } else if (isMounted) {
             setStoredValue(initialValue);
           }
@@ -147,7 +165,7 @@ export function useLocalStorage<T>(
     return () => {
       isMounted = false;
     };
-  }, [key, initialValue, validateLoadedValue]);
+  }, [key, initialValue, validateLoadedValue, schema]);
 
   // Save value when it changes
   const setValue: Dispatch<SetStateAction<T>> = useCallback(
@@ -201,6 +219,12 @@ export function useLocalStorage<T>(
 export function useSimpleLocalStorage<T>(
   key: string,
   initialValue: T,
+  /**
+   * Optional Zod schema. When provided, the stored value is validated before
+   * reaching state; a validation failure resets to `initialValue` and clears
+   * the poisoned key instead of crashing. When omitted, behavior is unchanged.
+   */
+  schema?: ZodType<T>,
 ): [T, Dispatch<SetStateAction<T>>] {
   const [storedValue, setStoredValue] = useState<T>(initialValue);
 
@@ -210,12 +234,22 @@ export function useSimpleLocalStorage<T>(
     try {
       const item = window.localStorage.getItem(key);
       if (item) {
-        setStoredValue(JSON.parse(item));
+        if (schema) {
+          const result = safeParseJson(item, schema, {
+            label: key,
+            removeOnFailure: key,
+          });
+          if (result.success) {
+            setStoredValue(result.value);
+          }
+        } else {
+          setStoredValue(JSON.parse(item));
+        }
       }
     } catch (error) {
       console.error(`Error reading localStorage key "${key}":`, error);
     }
-  }, [key]);
+  }, [key, schema]);
 
   const setValue: Dispatch<SetStateAction<T>> = (value) => {
     try {
