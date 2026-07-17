@@ -32,6 +32,10 @@ import {
 import { cn } from "@/lib/utils";
 import type { ManaCurveGap, DeckFormat } from "@/lib/deck-analyzer";
 import {
+  safeParseJson,
+  DeckStatisticsArraySchema,
+} from "@/lib/storage-schemas";
+import {
   BarChart,
   Bar,
   XAxis,
@@ -1192,10 +1196,15 @@ export function usePersistedDeckStatistics({
   useEffect(() => {
     const stored = localStorage.getItem(storageKey);
     if (stored) {
-      try {
-        setStatistics(JSON.parse(stored));
-      } catch (e) {
-        console.error("Failed to parse deck statistics:", e);
+      // Validate before it reaches state. Poisoned / cross-version JSON must
+      // fall back to the empty default instead of crashing the tree on first
+      // render. The key is cleared on failure so the next mount starts clean.
+      const result = safeParseJson(stored, DeckStatisticsArraySchema, {
+        label: "deck-statistics",
+        removeOnFailure: storageKey,
+      });
+      if (result.success) {
+        setStatistics(result.value);
       }
     }
   }, [storageKey]);
@@ -1305,17 +1314,20 @@ export function usePersistedDeckStatistics({
 
   const importStats = useCallback(
     (json: string): boolean => {
-      try {
-        const parsed = JSON.parse(json);
-        if (Array.isArray(parsed)) {
-          setStatistics(parsed);
-          localStorage.setItem(storageKey, JSON.stringify(parsed));
-          return true;
-        }
-        return false;
-      } catch {
-        return false;
+      // Validate EVERY element against the schema BEFORE touching state or
+      // localStorage. Previously any array of any shape was accepted and
+      // written back, permanently clobbering the user's real stats on a bad
+      // import (silent data loss). A malformed or wrong-shape payload now
+      // returns false and leaves the existing stored value untouched.
+      const result = safeParseJson(json, DeckStatisticsArraySchema, {
+        label: "imported deck-statistics",
+      });
+      if (result.success) {
+        setStatistics(result.value);
+        localStorage.setItem(storageKey, JSON.stringify(result.value));
+        return true;
       }
+      return false;
     },
     [storageKey],
   );

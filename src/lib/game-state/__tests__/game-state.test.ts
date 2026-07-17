@@ -166,7 +166,11 @@ describe("Game State Management", () => {
 
       const startedState = startGame(gameState);
 
-      expect(startedState.lastModifiedAt).toBeGreaterThanOrEqual(beforeTime);
+      // Allow a small tolerance: Date.now() (CLOCK_REALTIME) is not monotonic
+      // and can regress by a few ms on CI runners, causing flakes.
+      expect(startedState.lastModifiedAt).toBeGreaterThanOrEqual(
+        beforeTime - 1000,
+      );
     });
   });
 
@@ -237,7 +241,11 @@ describe("Game State Management", () => {
       const deckCards = [createMockCard("Test Card", "Instant", 1)];
       gameState = loadDeckForPlayer(gameState, player1Id, deckCards);
 
-      expect(gameState.lastModifiedAt).toBeGreaterThanOrEqual(beforeTime);
+      // Allow a small tolerance: Date.now() (CLOCK_REALTIME) is not monotonic
+      // and can regress by a few ms on CI runners, causing flakes.
+      expect(gameState.lastModifiedAt).toBeGreaterThanOrEqual(
+        beforeTime - 1000,
+      );
     });
 
     it("should throw error for invalid player ID", () => {
