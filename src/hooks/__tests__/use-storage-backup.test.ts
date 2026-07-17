@@ -40,7 +40,8 @@ jest.mock("@/lib/indexeddb-storage", () => ({
 }));
 
 jest.mock("@/lib/backup-compression", () => ({
-  compressData: jest.fn().mockReturnValue(new Uint8Array([0x1f, 0x8b])),
+  // Issue #1423: compressData/decompressData are now async (native streams).
+  compressData: jest.fn().mockResolvedValue(new Uint8Array([0x1f, 0x8b])),
   decompressData: jest.fn(),
   BACKUP_COMPRESSED_MIME: "application/gzip",
   BACKUP_COMPRESSED_EXTENSION: ".json.gz",
@@ -365,7 +366,7 @@ describe("useStorageBackup hook", () => {
         exportedAt: "2026-01-01T00:00:00.000Z",
         checksum: "c",
       };
-      mocked.decompressData.mockReturnValueOnce(fullPayload);
+      mocked.decompressData.mockResolvedValueOnce(fullPayload);
 
       const raw = JSON.stringify(fullPayload);
       const encoder = new TextEncoder();
@@ -407,7 +408,7 @@ describe("useStorageBackup hook", () => {
         deletedRecords: [],
         checksum: "inc-cs",
       };
-      mocked.decompressData.mockReturnValueOnce(incrementalPayload);
+      mocked.decompressData.mockResolvedValueOnce(incrementalPayload);
 
       const raw = JSON.stringify(incrementalPayload);
       const encoder = new TextEncoder();

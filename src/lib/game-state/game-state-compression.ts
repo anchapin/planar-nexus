@@ -17,7 +17,7 @@
  *   compatibility.
  */
 
-import { gzip, ungzip } from "pako";
+import { gzipCompress, gzipDecompress } from "../compression/native-gzip";
 
 /**
  * Prefix marking a compressed payload. base64 output never starts with these
@@ -65,9 +65,12 @@ export function isCompressedGameState(value: string): boolean {
 /**
  * Compress a compact game-state JSON string into the enveloped base64/gzip
  * storage format.
+ *
+ * Issue #1423: gzip is performed by the native `CompressionStream("gzip")`
+ * API; the entry point is `async` because the stream is async.
  */
-export function compressGameStateJson(json: string): string {
-  const compressed = gzip(json);
+export async function compressGameStateJson(json: string): Promise<string> {
+  const compressed = await gzipCompress(json);
   return COMPRESSED_MARKER + bytesToBase64(compressed);
 }
 
@@ -77,11 +80,15 @@ export function compressGameStateJson(json: string): string {
  * Accepts both the new compressed format and legacy raw JSON for backward
  * compatibility with saves written by prior versions. Legacy payloads are
  * returned unchanged.
+ *
+ * Issue #1423: gzip is performed by the native `DecompressionStream("gzip")`
+ * API; the entry point is `async` because the stream is async.
  */
-export function decompressGameStateJson(value: string): string {
+export async function decompressGameStateJson(value: string): Promise<string> {
   if (!isCompressedGameState(value)) {
     return value;
   }
   const b64 = value.slice(COMPRESSED_MARKER.length);
-  return new TextDecoder().decode(ungzip(base64ToBytes(b64)));
+  const decompressed = await gzipDecompress(base64ToBytes(b64));
+  return new TextDecoder().decode(decompressed);
 }

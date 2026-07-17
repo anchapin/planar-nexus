@@ -200,7 +200,7 @@ export function useStorageBackup() {
           await indexedDBStorage.exportIncrementalBackup(since);
         setProgress(60);
 
-        const compressed = compressData(incrementalData);
+        const compressed = await compressData(incrementalData);
         const blob = new Blob([compressed as BlobPart], {
           type: BACKUP_COMPRESSED_MIME,
         });
@@ -321,7 +321,7 @@ export function useStorageBackup() {
         setProgress(75);
 
         // Compress the backup (gzip) to keep export files small.
-        const compressed = compressData(backupData);
+        const compressed = await compressData(backupData);
         const blob = new Blob([compressed as BlobPart], {
           type: BACKUP_COMPRESSED_MIME,
         });
@@ -401,7 +401,7 @@ export function useStorageBackup() {
         // Parse and validate (auto-detects compressed vs legacy JSON).
         // Generic decompress so we can then branch on full vs incremental.
         setStatus("validating");
-        const parsed = decompressData<BackupData | IncrementalBackupData>(
+        const parsed = await decompressData<BackupData | IncrementalBackupData>(
           buffer,
         );
         const isIncremental =
@@ -473,7 +473,8 @@ export function useStorageBackup() {
     try {
       const backupData = await indexedDBStorage.exportBackup();
       // Report the compressed size since that is what gets downloaded.
-      return compressData(backupData).length;
+      const compressed = await compressData(backupData);
+      return compressed.length;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       console.error("Failed to estimate backup size:", err);
@@ -575,12 +576,12 @@ export function validateBackupFile(file: File): Promise<boolean> {
   return new Promise((resolve) => {
     const reader = new FileReader();
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         // Result is raw bytes; decompressBackup handles compressed and
         // legacy formats transparently.
         const bytes = new Uint8Array(e.target?.result as ArrayBuffer);
-        const data = decompressData<BackupData>(bytes);
+        const data = await decompressData<BackupData>(bytes);
 
         // Check required fields
         const isValid =

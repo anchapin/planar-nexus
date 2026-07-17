@@ -11,6 +11,85 @@ require("@testing-library/jest-dom/jest-globals");
 global.TextEncoder = require("util").TextEncoder;
 global.TextDecoder = require("util").TextDecoder;
 
+// Polyfill for CompressionStream / DecompressionStream (issue #1423).
+//
+// jsdom does not implement these APIs (Node 21.2+ exposes them as globals but
+// jsdom's window sandbox hides them). The production code in
+// `src/lib/compression/native-gzip.ts` targets the WHATWG spec — constructor
+// takes a format string and returns a TransformStream whose writable side
+// accepts BufferSource chunks and whose readable side emits Uint8Array chunks.
+//
+// We first surface Node's WHATWG Streams primitives (`TransformStream` is
+// also hidden by jsdom), then install the `zlib`-backed compressor /
+// decompressor. The polyfill buffers all input and runs zlib at flush() time
+// — fine for tests, which are one-shot compress/decompress operations.
+if (typeof global.CompressionStream !== "function") {
+  // Surface Node's WHATWG Streams primitives as globals (jsdom hides them).
+  const { TransformStream } = require("stream/web");
+  if (typeof global.TransformStream !== "function") {
+    global.TransformStream = TransformStream;
+  }
+
+  const zlib = require("zlib");
+  const COMPRESSION_FNS = {
+    gzip: (buf) => zlib.gzipSync(buf),
+    deflate: (buf) => zlib.deflateSync(buf),
+    "deflate-raw": (buf) => zlib.deflateRawSync(buf),
+  };
+  const DECOMPRESSION_FNS = {
+    gzip: (buf) => zlib.gunzipSync(buf),
+    deflate: (buf) => zlib.inflateSync(buf),
+    "deflate-raw": (buf) => zlib.inflateRawSync(buf),
+  };
+
+  function chunkToBuffer(chunk) {
+    if (chunk instanceof ArrayBuffer) return Buffer.from(chunk);
+    if (ArrayBuffer.isView(chunk)) {
+      return Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    }
+    return Buffer.from(chunk);
+  }
+
+  function makeNativeStream(fns, format) {
+    const fn = fns[format];
+    if (!fn) {
+      throw new TypeError(`Unsupported compression format: ${format}`);
+    }
+    const inputs = [];
+    const ts = new TransformStream({
+      transform(chunk, controller) {
+        inputs.push(chunkToBuffer(chunk));
+      },
+      flush(controller) {
+        const total = Buffer.concat(inputs);
+        // Run the (synchronous) zlib operation. Per the WHATWG Streams
+        // contract, throwing from a sink algorithm errors the readable side,
+        // which surfaces to the reader as a rejection from `.read()`.
+        const out = fn(total);
+        controller.enqueue(
+          new Uint8Array(out.buffer, out.byteOffset, out.byteLength),
+        );
+      },
+    });
+    return ts;
+  }
+
+  global.CompressionStream = class CompressionStream {
+    constructor(format) {
+      const ts = makeNativeStream(COMPRESSION_FNS, format);
+      this.readable = ts.readable;
+      this.writable = ts.writable;
+    }
+  };
+  global.DecompressionStream = class DecompressionStream {
+    constructor(format) {
+      const ts = makeNativeStream(DECOMPRESSION_FNS, format);
+      this.readable = ts.readable;
+      this.writable = ts.writable;
+    }
+  };
+}
+
 // Polyfill for Request and Response (for service worker testing)
 class MockRequest {
   constructor(url, options = {}) {
