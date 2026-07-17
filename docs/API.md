@@ -1,31 +1,44 @@
 # Planar Nexus API Documentation
 
-**Version**: 1.0.0  
-**Last Updated**: March 12, 2026
+**Version**: v1.7+ (pre-v1.8)  
+**Last Updated**: July 17, 2026
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#1-overview)
-2. [AI Endpoints](#2-ai-endpoints)
+2. [API Routes](#2-api-routes)
 3. [AI Providers](#3-ai-providers)
 4. [Environment Variables](#4-environment-variables)
 5. [Rate Limits](#5-rate-limits)
 6. [Error Handling](#6-error-handling)
-7. [Server Actions](#7-server-actions)
+7. [Server-Side Wrappers](#7-server-side-wrappers)
 8. [Client-Side APIs](#8-client-side-apis)
 
 ---
 
 ## 1. Overview
 
-Planar Nexus uses a minimal server-side proxy for optional LLM features. The application is primarily client-side, with server endpoints for:
+Planar Nexus uses a minimal set of server-side route handlers for the features
+that genuinely need a server. The application is primarily client-side;
+`src/app/api/` exports exactly six route files exposing nine endpoints:
 
-- AI deck coaching analysis
-- AI opponent move generation
-- Card data proxying (optional)
-- Multiplayer signaling (WebRTC handshake)
+- **AI proxy** — server-side relay to LLM providers, keeping API keys off the
+  client and enforcing rate limits (`/api/ai-proxy`, `/api/ai-proxy/validate`).
+- **Chat** — unified streaming chat and the conversational deck coach
+  (`/api/chat`, `/api/chat/coach`).
+- **Deck import** — server-side fetch + parse of a decklist from a supported
+  hosting URL (`/api/deck-import`).
+- **Multiplayer signaling** — WebRTC handshake exchange for PeerJS P2P
+  (`/api/signaling`).
+
+> Gameplay (the AI opponent's turn loop) runs **client-side** through the AI
+> flows in [`src/ai/`](../src/ai) (e.g. `ai-turn-loop.ts`,
+> `ai-opponent-deck-generation.ts`); there is no HTTP gameplay endpoint.
+> Likewise card data is served from the in-browser IndexedDB store, not a
+> server route. See [`docs/USER_GUIDE.md`](./USER_GUIDE.md) for the user-facing
+> feature map.
 
 ### Architecture
 
@@ -52,273 +65,134 @@ Planar Nexus uses a minimal server-side proxy for optional LLM features. The app
 
 ---
 
-## 2. AI Endpoints
+## 2. API Routes
 
-> **Testing**: see [TESTING.md](./TESTING.md) for how these endpoints are
-> tested (route-handler unit tests + MSW integration). Concrete test links are
-> included under each endpoint below where they exist.
+> **Source of truth:** this section mirrors the exports of
+> `src/app/api/**/route.ts`. Every handler listed below exists in the route
+> tree; any endpoint not listed here does **not** exist (the previously
+> documented `POST /api/ai/coach/review`, `POST /api/ai/play`,
+> `POST /api/ai/opponent/generate`, and `GET /api/ai-proxy/status` have been
+> removed — they 404'd).
+>
+> **Testing**: route handlers have co-located unit tests under
+> `src/app/api/<route>/__tests__/route.test.ts`; API mocking uses MSW
+> (`src/test-utils/msw/`). See [TESTING.md](./TESTING.md).
 
-### 2.1 POST /api/ai/coach/review
+### Route map
 
-Analyze a deck and generate a comprehensive coach report.
-
-**Request**:
-```typescript
-interface CoachReviewRequest {
-  deck: {
-    name: string;
-    format: string;  // "commander" | "standard" | "modern" | "legacy" | "vintage"
-    cards: Array<{
-      name: string;
-      count: number;
-    }>;
-  };
-  provider?: "google" | "openai" | "claude" | "zai";
-}
-```
-
-**Example Request**:
-```json
-{
-  "deck": {
-    "name": "Burn",
-    "format": "standard",
-    "cards": [
-      {"name": "Lightning Bolt", "count": 4},
-      {"name": "Goblin Guide", "count": 4},
-      {"name": "Monastery Swiftspear", "count": 4},
-      {"name": "Rift Bolt", "count": 4},
-      {"name": "Lava Spike", "count": 4},
-      {"name": "Mountain", "count": 20}
-    ]
-  },
-  "provider": "google"
-}
-```
-
-**Response**:
-```typescript
-interface CoachReviewResponse {
-  success: boolean;
-  data?: {
-    archetype: {
-      primary: string;
-      confidence: number;
-      secondary?: string;
-      secondaryConfidence?: number;
-    };
-    synergies: Array<{
-      name: string;
-      score: number;
-      cards: string[];
-      description: string;
-    }>;
-    missingSynergies: Array<{
-      name: string;
-      impact: "HIGH" | "MEDIUM" | "LOW";
-      description: string;
-      suggestedCards: string[];
-    }>;
-    keyCards: Array<{
-      name: string;
-      role: string;
-    }>;
-    suggestions: string[];
-  };
-  error?: string;
-  errorCode?: string;
-  usage?: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-  };
-}
-```
-
-**Example Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "archetype": {
-      "primary": "Burn",
-      "confidence": 0.92,
-      "secondary": "Aggro",
-      "secondaryConfidence": 0.75
-    },
-    "synergies": [
-      {
-        "name": "Lightning Bolt + Damage Boost",
-        "score": 0.85,
-        "cards": ["Lightning Bolt", "Rift Bolt"],
-        "description": "Direct damage spells provide consistent burn damage"
-      }
-    ],
-    "missingSynergies": [
-      {
-        "name": "Card Draw",
-        "impact": "MEDIUM",
-        "description": "Deck may run out of steam in long games",
-        "suggestedCards": ["Opt", "Wizard's Lightning"]
-      }
-    ],
-    "keyCards": [
-      {
-        "name": "Lightning Bolt",
-        "role": "Primary damage source, essential win condition"
-      }
-    ],
-    "suggestions": [
-      "Consider adding 2-3 more burn spells for consistency",
-      "Sideboard options against control: Spell Pierce"
-    ]
-  },
-  "usage": {
-    "inputTokens": 245,
-    "outputTokens": 512,
-    "totalTokens": 757
-  }
-}
-```
-
-> **Tests**:
-> - Route handler — [`src/app/api/chat/coach/__tests__/route.test.ts`](../src/app/api/chat/coach/__tests__/route.test.ts)
-> - Deck-analysis flow — [`src/ai/flows/__tests__/coach-deck-analysis.test.ts`](../src/ai/flows/__tests__/coach-deck-analysis.test.ts)
-> - Prompt construction — [`src/ai/flows/__tests__/coach-prompt.test.ts`](../src/ai/flows/__tests__/coach-prompt.test.ts)
-> - Context prefetch — [`src/ai/flows/__tests__/coach-context-prefetch.test.ts`](../src/ai/flows/__tests__/coach-context-prefetch.test.ts)
+| Method | Path                      | Purpose                                                            | Handler                                                                |
+| ------ | ------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| GET    | `/api/ai-proxy`           | Proxy status + configured providers (use `?action=status` for full) | [`ai-proxy/route.ts`](../src/app/api/ai-proxy/route.ts)               |
+| POST   | `/api/ai-proxy`           | Relay a provider chat request (streaming or one-shot)              | [`ai-proxy/route.ts`](../src/app/api/ai-proxy/route.ts)               |
+| GET    | `/api/ai-proxy/validate`  | Validate a server-side API key (`?provider=`)                      | [`ai-proxy/validate/route.ts`](../src/app/api/ai-proxy/validate/route.ts) |
+| POST   | `/api/chat`               | Unified streaming chat (Vercel AI SDK)                             | [`chat/route.ts`](../src/app/api/chat/route.ts)                       |
+| POST   | `/api/chat/coach`         | Conversational deck coach (Server-Sent Events stream)              | [`chat/coach/route.ts`](../src/app/api/chat/coach/route.ts)           |
+| POST   | `/api/deck-import`        | Fetch + parse a decklist from a supported hosting URL              | [`deck-import/route.ts`](../src/app/api/deck-import/route.ts)         |
+| GET    | `/api/signaling`          | Poll a multiplayer signaling session                               | [`signaling/route.ts`](../src/app/api/signaling/route.ts)             |
+| POST   | `/api/signaling`          | Create / join / exchange offers+answers+ICE / close a session      | [`signaling/route.ts`](../src/app/api/signaling/route.ts)             |
+| DELETE | `/api/signaling`          | Tear down a session (`?sessionId=`)                                | [`signaling/route.ts`](../src/app/api/signaling/route.ts)             |
 
 ---
 
-### 2.2 POST /api/ai/play
+### 2.1 GET /api/ai-proxy
 
-Get an AI move recommendation for a game state.
+Returns proxy status and the providers configured on the server. Pass
+`?action=status` for the extended payload (includes the full provider
+availability list).
 
-**Request**:
-```typescript
-interface AIPlayRequest {
-  gameState: AIGameState;
-  playerId: string;
-  difficulty?: "easy" | "medium" | "hard" | "expert";
-  provider?: "google" | "openai" | "claude" | "zai";
-}
-```
+**Query Parameters**:
 
-**Example Request**:
-```json
-{
-  "gameState": {
-    "players": {
-      "player-1": {
-        "life": 20,
-        "hand": ["Lightning Bolt", "Mountain"],
-        "battlefield": ["Goblin Guide"],
-        "manaAvailable": 3
-      },
-      "player-2": {
-        "life": 18,
-        "hand": [],
-        "battlefield": ["Grizzly Bears"],
-        "manaAvailable": 2
-      }
-    },
-    "phase": "precombat_main",
-    "turn": 3,
-    "activePlayer": "player-1"
-  },
-  "playerId": "player-1",
-  "difficulty": "medium"
-}
-```
+| Param   | Required | Description                                  |
+| ------- | -------- | -------------------------------------------- |
+| `action` | no       | Set to `status` for the extended status body |
 
-**Response**:
-```typescript
-interface AIPlayResponse {
-  success: boolean;
-  data?: {
-    action: "cast_spell" | "play_land" | "attack" | "block" | "activate_ability" | "pass";
-    cardId?: string;
-    target?: string;
-    details?: Record<string, unknown>;
-    reasoning?: string;
-  };
-  error?: string;
-  errorCode?: string;
-}
-```
-
-**Example Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "action": "cast_spell",
-    "cardId": "lightning-bolt-1",
-    "target": "player-2",
-    "reasoning": "Deal 3 damage to opponent to push for lethal next turn"
-  }
-}
-```
-
----
-
-### 2.3 POST /api/ai/opponent/generate
-
-Generate an AI opponent deck based on parameters.
-
-**Request**:
-```typescript
-interface OpponentGenerateRequest {
-  format: string;
-  difficulty: "easy" | "medium" | "hard" | "expert";
-  theme?: "aggro" | "control" | "combo" | "midrange" | "random";
-  provider?: "google" | "openai" | "claude" | "zai";
-}
-```
-
-**Response**:
-```typescript
-interface OpponentGenerateResponse {
-  success: boolean;
-  data?: {
-    name: string;
-    format: string;
-    cards: Array<{
-      name: string;
-      count: number;
-    }>;
-    archetype: string;
-    difficulty: string;
-  };
-  error?: string;
-}
-```
-
----
-
-### 2.4 GET /api/ai-proxy/status
-
-Get the current status of the AI proxy.
-
-**Response**:
+**Response (`?action=status`)**:
 ```json
 {
   "success": true,
   "serverProxyEnabled": true,
   "configuredProviders": ["google", "openai"],
-  "availableProviders": ["google", "openai", "claude", "zai"]
+  "availableProviders": ["google", "openai", "anthropic", "zaic", "custom"]
 }
 ```
 
+**Response (default)**:
+```json
+{
+  "success": true,
+  "message": "AI Proxy is running (Vercel AI SDK enabled)",
+  "configuredProviders": ["google", "openai"]
+}
+```
+
+> The canonical provider ids are `google | openai | anthropic | zaic | custom`
+> (see [`AIProvider` in `src/ai/providers/types.ts`](../src/ai/providers/types.ts)).
+
 ---
 
-### 2.5 GET /api/ai-proxy/validate
+### 2.2 POST /api/ai-proxy
 
-Validate a server-side API key for a provider.
+Relays a chat-completion request to a configured provider using the Vercel AI
+SDK, keeping the API key server-side. Supports both streaming and one-shot
+responses. Enforces per-client rate limiting and logs usage; the rate-limit key
+is derived from server-verified request metadata only (a client-supplied
+`userId` is **ignored** — see issue #1393).
+
+**Request**:
+```typescript
+interface AIProxyRequest {
+  provider: "google" | "openai" | "anthropic" | "zaic" | "custom";
+  endpoint: string;
+  model?: string;
+  body: {
+    messages: Array<{ role: string; content: string }>;
+    temperature?: number;
+    max_tokens?: number;      // alias: maxTokens
+    stream?: boolean;         // true → text stream; false/omitted → JSON
+  };
+  userId?: string;            // accepted for logging only; never seeds rate limit
+}
+```
+
+**Response (non-streaming)** wraps the provider result in an OpenAI-style
+envelope for legacy compatibility:
+```typescript
+interface AIProxyResponse {
+  success: boolean;
+  data?: {
+    choices: Array<{
+      message: { role: "assistant"; content: string };
+      finish_reason: string;
+    }>;
+    usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  };
+  error?: string;
+  errorCode?: string;
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number };
+  rateLimit?: { remaining: number; resetAt: number };
+}
+```
+
+When `body.stream === true`, the route returns a `text/plain` chunk stream (via
+`streamText().toTextStreamResponse()`) rather than JSON. Rate-limit headers are
+attached to both response shapes.
+
+> **Tests:** [`src/app/api/ai-proxy/__tests__/route.test.ts`](../src/app/api/ai-proxy/__tests__/route.test.ts)
+
+---
+
+### 2.3 GET /api/ai-proxy/validate
+
+Validates that a server-side API key for a provider is configured and actually
+works, by issuing a minimal request to the provider's API.
 
 **Query Parameters**:
-- `provider`: The provider to validate
 
-**Response**:
+| Param      | Required | Description                                                          |
+| ---------- | -------- | -------------------------------------------------------------------- |
+| `provider` | yes      | One of `google`, `openai`, `zaic`, `custom` (note: `anthropic` is not validateable through this endpoint) |
+
+**Response (success)**:
 ```json
 {
   "success": true,
@@ -327,6 +201,200 @@ Validate a server-side API key for a provider.
   "message": "API key is valid and working"
 }
 ```
+
+**Response (failure — 401)**:
+```json
+{
+  "success": false,
+  "provider": "google",
+  "valid": false,
+  "error": "API validation failed: 401 - ...",
+  "errorCode": "VALIDATION_FAILED_401"
+}
+```
+
+> **Tests:** [`src/app/api/ai-proxy/validate/__tests__/route.test.ts`](../src/app/api/ai-proxy/validate/__tests__/route.test.ts)
+
+---
+
+### 2.4 POST /api/chat
+
+Unified streaming chat endpoint built on the Vercel AI SDK. Defaults to OpenAI
+when `provider` is omitted. Exposes a `searchCards` tool to the model. Returns a
+text stream (not JSON).
+
+**Request**:
+```typescript
+interface ChatRequest {
+  messages: Array<{ role: string; content: string }>;
+  provider?: "google" | "openai" | "anthropic" | "zaic" | "custom"; // default "openai"
+  modelId?: string;
+}
+```
+
+**Response**: a `text/plain` chunk stream from `streamText().toTextStreamResponse()`.
+
+**Errors** (JSON):
+```json
+{ "error": "Missing or invalid messages" }   // 400
+{ "error": "<provider message>" }            // 5xx, provider-attributed
+```
+
+---
+
+### 2.5 POST /api/chat/coach
+
+The **Conversational AI Coach** (v1.7). Streams responses token-by-token as
+Server-Sent Events so the chat panel can render progressively and be cancelled
+mid-generation. Performs transparent provider failover and applies prompt-
+injection guardrails end-to-end (every message is sanitized; client-supplied
+`system` messages are dropped; the system prompt is always rebuilt server-side).
+
+The route **pre-fetches** structured deck analysis in parallel (cached) before
+invoking the model (issue #928), and prefers a client-supplied
+`digestedContext.structuredAnalysisText` for large/Commander decks so the full
+deck need not be re-sent. Conversation history is pruned against a token budget
+(issue #1238); the latest user turn is always retained.
+
+**Request**:
+```typescript
+interface CoachChatRequest {
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  deckCards?: DeckCard[];        // required unless digestedContext is supplied
+  digestedContext?: { structuredAnalysisText?: string; [k: string]: unknown };
+  format: string;                // e.g. "commander" | "standard" | "modern"
+  archetype?: string;
+  strategy?: string;
+  difficulty?: string;
+  provider?: AIProvider;         // primary provider; others tried on failure
+  modelId?: string;
+  maxHistoryMessages?: number;
+  maxHistoryTokens?: number;
+}
+```
+
+**Response**: `text/event-stream` of SSE events produced by
+`eventToSse(...)`. Terminal event types include `error` (carries a `value`
+message). The `Content-Type` is `text/event-stream; charset=utf-8` with
+`Cache-Control: no-cache, no-transform`.
+
+**Errors** (JSON, non-streaming):
+```json
+{ "success": false, "error": "Messages are required and must be an array" }  // 400
+{ "success": false, "error": "Either deckCards or digestedContext is required" } // 400
+{ "success": false, "error": "Format is required" }                          // 400
+```
+
+> **Tests:**
+> - Route — [`src/app/api/chat/coach/__tests__/route.test.ts`](../src/app/api/chat/coach/__tests__/route.test.ts)
+> - Stream layer — [`src/ai/flows/__tests__/coach-stream.test.ts`](../src/ai/flows/__tests__/coach-stream.test.ts)
+> - Context prefetch — [`src/ai/flows/__tests__/coach-context-prefetch.test.ts`](../src/ai/flows/__tests__/coach-context-prefetch.test.ts)
+> - History pruning — [`src/ai/flows/__tests__/prepare-conversation-history.test.ts`](../src/ai/flows/__tests__/prepare-conversation-history.test.ts)
+> - Prompt construction — [`src/ai/flows/__tests__/coach-prompt.test.ts`](../src/ai/flows/__tests__/coach-prompt.test.ts)
+
+---
+
+### 2.6 POST /api/deck-import
+
+Server-side fetch + parse of a decklist from a supported hosting site
+(MTGGoldfish, TappedOut, Moxfield, and others). Returns the parsed decklist text
+for the client to resolve into cards. Strictly validates the URL scheme and
+hostname (no SSRF schemes, no embedded credentials, exact/subdomain hostname
+match — issue #1392) and caps both request body (512 KB) and returned rows
+(250) to prevent abuse (issue #1277).
+
+**Request**:
+```typescript
+interface DeckImportRequest {
+  url: string;   // https/http only, no credentials, must be a supported site
+}
+```
+
+**Response (success)**:
+```json
+{
+  "success": true,
+  "decklist": "4 Lightning Bolt\n4 Goblin Guide\n20 Mountain",
+  "siteName": "MTGGoldfish",
+  "cardCount": 22
+}
+```
+
+**Errors**:
+| Status | When                                                |
+| ------ | --------------------------------------------------- |
+| 400    | Missing/invalid URL, unsupported scheme/creds, unsupported site (includes `supportedSites` + `suggestion`) |
+| 413    | Request body exceeds 512 KB                         |
+| 422    | Page fetched but no decklist could be parsed        |
+| 5xx    | Upstream fetch failure / internal error             |
+
+> **Tests:** [`src/app/api/deck-import/__tests__/route.test.ts`](../src/app/api/deck-import/__tests__/route.test.ts)
+
+---
+
+### 2.7 GET /api/signaling
+
+Poll a multiplayer signaling session by game code or session id. Returns the
+session state appropriate to the caller's `role`. Sessions are in-memory and
+expire after 5 minutes.
+
+**Query Parameters**:
+
+| Param       | Required                  | Description                          |
+| ----------- | ------------------------- | ------------------------------------ |
+| `gameCode`  | one of `gameCode`/`sessionId` | The human-readable room code        |
+| `sessionId` | one of `gameCode`/`sessionId` | The internal session id            |
+| `role`      | no                        | `host` or `client`; selects which WebRTC fields are returned |
+
+**Response (host)**: includes `answer`, `clientCandidates`, `clientId`,
+`clientName`. **Response (client)**: includes `offer`, `hostCandidates`,
+`hostId`. Both shapes include `sessionId`, `gameCode`, `hostName`,
+`clientName`, `createdAt`, `expiresAt`.
+
+**Errors**: `400` (`gameCode or sessionId required`), `404` (`Session not found`).
+
+> **Tests:** [`src/app/api/signaling/__tests__/route.test.ts`](../src/app/api/signaling/__tests__/route.test.ts)
+
+---
+
+### 2.8 POST /api/signaling
+
+Create a session, join one, or exchange WebRTC signaling data. The `type`
+field selects the handler; `payload` is type-specific.
+
+**Request**:
+```typescript
+interface SignalingMessage {
+  type: "create" | "join" | "offer" | "answer" | "ice-candidate" | "close";
+  payload: unknown; // shape depends on `type` (see handler)
+}
+```
+
+| `type`          | `payload`                                                                     |
+| --------------- | ----------------------------------------------------------------------------- |
+| `create`        | `{ hostId, hostName, offer? }` → returns `{ sessionId, gameCode }`            |
+| `join`          | `{ gameCode, clientId, clientName }`                                          |
+| `offer`         | `{ sessionId, offer }`                                                        |
+| `answer`        | `{ sessionId, answer }`                                                       |
+| `ice-candidate` | `{ sessionId, candidate, role: "host" \| "client" }`                          |
+| `close`         | `{ sessionId }`                                                               |
+
+**Errors**: `400` (invalid JSON, unknown `type`, or missing required fields),
+`404` (session not found for join/exchange/close).
+
+---
+
+### 2.9 DELETE /api/signaling
+
+Tear down a signaling session.
+
+**Query Parameters**:
+
+| Param       | Required | Description              |
+| ----------- | -------- | ------------------------ |
+| `sessionId` | yes      | The session to delete    |
+
+**Response (success)**: `{ "success": true }`. **Errors**: `400` (`sessionId required`), `404` (`Session not found`).
 
 ---
 
@@ -422,10 +490,13 @@ const response = await sendOpenAIChat(
 
 ### 3.3 Claude (Anthropic)
 
+> The wire `provider` id is **`anthropic`** (see
+> [`AIProvider`](../src/ai/providers/types.ts)); "Claude" is the product name.
+
 **Configuration**:
 ```typescript
 const claudeConfig = {
-  provider: "claude",
+  provider: "anthropic",
   model: "claude-3-haiku-20240307",
   temperature: 0.7,
   maxTokens: 2048,
@@ -448,7 +519,7 @@ import { sendClaudeChat } from '@/ai/providers/claude';
 
 const response = await sendClaudeChat(
   {
-    provider: 'claude',
+    provider: 'anthropic',
     model: 'claude-3-haiku-20240307',
     temperature: 0.7,
   },
@@ -465,10 +536,14 @@ const response = await sendClaudeChat(
 
 ### 3.4 Z.ai (GLM)
 
+> The wire `provider` id is **`zaic`** (see
+> [`AIProvider`](../src/ai/providers/types.ts)); the API-endpoint env key is
+> `ZAI` (`API_ENDPOINTS.ZAI` in [`src/lib/env.ts`](../src/lib/env.ts)).
+
 **Configuration**:
 ```typescript
 const zaiConfig = {
-  provider: "zai",
+  provider: "zaic",
   model: "glm-4-flash",
   temperature: 0.7,
   maxTokens: 2048,
@@ -669,9 +744,16 @@ async function analyzeDeck(deck: Deck) {
 
 ---
 
-## 7. Server Actions
+## 7. Server-Side Wrappers
 
-Planar Nexus uses Next.js Server Actions for server-side operations.
+> **Heads up:** despite the filename, [`src/app/actions.ts`](../src/app/actions.ts)
+> does **not** export Next.js Server Actions — it has no `"use server"`
+> directive. The exports below are **client-side** wrapper functions that call
+> the AI flows in [`src/ai/flows/`](../src/ai/flows) (and the routes in
+> [Section 2](#2-api-routes)) from the browser. Real persistence is
+> client-side via IndexedDB/Dexie. The signatures are kept here as the
+> public call surface; treat the comments below as descriptive, not literal
+> `'use server'` exports.
 
 ### 7.1 Card Search
 
@@ -916,30 +998,26 @@ interface AIPermanent {
 
 ## Appendix B: Rate Limit Configuration
 
-### Per-Provider Configuration
+### Server-Side Limiter
+
+The proxy enforces a single global limit per client (per provider-config
+`rateLimit`). The previously documented per-provider `PROVIDER_LIMITS` map no
+longer exists in the source.
 
 ```typescript
 // src/lib/server-rate-limiter.ts
-
-const PROVIDER_LIMITS = {
-  google: {
-    max: parseInt(process.env.AI_RATE_LIMIT_MAX_GOOGLE || '150'),
-    windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_GOOGLE || '60000'),
-  },
-  openai: {
-    max: parseInt(process.env.AI_RATE_LIMIT_MAX_OPENAI || '100'),
-    windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_OPENAI || '60000'),
-  },
-  claude: {
-    max: parseInt(process.env.AI_RATE_LIMIT_MAX_CLAUDE || '50'),
-    windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_CLAUDE || '60000'),
-  },
-  zai: {
-    max: parseInt(process.env.AI_RATE_LIMIT_MAX_ZAI || '100'),
-    windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_ZAI || '60000'),
-  },
-};
+const maxRequests = parseInt(process.env.AI_RATE_LIMIT_MAX || '100', 10);
 ```
+
+| Env var                 | Default | Meaning                              |
+| ----------------------- | ------- | ------------------------------------ |
+| `AI_RATE_LIMIT_MAX`     | `100`   | Max requests per window per client   |
+| `AI_RATE_LIMIT_WINDOW_MS` | `60000` | Window length in ms (see [Section 5](#5-rate-limits)) |
+
+Per-provider ceilings are still bounded upstream by each provider's own API
+quota (see the "Default Rate Limits" table in [Section 5](#5-rate-limits)); the
+server limiter sits in front of those as a coarse abuse guard, with the key
+derived from server-verified request metadata only (issue #1393).
 
 ---
 
