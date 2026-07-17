@@ -94,7 +94,7 @@
     "peerjs": "^1.5.5",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
-    "react-day-picker": "^9.11.3",
+    "react-day-picker": "^10.0.1",
     "react-dom": "^19.2.7",
     "react-hook-form": "^7.81.0",
     "recharts": "^3.9.2",
