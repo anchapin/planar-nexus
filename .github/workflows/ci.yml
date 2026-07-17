@@ -422,10 +422,10 @@ jobs:
       - name: Run actionlint
         uses: rhysd/actionlint@v1.7.7
         with:
-          # `--shellcheck-severity` accepts error|warning|info|style. We
-          # promote it to `warning` so the existing SC2086/SC2015 info-level
-          # warnings stay informational rather than failing the PR gate.
-          args: '--shellcheck-severity warning'
+          # actionlint has no severity flag; use -ignore (regex on messages)
+          # to keep SC2086 (quote vars) / SC2015 (A&&B||C) info-level nits
+          # informational rather than failing the PR gate.
+          args: '-ignore SC2086 -ignore SC2015'
   
   build:
     name: Build
