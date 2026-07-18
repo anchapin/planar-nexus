@@ -3,8 +3,13 @@ import type { DeckCard } from "@/app/actions";
 import { prefetchCoachContext } from "@/ai/flows/coach-context-prefetch";
 import {
   buildCoachSystemPrompt,
-  prepareConversationHistory,
+  prepareConversationHistoryWithSummary,
+  validateCoachMemorySummary,
 } from "@/ai/flows/context-builder";
+import {
+  emptyCoachMemorySummary,
+  isSummaryEmpty,
+} from "@/ai/flows/coach-memory-summary";
 import {
   streamCoachResponse,
   eventToSse,
@@ -50,6 +55,15 @@ import { classifyCoachIntent } from "@/ai/coach-intent";
  * coaching sessions cannot exceed the model's context window. The system
  * prompt (which carries the structured deck analysis) is reserved against the
  * budget and the latest user turn is always retained intact.
+ *
+ * Issue #1417: when pruning drops turns, a durable **coach-memory summary**
+ * captures goals, constraints, accepted/rejected swaps, matchup targets, and
+ * unresolved questions. The summary is computed deterministically from the
+ * pruned slice (no LLM call on the request path), validated against a zod
+ * schema, injected into the guarded system prompt as trusted
+ * system-maintained context, and emitted back to the client as a `summary`
+ * SSE event so it can be persisted with the conversation and resent on the
+ * next turn. Older conversations (no summary) load and behave as before.
  */
 
 export const dynamic = "force-dynamic";
@@ -144,6 +158,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Issue #1417: the client sends the persisted coach-memory summary for
+    // the active conversation (if any) so pruning can merge into it
+    // monotonically across the session. Validate defensively — a foreign
+    // payload is dropped (treated as absent) rather than crashing the request.
+    const inboundSummary = validateCoachMemorySummary(body.memorySummary);
+
     // 4. Build a GUARDRAILED system prompt (issue #1107). `buildCoachSystemPrompt`
     //    prepends SECURITY_PREAMBLE and sanitizes/wraps every deck-controlled
     //    field. We pass the empty decklist (the structured analysis carries the
@@ -154,6 +174,10 @@ export async function POST(request: NextRequest) {
     //    server-authoritative — any client-supplied `intent` field is ignored
     //    (it never reaches the classifier or the prompt). The intent block and
     //    tier-specific guidance are injected by `buildCoachSystemPrompt`.
+    //
+    //    Issue #1417: the validated inbound summary is injected as trusted
+    //    system-maintained context. If the inbound payload failed validation,
+    //    fall back to "no summary" — the next pruning pass will repopulate.
     const sanitizedMessages: CoachStreamMessage[] = (messages as unknown[])
       .map((raw): CoachStreamMessage | null => {
         if (typeof raw !== "object" || raw === null) return null;
@@ -198,7 +222,25 @@ export async function POST(request: NextRequest) {
       userTurn: latestUserMessage?.content,
     });
 
-    const systemPrompt = buildCoachSystemPrompt(
+    // 6. Prune the conversation history against the token budget (issue
+    //    #1238). `systemContent` is reserved against the budget so the
+    //    structured-analysis / SECURITY_PREAMBLE block is always preserved.
+    //    The latest turn is always retained intact; oldest turns are dropped
+    //    first until the combined size fits within the configured budget.
+    //
+    //    Issue #1417: when pruning drops turns, build (or update) the durable
+    //    coach-memory summary from the pruned slice. The summary merges with
+    //    any inbound prior summary so memory grows monotonically across the
+    //    session. The summary is then injected into the system prompt as
+    //    trusted system-maintained context. To inject the *current* summary,
+    //    we first build the prompt without it, reserve that prompt's size in
+    //    the pruning budget, and then re-emit the prompt with the updated
+    //    summary inline.
+    //
+    //    Failure isolation: the wrapper swallows summary-builder errors and
+    //    falls back to the prior summary (or empty), so summary generation
+    //    failure never blocks the request (issue #1417 acceptance criterion).
+    const baseSystemPrompt = buildCoachSystemPrompt(
       format,
       "",
       body.archetype,
@@ -208,19 +250,10 @@ export async function POST(request: NextRequest) {
       intent,
       typeof body.difficulty === "string" ? body.difficulty : undefined,
       evidenceLedger,
+      inboundSummary,
     );
 
-    // 5. Defense-in-depth: sanitize each message's content and drop any
-    //    client-supplied `system` role. Only the server-built `systemPrompt`
-    //    above is allowed to set system instructions. (Sanitization already
-    //    ran above for classification; the `sanitizedMessages` array is reused.)
-
-    // 6. Prune the conversation history against the token budget (issue
-    //    #1238). `systemContent` is reserved against the budget so the
-    //    structured-analysis / SECURITY_PREAMBLE block is always preserved.
-    //    The latest turn is always retained intact; oldest turns are dropped
-    //    first until the combined size fits within the configured budget.
-    const prunedMessages = prepareConversationHistory(
+    const prepared = prepareConversationHistoryWithSummary(
       sanitizedMessages.map((m) => ({
         id: `${m.role}-${m.content.length}`,
         role: m.role,
@@ -230,9 +263,31 @@ export async function POST(request: NextRequest) {
       {
         maxMessages: body.maxHistoryMessages,
         maxTokens: body.maxHistoryTokens,
-        systemContent: systemPrompt,
+        systemContent: baseSystemPrompt,
+        priorSummary: inboundSummary,
       },
     );
+    const prunedMessages = prepared.messages;
+    const updatedSummary = prepared.summary;
+
+    // Re-emit the system prompt with the (possibly updated) summary inline.
+    // If the summary changed, the prompt must reflect the latest view; if
+    // nothing changed, this is a cheap no-op rebuild that yields the same
+    // text as `baseSystemPrompt`.
+    const systemPrompt = isSummaryEmpty(updatedSummary)
+      ? baseSystemPrompt
+      : buildCoachSystemPrompt(
+          format,
+          "",
+          body.archetype,
+          body.strategy,
+          digestedContext ? JSON.stringify(digestedContext) : undefined,
+          structuredAnalysis,
+          intent,
+          typeof body.difficulty === "string" ? body.difficulty : undefined,
+          evidenceLedger,
+          updatedSummary,
+        );
 
     // 7. Resolve the ordered provider failover chain (issue #1077).
     const providers = getProviderFailoverChain(body.provider);
@@ -240,6 +295,13 @@ export async function POST(request: NextRequest) {
     // 8. Stream the response as SSE. `request.signal` aborts when the client
     //    cancels its fetch (AbortController) — threading it through stops
     //    server-side generation and prevents further provider attempts.
+    //
+    //    Issue #1417: emit the updated summary as the FIRST stream event so
+    //    the client can persist it before the assistant text begins to land.
+    //    Always emit it — even when pruning didn't change anything — so the
+    //    client's persisted shape is authoritative; an empty summary is
+    //    rendered to `{ ...empties, tokenEstimate: 0 }` and the client can
+    //    short-circuit persistence when nothing meaningful arrived.
     const eventStream = streamCoachResponse({
       systemPrompt,
       messages: prunedMessages,
@@ -247,6 +309,14 @@ export async function POST(request: NextRequest) {
       modelId: body.modelId,
       signal: request.signal,
     });
+
+    // Pre-flight summary event. Falls back to an empty summary if the pruner
+    // somehow returned `null`/`undefined` (defensive — it never does, but the
+    // route is responsible for the wire contract).
+    const summaryEvent = {
+      type: "summary" as const,
+      summary: updatedSummary ?? emptyCoachMemorySummary(),
+    };
 
     const encoder = new TextEncoder();
 
@@ -316,6 +386,7 @@ export async function POST(request: NextRequest) {
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
+          controller.enqueue(encoder.encode(eventToSse(summaryEvent)));
           for await (const event of withGroundingGuard(eventStream)) {
             controller.enqueue(encoder.encode(eventToSse(event)));
           }

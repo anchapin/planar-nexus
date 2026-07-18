@@ -24,6 +24,7 @@ import type { ChatMessage } from "@/types/chat";
 import {
   COACH_CONVERSATION_STORE,
   DEFAULT_DECK_ID,
+  type CoachConversation,
   clearAllCoachConversations,
   createConversationRecord,
   deleteConversation,
@@ -354,10 +355,15 @@ describe("coach-conversation-storage", () => {
     it("parseCoachConversationExport rejects malformed JSON", () => {
       expect(parseCoachConversationExport("not json")).toBeNull();
       expect(parseCoachConversationExport("{}")).toBeNull();
-      expect(parseCoachConversationExport(JSON.stringify({ type: "other" }))).toBeNull();
+      expect(
+        parseCoachConversationExport(JSON.stringify({ type: "other" })),
+      ).toBeNull();
       expect(
         parseCoachConversationExport(
-          JSON.stringify({ type: "planar-nexus-coach-conversations", version: 99 }),
+          JSON.stringify({
+            type: "planar-nexus-coach-conversations",
+            version: 99,
+          }),
         ),
       ).toBeNull();
       expect(
@@ -439,7 +445,9 @@ describe("coach-conversation-storage", () => {
       expect(list).toHaveLength(1);
       expect(list[0].id).not.toBe("clash");
       // Messages round-trip with matching content + role.
-      expect(list[0].messages.map((m) => ({ role: m.role, content: m.content }))).toEqual(
+      expect(
+        list[0].messages.map((m) => ({ role: m.role, content: m.content })),
+      ).toEqual(
         incoming.messages.map((m) => ({ role: m.role, content: m.content })),
       );
     });
@@ -454,12 +462,16 @@ describe("coach-conversation-storage", () => {
         conversations: [
           good,
           // missing-id: no `id` field at all -> "missing id" (skip)
-          { messages: [{ role: "user", content: "x", id: "m1", timestamp: new Date() }] },
+          {
+            messages: [
+              { role: "user", content: "x", id: "m1", timestamp: new Date() },
+            ],
+          },
           // empty messages -> "no usable messages" (skip)
           { id: "no-messages", messages: [] },
           // not an object (skip)
           "not-an-object",
-        ] as unknown as typeof good[],
+        ] as unknown as (typeof good)[],
       };
       const result = await importConversationsFromJSON(envelope, {
         targetDeckId: "deck-mix",
@@ -474,8 +486,12 @@ describe("coach-conversation-storage", () => {
 
   describe("orphan cleanup (issue #1242)", () => {
     it("prunes conversations whose deckId is not in the valid set", async () => {
-      await saveConversation(makeConversation({ id: "keep-1", deckId: "alive" }));
-      await saveConversation(makeConversation({ id: "keep-2", deckId: "alive" }));
+      await saveConversation(
+        makeConversation({ id: "keep-1", deckId: "alive" }),
+      );
+      await saveConversation(
+        makeConversation({ id: "keep-2", deckId: "alive" }),
+      );
       await saveConversation(
         makeConversation({ id: "orphan-1", deckId: "deleted-deck" }),
       );
@@ -486,10 +502,9 @@ describe("coach-conversation-storage", () => {
       const removed = await pruneOrphanedConversations(["alive"]);
       expect(removed).toBe(2);
 
-      expect((await loadConversations("alive")).map((c) => c.id).sort()).toEqual([
-        "keep-1",
-        "keep-2",
-      ]);
+      expect(
+        (await loadConversations("alive")).map((c) => c.id).sort(),
+      ).toEqual(["keep-1", "keep-2"]);
       expect(await loadConversation("orphan-1")).toBeNull();
       expect(await loadConversation("orphan-2")).toBeNull();
     });
@@ -537,6 +552,88 @@ describe("coach-conversation-storage", () => {
     it("exposes a sensible default cap", () => {
       expect(DEFAULT_MAX_CONVERSATIONS_PER_DECK).toBeGreaterThan(0);
       expect(DEFAULT_MAX_CONVERSATIONS_PER_DECK).toBeLessThanOrEqual(100);
+    });
+  });
+
+  describe("coach-memory summary persistence (issue #1417)", () => {
+    it("round-trips a memorySummary through save/load", async () => {
+      const conv = makeConversation({ id: "with-summary" });
+      conv.memorySummary = {
+        version: 1,
+        updatedAt: "2026-07-01T00:00:00.000Z",
+        goals: ["win the long game"],
+        constraints: ["under $50"],
+        acceptedSwaps: ["cut Murder for Doom Blade"],
+        rejectedSwaps: ["cut Sheoldred"],
+        matchupTargets: ["Mono-Red"],
+        unresolvedQuestions: ["Sideboard plan?"],
+        tokenEstimate: 42,
+      };
+      await saveConversation(conv);
+      const loaded = await loadConversation(conv.id);
+      expect(loaded!.memorySummary).toEqual(conv.memorySummary);
+    });
+
+    it("loads an older conversation without a memorySummary (backward compat)", async () => {
+      // Persist a record WITHOUT the memorySummary field — simulates a
+      // pre-#1417 conversation. Loading must succeed and the field must be
+      // undefined (not null, not an empty summary).
+      const conv = makeConversation({ id: "legacy-no-summary" });
+      // Strip the field to simulate the old shape.
+      const { memorySummary, ...legacy } = conv;
+      expect(memorySummary).toBeUndefined();
+      await saveConversation(legacy as CoachConversation);
+
+      const loaded = await loadConversation(conv.id);
+      expect(loaded).not.toBeNull();
+      expect(loaded!.memorySummary).toBeUndefined();
+    });
+
+    it("drops a malformed persisted summary on load (graceful degrade)", async () => {
+      // Inject a poisoned summary through the storage layer directly so we
+      // can verify loadConversation validates and drops it. We bypass the
+      // TS type-checker here because the on-disk shape can come from older
+      // versions, browser extensions, or hand-edited exports — the loader
+      // must cope with anything.
+      const conv = makeConversation({ id: "poisoned-summary" });
+      await saveConversation(conv);
+      const poisoned = {
+        ...conv,
+        memorySummary: { version: 999, goals: "not an array" },
+      } as unknown as CoachConversation;
+      await saveConversation(poisoned);
+      const loaded = await loadConversation(conv.id);
+      expect(loaded).not.toBeNull();
+      // The bogus summary was dropped — callers treat undefined as "no summary yet".
+      expect(loaded!.memorySummary).toBeUndefined();
+    });
+
+    it("preserves a memorySummary through export + import round-trip", async () => {
+      const conv = makeConversation({ id: "export-me", deckId: "deck-exp" });
+      conv.memorySummary = {
+        version: 1,
+        updatedAt: "2026-07-01T00:00:00.000Z",
+        goals: ["persisted goal"],
+        constraints: [],
+        acceptedSwaps: [],
+        rejectedSwaps: [],
+        matchupTargets: [],
+        unresolvedQuestions: [],
+        tokenEstimate: 1,
+      };
+      await saveConversation(conv);
+      const envelope = await exportConversationsForDeck("deck-exp");
+      expect(envelope.conversations[0].memorySummary?.goals).toEqual([
+        "persisted goal",
+      ]);
+
+      // Re-import into a fresh deck and confirm the summary survives.
+      const result = await importConversationsFromJSON(envelope, {
+        targetDeckId: "deck-imported",
+      });
+      expect(result.imported).toBe(1);
+      const imported = await loadConversations("deck-imported");
+      expect(imported[0].memorySummary?.goals).toEqual(["persisted goal"]);
     });
   });
 });

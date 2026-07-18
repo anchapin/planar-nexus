@@ -49,6 +49,17 @@ export interface CoachTokenUsage {
 }
 
 /**
+ * A durable coach-memory summary carried across turns (issue #1417). The
+ * route emits the up-to-date summary as a `summary` event immediately after
+ * pruning so the client can persist it with the conversation record. The
+ * shape mirrors {@link CoachMemorySummary} from `coach-memory-summary.ts`,
+ * kept opaque here (typed as `Record<string, unknown>`) so this module does
+ * not need to import zod or the schema — the route owns the schema and
+ * validates payloads before emitting.
+ */
+export type CoachMemorySummaryPayload = Record<string, unknown>;
+
+/**
  * Discriminated union of events emitted while streaming a coach response.
  * The route serializes each event as one SSE `data:` line; the client parser
  * switches on `type`.
@@ -81,6 +92,15 @@ export type CoachStreamEvent =
       needsReview: boolean;
       caveat: string;
       failures: string[];
+    }
+  | {
+      type: "summary";
+      /**
+       * Updated coach-memory summary (issue #1417). Emitted once per request,
+       * before the first `text` event, so the client can persist it
+       * alongside the in-flight assistant message.
+       */
+      summary: CoachMemorySummaryPayload;
     }
   | { type: "error"; value: string }
   | { type: "done" };

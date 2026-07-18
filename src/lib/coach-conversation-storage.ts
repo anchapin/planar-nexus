@@ -24,6 +24,8 @@
 
 import type { ChatMessage } from "@/types/chat";
 import type { DeckCard } from "@/ai/flows/context-builder";
+import type { CoachMemorySummary } from "@/ai/flows/coach-memory-summary";
+import { parseCoachMemorySummary } from "@/ai/flows/coach-memory-summary";
 import { IndexedDBStorage } from "./indexeddb-storage";
 import { withQuotaGuard, type QuotaGuardResult } from "./storage-quota";
 
@@ -60,6 +62,14 @@ export interface CoachConversation {
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  /**
+   * Durable coach-memory summary of pruned turns (issue #1417). Optional
+   * for backward compatibility: older conversations pre-date this field and
+   * load as `undefined`. The coach route lazily populates it on the first
+   * pruning pass; once set, it is round-tripped verbatim through save/load
+   * and import/export.
+   */
+  memorySummary?: CoachMemorySummary;
 }
 
 /**
@@ -205,11 +215,16 @@ export async function loadConversation(
       id,
     );
     if (!conv) return null;
+    // Issue #1417: defensively validate the persisted coach-memory summary.
+    // A poisoned / cross-version value is dropped (treated as absent) rather
+    // than crashing the resume path; the next pruning pass re-populates it.
+    const validatedSummary = parseCoachMemorySummary(conv.memorySummary);
     return {
       ...conv,
       messages: Array.isArray(conv.messages)
         ? conv.messages.map(normalizeMessage)
         : [],
+      memorySummary: validatedSummary ?? undefined,
     };
   } catch (error) {
     console.error("Failed to load coach conversation:", error);
@@ -412,7 +427,12 @@ function sanitiseImportedConversation(
     rec.deckContext && typeof rec.deckContext === "object"
       ? (rec.deckContext as CoachConversationDeckContext)
       : {};
-  return {
+  // Issue #1417: preserve a persisted coach-memory summary on import, but
+  // validate it through the zod schema first so a poisoned/foreign envelope
+  // is dropped rather than crashing import. Conversations without one
+  // (including all pre-#1417 exports) load as `undefined`.
+  const importedSummary = parseCoachMemorySummary(rec.memorySummary);
+  const result: { ok: true; value: CoachConversation } = {
     ok: true,
     value: {
       id: rec.id,
@@ -427,6 +447,8 @@ function sanitiseImportedConversation(
       updatedAt,
     },
   };
+  if (importedSummary) result.value.memorySummary = importedSummary;
+  return result;
 }
 
 /**

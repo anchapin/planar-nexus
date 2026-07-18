@@ -16,10 +16,16 @@
 import { describe, it, expect } from "@jest/globals";
 import {
   prepareConversationHistory,
+  prepareConversationHistoryWithSummary,
+  validateCoachMemorySummary,
   estimateTokens,
   DEFAULT_CONVERSATION_TOKEN_BUDGET,
   DEFAULT_CONVERSATION_MAX_MESSAGES,
 } from "../context-builder";
+import {
+  COACH_MEMORY_SUMMARY_VERSION,
+  type CoachMemorySummary,
+} from "../coach-memory-summary";
 import type { ChatMessage } from "@/types/chat";
 
 function makeMessages(count: number, filler = "x"): ChatMessage[] {
@@ -228,5 +234,205 @@ describe("prepareConversationHistory — token budget (issue #1238)", () => {
     expect(result.map((m) => m.content)).toEqual(
       messages.map((m) => m.content),
     );
+  });
+});
+
+describe("prepareConversationHistoryWithSummary — issue #1417", () => {
+  it("returns an empty summary and pruned=false when nothing is pruned", () => {
+    const messages = makeMessages(3);
+    const result = prepareConversationHistoryWithSummary(messages, {
+      maxTokens: DEFAULT_CONVERSATION_TOKEN_BUDGET,
+      maxMessages: DEFAULT_CONVERSATION_MAX_MESSAGES,
+    });
+    expect(result.pruned).toBe(false);
+    expect(result.messages.map((m) => m.content)).toEqual(
+      messages.map((m) => m.content),
+    );
+    // Empty summary is well-formed (schema-valid).
+    expect(result.summary.version).toBe(COACH_MEMORY_SUMMARY_VERSION);
+    expect(result.summary.goals).toEqual([]);
+    expect(result.summary.tokenEstimate).toBe(0);
+  });
+
+  it("sets pruned=true and builds a summary from the dropped turns", () => {
+    // Force pruning: 20 turns of ~200 chars each (~50 tokens each), tiny
+    // budget. The latest user turn is always retained. The first message
+    // is padded with filler so it is too large to be admitted alongside
+    // the latest turn — guaranteeing it lands in the pruned slice and is
+    // therefore summarised.
+    const messages: ChatMessage[] = [];
+    for (let i = 0; i < 20; i++) {
+      messages.push({
+        id: `m-${i}`,
+        role: i % 2 === 0 ? "user" : "assistant",
+        content:
+          i === 0
+            ? `I want to win the long game against control. ${"x".repeat(300)}`
+            : `turn-${i} ${"a".repeat(200)}`,
+        timestamp: new Date(i * 1000),
+      });
+    }
+    const result = prepareConversationHistoryWithSummary(messages, {
+      maxTokens: 100,
+      maxMessages: 50,
+    });
+    expect(result.pruned).toBe(true);
+    expect(result.messages.length).toBeLessThan(messages.length);
+    // The first message (which carried a goal) was pruned; the summary
+    // captured that goal so the coach still "remembers" it.
+    expect(result.summary.goals.length).toBeGreaterThanOrEqual(1);
+    expect(result.summary.goals.some((g) => /long game/i.test(g))).toBe(true);
+  });
+
+  it("always retains the latest user turn intact (no pruning bypass)", () => {
+    const messages: ChatMessage[] = [];
+    for (let i = 0; i < 20; i++) {
+      messages.push({
+        id: `m-${i}`,
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: `turn-${i} ${"a".repeat(200)}`,
+        timestamp: new Date(i * 1000),
+      });
+    }
+    const result = prepareConversationHistoryWithSummary(messages, {
+      maxTokens: 100,
+      maxMessages: 50,
+    });
+    expect(result.messages[result.messages.length - 1].content).toBe(
+      messages[messages.length - 1].content,
+    );
+  });
+
+  it("merges with priorSummary so memory grows monotonically", () => {
+    // Many large turns + a tiny budget forces everything except the latest
+    // message into the pruned slice, so the goal-bearing first message is
+    // guaranteed to be summarised.
+    const messages: ChatMessage[] = [
+      {
+        id: "old-1",
+        role: "user",
+        content: `I want to win the long game against control. ${"x".repeat(400)}`,
+        timestamp: new Date(0),
+      },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `fill-${i}`,
+        role: (i % 2 === 0 ? "user" : "assistant") as ChatMessage["role"],
+        content: `filler-${i} ${"b".repeat(400)}`,
+        timestamp: new Date(2000 + i * 1000),
+      })),
+    ];
+    const prior: CoachMemorySummary = {
+      version: COACH_MEMORY_SUMMARY_VERSION,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      goals: ["previously remembered goal"],
+      constraints: [],
+      acceptedSwaps: [],
+      rejectedSwaps: [],
+      matchupTargets: [],
+      unresolvedQuestions: [],
+      tokenEstimate: 0,
+    };
+    const result = prepareConversationHistoryWithSummary(messages, {
+      maxTokens: 120, // Only the latest (~105-token) message fits.
+      maxMessages: 50,
+      priorSummary: prior,
+    });
+    expect(result.pruned).toBe(true);
+    // The prior goal survives; the newly-pruned goal is added.
+    expect(result.summary.goals).toContain("previously remembered goal");
+    expect(result.summary.goals.some((g) => /long game/i.test(g))).toBe(true);
+  });
+
+  it("honors the summary-specific token budget independently of the history budget", () => {
+    // Tiny summary budget — even when many goals would otherwise be extracted,
+    // the summary is bounded.
+    const messages: ChatMessage[] = [];
+    for (let i = 0; i < 30; i++) {
+      messages.push({
+        id: `m-${i}`,
+        role: "user",
+        content: `I want to win the long game with deck ${i}. ${"x".repeat(200)}`,
+        timestamp: new Date(i * 1000),
+      });
+    }
+    const result = prepareConversationHistoryWithSummary(messages, {
+      maxTokens: 200,
+      maxMessages: 50,
+      summaryMaxTokens: 30,
+    });
+    expect(result.summary.tokenEstimate).toBeLessThanOrEqual(30);
+  });
+
+  it("falls back gracefully if a bogus priorSummary is supplied", () => {
+    // Schema validation happens at the route; here we pass a real prior.
+    // Test the failure-isolation path: even when given a prior that would
+    // mislead the builder, the wrapper never throws.
+    const messages: ChatMessage[] = [
+      {
+        id: "m-0",
+        role: "user",
+        // Padded so the goal message is large enough to be pruned.
+        content: `I want to win the long game. ${"x".repeat(300)}`,
+        timestamp: new Date(0),
+      },
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `m-${i + 1}`,
+        role: (i % 2 === 0 ? "user" : "assistant") as ChatMessage["role"],
+        content: `turn-${i} ${"x".repeat(200)}`,
+        timestamp: new Date((i + 1) * 1000),
+      })),
+    ];
+    const result = prepareConversationHistoryWithSummary(messages, {
+      maxTokens: 100,
+      maxMessages: 50,
+      priorSummary: null,
+    });
+    expect(result.pruned).toBe(true);
+    expect(result.summary.goals.some((g) => /long game/i.test(g))).toBe(true);
+  });
+});
+
+describe("validateCoachMemorySummary — route-boundary parsing", () => {
+  it("returns null for an undefined payload (older conversations)", () => {
+    expect(validateCoachMemorySummary(undefined)).toBeNull();
+    expect(validateCoachMemorySummary(null)).toBeNull();
+  });
+
+  it("round-trips a valid summary", () => {
+    const valid = {
+      version: COACH_MEMORY_SUMMARY_VERSION,
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      goals: ["g"],
+      constraints: [],
+      acceptedSwaps: [],
+      rejectedSwaps: [],
+      matchupTargets: [],
+      unresolvedQuestions: [],
+      tokenEstimate: 1,
+    };
+    const parsed = validateCoachMemorySummary(valid);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.goals).toEqual(["g"]);
+  });
+
+  it("returns null for a malformed payload", () => {
+    expect(validateCoachMemorySummary({ version: 99 })).toBeNull();
+    expect(validateCoachMemorySummary("not-an-object")).toBeNull();
+    expect(
+      validateCoachMemorySummary({
+        ...{
+          version: COACH_MEMORY_SUMMARY_VERSION,
+          updatedAt: "2026-07-01T00:00:00.000Z",
+          goals: [],
+          constraints: [],
+          acceptedSwaps: [],
+          rejectedSwaps: [],
+          matchupTargets: [],
+          unresolvedQuestions: [],
+          tokenEstimate: 0,
+        },
+        goals: "not-an-array",
+      }),
+    ).toBeNull();
   });
 });
