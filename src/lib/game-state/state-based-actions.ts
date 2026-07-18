@@ -33,6 +33,7 @@ import {
   hasPendingLegendaryChoice,
   createLegendaryWaitingChoice,
 } from "./legendary-rule";
+import { processCorpseOnDeath } from "./corpse-keyword";
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
@@ -433,6 +434,22 @@ export function checkStateBasedActions(
           updatedState.cards.get(cardId)?.cardData.name ?? "Creature";
         descriptions.push(
           `${deadName} was cast for its blitz cost: controller draws a card`,
+        );
+        actionsPerformed = true;
+      }
+
+      // CR 702.168 — Corpse death trigger. The dead card is still in state.cards
+      // (now in graveyard); processCorpseOnDeath queues a corpse_offer waiting
+      // choice for the controller. The choice is surfaced one at a time
+      // (mirroring the legendary-rule SBA), and any further queued offers are
+      // surfaced automatically as each one resolves via resolveCorpseChoice.
+      const corpseTrigger = processCorpseOnDeath(updatedState, cardId);
+      if (corpseTrigger.applied) {
+        updatedState = corpseTrigger.state;
+        const deadName =
+          updatedState.cards.get(cardId)?.cardData.name ?? "Creature";
+        descriptions.push(
+          `${deadName} died with a Corpse ability: offering pay/decline to controller`,
         );
         actionsPerformed = true;
       }

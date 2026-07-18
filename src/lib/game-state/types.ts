@@ -803,7 +803,8 @@ export interface WaitingChoice {
     | "ordering"
     | "priority"
     | "choose_legend"
-    | "choose_replacement";
+    | "choose_replacement"
+    | "corpse_offer";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
@@ -903,6 +904,19 @@ export interface GameState {
   layerSystem: LayerSystem;
   /** Linked effect registry for this game instance */
   linkedEffectRegistry: LinkedEffectRegistry;
+  /**
+   * Corpse keyword delayed-trigger queue (CR 702.168).
+   *
+   * When a creature with a Corpse ability dies, `processCorpseOnDeath` appends
+   * its card ID here and surfaces a `corpse_offer` `waitingChoice` to its
+   * controller. Because the engine surfaces one choice at a time, additional
+   * corpses that die while an offer is already pending remain queued here and
+   * are surfaced (in FIFO order) once the prior offer is resolved via
+   * `resolveCorpseChoice`. A card ID is removed from this queue only when its
+   * offer is resolved (paid or declined). Optional so legacy state literals
+   * default to "no pending offers" (read with `?? []`).
+   */
+  pendingCorpseOffers?: CardInstanceId[];
 }
 
 /**

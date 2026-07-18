@@ -28,6 +28,7 @@ import type { TriggeredAbilityInstance } from "./abilities";
 import { evaluateInterveningIfClause } from "./abilities";
 import { hasProwess, getProwessInstanceCount } from "./evergreen-keywords";
 import { parseTriggeredAbilities } from "./oracle-text-parser";
+import { hasCorpseAbility, getCorpseAbility } from "./corpse-keyword";
 import type { DungeonRoomCompletion } from "../cards/dungeons";
 
 /**
@@ -516,6 +517,36 @@ export function detectCreatureDeathTriggers(
         timestamp: Date.now(),
         sourceCardTimestamp: deadCard.enteredBattlefieldTimestamp,
         context: deathContext as any,
+      });
+    }
+
+    // CR 702.168 — Corpse death-triggered ability. "When this creature dies,
+    // you may pay [cost]. If you do, [effect]." Like Blitz above, the source
+    // has already left the battlefield, so we synthesize the trigger from the
+    // dead card's parsed Corpse ability. The deterministic resolution path
+    // (player pay/decline choice) is handled by processCorpseOnDeath /
+    // resolveCorpseChoice in the SBA destroy loop. This synthesised trigger
+    // is what replay/state-hash consumers see as the "fires on death" event.
+    if (deadCard && hasCorpseAbility(deadCard)) {
+      const ability = getCorpseAbility(deadCard);
+      const corpseContext: TriggerDetectionContext = {
+        sourceCardId: deadCardId,
+        triggerType: TriggerConditionType.CREATURE_DIES,
+      };
+      triggers.push({
+        id: generateTriggeredAbilityId(),
+        sourceCardId: deadCardId,
+        triggeringPlayerId: deadCard.controllerId,
+        triggerCondition: "dies",
+        effect:
+          ability != null
+            ? `Corpse ${ability.cost}: when this creature dies, you may pay ${ability.cost}. If you do, ${
+                ability.effectDescription || "apply its effect"
+              }`
+            : "Corpse trigger",
+        timestamp: Date.now(),
+        sourceCardTimestamp: deadCard.enteredBattlefieldTimestamp,
+        context: corpseContext as any,
       });
     }
   }
