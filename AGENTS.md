@@ -4,7 +4,7 @@ Digital Magic: The Gathering tabletop: deck builder, AI deck coach, AI opponent,
 
 ## Commands
 
-Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). Ignore `pnpm-lock.yaml` — it is stale; npm is authoritative.
+Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnpm-lock.yaml` / `yarn.lock` — do not introduce another package manager.
 
 - `npm run dev` — dev server on **port 9002** (not 3000). Playwright boots the same port.
 - `npm run typecheck` — `tsc --noEmit`. Run before lint/test.
@@ -25,9 +25,9 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). Ignore 
 
 ## CI gate (`.github/workflows/ci.yml`)
 
-The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
+The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint, tauri-updater-config`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
 
-- `mutation-test` runs **only** `mutate:layer-system` per PR (the full 3-module allowlist runs nightly in `.github/workflows/mutation.yml`).
+- `mutation-test` runs **only** `mutate:layer-system` per PR (the full 5-module allowlist runs nightly in `.github/workflows/mutation.yml`).
 - `workflow-lint` enforces that every job bootstraps via the shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`, ≥11 uses repo-wide). It **rejects** direct `npm ci` and `actions/setup-node@v1-5`. When adding/editing a workflow, reuse that action — do not hand-roll setup.
 
 ## Architecture (not obvious from filenames)
@@ -66,4 +66,4 @@ Copy `.env.example` → `.env`. AI keys are optional (heuristic fallback works).
 ## Canonical docs (read these, don't guess)
 
 - `docs/TESTING.md` — canonical testing guide (root `TESTING.md` redirects there).
-- `CLAUDE.md` — broader architecture notes, but **partly stale**: it says "Next.js 15" and references a "non-existent `./game-state`" file. Actual is Next 16 and `src/lib/game-state/` is a large, live module. Trust code over `CLAUDE.md` where they differ.
+- `CLAUDE.md` — broader architecture notes. Largely current (correctly states Next.js 16 and `src/lib/game-state/`), but still carries a few stale claims (e.g. the "Firebase App Hosting via `apphosting.yaml`" line conflicts with `docs/FIREBASE_REMOVAL_VERIFICATION.md`). Trust code over `CLAUDE.md` where they differ.
