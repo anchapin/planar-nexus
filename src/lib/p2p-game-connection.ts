@@ -70,6 +70,11 @@ import {
   type PeerQueueStats,
   type SendPriority,
 } from "./peer-send-queue";
+import {
+  sanitizeChatMessage,
+  capMessageLength,
+  MAX_CHAT_MESSAGE_LENGTH,
+} from "./security/chat-sanitize";
 
 /**
  * P2P connection events
@@ -403,6 +408,14 @@ export interface P2PGameConnectionOptions {
    * Per-peer send queue hard message cap (issue #1251). Defaults to 1000.
    */
   sendQueueMaxMessages?: number;
+  /**
+   * Maximum length (chars) of a single outbound chat message (issue #1428).
+   * Messages whose sanitized length EXCEEDS this are REFUSED on send
+   * ({@link P2PGameConnection.sendChat} returns false). Inbound chat is
+   * truncated at the same value before `onChat` fires, as defense in depth.
+   * Defaults to {@link MAX_CHAT_MESSAGE_LENGTH} (500).
+   */
+  maxChatMessageLength?: number;
 }
 
 /**
@@ -471,7 +484,15 @@ export class P2PGameConnection {
    * Host callback returning the authoritative state to push when a peer
    * requests a state sync (issue #1086). Null on non-hosts / when unwired.
    */
-  private readonly onStateSyncRequest: (() => GameState | null | undefined) | null;
+  private readonly onStateSyncRequest:
+    (() => GameState | null | undefined) | null;
+  /**
+   * Maximum length (chars) of a single chat message (issue #1428). Outbound
+   * chat whose sanitized length exceeds this is refused on send; inbound
+   * chat is truncated at this value before `onChat` fires. Defaults to
+   * {@link MAX_CHAT_MESSAGE_LENGTH}.
+   */
+  private readonly maxChatMessageLength: number;
   /**
    * True once the connection has reached "connected" at least once. Used to
    * distinguish a RECONNECT (recovery after a drop) from the initial connect
@@ -577,6 +598,13 @@ export class P2PGameConnection {
     // Host-side state-sync request handler (issue #1086). Null on non-hosts
     // or when unwired; the transport never owns game state.
     this.onStateSyncRequest = options.onStateSyncRequest ?? null;
+    // Chat message length cap (issue #1428). Sanitize + reject-over-length on
+    // send; sanitize + truncate on receive (defense in depth).
+    this.maxChatMessageLength =
+      typeof options.maxChatMessageLength === "number" &&
+      options.maxChatMessageLength > 0
+        ? Math.floor(options.maxChatMessageLength)
+        : MAX_CHAT_MESSAGE_LENGTH;
 
     // Initialize ICE manager
     if (options.iceConfig) {
@@ -820,10 +848,7 @@ export class P2PGameConnection {
     // Local role gate (issue #1253). Refuse to send any message type the
     // local role is not allowed to originate.
     if (!isRoleAllowedToSend(this.localRoleFlag, message.type)) {
-      const reason = rejectionReasonForSend(
-        this.localRoleFlag,
-        message.type,
-      );
+      const reason = rejectionReasonForSend(this.localRoleFlag, message.type);
       console.warn(
         "[P2PGameConnection] Refusing outbound message: local role disallows it",
         redactSensitive({
@@ -1148,9 +1173,23 @@ export class P2PGameConnection {
   }
 
   /**
-   * Send a chat message
+   * Send a chat message.
+   *
+   * Issue #1428: the text is sanitized (control / bidi / zero-width / raw
+   * markup chars stripped) and length-capped BEFORE transmission. An
+   * over-length message is refused: the method returns false and emits a
+   * warning, and no wire bytes are written. Chat is the only P2P message
+   * type with arbitrary peer-controlled content, so it is the highest-
+   * leverage injection vector and is defended at the source.
    */
   sendChat(text: string): boolean {
+    const sanitized = sanitizeChatMessage(text);
+    if (sanitized.length > this.maxChatMessageLength) {
+      console.warn(
+        `[P2PGameConnection] sendChat refused: length=${sanitized.length} (max=${this.maxChatMessageLength})`,
+      );
+      return false;
+    }
     return this.send({
       type: "chat",
       senderId: this.playerId,
@@ -1158,7 +1197,7 @@ export class P2PGameConnection {
       seq: this.nextOutgoingSeq(),
       data: {
         senderName: this.playerName,
-        text,
+        text: sanitized,
       },
     });
   }
@@ -1302,12 +1341,13 @@ export class P2PGameConnection {
       // (back-compat with single-player / AI / pre-#1252 peers).
       let message: GameMessage;
       if (this.sessionKeyHex) {
-        const envelope = safeParseJson<MessageEnvelope>(data, isMessageEnvelope);
+        const envelope = safeParseJson<MessageEnvelope>(
+          data,
+          isMessageEnvelope,
+        );
         if (!envelope) {
           this.envelopeRejections += 1;
-          console.warn(
-            "[P2PGameConnection] Rejected malformed envelope",
-          );
+          console.warn("[P2PGameConnection] Rejected malformed envelope");
           return;
         }
         if (!verifyMessageEnvelope(envelope, this.sessionKeyHex)) {
@@ -1670,7 +1710,12 @@ export class P2PGameConnection {
     }
     const raw = payload as Record<string, unknown>;
     const kind = raw.kind;
-    if (kind !== "kick" && kind !== "ban" && kind !== "pause" && kind !== "resume") {
+    if (
+      kind !== "kick" &&
+      kind !== "ban" &&
+      kind !== "pause" &&
+      kind !== "resume"
+    ) {
       console.warn(
         "[P2PGameConnection] Rejected lobby-control with invalid kind",
         redactSensitive({ kind }),
@@ -1728,14 +1773,23 @@ export class P2PGameConnection {
   }
 
   /**
-   * Handle chat message
+   * Handle chat message.
+   *
+   * Issue #1428: defense in depth — re-sanitize and cap the peer-supplied
+   * `senderName` / `text` BEFORE `onChat` fires, so a buggy, legacy, or
+   * hostile sender cannot slip markup, control chars, or an oversized blob
+   * past the receiver even if the send-side guard was bypassed. Never trust
+   * peer input.
    */
   private handleChat(message: GameMessage): void {
-    const data = message.data as { senderName: string; text: string };
+    const data = message.data as { senderName?: unknown; text?: unknown };
     const chatMessage: ChatMessage = {
       senderId: message.senderId,
-      senderName: data.senderName,
-      text: data.text,
+      senderName: sanitizeChatMessage(data?.senderName),
+      text: capMessageLength(
+        sanitizeChatMessage(data?.text),
+        this.maxChatMessageLength,
+      ),
       timestamp: message.timestamp,
     };
     this.events.onChat(chatMessage);

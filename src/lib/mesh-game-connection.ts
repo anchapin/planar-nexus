@@ -80,6 +80,11 @@ import {
   isRoleAllowedToSend,
   rejectionReasonForSend,
 } from "./peer-role";
+import {
+  sanitizeChatMessage,
+  capMessageLength,
+  MAX_CHAT_MESSAGE_LENGTH,
+} from "./security/chat-sanitize";
 
 /**
  * A handle the mesh uses to push bytes to one remote peer and query its
@@ -167,6 +172,14 @@ export interface MeshGameConnectionOptions {
   validatePeerAction?: PeerActionValidator;
   /** Per-link rate limit for inbound messages (one counter per peer, #1111). */
   rateLimit?: Partial<P2PRateLimitOptions>;
+  /**
+   * Maximum length (chars) of a single chat message (issue #1428). Outbound
+   * chat whose sanitized length exceeds this is refused
+   * ({@link MeshGameConnection.broadcastChat} returns 0); inbound chat is
+   * truncated at this value before `onChat` fires. Defaults to
+   * {@link MAX_CHAT_MESSAGE_LENGTH} (500).
+   */
+  maxChatMessageLength?: number;
 }
 
 /** Default reason stamped on a host rejection when the validator omits one. */
@@ -223,6 +236,13 @@ export class MeshGameConnection {
   private readonly validatePeerActions: boolean;
   private readonly validatePeerAction: PeerActionValidator | null;
   private readonly events: MeshGameConnectionEvents;
+  /**
+   * Maximum length (chars) of a single chat message (issue #1428). Outbound
+   * chat whose sanitized length exceeds this is refused; inbound chat is
+   * truncated at this value before `onChat` fires. Defaults to
+   * {@link MAX_CHAT_MESSAGE_LENGTH}.
+   */
+  private readonly maxChatMessageLength: number;
 
   /**
    * Per-session HMAC key (issue #1391). Mirrors
@@ -250,7 +270,14 @@ export class MeshGameConnection {
     this.rateLimitOptions = options.rateLimit ?? {};
     this.validatePeerActions = options.validatePeerActions === true;
     this.validatePeerAction = options.validatePeerAction ?? null;
- 
+    // Chat message length cap (issue #1428). Sanitize + refuse-over-length on
+    // send; sanitize + truncate on receive (defense in depth).
+    this.maxChatMessageLength =
+      typeof options.maxChatMessageLength === "number" &&
+      options.maxChatMessageLength > 0
+        ? Math.floor(options.maxChatMessageLength)
+        : MAX_CHAT_MESSAGE_LENGTH;
+
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = (): void => {};
     const defaults: MeshGameConnectionEvents = {
@@ -351,10 +378,7 @@ export class MeshGameConnection {
     );
     // Record the link's declared role. `setPeerRole` can override this
     // post-registration (e.g. once the spectator handshake completes).
-    this.peerRoles.set(
-      link.peerId,
-      link.role ?? DEFAULT_PEER_ROLE,
-    );
+    this.peerRoles.set(link.peerId, link.role ?? DEFAULT_PEER_ROLE);
     if (!isReplace) {
       this.events.onPeerJoined(link.peerId);
     }
@@ -510,10 +534,7 @@ export class MeshGameConnection {
     // so the caller's `sendGameAction` is a clean no-op (no wire bytes,
     // no seq stamped).
     if (!isRoleAllowedToSend(this.localRoleFlag, payload.type)) {
-      const reason = rejectionReasonForSend(
-        this.localRoleFlag,
-        payload.type,
-      );
+      const reason = rejectionReasonForSend(this.localRoleFlag, payload.type);
       this.events.onError(
         new Error(reason ?? "Local role does not allow this send"),
         this.localPlayerId,
@@ -537,17 +558,18 @@ export class MeshGameConnection {
     const link = this.links.get(peerId);
     if (!link) return false;
     if (!isRoleAllowedToSend(this.localRoleFlag, payload.type)) {
-      const reason = rejectionReasonForSend(
-        this.localRoleFlag,
-        payload.type,
-      );
+      const reason = rejectionReasonForSend(this.localRoleFlag, payload.type);
       this.events.onError(
         new Error(reason ?? "Local role does not allow this send"),
         this.localPlayerId,
       );
       return false;
     }
-    return this.sendRawOnLink(link, this.serializeOutgoing(payload), payload.type);
+    return this.sendRawOnLink(
+      link,
+      this.serializeOutgoing(payload),
+      payload.type,
+    );
   }
 
   /**
@@ -564,7 +586,10 @@ export class MeshGameConnection {
     type?: GameMessageType,
   ): boolean {
     if (!link.isOpen()) return false;
-    if (type && !isMessageAllowedForRole(link.role ?? DEFAULT_PEER_ROLE, type)) {
+    if (
+      type &&
+      !isMessageAllowedForRole(link.role ?? DEFAULT_PEER_ROLE, type)
+    ) {
       // Per-peer inbound allowlist rejected this message type for the
       // link's role. Silent drop — the spectator never sees the wire
       // bytes, so a host pushing `game-action` to a 4-peer pod with
@@ -588,11 +613,26 @@ export class MeshGameConnection {
     return this.broadcast({ type: "game-action", data: { action, data } });
   }
 
-  /** Broadcast a `chat` message to all peers. */
+  /**
+   * Broadcast a `chat` message to all peers.
+   *
+   * Issue #1428: the text is sanitized (control / bidi / zero-width / raw
+   * markup chars stripped) and length-capped BEFORE transmission. An
+   * over-length message is refused: returns 0 and emits a warning, and no
+   * wire bytes are written. Spectator-authored chat (#1253) flows through
+   * here too, so the guard covers the full chat surface.
+   */
   broadcastChat(text: string): number {
+    const sanitized = sanitizeChatMessage(text);
+    if (sanitized.length > this.maxChatMessageLength) {
+      console.warn(
+        `[MeshGameConnection] broadcastChat refused: length=${sanitized.length} (max=${this.maxChatMessageLength})`,
+      );
+      return 0;
+    }
     return this.broadcast({
       type: "chat",
-      data: { senderName: this.localPlayerName, text },
+      data: { senderName: this.localPlayerName, text: sanitized },
     });
   }
 
@@ -770,11 +810,20 @@ export class MeshGameConnection {
           senderName?: unknown;
           text?: unknown;
         };
+        // Issue #1428 — defense in depth: sanitize + cap peer-supplied chat
+        // BEFORE `onChat` fires so a buggy/legacy/hostile sender cannot slip
+        // markup, control chars, or an oversized blob past the receiver.
+        // Only forward when the peer actually supplied a string `text`.
         if (typeof payload.text === "string") {
+          const senderName =
+            typeof payload.senderName === "string" ? payload.senderName : "";
           this.events.onChat(
             message.senderId,
-            typeof payload.senderName === "string" ? payload.senderName : "",
-            payload.text,
+            sanitizeChatMessage(senderName),
+            capMessageLength(
+              sanitizeChatMessage(payload.text),
+              this.maxChatMessageLength,
+            ),
           );
         }
         break;

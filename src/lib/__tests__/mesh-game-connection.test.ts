@@ -928,3 +928,150 @@ describe("MeshGameConnection — session-key rotation API (#1391)", () => {
     expect(mesh.getSessionKey()).toBe(existing);
   });
 });
+
+/**
+ * Chat message cap + sanitization (issue #1428).
+ *
+ * Spectator + player chat flows through `broadcastChat` (outbound) and the
+ * inbound `case "chat"` (receive). These tests pin both directions:
+ * send-side refuse-over-length + sanitize, and receive-side defense-in-depth
+ * sanitize + cap (so a non-conforming peer cannot slip a payload past onChat).
+ */
+describe("MeshGameConnection chat cap + sanitize (#1428)", () => {
+  describe("broadcastChat — sanitize + refuse over-length", () => {
+    it("broadcasts a sanitized normal message unchanged", () => {
+      const { mesh } = newMesh({
+        localPlayerId: "me",
+        localPlayerName: "Me",
+        hostId: "me",
+      });
+      const a = new MockLink("a");
+      mesh.addPeerLink(a);
+
+      expect(mesh.broadcastChat("hello world")).toBe(1); // 1 peer reached
+      expect(a.messages()[0]).toEqual(
+        expect.objectContaining({
+          type: "chat",
+          data: { senderName: "Me", text: "hello world" },
+        }),
+      );
+    });
+
+    it("REFUSES an over-length message: returns 0 + warns, no wire bytes", () => {
+      const { mesh } = newMesh({
+        localPlayerId: "me",
+        localPlayerName: "Me",
+        hostId: "me",
+      });
+      const a = new MockLink("a");
+      mesh.addPeerLink(a);
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      expect(mesh.broadcastChat("x".repeat(501))).toBe(0);
+      expect(a.sent).toHaveLength(0);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("broadcastChat refused"),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it("strips control + markup chars before broadcasting", () => {
+      const { mesh } = newMesh({
+        localPlayerId: "me",
+        localPlayerName: "Me",
+        hostId: "me",
+      });
+      const a = new MockLink("a");
+      mesh.addPeerLink(a);
+
+      mesh.broadcastChat("hi\x00<img>");
+      expect(a.messages()[0]).toEqual(
+        expect.objectContaining({
+          data: { senderName: "Me", text: "hiimg" },
+        }),
+      );
+    });
+
+    it("respects a custom maxChatMessageLength option", () => {
+      const { mesh } = newMesh({
+        localPlayerId: "me",
+        localPlayerName: "Me",
+        hostId: "me",
+        maxChatMessageLength: 8,
+      });
+      const a = new MockLink("a");
+      mesh.addPeerLink(a);
+
+      expect(mesh.broadcastChat("01234567")).toBe(1); // exactly 8, ok
+      expect(mesh.broadcastChat("012345678")).toBe(0); // 9, refused
+      expect(a.sent).toHaveLength(1);
+    });
+  });
+
+  describe("inbound chat — sanitize + cap BEFORE onChat fires", () => {
+    it("strips a raw control char injected at the wire layer", () => {
+      const { mesh, events } = newMesh();
+      mesh.addPeerLink(new MockLink("p1"));
+
+      mesh.handleIncoming(
+        inbound("p1", 0, {
+          type: "chat",
+          data: { senderName: "P1", text: "abc\x00def" },
+        }),
+        "p1",
+      );
+
+      expect(events.onChat).toHaveBeenCalledWith("p1", "P1", "abcdef");
+    });
+
+    it("strips raw < > / backtick from peer markup", () => {
+      const { mesh, events } = newMesh();
+      mesh.addPeerLink(new MockLink("p1"));
+
+      mesh.handleIncoming(
+        inbound("p1", 0, {
+          type: "chat",
+          data: { senderName: "P1", text: "<b>bold</b>" },
+        }),
+        "p1",
+      );
+
+      const text = events.onChat.mock.calls[0]![2] as string;
+      expect(text).not.toMatch(/[<>`]/);
+    });
+
+    it("TRUNCATES an oversized inbound blob before onChat", () => {
+      const { mesh, events } = newMesh();
+      mesh.addPeerLink(new MockLink("p1"));
+
+      mesh.handleIncoming(
+        inbound("p1", 0, {
+          type: "chat",
+          data: { senderName: "P1", text: "q".repeat(5000) },
+        }),
+        "p1",
+      );
+
+      const text = events.onChat.mock.calls[0]![2] as string;
+      expect(text.length).toBeLessThanOrEqual(500);
+      expect(text.endsWith("…")).toBe(true);
+    });
+
+    it("sanitizes a non-string senderName safely (coerced then stripped)", () => {
+      const { mesh, events } = newMesh();
+      mesh.addPeerLink(new MockLink("p1"));
+
+      mesh.handleIncoming(
+        inbound("p1", 0, {
+          type: "chat",
+          data: { senderName: 42, text: "hi" },
+        }),
+        "p1",
+      );
+
+      // Non-string senderName coerced to "" by the inbound guard.
+      expect(events.onChat).toHaveBeenCalledWith("p1", "", "hi");
+    });
+  });
+});
