@@ -8,8 +8,15 @@ import {
 import {
   streamCoachResponse,
   eventToSse,
+  type CoachStreamEvent,
   type CoachStreamMessage,
 } from "@/ai/flows/coach-stream";
+import {
+  buildEvidenceLedger,
+  type EvidenceLedger,
+} from "@/ai/flows/coach-evidence-ledger";
+import { runGroundingGuard } from "@/ai/flows/coach-grounding-guard";
+import { normalizeDifficultyLevel } from "@/ai/ai-difficulty";
 import { getProviderFailoverChain } from "@/ai/providers/factory";
 import { sanitizeUserInput } from "@/ai/prompt-security";
 import { classifyCoachIntent } from "@/ai/coach-intent";
@@ -102,12 +109,27 @@ export async function POST(request: NextRequest) {
     //    synergy clusters, role mix, gaps) without re-sending 100 cards.
     //    Fall back to the local pre-fetcher only when raw cards are
     //    available — e.g. for the < 20 card small-deck path.
+    //
+    //    Issue #1419: keep a handle on the structured ANALYSIS OBJECT
+    //    (not just the rendered text) when pre-fetching locally — the
+    //    evidence ledger is built from the object so it has stable ids and
+    //    numeric facts to validate the completed message against.
     let structuredAnalysis: string | undefined =
       typeof digestedContext?.structuredAnalysisText === "string"
         ? digestedContext.structuredAnalysisText
         : undefined;
+    let structuredAnalysisObject:
+      | NonNullable<
+          Awaited<ReturnType<typeof prefetchCoachContext>>
+        >["structuredAnalysis"]
+      | undefined;
 
-    if (!structuredAnalysis && deckCards && Array.isArray(deckCards) && deckCards.length > 0) {
+    if (
+      !structuredAnalysis &&
+      deckCards &&
+      Array.isArray(deckCards) &&
+      deckCards.length > 0
+    ) {
       try {
         const prefetched = await prefetchCoachContext({
           deckCards: deckCards as DeckCard[],
@@ -115,6 +137,7 @@ export async function POST(request: NextRequest) {
         });
         if (prefetched) {
           structuredAnalysis = prefetched.structuredAnalysisText;
+          structuredAnalysisObject = prefetched.structuredAnalysis;
         }
       } catch (error) {
         console.error("Coach context pre-fetch failed:", error);
@@ -156,10 +179,24 @@ export async function POST(request: NextRequest) {
       latestUserMessage != null
         ? classifyCoachIntent(latestUserMessage.content, {
             format,
-            archetype: typeof body.archetype === "string" ? body.archetype : undefined,
+            archetype:
+              typeof body.archetype === "string" ? body.archetype : undefined,
             deckCardNames,
           })
         : undefined;
+
+    // Issue #1419: build the evidence ledger BEFORE the prompt so it can be
+    // injected as grounding context, and re-used by the post-generation
+    // guard. The ledger is deterministic and cheap (no LLM call). Source
+    // priority: full structured analysis object > digested context > empty.
+    const tier = normalizeDifficultyLevel(
+      typeof body.difficulty === "string" ? body.difficulty : undefined,
+    );
+    const evidenceLedger: EvidenceLedger = buildEvidenceLedger({
+      analysis: structuredAnalysisObject ?? null,
+      digestedContext: digestedContext ?? null,
+      userTurn: latestUserMessage?.content,
+    });
 
     const systemPrompt = buildCoachSystemPrompt(
       format,
@@ -170,6 +207,7 @@ export async function POST(request: NextRequest) {
       structuredAnalysis,
       intent,
       typeof body.difficulty === "string" ? body.difficulty : undefined,
+      evidenceLedger,
     );
 
     // 5. Defense-in-depth: sanitize each message's content and drop any
@@ -211,10 +249,74 @@ export async function POST(request: NextRequest) {
     });
 
     const encoder = new TextEncoder();
+
+    /**
+     * Issue #1419: post-generation grounding guard.
+     *
+     * The coach streams text token-by-token for progressive rendering. After
+     * the final text delta and BEFORE the `done` event, this generator
+     * re-emits every event from the underlying stream verbatim, but buffers
+     * the text deltas so the completed message can be validated against the
+     * evidence ledger. When the guard flags any failure it emits one extra
+     * `grounding` event so the client can append the caveat and mark the
+     * persisted message `lowConfidence` / `needsReview`.
+     *
+     * Progressive rendering is preserved end-to-end: the client still sees
+     * every `text` event as soon as it arrives. The guard runs ONCE, on the
+     * completed message, and its output is a single deterministic event.
+     */
+    async function* withGroundingGuard(
+      upstream: AsyncIterable<CoachStreamEvent>,
+    ): AsyncGenerator<CoachStreamEvent> {
+      let buffered = "";
+      let sawDone = false;
+      for await (const event of upstream) {
+        if (event.type === "text") {
+          buffered += event.value;
+        }
+        if (event.type === "done") {
+          sawDone = true;
+          // Run the deterministic guard on the completed message. Cheap, no
+          // LLM call. Only emit a `grounding` event when the guard flags
+          // failures — fully-grounded messages get no extra event so the
+          // happy path stays unchanged.
+          try {
+            const verdict = runGroundingGuard({
+              message: buffered,
+              ledger: evidenceLedger,
+              difficulty: tier,
+            });
+            if (verdict.lowConfidence) {
+              yield {
+                type: "grounding",
+                lowConfidence: true,
+                needsReview: true,
+                caveat: verdict.caveat,
+                failures: verdict.failures.map(
+                  (f) => `[${f.kind}/${f.ref}] ${f.detail}`,
+                ),
+              };
+            }
+          } catch (error) {
+            // The guard must never break a successful stream. Log and skip
+            // emitting the grounding event — the message goes through as
+            // unannotated assistant text, which is the safe fallback.
+            console.error("Grounding guard failed:", error);
+          }
+        }
+        yield event;
+      }
+      // If the upstream ended without `done` (mid-stream failure path) we
+      // still want the buffered text guarded — but the failure event was
+      // already emitted by the stream, so there's no clean place to inject
+      // a caveat. Skip in that case to keep the wire format simple.
+      void sawDone;
+    }
+
     const responseStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
-          for await (const event of eventStream) {
+          for await (const event of withGroundingGuard(eventStream)) {
             controller.enqueue(encoder.encode(eventToSse(event)));
           }
           controller.close();
