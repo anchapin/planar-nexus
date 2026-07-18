@@ -109,6 +109,18 @@ import {
 // tier (Easy=CMC, Medium=use-when-better, Hard=10%-noise, Expert=trust). The
 // only edit HERE is the call site; the ordering logic lives in the sibling.
 import { orderCreaturesForDifficulty } from "./cast-sequencing";
+// Issue #1414: difficulty-scaled cleanup-phase discard priority. The legacy
+// path called `discardCards(state, id, count, true)` — the random path
+// ignores `count` and bins exactly one card. Every tier discarded
+// identically and the AI frequently dumped the wrong card (its only
+// removal while the opponent had threats, a land while color-screwed, a
+// key combo piece). This sibling helper produces a per-tier ordered
+// candidate list (Easy=CMC desc, Medium=basics→off-color→low-CMC,
+// Hard=excess-lands→dead-color→low-leverage, Expert=excess-lands→zero-role
+// →low-leverage with removal protection); the only edit HERE is the call
+// site in `runCleanupPhase`. Kept in a sibling file so #1413/#1415/#1416
+// (which also touch this file) rebase cleanly.
+import { pickDiscardCandidates } from "./cleanup-discard";
 
 /**
  * AI Turn configuration
@@ -1439,6 +1451,19 @@ async function runEndPhase(
 
 /**
  * Run cleanup phase - discard down to max hand size
+ *
+ * Issue #1414: consult the difficulty-scaled discard helper
+ * (`pickDiscardCandidates`) to produce an ordered candidate list and pass
+ * it to `discardCards` via its `specificCards` parameter. The legacy path
+ * called `discardCards(state, id, count, true)` — the random path ignores
+ * `count` and discards exactly one card, so the AI both failed to discard
+ * the right number AND picked cards arbitrarily. The new path passes
+ * `random: false` plus the per-tier candidates so the engine discards
+ * exactly `count` cards in the helper's ranked order.
+ *
+ * When the helper returns no candidates (empty hand, or Limited-format
+ * floor reached) we fall back to the legacy random path so cleanup always
+ * makes progress toward the max hand size.
  */
 async function runCleanupPhase(
   gameState: EngineGameState,
@@ -1460,22 +1485,42 @@ async function runCleanupPhase(
 
     if (currentHandSize > maxHandSize) {
       const cardsToDiscard = currentHandSize - maxHandSize;
+
+      // Issue #1414: ask the helper for the per-tier ordered candidate
+      // list. Pure function; never mutates state.
+      const recommendation = pickDiscardCandidates(currentState, aiPlayerId, {
+        difficulty: config.difficulty,
+        format: config.format,
+      });
+
+      // When the helper endorses at least one card, hand the list to the
+      // engine via `specificCards`. Otherwise fall back to the legacy
+      // random path so cleanup still makes progress.
+      const hasCandidates = recommendation.candidates.length > 0;
       const discardResult = discardCards(
         currentState,
         aiPlayerId,
         cardsToDiscard,
-        true,
+        !hasCandidates,
+        hasCandidates ? recommendation.candidates : undefined,
       );
 
       if (discardResult.success) {
         currentState = discardResult.state;
+        const discardedCount =
+          discardResult.affectedCards?.length ?? cardsToDiscard;
         actions.push({
           type: "no_action",
-          reasoning: `Discarded ${cardsToDiscard} cards during cleanup (hand size: ${currentHandSize} -> ${maxHandSize})`,
+          reasoning: `Discarded ${discardedCount} cards during cleanup (hand size: ${currentHandSize} -> ${currentHandSize - discardedCount})`,
         });
+        // Surface both the generic cleanup note and the per-tier reasoning
+        // so post-game replay can show the "why" behind the pick.
         config.onCommentary?.(
-          `Discards ${cardsToDiscard} cards to meet max hand size`,
+          `Discards ${discardedCount} cards to meet max hand size`,
         );
+        if (recommendation.reasoning) {
+          config.onCommentary?.(recommendation.reasoning);
+        }
       }
     }
   }

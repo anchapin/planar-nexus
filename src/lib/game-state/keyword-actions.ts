@@ -953,12 +953,21 @@ function drawSingleCard(
 
 /**
  * Discard cards from a player's hand
+ *
+ * Issue #1414: an optional `specificCards` list may be passed to discard
+ * exactly those cards (in order). When omitted the legacy behavior is
+ * preserved — random mode picks one card at random; non-random mode
+ * discards `count` cards from the end of the hand array. The
+ * difficulty-scaled AI cleanup-phase helper
+ * (`src/ai/cleanup-discard.ts`) uses `specificCards` to feed its
+ * per-tier ranking into the engine.
  */
 export function discardCards(
   state: GameState,
   playerId: PlayerId,
   count: number = 1,
   random: boolean = false,
+  specificCards?: CardInstanceId[],
 ): KeywordActionResult {
   const player = state.players.get(playerId);
   const handZoneKey = `${playerId}-hand`;
@@ -992,7 +1001,25 @@ export function discardCards(
 
   let cardsToDiscard: CardInstanceId[];
 
-  if (random && hand.cardIds.length > 0) {
+  if (specificCards && specificCards.length > 0) {
+    // Issue #1414: caller (e.g. AI cleanup helper) supplied an ordered
+    // candidate list — discard exactly those cards that are still in the
+    // hand, capped at `count`. Cards already moved out of the hand are
+    // silently skipped (defensive against double-discards).
+    const inHand = new Set(hand.cardIds);
+    cardsToDiscard = specificCards
+      .filter((id) => inHand.has(id))
+      .slice(0, Math.max(0, count));
+    // Fall back to the legacy path if every named card was already gone.
+    if (cardsToDiscard.length === 0) {
+      if (random && hand.cardIds.length > 0) {
+        const randomIndex = Math.floor(Math.random() * hand.cardIds.length);
+        cardsToDiscard = [hand.cardIds[randomIndex]];
+      } else {
+        cardsToDiscard = hand.cardIds.slice(-count);
+      }
+    }
+  } else if (random && hand.cardIds.length > 0) {
     // Random discard (mind rot effect)
     const randomIndex = Math.floor(Math.random() * hand.cardIds.length);
     cardsToDiscard = [hand.cardIds[randomIndex]];
