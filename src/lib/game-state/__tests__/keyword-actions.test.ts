@@ -268,6 +268,81 @@ describe("Keyword Actions", () => {
 
       expect(result.success).toBe(true);
     });
+
+    it("discards exactly the cards named in specificCards (issue #1414)", () => {
+      // Add three named cards to hand.
+      const ids = ["keep-card", "drop-a", "drop-b"];
+      for (const id of ids) {
+        const card = createCardInstance(
+          createMockCard(id, "Instant"),
+          player1Id,
+        );
+        card.instanceId = id as any;
+        const hand = gameState.zones.get(`${player1Id}-hand`);
+        if (hand) {
+          hand.cardIds.push(card.instanceId);
+          gameState.cards.set(card.instanceId, card as any);
+        }
+      }
+
+      const result = discardCards(gameState as any, player1Id, 2, false, [
+        "drop-a",
+        "drop-b",
+        "missing-card",
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.affectedCards).toEqual(["drop-a", "drop-b"]);
+      const hand = result.state.zones.get(`${player1Id}-hand`);
+      expect(hand?.cardIds).toEqual(["keep-card"]);
+    });
+
+    it("caps specificCards at count", () => {
+      for (const id of ["a", "b", "c", "d"]) {
+        const card = createCardInstance(
+          createMockCard(id, "Instant"),
+          player1Id,
+        );
+        card.instanceId = id as any;
+        const hand = gameState.zones.get(`${player1Id}-hand`);
+        if (hand) {
+          hand.cardIds.push(card.instanceId);
+          gameState.cards.set(card.instanceId, card as any);
+        }
+      }
+
+      // count = 1 even though specificCards names three cards — only the
+      // first named card is discarded.
+      const result = discardCards(gameState as any, player1Id, 1, false, [
+        "a",
+        "b",
+        "c",
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.affectedCards).toEqual(["a"]);
+    });
+
+    it("falls back to legacy path when specificCards is empty", () => {
+      for (const id of ["a", "b", "c"]) {
+        const card = createCardInstance(
+          createMockCard(id, "Instant"),
+          player1Id,
+        );
+        card.instanceId = id as any;
+        const hand = gameState.zones.get(`${player1Id}-hand`);
+        if (hand) {
+          hand.cardIds.push(card.instanceId);
+          gameState.cards.set(card.instanceId, card as any);
+        }
+      }
+
+      const result = discardCards(gameState as any, player1Id, 2, false, []);
+
+      expect(result.success).toBe(true);
+      // Legacy path: slice(-count) → last two of [a, b, c] = [b, c].
+      expect(result.affectedCards).toEqual(["b", "c"]);
+    });
   });
 
   describe("createTokenCard", () => {

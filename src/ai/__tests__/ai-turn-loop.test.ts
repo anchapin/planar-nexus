@@ -922,11 +922,16 @@ describe("runAITurn — cleanup phase", () => {
       baseConfig({ onCommentary: (t) => commentary.push(t) }),
     );
 
+    // Issue #1414: cleanup now consults the difficulty-scaled helper and
+    // passes its ordered candidate list as the 5th arg (specificCards).
+    // The 4th arg flips to `false` (controller-chooses) so the engine
+    // honors the candidate order instead of picking one random card.
     expect(discardCardsMock).toHaveBeenCalledWith(
       expect.anything(),
       AI,
       2,
-      true,
+      false,
+      expect.any(Array),
     );
     expect(
       result.actionsTaken.some(
@@ -935,6 +940,8 @@ describe("runAITurn — cleanup phase", () => {
       ),
     ).toBe(true);
     expect(commentary.some((m) => /Discards 2 cards/.test(m))).toBe(true);
+    // The per-tier reasoning surfaced by the helper reaches commentary.
+    expect(commentary.some((m) => /Cleanup/.test(m))).toBe(true);
   });
 
   it("does not discard when at or below the max hand size", async () => {
@@ -1652,7 +1659,11 @@ describe("buildMain2Context (issue #1385) — engine projection", () => {
       players,
     } as unknown as EngineGameState;
 
-    const ctx = buildMain2Context(state, AI, baseConfig({ difficulty: "expert" }));
+    const ctx = buildMain2Context(
+      state,
+      AI,
+      baseConfig({ difficulty: "expert" }),
+    );
     expect(ctx.opponentOpenMana).toBe(2);
     expect(ctx.opponentHasPlaneswalker).toBe(true);
     expect(ctx.aiLife).toBe(18);
@@ -1663,7 +1674,10 @@ describe("buildMain2Context (issue #1385) — engine projection", () => {
   });
 
   it("is defensive: missing players/zones yield safe defaults", () => {
-    const bare = { zones: new Map(), players: new Map() } as unknown as EngineGameState;
+    const bare = {
+      zones: new Map(),
+      players: new Map(),
+    } as unknown as EngineGameState;
     const ctx = buildMain2Context(bare, AI, baseConfig());
     expect(ctx.aiLife).toBe(20);
     expect(ctx.opponentOpenMana).toBe(0);
