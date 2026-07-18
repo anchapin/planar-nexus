@@ -1018,8 +1018,7 @@ describe("P2PGameConnection host action validation (#1089)", () => {
       expect(validator).not.toHaveBeenCalled();
       // Peer is still notified of the rejection.
       const sent = sendSpy.mock.calls[sendSpy.mock.calls.length - 1]?.[0] as
-        | GameMessage
-        | undefined;
+        GameMessage | undefined;
       expect(sent?.type).toBe("error");
     });
 
@@ -1215,9 +1214,9 @@ describe("P2PGameConnection reconnect reconciliation (issue #1086)", () => {
   };
 
   const handleMessage = (conn: P2PGameConnection, raw: string): void => {
-    (
-      conn as unknown as { handleMessage: (d: string) => void }
-    ).handleMessage(raw);
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
   };
 
   const msg = (
@@ -1530,16 +1529,12 @@ describe("P2PGameConnection reconnect reconciliation (issue #1086)", () => {
  */
 describe("P2PGameConnection lobby-control message (issue #1257)", () => {
   const handleMessage = (conn: P2PGameConnection, raw: string): void => {
-    (
-      conn as unknown as { handleMessage: (d: string) => void }
-    ).handleMessage(raw);
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
   };
 
-  const msg = (
-    senderId: string,
-    seq: number,
-    data: unknown,
-  ): GameMessage => ({
+  const msg = (senderId: string, seq: number, data: unknown): GameMessage => ({
     type: "lobby-control",
     senderId,
     timestamp: Date.now(),
@@ -1871,9 +1866,9 @@ describe("P2PGameConnection HMAC envelope signing/verification (issue #1252)", (
   const POST_MIGRATION_KEY = "c".repeat(64);
 
   const handleMessage = (conn: P2PGameConnection, raw: string): void => {
-    (
-      conn as unknown as { handleMessage: (d: string) => void }
-    ).handleMessage(raw);
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
   };
 
   /** Build a `game-action` message with a fresh seq. */
@@ -2081,10 +2076,7 @@ describe("P2PGameConnection HMAC envelope signing/verification (issue #1252)", (
         events: { onMessage },
       });
       // No `hmac` field — the envelope shape guard rejects it.
-      handleMessage(
-        conn,
-        JSON.stringify({ payload: actionMsg("peer", 0) }),
-      );
+      handleMessage(conn, JSON.stringify({ payload: actionMsg("peer", 0) }));
       expect(onMessage).not.toHaveBeenCalled();
       expect(conn.getEnvelopeRejections()).toBe(1);
     });
@@ -2116,9 +2108,18 @@ describe("P2PGameConnection HMAC envelope signing/verification (issue #1252)", (
     it("increments the rejection counter on each failed verification", () => {
       const conn = makeConn({ sessionKeyHex: SESSION_KEY });
       expect(conn.getEnvelopeRejections()).toBe(0);
-      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 0), OTHER_KEY)));
-      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 1), OTHER_KEY)));
-      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 2), OTHER_KEY)));
+      handleMessage(
+        conn,
+        JSON.stringify(envelope(actionMsg("attacker", 0), OTHER_KEY)),
+      );
+      handleMessage(
+        conn,
+        JSON.stringify(envelope(actionMsg("attacker", 1), OTHER_KEY)),
+      );
+      handleMessage(
+        conn,
+        JSON.stringify(envelope(actionMsg("attacker", 2), OTHER_KEY)),
+      );
       expect(conn.getEnvelopeRejections()).toBe(3);
     });
   });
@@ -2233,7 +2234,10 @@ describe("P2PGameConnection HMAC envelope signing/verification (issue #1252)", (
   describe("close() resets the rejection counter", () => {
     it("resets envelopeRejections to zero on close()", () => {
       const conn = makeConn({ sessionKeyHex: SESSION_KEY });
-      handleMessage(conn, JSON.stringify(envelope(actionMsg("attacker", 0), OTHER_KEY)));
+      handleMessage(
+        conn,
+        JSON.stringify(envelope(actionMsg("attacker", 0), OTHER_KEY)),
+      );
       expect(conn.getEnvelopeRejections()).toBe(1);
       conn.close();
       expect(conn.getEnvelopeRejections()).toBe(0);
@@ -2279,6 +2283,168 @@ describe("P2PGameConnection HMAC envelope signing/verification (issue #1252)", (
       // Higher seq — accepted.
       handleMessage(conn, JSON.stringify(envelope(actionMsg("peer", 1))));
       expect(onMessage).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+
+/**
+ * Chat message cap + sanitization (issue #1428).
+ *
+ * P2P chat is the only message type with arbitrary peer-controlled content
+ * rendered to other peers. These tests pin the send-side reject-over-length
+ * + sanitize behavior and the receive-side defense-in-depth sanitize + cap.
+ */
+describe("P2PGameConnection chat cap + sanitize (#1428)", () => {
+  const makeConn = (
+    overrides: Partial<P2PGameConnectionOptions> = {},
+  ): { conn: P2PGameConnection; onChat: jest.Mock } => {
+    const onChat = jest.fn();
+    const conn = createP2PGameConnection({
+      playerId: "player-1",
+      playerName: "Host",
+      role: "host",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat,
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+      },
+      ...overrides,
+    });
+    return { conn, onChat };
+  };
+
+  const handleMessage = (conn: P2PGameConnection, raw: string): void =>
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
+
+  describe("sendChat — sanitize + reject over-length", () => {
+    it("REFUSES an over-length message: returns false + warns, no send", () => {
+      const { conn } = makeConn();
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      // 501 chars — one over the 500 default cap.
+      const over = "x".repeat(501);
+      expect(conn.sendChat(over)).toBe(false);
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("sendChat refused"),
+      );
+
+      sendSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    it("respects a custom maxChatMessageLength option", () => {
+      const { conn } = makeConn({ maxChatMessageLength: 10 });
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      expect(conn.sendChat("short")).toBe(true); // 5 chars, under 10
+      expect(conn.sendChat("0123456789")).toBe(true); // exactly 10, allowed
+      expect(conn.sendChat("0123456789A")).toBe(false); // 11, refused
+      expect(sendSpy).toHaveBeenCalledTimes(2);
+
+      sendSpy.mockRestore();
+    });
+
+    it("strips control chars and sends the sanitized text", () => {
+      const { conn } = makeConn();
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      expect(conn.sendChat("hello\x00world")).toBe(true);
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "chat",
+          data: expect.objectContaining({ text: "helloworld" }),
+        }),
+      );
+
+      sendSpy.mockRestore();
+    });
+
+    it("strips raw < > / backtick so the wire payload has no markup chars", () => {
+      const { conn } = makeConn();
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      expect(conn.sendChat("<img src=x>")).toBe(true);
+      const sent = sendSpy.mock.calls[0]![0] as GameMessage;
+      const text = (sent.data as { text: string }).text;
+      expect(text).not.toMatch(/[<>`]/);
+      expect(text).toBe("img src=x");
+
+      sendSpy.mockRestore();
+    });
+
+    it("passes a normal message through sanitized but uncapped", () => {
+      const { conn } = makeConn();
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+      expect(conn.sendChat("gg, nice play!")).toBe(true);
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "chat",
+          data: expect.objectContaining({ text: "gg, nice play!" }),
+        }),
+      );
+
+      sendSpy.mockRestore();
+    });
+  });
+
+  describe("handleChat — receive-side defense in depth", () => {
+    const chatWire = (
+      text: unknown,
+      senderName: unknown = "Peer",
+      seq = 0,
+    ): string =>
+      JSON.stringify({
+        type: "chat",
+        senderId: "player-2",
+        timestamp: Date.now(),
+        seq,
+        data: { senderName, text },
+      });
+
+    it("sanitizes control chars before onChat fires", () => {
+      const { conn, onChat } = makeConn();
+      handleMessage(conn, chatWire("hello\x00world"));
+
+      expect(onChat).toHaveBeenCalledTimes(1);
+      const payload = onChat.mock.calls[0]![0] as ChatMessage;
+      expect(payload.text).toBe("helloworld");
+    });
+
+    it("strips raw < > from peer-supplied markup before onChat", () => {
+      const { conn, onChat } = makeConn();
+      handleMessage(conn, chatWire("<script>alert(1)</script>"));
+
+      const payload = onChat.mock.calls[0]![0] as ChatMessage;
+      expect(payload.text).not.toMatch(/[<>]/);
+    });
+
+    it("TRUNCATES an oversized inbound blob to the cap (never trust peer input)", () => {
+      const { conn, onChat } = makeConn();
+      // A legacy/hostile peer bypasses the send guard and ships 5000 chars.
+      handleMessage(conn, chatWire("z".repeat(5000), "Peer", 1));
+
+      const payload = onChat.mock.calls[0]![0] as ChatMessage;
+      expect(payload.text.length).toBeLessThanOrEqual(500);
+      expect(payload.text.endsWith("…")).toBe(true);
+    });
+
+    it("sanitizes the peer-supplied senderName too", () => {
+      const { conn, onChat } = makeConn();
+      handleMessage(conn, chatWire("hi", "Evil\u202E<b>", 2));
+
+      const payload = onChat.mock.calls[0]![0] as ChatMessage;
+      expect(payload.senderName).not.toMatch(/[<>\u202E]/);
+      expect(payload.senderName).toBe("Evilb");
     });
   });
 });
