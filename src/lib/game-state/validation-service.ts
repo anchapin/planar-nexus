@@ -354,7 +354,18 @@ export class ValidationService {
     // authoritative affordability check happens in castSpell AFTER convoke
     // reductions are applied, so the printed-cost check here would falsely
     // reject legal convoke casts. Skip it (same rationale as foretell).
-    if (altType !== "foretell" && altType !== "convoke") {
+    //
+    // Delve (CR 702.61) is likewise a cost-REDUCTION applied to the printed
+    // mana cost: each exiled graveyard card reduces the generic portion by
+    // {1}. The authoritative affordability check happens in castSpell AFTER
+    // delve reductions are applied, so the printed-cost check here would
+    // falsely reject legal delve casts. Skip it (same rationale as
+    // foretell/convoke).
+    if (
+      altType !== "foretell" &&
+      altType !== "convoke" &&
+      altType !== "delve"
+    ) {
       const manaValidation = this.validateManaCost(state, player, card);
       if (!manaValidation.isValid) {
         return manaValidation;
