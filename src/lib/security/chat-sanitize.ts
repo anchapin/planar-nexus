@@ -48,9 +48,10 @@ export const MAX_CHAT_MESSAGE_LENGTH = 500;
  * C1 8-bit control range (`\u0080`-`\u009F`). Chat is line-oriented so
  * `\n` / `\r` / `\t` are intentionally preserved.
  */
-// eslint-disable-next-line no-control-regex -- intentionally targets control chars
+/* eslint-disable no-control-regex -- intentionally matches C0/C1 control chars */
 const CHAT_CONTROL_CHARS =
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+/* eslint-enable no-control-regex */
 
 /**
  * Bidi override / embedding controls and zero-width / BOM characters used to
