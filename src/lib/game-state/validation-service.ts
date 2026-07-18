@@ -348,7 +348,13 @@ export class ValidationService {
     // (CR 702.142c) REPLACES the mana cost with the printed foretell cost, so
     // the printed-cost check here is not authoritative — castSpell recomputes
     // and charges the foretell cost. Skip it to avoid a false rejection.
-    if (altType !== "foretell") {
+    //
+    // Convoke (CR 702.93) is a cost-REDUCTION applied to the printed mana
+    // cost: tapped creatures can pay for colored pips or generic mana. The
+    // authoritative affordability check happens in castSpell AFTER convoke
+    // reductions are applied, so the printed-cost check here would falsely
+    // reject legal convoke casts. Skip it (same rationale as foretell).
+    if (altType !== "foretell" && altType !== "convoke") {
       const manaValidation = this.validateManaCost(state, player, card);
       if (!manaValidation.isValid) {
         return manaValidation;

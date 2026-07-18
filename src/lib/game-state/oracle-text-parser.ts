@@ -182,9 +182,7 @@ export interface ParsedKeyword {
  * Complete parsed ability
  */
 export type ParsedAbility =
-  | ParsedActivatedAbility
-  | ParsedTriggeredAbility
-  | ParsedStaticAbility;
+  ParsedActivatedAbility | ParsedTriggeredAbility | ParsedStaticAbility;
 
 /**
  * Result of parsing Oracle text
@@ -1428,12 +1426,7 @@ export function hasFuse(card: ScryfallCard): boolean {
 export interface ModeTargetInfo {
   modeIndex: number;
   targetTypes: (
-    | "creature"
-    | "player"
-    | "planeswalker"
-    | "artifact"
-    | "enchantment"
-    | "any"
+    "creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any"
   )[];
   description: string;
 }
@@ -1445,20 +1438,10 @@ export interface ModeTargetInfo {
 function parseTargetsFromMode(
   modeText: string,
 ): (
-  | "creature"
-  | "player"
-  | "planeswalker"
-  | "artifact"
-  | "enchantment"
-  | "any"
+  "creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any"
 )[] {
   const targets: (
-    | "creature"
-    | "player"
-    | "planeswalker"
-    | "artifact"
-    | "enchantment"
-    | "any"
+    "creature" | "player" | "planeswalker" | "artifact" | "enchantment" | "any"
   )[] = [];
   const lowerText = modeText.toLowerCase();
 
@@ -1797,6 +1780,47 @@ export function parseProwess(oracleText: string): ProwessInfo {
   return {
     hasProwess,
     description: hasProwess ? "Prowess" : "",
+  };
+}
+
+/**
+ * Result of detecting Convoke (CR 702.93).
+ */
+export interface ConvokeInfo {
+  hasConvoke: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Convoke keyword from oracle text.
+ *
+ * CR 702.93a: "Convoke" is a static ability that functions while the spell with
+ * convoke is on the stack. "Your creatures can help cast this spell. Each
+ * creature you tap while casting this spell pays for {1} or one mana of that
+ * creature's color."
+ *
+ * Convoke carries no parsed cost: the colored-pip reduction comes from the
+ * tapped creatures' colors at cast time (see the `case "convoke"` branch in
+ * `castSpell`). Detection is a word-boundary anchored, case-insensitive match
+ * so "Convoke" matches while a hypothetical "convokedout" would not. The
+ * reminder-text variant is tolerated because the leading keyword word is
+ * always present regardless.
+ *
+ * Example oracle text: "Convoke" (e.g. Stoke the Flames, Satyr Enchanter,
+ * Venerated Rotpriest).
+ */
+export function parseConvoke(oracleText: string): ConvokeInfo {
+  if (!oracleText) {
+    return { hasConvoke: false, description: "" };
+  }
+
+  // Word-boundary anchored on both sides: "Convoke" matches, but substrings
+  // inside other words do not. Case-insensitive to be tolerant of casing.
+  const hasConvoke = /\bconvoke\b/i.test(oracleText);
+
+  return {
+    hasConvoke,
+    description: hasConvoke ? "Convoke" : "",
   };
 }
 

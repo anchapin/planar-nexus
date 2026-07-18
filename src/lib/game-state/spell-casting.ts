@@ -30,6 +30,7 @@ import {
   parseBestow,
   parseBlitz,
   parseForetell,
+  parseConvoke,
   parseSplitSecond,
   parseStorm,
   isModalSpell,
@@ -232,6 +233,7 @@ export function canCastSpell(
  * CR 601 - Casting Spells
  * CR 702.8 - Buyback
  * CR 702.66 - Flashback
+ * CR 702.93 - Convoke
  * CR 702.99 - Bestow
  * CR 702.150 - Blitz
  * CR 702.85 - Kicker
@@ -252,9 +254,19 @@ export function castSpell(
       | "escape"
       | "spectacle"
       | "blitz"
-      | "foretell";
+      | "foretell"
+      | "convoke";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
+    /**
+     * CR 702.93 - Convoke: untapped creatures the player chooses to tap while
+     * casting this spell. Each colored creature pays for one mana of that
+     * creature's color (CR 702.93b) or one generic mana; each colorless
+     * creature pays for one generic mana (CR 702.93c). Tapping a creature
+     * for convoke is NOT activating a {T}/{Q} ability, so summoning sickness
+     * does NOT restrict it (CR 302.6 only restricts {T}/{Q} activated costs).
+     */
+    convokeCreatures?: CardInstanceId[];
   },
   /**
    * CR 702.85 — number of times the kicker (or multikicker) cost was paid.
@@ -402,6 +414,11 @@ export function castSpell(
   // Handle alternative costs (Buyback, Flashback, Bestow, etc.)
   let buybackReturnZone: string | undefined = undefined;
   let bestowTarget: CardInstanceId | undefined = undefined;
+  // CR 702.93 - Convoke: creatures the player declared they would tap while
+  // casting. Validated inside the `case "convoke":` branch; the actual tap
+  // is applied AFTER mana is spent (see `applyConvokeTaps` below) so the
+  // pre-cast state used for validation is not mutated.
+  const convokeTappedCreatures: CardInstanceId[] = [];
 
   if (alternativeCost) {
     switch (alternativeCost.type) {
@@ -488,6 +505,122 @@ export function castSpell(
         }
         break;
       }
+      case "convoke": {
+        // CR 702.93 - Convoke: "Your creatures can help cast this spell. Each
+        // creature you tap while casting this spell pays for {1} or one mana
+        // of that creature's color." Convoke is a cost-reduction applied to
+        // the printed mana cost (not an alternative cost that replaces it);
+        // other additional costs/taxes (kicker, etc.) still apply on top.
+        //
+        // Validation per CR 702.93a: each declared creature must be a
+        // creature, untapped, on the battlefield, and controlled by the
+        // spell's controller. Summoning sickness is NOT a restriction (CR
+        // 302.6 only restricts activating {T}/{Q} abilities, and tapping
+        // for convoke is the convoke rule itself, not a {T} ability).
+        const convokeInfo = parseConvoke(card.cardData.oracle_text || "");
+        if (convokeInfo.hasConvoke) {
+          alternativeCostsUsed.push("convoke");
+          const declaredCreatures = alternativeCost.convokeCreatures ?? [];
+          const seen = new Set<CardInstanceId>();
+          for (const creatureId of declaredCreatures) {
+            if (seen.has(creatureId)) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Convoke: a creature cannot be tapped more than once to pay for the same spell.",
+              };
+            }
+            seen.add(creatureId);
+
+            const creature = state.cards.get(creatureId);
+            if (!creature) {
+              return {
+                success: false,
+                state,
+                error: "Convoke: creature not found.",
+              };
+            }
+            // Must be controlled by the caster (CR 702.93a: "you control").
+            if (creature.controllerId !== playerId) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Convoke: tapped creature must be controlled by the spell's controller.",
+              };
+            }
+            // Must be on the battlefield.
+            const czKey = creature.currentZoneKey;
+            const cz = czKey ? state.zones.get(czKey) : undefined;
+            if (
+              !cz ||
+              cz.type !== ZoneType.BATTLEFIELD ||
+              !cz.cardIds.includes(creatureId)
+            ) {
+              return {
+                success: false,
+                state,
+                error: "Convoke: tapped creature must be on the battlefield.",
+              };
+            }
+            // Must actually be a creature (CR 702.93a: "untapped creatures").
+            const cTypeLine = creature.cardData.type_line?.toLowerCase() || "";
+            if (!cTypeLine.includes("creature")) {
+              return {
+                success: false,
+                state,
+                error: "Convoke: tapped permanent is not a creature.",
+              };
+            }
+            // Must be untapped.
+            if (creature.isTapped) {
+              return {
+                success: false,
+                state,
+                error: "Convoke: creature is already tapped.",
+              };
+            }
+
+            // Apply cost reduction per CR 702.93b (colored pip of the
+            // creature's color) then 702.93c (any one generic mana). A
+            // creature with multiple colors reduces the first unpaid colored
+            // pip in W/U/B/R/G order that matches one of its colors. A
+            // colorless creature (e.g. an artifact creature with no colors)
+            // can only reduce a generic pip. If no pip is left to reduce,
+            // the creature is still tapped (CR 702.93a allows over-declaring)
+            // — the post-loop tap step records it.
+            const colors = creature.cardData.colors || [];
+            let reduced = false;
+            if (totalWhite > 0 && colors.includes("W")) {
+              totalWhite--;
+              reduced = true;
+            } else if (totalBlue > 0 && colors.includes("U")) {
+              totalBlue--;
+              reduced = true;
+            } else if (totalBlack > 0 && colors.includes("B")) {
+              totalBlack--;
+              reduced = true;
+            } else if (totalRed > 0 && colors.includes("R")) {
+              totalRed--;
+              reduced = true;
+            } else if (totalGreen > 0 && colors.includes("G")) {
+              totalGreen--;
+              reduced = true;
+            } else if (totalGeneric > 0) {
+              totalGeneric--;
+              reduced = true;
+            }
+            convokeTappedCreatures.push(creatureId);
+            // `reduced` is intentionally unused beyond this point: an
+            // over-declared tap still taps the creature but contributes
+            // nothing to the cost (CR 702.93a allows it; the post-cast
+            // tap step records the tap regardless).
+            void reduced;
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -534,7 +667,27 @@ export function castSpell(
   }
 
   // Use the state with mana already spent
-  const currentState = spendResult.state;
+  let currentState = spendResult.state;
+
+  // CR 702.93 - Convoke: now that mana is spent and the cast is committed,
+  // tap each declared creature. Tapping for convoke is not the same as
+  // activating a {T} ability (no summoning-sickness restriction), and the
+  // tap persists through the spell's resolution until the controller's next
+  // untap step.
+  if (convokeTappedCreatures.length > 0) {
+    const updatedConvokeCards = new Map(currentState.cards);
+    for (const creatureId of convokeTappedCreatures) {
+      const creature = updatedConvokeCards.get(creatureId);
+      if (creature) {
+        updatedConvokeCards.set(creatureId, { ...creature, isTapped: true });
+      }
+    }
+    currentState = {
+      ...currentState,
+      cards: updatedConvokeCards,
+      lastModifiedAt: Date.now(),
+    };
+  }
 
   // Create stack object with alternative cost info
   const stackObject: StackObject = {
