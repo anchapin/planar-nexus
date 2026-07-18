@@ -27,7 +27,11 @@ import { isCreature } from "./card-instance";
 import type { TriggeredAbilityInstance } from "./abilities";
 import { evaluateInterveningIfClause } from "./abilities";
 import { hasProwess, getProwessInstanceCount } from "./evergreen-keywords";
-import { parseTriggeredAbilities } from "./oracle-text-parser";
+import {
+  parseTriggeredAbilities,
+  parseRenown,
+  parseTribute,
+} from "./oracle-text-parser";
 import { hasCorpseAbility, getCorpseAbility } from "./corpse-keyword";
 import type { DungeonRoomCompletion } from "../cards/dungeons";
 
@@ -1079,4 +1083,123 @@ function getTriggeredAbilitiesFromCard(
     effect: parsed.effect,
     interveningIf: parsed.interveningIf,
   }));
+}
+
+// ===========================================================================
+// Renown (CR 702.100) and Tribute (CR 702.101) ETB triggers.
+//
+// Issue #1412: these keywords were listed in oracle-text-parser.ts but had
+// no parser helpers and no trigger registration. The detect functions below
+// synthesise ETB triggers that the engine can route through the standard
+// `putTriggersOnStack` path; the actual counter application / opponent
+// choice is performed by `processRenownOnEtb` and `processTributeOnEtb` in
+// keyword-actions.ts (mirroring how `detectCreatureDeathTriggers` synthesises
+// a corpse trigger while `processCorpseOnDeath` does the bookkeeping).
+// ===========================================================================
+
+/**
+ * Detect the Renown ETB trigger (CR 702.100) for a creature that just
+ * entered the battlefield.
+ *
+ * CR 702.100a: "Renown N" → "When this creature deals combat damage to a
+ * player, if it isn't renowned, put N +1/+1 counters on it and it becomes
+ * renowned." Issue #1412 frames this as an ETB-style hook for the engine
+ * so the same application path can fire from a scripted ETB context. The
+ * CR 702.100b intervening-if ("if it isn't renowned") is enforced here by
+ * skipping the trigger when `card.renowned === true`.
+ *
+ * @param enteringCardId  The card that just entered the battlefield.
+ * @returns A list of zero or one synthesised triggered-ability instances.
+ */
+export function detectRenownEtbTriggers(
+  state: GameState,
+  enteringCardId: CardInstanceId,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  const card = state.cards.get(enteringCardId);
+  if (!card) return triggers;
+  if (!isOnBattlefield(state, enteringCardId)) return triggers;
+
+  // Only creatures carry Renown.
+  if (!isCreature(card)) return triggers;
+
+  const info = parseRenown(card.cardData.oracle_text || "");
+  if (!info.hasRenown) return triggers;
+  const count = info.renownCount ?? 0;
+  if (count <= 0) return triggers;
+
+  // CR 702.100b — never re-triggers once renowned.
+  if (card.renowned === true) return triggers;
+
+  const context: TriggerDetectionContext = {
+    sourceCardId: enteringCardId,
+    triggerType: TriggerConditionType.ETB,
+  };
+
+  triggers.push({
+    id: generateTriggeredAbilityId(),
+    sourceCardId: enteringCardId,
+    triggeringPlayerId: card.controllerId,
+    triggerCondition: "entersBattlefield",
+    effect: `Renown ${count} — when this creature enters the battlefield, if it isn't renowned, put ${count} +1/+1 counters on it and it becomes renowned.`,
+    timestamp: Date.now(),
+    sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+    context: context as any,
+  });
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
+}
+
+/**
+ * Detect the Tribute ETB trigger (CR 702.101) for a creature that just
+ * entered the battlefield.
+ *
+ * CR 702.101a: "Tribute N" → "As this creature enters the battlefield, an
+ * opponent of your choice may pay N. If they do, the secondary triggered
+ * ability is suppressed (CR 702.101b)." The choice itself is surfaced by
+ * `processTributeOnEtb` in keyword-actions.ts as a `tribute_offer`
+ * WaitingChoice; this detect function synthesises the matching
+ * `entersBattlefield` trigger so the engine has a record of it for replay
+ * and state-hash consumers.
+ *
+ * @param enteringCardId  The card that just entered the battlefield.
+ * @returns A list of zero or one synthesised triggered-ability instances.
+ */
+export function detectTributeEtbTriggers(
+  state: GameState,
+  enteringCardId: CardInstanceId,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  const card = state.cards.get(enteringCardId);
+  if (!card) return triggers;
+  if (!isOnBattlefield(state, enteringCardId)) return triggers;
+
+  if (!isCreature(card)) return triggers;
+
+  const info = parseTribute(card.cardData.oracle_text || "");
+  if (!info.hasTribute) return triggers;
+  const count = info.tributeCount ?? 0;
+  if (count <= 0) return triggers;
+
+  const context: TriggerDetectionContext = {
+    sourceCardId: enteringCardId,
+    triggerType: TriggerConditionType.ETB,
+  };
+
+  triggers.push({
+    id: generateTriggeredAbilityId(),
+    sourceCardId: enteringCardId,
+    triggeringPlayerId: card.controllerId,
+    triggerCondition: "entersBattlefield",
+    effect: `Tribute ${count} — as this creature enters the battlefield, an opponent may pay ${count}. If they decline, the printed effect fires.`,
+    timestamp: Date.now(),
+    sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+    context: context as any,
+  });
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
 }

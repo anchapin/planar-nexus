@@ -2565,3 +2565,150 @@ function isLikelyCardTypeWord(word: string): boolean {
   if (!/^[A-Za-z]+$/.test(word)) return false;
   return word.length >= 3;
 }
+
+// ===========================================================================
+// Renown (CR 702.100)
+//
+// CR 702.100a: "Renown N" means "When this creature deals combat damage to a
+// player, if it isn't renowned, put N +1/+1 counters on it and it becomes
+// renowned."
+//
+// CR 702.100b: "A creature is renowned if it has one or more +1/+1 counters
+// on it as a result of its renown ability." (Read literally, the printed
+// "becomes renowned" flag persists for the rest of the game — a creature
+// that is renowned remains renowned even if the +1/+1 counters are later
+// removed, and it can never re-trigger its own Renown. See also entry on
+// https://blogs.magicjudges.org/rules/cr702/ under "Renown".)
+//
+// The parser surfaces only the integer N. The ETB-style "is it renowned?"
+// gating and the +1/+1 counter application live in keyword-actions.ts and
+// trigger-system.ts.
+//
+// Printed form: "Renown N" — typically followed by reminder text in
+// parentheses, which the leading keyword word always precedes. Example:
+//   "Renown 1 (When this creature deals combat damage to a player, if it
+//   isn't renowned, put a +1/+1 counter on it.)"
+//
+// NOTE on issue #1412 scope: the issue text frames Renown as an ETB
+// triggered ability for engine purposes. The CR's literal trigger condition
+// is combat-damage-to-a-player; the engine surfaces a synthetic ETB-style
+// hook here so the same renown-counters application path can fire from
+// either an ETB context (e.g., testing / scripting) or the rules-correct
+// combat-damage context wired by trigger-system.ts. The flag
+// `card.renowned === true` is the authoritative "has this permanent already
+// become renowned" guard — once set it never resets for the same card
+// instance, surviving zone changes (CR 702.100b).
+// ===========================================================================
+
+/** Result of detecting Renown (CR 702.100). */
+export interface RenownInfo {
+  hasRenown: boolean;
+  /** The parsed N value from "Renown N". Undefined when `hasRenown` is false. */
+  renownCount?: number;
+  /** Human-readable description (e.g. `Renown 2`). */
+  description: string;
+}
+
+/**
+ * Parse the Renown keyword from oracle text.
+ *
+ * CR 702.100a: "Renown N" — case-insensitive, word-bounded on both sides
+ * so "Renown 2" matches but "Unrenowned" / "Renowned" do not. Captures the
+ * integer N immediately following the keyword word.
+ *
+ * Examples:
+ *  - "Renown 1" → { hasRenown: true, renownCount: 1, description: "Renown 1" }
+ *  - "Renown 3 (When this creature deals combat damage...)" → renownCount 3
+ *  - "Knight of the Pilgrim's Road" / "Valeron Wardens" (real cards)
+ */
+export function parseRenown(oracleText: string): RenownInfo {
+  if (!oracleText) {
+    return { hasRenown: false, description: "" };
+  }
+
+  // Word-bounded both sides; capture the integer N that follows. Reject
+  // matches where the captured N is not a digit (e.g. "Renown — when this
+  // creature..." which is reminder prose, not the keyword).
+  const match = oracleText.match(/\brenown\s+(\d+)\b/i);
+  if (!match) {
+    return { hasRenown: false, description: "" };
+  }
+
+  const count = parseInt(match[1], 10);
+  if (isNaN(count) || count < 0) {
+    return { hasRenown: false, description: "" };
+  }
+
+  return {
+    hasRenown: true,
+    renownCount: count,
+    description: `Renown ${count}`,
+  };
+}
+
+// ===========================================================================
+// Tribute (CR 702.101)
+//
+// CR 702.101a: "Tribute N" means "As this creature enters the battlefield,
+// an opponent of your choice may pay N life or have this creature enter the
+// battlefield with N +1/+1 counters on it." (Engine interpretation: the
+// opponent chooses whether to pay the Tribute cost; if they do, the
+// "tribute not paid" effect does not fire; if they decline, the printed
+// "When [this creature] enters the battlefield, if its tribute wasn't paid,
+// [effect]" triggered ability fires.)
+//
+// CR 702.101b: "A creature's tribute is paid if a player chose to pay tribute
+// for it as it entered the battlefield." This is the suppression flag for the
+// secondary "tribute wasn't paid" trigger.
+//
+// Printed form: "Tribute N" followed by the secondary triggered ability:
+//   "When this creature enters the battlefield, if its tribute wasn't paid,
+//    [effect]."
+//
+// The parser surfaces only the integer N. The opponent-choice / pay-or-decline
+// flow lives in keyword-actions.ts (processTributeOnEtb /
+// resolveTributeChoice); the trigger wiring lives in trigger-system.ts.
+// ===========================================================================
+
+/** Result of detecting Tribute (CR 702.101). */
+export interface TributeInfo {
+  hasTribute: boolean;
+  /** The parsed N value from "Tribute N". Undefined when `hasTribute` is false. */
+  tributeCount?: number;
+  /** Human-readable description (e.g. `Tribute 2`). */
+  description: string;
+}
+
+/**
+ * Parse the Tribute keyword from oracle text.
+ *
+ * CR 702.101a: "Tribute N" — case-insensitive, word-bounded on both sides
+ * so "Tribute 2" matches but "Tributes" / "Tributeborn" do not. Captures the
+ * integer N immediately following the keyword word.
+ *
+ * Examples:
+ *  - "Tribute 1" → { hasTribute: true, tributeCount: 1, ... }
+ *  - "Tribute 3 (As this creature enters the battlefield, ...)" → count 3
+ *  - "Fanatic of Rhonas" / "Arbor Colossus" (real cards with Tribute)
+ */
+export function parseTribute(oracleText: string): TributeInfo {
+  if (!oracleText) {
+    return { hasTribute: false, description: "" };
+  }
+
+  const match = oracleText.match(/\btribute\s+(\d+)\b/i);
+  if (!match) {
+    return { hasTribute: false, description: "" };
+  }
+
+  const count = parseInt(match[1], 10);
+  if (isNaN(count) || count < 0) {
+    return { hasTribute: false, description: "" };
+  }
+
+  return {
+    hasTribute: true,
+    tributeCount: count,
+    description: `Tribute ${count}`,
+  };
+}
