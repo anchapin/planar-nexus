@@ -17,6 +17,7 @@ import {
   type MeshGameConnectionEvents,
 } from "../mesh-game-connection";
 import type { GameMessage } from "../p2p-game-connection";
+import { p2pLogger } from "../p2p-logger";
 
 /** The event handle: each callback is a jest.Mock so call sites can assert. */
 interface MockEvents {
@@ -1073,5 +1074,47 @@ describe("MeshGameConnection chat cap + sanitize (#1428)", () => {
       // Non-string senderName coerced to "" by the inbound guard.
       expect(events.onChat).toHaveBeenCalledWith("p1", "", "hi");
     });
+  });
+});
+
+/**
+ * Issue #1426 — the mesh warn/error paths must route through the shared
+ * `p2pLogger` (not raw `console.*`) so P2P logging stays leveled and
+ * prod-strippable. Covers a representative `.warn` and `.error` path.
+ */
+describe("MeshGameConnection logs through p2pLogger (#1426)", () => {
+  let warnSpy: jest.SpyInstance;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(p2pLogger, "warn").mockImplementation(() => {});
+    errorSpy = jest.spyOn(p2pLogger, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("routes a malformed peer message to p2pLogger.error (not console)", () => {
+    const { mesh, events } = newMesh();
+    mesh.addPeerLink(new MockLink("p1"));
+    mesh.handleIncoming("{ not json", "p1");
+    expect(events.onMessage).not.toHaveBeenCalled();
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[MeshGameConnection] Rejected malformed peer message",
+      expect.anything(),
+    );
+  });
+
+  it("routes a duplicate/replay to p2pLogger.warn (not console)", () => {
+    const { mesh } = newMesh();
+    mesh.addPeerLink(new MockLink("p1"));
+    mesh.handleIncoming(inbound("p1", 5), "p1");
+    mesh.handleIncoming(inbound("p1", 5), "p1"); // duplicate seq
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[MeshGameConnection] Dropping duplicate/replay message",
+      expect.anything(),
+    );
   });
 });

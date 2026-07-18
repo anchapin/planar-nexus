@@ -56,6 +56,7 @@ import {
   type ConnectionFailureDiagnostic,
 } from "./p2p-failure-diagnostics";
 import { redactSensitive } from "./p2p-log-redact";
+import { p2pLogger } from "./p2p-logger";
 import {
   type PeerRole,
   DEFAULT_PEER_ROLE,
@@ -809,7 +810,7 @@ export class P2PGameConnection {
       await this.signalingClient.addRemoteIceCandidates(candidates);
     } catch (error) {
       // #982: redact — candidate errors may embed ICE candidate blobs.
-      console.error(
+      p2pLogger.error(
         "[P2PGameConnection] Failed to process ICE candidates:",
         redactSensitive(error),
       );
@@ -849,7 +850,7 @@ export class P2PGameConnection {
     // local role is not allowed to originate.
     if (!isRoleAllowedToSend(this.localRoleFlag, message.type)) {
       const reason = rejectionReasonForSend(this.localRoleFlag, message.type);
-      console.warn(
+      p2pLogger.warn(
         "[P2PGameConnection] Refusing outbound message: local role disallows it",
         redactSensitive({
           type: message.type,
@@ -865,7 +866,7 @@ export class P2PGameConnection {
     // Remote role gate. If the remote is a non-player, suppress the
     // types the remote is not allowed to RECEIVE (currently `game-action`).
     if (!isMessageAllowedForRole(this.remoteRoleFlag, message.type)) {
-      console.warn(
+      p2pLogger.warn(
         "[P2PGameConnection] Refusing outbound message: remote role disallows it",
         redactSensitive({
           type: message.type,
@@ -875,7 +876,7 @@ export class P2PGameConnection {
       return false;
     }
     if (!this.dataChannel || this.dataChannel.readyState !== "open") {
-      console.warn("[P2PGameConnection] Data channel not ready");
+      p2pLogger.warn("[P2PGameConnection] Data channel not ready");
       return false;
     }
 
@@ -911,7 +912,7 @@ export class P2PGameConnection {
       inFlight,
     );
     if (!accepted) {
-      console.error(
+      p2pLogger.error(
         "[P2PGameConnection] Send queue rejected outbound message",
         redactSensitive({
           type: message.type,
@@ -946,7 +947,7 @@ export class P2PGameConnection {
         return true;
       } catch (error) {
         // #982: redact — send errors may reference the payload.
-        console.error(
+        p2pLogger.error(
           "[P2PGameConnection] Failed to send queued message:",
           redactSensitive(error),
         );
@@ -1043,7 +1044,7 @@ export class P2PGameConnection {
         this.localRoleFlag === "spectator"
           ? REJECT_SENT_AS_SPECTATOR
           : "Moderator peers may not originate game actions";
-      console.warn(
+      p2pLogger.warn(
         "[P2PGameConnection] Refusing game-action: local role is read-only",
         redactSensitive({ localRole: this.localRoleFlag, action }),
       );
@@ -1143,7 +1144,7 @@ export class P2PGameConnection {
       return;
     }
     if (typeof key !== "string" || key.length === 0) {
-      console.warn(
+      p2pLogger.warn(
         "[P2PGameConnection] Ignoring invalid sessionKey (must be a non-empty hex string)",
       );
       return;
@@ -1270,7 +1271,7 @@ export class P2PGameConnection {
 
     this.dataChannel.onerror = (event) => {
       // #982: redact — data channel error events may embed diagnostic info.
-      console.error(
+      p2pLogger.error(
         "[P2PGameConnection] Data channel error:",
         redactSensitive(event),
       );
@@ -1281,7 +1282,7 @@ export class P2PGameConnection {
 
     this.dataChannel.onmessage = (event) => {
       if (typeof event.data !== "string") {
-        console.warn("[P2PGameConnection] Received non-string message");
+        p2pLogger.warn("[P2PGameConnection] Received non-string message");
         return;
       }
       this.handleMessage(event.data);
@@ -1327,7 +1328,7 @@ export class P2PGameConnection {
     try {
       // Rate-limit first: never do parse/validation work for a flooding peer.
       if (!this.rateLimiter.tryAcquire()) {
-        console.warn(
+        p2pLogger.warn(
           "[P2PGameConnection] Rate limit exceeded; dropping peer message",
         );
         return;
@@ -1347,12 +1348,12 @@ export class P2PGameConnection {
         );
         if (!envelope) {
           this.envelopeRejections += 1;
-          console.warn("[P2PGameConnection] Rejected malformed envelope");
+          p2pLogger.warn("[P2PGameConnection] Rejected malformed envelope");
           return;
         }
         if (!verifyMessageEnvelope(envelope, this.sessionKeyHex)) {
           this.envelopeRejections += 1;
-          console.warn(
+          p2pLogger.warn(
             "[P2PGameConnection] envelope-sender-mismatch; dropping forged envelope",
             redactSensitive({
               declaredSender: envelope.payload?.senderId,
@@ -1368,7 +1369,9 @@ export class P2PGameConnection {
         const legacy = safeParseJson<GameMessage>(data, isGameMessage);
         if (!legacy) {
           // Malformed JSON or wrong shape — reject without breaking the channel.
-          console.error("[P2PGameConnection] Rejected malformed peer message");
+          p2pLogger.error(
+            "[P2PGameConnection] Rejected malformed peer message",
+          );
           return;
         }
         message = legacy;
@@ -1378,7 +1381,7 @@ export class P2PGameConnection {
       // message can touch game state. This runs after shape validation so
       // `message.seq` is guaranteed to be a non-negative integer.
       if (this.isReplay(message)) {
-        console.warn(
+        p2pLogger.warn(
           "[P2PGameConnection] Dropping duplicate/replay message",
           redactSensitive({ senderId: message.senderId, seq: message.seq }),
         );
@@ -1395,7 +1398,7 @@ export class P2PGameConnection {
       // counted once (the anti-replay check rejects it first).
       if (!isMessageAllowedForRole(this.localRoleFlag, message.type)) {
         this.spectatorDrops += 1;
-        console.warn(
+        p2pLogger.warn(
           "[P2PGameConnection] Dropped message disallowed for local role",
           redactSensitive({
             type: message.type,
@@ -1482,7 +1485,7 @@ export class P2PGameConnection {
       this.events.onMessage(message);
     } catch (error) {
       // #982: redact — handler errors may reference the peer message payload.
-      console.error(
+      p2pLogger.error(
         "[P2PGameConnection] Failed to handle message:",
         redactSensitive(error),
       );
@@ -1682,7 +1685,7 @@ export class P2PGameConnection {
       state = this.onStateSyncRequest();
     } catch (error) {
       // #982: redact — a throwing host callback may reference game state.
-      console.error(
+      p2pLogger.error(
         "[P2PGameConnection] onStateSyncRequest threw:",
         redactSensitive(error),
       );
@@ -1703,7 +1706,7 @@ export class P2PGameConnection {
   private handleLobbyControl(message: GameMessage): void {
     const payload = message.data;
     if (typeof payload !== "object" || payload === null) {
-      console.warn(
+      p2pLogger.warn(
         "[P2PGameConnection] Rejected malformed lobby-control payload",
       );
       return;
@@ -1716,7 +1719,7 @@ export class P2PGameConnection {
       kind !== "pause" &&
       kind !== "resume"
     ) {
-      console.warn(
+      p2pLogger.warn(
         "[P2PGameConnection] Rejected lobby-control with invalid kind",
         redactSensitive({ kind }),
       );
@@ -1871,7 +1874,7 @@ export class P2PGameConnection {
   private handleError(error: Error): void {
     // #982: redact — error.message may embed session metadata propagated up
     // from lower layers.
-    console.error("[P2PGameConnection] Error:", redactSensitive(error));
+    p2pLogger.error("[P2PGameConnection] Error:", redactSensitive(error));
     if (!this.lastFailureDiagnostic) {
       this.lastFailureDiagnostic = classifyConnectionFailure({
         rtcConfig: this.getRTCConfig(),
@@ -2031,7 +2034,7 @@ export class P2PGameConnection {
       return await this.peerConnection.getStats();
     } catch (error) {
       // #982: redact — getStats errors may reference ICE candidates.
-      console.error(
+      p2pLogger.error(
         "[P2PGameConnection] Failed to get stats:",
         redactSensitive(error),
       );

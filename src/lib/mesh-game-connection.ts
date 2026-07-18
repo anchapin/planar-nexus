@@ -72,6 +72,7 @@ import {
 import { safeParseJson } from "./p2p-json-validation";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import { redactSensitive } from "./p2p-log-redact";
+import { p2pLogger } from "./p2p-logger";
 import { AntiReplayTracker } from "./anti-replay-tracker";
 import {
   type PeerRole,
@@ -333,7 +334,7 @@ export class MeshGameConnection {
       return;
     }
     if (typeof key !== "string" || key.length === 0) {
-      console.warn(
+      p2pLogger.warn(
         "[MeshGameConnection] Ignoring invalid sessionKey (must be a non-empty hex string)",
       );
       return;
@@ -600,7 +601,7 @@ export class MeshGameConnection {
       return link.send(raw);
     } catch (error) {
       // #982: redact — transport errors may reference the payload/SDP.
-      console.error(
+      p2pLogger.error(
         "[MeshGameConnection] Failed to send to peer:",
         redactSensitive(error),
       );
@@ -706,7 +707,7 @@ export class MeshGameConnection {
       // 1. Per-link rate limit first — never do parse/validation work for a
       //    flooding peer.
       if (!this.ensureLimiter(fromPeerId).tryAcquire()) {
-        console.warn(
+        p2pLogger.warn(
           "[MeshGameConnection] Rate limit exceeded; dropping peer message",
           redactSensitive({ fromPeerId }),
         );
@@ -716,7 +717,7 @@ export class MeshGameConnection {
       // 2 + 3. Safe parse + structural limits + shape validation.
       const message = safeParseJson<GameMessage>(raw, isGameMessage);
       if (!message) {
-        console.error(
+        p2pLogger.error(
           "[MeshGameConnection] Rejected malformed peer message",
           redactSensitive({ fromPeerId }),
         );
@@ -725,7 +726,7 @@ export class MeshGameConnection {
 
       // 4. Anti-replay (per senderId, scales to N senders). Issue #1091.
       if (this.antiReplay.isReplay(message.senderId, message.seq)) {
-        console.warn(
+        p2pLogger.warn(
           "[MeshGameConnection] Dropping duplicate/replay message",
           redactSensitive({ senderId: message.senderId, seq: message.seq }),
         );
@@ -742,7 +743,7 @@ export class MeshGameConnection {
       //    counted once (the anti-replay check rejects it first).
       if (!isMessageAllowedForRole(this.localRoleFlag, message.type)) {
         this.spectatorDrops += 1;
-        console.warn(
+        p2pLogger.warn(
           "[MeshGameConnection] Dropped message disallowed for local role",
           redactSensitive({
             fromPeerId,
@@ -773,7 +774,7 @@ export class MeshGameConnection {
       this.dispatch(message, fromPeerId);
     } catch (error) {
       // Defensive: a handler bug must not tear down the mesh.
-      console.error(
+      p2pLogger.error(
         "[MeshGameConnection] Failed to handle message:",
         redactSensitive(error),
       );
@@ -972,7 +973,7 @@ export class MeshGameConnection {
       try {
         link.close();
       } catch (error) {
-        console.error(
+        p2pLogger.error(
           "[MeshGameConnection] Error closing peer link:",
           redactSensitive(error),
         );
