@@ -314,6 +314,9 @@ export class ValidationService {
 
     // Verify the card is in a zone the player may cast from. Default: hand.
     // CR 702.142c - Foretell: a foretold card is cast from its owner's exile.
+    // CR 702.138 - Escape: a card with Escape may be cast from its owner's
+    // graveyard by paying its escape cost and exiling N other cards from the
+    // graveyard.
     const altType = data.alternativeCost?.type;
     const handZone = state.zones.get(`${action.playerId}-hand`);
     const inHand = handZone?.cardIds.includes(cardId) ?? false;
@@ -322,7 +325,13 @@ export class ValidationService {
       const inExile = exileZone?.cardIds.includes(cardId) ?? false;
       const isForetold =
         inExile && card.foretold === true && card.isFaceDown === true;
-      if (!(altType === "foretell" && isForetold)) {
+      const graveZone = state.zones.get(`${action.playerId}-graveyard`);
+      const inGrave = graveZone?.cardIds.includes(cardId) ?? false;
+      if (
+        !(altType === "foretell" && isForetold) &&
+        !(altType === "escape" && inGrave) &&
+        !(altType === "flashback" && inGrave)
+      ) {
         return {
           isValid: false,
           reason: "Card not in hand",
@@ -368,11 +377,17 @@ export class ValidationService {
     // option). Either way the printed-cost check here is not authoritative —
     // castSpell recomputes and charges the correct amount. Skip it (same
     // rationale as foretell/convoke/delve).
+    //
+    // Escape (CR 702.138) REPLACES the printed mana cost with the escape cost
+    // (an alternative cost). The authoritative affordability check happens in
+    // castSpell after the escape cost is substituted. Skip it (same rationale
+    // as foretell/convoke/delve/spectacle).
     if (
       altType !== "foretell" &&
       altType !== "convoke" &&
       altType !== "delve" &&
-      altType !== "spectacle"
+      altType !== "spectacle" &&
+      altType !== "escape"
     ) {
       const manaValidation = this.validateManaCost(state, player, card);
       if (!manaValidation.isValid) {

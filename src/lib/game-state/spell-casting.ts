@@ -33,6 +33,7 @@ import {
   parseSpectacle,
   parseConvoke,
   parseDelve,
+  parseEscape,
   parseSplitSecond,
   parseStorm,
   isModalSpell,
@@ -279,6 +280,18 @@ export function castSpell(
      * but the extras reduce nothing — they are still exiled (binding choice).
      */
     delveCards?: CardInstanceId[];
+    /**
+     * CR 702.138 - Escape: N other cards in the player's graveyard chosen to
+     * be exiled while casting this spell from the graveyard. The escape cost
+     * REPLACES the printed mana cost; exiling exactly N "other" graveyard
+     * cards is a MANDATORY additional cost (CR 702.138a). The chosen cards
+     * are exiled as part of paying the spell's cost. The cast is rejected
+     * with "Not enough exile targets" if fewer than N valid other cards are
+     * provided or available. The exact N required is parsed from the card's
+     * oracle text (e.g. "Exile four other cards..." → N=4; "Exile 5 other
+     * cards..." → N=5).
+     */
+    escapeExileCards?: CardInstanceId[];
   },
   /**
    * CR 702.85 — number of times the kicker (or multikicker) cost was paid.
@@ -331,8 +344,8 @@ export function castSpell(
     return { success: false, state, error: "Card not found." };
   }
 
-  // Verify the card is in player's hand (or graveyard for Flashback, or exile
-  // for a foretold card cast via Foretell — CR 702.142c).
+  // Verify the card is in player's hand (or graveyard for Flashback / Escape,
+  // or exile for a foretold card cast via Foretell — CR 702.142c).
   let sourceZone: string | null = null;
   const handZone = state.zones.get(`${playerId}-hand`);
   const graveZone = state.zones.get(`${playerId}-graveyard`);
@@ -345,6 +358,13 @@ export function castSpell(
     graveZone &&
     graveZone.cardIds.includes(cardId)
   ) {
+    sourceZone = `${playerId}-graveyard`;
+  } else if (
+    alternativeCost?.type === "escape" &&
+    graveZone &&
+    graveZone.cardIds.includes(cardId)
+  ) {
+    // CR 702.138a: a card with Escape may be cast from its owner's graveyard.
     sourceZone = `${playerId}-graveyard`;
   } else if (
     alternativeCost?.type === "foretell" &&
@@ -436,6 +456,11 @@ export function castSpell(
   // exile is applied AFTER mana is spent (see the delve exile block below)
   // so the pre-cast state used for validation is not mutated.
   const delveExiledCards: CardInstanceId[] = [];
+  // CR 702.138 - Escape: graveyard cards the player declared they would exile
+  // while casting. Validated inside the `case "escape":` branch; the actual
+  // exile is applied AFTER mana is spent (see the escape exile block below)
+  // so the pre-cast state used for validation is not mutated.
+  const escapeExiledCards: CardInstanceId[] = [];
 
   if (alternativeCost) {
     switch (alternativeCost.type) {
@@ -756,6 +781,129 @@ export function castSpell(
         }
         break;
       }
+      case "escape": {
+        // CR 702.138 - Escape: "Escape—[cost], Exile N other cards from
+        // your graveyard." Escape is an alternative cost that REPLACES the
+        // printed mana cost (CR 702.138a — same treatment as
+        // Blitz/Foretell/Spectacle): the spell's mana value is unchanged
+        // and other additional costs/taxes still apply on top. The card
+        // MUST be cast from its owner's graveyard (handled by the
+        // source-zone logic above), and exiling exactly N OTHER graveyard
+        // cards is a MANDATORY additional cost. On resolution, if the
+        // spell would leave the stack for anywhere but the battlefield, it
+        // is exiled instead (CR 702.138c — handled in
+        // `resolveSpellCompletion`).
+        //
+        // CR 702.138a strictness: Escape may ONLY be used to cast a card
+        // from its owner's graveyard. If `alternativeCost.type ===
+        // "escape"` was declared for a card that ended up in a different
+        // zone (e.g. hand), reject the cast rather than silently falling
+        // back to the printed cost or applying the escape cost from the
+        // wrong zone.
+        if (sourceZone !== `${playerId}-graveyard`) {
+          return {
+            success: false,
+            state,
+            error:
+              "Escape can only be used to cast a card from your graveyard.",
+          };
+        }
+        const escapeInfo = parseEscape(card.cardData.oracle_text || "");
+        if (escapeInfo.hasEscape && escapeInfo.escapeCost) {
+          // Replace the printed mana-cost component with the escape-cost
+          // component. Subtract printed-cost pips, add escape-cost pips,
+          // so additional costs (kicker, taxes) layered on top are
+          // preserved (same shape as Blitz/Foretell/Spectacle).
+          totalGeneric += escapeInfo.escapeCost.generic - manaCost.generic;
+          totalWhite += escapeInfo.escapeCost.white - manaCost.white;
+          totalBlue += escapeInfo.escapeCost.blue - manaCost.blue;
+          totalBlack += escapeInfo.escapeCost.black - manaCost.black;
+          totalRed += escapeInfo.escapeCost.red - manaCost.red;
+          totalGreen += escapeInfo.escapeCost.green - manaCost.green;
+          alternativeCostsUsed.push("escape");
+
+          // CR 702.138a: exile exactly N OTHER cards from the caster's
+          // graveyard as a mandatory additional cost. The card itself is
+          // excluded from the eligible pool (it is the source, not an
+          // exile target). Validate each declared card up front so the
+          // cast fails atomically before mana is spent.
+          const requiredN = escapeInfo.exileCount;
+          const graveKey = `${playerId}-graveyard`;
+          const grave = state.zones.get(graveKey);
+          // Other cards in graveyard = all grave cards except the source.
+          const otherGraveIds = (grave?.cardIds ?? []).filter(
+            (id) => id !== cardId,
+          );
+          if (otherGraveIds.length < requiredN) {
+            return {
+              success: false,
+              state,
+              error: "Not enough exile targets",
+            };
+          }
+          const declaredCards = alternativeCost.escapeExileCards ?? [];
+          if (declaredCards.length !== requiredN) {
+            return {
+              success: false,
+              state,
+              error: `Escape: must exile exactly ${requiredN} other cards from your graveyard (got ${declaredCards.length}).`,
+            };
+          }
+          const seen = new Set<CardInstanceId>();
+          for (const escapeCardId of declaredCards) {
+            if (seen.has(escapeCardId)) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Escape: a graveyard card cannot be exiled more than once to pay for the same spell.",
+              };
+            }
+            seen.add(escapeCardId);
+            // The source card itself is not an eligible exile target —
+            // CR 702.138a says "N OTHER cards".
+            if (escapeCardId === cardId) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Escape: the escaping card itself cannot be exiled to pay its own escape cost.",
+              };
+            }
+            const escapeCard = state.cards.get(escapeCardId);
+            if (!escapeCard) {
+              return {
+                success: false,
+                state,
+                error: "Escape: card not found.",
+              };
+            }
+            // Must be in the caster's graveyard (CR 702.138a). The
+            // graveyard is keyed by controller/owner; a card there is
+            // owned by that player (CR 400.3).
+            if (!grave || !grave.cardIds.includes(escapeCardId)) {
+              return {
+                success: false,
+                state,
+                error: "Escape: exiled card must be in the caster's graveyard.",
+              };
+            }
+            // Controller must be the caster (defensive — graveyard
+            // membership already implies this, but the explicit check
+            // guards against state corruption).
+            if (escapeCard.controllerId !== playerId) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Escape: exiled card must be controlled by the spell's controller.",
+              };
+            }
+            escapeExiledCards.push(escapeCardId);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -861,6 +1009,50 @@ export function castSpell(
         ...currentState,
         zones: updatedZonesDelve,
         cards: updatedCardsDelve,
+        lastModifiedAt: Date.now(),
+      };
+    }
+  }
+
+  // CR 702.138 - Escape: now that mana is spent and the cast is committed,
+  // exile each declared graveyard card to the caster's exile zone. The
+  // mandatory-N validation was already applied in the `case "escape":`
+  // branch; this step performs the actual zone move (graveyard → exile)
+  // and updates each card's `currentZoneKey` so subsequent lookups find it
+  // in exile. Cards exiled for escape are gone for good (CR 702.138a: the
+  // exile is part of paying the cost, not a duration effect). The source
+  // card itself is NOT in this list — it stays in the graveyard until the
+  // zone-move-to-stack step below promotes it to the stack.
+  if (escapeExiledCards.length > 0) {
+    const graveKey = `${playerId}-graveyard`;
+    const exileKey = `${playerId}-exile`;
+    const updatedZonesEscape = new Map(currentState.zones);
+    let updatedGraveEscape = updatedZonesEscape.get(graveKey);
+    let updatedExileEscape = updatedZonesEscape.get(exileKey);
+    const updatedCardsEscape = new Map(currentState.cards);
+    if (updatedGraveEscape && updatedExileEscape) {
+      for (const escapeCardId of escapeExiledCards) {
+        const moved = moveCardBetweenZones(
+          updatedGraveEscape,
+          updatedExileEscape,
+          escapeCardId,
+        );
+        updatedGraveEscape = moved.from;
+        updatedExileEscape = moved.to;
+        const ec = updatedCardsEscape.get(escapeCardId);
+        if (ec) {
+          updatedCardsEscape.set(escapeCardId, {
+            ...ec,
+            currentZoneKey: exileKey,
+          });
+        }
+      }
+      updatedZonesEscape.set(graveKey, updatedGraveEscape);
+      updatedZonesEscape.set(exileKey, updatedExileEscape);
+      currentState = {
+        ...currentState,
+        zones: updatedZonesEscape,
+        cards: updatedCardsEscape,
         lastModifiedAt: Date.now(),
       };
     }
@@ -1079,6 +1271,14 @@ export function copySpellOnStack(
   // cost paid" rule means only that the copy is never paid for, not that the
   // value differs). `sourceCardId` is retained so the copy's oracle text / type
   // line can still be looked up during effect resolution.
+  //
+  // CR 702.138 (Escape) — `alternativeCostsUsed` is copied verbatim, so a
+  // copy of an escaped spell also records "escape". This is intentional for
+  // introspection / replay, but it MUST NOT cause the copy to re-exile N
+  // graveyard cards: cost payments happen only in `castSpell`, which this
+  // function is not. Likewise, on resolution the copy goes through
+  // `resolveCopyCompletion` (because `isCopy === true`) and simply ceases
+  // to exist — no card is moved to exile, no second exile cost is assessed.
   const copy: StackObject = {
     id: generateStackObjectId(),
     type: "spell",
@@ -1338,8 +1538,19 @@ function resolveSpellCompletion(
 
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
-        // Instants and sorceries go to graveyard
-        destinationZone = `${card.controllerId}-graveyard`;
+        // Instants and sorceries go to graveyard — UNLESS they were cast
+        // with Escape (CR 702.138c): "If a resolving spell cast with escape
+        // would be put into a zone other than the stack or the battlefield,
+        // exile it instead." Permanents cast with escape still enter the
+        // battlefield normally (the same rule says "other than ... the
+        // battlefield"); the exile-instead-of-graveyard replacement for
+        // escaped permanents that later die is a separate replacement-effect
+        // concern, not handled here.
+        const wasEscaped =
+          stackObject.alternativeCostsUsed?.includes("escape") ?? false;
+        destinationZone = wasEscaped
+          ? `${card.controllerId}-exile`
+          : `${card.controllerId}-graveyard`;
       } else {
         // Permanents go to battlefield
         destinationZone = `${card.controllerId}-battlefield`;
