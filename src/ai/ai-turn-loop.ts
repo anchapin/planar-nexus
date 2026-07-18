@@ -102,6 +102,13 @@ import {
   chooseOpeningTurnPlan,
   type OpeningTurnPlan,
 } from "./opening-turn-plan";
+// Issue #1415: difficulty-scaled creature cast ordering. Outside the opening
+// window the legacy path used a raw ascending-CMC sort, ignoring the fully
+// tested `getSequencingRecommendation` in `mana-sequencing.ts`. This sibling
+// helper consumes that recommendation and reorders the creature list per
+// tier (Easy=CMC, Medium=use-when-better, Hard=10%-noise, Expert=trust). The
+// only edit HERE is the call site; the ordering logic lives in the sibling.
+import { orderCreaturesForDifficulty } from "./cast-sequencing";
 
 /**
  * AI Turn configuration
@@ -1620,10 +1627,41 @@ async function castCreatures(
     }
   }
 
-  creatures.sort((a, b) => a.cmc - b.cmc);
+  // Issue #1415: order the creature list via the difficulty-scaled
+  // `getSequencingRecommendation` (instead of a raw CMC sort) so Easy/Medium/
+  // Hard/Expert each sequence mana visibly differently. Easy keeps the legacy
+  // CMC sort; Medium uses the recommendation when it strictly outscores CMC;
+  // Hard trusts it with a 10% random reorder; Expert trusts it exactly. The
+  // ordering logic lives in the sibling `cast-sequencing` module; we only
+  // project the engine state into the simplified shape it expects.
+  const aiState = engineToAIState(currentState);
+  const aiPlayerState = aiState.players?.[aiPlayerId];
+  const manaPool = aiPlayerState?.manaPool ?? {};
+  const availableMana = Object.values(manaPool).reduce(
+    (sum, v) => sum + (typeof v === "number" ? v : 0),
+    0,
+  );
+  const untappedLands =
+    aiPlayerState?.battlefield?.filter((p) => p.type === "land" && !p.tapped)
+      .length ?? availableMana;
+  const turnNumber = aiState.turnInfo?.currentTurn ?? 0;
+  const orderedCreatures =
+    creatures.length > 0 && aiPlayerState
+      ? orderCreaturesForDifficulty({
+          creatures,
+          hand: aiPlayerState.hand,
+          availableMana,
+          untappedLands,
+          turnNumber,
+          context: {
+            difficulty: config.difficulty,
+            format: config.format,
+          },
+        })
+      : creatures.sort((a, b) => a.cmc - b.cmc);
 
   // Cast creatures we can afford
-  for (const { cardId, cmc } of creatures) {
+  for (const { cardId, cmc } of orderedCreatures) {
     // Check if we should cast based on difficulty randomness
     // Higher difficulty = more likely to cast optimal creatures.
     // Resolves the per-format override (issue #1069) so, e.g., Limited's
