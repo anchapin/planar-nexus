@@ -29,6 +29,11 @@ import {
   getProviderFailoverChain,
   isProviderConfigured,
 } from "@/ai/providers/factory";
+import {
+  providerHealth,
+  type ProviderFailureReason,
+  type ProviderHealthTracker,
+} from "@/ai/providers/provider-health";
 
 /** A single message in the coach conversation. */
 export interface CoachStreamMessage {
@@ -48,6 +53,12 @@ export interface CoachTokenUsage {
  * The route serializes each event as one SSE `data:` line; the client parser
  * switches on `type`.
  *
+ * Issue #1418: the `failover` variant gains an optional `cooldownReason`
+ * field, populated only when `reason === "cooldown"`. It carries the bounded
+ * underlying failure class (`rate-limit | timeout | model-setup |
+ * stream-before-first-token`) so observers can see *why* a provider was
+ * skipped without leaking the raw upstream error.
+ *
  * Issue #1419 adds the `grounding` event: emitted ONCE, after the final text
  * delta and before `done`, when the post-generation guard flags the
  * completed message. The client appends the caveat to the assistant message
@@ -55,7 +66,13 @@ export interface CoachTokenUsage {
  */
 export type CoachStreamEvent =
   | { type: "provider"; value: string }
-  | { type: "failover"; from: string; to: string; reason: string }
+  | {
+      type: "failover";
+      from: string;
+      to: string;
+      reason: string;
+      cooldownReason?: ProviderFailureReason;
+    }
   | { type: "text"; value: string }
   | { type: "usage"; provider: string; usage: CoachTokenUsage }
   | {
@@ -86,14 +103,19 @@ export interface StreamCoachResponseOptions {
    * "unavailable" notice.
    */
   fallbackText?: string;
-  /**
-   * Test seam: override provider resolution. Defaults to the real factory.
+  /** Test seam: override provider resolution. Defaults to the real factory.
    * Injecting it keeps {@link streamCoachResponse} unit-testable without
    * network access or `jest.mock`.
    */
   getModel?: typeof getAIModel;
   /** Test seam: override credential detection. */
   isConfigured?: typeof isProviderConfigured;
+  /**
+   * Test seam: provider health tracker used for cooldown backoff (issue
+   * #1418). Defaults to the process-wide singleton. Injecting a fresh
+   * instance keeps cooldown state hermetic per test file.
+   */
+  healthTracker?: ProviderHealthTracker;
 }
 
 /** Default fallback streamed when no provider can answer. */
@@ -135,16 +157,45 @@ function friendlyError(error: unknown): string {
 }
 
 /**
+ * Map an upstream error thrown before any token was streamed to a bounded
+ * {@link ProviderFailureReason} for the health tracker (issue #1418). The
+ * classification is intentionally coarse and regex-based — we only need it
+ * to pick a cooldown schedule, not to surface the error to the user. Abort
+ * errors never reach here: the caller checks `signal?.aborted` first.
+ */
+function classifyStreamFailure(error: unknown): ProviderFailureReason {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/rate.?limit|429|too many requests/i.test(message)) {
+    return "rate-limit";
+  }
+  if (/timeout|timed?\s*out/i.test(message)) {
+    return "timeout";
+  }
+  return "stream-before-first-token";
+}
+
+/**
  * Stream a coach response with transparent provider failover and cancellation.
  *
- * Failure policy (issue #1077):
- *   - Provider fails BEFORE any token is delivered → fail over to the next
- *     provider in the chain (a `failover` event is emitted first).
+ * Failure policy (issue #1077 + #1418):
+ *   - Provider is currently in cooldown (recent transient failure recorded by
+ *     the health tracker) → skipped, a `failover` event with `reason:
+ *     "cooldown"` is emitted, the next healthy provider is tried (#1418).
+ *   - Provider fails BEFORE any token is delivered → record the bounded
+ *     failure reason, fail over to the next provider (a `failover` event is
+ *     emitted first).
  *   - Provider fails AFTER tokens were delivered → end the stream gracefully
- *     (`error` + `done`); we do not attempt to resume a partial response.
- *   - Abort signal fires → stop immediately, no further providers are tried.
+ *     (`error` + `done`); we do not attempt to resume a partial response and
+ *     we do NOT record a health failure (the provider started fine).
+ *   - Abort signal fires → stop immediately, no further providers are tried,
+ *     and no health failure is recorded (the abort is not the provider's
+ *     fault).
  *   - All providers exhausted → stream `fallbackText` so the user always gets
  *     a response.
+ *
+ * Health state lives in the {@link ProviderHealthTracker} singleton and is
+ * shared across coach turns so a transiently failing provider is not retried
+ * on every new request (#1418).
  */
 export async function* streamCoachResponse(
   options: StreamCoachResponseOptions,
@@ -157,6 +208,7 @@ export async function* streamCoachResponse(
     fallbackText = DEFAULT_FALLBACK_TEXT,
     getModel = getAIModel,
     isConfigured = isProviderConfigured,
+    healthTracker = providerHealth,
   } = options;
 
   const chain =
@@ -188,6 +240,28 @@ export async function* streamCoachResponse(
       continue;
     }
 
+    // Issue #1418: skip providers currently in cooldown. The health tracker
+    // records transient failures (rate-limit / timeout / model-setup /
+    // stream-before-first-token) with short exponential backoffs so a
+    // provider that just failed is not retried on every new coach turn. The
+    // structured `cooldown` failover event exposes the bounded underlying
+    // reason via `cooldownReason` without leaking the raw upstream error.
+    if (!healthTracker.isHealthy(provider)) {
+      const snapshot = healthTracker.snapshot(provider);
+      lastReason = "cooldown";
+      const next = chain[index + 1];
+      if (next) {
+        yield {
+          type: "failover",
+          from: provider,
+          to: next,
+          reason: "cooldown",
+          cooldownReason: snapshot?.lastFailureReason,
+        };
+      }
+      continue;
+    }
+
     yield { type: "provider", value: provider };
 
     let model: Awaited<ReturnType<typeof getAIModel>>;
@@ -195,6 +269,9 @@ export async function* streamCoachResponse(
       model = await getModel(provider, modelId);
     } catch (error) {
       if (signal?.aborted) return;
+      // Model setup failed — record it so the next coach turn skips this
+      // provider until the cooldown elapses (#1418).
+      healthTracker.recordFailure(provider, "model-setup");
       lastReason = "model-setup-failed";
       const next = chain[index + 1];
       if (next) {
@@ -224,7 +301,9 @@ export async function* streamCoachResponse(
     try {
       for await (const delta of result.textStream) {
         if (signal?.aborted) {
-          // User cancelled mid-generation — stop without failing over.
+          // User cancelled mid-generation — stop without failing over and
+          // without recording a health failure (cancellation is not the
+          // provider's fault).
           return;
         }
         if (delta) {
@@ -236,17 +315,24 @@ export async function* streamCoachResponse(
       if (signal?.aborted) return;
       if (streamedAny) {
         // Mid-stream failure: cannot seamlessly resume a half-delivered
-        // response. End gracefully (documented policy).
+        // response. End gracefully (documented policy). Do NOT record a
+        // health failure — the provider did start streaming, so the next
+        // coach turn should still try it (#1418 only tracks pre-token
+        // transient failures).
         yield { type: "error", value: friendlyError(error) };
         yield { type: "done" };
         return;
       }
-      // Failed before any token was delivered → try the next provider.
-      lastReason = /rate.?limit|429/i.test(
-        error instanceof Error ? error.message : String(error),
-      )
-        ? "rate-limited"
-        : "stream-error";
+      // Failed before any token was delivered → classify the bounded reason
+      // and record it for cooldown backoff, then try the next provider.
+      const failureReason = classifyStreamFailure(error);
+      healthTracker.recordFailure(provider, failureReason);
+      lastReason =
+        failureReason === "rate-limit"
+          ? "rate-limited"
+          : failureReason === "timeout"
+            ? "timeout"
+            : "stream-error";
       const next = chain[index + 1];
       if (next) {
         yield {
@@ -261,7 +347,11 @@ export async function* streamCoachResponse(
 
     if (signal?.aborted) return;
 
-    // Stream completed normally — surface usage (best-effort) and finish.
+    // Stream completed normally → clear any prior cooldown for this provider
+    // (#1418: "Successful completion clears the provider/model cooldown
+    // entry"). Best-effort: never let usage surfacing fail the turn.
+    healthTracker.recordSuccess(provider);
+
     try {
       const usage = normalizeUsage(await Promise.resolve(result.totalUsage));
       if (usage.totalTokens > 0) {
