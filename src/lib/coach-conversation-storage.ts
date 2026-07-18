@@ -386,6 +386,13 @@ function sanitiseImportedConversation(
       provider: typeof msg.provider === "string" ? msg.provider : undefined,
       usage: msg.usage as ChatMessage["usage"] | undefined,
       cancelled: typeof msg.cancelled === "boolean" ? msg.cancelled : undefined,
+      lowConfidence:
+        typeof msg.lowConfidence === "boolean" ? msg.lowConfidence : undefined,
+      needsReview:
+        typeof msg.needsReview === "boolean" ? msg.needsReview : undefined,
+      groundingFailures: Array.isArray(msg.groundingFailures)
+        ? (msg.groundingFailures as string[])
+        : undefined,
     });
   }
   if (messages.length === 0) {
@@ -506,7 +513,9 @@ export function parseCoachConversationExport(
     type: "planar-nexus-coach-conversations",
     version: 1,
     exportedAt:
-      typeof obj.exportedAt === "string" ? obj.exportedAt : new Date().toISOString(),
+      typeof obj.exportedAt === "string"
+        ? obj.exportedAt
+        : new Date().toISOString(),
     deckId: typeof obj.deckId === "string" ? obj.deckId : null,
     conversations: obj.conversations as CoachConversation[],
   };
@@ -609,7 +618,9 @@ export async function pruneOrphanedConversations(
   const valid = new Set<string>([DEFAULT_DECK_ID, ...validDeckIds]);
   let all: CoachConversation[];
   try {
-    all = await coachStorage.getAll<CoachConversation>(COACH_CONVERSATION_STORE);
+    all = await coachStorage.getAll<CoachConversation>(
+      COACH_CONVERSATION_STORE,
+    );
   } catch (error) {
     console.error("Failed to read conversations for orphan pruning:", error);
     return 0;

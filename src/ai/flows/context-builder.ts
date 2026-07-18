@@ -15,6 +15,10 @@ import {
   normalizeDifficultyLevel,
   type DifficultyLevel,
 } from "@/ai/ai-difficulty";
+import {
+  renderLedgerForPrompt,
+  type EvidenceLedger,
+} from "./coach-evidence-ledger";
 
 // Reuse types from actions.ts to avoid duplication or circular deps
 export interface MinimalCard {
@@ -155,6 +159,12 @@ const TIER_GUIDANCE: Record<DifficultyLevel, string> = {
  * intent-specific guidance instead of relying on the model to infer the task.
  * A normalized difficulty tier adds tier-specific response-depth guidance;
  * unknown/missing difficulty defaults to `medium`.
+ *
+ * Issue #1419: when an `evidenceLedger` is supplied it is rendered into the
+ * prompt as the AUTHORIZED facts about the deck, plus explicit grounding
+ * instructions telling the model to cite entries (`[E:<id>]`) and to never
+ * contradict the ledger's numeric facts. The post-generation guard validates
+ * the completed message against the same ledger.
  */
 export function buildCoachSystemPrompt(
   format: string,
@@ -165,6 +175,7 @@ export function buildCoachSystemPrompt(
   structuredAnalysis?: string,
   intent?: CoachIntentResult,
   difficulty?: string,
+  evidenceLedger?: EvidenceLedger,
 ): string {
   let prompt = `You are an expert Magic: The Gathering coach. You are helping a player improve their deck.\n\n`;
 
@@ -199,6 +210,16 @@ export function buildCoachSystemPrompt(
     prompt += `\n**Decklist**:\n${wrapUntrusted(deckList, "decklist")}\n\n`;
   }
 
+  // Issue #1419: evidence ledger. Rendered as a fenced grounding block with
+  // explicit instructions to cite entries. The same ledger is handed to the
+  // post-generation guard so the model's claims are checked deterministically.
+  if (evidenceLedger && evidenceLedger.entries.length > 0) {
+    const ledgerBlock = renderLedgerForPrompt(evidenceLedger);
+    if (ledgerBlock) {
+      prompt += `\n${ledgerBlock}\n\n`;
+    }
+  }
+
   prompt += `Your goal is to provide strategic advice, card recommendations, and answer questions about the deck's performance. `;
   prompt += `Be encouraging but honest about card quality and synergy. `;
   prompt += `When suggesting cards to cut, explain why (e.g., too expensive, off-plan, redundant). `;
@@ -214,8 +235,7 @@ export function buildCoachSystemPrompt(
   // without leaking classifier internals.
   if (intent) {
     const intentLabel =
-      COACH_INTENT_LABELS[intent.intent] ??
-      COACH_INTENT_LABELS.unknown;
+      COACH_INTENT_LABELS[intent.intent] ?? COACH_INTENT_LABELS.unknown;
     prompt += `\n**Classified Intent**: ${sanitizeUserInput(intent.intent)} — ${sanitizeUserInput(intentLabel)}\n`;
     prompt += `Confidence: ${intent.confidence.toFixed(2)} (matched: ${sanitizeUserInput(
       intent.matchedSignals.join(", ") || "none",
@@ -332,7 +352,9 @@ export function prepareConversationHistory(
 ): Array<{ role: "user" | "assistant" | "system"; content: string }> {
   // Backward-compat overload: `prepareConversationHistory(msgs, 10)` still works.
   const opts: PrepareConversationHistoryOptions =
-    typeof optionsOrMax === "number" ? { maxMessages: optionsOrMax } : optionsOrMax;
+    typeof optionsOrMax === "number"
+      ? { maxMessages: optionsOrMax }
+      : optionsOrMax;
 
   const {
     maxMessages = DEFAULT_CONVERSATION_MAX_MESSAGES,
@@ -365,7 +387,10 @@ export function prepareConversationHistory(
   // and the token budget allow. Non-system messages are the only candidates
   // for pruning (defensive — system messages here would be the result of a
   // misconfigured caller, since the route already drops them).
-  const retained: Array<{ role: "user" | "assistant" | "system"; content: string }> = [];
+  const retained: Array<{
+    role: "user" | "assistant" | "system";
+    content: string;
+  }> = [];
   let tokensUsed = 0;
 
   for (let i = mapped.length - 1; i >= 0; i--) {

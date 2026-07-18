@@ -17,6 +17,7 @@ import {
   History,
   Database,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ComponentErrorBoundary } from "@/components/error-boundaries";
@@ -164,6 +165,23 @@ export function AICoachChatPanel({
                     <div className="whitespace-pre-wrap leading-relaxed">
                       {content}
                     </div>
+
+                    {/* Issue #1419: low-confidence marker. When the
+                     * post-generation grounding guard flagged the completed
+                     * message, an inline marker makes the needs-review state
+                     * visible at a glance (the caveat body is already part
+                     * of the rendered content above). */}
+                    {isAI &&
+                      (message as { lowConfidence?: boolean })
+                        .lowConfidence && (
+                        <div
+                          className="mt-2 flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium"
+                          aria-label="This message contains claims that could not be fully verified against the deck analysis"
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Needs review — some claims unverified</span>
+                        </div>
+                      )}
 
                     {/* Handle tool calls/invocations if present in message */}
                     {message.toolInvocations &&

@@ -416,9 +416,11 @@ describe("useDeckCoachChat — export / import (#1242)", () => {
     expect(parsed.type).toBe("planar-nexus-coach-conversations");
     expect(parsed.deckId).toBe("deck-export");
     expect(parsed.conversations).toHaveLength(1);
-    expect(parsed.conversations[0].messages.some(
-      (m: { content: string }) => m.content === "how do I beat aggro?",
-    )).toBe(true);
+    expect(
+      parsed.conversations[0].messages.some(
+        (m: { content: string }) => m.content === "how do I beat aggro?",
+      ),
+    ).toBe(true);
   });
 
   it("importFromJSON surfaces a typed error for unrecognised JSON", async () => {
@@ -592,11 +594,9 @@ describe("useDeckCoachChat — per-deckId storage isolation (#1241)", () => {
 
 describe("useDeckCoachChat — error fallback and clearMessages (#1241)", () => {
   it("replaces the placeholder with the fallback message when fetch throws", async () => {
-    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
-      async () => {
-        throw new Error("network down");
-      },
-    ) as unknown as typeof fetch;
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
 
     const { result } = renderHook(() =>
       useDeckCoachChat({ format: "modern", deckId: "deck-err" }),
@@ -616,9 +616,11 @@ describe("useDeckCoachChat — error fallback and clearMessages (#1241)", () => 
   });
 
   it("replaces the placeholder when the route returns a non-OK response", async () => {
-    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
-      async () => ({ ok: false, statusText: "Service Unavailable", body: null }),
-    ) as unknown as typeof fetch;
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+      ok: false,
+      statusText: "Service Unavailable",
+      body: null,
+    })) as unknown as typeof fetch;
 
     const { result } = renderHook(() =>
       useDeckCoachChat({ format: "modern", deckId: "deck-500" }),
@@ -724,9 +726,11 @@ describe("useDeckCoachChat — digest branch for large decks (#1241)", () => {
     // Provide a worker API that digests the deck, so the hook sets
     // `payloadDeck = undefined` (issue #1074/#1241 acceptance criterion).
     const workerModule = await import("@/ai/worker/ai-worker-client");
-    (workerModule as unknown as {
-      aiWorkerClient: { api: unknown };
-    }).aiWorkerClient.api = {
+    (
+      workerModule as unknown as {
+        aiWorkerClient: { api: unknown };
+      }
+    ).aiWorkerClient.api = {
       prepareCoachContext: jest.fn(async () => ({
         deckSummary: {
           totalCards: 25,
@@ -776,16 +780,20 @@ describe("useDeckCoachChat — digest branch for large decks (#1241)", () => {
     ).toBeDefined();
 
     // Restore the default mock so subsequent tests see api = null again.
-    (workerModule as unknown as {
-      aiWorkerClient: { api: unknown };
-    }).aiWorkerClient.api = null;
+    (
+      workerModule as unknown as {
+        aiWorkerClient: { api: unknown };
+      }
+    ).aiWorkerClient.api = null;
   });
 
   it("falls back to sending the full deck when the worker's digest throws", async () => {
     const workerModule = await import("@/ai/worker/ai-worker-client");
-    (workerModule as unknown as {
-      aiWorkerClient: { api: unknown };
-    }).aiWorkerClient.api = {
+    (
+      workerModule as unknown as {
+        aiWorkerClient: { api: unknown };
+      }
+    ).aiWorkerClient.api = {
       prepareCoachContext: jest.fn(async () => {
         throw new Error("worker offline");
       }),
@@ -813,13 +821,15 @@ describe("useDeckCoachChat — digest branch for large decks (#1241)", () => {
     expect(Array.isArray(fallbackBody.deckCards)).toBe(true);
     expect((fallbackBody.deckCards as unknown[]).length).toBe(25);
     // The assistant message still rendered normally.
-    expect(
-      result.current.messages.some((m) => m.role === "assistant"),
-    ).toBe(true);
+    expect(result.current.messages.some((m) => m.role === "assistant")).toBe(
+      true,
+    );
 
-    (workerModule as unknown as {
-      aiWorkerClient: { api: unknown };
-    }).aiWorkerClient.api = null;
+    (
+      workerModule as unknown as {
+        aiWorkerClient: { api: unknown };
+      }
+    ).aiWorkerClient.api = null;
   });
 });
 
@@ -897,5 +907,138 @@ describe("useDeckCoachChat — SSE edge cases (#1241)", () => {
     );
     expect(assistant?.content).toContain("partial answer");
     expect(assistant?.content).toMatch(/upstream timeout/);
+  });
+});
+
+describe("useDeckCoachChat — grounding guard wiring (#1419)", () => {
+  /** Patch the mocked fetch to emit a custom event sequence. */
+  function setSseEvents(events: string[]) {
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+      async (_url: string, init?: RequestInit) => {
+        try {
+          lastRequestBody = JSON.parse(String(init?.body ?? "{}"));
+        } catch {
+          lastRequestBody = {};
+        }
+        const body = makeSseBody(events, init?.signal);
+        return { ok: true, body };
+      },
+    ) as unknown as typeof fetch;
+  }
+
+  it("appends the caveat and sets lowConfidence/needsReview on a grounding event", async () => {
+    setSseEvents([
+      'data: {"type":"provider","value":"openai"}\n\n',
+      'data: {"type":"text","value":"You have 99 lands."}\n\n',
+      'data: {"type":"grounding","lowConfidence":true,"needsReview":true,"caveat":"\\n---\\n⚠️ partial grounding failure","failures":["[numeric-contradiction/lands]Claimed 99; ledger 20"]}\n\n',
+      'data: {"type":"done"}\n\n',
+    ]);
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander", deckId: "deck-grounding-1" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("analyze", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant).toBeDefined();
+    // Caveat text was appended after the streamed body.
+    expect(assistant?.content).toContain("You have 99 lands.");
+    expect(assistant?.content).toContain("partial grounding failure");
+    // Flags set so persistence + UI can mark the message.
+    expect(assistant?.lowConfidence).toBe(true);
+    expect(assistant?.needsReview).toBe(true);
+    expect(assistant?.groundingFailures).toEqual([
+      "[numeric-contradiction/lands]Claimed 99; ledger 20",
+    ]);
+  });
+
+  it("preserves progressive streaming when a grounding event arrives at the end", async () => {
+    setSseEvents([
+      'data: {"type":"text","value":"Hel"}\n\n',
+      'data: {"type":"text","value":"lo"}\n\n',
+      'data: {"type":"text","value":" world"}\n\n',
+      'data: {"type":"grounding","lowConfidence":true,"needsReview":true,"caveat":"X","failures":[]}\n\n',
+      'data: {"type":"done"}\n\n',
+    ]);
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander", deckId: "deck-grounding-2" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    // The streamed body is preserved end-to-end (progressive rendering is
+    // intact — the grounding event only adds a suffix).
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.content.startsWith("Hello world")).toBe(true);
+    // Suffix appended from the caveat.
+    expect(assistant?.content.endsWith("X")).toBe(true);
+  });
+
+  it("persists the lowConfidence flag on the saved conversation record", async () => {
+    setSseEvents([
+      'data: {"type":"text","value":"answer"}\n\n',
+      'data: {"type":"grounding","lowConfidence":true,"needsReview":true,"caveat":"review-me","failures":["a","b"]}\n\n',
+      'data: {"type":"done"}\n\n',
+    ]);
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander", deckId: "deck-grounding-3" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    // Read the persisted record and assert the flag round-tripped through
+    // IndexedDB (the storage module's sanitiseImportedConversation preserves
+    // lowConfidence / needsReview / groundingFailures).
+    const { loadMostRecentConversation } =
+      await import("@/lib/coach-conversation-storage");
+    const persisted = await loadMostRecentConversation("deck-grounding-3");
+    expect(persisted).not.toBeNull();
+    const persistedAssistant = persisted!.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(persistedAssistant?.lowConfidence).toBe(true);
+    expect(persistedAssistant?.needsReview).toBe(true);
+    expect(persistedAssistant?.groundingFailures).toEqual(["a", "b"]);
+    expect(persistedAssistant?.content).toContain("review-me");
+  });
+
+  it("does not set lowConfidence when no grounding event is emitted (happy path)", async () => {
+    setSseEvents([
+      'data: {"type":"text","value":"Looks great."}\n\n',
+      'data: {"type":"done"}\n\n',
+    ]);
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander", deckId: "deck-grounding-4" }),
+    );
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    const assistant = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistant?.lowConfidence).toBeUndefined();
+    expect(assistant?.needsReview).toBeUndefined();
+    expect(assistant?.groundingFailures).toBeUndefined();
+    expect(assistant?.content).toBe("Looks great.");
   });
 });

@@ -39,6 +39,11 @@ const BASE_STORAGE_KEY = "deck-coach-chat-history";
  * Shape of a single Server-Sent-Event emitted by the `/api/chat/coach`
  * route. Mirrors the server-side `CoachStreamEvent` (issue #1077) so the
  * client can switch on `type` without depending on server-only modules.
+ *
+ * Issue #1419 adds the `grounding` event: emitted once after the final
+ * text delta when the post-generation guard flags the completed message.
+ * The client appends the caveat to the assistant message and persists
+ * `lowConfidence` / `needsReview` on the record.
  */
 type CoachStreamEventPayload =
   | { type: "provider"; value: string }
@@ -51,6 +56,13 @@ type CoachStreamEventPayload =
         completionTokens: number;
         totalTokens: number;
       };
+    }
+  | {
+      type: "grounding";
+      lowConfidence: boolean;
+      needsReview: boolean;
+      caveat: string;
+      failures: string[];
     }
   | { type: "error"; value: string }
   | { type: "done" };
@@ -513,6 +525,26 @@ export function useDeckCoachChat(
               assistantContent += `${assistantContent ? "\n\n" : ""}_${event.value}_`;
               patchAssistant({ content: assistantContent });
               break;
+            case "grounding": {
+              // Issue #1419: the completed assistant message was flagged by
+              // the post-generation guard. Append the caveat (so the user
+              // sees the warning in the rendered message) and set the
+              // low-confidence / needs-review flags on the message record.
+              // The flags are persisted on the conversation by `finally`
+              // below — the user keeps their answer, just clearly marked.
+              if (event.caveat) {
+                assistantContent = `${assistantContent}${event.caveat}`;
+                patchAssistant({ content: assistantContent });
+              }
+              patchAssistant({
+                lowConfidence: Boolean(event.lowConfidence),
+                needsReview: Boolean(event.needsReview),
+                groundingFailures: Array.isArray(event.failures)
+                  ? [...event.failures]
+                  : [],
+              });
+              break;
+            }
             case "failover":
               // Transient telemetry; not rendered inline. Could be surfaced in UI later.
               break;
@@ -653,7 +685,9 @@ export function useDeckCoachChat(
    * when there is nothing to export so the UI can skip the download prompt
    * (issue #1242).
    */
-  const exportActiveDeckToJSON = useCallback(async (): Promise<string | null> => {
+  const exportActiveDeckToJSON = useCallback(async (): Promise<
+    string | null
+  > => {
     const deckId = getDeckId();
     const envelope = await exportConversationsForDeck(deckId);
     if (envelope.conversations.length === 0) return null;
@@ -674,8 +708,7 @@ export function useDeckCoachChat(
       if (!envelope) {
         return { error: "That file isn't a recognised coach-session export." };
       }
-      const targetDeckId =
-        options.scope === "original" ? null : getDeckId();
+      const targetDeckId = options.scope === "original" ? null : getDeckId();
       const result = await importConversationsFromJSON(envelope, {
         targetDeckId,
         replace: false,

@@ -47,12 +47,24 @@ export interface CoachTokenUsage {
  * Discriminated union of events emitted while streaming a coach response.
  * The route serializes each event as one SSE `data:` line; the client parser
  * switches on `type`.
+ *
+ * Issue #1419 adds the `grounding` event: emitted ONCE, after the final text
+ * delta and before `done`, when the post-generation guard flags the
+ * completed message. The client appends the caveat to the assistant message
+ * and sets `lowConfidence` / `needsReview` on the persisted record.
  */
 export type CoachStreamEvent =
   | { type: "provider"; value: string }
   | { type: "failover"; from: string; to: string; reason: string }
   | { type: "text"; value: string }
   | { type: "usage"; provider: string; usage: CoachTokenUsage }
+  | {
+      type: "grounding";
+      lowConfidence: boolean;
+      needsReview: boolean;
+      caveat: string;
+      failures: string[];
+    }
   | { type: "error"; value: string }
   | { type: "done" };
 
