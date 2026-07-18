@@ -89,6 +89,8 @@ const eslintConfig = [
       "scripts/ratchet-coverage.js",
       // Plain Node ESM tooling for the issue #1397 fixture regenerator.
       "scripts/regen-video-fixtures.mjs",
+      // Plain Node ESM tooling for the issue #1430 updater-config guard.
+      "scripts/check-tauri-updater-config.mjs",
       ".claude/skills/pr-automation/**",
     ],
   },
