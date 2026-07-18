@@ -553,6 +553,15 @@ export interface StackObject {
   /** Bestow attachment target (if cast as aura) */
   bestowTarget?: CardInstanceId;
   /**
+   * Mutate merge target (CR 702.140). Set on a spell's StackObject when it
+   * is cast for its mutate cost. On resolution, the spell merges onto this
+   * target non-Human creature (handled by `applyMutate` in mutate.ts). If
+   * the target has left the battlefield by resolution time, the spell
+   * resolves as a normal creature entering the battlefield (CR 702.140f
+   * fallback).
+   */
+  mutateTargetCreatureId?: CardInstanceId;
+  /**
    * Target card IDs for which the ward cost (CR 702.21) has been paid by this
    * spell/ability's controller. On resolution, any warded opponent target NOT
    * in this list causes this spell/ability to be countered.

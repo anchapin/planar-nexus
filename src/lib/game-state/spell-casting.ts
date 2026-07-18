@@ -34,6 +34,7 @@ import {
   parseConvoke,
   parseDelve,
   parseEscape,
+  parseMutate,
   parseSplitSecond,
   parseStorm,
   isModalSpell,
@@ -62,6 +63,7 @@ import {
 import type { CardInstance, StackEffect } from "./types";
 import { canTargetKeyword, applyProwessBoost } from "./evergreen-keywords";
 import { applyWardResolution } from "./ward-system";
+import { applyMutate, canCastWithMutate } from "./mutate";
 
 /**
  * Generate a unique stack object ID
@@ -259,9 +261,19 @@ export function castSpell(
       | "blitz"
       | "foretell"
       | "convoke"
-      | "delve";
+      | "delve"
+      | "mutate";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
+    /**
+     * CR 702.140 - Mutate: the target non-Human creature owned and
+     * controlled by the spell's controller that the mutator will merge onto
+     * at resolution. The mutate cost REPLACES the printed mana cost; on
+     * resolution the spell merges onto this target via `applyMutate`
+     * (mutate.ts). If the target leaves the battlefield before resolution,
+     * the mutator enters as a normal creature (CR 702.140f fallback).
+     */
+    targetCreatureId?: CardInstanceId;
     /**
      * CR 702.93 - Convoke: untapped creatures the player chooses to tap while
      * casting this spell. Each colored creature pays for one mana of that
@@ -446,6 +458,12 @@ export function castSpell(
   // Handle alternative costs (Buyback, Flashback, Bestow, etc.)
   let buybackReturnZone: string | undefined = undefined;
   let bestowTarget: CardInstanceId | undefined = undefined;
+  // CR 702.140 - Mutate: the target non-Human creature the mutator will
+  // merge onto at resolution. Validated inside the `case "mutate":` branch;
+  // the actual merge is applied during resolution in
+  // `resolveSpellCompletion` (after the stack has had a chance to respond
+  // and the target may have left the battlefield).
+  let mutateTargetCreatureId: CardInstanceId | undefined = undefined;
   // CR 702.93 - Convoke: creatures the player declared they would tap while
   // casting. Validated inside the `case "convoke":` branch; the actual tap
   // is applied AFTER mana is spent (see `applyConvokeTaps` below) so the
@@ -508,6 +526,79 @@ export function castSpell(
           alternativeCostsUsed.push("bestow");
           bestowTarget = alternativeCost.bestowTarget;
         }
+        break;
+      }
+      case "mutate": {
+        // CR 702.140 - Mutate: an alternative cost that REPLACES the mana
+        // cost (not an additional cost). The spell's mana value is unchanged
+        // and other additional costs/taxes still apply on top. Subtract the
+        // printed mana-cost component and add the mutate-cost component so
+        // additional costs are preserved (same treatment as
+        // Blitz/Foretell/Spectacle/Escape).
+        //
+        // Unlike those siblings, mutate ALSO changes how the spell resolves:
+        // instead of entering the battlefield as an independent permanent,
+        // the mutator merges onto a target non-Human creature the controller
+        // owns. The merge itself is dispatched in `resolveSpellCompletion`
+        // via `applyMutate` (mutate.ts), so here we only (1) replace the
+        // cost, (2) validate the target up front so the cast fails
+        // atomically before mana is spent, and (3) record the target on the
+        // StackObject for resolution.
+        //
+        // CR 702.140f fallback: if the target leaves the battlefield before
+        // resolution, the mutator enters as a normal creature. That branch
+        // lives in `resolveSpellCompletion` (it needs the resolution-time
+        // state, not the cast-time state).
+        if (sourceZone !== `${playerId}-hand`) {
+          return {
+            success: false,
+            state,
+            error: "Mutate can only be used to cast a card from your hand.",
+          };
+        }
+        const mutateInfo = parseMutate(card.cardData.oracle_text || "");
+        if (!mutateInfo.hasMutate || !mutateInfo.mutateCost) {
+          return {
+            success: false,
+            state,
+            error: "Card does not have a mutate cost.",
+          };
+        }
+        const declaredTarget = alternativeCost.targetCreatureId;
+        if (declaredTarget === undefined) {
+          return {
+            success: false,
+            state,
+            error: "Mutate requires a target creature.",
+          };
+        }
+        // Authoritative target validation via the mutate module helper. This
+        // enforces: card has mutate, target exists, target is a creature,
+        // target is NOT a Human (CR 702.140b), target is controlled by the
+        // caster, and the caster has priority.
+        const mutateCheck = canCastWithMutate(
+          state,
+          playerId,
+          cardId,
+          declaredTarget,
+        );
+        if (!mutateCheck.canCast) {
+          return {
+            success: false,
+            state,
+            error: mutateCheck.reason || "Invalid mutate target.",
+          };
+        }
+        // Replace printed-cost pips with mutate-cost pips (same shape as
+        // Blitz/Foretell/Spectacle/Escape).
+        totalGeneric += mutateInfo.mutateCost.generic - manaCost.generic;
+        totalWhite += mutateInfo.mutateCost.white - manaCost.white;
+        totalBlue += mutateInfo.mutateCost.blue - manaCost.blue;
+        totalBlack += mutateInfo.mutateCost.black - manaCost.black;
+        totalRed += mutateInfo.mutateCost.red - manaCost.red;
+        totalGreen += mutateInfo.mutateCost.green - manaCost.green;
+        alternativeCostsUsed.push("mutate");
+        mutateTargetCreatureId = declaredTarget;
         break;
       }
       case "blitz": {
@@ -1088,6 +1179,7 @@ export function castSpell(
     timesKicked: kickerChargeCount,
     buybackReturnZone,
     bestowTarget,
+    mutateTargetCreatureId,
     // CR 702.60 - Split second: parsed from Oracle text and stamped onto the
     // spell's StackObject so the restriction can be enforced while it's on
     // the stack (see hasSplitSecondOnStack / ValidationService).
@@ -1678,6 +1770,51 @@ function resolveSpellCompletion(
               cards: updatedCards,
             };
           }
+        }
+
+        // CR 702.140 - Mutate: the spell was already moved onto the
+        // battlefield by the generic permanent-resolution path above (the
+        // mutator is a creature permanent, so destinationZone was the
+        // controller's battlefield). Now merge it onto the declared target.
+        // If the target is no longer on the battlefield, CR 702.140f says
+        // the mutator enters as a normal creature — which is exactly the
+        // state we are already in (mutator on battlefield, no merge), so the
+        // fallback is a no-op.
+        if (
+          stackObject.alternativeCostsUsed?.includes("mutate") &&
+          stackObject.mutateTargetCreatureId
+        ) {
+          const targetId = stackObject.mutateTargetCreatureId;
+          const targetCard = currentState.cards.get(targetId);
+          // Target must still be on the battlefield for the merge to happen.
+          const targetZoneKey = targetCard?.currentZoneKey;
+          const targetZone = targetZoneKey
+            ? currentState.zones.get(targetZoneKey)
+            : undefined;
+          const targetStillOnBattlefield =
+            targetCard !== undefined &&
+            targetZone !== undefined &&
+            targetZone.type === ZoneType.BATTLEFIELD &&
+            targetZone.cardIds.includes(targetId);
+          if (targetStillOnBattlefield) {
+            // Apply the merge. `applyMutate` records the merge relationship
+            // (mutatedCardIds / mutateBaseId / isMutated /
+            // highestCmcComponentId) per CR 702.140b — the top card's
+            // characteristics control P/T/type/color while lower components'
+            // text contributes.
+            const mergeResult = applyMutate(
+              currentState,
+              stackObject.sourceCardId!,
+              targetId,
+            );
+            if (mergeResult.success) {
+              currentState = mergeResult.state;
+            }
+          }
+          // else: CR 702.140f fallback — target gone. The mutator is
+          // already on the battlefield as a normal creature (the generic
+          // permanent-resolution path moved it there), which is exactly
+          // what CR 702.140f prescribes. No further action needed.
         }
 
         // CR 702.150 - Blitz: a creature cast for its blitz cost gains haste

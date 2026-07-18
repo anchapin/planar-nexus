@@ -1979,6 +1979,7 @@ export enum AlternativeCostType {
   BLAZE = "blaze",
   BLITZ = "blitz",
   FORETELL = "foretell",
+  MUTATE = "mutate",
   OTHER = "other",
 }
 
@@ -2064,6 +2065,27 @@ export function parseAlternativeCost(oracleText: string): AlternativeCostInfo {
       additionalRequirement: "Becomes an Aura attached to target creature",
       isAvailable: true,
       description: `Bestow ${bestowMatch[1]}`,
+    };
+  }
+
+  // Check for Mutate (CR 702.140)
+  // Mutate [cost] — If you cast this spell for its mutate cost, it merges
+  // onto a target non-Human creature you control instead of entering as an
+  // independent permanent. The merged permanent uses the top card's
+  // characteristics with combined text (CR 702.140b). Mutate is an
+  // alternative cost that REPLACES the printed mana cost (same treatment as
+  // Blitz/Foretell/Spectacle/Escape).
+  const mutateMatch = oracleText.match(/mutate\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+  if (mutateMatch) {
+    const manaCost = parseManaCost(mutateMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.MUTATE,
+      manaCost,
+      additionalRequirement:
+        "Merges onto target non-Human creature you control",
+      isAvailable: true,
+      description: `Mutate ${mutateMatch[1]}`,
     };
   }
 
@@ -2269,6 +2291,45 @@ export function parseBestow(oracleText: string): {
     hasBestow: true,
     bestowCost,
     description: `Bestow ${bestowMatch[1]}`,
+  };
+}
+
+/**
+ * Parse the Mutate keyword from oracle text.
+ *
+ * CR 702.140: "Mutate [cost]" is a static ability that functions while the
+ * spell is on the stack. It offers an alternative cost: "You may cast this
+ * card for [cost] rather than its mana cost. If you do, it merges with a
+ * creature you control." The parsed cost is an alternative cost (CR
+ * 702.140b) — the spell's mana value is unchanged and other costs and taxes
+ * still apply. The merge mechanic itself (target selection, merged
+ * characteristics) is handled by the spell-casting dispatch and mutate.ts.
+ *
+ * Example oracle text: "Mutate {2}{U}" (e.g. Cloudpiercer). The reminder
+ * text ("If you cast this spell for its mutate cost, put it over or under
+ * target non-Human creature you control...") is not part of the cost.
+ */
+export function parseMutate(oracleText: string): {
+  hasMutate: boolean;
+  mutateCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasMutate: false, mutateCost: null, description: "" };
+  }
+
+  const mutateMatch = oracleText.match(/mutate\s*(\{[^}]+\}(?:\{[^}]+\})*)/i);
+
+  if (!mutateMatch) {
+    return { hasMutate: false, mutateCost: null, description: "" };
+  }
+
+  const mutateCost = parseManaCost(mutateMatch[1]);
+
+  return {
+    hasMutate: true,
+    mutateCost,
+    description: `Mutate ${mutateMatch[1]}`,
   };
 }
 
