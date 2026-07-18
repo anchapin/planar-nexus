@@ -121,6 +121,21 @@ import { orderCreaturesForDifficulty } from "./cast-sequencing";
 // site in `runCleanupPhase`. Kept in a sibling file so #1413/#1415/#1416
 // (which also touch this file) rebase cleanly.
 import { pickDiscardCandidates } from "./cleanup-discard";
+// Issue #1413: difficulty-scaled non-creature spell cast gate. The legacy
+// `castOtherSpells` cast every affordable non-creature spell in hand every
+// turn — Easy and Expert played identically. This sibling helper computes a
+// per-tier skip chance (inverted vs `castCreatures`: Expert holds most,
+// Easy dumps most) and, for Expert, runs a scoring pass that picks the single
+// optimal spell to cast and force-holds the rest. The only edit HERE is the
+// call site; the gating logic lives in the sibling. Kept in a sibling file so
+// #1414/#1415/#1416 (which also touch this file) rebase cleanly.
+import {
+  computeOtherSpellSkipChance,
+  decideSpellGate,
+  selectOptimalExpertSpell,
+  type NonCreatureSpellEntry,
+  type SpellBoardContext,
+} from "./cast-other-spells-gate";
 
 /**
  * AI Turn configuration
@@ -1265,7 +1280,13 @@ async function runMainPhase(
   }
 
   // Step 4: Cast other spells
-  const spellResult = await castOtherSpells(currentState, aiPlayerId, config);
+  const spellResult = await castOtherSpells(
+    currentState,
+    aiPlayerId,
+    config,
+    phase,
+    adaptive,
+  );
   if (spellResult.success) {
     actions.push(...spellResult.actions);
     currentState = spellResult.newState || currentState;
@@ -1765,11 +1786,20 @@ async function castCreatures(
 
 /**
  * Cast other spells (instants, sorceries, etc.)
+ *
+ * Issue #1413: each cast is now gated by a per-tier `skipChance` (inverted vs
+ * `castCreatures`: Expert holds most, Easy dumps most), and on Expert a
+ * scoring pass picks the single optimal spell to cast and force-holds the
+ * rest. Spells that are held surface in `actions` as a `no_action` entry with
+ * a reasoning string containing the spell name and difficulty, so the
+ * post-game replay shows the deliberate hold.
  */
 async function castOtherSpells(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
+  phase: "precombat_main" | "postcombat_main",
+  adaptive?: AdaptiveTempoRisk | null,
 ): Promise<{
   success: boolean;
   actions: AIAction[];
@@ -1782,63 +1812,155 @@ async function castOtherSpells(
   const handZone = gameState.zones.get(`${aiPlayerId}-hand`);
   if (!handZone) return { success: true, actions: [] };
 
+  // --- Issue #1413: difficulty-scaled skip gate ---------------------------
+  // Resolve the same config snapshot castCreatures uses, then compute the
+  // per-spell skip chance. The gate inverts castCreatures' direction (Expert
+  // holds most, Easy dumps most) because non-creature spell timing is the
+  // difficulty signal — see cast-other-spells-gate.ts for the full rationale.
+  const difficultyConfig = getDifficultyConfig(
+    config.difficulty,
+    config.format,
+  );
+  const skipChance = computeOtherSpellSkipChance({
+    difficulty: config.difficulty,
+    randomnessFactor: difficultyConfig.randomnessFactor,
+    riskMultiplier: adaptive?.riskMultiplier,
+  });
+
+  // Build the board context the scorer needs. Project via the same helper
+  // castCreatures uses (engineToAIState) so the signals match the rest of the
+  // turn loop.
+  const aiState = engineToAIState(currentState);
+  const aiPlayerState = aiState.players?.[aiPlayerId];
+  const opponentId = Object.keys(aiState.players ?? {}).find(
+    (id) => id !== aiPlayerId,
+  );
+  const manaPool = aiPlayerState?.manaPool ?? {};
+  const availableMana = Object.values(manaPool).reduce(
+    (sum, v) => sum + (typeof v === "number" ? v : 0),
+    0,
+  );
+  const ownCreatureCount =
+    aiPlayerState?.battlefield?.filter((p) => p.type === "creature").length ??
+    0;
+  const opponentBattlefield = opponentId
+    ? aiState.players?.[opponentId]?.battlefield
+    : undefined;
+  const opponentCreatureCount =
+    opponentBattlefield?.filter((p) => p.type === "creature").length ?? 0;
+  const turnNumber = aiState.turnInfo?.currentTurn ?? 0;
+  const board: SpellBoardContext = {
+    availableMana,
+    opponentCreatureCount,
+    ownCreatureCount,
+    turnNumber,
+    phase,
+  };
+
+  // Collect the non-creature, non-land spells first so the Expert scoring
+  // pass can see the whole hand at once.
+  const spellEntries: NonCreatureSpellEntry[] = [];
   for (const cardId of handZone.cardIds) {
     const card = currentState.cards.get(cardId);
     if (!card) continue;
-
     const typeLine = card.cardData.type_line.toLowerCase();
-    const isCreature = typeLine.includes("creature");
-    const isLand = typeLine.includes("land");
+    if (typeLine.includes("creature") || typeLine.includes("land")) continue;
+    spellEntries.push({
+      cardId,
+      name: card.cardData.name,
+      cmc: card.cardData.cmc,
+      typeLine,
+      oracleText: (card.cardData as { oracle_text?: string }).oracle_text,
+    });
+  }
 
-    if (!isCreature && !isLand) {
-      const result = await executeAIAction(
-        currentState,
-        { type: "cast_spell", cardId, reasoning: `Cast ${card.cardData.name}` },
-        aiPlayerId,
-      );
+  // Expert: pick the single optimal spell up front. The "cast" set is the
+  // optimal winner plus any ties; every other spell is force-skipped via
+  // decideSpellGate (isOptimalCast=false). Non-Expert tiers ignore this and
+  // rely on the random gate alone.
+  let optimalIds: Set<string> | null = null;
+  if (config.difficulty === "expert" && spellEntries.length > 0) {
+    const selection = selectOptimalExpertSpell(spellEntries, board);
+    optimalIds = new Set<string>();
+    if (selection.optimal) optimalIds.add(String(selection.optimal.cardId));
+    for (const t of selection.ties) optimalIds.add(String(t.cardId));
+  }
 
-      if (result.success && result.newState) {
-        currentState = result.newState;
-        actions.push({
-          type: "cast_spell",
-          cardId,
-          reasoning: `Cast ${card.cardData.name}`,
-        });
-        config.onCommentary?.(`Casts ${card.cardData.name}`);
-        // Issue #1231: tutors consult the difficulty-scaled selector so a
-        // cast `Demonic Tutor` actually picks the right card to fetch
-        // instead of letting the engine pick arbitrarily. Non-tutor
-        // spells skip this branch silently.
-        const oracleText = (card.cardData as { oracle_text?: string })
-          .oracle_text;
-        if (isTutorOracle(oracleText)) {
-          resolveTutorTarget(
-            currentState,
-            aiPlayerId,
-            config,
-            card.cardData.name,
-            oracleText,
-          );
-        }
-        // Issue #993: for non-creature spells, detect removal from the card
-        // text so the coach line gets the instructive "to remove your threat"
-        // framing instead of generic development copy.
-        emitTelegraph(
+  for (const entry of spellEntries) {
+    const cardId = entry.cardId;
+    const card = currentState.cards.get(cardId);
+    if (!card) continue;
+
+    const isOptimalCast =
+      optimalIds === null ? undefined : optimalIds.has(String(cardId));
+
+    const decision = decideSpellGate({
+      spell: entry,
+      difficulty: config.difficulty,
+      skipChance,
+      rng: Math.random,
+      isOptimalCast,
+      board,
+    });
+
+    if (decision.kind === "skip") {
+      // Surface the held spell in the replay as a no_action (acceptance: the
+      // reasoning must contain the spell name and the difficulty tier).
+      actions.push({
+        type: "no_action",
+        cardId,
+        reasoning: decision.reasoning,
+      });
+      continue;
+    }
+
+    const result = await executeAIAction(
+      currentState,
+      { type: "cast_spell", cardId, reasoning: `Cast ${card.cardData.name}` },
+      aiPlayerId,
+    );
+
+    if (result.success && result.newState) {
+      currentState = result.newState;
+      actions.push({
+        type: "cast_spell",
+        cardId,
+        reasoning: `Cast ${card.cardData.name}`,
+      });
+      config.onCommentary?.(`Casts ${card.cardData.name}`);
+      // Issue #1231: tutors consult the difficulty-scaled selector so a
+      // cast `Demonic Tutor` actually picks the right card to fetch
+      // instead of letting the engine pick arbitrarily. Non-tutor
+      // spells skip this branch silently.
+      const oracleText = (card.cardData as { oracle_text?: string })
+        .oracle_text;
+      if (isTutorOracle(oracleText)) {
+        resolveTutorTarget(
+          currentState,
+          aiPlayerId,
           config,
-          generateCastTelegraph(
-            {
-              subject: card.cardData.name,
-              context: computeTelegraphContext(currentState, aiPlayerId),
-              isRemoval: isRemovalSpell(
-                card.cardData.type_line,
-                (card.cardData as { oracle_text?: string }).oracle_text,
-              ),
-            },
-            getTelegraphLevel(config.difficulty, config.format),
-          ),
+          card.cardData.name,
+          oracleText,
         );
-        await delay(config.delayMs);
       }
+      // Issue #993: for non-creature spells, detect removal from the card
+      // text so the coach line gets the instructive "to remove your threat"
+      // framing instead of generic development copy.
+      emitTelegraph(
+        config,
+        generateCastTelegraph(
+          {
+            subject: card.cardData.name,
+            context: computeTelegraphContext(currentState, aiPlayerId),
+            isRemoval: isRemovalSpell(
+              card.cardData.type_line,
+              (card.cardData as { oracle_text?: string }).oracle_text,
+            ),
+          },
+          getTelegraphLevel(config.difficulty, config.format),
+        ),
+      );
+      await delay(config.delayMs);
     }
   }
 
