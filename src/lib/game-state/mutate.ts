@@ -62,6 +62,13 @@ export function canCastWithMutate(
     return { canCast: false, reason: "Target is not a creature" };
   }
 
+  // CR 702.140b — Mutate cannot target a Human. "You can't mutate onto a
+  // Human." The restriction is on the type line (a "Creature — Human" or
+  // any creature with the Human subtype is an illegal mutate target).
+  if (typeLine.includes("human")) {
+    return { canCast: false, reason: "Cannot mutate onto a Human" };
+  }
+
   // Check if player controls the target creature
   if (targetCard.controllerId !== playerId) {
     return { canCast: false, reason: "You do not control this creature" };
