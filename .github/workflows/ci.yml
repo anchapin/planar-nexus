@@ -436,12 +436,35 @@ jobs:
           # to keep SC2086 (quote vars) / SC2015 (A&&B||C) info-level nits
           # informational rather than failing the PR gate.
           args: '-ignore SC2086 -ignore SC2015'
-  
+
+  tauri-updater-config:
+    # Issue #1430: standalone guard that prevents the Tauri 2 updater from
+    # ever shipping with the empty-pubkey MITM default. The Jest suite
+    # `tests/updater-wiring.test.ts` (#1403) covers the same contracts but
+    # runs inside the full unit-test job; this script runs in plain Node
+    # (~50ms) so a regression against `src-tauri/tauri.conf.json` fails
+    # fast in its own job rather than waiting on the test suite.
+    name: Tauri Updater Config Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert updater config (#1430)
+        run: node scripts/check-tauri-updater-config.mjs
+
   build:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint]
+    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint, tauri-updater-config]
 
     steps:
       - name: Checkout code
