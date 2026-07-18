@@ -11,7 +11,14 @@
  * network or env setup is required.
  */
 
-import { describe, it, expect, jest, beforeEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  jest,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import { streamText } from "ai";
 import {
   streamCoachResponse,
@@ -20,6 +27,10 @@ import {
   type CoachStreamEvent,
   type CoachStreamMessage,
 } from "../coach-stream";
+import {
+  ProviderHealthTracker,
+  providerHealth,
+} from "@/ai/providers/provider-health";
 
 // Mock the Vercel AI SDK with an explicit factory so the real `ai` module
 // (which references browser/Node stream globals like TransformStream that are
@@ -33,13 +44,21 @@ const mockedStreamText = streamText as jest.MockedFunction<typeof streamText>;
 /** Build a fake `streamText` result whose textStream yields `deltas`. */
 function fakeResult(
   deltas: string[],
-  opts: { usage?: unknown; throwBefore?: number } = {},
+  opts: {
+    usage?: unknown;
+    throwBefore?: number;
+    errorMessage?: string;
+  } = {},
 ) {
-  const { usage = null, throwBefore } = opts;
+  const {
+    usage = null,
+    throwBefore,
+    errorMessage = "upstream stream exploded",
+  } = opts;
   async function* gen(): AsyncGenerator<string> {
     for (let i = 0; i < deltas.length; i++) {
       if (throwBefore !== undefined && i === throwBefore) {
-        throw new Error("upstream stream exploded");
+        throw new Error(errorMessage);
       }
       yield deltas[i];
     }
@@ -72,6 +91,10 @@ async function collect(
 
 beforeEach(() => {
   jest.resetAllMocks();
+  // Issue #1418: the process-wide provider-health singleton carries cooldown
+  // state across tests. Reset it so each test starts with all providers
+  // healthy (tests that exercise cooldown inject a fresh tracker).
+  providerHealth.clear();
 });
 
 describe("streamCoachResponse — progressive delivery", () => {
@@ -348,6 +371,378 @@ describe("streamCoachResponse — cancellation", () => {
 
     expect(events).toEqual([]);
     expect(mockedStreamText).not.toHaveBeenCalled();
+  });
+});
+
+describe("streamCoachResponse — provider health backoff (#1418)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("skips a provider in cooldown and emits a failover(cooldown) event", async () => {
+    const health = new ProviderHealthTracker();
+    // Pre-record a timeout failure for the primary provider so it is in
+    // cooldown at decision time. Cooldown base for timeout is 1s.
+    health.recordFailure("openai", "timeout");
+    expect(health.isHealthy("openai")).toBe(false);
+
+    // openai would succeed if it were attempted; the test asserts it is NOT.
+    mockedStreamText.mockReturnValue(
+      fakeResult(["from-openai"], {
+        usage: { totalTokens: 1, inputTokens: 1, outputTokens: 0 },
+      }),
+    );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    const failover = events.find((e) => e.type === "failover") as {
+      from: string;
+      to: string;
+      reason: string;
+      cooldownReason?: string;
+    };
+    expect(failover).toEqual({
+      type: "failover",
+      from: "openai",
+      to: "anthropic",
+      reason: "cooldown",
+      cooldownReason: "timeout",
+    });
+    // openai was skipped entirely; only anthropic was attempted.
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+
+    // Stream completes normally → anthropic's health is reset.
+    expect(health.isHealthy("anthropic")).toBe(true);
+  });
+
+  it("records a rate-limit cooldown when streamText throws 429 before any token", async () => {
+    const health = new ProviderHealthTracker();
+    // First call (openai) blows up before any token with a 429; anthropic
+    // recovers.
+    mockedStreamText
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "429 Too Many Requests",
+        }),
+      )
+      .mockReturnValueOnce(fakeResult(["ok"]));
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    // The failover reason on the SSE event stays backward compatible.
+    const failover = events.find((e) => e.type === "failover") as {
+      reason: string;
+    };
+    expect(failover.reason).toBe("rate-limited");
+
+    // ...but the health tracker recorded the bounded rate-limit reason with a
+    // 2s base cooldown.
+    expect(health.isHealthy("openai")).toBe(false);
+    expect(health.cooldownRemaining("openai")).toBe(2_000);
+    expect(health.snapshot("openai")?.lastFailureReason).toBe("rate-limit");
+  });
+
+  it("records model-setup failures so the next turn skips that provider", async () => {
+    const health = new ProviderHealthTracker();
+    const getModel = async (provider: string) => {
+      if (provider === "openai") {
+        throw new Error("model setup blew up");
+      }
+      return { provider } as unknown as Awaited<
+        ReturnType<typeof import("../../providers/factory").getAIModel>
+      >;
+    };
+    mockedStreamText.mockReturnValue(fakeResult(["ok"]));
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel,
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    expect(events.some((e) => e.type === "done")).toBe(true);
+    // openai's setup failure is recorded as model-setup, with the 1s base.
+    expect(health.isHealthy("openai")).toBe(false);
+    expect(health.cooldownRemaining("openai")).toBe(1_000);
+    expect(health.snapshot("openai")?.lastFailureReason).toBe("model-setup");
+  });
+
+  it("successful completion leaves the provider healthy (no spurious cooldown)", async () => {
+    // Note: the actual "recordSuccess clears a mid-cooldown entry" semantics
+    // are covered in provider-health.test.ts. At the integration level we
+    // verify the symmetric contract — a successful stream from a healthy
+    // provider never creates a cooldown entry.
+    const health = new ProviderHealthTracker();
+    mockedStreamText.mockReturnValue(
+      fakeResult(["hi"], {
+        usage: { totalTokens: 1, inputTokens: 1, outputTokens: 0 },
+      }),
+    );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    expect(events[events.length - 1].type).toBe("done");
+    expect(health.isHealthy("anthropic")).toBe(true);
+    expect(health.snapshot("anthropic")).toBeUndefined();
+    expect(health.size()).toBe(0);
+  });
+
+  it("recordSuccess is invoked on success even when the provider had no entry", async () => {
+    // Defensive contract: a successful stream must not regress a healthy
+    // provider to unhealthy, and must clear any prior entry from a previous
+    // turn once the cooldown has elapsed and the provider is retried.
+    const health = new ProviderHealthTracker();
+
+    // Turn 1: openai times out → cooldown recorded.
+    mockedStreamText.mockReturnValueOnce(
+      fakeResult(["nope"], {
+        throwBefore: 0,
+        errorMessage: "request timed out",
+      }),
+    );
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+    expect(health.snapshot("openai")?.lastFailureReason).toBe("timeout");
+
+    // Advance time past the 1s timeout cooldown so openai is retried.
+    jest.advanceTimersByTime(1_000);
+    expect(health.isHealthy("openai")).toBe(true);
+
+    // Turn 2: openai succeeds → recordSuccess is a no-op on the pruned
+    // entry, but the provider remains healthy.
+    mockedStreamText.mockReturnValueOnce(fakeResult(["ok"]));
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    expect(health.isHealthy("openai")).toBe(true);
+    expect(health.snapshot("openai")).toBeUndefined();
+  });
+
+  it("does not record a failure when the user cancels mid-stream", async () => {
+    const health = new ProviderHealthTracker();
+    const controller = new AbortController();
+    mockedStreamText.mockReturnValue(fakeResult(["a", "b", "c"]));
+
+    const gen = streamCoachResponse({
+      systemPrompt: "sys",
+      messages: MESSAGES,
+      providers: ["openai", "anthropic"],
+      getModel: makeGetModel([]),
+      isConfigured: () => true,
+      signal: controller.signal,
+      healthTracker: health,
+    });
+
+    for await (const e of gen) {
+      if (e.type === "text") {
+        controller.abort();
+      }
+    }
+
+    // Cancellation must not cool down openai — it is the user's action, not
+    // a provider failure.
+    expect(health.isHealthy("openai")).toBe(true);
+    expect(health.snapshot("openai")).toBeUndefined();
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not record a failure on a mid-stream error (provider did start)", async () => {
+    const health = new ProviderHealthTracker();
+    mockedStreamText.mockReturnValue(
+      fakeResult(["Hel", "lo"], { throwBefore: 1 }),
+    );
+
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    expect(health.isHealthy("openai")).toBe(true);
+    expect(health.snapshot("openai")).toBeUndefined();
+  });
+
+  it("emits failover(cooldown) on the next turn after a 429, then resets on recovery", async () => {
+    // End-to-end multi-turn flow exercising the full #1418 contract:
+    //   turn 1: openai returns 429 → rate-limit cooldown recorded → failover
+    //           to anthropic.
+    //   turn 2 (no time advanced): openai is still in cooldown → emit
+    //           failover(cooldown) and skip without touching streamText.
+    //   advance time past the cooldown: openai recovers, attempt it again,
+    //           it succeeds → no further failures recorded.
+    // Exponential growth across consecutive failures is covered in
+    // provider-health.test.ts (the integration flow prunes entries once
+    // their cooldown elapses, so the count resets between recovered turns).
+    const health = new ProviderHealthTracker();
+
+    // Turn 1.
+    mockedStreamText
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "429 Too Many Requests",
+        }),
+      )
+      .mockReturnValueOnce(fakeResult(["turn1-ok"]));
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+    const snap1 = health.snapshot("openai");
+    expect(snap1?.failureCount).toBe(1);
+    expect(snap1?.lastFailureReason).toBe("rate-limit");
+    expect(health.cooldownRemaining("openai")).toBe(2_000);
+
+    // Turn 2 — no time advanced, openai still in cooldown.
+    mockedStreamText.mockReset();
+    mockedStreamText.mockReturnValue(fakeResult(["turn2-ok"]));
+    const events2 = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+    // openai was skipped — streamText only called for anthropic.
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+    const cooldownFailover = events2.find(
+      (e) =>
+        e.type === "failover" &&
+        (e as { reason: string }).reason === "cooldown",
+    ) as
+      | { from: string; to: string; reason: string; cooldownReason?: string }
+      | undefined;
+    expect(cooldownFailover).toBeDefined();
+    expect(cooldownFailover?.from).toBe("openai");
+    expect(cooldownFailover?.to).toBe("anthropic");
+    expect(cooldownFailover?.cooldownReason).toBe("rate-limit");
+
+    // Turn 3 — advance past the 2s cooldown, openai recovers and succeeds.
+    jest.advanceTimersByTime(2_000);
+    mockedStreamText.mockReset();
+    mockedStreamText.mockReturnValue(fakeResult(["turn3-openai-ok"]));
+    const events3 = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+    // openai was attempted again (no cooldown skip), succeeded, and is now
+    // healthy with no entry.
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+    expect(
+      events3.some(
+        (e) =>
+          e.type === "failover" &&
+          (e as { reason: string }).reason === "cooldown",
+      ),
+    ).toBe(false);
+    const provider3 = events3.find((e) => e.type === "provider") as {
+      value: string;
+    };
+    expect(provider3.value).toBe("openai");
+    expect(health.isHealthy("openai")).toBe(true);
+    expect(health.snapshot("openai")).toBeUndefined();
+  });
+
+  it("when every provider is in cooldown, falls through to the fallback text", async () => {
+    const health = new ProviderHealthTracker();
+    health.recordFailure("openai", "rate-limit");
+    health.recordFailure("anthropic", "timeout");
+
+    mockedStreamText.mockReturnValue(fakeResult(["should-not-reach"]));
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    // No provider event — every provider was skipped.
+    expect(events.some((e) => e.type === "provider")).toBe(false);
+    expect(mockedStreamText).not.toHaveBeenCalled();
+    const text = events
+      .filter((e) => e.type === "text")
+      .map((e) => (e as { value: string }).value)
+      .join("");
+    expect(text).toBe(DEFAULT_FALLBACK_TEXT);
+    expect(events[events.length - 1].type).toBe("done");
   });
 });
 
