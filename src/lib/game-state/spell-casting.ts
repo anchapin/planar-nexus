@@ -31,6 +31,7 @@ import {
   parseBlitz,
   parseForetell,
   parseConvoke,
+  parseDelve,
   parseSplitSecond,
   parseStorm,
   isModalSpell,
@@ -255,7 +256,8 @@ export function castSpell(
       | "spectacle"
       | "blitz"
       | "foretell"
-      | "convoke";
+      | "convoke"
+      | "delve";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
     /**
@@ -267,6 +269,15 @@ export function castSpell(
      * does NOT restrict it (CR 302.6 only restricts {T}/{Q} activated costs).
      */
     convokeCreatures?: CardInstanceId[];
+    /**
+     * CR 702.61 - Delve: cards in the player's graveyard chosen to be exiled
+     * while casting this spell. Each exiled card reduces the GENERIC portion
+     * of the cost by {1} (CR 702.61a); delve cannot pay colored pips (unlike
+     * Convoke). The chosen cards are exiled as part of paying the spell's
+     * cost. Over-exiling (more cards than remaining generic pips) is allowed
+     * but the extras reduce nothing — they are still exiled (binding choice).
+     */
+    delveCards?: CardInstanceId[];
   },
   /**
    * CR 702.85 — number of times the kicker (or multikicker) cost was paid.
@@ -419,6 +430,11 @@ export function castSpell(
   // is applied AFTER mana is spent (see `applyConvokeTaps` below) so the
   // pre-cast state used for validation is not mutated.
   const convokeTappedCreatures: CardInstanceId[] = [];
+  // CR 702.61 - Delve: graveyard cards the player declared they would exile
+  // while casting. Validated inside the `case "delve":` branch; the actual
+  // exile is applied AFTER mana is spent (see the delve exile block below)
+  // so the pre-cast state used for validation is not mutated.
+  const delveExiledCards: CardInstanceId[] = [];
 
   if (alternativeCost) {
     switch (alternativeCost.type) {
@@ -621,6 +637,81 @@ export function castSpell(
         }
         break;
       }
+      case "delve": {
+        // CR 702.61 - Delve: "For each card you exile from your graveyard
+        // while casting this spell, you may pay {1} rather than pay that
+        // card's mana cost." Delve is a cost-reduction applied to the
+        // printed mana cost (not an alternative cost that replaces it);
+        // other additional costs/taxes (kicker, etc.) still apply on top.
+        //
+        // CR 702.61a: each exiled card reduces the GENERIC portion of the
+        // cost by {1}. Unlike Convoke, delve CANNOT pay colored pips —
+        // colored mana must still come from the mana pool.
+        //
+        // Validation per CR 702.61a: each declared card must be a card in
+        // the caster's graveyard. (Graveyard cards are always owned by the
+        // caster in whose graveyard they sit — CR 400.3 — so the owner
+        // check is structural.) Over-exiling is allowed (binding choice)
+        // but extra cards beyond the generic portion reduce nothing.
+        const delveInfo = parseDelve(card.cardData.oracle_text || "");
+        if (delveInfo.hasDelve) {
+          alternativeCostsUsed.push("delve");
+          const declaredCards = alternativeCost.delveCards ?? [];
+          const seen = new Set<CardInstanceId>();
+          for (const delveCardId of declaredCards) {
+            if (seen.has(delveCardId)) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Delve: a graveyard card cannot be exiled more than once to pay for the same spell.",
+              };
+            }
+            seen.add(delveCardId);
+
+            const delveCard = state.cards.get(delveCardId);
+            if (!delveCard) {
+              return {
+                success: false,
+                state,
+                error: "Delve: card not found.",
+              };
+            }
+            // Must be in the caster's graveyard (CR 702.61a). The
+            // graveyard is keyed by controller/owner; a card there is
+            // owned by that player (CR 400.3).
+            const graveKey = `${playerId}-graveyard`;
+            const grave = state.zones.get(graveKey);
+            if (!grave || !grave.cardIds.includes(delveCardId)) {
+              return {
+                success: false,
+                state,
+                error: "Delve: exiled card must be in the caster's graveyard.",
+              };
+            }
+            // Controller must be the caster (defensive — graveyard
+            // membership already implies this, but the explicit check
+            // guards against state corruption).
+            if (delveCard.controllerId !== playerId) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Delve: exiled card must be controlled by the spell's controller.",
+              };
+            }
+
+            // CR 702.61a: reduce the generic portion by {1} per exiled
+            // card. If no generic pip remains, the card is still exiled
+            // (over-exile — binding choice) but contributes nothing.
+            if (totalGeneric > 0) {
+              totalGeneric--;
+            }
+            delveExiledCards.push(delveCardId);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -687,6 +778,48 @@ export function castSpell(
       cards: updatedConvokeCards,
       lastModifiedAt: Date.now(),
     };
+  }
+
+  // CR 702.61 - Delve: now that mana is spent and the cast is committed,
+  // exile each declared graveyard card to the caster's exile zone. The
+  // generic-cost reduction was already applied in the `case "delve":`
+  // branch; this step performs the actual zone move (graveyard → exile)
+  // and updates each card's `currentZoneKey` so subsequent lookups find it
+  // in exile. Cards exiled for delve are gone for good (CR 702.61a: the
+  // exile is part of paying the cost, not a duration effect).
+  if (delveExiledCards.length > 0) {
+    const graveKey = `${playerId}-graveyard`;
+    const exileKey = `${playerId}-exile`;
+    const updatedZonesDelve = new Map(currentState.zones);
+    let updatedGraveDelve = updatedZonesDelve.get(graveKey);
+    let updatedExileDelve = updatedZonesDelve.get(exileKey);
+    const updatedCardsDelve = new Map(currentState.cards);
+    if (updatedGraveDelve && updatedExileDelve) {
+      for (const delveCardId of delveExiledCards) {
+        const moved = moveCardBetweenZones(
+          updatedGraveDelve,
+          updatedExileDelve,
+          delveCardId,
+        );
+        updatedGraveDelve = moved.from;
+        updatedExileDelve = moved.to;
+        const dc = updatedCardsDelve.get(delveCardId);
+        if (dc) {
+          updatedCardsDelve.set(delveCardId, {
+            ...dc,
+            currentZoneKey: exileKey,
+          });
+        }
+      }
+      updatedZonesDelve.set(graveKey, updatedGraveDelve);
+      updatedZonesDelve.set(exileKey, updatedExileDelve);
+      currentState = {
+        ...currentState,
+        zones: updatedZonesDelve,
+        cards: updatedCardsDelve,
+        lastModifiedAt: Date.now(),
+      };
+    }
   }
 
   // Create stack object with alternative cost info

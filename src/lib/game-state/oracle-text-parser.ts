@@ -1825,6 +1825,43 @@ export function parseConvoke(oracleText: string): ConvokeInfo {
 }
 
 /**
+ * Result of detecting Delve (CR 702.61).
+ */
+export interface DelveInfo {
+  hasDelve: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Delve keyword from oracle text.
+ *
+ * CR 702.61a: "Delve" is a static ability that functions while the spell with
+ * delve is on the stack. "For each card you exile from your graveyard while
+ * casting this spell, you may pay {1} rather than pay that card's mana cost."
+ * Each exiled card reduces the GENERIC portion of the cost by {1} — delve
+ * cannot pay colored pips (unlike Convoke). Detection is a word-boundary
+ * anchored, case-insensitive match so "Delve" matches while a hypothetical
+ * "delvedout" would not.
+ *
+ * Example oracle text: "Delve" (e.g. Treasure Cruise, Tasigur, the Golden
+ * Fang, Murderous Cut, Temporal Trespass).
+ */
+export function parseDelve(oracleText: string): DelveInfo {
+  if (!oracleText) {
+    return { hasDelve: false, description: "" };
+  }
+
+  // Word-boundary anchored on both sides: "Delve" matches, but substrings
+  // inside other words do not. Case-insensitive to be tolerant of casing.
+  const hasDelve = /\bdelve\b/i.test(oracleText);
+
+  return {
+    hasDelve,
+    description: hasDelve ? "Delve" : "",
+  };
+}
+
+/**
  * Result of detecting Attraction mechanic
  */
 export interface AttractionInfo {
