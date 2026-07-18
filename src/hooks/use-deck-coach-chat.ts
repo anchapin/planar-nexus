@@ -7,6 +7,8 @@ import type {
   ChatTokenUsage,
 } from "@/types/chat";
 import { DeckCard } from "@/ai/flows/context-builder";
+import type { CoachMemorySummary } from "@/ai/flows/coach-memory-summary";
+import { isSummaryEmpty } from "@/ai/flows/coach-memory-summary";
 import { aiWorkerClient } from "@/ai/worker/ai-worker-client";
 import type { DigestedCoachContext } from "@/ai/worker/worker-types";
 import {
@@ -44,6 +46,11 @@ const BASE_STORAGE_KEY = "deck-coach-chat-history";
  * text delta when the post-generation guard flags the completed message.
  * The client appends the caveat to the assistant message and persists
  * `lowConfidence` / `needsReview` on the record.
+ *
+ * Issue #1417: a `summary` event is emitted at the start of every stream
+ * carrying the up-to-date coach-memory summary. The client persists it
+ * with the active conversation and re-sends it on the next turn so the
+ * summary can merge monotonically across the session.
  */
 type CoachStreamEventPayload =
   | { type: "provider"; value: string }
@@ -64,6 +71,7 @@ type CoachStreamEventPayload =
       caveat: string;
       failures: string[];
     }
+  | { type: "summary"; summary: CoachMemorySummary }
   | { type: "error"; value: string }
   | { type: "done" };
 
@@ -171,6 +179,13 @@ export function useDeckCoachChat(
   const deckIdRef = useRef(options.deckId);
   /** Live deck context (format/archetype/strategy/cards) from options/overrides. */
   const deckContextRef = useRef<CoachConversationDeckContext>({});
+  /**
+   * Persisted coach-memory summary for the active conversation (issue #1417).
+   * Held in a ref so the in-flight `sendMessage` fetch can read it
+   * synchronously and the post-stream `persistCurrent` write captures the
+   * latest server-returned summary.
+   */
+  const memorySummaryRef = useRef<CoachMemorySummary | null>(null);
   /** id of the conversation currently loaded into the chat. */
   const activeConversationIdRef = useRef<string | null>(null);
   /** True once the user has interacted (sent/resumed/started/cleared). */
@@ -252,6 +267,10 @@ export function useDeckCoachChat(
             deckContext: deckContextRef.current,
             messages: currentMessages,
             updatedAt: now,
+            // Issue #1417: carry the latest server-returned summary through
+            // to the persisted record. `undefined` (no summary yet) keeps
+            // older conversations backward-compatible.
+            memorySummary: memorySummaryRef.current ?? existing.memorySummary,
           }
         : createConversationRecord({
             id: existingId,
@@ -270,6 +289,8 @@ export function useDeckCoachChat(
         deckContext: deckContextRef.current,
         now: new Date(now),
       });
+      if (memorySummaryRef.current)
+        record.memorySummary = memorySummaryRef.current;
     }
 
     const result = await saveConversation(record);
@@ -331,9 +352,14 @@ export function useDeckCoachChat(
         messagesRef.current = recent.messages;
         setMessages(recent.messages);
         deckContextRef.current = recent.deckContext ?? {};
+        // Issue #1417: rehydrate the persisted coach-memory summary so the
+        // next outbound request includes it and the next prune merges into
+        // it rather than restarting from empty.
+        memorySummaryRef.current = recent.memorySummary ?? null;
       } else {
         activeConversationIdRef.current = null;
         setActiveConversationId(null);
+        memorySummaryRef.current = null;
         const initial = options.initialMessages ?? [];
         messagesRef.current = initial;
         setMessages(initial);
@@ -482,6 +508,10 @@ export function useDeckCoachChat(
             format: currentFormat,
             archetype: currentArchetype,
             strategy: currentStrategy,
+            // Issue #1417: send the persisted coach-memory summary so the
+            // route can merge the next pruning pass into it. Omitted when
+            // there is no active summary (fresh or pre-#1417 conversation).
+            memorySummary: memorySummaryRef.current ?? undefined,
           }),
           signal: abortController.signal,
         });
@@ -520,6 +550,14 @@ export function useDeckCoachChat(
               patchAssistant({ usage });
               break;
             }
+            case "summary":
+              // Issue #1417: capture the up-to-date coach-memory summary. It
+              // is persisted by the post-stream `persistCurrent` write below.
+              // We intentionally keep empty summaries (no entries) so the
+              // persisted shape matches what the server returned; the render
+              // layer can call `isSummaryEmpty` to decide whether to surface.
+              memorySummaryRef.current = event.summary;
+              break;
             case "error":
               // Surface server-side errors inline (preserving any partial text).
               assistantContent += `${assistantContent ? "\n\n" : ""}_${event.value}_`;
@@ -622,6 +660,9 @@ export function useDeckCoachChat(
     interactedRef.current = true;
     messagesRef.current = [];
     setMessages([]);
+    // Issue #1417: dropping the visible history also drops the durable
+    // summary — there is no longer any context to remember.
+    memorySummaryRef.current = null;
     const id = activeConversationIdRef.current;
     activeConversationIdRef.current = null;
     setActiveConversationId(null);
@@ -648,6 +689,9 @@ export function useDeckCoachChat(
     messagesRef.current = conv.messages;
     setMessages(conv.messages);
     deckContextRef.current = conv.deckContext ?? {};
+    // Issue #1417: rehydrate the persisted coach-memory summary on resume so
+    // the next outbound request continues the durable memory across sessions.
+    memorySummaryRef.current = conv.memorySummary ?? null;
     setStorageNotice(null);
   }, []);
 
@@ -662,6 +706,9 @@ export function useDeckCoachChat(
     setActiveConversationId(null);
     messagesRef.current = [];
     setMessages([]);
+    // Issue #1417: a new conversation starts without a memory summary; the
+    // next pruning pass will lazily populate it.
+    memorySummaryRef.current = null;
     setStorageNotice(null);
   }, []);
 

@@ -19,6 +19,15 @@ import {
   renderLedgerForPrompt,
   type EvidenceLedger,
 } from "./coach-evidence-ledger";
+import {
+  buildCoachMemorySummary,
+  emptyCoachMemorySummary,
+  isSummaryEmpty,
+  parseCoachMemorySummary,
+  renderCoachMemorySummaryForPrompt,
+  type CoachMemorySummary,
+  type BuildCoachMemorySummaryOptions,
+} from "@/ai/flows/coach-memory-summary";
 
 // Reuse types from actions.ts to avoid duplication or circular deps
 export interface MinimalCard {
@@ -176,6 +185,14 @@ export function buildCoachSystemPrompt(
   intent?: CoachIntentResult,
   difficulty?: string,
   evidenceLedger?: EvidenceLedger,
+  /**
+   * Optional persisted coach-memory summary (issue #1417). When supplied and
+   * non-empty, it is rendered into a fenced, sanitized block of trusted
+   * system-maintained context so the coach can recall goals, constraints,
+   * and prior card decisions that were pruned from the visible history.
+   * Backward-compatible: omitted for conversations that have no summary yet.
+   */
+  memorySummary?: CoachMemorySummary | null,
 ): string {
   let prompt = `You are an expert Magic: The Gathering coach. You are helping a player improve their deck.\n\n`;
 
@@ -218,6 +235,16 @@ export function buildCoachSystemPrompt(
     if (ledgerBlock) {
       prompt += `\n${ledgerBlock}\n\n`;
     }
+  }
+
+  // Issue #1417: inject the persisted coach-memory summary (when present) as
+  // trusted system-maintained background. The block is fenced, sanitized,
+  // and clearly framed as durable memory of prior pruned turns — not a user
+  // instruction. The model is told to use it for continuity while re-confirming
+  // stale assumptions against the latest turn. Empty summaries (no entries)
+  // render to "" and contribute nothing.
+  if (memorySummary && !isSummaryEmpty(memorySummary)) {
+    prompt += `\n${renderCoachMemorySummaryForPrompt(memorySummary)}\n\n`;
   }
 
   prompt += `Your goal is to provide strategic advice, card recommendations, and answer questions about the deck's performance. `;
@@ -413,4 +440,129 @@ export function prepareConversationHistory(
   }
 
   return retained;
+}
+
+/**
+ * Result of {@link prepareConversationHistoryWithSummary}: the retained
+ * message slice plus the up-to-date coach-memory summary (issue #1417).
+ */
+export interface PreparedConversationHistory {
+  /** Pruned message slice, identical to {@link prepareConversationHistory}'s output. */
+  messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+  /**
+   * Durable summary of any turns that were pruned. Empty (`{ ...empties }`)
+   * when nothing was pruned or when no durable signal was extracted. Callers
+   * persist this with the conversation and pass it back on the next turn.
+   */
+  summary: CoachMemorySummary;
+  /** True when at least one input message was dropped by pruning. */
+  pruned: boolean;
+}
+
+/**
+ * Options accepted by {@link prepareConversationHistoryWithSummary}.
+ *
+ * Extends {@link PrepareConversationHistoryOptions} with the prior summary
+ * (so the new summary merges monotonically across the session) and the
+ * summary-specific token budget.
+ */
+export interface PrepareConversationHistoryWithSummaryOptions extends PrepareConversationHistoryOptions {
+  /**
+   * Prior persisted summary, if any. Merged into the new summary so durable
+   * memory grows across the session up to the per-category cap. Backward
+   * compatible: omitted for older conversations that pre-date #1417.
+   */
+  priorSummary?: CoachMemorySummary | null;
+  /**
+   * Separate token cap for the summary itself. Defaults to
+   * {@link DEFAULT_SUMMARY_TOKEN_BUDGET}. Kept independent of the
+   * conversation-history budget so summary growth cannot, by itself,
+   * cause history to be pruned.
+   */
+  summaryMaxTokens?: number;
+  /** Forwarded to {@link buildCoachMemorySummary}. */
+  now?: Date;
+}
+
+/**
+ * Token-aware conversation history pruner with durable coach-memory summary
+ * (issue #1417).
+ *
+ * Behaves exactly like {@link prepareConversationHistory} for the message
+ * slice (same backward-compat overload, same latest-turn-always-retained
+ * guarantee), and in addition:
+ *
+ *   - Identifies which input messages were pruned.
+ *   - Builds (or updates) a {@link CoachMemorySummary} from those pruned
+ *     turns, merging with any `priorSummary` so memory grows monotonically.
+ *   - Bounds the summary by a *separate* token cap so it cannot become the
+ *     reason history is pruned.
+ *
+ * Failure isolation: if the summary builder ever throws (it must not, but
+ * defense-in-depth), the existing token-pruning behaviour still completes —
+ * the function returns the pruned slice with an empty summary and `pruned`
+ * still reflects whether messages were dropped. This preserves the issue's
+ * "summary generation failure falls back to existing pruning" criterion.
+ */
+export function prepareConversationHistoryWithSummary(
+  messages: ChatMessage[],
+  optionsOrMax: PrepareConversationHistoryWithSummaryOptions | number = {},
+): PreparedConversationHistory {
+  const opts: PrepareConversationHistoryWithSummaryOptions =
+    typeof optionsOrMax === "number"
+      ? { maxMessages: optionsOrMax }
+      : optionsOrMax;
+  const { priorSummary = null, summaryMaxTokens, now, ...pruneOpts } = opts;
+
+  // Capture the set of input message ids so we can tell which were pruned
+  // by diffing against the retained slice. We use content+role as the key
+  // (ids may be absent on synthesised test inputs) — same approach the route
+  // already uses when it fabricates ids.
+  const retained = prepareConversationHistory(messages, pruneOpts);
+  const retainedKeys = new Set(retained.map((m) => `${m.role}::${m.content}`));
+  const prunedMessages = messages.filter(
+    (m) => !retainedKeys.has(`${m.role}::${m.content}`),
+  );
+  const pruned = prunedMessages.length > 0;
+
+  // If nothing was pruned, the summary is just the prior one (or empty).
+  // We still return a fresh, schema-shaped object so callers can persist
+  // unconditionally.
+  if (!pruned) {
+    return {
+      messages: retained,
+      summary: priorSummary ?? emptyCoachMemorySummary(now),
+      pruned: false,
+    };
+  }
+
+  // Build/merge the summary from the pruned slice. Defense-in-depth: the
+  // builder never throws, but if it ever does we fall back to the prior
+  // summary (or empty) so the existing pruning behaviour wins.
+  let summary: CoachMemorySummary;
+  try {
+    const buildOpts: BuildCoachMemorySummaryOptions = {
+      priorSummary,
+      now,
+    };
+    if (summaryMaxTokens !== undefined) {
+      buildOpts.maxTokens = summaryMaxTokens;
+    }
+    summary = buildCoachMemorySummary(prunedMessages, buildOpts);
+  } catch {
+    summary = priorSummary ?? emptyCoachMemorySummary(now);
+  }
+
+  return { messages: retained, summary, pruned };
+}
+
+/**
+ * Convenience: validate a raw summary payload (e.g. from the request body or
+ * IndexedDB) and return either a typed summary or `null`. Re-exported here
+ * so callers using the conversation-history API have a single import site.
+ */
+export function validateCoachMemorySummary(
+  raw: unknown,
+): CoachMemorySummary | null {
+  return parseCoachMemorySummary(raw);
 }

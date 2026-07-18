@@ -852,3 +852,128 @@ describe("POST /api/chat/coach — evidence ledger + grounding guard (#1419)", (
     expect(text).toContain("structured deck analysis");
   });
 });
+
+describe("POST /api/chat/coach — coach-memory summary (issue #1417)", () => {
+  it("injects an inbound summary into the system prompt as trusted system context", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+    await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "what about the second cut?" }],
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+        memorySummary: {
+          version: 1,
+          updatedAt: "2026-07-01T00:00:00.000Z",
+          goals: ["win the long game"],
+          constraints: ["under $50"],
+          acceptedSwaps: ["cut Murder for Doom Blade"],
+          rejectedSwaps: [],
+          matchupTargets: ["Mono-Red"],
+          unresolvedQuestions: [],
+          tokenEstimate: 10,
+        },
+      }),
+    );
+    // The prompt carries the fenced memory block and its key contents.
+    expect(captured.systemPrompt).toContain("<coach_memory>");
+    expect(captured.systemPrompt).toContain("</coach_memory>");
+    expect(captured.systemPrompt).toContain("SYSTEM-MAINTAINED COACH MEMORY");
+    expect(captured.systemPrompt).toContain("win the long game");
+    expect(captured.systemPrompt).toContain("under $50");
+    expect(captured.systemPrompt).toContain("cut Murder for Doom Blade");
+    expect(captured.systemPrompt).toContain("Mono-Red");
+  });
+
+  it("emits a summary SSE event as the first stream event (always-on)", async () => {
+    yieldEvents([{ type: "done" }]);
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "hi" }],
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+      }),
+    );
+    const text = await res.text();
+    // The summary event is emitted before any other event. Splitting on
+    // `\n\n` boundaries, the first event must be the summary.
+    const firstEvent = text.split("\n\n")[0];
+    expect(firstEvent).toContain('"type":"summary"');
+    // The summary payload is schema-shaped (version discriminator + arrays).
+    expect(firstEvent).toContain('"version":1');
+    expect(firstEvent).toContain('"goals":[]');
+  });
+
+  it("returns an updated summary when history is pruned", async () => {
+    yieldEvents([{ type: "done" }]);
+    // Force pruning with a tiny token budget and many large messages.
+    const messages: Array<{ role: string; content: string }> = [];
+    for (let i = 0; i < 20; i++) {
+      messages.push({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content:
+          i === 0
+            ? `I want to win the long game against control. ${"x".repeat(300)}`
+            : `turn-${i} ${"a".repeat(200)}`,
+      });
+    }
+    const res = await POST(
+      makeRequest({
+        messages,
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+        maxHistoryTokens: 100,
+      }),
+    );
+    const text = await res.text();
+    const firstEvent = text.split("\n\n")[0];
+    expect(firstEvent).toContain('"type":"summary"');
+    // The summary captured the goal from the pruned first message.
+    expect(firstEvent).toMatch(/long game/i);
+  });
+
+  it("passes an inbound summary through unchanged when nothing is pruned", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+    const inbound = {
+      version: 1,
+      updatedAt: "2026-07-01T00:00:00.000Z",
+      goals: ["previously remembered goal"],
+      constraints: [],
+      acceptedSwaps: [],
+      rejectedSwaps: [],
+      matchupTargets: [],
+      unresolvedQuestions: [],
+      tokenEstimate: 1,
+    };
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "hi" }],
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+        memorySummary: inbound,
+      }),
+    );
+    expect(captured.systemPrompt).toContain("previously remembered goal");
+    const text = await res.text();
+    const firstEvent = text.split("\n\n")[0];
+    // The summary event still fires, carrying the inbound goal verbatim.
+    expect(firstEvent).toContain("previously remembered goal");
+  });
+
+  it("drops a malformed inbound summary and proceeds (graceful degrade)", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "hi" }],
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+        memorySummary: { version: 999, goals: "not an array" },
+      }),
+    );
+    // The prompt was built without the summary — no memory fence present.
+    expect(captured.systemPrompt).not.toContain("<coach_memory>");
+    expect(res.status).toBe(200);
+    // The summary event still fires (with an empty summary).
+    const text = await res.text();
+    expect(text.split("\n\n")[0]).toContain('"type":"summary"');
+  });
+});
