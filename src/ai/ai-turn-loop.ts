@@ -92,6 +92,16 @@ import {
   classifyAbility,
   type AbilityBoardContext,
 } from "./ability-activation";
+// Issue #1416: difficulty-scaled opening-hand sequencing. For turns 1-3 the
+// turn loop consults a pure planner that picks a specific land + spell per
+// tier (Easy sloppy → Expert 2-turn plan). Outside the opening window the
+// planner returns null and the legacy main-phase logic runs unchanged. Kept
+// in a sibling file so the only edits HERE are the call-site wiring — sibling
+// issues #1413/#1414/#1415 also touch this file and rebase cleanly.
+import {
+  chooseOpeningTurnPlan,
+  type OpeningTurnPlan,
+} from "./opening-turn-plan";
 
 /**
  * AI Turn configuration
@@ -917,9 +927,7 @@ async function runDrawPhase(
  *   counter-magic and do not telegraph intent.
  */
 export type Main2Action =
-  | "deploy"
-  | "hold_for_opponent_turn"
-  | "deploy_end_step_spell";
+  "deploy" | "hold_for_opponent_turn" | "deploy_end_step_spell";
 
 /**
  * The observable signals {@link chooseMain2Action} keys off. Projected from the
@@ -1085,7 +1093,8 @@ function sumCreaturePower(state: EngineGameState, playerId: PlayerId): number {
     const card = state.cards.get(cardId);
     if (!card?.cardData.type_line.toLowerCase().includes("creature")) continue;
     const power = (card.cardData as { power?: string | number }).power;
-    const parsed = typeof power === "number" ? power : parseInt(String(power), 10);
+    const parsed =
+      typeof power === "number" ? power : parseInt(String(power), 10);
     if (!Number.isNaN(parsed)) total += parsed;
   }
   return total;
@@ -1128,12 +1137,31 @@ async function runMainPhase(
   const actions: AIAction[] = [];
   let currentState = gameState;
 
+  // Issue #1416: compute the opening-turn plan once for turns 1-3 in the
+  // pre-combat main. The plan picks a specific land + spell per tier (Easy
+  // sloppy → Expert 2-turn plan). Post-combat main and turns > 3 get null
+  // (legacy logic) so the opener casts exactly one planned spell per turn.
+  const openingPlan =
+    phase === "precombat_main"
+      ? chooseOpeningTurnPlan(
+          currentState,
+          aiPlayerId,
+          config.difficulty,
+          config.format,
+          currentState.turn?.turnNumber ?? 0,
+        )
+      : null;
+  if (openingPlan?.reasoning) {
+    config.onCommentary?.(openingPlan.reasoning);
+  }
+
   // Step 1: Play land if available. Lands do not spend mana, so the land drop
   // is always taken regardless of the retention policy.
   const landResult = await playLandIfAvailable(
     currentState,
     aiPlayerId,
     config,
+    openingPlan,
   );
   if (landResult.success && landResult.action) {
     actions.push(landResult.action);
@@ -1189,6 +1217,7 @@ async function runMainPhase(
     aiPlayerId,
     config,
     adaptive,
+    openingPlan,
   );
   if (creatureResult.success) {
     actions.push(...creatureResult.actions);
@@ -1452,12 +1481,18 @@ async function runCleanupPhase(
 }
 
 /**
- * Play a land if available and appropriate
+ * Play a land if available and appropriate.
+ *
+ * Issue #1416: during the opening (turns 1-3) `openingPlan?.landToPlay`
+ * names the specific land the planner chose (Easy = random, Medium/Hard/
+ * Expert = best-scored for color sequencing). When the plan is present we
+ * play THAT land instead of the first land we find; otherwise legacy.
  */
 async function playLandIfAvailable(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
+  openingPlan?: OpeningTurnPlan | null,
 ): Promise<{
   success: boolean;
   action?: AIAction;
@@ -1467,9 +1502,17 @@ async function playLandIfAvailable(
   const handZone = gameState.zones.get(`${aiPlayerId}-hand`);
   if (!handZone) return { success: false };
 
+  // Issue #1416: the opening plan may name a specific land to play this turn.
+  // When set, skip every other land in hand and attempt only that one (so the
+  // planner's color-sequencing pick actually reaches the board).
+  const preferredLandId = openingPlan?.landToPlay ?? undefined;
+
   for (const cardId of handZone.cardIds) {
     const card = gameState.cards.get(cardId);
     if (card && card.cardData.type_line.toLowerCase().includes("land")) {
+      if (preferredLandId !== undefined && cardId !== preferredLandId) {
+        continue;
+      }
       const result = await executeAIAction(
         gameState,
         { type: "play_land", cardId, reasoning: "Play land for turn" },
@@ -1491,13 +1534,21 @@ async function playLandIfAvailable(
 }
 
 /**
- * Cast creatures based on curve and strategy
+ * Cast creatures based on curve and strategy.
+ *
+ * Issue #1416: during the opening (turns 1-3) the {@link OpeningTurnPlan} is
+ * authoritative — when present, this function casts the planned creature (or
+ * holds all creatures when `holdMana`) and returns without falling through to
+ * the legacy CMC-sort dump. This keeps the opener to one deliberate spell per
+ * turn. Outside the opening (`openingPlan` is null/undefined) the legacy
+ * difficulty-scaled cast path runs unchanged.
  */
 async function castCreatures(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
   config: AITurnConfig,
   adaptive?: AdaptiveTempoRisk | null,
+  openingPlan?: OpeningTurnPlan | null,
 ): Promise<{
   success: boolean;
   actions: AIAction[];
@@ -1510,6 +1561,55 @@ async function castCreatures(
   const handZone = gameState.zones.get(`${aiPlayerId}-hand`);
   if (!handZone) return { success: true, actions: [] };
 
+  // Issue #1416: the opening plan governs turns 1-3. When present, follow it
+  // exclusively — cast the planned creature (or hold all) and return. The
+  // plan's color-feasibility check prevents off-curve picks; if the engine
+  // still rejects the cast (unexpected), the AI simply casts nothing this
+  // turn, which is acceptable for the deliberate opener.
+  if (openingPlan) {
+    if (openingPlan.holdMana) {
+      return { success: true, actions: [], newState: currentState };
+    }
+    const plannedId = openingPlan.spellToCast;
+    if (plannedId !== null) {
+      const result = await executeAIAction(
+        currentState,
+        {
+          type: "cast_spell",
+          cardId: plannedId,
+          reasoning: `Opening plan: ${openingPlan.reasoning}`,
+        },
+        aiPlayerId,
+      );
+      if (result.success && result.newState) {
+        currentState = result.newState;
+        actions.push({
+          type: "cast_spell",
+          cardId: plannedId,
+          reasoning: `Opening plan: ${openingPlan.reasoning}`,
+        });
+        const card = currentState.cards.get(plannedId);
+        if (card) {
+          config.onCommentary?.(`Casts ${card.cardData.name}`);
+          emitTelegraph(
+            config,
+            generateCastTelegraph(
+              {
+                subject: card.cardData.name,
+                context: computeTelegraphContext(currentState, aiPlayerId),
+              },
+              getTelegraphLevel(config.difficulty, config.format),
+            ),
+          );
+        }
+      }
+      return { success: true, actions, newState: currentState };
+    }
+    // spellToCast is null + holdMana is false → nothing to cast this turn.
+    return { success: true, actions: [], newState: currentState };
+  }
+
+  // --- Legacy (turn > 3 or no plan) --------------------------------------
   // Sort creatures by CMC (cast cheaper first)
   const creatures: Array<{ cardId: CardInstanceId; cmc: number }> = [];
 
@@ -1784,10 +1884,7 @@ async function runAbilityActivation(
   const battlefield = currentState.zones.get(`${aiPlayerId}-battlefield`);
   if (!battlefield) return { success: true, actions: [] };
 
-  const boardContext = buildAbilityBoardContext(
-    currentState,
-    aiPlayerId,
-  );
+  const boardContext = buildAbilityBoardContext(currentState, aiPlayerId);
 
   for (const cardId of battlefield.cardIds) {
     const card = currentState.cards.get(cardId);
@@ -1972,8 +2069,7 @@ function buildAbilityBoardContext(
     opponentHasCreature: oppCreatureCount > 0,
     opponentMaxToughness: oppMaxToughness,
     aiHasCreature: aiCreatureCount > 0,
-    aiBehind:
-      aiCreatureCount < oppCreatureCount || aiLife < oppLife - 5,
+    aiBehind: aiCreatureCount < oppCreatureCount || aiLife < oppLife - 5,
   };
 }
 
