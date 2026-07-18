@@ -2341,6 +2341,48 @@ export function parseForetell(oracleText: string): {
 }
 
 /**
+ * Parse the Spectacle keyword from oracle text.
+ *
+ * CR 702.135: "Spectacle [cost]" is a static ability that functions while the
+ * spell is on the stack. It offers an alternative cost: the spell's controller
+ * may pay [cost] rather than the printed mana cost IF an opponent has lost
+ * life this turn (CR 702.135a). The spell's mana value is unchanged and other
+ * costs/taxes still apply (CR 702.135b — same treatment as Blitz/Foretell).
+ *
+ * The opponent-lost-life precondition is a runtime game-state check, NOT a
+ * property of the card text; this parser surfaces only the [cost]. The cast
+ * gate lives in `castSpell` and reads `Player.lastTurnLifeLost` populated by
+ * `dealDamageToPlayer` / `loseLife` in `player-actions.ts`.
+ *
+ * Example oracle text: "Spectacle {1}{B}" (e.g. Angrath's Rampage, Bedevil).
+ */
+export function parseSpectacle(oracleText: string): {
+  hasSpectacle: boolean;
+  spectacleCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasSpectacle: false, spectacleCost: null, description: "" };
+  }
+
+  const spectacleMatch = oracleText.match(
+    /spectacle\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+
+  if (!spectacleMatch) {
+    return { hasSpectacle: false, spectacleCost: null, description: "" };
+  }
+
+  const spectacleCost = parseManaCost(spectacleMatch[1]);
+
+  return {
+    hasSpectacle: true,
+    spectacleCost,
+    description: `Spectacle ${spectacleMatch[1]}`,
+  };
+}
+
+/**
  * Cycling variants (CR 702.30-31).
  *
  * "Cycling {cost}" is the base form: from your hand, pay {cost} + discard the

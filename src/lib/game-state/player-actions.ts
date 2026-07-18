@@ -57,6 +57,10 @@ export function dealDamageToPlayer(
     ...player,
     life: Math.max(0, player.life - actualDamage),
     lastCombatDamageFromPlayer,
+    // CR 702.135 - Spectacle: "if an opponent has lost life this turn." Damage
+    // causes life loss (CR 118.3a), so accumulate the actual damage dealt to
+    // this player this turn so the spectacle gate in `castSpell` can read it.
+    lastTurnLifeLost: (player.lastTurnLifeLost ?? 0) + actualDamage,
   };
 
   const updatedPlayers = new Map(state.players);
@@ -90,6 +94,11 @@ export function loseLife(
   const updatedPlayer = {
     ...player,
     life: Math.max(0, player.life - amount),
+    // CR 702.135 - Spectacle: "if an opponent has lost life this turn."
+    // Non-damage life loss (e.g. "lose 2 life" from a shock) counts the same
+    // as damage-driven loss for spectacle (CR 118.3). Accumulate so multiple
+    // losses on the same turn summate; reset at the start of each turn.
+    lastTurnLifeLost: (player.lastTurnLifeLost ?? 0) + amount,
   };
 
   const updatedPlayers = new Map(state.players);
