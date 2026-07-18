@@ -171,6 +171,36 @@ export interface CardInstance {
    */
   prowessBoost?: number;
 
+  // Renown keyword (CR 702.100)
+  /**
+   * Whether this permanent has become renowned (CR 702.100b).
+   *
+   * Set to `true` exactly once, the first time this creature's Renown ability
+   * resolves. Per CR 702.100b the renowned flag persists for the rest of the
+   * game for THIS card instance — it is never reset by removing the +1/+1
+   * counters and it blocks Renown from re-triggering even after a flicker /
+   * zone-change that returns the same card instance to the battlefield. The
+   * flag is the authoritative intervening-if guard for "if it isn't renowned"
+   * on the trigger-system side.
+   *
+   * Optional so legacy state literals default to "not yet renowned" (read
+   * with `?? false`).
+   */
+  renowned?: boolean;
+
+  // Tribute keyword (CR 702.101)
+  /**
+   * Whether the Tribute cost for this permanent was paid as it entered the
+   * battlefield (CR 702.101b).
+   *
+   * Set during `resolveTributeChoice`: `true` when the chosen opponent paid
+   * the cost (and the secondary "tribute wasn't paid" triggered ability is
+   * suppressed), `false` when they declined (and the secondary ability fires
+   * normally). Undefined before the choice resolves. Persisted on the card so
+   * the suppression survives any later state recomputation.
+   */
+  tributePaid?: boolean;
+
   // Performance optimization: zone lookup cache (CR 704 - SBA performance)
   /** The zone key where this card currently resides. Updated on zone changes for O(1) lookup */
   currentZoneKey: string | null;
@@ -821,7 +851,8 @@ export interface WaitingChoice {
     | "priority"
     | "choose_legend"
     | "choose_replacement"
-    | "corpse_offer";
+    | "corpse_offer"
+    | "tribute_offer";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
@@ -934,6 +965,21 @@ export interface GameState {
    * default to "no pending offers" (read with `?? []`).
    */
   pendingCorpseOffers?: CardInstanceId[];
+
+  /**
+   * Tribute keyword ETB-trigger queue (CR 702.101).
+   *
+   * When a creature with a Tribute ability enters the battlefield,
+   * `processTributeOnEtb` appends its card ID here and surfaces a
+   * `tribute_offer` `waitingChoice` to the chosen opponent. Because the engine
+   * surfaces one choice at a time, additional tributes that enter while an
+   * offer is already pending remain queued here and are surfaced (in FIFO
+   * order) once the prior offer is resolved via `resolveTributeChoice`. A card
+   * ID is removed from this queue only when its offer is resolved (paid or
+   * declined). Optional so legacy state literals default to "no pending
+   * offers" (read with `?? []`).
+   */
+  pendingTributeOffers?: CardInstanceId[];
 }
 
 /**
