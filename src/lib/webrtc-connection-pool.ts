@@ -13,6 +13,17 @@
  *    multi-player game and shares data channels via the pool.
  * 3. A single consolidated ping sweep that drives health checks for every
  *    pooled connection from one interval instead of N independent timers.
+ * 4. <b>Idle/LRU eviction</b> (issue #1427): when the pool is full,
+ *    {@link WebRTCConnectionPool.acquire} no longer refuses new peers out of
+ *    hand. It first looks for an <i>evictable</i> connection — a dead link
+ *    (not {@link WebRTCConnection.isConnected} for longer than
+ *    {@link ConnectionPoolOptions.idleFailureMs}) or a connected-but-idle peer
+ *    (no traffic for longer than {@link ConnectionPoolOptions.idleConnectedMs})
+ *    — and removes the least-recently-used one to make room. A connection
+ *    used within {@link ConnectionPoolOptions.activeMs} is never evicted.
+ *    {@link ConnectionPoolEvents.onPoolFull} therefore fires only on true
+ *    capacity exhaustion; per-eviction visibility is delivered via
+ *    {@link ConnectionPoolEvents.onEvict}.
  */
 
 import {
@@ -29,6 +40,24 @@ const DEFAULT_MAX_CONNECTIONS = 8;
 const DEFAULT_PING_INTERVAL_MS = 5000;
 /** Default time-to-live (ms) for cached dropped-peer state. */
 const DEFAULT_CACHE_TTL_MS = 60_000;
+/**
+ * Default grace period (ms) before a non-connected (disconnected / failed /
+ * connecting / reconnecting) pooled connection becomes evictable. Gives a
+ * dropped peer time to reconnect before its slot is reclaimed.
+ */
+const DEFAULT_IDLE_FAILURE_MS = 60_000;
+/**
+ * Default threshold (ms) after which a connected-but-silent pooled connection
+ * becomes evictable. Pings keep the link up but do not reset this; only real
+ * traffic (or an explicit {@link WebRTCConnectionPool.markConnectionUsed})
+ * keeps a peer "fresh".
+ */
+const DEFAULT_IDLE_CONNECTED_MS = 600_000;
+/**
+ * Default window (ms) within which a connection is considered actively in use
+ * and is therefore never an eviction candidate.
+ */
+const DEFAULT_ACTIVE_MS = 30_000;
 
 /**
  * Snapshot of a peer's connection state captured when its connection dropped,
@@ -43,6 +72,21 @@ export interface CachedConnectionState {
 }
 
 /**
+ * Supplementary payload for {@link ConnectionPoolEvents.onPoolFull}.
+ *
+ * `evictedPeerIds` is always empty when `onPoolFull` fires: `acquire` only
+ * fires `onPoolFull` after determining that <i>no</i> pooled connection is
+ * evictable (real capacity exhaustion). When an eviction does make room,
+ * `acquire` succeeds instead, and each evicted peer is reported via
+ * {@link ConnectionPoolEvents.onEvict}. The field is retained on the payload
+ * so the host layer can assert the "nothing was evicted" contract explicitly.
+ */
+export interface PoolFullInfo {
+  /** Always `[]` when `onPoolFull` fires (see type doc). */
+  evictedPeerIds: string[];
+}
+
+/**
  * Event hooks fired by the connection pool. All are optional.
  */
 export interface ConnectionPoolEvents {
@@ -50,8 +94,20 @@ export interface ConnectionPoolEvents {
   onReuse?: (peerId: string) => void;
   /** Fired when state is cached for a dropped peer. */
   onCache?: (peerId: string, cached: CachedConnectionState) => void;
-  /** Fired when a connection is refused because the pool is at capacity. */
-  onPoolFull?: (peerId: string) => void;
+  /**
+   * Fired when a connection is refused because the pool is at capacity AND no
+   * pooled connection was evictable. When an idle/LRU connection WAS evicted
+   * to make room, {@link acquire} succeeds and this event does not fire;
+   * instead {@link onEvict} reports the eviction.
+   */
+  onPoolFull?: (peerId: string, info: PoolFullInfo) => void;
+  /**
+   * Fired for each connection evicted by the idle/LRU policy (either
+   * proactively via {@link WebRTCConnectionPool.evictIdle} or reactively inside
+   * {@link acquire}). The peer's state is cached first (so
+   * {@link onCache} also fires), enabling a fast reconnect.
+   */
+  onEvict?: (peerId: string) => void;
 }
 
 /**
@@ -66,6 +122,27 @@ export interface ConnectionPoolOptions {
   pingIntervalMs?: number;
   /** How long (ms) cached dropped-peer state stays valid. */
   cacheTtlMs?: number;
+  /**
+   * Grace period (ms) before a non-connected pooled connection becomes
+   * evictable. Defaults to {@link DEFAULT_IDLE_FAILURE_MS} (60s).
+   */
+  idleFailureMs?: number;
+  /**
+   * Threshold (ms) after which a connected-but-idle pooled connection becomes
+   * evictable. Defaults to {@link DEFAULT_IDLE_CONNECTED_MS} (10 min).
+   */
+  idleConnectedMs?: number;
+  /**
+   * Window (ms) within which a connection is considered actively in use and is
+   * never evicted. Defaults to {@link DEFAULT_ACTIVE_MS} (30s).
+   */
+  activeMs?: number;
+  /**
+   * Clock injected for deterministic eviction behaviour. Defaults to
+   * `Date.now`. All internal time reads go through this, so eviction tests can
+   * advance time without `jest.useFakeTimers`.
+   */
+  now?: () => number;
   /** Pool lifecycle events. */
   events?: ConnectionPoolEvents;
   /**
@@ -118,12 +195,28 @@ export function defaultConnectionFactory(
  *   timers.
  * - <b>State caching:</b> when a connection is released or drops, its peer
  *   identity is cached so a near-term reconnect skips re-discovery.
+ * - <b>Idle/LRU eviction:</b> {@link acquire} on a full pool first tries to
+ *   reclaim a slot by evicting the least-recently-used evictable connection
+ *   (dead links first, then connected-but-idle peers). A peer used within
+ *   {@link ConnectionPoolOptions.activeMs} is always retained. See
+ *   {@link selectEvictionCandidate} for the exact order.
+ *
+ * Each pooled connection has a `lastUsedAt` timestamp (readable via
+ * {@link getLastUsedAt}), bumped on acquire-reuse, on every successful
+ * broadcast {@link send}, on every successful healthy {@link ping}, and on an
+ * explicit {@link markConnectionUsed}. Callers that send over a pooled
+ * connection without going through {@link broadcast} should call
+ * {@link markConnectionUsed} so the LRU order stays accurate.
  */
 export class WebRTCConnectionPool {
   private readonly localPlayerId: string;
   private readonly maxConnections: number;
   private readonly pingIntervalMs: number;
   private readonly cacheTtlMs: number;
+  private readonly idleFailureMs: number;
+  private readonly idleConnectedMs: number;
+  private readonly activeMs: number;
+  private readonly now: () => number;
   private readonly events: ConnectionPoolEvents;
   private readonly createConnection: (peerId: string) => WebRTCConnection;
 
@@ -131,6 +224,11 @@ export class WebRTCConnectionPool {
   private readonly connections: Map<string, WebRTCConnection> = new Map();
   /** Cached state for dropped peers. */
   private readonly cache: Map<string, CachedConnectionState> = new Map();
+  /**
+   * Last-used timestamp (epoch ms) per pooled peer, driving the LRU order.
+   * Bumped by {@link markUsed}.
+   */
+  private readonly lastUsedAt: Map<string, number> = new Map();
   /** Single consolidated ping timer sweeping all pooled connections. */
   private pingTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -142,6 +240,10 @@ export class WebRTCConnectionPool {
     this.maxConnections = options.maxConnections ?? DEFAULT_MAX_CONNECTIONS;
     this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
     this.cacheTtlMs = options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
+    this.idleFailureMs = options.idleFailureMs ?? DEFAULT_IDLE_FAILURE_MS;
+    this.idleConnectedMs = options.idleConnectedMs ?? DEFAULT_IDLE_CONNECTED_MS;
+    this.activeMs = options.activeMs ?? DEFAULT_ACTIVE_MS;
+    this.now = options.now ?? (() => Date.now());
     this.events = options.events ?? {};
     this.createConnection =
       options.createConnection ??
@@ -169,8 +271,14 @@ export class WebRTCConnectionPool {
 
   /**
    * Return the existing connection for a peer (reuse), or create a new one if
-   * the peer is unknown and the pool is under capacity. Returns null — and
-   * fires {@link ConnectionPoolEvents.onPoolFull} — when at capacity.
+   * the peer is unknown and the pool is under capacity.
+   *
+   * When the pool is full, this first tries to evict an idle/LRU connection
+   * (see {@link selectEvictionCandidate}) to make room. Only if NO connection
+   * is evictable does it return `null` and fire
+   * {@link ConnectionPoolEvents.onPoolFull}. Each successful eviction is
+   * reported via {@link ConnectionPoolEvents.onEvict} (and the peer's state is
+   * cached first via {@link cacheState} so reconnect is fast).
    */
   acquire(peerId: string): WebRTCConnection | null {
     if (!peerId) {
@@ -178,17 +286,25 @@ export class WebRTCConnectionPool {
     }
     const existing = this.connections.get(peerId);
     if (existing) {
+      this.markUsed(peerId);
       this.events.onReuse?.(peerId);
       return existing;
     }
 
     if (this.connections.size >= this.maxConnections) {
-      this.events.onPoolFull?.(peerId);
-      return null;
+      // Pool full: reclaim a slot from the least-recently-used evictable
+      // connection before refusing. Falls through to creation on success.
+      const evictable = this.selectEvictionCandidate(this.now());
+      if (!evictable) {
+        this.events.onPoolFull?.(peerId, { evictedPeerIds: [] });
+        return null;
+      }
+      this.evictPeer(evictable);
     }
 
     const connection = this.createConnection(peerId);
     this.connections.set(peerId, connection);
+    this.markUsed(peerId);
     return connection;
   }
 
@@ -231,6 +347,33 @@ export class WebRTCConnectionPool {
   }
 
   /**
+   * Last-used timestamp (epoch ms) for a pooled peer, or `null` if the peer is
+   * unknown. Drives the LRU eviction order.
+   */
+  getLastUsedAt(peerId: string): number | null {
+    return this.lastUsedAt.has(peerId)
+      ? (this.lastUsedAt.get(peerId) as number)
+      : null;
+  }
+
+  /**
+   * Stamp a pooled connection as freshly used without going through
+   * {@link broadcast} (e.g. a caller sending over a connection obtained via
+   * {@link acquire}). No-op for unknown peers. Required to keep the LRU order
+   * accurate when traffic bypasses the pool.
+   */
+  markConnectionUsed(peerId: string): void {
+    if (this.connections.has(peerId)) {
+      this.markUsed(peerId);
+    }
+  }
+
+  /** Bump a peer's last-used timestamp to the current pool time. */
+  private markUsed(peerId: string): void {
+    this.lastUsedAt.set(peerId, this.now());
+  }
+
+  /**
    * Remove and close a peer's connection, caching its state so a near-term
    * reconnect can reuse it. No-op if the peer is unknown.
    */
@@ -240,6 +383,83 @@ export class WebRTCConnectionPool {
     this.cacheState(peerId, connection);
     connection.close();
     this.connections.delete(peerId);
+    this.lastUsedAt.delete(peerId);
+  }
+
+  /**
+   * Proactively evict every currently-evictable pooled connection (dead links
+   * past {@link ConnectionPoolOptions.idleFailureMs} first, then connected-
+   * but-idle peers past {@link ConnectionPoolOptions.idleConnectedMs}). Returns
+   * the evicted peer ids. {@link acquire} does NOT call this — it evicts at
+   * most one connection via {@link selectEvictionCandidate}; this method is
+   * for periodic maintenance sweeps.
+   */
+  evictIdle(now: number = this.now()): string[] {
+    const evicted: string[] = [];
+    let candidate = this.selectEvictionCandidate(now);
+    while (candidate) {
+      this.evictPeer(candidate);
+      evicted.push(candidate);
+      candidate = this.selectEvictionCandidate(now);
+    }
+    return evicted;
+  }
+
+  /**
+   * Pick the single best eviction candidate at `now`, or `null` if nothing is
+   * evictable.
+   *
+   * Eviction order:
+   * 1. <b>Dead links first</b> — connections whose {@link WebRTCConnection.isConnected}
+   *    is `false` AND whose last-used age exceeds
+   *    {@link ConnectionPoolOptions.idleFailureMs}. Among these, the
+   *    least-recently-used (oldest `lastUsedAt`) is chosen.
+   * 2. <b>Connected-but-idle</b> — `isConnected === true` AND last-used age
+   *    exceeds {@link ConnectionPoolOptions.idleConnectedMs}. Again the LRU
+   *    peer is chosen.
+   *
+   * A connection used within {@link ConnectionPoolOptions.activeMs} is never
+   * returned (it is actively in use).
+   */
+  private selectEvictionCandidate(now: number): string | null {
+    let zombieLRU: string | null = null;
+    let zombieLRUAt = Infinity;
+    let idleLRU: string | null = null;
+    let idleLRUAt = Infinity;
+    for (const [peerId, connection] of this.connections) {
+      const lastUsed = this.lastUsedAt.get(peerId) ?? now;
+      const age = now - lastUsed;
+      // Actively in use — never evict, regardless of connected state.
+      if (age <= this.activeMs) continue;
+      if (connection.isConnected()) {
+        if (age > this.idleConnectedMs && lastUsed < idleLRUAt) {
+          idleLRU = peerId;
+          idleLRUAt = lastUsed;
+        }
+      } else if (age > this.idleFailureMs && lastUsed < zombieLRUAt) {
+        zombieLRU = peerId;
+        zombieLRUAt = lastUsed;
+      }
+    }
+    // Prefer reclaiming a dead/zombie slot over dropping a live-but-idle peer.
+    return zombieLRU ?? idleLRU;
+  }
+
+  /**
+   * Tear down a single pooled connection: cache its state (so
+   * {@link ConnectionPoolEvents.onCache} fires and reconnect is fast), close
+   * it, remove it from the pool, drop its last-used stamp, and fire
+   * {@link ConnectionPoolEvents.onEvict}. Mirrors {@link release} but signals
+   * eviction.
+   */
+  private evictPeer(peerId: string): void {
+    const connection = this.connections.get(peerId);
+    if (!connection) return;
+    this.cacheState(peerId, connection);
+    connection.close();
+    this.connections.delete(peerId);
+    this.lastUsedAt.delete(peerId);
+    this.events.onEvict?.(peerId);
   }
 
   /**
@@ -249,21 +469,20 @@ export class WebRTCConnectionPool {
    */
   cacheState(peerId: string, connection: WebRTCConnection): void {
     const peers = connection.getPeers();
-    const peerInfo: PeerInfo =
-      peers.find((p) => p.peerId === peerId) ??
+    const peerInfo: PeerInfo = peers.find((p) => p.peerId === peerId) ??
       peers[0] ?? {
         peerId,
         playerId: peerId,
         playerName: `Peer-${peerId}`,
         connectionState: connection.getConnectionState(),
-        connectedAt: Date.now(),
+        connectedAt: this.now(),
       };
     const cached: CachedConnectionState = {
       peerId,
       peerInfo,
       state: connection.getConnectionState(),
-      lastConnectedAt: Date.now(),
-      lastDroppedAt: Date.now(),
+      lastConnectedAt: this.now(),
+      lastDroppedAt: this.now(),
     };
     this.cache.set(peerId, cached);
     this.events.onCache?.(peerId, cached);
@@ -275,7 +494,7 @@ export class WebRTCConnectionPool {
   getCachedState(peerId: string): CachedConnectionState | null {
     const cached = this.cache.get(peerId);
     if (!cached) return null;
-    if (Date.now() - cached.lastDroppedAt > this.cacheTtlMs) {
+    if (this.now() - cached.lastDroppedAt > this.cacheTtlMs) {
       this.cache.delete(peerId);
       return null;
     }
@@ -295,12 +514,15 @@ export class WebRTCConnectionPool {
   /**
    * Broadcast a message across the pool by reusing each pooled connection's
    * open data channel. Returns the number of peers the message was sent to.
+   * Each successful send bumps the peer's `lastUsedAt` so active peers are
+   * retained by the LRU policy.
    */
   broadcast(message: P2PMessage): number {
     let sent = 0;
-    for (const connection of this.connections.values()) {
+    for (const [peerId, connection] of this.connections) {
       if (connection.isConnected()) {
         connection.send(message);
+        this.markUsed(peerId);
         sent++;
       }
     }
@@ -316,17 +538,22 @@ export class WebRTCConnectionPool {
       connection.close();
     }
     this.connections.clear();
+    this.lastUsedAt.clear();
     this.cache.clear();
   }
 
   /**
    * Single sweep that pings every connected pooled connection. Replaces the
-   * N independent per-connection ping intervals from webrtc-p2p.ts.
+   * N independent per-connection ping intervals from webrtc-p2p.ts. A
+   * successful healthy ping bumps the peer's `lastUsedAt` so live links are
+   * retained by the LRU policy (disconnected peers are skipped, freezing
+   * their stamp so they age into eviction candidates).
    */
   private pingAll(): void {
-    for (const connection of this.connections.values()) {
+    for (const [peerId, connection] of this.connections) {
       if (connection.isConnected()) {
         connection.ping();
+        this.markUsed(peerId);
       }
     }
   }
