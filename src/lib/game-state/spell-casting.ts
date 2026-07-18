@@ -30,6 +30,7 @@ import {
   parseBestow,
   parseBlitz,
   parseForetell,
+  parseSpectacle,
   parseConvoke,
   parseDelve,
   parseSplitSecond,
@@ -518,6 +519,49 @@ export function castSpell(
           totalRed += foretellInfo.foretellCost.red - manaCost.red;
           totalGreen += foretellInfo.foretellCost.green - manaCost.green;
           alternativeCostsUsed.push("foretell");
+        }
+        break;
+      }
+      case "spectacle": {
+        // CR 702.135 - Spectacle: an alternative cost that REPLACES the mana
+        // cost (not an additional cost). The printed spectacle cost is paid
+        // instead of the mana cost; the spell's mana value is unchanged and
+        // other additional costs/taxes still apply on top. Subtract the
+        // printed mana-cost component and add the spectacle-cost component so
+        // additional costs are preserved (same treatment as Blitz/Foretell).
+        //
+        // CR 702.135a precondition: the controller may cast for the spectacle
+        // cost only "if an opponent has lost life this turn." The engine
+        // accumulates per-player life loss on `Player.lastTurnLifeLost`
+        // (populated by `dealDamageToPlayer` / `loseLife` in player-actions.ts,
+        // reset at the start of each turn in game-state.ts). If no opponent
+        // lost life this turn, the spectacle branch is a no-op: the printed
+        // mana cost is charged instead (Spectacle is a player OPTION —
+        // falling back to the printed cost, not rejecting the cast).
+        const spectacleInfo = parseSpectacle(card.cardData.oracle_text || "");
+        if (spectacleInfo.hasSpectacle && spectacleInfo.spectacleCost) {
+          let opponentLostLife = false;
+          for (const [pid, p] of state.players) {
+            if (pid !== playerId && (p.lastTurnLifeLost ?? 0) > 0) {
+              opponentLostLife = true;
+              break;
+            }
+          }
+          if (opponentLostLife) {
+            totalGeneric +=
+              spectacleInfo.spectacleCost.generic - manaCost.generic;
+            totalWhite += spectacleInfo.spectacleCost.white - manaCost.white;
+            totalBlue += spectacleInfo.spectacleCost.blue - manaCost.blue;
+            totalBlack += spectacleInfo.spectacleCost.black - manaCost.black;
+            totalRed += spectacleInfo.spectacleCost.red - manaCost.red;
+            totalGreen += spectacleInfo.spectacleCost.green - manaCost.green;
+            // Records the spectacle alternative cost on the StackObject so
+            // replay / resolution can observe it (mirrors blitz/foretell —
+            // `alternativeCostsUsed` is the engine's per-cast event log).
+            alternativeCostsUsed.push("spectacle");
+          }
+          // If the precondition is false, fall through silently: the printed
+          // cost charged below is the player's fallback option (CR 702.135a).
         }
         break;
       }

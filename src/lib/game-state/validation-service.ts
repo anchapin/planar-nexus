@@ -361,10 +361,18 @@ export class ValidationService {
     // delve reductions are applied, so the printed-cost check here would
     // falsely reject legal delve casts. Skip it (same rationale as
     // foretell/convoke).
+    //
+    // Spectacle (CR 702.135) REPLACES the printed mana cost with the spectacle
+    // cost when an opponent has lost life this turn; when the precondition is
+    // false, spectacle falls back to the printed cost (Spectacle is a player
+    // option). Either way the printed-cost check here is not authoritative —
+    // castSpell recomputes and charges the correct amount. Skip it (same
+    // rationale as foretell/convoke/delve).
     if (
       altType !== "foretell" &&
       altType !== "convoke" &&
-      altType !== "delve"
+      altType !== "delve" &&
+      altType !== "spectacle"
     ) {
       const manaValidation = this.validateManaCost(state, player, card);
       if (!manaValidation.isValid) {

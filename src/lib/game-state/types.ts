@@ -341,6 +341,23 @@ export interface Player {
    */
   spellsCastThisTurn?: number;
 
+  // Spectacle tracking (CR 702.135)
+  /**
+   * Total life this player has LOST this turn (damage + non-damage life loss).
+   * CR 702.135a: Spectacle may be cast for its spectacle cost "if an opponent
+   * has lost life this turn" — this counter is what the spectacle gate reads.
+   * Reset to 0 at the start of each turn (mirrors `landsPlayedThisTurn` /
+   * `foretoldThisTurn` / `spellsCastThisTurn`). Optional so legacy Player
+   * literals default to "no life lost yet" (read with `?? 0`).
+   *
+   * Note: only actual life loss counts (CR 118.3). Life SET effects (e.g.
+   * "your life total becomes 5") and life-payment-that-isnt-loss (e.g. "pay
+   * 2 life" on some cards is "loss"; on others is a cost — engine currently
+   * treats both as loss, which is conservative for spectacle). The counter is
+   * incremented by `dealDamageToPlayer` and `loseLife` in `player-actions.ts`.
+   */
+  lastTurnLifeLost?: number;
+
   dungeonProgress?: DungeonProgress | null;
   completedDungeonIds?: DungeonId[];
 
