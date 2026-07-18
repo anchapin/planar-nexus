@@ -19,6 +19,7 @@ import {
 } from "../p2p-game-connection";
 import { signMessageEnvelope } from "../p2p-json-validation";
 import { ValidationService } from "../game-state/validation-service";
+import { p2pLogger } from "../p2p-logger";
 
 describe("P2P Game Connection Types", () => {
   describe("GameMessageType", () => {
@@ -2446,5 +2447,69 @@ describe("P2PGameConnection chat cap + sanitize (#1428)", () => {
       expect(payload.senderName).not.toMatch(/[<>\u202E]/);
       expect(payload.senderName).toBe("Evilb");
     });
+  });
+});
+
+/**
+ * Issue #1426 — the data-channel warn/error paths must route through the
+ * shared `p2pLogger` (not raw `console.*`) so P2P logging stays leveled and
+ * prod-strippable. These cover a representative `.warn` and `.error` path.
+ */
+describe("P2PGameConnection logs through p2pLogger (#1426)", () => {
+  let connection: P2PGameConnection;
+  let warnSpy: jest.SpyInstance;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    warnSpy = jest.spyOn(p2pLogger, "warn").mockImplementation(() => {});
+    errorSpy = jest.spyOn(p2pLogger, "error").mockImplementation(() => {});
+    connection = createP2PGameConnection({
+      playerId: "player-1",
+      playerName: "Host",
+      role: "host",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+      },
+    });
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  const handleMessage = (raw: string) =>
+    (
+      connection as unknown as { handleMessage: (d: string) => void }
+    ).handleMessage(raw);
+
+  it("routes a malformed peer message to p2pLogger.error (not console)", () => {
+    handleMessage("{ not json");
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[P2PGameConnection] Rejected malformed peer message",
+    );
+  });
+
+  it("routes a duplicate/replay to p2pLogger.warn (not console)", () => {
+    const raw = JSON.stringify({
+      type: "game-action",
+      senderId: "player-2",
+      timestamp: Date.now(),
+      seq: 4,
+      data: { action: "pass" },
+    });
+    handleMessage(raw);
+    handleMessage(raw); // same seq → dropped as a replay
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[P2PGameConnection] Dropping duplicate/replay message",
+      expect.anything(),
+    );
   });
 });
