@@ -31,6 +31,13 @@ const eslintConfig = [
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-empty-function": "warn", // Changed to warn for callback interfaces
       "no-empty": ["error", { allowEmptyCatch: false }],
+      // New in @eslint/js v10's recommended config. The repo's existing code
+      // trips these in many places; we keep them as warnings (visible via
+      // --max-warnings 1000) rather than errors so the v10 bump does not
+      // gate CI. A follow-up can either fix the underlying patterns or
+      // promote these to errors.
+      "no-useless-assignment": "warn",
+      "preserve-caught-error": "warn",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
       // Issue #1276: Forbid new dangerouslySetInnerHTML uses. The existing
