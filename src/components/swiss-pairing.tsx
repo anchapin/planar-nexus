@@ -1,26 +1,26 @@
-'use client';
+"use client";
 
-import { useState, useCallback, useMemo } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-  Trophy, 
-  Crown, 
-  Check, 
+import { useState, useCallback, useMemo } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Trophy,
+  Crown,
+  Check,
   Shuffle,
   ArrowRight,
   BarChart3,
   History,
-  Split
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
+  Split,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Swiss tournament types
-export type SwissTournamentStatus = 'setup' | 'in-progress' | 'completed';
-export type SwissMatchStatus = 'pending' | 'in-progress' | 'completed' | 'draw';
+export type SwissTournamentStatus = "setup" | "in-progress" | "completed";
+export type SwissMatchStatus = "pending" | "in-progress" | "completed" | "draw";
 
 export interface SwissPlayer {
   id: string;
@@ -31,7 +31,11 @@ export interface SwissPlayer {
   losses: number;
   draws: number;
   opponentIds: string[]; // Track who they've played against
-  matchHistory: { round: number; result: 'win' | 'loss' | 'draw'; opponentId: string }[];
+  matchHistory: {
+    round: number;
+    result: "win" | "loss" | "draw";
+    opponentId: string;
+  }[];
 }
 
 export interface SwissMatch {
@@ -72,49 +76,58 @@ export interface Tiebreakers {
 }
 
 // Calculate tiebreakers for a player
-function calculateTiebreakers(player: SwissPlayer, allPlayers: SwissPlayer[]): Tiebreakers {
+function calculateTiebreakers(
+  player: SwissPlayer,
+  allPlayers: SwissPlayer[],
+): Tiebreakers {
   // 1. Opponent Match Win Percentage (OMWP)
   let opponentWins = 0;
   let opponentLosses = 0;
   let opponentDraws = 0;
-  
-  player.opponentIds.forEach(oppId => {
-    const opponent = allPlayers.find(p => p.id === oppId);
+
+  player.opponentIds.forEach((oppId) => {
+    const opponent = allPlayers.find((p) => p.id === oppId);
     if (opponent) {
       opponentWins += opponent.wins;
       opponentLosses += opponent.losses;
       opponentDraws += opponent.draws;
     }
   });
-  
+
   const opponentMatches = opponentWins + opponentLosses + opponentDraws;
-  const opponentMatchWinPercentage = opponentMatches > 0 
-    ? (opponentWins + opponentDraws * 0.5) / opponentMatches 
-    : 0.5;
-  
+  const opponentMatchWinPercentage =
+    opponentMatches > 0
+      ? (opponentWins + opponentDraws * 0.5) / opponentMatches
+      : 0.5;
+
   // 2. Game Win Percentage (GWP) - simplified since we track match results
   const totalGames = player.wins + player.losses + player.draws;
-  const gameWinPercentage = totalGames > 0 
-    ? (player.wins + player.draws * 0.5) / totalGames 
-    : 0.5;
-  
+  const gameWinPercentage =
+    totalGames > 0 ? (player.wins + player.draws * 0.5) / totalGames : 0.5;
+
   // 3. Opponent Game Win Percentage (OGWP)
   // Simplified: use opponent match win percentage as proxy
   const opponentGameWinPercentage = opponentMatchWinPercentage;
-  
+
   // Final tiebreaker (simplified)
-  const final = (opponentMatchWinPercentage * 0.4) + (gameWinPercentage * 0.3) + (opponentGameWinPercentage * 0.3);
-  
+  const final =
+    opponentMatchWinPercentage * 0.4 +
+    gameWinPercentage * 0.3 +
+    opponentGameWinPercentage * 0.3;
+
   return {
     opponentMatchWinPercentage,
     gameWinPercentage,
     opponentGameWinPercentage,
-    final
+    final,
   };
 }
 
 // Swiss pairing algorithm
-function generateSwissPairings(players: SwissPlayer[], round: number): SwissMatch[] {
+function generateSwissPairings(
+  players: SwissPlayer[],
+  round: number,
+): SwissMatch[] {
   // Sort by points (descending), then by tiebreakers
   const sortedPlayers = [...players].sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points;
@@ -132,7 +145,7 @@ function generateSwissPairings(players: SwissPlayer[], round: number): SwissMatc
     for (let i = 0; i < sortedPlayers.length - 1; i += 2) {
       const player1 = sortedPlayers[i];
       const player2 = sortedPlayers[i + 1];
-      
+
       if (!usedPlayerIds.has(player1.id) && !usedPlayerIds.has(player2.id)) {
         matches.push({
           id: `match-r${round}-t${tableNumber}`,
@@ -140,48 +153,48 @@ function generateSwissPairings(players: SwissPlayer[], round: number): SwissMatc
           table: tableNumber,
           player1,
           player2,
-          status: 'pending'
+          status: "pending",
         });
-        
+
         usedPlayerIds.add(player1.id);
         usedPlayerIds.add(player2.id);
         tableNumber++;
       }
     }
-    
+
     // Handle bye if odd number of players
     if (usedPlayerIds.size < sortedPlayers.length) {
-      const byePlayer = sortedPlayers.find(p => !usedPlayerIds.has(p.id));
+      const byePlayer = sortedPlayers.find((p) => !usedPlayerIds.has(p.id));
       if (byePlayer) {
         // Award bye as a win
         byePlayer.points += 3;
         byePlayer.wins += 1;
-        byePlayer.opponentIds.push('bye');
+        byePlayer.opponentIds.push("bye");
       }
     }
   } else {
     // Subsequent rounds: pair by points, avoiding rematches
     for (const player1 of sortedPlayers) {
       if (usedPlayerIds.has(player1.id)) continue;
-      
+
       // Find best opponent: same or closest points, hasn't played yet
       let bestOpponent: SwissPlayer | null = null;
       let bestScore = -1;
-      
+
       for (const player2 of sortedPlayers) {
         if (usedPlayerIds.has(player2.id)) continue;
         if (player1.id === player2.id) continue;
         if (player1.opponentIds.includes(player2.id)) continue;
-        
+
         const pointDiff = Math.abs(player1.points - player2.points);
         const score = 100 - pointDiff * 10;
-        
+
         if (score > bestScore) {
           bestScore = score;
           bestOpponent = player2;
         }
       }
-      
+
       if (bestOpponent) {
         matches.push({
           id: `match-r${round}-t${tableNumber}`,
@@ -189,9 +202,9 @@ function generateSwissPairings(players: SwissPlayer[], round: number): SwissMatc
           table: tableNumber,
           player1,
           player2: bestOpponent,
-          status: 'pending'
+          status: "pending",
         });
-        
+
         usedPlayerIds.add(player1.id);
         usedPlayerIds.add(bestOpponent.id);
         tableNumber++;
@@ -203,11 +216,13 @@ function generateSwissPairings(players: SwissPlayer[], round: number): SwissMatc
 }
 
 // Calculate standings with tiebreakers
-function calculateStandings(players: SwissPlayer[]): { player: SwissPlayer; tiebreakers: Tiebreakers }[] {
+function calculateStandings(
+  players: SwissPlayer[],
+): { player: SwissPlayer; tiebreakers: Tiebreakers }[] {
   return [...players]
-    .map(player => ({
+    .map((player) => ({
       player,
-      tiebreakers: calculateTiebreakers(player, players)
+      tiebreakers: calculateTiebreakers(player, players),
     }))
     .sort((a, b) => {
       // Sort by points first
@@ -222,25 +237,30 @@ function calculateStandings(players: SwissPlayer[]): { player: SwissPlayer; tieb
 // Swiss pairing display component
 interface SwissPairingDisplayProps {
   tournament: SwissTournament;
-  onMatchComplete?: (matchId: string, result: 'player1-win' | 'player2-win' | 'draw') => void;
+  onMatchComplete?: (
+    matchId: string,
+    result: "player1-win" | "player2-win" | "draw",
+  ) => void;
   className?: string;
 }
 
-export function SwissPairingDisplay({ tournament, onMatchComplete, className }: SwissPairingDisplayProps) {
+export function SwissPairingDisplay({
+  tournament,
+  onMatchComplete,
+  className,
+}: SwissPairingDisplayProps) {
   const currentRound = tournament.rounds[tournament.currentRound - 1];
 
   if (!currentRound) return null;
 
   return (
-    <div className={cn('space-y-6', className)}>
+    <div className={cn("space-y-6", className)}>
       {/* Round header */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">
           Round {tournament.currentRound} of {tournament.totalRounds}
         </h3>
-        <Badge variant="outline">
-          {tournament.players.length} Players
-        </Badge>
+        <Badge variant="outline">{tournament.players.length} Players</Badge>
       </div>
 
       {/* Pairings grid */}
@@ -260,39 +280,49 @@ export function SwissPairingDisplay({ tournament, onMatchComplete, className }: 
 // Single Swiss match card
 interface SwissMatchCardProps {
   match: SwissMatch;
-  onResultSelect?: (result: 'player1-win' | 'player2-win' | 'draw') => void;
+  onResultSelect?: (result: "player1-win" | "player2-win" | "draw") => void;
 }
 
 function SwissMatchCard({ match, onResultSelect }: SwissMatchCardProps) {
-  const isComplete = match.status === 'completed';
-  
+  const isComplete = match.status === "completed";
+
   return (
-    <Card className={cn(
-      'w-full',
-      isComplete && match.winner && 'border-green-500/50',
-      isComplete && match.status === 'draw' && 'border-yellow-500/50'
-    )}>
+    <Card
+      className={cn(
+        "w-full",
+        isComplete && match.winner && "border-green-500/50",
+        isComplete && match.status === "draw" && "border-yellow-500/50",
+      )}
+    >
       <CardContent className="p-4 space-y-3">
         {/* Table number */}
         <div className="text-xs text-muted-foreground text-center">
           Table {match.table}
         </div>
-        
+
         {/* Player 1 */}
-        <div 
+        <div
           className={cn(
-            'flex items-center justify-between p-2 rounded',
-            match.winner?.id === match.player1?.id && 'bg-green-500/20 border border-green-500/50',
-            match.status === 'draw' && 'bg-yellow-500/10',
-            !isComplete && 'bg-muted'
+            "flex items-center justify-between p-2 rounded",
+            match.winner?.id === match.player1?.id &&
+              "bg-green-500/20 border border-green-500/50",
+            match.status === "draw" && "bg-yellow-500/10",
+            !isComplete && "bg-muted",
           )}
         >
           <div className="flex items-center gap-2">
             {match.player1?.seed && (
-              <span className="text-xs text-muted-foreground w-4">#{match.player1.seed}</span>
+              <span className="text-xs text-muted-foreground w-4">
+                #{match.player1.seed}
+              </span>
             )}
-            <span className={cn('font-medium', !match.player1 && 'text-muted-foreground')}>
-              {match.player1?.name || 'TBD'}
+            <span
+              className={cn(
+                "font-medium",
+                !match.player1 && "text-muted-foreground",
+              )}
+            >
+              {match.player1?.name || "TBD"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -304,27 +334,35 @@ function SwissMatchCard({ match, onResultSelect }: SwissMatchCardProps) {
             )}
           </div>
         </div>
-        
+
         {/* VS divider */}
         <div className="flex items-center justify-center">
           <span className="text-xs text-muted-foreground">VS</span>
         </div>
-        
+
         {/* Player 2 */}
-        <div 
+        <div
           className={cn(
-            'flex items-center justify-between p-2 rounded',
-            match.winner?.id === match.player2?.id && 'bg-green-500/20 border border-green-500/50',
-            match.status === 'draw' && 'bg-yellow-500/10',
-            !isComplete && 'bg-muted'
+            "flex items-center justify-between p-2 rounded",
+            match.winner?.id === match.player2?.id &&
+              "bg-green-500/20 border border-green-500/50",
+            match.status === "draw" && "bg-yellow-500/10",
+            !isComplete && "bg-muted",
           )}
         >
           <div className="flex items-center gap-2">
             {match.player2?.seed && (
-              <span className="text-xs text-muted-foreground w-4">#{match.player2.seed}</span>
+              <span className="text-xs text-muted-foreground w-4">
+                #{match.player2.seed}
+              </span>
             )}
-            <span className={cn('font-medium', !match.player2 && 'text-muted-foreground')}>
-              {match.player2?.name || 'TBD'}
+            <span
+              className={cn(
+                "font-medium",
+                !match.player2 && "text-muted-foreground",
+              )}
+            >
+              {match.player2?.name || "TBD"}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -336,33 +374,33 @@ function SwissMatchCard({ match, onResultSelect }: SwissMatchCardProps) {
             )}
           </div>
         </div>
-        
+
         {/* Result buttons (when in progress) */}
         {!isComplete && match.player1 && match.player2 && onResultSelect && (
           <div className="flex gap-2 pt-2">
-            <Button 
-              size="sm" 
-              variant="outline" 
+            <Button
+              size="sm"
+              variant="outline"
               className="flex-1"
-              onClick={() => onResultSelect('player1-win')}
+              onClick={() => onResultSelect("player1-win")}
             >
               <Check className="w-3 h-3 mr-1" />
               P1 Win
             </Button>
-            <Button 
-              size="sm" 
-              variant="outline" 
+            <Button
+              size="sm"
+              variant="outline"
               className="flex-1"
-              onClick={() => onResultSelect('draw')}
+              onClick={() => onResultSelect("draw")}
             >
               <Split className="w-3 h-3 mr-1" />
               Draw
             </Button>
-            <Button 
-              size="sm" 
-              variant="outline" 
+            <Button
+              size="sm"
+              variant="outline"
               className="flex-1"
-              onClick={() => onResultSelect('player2-win')}
+              onClick={() => onResultSelect("player2-win")}
             >
               <Check className="w-3 h-3 mr-1" />
               P2 Win
@@ -380,6 +418,20 @@ interface SwissStandingsProps {
   className?: string;
 }
 
+// Podium rank labels — surfaced as visible text and as sr-only announcements
+// so screen-reader users and forced-colors mode users learn the rank from
+// the label, not the gold/silver/bronze background (WCAG 1.4.1 Use of
+// Color).
+const PODIUM_LABEL: Record<0 | 1 | 2, string> = {
+  0: "1st place",
+  1: "2nd place",
+  2: "3rd place",
+};
+
+function isPodium(index: number): index is 0 | 1 | 2 {
+  return index === 0 || index === 1 || index === 2;
+}
+
 export function SwissStandings({ players, className }: SwissStandingsProps) {
   const standings = useMemo(() => calculateStandings(players), [players]);
 
@@ -387,59 +439,164 @@ export function SwissStandings({ players, className }: SwissStandingsProps) {
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <BarChart3 className="w-5 h-5" />
+          <BarChart3 className="w-5 h-5" aria-hidden="true" />
           Standings
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          {standings.map(({ player }, index) => (
-            <div
-              key={player.id}
-              className={cn(
-                'flex items-center justify-between p-2 rounded',
-                index === 0 && 'bg-yellow-500/10 border border-yellow-500/30',
-                index === 1 && 'bg-gray-400/10 border border-gray-400/30',
-                index === 2 && 'bg-amber-600/10 border border-amber-600/30'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold',
-                  index === 0 && 'bg-yellow-500 text-white',
-                  index === 1 && 'bg-gray-400 text-white',
-                  index === 2 && 'bg-amber-600 text-white',
-                  index > 2 && 'bg-muted'
-                )}>
-                  {index + 1}
-                </span>
-                <span className="font-medium">{player.name}</span>
-                {player.seed && (
-                  <span className="text-xs text-muted-foreground">#{player.seed}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-lg">{player.points}</span>
-                <div className="flex gap-1">
-                  <Badge variant="outline" className="text-green-500 text-xs">
-                    {player.wins}W
-                  </Badge>
-                  <Badge variant="outline" className="text-yellow-500 text-xs">
-                    {player.draws}D
-                  </Badge>
-                  <Badge variant="outline" className="text-red-500 text-xs">
-                    {player.losses}L
-                  </Badge>
-                </div>
-              </div>
-            </div>
-          ))}
+        {/*
+         * Semantic table — WCAG 1.3.1 (Info and Relationships).
+         *
+         * The previous implementation rendered the standings as a stack
+         * of styled <div>s with no row/cell relationships. Screen-reader
+         * users received a flat sequence of names with no podium meaning,
+         * and rank was conveyed only via gold/silver/bronze background
+         * colours (WCAG 1.4.1 Use of Color failure).
+         *
+         * The wrapping <div role="region" aria-label="..."> provides a
+         * named landmark so assistive tech can navigate to the standings.
+         * The native <table>/<thead>/<tbody>/<th>/<td> structure conveys
+         * row/column relationships without needing ARIA roles. The
+         * visually-hidden podium label ("1st place" / "2nd place" /
+         * "3rd place") is the non-color signal for podium rank.
+         */}
+        <div
+          role="region"
+          aria-label="Swiss tournament standings"
+          className="rounded-md border"
+        >
+          <table className="w-full caption-bottom text-sm">
+            <caption className="sr-only">
+              Swiss tournament standings, ranked by points and tiebreakers. Rows
+              include rank, player, points, and win-draw-loss record.
+            </caption>
+            <thead className="border-b bg-muted/40">
+              <tr>
+                <th
+                  scope="col"
+                  className="h-10 px-3 text-left align-middle font-medium text-muted-foreground w-16"
+                >
+                  Rank
+                </th>
+                <th
+                  scope="col"
+                  className="h-10 px-3 text-left align-middle font-medium text-muted-foreground"
+                >
+                  Player
+                </th>
+                <th
+                  scope="col"
+                  className="h-10 px-3 text-right align-middle font-medium text-muted-foreground w-20"
+                >
+                  Points
+                </th>
+                <th
+                  scope="col"
+                  className="h-10 px-3 text-right align-middle font-medium text-muted-foreground w-32"
+                >
+                  Record
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {standings.map(({ player }, index) => {
+                const podiumLabel = isPodium(index)
+                  ? PODIUM_LABEL[index]
+                  : null;
+                return (
+                  <tr
+                    key={player.id}
+                    className={cn(
+                      "border-b transition-colors",
+                      index === 0 && "bg-yellow-500/10",
+                      index === 1 && "bg-gray-400/10",
+                      index === 2 && "bg-amber-600/10",
+                    )}
+                  >
+                    <th
+                      scope="row"
+                      className="px-3 py-2 align-middle font-normal w-16"
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            "w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold",
+                            index === 0 && "bg-yellow-500 text-white",
+                            index === 1 && "bg-gray-400 text-white",
+                            index === 2 && "bg-amber-600 text-white",
+                            index > 2 && "bg-muted text-foreground",
+                          )}
+                          aria-hidden="true"
+                        >
+                          {index + 1}
+                        </span>
+                        {podiumLabel && (
+                          <span className="text-xs font-semibold uppercase tracking-wide text-foreground">
+                            {podiumLabel}
+                          </span>
+                        )}
+                        {/*
+                         * Always announce the podium position to assistive
+                         * tech, even when no visible podium label is
+                         * rendered (rank ≥ 4) so SR users hear "1st place"
+                         * / "2nd place" / "3rd place" for the top three.
+                         */}
+                        {podiumLabel && (
+                          <span className="sr-only">{podiumLabel}</span>
+                        )}
+                        {!podiumLabel && (
+                          <span className="sr-only">Rank {index + 1}</span>
+                        )}
+                      </span>
+                    </th>
+                    <td className="px-3 py-2 align-middle">
+                      <span className="font-medium">{player.name}</span>
+                      {player.seed && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          #{player.seed}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 align-middle text-right font-bold text-lg tabular-nums">
+                      {player.points}
+                    </td>
+                    <td className="px-3 py-2 align-middle">
+                      <div
+                        className="flex justify-end gap-1"
+                        aria-label={`${player.wins} wins, ${player.draws} draws, ${player.losses} losses`}
+                      >
+                        <Badge
+                          variant="outline"
+                          className="text-green-500 text-xs"
+                        >
+                          {player.wins}W
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-yellow-500 text-xs"
+                        >
+                          {player.draws}D
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-red-500 text-xs"
+                        >
+                          {player.losses}L
+                        </Badge>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-        
+
         {/* Tiebreakers explanation */}
         <div className="mt-4 p-3 bg-muted rounded-lg">
           <p className="text-xs text-muted-foreground">
-            <strong>Tiebreakers:</strong> 1) Points, 2) Opponent Match Win %, 3) Game Win %, 4) Opponent Game Win %
+            <strong>Tiebreakers:</strong> 1) Points, 2) Opponent Match Win %, 3)
+            Game Win %, 4) Opponent Game Win %
           </p>
         </div>
       </CardContent>
@@ -453,29 +610,32 @@ interface SwissTournamentSetupProps {
   className?: string;
 }
 
-export function SwissTournamentSetup({ onStart, className }: SwissTournamentSetupProps) {
-  const [tournamentName, setTournamentName] = useState('My Swiss Tournament');
-  const [playersText, setPlayersText] = useState('');
+export function SwissTournamentSetup({
+  onStart,
+  className,
+}: SwissTournamentSetupProps) {
+  const [tournamentName, setTournamentName] = useState("My Swiss Tournament");
+  const [playersText, setPlayersText] = useState("");
   const [totalRounds, setTotalRounds] = useState(4);
   const [shuffle, setShuffle] = useState(true);
 
   const handleStart = () => {
     const playerNames = playersText
-      .split('\n')
+      .split("\n")
       .map((name) => name.trim())
       .filter((name) => name.length > 0);
-    
+
     if (playerNames.length >= 2) {
       onStart(tournamentName, playerNames, totalRounds);
     }
   };
 
-  const playerCount = playersText.split('\n').filter((n) => n.trim()).length;
-  
+  const playerCount = playersText.split("\n").filter((n) => n.trim()).length;
+
   // Calculate recommended rounds based on player count
   const recommendedRounds = Math.min(
     Math.max(Math.ceil(Math.log2(playerCount)), 3),
-    7
+    7,
   );
 
   return (
@@ -507,7 +667,7 @@ export function SwissTournamentSetup({ onStart, className }: SwissTournamentSetu
             className="w-full h-40 px-3 py-2 border rounded-md resize-none"
           />
           <p className="text-xs text-muted-foreground">
-            {playerCount} player{playerCount !== 1 ? 's' : ''} entered
+            {playerCount} player{playerCount !== 1 ? "s" : ""} entered
           </p>
         </div>
 
@@ -540,8 +700,8 @@ export function SwissTournamentSetup({ onStart, className }: SwissTournamentSetu
           </Label>
         </div>
 
-        <Button 
-          onClick={handleStart} 
+        <Button
+          onClick={handleStart}
           disabled={playerCount < 2}
           className="w-full"
         >
@@ -556,8 +716,15 @@ export function SwissTournamentSetup({ onStart, className }: SwissTournamentSetu
 // Hook for managing Swiss tournament state
 interface UseSwissTournamentReturn {
   tournament: SwissTournament | null;
-  startTournament: (name: string, playerNames: string[], totalRounds: number) => void;
-  recordResult: (matchId: string, result: 'player1-win' | 'player2-win' | 'draw') => void;
+  startTournament: (
+    name: string,
+    playerNames: string[],
+    totalRounds: number,
+  ) => void;
+  recordResult: (
+    matchId: string,
+    result: "player1-win" | "player2-win" | "draw",
+  ) => void;
   nextRound: () => void;
   resetTournament: () => void;
 }
@@ -565,157 +732,182 @@ interface UseSwissTournamentReturn {
 export function useSwissTournament(): UseSwissTournamentReturn {
   const [tournament, setTournament] = useState<SwissTournament | null>(null);
 
-  const startTournament = useCallback((name: string, playerNames: string[], totalRounds: number) => {
-    const players: SwissPlayer[] = playerNames.map((name, index) => ({
-      id: `player-${index}`,
-      name,
-      seed: index + 1,
-      points: 0,
-      wins: 0,
-      losses: 0,
-      draws: 0,
-      opponentIds: [],
-      matchHistory: []
-    }));
-
-    // Shuffle if needed
-    const shuffled = [...players].sort(() => Math.random() - 0.5);
-    
-    // Generate first round pairings
-    const firstRound = generateSwissPairings(shuffled, 1);
-    
-    // Update player opponent IDs for first round
-    firstRound.forEach(match => {
-      if (match.player1 && match.player2) {
-        match.player1.opponentIds.push(match.player2.id);
-        match.player2.opponentIds.push(match.player1.id);
-      }
-    });
-
-    setTournament({
-      id: `swiss-${Date.now()}`,
-      name,
-      status: 'in-progress',
-      players: shuffled,
-      rounds: [{ roundNumber: 1, matches: firstRound }],
-      currentRound: 1,
-      totalRounds,
-      createdAt: Date.now(),
-    });
-  }, []);
-
-  const recordResult = useCallback((matchId: string, result: 'player1-win' | 'player2-win' | 'draw') => {
-    setTournament((prev) => {
-      if (!prev) return null;
-
-      // Find the match to update
-      const matchToUpdate = prev.rounds
-        .flatMap(round => round.matches)
-        .find(m => m.id === matchId);
-
-      if (!matchToUpdate) return prev;
-
-      const player1 = prev.players.find(p => p.id === matchToUpdate.player1?.id);
-      const player2 = prev.players.find(p => p.id === matchToUpdate.player2?.id);
-
-      let winner: SwissPlayer | undefined;
-      let player1Points = 0;
-      let player2Points = 0;
-
-      if (result === 'player1-win' && player1) {
-        winner = player1;
-        player1Points = 3;
-        player2Points = 0;
-      } else if (result === 'player2-win' && player2) {
-        winner = player2;
-        player1Points = 0;
-        player2Points = 3;
-      } else {
-        // Draw
-        player1Points = 1;
-        player2Points = 1;
-      }
-
-      // Update player stats
-      const updatedPlayers = prev.players.map(p => {
-        if (p.id === player1?.id) {
-          const matchResult: 'win' | 'loss' | 'draw' = 
-            result === 'player1-win' ? 'win' : result === 'player2-win' ? 'loss' : 'draw';
-          return {
-            ...p,
-            points: p.points + player1Points,
-            wins: p.wins + (result === 'player1-win' ? 1 : 0),
-            losses: p.losses + (result === 'player2-win' ? 1 : 0),
-            draws: p.draws + (result === 'draw' ? 1 : 0),
-            matchHistory: [...p.matchHistory, {
-              round: prev.currentRound,
-              result: matchResult,
-              opponentId: player2?.id || ''
-            }]
-          };
-        }
-        if (p.id === player2?.id) {
-          const matchResult: 'win' | 'loss' | 'draw' = 
-            result === 'player2-win' ? 'win' : result === 'player1-win' ? 'loss' : 'draw';
-          return {
-            ...p,
-            points: p.points + player2Points,
-            wins: p.wins + (result === 'player2-win' ? 1 : 0),
-            losses: p.losses + (result === 'player1-win' ? 1 : 0),
-            draws: p.draws + (result === 'draw' ? 1 : 0),
-            matchHistory: [...p.matchHistory, {
-              round: prev.currentRound,
-              result: matchResult,
-              opponentId: player1?.id || ''
-            }]
-          };
-        }
-        return p;
-      });
-
-      const newRounds = prev.rounds.map((round) => ({
-        ...round,
-        matches: round.matches.map((match) => {
-          if (match.id !== matchId) return match;
-
-          return {
-            ...match,
-            winner,
-            status: result === 'draw' ? 'draw' as const : 'completed' as const,
-            player1Points,
-            player2Points
-          };
-        }),
+  const startTournament = useCallback(
+    (name: string, playerNames: string[], totalRounds: number) => {
+      const players: SwissPlayer[] = playerNames.map((name, index) => ({
+        id: `player-${index}`,
+        name,
+        seed: index + 1,
+        points: 0,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        opponentIds: [],
+        matchHistory: [],
       }));
 
-      return {
-        ...prev,
-        players: updatedPlayers,
-        rounds: newRounds
-      };
-    });
-  }, []);
+      // Shuffle if needed
+      const shuffled = [...players].sort(() => Math.random() - 0.5);
+
+      // Generate first round pairings
+      const firstRound = generateSwissPairings(shuffled, 1);
+
+      // Update player opponent IDs for first round
+      firstRound.forEach((match) => {
+        if (match.player1 && match.player2) {
+          match.player1.opponentIds.push(match.player2.id);
+          match.player2.opponentIds.push(match.player1.id);
+        }
+      });
+
+      setTournament({
+        id: `swiss-${Date.now()}`,
+        name,
+        status: "in-progress",
+        players: shuffled,
+        rounds: [{ roundNumber: 1, matches: firstRound }],
+        currentRound: 1,
+        totalRounds,
+        createdAt: Date.now(),
+      });
+    },
+    [],
+  );
+
+  const recordResult = useCallback(
+    (matchId: string, result: "player1-win" | "player2-win" | "draw") => {
+      setTournament((prev) => {
+        if (!prev) return null;
+
+        // Find the match to update
+        const matchToUpdate = prev.rounds
+          .flatMap((round) => round.matches)
+          .find((m) => m.id === matchId);
+
+        if (!matchToUpdate) return prev;
+
+        const player1 = prev.players.find(
+          (p) => p.id === matchToUpdate.player1?.id,
+        );
+        const player2 = prev.players.find(
+          (p) => p.id === matchToUpdate.player2?.id,
+        );
+
+        let winner: SwissPlayer | undefined;
+        let player1Points = 0;
+        let player2Points = 0;
+
+        if (result === "player1-win" && player1) {
+          winner = player1;
+          player1Points = 3;
+          player2Points = 0;
+        } else if (result === "player2-win" && player2) {
+          winner = player2;
+          player1Points = 0;
+          player2Points = 3;
+        } else {
+          // Draw
+          player1Points = 1;
+          player2Points = 1;
+        }
+
+        // Update player stats
+        const updatedPlayers = prev.players.map((p) => {
+          if (p.id === player1?.id) {
+            const matchResult: "win" | "loss" | "draw" =
+              result === "player1-win"
+                ? "win"
+                : result === "player2-win"
+                  ? "loss"
+                  : "draw";
+            return {
+              ...p,
+              points: p.points + player1Points,
+              wins: p.wins + (result === "player1-win" ? 1 : 0),
+              losses: p.losses + (result === "player2-win" ? 1 : 0),
+              draws: p.draws + (result === "draw" ? 1 : 0),
+              matchHistory: [
+                ...p.matchHistory,
+                {
+                  round: prev.currentRound,
+                  result: matchResult,
+                  opponentId: player2?.id || "",
+                },
+              ],
+            };
+          }
+          if (p.id === player2?.id) {
+            const matchResult: "win" | "loss" | "draw" =
+              result === "player2-win"
+                ? "win"
+                : result === "player1-win"
+                  ? "loss"
+                  : "draw";
+            return {
+              ...p,
+              points: p.points + player2Points,
+              wins: p.wins + (result === "player2-win" ? 1 : 0),
+              losses: p.losses + (result === "player1-win" ? 1 : 0),
+              draws: p.draws + (result === "draw" ? 1 : 0),
+              matchHistory: [
+                ...p.matchHistory,
+                {
+                  round: prev.currentRound,
+                  result: matchResult,
+                  opponentId: player1?.id || "",
+                },
+              ],
+            };
+          }
+          return p;
+        });
+
+        const newRounds = prev.rounds.map((round) => ({
+          ...round,
+          matches: round.matches.map((match) => {
+            if (match.id !== matchId) return match;
+
+            return {
+              ...match,
+              winner,
+              status:
+                result === "draw" ? ("draw" as const) : ("completed" as const),
+              player1Points,
+              player2Points,
+            };
+          }),
+        }));
+
+        return {
+          ...prev,
+          players: updatedPlayers,
+          rounds: newRounds,
+        };
+      });
+    },
+    [],
+  );
 
   const nextRound = useCallback(() => {
     setTournament((prev) => {
       if (!prev) return null;
-      
+
       const nextRoundNum = prev.currentRound + 1;
       if (nextRoundNum > prev.totalRounds) {
         return {
           ...prev,
-          status: 'completed',
-          completedAt: Date.now()
+          status: "completed",
+          completedAt: Date.now(),
         };
       }
 
       const newPairings = generateSwissPairings(prev.players, nextRoundNum);
-      
+
       // Update opponent IDs for new round
-      newPairings.forEach(match => {
+      newPairings.forEach((match) => {
         if (match.player1 && match.player2) {
-          const p1 = prev.players.find(p => p.id === match.player1?.id);
-          const p2 = prev.players.find(p => p.id === match.player2?.id);
+          const p1 = prev.players.find((p) => p.id === match.player1?.id);
+          const p2 = prev.players.find((p) => p.id === match.player2?.id);
           if (p1) p1.opponentIds.push(match.player2!.id);
           if (p2) p2.opponentIds.push(match.player1!.id);
         }
@@ -724,7 +916,10 @@ export function useSwissTournament(): UseSwissTournamentReturn {
       return {
         ...prev,
         currentRound: nextRoundNum,
-        rounds: [...prev.rounds, { roundNumber: nextRoundNum, matches: newPairings }]
+        rounds: [
+          ...prev.rounds,
+          { roundNumber: nextRoundNum, matches: newPairings },
+        ],
       };
     });
   }, []);
@@ -750,22 +945,32 @@ interface MatchHistoryProps {
 
 export function MatchHistory({ players, className }: MatchHistoryProps) {
   const allMatches = useMemo(() => {
-    const matches: { round: number; player1: string; player2: string; result: string }[] = [];
-    
-    players.forEach(player => {
-      player.matchHistory.forEach(match => {
-        const opponent = players.find(p => p.id === match.opponentId);
+    const matches: {
+      round: number;
+      player1: string;
+      player2: string;
+      result: string;
+    }[] = [];
+
+    players.forEach((player) => {
+      player.matchHistory.forEach((match) => {
+        const opponent = players.find((p) => p.id === match.opponentId);
         if (opponent) {
           matches.push({
             round: match.round,
             player1: player.name,
             player2: opponent.name,
-            result: match.result === 'win' ? 'W' : match.result === 'loss' ? 'L' : 'D'
+            result:
+              match.result === "win"
+                ? "W"
+                : match.result === "loss"
+                  ? "L"
+                  : "D",
           });
         }
       });
     });
-    
+
     return matches.sort((a, b) => a.round - b.round);
   }, [players]);
 
@@ -798,15 +1003,20 @@ export function MatchHistory({ players, className }: MatchHistoryProps) {
       <CardContent>
         <div className="space-y-2 max-h-64 overflow-y-auto">
           {allMatches.map((match, index) => (
-            <div key={index} className="flex items-center justify-between text-sm">
+            <div
+              key={index}
+              className="flex items-center justify-between text-sm"
+            >
               <span className="text-muted-foreground">R{match.round}</span>
               <span className="flex-1 px-2">{match.player1}</span>
-              <Badge className={cn(
-                'mx-2',
-                match.result === 'W' && 'bg-green-500',
-                match.result === 'L' && 'bg-red-500',
-                match.result === 'D' && 'bg-yellow-500'
-              )}>
+              <Badge
+                className={cn(
+                  "mx-2",
+                  match.result === "W" && "bg-green-500",
+                  match.result === "L" && "bg-red-500",
+                  match.result === "D" && "bg-yellow-500",
+                )}
+              >
                 {match.result}
               </Badge>
               <span className="flex-1 px-2 text-right">{match.player2}</span>
