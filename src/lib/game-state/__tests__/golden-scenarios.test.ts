@@ -63,9 +63,41 @@ describe("Golden Scenarios", () => {
     const aliceId = Array.from(state.players.keys())[0] as PlayerId;
     const bobId = Array.from(state.players.keys())[1] as PlayerId;
 
-    // Load decks
-    state = loadDeckForPlayer(state, aliceId, [MOUNTAIN, RAGAVAN]);
-    state = loadDeckForPlayer(state, bobId, [MOUNTAIN]);
+    // Load decks — 8 cards each: a full 7-card opening hand plus 1 extra so
+    // each player survives their next draw step. Under CR 704.5c (issue
+    // #1580) a player now LOSES when they must draw from an empty library.
+    // Deterministic order (shuffle=false): draws come off the end of the
+    // library, so index 0 is the card left for the next draw step.
+    state = loadDeckForPlayer(
+      state,
+      aliceId,
+      [
+        MOUNTAIN, // drawn on Alice's turn-3 draw step
+        MOUNTAIN,
+        RAGAVAN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+      ],
+      false,
+    );
+    state = loadDeckForPlayer(
+      state,
+      bobId,
+      [
+        MOUNTAIN, // drawn on Bob's turn-2 draw step
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+        MOUNTAIN,
+      ],
+      false,
+    );
 
     // Start game
     state = startGame(state);
