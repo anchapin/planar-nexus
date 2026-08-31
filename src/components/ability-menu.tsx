@@ -14,15 +14,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  AlertCircle,
-  Check,
-  X,
-  Zap,
-  Crosshair,
-  Info,
-} from "lucide-react";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { AlertCircle, Check, X, Zap, Crosshair, Info } from "lucide-react";
 
 interface AbilityMenuProps {
   /** Whether the menu is open */
@@ -38,7 +36,10 @@ interface AbilityMenuProps {
   /** Callback when an ability is activated */
   onAbilityActivate: (abilityIndex: number) => void;
   /** Callback to start targeting mode */
-  onStartTargeting: (abilityIndex: number, requirements?: TargetRequirement) => void;
+  onStartTargeting: (
+    abilityIndex: number,
+    requirements?: TargetRequirement,
+  ) => void;
   /** Current mana available */
   availableMana?: {
     colorless?: number;
@@ -69,7 +70,9 @@ export function AbilityMenu({
   availableMana = {},
   isTapped = false,
 }: AbilityMenuProps) {
-  const [selectedAbilityIndex, setSelectedAbilityIndex] = React.useState<number | null>(null);
+  const [selectedAbilityIndex, setSelectedAbilityIndex] = React.useState<
+    number | null
+  >(null);
   const [showConfirmation, setShowConfirmation] = React.useState(false);
 
   // Reset state when menu closes
@@ -88,7 +91,7 @@ export function AbilityMenu({
     // Simple mana cost parsing - in real implementation, this would be more sophisticated
     // Check for {W}, {U}, {B}, {R}, {G}, {C}, {X}
     const cost = ability.manaCost;
-    
+
     // Count colored mana costs
     const whiteMatch = (cost.match(/\{W\}/g) || []).length;
     const blueMatch = (cost.match(/\{U\}/g) || []).length;
@@ -104,7 +107,8 @@ export function AbilityMenu({
       (availableMana.black || 0) < blackMatch ||
       (availableMana.red || 0) < redMatch ||
       (availableMana.green || 0) < greenMatch ||
-      (availableMana.colorless || 0) + (availableMana.generic || 0) < colorlessMatch
+      (availableMana.colorless || 0) + (availableMana.generic || 0) <
+        colorlessMatch
     ) {
       return false;
     }
@@ -165,9 +169,7 @@ export function AbilityMenu({
             <Zap className="h-5 w-5" />
             {cardName} - Abilities
           </DialogTitle>
-          <DialogDescription>
-            Select an ability to activate
-          </DialogDescription>
+          <DialogDescription>Select an ability to activate</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -197,22 +199,43 @@ export function AbilityMenu({
             <span className="text-muted-foreground">Available:</span>
             <div className="flex gap-1">
               {(availableMana.white || 0) > 0 && (
-                <Badge variant="outline" className="bg-white/10">{availableMana.white}W</Badge>
+                <Badge variant="outline" className="bg-white/10">
+                  {availableMana.white}W
+                </Badge>
               )}
               {(availableMana.blue || 0) > 0 && (
-                <Badge variant="outline" className="bg-blue-500/10 text-blue-500">{availableMana.blue}U</Badge>
+                <Badge
+                  variant="outline"
+                  className="bg-blue-500/10 text-blue-500"
+                >
+                  {availableMana.blue}U
+                </Badge>
               )}
               {(availableMana.black || 0) > 0 && (
-                <Badge variant="outline" className="bg-black/30">{availableMana.black}B</Badge>
+                <Badge variant="outline" className="bg-black/30">
+                  {availableMana.black}B
+                </Badge>
               )}
               {(availableMana.red || 0) > 0 && (
-                <Badge variant="outline" className="bg-red-500/10 text-red-500">{availableMana.red}R</Badge>
+                <Badge variant="outline" className="bg-red-500/10 text-red-500">
+                  {availableMana.red}R
+                </Badge>
               )}
               {(availableMana.green || 0) > 0 && (
-                <Badge variant="outline" className="bg-green-500/10 text-green-500">{availableMana.green}G</Badge>
+                <Badge
+                  variant="outline"
+                  className="bg-green-500/10 text-green-500"
+                >
+                  {availableMana.green}G
+                </Badge>
               )}
-              {((availableMana.colorless || 0) + (availableMana.generic || 0)) > 0 && (
-                <Badge variant="outline">{(availableMana.colorless || 0) + (availableMana.generic || 0)}C</Badge>
+              {(availableMana.colorless || 0) + (availableMana.generic || 0) >
+                0 && (
+                <Badge variant="outline">
+                  {(availableMana.colorless || 0) +
+                    (availableMana.generic || 0)}
+                  C
+                </Badge>
               )}
             </div>
           </div>
@@ -230,6 +253,12 @@ export function AbilityMenu({
                     key={ability.id || index}
                     onClick={() => handleAbilitySelect(index)}
                     disabled={!canActivate}
+                    aria-disabled={!canActivate}
+                    aria-describedby={
+                      !canActivate && reason
+                        ? `ability-reason-${index}`
+                        : undefined
+                    }
                     className={`w-full text-left p-3 rounded-md border transition-colors ${
                       canActivate
                         ? "border-border hover:border-primary hover:bg-primary/5 cursor-pointer"
@@ -241,27 +270,37 @@ export function AbilityMenu({
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{ability.name}</span>
                           {ability.manaCost && (
-                            <Badge variant="outline" className="text-xs font-mono">
+                            <Badge
+                              variant="outline"
+                              className="text-xs font-mono"
+                            >
                               {ability.manaCost}
                             </Badge>
                           )}
                           {ability.loyaltyCost && (
                             <Badge variant="outline" className="text-xs">
-                              {ability.loyaltyCost > 0 ? `+${ability.loyaltyCost}` : ability.loyaltyCost}
+                              {ability.loyaltyCost > 0
+                                ? `+${ability.loyaltyCost}`
+                                : ability.loyaltyCost}
                             </Badge>
                           )}
                           {ability.hasTargets && (
                             <Crosshair className="h-3 w-3 text-muted-foreground" />
                           )}
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">{ability.text}</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {ability.text}
+                        </p>
                       </div>
 
                       {!canActivate && reason && (
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Info className="h-4 w-4 text-amber-500 shrink-0" />
+                              <Info
+                                className="h-4 w-4 text-amber-500 shrink-0"
+                                aria-hidden="true"
+                              />
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>{reason}</p>
@@ -270,6 +309,18 @@ export function AbilityMenu({
                         </TooltipProvider>
                       )}
                     </div>
+                    {/*
+                      Issue #1602 (WCAG 4.1.2): the reason an ability is
+                      disabled must be exposed to assistive technology, not
+                      locked inside a hover-only tooltip on a color-coded
+                      icon. The sr-only text travels with the button and is
+                      referenced via aria-describedby.
+                    */}
+                    {!canActivate && reason && (
+                      <span id={`ability-reason-${index}`} className="sr-only">
+                        Not activatable: {reason}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -297,7 +348,9 @@ export function AbilityMenu({
           {selectedAbilityIndex !== null && (
             <div className="space-y-4">
               <div className="bg-muted p-3 rounded-md">
-                <div className="font-medium">{abilities[selectedAbilityIndex].name}</div>
+                <div className="font-medium">
+                  {abilities[selectedAbilityIndex].name}
+                </div>
                 <div className="text-sm text-muted-foreground">
                   {abilities[selectedAbilityIndex].text}
                 </div>
@@ -310,18 +363,25 @@ export function AbilityMenu({
                 )}
               </div>
 
-              {abilities[selectedAbilityIndex].additionalCosts && 
-               abilities[selectedAbilityIndex].additionalCosts!.length > 0 && (
-                <div className="text-sm">
-                  <span className="text-muted-foreground">Additional costs: </span>
-                  {abilities[selectedAbilityIndex].additionalCosts?.join(", ")}
-                </div>
-              )}
+              {abilities[selectedAbilityIndex].additionalCosts &&
+                abilities[selectedAbilityIndex].additionalCosts!.length > 0 && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">
+                      Additional costs:{" "}
+                    </span>
+                    {abilities[selectedAbilityIndex].additionalCosts?.join(
+                      ", ",
+                    )}
+                  </div>
+                )}
             </div>
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfirmation(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmation(false)}
+            >
               <X className="h-4 w-4 mr-1" />
               Cancel
             </Button>
