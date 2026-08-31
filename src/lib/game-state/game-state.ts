@@ -36,6 +36,7 @@ import { ReplacementEffectManager } from "./replacement-effects";
 import { LayerSystem } from "./layer-system";
 import {
   checkStateBasedActions as checkSBAs,
+  drawWithSBAChecking,
   type StateBasedActionResult,
 } from "./state-based-actions";
 import { hasLifelink, clearProwessBoosts } from "./evergreen-keywords";
@@ -242,15 +243,21 @@ export function startGame(state: GameState): GameState {
 
   // Each player draws their starting hand
   updatedState.players.forEach((player, playerId) => {
+    // Game setup (CR 103.4): the opening-hand draw never triggers the
+    // CR 704.5c empty-library loss — a library shorter than 7 cards simply
+    // draws out during setup (a player may mulligan to a 0-card hand), and
+    // the 704.5c loss applies to in-game draws only (e.g. the draw step).
+    const library = updatedState.zones.get(`${playerId}-library`);
+    const draws = Math.min(7, library ? library.cardIds.length : 0);
     if (playerId !== state.turn.activePlayerId) {
       // Non-starting players draw 7 cards
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < draws; i++) {
         updatedState = drawCard(updatedState, playerId);
       }
     } else {
       // Starting player draws 7 cards (in real rules, they would draw later,
       // but for simplicity we draw now and they don't draw on their first turn)
-      for (let i = 0; i < 7; i++) {
+      for (let i = 0; i < draws; i++) {
         updatedState = drawCard(updatedState, playerId);
       }
     }
@@ -274,8 +281,10 @@ export function drawCard(state: GameState, playerId: PlayerId): GameState {
   }
 
   if (library.cardIds.length === 0) {
-    // Player loses when they can't draw (handled by state-based actions)
-    return state;
+    // CR 704.5c — a player who attempts to draw from an empty library loses
+    // the game as a state-based action. drawWithSBAChecking marks the player
+    // as lost and re-checks the win condition so the game can end (#1580).
+    return drawWithSBAChecking(state, playerId).state;
   }
 
   const cardId = library.cardIds[library.cardIds.length - 1];

@@ -811,10 +811,7 @@ describe("GS-RT-12: zero-cost loyalty ability parsing (CR 606.4)", () => {
 //         CR 704.5c — drawing from an empty library causes loss
 // ---------------------------------------------------------------------------
 
-describe("GS-RT-13: drawWithSBAChecking not wired into draw pipeline (CR 704.5c)", () => {
-  // TODO(#1394): fix — drawCard (used by startGame and the main draw step)
-  // returns state unchanged when the library is empty instead of marking the
-  // player as having lost via drawWithSBAChecking.
+describe("GS-RT-13: drawCard wired to drawWithSBAChecking (CR 704.5c)", () => {
   it("regression: CR 704.5c — drawWithSBAChecking marks player as lost on empty library", () => {
     let state = createInitialGameState(["Alice"], 20, false);
     state = startGame(state);
@@ -834,7 +831,7 @@ describe("GS-RT-13: drawWithSBAChecking not wired into draw pipeline (CR 704.5c)
     expect(player.hasLost).toBe(true);
   });
 
-  it("regression: CR 704.5c — drawCard on empty library does NOT mark player as lost", () => {
+  it("regression: CR 704.5c — drawCard on empty library marks player as lost (issue #1580)", () => {
     let state = createInitialGameState(["Alice"], 20, false);
     state = startGame(state);
     const playerId = Array.from(state.players.keys())[0];
@@ -846,12 +843,14 @@ describe("GS-RT-13: drawWithSBAChecking not wired into draw pipeline (CR 704.5c)
       cardIds: [],
     });
 
-    // drawCard returns state unchanged — does not call drawWithSBAChecking
     const newState = drawCard(state, playerId);
 
-    // Player is NOT marked as lost (drawWithSBAChecking is not wired in)
+    // CR 704.5c: the player loses for attempting to draw from an empty
+    // library, and the win condition is re-checked so the game can end.
     const player = newState.players.get(playerId)!;
-    expect(player.hasLost).toBe(false);
+    expect(player.hasLost).toBe(true);
+    expect(player.lossReason).toContain("empty library");
+    expect(newState.status).toBe("completed");
   });
 
   it("regression: CR 704.5c — drawWithSBAChecking reports success when library is non-empty but does NOT draw", () => {
@@ -876,8 +875,7 @@ describe("GS-RT-13: drawWithSBAChecking not wired into draw pipeline (CR 704.5c)
 
     expect(result.success).toBe(true);
     // drawWithSBAChecking only checks SBA — it does NOT actually move a card.
-    // The real draw is supposed to be delegated to drawCards, but the wiring
-    // is missing (this is the bug GS-RT-13 documents).
+    // The real draw is delegated to drawCard / drawCards.
     const newHand = result.state.zones.get(`${playerId}-hand`)!;
     expect(newHand.cardIds.length).toBe(0);
   });
