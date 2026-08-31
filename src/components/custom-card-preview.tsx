@@ -410,6 +410,57 @@ export const CustomCardPreview = memo(function CustomCardPreview({
   );
 });
 
+// Human-readable mana names for accessible labels (issue #1602)
+const MANA_COLOR_NAMES: Record<string, string> = {
+  W: "White",
+  U: "Blue",
+  B: "Black",
+  R: "Red",
+  G: "Green",
+  C: "Colorless",
+};
+
+/**
+ * Derive a visible letter and an accessible name for a mana symbol badge.
+ *
+ * Fixes issue #1602 (WCAG 1.4.1 Use of Color + 4.1.2 Name/Role/Value):
+ * colored mana used to render as an empty circle whose ONLY distinguishing
+ * feature was the background color, with no accessible name at all. Now
+ * every badge shows its letter (e.g. "R") and exposes a textual name
+ * (e.g. "Red mana") to assistive technology.
+ */
+function getManaSymbolLabel(symbol: { type: string; value: string }): {
+  letter: string;
+  label: string | null;
+} {
+  const upper = symbol.value.toUpperCase();
+
+  if (symbol.type === "numeric") {
+    return { letter: upper, label: `${upper} generic mana` };
+  }
+  if (symbol.type === "color") {
+    const letter = upper.replace(/[{}]/g, "");
+    const name = MANA_COLOR_NAMES[letter] ?? letter;
+    return { letter, label: `${name} mana` };
+  }
+  if (symbol.type === "phyrexian") {
+    // Phyrexian values look like "{R/P}" — extract the color letter.
+    const letter = upper.match(/[WUBRGC]/)?.[0] ?? "?";
+    const name = MANA_COLOR_NAMES[letter]?.toLowerCase() ?? letter;
+    return { letter, label: `Phyrexian ${name} mana` };
+  }
+  if (symbol.type === "hybrid") {
+    // Hybrid values look like "{2/W}" — show "2/W", announce both halves.
+    const [numPart, colorPart] = upper.replace(/[{}]/g, "").split("/");
+    const name = MANA_COLOR_NAMES[colorPart]?.toLowerCase() ?? colorPart;
+    return {
+      letter: `${numPart}/${colorPart ?? ""}`,
+      label: `Hybrid mana: ${numPart} or ${name}`,
+    };
+  }
+  return { letter: "", label: null };
+}
+
 // Mana symbol component
 function ManaSymbol({
   symbol,
@@ -455,24 +506,33 @@ function ManaSymbol({
     return "#000";
   };
 
+  // Issue #1602: show the letter (not just the colored circle) and give the
+  // badge an accessible name so mana type never relies on color alone.
+  const { letter, label } = getManaSymbolLabel(symbol);
+
   return (
     <div
-      className="rounded-full flex items-center justify-center font-bold"
+      role="img"
+      aria-label={label ?? undefined}
+      className="rounded-full flex items-center justify-center font-bold select-none"
       style={{
         width: size,
         height: size,
         background: symbol.type === "numeric" ? "#000" : getBackground(),
         color:
-          symbol.type === "color" || symbol.type === "phyrexian"
-            ? "#fff"
-            : symbol.type === "numeric"
+          letter === "W" &&
+          (symbol.type === "color" || symbol.type === "phyrexian")
+            ? "#000"
+            : symbol.type === "color" || symbol.type === "phyrexian"
               ? "#fff"
-              : "#000",
+              : symbol.type === "numeric"
+                ? "#fff"
+                : "#000",
         fontSize: size * 0.7,
         border: "1px solid #000",
       }}
     >
-      {symbol.type === "numeric" ? symbol.value : ""}
+      {symbol.type === "numeric" ? symbol.value : letter}
     </div>
   );
 }
