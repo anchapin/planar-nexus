@@ -295,7 +295,10 @@ export function ReplayViewer({
       {/* Progress bar */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground w-12">
+          <span
+            className="text-xs text-muted-foreground w-12"
+            aria-hidden="true"
+          >
             {playerState.position + 1}
           </span>
           <input
@@ -304,9 +307,17 @@ export function ReplayViewer({
             max={totalActions - 1}
             value={playerState.position}
             onChange={(e) => jumpToPosition(parseInt(e.target.value))}
+            aria-label="Replay position"
+            aria-valuemin={1}
+            aria-valuemax={totalActions}
+            aria-valuenow={playerState.position + 1}
+            aria-valuetext={`Action ${playerState.position + 1} of ${totalActions}`}
             className="flex-1 h-2 bg-muted rounded-lg appearance-none cursor-pointer"
           />
-          <span className="text-xs text-muted-foreground w-12 text-right">
+          <span
+            className="text-xs text-muted-foreground w-12 text-right"
+            aria-hidden="true"
+          >
             {totalActions}
           </span>
         </div>
@@ -319,14 +330,40 @@ export function ReplayViewer({
         )}
       </div>
 
+      {/*
+        Screen-reader position announcer (issue #1604 — WCAG 1.3.1, 4.1.2, 4.1.3).
+        Always present in the DOM so AT can read the current position on focus
+        and re-announce whenever the text changes (step / play / jump).
+        Visually hidden via `sr-only`; the visible description above already
+        mirrors the same text.
+      */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        data-testid="replay-position-announcer"
+      >
+        {`Action ${playerState.position + 1} of ${totalActions}${
+          currentAction?.description
+            ? `: ${sanitizeCardText(currentAction.description, 1_000)}`
+            : ""
+        }`}
+      </div>
+
       {/* Playback controls */}
-      <div className="flex items-center justify-center gap-4">
+      <div
+        className="flex items-center justify-center gap-4"
+        role="region"
+        aria-label="Game replay playback controls"
+      >
         {/* Skip to start */}
         <button
           onClick={() => jumpToPosition(0)}
           disabled={playerState.position === 0}
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Skip to start"
+          aria-label="Skip to start"
         >
           <svg
             className="w-5 h-5"
@@ -349,6 +386,7 @@ export function ReplayViewer({
           disabled={playerState.position === 0}
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Step backward"
+          aria-label="Step backward"
         >
           <svg
             className="w-5 h-5"
@@ -370,6 +408,7 @@ export function ReplayViewer({
           onClick={togglePlay}
           className="p-3 bg-primary text-primary-foreground rounded-full hover:bg-primary/90"
           title={playerState.isPlaying ? "Pause" : "Play"}
+          aria-label={playerState.isPlaying ? "Pause" : "Play"}
         >
           {playerState.isPlaying ? (
             <svg
@@ -414,6 +453,7 @@ export function ReplayViewer({
           disabled={playerState.position >= totalActions - 1}
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Step forward"
+          aria-label="Step forward"
         >
           <svg
             className="w-5 h-5"
@@ -436,6 +476,7 @@ export function ReplayViewer({
           disabled={playerState.position >= totalActions - 1}
           className="p-2 hover:bg-muted rounded disabled:opacity-50"
           title="Skip to end"
+          aria-label="Skip to end"
         >
           <svg
             className="w-5 h-5"
@@ -453,14 +494,26 @@ export function ReplayViewer({
         </button>
       </div>
 
-      {/* Speed control */}
+      {/* Speed control — radiogroup semantics so screen readers can
+          perceive the current speed and step through alternatives (#1604).
+          `aria-label` is the literal acceptance criterion from the issue
+          ("Playback speed"); aria-labelledby is intentionally omitted so the
+          attribute wins as the accessible name (per ARIA spec, labelledby
+          would otherwise take precedence). */}
       <div className="flex items-center justify-center gap-2">
-        <span className="text-xs text-muted-foreground">Speed:</span>
-        <div className="flex gap-1">
+        <span className="text-xs text-muted-foreground">Playback speed:</span>
+        <div
+          className="flex gap-1"
+          role="radiogroup"
+          aria-label="Playback speed"
+        >
           {PLAYBACK_SPEEDS.map((speed) => (
             <button
               key={speed}
               onClick={() => changeSpeed(speed)}
+              role="radio"
+              aria-checked={playerState.speed === speed}
+              aria-label={`Play at ${speed}x speed`}
               className={cn(
                 "px-2 py-1 text-xs rounded",
                 playerState.speed === speed
