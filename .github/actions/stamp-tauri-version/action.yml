@@ -1,0 +1,82 @@
+# .github/actions/stamp-tauri-version/action.yml
+#
+# Issue #1588 — stamp the release tag version into src-tauri/tauri.conf.json
+# and src-tauri/Cargo.toml before `tauri build` so the Tauri 2 updater can
+# compare versions correctly.
+#
+# Behaviour:
+#   - Tag push (refs/tags/vX.Y.Z):  rewrites both files to X.Y.Z
+#   - Release publish:              rewrites both files to tag_name (stripped)
+#   - workflow_dispatch w/o tag:    NO-OP (build keeps the 1.0.0 placeholder
+#                                   so fork PRs and dry-runs still work)
+#
+# The matching restore action (.github/actions/restore-tauri-version) reads
+# the state file this action writes and reverts the files to their pre-build
+# values after `tauri build` finishes (acceptance criterion: "restored to
+# their pre-build values after").
+
+name: Stamp Tauri release version
+description: |
+  Rewrite src-tauri/tauri.conf.json and src-tauri/Cargo.toml so the bundled
+  app's version matches the pushed release tag (issue #1588). No-ops when
+  no tag is detected so workflow_dispatch runs without a release tag still
+  build with the existing 1.0.0 placeholder.
+
+inputs:
+  conf-path:
+    description: Path to tauri.conf.json, relative to the workspace root.
+    required: false
+    default: src-tauri/tauri.conf.json
+  cargo-path:
+    description: Path to src-tauri/Cargo.toml, relative to the workspace root.
+    required: false
+    default: src-tauri/Cargo.toml
+  state-file:
+    description: |
+      Where to write the snapshot that scripts/restore-tauri-version.sh
+      consumes. Defaults to a file under $RUNNER_TEMP (auto-cleaned
+      between jobs). Exposed as an input so tests can pin it.
+    required: false
+    default: ${{ runner.temp }}/tauri-version-stamp.env
+
+outputs:
+  version:
+    description: Stamped semver (leading "v" stripped) or empty on no-op.
+  stamped:
+    description: '"true" when the files were rewritten, "false" on no-op.'
+  orig-conf-version:
+    description: Original tauri.conf.json version (so restore can revert).
+  orig-cargo-version:
+    description: Original Cargo.toml package version (so restore can revert).
+
+runs:
+  using: composite
+  steps:
+    - name: Stamp
+      id: stamp
+      shell: bash
+      env:
+        CONF_PATH: ${{ inputs.conf-path }}
+        CARGO_PATH: ${{ inputs.cargo-path }}
+        STAMP_STATE: ${{ inputs.state-file }}
+        # Release events publish with GITHUB_REF pointing at the default
+        # branch (not the tag ref). Pre-resolve the tag so the script
+        # does not have to parse github.event.release.tag_name itself.
+        # Tag-push events leave this empty and the script falls back to
+        # GITHUB_REF.
+        RELEASE_VERSION_RAW: ${{ github.event.release.tag_name }}
+      run: |
+        set -euo pipefail
+        bash scripts/stamp-tauri-version.sh
+        # Surface the script's state file as composite-action outputs so
+        # the calling workflow can branch on them (`if: steps.stamp.outputs.stamped`).
+        {
+          stamped="$(grep -E '^STAMPED='        "${STAMP_STATE}" | cut -d= -f2-)"
+          new_version="$(grep -E '^NEW_VERSION='       "${STAMP_STATE}" | cut -d= -f2-)"
+          orig_conf="$(grep -E '^ORIG_CONF_VERSION='   "${STAMP_STATE}" | cut -d= -f2-)"
+          orig_cargo="$(grep -E '^ORIG_CARGO_VERSION=' "${STAMP_STATE}" | cut -d= -f2-)"
+          echo "stamped=${stamped:-false}"
+          echo "version=${new_version:-}"
+          echo "orig-conf-version=${orig_conf:-}"
+          echo "orig-cargo-version=${orig_cargo:-}"
+        } >> "$GITHUB_OUTPUT"

@@ -86,6 +86,17 @@ jobs:
         run: npm install -g @tauri-apps/cli@latest
         if: success()
 
+      # Issue #1588: stamp the release tag into src-tauri/tauri.conf.json
+      # and src-tauri/Cargo.toml BEFORE tauri build so the installer
+      # binary, About dialog, and @tauri-apps/plugin-updater all report
+      # the same version. Without this the updater compares the running
+      # app's hardcoded 1.0.0 against latest.json's tag and either
+      # over-updates (tag > 1.0.0) or skips the patch entirely.
+      - name: Stamp tauri release version (#1588)
+        id: stamp
+        if: success()
+        uses: ./.github/actions/stamp-tauri-version
+
       - name: Build Tauri Windows app
         run: tauri build
         if: success()
@@ -93,6 +104,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Issue #1588: revert the stamp after the build so the runner's
+      # working tree returns to its pre-build state. Runs even when the
+      # build fails (`always()`) so the next job in the matrix (and any
+      # debug re-run) sees clean files. No-ops when stamp was a no-op
+      # (workflow_dispatch without a tag).
+      - name: Restore tauri release version (#1588)
+        if: always() && steps.stamp.outputs.stamped == 'true'
+        uses: ./.github/actions/restore-tauri-version
 
       # Issue #1403: surface the per-installer .sig files so the release
       # job can stitch them into a Tauri 2 updater manifest (`latest.json`).
@@ -158,6 +178,16 @@ jobs:
         run: npm install -g @tauri-apps/cli@latest
         if: success()
 
+      # Issue #1588: stamp the release tag into src-tauri/tauri.conf.json
+      # and src-tauri/Cargo.toml BEFORE tauri build so the bundled
+      # .app/.dmg and the @tauri-apps/plugin-updater all report the same
+      # version (currently both hardcode "1.0.0" — see the matching step
+      # in build-windows for the full rationale).
+      - name: Stamp tauri release version (#1588)
+        id: stamp
+        if: success()
+        uses: ./.github/actions/stamp-tauri-version
+
       # Build Tauri macOS app (Universal).
       #
       # Code signing is driven by the APPLE_SIGNING_IDENTITY environment
@@ -185,6 +215,13 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Issue #1588: revert the stamp so the runner's working tree is
+      # clean for downstream steps and re-runs. See build-windows for the
+      # full rationale.
+      - name: Restore tauri release version (#1588)
+        if: always() && steps.stamp.outputs.stamped == 'true'
+        uses: ./.github/actions/restore-tauri-version
 
       # Issue #1399: notarize the macOS .app bundle. Without a stapled
       # notarization ticket a fresh macOS Sequoia/Sonoma install blocks
@@ -365,12 +402,26 @@ jobs:
             libatspi2.0-dev \
             libcups2-dev
 
+      # Issue #1588: see the matching comment in build-windows. This
+      # prepares the .deb / .AppImage / .rpm bundle metadata so the
+      # updater (and `dpkg-deb --info` / `rpm -qp --queryformat`) report
+      # the tag version instead of the hardcoded 1.0.0 placeholder.
+      - name: Stamp tauri release version (#1588)
+        id: stamp
+        uses: ./.github/actions/stamp-tauri-version
+
       - name: Build Tauri Linux packages
         run: tauri build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      # Issue #1588: see the matching comment in build-windows. Reverts
+      # the stamp so the runner's working tree is clean.
+      - name: Restore tauri release version (#1588)
+        if: always() && steps.stamp.outputs.stamped == 'true'
+        uses: ./.github/actions/restore-tauri-version
 
       - name: Upload Debian package
         uses: actions/upload-artifact@v7
