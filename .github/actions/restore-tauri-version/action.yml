@@ -1,0 +1,52 @@
+# .github/actions/restore-tauri-version/action.yml
+#
+# Companion to .github/actions/stamp-tauri-version — reverts the version
+# fields in src-tauri/tauri.conf.json and src-tauri/Cargo.toml to their
+# pre-stamp values after `tauri build` (issue #1588 acceptance criterion:
+# "restored to their pre-build values after").
+#
+# Intended to be paired with the stamp action via:
+#   - name: Stamp tauri release version
+#     id: stamp
+#     uses: ./.github/actions/stamp-tauri-version
+#   - name: Build Tauri …
+#     run: tauri build
+#   - name: Restore tauri release version
+#     if: always() && steps.stamp.outputs.stamped == 'true'
+#     uses: ./.github/actions/restore-tauri-version
+
+name: Restore Tauri release version
+description: |
+  Revert the stamp applied by .github/actions/stamp-tauri-version. Reads the
+  snapshot from the same state file the stamp action wrote and restores both
+  src-tauri/tauri.conf.json and src-tauri/Cargo.toml. No-ops when the stamp
+  was a no-op (state file missing or STAMPED=false).
+
+inputs:
+  conf-path:
+    description: Path to tauri.conf.json, relative to the workspace root.
+    required: false
+    default: src-tauri/tauri.conf.json
+  cargo-path:
+    description: Path to src-tauri/Cargo.toml, relative to the workspace root.
+    required: false
+    default: src-tauri/Cargo.toml
+  state-file:
+    description: |
+      Path to the state file the stamp action wrote. Must match the
+      stamp action's `state-file` input.
+    required: false
+    default: ${{ runner.temp }}/tauri-version-stamp.env
+
+runs:
+  using: composite
+  steps:
+    - name: Restore
+      shell: bash
+      env:
+        CONF_PATH: ${{ inputs.conf-path }}
+        CARGO_PATH: ${{ inputs.cargo-path }}
+        STAMP_STATE: ${{ inputs.state-file }}
+      run: |
+        set -euo pipefail
+        bash scripts/restore-tauri-version.sh
