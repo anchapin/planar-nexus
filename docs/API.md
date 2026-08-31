@@ -758,8 +758,7 @@ async function analyzeDeck(deck: Deck) {
 ### 7.1 Card Search
 
 ```typescript
-// src/app/actions.ts
-'use server';
+// src/app/actions.ts (client-side wrappers — no "use server" directive; see §7 callout)
 
 export async function searchScryfall(query: string): Promise<ScryfallCard[]> {
   // Searches local IndexedDB database
@@ -788,8 +787,7 @@ export async function validateCardLegality(
 ### 7.2 Deck Persistence
 
 ```typescript
-// src/app/actions.ts
-'use server';
+// src/app/actions.ts (client-side wrappers — no "use server" directive; see §7 callout)
 
 export async function saveDeck(deck: SavedDeck): Promise<void> {
   // Saves deck to local storage
@@ -811,8 +809,7 @@ export async function listDecks(): Promise<SavedDeck[]> {
 ### 7.3 AI Operations
 
 ```typescript
-// src/app/actions.ts
-'use server';
+// src/app/actions.ts (client-side wrappers — no "use server" directive; see §7 callout)
 
 export async function getDeckCoachReview(
   deck: DeckCard[],
