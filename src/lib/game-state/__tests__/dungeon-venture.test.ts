@@ -179,9 +179,11 @@ describe("Venture into the Dungeon", () => {
     const resolved = resolveTopOfStack(cast.state);
     const alice = resolved.players.get(fixture.aliceId);
 
-    expect(
-      resolved.stack.find((item) => item.id === targetSpell.id)?.isCountered,
-    ).toBe(true);
+    // CR 701.5b (issue #1578): the countered spell is removed from the
+    // stack as part of resolving the counter.
+    expect(resolved.stack.some((item) => item.id === targetSpell.id)).toBe(
+      false,
+    );
     expect(alice?.dungeonProgress?.dungeonId).toBe("lost-mine-of-phandelver");
     expect(alice?.dungeonProgress?.roomIndex).toBe(0);
   });

@@ -48,7 +48,8 @@ import {
   markDamage,
 } from "../card-instance";
 import { Phase } from "../types";
-import type { Turn } from "../types";
+import type { Turn, GameState, PlayerId, CardInstanceId } from "../types";
+import { resolveTopOfStack } from "../spell-casting";
 import type { ScryfallCard } from "@/app/actions";
 
 // ---------------------------------------------------------------------------
@@ -190,40 +191,146 @@ describe("GS-RT-2: startGame with insufficient library (CR 103.4)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GS-RT-3 — Countered spell remains on the stack
-//        CR 701.5 — counter abilities
+// GS-RT-3 — Countered spell removed from stack and moved to owner's graveyard
+//        CR 701.5 — counter abilities (issue #1578)
 // ---------------------------------------------------------------------------
 
-describe("GS-RT-3: countered spell stays on stack (CR 701.5)", () => {
-  // TODO(#1394): fix — counterSpell should remove the countered spell from
-  // the stack zone or move it to its owner's graveyard.
-  it("regression: CR 701.5 — counterSpell marks isCountered but does not remove from stack", () => {
-    const state = createInitialGameState(["Alice", "Bob"], 20, false);
-    const playerId = Array.from(state.players.keys())[0];
+describe("GS-RT-3: countered spell leaves stack for owner's graveyard (CR 701.5)", () => {
+  function createMockSpell(name: string): ScryfallCard {
+    return {
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: "Instant",
+      oracle_text: "Counter target spell.",
+      mana_cost: "{U}{U}",
+      cmc: 2,
+      colors: ["U"],
+      color_identity: ["U"],
+      legalities: { standard: "legal", commander: "legal" },
+      card_faces: undefined,
+      layout: "normal",
+    } as ScryfallCard;
+  }
 
-    // Place a spell on the stack
-    const stackObj = {
-      id: "spell-test-1",
-      type: "spell" as const,
-      sourceCardId: null,
-      controllerId: playerId,
-      name: "Lightning Bolt",
-      text: "Deal 3 damage to any target.",
-      manaCost: "{R}",
-      targets: [],
-      chosenModes: [],
-      variableValues: new Map(),
-      isCountered: false,
-      timestamp: Date.now(),
-    };
-    state.stack = [stackObj];
+  /** Place a real card-backed spell on the stack. */
+  function placeSpellOnStack(
+    state: GameState,
+    cardId: string,
+    ownerId: PlayerId,
+    controllerId: PlayerId,
+  ): GameState {
+    const card = createCardInstance(
+      createMockSpell("Counterable Blast"),
+      ownerId,
+      controllerId,
+      { id: cardId as CardInstanceId },
+    );
 
-    const result = counterSpell(state, "spell-test-1");
+    state.cards.set(card.id, card);
+
+    const stackZone = state.zones.get("stack")!;
+    state.zones.set("stack", {
+      ...stackZone,
+      cardIds: [...stackZone.cardIds, card.id],
+    });
+
+    state.stack = [
+      ...state.stack,
+      {
+        id: `stack-${cardId}`,
+        type: "spell" as const,
+        sourceCardId: card.id,
+        controllerId,
+        name: card.cardData.name,
+        text: card.cardData.oracle_text || "",
+        manaCost: card.cardData.mana_cost ?? null,
+        targets: [],
+        chosenModes: [],
+        variableValues: new Map<string, number>(),
+        isCountered: false,
+        timestamp: Date.now(),
+      },
+    ];
+
+    return state;
+  }
+
+  it("regression: CR 701.5b — counterSpell removes the spell from the stack and puts its card in the owner's graveyard", () => {
+    let state = createInitialGameState(["Alice", "Bob"], 20, false);
+    const [aliceId, bobId] = Array.from(state.players.keys()) as PlayerId[];
+    state = startGame(state);
+
+    state = placeSpellOnStack(state, "spell-card-1", aliceId, aliceId);
+    expect(state.stack).toHaveLength(1);
+
+    const result = counterSpell(state, "stack-spell-card-1");
 
     expect(result.success).toBe(true);
-    // The spell is still physically on the stack (only flagged).
-    expect(result.state.stack.length).toBe(1);
-    expect(result.state.stack[0].isCountered).toBe(true);
+
+    // The spell object is gone from the stack (CR 701.5b).
+    expect(result.state.stack).toHaveLength(0);
+    expect(
+      result.state.stack.some((o) => o.sourceCardId === "spell-card-1"),
+    ).toBe(false);
+
+    // The card is in its owner's graveyard, and out of the shared stack zone.
+    const graveyard = result.state.zones.get(`${aliceId}-graveyard`)!;
+    expect(graveyard.cardIds).toContain("spell-card-1");
+    expect(result.state.zones.get("stack")!.cardIds).not.toContain(
+      "spell-card-1",
+    );
+
+    // Card instance state reflects the move and was reset.
+    const moved = result.state.cards.get("spell-card-1" as CardInstanceId)!;
+    expect(moved.currentZoneKey).toBe(`${aliceId}-graveyard`);
+    expect(moved.damage).toBe(0);
+  });
+
+  it("regression: CR 701.5b — a countered spell controlled by another player goes to its OWNER's graveyard, not the controller's", () => {
+    let state = createInitialGameState(["Alice", "Bob"], 20, false);
+    const [aliceId, bobId] = Array.from(state.players.keys()) as PlayerId[];
+    state = startGame(state);
+
+    // Alice owns the card, Bob controls it (e.g. gained control of the spell).
+    state = placeSpellOnStack(state, "spell-card-2", aliceId, bobId);
+
+    const result = counterSpell(state, "stack-spell-card-2");
+
+    expect(result.success).toBe(true);
+    expect(result.state.stack).toHaveLength(0);
+
+    // Owner's graveyard, not the controller's.
+    expect(result.state.zones.get(`${aliceId}-graveyard`)!.cardIds).toContain(
+      "spell-card-2",
+    );
+    expect(result.state.zones.get(`${bobId}-graveyard`)!.cardIds).not.toContain(
+      "spell-card-2",
+    );
+  });
+
+  it("regression: CR 701.5b — countering the top spell does not disturb the rest of the stack, which continues resolving", () => {
+    let state = createInitialGameState(["Alice", "Bob"], 20, false);
+    const [aliceId] = Array.from(state.players.keys()) as PlayerId[];
+    state = startGame(state);
+
+    // Two spells on the stack: bottom (resolves LAST) and top (resolves FIRST).
+    state = placeSpellOnStack(state, "spell-card-bottom", aliceId, aliceId);
+    state = placeSpellOnStack(state, "spell-card-top", aliceId, aliceId);
+    expect(state.stack).toHaveLength(2);
+
+    // Counter the top object only.
+    const result = counterSpell(state, "stack-spell-card-top");
+    expect(result.success).toBe(true);
+
+    // The countered object is gone; the bottom object remains intact and
+    // walkable by the resolution engine.
+    expect(result.state.stack).toHaveLength(1);
+    expect(result.state.stack[0].id).toBe("stack-spell-card-bottom");
+
+    // Stack resolution continues: resolving the remaining object empties the
+    // stack without hitting the countered (removed) entry.
+    const resolved = resolveTopOfStack(result.state);
+    expect(resolved.stack).toHaveLength(0);
   });
 });
 
