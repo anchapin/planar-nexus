@@ -17,6 +17,7 @@
 //                              npm run mutate:spell-casting
 //                              npm run mutate:trigger-system
 //                              npm run mutate:state-based-actions
+//                              npm run mutate:combat
 //   Report:                     reports/mutation/index.html
 //
 // See issues #1097 (initial setup), #1265 (enforce threshold in CI), and the
@@ -63,6 +64,11 @@ module.exports = {
   // (CR 603 trigger firing / intervening-if) and `state-based-actions.ts`
   // (CR 704.5 SBAs). Targeted `*.mutation.test.ts` suites were added alongside
   // each to kill the boundary/condition mutants that previously survived.
+  // Issue #1597: expanded 5 → 6 modules by adding `combat.ts` (CR 506-510
+  // combat resolution) — the most playtested-by-humans subsystem, with
+  // ordering-sensitive damage assignment (deathtouch+trample, first-strike
+  // step separation, multi-blocker CR 510.1c order). Its targeted
+  // `combat.mutation.test.ts` suite pins those mutants down.
   // `break` stays at 50 until the nightly run records each new module's
   // baseline; it is raised to 70 in a follow-up only after BOTH clear 70%.
   mutate: [
@@ -71,6 +77,7 @@ module.exports = {
     "src/lib/game-state/spell-casting.ts",
     "src/lib/game-state/trigger-system.ts",
     "src/lib/game-state/state-based-actions.ts",
+    "src/lib/game-state/combat.ts",
   ],
 
   reporters: ["html", "clear-text", "progress", "json"],
@@ -103,6 +110,12 @@ module.exports = {
   //                              annihilation, indestructible gate, 0-loyalty
   //                              exile-vs-destroy, commander-damage boundary,
   //                              per-player legend rule & PW uniqueness.
+  //   • combat.ts              : PENDING measurement (issue #1597). Targeted
+  //                              `combat.mutation.test.ts` added; covers
+  //                              deathtouch+trample assignment, first-strike
+  //                              vs regular step separation, multi-blocker
+  //                              CR 510.1c ordering, lifelink/commander-damage
+  //                              math, and declaration guards.
   //
   // `break` is the gate enforced by CI (.github/workflows/ci.yml,
   // `.github/workflows/mutation.yml`) and local `npm run test:mutation`. Any
