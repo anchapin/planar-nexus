@@ -226,7 +226,11 @@ describe("Opponent Deck Generator", () => {
     });
 
     test("should maintain archetype consistency across random decks", () => {
-      const decks = Array.from({ length: 10 }, () =>
+      // 10 uniform draws from a 10-archetype pool land on <=3 unique
+      // archetypes roughly once per 1500 runs (CI hit it in run
+      // 33523769357). 25 draws push that odds to negligible while keeping
+      // the variety expectation intact.
+      const decks = Array.from({ length: 25 }, () =>
         generateRandomDeck("legendary-commander"),
       );
 

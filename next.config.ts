@@ -33,6 +33,13 @@ const nextConfig: NextConfig = {
   // Bundle optimization — tree-shake barrel imports so only used components
   // are included in the bundle. Issue #1022.
   experimental: {
+    // Next 16.3 type-checks via the TypeScript CLI (`typescript/bin/tsc`)
+    // by default, but the `typescript` dependency is the
+    // `@typescript/typescript6` alias (#1608), which ships `bin/tsc6` only —
+    // so `next build` reports typescript as missing and fails. The alias
+    // *does* expose the compiler API (lib/typescript.js → @typescript/old),
+    // so use the API checker instead.
+    useTypeScriptCli: false,
     optimizePackageImports: [
       "@radix-ui/react-accordion",
       "@radix-ui/react-alert-dialog",
