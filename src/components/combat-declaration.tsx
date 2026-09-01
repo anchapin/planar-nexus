@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -56,8 +61,12 @@ export interface CombatDeclarationState {
 interface CombatDeclarationProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  combatPhase: "declare-attackers" | "declare-blockers" | "damage-order" | "confirm";
-  onPhaseChange?: (phase: "declare-attackers" | "declare-blockers" | "damage-order" | "confirm") => void;
+  combatPhase:
+    "declare-attackers" | "declare-blockers" | "damage-order" | "confirm";
+  onPhaseChange?: (
+    phase:
+      "declare-attackers" | "declare-blockers" | "damage-order" | "confirm",
+  ) => void;
   attackers: CombatCard[];
   blockers: CombatCard[];
   onDeclareAttackers: (attackerIds: string[]) => void;
@@ -73,6 +82,13 @@ interface CombatDeclarationProps {
 /**
  * Combat Declaration Component
  * Implements issue #28 - Attack/block declaration UI
+ * Accessibility (issue #1600, WCAG 4.1.2 / 1.4.1 / 4.1.3):
+ *   - attacker/blocker card buttons expose aria-pressed for the selected /
+ *     assigned state and put disabled reasons ("tapped", "summoning
+ *     sickness, cannot attack", "cannot block") in the accessible name,
+ *     so state never relies on color, opacity, rotation or tooltips alone.
+ *   - selection changes are announced via an sr-only aria-live="polite"
+ *     region.
  */
 export function CombatDeclaration({
   open,
@@ -91,15 +107,19 @@ export function CombatDeclaration({
   currentDamageOrder = new Map(),
 }: CombatDeclarationProps) {
   const [selectedAttackers, setSelectedAttackers] = React.useState<Set<string>>(
-    new Set(declaredAttackers)
+    new Set(declaredAttackers),
   );
-  const [blockerAssignments, setBlockerAssignments] = React.useState<Map<string, string[]>>(
-    new Map(currentBlockerAssignments)
-  );
+  const [blockerAssignments, setBlockerAssignments] = React.useState<
+    Map<string, string[]>
+  >(new Map(currentBlockerAssignments));
   const [damageOrder, setDamageOrder] = React.useState<Map<string, string[]>>(
-    new Map(currentDamageOrder)
+    new Map(currentDamageOrder),
   );
-  const [selectedAttackerForBlocking, setSelectedAttackerForBlocking] = React.useState<string | null>(null);
+  const [selectedAttackerForBlocking, setSelectedAttackerForBlocking] =
+    React.useState<string | null>(null);
+  // WCAG 4.1.3 (Status Messages): polite announcements for combat selection
+  // changes, rendered into an sr-only live region (issue #1600).
+  const [announcement, setAnnouncement] = React.useState("");
 
   React.useEffect(() => {
     if (open) {
@@ -107,30 +127,39 @@ export function CombatDeclaration({
       setBlockerAssignments(new Map(currentBlockerAssignments));
       setDamageOrder(new Map(currentDamageOrder));
       setSelectedAttackerForBlocking(null);
+      setAnnouncement("");
     }
   }, [open, declaredAttackers, currentBlockerAssignments, currentDamageOrder]);
 
-  const availableAttackers = attackers.filter((card) => card.canAttack && !card.isTapped);
-  const availableBlockers = blockers.filter((card) => card.canBlock && !card.isTapped);
+  const getAttackerCard = (id: string) => attackers.find((a) => a.id === id);
+  const getBlockerCard = (id: string) => blockers.find((b) => b.id === id);
 
   const toggleAttacker = (cardId: string) => {
+    const card = getAttackerCard(cardId);
     const newSelection = new Set(selectedAttackers);
     if (newSelection.has(cardId)) {
       newSelection.delete(cardId);
       const newAssignments = new Map(blockerAssignments);
       newAssignments.delete(cardId);
       setBlockerAssignments(newAssignments);
+      setAnnouncement(
+        card ? `${card.name} deselected from attack.` : "Attacker deselected.",
+      );
     } else {
       newSelection.add(cardId);
+      setAnnouncement(
+        card ? `${card.name} selected to attack.` : "Attacker selected.",
+      );
     }
     setSelectedAttackers(newSelection);
   };
 
   const toggleBlocker = (attackerId: string, blockerId: string) => {
     const currentBlockers = blockerAssignments.get(attackerId) || [];
-    const newBlockers = currentBlockers.includes(blockerId)
-      ? currentBlockers.filter((id) => id !== blockerId)
-      : [...currentBlockers, blockerId];
+    const isAssigning = !currentBlockers.includes(blockerId);
+    const newBlockers = isAssigning
+      ? [...currentBlockers, blockerId]
+      : currentBlockers.filter((id) => id !== blockerId);
 
     const newAssignments = new Map(blockerAssignments);
     if (newBlockers.length > 0) {
@@ -139,23 +168,43 @@ export function CombatDeclaration({
       newAssignments.delete(attackerId);
     }
     setBlockerAssignments(newAssignments);
+
+    const attacker = getAttackerCard(attackerId);
+    const blocker = getBlockerCard(blockerId);
+    if (isAssigning) {
+      setAnnouncement(
+        `${blocker?.name ?? "Blocker"} assigned as blocker for ${attacker?.name ?? "attacker"}.`,
+      );
+    } else {
+      setAnnouncement(
+        `${blocker?.name ?? "Blocker"} removed as blocker for ${attacker?.name ?? "attacker"}.`,
+      );
+    }
   };
 
   const moveBlockerUp = (attackerId: string, blockerIndex: number) => {
     if (blockerIndex <= 0) return;
-    const currentOrder = damageOrder.get(attackerId) || blockerAssignments.get(attackerId) || [];
+    const currentOrder =
+      damageOrder.get(attackerId) || blockerAssignments.get(attackerId) || [];
     const newOrder = [...currentOrder];
-    [newOrder[blockerIndex - 1], newOrder[blockerIndex]] = [newOrder[blockerIndex], newOrder[blockerIndex - 1]];
+    [newOrder[blockerIndex - 1], newOrder[blockerIndex]] = [
+      newOrder[blockerIndex],
+      newOrder[blockerIndex - 1],
+    ];
     const newDamageOrder = new Map(damageOrder);
     newDamageOrder.set(attackerId, newOrder);
     setDamageOrder(newDamageOrder);
   };
 
   const moveBlockerDown = (attackerId: string, blockerIndex: number) => {
-    const currentOrder = damageOrder.get(attackerId) || blockerAssignments.get(attackerId) || [];
+    const currentOrder =
+      damageOrder.get(attackerId) || blockerAssignments.get(attackerId) || [];
     if (blockerIndex >= currentOrder.length - 1) return;
     const newOrder = [...currentOrder];
-    [newOrder[blockerIndex], newOrder[blockerIndex + 1]] = [newOrder[blockerIndex + 1], newOrder[blockerIndex]];
+    [newOrder[blockerIndex], newOrder[blockerIndex + 1]] = [
+      newOrder[blockerIndex + 1],
+      newOrder[blockerIndex],
+    ];
     const newDamageOrder = new Map(damageOrder);
     newDamageOrder.set(attackerId, newOrder);
     setDamageOrder(newDamageOrder);
@@ -180,79 +229,135 @@ export function CombatDeclaration({
     onOpenChange(false);
   };
 
-  const getAttackerCard = (id: string) => attackers.find((a) => a.id === id);
-  const getBlockerCard = (id: string) => blockers.find((b) => b.id === id);
+  // WCAG 4.1.2 / 1.4.1 (issue #1600): the selected state is exposed via
+  // aria-pressed, and a creature that cannot attack carries the REASON
+  // ("tapped", "summoning sickness, cannot attack") in its accessible name —
+  // color, ring, rotation and the amber tooltip alone are not sufficient.
+  const renderAttackerCard = (
+    card: CombatCard,
+    isSelected: boolean,
+    onClick?: () => void,
+  ) => {
+    const cannotAttack = !card.canAttack || card.isTapped;
+    const disabledReasons: string[] = [];
+    if (card.isTapped) disabledReasons.push("tapped");
+    if (card.hasSummoningSickness && !card.canAttack)
+      disabledReasons.push("summoning sickness");
+    if (!card.canAttack) disabledReasons.push("cannot attack");
+    const accessibleName = [
+      `${card.name}, ${card.power}/${card.toughness}`,
+      isSelected ? "selected to attack" : "not selected to attack",
+      ...disabledReasons,
+    ].join(", ");
 
-  const renderAttackerCard = (card: CombatCard, isSelected: boolean, onClick?: () => void) => (
-    <button
-      key={card.id}
-      onClick={onClick}
-      className={cn(
-        "relative w-20 h-28 bg-gradient-to-br from-primary/20 to-primary/5 border-2 rounded-lg",
-        "flex flex-col items-center justify-between p-2 cursor-pointer transition-all",
-        "hover:scale-105 hover:shadow-lg",
-        card.isTapped && "rotate-90 opacity-60",
-        isSelected && !card.isAttacking && "border-red-500 shadow-lg shadow-red-500/30 ring-2 ring-red-500",
-        card.isAttacking && "border-red-500 bg-red-500/10",
-        !card.canAttack && "opacity-40 cursor-not-allowed"
-      )}
-      disabled={!card.canAttack}
-    >
-      <span className="text-xs font-medium truncate w-full text-center">{card.name}</span>
-      <div className="flex items-center justify-center gap-1">
-        <span className="text-sm font-bold">{card.power}</span>
-        <span className="text-xs text-muted-foreground">/</span>
-        <span className="text-sm font-bold">{card.toughness}</span>
-      </div>
-      {isSelected && (
-        <div className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-          <Check className="h-3 w-3 text-white" />
+    return (
+      <button
+        key={card.id}
+        type="button"
+        onClick={onClick}
+        aria-label={accessibleName}
+        aria-pressed={isSelected}
+        aria-disabled={cannotAttack}
+        className={cn(
+          "relative w-20 h-28 bg-gradient-to-br from-primary/20 to-primary/5 border-2 rounded-lg",
+          "flex flex-col items-center justify-between p-2 cursor-pointer transition-all",
+          "hover:scale-105 hover:shadow-lg",
+          card.isTapped && "rotate-90 opacity-60",
+          isSelected &&
+            !card.isAttacking &&
+            "border-red-500 shadow-lg shadow-red-500/30 ring-2 ring-red-500",
+          card.isAttacking && "border-red-500 bg-red-500/10",
+          cannotAttack && "opacity-40 cursor-not-allowed",
+        )}
+        disabled={cannotAttack}
+      >
+        <span className="text-xs font-medium truncate w-full text-center">
+          {card.name}
+        </span>
+        <div className="flex items-center justify-center gap-1">
+          <span className="text-sm font-bold">{card.power}</span>
+          <span className="text-xs text-muted-foreground">/</span>
+          <span className="text-sm font-bold">{card.toughness}</span>
         </div>
-      )}
-      {card.hasSummoningSickness && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="absolute bottom-1 left-1">
-                <AlertTriangle className="h-3 w-3 text-amber-500" />
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Summoning sickness - cannot attack</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-    </button>
-  );
+        {isSelected && (
+          <div className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+            <Check aria-hidden="true" className="h-3 w-3 text-white" />
+          </div>
+        )}
+        {card.hasSummoningSickness && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="absolute bottom-1 left-1">
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="h-3 w-3 text-amber-500"
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Summoning sickness - cannot attack</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </button>
+    );
+  };
 
-  const renderBlockerCard = (card: CombatCard, isBlocking: boolean, onClick?: () => void) => (
-    <button
-      key={card.id}
-      onClick={onClick}
-      className={cn(
-        "relative w-20 h-28 bg-gradient-to-br from-blue-500/20 to-blue-500/5 border-2 rounded-lg",
-        "flex flex-col items-center justify-between p-2 cursor-pointer transition-all",
-        "hover:scale-105 hover:shadow-lg",
-        card.isTapped && "rotate-90 opacity-60",
-        isBlocking && "border-blue-500 shadow-lg shadow-blue-500/30 ring-2 ring-blue-500",
-        !card.canBlock && "opacity-40 cursor-not-allowed"
-      )}
-      disabled={!card.canBlock}
-    >
-      <span className="text-xs font-medium truncate w-full text-center">{card.name}</span>
-      <div className="flex items-center justify-center gap-1">
-        <span className="text-sm font-bold">{card.power}</span>
-        <span className="text-xs text-muted-foreground">/</span>
-        <span className="text-sm font-bold">{card.toughness}</span>
-      </div>
-      {isBlocking && (
-        <div className="absolute top-1 right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-          <Shield className="h-3 w-3 text-white" />
+  // WCAG 4.1.2 / 1.4.1 (issue #1600): aria-pressed carries the blocking
+  // state and unavailable blockers expose the reason ("tapped",
+  // "cannot block") in the accessible name instead of opacity alone.
+  const renderBlockerCard = (
+    card: CombatCard,
+    isBlocking: boolean,
+    onClick?: () => void,
+  ) => {
+    const cannotBlock = !card.canBlock || card.isTapped;
+    const disabledReasons: string[] = [];
+    if (card.isTapped) disabledReasons.push("tapped");
+    if (!card.canBlock) disabledReasons.push("cannot block");
+    const accessibleName = [
+      `${card.name}, ${card.power}/${card.toughness}`,
+      isBlocking ? "assigned as blocker" : "not blocking",
+      ...disabledReasons,
+    ].join(", ");
+
+    return (
+      <button
+        key={card.id}
+        type="button"
+        onClick={onClick}
+        aria-label={accessibleName}
+        aria-pressed={isBlocking}
+        aria-disabled={cannotBlock}
+        className={cn(
+          "relative w-20 h-28 bg-gradient-to-br from-blue-500/20 to-blue-500/5 border-2 rounded-lg",
+          "flex flex-col items-center justify-between p-2 cursor-pointer transition-all",
+          "hover:scale-105 hover:shadow-lg",
+          card.isTapped && "rotate-90 opacity-60",
+          isBlocking &&
+            "border-blue-500 shadow-lg shadow-blue-500/30 ring-2 ring-blue-500",
+          cannotBlock && "opacity-40 cursor-not-allowed",
+        )}
+        disabled={cannotBlock}
+      >
+        <span className="text-xs font-medium truncate w-full text-center">
+          {card.name}
+        </span>
+        <div className="flex items-center justify-center gap-1">
+          <span className="text-sm font-bold">{card.power}</span>
+          <span className="text-xs text-muted-foreground">/</span>
+          <span className="text-sm font-bold">{card.toughness}</span>
         </div>
-      )}
-    </button>
-  );
+        {isBlocking && (
+          <div className="absolute top-1 right-1 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+            <Shield aria-hidden="true" className="h-3 w-3 text-white" />
+          </div>
+        )}
+      </button>
+    );
+  };
 
   const renderDeclareAttackers = () => (
     <div className="space-y-4">
@@ -271,16 +376,19 @@ export function CombatDeclaration({
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium">Available Attackers</span>
-          <Badge variant="outline">
-            {selectedAttackers.size} selected
-          </Badge>
+          <Badge variant="outline">{selectedAttackers.size} selected</Badge>
         </div>
         <ScrollArea className="h-[200px]">
           <div className="flex flex-wrap gap-2 p-1">
-            {availableAttackers.map((card) =>
-              renderAttackerCard(card, selectedAttackers.has(card.id), () => toggleAttacker(card.id))
+            {/* issue #1600: render every creature so that summoning-sick and
+                tapped ones stay visible as disabled buttons carrying the
+                reason in their accessible name, instead of disappearing. */}
+            {attackers.map((card) =>
+              renderAttackerCard(card, selectedAttackers.has(card.id), () =>
+                toggleAttacker(card.id),
+              ),
             )}
-            {availableAttackers.length === 0 && (
+            {attackers.length === 0 && (
               <div className="text-center text-muted-foreground w-full py-8">
                 No available attackers
               </div>
@@ -310,7 +418,9 @@ export function CombatDeclaration({
   );
 
   const renderDeclareBlockers = () => {
-    const attackingCards = Array.from(selectedAttackers).map((id) => getAttackerCard(id)).filter(Boolean) as CombatCard[];
+    const attackingCards = Array.from(selectedAttackers)
+      .map((id) => getAttackerCard(id))
+      .filter(Boolean) as CombatCard[];
 
     return (
       <div className="space-y-4">
@@ -335,30 +445,62 @@ export function CombatDeclaration({
               {attackingCards.map((card) => {
                 const assignedBlockers = blockerAssignments.get(card.id) || [];
                 const isSelected = selectedAttackerForBlocking === card.id;
+                // WCAG 4.1.2 (issue #1600): this selector was a click-only div;
+                // it is now a toggle button whose pressed state and assigned
+                // blocker count are exposed to assistive technology.
+                const selectorLabel = [
+                  `${card.name}, ${card.power}/${card.toughness}, attacker`,
+                  isSelected ? "selecting blockers" : null,
+                  assignedBlockers.length > 0
+                    ? `${assignedBlockers.length} blocker${assignedBlockers.length > 1 ? "s" : ""} assigned`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ");
 
                 return (
-                  <div
+                  <button
                     key={card.id}
+                    type="button"
+                    aria-label={selectorLabel}
+                    aria-pressed={isSelected}
                     className={cn(
                       "relative border-2 rounded-lg p-2 cursor-pointer transition-all",
                       isSelected
                         ? "border-red-500 bg-red-500/10"
-                        : "border-border hover:border-primary/50"
+                        : "border-border hover:border-primary/50",
                     )}
-                    onClick={() => setSelectedAttackerForBlocking(isSelected ? null : card.id)}
+                    onClick={() => {
+                      setSelectedAttackerForBlocking(
+                        isSelected ? null : card.id,
+                      );
+                      setAnnouncement(
+                        isSelected
+                          ? `${card.name} deselected.`
+                          : `${card.name} selected for blocker assignment.`,
+                      );
+                    }}
                   >
                     <div className="w-16 h-24 bg-gradient-to-br from-primary/20 to-primary/5 rounded flex flex-col items-center justify-between p-1">
-                      <span className="text-[10px] font-medium truncate w-full text-center">{card.name}</span>
-                      <span className="text-xs font-bold">{card.power}/{card.toughness}</span>
+                      <span className="text-[10px] font-medium truncate w-full text-center">
+                        {card.name}
+                      </span>
+                      <span className="text-xs font-bold">
+                        {card.power}/{card.toughness}
+                      </span>
                     </div>
                     {assignedBlockers.length > 0 && (
                       <div className="absolute -bottom-2 left-0 right-0 flex justify-center">
-                        <Badge variant="outline" className="text-xs bg-blue-500/20">
-                          {assignedBlockers.length} blocker{assignedBlockers.length > 1 ? "s" : ""}
+                        <Badge
+                          variant="outline"
+                          className="text-xs bg-blue-500/20"
+                        >
+                          {assignedBlockers.length} blocker
+                          {assignedBlockers.length > 1 ? "s" : ""}
                         </Badge>
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -370,13 +512,19 @@ export function CombatDeclaration({
             <Separator />
             <div>
               <span className="text-sm font-medium mb-2 block">
-                Select Blockers for {getAttackerCard(selectedAttackerForBlocking)?.name}
+                Select Blockers for{" "}
+                {getAttackerCard(selectedAttackerForBlocking)?.name}
               </span>
               <div className="flex flex-wrap gap-2">
-                {availableBlockers.map((card) => {
-                  const isBlocking = (blockerAssignments.get(selectedAttackerForBlocking) || []).includes(card.id);
+                {/* issue #1600: render every creature so that tapped and
+                    block-incapable ones stay visible as disabled buttons
+                    carrying the reason in their accessible name. */}
+                {blockers.map((card) => {
+                  const isBlocking = (
+                    blockerAssignments.get(selectedAttackerForBlocking) || []
+                  ).includes(card.id);
                   return renderBlockerCard(card, isBlocking, () =>
-                    toggleBlocker(selectedAttackerForBlocking, card.id)
+                    toggleBlocker(selectedAttackerForBlocking, card.id),
                   );
                 })}
               </div>
@@ -413,7 +561,10 @@ export function CombatDeclaration({
           <ScrollArea className="h-[300px]">
             <div className="space-y-4">
               {attackersWithBlockers.map((attacker) => {
-                const blockers = damageOrder.get(attacker.id) || blockerAssignments.get(attacker.id) || [];
+                const blockers =
+                  damageOrder.get(attacker.id) ||
+                  blockerAssignments.get(attacker.id) ||
+                  [];
 
                 return (
                   <Card key={attacker.id}>
@@ -447,7 +598,9 @@ export function CombatDeclaration({
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 w-6 p-0"
-                                  onClick={() => moveBlockerUp(attacker.id, index)}
+                                  onClick={() =>
+                                    moveBlockerUp(attacker.id, index)
+                                  }
                                   disabled={index === 0}
                                 >
                                   <ArrowRight className="h-3 w-3 rotate-[-90deg]" />
@@ -456,7 +609,9 @@ export function CombatDeclaration({
                                   variant="ghost"
                                   size="sm"
                                   className="h-6 w-6 p-0"
-                                  onClick={() => moveBlockerDown(attacker.id, index)}
+                                  onClick={() =>
+                                    moveBlockerDown(attacker.id, index)
+                                  }
                                   disabled={index === blockers.length - 1}
                                 >
                                   <ArrowRight className="h-3 w-3 rotate-90" />
@@ -482,7 +637,9 @@ export function CombatDeclaration({
   };
 
   const renderConfirm = () => {
-    const attackingCards = Array.from(selectedAttackers).map((id) => getAttackerCard(id)).filter(Boolean) as CombatCard[];
+    const attackingCards = Array.from(selectedAttackers)
+      .map((id) => getAttackerCard(id))
+      .filter(Boolean) as CombatCard[];
 
     return (
       <div className="space-y-4">
@@ -507,7 +664,9 @@ export function CombatDeclaration({
               </Badge>
             ))}
             {attackingCards.length === 0 && (
-              <span className="text-muted-foreground text-sm">No attackers</span>
+              <span className="text-muted-foreground text-sm">
+                No attackers
+              </span>
             )}
           </div>
         </div>
@@ -515,27 +674,37 @@ export function CombatDeclaration({
         <div>
           <span className="text-sm font-medium">Blockers:</span>
           <div className="mt-2 space-y-2">
-            {Array.from(blockerAssignments.entries()).map(([attackerId, blockerIds]) => {
-              const attacker = getAttackerCard(attackerId);
-              if (!attacker) return null;
-              return (
-                <div key={attackerId} className="bg-muted/50 rounded p-2">
-                  <span className="text-sm font-medium">{attacker.name} is blocked by:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {blockerIds.map((blockerId) => {
-                      const blocker = getBlockerCard(blockerId);
-                      return blocker ? (
-                        <Badge key={blockerId} variant="outline" className="text-xs">
-                          {blocker.name}
-                        </Badge>
-                      ) : null;
-                    })}
+            {Array.from(blockerAssignments.entries()).map(
+              ([attackerId, blockerIds]) => {
+                const attacker = getAttackerCard(attackerId);
+                if (!attacker) return null;
+                return (
+                  <div key={attackerId} className="bg-muted/50 rounded p-2">
+                    <span className="text-sm font-medium">
+                      {attacker.name} is blocked by:
+                    </span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {blockerIds.map((blockerId) => {
+                        const blocker = getBlockerCard(blockerId);
+                        return blocker ? (
+                          <Badge
+                            key={blockerId}
+                            variant="outline"
+                            className="text-xs"
+                          >
+                            {blocker.name}
+                          </Badge>
+                        ) : null;
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              },
+            )}
             {blockerAssignments.size === 0 && selectedAttackers.size > 0 && (
-              <span className="text-muted-foreground text-sm">No blockers assigned - attacks go through</span>
+              <span className="text-muted-foreground text-sm">
+                No blockers assigned - attacks go through
+              </span>
             )}
           </div>
         </div>
@@ -606,16 +775,30 @@ export function CombatDeclaration({
           </DialogDescription>
         </DialogHeader>
 
+        {/* WCAG 4.1.3 (issue #1600): announce attacker/blocker selection
+            changes politely to screen-reader users. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+
         <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap text-xs md:text-sm">
-          <Badge variant={combatPhase === "declare-attackers" ? "default" : "outline"}>
+          <Badge
+            variant={
+              combatPhase === "declare-attackers" ? "default" : "outline"
+            }
+          >
             1. Attackers
           </Badge>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <Badge variant={combatPhase === "declare-blockers" ? "default" : "outline"}>
+          <Badge
+            variant={combatPhase === "declare-blockers" ? "default" : "outline"}
+          >
             2. Blockers
           </Badge>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
-          <Badge variant={combatPhase === "damage-order" ? "default" : "outline"}>
+          <Badge
+            variant={combatPhase === "damage-order" ? "default" : "outline"}
+          >
             3. Order
           </Badge>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
@@ -641,7 +824,11 @@ export function CombatDeclaration({
             <RotateCcw className="h-4 w-4 mr-1" />
             Back
           </Button>
-          <Button onClick={handleNext} disabled={!canProceed()} className="h-11 md:h-auto">
+          <Button
+            onClick={handleNext}
+            disabled={!canProceed()}
+            className="h-11 md:h-auto"
+          >
             {getNextButtonText()}
             <ArrowRight className="h-4 w-4 ml-1" />
           </Button>
