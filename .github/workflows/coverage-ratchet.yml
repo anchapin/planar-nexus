@@ -1,0 +1,120 @@
+# Issue #1596: auto-ratchet the Jest coverage floor on every merge to main.
+#
+# scripts/ratchet-coverage.js (issue #1099) rewrites jest.config.js
+# `coverageThreshold.global` upward to floor(measured - margin) and refuses to
+# lower it (exit 1 on regression). Until now it only ran when a human typed
+# `npm run test:coverage:ratchet`; this workflow closes the loop so every PR
+# that adds tests permanently moves the floor toward the documented 70% target
+# (docs/TESTING.md). The per-PR `test` job in ci.yml still catches coverage
+# removals at review time; this job makes the gains sticky post-merge.
+#
+# Loop safety (three independent guards, so the bot can never feed itself):
+#   1. Pushes made with the built-in GITHUB_TOKEN never trigger new workflow
+#      runs (GitHub's built-in recursion protection).
+#   2. The bot's commit message carries `[skip ci]`, skipped by the job-level
+#      `if` below even if the push is later made with a PAT.
+#   3. The job-level `if` also skips pushes authored by github-actions[bot].
+#
+# Concurrency: queued, never cancelled — two rapid merges to main must both
+# ratchet (the second run sees the first bump's floor as its baseline).
+name: Coverage Ratchet
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# The ratchet commits the bumped jest.config.js straight to main using the
+# built-in GITHUB_TOKEN (actions/checkout persists its credentials, so plain
+# `git push` works). Scoped here rather than on ci.yml so the write
+# permission never reaches the per-PR CI jobs.
+permissions:
+  contents: write
+
+jobs:
+  ratchet:
+    name: Ratchet coverage floor
+    # Loop guard: skip bot-authored pushes and `[skip ci]` head commits.
+    # workflow_dispatch is always allowed (operator-initiated validation).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'push' &&
+        github.ref == 'refs/heads/main' &&
+        !contains(github.event.head_commit.message, '[skip ci]') &&
+        github.event.head_commit.committer.username != 'github-actions[bot]'
+      )
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Run unit tests with coverage
+        # Same invocation as the CI `test` job so the measured numbers match;
+        # jest.config.js enables the `json-summary` reporter that feeds the
+        # ratchet (coverage/coverage-summary.json). Jest fails before the
+        # ratchet step if coverage is already below the current floor.
+        run: npm test -- --coverage --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MB
+
+      - name: Ratchet coverage floor
+        id: ratchet
+        # Exit codes: 0 = at floor or bumped, 1 = regression (the floor is
+        # never lowered). On regression, re-emit each regressed metric line
+        # as a GitHub error annotation (#1596 acceptance criterion 3); the
+        # script's per-metric lines look like
+        # `  branches    measured 27.5% < floor 28% (-0.5)`.
+        run: |
+          set -e
+          set +e
+          node scripts/ratchet-coverage.js 2> "$RUNNER_TEMP/ratchet-stderr.log"
+          RATCHET_EXIT=$?
+          set -e
+          cat "$RUNNER_TEMP/ratchet-stderr.log" >&2
+          if [ "$RATCHET_EXIT" -ne 0 ]; then
+            while IFS= read -r line; do
+              case "$line" in
+                *"measured"*"floor"*) echo "::error::Coverage floor regression — ${line}" ;;
+              esac
+            done < "$RUNNER_TEMP/ratchet-stderr.log"
+            echo "::error::Coverage regression on main (ratchet exit ${RATCHET_EXIT}): measured coverage is below the jest.config.js floor. The floor is never lowered — restore coverage above the floor."
+          fi
+          exit "$RATCHET_EXIT"
+
+      - name: Detect ratchet change
+        id: changed
+        run: |
+          set -e
+          if git diff --quiet -- jest.config.js; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "[ratchet] jest.config.js already at the measured floor — nothing to commit."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "[ratchet] jest.config.js coverageThreshold.global bumped:"
+            git --no-pager diff -- jest.config.js
+          fi
+
+      - name: Commit and push ratcheted floor
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          WORKFLOW_REF: ${{ github.ref }}
+        run: |
+          set -e
+          if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
+            echo "::notice::Manual run on non-main ref ($WORKFLOW_REF) — jest.config.js rewritten in the workspace only, not pushed."
+            exit 0
+          fi
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add jest.config.js
+          # `[skip ci]` in the message is loop-guard layer 2 (see file header);
+          # GITHUB_TOKEN pushes not re-triggering workflows is layer 1.
+          git commit -m "chore: auto-ratchet jest coverage floor [skip ci]"
+          git push origin HEAD:main
