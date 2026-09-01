@@ -294,6 +294,37 @@ export function destroyCard(
     return exileCard(state, cardId);
   }
 
+  // CR 701.13: If the permanent has a regeneration shield, consume exactly one
+  // shield INSTEAD of destroying it — the permanent is tapped, all damage is
+  // removed, and it stays on the battlefield (never moved to the graveyard).
+  // Bypassed when ignoreIndestructible is set, matching the "cannot be
+  // replaced" destroy contract used by the state-based annihilate paths.
+  if (!ignoreIndestructible) {
+    const shieldResult = consumeRegenerationShield(state, cardId);
+    if (shieldResult.hasShield) {
+      const shieldedCard = shieldResult.state.cards.get(cardId);
+      if (shieldedCard) {
+        const regeneratedCard = {
+          ...shieldedCard,
+          damage: 0,
+          isTapped: true,
+        };
+        const regeneratedCards = new Map(shieldResult.state.cards);
+        regeneratedCards.set(cardId, regeneratedCard);
+        return {
+          success: true,
+          state: {
+            ...shieldResult.state,
+            cards: regeneratedCards,
+            lastModifiedAt: Date.now(),
+          },
+          description: `${shieldedCard.cardData.name} regenerates (shield consumed)`,
+          affectedCards: [cardId],
+        };
+      }
+    }
+  }
+
   // Move card to graveyard
   return moveCardToZone(state, cardId, "graveyard");
 }
