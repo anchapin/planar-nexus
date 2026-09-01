@@ -28,6 +28,11 @@
  *   • src/lib/game-state/state-based-actions.ts : PENDING measurement (issue
  *     #1395) → conservative 50 — TO BE RATCHETED after the first successful
  *     nightly run records its score.
+ *   • src/lib/game-state/combat.ts : PENDING measurement (issue #1597) — a
+ *     local `npm run mutate:combat` run exceeded 40 min without completing
+ *     (839 mutants, 45% static) → conservative 50 (the current aggregate
+ *     break) — TO BE RATCHETED after the first successful nightly run
+ *     records its score.
  *
  * Precedence for any module in a Stryker report:
  *   1. explicit per-module entry in `floors` (this file)
@@ -49,5 +54,9 @@ module.exports = {
     "src/lib/game-state/spell-casting.ts": 50,
     "src/lib/game-state/trigger-system.ts": 50,
     "src/lib/game-state/state-based-actions.ts": 50,
+    // Issue #1597: 6th Stryker module. Conservative pending-measurement
+    // floor (local single-module run exceeded the time budget) — ratchet
+    // upward after the first successful nightly run records its score.
+    "src/lib/game-state/combat.ts": 50,
   },
 };
