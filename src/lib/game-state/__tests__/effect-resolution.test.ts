@@ -410,11 +410,11 @@ describe("Effect Resolution - Counter Spell", () => {
 
       expect(result.success).toBe(true);
 
-      // Check the spell is marked as countered
-      const updatedSpell = result.state.stack.find(
-        (s) => s.id === "stack-spell-1",
+      // CR 701.5b (issue #1578): the countered spell is removed from the
+      // stack entirely, not merely flagged.
+      expect(result.state.stack.some((s) => s.id === "stack-spell-1")).toBe(
+        false,
       );
-      expect(updatedSpell?.isCountered).toBe(true);
     });
 
     it("should handle non-existent stack object", () => {
