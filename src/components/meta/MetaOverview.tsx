@@ -1,20 +1,26 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { MagicFormat, DateRange, getMetaData } from '@/lib/meta';
-import DeckArchetypeCard from './DeckArchetypeCard';
-import FormatHealthGauge from './FormatHealthGauge';
-import ColorDistributionChart from './ColorDistributionChart';
-import ArchetypeBalance from './ArchetypeBalance';
-import ArchetypeTrends from './ArchetypeTrends';
-import CardTrendChart from './CardTrendChart';
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { MagicFormat, DateRange, getMetaData } from "@/lib/meta";
+import DeckArchetypeCard from "./DeckArchetypeCard";
+import FormatHealthGauge from "./FormatHealthGauge";
+import ColorDistributionChart from "./ColorDistributionChart";
+import ArchetypeBalance from "./ArchetypeBalance";
+import ArchetypeTrends from "./ArchetypeTrends";
+import CardTrendChart from "./CardTrendChart";
 
 export default function MetaOverview() {
-  const [selectedFormat, setSelectedFormat] = useState<MagicFormat>('standard');
-  const [dateRange, setDateRange] = useState<DateRange>('30days');
+  const [selectedFormat, setSelectedFormat] = useState<MagicFormat>("standard");
+  const [dateRange, setDateRange] = useState<DateRange>("30days");
 
   const metaData = getMetaData(selectedFormat, dateRange);
 
@@ -23,12 +29,14 @@ export default function MetaOverview() {
       {/* Header with Format Selector and Date Range */}
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline text-2xl">Meta Analysis</CardTitle>
+          <CardTitle className="font-headline text-2xl">
+            Meta Analysis
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <Tabs 
-              value={selectedFormat} 
+            <Tabs
+              value={selectedFormat}
               onValueChange={(v) => setSelectedFormat(v as MagicFormat)}
               className="w-full sm:w-auto"
             >
@@ -38,9 +46,9 @@ export default function MetaOverview() {
                 <TabsTrigger value="commander">Commander</TabsTrigger>
               </TabsList>
             </Tabs>
-            
-            <Select 
-              value={dateRange} 
+
+            <Select
+              value={dateRange}
               onValueChange={(v) => setDateRange(v as DateRange)}
             >
               <SelectTrigger className="w-[180px]">
@@ -60,25 +68,33 @@ export default function MetaOverview() {
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="font-headline text-lg">Format Health</CardTitle>
+            <CardTitle className="font-headline text-lg">
+              Format Health
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <FormatHealthGauge score={metaData.formatHealth.score} />
           </CardContent>
         </Card>
-        
+
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="font-headline text-lg">Color Distribution</CardTitle>
+            <CardTitle className="font-headline text-lg">
+              Color Distribution
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <ColorDistributionChart data={metaData.formatHealth.colorDistribution} />
+            <ColorDistributionChart
+              data={metaData.formatHealth.colorDistribution}
+            />
           </CardContent>
         </Card>
-        
+
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="font-headline text-lg">Archetype Balance</CardTitle>
+            <CardTitle className="font-headline text-lg">
+              Archetype Balance
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <ArchetypeBalance data={metaData.formatHealth.archetypeBalance} />
@@ -90,16 +106,18 @@ export default function MetaOverview() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="font-headline text-lg">Rising & Declining Archetypes</CardTitle>
+            <CardTitle className="font-headline text-lg">
+              Rising & Declining Archetypes
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <ArchetypeTrends 
-              rising={metaData.risingArchetypes} 
-              declining={metaData.decliningArchetypes} 
+            <ArchetypeTrends
+              rising={metaData.risingArchetypes}
+              declining={metaData.decliningArchetypes}
             />
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader>
             <CardTitle className="font-headline text-lg">Card Trends</CardTitle>
@@ -113,12 +131,18 @@ export default function MetaOverview() {
       {/* Deck Archetypes Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="font-headline text-xl">Top Deck Archetypes</CardTitle>
+          <CardTitle className="font-headline text-xl">
+            Top Deck Archetypes
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {metaData.archetypes.map((archetype) => (
-              <DeckArchetypeCard key={archetype.id} archetype={archetype} />
+              <DeckArchetypeCard
+                key={archetype.id}
+                archetype={archetype}
+                format={selectedFormat}
+              />
             ))}
           </div>
         </CardContent>
