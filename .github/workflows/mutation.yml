@@ -2,10 +2,15 @@ name: Mutation Testing
 
 # Full-suite mutation-testing gate for the rules-engine invariants (#1097,
 # #1265, #1395). Stryker mutates every module in the `mutate` allowlist in
-# stryker.config.js and reports the aggregate mutation score. The score is
-# enforced by `thresholds.break` in the config — a nightly run that drops
-# below the threshold fails the workflow and surfaces a regression on the
-# Actions tab + the mutation-report artifact.
+# stryker.config.js and reports the aggregate mutation score, which is gated
+# two ways:
+#   1. `thresholds.break` in stryker.config.js (AGGREGATE score, enforced by
+#      Stryker's own exit code), and
+#   2. `scripts/mutation-floor.js` (issue #1598) — a PER-MODULE floor from
+#      scripts/mutation-floor.config.js, so a single module cannot regress
+#      silently while the weighted aggregate still clears `break`.
+# Either failure fails the workflow and surfaces the regression on the Actions
+# tab + the mutation-report artifact.
 #
 # The allowlist grew from 3 → 5 modules in #1395 (added trigger-system.ts and
 # state-based-actions.ts). `break` is currently 50; it is raised to 70 once the
@@ -62,6 +67,18 @@ jobs:
         # the gate, not just the aggregate score.
         if: always()
         run: node scripts/mutation-summary.js
+
+      - name: Enforce per-module mutation-score floor
+        # Issue #1598: the aggregate `thresholds.break` gate cannot catch a
+        # single module regressing (e.g. one module at 35% beside four at 80%
+        # still clears break: 50 combined). This gate parses the same report
+        # and fails the job if ANY allowlisted module drops below its floor in
+        # scripts/mutation-floor.config.js. Runs with `always()` so the
+        # offending module is named even when Stryker already failed on the
+        # aggregate threshold (a missing report exits 0 — Stryker's own gate
+        # covers that case).
+        if: always()
+        run: node scripts/mutation-floor.js
 
       - name: Upload mutation report
         if: always()

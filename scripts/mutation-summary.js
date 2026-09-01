@@ -15,55 +15,38 @@
  * share of "detected" mutants (Killed / Timeout) over the share that count
  * against the suite (Killed + Timeout + Survived + NoCoverage + RuntimeError),
  * i.e. Ignored and CompileError mutants are excluded.
+ *
+ * Issue #1598: rows below their per-module floor (see
+ * scripts/mutation-floor.config.js) are additionally annotated with a
+ * "⚠️ BELOW FLOOR" marker, distinct from the emoji buckets — the same floors
+ * the mutation-floor.js gate enforces right after this step in the nightly
+ * workflow.
  */
 
 "use strict";
 
 const fs = require("fs");
-const path = require("path");
 
-const REPORT = path.resolve(process.cwd(), "reports/mutation/mutation.json");
+const {
+  REPORT_PATH,
+  loadFloorConfig,
+  floorFor,
+  computeModuleScores,
+} = require("./mutation-floor-lib.js");
 
 function main() {
-  if (!fs.existsSync(REPORT)) {
-    process.stderr.write(`mutation-summary: ${REPORT} not found — skipping.\n`);
+  if (!fs.existsSync(REPORT_PATH)) {
+    process.stderr.write(
+      `mutation-summary: ${REPORT_PATH} not found — skipping.\n`,
+    );
     process.exitCode = 0;
     return;
   }
 
-  const data = JSON.parse(fs.readFileSync(REPORT, "utf8"));
+  const data = JSON.parse(fs.readFileSync(REPORT_PATH, "utf8"));
+  const config = loadFloorConfig();
 
-  // Stryker 9.x: `files` is an object keyed by source path. Older releases use
-  // an array. Normalise to [[filePath, mutants[]]] pairs.
-  const entries = Array.isArray(data.files)
-    ? data.files.map((f) => [f.name || f.source || "?", f.mutants || []])
-    : Object.entries(data.files || {}).map(([name, f]) => [name, f.mutants || []]);
-
-  const rows = entries
-    .map(([file, mutants]) => {
-      const counts = { Killed: 0, Survived: 0, NoCoverage: 0, Timeout: 0, RuntimeError: 0, Ignored: 0, CompileError: 0 };
-      for (const m of mutants) {
-        const s = m.status;
-        if (counts[s] !== undefined) counts[s]++;
-      }
-      const detected = counts.Killed + counts.Timeout;
-      const considered =
-        counts.Killed +
-        counts.Timeout +
-        counts.Survived +
-        counts.NoCoverage +
-        counts.RuntimeError;
-      const score = considered > 0 ? (detected / considered) * 100 : 0;
-      return {
-        file: file.replace(/^.*src\//, "src/"),
-        score,
-        detected,
-        considered,
-        survived: counts.Survived,
-        noCoverage: counts.NoCoverage,
-      };
-    })
-    .sort((a, b) => a.file.localeCompare(b.file));
+  const rows = computeModuleScores(data);
 
   const lines = [
     "### Mutation score breakdown",
@@ -73,8 +56,12 @@ function main() {
   ];
   for (const r of rows) {
     const mark = r.score >= 70 ? "🟢" : r.score >= 50 ? "🟡" : "🔴";
+    const floor = floorFor(r.file, config);
+    // Issue #1598: flag rows whose module would fail the per-module floor
+    // gate. Distinct from the emoji buckets so the two signals stay readable.
+    const belowFloor = r.score < floor ? " ⚠️ BELOW FLOOR" : "";
     lines.push(
-      `| ${mark} \`${r.file}\` | ${r.score.toFixed(1)}% | ${r.detected}/${r.considered} | ${r.survived} | ${r.noCoverage} |`,
+      `| ${mark} \`${r.file}\`${belowFloor} | ${r.score.toFixed(1)}% | ${r.detected}/${r.considered} | ${r.survived} | ${r.noCoverage} |`,
     );
   }
 
