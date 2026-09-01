@@ -21,6 +21,7 @@ import type {
   AiNeighbor,
 } from "./types";
 import { saveDraftSession } from "./pool-storage";
+import { validateSetIsDraftable } from "./set-service";
 
 // Re-export types for convenience
 export type { DraftSession, DraftPack, DraftCard };
@@ -222,6 +223,10 @@ export async function createDraftSession(
   setName: string,
   options?: CreateDraftSessionOptions,
 ): Promise<DraftSession> {
+  // Issue #1557: refuse non-draftable set types (commander precons,
+  // planechase, reprint products) — drafting them yields malformed pools.
+  await validateSetIsDraftable(setCode);
+
   // Generate packs
   const packs = await generateDraftPacks(setCode);
 

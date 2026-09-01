@@ -28,6 +28,15 @@ import type {
 } from "../types";
 import { ARCHETYPE_SIGNAL_BUFFER_SIZE } from "../types";
 
+// Issue #1557: bypass set-metadata validation so the end-to-end
+// createDraftSession integration tests stay hermetic (no Scryfall lookup).
+// Rejection behavior is covered in issue-1557-draftable-set-types.test.ts.
+jest.mock("../set-service", () => ({
+  validateSetIsDraftable: jest
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined),
+}));
+
 const makeCard = (
   id: string,
   colors: string[] = [],

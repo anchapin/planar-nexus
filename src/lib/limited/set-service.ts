@@ -1,27 +1,27 @@
 /**
  * Set Service - Scryfall API integration for MTG set data
- * 
+ *
  * Phase 14: Foundation
  * Requirements: SET-01, SET-02, SET-03
- * 
+ *
  * Provides:
  * - fetchAllSets(): Fetch all sets from Scryfall
  * - sortSets(): Sort sets by date, name, or card count
  * - getSetDetails(): Get single set by code
- * 
+ *
  * Features:
  * - 24-hour in-memory cache to avoid rate limiting
  * - Fallback to cached data on network errors
  * - Error handling with descriptive messages
  */
 
-import type { ScryfallSet, SetSortOption } from './types';
+import type { ScryfallSet, SetSortOption } from "./types";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const SCRYFALL_SETS_URL = 'https://api.scryfall.com/sets';
+const SCRYFALL_SETS_URL = "https://api.scryfall.com/sets";
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ============================================================================
@@ -54,7 +54,7 @@ function isCacheValid(): boolean {
 /**
  * Fetch all sets from Scryfall API
  * Results are cached for 24 hours
- * 
+ *
  * @returns Promise resolving to array of ScryfallSet
  * @throws Error if fetch fails and no cache available
  */
@@ -68,7 +68,9 @@ export async function fetchAllSets(): Promise<ScryfallSet[]> {
     const response = await fetch(SCRYFALL_SETS_URL);
 
     if (!response.ok) {
-      throw new Error(`Scryfall API error: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Scryfall API error: ${response.status} ${response.statusText}`,
+      );
     }
 
     const data = await response.json();
@@ -88,7 +90,7 @@ export async function fetchAllSets(): Promise<ScryfallSet[]> {
   } catch (error) {
     // If fetch fails, try to return cached data
     if (setCache.data.length > 0) {
-      console.warn('Failed to fetch sets from API, using cached data:', error);
+      console.warn("Failed to fetch sets from API, using cached data:", error);
       return setCache.data;
     }
 
@@ -96,13 +98,13 @@ export async function fetchAllSets(): Promise<ScryfallSet[]> {
     if (error instanceof Error) {
       throw new Error(`Failed to fetch sets: ${error.message}`);
     }
-    throw new Error('Failed to fetch sets from Scryfall');
+    throw new Error("Failed to fetch sets from Scryfall");
   }
 }
 
 /**
  * Sort sets by the specified option
- * 
+ *
  * @param sets - Array of sets to sort
  * @param option - Sort option (release_date, name, card_count)
  * @param ascending - Sort direction (default: true for name, false for date/count)
@@ -110,8 +112,8 @@ export async function fetchAllSets(): Promise<ScryfallSet[]> {
  */
 export function sortSets(
   sets: ScryfallSet[],
-  option: SetSortOption = 'release_date',
-  ascending = false
+  option: SetSortOption = "release_date",
+  ascending = false,
 ): ScryfallSet[] {
   if (!sets || sets.length === 0) {
     return [];
@@ -120,7 +122,7 @@ export function sortSets(
   const sortedSets = [...sets];
 
   switch (option) {
-    case 'release_date':
+    case "release_date":
       // Newest first by default (descending)
       sortedSets.sort((a, b) => {
         const dateA = a.released_at ? new Date(a.released_at).getTime() : 0;
@@ -129,19 +131,23 @@ export function sortSets(
       });
       break;
 
-    case 'name':
+    case "name":
       // A-Z by default (ascending)
       sortedSets.sort((a, b) => {
         const nameA = a.name.toLowerCase();
         const nameB = b.name.toLowerCase();
-        return ascending ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        return ascending
+          ? nameA.localeCompare(nameB)
+          : nameB.localeCompare(nameA);
       });
       break;
 
-    case 'card_count':
+    case "card_count":
       // Most cards first by default (descending)
       sortedSets.sort((a, b) => {
-        return ascending ? a.card_count - b.card_count : b.card_count - a.card_count;
+        return ascending
+          ? a.card_count - b.card_count
+          : b.card_count - a.card_count;
       });
       break;
 
@@ -155,7 +161,7 @@ export function sortSets(
 
 /**
  * Get details for a specific set by code
- * 
+ *
  * @param code - Set code (e.g., 'znr', 'mid')
  * @returns Promise resolving to ScryfallSet or null if not found
  */
@@ -187,53 +193,102 @@ export function clearSetCache(): void {
 }
 
 /**
- * Get set types that are valid for limited play
- * Filters out tokens, memorabilia, etc.
+ * Get set types that are valid for limited play (draft / sealed).
+ *
+ * Only set types with a booster-oriented rarity distribution are included:
+ * - expansion        — standard draftable expansions
+ * - core             — core sets (e.g. M21)
+ * - masters          — draftable reprint/masters sets (e.g. MH2, TSR)
+ * - draft_innovation — experimental draft sets (e.g. CMR, CLB)
+ * - conspiracy       — Conspiracy-style draft sets
+ *
+ * Fixed-content products are deliberately excluded (issue #1557):
+ * commander precons, planechase, and duel-deck style reprint products
+ * were never meant to be opened into boosters, so asking
+ * generatePack() to draft them produces a malformed pool (see #693).
+ * Note that draftable Commander products (Commander Legends) are
+ * classified by Scryfall as `draft_innovation` and remain playable.
  */
 export function getLimitedPlayableSetTypes(): string[] {
-  return [
-    'expansion',
-    'core',
-    'masters',
-    'draft_innovation',
-    'commander',
-    'planechase',
-    'conspiracy',
-    'reprint',
-  ];
+  return ["expansion", "core", "masters", "draft_innovation", "conspiracy"];
+}
+
+/**
+ * Check whether a set type is draftable for limited play
+ *
+ * @param setType - Raw set type from Scryfall
+ * @returns true if sets of this type can be drafted / sealed
+ */
+export function isDraftableSetType(setType: string): boolean {
+  return getLimitedPlayableSetTypes().includes(setType);
+}
+
+/**
+ * Validate that a set can be used for limited (draft / sealed) play.
+ *
+ * Guards against hardcoded or deep-linked set codes pointing at
+ * fixed-content products (e.g. `c21`): generating a pool from them
+ * would produce a malformed draft pool (issue #1557, see also #693).
+ *
+ * Fails open when set metadata cannot be resolved (offline / API
+ * error) so a transient Scryfall outage cannot block limited play;
+ * pool generation has its own fallbacks for unknown sets.
+ *
+ * @param setCode - Set code (e.g., 'm21', 'c21')
+ * @throws Error with a descriptive message when the set is known and not draftable
+ */
+export async function validateSetIsDraftable(setCode: string): Promise<void> {
+  const normalizedCode = (setCode ?? "").toLowerCase().trim();
+
+  let set: ScryfallSet | null;
+  try {
+    set = await getSetDetails(normalizedCode);
+  } catch {
+    // Set metadata unavailable (offline / API error) — fail open.
+    return;
+  }
+
+  if (set && !isDraftableSetType(set.set_type)) {
+    throw new Error(
+      `Set "${set.name}" (${set.code.toUpperCase()}) has set type "${set.set_type}", ` +
+        `which is not draftable. Fixed-content products do not have a booster ` +
+        `rarity distribution and cannot be used for limited play. Choose a ` +
+        `draftable set type: ${getLimitedPlayableSetTypes().join(", ")}.`,
+    );
+  }
 }
 
 /**
  * Filter sets to only playable set types
- * 
+ *
  * @param sets - Array of sets to filter
  * @returns Filtered array of sets suitable for limited play
  */
 export function filterPlayableSets(sets: ScryfallSet[]): ScryfallSet[] {
   const playableTypes = getLimitedPlayableSetTypes();
-  return sets.filter(set => playableTypes.includes(set.set_type));
+  return sets.filter((set) => playableTypes.includes(set.set_type));
 }
 
 /**
  * Get a friendly name for a set type
- * 
+ *
  * @param setType - Raw set type from Scryfall
  * @returns Human-readable name
  */
 export function getSetTypeDisplayName(setType: string): string {
   const displayNames: Record<string, string> = {
-    expansion: 'Expansion',
-    core: 'Core Set',
-    masters: 'Masters Set',
-    draft_innovation: 'Draft Innovation',
-    commander: 'Commander Set',
-    planechase: 'Planechase',
-    conspiracy: 'Conspiracy',
-    reprint: 'Reprint Set',
-    starter: 'Starter Set',
-    token: 'Token Set',
-    memorabilia: 'Memorabilia',
-    minigame: 'Minigame',
+    expansion: "Expansion",
+    core: "Core Set",
+    masters: "Masters Set",
+    draft_innovation: "Draft Innovation",
+    commander: "Commander Set",
+    planechase: "Planechase",
+    conspiracy: "Conspiracy",
+    reprint: "Reprint Set",
+    starter: "Starter Set",
+    token: "Token Set",
+    memorabilia: "Memorabilia",
+    minigame: "Minigame",
   };
 
   return displayNames[setType] || setType;

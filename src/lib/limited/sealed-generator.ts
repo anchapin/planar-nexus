@@ -12,6 +12,7 @@
 import type { MinimalCard } from "@/lib/card-database";
 import { getAllCards, initializeCardDatabase } from "@/lib/card-database";
 import type { PoolCard, LimitedSession, LimitedMode } from "./types";
+import { validateSetIsDraftable } from "./set-service";
 
 // ============================================================================
 // Constants
@@ -426,6 +427,10 @@ export async function createSealedSession(
   setCode: string,
   setName: string,
 ): Promise<LimitedSession> {
+  // Issue #1557: refuse non-draftable set types (commander precons,
+  // planechase, reprint products) — sealing them yields malformed pools.
+  await validateSetIsDraftable(setCode);
+
   // Generate the pool
   const pool = await generateSealedPool(setCode);
 

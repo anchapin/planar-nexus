@@ -59,6 +59,15 @@ jest.mock("../sealed-generator", () => ({
     .mockResolvedValue(createMockPackContents()),
 }));
 
+// Issue #1557: bypass set-metadata validation so session-creation tests
+// stay hermetic (no Scryfall lookup). Rejection behavior is covered in
+// issue-1557-draftable-set-types.test.ts.
+jest.mock("../set-service", () => ({
+  validateSetIsDraftable: jest
+    .fn<() => Promise<void>>()
+    .mockResolvedValue(undefined),
+}));
+
 // Import after mocking
 import {
   createDraftSession,
