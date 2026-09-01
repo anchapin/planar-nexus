@@ -12,12 +12,12 @@
 //
 //   Run (all scoped modules):   npm run test:mutation
 //   Run (one module, fast):     npm run mutate -- src/lib/game-state/layer-system.ts
-  //   Or via dedicated scripts:   npm run mutate:layer-system
-  //                              npm run mutate:replacement-effects
-  //                              npm run mutate:spell-casting
-  //                              npm run mutate:trigger-system
-  //                              npm run mutate:state-based-actions
-  //   Report:                     reports/mutation/index.html
+//   Or via dedicated scripts:   npm run mutate:layer-system
+//                              npm run mutate:replacement-effects
+//                              npm run mutate:spell-casting
+//                              npm run mutate:trigger-system
+//                              npm run mutate:state-based-actions
+//   Report:                     reports/mutation/index.html
 //
 // See issues #1097 (initial setup), #1265 (enforce threshold in CI), and the
 // "Mutation Testing" section in docs/TESTING.md.
@@ -113,6 +113,12 @@ module.exports = {
   // the PR gate passes today. The plan is to grow the test suite (issue
   // follow-up) until layer-system + both #1395 modules are comfortably
   // >=70%, then raise `break` to 70 in a follow-up PR.
+  //
+  // NOTE (issue #1598): `break` is AGGREGATE-only — one module can regress
+  // silently while the combined score still clears 50. Per-module floors
+  // live in scripts/mutation-floor.config.js and are enforced by
+  // scripts/mutation-floor.js (nightly mutation.yml + `npm run
+  // test:mutation`). Raise a module's floor there when its tests improve.
   thresholds: {
     high: 80,
     low: 55,

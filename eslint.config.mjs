@@ -94,6 +94,13 @@ const eslintConfig = [
       // the flat config has no Node environment for), same class of file as
       // jest.config.js above.
       "scripts/ratchet-coverage.js",
+      // Plain Node CommonJS tooling for the issue #1598 per-module mutation
+      // floor gate (checker CLI + shared lib + floor config).
+      "scripts/mutation-floor.js",
+      "scripts/mutation-floor-lib.js",
+      "scripts/mutation-floor.config.js",
+      // Plain Node CommonJS tooling for the issue #1395 score breakdown.
+      "scripts/mutation-summary.js",
       // Plain Node ESM tooling for the issue #1397 fixture regenerator.
       "scripts/regen-video-fixtures.mjs",
       // Plain Node ESM tooling for the issue #1430 updater-config guard.
