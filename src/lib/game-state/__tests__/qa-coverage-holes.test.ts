@@ -45,6 +45,7 @@ import {
 import {
   createCardInstance,
   initializePlaneswalkerLoyalty,
+  markDamage,
 } from "../card-instance";
 import { Phase } from "../types";
 import type { Turn } from "../types";
@@ -642,9 +643,7 @@ describe("GS-RT-9: advancePhase cleanup edge case (CR 500.7, CR 500.9)", () => {
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-10: regeneration shield vs destroyCard (CR 701.13)", () => {
-  // TODO(#1394): fix — destroyCard should check for and consume a
-  // regeneration shield before moving the card to the graveyard.
-  it("regression: CR 701.13 — destroyCard moves card to graveyard even with regeneration shield", () => {
+  it("regression: CR 701.13 — destroyCard consumes the regeneration shield and keeps the card on the battlefield", () => {
     let state = createInitialGameState(["Alice"], 20, false);
     state = startGame(state);
     const [aliceId] = Array.from(state.players.keys());
@@ -660,24 +659,154 @@ describe("GS-RT-10: regeneration shield vs destroyCard (CR 701.13)", () => {
     expect(regenResult.success).toBe(true);
     state = regenResult.state;
 
-    // Verify shield exists
-    const shieldCheck = consumeRegenerationShield(state, creatureId);
-    expect(shieldCheck.hasShield).toBe(true);
+    // Mark lethal damage AFTER the shield is up so the "remove all damage"
+    // half of CR 701.13 is observable when the shield is consumed.
+    state = {
+      ...state,
+      cards: new Map(state.cards).set(
+        creatureId,
+        markDamage(state.cards.get(creatureId)!, 2),
+      ),
+    };
 
-    // Re-add the shield (consumeRegenerationShield removed it)
-    const regenResult2 = regenerateCard(state, creatureId);
-    state = regenResult2.state;
-
-    // Destroy the card — current behaviour: destroyCard ignores the shield
+    // Destroy the card — CR 701.13: the shield is consumed INSTEAD of
+    // destruction; the permanent is tapped, damage is removed, and it is
+    // never moved to the graveyard.
     const destroyResult = destroyCard(state, creatureId);
+    expect(destroyResult.success).toBe(true);
+    state = destroyResult.state;
 
-    // Pin current behaviour: the card goes to graveyard despite having a
-    // regeneration shield (the shield is not consumed by destroyCard).
+    const survivor = state.cards.get(creatureId)!;
+    expect(survivor.damage).toBe(0);
+    expect(survivor.isTapped).toBe(true);
+
+    const graveyard = state.zones.get(`${aliceId}-graveyard`)!;
+    const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+    expect(battlefield.cardIds).toContain(creatureId);
+    expect(graveyard.cardIds).not.toContain(creatureId);
+  });
+
+  it("regression: CR 701.13 — destroyCard decrements the shield counter by exactly 1 per destroy", () => {
+    let state = createInitialGameState(["Alice"], 20, false);
+    state = startGame(state);
+    const [aliceId] = Array.from(state.players.keys());
+
+    const creatureId = addCreatureToBattlefield(
+      state,
+      aliceId,
+      createMockCreature("Regenerator", 2, 2),
+    );
+
+    // Place two regeneration shields
+    state = regenerateCard(state, creatureId).state;
+    state = regenerateCard(state, creatureId).state;
+    const shieldCount = (s: typeof state) =>
+      s.cards
+        .get(creatureId)!
+        .counters.find((c) => c.type === "regeneration-shield")?.count;
+    expect(shieldCount(state)).toBe(2);
+
+    // First destroy — consumes one shield, the creature survives
+    let result = destroyCard(state, creatureId);
+    expect(result.success).toBe(true);
+    expect(shieldCount(result.state)).toBe(1);
+    expect(result.state.zones.get(`${aliceId}-battlefield`)!.cardIds).toContain(
+      creatureId,
+    );
+
+    // Second destroy — consumes the last shield, the creature survives again
+    result = destroyCard(result.state, creatureId);
+    expect(result.success).toBe(true);
+    expect(
+      result.state.cards
+        .get(creatureId)!
+        .counters.find((c) => c.type === "regeneration-shield"),
+    ).toBeUndefined();
+    expect(result.state.zones.get(`${aliceId}-battlefield`)!.cardIds).toContain(
+      creatureId,
+    );
+
+    // Third destroy — no shields left, the creature is destroyed
+    result = destroyCard(result.state, creatureId);
+    expect(result.state.zones.get(`${aliceId}-graveyard`)!.cardIds).toContain(
+      creatureId,
+    );
+    expect(
+      result.state.zones.get(`${aliceId}-battlefield`)!.cardIds,
+    ).not.toContain(creatureId);
+  });
+
+  it("regression: CR 701.13 — a single shield only saves once; the second destroy succeeds", () => {
+    let state = createInitialGameState(["Alice"], 20, false);
+    state = startGame(state);
+    const [aliceId] = Array.from(state.players.keys());
+
+    const creatureId = addCreatureToBattlefield(
+      state,
+      aliceId,
+      createMockCreature("Regenerator", 2, 2),
+    );
+
+    // One shield
+    state = regenerateCard(state, creatureId).state;
+
+    // First destroy — saved by the shield
+    let result = destroyCard(state, creatureId);
+    expect(result.success).toBe(true);
+    expect(result.state.zones.get(`${aliceId}-battlefield`)!.cardIds).toContain(
+      creatureId,
+    );
+
+    // Second destroy — shield is gone, the creature is destroyed
+    result = destroyCard(result.state, creatureId);
+    expect(result.state.zones.get(`${aliceId}-graveyard`)!.cardIds).toContain(
+      creatureId,
+    );
+  });
+
+  it("regression: CR 701.13 — destroyCard destroys a creature without a regeneration shield normally", () => {
+    let state = createInitialGameState(["Alice"], 20, false);
+    state = startGame(state);
+    const [aliceId] = Array.from(state.players.keys());
+
+    const creatureId = addCreatureToBattlefield(
+      state,
+      aliceId,
+      createMockCreature("Vanilla", 2, 2),
+    );
+
+    const destroyResult = destroyCard(state, creatureId);
+    expect(destroyResult.success).toBe(true);
+
     const graveyard = destroyResult.state.zones.get(`${aliceId}-graveyard`)!;
     const battlefield = destroyResult.state.zones.get(
       `${aliceId}-battlefield`,
     )!;
+    expect(graveyard.cardIds).toContain(creatureId);
+    expect(battlefield.cardIds).not.toContain(creatureId);
+  });
 
+  it("regression: CR 701.13 — destroyCard with ignoreIndestructible bypasses the regeneration shield", () => {
+    let state = createInitialGameState(["Alice"], 20, false);
+    state = startGame(state);
+    const [aliceId] = Array.from(state.players.keys());
+
+    const creatureId = addCreatureToBattlefield(
+      state,
+      aliceId,
+      createMockCreature("Regenerator", 2, 2),
+    );
+
+    // Add a regeneration shield
+    state = regenerateCard(state, creatureId).state;
+
+    // ignoreIndestructible=true cannot be replaced — the shield is bypassed
+    const destroyResult = destroyCard(state, creatureId, true);
+    expect(destroyResult.success).toBe(true);
+    state = destroyResult.state;
+
+    const graveyard = state.zones.get(`${aliceId}-graveyard`)!;
+    const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
     expect(graveyard.cardIds).toContain(creatureId);
     expect(battlefield.cardIds).not.toContain(creatureId);
   });
