@@ -7,8 +7,9 @@ on:
     branches: [main, develop]
   # Daily scheduled run so new npm advisories are caught between PRs (#1108)
   # and the Playwright flake-detector runs nightly (#1599). On the schedule
-  # only the `security` audit and `flake-detector` jobs run; every other job
-  # is gated with `if: github.event_name != 'schedule'` to skip this trigger.
+  # only the `security`/`cargo-audit` audits, the `flake-detector` (#1599),
+  # and the `cross-browser-e2e` (#1595) jobs run; every other job is gated
+  # with `if: github.event_name != 'schedule'` to skip this trigger.
   schedule:
     - cron: '27 4 * * *'
   workflow_dispatch:
@@ -191,6 +192,154 @@ jobs:
             gh pr comment "$pr" --body-file reports/flake-detector/report.md || true
           done
   
+  cross-browser-e2e:
+    # Issue #1595: nightly cross-browser E2E gate. playwright.config.ts
+    # declares chromium/firefox/webkit, but the per-PR e2e job above runs
+    # --project=chromium only, so firefox/webkit specs never executed and a
+    # browser-specific divergence (focus behavior, ResizeObserver /
+    # MutationObserver scheduling, webkit strict Intl locale handling)
+    # regressed silently. This job mirrors the flake-detector nightly
+    # pattern above: schedule + workflow_dispatch + push-to-main — never on
+    # PRs, so per-PR CI keeps running ONLY --project=chromium (#1595
+    # acceptance criterion 4: keeps PR CI under budget).
+    #
+    # Tolerance note (#1625): the E2E dev-server boot is currently broken in
+    # CI, so this job is expected to fail until #1625 lands. Per #1595's
+    # acceptance criterion 3 the run must exit non-zero on any firefox/webkit
+    # spec failure, so there is deliberately NO continue-on-error here: the
+    # job is nightly/manual-only and is not in the `build` job's needs list,
+    # so the red run is a signal, not a merge blocker.
+    name: Cross-Browser E2E (firefox + webkit)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Queue concurrent triggers (nightly + manual dispatch landing together)
+    # instead of cancelling: a half-finished cross-browser run is still signal.
+    concurrency:
+      group: ${{ github.workflow }}-cross-browser-e2e
+      cancel-in-progress: false
+    # Mirror the e2e job's Tauri dev-fallback flag (#1433) so this run
+    # exercises the same desktop code path as the per-PR chromium run.
+    env:
+      NEXT_PUBLIC_TAURI_FALLBACK: '1'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v6
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          # Distinct key prefix, NOT the `playwright-*` key the chromium e2e
+          # job uses (#1595): that cache holds chromium only, so restoring it
+          # here would mark a cache hit and skip the firefox/webkit install
+          # below. Same lockfile-hash pattern, separate browser set.
+          key: playwright-crossbrowser-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps firefox webkit
+
+      - name: Install Playwright OS dependencies
+        # Unconditional twin of the cache-miss install above (same pattern as
+        # the chromium e2e job): --with-deps only runs on a cache miss, so
+        # this step keeps OS libs current when the browser cache is a hit.
+        run: npx playwright install-deps firefox webkit
+
+      - name: Run Playwright tests (firefox + webkit)
+        id: crossbrowser
+        env:
+          CI: 'true'
+          # JSON reporter output feeds the per-project summary table below;
+          # HTML goes to the same folder the per-PR e2e job uploads.
+          PLAYWRIGHT_JSON_OUTPUT_DIR: reports/cross-browser
+          PLAYWRIGHT_JSON_OUTPUT_NAME: results.json
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
+        # Capture the exit code so the summary/report steps below can run
+        # `if: always()`, then re-exit non-zero: any firefox/webkit failure
+        # must fail the workflow (#1595 acceptance criterion 3).
+        run: |
+          set +e
+          mkdir -p reports/cross-browser
+          npx playwright test --project=firefox --project=webkit --reporter=list,json,html
+          CROSS_EXIT=$?
+          echo "test-exit=$CROSS_EXIT" >> "$GITHUB_OUTPUT"
+          exit "$CROSS_EXIT"
+
+      - name: Per-project summary (#1595)
+        if: always()
+        run: |
+          set -e
+          python3 - <<'PY'
+          import json, os
+
+          results_path = "reports/cross-browser/results.json"
+          buckets = ("passed", "failed", "flaky", "skipped")
+          mapping = {"expected": "passed", "unexpected": "failed", "flaky": "flaky", "skipped": "skipped"}
+          counts = {}
+
+          def walk(suite):
+              for spec in suite.get("specs") or []:
+                  for test in spec.get("tests") or []:
+                      yield test
+              for child in suite.get("suites") or []:
+                  yield from walk(child)
+
+          try:
+              with open(results_path, encoding="utf-8") as fh:
+                  data = json.load(fh)
+              for project_suite in data.get("suites") or []:
+                  for test in walk(project_suite):
+                      project = test.get("projectName") or "unknown"
+                      status = mapping.get(test.get("status"), "failed")
+                      row = counts.setdefault(project, {b: 0 for b in buckets})
+                      row[status] = row.get(status, 0) + 1
+          except (OSError, ValueError):
+              counts = {}
+
+          lines = ["### Cross-browser E2E (#1595) - per-project results", ""]
+          if counts:
+              lines.append("| Project | Passed | Failed | Flaky | Skipped |")
+              lines.append("| --- | ---: | ---: | ---: | ---: |")
+              for project in sorted(counts):
+                  row = counts[project]
+                  values = (row.get(b, 0) for b in buckets)
+                  lines.append("| {} | {} | {} | {} | {} |".format(project, *values))
+          else:
+              lines.append("_No per-project report was produced - the run failed before any test")
+              lines.append("completed (e.g. the dev-server boot failure tracked in #1625). Check the job log._")
+          lines.append("")
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("\n".join(lines))
+          PY
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: playwright-report-firefox-webkit
+          path: |
+            playwright-report/
+            reports/cross-browser/
+          retention-days: 30
+
+      - name: Upload Playwright screenshots
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-screenshots-firefox-webkit
+          path: test-results/
+          retention-days: 7
+
   lint:
     name: Lint
     if: github.event_name != 'schedule'
