@@ -5,11 +5,12 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
-  # Weekly scheduled run so new npm advisories are caught between PRs (#1108).
-  # On the schedule only the `security` audit job runs; every other job is
-  # gated with `if: github.event_name != 'schedule'` to skip the weekly trigger.
+  # Daily scheduled run so new npm advisories are caught between PRs (#1108)
+  # and the Playwright flake-detector runs nightly (#1599). On the schedule
+  # only the `security` audit and `flake-detector` jobs run; every other job
+  # is gated with `if: github.event_name != 'schedule'` to skip this trigger.
   schedule:
-    - cron: '27 4 * * 1'
+    - cron: '27 4 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -110,13 +111,19 @@ jobs:
     # with `--retries=0` and fails if any spec passes <4/5. Posted as a
     # PR comment when flakes are found, so engineers see the signal
     # without browsing to the Actions tab. Slow (~30 min for the full
-    # chromium suite × 5) so it runs on the weekly schedule and on
-    # manual dispatch only — never on PRs.
+    # chromium suite × 5) so it runs nightly (#1599), on every push to
+    # main, and on manual dispatch — never on PRs or develop pushes.
     name: Flake Detector (Playwright)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Issue #1599: a half-finished flake run reports a false negative, so
+    # never cancel an in-flight detector run — queue concurrent triggers
+    # (nightly + push-to-main landing at the same time) instead.
+    concurrency:
+      group: ${{ github.workflow }}-flake-detector
+      cancel-in-progress: false
     # Mirror the e2e job's Tauri dev-fallback flag (#1433) so the nightly
     # flake run exercises the same desktop path and doesn't false-positive.
     env:
