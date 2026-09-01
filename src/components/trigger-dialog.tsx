@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -105,7 +110,9 @@ export function TriggerDialog({
   savedPreferences = [],
 }: TriggerDialogProps) {
   // State for trigger choices
-  const [triggerChoices, setTriggerChoices] = React.useState<Map<string, "yes" | "no">>(new Map());
+  const [triggerChoices, setTriggerChoices] = React.useState<
+    Map<string, "yes" | "no">
+  >(new Map());
   // State for trigger ordering
   const [triggerOrder, setTriggerOrder] = React.useState<string[]>([]);
   // State for "remember my choice" checkbox
@@ -114,6 +121,8 @@ export function TriggerDialog({
   const [applyToSimilar, setApplyToSimilar] = React.useState(false);
   // Track if we've checked saved preferences
   const [checkedPreferences, setCheckedPreferences] = React.useState(false);
+  // Screen-reader announcement for Yes/No choice changes (issue #1601, WCAG 4.1.2)
+  const [announcement, setAnnouncement] = React.useState("");
 
   // Reset state when dialog opens
   React.useEffect(() => {
@@ -134,8 +143,10 @@ export function TriggerDialog({
         let hasAutoSelected = false;
 
         triggers.forEach((trigger) => {
-          const preference = savedPreferences.find(
-            (p) => trigger.sourceCardName.toLowerCase().includes(p.triggerPattern.toLowerCase())
+          const preference = savedPreferences.find((p) =>
+            trigger.sourceCardName
+              .toLowerCase()
+              .includes(p.triggerPattern.toLowerCase()),
           );
           if (preference && preference.choice !== "ask") {
             newChoices.set(trigger.id, preference.choice);
@@ -151,6 +162,9 @@ export function TriggerDialog({
 
       setRememberChoice(false);
       setApplyToSimilar(false);
+      // Clear any stale announcement from a previous session so the live
+      // region doesn't re-announce an old choice when the dialog reopens (#1601).
+      setAnnouncement("");
     }
   }, [open, triggers, savedPreferences, checkedPreferences]);
 
@@ -183,7 +197,10 @@ export function TriggerDialog({
   const moveTriggerUp = (index: number) => {
     if (index <= 0) return;
     const newOrder = [...triggerOrder];
-    [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+    [newOrder[index - 1], newOrder[index]] = [
+      newOrder[index],
+      newOrder[index - 1],
+    ];
     setTriggerOrder(newOrder);
   };
 
@@ -191,18 +208,23 @@ export function TriggerDialog({
   const moveTriggerDown = (index: number) => {
     if (index >= triggerOrder.length - 1) return;
     const newOrder = [...triggerOrder];
-    [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+    [newOrder[index], newOrder[index + 1]] = [
+      newOrder[index + 1],
+      newOrder[index],
+    ];
     setTriggerOrder(newOrder);
   };
 
   // Handle confirm
   const handleConfirm = () => {
     // Build choices array
-    const choices: TriggerChoice[] = Array.from(triggerChoices.entries()).map(([triggerId, choice]) => ({
-      triggerId,
-      choice,
-      timestamp: Date.now(),
-    }));
+    const choices: TriggerChoice[] = Array.from(triggerChoices.entries()).map(
+      ([triggerId, choice]) => ({
+        triggerId,
+        choice,
+        timestamp: Date.now(),
+      }),
+    );
 
     // Apply order
     if (onTriggerOrder && triggerOrder.length > 0) {
@@ -281,7 +303,10 @@ export function TriggerDialog({
     const isYes = choice === "yes";
 
     return (
-      <Card key={trigger.id} className={cn("mb-2", isYes && "border-green-500 bg-green-500/5")}>
+      <Card
+        key={trigger.id}
+        className={cn("mb-2", isYes && "border-green-500 bg-green-500/5")}
+      >
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -298,27 +323,39 @@ export function TriggerDialog({
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0"
+                  aria-label={`Move trigger ${trigger.name} up`}
                   onClick={() => moveTriggerUp(index)}
                   disabled={index === 0}
                 >
-                  <ArrowUpDown className="h-3 w-3 rotate-[-90deg]" />
+                  <ArrowUpDown
+                    className="h-3 w-3 rotate-[-90deg]"
+                    aria-hidden="true"
+                  />
                 </Button>
-                <span className="text-xs text-muted-foreground">{index + 1}</span>
+                <span className="text-xs text-muted-foreground">
+                  {index + 1}
+                </span>
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-6 w-6 p-0"
+                  aria-label={`Move trigger ${trigger.name} down`}
                   onClick={() => moveTriggerDown(index)}
                   disabled={index === triggerOrder.length - 1}
                 >
-                  <ArrowUpDown className="h-3 w-3 rotate-90" />
+                  <ArrowUpDown
+                    className="h-3 w-3 rotate-90"
+                    aria-hidden="true"
+                  />
                 </Button>
               </div>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <p className="text-sm text-muted-foreground mb-3">{trigger.description}</p>
+          <p className="text-sm text-muted-foreground mb-3">
+            {trigger.description}
+          </p>
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -328,7 +365,10 @@ export function TriggerDialog({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Badge variant="outline" className="text-xs flex items-center gap-1">
+                    <Badge
+                      variant="outline"
+                      className="text-xs flex items-center gap-1"
+                    >
                       {getTimingIcon(trigger.timing)}
                       {getTimingLabel(trigger.timing)}
                     </Badge>
@@ -344,19 +384,29 @@ export function TriggerDialog({
               <Button
                 variant={isYes ? "default" : "outline"}
                 size="sm"
-                onClick={() => handleChoiceChange(trigger.id, "yes")}
+                aria-pressed={isYes}
+                onClick={() => {
+                  handleChoiceChange(trigger.id, "yes");
+                  // Issue #1601: announce the new choice politely so the user
+                  // hears confirmation without re-navigating the trigger card.
+                  setAnnouncement(`${trigger.name} set to yes`);
+                }}
                 className={cn(isYes && "bg-green-500 hover:bg-green-600")}
               >
-                <Check className="h-4 w-4 mr-1" />
+                <Check className="h-4 w-4 mr-1" aria-hidden="true" />
                 Yes
               </Button>
               <Button
                 variant={!isYes ? "default" : "outline"}
                 size="sm"
-                onClick={() => handleChoiceChange(trigger.id, "no")}
+                aria-pressed={!isYes}
+                onClick={() => {
+                  handleChoiceChange(trigger.id, "no");
+                  setAnnouncement(`${trigger.name} set to no`);
+                }}
                 className={cn(!isYes && "bg-red-500 hover:bg-red-600")}
               >
-                <X className="h-4 w-4 mr-1" />
+                <X className="h-4 w-4 mr-1" aria-hidden="true" />
                 No
               </Button>
             </div>
@@ -375,7 +425,8 @@ export function TriggerDialog({
           Optional Triggers
         </h3>
         <p className="text-sm text-muted-foreground">
-          Choose whether to trigger each ability. You can save your preference for future triggers.
+          Choose whether to trigger each ability. You can save your preference
+          for future triggers.
         </p>
       </div>
 
@@ -383,12 +434,26 @@ export function TriggerDialog({
 
       {/* Quick actions */}
       <div className="flex justify-center gap-2">
-        <Button variant="outline" size="sm" onClick={handleYesToAll}>
-          <Check className="h-4 w-4 mr-1" />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            handleYesToAll();
+            setAnnouncement("All triggers set to yes");
+          }}
+        >
+          <Check className="h-4 w-4 mr-1" aria-hidden="true" />
           Yes to All
         </Button>
-        <Button variant="outline" size="sm" onClick={handleNoToAll}>
-          <X className="h-4 w-4 mr-1" />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            handleNoToAll();
+            setAnnouncement("All triggers set to no");
+          }}
+        >
+          <X className="h-4 w-4 mr-1" aria-hidden="true" />
           No to All
         </Button>
       </div>
@@ -425,7 +490,9 @@ export function TriggerDialog({
             <Checkbox
               id="apply-similar"
               checked={applyToSimilar}
-              onCheckedChange={(checked) => setApplyToSimilar(checked as boolean)}
+              onCheckedChange={(checked) =>
+                setApplyToSimilar(checked as boolean)
+              }
             />
             <Label htmlFor="apply-similar" className="text-sm cursor-pointer">
               Apply to all similar triggers
@@ -458,6 +525,11 @@ export function TriggerDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Issue #1601: polite live region announcing Yes/No choice changes. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {announcement}
+        </p>
+
         {triggers.length > 0 ? (
           renderContent()
         ) : (
@@ -485,9 +557,13 @@ export function TriggerDialog({
  * Hook for managing optional triggers
  */
 export function useOptionalTriggers() {
-  const [pendingTriggers, setPendingTriggers] = React.useState<OptionalTrigger[]>([]);
+  const [pendingTriggers, setPendingTriggers] = React.useState<
+    OptionalTrigger[]
+  >([]);
   const [showTriggerDialog, setShowTriggerDialog] = React.useState(false);
-  const [savedPreferences, setSavedPreferences] = React.useState<SavedTriggerPreference[]>([]);
+  const [savedPreferences, setSavedPreferences] = React.useState<
+    SavedTriggerPreference[]
+  >([]);
 
   // Add a trigger to the queue
   const addTrigger = React.useCallback((trigger: OptionalTrigger) => {
@@ -502,42 +578,52 @@ export function useOptionalTriggers() {
   }, []);
 
   // Handle trigger choices
-  const handleTriggerChoices = React.useCallback((choices: TriggerChoice[]) => {
-    // Process each choice
-    choices.forEach((choice) => {
-      console.log(`Trigger ${choice.triggerId}: ${choice.choice}`);
-      // Here you would actually execute the trigger or skip it
-    });
+  const handleTriggerChoices = React.useCallback(
+    (choices: TriggerChoice[]) => {
+      // Process each choice
+      choices.forEach((choice) => {
+        console.log(`Trigger ${choice.triggerId}: ${choice.choice}`);
+        // Here you would actually execute the trigger or skip it
+      });
 
-    // Clear resolved triggers
-    setPendingTriggers((prev) =>
-      prev.filter((t) => !choices.some((c) => c.triggerId === t.id))
-    );
+      // Clear resolved triggers
+      setPendingTriggers((prev) =>
+        prev.filter((t) => !choices.some((c) => c.triggerId === t.id)),
+      );
 
-    // Close dialog if no more triggers
-    if (pendingTriggers.length === choices.length) {
-      setShowTriggerDialog(false);
-    }
-  }, [pendingTriggers]);
+      // Close dialog if no more triggers
+      if (pendingTriggers.length === choices.length) {
+        setShowTriggerDialog(false);
+      }
+    },
+    [pendingTriggers],
+  );
 
   // Handle trigger order
   const handleTriggerOrder = React.useCallback((orderedIds: string[]) => {
     console.log("Trigger order:", orderedIds);
     // Reorder triggers based on user preference
     setPendingTriggers((prev) => {
-      const reordered = orderedIds.map((id) => prev.find((t) => t.id === id)).filter(Boolean) as OptionalTrigger[];
+      const reordered = orderedIds
+        .map((id) => prev.find((t) => t.id === id))
+        .filter(Boolean) as OptionalTrigger[];
       return reordered;
     });
   }, []);
 
   // Save preference
-  const handleSavePreference = React.useCallback((preference: SavedTriggerPreference) => {
-    setSavedPreferences((prev) => {
-      // Remove existing preference for same pattern
-      const filtered = prev.filter((p) => p.triggerPattern !== preference.triggerPattern);
-      return [...filtered, preference];
-    });
-  }, []);
+  const handleSavePreference = React.useCallback(
+    (preference: SavedTriggerPreference) => {
+      setSavedPreferences((prev) => {
+        // Remove existing preference for same pattern
+        const filtered = prev.filter(
+          (p) => p.triggerPattern !== preference.triggerPattern,
+        );
+        return [...filtered, preference];
+      });
+    },
+    [],
+  );
 
   // Clear all pending triggers
   const clearTriggers = React.useCallback(() => {
