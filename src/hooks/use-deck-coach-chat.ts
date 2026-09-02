@@ -6,7 +6,7 @@ import type {
   ChatMessageRole,
   ChatTokenUsage,
 } from "@/types/chat";
-import { DeckCard } from "@/ai/flows/context-builder";
+import { DeckCard } from "@/lib/card-database";
 import type { CoachMemorySummary } from "@/ai/flows/coach-memory-summary";
 import { isSummaryEmpty } from "@/ai/flows/coach-memory-summary";
 import { aiWorkerClient } from "@/ai/worker/ai-worker-client";

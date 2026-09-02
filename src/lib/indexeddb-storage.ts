@@ -96,7 +96,7 @@ export interface StoredDeck {
   /** Format */
   format: string;
   /** Cards with quantities */
-  cards: DeckCard[];
+  cards: StoredDeckCard[];
   /** Created timestamp */
   createdAt: string;
   /** Updated timestamp */
@@ -106,9 +106,15 @@ export interface StoredDeck {
 }
 
 /**
- * Deck card with quantity
+ * Deck card with quantity, as persisted in IndexedDB.
+ *
+ * NOTE (issue #1593): this is intentionally NOT the canonical flat `DeckCard`
+ * from "@/lib/card-database" — the serialized storage format wraps the card
+ * fields in a nested `card` object. Renamed from the misleading `DeckCard`
+ * (which duplicated the canonical name with a different shape) to
+ * `StoredDeckCard`, matching the mirror type in deck-storage.ts.
  */
-export interface DeckCard {
+export interface StoredDeckCard {
   /** Card object */
   card: {
     id: string;

@@ -23,7 +23,7 @@
  */
 
 import type { ChatMessage } from "@/types/chat";
-import type { DeckCard } from "@/ai/flows/context-builder";
+import type { DeckCard } from "@/lib/card-database";
 import type { CoachMemorySummary } from "@/ai/flows/coach-memory-summary";
 import { parseCoachMemorySummary } from "@/ai/flows/coach-memory-summary";
 import { IndexedDBStorage } from "./indexeddb-storage";

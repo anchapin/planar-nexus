@@ -69,6 +69,26 @@ export interface MinimalCard {
   release_date?: string;
 }
 
+// ============================================================================
+// CANONICAL CARD-SHAPE INTERFACES (issue #1593)
+// ============================================================================
+//
+// MinimalCard / ScryfallCard / DeckCard are defined here and ONLY here.
+// Former duplicate declarations in src/app/actions.ts and
+// src/ai/flows/context-builder.ts now import from this module (actions.ts
+// re-exports them for its many consumers). `power` / `toughness` /
+// `keywords` are already optional members of MinimalCard, so ScryfallCard
+// only adds what MinimalCard lacks.
+
+export interface ScryfallCard extends MinimalCard {
+  // Whether this is a double-faced card
+  faces?: number;
+}
+
+export interface DeckCard extends ScryfallCard {
+  count: number;
+}
+
 export interface CardDatabaseOptions {
   includeImages?: boolean;
   maxCards?: number;
