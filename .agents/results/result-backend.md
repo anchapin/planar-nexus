@@ -1,45 +1,79 @@
-# Result: Fix Issue #793 - APNAP Ordering Not Applied to Replacement Effects
+# Result: issue #1593 — Consolidate card interfaces into one canonical source
 
-## Status: COMPLETED
+## Status
+
+✅ COMPLETE — committed & pushed
 
 ## Summary
 
-Fixed APNAP (Active Player, Non-Active Player) ordering for replacement effects per CR 616. The `createAPNAPOrder` function was already implemented in `ReplacementEffectManager` but was never being called in `processEvent`. All calls to `processEvent` now pass the appropriate `APNAPOrder` based on the current active player.
+Consolidated the triple-defined `ScryfallCard` / `DeckCard` / `MinimalCard`
+interfaces into a single canonical module, per issue #1593. Pure type-level
+refactor; zero runtime behavior change.
 
-## Files Changed
+## Canonical module
 
-- `src/lib/game-state/game-state.ts` - Added APNAP ordering to `dealDamageToPlayer` and `gainLife`
-- `src/lib/game-state/player-actions.ts` - Added APNAP ordering to `dealDamageToPlayer` and `gainLife`
-- `src/lib/game-state/keyword-actions.ts` - Added APNAP ordering to `destroyCard`, `drawCards`, and `dealDamageToCard`
-- `src/lib/game-state/__tests__/replacement-effects.test.ts` - Added 2 multiplayer tests
+`src/lib/card-database.ts` (issue's primary preference; the MinimalCard
+superset already lived there):
 
-## Changes Made
+- `MinimalCard` (unchanged, line 20 — the superset "offline card" shape)
+- `ScryfallCard extends MinimalCard` (new — adds `faces?: number`;
+  `power`/`toughness`/`keywords` were already optional members of MinimalCard,
+  so the old re-declarations were redundant no-ops)
+- `DeckCard extends ScryfallCard` (new — adds `count: number`)
 
-### Integration of `createAPNAPOrder` into all `processEvent` calls:
+## Files changed (6)
 
-1. **game-state.ts**:
-   - `dealDamageToPlayer()` - damage replacement events
-   - `gainLife()` - life gain replacement events
+1. `src/lib/card-database.ts` — added canonical `ScryfallCard` + `DeckCard`
+2. `src/app/actions.ts` — removed 2 local interfaces; now `import type` +
+   `export type { ScryfallCard, DeckCard } from "@/lib/card-database"`
+   (re-export keeps ~130 consumer import sites stable)
+3. `src/ai/flows/context-builder.ts` — removed 3 local interfaces
+   (MinimalCard/ScryfallCard were dead exports; only DeckCard was used);
+   now imports DeckCard from the canonical module
+4. `src/hooks/use-deck-coach-chat.ts` — repointed DeckCard import
+   `context-builder` → `@/lib/card-database`
+5. `src/lib/coach-conversation-storage.ts` — repointed DeckCard import
+   `context-builder` → `@/lib/card-database`
+6. `src/lib/indexeddb-storage.ts` — RENAMED its structurally-different
+   `DeckCard` (`{card, count}` wrapper, IndexedDB serialization format) to
+   `StoredDeckCard`, preserving its exact shape. NOTE: the issue suggested
+   replacing it with the canonical flat `DeckCard`, but that would have
+   changed the persisted `StoredDeck` contract (real DB rows are
+   `{card, count}`; see `deck-storage.ts` `toStoredDeck`/`fromStoredDeck`).
+   Renaming eliminates the misleading name collision with zero contract
+   change, matching the private mirror type already in deck-storage.ts.
 
-2. **player-actions.ts**:
-   - `dealDamageToPlayer()` - damage replacement events
-   - `gainLife()` - life gain replacement events
+## Acceptance criteria (from issue)
 
-3. **keyword-actions.ts**:
-   - `destroyCard()` - destroy replacement events (e.g., regeneration)
-   - `drawCards()` - draw replacement events
-   - `dealDamageToCard()` - damage to creatures
+- [x] `rg -n 'export (interface|type) (ScryfallCard|DeckCard|MinimalCard)' src/`
+      → exactly 3 declarations, all in `src/lib/card-database.ts`
+- [x] `context-builder.ts` imports from the canonical module (local
+      declarations removed)
+- [x] `indexeddb-storage.ts` no longer declares a `DeckCard` (renamed to
+      `StoredDeckCard` to preserve the serialization contract — deviation
+      documented above)
+- [x] `npm run typecheck` passes with zero errors
 
-### New Tests Added:
+## Verification
 
-- `should apply multiplayer APNAP ordering with 4 players` - Tests 4-player game with effects in P1→P2→P3→P4 order
-- `should apply APNAP ordering with different active player` - Tests with P3 as active player (order: P3→P4→P1→P2)
+- `npm run typecheck` — clean
+- `npm run lint` — 0 errors (615 pre-existing warnings, untouched files)
+- `npx jest` (full suite) — 447/448 suites, 9267 passed / 1 failed / 11
+  skipped / 48 todo. The single failure is
+  `coach-conversation-storage.test.ts` ("auto-resumes the most recent
+  conversation") — verified PRE-EXISTING on the clean tree via stash/test/pop
+  (tolerated failure tracked as #1634).
 
-## Acceptance Criteria
+## Import sites
 
-- [x] APNAP ordering should be applied when processing replacement events
-- [x] Add test for multiplayer replacement effect ordering
+~180 files import these types; all continue to work via the `@/app/actions`
+re-export and the unchanged `@/lib/card-database` MinimalCard path. Only 3
+import sites needed editing (context-builder + its 2 DeckCard consumers).
 
-## Test Results
+## Out of scope / notes
 
-All 3333 tests pass (3278 passed, 7 skipped, 48 todo)
+- `SavedDeck` remains in `src/app/actions.ts` (not part of the issue's trio).
+- `deck-storage.ts`'s private `StoredDeckCard` left as-is (already aligned in
+  name and concept; consolidating it was not requested).
+- `src/lib/game-state/types.ts` and `src/lib/limited/types.ts` re-export
+  chains unaffected (they point at `@/app/actions` / `@/lib/card-database`).

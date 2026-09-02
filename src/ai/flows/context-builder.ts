@@ -11,6 +11,7 @@ import {
 } from "@/ai/prompt-security";
 import type { CoachIntentResult } from "@/ai/coach-intent";
 import { COACH_INTENT_LABELS } from "@/ai/coach-intent";
+import type { DeckCard } from "@/lib/card-database";
 import {
   normalizeDifficultyLevel,
   type DifficultyLevel,
@@ -29,34 +30,9 @@ import {
   type BuildCoachMemorySummaryOptions,
 } from "@/ai/flows/coach-memory-summary";
 
-// Reuse types from actions.ts to avoid duplication or circular deps
-export interface MinimalCard {
-  id: string;
-  name: string;
-  cmc: number;
-  type_line: string;
-  colors: string[];
-  color_identity: string[];
-  legalities: Record<string, string>;
-  oracle_text?: string;
-  mana_cost?: string;
-  image_uris?: {
-    small: string;
-    normal: string;
-    large: string;
-  };
-}
-
-export interface ScryfallCard extends MinimalCard {
-  power?: string;
-  toughness?: string;
-  keywords?: string[];
-  faces?: number;
-}
-
-export interface DeckCard extends ScryfallCard {
-  count: number;
-}
+// MinimalCard / ScryfallCard / DeckCard are canonically defined in
+// "@/lib/card-database" (issue #1593). This module previously redeclared all
+// three locally; only DeckCard is used here.
 
 /**
  * Formats a decklist into a concise text representation for the LLM.
