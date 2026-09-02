@@ -19,13 +19,13 @@ import { indexedDBStorage, StoredGame } from "./indexeddb-storage";
 import {
   serializeGameState,
   deserializeGameState,
-  mapReplacer,
   mapReviver,
 } from "./game-state/state-serialization";
 import {
   compressGameStateJson,
   decompressGameStateJson,
 } from "./game-state/game-state-compression";
+import { serializeReplayJson } from "./saved-game-serialize-bridge";
 
 export interface SavedGame {
   /** Unique identifier */
@@ -291,6 +291,13 @@ class SavedGamesManager {
     }
 
     const now = Date.now();
+    // Issue #1577: serialize the replay off the main thread when the worker
+    // is available. For a 4-player Commander game this stringify is a
+    // 50–200 MB synchronous call that used to block the frame right after a
+    // game action; the bridge falls back to the identical synchronous
+    // `JSON.stringify(replay, mapReplacer)` when no worker exists (jsdom,
+    // SSR, CSP-blocked).
+    const replayJson = await serializeReplayJson(replay);
     const autoSave: SavedGame = {
       id: `${AUTO_SAVE_PREFIX}${slot}_${now}`,
       name: `Auto-Save ${slot + 1}`,
@@ -305,7 +312,7 @@ class SavedGamesManager {
       isAutoSave: true,
       autoSaveSlot: slot,
       gameStateJson: serializeGameState(gameState),
-      replayJson: replay ? JSON.stringify(replay, mapReplacer) : undefined,
+      replayJson,
     };
 
     return this.saveGame(autoSave);
@@ -484,6 +491,9 @@ export async function createSavedGame(
   gameState: GameState,
   replay?: Replay | null,
 ): Promise<SavedGame> {
+  // Issue #1577: same off-main-thread replay serialization seam as
+  // `saveToAutoSave` — byte-identical fallback when no worker is available.
+  const replayJson = await serializeReplayJson(replay);
   return {
     id: `save-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name,
@@ -497,7 +507,7 @@ export async function createSavedGame(
     winners: gameState.winners,
     isAutoSave: false,
     gameStateJson: serializeGameState(gameState),
-    replayJson: replay ? JSON.stringify(replay, mapReplacer) : undefined,
+    replayJson,
   };
 }
 
