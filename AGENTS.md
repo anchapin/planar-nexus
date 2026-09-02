@@ -61,7 +61,7 @@ The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutatio
 
 ## Environment
 
-Copy `.env.example` → `.env`. AI keys are optional (heuristic fallback works). `NEXT_PUBLIC_TURN_*` recommended for production P2P. See `docs/API.md` for AI config.
+Copy `.env.example` → `.env`. AI keys are optional (heuristic fallback works). `NEXT_PUBLIC_TURN_*` recommended for production P2P. See `docs/AI_PROVIDER_SETUP.md` (get key → validate → switch provider runbook) and `docs/API.md` for AI config.
 
 ## Canonical docs (read these, don't guess)
 

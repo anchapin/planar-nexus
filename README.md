@@ -191,6 +191,7 @@ chmod +x Planar-Nexus.AppImage
 | ------------------------------------------------ | --------------------------------------------- |
 | [User Guide](docs/USER_GUIDE.md)                 | Complete guide to using Planar Nexus features |
 | [API Documentation](docs/API.md)                 | AI provider configuration and API reference   |
+| [AI Provider Setup](docs/AI_PROVIDER_SETUP.md)   | Runbook: get key → validate → switch provider |
 | [Contributing Guide](CONTRIBUTING.md)            | How to contribute code and documentation      |
 | [Troubleshooting](docs/TROUBLESHOOTING.md)       | Common issues and solutions                   |
 | [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)     | Building and deploying for all platforms      |
@@ -242,7 +243,7 @@ npm install
 npm run dev
 ```
 
-> **Note**: AI deck coaching uses a heuristic-based system (no external AI service required). For full AI features, see the [AI Configuration Guide](docs/API.md).
+> **Note**: AI deck coaching uses a heuristic-based system (no external AI service required). For full AI features, see the [AI Provider Setup Runbook](docs/AI_PROVIDER_SETUP.md) and the [AI Configuration Guide](docs/API.md).
 
 ### Build Commands
 
