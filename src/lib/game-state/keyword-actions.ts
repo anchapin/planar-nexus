@@ -47,6 +47,7 @@ import {
   type CyclingInfo,
 } from "./oracle-text-parser";
 import { castSpell } from "./spell-casting";
+import { isPriorityPlayer } from "./priority-guard";
 import {
   hasPersist,
   canPersistTrigger,
@@ -680,7 +681,7 @@ export function foretellCard(
   }
 
   // The player must have priority.
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return {
       success: false,
       state,
@@ -2083,7 +2084,7 @@ export function canCycleCard(
     return false;
   }
   if (state.stack.length > 0) return false;
-  if (state.priorityPlayerId !== playerId) return false;
+  if (!isPriorityPlayer(state, playerId)) return false;
 
   // Must be able to pay the cycling mana cost.
   const cost = getCyclingCost(card);
@@ -2227,7 +2228,7 @@ export function cycleCard(
       error: "Cycling can only be activated when the stack is empty.",
     };
   }
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return {
       success: false,
       state,

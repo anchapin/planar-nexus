@@ -27,6 +27,7 @@ import {
 } from "./oracle-text-parser";
 import { createCardInstance } from "./card-instance";
 import { canAffordMana } from "./mana";
+import { isPriorityPlayer } from "./priority-guard";
 
 /**
  * Check if a card has the Prototype keyword
@@ -65,7 +66,7 @@ export function canCastAsPrototype(
   }
 
   // Check if player has priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return { canCast: false, reason: "You do not have priority" };
   }
 

@@ -18,6 +18,7 @@ import type {
 } from "./types";
 import { Phase, ZoneType } from "./types";
 import { moveCardBetweenZones } from "./zones";
+import { isPriorityPlayer } from "./priority-guard";
 import { spendMana, getSpellManaCost } from "./mana";
 import { ValidationService } from "./validation-service";
 import { hasSplitSecondOnStack } from "./auto-pass-priority";
@@ -141,7 +142,7 @@ export function canCastSpell(
   }
 
   // Player must have priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return { canCast: false, reason: "Player does not have priority" };
   }
 

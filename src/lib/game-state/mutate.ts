@@ -15,6 +15,7 @@ import type {
   PlayerId,
 } from "./types";
 import { getManaValue } from "./card-instance";
+import { isPriorityPlayer } from "./priority-guard";
 
 /**
  * Check if a card has the mutate ability
@@ -75,7 +76,7 @@ export function canCastWithMutate(
   }
 
   // Check if player has priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return { canCast: false, reason: "Player does not have priority" };
   }
 
