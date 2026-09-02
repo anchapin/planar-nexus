@@ -20,6 +20,7 @@ import {
   fetchAllSets,
   filterPlayableSets,
   getLimitedPlayableSetTypes,
+  getSetDetails,
   getSetTypeDisplayName,
   isDraftableSetType,
   sortSets,
@@ -84,60 +85,224 @@ const mockScryfallSets = {
   ],
 };
 
-// TODO: Import actual module when implemented
-// import { fetchAllSets, sortSets, getSetDetails } from '../set-service';
+// The four-set Scryfall payload doubles as a sort fixture. Payload order is
+// oldest-first (znr → bro), i.e. the reverse of the default date sort.
+const fourSets: ScryfallSet[] = mockScryfallSets.data;
 
 describe("SET-01: Sets sorted by date/name", () => {
   describe("sortSets", () => {
-    it("should sort sets by release date (newest first)", async () => {
-      // TODO: Implement - sort by release_date descending
-      expect(true).toBe(true);
+    it("should sort sets by release date (newest first)", () => {
+      const shuffled = [fourSets[2], fourSets[0], fourSets[3], fourSets[1]];
+
+      expect(sortSets(shuffled, "release_date").map((s) => s.code)).toEqual([
+        "bro",
+        "vow",
+        "mid",
+        "znr",
+      ]);
     });
 
-    it("should sort sets by name (A-Z)", async () => {
-      // TODO: Implement - sort by name ascending
-      expect(true).toBe(true);
+    it("should sort sets by release date oldest-first when ascending", () => {
+      expect(
+        sortSets(fourSets, "release_date", true).map((s) => s.code),
+      ).toEqual(["znr", "mid", "vow", "bro"]);
     });
 
-    it("should handle empty set array", async () => {
-      // TODO: Implement - return empty array without error
-      expect(true).toBe(true);
+    it("should sort sets by name A-Z when ascending", () => {
+      // Alphabetical: "Innistrad: Crimson Vow" < "Innistrad: Midnight Hunt"
+      //   < "The Brothers' War" < "Zendikar Rising"
+      expect(sortSets(fourSets, "name", true).map((s) => s.code)).toEqual([
+        "vow",
+        "mid",
+        "bro",
+        "znr",
+      ]);
+    });
+
+    it("should sort sets by name Z-A by default (ascending=false)", () => {
+      // NB: the single `ascending = false` default applies to every option,
+      // including name — despite the JSDoc claiming "default: true for name".
+      expect(sortSets(fourSets, "name").map((s) => s.code)).toEqual([
+        "znr",
+        "bro",
+        "mid",
+        "vow",
+      ]);
+    });
+
+    it("should sort sets by card count (most cards first by default)", () => {
+      const withZero = [
+        ...fourSets,
+        makeSet("tset", "token", { card_count: 0 }),
+      ];
+
+      expect(sortSets(withZero, "card_count").map((s) => s.code)).toEqual([
+        "bro",
+        "mid",
+        "vow",
+        "znr",
+        "tset",
+      ]);
+    });
+
+    it("should not mutate the input array", () => {
+      const input = [...fourSets];
+
+      sortSets(input, "release_date");
+
+      expect(input.map((s) => s.code)).toEqual(["znr", "mid", "vow", "bro"]);
+    });
+
+    it("should handle empty set array", () => {
+      expect(sortSets([], "release_date")).toEqual([]);
     });
   });
 
   describe("fetchAllSets", () => {
-    it("should fetch all sets from Scryfall API", async () => {
-      // TODO: Implement - fetch from https://api.scryfall.com/sets
-      expect(true).toBe(true);
+    const originalFetch = global.fetch;
+
+    const mockFetchOk = (payload: unknown) => {
+      global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(payload),
+      } as unknown as Response);
+    };
+
+    beforeEach(() => {
+      clearSetCache();
     });
 
-    it("should cache sets for 24 hours", async () => {
-      // TODO: Implement - cache mechanism
-      expect(true).toBe(true);
+    afterEach(() => {
+      global.fetch = originalFetch;
+      jest.restoreAllMocks();
+      clearSetCache();
     });
 
-    it("should return cached data on network error", async () => {
-      // TODO: Implement - fallback to cache
-      expect(true).toBe(true);
+    it("should fetch all sets from the Scryfall sets endpoint", async () => {
+      mockFetchOk(mockScryfallSets);
+
+      const sets = await fetchAllSets();
+
+      expect(sets).toHaveLength(4);
+      expect(sets[0].code).toBe("znr");
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://api.scryfall.com/sets",
+      );
+    });
+
+    it("should cache sets for 24 hours (second call does not re-fetch)", async () => {
+      mockFetchOk(mockScryfallSets);
+
+      await fetchAllSets();
+      const second = await fetchAllSets();
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      // Cache hit returns the same array reference, not a copy.
+      expect(second).toHaveLength(4);
+    });
+
+    it("should re-fetch once the 24h cache window expires", async () => {
+      const nowSpy = jest.spyOn(Date, "now");
+      const t0 = Date.now();
+      nowSpy.mockReturnValue(t0);
+      mockFetchOk(mockScryfallSets);
+      await fetchAllSets();
+
+      // Jump 25 hours ahead: the cache is now stale and must be refreshed.
+      nowSpy.mockReturnValue(t0 + 25 * 60 * 60 * 1000);
+      await fetchAllSets();
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should return cached data on network error without throwing", async () => {
+      mockFetchOk(mockScryfallSets);
+      const first = await fetchAllSets();
+
+      global.fetch = jest
+        .fn<() => Promise<Response>>()
+        .mockRejectedValue(new Error("Network unreachable"));
+
+      const second = await fetchAllSets();
+
+      expect(second).toBe(first);
+    });
+
+    it("should throw a descriptive error when fetch fails and cache is empty", async () => {
+      global.fetch = jest
+        .fn<() => Promise<Response>>()
+        .mockRejectedValue(new Error("Offline"));
+
+      await expect(fetchAllSets()).rejects.toThrow(
+        "Failed to fetch sets: Offline",
+      );
     });
   });
 });
 
 describe("SET-02: Set selection flow", () => {
   describe("getSetDetails", () => {
+    const originalFetch = global.fetch;
+
+    beforeEach(() => {
+      clearSetCache();
+      global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockScryfallSets),
+      } as unknown as Response);
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+      jest.restoreAllMocks();
+      clearSetCache();
+    });
+
     it("should return set details by code", async () => {
-      // TODO: Implement - get single set
-      expect(true).toBe(true);
+      const set = await getSetDetails("znr");
+
+      expect(set).not.toBeNull();
+      expect(set!.code).toBe("znr");
+      expect(set!.name).toBe("Zendikar Rising");
+    });
+
+    it("should normalize case and surrounding whitespace in the code", async () => {
+      const set = await getSetDetails("  ZNR ");
+
+      expect(set!.code).toBe("znr");
+    });
+
+    it("should hit the cache on the second call (fetch invoked once)", async () => {
+      await getSetDetails("znr");
+      await getSetDetails("znr");
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
     });
 
     it("should return null for non-existent set code", async () => {
-      // TODO: Implement - handle invalid code
-      expect(true).toBe(true);
+      expect(await getSetDetails("not-a-real-set")).toBeNull();
+    });
+
+    it("should return null for an empty code without fetching", async () => {
+      expect(await getSetDetails("")).toBeNull();
+
+      expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it("should include all required set metadata", async () => {
-      // TODO: Implement - verify all fields present
-      expect(true).toBe(true);
+      const set = await getSetDetails("mid");
+
+      expect(set).toEqual({
+        id: "set-uuid-2",
+        code: "mid",
+        name: "Innistrad: Midnight Hunt",
+        set_type: "expansion",
+        card_count: 291,
+        released_at: "2021-09-16",
+        icon_svg_uri: "https://cards.scryfall.io/symbol.svg?set=mid&symbol=1",
+      });
     });
   });
 
@@ -171,32 +336,97 @@ describe("SET-02: Set selection flow", () => {
 });
 
 describe("SET-03: Card count display", () => {
-  it("should display card_count for each set", async () => {
-    // TODO: Implement - verify card_count field exists
-    expect(true).toBe(true);
+  it("should expose a numeric card_count for every set", () => {
+    for (const set of fourSets) {
+      expect(typeof set.card_count).toBe("number");
+      expect(set.card_count).toBeGreaterThanOrEqual(0);
+    }
   });
 
-  it("should show accurate card counts from Scryfall", async () => {
-    // TODO: Implement - match Scryfall data
-    expect(true).toBe(true);
+  it("should carry Scryfall card counts through fetchAllSets unchanged", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockScryfallSets),
+    } as unknown as Response);
+    try {
+      const sets = await fetchAllSets();
+
+      expect(sets.map((s) => s.card_count)).toEqual([274, 291, 277, 351]);
+    } finally {
+      global.fetch = originalFetch;
+      clearSetCache();
+    }
   });
 
-  it("should handle sets with zero cards", async () => {
-    // TODO: Implement - edge case
-    expect(true).toBe(true);
+  it("should handle sets with zero cards (kept in results, sort last by count)", () => {
+    const withZero = [...fourSets, makeSet("tset", "token", { card_count: 0 })];
+
+    const sorted = sortSets(withZero, "card_count");
+
+    expect(sorted).toHaveLength(5);
+    expect(sorted[sorted.length - 1].card_count).toBe(0);
   });
 });
 
-// Integration tests (TODO: Enable when service is implemented)
+// Integration tests against a mocked Scryfall endpoint
 describe("Integration", () => {
-  it("should load and sort sets successfully", async () => {
-    // TODO: Full integration test
-    expect(true).toBe(true);
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+    clearSetCache();
   });
 
-  it("should handle API rate limiting gracefully", async () => {
-    // TODO: Test 429 handling
-    expect(true).toBe(true);
+  it("should load and sort sets successfully (newest first)", async () => {
+    // Scryfall returns sets oldest-first; prove the UI sort re-orders them.
+    const oldestFirst = { data: [...fourSets].reverse() };
+    global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(oldestFirst),
+    } as unknown as Response);
+
+    const sets = await fetchAllSets();
+
+    expect(sortSets(sets, "release_date").map((s) => s.code)).toEqual([
+      "bro",
+      "vow",
+      "mid",
+      "znr",
+    ]);
+  });
+
+  it("should surface a descriptive error on 429 rate limiting (no cache)", async () => {
+    clearSetCache();
+    global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+    } as unknown as Response);
+
+    await expect(fetchAllSets()).rejects.toThrow(/429/);
+    await expect(fetchAllSets()).rejects.toThrow(/Failed to fetch sets/);
+  });
+
+  it("should degrade to cached data on 429 once a cache exists", async () => {
+    global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockScryfallSets),
+    } as unknown as Response);
+    const cached = await fetchAllSets();
+
+    global.fetch = jest.fn<() => Promise<Response>>().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+    } as unknown as Response);
+    const degraded = await fetchAllSets();
+
+    expect(degraded).toBe(cached);
   });
 });
 
