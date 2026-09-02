@@ -60,9 +60,20 @@ AI functionality is multi-provider via the Vercel AI SDK (`@ai-sdk/openai`, `@ai
 
 - Unified proxy route: `/src/app/api/ai-proxy/` — all provider calls go through this server-side route so API keys are never exposed to the client
 - Provider factory: `/src/ai/providers/` — selects the active provider/model from env config (defaults per provider in `factory.ts`)
-- Flows: `/src/ai/flows/` — AI operations
-  - `ai-deck-coach-review.ts` - Analyzes decklists, generates strategic suggestions
-  - `ai-opponent-deck-generation.ts` - Creates AI opponent decks
+- Flows: `/src/ai/flows/` — AI operations, in three families:
+  - Conversational coach (v1.7) — streaming SSE coach served by `POST /api/chat/coach` (deck-grounded coaching) and `POST /api/chat` (hardened general chat, #1534); both routes share the same stream layer:
+    - `coach-stream.ts` - Streaming orchestration (async generator over Vercel AI SDK `streamText`) adding transparent provider failover with cooldown backoff (#1077, #1418), cooperative cancellation, and structured stream events
+    - `coach-context-prefetch.ts` - Parallel, cached pre-fetch of coach context (archetype, deck stats, synergies, gaps) instead of serial per-request rebuilds (#928)
+    - `coach-deck-analysis.ts` - Structured deck analysis (archetype, synergy clusters, mana curve, role distribution, key cards, strengths/gaps) the coach prompt reasons about (#923)
+    - `coach-evidence-ledger.ts` - Deterministic grounding layer for non-card claims (curve, role mix, win conditions, matchup profile, synergy gaps) (#1419)
+    - `coach-grounding-guard.ts` - Post-generation guard on the completed assistant message before it is persisted — regex/numeric checks against the evidence ledger, never an LLM call (#1419)
+    - `coach-memory-summary.ts` - Durable summary of pruned conversation history, preserving user goals, constraints, and prior card decisions across turns (#1417)
+    - `context-builder.ts` - Converts deck data and metadata into LLM-friendly formats; owns the coach system prompt and token-aware conversation-history preparation
+    - `genkit-coach-flow.ts` - Conversational coach flow facade that delegates to `streamCoachResponse` (Genkit dependency removed in #446)
+  - Local-first / heuristic (no LLM call, works offline): `ai-deck-coach-review.ts` (rule-based deck reviews), `ai-opponent-deck-generation.ts` (heuristic opponent decks), `ai-draft-assistant.ts` (draft & sealed assistant), `ai-gameplay-assistance.ts` (real-time play assistance), `ai-post-game-analysis.ts` (post-game + cross-game replay diffing), `sideboard-plan.ts` (per-matchup boarding plans), `compare-decks.ts` (multi-deck comparison & meta-positioning), `verify-citations.ts` (local card-citation verifier, #1072)
+  - LLM-routed with local-first fallback: `ai-meta-analysis.ts` (#1073)
+
+Conversational-coach request composition (`/src/app/api/chat/coach/route.ts`): prefetch context (cached, parallel) → validate inbound memory summary → build evidence ledger → assemble system prompt + token-pruned history with summary, under prompt-injection guardrails (#1107: `SECURITY_PREAMBLE`, `sanitizeUserInput`, system prompt always built server-side) → `streamCoachResponse` (provider failover + cooldown backoff) → grounding guard on the completed message → emit the updated summary as a `summary` SSE event. The wire contract is documented in `docs/API.md` §2.5 (POST /api/chat/coach).
 
 AI flows use:
 
@@ -105,7 +116,7 @@ Note: The MTG rules engine is a large, live module at `/src/lib/game-state/` (la
 
 ## AI Development
 
-AI flows live in `/src/ai/flows/` (deck-coach review, opponent generation, draft assistant, and others), backed by the multi-provider Vercel AI SDK and the unified proxy at `/src/app/api/ai-proxy/`:
+AI flows live in `/src/ai/flows/` — see the flow-family inventory under [AI Integration](#ai-integration-multi-provider): the v1.7 conversational coach family (streaming SSE; wire contract in `docs/API.md` §2.5) and the local-first heuristic family (deck-coach review, opponent generation, draft assistant, gameplay assistance, post-game analysis, sideboard plans, deck comparison, citation verification), plus the LLM-routed meta-analysis — backed by the multi-provider Vercel AI SDK and the unified proxy at `/src/app/api/ai-proxy/`:
 
 - Run `npm run simulate` to execute the AI simulation suite (`src/ai/__tests__/simulation/`)
 - Each flow has co-located tests under `/src/ai/flows/__tests__/`
