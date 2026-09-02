@@ -270,7 +270,7 @@ describe("GET /api/ai-proxy", () => {
     );
   });
 
-  it("wraps unexpected errors in a 500 response", async () => {
+  it("wraps unexpected errors in a 500 response with a generic message (issue #1585)", async () => {
     getConfiguredProviders.mockImplementation(() => {
       throw new Error("boom");
     });
@@ -281,7 +281,10 @@ describe("GET /api/ai-proxy", () => {
     expect(res.status).toBe(500);
     const data = (await (res as unknown as TestResponse).json()) as any;
     expect(data.success).toBe(false);
-    expect(data.error).toBe("boom");
+    // Raw error text must never reach the client.
+    expect(data.error).toBe("Internal server error");
+    expect(data.errorCode).toBe("INTERNAL_ERROR");
+    expect(data.correlationId).toBeTruthy();
   });
 });
 
@@ -567,7 +570,180 @@ describe("POST /api/ai-proxy — internal errors", () => {
     expect(res.status).toBe(500);
     const data = (await (res as unknown as TestResponse).json()) as any;
     expect(data.errorCode).toBe("INTERNAL_ERROR");
-    expect(data.error).toBe("sdk exploded");
+    // Issue #1585: raw provider/internal messages never reach the client.
+    expect(data.error).toBe("Internal server error");
+    expect(data.correlationId).toBeTruthy();
+  });
+});
+
+// ----------------------------------------------------------------------------
+// POST /api/ai-proxy — Issue #1585: redact keys & request details from
+// error responses and server logs
+// ----------------------------------------------------------------------------
+
+describe("POST /api/ai-proxy — error redaction (Issue #1585)", () => {
+  let consoleErrorSpy: jest.Spied<typeof console.error>;
+
+  beforeEach(() => {
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-test",
+      enabled: true,
+      rateLimit: { maxRequests: 100, windowMs: 60_000 },
+    });
+    enforceRateLimit.mockReturnValue({
+      success: true,
+      remaining: 99,
+      resetAt: Date.now() + 60_000,
+    });
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  /** Join everything the spy captured into one searchable string. */
+  function capturedLogOutput(): string {
+    return consoleErrorSpy.mock.calls
+      .map((call) =>
+        call
+          .map((arg) => {
+            if (typeof arg === "string") return arg;
+            try {
+              return JSON.stringify(arg);
+            } catch {
+              return String(arg);
+            }
+          })
+          .join(" "),
+      )
+      .join("\n");
+  }
+
+  it("(a) AUTH: a 401 error embedding the Authorization header never leaks key material", async () => {
+    const leakedKey = "sk-proj-abcdefghij0123456789abcdefghij";
+    const providerError = Object.assign(
+      new Error(
+        `401 Unauthorized: request headers {'Authorization': 'Bearer ${leakedKey}'} were rejected by OpenAI`,
+      ),
+      { statusCode: 401 },
+    );
+    getAIModel.mockRejectedValue(providerError);
+
+    const res = await POST(
+      makeRequest({
+        provider: "openai",
+        endpoint: "/chat",
+        body: { messages: [{ role: "user", content: "hi" }] },
+      }),
+    );
+
+    // Client response: generic summary, stable errorCode, correlation id.
+    expect(res.status).toBe(502);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.success).toBe(false);
+    expect(data.errorCode).toBe("INVALID_API_KEY");
+    expect(data.error).toBe("Provider authentication failed");
+    expect(data.provider).toBe("openai");
+    expect(data.correlationId).toBeTruthy();
+
+    const responseBody = JSON.stringify(data);
+    expect(responseBody).not.toContain(leakedKey);
+    expect(responseBody).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
+
+    // Server log: redacted — no key pattern survives.
+    const logged = capturedLogOutput();
+    expect(logged).not.toContain(leakedKey);
+    expect(logged).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(logged).not.toMatch(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/);
+  });
+
+  it("(b) PROVIDER: a 400 error echoing the user prompt never leaks prompt bytes", async () => {
+    // Realistic OpenAI-style 400: verbose diagnostics scaffolding before
+    // the echoed request body (so the prompt sits well past the 200-char
+    // truncation boundary the redactor enforces).
+    const promptMarker = "TOPSECRET-PROMPT-BYTES";
+    const promptEcho = `${promptMarker}-${"p".repeat(400)}-ENDSECRET`;
+    const verbosePrefix =
+      "400 - messages.0.content: Invalid type for 'messages[0].content': " +
+      "expected a string, got an object with an unexpected shape and size " +
+      "(see https://api.openai.com/v1/chat/completions documentation for " +
+      "the expected request body format and schema requirements). The full " +
+      "request body excerpt received by the API follows for debugging: ";
+    expect(verbosePrefix.length).toBeGreaterThan(200);
+    const providerError = Object.assign(
+      new Error(
+        `${verbosePrefix}{"model":"gpt-4o-mini","messages":[{"role":"user","content":"${promptEcho}"}],"temperature":0.7}`,
+      ),
+      { statusCode: 400 },
+    );
+    generateText.mockRejectedValue(providerError);
+
+    const res = await POST(
+      makeRequest({
+        provider: "openai",
+        endpoint: "/chat",
+        body: { messages: [{ role: "user", content: "hi" }] },
+      }),
+    );
+
+    expect(res.status).toBe(502);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.errorCode).toBe("PROVIDER_REQUEST_FAILED");
+    expect(data.error).toBe("Provider request failed");
+    // No prompt bytes in the response body.
+    expect(JSON.stringify(data)).not.toContain(promptMarker);
+    expect(JSON.stringify(data)).not.toContain("p".repeat(100));
+
+    // No prompt bytes in the server log (redactor truncates the echo).
+    const logged = capturedLogOutput();
+    expect(logged).not.toContain(promptMarker);
+    expect(logged).not.toContain("p".repeat(100));
+  });
+
+  it("(c) NETWORK: an ECONNREFUSED failure maps to NETWORK_ERROR with a generic message", async () => {
+    generateText.mockRejectedValue(
+      new Error("fetch failed: connect ECONNREFUSED 93.184.216.34:443 (TCP)"),
+    );
+
+    const res = await POST(
+      makeRequest({
+        provider: "openai",
+        endpoint: "/chat",
+        body: { messages: [{ role: "user", content: "hi" }] },
+      }),
+    );
+
+    expect(res.status).toBe(502);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.errorCode).toBe("NETWORK_ERROR");
+    expect(data.error).toBe("Provider network error");
+    expect(data.correlationId).toBeTruthy();
+    // Client never sees raw provider/network internals.
+    expect(JSON.stringify(data)).not.toContain("ECONNREFUSED");
+    // The redacted log line is still written for operators.
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    expect(capturedLogOutput()).toContain("corr ");
+  });
+
+  it("logs a redacted summary that carries the correlation id also sent to the client", async () => {
+    getAIModel.mockRejectedValue(
+      new Error(`connect failed, key=AIza${"a".repeat(35)} in url`),
+    );
+
+    const res = await POST(
+      makeRequest({
+        provider: "openai",
+        endpoint: "/chat",
+        body: { messages: [] },
+      }),
+    );
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    const logged = capturedLogOutput();
+
+    expect(logged).toContain(data.correlationId);
+    expect(logged).not.toMatch(/AIza[A-Za-z0-9_-]{35}/);
   });
 });
 

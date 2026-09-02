@@ -293,8 +293,28 @@ describe("GET /api/ai-proxy/validate — upstream rejection", () => {
   });
 });
 
-describe("GET /api/ai-proxy/validate — internal failure", () => {
-  it("returns 500 when the fetch throws", async () => {
+describe("GET /api/ai-proxy/validate — error redaction (issue #1585)", () => {
+  let consoleErrorSpy: jest.Spied<typeof console.error>;
+
+  beforeEach(() => {
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  function capturedLogOutput(): string {
+    return consoleErrorSpy.mock.calls
+      .map((call) =>
+        call
+          .map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg)))
+          .join(" "),
+      )
+      .join("\n");
+  }
+
+  it("never returns the raw error when fetch throws (e.g. network down)", async () => {
     getProviderConfig.mockReturnValue({
       provider: "openai",
       apiKey: "sk-fake",
@@ -308,6 +328,84 @@ describe("GET /api/ai-proxy/validate — internal failure", () => {
     expect(res.status).toBe(500);
     const data = (await (res as unknown as TestResponse).json()) as any;
     expect(data.errorCode).toBe("VALIDATION_ERROR");
-    expect(data.error).toBe("network down");
+    expect(data.error).toBe("API key validation failed");
+    expect(data.correlationId).toBeTruthy();
+  });
+
+  it("redacts the API key embedded in the Google probe URL when fetch fails", async () => {
+    // Google embeds ?key=<apiKey> in the probe URL; a fetch failure throws
+    // an Error whose message contains that URL — key material included.
+    const googleKey = `AIza${"a".repeat(35)}`;
+    getProviderConfig.mockReturnValue({
+      provider: "google",
+      apiKey: googleKey,
+      enabled: true,
+    });
+    fetchMock.mockRejectedValue(
+      new Error(
+        `request failed: GET https://generativelanguage.googleapis.com/v1/models?key=${googleKey} — connect ECONNREFUSED`,
+      ),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=google"),
+    );
+    expect(res.status).toBe(500);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.errorCode).toBe("VALIDATION_ERROR");
+    expect(JSON.stringify(data)).not.toContain(googleKey);
+    expect(JSON.stringify(data)).not.toMatch(/AIza[A-Za-z0-9_-]{35}/);
+
+    // The server log is redacted too, and carries the correlation id.
+    const logged = capturedLogOutput();
+    expect(logged).toContain(data.correlationId);
+    expect(logged).not.toContain(googleKey);
+    expect(logged).not.toMatch(/AIza[A-Za-z0-9_-]{35}/);
+    // The key query param survives only as the redaction token.
+    expect(logged).toContain("key=[REDACTED]");
+    expect(logged).not.toMatch(/[?&]key=(?!\[REDACTED\])[^\s"']*/);
+  });
+
+  it("redacts key material echoed by the upstream error body", async () => {
+    const openaiKey = `sk-${"0123456789abcdef".repeat(2)}`;
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-fake",
+      enabled: true,
+    });
+    fetchMock.mockResolvedValue(
+      mockFetchResponse(
+        401,
+        `{"error":{"message":"Incorrect API key provided: Bearer ${openaiKey}"}}`,
+      ),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=openai"),
+    );
+    expect(res.status).toBe(401);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.errorCode).toBe("VALIDATION_FAILED_401");
+    expect(data.error).toContain("401");
+    expect(data.error).not.toContain(openaiKey);
+    expect(data.error).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
+  });
+
+  it("truncates long upstream error bodies before echoing the status line", async () => {
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-fake",
+      enabled: true,
+    });
+    const longBody = `{"error":{"message":"${"z".repeat(600)}"}}`;
+    fetchMock.mockResolvedValue(mockFetchResponse(400, longBody));
+
+    const res = await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=openai"),
+    );
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toContain("400");
+    expect(data.error).not.toContain("z".repeat(300));
+    expect(data.error).toContain("...[truncated]");
   });
 });

@@ -14,6 +14,12 @@ import {
 } from "@/lib/server-rate-limiter";
 import { UsageLogger } from "@/lib/server-usage-logger";
 import { getClientIdentifier } from "@/lib/server-request-identity";
+import {
+  HTTP_STATUS_BY_CLASS,
+  newCorrelationId,
+  redactErrorMessage,
+  toSafeClientError,
+} from "@/lib/security/redact-error";
 
 /**
  * AI Proxy API Route
@@ -80,13 +86,22 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       configuredProviders,
     });
   } catch (error) {
-    console.error("AI Proxy GET error:", error);
+    // Issue #1585: never echo raw error details (key material, URLs,
+    // request bodies) into logs or the client response.
+    const correlationId = newCorrelationId();
+    const safe = toSafeClientError(error);
+    console.error(
+      `AI Proxy GET error [${safe.errorClass}] [corr ${correlationId}]:`,
+      redactErrorMessage(error),
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: safe.error,
+        errorCode: safe.errorCode,
+        correlationId,
       },
-      { status: 500 },
+      { status: HTTP_STATUS_BY_CLASS[safe.errorClass] },
     );
   }
 }
@@ -97,6 +112,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse | Response> {
+  // Issue #1585: the validated provider name (allowlist-checked) is kept
+  // for the safe error summary in the catch block below.
+  let validatedProvider: AIProvider | undefined;
   try {
     // Parse request body
     let body: AIProxyRequest;
@@ -135,6 +153,7 @@ export async function POST(
         { status: 400 },
       );
     }
+    validatedProvider = provider as AIProvider;
 
     // Initialize logger with correct provider
     const usageLogger = new UsageLogger(
@@ -298,14 +317,27 @@ export async function POST(
       );
     }
   } catch (error) {
-    console.error("AI Proxy POST error:", error);
+    // Issue #1585: provider SDK errors routinely embed key material, full
+    // request URLs, and request-body/prompt fragments. Never log or return
+    // them raw — log a redacted summary (tied to a correlation id the
+    // client also receives) and respond with a generic message plus a
+    // stable errorCode from the enumerated set (AUTH / PROVIDER /
+    // NETWORK / INTERNAL).
+    const correlationId = newCorrelationId();
+    const safe = toSafeClientError(error);
+    console.error(
+      `AI Proxy POST error [${safe.errorClass}] [corr ${correlationId}]:`,
+      redactErrorMessage(error),
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Internal server error",
-        errorCode: "INTERNAL_ERROR",
+        error: safe.error,
+        errorCode: safe.errorCode,
+        ...(validatedProvider ? { provider: validatedProvider } : {}),
+        correlationId,
       },
-      { status: 500 },
+      { status: HTTP_STATUS_BY_CLASS[safe.errorClass] },
     );
   }
 }
