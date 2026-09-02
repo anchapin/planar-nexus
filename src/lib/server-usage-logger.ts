@@ -6,8 +6,9 @@
  * Unlike client-side tracking, this provides accurate server-verified usage data.
  */
 
-import { AIProvider } from '@/ai/providers/types';
-import { indexedDBStorage } from './indexeddb-storage';
+import { AIProvider } from "@/ai/providers/types";
+import { indexedDBStorage } from "./indexeddb-storage";
+import { redactText } from "./security/redact-error";
 
 /**
  * Usage log entry
@@ -60,27 +61,27 @@ export interface UsageStatistics {
  */
 const SERVER_PRICING: Record<string, { input: number; output: number }> = {
   // Google Gemini
-  'gemini-1.5-flash-latest': { input: 0.075, output: 0.30 },
-  'gemini-1.5-flash-8b': { input: 0.075, output: 0.30 },
-  'gemini-1.5-pro-latest': { input: 1.25, output: 5.00 },
-  'gemini-2.0-flash-exp': { input: 0.075, output: 0.30 },
+  "gemini-1.5-flash-latest": { input: 0.075, output: 0.3 },
+  "gemini-1.5-flash-8b": { input: 0.075, output: 0.3 },
+  "gemini-1.5-pro-latest": { input: 1.25, output: 5.0 },
+  "gemini-2.0-flash-exp": { input: 0.075, output: 0.3 },
   // OpenAI
-  'gpt-4o-mini': { input: 0.15, output: 0.60 },
-  'gpt-4o': { input: 2.50, output: 10.00 },
-  'gpt-4-turbo': { input: 10.00, output: 30.00 },
-  'gpt-4': { input: 10.00, output: 30.00 },
-  'gpt-3.5-turbo': { input: 0.50, output: 1.50 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "gpt-4-turbo": { input: 10.0, output: 30.0 },
+  "gpt-4": { input: 10.0, output: 30.0 },
+  "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
   // Z.ai (approximate)
-  'default': { input: 1.00, output: 4.00 },
-  'zaiclient-7b': { input: 0.50, output: 2.00 },
-  'zaiclient-14b': { input: 1.00, output: 4.00 },
-  'zaiclient-72b': { input: 2.00, output: 8.00 },
+  default: { input: 1.0, output: 4.0 },
+  "zaiclient-7b": { input: 0.5, output: 2.0 },
+  "zaiclient-14b": { input: 1.0, output: 4.0 },
+  "zaiclient-72b": { input: 2.0, output: 8.0 },
 };
 
 /**
  * Storage key for usage logs
  */
-const USAGE_LOGS_KEY = 'planar_nexus_server_usage_logs';
+const USAGE_LOGS_KEY = "planar_nexus_server_usage_logs";
 
 /**
  * Calculate cost estimate for token usage
@@ -88,9 +89,10 @@ const USAGE_LOGS_KEY = 'planar_nexus_server_usage_logs';
 export function calculateCost(
   inputTokens: number,
   outputTokens: number,
-  model: string
+  model: string,
 ): number {
-  const pricing = SERVER_PRICING[model] || SERVER_PRICING['default'] || { input: 1.0, output: 4.0 };
+  const pricing = SERVER_PRICING[model] ||
+    SERVER_PRICING["default"] || { input: 1.0, output: 4.0 };
   const inputCost = (inputTokens / 1_000_000) * pricing.input;
   const outputCost = (outputTokens / 1_000_000) * pricing.output;
   return inputCost + outputCost;
@@ -107,17 +109,17 @@ function generateLogId(): string {
  * Get usage logs from storage
  */
 async function getUsageLogs(): Promise<UsageLogEntry[]> {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     // Server-side: return empty array or implement server storage
     return [];
   }
 
   try {
     await indexedDBStorage.initialize();
-    const logs = await indexedDBStorage.getAll<UsageLogEntry>('usage-tracking');
+    const logs = await indexedDBStorage.getAll<UsageLogEntry>("usage-tracking");
     return logs || [];
   } catch (error) {
-    console.error('Failed to get usage logs:', error);
+    console.error("Failed to get usage logs:", error);
     return [];
   }
 }
@@ -126,23 +128,23 @@ async function getUsageLogs(): Promise<UsageLogEntry[]> {
  * Save usage logs to storage
  */
 async function saveUsageLogs(logs: UsageLogEntry[]): Promise<void> {
-  if (typeof window === 'undefined') {
+  if (typeof window === "undefined") {
     // Server-side: could implement file-based or database storage
     return;
   }
 
   try {
     await indexedDBStorage.initialize();
-    
+
     // Add IDs to logs without them
-    const logsWithIds = logs.map(log => ({
+    const logsWithIds = logs.map((log) => ({
       ...log,
       id: log.id || generateLogId(),
     }));
 
-    await indexedDBStorage.setAll('usage-tracking', logsWithIds);
+    await indexedDBStorage.setAll("usage-tracking", logsWithIds);
   } catch (error) {
-    console.error('Failed to save usage logs:', error);
+    console.error("Failed to save usage logs:", error);
   }
 }
 
@@ -150,10 +152,10 @@ async function saveUsageLogs(logs: UsageLogEntry[]): Promise<void> {
  * Log a usage event
  */
 export async function logUsage(
-  entry: Omit<UsageLogEntry, 'id'>
+  entry: Omit<UsageLogEntry, "id">,
 ): Promise<void> {
   const logs = await getUsageLogs();
-  
+
   const newEntry: UsageLogEntry = {
     ...entry,
     id: generateLogId(),
@@ -162,8 +164,8 @@ export async function logUsage(
   logs.push(newEntry);
 
   // Keep only last 90 days of data
-  const ninetyDaysAgo = Date.now() - (90 * 24 * 60 * 60 * 1000);
-  const filteredLogs = logs.filter(log => log.timestamp > ninetyDaysAgo);
+  const ninetyDaysAgo = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  const filteredLogs = logs.filter((log) => log.timestamp > ninetyDaysAgo);
 
   await saveUsageLogs(filteredLogs);
 }
@@ -203,11 +205,11 @@ export class UsageLogger {
       output,
       total: input + output,
     };
-    
+
     if (this.entry.model) {
       this.entry.costEstimate = calculateCost(input, output, this.entry.model);
     }
-    
+
     return this;
   }
 
@@ -239,10 +241,14 @@ export class UsageLogger {
 
   /**
    * Mark as failed
+   *
+   * Issue #1585: the stored error string is scrubbed (secrets removed,
+   * length capped) so usage entries can never surface key material or
+   * prompt echoes — callers may pass raw upstream messages.
    */
   markFailure(error: string, errorCode?: string): this {
     this.entry.success = false;
-    this.entry.error = error;
+    this.entry.error = redactText(error);
     this.entry.errorCode = errorCode;
     this.entry.duration = Date.now() - this.startTime;
     return this;
@@ -258,7 +264,7 @@ export class UsageLogger {
     if (!this.entry.duration) {
       this.entry.duration = Date.now() - this.startTime;
     }
-    
+
     await logUsage(this.entry as UsageLogEntry);
   }
 }
@@ -268,13 +274,13 @@ export class UsageLogger {
  */
 export async function getProviderUsageStats(
   provider: AIProvider,
-  days: number = 30
+  days: number = 30,
 ): Promise<UsageStatistics> {
   const logs = await getUsageLogs();
-  const cutoffDate = Date.now() - (days * 24 * 60 * 60 * 1000);
-  
+  const cutoffDate = Date.now() - days * 24 * 60 * 60 * 1000;
+
   const providerLogs = logs.filter(
-    log => log.provider === provider && log.timestamp > cutoffDate
+    (log) => log.provider === provider && log.timestamp > cutoffDate,
   );
 
   if (providerLogs.length === 0) {
@@ -296,8 +302,8 @@ export async function getProviderUsageStats(
   const stats: UsageStatistics = {
     provider,
     totalRequests: providerLogs.length,
-    successfulRequests: providerLogs.filter(log => log.success).length,
-    failedRequests: providerLogs.filter(log => !log.success).length,
+    successfulRequests: providerLogs.filter((log) => log.success).length,
+    failedRequests: providerLogs.filter((log) => !log.success).length,
     totalTokens: { input: 0, output: 0, total: 0 },
     totalCost: 0,
     averageDuration: 0,
@@ -330,7 +336,8 @@ export async function getProviderUsageStats(
 
     // Error tracking
     if (!log.success && log.errorCode) {
-      stats.errorsByCode[log.errorCode] = (stats.errorsByCode[log.errorCode] || 0) + 1;
+      stats.errorsByCode[log.errorCode] =
+        (stats.errorsByCode[log.errorCode] || 0) + 1;
     }
   }
 
@@ -348,7 +355,7 @@ export async function getUsageSummary(days: number = 30): Promise<{
   totalCost: number;
   providers: UsageStatistics[];
 }> {
-  const providers: AIProvider[] = ['google', 'openai', 'zaic', 'custom'];
+  const providers: AIProvider[] = ["google", "openai", "zaic", "custom"];
   const stats: UsageStatistics[] = [];
 
   let totalRequests = 0;
@@ -370,7 +377,7 @@ export async function getUsageSummary(days: number = 30): Promise<{
     totalRequests,
     totalTokens,
     totalCost,
-    providers: stats.filter(s => s.totalRequests > 0),
+    providers: stats.filter((s) => s.totalRequests > 0),
   };
 }
 
@@ -379,7 +386,7 @@ export async function getUsageSummary(days: number = 30): Promise<{
  */
 export function formatCost(cost: number): string {
   if (cost < 0.01) {
-    return '<¢0.01';
+    return "<¢0.01";
   }
   return `$${cost.toFixed(2)}`;
 }
