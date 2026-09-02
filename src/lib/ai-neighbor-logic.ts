@@ -40,6 +40,7 @@ import {
 } from "@/ai/ai-difficulty";
 import { DefaultWeights } from "@/ai/game-state-evaluator";
 import { normalizeAiDifficulty } from "./limited/types";
+import { createRng, type Rng } from "./limited/rng";
 
 /**
  * Discriminator accepted by {@link selectAiPick} for cross-format dispatch.
@@ -144,10 +145,14 @@ export function getDominantColor(pool: PoolCard[]): string | null {
  * Pick a random available card from the pack (Easy difficulty).
  * Mutates `aiState` to record an ArchetypeSignal describing what the pick
  * telegraphed to a learning observer (issue #1404).
+ *
+ * Issue #1559: randomness drawn from the injected `rng` (defaults to an
+ * unseeded `Math.random`-backed Rng) so AI picks are replayable with a seed.
  */
 export function pickRandomCard(
   pack: DraftPack,
   aiState: AiNeighborState,
+  rng: Rng = createRng(),
 ): DraftCard | null {
   // Get unpicked cards
   const availableCards = pack.cards.filter(
@@ -159,8 +164,7 @@ export function pickRandomCard(
   }
 
   // Pick random card
-  const randomIndex = Math.floor(Math.random() * availableCards.length);
-  const picked = availableCards[randomIndex];
+  const picked = availableCards[rng.int(availableCards.length)];
 
   emitArchetypeSignal(aiState, aiState.pool, picked, "random");
 
@@ -171,11 +175,14 @@ export function pickRandomCard(
  * Pick a card based on color preference (Medium difficulty)
  * Prioritizes cards matching the dominant color in AI's pool.
  * Mutates `aiState` to record an ArchetypeSignal (issue #1404).
+ *
+ * Issue #1559: tiebreak randomness drawn from the injected `rng`.
  */
 export function pickColorFocusedCard(
   pack: DraftPack,
   aiPool: PoolCard[],
   aiState: AiNeighborState,
+  rng: Rng = createRng(),
 ): DraftCard | null {
   // Get unpicked cards
   const availableCards = pack.cards.filter(
@@ -194,7 +201,7 @@ export function pickColorFocusedCard(
   if (!dominantColor) {
     // No color preference, fall back to random (still emit a 'color-fix'
     // signal because the picker was color-focused in intent).
-    picked = pickRandomCardNoSignal(pack);
+    picked = pickRandomCardNoSignal(pack, rng);
   } else {
     // Score each card by how well it matches dominant color
     const scoredCards = availableCards.map((card) => {
@@ -222,9 +229,9 @@ export function pickColorFocusedCard(
     const topCandidates = scoredCards.filter(
       (c) => c.score === scoredCards[0].score,
     );
-    const randomTopIndex = Math.floor(Math.random() * topCandidates.length);
+    const pickedCard = topCandidates[rng.int(topCandidates.length)];
 
-    picked = topCandidates[randomTopIndex].card;
+    picked = pickedCard.card;
   }
 
   if (picked) {
@@ -237,14 +244,14 @@ export function pickColorFocusedCard(
 /**
  * Internal: pick random card without re-emitting a signal. Used by the
  * color-focused picker when it has no dominant color to anchor on yet.
+ * Issue #1559: randomness drawn from the injected `rng`.
  */
-function pickRandomCardNoSignal(pack: DraftPack): DraftCard | null {
+function pickRandomCardNoSignal(pack: DraftPack, rng: Rng): DraftCard | null {
   const availableCards = pack.cards.filter(
     (card) => !pack.pickedCardIds.includes(card.id),
   );
   if (availableCards.length === 0) return null;
-  const randomIndex = Math.floor(Math.random() * availableCards.length);
-  return availableCards[randomIndex];
+  return availableCards[rng.int(availableCards.length)];
 }
 
 // ============================================================================
@@ -328,12 +335,15 @@ function curveFillBonus(pool: PoolCard[], candidate: DraftCard): number {
  * {@link DIFFICULTY_CONFIGS}[tier] without sacrificing determinism in the
  * dominant case. Like the other tiers, emits an ArchetypeSignal (issue
  * #1404) describing what the pick telegraphed.
+ *
+ * Issue #1559: wobble/tiebreak randomness drawn from the injected `rng`.
  */
 export function pickSynergyAndCurveCard(
   pack: DraftPack,
   aiPool: PoolCard[],
   aiState: AiNeighborState,
   difficulty: AiDifficulty = "hard",
+  rng: Rng = createRng(),
 ): DraftCard | null {
   const availableCards = pack.cards.filter(
     (card) => !pack.pickedCardIds.includes(card.id),
@@ -358,7 +368,7 @@ export function pickSynergyAndCurveCard(
 
   // Inject a small randomnessFactor-driven wobble: if the top three are
   // within 1 point of each other, randomize among them. The wobble size is
-  // scaled to `Math.random() < randomnessFactor * 3` so a higher-tier
+  // scaled to `rng.next() < randomnessFactor * 3` so a higher-tier
   // `randomnessFactor` (easy=0.4, medium=0.2, hard=0.1) widens the candidate
   // window — keeping the documented monotonic-in-skill knob (issue #990)
   // honoring the picking variance. We refuse to wobble below 3 candidates
@@ -368,11 +378,10 @@ export function pickSynergyAndCurveCard(
     "limited",
   ).randomnessFactor;
   const wobbleCandidates =
-    scored.length >= 3 && Math.random() < knob * 3
+    scored.length >= 3 && rng.next() < knob * 3
       ? scored.slice(0, Math.min(3, scored.length))
       : topCandidates;
-  const pickIndex = Math.floor(Math.random() * wobbleCandidates.length);
-  const picked = wobbleCandidates[pickIndex].card;
+  const picked = wobbleCandidates[rng.int(wobbleCandidates.length)].card;
 
   emitArchetypeSignal(aiState, aiPool, picked, "premium");
   return picked;
@@ -387,12 +396,15 @@ export function pickSynergyAndCurveCard(
  * `src/ai/game-state-evaluator.ts`). The blunderChance from
  * {@link DIFFICULTY_CONFIGS}[expert] is applied as a top-3 random tiebreak
  * so an expert AI can still occasionally take a slower line.
+ *
+ * Issue #1559: blunder/tiebreak randomness drawn from the injected `rng`.
  */
 export function pickHighestTierValueCard(
   pack: DraftPack,
   aiPool: PoolCard[],
   aiState: AiNeighborState,
   difficulty: AiDifficulty = "expert",
+  rng: Rng = createRng(),
 ): DraftCard | null {
   const availableCards = pack.cards.filter(
     (card) => !pack.pickedCardIds.includes(card.id),
@@ -454,12 +466,12 @@ export function pickHighestTierValueCard(
   let picked: DraftCard;
   const topCandidates = scored.slice(0, Math.min(3, scored.length));
 
-  if (topCandidates.length > 1 && Math.random() < blunderChance * 10) {
+  if (topCandidates.length > 1 && rng.next() < blunderChance * 10) {
     // Occasional slump: choose a non-top tier-1 option within the top 3.
-    // Math.random() < blunderChance * 10 turns blunderChance=0.02 into a
+    // `rng.next() < blunderChance * 10` turns blunderChance=0.02 into a
     // ~20% chance to slip from #1 to #2/#3 — large enough to be testable
     // without diluting the expert tier. Documented in PR description.
-    const idx = 1 + Math.floor(Math.random() * (topCandidates.length - 1));
+    const idx = 1 + rng.int(topCandidates.length - 1);
     picked = topCandidates[idx].card;
   } else {
     picked = topCandidates[0].card;
@@ -496,19 +508,21 @@ function difficultyKnobs(difficulty: unknown): {
  * a random pick; otherwise return the scored pick. Used by the high-end
  * tiers so the canonical error-rate knob reaches the draft picker without
  * threading per-tier callbacks.
+ *
+ * Issue #1559: randomness drawn from the injected `rng`.
  */
 function maybeApplyRandomness(
   pack: DraftPack,
   scored: DraftCard,
   randomnessFactor: number,
+  rng: Rng,
 ): DraftCard {
-  if (Math.random() < randomnessFactor) {
+  if (rng.next() < randomnessFactor) {
     const availableCards = pack.cards.filter(
       (card) => !pack.pickedCardIds.includes(card.id),
     );
     if (availableCards.length === 0) return scored;
-    const r = Math.floor(Math.random() * availableCards.length);
-    return availableCards[r];
+    return availableCards[rng.int(availableCards.length)];
   }
   return scored;
 }
@@ -521,17 +535,20 @@ function maybeApplyRandomness(
  * reason about parity. For the 'easy' tier we ignore table reads entirely;
  * for 'medium' they only factor in when matching the dominant colour is
  * otherwise a tie.
+ *
+ * Issue #1559: randomness drawn from the injected `rng`.
  */
 export function pickFromCommunalPool(
   pool: PoolCard[],
   tableRead: PoolCard[],
   aiState: AiNeighborState,
+  rng: Rng = createRng(),
 ): PoolCard | null {
   if (pool.length === 0) return null;
   if (aiState.pool.length === 0 && tableRead.length === 0) {
     // Cold start: drop the first concrete hook (a creature or cheap spell).
     const hook = pool.find((c) => /Creature/i.test(c.type_line ?? ""));
-    const picked = hook ?? pool[Math.floor(Math.random() * pool.length)];
+    const picked = hook ?? pool[rng.int(pool.length)];
     emitArchetypeSignal(aiState, aiState.pool, picked as DraftCard, "random");
     return picked;
   }
@@ -544,7 +561,12 @@ export function pickFromCommunalPool(
     isOpened: true,
     pickedCardIds: [],
   };
-  const picked = pickColorFocusedCard(syntheticPack, aiState.pool, aiState);
+  const picked = pickColorFocusedCard(
+    syntheticPack,
+    aiState.pool,
+    aiState,
+    rng,
+  );
   if (picked === null) return null;
   // The colour-focused picker returns a DraftCard; the cast back to
   // PoolCard is safe because PoolCard extends the same shape.
@@ -566,12 +588,17 @@ export function pickFromCommunalPool(
  * Issue #1444: `mode` lets the call site switch to the communal-pool picker
  * (Rochester / Winston). Defaults to `'draft'` to preserve the original
  * booster-draft dispatch.
+ *
+ * Issue #1559: an optional trailing `rng` threads a seeded PRNG through
+ * every tier's picker so AI picks replay identically for a given seed.
+ * Omitted → unseeded `Math.random`-backed Rng (pre-#1559 behavior).
  */
 export function selectAiPick(
   pack: DraftPack,
   aiNeighbor: AiNeighbor,
   mode: AiPickMode = "draft",
   tableRead: PoolCard[] = [],
+  rng: Rng = createRng(),
 ): DraftCard | null {
   const { difficulty, state } = aiNeighbor;
 
@@ -583,17 +610,27 @@ export function selectAiPick(
     // the synergy-aware expert extension is intentionally left for the
     // community-pool follow-up (issue #1444 follow-ups).
     if (difficulty === "easy") {
-      return pickFromCommunalPool(pack.cards as PoolCard[], tableRead, state);
+      return pickFromCommunalPool(
+        pack.cards as PoolCard[],
+        tableRead,
+        state,
+        rng,
+      );
     }
-    return pickFromCommunalPool(pack.cards as PoolCard[], tableRead, state);
+    return pickFromCommunalPool(
+      pack.cards as PoolCard[],
+      tableRead,
+      state,
+      rng,
+    );
   }
 
   switch (difficulty) {
     case "easy":
-      return pickRandomCard(pack, state);
+      return pickRandomCard(pack, state, rng);
 
     case "medium":
-      return pickColorFocusedCard(pack, state.pool, state);
+      return pickColorFocusedCard(pack, state.pool, state, rng);
 
     case "hard": {
       const picked = pickSynergyAndCurveCard(
@@ -601,10 +638,11 @@ export function selectAiPick(
         state.pool,
         state,
         difficulty,
+        rng,
       );
       if (picked === null) return null;
       const { randomnessFactor } = difficultyKnobs(difficulty);
-      return maybeApplyRandomness(pack, picked, randomnessFactor);
+      return maybeApplyRandomness(pack, picked, randomnessFactor, rng);
     }
 
     case "expert": {
@@ -613,10 +651,11 @@ export function selectAiPick(
         state.pool,
         state,
         difficulty,
+        rng,
       );
       if (picked === null) return null;
       const { randomnessFactor } = difficultyKnobs(difficulty);
-      return maybeApplyRandomness(pack, picked, randomnessFactor);
+      return maybeApplyRandomness(pack, picked, randomnessFactor, rng);
     }
 
     default: {
@@ -627,7 +666,7 @@ export function selectAiPick(
       // fall back to random so we never silently drop into a non-existent
       // picker.
       console.warn(`Unknown AI difficulty: ${difficulty}, using random`);
-      return pickRandomCard(pack, state);
+      return pickRandomCard(pack, state, rng);
     }
   }
 }
