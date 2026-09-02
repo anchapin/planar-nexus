@@ -115,6 +115,13 @@ export interface StreamCoachResponseOptions {
   providers?: ReadonlyArray<string>;
   /** Optional model id forwarded to every provider. */
   modelId?: string;
+  /**
+   * Server-authoritative output-token cap forwarded to `streamText` (issue
+   * #1534). Omitted by default, which preserves the previous behaviour; the
+   * hardened `/api/chat` route sets it so no client can request unbounded
+   * generation.
+   */
+  maxOutputTokens?: number;
   /** Abort signal; aborting cancels generation and stops failover. */
   signal?: AbortSignal;
   /**
@@ -224,6 +231,7 @@ export async function* streamCoachResponse(
     systemPrompt,
     messages,
     modelId,
+    maxOutputTokens,
     signal,
     fallbackText = DEFAULT_FALLBACK_TEXT,
     getModel = getAIModel,
@@ -314,6 +322,7 @@ export async function* streamCoachResponse(
         role: "system" | "user" | "assistant";
         content: string;
       }>,
+      maxOutputTokens,
       abortSignal: signal,
     });
 
