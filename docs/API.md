@@ -414,7 +414,7 @@ const googleConfig = {
 
 **Setup**:
 1. Get API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Add to environment: `GOOGLE_AI_API_KEY=your_key_here`
+2. Add to environment: `GOOGLE_AI_API_KEY=your_key_here` (fallback: `GOOGLE_GENERATIVE_AI_API_KEY`, the `@ai-sdk/google` default — see `process.env.GOOGLE_AI_API_KEY` in `src/ai/providers/factory.ts`)
 3. Validate in Settings → AI
 
 **Features**:
@@ -573,31 +573,42 @@ const zaiConfig = {
 | `ANTHROPIC_API_KEY` | Anthropic API key | `sk-ant-...` |
 | `ZAI_API_KEY` | Z.ai API key | `...` |
 
+> **Note:** the Google provider reads `GOOGLE_AI_API_KEY` (or
+> `GOOGLE_GENERATIVE_AI_API_KEY`) — see `process.env.GOOGLE_AI_API_KEY` in
+> `src/ai/providers/factory.ts`. `.env.example` currently lists the Google key
+> under the name `GOOGLE_API_KEY`, which the app does **not** read; set one of
+> the two names above.
+
 ### Optional
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AI_PROXY_ENABLED` | Enable server proxy | `true` |
-| `AI_RATE_LIMIT_MAX` | Default rate limit (requests/window) | `100` |
-| `AI_RATE_LIMIT_WINDOW_MS` | Rate limit window (milliseconds) | `60000` |
-| `AI_RATE_LIMIT_MAX_GOOGLE` | Google-specific rate limit | Uses default |
-| `AI_RATE_LIMIT_MAX_OPENAI` | OpenAI-specific rate limit | Uses default |
+| `AI_RATE_LIMIT_MAX` | Server-side proxy rate limit (requests/window) — read by `process.env.AI_RATE_LIMIT_MAX` in `src/lib/server-rate-limiter.ts` | `100` |
+| `AI_RATE_LIMIT_WINDOW_MS` | Server-side rate limit window (milliseconds) — read by `process.env.AI_RATE_LIMIT_WINDOW_MS` in `src/lib/server-rate-limiter.ts` | `60000` |
+| `AI_RATE_LIMIT_MAX_GOOGLE` | Google-specific server-side rate limit — read via `process.env.AI_RATE_LIMIT_MAX_GOOGLE` in `src/lib/server-api-key-storage.ts` | Uses default |
+| `AI_RATE_LIMIT_MAX_OPENAI` | OpenAI-specific server-side rate limit — read via `process.env.AI_RATE_LIMIT_MAX_OPENAI` in `src/lib/server-api-key-storage.ts` | Uses default |
+| `NEXT_PUBLIC_AI_RATE_LIMIT_MAX` | Client-side AI rate limit (requests/window) — read by `process.env.NEXT_PUBLIC_AI_RATE_LIMIT_MAX` in `src/lib/rate-limiter.ts` | `10` |
+| `NEXT_PUBLIC_AI_RATE_LIMIT_WINDOW_MS` | Client-side rate limit window (milliseconds) — read by `process.env.NEXT_PUBLIC_AI_RATE_LIMIT_WINDOW_MS` in `src/lib/rate-limiter.ts` | `60000` |
+| `NEXT_PUBLIC_AI_DEBOUNCE_MS` | Client-side AI debounce (milliseconds) — read by `process.env.NEXT_PUBLIC_AI_DEBOUNCE_MS` in `src/lib/rate-limiter.ts` | `500` |
 | `NODE_ENV` | Environment mode | `development` |
 
 ### Example `.env.local`
 
+Mirrors a subset of `.env.example` (see that file for the full list, including
+the optional P2P TURN relay variables):
+
 ```bash
-# AI Provider API Keys (Server-Side Only)
-GOOGLE_AI_API_KEY=AIzaSyD...
-OPENAI_API_KEY=sk-proj-...
-ANTHROPIC_API_KEY=sk-ant-...
+# AI Provider API URLs (optional - defaults to production URLs)
+NEXT_PUBLIC_ZAI_API_URL=https://api.z-ai.com/v1
+NEXT_PUBLIC_ANTHROPIC_API_URL=https://api.anthropic.com/v1
+NEXT_PUBLIC_OPENAI_API_URL=https://api.openai.com/v1
+NEXT_PUBLIC_GOOGLE_API_URL=https://generativelanguage.googleapis.com/v1
 
-# Rate Limiting
-AI_RATE_LIMIT_MAX=100
-AI_RATE_LIMIT_WINDOW_MS=60000
-
-# Environment
-NODE_ENV=development
+# AI Provider API Keys (set your own keys)
+# OPENAI_API_KEY=
+# ANTHROPIC_API_KEY=
+# GOOGLE_AI_API_KEY=
+# ZAI_API_KEY=
 ```
 
 ---
@@ -1002,7 +1013,7 @@ The proxy enforces a single global limit per client (per provider-config
 longer exists in the source.
 
 ```typescript
-// src/lib/server-rate-limiter.ts
+// src/lib/server-rate-limiter.ts (server-side)
 const maxRequests = parseInt(process.env.AI_RATE_LIMIT_MAX || '100', 10);
 ```
 
@@ -1010,6 +1021,22 @@ const maxRequests = parseInt(process.env.AI_RATE_LIMIT_MAX || '100', 10);
 | ----------------------- | ------- | ------------------------------------ |
 | `AI_RATE_LIMIT_MAX`     | `100`   | Max requests per window per client   |
 | `AI_RATE_LIMIT_WINDOW_MS` | `60000` | Window length in ms (see [Section 5](#5-rate-limits)) |
+
+The client-side limiter (`src/lib/rate-limiter.ts`) separately reads the
+`NEXT_PUBLIC_`-prefixed names listed in `.env.example`:
+
+```typescript
+// src/lib/rate-limiter.ts (client-side)
+const DEFAULT_RATE_LIMIT_MAX = parseInt(process.env.NEXT_PUBLIC_AI_RATE_LIMIT_MAX || '10', 10);
+const DEFAULT_RATE_LIMIT_WINDOW_MS = parseInt(process.env.NEXT_PUBLIC_AI_RATE_LIMIT_WINDOW_MS || '60000', 10);
+const DEFAULT_DEBOUNCE_MS = parseInt(process.env.NEXT_PUBLIC_AI_DEBOUNCE_MS || '500', 10);
+```
+
+| Env var | Default | Meaning |
+| ------- | ------- | ------- |
+| `NEXT_PUBLIC_AI_RATE_LIMIT_MAX` | `10` | Client-side max requests per window |
+| `NEXT_PUBLIC_AI_RATE_LIMIT_WINDOW_MS` | `60000` | Client-side window length in ms |
+| `NEXT_PUBLIC_AI_DEBOUNCE_MS` | `500` | Client-side AI debounce in ms |
 
 Per-provider ceilings are still bounded upstream by each provider's own API
 quota (see the "Default Rate Limits" table in [Section 5](#5-rate-limits)); the
