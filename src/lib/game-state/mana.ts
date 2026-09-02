@@ -10,6 +10,7 @@
 import type { GameState, PlayerId, CardInstanceId, ManaPool } from "./types";
 import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
+import { isPriorityPlayer } from "./priority-guard";
 import { ValidationService } from "./validation-service";
 
 /**
@@ -318,7 +319,7 @@ export function canPlayLand(state: GameState, playerId: PlayerId): boolean {
   }
 
   // Player must have priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return false;
   }
 
@@ -710,7 +711,7 @@ export function activateManaAbility(
   }
 
   // Check if player has priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return { success: false, state };
   }
 

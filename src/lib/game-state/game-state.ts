@@ -19,6 +19,7 @@ import {
   untapCard,
 } from "./card-instance";
 import { createPlayerZones, createSharedZones } from "./zones";
+import { isPriorityPlayer } from "./priority-guard";
 import {
   createTurn,
   advancePhase,
@@ -387,7 +388,7 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   }
 
   // Verify this player has priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     throw new Error(`Player ${playerId} does not have priority`);
   }
 

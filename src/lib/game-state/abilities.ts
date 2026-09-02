@@ -24,6 +24,7 @@ import {
 } from "./oracle-text-parser";
 import { spendMana, addMana, isManaAbility } from "./mana";
 import { destroyCard, discardCards } from "./keyword-actions";
+import { isPriorityPlayer } from "./priority-guard";
 import { hasSplitSecondOnStack } from "./auto-pass-priority";
 
 /**
@@ -231,7 +232,7 @@ export function canActivateAbility(
   }
 
   // Check if player has priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return { canActivate: false, reason: "You do not have priority" };
   }
 
@@ -562,7 +563,7 @@ export function canActivateLoyaltyAbility(
   }
 
   // Check if player has priority
-  if (state.priorityPlayerId !== playerId) {
+  if (!isPriorityPlayer(state, playerId)) {
     return { canActivate: false, reason: "You do not have priority" };
   }
 
