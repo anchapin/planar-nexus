@@ -22,6 +22,7 @@ import type {
 } from "./types";
 import { saveDraftSession } from "./pool-storage";
 import { validateSetIsDraftable } from "./set-service";
+import { resolveRng, type Rng, type RngOptions } from "./rng";
 
 // Re-export types for convenience
 export type { DraftSession, DraftPack, DraftCard };
@@ -50,22 +51,6 @@ interface PackContents {
   commons: ScryfallCard[];
   uncommons: ScryfallCard[];
   rareOrMythic: ScryfallCard;
-}
-
-// ============================================================================
-// Shuffle Helper
-// ============================================================================
-
-/**
- * Shuffle an array in place (Fisher-Yates)
- */
-function shuffle<T>(array: T[]): T[] {
-  const result = [...array];
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
-  }
-  return result;
 }
 
 // ============================================================================
@@ -114,13 +99,17 @@ export { packToDraftCards as packToPoolCards };
 /**
  * Generate draft pack (same distribution as sealed)
  *
+ * Issue #1559: randomness drawn from the injected `rng`.
+ *
  * @param setCode - Set code
+ * @param rng - PRNG stream for this pack
  * @returns Cards for one pack
  */
 async function generateDraftPackCards(
   setCode: string,
+  rng: Rng,
 ): Promise<ScryfallCard[]> {
-  const packContents = await generatePack(setCode);
+  const packContents = await generatePack(setCode, { rng });
   return packContentsToCards(packContents);
 }
 
@@ -163,17 +152,23 @@ export function openPack(pack: DraftPack): DraftPack {
  *
  * DRFT-02: 3 packs of 14 cards each
  *
+ * Issue #1559: one `Rng` stream drives all 3 packs so a supplied seed
+ * reproduces the whole pod.
+ *
  * @param setCode - Set code
+ * @param options - Optional `{ seed }` / `{ rng }` for reproducible packs
  * @returns Array of 3 DraftPacks
  */
 export async function generateDraftPacks(
   setCode: string,
+  options?: RngOptions,
 ): Promise<DraftPack[]> {
+  const rng = resolveRng(options);
   const packs: DraftPack[] = [];
 
   for (let i = 0; i < PACKS_PER_DRAFT; i++) {
     // Generate pack cards
-    const packCards = await generateDraftPackCards(setCode);
+    const packCards = await generateDraftPackCards(setCode, rng);
 
     // Convert to DraftCards
     const draftCards = packToDraftCards(packCards, i);
@@ -201,6 +196,11 @@ interface CreateDraftSessionOptions {
     difficulty: AiDifficulty;
     pickDelay?: number;
   };
+  /**
+   * PRNG seed for reproducible packs (issue #1559). Same seed → identical
+   * 42-card pod; persisted on the session as `seed` for replay.
+   */
+  seed?: number;
 }
 
 /**
@@ -212,10 +212,11 @@ interface CreateDraftSessionOptions {
  * DRFT-06: 45-second timer
  * DRFT-10: Persists to IndexedDB immediately
  * NEIB-01: AI neighbor support
+ * Issue #1559: `options.seed` → reproducible packs (persisted as `seed`)
  *
  * @param setCode - Set code (e.g., 'M21')
  * @param setName - Human-readable set name
- * @param options - Optional configuration including AI neighbor
+ * @param options - Optional configuration including AI neighbor and seed
  * @returns Complete draft session (saved to IndexedDB)
  */
 export async function createDraftSession(
@@ -227,8 +228,8 @@ export async function createDraftSession(
   // planechase, reprint products) — drafting them yields malformed pools.
   await validateSetIsDraftable(setCode);
 
-  // Generate packs
-  const packs = await generateDraftPacks(setCode);
+  // Generate packs — one PRNG stream for the whole session (issue #1559)
+  const packs = await generateDraftPacks(setCode, { seed: options?.seed });
 
   const now = new Date().toISOString();
 
@@ -272,6 +273,9 @@ export async function createDraftSession(
     aiNeighbor,
     // Pack holder - user starts with pack (NEIB-05)
     currentPackHolder: "user",
+    // Issue #1559: persist the seed only when supplied so unseeded rows
+    // keep their pre-#1559 shape.
+    ...(options?.seed !== undefined ? { seed: options.seed } : {}),
   };
 
   // DRFT-10: Save to IndexedDB immediately

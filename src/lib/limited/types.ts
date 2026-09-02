@@ -382,6 +382,14 @@ export interface LimitedSession {
   createdAt: string;
   /** Last update timestamp */
   updatedAt: string;
+  /**
+   * Optional PRNG seed the session was generated with (issue #1559).
+   *
+   * Persisted so a session is replayable: re-invoking the session creator
+   * with the same `seed` reproduces the exact packs/pool. Absent on
+   * unseeded sessions (whose randomness came from `Math.random`).
+   */
+  seed?: number;
   /** Optional session name (user-defined) */
   name?: string;
 }
@@ -476,6 +484,11 @@ export interface CreateDraftSessionOptions {
     difficulty: AiDifficulty;
     pickDelay?: number;
   };
+  /**
+   * PRNG seed for reproducible pack generation (issue #1559). Same seed →
+   * byte-identical `packs` (modulo wall-clock `addedAt` / pack UUIDs).
+   */
+  seed?: number;
 }
 
 // ============================================================================
@@ -527,12 +540,26 @@ export interface RochesterSession extends LimitedSession {
   /** Optional human-readable session name. Inherited from LimitedSession. */
 }
 
+/** Options accepted by `createSealedSession`. */
+export interface CreateSealedSessionOptions {
+  /**
+   * PRNG seed for reproducible pool generation (issue #1559). Same seed →
+   * identical 84-card pool.
+   */
+  seed?: number;
+}
+
 /**
  * Options accepted by `createRochesterSession`. `playerCount` defaults to 3.
  */
 export interface CreateRochesterSessionOptions {
   playerCount?: RochesterPlayerCount;
   aiDifficulty?: AiDifficulty;
+  /**
+   * PRNG seed for reproducible communal-pool generation (issue #1559).
+   * Same seed → identical communal pool.
+   */
+  seed?: number;
 }
 
 // ============================================================================
@@ -599,4 +626,9 @@ export interface WinstonSession extends LimitedSession {
 export interface CreateWinstonSessionOptions {
   pileSizes?: readonly number[];
   aiDifficulty?: AiDifficulty;
+  /**
+   * PRNG seed for reproducible pile generation (issue #1559).
+   * Same seed → identical piles.
+   */
+  seed?: number;
 }

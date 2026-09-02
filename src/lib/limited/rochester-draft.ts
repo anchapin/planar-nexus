@@ -29,6 +29,7 @@ import type {
 import { PICKS_PER_ROCHESTER_SEAT, ROCHESTER_PLAYER_COUNTS } from "./types";
 import { generatePack } from "./sealed-generator";
 import { saveRochesterSession } from "./pool-storage";
+import { createRng, resolveRng, type Rng, type RngOptions } from "./rng";
 
 // ============================================================================
 // Constants
@@ -46,11 +47,15 @@ export { PICKS_PER_ROCHESTER_SEAT, ROCHESTER_PLAYER_COUNTS };
  * Fisher-Yates shuffle. We export it for the test harness so it can verify
  * deterministic reshuffling if needed; the runtime itself never depends on
  * the export.
+ *
+ * Issue #1559: draws swap indices from the injected `rng` (defaults to an
+ * unseeded `Math.random`-backed Rng) so seeded callers shuffle
+ * deterministically.
  */
-export function shuffle<T>(items: readonly T[]): T[] {
+export function shuffle<T>(items: readonly T[], rng: Rng = createRng()): T[] {
   const result = [...items];
   for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = rng.int(i + 1);
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
@@ -118,25 +123,30 @@ export function rochesterPoolSize(playerCount: RochesterPlayerCount): number {
  * To avoid throwing when a set is sparse, we always use the same fallback
  * path the sealed generator uses (commons/uncommons/rare pools with
  * synthetic fill), so the count is deterministic regardless of set data.
+ *
+ * Issue #1559: pass `{ seed }` / `{ rng }` for a reproducible pool — one
+ * `Rng` stream drives every pack and the communal shuffle.
  */
 export async function generateRochesterPool(
   setCode: string,
   playerCount: RochesterPlayerCount,
+  options?: RngOptions,
 ): Promise<PoolCard[]> {
   assertRochesterPlayerCount(playerCount);
 
+  const rng = resolveRng(options);
   const target = rochesterPoolSize(playerCount);
   const packsNeeded = Math.ceil(target / CARDS_PER_PACK);
 
   // Collect cards pack by pack.
   const flat: ScryfallCard[] = [];
   for (let i = 0; i < packsNeeded; i++) {
-    const pack = await generatePack(setCode);
+    const pack = await generatePack(setCode, { rng });
     flat.push(...pack.commons, ...pack.uncommons, pack.rareOrMythic);
   }
 
   // Shuffle before trimming so we don't keep only the early pack's cards.
-  const shuffled = shuffle(flat).slice(0, target);
+  const shuffled = rng.shuffle(flat).slice(0, target);
 
   if (shuffled.length < target) {
     // This path is unreachable in practice (generatePack always returns 14
@@ -159,6 +169,9 @@ export async function generateRochesterPool(
  *
  * Default seat count is 3 (the issue's smallest acceptance target). The
  * communal pool is `playerCount × 15` cards, all face-up in the centre.
+ *
+ * Issue #1559: `options.seed` → reproducible communal pool (persisted on
+ * the session as `seed` for replay).
  */
 export async function createRochesterSession(
   setCode: string,
@@ -168,7 +181,9 @@ export async function createRochesterSession(
   const playerCount: RochesterPlayerCount = options.playerCount ?? 3;
   assertRochesterPlayerCount(playerCount);
 
-  const communalPool = await generateRochesterPool(setCode, playerCount);
+  const communalPool = await generateRochesterPool(setCode, playerCount, {
+    seed: options.seed,
+  });
 
   // Per-seat AI neighbors for all non-user seats. For a 3-player table that's
   // seats 1 and 2; for a 5-player table it's seats 1..4. The user is seat 0.
@@ -208,6 +223,9 @@ export async function createRochesterSession(
     currentSeatIndex: 0,
     picksTaken: 0,
     aiNeighbors,
+    // Issue #1559: persist the seed only when supplied so unseeded rows
+    // keep their pre-#1559 shape.
+    ...(options.seed !== undefined ? { seed: options.seed } : {}),
   };
 
   await saveRochesterSession(session);

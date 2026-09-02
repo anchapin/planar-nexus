@@ -11,8 +11,14 @@
 
 import type { MinimalCard } from "@/lib/card-database";
 import { getAllCards, initializeCardDatabase } from "@/lib/card-database";
-import type { PoolCard, LimitedSession, LimitedMode } from "./types";
+import type {
+  PoolCard,
+  LimitedSession,
+  LimitedMode,
+  CreateSealedSessionOptions,
+} from "./types";
 import { validateSetIsDraftable } from "./set-service";
+import { resolveRng, type Rng, type RngOptions } from "./rng";
 
 // ============================================================================
 // Constants
@@ -195,13 +201,15 @@ async function getCardsBySetAndRarity(
 
 /**
  * Weighted random selection from an array
+ *
+ * Issue #1559: randomness is drawn from the injected `rng` (seeded
+ * mulberry32 when replaying, `Math.random` under the hood otherwise).
  */
-function weightedRandom<T>(items: T[]): T {
+function weightedRandom<T>(items: T[], rng: Rng): T {
   if (items.length === 0) {
     throw new Error("Cannot select from empty array");
   }
-  const index = Math.floor(Math.random() * items.length);
-  return items[index];
+  return items[rng.int(items.length)];
 }
 
 function createFallbackCard(
@@ -256,11 +264,14 @@ function ensureEnoughCards(
 
 /**
  * Shuffle an array in place (Fisher-Yates)
+ *
+ * Issue #1559: draws swap indices from the injected `rng` so seeded
+ * callers shuffle deterministically.
  */
-function shuffle<T>(array: T[]): T[] {
+function shuffle<T>(array: T[], rng: Rng): T[] {
   const result = [...array];
   for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = rng.int(i + 1);
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
@@ -277,8 +288,17 @@ function shuffle<T>(array: T[]): T[] {
  * - 10 commons
  * - 3 uncommons
  * - 1 rare or mythic (~1:8 ratio)
+ *
+ * Issue #1559: pass `{ seed }` (or a pre-built `{ rng }`) to make the pack
+ * reproducible. Unseeded calls behave exactly like the prior
+ * `Math.random()` implementation.
  */
-export async function generatePack(setCode: string): Promise<PackContents> {
+export async function generatePack(
+  setCode: string,
+  options?: RngOptions,
+): Promise<PackContents> {
+  const rng = resolveRng(options);
+
   // Get cards by rarity
   const commons = await getCardsBySetAndRarity(setCode, "common");
   const uncommons = await getCardsBySetAndRarity(setCode, "uncommon");
@@ -299,14 +319,14 @@ export async function generatePack(setCode: string): Promise<PackContents> {
   );
 
   // Select commons (10 cards)
-  const shuffledCommons = shuffle(enoughCommons);
+  const shuffledCommons = shuffle(enoughCommons, rng);
   const selectedCommons = shuffledCommons.slice(0, COMMONS_PER_PACK);
 
-  const shuffledUncommons = shuffle(enoughUncommons);
+  const shuffledUncommons = shuffle(enoughUncommons, rng);
   const selectedUncommons = shuffledUncommons.slice(0, UNCOMMONS_PER_PACK);
 
   // Select rare or mythic (1 card)
-  const isMythic = Math.random() < MYTHIC_RATIO;
+  const isMythic = rng.next() < MYTHIC_RATIO;
   let rarePool = isMythic && mythics.length > 0 ? mythics : rares;
 
   if (rarePool.length === 0) {
@@ -315,7 +335,7 @@ export async function generatePack(setCode: string): Promise<PackContents> {
     rarePool = [createFallbackCard(names[0], fallbackRarity, 0, setCode)];
   }
 
-  const rareOrMythic = weightedRandom(rarePool);
+  const rareOrMythic = weightedRandom(rarePool, rng);
 
   return {
     commons: selectedCommons,
@@ -371,13 +391,22 @@ function packToPoolCards(
 
 /**
  * Generate a complete sealed pool (6 packs × 14 cards = 84 cards)
+ *
+ * Issue #1559: one `Rng` stream drives all 6 packs so a supplied seed
+ * reproduces the whole pool.
  */
-export async function generateSealedPool(setCode: string): Promise<PoolCard[]> {
+export async function generateSealedPool(
+  setCode: string,
+  options?: RngOptions,
+): Promise<PoolCard[]> {
+  // One PRNG stream for the whole session (not per-pack) so the seed
+  // fully determines the pool.
+  const rng = resolveRng(options);
   const packContents: PackContents[] = [];
 
   // Generate 6 packs
   for (let i = 0; i < PACKS_PER_SEALED; i++) {
-    const pack = await generatePack(setCode);
+    const pack = await generatePack(setCode, { rng });
     packContents.push(pack);
   }
 
@@ -394,15 +423,19 @@ export async function generateSealedPool(setCode: string): Promise<PoolCard[]> {
 /**
  * Generate pool with detailed pack information
  * Useful for showing pack-by-pack opening experience
+ *
+ * Issue #1559: one `Rng` stream drives all 6 packs (see generateSealedPool).
  */
 export async function generateSealedPoolWithPacks(
   setCode: string,
+  options?: RngOptions,
 ): Promise<PoolGenerationResult> {
+  const rng = resolveRng(options);
   const packContents: PackContents[] = [];
 
   // Generate 6 packs
   for (let i = 0; i < PACKS_PER_SEALED; i++) {
-    const pack = await generatePack(setCode);
+    const pack = await generatePack(setCode, { rng });
     packContents.push(pack);
   }
 
@@ -422,17 +455,21 @@ export async function generateSealedPoolWithPacks(
 
 /**
  * Create a new sealed session with pool
+ *
+ * Issue #1559: `options.seed` makes the 84-card pool reproducible and is
+ * persisted on the session (`session.seed`) so it can be replayed later.
  */
 export async function createSealedSession(
   setCode: string,
   setName: string,
+  options?: CreateSealedSessionOptions,
 ): Promise<LimitedSession> {
   // Issue #1557: refuse non-draftable set types (commander precons,
   // planechase, reprint products) — sealing them yields malformed pools.
   await validateSetIsDraftable(setCode);
 
-  // Generate the pool
-  const pool = await generateSealedPool(setCode);
+  // Generate the pool (one PRNG stream per session — issue #1559)
+  const pool = await generateSealedPool(setCode, { seed: options?.seed });
 
   // Create session
   const session: LimitedSession = {
@@ -445,6 +482,9 @@ export async function createSealedSession(
     deck: [],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    // Issue #1559: persist the seed only when supplied so unseeded rows
+    // keep their pre-#1559 shape.
+    ...(options?.seed !== undefined ? { seed: options.seed } : {}),
   };
 
   return session;
@@ -453,9 +493,14 @@ export async function createSealedSession(
 /**
  * Generate a draft pack (same as sealed pack for now)
  * Phase 15 will add draft-specific logic
+ *
+ * Issue #1559: accepts `{ seed }` / `{ rng }` for reproducible packs.
  */
-export async function generateDraftPack(setCode: string): Promise<PoolCard[]> {
-  const pack = await generatePack(setCode);
+export async function generateDraftPack(
+  setCode: string,
+  options?: RngOptions,
+): Promise<PoolCard[]> {
+  const pack = await generatePack(setCode, options);
   return packToPoolCards(pack, 0);
 }
 

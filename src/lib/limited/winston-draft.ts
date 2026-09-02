@@ -28,7 +28,7 @@ import type {
 import { WINSTON_PILE_SIZES } from "./types";
 import { generatePack } from "./sealed-generator";
 import { saveWinstonSession } from "./pool-storage";
-import { shuffle } from "./rochester-draft";
+import { resolveRng, type RngOptions } from "./rng";
 
 // ============================================================================
 // Constants
@@ -71,21 +71,26 @@ function pileCardsToPoolCards(
  * Implementation note: we generate `ceil(sum / 14)` booster packs and split
  * the resulting cards into piles of the requested sizes. This keeps the
  * distribution authentic without needing a separate per-pile generator.
+ *
+ * Issue #1559: one `Rng` stream drives every pack and the pile shuffle, so
+ * a supplied seed reproduces the piles exactly.
  */
 export async function generateWinstonPiles(
   setCode: string,
   pileSizes: readonly number[] = WINSTON_PILE_SIZES,
+  options?: RngOptions,
 ): Promise<WinstonPile[]> {
+  const rng = resolveRng(options);
   const total = pileSizes.reduce((a, b) => a + b, 0);
   const packsNeeded = Math.max(1, Math.ceil(total / CARDS_PER_PACK));
 
   const flat: ScryfallCard[] = [];
   for (let i = 0; i < packsNeeded; i++) {
-    const pack = await generatePack(setCode);
+    const pack = await generatePack(setCode, { rng });
     flat.push(...pack.commons, ...pack.uncommons, pack.rareOrMythic);
   }
 
-  const shuffled = shuffle(flat).slice(0, total);
+  const shuffled = rng.shuffle(flat).slice(0, total);
   if (shuffled.length < total) {
     throw new Error(
       `Winston pile generator under-filled: got ${shuffled.length}/${total}.`,
@@ -121,6 +126,9 @@ export async function generateWinstonPiles(
  *
  * Default pile sizes are `(6, 4, 3)` per the issue's acceptance criteria.
  * Number of seats equals the number of piles (one seat per pile, rotating).
+ *
+ * Issue #1559: `options.seed` → reproducible piles (persisted on the
+ * session as `seed` for replay).
  */
 export async function createWinstonSession(
   setCode: string,
@@ -133,7 +141,9 @@ export async function createWinstonSession(
   }
 
   const playerCount = pileSizes.length;
-  const piles = await generateWinstonPiles(setCode, pileSizes);
+  const piles = await generateWinstonPiles(setCode, pileSizes, {
+    seed: options.seed,
+  });
 
   // One AI neighbor per non-user seat (we still model them as `aiNeighbors`
   // even though Winston turns are simple pass-the-chair).
@@ -173,6 +183,9 @@ export async function createWinstonSession(
     piles,
     currentSeatIndex: 0,
     aiNeighbors,
+    // Issue #1559: persist the seed only when supplied so unseeded rows
+    // keep their pre-#1559 shape.
+    ...(options.seed !== undefined ? { seed: options.seed } : {}),
   };
 
   await saveWinstonSession(session);
