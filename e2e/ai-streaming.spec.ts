@@ -1,25 +1,30 @@
 import { test, expect } from "@playwright/test";
 
 /**
- * AI Streaming & Tools E2E Tests
- * Verifies Phase 6 requirements: SSE streaming, multi-provider, tool calling.
+ * AI Streaming E2E Tests
+ *
+ * Issue #1534: `/api/chat` is hardened and delegates to the shared coach
+ * pipeline, emitting the coach Server-Sent-Events wire format (one JSON
+ * `CoachStreamEvent` per `data:` line). These specs pin the wire contract the
+ * client-facing chat consumes.
+ *
+ * Note: tool calling is intentionally NOT tested here — the hardened
+ * `/api/chat` no longer exposes a tool surface (card search lives behind
+ * `/api/ai-proxy`).
  */
 test.describe("AI Streaming & Tools", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/deck-coach");
   });
 
-  test("should support streaming responses in AI Coach chat", async ({
-    page,
-  }) => {
-    // Mock the chat API to return a streaming response
+  test("should stream coach SSE events from /api/chat", async ({ page }) => {
+    // Mock the chat API to return the hardened SSE event stream.
     await page.route("**/api/chat", async (route) => {
       const encoder = new TextEncoder();
       const chunks = [
-        '0:"Hello! "\n',
-        '0:"I am "\n',
-        '0:"your AI coach. "\n',
-        '0:"How can I help you today?"\n',
+        'data: {"type":"text","value":"Hello! "}\n\n',
+        'data: {"type":"text","value":"I am your AI coach."}\n\n',
+        'data: {"type":"done"}\n\n',
       ];
 
       await route.fulfill({
@@ -29,11 +34,7 @@ test.describe("AI Streaming & Tools", () => {
       });
     });
 
-    // Navigate to a page with AICoachChatPanel (if integrated somewhere)
-    // For now, let's assume it's on the deck coach page or we can go to a demo
-    await page.goto("/api/card-interactions-demo"); // Just a place to trigger chat if needed
-
-    // Actually, let's just test the /api/chat endpoint directly via fetch in the page
+    // Exercise the endpoint via fetch in the page and read the full stream.
     const response = await page.evaluate(async () => {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -55,8 +56,8 @@ test.describe("AI Streaming & Tools", () => {
       return text;
     });
 
-    expect(response).toContain('0:"Hello! "');
-    expect(response).toContain('0:"How can I help you today?"');
+    expect(response).toContain('data: {"type":"text","value":"Hello! "}');
+    expect(response).toContain('data: {"type":"done"}');
   });
 
   // Skipped: Requires AI service that may not be available in CI
@@ -88,55 +89,5 @@ test.describe("AI Streaming & Tools", () => {
     await expect(summary).toBeVisible({ timeout: 10000 });
 
     await page.context().setOffline(false);
-  });
-
-  test("should handle tool calling (searchCards) correctly", async ({
-    page,
-  }) => {
-    // Mock the chat API with a tool call and result
-    await page.route("**/api/chat", async (route) => {
-      const chunks = [
-        '0:"Let me search for that card..."\n',
-        '9:{"toolCallId":"call_123","toolName":"searchCards","args":{"query":"Sol Ring"}}\n',
-        'a:{"toolCallId":"call_123","toolName":"searchCards","args":{"query":"Sol Ring"},"result":{"message":"Found 1 card","cards":[{"name":"Sol Ring","cost":"{1}","type":"Artifact"}]}}\n',
-        '0:"I found Sol Ring, a powerful artifact that costs {1} mana."\n',
-      ];
-
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body: Buffer.from(chunks.join("")),
-      });
-    });
-
-    // Test the tool call logic
-    const response = await page.evaluate(async () => {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        body: JSON.stringify({
-          messages: [{ role: "user", content: "Tell me about Sol Ring" }],
-          provider: "openai",
-        }),
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let text = "";
-      while (true) {
-        const { done, value } = await reader!.read();
-        if (done) break;
-        text += decoder.decode(value);
-      }
-      return text;
-    });
-
-    expect(response).toContain(
-      '9:{"toolCallId":"call_123","toolName":"searchCards"',
-    );
-    expect(response).toContain(
-      'a:{"toolCallId":"call_123","toolName":"searchCards"',
-    );
-    expect(response).toContain('0:"I found Sol Ring');
   });
 });

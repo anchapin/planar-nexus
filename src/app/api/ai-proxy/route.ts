@@ -13,6 +13,7 @@ import {
   getRateLimitHeaders,
 } from "@/lib/server-rate-limiter";
 import { UsageLogger } from "@/lib/server-usage-logger";
+import { getClientIdentifier } from "@/lib/server-request-identity";
 
 /**
  * AI Proxy API Route
@@ -307,44 +308,4 @@ export async function POST(
       { status: 500 },
     );
   }
-}
-
-/**
- * Derive a stable, *server-verified* rate-limit key for the request.
- *
- * Issue #1393: the previous implementation trusted a client-supplied `userId`
- * and the raw `x-forwarded-for` header, both of which an attacker can rotate
- * per request to dodge the per-user / per-IP rate limit. This version only
- * honours identifiers the server can verify:
- *
- *   1. `request.ip` — set by the Next.js runtime / Vercel from the actual TCP
- *      peer; not client-spoofable.
- *   2. Forwarded headers, *only* when the operator has set `TRUSTED_PROXY=true`
- *      to assert the deployment sits behind a reverse proxy that overwrites
- *      those headers.
- *   3. A coarse user-agent fingerprint as a last resort.
- *
- * The function never reads the request body, so a client cannot influence its
- * own rate-limit bucket.
- */
-function getClientIdentifier(request: NextRequest): string {
-  // 1. Next.js' verified peer IP (set by Vercel / configured runtime).
-  const directIp = (request as unknown as { ip?: string }).ip;
-  if (directIp) return `ip:${directIp}`;
-
-  // 2. Forwarded headers are only meaningful behind a trusted proxy the
-  //    operator has explicitly opted in to. Without this flag the headers are
-  //    fully client-controlled and must not seed a bucket.
-  if (process.env.TRUSTED_PROXY === "true") {
-    const forwardedFor = request.headers.get("x-forwarded-for");
-    if (forwardedFor) return `ip:${forwardedFor.split(",")[0].trim()}`;
-    const realIp = request.headers.get("x-real-ip");
-    if (realIp) return `ip:${realIp}`;
-  }
-
-  // 3. Last-resort fallback: a coarse user-agent fingerprint. Stable per
-  //    client, coarse across clients sharing a UA — acceptable when no IP is
-  //    available (e.g. local dev).
-  const userAgent = request.headers.get("user-agent") || "unknown";
-  return `session:${userAgent.substring(0, 32)}`;
 }
