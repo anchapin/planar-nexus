@@ -8,7 +8,7 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { type DeckCard, type ScryfallCard } from "@/app/actions";
+import { type DeckCard, type ScryfallCard } from "@/lib/card-database";
 import {
   type WorkerMessage,
   type WorkerResponse,

@@ -43,7 +43,7 @@ import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
-import type { ScryfallCard, SavedDeck } from "@/app/actions";
+import type { ScryfallCard, SavedDeck } from "@/lib/card-database";
 import type { Permanent, HandCard } from "@/ai/game-state-evaluator";
 import { gameLogger } from "@/lib/logger";
 import { GameTutorial } from "@/components/game-tutorial";

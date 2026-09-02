@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useCollection } from "@/hooks/use-collection";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import {
   searchCardsOffline,
   getAllCards,

@@ -11,12 +11,7 @@
  *   6. The at-cap badge appears when the sideboard is full.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  jest,
-} from "@jest/globals";
+import { describe, it, expect, jest } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/jest-globals";
 
@@ -61,7 +56,7 @@ jest.mock("lucide-react", () => ({
 }));
 
 import { SideboardList } from "@/app/(app)/deck-builder/_components/sideboard-list";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 const bolt = {
   id: "bolt-1",
@@ -117,7 +112,9 @@ describe("SideboardList — counter + content", () => {
   it("renders a row for each unique card by ascending name", () => {
     renderList({ sideboard: [bolt, answer] });
     expect(screen.getByTestId("sideboard-item-answer")).toBeInTheDocument();
-    expect(screen.getByTestId("sideboard-item-lightning-bolt")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("sideboard-item-lightning-bolt"),
+    ).toBeInTheDocument();
   });
 
   it("reports the at-cap badge while slots remain", () => {
@@ -193,9 +190,7 @@ describe("SideboardList — 15-card cap (#1402)", () => {
       "Full",
     );
     expect(screen.queryByTestId("sideboard-cap-badge")).toBeNull();
-    expect(screen.getByTestId("sideboard-count")).toHaveTextContent(
-      "15 / 15",
-    );
+    expect(screen.getByTestId("sideboard-count")).toHaveTextContent("15 / 15");
   });
 
   it("keeps the decrease button enabled even at cap so the user can free a slot", () => {

@@ -321,8 +321,7 @@ planar-nexus/
 │   │   │   ├── deck-coach/
 │   │   │   ├── single-player/
 │   │   │   └── multiplayer/
-│   │   ├── api/          # API routes
-│   │   └── actions.ts    # Server actions
+│   │   └── api/          # API route handlers
 │   ├── ai/               # AI modules
 │   │   ├── providers/    # AI provider implementations
 │   │   ├── flows/        # Genkit AI flows

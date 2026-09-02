@@ -11,11 +11,15 @@ import {
 } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { getDeckReview, type SavedDeck, type DeckCard } from "@/app/actions";
+import { getDeckReview } from "@/lib/ai-client";
+import type { SavedDeck, DeckCard } from "@/lib/card-database";
 import { importDecklistClient } from "@/lib/client-card-operations";
 import { type Format } from "@/lib/game-rules";
 import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
-import { buildStructuredDeckAnalysis, type StructuredDeckAnalysis } from "@/ai/flows/coach-deck-analysis";
+import {
+  buildStructuredDeckAnalysis,
+  type StructuredDeckAnalysis,
+} from "@/ai/flows/coach-deck-analysis";
 import {
   analyzeMetaAndSuggest,
   type MetaAnalysisOutput,
@@ -379,293 +383,296 @@ export default function DeckCoachPage() {
       {analysisType === "compare" ? (
         <MultiDeckComparison />
       ) : (
-      <main className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Decklist</CardTitle>
-            <CardDescription>
-              Select a saved deck or paste one below.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2 mb-4">
-              <DeckSelector onDeckSelect={handleDeckSelect} />
-            </div>
-            <div className="relative my-4">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">Or</span>
-              </div>
-            </div>
-            <div className="space-y-2 mb-4">
-              <Label htmlFor="format-select">Format</Label>
-              <Select
-                value={format}
-                onValueChange={(value) => setFormat(value as Format)}
-                disabled={isPending}
-              >
-                <SelectTrigger id="format-select" className="capitalize">
-                  <SelectValue placeholder="Select format" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="commander">Commander</SelectItem>
-                  <SelectItem value="standard">Standard</SelectItem>
-                  <SelectItem value="modern">Modern</SelectItem>
-                  <SelectItem value="pioneer">Pioneer</SelectItem>
-                  <SelectItem value="legacy">Legacy</SelectItem>
-                  <SelectItem value="vintage">Vintage</SelectItem>
-                  <SelectItem value="pauper">Pauper</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {analysisType === "meta" && (
+        <main className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your Decklist</CardTitle>
+              <CardDescription>
+                Select a saved deck or paste one below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
               <div className="space-y-2 mb-4">
-                <Label htmlFor="archetype-select">
-                  Focus Archetype (Optional)
-                </Label>
+                <DeckSelector onDeckSelect={handleDeckSelect} />
+              </div>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or</span>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                <Label htmlFor="format-select">Format</Label>
                 <Select
-                  value={focusArchetype}
-                  onValueChange={setFocusArchetype}
+                  value={format}
+                  onValueChange={(value) => setFormat(value as Format)}
                   disabled={isPending}
                 >
-                  <SelectTrigger id="archetype-select">
-                    <SelectValue placeholder="Any archetype" />
+                  <SelectTrigger id="format-select" className="capitalize">
+                    <SelectValue placeholder="Select format" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Any archetype</SelectItem>
-                    <SelectItem value="control">Control</SelectItem>
-                    <SelectItem value="aggro">Aggro</SelectItem>
-                    <SelectItem value="midrange">Midrange</SelectItem>
-                    <SelectItem value="combo">Combo</SelectItem>
-                    <SelectItem value="tribal">Tribal</SelectItem>
+                    <SelectItem value="commander">Commander</SelectItem>
+                    <SelectItem value="standard">Standard</SelectItem>
+                    <SelectItem value="modern">Modern</SelectItem>
+                    <SelectItem value="pioneer">Pioneer</SelectItem>
+                    <SelectItem value="legacy">Legacy</SelectItem>
+                    <SelectItem value="vintage">Vintage</SelectItem>
+                    <SelectItem value="pauper">Pauper</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {analysisType === "meta" && (
+                <div className="space-y-2 mb-4">
+                  <Label htmlFor="archetype-select">
+                    Focus Archetype (Optional)
+                  </Label>
+                  <Select
+                    value={focusArchetype}
+                    onValueChange={setFocusArchetype}
+                    disabled={isPending}
+                  >
+                    <SelectTrigger id="archetype-select">
+                      <SelectValue placeholder="Any archetype" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Any archetype</SelectItem>
+                      <SelectItem value="control">Control</SelectItem>
+                      <SelectItem value="aggro">Aggro</SelectItem>
+                      <SelectItem value="midrange">Midrange</SelectItem>
+                      <SelectItem value="combo">Combo</SelectItem>
+                      <SelectItem value="tribal">Tribal</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <Textarea
+                placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;..."
+                className="h-96 font-mono text-sm"
+                value={decklist}
+                onChange={(e) => {
+                  setDecklist(e.target.value);
+                  setOriginalDeckCards(null);
+                  // Editing the decklist detaches from any saved deck; scope
+                  // coach history back to the default bucket (issue #1074).
+                  setSelectedDeckId(DEFAULT_DECK_ID);
+                }}
+                disabled={isPending}
+              />
+
+              <div className="flex gap-2 mt-4">
+                <Button
+                  onClick={() =>
+                    handleAnalyzeDeck(
+                      analysisType === "chat" ? "review" : analysisType,
+                    )
+                  }
+                  disabled={isPending || analysisType === "chat"}
+                  className="flex-1"
+                >
+                  {isPending ? (
+                    <Loader2 className="mr-2 animate-spin" />
+                  ) : analysisType === "review" ? (
+                    <Bot className="mr-2" />
+                  ) : (
+                    <TrendingUp className="mr-2" />
+                  )}
+                  {isPending
+                    ? "Analyzing..."
+                    : analysisType === "review"
+                      ? "Review My Deck"
+                      : "Analyze Meta"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col">
+            {/* Loading state with skeleton */}
+            {isPending && analysisType === "review" && <CoachReportSkeleton />}
+
+            {/* Loading state for meta analysis */}
+            {isPending && analysisType === "meta" && (
+              <LoadingProgress message="Analyzing metagame and optimizing your deck..." />
             )}
 
-            <Textarea
-              placeholder="1 Sol Ring&#10;1 Arcane Signet&#10;..."
-              className="h-96 font-mono text-sm"
-              value={decklist}
-              onChange={(e) => {
-                setDecklist(e.target.value);
-                setOriginalDeckCards(null);
-                // Editing the decklist detaches from any saved deck; scope
-                // coach history back to the default bucket (issue #1074).
-                setSelectedDeckId(DEFAULT_DECK_ID);
-              }}
-              disabled={isPending}
-            />
+            {/* Enhanced Review Display with Tabs */}
+            {!isPending &&
+              review &&
+              originalDeckCards &&
+              analysisType === "review" && (
+                <Tabs defaultValue="review" className="w-full">
+                  <TabsList className="w-full">
+                    <TabsTrigger value="review" className="flex-1">
+                      AI Review
+                    </TabsTrigger>
+                    <TabsTrigger value="mana-curve" className="flex-1">
+                      Mana Curve
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="review">
+                    <EnhancedReviewDisplay
+                      review={review}
+                      onSaveNewDeck={handleSaveNewDeck}
+                      decklist={decklist}
+                      structuredAnalysis={structuredAnalysis}
+                    />
+                  </TabsContent>
+                  <TabsContent value="mana-curve">
+                    <ManaCurveAnalysis deck={originalDeckCards} />
+                  </TabsContent>
+                </Tabs>
+              )}
 
-            <div className="flex gap-2 mt-4">
-              <Button
-                onClick={() =>
-                  handleAnalyzeDeck(
-                    analysisType === "chat" ? "review" : analysisType,
-                  )
-                }
-                disabled={isPending || analysisType === "chat"}
-                className="flex-1"
-              >
-                {isPending ? (
-                  <Loader2 className="mr-2 animate-spin" />
-                ) : analysisType === "review" ? (
-                  <Bot className="mr-2" />
-                ) : (
-                  <TrendingUp className="mr-2" />
-                )}
-                {isPending
-                  ? "Analyzing..."
-                  : analysisType === "review"
-                    ? "Review My Deck"
-                    : "Analyze Meta"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <div className="flex flex-col">
-          {/* Loading state with skeleton */}
-          {isPending && analysisType === "review" && <CoachReportSkeleton />}
-
-          {/* Loading state for meta analysis */}
-          {isPending && analysisType === "meta" && (
-            <LoadingProgress message="Analyzing metagame and optimizing your deck..." />
-          )}
-
-          {/* Enhanced Review Display with Tabs */}
-          {!isPending &&
-            review &&
-            originalDeckCards &&
-            analysisType === "review" && (
-              <Tabs defaultValue="review" className="w-full">
+            {/* Meta Analysis Display */}
+            {!isPending && metaAnalysis && analysisType === "meta" && (
+              <Tabs defaultValue="meta" className="w-full">
                 <TabsList className="w-full">
-                  <TabsTrigger value="review" className="flex-1">
-                    AI Review
+                  <TabsTrigger value="meta" className="flex-1">
+                    Meta Analysis
                   </TabsTrigger>
                   <TabsTrigger value="mana-curve" className="flex-1">
                     Mana Curve
                   </TabsTrigger>
                 </TabsList>
-                <TabsContent value="review">
-                  <EnhancedReviewDisplay
-                    review={review}
-                    onSaveNewDeck={handleSaveNewDeck}
-                    decklist={decklist}
-                    structuredAnalysis={structuredAnalysis}
+                <TabsContent value="meta">
+                  <MetaAnalysisDisplay
+                    analysis={metaAnalysis}
+                    format={format}
+                    onSaveNewDeck={handleSaveMetaDeck}
+                    originalDeckCards={originalDeckCards}
                   />
                 </TabsContent>
                 <TabsContent value="mana-curve">
-                  <ManaCurveAnalysis deck={originalDeckCards} />
+                  {originalDeckCards && (
+                    <ManaCurveAnalysis deck={originalDeckCards} />
+                  )}
                 </TabsContent>
               </Tabs>
             )}
 
-          {/* Meta Analysis Display */}
-          {!isPending && metaAnalysis && analysisType === "meta" && (
-            <Tabs defaultValue="meta" className="w-full">
-              <TabsList className="w-full">
-                <TabsTrigger value="meta" className="flex-1">
-                  Meta Analysis
-                </TabsTrigger>
-                <TabsTrigger value="mana-curve" className="flex-1">
-                  Mana Curve
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="meta">
-                <MetaAnalysisDisplay
-                  analysis={metaAnalysis}
-                  format={format}
-                  onSaveNewDeck={handleSaveMetaDeck}
-                  originalDeckCards={originalDeckCards}
-                />
-              </TabsContent>
-              <TabsContent value="mana-curve">
-                {originalDeckCards && (
-                  <ManaCurveAnalysis deck={originalDeckCards} />
-                )}
-              </TabsContent>
-            </Tabs>
-          )}
-
-          {/* Chat Interface */}
-          {analysisType === "chat" && (
-            <div className="flex flex-col gap-3">
-              {/* Storage degradation notice (quota / unavailable). Non-blocking:
+            {/* Chat Interface */}
+            {analysisType === "chat" && (
+              <div className="flex flex-col gap-3">
+                {/* Storage degradation notice (quota / unavailable). Non-blocking:
                   the coach keeps working in-session (issue #1074/#1085). */}
-              {storageNotice && (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-900 dark:text-yellow-200"
-                >
-                  {storageNotice}
-                </div>
-              )}
+                {storageNotice && (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-900 dark:text-yellow-200"
+                  >
+                    {storageNotice}
+                  </div>
+                )}
 
-              {/* Conversation history: resume or delete prior sessions, or start
+                {/* Conversation history: resume or delete prior sessions, or start
                   a new one. Persists across refresh/restart via IndexedDB
                   (issue #1074). Export/Import lets users move sessions between
                   browsers/machines (issue #1242). The card is always rendered
                   when chat is the active tab so Import is reachable even when
                   there are no conversations yet for the current deck. */}
-              {analysisType === "chat" && (
-                <div className="rounded-md border bg-card/60 p-2">
-                  <div className="mb-2 flex items-center gap-2 px-1">
-                    <History className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Recent conversations
-                    </span>
-                    <button
-                      type="button"
-                      onClick={startNewConversation}
-                      className="ml-auto inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-                      title="Start a new conversation"
-                    >
-                      <Plus className="h-3 w-3" aria-hidden="true" />
-                      New
-                    </button>
-                  </div>
-                  {conversations.length > 0 && (
-                    <ul className="max-h-32 space-y-1 overflow-y-auto pr-1">
-                      {conversations.map((conv) => {
-                        const active = conv.id === activeConversationId;
-                        return (
-                          <li key={conv.id}>
-                            <div
-                              className={`group flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
-                                active
-                                  ? "bg-primary/10 text-primary"
-                                  : "hover:bg-accent/50"
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => resumeConversation(conv.id)}
-                                className="flex-1 truncate text-left"
-                                title={conv.title}
+                {analysisType === "chat" && (
+                  <div className="rounded-md border bg-card/60 p-2">
+                    <div className="mb-2 flex items-center gap-2 px-1">
+                      <History className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Recent conversations
+                      </span>
+                      <button
+                        type="button"
+                        onClick={startNewConversation}
+                        className="ml-auto inline-flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                        title="Start a new conversation"
+                      >
+                        <Plus className="h-3 w-3" aria-hidden="true" />
+                        New
+                      </button>
+                    </div>
+                    {conversations.length > 0 && (
+                      <ul className="max-h-32 space-y-1 overflow-y-auto pr-1">
+                        {conversations.map((conv) => {
+                          const active = conv.id === activeConversationId;
+                          return (
+                            <li key={conv.id}>
+                              <div
+                                className={`group flex items-center gap-1 rounded-md px-2 py-1 text-xs ${
+                                  active
+                                    ? "bg-primary/10 text-primary"
+                                    : "hover:bg-accent/50"
+                                }`}
                               >
-                                {conv.title}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeConversation(conv.id)}
-                                className="invisible inline-flex items-center rounded p-1 text-muted-foreground hover:text-destructive group-hover:visible"
-                                aria-label={`Delete conversation: ${conv.title}`}
-                                title="Delete conversation"
-                              >
-                                <Trash2 className="h-3 w-3" aria-hidden="true" />
-                              </button>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  {/* Export/Import is always shown when there is any chat
+                                <button
+                                  type="button"
+                                  onClick={() => resumeConversation(conv.id)}
+                                  className="flex-1 truncate text-left"
+                                  title={conv.title}
+                                >
+                                  {conv.title}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => removeConversation(conv.id)}
+                                  className="invisible inline-flex items-center rounded p-1 text-muted-foreground hover:text-destructive group-hover:visible"
+                                  aria-label={`Delete conversation: ${conv.title}`}
+                                  title="Delete conversation"
+                                >
+                                  <Trash2
+                                    className="h-3 w-3"
+                                    aria-hidden="true"
+                                  />
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                    {/* Export/Import is always shown when there is any chat
                       history scope, even if the current deck has no
                       conversations yet — Import is still useful for moving
                       sessions in from another machine (#1242). */}
-                  <div className="mt-2 flex justify-end border-t border-border/40 pt-2">
-                    <SessionExportImport
-                      exportActiveDeckToJSON={exportActiveDeckToJSON}
-                      importFromJSON={importFromJSON}
-                      scopeLabel={
-                        selectedDeckId === DEFAULT_DECK_ID
-                          ? "default"
-                          : selectedDeckId
-                      }
-                    />
+                    <div className="mt-2 flex justify-end border-t border-border/40 pt-2">
+                      <SessionExportImport
+                        exportActiveDeckToJSON={exportActiveDeckToJSON}
+                        importFromJSON={importFromJSON}
+                        scopeLabel={
+                          selectedDeckId === DEFAULT_DECK_ID
+                            ? "default"
+                            : selectedDeckId
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <DeckCoachChatPanel
-                messages={messages}
-                isLoading={isChatLoading}
-                onSendMessage={handleChatMessage}
-                onCancel={cancelGeneration}
-              />
-            </div>
-          )}
-
-          {/* Empty state */}
-          {!isPending &&
-            !review &&
-            !metaAnalysis &&
-            analysisType !== "chat" && (
-              <Card className="flex-1 flex items-center justify-center border-dashed">
-                <div className="text-center text-muted-foreground">
-                  <Bot className="mx-auto h-12 w-12" />
-                  <p className="mt-4">Your deck analysis will appear here.</p>
-                </div>
-              </Card>
+                <DeckCoachChatPanel
+                  messages={messages}
+                  isLoading={isChatLoading}
+                  onSendMessage={handleChatMessage}
+                  onCancel={cancelGeneration}
+                />
+              </div>
             )}
-        </div>
-      </main>
+
+            {/* Empty state */}
+            {!isPending &&
+              !review &&
+              !metaAnalysis &&
+              analysisType !== "chat" && (
+                <Card className="flex-1 flex items-center justify-center border-dashed">
+                  <div className="text-center text-muted-foreground">
+                    <Bot className="mx-auto h-12 w-12" />
+                    <p className="mt-4">Your deck analysis will appear here.</p>
+                  </div>
+                </Card>
+              )}
+          </div>
+        </main>
       )}
     </div>
   );

@@ -59,7 +59,7 @@ jest.mock("lucide-react", () => ({
 }));
 
 import { DeckList } from "@/app/(app)/deck-builder/_components/deck-list";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 const bolt = {
   id: "bolt-1",

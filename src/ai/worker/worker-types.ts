@@ -12,7 +12,7 @@ import type {
   TriggerChain,
 } from "@/ai/trigger-chain-evaluator";
 import type { SynergyResult } from "@/ai/synergy-detector";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * Actions that the AI Worker can perform.

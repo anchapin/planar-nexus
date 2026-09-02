@@ -5,7 +5,7 @@
  * and predefined archetype signatures.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import {
   ARCHETYPE_SIGNATURES,
   ArchetypeSignature,

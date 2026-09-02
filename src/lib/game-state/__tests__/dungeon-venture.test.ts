@@ -1,5 +1,5 @@
 import { describe, it, expect } from "@jest/globals";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import { createCardInstance } from "../card-instance";
 import { createInitialGameState, startGame } from "../game-state";
 import { addMana } from "../mana";

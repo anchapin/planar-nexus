@@ -3,28 +3,17 @@ import {
   generateAIOpponentDeck,
   AIOpponentDeckGenerationInput,
 } from "@/ai/flows/ai-opponent-deck-generation";
-// Canonical card-shape types live in card-database.ts (issue #1593);
-// re-exported here for the many modules that import them via "@/app/actions".
-import type { DeckCard } from "@/lib/card-database";
-import { type Format } from "@/lib/game-rules";
 
-export type { ScryfallCard, DeckCard } from "@/lib/card-database";
-
-export interface SavedDeck {
-  id: string;
-  name: string;
-  format: Format;
-  cards: DeckCard[];
-  /**
-   * Optional constructed-format sideboard pool (Modern/Standard/etc).
-   * Optional so SavedDecks persisted before sideboard editing shipped
-   * continue to round-trip cleanly. Reads default to [] for pre-#1402
-   * decks. See issue #1402.
-   */
-  sideboard?: DeckCard[];
-  createdAt: string;
-  updatedAt: string;
-}
+/**
+ * @fileOverview Client-side wrappers around the AI flows.
+ *
+ * Formerly `src/app/actions.ts`, which was misnamed — it never was a
+ * Next.js Server Actions file (no `"use server"` directive) and sat under
+ * `src/app/` only to confuse readers. Renamed and relocated in issue
+ * #1592. The canonical card-shape types (`ScryfallCard`, `DeckCard`,
+ * `SavedDeck`) live in `@/lib/card-database` — do not re-colocate them
+ * here.
+ */
 
 /**
  * Client-side function for AI deck review

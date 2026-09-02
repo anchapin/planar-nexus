@@ -30,7 +30,7 @@ import type {
   PlayerId,
   CardInstanceId,
 } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
   return {

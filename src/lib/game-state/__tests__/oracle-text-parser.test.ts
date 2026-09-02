@@ -24,7 +24,7 @@ import {
   getModesForModalSpell,
   modeRequiresTarget,
 } from "../oracle-text-parser";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // Helper to create mock card
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
@@ -701,14 +701,16 @@ describe("parseAttraction", () => {
 describe("isModalSpell", () => {
   it("should return true for modal spells with Choose one", () => {
     const card = createMockCard({
-      oracle_text: "Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.",
+      oracle_text:
+        "Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.",
     });
     expect(isModalSpell(card)).toBe(true);
   });
 
   it("should return true for modal spells with Choose two", () => {
     const card = createMockCard({
-      oracle_text: "Choose two —\n• Create a 1/1 white Soldier token.\n• Create a 1/1 white Soldier token.\n• Create a 1/1 white Soldier token.",
+      oracle_text:
+        "Choose two —\n• Create a 1/1 white Soldier token.\n• Create a 1/1 white Soldier token.\n• Create a 1/1 white Soldier token.",
     });
     expect(isModalSpell(card)).toBe(true);
   });
@@ -723,7 +725,8 @@ describe("isModalSpell", () => {
   it("should return false for split cards", () => {
     const card = createMockCard({
       layout: "split",
-      oracle_text: "Fire deals 2 damage to any target.\n//\nTap target permanent.",
+      oracle_text:
+        "Fire deals 2 damage to any target.\n//\nTap target permanent.",
     });
     expect(isModalSpell(card)).toBe(false);
   });
@@ -745,7 +748,8 @@ describe("hasFuse", () => {
   it("should return true when fuse keyword is present", () => {
     const card = createMockCard({
       layout: "split",
-      oracle_text: "Fire deals 2 damage to any target.\nFuse — You may cast either half.\n//\nTap target permanent.",
+      oracle_text:
+        "Fire deals 2 damage to any target.\nFuse — You may cast either half.\n//\nTap target permanent.",
     });
     expect(hasFuse(card)).toBe(true);
   });
@@ -753,7 +757,8 @@ describe("hasFuse", () => {
   it("should return false when fuse keyword is absent", () => {
     const card = createMockCard({
       layout: "split",
-      oracle_text: "Fire deals 2 damage to any target.\n//\nTap target permanent.",
+      oracle_text:
+        "Fire deals 2 damage to any target.\n//\nTap target permanent.",
     });
     expect(hasFuse(card)).toBe(false);
   });
@@ -768,7 +773,8 @@ describe("getSplitCardHalves", () => {
   it("should parse split card halves correctly", () => {
     const card = createMockCard({
       layout: "split",
-      oracle_text: "Fire deals 2 damage to any target.\n//\nTap target permanent. Draw a card.",
+      oracle_text:
+        "Fire deals 2 damage to any target.\n//\nTap target permanent. Draw a card.",
     });
     const result = getSplitCardHalves(card);
     expect(result).not.toBeNull();
@@ -804,7 +810,8 @@ describe("getModesForModalSpell", () => {
 
   it("should detect target types in modes", () => {
     const card = createMockCard({
-      oracle_text: "Choose one —\n• Deal 3 damage to target creature.\n• Deal 3 damage to target player.",
+      oracle_text:
+        "Choose one —\n• Deal 3 damage to target creature.\n• Deal 3 damage to target player.",
     });
     const result = getModesForModalSpell(card);
     expect(result).not.toBeNull();

@@ -11,7 +11,7 @@ import type {
   Player,
 } from "./types";
 import { Phase } from "./types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import {
   createCardInstance,
   isCreature,

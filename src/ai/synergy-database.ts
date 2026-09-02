@@ -5,18 +5,13 @@
  * for identifying card combinations that work well together.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * Synergy type categories
  */
 export type SynergyType =
-  | "keyword"
-  | "tribal"
-  | "mechanic"
-  | "mana"
-  | "combo"
-  | "theme";
+  "keyword" | "tribal" | "mechanic" | "mana" | "combo" | "theme";
 
 /**
  * Synergy entry in the database

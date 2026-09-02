@@ -17,7 +17,7 @@
  * (rarity, colour balance) matches what we'd see at a real table.
  */
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type {
   AiDifficulty,
   AiNeighbor,
@@ -26,10 +26,7 @@ import type {
   RochesterPlayerCount,
   RochesterSession,
 } from "./types";
-import {
-  PICKS_PER_ROCHESTER_SEAT,
-  ROCHESTER_PLAYER_COUNTS,
-} from "./types";
+import { PICKS_PER_ROCHESTER_SEAT, ROCHESTER_PLAYER_COUNTS } from "./types";
 import { generatePack } from "./sealed-generator";
 import { saveRochesterSession } from "./pool-storage";
 
@@ -39,10 +36,7 @@ import { saveRochesterSession } from "./pool-storage";
 
 /** Cards per booster pack (mirrors sealed-generator). */
 const CARDS_PER_PACK = 14;
-export {
-  PICKS_PER_ROCHESTER_SEAT,
-  ROCHESTER_PLAYER_COUNTS,
-};
+export { PICKS_PER_ROCHESTER_SEAT, ROCHESTER_PLAYER_COUNTS };
 
 // ============================================================================
 // Helpers
@@ -237,9 +231,7 @@ export function currentSeat(session: RochesterSession): number {
  * Rochester draft always rotates in a single direction — there is no
  * alternating left/right pass like booster draft.
  */
-export function getNextSeat(
-  session: RochesterSession,
-): number {
+export function getNextSeat(session: RochesterSession): number {
   return (session.currentSeatIndex + 1) % session.playerCount;
 }
 
@@ -262,10 +254,7 @@ export function isRochesterComplete(session: RochesterSession): boolean {
 export class RochesterPickError extends Error {
   constructor(
     public readonly code:
-      | "not-found"
-      | "wrong-seat"
-      | "already-picked"
-      | "complete",
+      "not-found" | "wrong-seat" | "already-picked" | "complete",
     message: string,
   ) {
     super(message);
@@ -324,9 +313,7 @@ export function pickFromRochesterPool(
 
   const picksTaken = session.picksTaken + 1;
   const isLastPick = newCommunal.length === 0;
-  const nextSeat = isLastPick
-    ? session.currentSeatIndex
-    : getNextSeat(session);
+  const nextSeat = isLastPick ? session.currentSeatIndex : getNextSeat(session);
 
   return {
     ...session,

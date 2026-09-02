@@ -14,34 +14,49 @@
  * Handles local lobby state for hosting games before connecting to signaling server
  */
 
-import { GameLobby, Player, HostGameConfig, LobbyStatus, PlayerStatus, Team, TeamId, TeamSettings, LobbyState, ReadyCheckKind, ReadyCheckSession, ReadyCheckResponse, SeatHold } from './multiplayer-types';
-import type { Spectator } from './spectator';
-import { generateGameCode, generateLobbyId, generatePlayerId } from './game-code-generator';
-import { publicLobbyBrowser } from './public-lobby-browser';
-import { validateDeckForLobby } from './format-validator';
-import { getGameModeForPlayerCount, getGameModeConfig } from './game-mode';
-import type { SavedDeck } from '@/app/actions';
 import {
-  TokenBucket,
-  type RateLimitOptions,
-} from './security/rate-limit';
+  GameLobby,
+  Player,
+  HostGameConfig,
+  LobbyStatus,
+  PlayerStatus,
+  Team,
+  TeamId,
+  TeamSettings,
+  LobbyState,
+  ReadyCheckKind,
+  ReadyCheckSession,
+  ReadyCheckResponse,
+  SeatHold,
+} from "./multiplayer-types";
+import type { Spectator } from "./spectator";
+import {
+  generateGameCode,
+  generateLobbyId,
+  generatePlayerId,
+} from "./game-code-generator";
+import { publicLobbyBrowser } from "./public-lobby-browser";
+import { validateDeckForLobby } from "./format-validator";
+import { getGameModeForPlayerCount, getGameModeConfig } from "./game-mode";
+import type { SavedDeck } from "@/lib/card-database";
+import { TokenBucket, type RateLimitOptions } from "./security/rate-limit";
 import {
   signSpectatorCapabilityToken,
   type SpectatorCapabilityToken,
-} from './p2p-handshake';
+} from "./p2p-handshake";
 
 // Default team configurations
 const DEFAULT_TEAMS: Team[] = [
   {
-    id: 'team-a',
-    name: 'Team Alpha',
-    color: '#3b82f6', // Blue
+    id: "team-a",
+    name: "Team Alpha",
+    color: "#3b82f6", // Blue
     playerIds: [],
   },
   {
-    id: 'team-b',
-    name: 'Team Beta',
-    color: '#ef4444', // Red
+    id: "team-b",
+    name: "Team Beta",
+    color: "#ef4444", // Red
     playerIds: [],
   },
 ];
@@ -301,15 +316,14 @@ class LobbyManager {
     const hostPlayer: Player = {
       id: hostPlayerId,
       name: hostName,
-      status: 'host',
+      status: "host",
       joinedAt: Date.now(),
     };
 
     // Determine game mode based on player count and format
-    const gameMode = config.gameMode || getGameModeForPlayerCount(
-      parseInt(config.maxPlayers),
-      config.format
-    );
+    const gameMode =
+      config.gameMode ||
+      getGameModeForPlayerCount(parseInt(config.maxPlayers), config.format);
 
     const lobby: GameLobby = {
       id: lobbyId,
@@ -319,7 +333,7 @@ class LobbyManager {
       format: config.format,
       maxPlayers: config.maxPlayers,
       players: [hostPlayer],
-      status: 'waiting',
+      status: "waiting",
       createdAt: Date.now(),
       settings: config.settings,
       gameMode,
@@ -335,7 +349,7 @@ class LobbyManager {
     // Issue #1255 — a fresh lobby starts in `WAITING` with no active
     // ready-check and no seat-holds. The state is set on the lobby object
     // (not just the field) so it round-trips through localStorage.
-    this.currentLobby.state = 'WAITING';
+    this.currentLobby.state = "WAITING";
     this.readyCheck = null;
     this.seatHolds.clear();
     this.readyCheckDropped = 0;
@@ -351,16 +365,16 @@ class LobbyManager {
 
     // Register public game if applicable
     if (config.settings.isPublic) {
-      const hostPlayer = lobby.players.find(p => p.id === hostPlayerId);
+      const hostPlayer = lobby.players.find((p) => p.id === hostPlayerId);
       publicLobbyBrowser.registerPublicGame({
         id: lobby.id,
         gameCode: lobby.gameCode,
         name: lobby.name,
-        hostName: hostPlayer?.name || 'Host',
+        hostName: hostPlayer?.name || "Host",
         format: lobby.format,
         maxPlayers: lobby.maxPlayers,
         currentPlayers: lobby.players.length,
-        status: lobby.status === 'in-progress' ? 'in-progress' : 'waiting',
+        status: lobby.status === "in-progress" ? "in-progress" : "waiting",
         isPublic: config.settings.isPublic,
         hasPassword: !!config.settings.password,
         allowSpectators: config.settings.allowSpectators,
@@ -390,7 +404,7 @@ class LobbyManager {
    * Add a player to the lobby (simulated for host view)
    */
   addPlayer(playerName: string): Player | null {
-    if (!this.tryConsumeMutation('addPlayer')) return null;
+    if (!this.tryConsumeMutation("addPlayer")) return null;
     if (!this.currentLobby) return null;
 
     // Issue #1277 — bound the player roster so a flooder cannot push an
@@ -408,7 +422,7 @@ class LobbyManager {
     const newPlayer: Player = {
       id: generatePlayerId(),
       name: playerName,
-      status: 'not-ready',
+      status: "not-ready",
       joinedAt: Date.now(),
     };
 
@@ -429,14 +443,16 @@ class LobbyManager {
    * Remove a player from the lobby
    */
   removePlayer(playerId: string): boolean {
-    if (!this.tryConsumeMutation('removePlayer')) return false;
+    if (!this.tryConsumeMutation("removePlayer")) return false;
     if (!this.currentLobby) return false;
 
     // Cannot remove host
     if (playerId === this.currentLobby.hostId) return false;
 
     const initialLength = this.currentLobby.players.length;
-    this.currentLobby.players = this.currentLobby.players.filter(p => p.id !== playerId);
+    this.currentLobby.players = this.currentLobby.players.filter(
+      (p) => p.id !== playerId,
+    );
 
     if (this.currentLobby.players.length < initialLength) {
       this.saveLobbyToStorage();
@@ -458,10 +474,10 @@ class LobbyManager {
    * Update player ready status
    */
   updatePlayerStatus(playerId: string, status: PlayerStatus): boolean {
-    if (!this.tryConsumeMutation('updatePlayerStatus')) return false;
+    if (!this.tryConsumeMutation("updatePlayerStatus")) return false;
     if (!this.currentLobby) return false;
 
-    const player = this.currentLobby.players.find(p => p.id === playerId);
+    const player = this.currentLobby.players.find((p) => p.id === playerId);
     if (player) {
       player.status = status;
       this.saveLobbyToStorage();
@@ -478,22 +494,22 @@ class LobbyManager {
     playerId: string,
     deckId: string,
     deckName: string,
-    deck?: SavedDeck
+    deck?: SavedDeck,
   ): { success: boolean; isValid: boolean; errors: string[] } {
-    if (!this.tryConsumeMutation('updatePlayerDeck')) {
+    if (!this.tryConsumeMutation("updatePlayerDeck")) {
       return {
         success: false,
         isValid: false,
-        errors: ['Lobby mutation budget exceeded'],
+        errors: ["Lobby mutation budget exceeded"],
       };
     }
     if (!this.currentLobby) {
-      return { success: false, isValid: false, errors: ['Lobby not found'] };
+      return { success: false, isValid: false, errors: ["Lobby not found"] };
     }
 
-    const player = this.currentLobby.players.find(p => p.id === playerId);
+    const player = this.currentLobby.players.find((p) => p.id === playerId);
     if (!player) {
-      return { success: false, isValid: false, errors: ['Player not found'] };
+      return { success: false, isValid: false, errors: ["Player not found"] };
     }
 
     // Update deck info
@@ -504,7 +520,10 @@ class LobbyManager {
     // Validate deck against lobby format
     if (deck) {
       const validation = validateDeckForLobby(deck, this.currentLobby.format);
-      player.deckValidationErrors = [...validation.errors, ...validation.warnings];
+      player.deckValidationErrors = [
+        ...validation.errors,
+        ...validation.warnings,
+      ];
       this.saveLobbyToStorage();
       return {
         success: true,
@@ -521,7 +540,7 @@ class LobbyManager {
    * Update lobby status
    */
   updateLobbyStatus(status: LobbyStatus): boolean {
-    if (!this.tryConsumeMutation('updateLobbyStatus')) return false;
+    if (!this.tryConsumeMutation("updateLobbyStatus")) return false;
     if (!this.currentLobby) return false;
 
     this.currentLobby.status = status;
@@ -530,7 +549,7 @@ class LobbyManager {
     // Update public game if applicable
     if (this.currentLobby.settings.isPublic) {
       publicLobbyBrowser.updatePublicGame(this.currentLobby.id, {
-        status: status === 'in-progress' ? 'in-progress' : 'waiting',
+        status: status === "in-progress" ? "in-progress" : "waiting",
       });
     }
 
@@ -547,7 +566,7 @@ class LobbyManager {
     if (this.currentLobby.players.length < maxPlayers) return false;
 
     return this.currentLobby.players.every(
-      p => p.status === 'ready' || p.status === 'host'
+      (p) => p.status === "ready" || p.status === "host",
     );
   }
 
@@ -559,7 +578,7 @@ class LobbyManager {
     if (this.currentLobby.players.length < 2) return false;
 
     return this.currentLobby.players.every(
-      p => p.status === 'ready' || p.status === 'host'
+      (p) => p.status === "ready" || p.status === "host",
     );
   }
 
@@ -577,18 +596,19 @@ class LobbyManager {
    */
   canStartGame(): boolean {
     if (!this.currentLobby) return false;
-    if (this.getLobbyState() !== 'STARTING') return false;
+    if (this.getLobbyState() !== "STARTING") return false;
 
     const hasEnoughPlayers = this.currentLobby.players.length >= 2;
     const allReady = this.allPlayersReady();
 
     // Check that all players have valid decks for the format
-    const allDecksValid = this.currentLobby.players.every(player => {
+    const allDecksValid = this.currentLobby.players.every((player) => {
       // Players must have a deck selected
       if (!player.deckId) return false;
 
       // Players must not have validation errors
-      const hasErrors = player.deckValidationErrors && player.deckValidationErrors.length > 0;
+      const hasErrors =
+        player.deckValidationErrors && player.deckValidationErrors.length > 0;
       return !hasErrors;
     });
 
@@ -603,18 +623,19 @@ class LobbyManager {
     if (!this.currentLobby) return false;
 
     const hasEnoughPlayers = this.currentLobby.players.length >= 2;
-    
+
     // At least some players must be ready
     const hasReadyPlayers = this.currentLobby.players.some(
-      p => p.status === 'ready' || p.status === 'host'
+      (p) => p.status === "ready" || p.status === "host",
     );
 
     // All ready players must have valid decks
     const allReadyPlayersHaveDecks = this.currentLobby.players
-      .filter(p => p.status === 'ready' || p.status === 'host')
-      .every(player => {
+      .filter((p) => p.status === "ready" || p.status === "host")
+      .every((player) => {
         if (!player.deckId) return false;
-        const hasErrors = player.deckValidationErrors && player.deckValidationErrors.length > 0;
+        const hasErrors =
+          player.deckValidationErrors && player.deckValidationErrors.length > 0;
         return !hasErrors;
       });
 
@@ -648,7 +669,7 @@ class LobbyManager {
     // `spectators[]` roster itself is part of `this.currentLobby` and is
     // gone with it.
     this.spectatorCapabilitySecret = null;
-    localStorage.removeItem('planar_nexus_current_lobby');
+    localStorage.removeItem("planar_nexus_current_lobby");
   }
 
   // ──────────────────────────────────────────────────────────────────────
@@ -786,7 +807,10 @@ class LobbyManager {
    */
   private saveLobbyToStorage(): void {
     if (this.currentLobby) {
-      localStorage.setItem('planar_nexus_current_lobby', JSON.stringify(this.currentLobby));
+      localStorage.setItem(
+        "planar_nexus_current_lobby",
+        JSON.stringify(this.currentLobby),
+      );
     }
   }
 
@@ -794,7 +818,7 @@ class LobbyManager {
    * Load lobby from localStorage
    */
   private loadLobbyFromStorage(): void {
-    const stored = localStorage.getItem('planar_nexus_current_lobby');
+    const stored = localStorage.getItem("planar_nexus_current_lobby");
     if (stored) {
       try {
         this.currentLobby = JSON.parse(stored);
@@ -808,8 +832,8 @@ class LobbyManager {
           this.currentLobby.spectators = [];
         }
       } catch (e) {
-        console.error('Failed to load lobby from storage:', e);
-        localStorage.removeItem('planar_nexus_current_lobby');
+        console.error("Failed to load lobby from storage:", e);
+        localStorage.removeItem("planar_nexus_current_lobby");
       }
     }
   }
@@ -826,15 +850,17 @@ class LobbyManager {
    */
   initializeTeams(): void {
     if (!this.currentLobby) return;
-    
+
     const modeConfig = getGameModeConfig(this.currentLobby.gameMode);
     if (!modeConfig.isTeamMode) return;
 
     // Initialize teams with empty player IDs
-    this.currentLobby.teams = DEFAULT_TEAMS.map(team => ({
+    this.currentLobby.teams = DEFAULT_TEAMS.map((team) => ({
       ...team,
       playerIds: [],
-      sharedLifeTotal: modeConfig.sharedLife ? modeConfig.startingLife : undefined,
+      sharedLifeTotal: modeConfig.sharedLife
+        ? modeConfig.startingLife
+        : undefined,
     }));
 
     // Build team settings with proper defaults for team mode
@@ -862,16 +888,16 @@ class LobbyManager {
   assignPlayerToTeam(playerId: string, teamId: TeamId): boolean {
     if (!this.currentLobby || !this.currentLobby.teams) return false;
 
-    const player = this.currentLobby.players.find(p => p.id === playerId);
+    const player = this.currentLobby.players.find((p) => p.id === playerId);
     if (!player) return false;
 
     // Remove player from any existing team
-    this.currentLobby.teams.forEach(team => {
-      team.playerIds = team.playerIds.filter(id => id !== playerId);
+    this.currentLobby.teams.forEach((team) => {
+      team.playerIds = team.playerIds.filter((id) => id !== playerId);
     });
 
     // Add player to new team
-    const targetTeam = this.currentLobby.teams.find(t => t.id === teamId);
+    const targetTeam = this.currentLobby.teams.find((t) => t.id === teamId);
     if (!targetTeam) return false;
 
     // Check if team is full (max 2 players per team in 2v2)
@@ -890,12 +916,12 @@ class LobbyManager {
   removePlayerFromTeam(playerId: string): boolean {
     if (!this.currentLobby || !this.currentLobby.teams) return false;
 
-    const player = this.currentLobby.players.find(p => p.id === playerId);
+    const player = this.currentLobby.players.find((p) => p.id === playerId);
     if (!player) return false;
 
     // Remove player from their team
-    this.currentLobby.teams.forEach(team => {
-      team.playerIds = team.playerIds.filter(id => id !== playerId);
+    this.currentLobby.teams.forEach((team) => {
+      team.playerIds = team.playerIds.filter((id) => id !== playerId);
     });
 
     player.teamId = undefined;
@@ -915,16 +941,16 @@ class LobbyManager {
     }
 
     // Clear existing assignments
-    this.currentLobby.teams.forEach(team => {
+    this.currentLobby.teams.forEach((team) => {
       team.playerIds = [];
     });
-    this.currentLobby.players.forEach(player => {
+    this.currentLobby.players.forEach((player) => {
       player.teamId = undefined;
     });
 
     // Assign players alternately to teams
     this.currentLobby.players.forEach((player, index) => {
-      const teamId: TeamId = index % 2 === 0 ? 'team-a' : 'team-b';
+      const teamId: TeamId = index % 2 === 0 ? "team-a" : "team-b";
       this.assignPlayerToTeam(player.id, teamId);
     });
 
@@ -936,11 +962,11 @@ class LobbyManager {
    */
   getPlayerTeam(playerId: string): Team | undefined {
     if (!this.currentLobby || !this.currentLobby.teams) return undefined;
-    
-    const player = this.currentLobby.players.find(p => p.id === playerId);
+
+    const player = this.currentLobby.players.find((p) => p.id === playerId);
     if (!player || !player.teamId) return undefined;
-    
-    return this.currentLobby.teams.find(t => t.id === player.teamId);
+
+    return this.currentLobby.teams.find((t) => t.id === player.teamId);
   }
 
   /**
@@ -948,8 +974,8 @@ class LobbyManager {
    */
   getTeamPlayers(teamId: TeamId): Player[] {
     if (!this.currentLobby) return [];
-    
-    return this.currentLobby.players.filter(p => p.teamId === teamId);
+
+    return this.currentLobby.players.filter((p) => p.teamId === teamId);
   }
 
   /**
@@ -962,13 +988,13 @@ class LobbyManager {
     if (!modeConfig.isTeamMode) return true;
 
     // All players must be assigned to a team
-    const allAssigned = this.currentLobby.players.every(p => p.teamId);
+    const allAssigned = this.currentLobby.players.every((p) => p.teamId);
     if (!allAssigned) return false;
 
     // Teams must be balanced (equal or off by 1)
-    const teamSizes = this.currentLobby.teams.map(t => t.playerIds.length);
+    const teamSizes = this.currentLobby.teams.map((t) => t.playerIds.length);
     const sizeDiff = Math.abs(teamSizes[0] - teamSizes[1]);
-    
+
     return sizeDiff <= 1;
   }
 
@@ -979,12 +1005,14 @@ class LobbyManager {
     if (!this.currentLobby) return false;
 
     // Merge with existing settings or use defaults
-    const currentSettings = this.currentLobby.teamSettings ?? DEFAULT_TEAM_SETTINGS;
+    const currentSettings =
+      this.currentLobby.teamSettings ?? DEFAULT_TEAM_SETTINGS;
     this.currentLobby.teamSettings = {
       sharedLife: settings.sharedLife ?? currentSettings.sharedLife,
       sharedBlockers: settings.sharedBlockers ?? currentSettings.sharedBlockers,
       teamChat: settings.teamChat ?? currentSettings.teamChat,
-      startingLifePerTeam: settings.startingLifePerTeam ?? currentSettings.startingLifePerTeam,
+      startingLifePerTeam:
+        settings.startingLifePerTeam ?? currentSettings.startingLifePerTeam,
     };
 
     this.saveLobbyToStorage();
@@ -997,7 +1025,7 @@ class LobbyManager {
   updateTeamName(teamId: TeamId, name: string): boolean {
     if (!this.currentLobby || !this.currentLobby.teams) return false;
 
-    const team = this.currentLobby.teams.find(t => t.id === teamId);
+    const team = this.currentLobby.teams.find((t) => t.id === teamId);
     if (!team) return false;
 
     team.name = name;
@@ -1014,13 +1042,17 @@ class LobbyManager {
     const modeConfig = getGameModeConfig(this.currentLobby.gameMode);
     if (!modeConfig.isTeamMode) return true;
 
-    const attacker = this.currentLobby.players.find(p => p.id === attackerId);
-    const defender = this.currentLobby.players.find(p => p.id === defenderId);
+    const attacker = this.currentLobby.players.find((p) => p.id === attackerId);
+    const defender = this.currentLobby.players.find((p) => p.id === defenderId);
 
     if (!attacker || !defender) return true;
 
     // Cannot attack teammates
-    if (attacker.teamId && defender.teamId && attacker.teamId === defender.teamId) {
+    if (
+      attacker.teamId &&
+      defender.teamId &&
+      attacker.teamId === defender.teamId
+    ) {
       return false;
     }
 
@@ -1033,10 +1065,10 @@ class LobbyManager {
   getOpponentTeam(playerId: string): Team | undefined {
     if (!this.currentLobby || !this.currentLobby.teams) return undefined;
 
-    const player = this.currentLobby.players.find(p => p.id === playerId);
+    const player = this.currentLobby.players.find((p) => p.id === playerId);
     if (!player || !player.teamId) return undefined;
 
-    return this.currentLobby.teams.find(t => t.id !== player.teamId);
+    return this.currentLobby.teams.find((t) => t.id !== player.teamId);
   }
 
   /**
@@ -1357,7 +1389,7 @@ class LobbyManager {
    * field is optional — see `GameLobby.state`).
    */
   getLobbyState(): LobbyState {
-    return this.currentLobby?.state ?? 'WAITING';
+    return this.currentLobby?.state ?? "WAITING";
   }
 
   /**
@@ -1379,49 +1411,48 @@ class LobbyManager {
    * accidentally double-opening a check (e.g. rapid addPlayer events).
    */
   beginReadyCheck(
-    kind: ReadyCheckKind = 'full',
+    kind: ReadyCheckKind = "full",
     targetPeerIds?: string[],
   ): BeginReadyCheckResult {
     if (!this.currentLobby) {
-      return { started: false, reason: 'No active lobby' };
+      return { started: false, reason: "No active lobby" };
     }
     if (this.readyCheck) {
       return {
         started: false,
-        reason: 'A ready check is already in progress',
+        reason: "A ready check is already in progress",
         sessionId: this.readyCheck.id,
       };
     }
     const state = this.getLobbyState();
-    if (state === 'IN_GAME' && kind !== 'late-joiner') {
+    if (state === "IN_GAME" && kind !== "late-joiner") {
       // The host cannot open a full check during an active game; only the
       // single-peer late-joiner check is permitted mid-game.
       return {
         started: false,
-        reason: 'Cannot open a full ready check during an active game',
+        reason: "Cannot open a full ready check during an active game",
       };
     }
-    if (state === 'STARTING') {
+    if (state === "STARTING") {
       // STARTING is a transient lock — the host is already advancing.
-      return { started: false, reason: 'Lobby is already starting' };
+      return { started: false, reason: "Lobby is already starting" };
     }
-    if (state === 'ENDED') {
-      return { started: false, reason: 'Lobby has ended' };
+    if (state === "ENDED") {
+      return { started: false, reason: "Lobby has ended" };
     }
 
     // For a full check, every non-spectator player (status !== 'host' is
     // not the rule — the host is included so the lobby's own start
     // button is gated by the same consensus) must be a target. The
     // check covers every player in the roster.
-    const targets =
-      targetPeerIds ?? this.currentLobby.players.map((p) => p.id);
+    const targets = targetPeerIds ?? this.currentLobby.players.map((p) => p.id);
     if (targets.length === 0) {
-      return { started: false, reason: 'No targets for the ready check' };
+      return { started: false, reason: "No targets for the ready check" };
     }
 
     this.readyCheckCounter += 1;
     const windowMs =
-      kind === 'late-joiner'
+      kind === "late-joiner"
         ? LOBBY_LATE_JOINER_READY_CHECK_MS
         : LOBBY_READY_CHECK_WINDOW_MS;
     this.readyCheck = {
@@ -1433,7 +1464,7 @@ class LobbyManager {
       responses: {},
       cancelledAt: null,
     };
-    this.transitionTo('READY_CHECK');
+    this.transitionTo("READY_CHECK");
     return { started: true, sessionId: this.readyCheck.id };
   }
 
@@ -1459,7 +1490,7 @@ class LobbyManager {
         accepted: false,
         quorumReached: false,
         late: true,
-        reason: 'No active ready check',
+        reason: "No active ready check",
       };
     }
     if (session.id !== sessionId) {
@@ -1468,7 +1499,7 @@ class LobbyManager {
         accepted: false,
         quorumReached: false,
         late: true,
-        reason: 'Unknown sessionId',
+        reason: "Unknown sessionId",
       };
     }
     if (session.cancelledAt !== null) {
@@ -1477,7 +1508,7 @@ class LobbyManager {
         accepted: false,
         quorumReached: false,
         late: true,
-        reason: 'Session was cancelled',
+        reason: "Session was cancelled",
       };
     }
     if (Date.now() - session.startedAt > session.windowMs) {
@@ -1489,7 +1520,7 @@ class LobbyManager {
         accepted: false,
         quorumReached: false,
         late: true,
-        reason: 'Response arrived after the window expired',
+        reason: "Response arrived after the window expired",
       };
     }
     if (!session.targetPeerIds.includes(peerId)) {
@@ -1498,7 +1529,7 @@ class LobbyManager {
         accepted: false,
         quorumReached: false,
         late: false,
-        reason: 'Peer is not a target of this ready check',
+        reason: "Peer is not a target of this ready check",
       };
     }
     const response: ReadyCheckResponse = {
@@ -1558,17 +1589,17 @@ class LobbyManager {
    * the rest of the window) or when the host wants to reset the
    * consensus attempt. Transitions the lobby back to `WAITING`.
    */
-  cancelReadyCheck(reason: string = 'host-cancelled'): {
+  cancelReadyCheck(reason: string = "host-cancelled"): {
     cancelled: boolean;
     reason?: string;
   } {
     const session = this.readyCheck;
     if (!session) {
-      return { cancelled: false, reason: 'No active ready check' };
+      return { cancelled: false, reason: "No active ready check" };
     }
     session.cancelledAt = Date.now();
     this.readyCheck = null;
-    this.transitionTo('WAITING');
+    this.transitionTo("WAITING");
     return { cancelled: true, reason };
   }
 
@@ -1585,7 +1616,7 @@ class LobbyManager {
     if (!this.readyCheck) return false;
     if (this.readyCheck.cancelledAt !== null) return false;
     const state = this.getLobbyState();
-    if (state !== 'READY_CHECK') return false;
+    if (state !== "READY_CHECK") return false;
     if (!options.force) {
       const evalResult = this.evaluateReadyCheck();
       if (!evalResult || !evalResult.quorumReached) {
@@ -1593,7 +1624,7 @@ class LobbyManager {
       }
     }
     this.readyCheck = null;
-    this.transitionTo('STARTING');
+    this.transitionTo("STARTING");
     return true;
   }
 
@@ -1606,8 +1637,8 @@ class LobbyManager {
    */
   startInGame(): boolean {
     if (!this.currentLobby) return false;
-    if (this.getLobbyState() !== 'STARTING') return false;
-    this.transitionTo('IN_GAME');
+    if (this.getLobbyState() !== "STARTING") return false;
+    this.transitionTo("IN_GAME");
     return true;
   }
 
@@ -1618,8 +1649,8 @@ class LobbyManager {
    */
   endGame(): boolean {
     if (!this.currentLobby) return false;
-    if (this.getLobbyState() !== 'IN_GAME') return false;
-    this.transitionTo('ENDED');
+    if (this.getLobbyState() !== "IN_GAME") return false;
+    this.transitionTo("ENDED");
     return true;
   }
 
@@ -1666,7 +1697,7 @@ class LobbyManager {
    * is held). Idempotent: holding the same peer twice updates the
    * `expiresAt` and `reason` (the most recent disconnect wins).
    *
-   * The hold is auto-purged on every {@link getActiveSeatHolds} / 
+   * The hold is auto-purged on every {@link getActiveSeatHolds} /
    * {@link isSeatHeld} call so the in-memory map never grows unbounded.
    */
   holdSeatForRejoin(peerId: string, originalName: string): SeatHold {
@@ -1676,7 +1707,7 @@ class LobbyManager {
       originalName,
       heldAt: now,
       expiresAt: now + LOBBY_SEAT_HOLD_DURATION_MS,
-      reason: 'peer-disconnected',
+      reason: "peer-disconnected",
     };
     this.seatHolds.set(peerId, hold);
     this.saveLobbyToStorage();
@@ -1758,21 +1789,21 @@ class LobbyManager {
     heldFor?: string;
   } {
     if (!this.currentLobby) {
-      return { accepted: false, reason: 'No active lobby' };
+      return { accepted: false, reason: "No active lobby" };
     }
     this.purgeExpiredSeatHolds();
     for (const hold of this.seatHolds.values()) {
       return {
         accepted: false,
-        reason: 'seat-held',
+        reason: "seat-held",
         heldFor: hold.originalName,
       };
     }
     const player = this.addPlayer(playerName);
     if (!player) {
-      return { accepted: false, reason: 'Lobby is full' };
+      return { accepted: false, reason: "Lobby is full" };
     }
-    const result = this.beginReadyCheck('late-joiner', [player.id]);
+    const result = this.beginReadyCheck("late-joiner", [player.id]);
     if (!result.started) {
       // Fall through — the joiner is in the roster but the brief
       // ready check could not be opened (e.g. lobby state is ENDED).
@@ -1794,11 +1825,11 @@ class LobbyManager {
  * and easy to test.
  */
 const STATE_TRANSITIONS: Record<LobbyState, Set<LobbyState>> = {
-  WAITING: new Set<LobbyState>(['READY_CHECK', 'ENDED']),
-  READY_CHECK: new Set<LobbyState>(['WAITING', 'STARTING', 'ENDED']),
-  STARTING: new Set<LobbyState>(['IN_GAME', 'WAITING', 'ENDED']),
-  IN_GAME: new Set<LobbyState>(['ENDED']),
-  ENDED: new Set<LobbyState>(['WAITING']),
+  WAITING: new Set<LobbyState>(["READY_CHECK", "ENDED"]),
+  READY_CHECK: new Set<LobbyState>(["WAITING", "STARTING", "ENDED"]),
+  STARTING: new Set<LobbyState>(["IN_GAME", "WAITING", "ENDED"]),
+  IN_GAME: new Set<LobbyState>(["ENDED"]),
+  ENDED: new Set<LobbyState>(["WAITING"]),
 };
 
 /**
@@ -1808,11 +1839,11 @@ const STATE_TRANSITIONS: Record<LobbyState, Set<LobbyState>> = {
  * aligned with the machine.
  */
 const LOBBY_STATE_TO_STATUS: Record<LobbyState, LobbyStatus> = {
-  WAITING: 'waiting',
-  READY_CHECK: 'waiting',
-  STARTING: 'ready',
-  IN_GAME: 'in-progress',
-  ENDED: 'in-progress',
+  WAITING: "waiting",
+  READY_CHECK: "waiting",
+  STARTING: "ready",
+  IN_GAME: "in-progress",
+  ENDED: "in-progress",
 };
 
 // Singleton instance

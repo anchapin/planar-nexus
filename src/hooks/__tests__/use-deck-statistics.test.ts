@@ -1,6 +1,6 @@
 import { describe, it, expect } from "@jest/globals";
 import { renderHook } from "@testing-library/react";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import {
   analyzeDeck,
   getDeckSignature,
@@ -87,8 +87,8 @@ describe("useDeckStatistics", () => {
     const deckB = [...contents]; // new array, same contents
 
     const { result, rerender } = renderHook(
-        ({ deck }) => useDeckStatistics(deck),
-        { initialProps: { deck: deckA } },
+      ({ deck }) => useDeckStatistics(deck),
+      { initialProps: { deck: deckA } },
     );
     const first = result.current;
 
@@ -104,8 +104,8 @@ describe("useDeckStatistics", () => {
     const deckB = [makeCard("a", { count: 1 }), makeCard("b")];
 
     const { result, rerender } = renderHook(
-        ({ deck }) => useDeckStatistics(deck),
-        { initialProps: { deck: deckA } },
+      ({ deck }) => useDeckStatistics(deck),
+      { initialProps: { deck: deckA } },
     );
     const first = result.current;
     expect(first.totalCards).toBe(1);

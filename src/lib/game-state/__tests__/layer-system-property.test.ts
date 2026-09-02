@@ -39,7 +39,7 @@ import {
 } from "../layer-system";
 import { createCardInstance } from "../card-instance";
 import type { CardInstance, CardInstanceId, PlayerId } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { ContinuousEffect } from "../layer-system";
 
 // ---------------------------------------------------------------------------
@@ -113,7 +113,13 @@ type EffectSpec =
   | { kind: "cda"; power: number; toughness: number };
 
 const PLAYER_IDS: PlayerId[] = ["player1", "player2"];
-const ABILITIES = ["flying", "trample", "vigilance", "lifelink", "first_strike"];
+const ABILITIES = [
+  "flying",
+  "trample",
+  "vigilance",
+  "lifelink",
+  "first_strike",
+];
 const COLORS = ["W", "U", "B", "R", "G"];
 const TYPES = ["Artifact", "Land", "Enchantment", "Creature"];
 
@@ -312,7 +318,13 @@ function runLayerSystem(
 } {
   const ls = new LayerSystem();
   specs.forEach((spec, index) => {
-    const effect = materializeEffect(spec, sourceCardId, controllerId, index, ls);
+    const effect = materializeEffect(
+      spec,
+      sourceCardId,
+      controllerId,
+      index,
+      ls,
+    );
     ls.registerEffect(effect);
   });
   const characteristics = ls.getEffectiveCharacteristics(card);
@@ -366,13 +378,16 @@ describe("Property-Based Tests: Layer System Determinism", () => {
         fc.property(effectSetSpecArb, (specs) => {
           const card = makeFixedCard("order-card");
 
-          const run = (order: EffectSpec[]) => runLayerSystem(order, card, "src-3", "player1");
+          const run = (order: EffectSpec[]) =>
+            runLayerSystem(order, card, "src-3", "player1");
 
           const baseline = run(specs);
           const shuffled = run([...specs]);
 
           // Same spec multiset => identical characteristics and hash.
-          expect(run([...specs]).characteristics).toEqual(baseline.characteristics);
+          expect(run([...specs]).characteristics).toEqual(
+            baseline.characteristics,
+          );
           expect(run([...specs]).stateHash).toBe(baseline.stateHash);
           void shuffled;
         }),
@@ -394,7 +409,13 @@ describe("Property-Based Tests: Layer System Determinism", () => {
           ls.registerCardInstance(source);
 
           // Layer 1: copy
-          const copy = createCopyEffect(source.id, "player1", target.id, "copy", ls);
+          const copy = createCopyEffect(
+            source.id,
+            "player1",
+            target.id,
+            "copy",
+            ls,
+          );
           copy.timestamp = 0;
           ls.registerEffect(copy);
           // Layer 2: control change
@@ -506,7 +527,12 @@ describe("Property-Based Tests: Layer System Determinism", () => {
             const card = makeFixedCard("dep-card");
             const ls = new LayerSystem();
 
-            const make = (id: string, power: number, toughness: number, ts: number) => {
+            const make = (
+              id: string,
+              power: number,
+              toughness: number,
+              ts: number,
+            ) => {
               // SET effects are non-commutative: last-applied wins. This makes
               // the dependency-directed order observable in the result.
               // Pass `ls` so overrides land on the local instance, not global.
@@ -786,7 +812,13 @@ describe("Property-Based Tests: Layer System Determinism", () => {
 
           // Now add a pile of unrelated unlocked effects.
           specs.forEach((spec, index) => {
-            const effect = materializeEffect(spec, "unlock-src", "player1", 100 + index, ls);
+            const effect = materializeEffect(
+              spec,
+              "unlock-src",
+              "player1",
+              100 + index,
+              ls,
+            );
             ls.registerEffect(effect);
           });
 
@@ -813,10 +845,22 @@ describe("Property-Based Tests: Layer System Determinism", () => {
       const ls = new LayerSystem();
       const card = makeFixedCard("lock7-card", 3, 3);
 
-      const p7a = createPowerToughnessModifyEffect("p7-a", "player1", 2, 2, "p7a");
+      const p7a = createPowerToughnessModifyEffect(
+        "p7-a",
+        "player1",
+        2,
+        2,
+        "p7a",
+      );
       p7a.sublayer = PowerToughnessSublayer.MODIFY;
       p7a.timestamp = 1;
-      const p7b = createPowerToughnessModifyEffect("p7-b", "player1", 0, 0, "p7b");
+      const p7b = createPowerToughnessModifyEffect(
+        "p7-b",
+        "player1",
+        0,
+        0,
+        "p7b",
+      );
       p7b.sublayer = PowerToughnessSublayer.MODIFY;
       p7b.timestamp = 2;
       ls.registerEffect(p7a);
@@ -839,9 +883,22 @@ describe("Property-Based Tests: Layer System Determinism", () => {
       ).toBe(false);
 
       // Unlocked Layer 5 + Layer 6 effects.
-      const color = createColorChangeEffect("c-src", "player1", ["G"], "color", false, ls);
+      const color = createColorChangeEffect(
+        "c-src",
+        "player1",
+        ["G"],
+        "color",
+        false,
+        ls,
+      );
       color.timestamp = 5;
-      const ability = createAbilityGrantEffect("a-src", "player1", "trample", "grant", ls);
+      const ability = createAbilityGrantEffect(
+        "a-src",
+        "player1",
+        "trample",
+        "grant",
+        ls,
+      );
       ability.timestamp = 6;
       ls.registerEffect(color);
       ls.registerEffect(ability);

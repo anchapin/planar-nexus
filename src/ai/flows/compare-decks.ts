@@ -21,7 +21,7 @@
  * and offline-capable.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { detectArchetype } from "@/ai/archetype-detector";
 import {
   calculateDeckStats,
@@ -35,7 +35,8 @@ import {
 } from "@/ai/flows/coach-deck-analysis";
 
 /** All archetype categories the detection system emits. */
-type Category = "aggro" | "control" | "midrange" | "combo" | "tribal" | "special";
+type Category =
+  "aggro" | "control" | "midrange" | "combo" | "tribal" | "special";
 
 /** Keys of {@link RoleDistribution}, reused from the per-deck analysis. */
 type RoleKey = keyof RoleDistribution;
@@ -177,21 +178,73 @@ export interface CompareDecksOptions {
  * with the rest of the coach.
  */
 const CATEGORY_MATCHUP: Record<Category, Record<Category, number>> = {
-  aggro: { aggro: 0.5, control: 0.42, midrange: 0.48, combo: 0.63, tribal: 0.55, special: 0.5 },
-  control: { aggro: 0.58, control: 0.5, midrange: 0.55, combo: 0.61, tribal: 0.53, special: 0.52 },
-  midrange: { aggro: 0.52, control: 0.45, midrange: 0.5, combo: 0.46, tribal: 0.55, special: 0.5 },
-  combo: { aggro: 0.37, control: 0.39, midrange: 0.54, combo: 0.5, tribal: 0.58, special: 0.52 },
-  tribal: { aggro: 0.45, control: 0.47, midrange: 0.45, combo: 0.42, tribal: 0.5, special: 0.48 },
-  special: { aggro: 0.5, control: 0.48, midrange: 0.5, combo: 0.48, tribal: 0.52, special: 0.5 },
+  aggro: {
+    aggro: 0.5,
+    control: 0.42,
+    midrange: 0.48,
+    combo: 0.63,
+    tribal: 0.55,
+    special: 0.5,
+  },
+  control: {
+    aggro: 0.58,
+    control: 0.5,
+    midrange: 0.55,
+    combo: 0.61,
+    tribal: 0.53,
+    special: 0.52,
+  },
+  midrange: {
+    aggro: 0.52,
+    control: 0.45,
+    midrange: 0.5,
+    combo: 0.46,
+    tribal: 0.55,
+    special: 0.5,
+  },
+  combo: {
+    aggro: 0.37,
+    control: 0.39,
+    midrange: 0.54,
+    combo: 0.5,
+    tribal: 0.58,
+    special: 0.52,
+  },
+  tribal: {
+    aggro: 0.45,
+    control: 0.47,
+    midrange: 0.45,
+    combo: 0.42,
+    tribal: 0.5,
+    special: 0.48,
+  },
+  special: {
+    aggro: 0.5,
+    control: 0.48,
+    midrange: 0.5,
+    combo: 0.48,
+    tribal: 0.52,
+    special: 0.5,
+  },
 };
 
-const ALL_CATEGORIES: Category[] = ["aggro", "control", "midrange", "combo", "tribal", "special"];
+const ALL_CATEGORIES: Category[] = [
+  "aggro",
+  "control",
+  "midrange",
+  "combo",
+  "tribal",
+  "special",
+];
 
 /** Friendly prose per category pair, for the matrix cell rationale. */
-const MATCHUP_NOTES: Partial<Record<Category, Partial<Record<Category, string>>>> = {
+const MATCHUP_NOTES: Partial<
+  Record<Category, Partial<Record<Category, string>>>
+> = {
   aggro: {
     combo: "Aggro goldfishes before the combo deck assembles its kill.",
-    control: "Control stabilises and turns the corner once the early pressure fades.",
+    control:
+      "Control stabilises and turns the corner once the early pressure fades.",
     tribal: "Aggro's cheaper threats race the tribal lords off the start.",
   },
   control: {
@@ -218,13 +271,23 @@ const MATCHUP_NOTES: Partial<Record<Category, Partial<Record<Category, string>>>
 
 /** Empty-role helper used to seed the comparison of archetype-only entries. */
 function emptyRoleDistribution(): RoleDistribution {
-  return { threats: 0, ramp: 0, removal: 0, cardDraw: 0, disruption: 0, lands: 0, other: 0 };
+  return {
+    threats: 0,
+    ramp: 0,
+    removal: 0,
+    cardDraw: 0,
+    disruption: 0,
+    lands: 0,
+    other: 0,
+  };
 }
 
 /** Category for an archetype name, defaulting to midrange when unknown. */
 function categoryOf(archetypeName: string | undefined): Category {
   const cat = getArchetypeByName(archetypeName || "")?.category;
-  return (ALL_CATEGORIES.includes(cat as Category) ? cat : "midrange") as Category;
+  return (
+    ALL_CATEGORIES.includes(cat as Category) ? cat : "midrange"
+  ) as Category;
 }
 
 /** Normalize a category string to one of the 6 known values. */
@@ -302,7 +365,12 @@ function nameMultiset(deck: DeckCard[]): Map<string, number> {
 }
 
 /** Jaccard-style overlap (%) over the card-name multiset union. */
-function computeOverlap(a: ComparedDeck, aCards: DeckCard[], b: ComparedDeck, bCards: DeckCard[]): DeckOverlap {
+function computeOverlap(
+  a: ComparedDeck,
+  aCards: DeckCard[],
+  b: ComparedDeck,
+  bCards: DeckCard[],
+): DeckOverlap {
   const setA = nameMultiset(aCards);
   const setB = nameMultiset(bCards);
   let intersection = 0;
@@ -318,7 +386,8 @@ function computeOverlap(a: ComparedDeck, aCards: DeckCard[], b: ComparedDeck, bC
     if (ca > 0 && cb > 0) shared.push(key);
   }
 
-  const overlapPercent = union > 0 ? Math.round((intersection / union) * 1000) / 10 : 0;
+  const overlapPercent =
+    union > 0 ? Math.round((intersection / union) * 1000) / 10 : 0;
   return { a: a.name, b: b.name, overlapPercent, sharedCards: shared };
 }
 
@@ -347,7 +416,12 @@ function getCategoryMatchup(row: Category, col: Category): number {
 }
 
 /** One-line rationale for a category matchup. */
-function matchupRationale(row: Category, col: Category, rowName: string, colName: string): string {
+function matchupRationale(
+  row: Category,
+  col: Category,
+  rowName: string,
+  colName: string,
+): string {
   if (row === col) {
     return `Mirror of two ${row} builds — a coin-flip decided by play skill and sideboard tech.`;
   }
@@ -374,10 +448,13 @@ function computeMetaPosition(
   for (const opponentCategory of field) {
     const p = getCategoryMatchup(deck.category, opponentCategory);
     sum += p;
-    if (p > 0.52) strengths.push(`${opponentCategory} field (${Math.round(p * 100)}%)`);
-    else if (p < 0.48) weaknesses.push(`${opponentCategory} field (${Math.round(p * 100)}%)`);
+    if (p > 0.52)
+      strengths.push(`${opponentCategory} field (${Math.round(p * 100)}%)`);
+    else if (p < 0.48)
+      weaknesses.push(`${opponentCategory} field (${Math.round(p * 100)}%)`);
   }
-  const metaScore = field.length > 0 ? Math.round((sum / field.length) * 1000) / 1000 : 0;
+  const metaScore =
+    field.length > 0 ? Math.round((sum / field.length) * 1000) / 1000 : 0;
   return {
     name: deck.name,
     archetype: deck.archetype,
@@ -419,7 +496,8 @@ function conversionSwaps(
     else if (delta < 0) toRemove.push({ name, quantity: -delta });
   }
   // Highest-impact swaps first (largest quantity delta), capped at the 3 most impactful of each.
-  const byQty = (a: { quantity: number }, b: { quantity: number }) => b.quantity - a.quantity;
+  const byQty = (a: { quantity: number }, b: { quantity: number }) =>
+    b.quantity - a.quantity;
   toAdd.sort(byQty);
   toRemove.sort(byQty);
 
@@ -454,7 +532,9 @@ export function compareDecks(
   // Resolve every entry. Synergy clusters require the async worker and are left
   // empty here; `compareDecksAsync` enriches them.
   const decks = safeEntries.map((e) => resolveDeck(e, []));
-  const cardsByIdx = safeEntries.map((e) => (Array.isArray(e.cards) ? e.cards : []));
+  const cardsByIdx = safeEntries.map((e) =>
+    Array.isArray(e.cards) ? e.cards : [],
+  );
 
   if (decks.length < 2) {
     return {
@@ -466,7 +546,10 @@ export function compareDecks(
       roleDiffs: [],
       curveDiffs: [],
       metaPositioning: [],
-      recommendation: { bestDeck: "", reasoning: "Need two or more decks to recommend a build." },
+      recommendation: {
+        bestDeck: "",
+        reasoning: "Need two or more decks to recommend a build.",
+      },
     };
   }
 
@@ -482,7 +565,12 @@ export function compareDecks(
         rowArchetype: row.archetype,
         colArchetype: col.archetype,
         winProbability: getCategoryMatchup(row.category, col.category),
-        rationale: matchupRationale(row.category, col.category, row.name, col.name),
+        rationale: matchupRationale(
+          row.category,
+          col.category,
+          row.name,
+          col.name,
+        ),
       });
     }
   }
@@ -493,14 +581,19 @@ export function compareDecks(
   const curveDiffs: CurveDiff[] = [];
   for (let i = 0; i < decks.length; i++) {
     for (let j = i + 1; j < decks.length; j++) {
-      overlaps.push(computeOverlap(decks[i], cardsByIdx[i], decks[j], cardsByIdx[j]));
+      overlaps.push(
+        computeOverlap(decks[i], cardsByIdx[i], decks[j], cardsByIdx[j]),
+      );
       roleDiffs.push(computeRoleDiff(decks[i], decks[j]));
       curveDiffs.push(computeCurveDiff(decks[i], decks[j]));
     }
   }
 
   // Meta-positioning: average projected win-rate vs the field, ranked.
-  const field = options.metaField && options.metaField.length > 0 ? options.metaField : ALL_CATEGORIES;
+  const field =
+    options.metaField && options.metaField.length > 0
+      ? options.metaField
+      : ALL_CATEGORIES;
   const positions = decks.map((d) => computeMetaPosition(d, field, 0));
   // Rank by metaScore desc using standard competition ranking (ties share the
   // lower rank), stable on input order so identical inputs are deterministic.
@@ -525,8 +618,10 @@ export function compareDecks(
     `${best.name} (${best.archetype}) is the best-positioned build for the current meta`,
     `with an average projected win-rate of ${Math.round(best.metaScore * 100)}% across the field.`,
   ];
-  if (best.strengths.length > 0) reasoningParts.push(`Favoured vs ${best.strengths.join(", ")}.`);
-  if (best.weaknesses.length > 0) reasoningParts.push(`Watch out for ${best.weaknesses.join(", ")}.`);
+  if (best.strengths.length > 0)
+    reasoningParts.push(`Favoured vs ${best.strengths.join(", ")}.`);
+  if (best.weaknesses.length > 0)
+    reasoningParts.push(`Watch out for ${best.weaknesses.join(", ")}.`);
 
   // Pick the weakest OWNED deck (has cards) to convert toward the best build.
   let swapsTowardBest: ConversionSwap | undefined;

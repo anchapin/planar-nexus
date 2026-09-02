@@ -6,7 +6,7 @@
  * tests can drive real cross-module workflows without hitting Scryfall.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 export interface CardSpec {
   name: string;

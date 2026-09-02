@@ -13,7 +13,7 @@ import {
   generatePerMatchupSideboardPlans,
   type MatchupSideboardPlan,
 } from "../sideboard-plan";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 function card(
   name: string,
@@ -62,10 +62,7 @@ function names(plan: MatchupSideboardPlan, which: "in" | "out"): string[] {
   return list.map((c) => c.cardName);
 }
 
-function total(
-  plan: MatchupSideboardPlan,
-  which: "in" | "out",
-): number {
+function total(plan: MatchupSideboardPlan, which: "in" | "out"): number {
   const list = which === "in" ? plan.boardIn : plan.boardOut;
   return list.reduce((s, c) => s + c.count, 0);
 }
@@ -126,11 +123,11 @@ describe("generatePerMatchupSideboardPlans", () => {
   });
 
   it("returns empty board-in/out for every matchup when the sideboard is empty", () => {
-    const result = generatePerMatchupSideboardPlans(buildMainDeck(), [], [
-      "Burn",
-      "Storm",
-      "Draw-Go",
-    ]);
+    const result = generatePerMatchupSideboardPlans(
+      buildMainDeck(),
+      [],
+      ["Burn", "Storm", "Draw-Go"],
+    );
 
     expect(result.matchupPlans.length).toBeGreaterThan(0);
     for (const plan of result.matchupPlans) {
@@ -177,11 +174,9 @@ describe("generatePerMatchupSideboardPlans", () => {
     expect(() =>
       generatePerMatchupSideboardPlans([], buildSideboard(), ["Burn"]),
     ).not.toThrow();
-    const result = generatePerMatchupSideboardPlans(
-      [],
-      buildSideboard(),
-      ["Burn"],
-    );
+    const result = generatePerMatchupSideboardPlans([], buildSideboard(), [
+      "Burn",
+    ]);
     expect(result.matchupPlans).toHaveLength(1);
     expect(result.matchupPlans[0].boardOut).toEqual([]);
   });

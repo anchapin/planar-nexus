@@ -12,7 +12,7 @@
  *   - detectSynergies / detectMissingSynergies (src/ai/synergy-detector.ts)
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { detectArchetype } from "@/ai/archetype-detector";
 import {
   calculateDeckStats,
@@ -384,7 +384,9 @@ function buildKeyCards(
  * a fake eighth slot.
  */
 function bucketLabel(cmc: number): string {
-  return cmc >= MANA_CURVE_BUCKETS - 1 ? `${MANA_CURVE_BUCKETS - 1}+` : `${cmc}`;
+  return cmc >= MANA_CURVE_BUCKETS - 1
+    ? `${MANA_CURVE_BUCKETS - 1}+`
+    : `${cmc}`;
 }
 
 /**
@@ -668,9 +670,8 @@ export function buildCurveRecommendation(
     summary = `Curve matches the ${archetypeName} target (${recommendedLands} lands).`;
   } else {
     const issueCount =
-      bucketStatus.filter(
-        (b) => b.status === "over" || b.status === "under",
-      ).length + (Math.abs(landDelta) > LAND_TOLERANCE ? 1 : 0);
+      bucketStatus.filter((b) => b.status === "over" || b.status === "under")
+        .length + (Math.abs(landDelta) > LAND_TOLERANCE ? 1 : 0);
     summary = `${issueCount} curve adjustment${issueCount === 1 ? "" : "s"} suggested for ${archetypeName} (target ${recommendedLands} lands).`;
   }
 

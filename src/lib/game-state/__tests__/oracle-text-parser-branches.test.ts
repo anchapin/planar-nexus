@@ -37,7 +37,7 @@ import {
   hasFuse,
   AlternativeCostType,
 } from "../oracle-text-parser";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
   return {
@@ -68,9 +68,7 @@ describe("parseManaCost — symbol branches", () => {
   });
 
   it("parses green mana symbol {G}", () => {
-    expect(parseManaCost("{G}")).toEqual(
-      expect.objectContaining({ green: 1 }),
-    );
+    expect(parseManaCost("{G}")).toEqual(expect.objectContaining({ green: 1 }));
   });
 
   it("parses snow mana symbol {S}", () => {
@@ -78,7 +76,9 @@ describe("parseManaCost — symbol branches", () => {
   });
 
   it("parses phyrexian {P} as generic 1", () => {
-    expect(parseManaCost("{P}")).toEqual(expect.objectContaining({ generic: 1 }));
+    expect(parseManaCost("{P}")).toEqual(
+      expect.objectContaining({ generic: 1 }),
+    );
   });
 
   it("parses hybrid symbols adding 0.5 to each color", () => {
@@ -93,7 +93,9 @@ describe("parseManaCost — symbol branches", () => {
   });
 
   it("parses monocolored hybrid {2/W} as generic 2", () => {
-    expect(parseManaCost("{2/W}")).toEqual(expect.objectContaining({ generic: 2 }));
+    expect(parseManaCost("{2/W}")).toEqual(
+      expect.objectContaining({ generic: 2 }),
+    );
   });
 
   it("parses a complex mixed cost {X}{R}{R}{2/G}{C}", () => {
@@ -126,8 +128,7 @@ describe("parseManaCost — symbol branches", () => {
 // parseActivatedAbilities + parseEffect — every effect type branch
 // ---------------------------------------------------------------------------
 describe("parseActivatedAbilities — effect type branches", () => {
-  const ability = (text: string) =>
-    parseActivatedAbilities(text, TYPE)[0];
+  const ability = (text: string) => parseActivatedAbilities(text, TYPE)[0];
 
   it("classifies 'deals N damage' as damage (regression for issue #1098)", () => {
     const a = ability("{2}{R}: ~ deals 3 damage to any target.");
@@ -192,9 +193,9 @@ describe("parseActivatedAbilities — effect type branches", () => {
   });
 
   it("classifies 'return ... to hand' effects", () => {
-    expect(
-      ability("{U}: Return target creature to hand.")!.effectType,
-    ).toBe("return");
+    expect(ability("{U}: Return target creature to hand.")!.effectType).toBe(
+      "return",
+    );
   });
 
   it("classifies library search effects", () => {
@@ -204,9 +205,9 @@ describe("parseActivatedAbilities — effect type branches", () => {
   });
 
   it("classifies 'put ... into play' effects", () => {
-    expect(
-      ability("{3}{G}: Put a creature card into play.")!.effectType,
-    ).toBe("putIntoPlay");
+    expect(ability("{3}{G}: Put a creature card into play.")!.effectType).toBe(
+      "putIntoPlay",
+    );
   });
 
   it("classifies 'gain control' effects", () => {
@@ -299,7 +300,9 @@ describe("parseTriggeredAbilities — trigger event branches", () => {
   });
 
   it("maps 'you cast a spell' to spellCast", () => {
-    expect(trigger("Whenever you cast a spell, draw a card.")).toBe("spellCast");
+    expect(trigger("Whenever you cast a spell, draw a card.")).toBe(
+      "spellCast",
+    );
   });
 
   it("maps 'a spell is cast' to spellCast", () => {
@@ -353,9 +356,9 @@ describe("parseTriggeredAbilities — trigger event branches", () => {
   });
 
   it("maps 'counter is placed' to counterAdded", () => {
-    expect(
-      trigger("Whenever a counter is placed on ~, draw a card."),
-    ).toBe("counterAdded");
+    expect(trigger("Whenever a counter is placed on ~, draw a card.")).toBe(
+      "counterAdded",
+    );
   });
 
   it("maps life gain triggers to lifeGain", () => {
@@ -369,9 +372,9 @@ describe("parseTriggeredAbilities — trigger event branches", () => {
   });
 
   it("maps 'ability is activated' to abilityActivated", () => {
-    expect(
-      trigger("Whenever an ability is activated, draw a card."),
-    ).toBe("abilityActivated");
+    expect(trigger("Whenever an ability is activated, draw a card.")).toBe(
+      "abilityActivated",
+    );
   });
 
   it("maps 'put into a graveyard' to dies", () => {
@@ -402,9 +405,7 @@ describe("parseStaticAbilities — pattern branches", () => {
       "Creatures your opponents control get -1/-1.",
       TYPE,
     );
-    expect(
-      abilities.some((a) => a.ability === "staticEffect"),
-    ).toBe(true);
+    expect(abilities.some((a) => a.ability === "staticEffect")).toBe(true);
   });
 
   it("detects 'have' keyword grants", () => {
@@ -527,7 +528,10 @@ describe("canGoOnStack — type line branches", () => {
   it("returns false for permanents without activated abilities", () => {
     expect(
       canGoOnStack(
-        createMockCard({ type_line: "Creature — Human", oracle_text: "Flying" }),
+        createMockCard({
+          type_line: "Creature — Human",
+          oracle_text: "Flying",
+        }),
       ),
     ).toBe(false);
   });

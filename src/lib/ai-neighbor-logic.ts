@@ -31,7 +31,7 @@ import type {
   CurveShift,
 } from "./limited/types";
 import { ARCHETYPE_SIGNAL_BUFFER_SIZE } from "./limited/types";
-import type { ScryfallCard, DeckCard } from "@/app/actions";
+import type { ScryfallCard, DeckCard } from "@/lib/card-database";
 import { classifyArchetypeAxis } from "@/ai/archetype-detector";
 import { detectSynergies } from "@/ai/synergy-detector";
 import {

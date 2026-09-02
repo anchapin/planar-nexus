@@ -14,7 +14,7 @@ import {
   describeLegality,
   checkCardLegality,
 } from "../use-format-legality-check";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * Build a minimal DeckCard with only the fields the legality logic reads.
@@ -146,9 +146,7 @@ describe("useFormatLegalityCheck", () => {
       makeCard("1", "Lightning Bolt", { modern: "legal" }, 4),
       makeCard("2", "Mountain", { modern: "legal" }, 20),
     ];
-    const { result } = renderHook(() =>
-      useFormatLegalityCheck(deck, "modern"),
-    );
+    const { result } = renderHook(() => useFormatLegalityCheck(deck, "modern"));
     expect(result.current.legalCardCount).toBe(24);
     expect(result.current.illegalCardCount).toBe(0);
     expect(result.current.isDeckLegal).toBe(true);
@@ -212,9 +210,7 @@ describe("useFormatLegalityCheck", () => {
       makeCard("2", "Legal B", { modern: "legal" }, 2),
       makeCard("3", "Banned C", { modern: "banned" }, 1),
     ];
-    const { result } = renderHook(() =>
-      useFormatLegalityCheck(deck, "modern"),
-    );
+    const { result } = renderHook(() => useFormatLegalityCheck(deck, "modern"));
     // 5 legal, 1 illegal — matches the 'X legal, Y illegal' summary copy.
     expect(result.current.legalCardCount).toBe(5);
     expect(result.current.illegalCardCount).toBe(1);

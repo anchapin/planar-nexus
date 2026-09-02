@@ -19,7 +19,7 @@ import {
   checkCardLegality,
   type CardLegalityResult,
 } from "@/hooks/use-format-legality-check";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { Format } from "@/lib/game-rules";
 import type { SynergyResult } from "./synergy-context";
 

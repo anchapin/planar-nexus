@@ -23,7 +23,7 @@ import type {
 } from "./worker-types";
 import type { TriggerChain } from "../trigger-chain-evaluator";
 import type { SynergyResult } from "../synergy-detector";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * AI Web Worker Implementation

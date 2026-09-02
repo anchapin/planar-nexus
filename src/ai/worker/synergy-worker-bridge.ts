@@ -31,7 +31,7 @@
 
 import { detectSynergies as detectSynergiesOnMain } from "../synergy-detector";
 import type { SynergyResult } from "../synergy-detector";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * Minimal shape of the AI worker client surface this bridge needs.

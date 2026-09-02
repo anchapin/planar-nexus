@@ -27,14 +27,21 @@
  * checks at the bottom of the file lock the wiring in place.
  */
 
-import { describe, it, expect, jest, beforeEach, afterEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  jest,
+  beforeEach,
+  afterEach,
+} from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/jest-globals";
 import React, { useCallback, useRef } from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import { VirtualizedCardGrid } from "@/components/shared/virtualized-card-grid";
 import type { VirtualizedCardGridHandle } from "@/components/shared/virtualized-card-grid";
 
@@ -45,15 +52,15 @@ jest.mock("@/components/card-art", () => ({
   ),
 }));
 
-jest.mock(
-  "@/app/(app)/deck-builder/_components/legality-badge",
-  () => ({
-    __esModule: true,
-    LegalityBadge: (props: { status: string; className?: string }) => (
-      <span data-testid={`legality-stub-${props.status}`} className={props.className} />
-    ),
-  }),
-);
+jest.mock("@/app/(app)/deck-builder/_components/legality-badge", () => ({
+  __esModule: true,
+  LegalityBadge: (props: { status: string; className?: string }) => (
+    <span
+      data-testid={`legality-stub-${props.status}`}
+      className={props.className}
+    />
+  ),
+}));
 
 import { CardResultTile } from "@/app/(app)/deck-builder/_components/card-result-tile";
 
@@ -271,21 +278,15 @@ describe("CardSearch — VirtualizedCardGrid wiring (issue #1246)", () => {
     // Initially, card 0 is in the visible window.
     expect(container.querySelector('[data-card-index="0"]')).toBeTruthy();
     // A card deep in the list is not.
-    expect(
-      container.querySelector('[data-card-index="4999"]'),
-    ).toBeNull();
+    expect(container.querySelector('[data-card-index="4999"]')).toBeNull();
 
     // Scroll the virtualizer near the bottom and verify reachability.
     fireEvent.scroll(scroller!, { target: { scrollTop: 1_000_000 } });
 
     // After scrolling, the late card is now reachable (in the visible
     // window) and the early card is no longer mounted.
-    expect(
-      container.querySelector('[data-card-index="0"]'),
-    ).toBeNull();
-    expect(
-      container.querySelector('[data-card-index="4999"]'),
-    ).toBeTruthy();
+    expect(container.querySelector('[data-card-index="0"]')).toBeNull();
+    expect(container.querySelector('[data-card-index="4999"]')).toBeTruthy();
   });
 
   it("exposes scrollToIndex on the imperative handle (replaces the prior rowVirtualizer.scrollToIndex useEffect)", () => {
@@ -348,9 +349,7 @@ describe("CardSearch — VirtualizedCardGrid wiring (issue #1246)", () => {
     // The handle resolved to a function — the `expect(() => …).not.toThrow()`
     // inside the click handler is the actual assertion. Sanity-check that
     // the grid still mounted the first card in the visible window.
-    expect(
-      container.querySelector('[data-card-index="0"]'),
-    ).toBeTruthy();
+    expect(container.querySelector('[data-card-index="0"]')).toBeTruthy();
   });
 
   it("preserves the click-to-add interaction through the virtualizer", () => {
@@ -426,7 +425,9 @@ describe("CardSearch source wiring — VirtualizedCardGrid adoption (issue #1246
     expect(source).toMatch(/<CardResultTile\b/);
 
     // The dead local @tanstack/react-virtual usage is gone.
-    expect(source).not.toMatch(/import\s*\{[^}]*useVirtualizer[^}]*\}\s*from\s*["']@tanstack\/react-virtual["']/);
+    expect(source).not.toMatch(
+      /import\s*\{[^}]*useVirtualizer[^}]*\}\s*from\s*["']@tanstack\/react-virtual["']/,
+    );
     expect(source).not.toMatch(/rowVirtualizer/);
 
     // The column-count window-resize effect that the grid now owns is gone.
@@ -441,6 +442,8 @@ describe("CardSearch source wiring — VirtualizedCardGrid adoption (issue #1246
     );
     expect(source).toMatch(/<VirtualizedCardGrid[\s\S]*?items=\{results\}/);
     expect(source).toMatch(/<VirtualizedCardGrid[\s\S]*?itemHeight=\{280\}/);
-    expect(source).toMatch(/<VirtualizedCardGrid[\s\S]*?renderItem=\{renderResult\}/);
+    expect(source).toMatch(
+      /<VirtualizedCardGrid[\s\S]*?renderItem=\{renderResult\}/,
+    );
   });
 });

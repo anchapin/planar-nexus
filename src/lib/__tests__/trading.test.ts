@@ -24,7 +24,7 @@ import {
   afterEach,
   jest,
 } from "@jest/globals";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import {
   tradeManager,
   calculateTradeFairness,

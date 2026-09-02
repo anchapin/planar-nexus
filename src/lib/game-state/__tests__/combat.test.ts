@@ -31,7 +31,7 @@ import { Phase, CardInstanceId } from "../types";
 import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
 import { checkStateBasedActions } from "../state-based-actions";
 import { shouldHaveFirstStrikeStep } from "../turn-phases";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // Helper function to create a mock creature card
 function createMockCreature(
@@ -1218,7 +1218,12 @@ describe("Combat System - Damage Resolution", () => {
       const { state, aliceId, bobId } = setupGameWithCreatures(
         [{ name: "Trampler", power: 4, toughness: 4, keywords: ["Trample"] }],
         [
-          { name: "Deathtouch Wall", power: 0, toughness: 5, keywords: ["Deathtouch"] },
+          {
+            name: "Deathtouch Wall",
+            power: 0,
+            toughness: 5,
+            keywords: ["Deathtouch"],
+          },
         ],
       );
 
@@ -2480,16 +2485,12 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       const { firstStrike, regular } = runBothDamageSteps(blockResult.state);
 
       // Blocker died in the first-strike step.
-      const bobGraveyard = firstStrike.state.zones.get(
-        `${bobId}-graveyard`,
-      )!;
+      const bobGraveyard = firstStrike.state.zones.get(`${bobId}-graveyard`)!;
       expect(bobGraveyard.cardIds).toContain(blockerId);
 
       // Attacker survived the whole combat — the regular blocker never dealt
       // its 2 damage because it was already dead before the regular step.
-      const aliceBfAfter = regular.state.zones.get(
-        `${aliceId}-battlefield`,
-      )!;
+      const aliceBfAfter = regular.state.zones.get(`${aliceId}-battlefield`)!;
       expect(aliceBfAfter.cardIds).toContain(attackerId);
       const attackerAfter = regular.state.cards.get(attackerId)!;
       expect(attackerAfter.damage).toBe(0);
@@ -2670,9 +2671,7 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       const aliceBfAfterFs = firstStrike.state.zones.get(
         `${aliceId}-battlefield`,
       )!;
-      const bobBfAfterFs = firstStrike.state.zones.get(
-        `${bobId}-battlefield`,
-      )!;
+      const bobBfAfterFs = firstStrike.state.zones.get(`${bobId}-battlefield`)!;
       expect(aliceBfAfterFs.cardIds).toContain(attackerId);
       expect(bobBfAfterFs.cardIds).toContain(blockerId);
       expect(firstStrike.state.cards.get(attackerId)!.damage).toBe(0);
@@ -2783,7 +2782,14 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     // Blocker effective toughness drops to 2, so it survives with counters and
     // NO damage marked on it.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "Infect Attacker", power: 3, toughness: 3, keywords: ["Infect"] }],
+      [
+        {
+          name: "Infect Attacker",
+          power: 3,
+          toughness: 3,
+          keywords: ["Infect"],
+        },
+      ],
       [{ name: "Blocker", power: 0, toughness: 5 }],
     );
 
@@ -2817,7 +2823,14 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     // 2/2 infect attacker vs 0/2 blocker: 2 infect damage → 2 -1/-1 counters.
     // Effective toughness 2 - 2 = 0, so SBA destroys it.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "Infect Attacker", power: 2, toughness: 2, keywords: ["Infect"] }],
+      [
+        {
+          name: "Infect Attacker",
+          power: 2,
+          toughness: 2,
+          keywords: ["Infect"],
+        },
+      ],
       [{ name: "Blocker", power: 0, toughness: 2 }],
     );
 
@@ -2844,7 +2857,14 @@ describe("Combat System - Infect and Toxic (#972)", () => {
   it("infect attacker unblocked deals poison counters to player (no life loss) (CR 702.93c)", () => {
     // 3/3 infect attacker unblocked → 3 poison counters, life unchanged.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "Infect Attacker", power: 3, toughness: 3, keywords: ["Infect"] }],
+      [
+        {
+          name: "Infect Attacker",
+          power: 3,
+          toughness: 3,
+          keywords: ["Infect"],
+        },
+      ],
       [],
     );
 
@@ -2866,7 +2886,14 @@ describe("Combat System - Infect and Toxic (#972)", () => {
   it("toxic attacker unblocked deals normal damage plus toxic poison (CR 702.94)", () => {
     // 2/2 toxic 1 attacker unblocked → 2 life loss AND 1 poison counter.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "Toxic Attacker", power: 2, toughness: 2, keywords: ["Toxic 1"] }],
+      [
+        {
+          name: "Toxic Attacker",
+          power: 2,
+          toughness: 2,
+          keywords: ["Toxic 1"],
+        },
+      ],
       [],
     );
 
@@ -3017,7 +3044,14 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     // deals 2 infect damage to the attacker → 2 -1/-1 counters on attacker.
     const { state, aliceId, bobId } = setupGameWithCreatures(
       [{ name: "Attacker", power: 0, toughness: 3 }],
-      [{ name: "Infect Blocker", power: 2, toughness: 2, keywords: ["Infect"] }],
+      [
+        {
+          name: "Infect Blocker",
+          power: 2,
+          toughness: 2,
+          keywords: ["Infect"],
+        },
+      ],
     );
 
     const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];

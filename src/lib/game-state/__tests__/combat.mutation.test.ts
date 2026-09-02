@@ -38,7 +38,7 @@ import {
   initializePlaneswalkerLoyalty,
 } from "../card-instance";
 import { Phase, type CardInstanceId, type GameState } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers

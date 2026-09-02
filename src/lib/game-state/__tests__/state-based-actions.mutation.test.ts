@@ -18,22 +18,16 @@
  *    mutation on a second pass (idempotency).
  */
 
-import {
-  checkStateBasedActions,
-  canDraw,
-} from "../state-based-actions";
+import { checkStateBasedActions, canDraw } from "../state-based-actions";
 import {
   findLegendaryViolations,
   LEGENDARY_CHOICE_TYPE,
 } from "../legendary-rule";
-import {
-  createInitialGameState,
-  startGame,
-} from "../game-state";
+import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
 import type { GameState, PlayerId, CardInstanceId } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function mockCreature(
   name: string,
@@ -121,9 +115,9 @@ describe("SBA mutation edge cases (#1395)", () => {
 
       expect(result.actionsPerformed).toBe(true);
       expect(onBf(result.state, ids[0])).not.toContain(id);
-      expect(
-        result.state.zones.get(`${ids[0]}-graveyard`)!.cardIds,
-      ).toContain(id);
+      expect(result.state.zones.get(`${ids[0]}-graveyard`)!.cardIds).toContain(
+        id,
+      );
     });
 
     it("keeps a creature whose -1/-1 counters leave toughness positive", () => {
@@ -181,7 +175,11 @@ describe("SBA mutation edge cases (#1395)", () => {
   describe("indestructible with lethal damage (SBA 704.5f)", () => {
     it("does not destroy an indestructible creature with lethal damage", () => {
       const { state, ids } = makeGame(1);
-      const id = placeOnBf(state, mockCreature("God", 4, 4, ["Indestructible"]), ids[0]);
+      const id = placeOnBf(
+        state,
+        mockCreature("God", 4, 4, ["Indestructible"]),
+        ids[0],
+      );
       const damaged = dealDamageToCard(state, id, 4, true).state;
 
       const result = checkStateBasedActions(damaged);

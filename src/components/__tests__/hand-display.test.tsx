@@ -29,7 +29,7 @@ import "@testing-library/jest-dom/jest-globals";
 
 import { HandDisplay } from "@/components/hand-display";
 import type { CardState } from "@/types/game";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function makeScryfallCard(
   name: string,

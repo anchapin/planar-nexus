@@ -60,7 +60,7 @@ import {
   getPhaseShortName,
 } from "@/lib/game-state/turn-phases";
 import { ZoneType } from "@/lib/game-state/types";
-import { ScryfallCard } from "@/app/actions";
+import { ScryfallCard } from "@/lib/card-database";
 
 /**
  * Example 1: Create a new game

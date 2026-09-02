@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useState, useMemo, memo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useState, useMemo, memo } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   BarChart3,
   PieChart,
@@ -16,16 +16,16 @@ import {
   ShieldCheck,
   ShieldAlert,
   Ban,
-} from 'lucide-react';
-import type { DeckCard } from '@/app/actions';
-import type { Format } from '@/lib/game-rules';
+} from "lucide-react";
+import type { DeckCard } from "@/lib/card-database";
+import type { Format } from "@/lib/game-rules";
 import {
   useDeckStatistics,
   getDeckSignature,
   getColorDistributionData,
   getTypeDistributionData,
-} from '@/hooks/use-deck-statistics';
-import type { DeckLegalitySummary } from '@/hooks/use-format-legality-check';
+} from "@/hooks/use-deck-statistics";
+import type { DeckLegalitySummary } from "@/hooks/use-format-legality-check";
 import {
   ManaCurveChart,
   CardTypeChart,
@@ -33,14 +33,14 @@ import {
   type CardTypeChartDatum,
   type DeckColorChartDatum,
   type ManaCurveChartDatum,
-} from '@/components/deck-statistics';
+} from "@/components/deck-statistics";
 import {
   compareToOptimal,
   normalizeDeckFormat,
   getManaCurveTips,
   OPTIMAL_MANA_CURVES,
   type DeckFormat,
-} from '@/lib/deck-analyzer';
+} from "@/lib/deck-analyzer";
 
 interface DeckStatsPanelProps {
   deck: DeckCard[];
@@ -66,13 +66,15 @@ interface DeckStatsPanelProps {
  */
 export const DeckStatsPanel = memo(function DeckStatsPanel({
   deck,
-  format = 'commander',
+  format = "commander",
   formatLabel,
   legalitySummary,
   className,
 }: DeckStatsPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
-  const [activeChart, setActiveChart] = useState<'mana' | 'type' | 'color'>('mana');
+  const [activeChart, setActiveChart] = useState<"mana" | "type" | "color">(
+    "mana",
+  );
 
   // Content-signature for the deck. Used as the dependency for chart `data`
   // memoization below — the parent's wrapper `React.memo` (see
@@ -119,15 +121,25 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
         const gap = gapByCmc.get(cmcNum);
         const target = optimalTargets[cmcNum];
         return {
-          cmc: cmcNum >= 7 ? '7+' : cmc,
+          cmc: cmcNum >= 7 ? "7+" : cmc,
           cmcNum,
           count,
           target,
           gap,
-          fill: gap ? (gap.difference > 0 ? '#f59e0b' : '#ef4444') : 'hsl(var(--primary))',
+          fill: gap
+            ? gap.difference > 0
+              ? "#f59e0b"
+              : "#ef4444"
+            : "hsl(var(--primary))",
         };
       });
-  }, [deckSignature, deckFormat, comparison.gaps, optimalTargets, stats.manaCurve]);
+  }, [
+    deckSignature,
+    deckFormat,
+    comparison.gaps,
+    optimalTargets,
+    stats.manaCurve,
+  ]);
 
   const typeChartData = useMemo<CardTypeChartDatum[]>(
     () => Array.from(getTypeDistributionData(stats.typeDistribution)),
@@ -146,7 +158,8 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
 
   const hasGaps = comparison.gaps.length > 0 || comparison.landGap !== null;
   const hasLegalityData = Boolean(format && legalitySummary);
-  const hasIllegalCards = hasLegalityData && (legalitySummary?.illegalCardCount ?? 0) > 0;
+  const hasIllegalCards =
+    hasLegalityData && (legalitySummary?.illegalCardCount ?? 0) > 0;
 
   return (
     <Card className={className}>
@@ -160,7 +173,9 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
             variant="ghost"
             size="sm"
             onClick={() => setIsExpanded(!isExpanded)}
-            aria-label={isExpanded ? 'Collapse deck statistics' : 'Expand deck statistics'}
+            aria-label={
+              isExpanded ? "Collapse deck statistics" : "Expand deck statistics"
+            }
             aria-expanded={isExpanded}
             aria-controls="deck-statistics-content"
             className="h-8 w-8 p-0"
@@ -199,12 +214,13 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
                 <span
                   className={
                     hasIllegalCards
-                      ? 'text-yellow-600 dark:text-yellow-500'
-                      : 'text-green-600 dark:text-green-500'
+                      ? "text-yellow-600 dark:text-yellow-500"
+                      : "text-green-600 dark:text-green-500"
                   }
                   data-testid="legality-summary-text"
                 >
-                  {legalitySummary.legalCardCount} legal, {legalitySummary.illegalCardCount} illegal
+                  {legalitySummary.legalCardCount} legal,{" "}
+                  {legalitySummary.illegalCardCount} illegal
                 </span>
               </div>
 
@@ -215,24 +231,24 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
                   <AlertDescription className="text-sm space-y-1">
                     {legalitySummary.bannedCardNames.length > 0 && (
                       <div data-testid="legality-banned-list">
-                        <strong>Banned:</strong>{' '}
-                        {legalitySummary.bannedCardNames.slice(0, 5).join(', ')}
+                        <strong>Banned:</strong>{" "}
+                        {legalitySummary.bannedCardNames.slice(0, 5).join(", ")}
                         {legalitySummary.bannedCardNames.length > 5
                           ? ` (+${legalitySummary.bannedCardNames.length - 5} more)`
-                          : ''}
+                          : ""}
                       </div>
                     )}
                     {legalitySummary.illegalCardNames.length >
                       legalitySummary.bannedCardNames.length && (
                       <div data-testid="legality-notlegal-list">
-                        <strong>Not legal:</strong>{' '}
+                        <strong>Not legal:</strong>{" "}
                         {legalitySummary.illegalCardNames
                           .filter(
                             (name) =>
                               !legalitySummary.bannedCardNames.includes(name),
                           )
                           .slice(0, 5)
-                          .join(', ')}
+                          .join(", ")}
                       </div>
                     )}
                   </AlertDescription>
@@ -243,7 +259,9 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
           {/* Chart type selector */}
           <Tabs
             value={activeChart}
-            onValueChange={(v) => setActiveChart(v as 'mana' | 'type' | 'color')}
+            onValueChange={(v) =>
+              setActiveChart(v as "mana" | "type" | "color")
+            }
             className="w-full"
           >
             <TabsList className="w-full grid grid-cols-3">
@@ -280,12 +298,14 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
           </Tabs>
 
           {/* Mana curve optimization suggestions & format-specific guidance */}
-          {activeChart === 'mana' && (
+          {activeChart === "mana" && (
             <div className="rounded-md border bg-muted/30 p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <Lightbulb className="w-4 h-4 text-yellow-500" />
                 Mana Curve Optimization
-                <span className="ml-auto text-xs text-muted-foreground capitalize">{deckFormat}</span>
+                <span className="ml-auto text-xs text-muted-foreground capitalize">
+                  {deckFormat}
+                </span>
               </div>
 
               {hasGaps ? (
@@ -295,40 +315,44 @@ export const DeckStatsPanel = memo(function DeckStatsPanel({
                       key={gap.cmc}
                       className={
                         gap.difference > 0
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-red-600 dark:text-red-400'
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-red-600 dark:text-red-400"
                       }
                     >
-                      • {gap.difference > 0 ? 'Add' : 'Cut'}{' '}
+                      • {gap.difference > 0 ? "Add" : "Cut"}{" "}
                       {Math.abs(gap.difference) <= 1
                         ? Math.abs(gap.difference)
-                        : `${Math.max(1, Math.abs(gap.difference) - 1)}-${Math.abs(gap.difference)}`}{' '}
-                      {gap.difference > 0 ? 'more' : 'fewer'} {gap.label}s (have {gap.current}, target ~{gap.target})
+                        : `${Math.max(1, Math.abs(gap.difference) - 1)}-${Math.abs(gap.difference)}`}{" "}
+                      {gap.difference > 0 ? "more" : "fewer"} {gap.label}s (have{" "}
+                      {gap.current}, target ~{gap.target})
                     </li>
                   ))}
                   {comparison.landGap && (
                     <li
                       className={
                         comparison.landGap.difference > 0
-                          ? 'text-amber-600 dark:text-amber-400'
-                          : 'text-red-600 dark:text-red-400'
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-red-600 dark:text-red-400"
                       }
                     >
-                      • {comparison.landGap.difference > 0 ? 'Add' : 'Cut'}{' '}
-                      {Math.abs(comparison.landGap.difference)} lands (have{' '}
-                      {comparison.landGap.current}, target ~{comparison.landGap.target})
+                      • {comparison.landGap.difference > 0 ? "Add" : "Cut"}{" "}
+                      {Math.abs(comparison.landGap.difference)} lands (have{" "}
+                      {comparison.landGap.current}, target ~
+                      {comparison.landGap.target})
                     </li>
                   )}
                 </ul>
               ) : (
                 <p className="text-xs text-green-600 dark:text-green-400">
-                  Your mana curve matches the optimal {deckFormat} profile. Nice work!
+                  Your mana curve matches the optimal {deckFormat} profile. Nice
+                  work!
                 </p>
               )}
 
               <div className="border-t pt-2">
                 <div className="text-xs font-medium text-muted-foreground mb-1">
-                  {deckFormat.charAt(0).toUpperCase() + deckFormat.slice(1)} curve tips
+                  {deckFormat.charAt(0).toUpperCase() + deckFormat.slice(1)}{" "}
+                  curve tips
                 </div>
                 <ul className="space-y-0.5 text-xs text-muted-foreground list-disc list-inside">
                   {tips.map((tip) => (

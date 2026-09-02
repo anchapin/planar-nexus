@@ -5,7 +5,7 @@
  * to eliminate code duplication and ensure consistent behavior.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { type Format } from "@/lib/game-rules";
 
 /**
@@ -25,11 +25,7 @@ import { type Format } from "@/lib/game-rules";
  * registering a {@link DeckSiteInfo} entry in {@link DECK_SITES}.
  */
 export type DecklistFormat =
-  | "standard"
-  | "mtgo"
-  | "json"
-  | "moxfield"
-  | "archidekt";
+  "standard" | "mtgo" | "json" | "moxfield" | "archidekt";
 
 /**
  * Formats that are parsed directly from decklist text content.
@@ -102,9 +98,7 @@ export const DECK_SITES: readonly DeckSiteInfo[] = [
     exampleUrl: "https://www.moxfield.com/decks/AbCdEfGhIjKl",
     extractId: (url: string): string | null => {
       // Handles /decks/{id}, /deck/{id}, and /deck/anonymous/{id}
-      const match = url.match(
-        /\/decks?\/(?:anonymous\/)?([A-Za-z0-9_-]+)/i,
-      );
+      const match = url.match(/\/decks?\/(?:anonymous\/)?([A-Za-z0-9_-]+)/i);
       return match ? match[1] : null;
     },
   },
@@ -163,10 +157,7 @@ export function getUnsupportedSiteSuggestion(url: string): string {
  * when resolving parsed names against the card database.
  */
 export type ImportErrorCode =
-  | "MALFORMED_LINE"
-  | "INVALID_QUANTITY"
-  | "UNKNOWN_CARD"
-  | "ILLEGAL_CARD";
+  "MALFORMED_LINE" | "INVALID_QUANTITY" | "UNKNOWN_CARD" | "ILLEGAL_CARD";
 
 /**
  * Human-readable descriptions for each error code.
@@ -438,7 +429,12 @@ export function parseDecklistLineWithErrors(line: string): LineParseOutcome {
   if (!trimmedLine) return { status: "skipped" };
 
   const match = trimmedLine.match(/^(?:(\d+)\s*x?\s*)?(.+)/);
-  if (!match) return { status: "error", code: "MALFORMED_LINE", reason: "Unrecognized line format" };
+  if (!match)
+    return {
+      status: "error",
+      code: "MALFORMED_LINE",
+      reason: "Unrecognized line format",
+    };
 
   const skipHeaders = [
     "sideboard",
@@ -478,7 +474,11 @@ export function parseDecklistLineWithErrors(line: string): LineParseOutcome {
   name = name.replace(/\s*[([][A-Z0-9]{3,4}[)\]]\s*$/i, "").trim();
 
   if (!name) {
-    return { status: "error", code: "MALFORMED_LINE", reason: "Line reduced to empty after stripping set codes" };
+    return {
+      status: "error",
+      code: "MALFORMED_LINE",
+      reason: "Line reduced to empty after stripping set codes",
+    };
   }
 
   // Normalize DFC separators: some exports use "/" instead of " // "
@@ -806,7 +806,8 @@ export function findClosestNameMatch(
     const distance = levenshteinDistance(name, candidate);
     if (
       distance < bestDistance ||
-      (distance === bestDistance && candidate.length < (bestName?.length ?? Infinity))
+      (distance === bestDistance &&
+        candidate.length < (bestName?.length ?? Infinity))
     ) {
       bestDistance = distance;
       bestName = candidate;

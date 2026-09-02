@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useMemo, useState, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { DeckCard } from "@/app/actions";
+import { DeckCard } from "@/lib/card-database";
 import {
   Card,
   CardContent,

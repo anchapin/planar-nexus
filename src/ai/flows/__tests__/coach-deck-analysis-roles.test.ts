@@ -11,15 +11,9 @@
  * LLM-rewiring work will touch.
  */
 
-import type { DeckCard } from "@/app/actions";
-import type {
-  ArchetypeResult,
-  DeckStats,
-} from "@/ai/archetype-signatures";
-import type {
-  SynergyResult,
-  MissingSynergy,
-} from "@/ai/synergy-detector";
+import type { DeckCard } from "@/lib/card-database";
+import type { ArchetypeResult, DeckStats } from "@/ai/archetype-signatures";
+import type { SynergyResult, MissingSynergy } from "@/ai/synergy-detector";
 import {
   assembleStructuredAnalysis,
   formatStructuredAnalysisForLLM,
@@ -92,17 +86,23 @@ describe("assembleStructuredAnalysis — role classification (classifyRole)", ()
   }
 
   it("classifies counterspells as disruption", () => {
-    const r = roleOf([card("Counterspell", "Instant", 2, "Counter target spell.")]);
+    const r = roleOf([
+      card("Counterspell", "Instant", 2, "Counter target spell."),
+    ]);
     expect(r.disruption).toBe(2);
   });
 
   it("classifies hand-disruption (look at hand) as disruption", () => {
-    const r = roleOf([card("Thoughtseize", "Instant", 2, "Look at target player's hand.")]);
+    const r = roleOf([
+      card("Thoughtseize", "Instant", 2, "Look at target player's hand."),
+    ]);
     expect(r.disruption).toBe(2);
   });
 
   it("classifies destroy-creature effects as removal", () => {
-    const r = roleOf([card("Doom Blade", "Instant", 2, "Destroy target creature.")]);
+    const r = roleOf([
+      card("Doom Blade", "Instant", 2, "Destroy target creature."),
+    ]);
     expect(r.removal).toBe(2);
   });
 
@@ -130,7 +130,9 @@ describe("assembleStructuredAnalysis — role classification (classifyRole)", ()
   });
 
   it("falls back to 'other' for cards matching no role", () => {
-    const r = roleOf([card("Mystery Stone", "Artifact", 3, "A curious relic.")]);
+    const r = roleOf([
+      card("Mystery Stone", "Artifact", 3, "A curious relic."),
+    ]);
     expect(r.other).toBe(3);
   });
 });
@@ -155,12 +157,16 @@ describe("assembleStructuredAnalysis — curve assessment (assessCurve)", () => 
 
   it("labels a very low curve as aggressive", () => {
     // weighted avg = (8*1 + 2*2)/10 = 1.2
-    expect(curveAssessment([0, 8, 2, 0, 0, 0, 0, 0], 10)).toMatch(/aggressive/i);
+    expect(curveAssessment([0, 8, 2, 0, 0, 0, 0, 0], 10)).toMatch(
+      /aggressive/i,
+    );
   });
 
   it("labels a balanced midrange curve", () => {
     // weighted avg = (4*2 + 4*3 + 4*4)/12 = 3.0
-    expect(curveAssessment([0, 0, 4, 4, 4, 0, 0, 0], 12)).toMatch(/Balanced midrange/);
+    expect(curveAssessment([0, 0, 4, 4, 4, 0, 0, 0], 12)).toMatch(
+      /Balanced midrange/,
+    );
   });
 
   it("labels a top-heavy curve", () => {
@@ -170,7 +176,9 @@ describe("assembleStructuredAnalysis — curve assessment (assessCurve)", () => 
 
   it("labels a very high / slow curve", () => {
     // weighted avg = (2*4 + 2*5 + 2*6 + 4*7)/10 = 5.8
-    expect(curveAssessment([0, 0, 0, 0, 2, 2, 2, 4], 10)).toMatch(/Very high|slow/);
+    expect(curveAssessment([0, 0, 0, 0, 2, 2, 2, 4], 10)).toMatch(
+      /Very high|slow/,
+    );
   });
 });
 
@@ -194,7 +202,9 @@ describe("assembleStructuredAnalysis — strengths & gaps inference", () => {
   });
 
   it("credits a strong ramp package as a strength", () => {
-    const deck = [card("Cultivate", "Sorcery", 8, "Search your library for a land.")];
+    const deck = [
+      card("Cultivate", "Sorcery", 8, "Search your library for a land."),
+    ];
     const { strengths } = assembleStructuredAnalysis(deck, {
       archetype: archetypeOf("Ramp"),
       stats: makeStats(),
@@ -205,7 +215,11 @@ describe("assembleStructuredAnalysis — strengths & gaps inference", () => {
   });
 
   it("flags a ramp deficit for a high-CMC deck with little ramp", () => {
-    const { gaps } = analyze({ avgCmc: 4.2, landCount: 24, totalCards: 60 }, [], []);
+    const { gaps } = analyze(
+      { avgCmc: 4.2, landCount: 24, totalCards: 60 },
+      [],
+      [],
+    );
     expect(gaps.some((g) => /Little ramp/.test(g))).toBe(true);
   });
 
@@ -266,16 +280,23 @@ describe("assembleStructuredAnalysis — strengths & gaps inference", () => {
       card("Cultivate", "Sorcery", 8, "Search your library for a land."),
       card("Divination", "Sorcery", 6, "Draw two cards."),
     ];
-    const manySynergies: SynergyResult[] = Array.from({ length: 8 }, (_, i) => ({
-      name: `Cluster ${i}`,
-      category: "value",
-      score: 50,
-      cards: ["Cultivate"],
-      description: "d",
-    }));
+    const manySynergies: SynergyResult[] = Array.from(
+      { length: 8 },
+      (_, i) => ({
+        name: `Cluster ${i}`,
+        category: "value",
+        score: 50,
+        cards: ["Cultivate"],
+        description: "d",
+      }),
+    );
     const { strengths, gaps } = assembleStructuredAnalysis(deck, {
       archetype: archetypeOf("Ramp"),
-      stats: makeStats({ landCount: 18, totalCards: 60, colorDistribution: { W: 55, U: 5 } }),
+      stats: makeStats({
+        landCount: 18,
+        totalCards: 60,
+        colorDistribution: { W: 55, U: 5 },
+      }),
       synergies: manySynergies,
       missing: [],
     });
@@ -333,7 +354,9 @@ describe("formatStructuredAnalysisForLLM — empty-state branches", () => {
       missing: [],
     });
     const formatted = formatStructuredAnalysisForLLM(analysis);
-    expect(formatted).toContain("**Synergy Clusters**: none detected above threshold.");
+    expect(formatted).toContain(
+      "**Synergy Clusters**: none detected above threshold.",
+    );
   });
 
   it("renders a Gaps section when gaps are present", () => {
@@ -365,8 +388,20 @@ describe("formatStructuredAnalysisForLLM — empty-state branches", () => {
         colorDistribution: { W: 32 },
       }),
       synergies: [
-        { name: "Value", category: "value", score: 60, cards: ["Cultivate"], description: "d" },
-        { name: "Engine", category: "value", score: 50, cards: ["Divination"], description: "d" },
+        {
+          name: "Value",
+          category: "value",
+          score: 60,
+          cards: ["Cultivate"],
+          description: "d",
+        },
+        {
+          name: "Engine",
+          category: "value",
+          score: 50,
+          cards: ["Divination"],
+          description: "d",
+        },
       ],
       missing: [],
     });

@@ -81,7 +81,7 @@ import {
 } from "../draft-generator";
 
 import { normalizeAiDifficulty } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 describe("DRFT-01: createDraftSession", () => {
   it("should create a session with a unique UUID", async () => {

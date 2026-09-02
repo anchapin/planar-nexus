@@ -12,8 +12,8 @@ import {
   type Format,
   type ValidationResult,
   type BannedCardSuggestion,
-} from './game-rules';
-import type { SavedDeck } from '@/app/actions';
+} from "./game-rules";
+import type { SavedDeck } from "@/lib/card-database";
 
 /**
  * Deck validation result for lobby
@@ -37,9 +37,12 @@ export interface LobbyDeckValidationResult {
 /**
  * Validate a saved deck against a lobby format
  */
-export function validateDeckForLobby(deck: SavedDeck, lobbyFormat: Format): LobbyDeckValidationResult {
+export function validateDeckForLobby(
+  deck: SavedDeck,
+  lobbyFormat: Format,
+): LobbyDeckValidationResult {
   // Convert DeckCard[] to the format expected by validateDeckFormat
-  const deckCards = deck.cards.map(card => ({
+  const deckCards = deck.cards.map((card) => ({
     name: card.name,
     count: card.count,
     color_identity: card.color_identity,
@@ -57,7 +60,7 @@ export function validateDeckForLobby(deck: SavedDeck, lobbyFormat: Format): Lobb
   // Add warning if deck format doesn't match lobby format
   if (!formatMatches) {
     warnings.push(
-      `Deck was built for ${deck.format}, but lobby is ${getFormatDisplayName(lobbyFormat)}`
+      `Deck was built for ${deck.format}, but lobby is ${getFormatDisplayName(lobbyFormat)}`,
     );
   }
 
@@ -77,21 +80,22 @@ export function validateDeckForLobby(deck: SavedDeck, lobbyFormat: Format): Lobb
  */
 export function canPlayerJoinWithDeck(
   deck: SavedDeck,
-  lobbyFormat: Format
+  lobbyFormat: Format,
 ): { canJoin: boolean; reason?: string } {
   const validation = validateDeckForLobby(deck, lobbyFormat);
 
   if (!validation.isValid) {
     return {
       canJoin: false,
-      reason: validation.errors[0] || 'Deck is not valid for this format',
+      reason: validation.errors[0] || "Deck is not valid for this format",
     };
   }
 
   if (!validation.canPlay) {
     return {
       canJoin: false,
-      reason: validation.warnings[0] || 'Deck format does not match lobby format',
+      reason:
+        validation.warnings[0] || "Deck format does not match lobby format",
     };
   }
 
@@ -103,7 +107,7 @@ export function canPlayerJoinWithDeck(
  */
 export function getDeckValidationErrors(
   deck: SavedDeck,
-  lobbyFormat: Format
+  lobbyFormat: Format,
 ): string[] {
   const validation = validateDeckForLobby(deck, lobbyFormat);
   return [...validation.errors, ...validation.warnings];
@@ -115,12 +119,20 @@ export function getDeckValidationErrors(
 export function validateAllPlayerDecks(
   players: Array<{ deckId?: string; deckName?: string }>,
   getDeckById: (deckId: string) => SavedDeck | undefined,
-  lobbyFormat: Format
+  lobbyFormat: Format,
 ): {
   allValid: boolean;
-  invalidPlayers: Array<{ playerId: string; playerName: string; errors: string[] }>;
+  invalidPlayers: Array<{
+    playerId: string;
+    playerName: string;
+    errors: string[];
+  }>;
 } {
-  const invalidPlayers: Array<{ playerId: string; playerName: string; errors: string[] }> = [];
+  const invalidPlayers: Array<{
+    playerId: string;
+    playerName: string;
+    errors: string[];
+  }> = [];
 
   players.forEach((player) => {
     if (!player.deckId) return;
@@ -133,7 +145,7 @@ export function validateAllPlayerDecks(
     if (!validation.isValid || !validation.canPlay) {
       invalidPlayers.push({
         playerId: player.deckId,
-        playerName: player.deckName || 'Unknown',
+        playerName: player.deckName || "Unknown",
         errors: [...validation.errors, ...validation.warnings],
       });
     }
@@ -163,12 +175,12 @@ export function getFormatRulesSummary(format: Format): {
  */
 export function validateDeckForReadyStatus(
   deck: SavedDeck | null,
-  lobbyFormat: Format
+  lobbyFormat: Format,
 ): { isReady: boolean; errors: string[] } {
   if (!deck) {
     return {
       isReady: false,
-      errors: ['No deck selected'],
+      errors: ["No deck selected"],
     };
   }
 
@@ -185,7 +197,7 @@ export function validateDeckForReadyStatus(
  */
 export function formatValidationMessage(result: ValidationResult): string {
   if (result.isValid) {
-    return 'Deck is valid for this format';
+    return "Deck is valid for this format";
   }
 
   if (result.errors.length > 0) {
@@ -196,5 +208,5 @@ export function formatValidationMessage(result: ValidationResult): string {
     return result.warnings[0];
   }
 
-  return 'Deck validation failed';
+  return "Deck validation failed";
 }

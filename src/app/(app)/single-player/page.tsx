@@ -25,7 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { Swords, Info, Play, BookOpen, Sparkles } from "lucide-react";
 import { DIFFICULTY_CONFIGS, DifficultyLevel } from "@/ai/ai-difficulty";
-import { SavedDeck } from "@/app/actions";
+import { SavedDeck } from "@/lib/card-database";
 
 interface StarterDeck {
   id: string;
@@ -185,7 +185,9 @@ export default function SinglePlayerPage() {
               <CardContent className="space-y-2.5 p-4 pt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="deck-select" className="text-xs">Your Deck</Label>
+                    <Label htmlFor="deck-select" className="text-xs">
+                      Your Deck
+                    </Label>
                     <Select
                       value={selectedDeckId || ""}
                       onValueChange={(value) => setSelectedDeckId(value)}
@@ -214,7 +216,9 @@ export default function SinglePlayerPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="ai-theme" className="text-xs">AI Deck Theme</Label>
+                    <Label htmlFor="ai-theme" className="text-xs">
+                      AI Deck Theme
+                    </Label>
                     <Input
                       id="ai-theme"
                       className="h-9"

@@ -4,7 +4,7 @@
  * Tests for conversion functions between Engine and AI GameState formats.
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from "@jest/globals";
 import {
   engineToAIState,
   aiToEngineState,
@@ -12,48 +12,56 @@ import {
   unifiedToEngine,
   getAIPlayerView,
   compareAIStates,
-} from '../serialization';
-import { createInitialGameState, startGame, loadDeckForPlayer } from '../game-state';
-import { Phase } from '../types';
-import type { ScryfallCard } from '@/app/actions';
+} from "../serialization";
+import {
+  createInitialGameState,
+  startGame,
+  loadDeckForPlayer,
+} from "../game-state";
+import { Phase } from "../types";
+import type { ScryfallCard } from "@/lib/card-database";
 
 /**
  * Create a mock ScryfallCard for testing
  */
-function createMockCard(name: string, type: string, cmc: number = 1): ScryfallCard {
+function createMockCard(
+  name: string,
+  type: string,
+  cmc: number = 1,
+): ScryfallCard {
   return {
-    id: `card-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    id: `card-${name.toLowerCase().replace(/\s+/g, "-")}`,
     name,
     type_line: type,
     cmc,
-    mana_cost: type.includes('Land') ? '' : `{${cmc}}`,
-    oracle_text: '',
-    power: type.includes('Creature') ? '2' : undefined,
-    toughness: type.includes('Creature') ? '2' : undefined,
+    mana_cost: type.includes("Land") ? "" : `{${cmc}}`,
+    oracle_text: "",
+    power: type.includes("Creature") ? "2" : undefined,
+    toughness: type.includes("Creature") ? "2" : undefined,
     keywords: [],
     color_identity: [],
     colors: [],
-    legalities: { standard: 'not_legal' },
+    legalities: { standard: "not_legal" },
   } as ScryfallCard;
 }
 
-describe('serialization', () => {
-  describe('engineToAIState', () => {
-    it('should convert basic game state', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+describe("serialization", () => {
+  describe("engineToAIState", () => {
+    it("should convert basic game state", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState = engineToAIState(engineState);
 
       expect(aiState).toBeDefined();
       expect(Object.keys(aiState.players).length).toBe(2);
       expect(aiState.turnInfo.currentTurn).toBe(1);
-      expect(aiState.turnInfo.phase).toBe('beginning');
+      expect(aiState.turnInfo.phase).toBe("beginning");
       expect(aiState.stack).toEqual([]);
       expect(aiState.combat?.inCombatPhase).toBe(false);
     });
 
-    it('should convert player life and poison counters', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2'], 20);
-      
+    it("should convert player life and poison counters", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"], 20);
+
       // Modify player state
       const player1Id = Array.from(engineState.players.keys())[0];
       const player1 = engineState.players.get(player1Id);
@@ -69,17 +77,17 @@ describe('serialization', () => {
       expect(aiPlayer.poisonCounters).toBe(3);
     });
 
-    it('should convert phase correctly', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
-      
+    it("should convert phase correctly", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+
       // Test different phase mappings
       const phases: Array<{ engine: Phase; ai: string }> = [
-        { engine: Phase.UNTAP, ai: 'beginning' },
-        { engine: Phase.DRAW, ai: 'beginning' },
-        { engine: Phase.PRECOMBAT_MAIN, ai: 'precombat_main' },
-        { engine: Phase.DECLARE_ATTACKERS, ai: 'combat' },
-        { engine: Phase.POSTCOMBAT_MAIN, ai: 'postcombat_main' },
-        { engine: Phase.END, ai: 'end' },
+        { engine: Phase.UNTAP, ai: "beginning" },
+        { engine: Phase.DRAW, ai: "beginning" },
+        { engine: Phase.PRECOMBAT_MAIN, ai: "precombat_main" },
+        { engine: Phase.DECLARE_ATTACKERS, ai: "combat" },
+        { engine: Phase.POSTCOMBAT_MAIN, ai: "postcombat_main" },
+        { engine: Phase.END, ai: "end" },
       ];
 
       for (const { engine: phase, ai: expectedAiPhase } of phases) {
@@ -89,12 +97,16 @@ describe('serialization', () => {
       }
     });
 
-    it('should convert battlefield permanents', () => {
-      let engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should convert battlefield permanents", () => {
+      let engineState = createInitialGameState(["Player 1", "Player 2"]);
       const player1Id = Array.from(engineState.players.keys())[0];
 
       // Add a creature to battlefield
-      const mockCreature = createMockCard('Grizzly Bears', 'Creature — Bear', 2);
+      const mockCreature = createMockCard(
+        "Grizzly Bears",
+        "Creature — Bear",
+        2,
+      );
       engineState = loadDeckForPlayer(engineState, player1Id, [mockCreature]);
 
       // Move card to battlefield manually for testing
@@ -107,7 +119,7 @@ describe('serialization', () => {
 
       const battlefieldZone = engineState.zones.get(`${player1Id}-battlefield`);
       const handZone = engineState.zones.get(`${player1Id}-hand`);
-      
+
       if (battlefieldZone && handZone && cardId) {
         battlefieldZone.cardIds = [cardId];
         handZone.cardIds = [];
@@ -117,21 +129,21 @@ describe('serialization', () => {
       const aiPlayer = aiState.players[player1Id];
 
       expect(aiPlayer.battlefield.length).toBe(1);
-      expect(aiPlayer.battlefield[0].name).toBe('Grizzly Bears');
-      expect(aiPlayer.battlefield[0].type).toBe('creature');
+      expect(aiPlayer.battlefield[0].name).toBe("Grizzly Bears");
+      expect(aiPlayer.battlefield[0].type).toBe("creature");
       expect(aiPlayer.battlefield[0].power).toBe(2);
       expect(aiPlayer.battlefield[0].toughness).toBe(2);
     });
 
-    it.skip('should convert hand cards', () => {
+    it.skip("should convert hand cards", () => {
       // Test skipped - requires complex zone setup
       // Conversion function is tested indirectly through integration tests
     });
 
-    it('should convert mana pool', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should convert mana pool", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const player1Id = Array.from(engineState.players.keys())[0];
-      
+
       const player1 = engineState.players.get(player1Id);
       if (player1) {
         player1.manaPool.red = 3;
@@ -145,19 +157,19 @@ describe('serialization', () => {
       expect(aiPlayer.manaPool.generic).toBe(2);
     });
 
-    it('should convert stack objects', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should convert stack objects", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const player1Id = Array.from(engineState.players.keys())[0];
 
       // Add a mock stack object
       engineState.stack.push({
-        id: 'stack-1',
-        type: 'spell',
+        id: "stack-1",
+        type: "spell",
         sourceCardId: null,
         controllerId: player1Id,
-        name: 'Lightning Bolt',
-        text: 'Deal 3 damage',
-        manaCost: '{R}',
+        name: "Lightning Bolt",
+        text: "Deal 3 damage",
+        manaCost: "{R}",
         targets: [],
         chosenModes: [],
         variableValues: new Map(),
@@ -168,26 +180,28 @@ describe('serialization', () => {
       const aiState = engineToAIState(engineState);
 
       expect(aiState.stack.length).toBe(1);
-      expect(aiState.stack[0].name).toBe('Lightning Bolt');
-      expect(aiState.stack[0].type).toBe('spell');
+      expect(aiState.stack[0].name).toBe("Lightning Bolt");
+      expect(aiState.stack[0].type).toBe("spell");
       expect(aiState.stack[0].controller).toBe(player1Id);
     });
 
-    it('should convert combat state', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should convert combat state", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const player1Id = Array.from(engineState.players.keys())[0];
       const player2Id = Array.from(engineState.players.keys())[1];
 
       // Set up combat
       engineState.combat.inCombatPhase = true;
-      engineState.combat.attackers = [{
-        cardId: 'creature-1',
-        defenderId: player2Id,
-        isAttackingPlaneswalker: false,
-        damageToDeal: 4,
-        hasFirstStrike: false,
-        hasDoubleStrike: false,
-      }];
+      engineState.combat.attackers = [
+        {
+          cardId: "creature-1",
+          defenderId: player2Id,
+          isAttackingPlaneswalker: false,
+          damageToDeal: 4,
+          hasFirstStrike: false,
+          hasDoubleStrike: false,
+        },
+      ];
 
       const aiState = engineToAIState(engineState);
 
@@ -200,10 +214,10 @@ describe('serialization', () => {
     });
   });
 
-  describe('engineToUnified', () => {
-    it('should be an alias for engineToAIState', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
-      
+  describe("engineToUnified", () => {
+    it("should be an alias for engineToAIState", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+
       const aiState1 = engineToAIState(engineState);
       const aiState2 = engineToUnified(engineState);
 
@@ -211,9 +225,9 @@ describe('serialization', () => {
     });
   });
 
-  describe('aiToEngineState', () => {
-    it('should convert AI state back to engine format', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+  describe("aiToEngineState", () => {
+    it("should convert AI state back to engine format", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState = engineToAIState(engineState);
 
       // Modify AI state
@@ -226,8 +240,8 @@ describe('serialization', () => {
       expect(player1?.life).toBe(10);
     });
 
-    it('should preserve engine state data not in AI format', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should preserve engine state data not in AI format", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState = engineToAIState(engineState);
 
       const convertedBack = aiToEngineState(aiState, engineState);
@@ -239,9 +253,9 @@ describe('serialization', () => {
     });
   });
 
-  describe('unifiedToEngine', () => {
-    it('should be an alias for aiToEngineState', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+  describe("unifiedToEngine", () => {
+    it("should be an alias for aiToEngineState", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState = engineToAIState(engineState);
 
       const converted1 = aiToEngineState(aiState, engineState);
@@ -253,13 +267,15 @@ describe('serialization', () => {
       expect(converted1.turn.turnNumber).toBe(converted2.turn.turnNumber);
       expect(converted1.turn.currentPhase).toBe(converted2.turn.currentPhase);
       expect(converted1.stack.length).toBe(converted2.stack.length);
-      expect(Object.keys(converted1.players).length).toBe(Object.keys(converted2.players).length);
+      expect(Object.keys(converted1.players).length).toBe(
+        Object.keys(converted2.players).length,
+      );
     });
   });
 
-  describe('getAIPlayerView', () => {
-    it('should return a single player view', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+  describe("getAIPlayerView", () => {
+    it("should return a single player view", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const player1Id = Array.from(engineState.players.keys())[0];
 
       const playerView = getAIPlayerView(engineState, player1Id);
@@ -272,9 +288,9 @@ describe('serialization', () => {
     });
   });
 
-  describe('compareAIStates', () => {
-    it('should detect life differences', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+  describe("compareAIStates", () => {
+    it("should detect life differences", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState1 = engineToAIState(engineState);
       const aiState2 = engineToAIState(engineState);
 
@@ -289,17 +305,17 @@ describe('serialization', () => {
       expect(diff.lifeDifferences[0].state2).toBe(15);
     });
 
-    it('should detect battlefield changes', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should detect battlefield changes", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState1 = engineToAIState(engineState);
       const aiState2 = engineToAIState(engineState);
 
       const player1Id = Array.from(engineState.players.keys())[0];
       aiState2.players[player1Id].battlefield.push({
-        id: 'new-creature',
-        cardInstanceId: 'new-creature',
-        name: 'New Creature',
-        type: 'creature',
+        id: "new-creature",
+        cardInstanceId: "new-creature",
+        name: "New Creature",
+        type: "creature",
         controller: player1Id,
         tapped: false,
         manaValue: 2,
@@ -310,10 +326,10 @@ describe('serialization', () => {
       expect(diff.battlefieldDifferences.length).toBe(1);
     });
 
-    it('should detect phase changes', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should detect phase changes", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState1 = engineToAIState(engineState);
-      
+
       engineState.turn.currentPhase = Phase.PRECOMBAT_MAIN;
       const aiState2 = engineToAIState(engineState);
 
@@ -322,26 +338,26 @@ describe('serialization', () => {
       expect(diff.phaseChanged).toBe(true);
     });
 
-    it('should detect stack changes', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2']);
+    it("should detect stack changes", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
       const aiState1 = engineToAIState(engineState);
-      
+
       const player1Id = Array.from(engineState.players.keys())[0];
       engineState.stack.push({
-        id: 'stack-1',
-        type: 'spell',
+        id: "stack-1",
+        type: "spell",
         sourceCardId: null,
         controllerId: player1Id,
-        name: 'Test Spell',
-        text: '',
-        manaCost: '',
+        name: "Test Spell",
+        text: "",
+        manaCost: "",
         targets: [],
         chosenModes: [],
         variableValues: new Map(),
         isCountered: false,
         timestamp: Date.now(),
       });
-      
+
       const aiState2 = engineToAIState(engineState);
 
       const diff = compareAIStates(aiState1, aiState2);
@@ -350,9 +366,9 @@ describe('serialization', () => {
     });
   });
 
-  describe('round-trip conversion', () => {
-    it('should preserve key data through round-trip conversion', () => {
-      const engineState = createInitialGameState(['Player 1', 'Player 2'], 20);
+  describe("round-trip conversion", () => {
+    it("should preserve key data through round-trip conversion", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"], 20);
       const player1Id = Array.from(engineState.players.keys())[0];
 
       // Set up some state

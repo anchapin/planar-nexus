@@ -73,7 +73,7 @@ import {
   type DifficultyFormat,
 } from "@/ai/ai-difficulty";
 import { getMaxHandSize } from "@/lib/game-rules";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -280,7 +280,11 @@ export function buildDeck(archetype: SimDeckArchetype): ScryfallCard[] {
 // Turn driver primitives
 // ---------------------------------------------------------------------------
 
-function setPhase(state: GameState, phase: Phase, priority: PlayerId): GameState {
+function setPhase(
+  state: GameState,
+  phase: Phase,
+  priority: PlayerId,
+): GameState {
   return {
     ...state,
     turn: { ...state.turn, currentPhase: phase },
@@ -329,7 +333,9 @@ function produceMana(state: GameState, playerId: PlayerId): GameState {
   for (const cardId of battlefield.cardIds) {
     const card = cards.get(cardId);
     if (!card) continue;
-    const isLand = (card.cardData.type_line || "").toLowerCase().includes("land");
+    const isLand = (card.cardData.type_line || "")
+      .toLowerCase()
+      .includes("land");
     if (isLand && !card.isTapped) {
       produced++;
       cards.set(cardId, { ...card, isTapped: true });
@@ -584,7 +590,7 @@ function availableAttackers(
     out.push({ cardId, defenderId });
   }
   return out
-    .map((a) => ({ ...a, power: effectivePower(state.cards.get(a.cardId)! ) }))
+    .map((a) => ({ ...a, power: effectivePower(state.cards.get(a.cardId)!) }))
     .sort((a, b) => b.power - a.power)
     .map(({ cardId, defenderId }) => ({ cardId, defenderId }));
 }
@@ -724,7 +730,14 @@ export function playTurn(
   if (isTerminal(s)) return s;
 
   // Combat.
-  s = combatStep(s, attackerId, defenderId, attackerDifficulty, defenderDifficulty, rng);
+  s = combatStep(
+    s,
+    attackerId,
+    defenderId,
+    attackerDifficulty,
+    defenderDifficulty,
+    rng,
+  );
   if (isTerminal(s)) return s;
 
   // Post-combat main: spend any remaining topdecked/remaining mana.
@@ -801,7 +814,11 @@ export function simulateGame(config: GameConfig): GameOutcome {
       ...state,
       status: "in_progress",
       priorityPlayerId: ids[0],
-      turn: { ...state.turn, currentPhase: Phase.UNTAP, activePlayerId: ids[0] },
+      turn: {
+        ...state.turn,
+        currentPhase: Phase.UNTAP,
+        activePlayerId: ids[0],
+      },
     };
 
     let active = ids[0];
@@ -830,11 +847,12 @@ export function simulateGame(config: GameConfig): GameOutcome {
         if (playerLife <= 0 && opponentLife <= 0) winner = null;
         else if (opponentLife <= 0) winner = "player";
         else if (playerLife <= 0) winner = "opponent";
-        else winner = state.winners.includes(player)
-          ? "player"
-          : state.winners.includes(opponent)
-            ? "opponent"
-            : null;
+        else
+          winner = state.winners.includes(player)
+            ? "player"
+            : state.winners.includes(opponent)
+              ? "opponent"
+              : null;
         return { winner, turns, endReason: "life", playerLife, opponentLife };
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { SavedDeck } from "@/app/actions";
+import { SavedDeck } from "@/lib/card-database";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {

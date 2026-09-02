@@ -1,4 +1,4 @@
-import { ScryfallCard } from "@/app/actions";
+import { ScryfallCard } from "@/lib/card-database";
 
 /**
  * Game state types for the Planar Nexus game board.

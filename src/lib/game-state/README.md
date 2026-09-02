@@ -58,10 +58,10 @@ interface CardInstance {
 ### Creating a New Game
 
 ```typescript
-import { createInitialGameState, startGame } from '@/lib/game-state';
+import { createInitialGameState, startGame } from "@/lib/game-state";
 
 // Create game with 2 players
-let state = createInitialGameState(['Alice', 'Bob'], 20, false);
+let state = createInitialGameState(["Alice", "Bob"], 20, false);
 
 // Load decks
 state = loadDeckForPlayer(state, player1Id, deck1Cards);
@@ -80,14 +80,14 @@ import {
   attachCard,
   isCreature,
   getPower,
-  getToughness
-} from '@/lib/game-state';
+  getToughness,
+} from "@/lib/game-state";
 
 // Tap a permanent
 const tapped = tapCard(creature);
 
 // Add +1/+1 counters
-const buffed = addCounters(creature, '+1/+1', 2);
+const buffed = addCounters(creature, "+1/+1", 2);
 
 // Attach Equipment
 const equipped = attachCard(equipment, creatureId);
@@ -101,20 +101,16 @@ if (isCreature(card)) {
 ### Zone Management
 
 ```typescript
-import {
-  drawCard,
-  moveCardBetweenZones,
-  exileCards
-} from '@/lib/game-state';
+import { drawCard, moveCardBetweenZones, exileCards } from "@/lib/game-state";
 
 // Draw a card
 state = drawCard(state, playerId);
 
 // Move card from battlefield to graveyard
 state = moveCardBetweenZones(
-  state.zones.get('battlefield'),
-  state.zones.get('graveyard'),
-  cardId
+  state.zones.get("battlefield"),
+  state.zones.get("graveyard"),
+  cardId,
 );
 
 // Exile multiple cards
@@ -127,8 +123,8 @@ state = exileCards(fromZone, exileZone, [cardId1, cardId2]);
 import {
   advancePhase,
   isMainPhase,
-  canCastSorcerySpeedSpells
-} from '@/lib/game-state';
+  canCastSorcerySpeedSpells,
+} from "@/lib/game-state";
 
 // Check phase
 if (isMainPhase(state.turn.currentPhase)) {
@@ -142,7 +138,7 @@ const nextTurn = advancePhase(state.turn);
 ### Priority and Stack
 
 ```typescript
-import { passPriority } from '@/lib/game-state';
+import { passPriority } from "@/lib/game-state";
 
 // Player passes priority
 state = passPriority(state, playerId);
@@ -151,13 +147,16 @@ state = passPriority(state, playerId);
 ## Game Flow
 
 ### 1. Setup
+
 1. Create initial game state
 2. Load player decks
 3. Shuffle libraries
 4. Draw starting hands
 
 ### 2. Turn Structure
+
 Each turn follows this phase order:
+
 1. **Untap** - No priority
 2. **Upkeep** - Priority, triggers go on stack
 3. **Draw** - Priority, active player draws (except first turn)
@@ -172,7 +171,9 @@ Each turn follows this phase order:
 12. **Cleanup** - No priority normally
 
 ### 3. State-Based Actions
+
 Checked whenever a player receives priority:
+
 - Creatures with lethal damage
 - Creatures with toughness 0 or less
 - Players with 0 or less life
@@ -180,13 +181,16 @@ Checked whenever a player receives priority:
 - Empty library when drawing
 
 ### 4. Winning and Losing
+
 Players lose when:
+
 - Life total reaches 0 or less
 - Accumulates 10 poison counters
 - Attempts to draw from empty library
 - Concedes
 
 Game ends when:
+
 - Only one player remains
 - All players lose simultaneously (draw)
 
@@ -201,10 +205,11 @@ The game state uses immutable updates. Functions return new state objects rather
 const newState = drawCard(state, playerId);
 
 // Bad - don't do this
-state.zones.get('hand')?.cardIds.push(cardId);
+state.zones.get("hand")?.cardIds.push(cardId);
 ```
 
 This enables:
+
 - Time travel debugging
 - Easy state serialization
 - Undo/redo functionality
@@ -213,6 +218,7 @@ This enables:
 ### Zone IDs
 
 Zones are identified by `{playerId}-{zoneType}`:
+
 - `p1-library` - Player 1's library
 - `p2-battlefield` - Player 2's battlefield
 - `stack` - Shared stack zone
@@ -220,6 +226,7 @@ Zones are identified by `{playerId}-{zoneType}`:
 ### Timestamps
 
 All timestamp-based effects use Unix epoch milliseconds:
+
 - `enteredBattlefieldTimestamp` - For "last in, first out" effects
 - `attachedTimestamp` - For attachment ordering
 
@@ -250,15 +257,15 @@ This foundation will support:
 Example test structure:
 
 ```typescript
-describe('GameState', () => {
-  it('should create initial game state', () => {
-    const state = createInitialGameState(['Alice', 'Bob']);
+describe("GameState", () => {
+  it("should create initial game state", () => {
+    const state = createInitialGameState(["Alice", "Bob"]);
     expect(state.players.size).toBe(2);
     expect(state.turn.turnNumber).toBe(1);
   });
 
-  it('should draw cards correctly', () => {
-    let state = createInitialGameState(['Alice']);
+  it("should draw cards correctly", () => {
+    let state = createInitialGameState(["Alice"]);
     state = loadDeckForPlayer(state, playerId, deckCards);
     const beforeHand = getPlayerHand(state, playerId);
     state = drawCard(state, playerId);
@@ -271,5 +278,5 @@ describe('GameState', () => {
 ## Related Files
 
 - `/src/lib/game-rules.ts` - Format rules and deck construction
-- `/src/app/actions.ts` - ScryfallCard and SavedDeck types
+- `/src/lib/card-database.ts` - ScryfallCard, DeckCard, and SavedDeck types
 - `/src/ai/flows/` - AI deck generation

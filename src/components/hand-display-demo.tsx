@@ -3,9 +3,15 @@
 import * as React from "react";
 import { HandDisplay } from "./hand-display";
 import { CardState } from "@/types/game";
-import { ScryfallCard } from "@/app/actions";
+import { ScryfallCard } from "@/lib/card-database";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,12 +28,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: [],
     color_identity: [],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
-      normal: "https://cards.scryfall.io/normal/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
-      large: "https://cards.scryfall.io/large/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
       png: "https://cards.scryfall.io/png/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/a/6/a6c00e9c-2a72-4d4d-8c73-c5f6a8c0f4c5.jpg",
     },
     oracle_text: "{T}: Add {C}{C}.",
     legalities: {
@@ -48,12 +59,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["R"],
     color_identity: ["R"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      normal: "https://cards.scryfall.io/normal/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      large: "https://cards.scryfall.io/large/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
       png: "https://cards.scryfall.io/png/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/6/4/6457e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
     },
     oracle_text: "Lightning Bolt deals 3 damage to any target.",
     legalities: {
@@ -74,12 +90,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["U"],
     color_identity: ["U"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
-      normal: "https://cards.scryfall.io/normal/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
-      large: "https://cards.scryfall.io/large/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
       png: "https://cards.scryfall.io/png/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/3/8/3877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
     },
     oracle_text: "Counter target spell.",
     legalities: {
@@ -100,12 +121,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["B"],
     color_identity: ["B"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
-      normal: "https://cards.scryfall.io/normal/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
-      large: "https://cards.scryfall.io/large/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
       png: "https://cards.scryfall.io/png/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/e/6/e6c8a3c4-7a88-4c5b-9f2d-1e9c7c5e6c8a.jpg",
     },
     oracle_text: "Add {B}{B}{B}.",
     legalities: {
@@ -126,12 +152,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["G"],
     color_identity: ["G"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      normal: "https://cards.scryfall.io/normal/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      large: "https://cards.scryfall.io/large/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
       png: "https://cards.scryfall.io/png/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/8/e/8e8f8a8a-1a15-4740-8cd3-1c0e28b5d9df.jpg",
     },
     oracle_text: "{T}: Add {G}.",
     power: "1",
@@ -154,12 +185,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["W"],
     color_identity: ["W"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      normal: "https://cards.scryfall.io/normal/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      large: "https://cards.scryfall.io/large/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
       png: "https://cards.scryfall.io/png/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/f/5/f5c9f4e9-1a15-4740-8cd3-1c0e28b5d9df.jpg",
     },
     oracle_text: "Destroy all creatures. They can't be regenerated.",
     legalities: {
@@ -180,12 +216,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["G"],
     color_identity: ["G"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      normal: "https://cards.scryfall.io/normal/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      large: "https://cards.scryfall.io/large/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
       png: "https://cards.scryfall.io/png/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/4/5/4577e3ea-1a15-4740-8cd3-1c0e28b5d9df.jpg",
     },
     oracle_text: "Target creature gets +3/+3 until end of turn.",
     legalities: {
@@ -206,12 +247,17 @@ const sampleScryfallCards: ScryfallCard[] = [
     colors: ["U"],
     color_identity: ["U"],
     image_uris: {
-      small: "https://cards.scryfall.io/small/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
-      normal: "https://cards.scryfall.io/normal/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
-      large: "https://cards.scryfall.io/large/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      small:
+        "https://cards.scryfall.io/small/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      normal:
+        "https://cards.scryfall.io/normal/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      large:
+        "https://cards.scryfall.io/large/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
       png: "https://cards.scryfall.io/png/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.png",
-      art_crop: "https://cards.scryfall.io/art_crop/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
-      border_crop: "https://cards.scryfall.io/border_crop/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      art_crop:
+        "https://cards.scryfall.io/art_crop/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
+      border_crop:
+        "https://cards.scryfall.io/border_crop/front/8/8/8877d79b-cb96-4553-a8a0-1c9f16b6d62e.jpg",
     },
     oracle_text: "Draw 3 cards.",
     legalities: {
@@ -226,7 +272,10 @@ const sampleScryfallCards: ScryfallCard[] = [
 ];
 
 // Create CardState objects from sample data
-function createCardStates(scryfallCards: ScryfallCard[], playerId: string): CardState[] {
+function createCardStates(
+  scryfallCards: ScryfallCard[],
+  playerId: string,
+): CardState[] {
   return scryfallCards.map((card, index) => ({
     id: `${playerId}-card-${index}`,
     card,
@@ -240,22 +289,28 @@ function createCardStates(scryfallCards: ScryfallCard[], playerId: string): Card
 export function HandDisplayDemo() {
   const { toast } = useToast();
   const [selectedCardIds, setSelectedCardIds] = React.useState<string[]>([]);
-  const [lastClickedCard, setLastClickedCard] = React.useState<string | null>(null);
+  const [lastClickedCard, setLastClickedCard] = React.useState<string | null>(
+    null,
+  );
 
   // Create sample hands
   const currentPlayerHand = React.useMemo(
     () => createCardStates(sampleScryfallCards.slice(0, 7), "player-1"),
-    []
+    [],
   );
 
   const opponentHand = React.useMemo(
     () => createCardStates(sampleScryfallCards.slice(0, 5), "player-2"),
-    []
+    [],
   );
 
   const largeHand = React.useMemo(
-    () => createCardStates([...sampleScryfallCards, ...sampleScryfallCards].slice(0, 12), "player-3"),
-    []
+    () =>
+      createCardStates(
+        [...sampleScryfallCards, ...sampleScryfallCards].slice(0, 12),
+        "player-3",
+      ),
+    [],
   );
 
   const cardNameById = React.useMemo(() => {
@@ -403,7 +458,8 @@ export function HandDisplayDemo() {
             <CardHeader>
               <CardTitle>Large Hand (12 cards)</CardTitle>
               <CardDescription>
-                Demonstrates how the component handles larger hands with scrolling
+                Demonstrates how the component handles larger hands with
+                scrolling
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -419,7 +475,8 @@ export function HandDisplayDemo() {
               <Separator />
 
               <div className="text-sm text-muted-foreground">
-                Try sorting by different options and toggling between overlapping and spread modes
+                Try sorting by different options and toggling between
+                overlapping and spread modes
               </div>
             </CardContent>
           </Card>
@@ -438,37 +495,51 @@ export function HandDisplayDemo() {
                 <h3 className="font-semibold text-lg">Props</h3>
                 <div className="space-y-3 text-sm">
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">cards: CardState[]</code>
+                    <code className="bg-muted px-2 py-1 rounded">
+                      cards: CardState[]
+                    </code>
                     <p className="text-muted-foreground mt-1">
                       Array of cards to display in the hand
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">isCurrentPlayer: boolean</code>
+                    <code className="bg-muted px-2 py-1 rounded">
+                      isCurrentPlayer: boolean
+                    </code>
                     <p className="text-muted-foreground mt-1">
-                      Whether this is the current player's hand (shows face-up) or an opponent's (shows card backs)
+                      Whether this is the current player's hand (shows face-up)
+                      or an opponent's (shows card backs)
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">onCardSelect?: (cardIds: string[]) {'>'} void</code>
+                    <code className="bg-muted px-2 py-1 rounded">
+                      onCardSelect?: (cardIds: string[]) {">"} void
+                    </code>
                     <p className="text-muted-foreground mt-1">
                       Callback when card selection changes (multi-select)
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">onCardClick?: (cardId: string) {'>'} void</code>
+                    <code className="bg-muted px-2 py-1 rounded">
+                      onCardClick?: (cardId: string) {">"} void
+                    </code>
                     <p className="text-muted-foreground mt-1">
                       Callback when a card is clicked
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">selectedCardIds?: string[]</code>
+                    <code className="bg-muted px-2 py-1 rounded">
+                      selectedCardIds?: string[]
+                    </code>
                     <p className="text-muted-foreground mt-1">
-                      Array of currently selected card IDs (for controlled selection)
+                      Array of currently selected card IDs (for controlled
+                      selection)
                     </p>
                   </div>
                   <div>
-                    <code className="bg-muted px-2 py-1 rounded">className?: string</code>
+                    <code className="bg-muted px-2 py-1 rounded">
+                      className?: string
+                    </code>
                     <p className="text-muted-foreground mt-1">
                       Additional CSS classes for the container
                     </p>
@@ -499,7 +570,7 @@ export function HandDisplayDemo() {
               <div className="space-y-2">
                 <h3 className="font-semibold text-lg">Usage Example</h3>
                 <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-xs">
-{`import { HandDisplay } from "@/components/hand-display";
+                  {`import { HandDisplay } from "@/components/hand-display";
 
 function MyGameComponent() {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
@@ -527,13 +598,13 @@ function MyGameComponent() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
-            This component is designed to integrate seamlessly with the existing game board.
-            Replace the hand zone display in game-board.tsx with this component for a rich,
-            interactive hand management experience.
+            This component is designed to integrate seamlessly with the existing
+            game board. Replace the hand zone display in game-board.tsx with
+            this component for a rich, interactive hand management experience.
           </p>
           <p>
-            The component automatically handles different hand sizes and provides intuitive
-            controls for sorting and display modes.
+            The component automatically handles different hand sizes and
+            provides intuitive controls for sorting and display modes.
           </p>
         </CardContent>
       </Card>

@@ -7,6 +7,7 @@ The `HandDisplay` component provides an interactive, feature-rich interface for 
 ## Features
 
 ### Current Player Hand (Face-Up)
+
 - **Card Visualization**: Displays full card images from Scryfall
 - **Multi-Select**: Click to select/deselect multiple cards
 - **Visual Feedback**: Selected cards show ring indicator and scale effect
@@ -16,11 +17,13 @@ The `HandDisplay` component provides an interactive, feature-rich interface for 
 - **Tooltips**: Detailed card information on hover
 
 ### Opponent Hand (Card Backs)
+
 - **Hidden Information**: Shows stylized card backs
 - **Card Count**: Displays total number of cards
 - **Clickable**: Card backs are still interactive for game actions
 
 ### Sorting & Organization
+
 - **Sort by Name**: Alphabetical order
 - **Sort by Energy Cost**: Low to high energy value (CMC)
 - **Sort by Type**: Card type line
@@ -30,6 +33,7 @@ The `HandDisplay` component provides an interactive, feature-rich interface for 
   - Spread: Wrapping layout, more space
 
 ### UI Controls
+
 - **Sort Button**: Cycles through sort options
 - **Display Mode Toggle**: Switch between overlapping/spread
 - **Clear Selection**: Remove all selected cards (when active)
@@ -41,12 +45,12 @@ The `HandDisplay` component provides an interactive, feature-rich interface for 
 
 ```typescript
 interface HandDisplayProps {
-  cards: CardState[];              // Cards to display
-  isCurrentPlayer: boolean;        // Show face-up or card backs
-  onCardSelect?: (cardIds: string[]) => void;  // Multi-select callback
-  onCardClick?: (cardId: string) => void;      // Single card click
-  selectedCardIds?: string[];      // Controlled selection state
-  className?: string;              // Additional CSS classes
+  cards: CardState[]; // Cards to display
+  isCurrentPlayer: boolean; // Show face-up or card backs
+  onCardSelect?: (cardIds: string[]) => void; // Multi-select callback
+  onCardClick?: (cardId: string) => void; // Single card click
+  selectedCardIds?: string[]; // Controlled selection state
+  className?: string; // Additional CSS classes
 }
 ```
 
@@ -114,22 +118,26 @@ The hand display is integrated into the game board component. For the local play
 ## Design Decisions
 
 ### Card Aspect Ratio
+
 - Uses MTG standard aspect ratio (5:7)
 - Responsive sizing with min/max width constraints
 - Maintains readability at different sizes
 
 ### Selection UX
+
 - Click to toggle selection (multi-select)
 - Visual ring indicator for selected cards
 - Scale effect for immediate feedback
 - Clear selection button for bulk deselection
 
 ### Performance
+
 - Uses React.useMemo for sorting calculations
 - Efficient re-renders with proper dependency arrays
 - ScrollArea for large hands (12+ cards)
 
 ### Accessibility
+
 - Keyboard navigation support
 - ARIA labels via Shadcn components
 - Focus indicators on interactive elements
@@ -174,4 +182,4 @@ Manual testing checklist:
 - Lucide React icons
 - Shadcn/ui components (Badge, Button, ScrollArea, Tooltip)
 - Internal types from `@/types/game`
-- Scryfall card types from `@/app/actions`
+- Scryfall card types from `@/lib/card-database`

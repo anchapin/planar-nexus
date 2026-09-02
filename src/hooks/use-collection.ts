@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useLocalStorage } from './use-local-storage';
-import { ScryfallCard } from '@/app/actions';
+import { useLocalStorage } from "./use-local-storage";
+import { ScryfallCard } from "@/lib/card-database";
 
 export interface CollectionCard {
   card: ScryfallCard;
@@ -17,29 +17,38 @@ export interface Collection {
   updatedAt: string;
 }
 
-const DEFAULT_COLLECTION_ID = 'default-collection';
+const DEFAULT_COLLECTION_ID = "default-collection";
 
 export function useCollection() {
-  const [collections, setCollections] = useLocalStorage<Collection[]>('card-collections', [
-    {
-      id: DEFAULT_COLLECTION_ID,
-      name: 'My Collection',
-      cards: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-  ]);
+  const [collections, setCollections] = useLocalStorage<Collection[]>(
+    "card-collections",
+    [
+      {
+        id: DEFAULT_COLLECTION_ID,
+        name: "My Collection",
+        cards: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+  );
 
-  const [activeCollectionId, setActiveCollectionId] = useLocalStorage<string>('active-collection', DEFAULT_COLLECTION_ID);
+  const [activeCollectionId, setActiveCollectionId] = useLocalStorage<string>(
+    "active-collection",
+    DEFAULT_COLLECTION_ID,
+  );
 
-  const activeCollection = collections.find((c) => c.id === activeCollectionId) || collections[0];
+  const activeCollection =
+    collections.find((c) => c.id === activeCollectionId) || collections[0];
 
   const addCard = (card: ScryfallCard, quantity: number = 1) => {
     setCollections((prev) =>
       prev.map((collection) => {
         if (collection.id !== activeCollectionId) return collection;
 
-        const existingIndex = collection.cards.findIndex((c) => c.card.id === card.id);
+        const existingIndex = collection.cards.findIndex(
+          (c) => c.card.id === card.id,
+        );
 
         if (existingIndex >= 0) {
           const newCards = [...collection.cards];
@@ -47,7 +56,11 @@ export function useCollection() {
             ...newCards[existingIndex],
             quantity: newCards[existingIndex].quantity + quantity,
           };
-          return { ...collection, cards: newCards, updatedAt: new Date().toISOString() };
+          return {
+            ...collection,
+            cards: newCards,
+            updatedAt: new Date().toISOString(),
+          };
         }
 
         return {
@@ -58,7 +71,7 @@ export function useCollection() {
           ],
           updatedAt: new Date().toISOString(),
         };
-      })
+      }),
     );
   };
 
@@ -67,7 +80,9 @@ export function useCollection() {
       prev.map((collection) => {
         if (collection.id !== activeCollectionId) return collection;
 
-        const existingIndex = collection.cards.findIndex((c) => c.card.id === cardId);
+        const existingIndex = collection.cards.findIndex(
+          (c) => c.card.id === cardId,
+        );
         if (existingIndex < 0) return collection;
 
         const existingCard = collection.cards[existingIndex];
@@ -84,8 +99,12 @@ export function useCollection() {
           ...existingCard,
           quantity: existingCard.quantity - quantity,
         };
-        return { ...collection, cards: newCards, updatedAt: new Date().toISOString() };
-      })
+        return {
+          ...collection,
+          cards: newCards,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
     );
   };
 
@@ -112,12 +131,16 @@ export function useCollection() {
 
   const renameCollection = (collectionId: string, name: string) => {
     setCollections((prev) =>
-      prev.map((c) => (c.id === collectionId ? { ...c, name, updatedAt: new Date().toISOString() } : c))
+      prev.map((c) =>
+        c.id === collectionId
+          ? { ...c, name, updatedAt: new Date().toISOString() }
+          : c,
+      ),
     );
   };
 
   const importFromCSV = (csv: string) => {
-    const lines = csv.trim().split('\n');
+    const lines = csv.trim().split("\n");
     const newCards: CollectionCard[] = [];
 
     for (const line of lines) {
@@ -131,11 +154,11 @@ export function useCollection() {
       // In a real implementation, we'd look up the card via Scryfall
       newCards.push({
         card: {
-          id: `imported-${name.toLowerCase().replace(/\s+/g, '-')}`,
+          id: `imported-${name.toLowerCase().replace(/\s+/g, "-")}`,
           name,
           color_identity: [],
-          set: '',
-          collector_number: '',
+          set: "",
+          collector_number: "",
         } as unknown as ScryfallCard,
         quantity,
         addedAt: new Date().toISOString(),
@@ -148,7 +171,9 @@ export function useCollection() {
 
         const updatedCards = [...collection.cards];
         for (const newCard of newCards) {
-          const existingIndex = updatedCards.findIndex((c) => c.card.id === newCard.card.id);
+          const existingIndex = updatedCards.findIndex(
+            (c) => c.card.id === newCard.card.id,
+          );
           if (existingIndex >= 0) {
             updatedCards[existingIndex].quantity += newCard.quantity;
           } else {
@@ -156,27 +181,33 @@ export function useCollection() {
           }
         }
 
-        return { ...collection, cards: updatedCards, updatedAt: new Date().toISOString() };
-      })
+        return {
+          ...collection,
+          cards: updatedCards,
+          updatedAt: new Date().toISOString(),
+        };
+      }),
     );
   };
 
   const exportToCSV = () => {
     return activeCollection.cards
       .map((c) => `${c.quantity},${c.card.name}`)
-      .join('\n');
+      .join("\n");
   };
 
   /**
    * Compare a deck list against the collection
    * Returns cards that are missing or insufficient in quantity
    */
-  const compareDeckWithCollection = (deckCards: { name: string; quantity: number }[]): {
+  const compareDeckWithCollection = (
+    deckCards: { name: string; quantity: number }[],
+  ): {
     name: string;
     deckQuantity: number;
     collectionQuantity: number;
     missing: number;
-    status: 'ok' | 'insufficient' | 'missing';
+    status: "ok" | "insufficient" | "missing";
   }[] => {
     const collectionMap = new Map<string, number>();
     for (const card of activeCollection.cards) {
@@ -187,10 +218,10 @@ export function useCollection() {
     return deckCards.map((deckCard) => {
       const collectionQty = collectionMap.get(deckCard.name.toLowerCase()) || 0;
       const missing = Math.max(0, deckCard.quantity - collectionQty);
-      
-      let status: 'ok' | 'insufficient' | 'missing' = 'ok';
-      if (collectionQty === 0) status = 'missing';
-      else if (collectionQty < deckCard.quantity) status = 'insufficient';
+
+      let status: "ok" | "insufficient" | "missing" = "ok";
+      if (collectionQty === 0) status = "missing";
+      else if (collectionQty < deckCard.quantity) status = "insufficient";
 
       return {
         name: deckCard.name,
@@ -212,7 +243,7 @@ export function useCollection() {
         name: c.card.name,
         quantity: c.quantity - 4, // Keep 4 for playability
         set: c.card.set,
-        condition: 'near mint', // Default condition
+        condition: "near mint", // Default condition
       }));
   };
 
@@ -220,17 +251,25 @@ export function useCollection() {
    * Get collection value estimate (basic - counts cards only)
    */
   const getCollectionStats = () => {
-    const totalCards = activeCollection.cards.reduce((sum, c) => sum + c.quantity, 0);
+    const totalCards = activeCollection.cards.reduce(
+      (sum, c) => sum + c.quantity,
+      0,
+    );
     const uniqueCards = activeCollection.cards.length;
-    const playableCards = activeCollection.cards.filter((c) => c.quantity >= 4).length;
-    const tradeableCards = activeCollection.cards.filter((c) => c.quantity > 4).length;
-    
+    const playableCards = activeCollection.cards.filter(
+      (c) => c.quantity >= 4,
+    ).length;
+    const tradeableCards = activeCollection.cards.filter(
+      (c) => c.quantity > 4,
+    ).length;
+
     // Count by color
     const colorCounts: Record<string, number> = {};
     for (const card of activeCollection.cards) {
       const colors = card.card.colors || [];
       if (colors.length === 0) {
-        colorCounts['colorless'] = (colorCounts['colorless'] || 0) + card.quantity;
+        colorCounts["colorless"] =
+          (colorCounts["colorless"] || 0) + card.quantity;
       } else {
         for (const color of colors) {
           colorCounts[color] = (colorCounts[color] || 0) + card.quantity;

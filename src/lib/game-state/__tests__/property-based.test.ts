@@ -15,7 +15,7 @@ import {
 } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { addMana as addManaToPool, activateManaAbility } from "../mana";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { GameState, ManaPool, PlayerId, StackObject } from "../types";
 import { resolveTopOfStack } from "../spell-casting";
 import { counterSpell } from "../keyword-actions";

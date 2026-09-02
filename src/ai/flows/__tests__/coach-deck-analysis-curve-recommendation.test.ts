@@ -15,11 +15,8 @@
  *   4. Edge cases (empty deck, unknown archetype) still produce a stable shape.
  */
 
-import type { DeckCard } from "@/app/actions";
-import type {
-  ArchetypeResult,
-  DeckStats,
-} from "@/ai/archetype-signatures";
+import type { DeckCard } from "@/lib/card-database";
+import type { ArchetypeResult, DeckStats } from "@/ai/archetype-signatures";
 import {
   assembleStructuredAnalysis,
   buildStructuredDeckAnalysis,
@@ -102,25 +99,32 @@ describe("buildCurveRecommendation (issue #1239) — land count delta", () => {
 
   it("flags under-loaded land count with a positive action verb", () => {
     // 16 lands in a Burn deck (target 20, range 18–21) → under by 4.
-    const r = rec("Burn", { landCount: 16, manaCurve: [16, 10, 8, 6, 2, 1, 0, 0] });
+    const r = rec("Burn", {
+      landCount: 16,
+      manaCurve: [16, 10, 8, 6, 2, 1, 0, 0],
+    });
     expect(r.actualLands).toBe(16);
     expect(r.landDelta).toBe(-4);
     expect(r.landAssessment.toLowerCase()).toContain("add 4 lands");
-    expect(
-      r.actions.some((a) => /add 4 lands/i.test(a)),
-    ).toBe(true);
+    expect(r.actions.some((a) => /add 4 lands/i.test(a))).toBe(true);
   });
 
   it("flags over-loaded land count with a 'cut' action", () => {
     // 24 lands in a Burn deck (target 20) → over by 4.
-    const r = rec("Burn", { landCount: 24, manaCurve: [24, 8, 6, 4, 2, 1, 0, 0] });
+    const r = rec("Burn", {
+      landCount: 24,
+      manaCurve: [24, 8, 6, 4, 2, 1, 0, 0],
+    });
     expect(r.landDelta).toBe(4);
     expect(r.landAssessment.toLowerCase()).toContain("cut 4 lands");
   });
 
   it("treats land counts inside the archetype range as 'on target'", () => {
     // 20 lands is exactly the recommended for Burn — well within [18, 21].
-    const r = rec("Burn", { landCount: 20, manaCurve: [20, 10, 8, 6, 2, 0, 0, 0] });
+    const r = rec("Burn", {
+      landCount: 20,
+      manaCurve: [20, 10, 8, 6, 2, 0, 0, 0],
+    });
     expect(r.landDelta).toBe(0);
     expect(r.landAssessment.toLowerCase()).toContain("within");
   });
@@ -236,7 +240,11 @@ describe("buildCurveRecommendation — empty / degenerate decks", () => {
   it("returns a stable shape for an empty deck (no non-land cards)", () => {
     const analysis = assembleStructuredAnalysis([], {
       archetype: archetypeOf("Burn"),
-      stats: makeStats({ totalCards: 0, landCount: 0, manaCurve: [0, 0, 0, 0, 0, 0, 0, 0] }),
+      stats: makeStats({
+        totalCards: 0,
+        landCount: 0,
+        manaCurve: [0, 0, 0, 0, 0, 0, 0, 0],
+      }),
       synergies: [],
       missing: [],
     });

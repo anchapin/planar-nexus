@@ -3,34 +3,40 @@
  * Allows players to join a game lobby using a game code and select their deck
  */
 
-'use client';
+"use client";
 
-import { useState, useEffect, Suspense } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from 'lucide-react';
-import { publicLobbyBrowser, PublicGameInfo } from '@/lib/public-lobby-browser';
-import { DeckSelectorWithValidation } from '@/components/deck-selector-with-validation';
-import { ConnectionDataEntry } from '@/components/connection-data-entry';
-import { P2PStatusBanner } from '@/components/p2p-status-banner';
-import { GameFormat } from '@/lib/multiplayer-types';
-import { validateDeckForLobby } from '@/lib/format-validator';
-import { useToast } from '@/hooks/use-toast';
-import type { SavedDeck } from '@/app/actions';
+import { ArrowLeft, Users, Crown, Check, Info, Eye, Clock } from "lucide-react";
+import { publicLobbyBrowser, PublicGameInfo } from "@/lib/public-lobby-browser";
+import { DeckSelectorWithValidation } from "@/components/deck-selector-with-validation";
+import { ConnectionDataEntry } from "@/components/connection-data-entry";
+import { P2PStatusBanner } from "@/components/p2p-status-banner";
+import { GameFormat } from "@/lib/multiplayer-types";
+import { validateDeckForLobby } from "@/lib/format-validator";
+import { useToast } from "@/hooks/use-toast";
+import type { SavedDeck } from "@/lib/card-database";
 import {
   createClientConnection,
   type ConnectionData,
   type DirectConnectionState,
-} from '@/lib/p2p-direct-connection';
+} from "@/lib/p2p-direct-connection";
 
 interface JoinState {
-  step: 'code' | 'name' | 'lobby';
+  step: "code" | "name" | "lobby";
   gameCode: string;
   playerName: string;
   game: PublicGameInfo | null;
@@ -42,45 +48,56 @@ function JoinGameContent() {
   const { toast } = useToast();
 
   // Initialize with code from URL if present
-  const initialCode = searchParams.get('code') || '';
+  const initialCode = searchParams.get("code") || "";
 
   const [joinState, setJoinState] = useState<JoinState>({
-    step: initialCode ? 'name' : 'code',
+    step: initialCode ? "name" : "code",
     gameCode: initialCode,
-    playerName: '',
+    playerName: "",
     game: null,
   });
 
-  const [playerNameInput, setPlayerNameInput] = useState('');
+  const [playerNameInput, setPlayerNameInput] = useState("");
   const [selectedDeck, setSelectedDeck] = useState<SavedDeck | null>(null);
-  const [deckValidation, setDeckValidation] = useState<{ isValid: boolean; errors: string[] }>({ isValid: true, errors: [] });
+  const [deckValidation, setDeckValidation] = useState<{
+    isValid: boolean;
+    errors: string[];
+  }>({ isValid: true, errors: [] });
   const [error, setError] = useState<string | null>(null);
-  const [joinedPlayer, setJoinedPlayer] = useState<{ id: string; name: string; deckId?: string; deckName?: string } | null>(null);
+  const [joinedPlayer, setJoinedPlayer] = useState<{
+    id: string;
+    name: string;
+    deckId?: string;
+    deckName?: string;
+  } | null>(null);
   const [ready, setReady] = useState(false);
   const [showP2pEntry, setShowP2pEntry] = useState(false);
-  const [p2pConnectionState, setP2pConnectionState] = useState<DirectConnectionState>('idle');
+  const [p2pConnectionState, setP2pConnectionState] =
+    useState<DirectConnectionState>("idle");
 
   // Format display names
   const formatDisplayNames: Record<GameFormat, string> = {
-    commander: 'Commander',
-    modern: 'Modern',
-    standard: 'Standard',
-    pioneer: 'Pioneer',
-    legacy: 'Legacy',
-    vintage: 'Vintage',
-    pauper: 'Pauper',
+    commander: "Commander",
+    modern: "Modern",
+    standard: "Standard",
+    pioneer: "Pioneer",
+    legacy: "Legacy",
+    vintage: "Vintage",
+    pauper: "Pauper",
   };
 
   // Load game info when code is entered
   useEffect(() => {
     if (joinState.gameCode.length >= 6) {
-      const game = publicLobbyBrowser.getGameByCode(joinState.gameCode.toUpperCase());
+      const game = publicLobbyBrowser.getGameByCode(
+        joinState.gameCode.toUpperCase(),
+      );
       if (game) {
-        setJoinState(prev => ({ ...prev, game }));
+        setJoinState((prev) => ({ ...prev, game }));
         setError(null);
       } else {
-        setError('Game not found. Check the code and try again.');
-        setJoinState(prev => ({ ...prev, game: null }));
+        setError("Game not found. Check the code and try again.");
+        setJoinState((prev) => ({ ...prev, game: null }));
       }
     }
   }, [joinState.gameCode]);
@@ -88,14 +105,14 @@ function JoinGameContent() {
   const handleCodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (joinState.gameCode.length >= 6) {
-      setJoinState(prev => ({ ...prev, step: 'name' }));
+      setJoinState((prev) => ({ ...prev, step: "name" }));
     }
   };
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (playerNameInput.trim()) {
-      setJoinState(prev => ({ ...prev, playerName: playerNameInput.trim() }));
+      setJoinState((prev) => ({ ...prev, playerName: playerNameInput.trim() }));
       // Auto-join the player to the lobby
       joinGame();
     }
@@ -111,21 +128,21 @@ function JoinGameContent() {
   // Handle P2P connection
   const handleP2PConnect = async (connectionData: ConnectionData) => {
     try {
-      const playerId = localStorage.getItem('planar_nexus_player_id') || `player-${Date.now()}`;
+      const playerId =
+        localStorage.getItem("planar_nexus_player_id") ||
+        `player-${Date.now()}`;
 
-      setP2pConnectionState('exchanging-ice');
+      setP2pConnectionState("exchanging-ice");
 
       await createClientConnection(connectionData, {
         playerId,
         playerName: joinState.playerName,
         isHost: false,
-        onAnswerGenerated: () => {
-        },
-        onICECandidate: () => {
-        },
+        onAnswerGenerated: () => {},
+        onICECandidate: () => {},
       });
 
-      setP2pConnectionState('connected');
+      setP2pConnectionState("connected");
 
       // Simulate joining - in a real app this would connect to server
       const newPlayer = {
@@ -136,22 +153,25 @@ function JoinGameContent() {
       };
 
       // Store in localStorage to simulate joined state
-      localStorage.setItem('planar_nexus_joined_game', JSON.stringify({
-        gameCode: connectionData.gameCode,
-        player: newPlayer,
-      }));
+      localStorage.setItem(
+        "planar_nexus_joined_game",
+        JSON.stringify({
+          gameCode: connectionData.gameCode,
+          player: newPlayer,
+        }),
+      );
 
       setJoinedPlayer(newPlayer);
-      setJoinState(prev => ({ ...prev, step: 'lobby' }));
+      setJoinState((prev) => ({ ...prev, step: "lobby" }));
     } catch (error) {
-      console.error('[P2P Client] Failed to connect:', error);
-      setP2pConnectionState('failed');
+      console.error("[P2P Client] Failed to connect:", error);
+      setP2pConnectionState("failed");
     }
   };
 
   const handleDeckSelect = (deck: SavedDeck) => {
     setSelectedDeck(deck);
-    
+
     // Validate deck for the game format
     if (joinState.game) {
       const validation = validateDeckForLobby(deck, joinState.game.format);
@@ -160,15 +180,22 @@ function JoinGameContent() {
         errors: [...validation.errors, ...validation.warnings],
       });
     }
-    
+
     // Update local storage
     if (joinedPlayer) {
-      const updatedPlayer = { ...joinedPlayer, deckId: deck.id, deckName: deck.name };
+      const updatedPlayer = {
+        ...joinedPlayer,
+        deckId: deck.id,
+        deckName: deck.name,
+      };
       setJoinedPlayer(updatedPlayer);
-      localStorage.setItem('planar_nexus_joined_game', JSON.stringify({
-        gameCode: joinState.gameCode,
-        player: updatedPlayer,
-      }));
+      localStorage.setItem(
+        "planar_nexus_joined_game",
+        JSON.stringify({
+          gameCode: joinState.gameCode,
+          player: updatedPlayer,
+        }),
+      );
     }
   };
 
@@ -179,31 +206,37 @@ function JoinGameContent() {
     setReady(newReady);
     if (newReady) {
       toast({
-        title: 'P2P Multiplayer Coming Soon',
+        title: "P2P Multiplayer Coming Soon",
         description:
-          'Your ready status is local-only for now. WebRTC peer sync arrives in a future release.',
+          "Your ready status is local-only for now. WebRTC peer sync arrives in a future release.",
       });
     }
   };
 
   const handleLeave = () => {
-    localStorage.removeItem('planar_nexus_joined_game');
-    router.push('/multiplayer');
+    localStorage.removeItem("planar_nexus_joined_game");
+    router.push("/multiplayer");
   };
 
   // Step 1: Enter game code
-  if (joinState.step === 'code') {
+  if (joinState.step === "code") {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
-        <Button variant="ghost" onClick={() => router.push('/multiplayer')} className="mb-4">
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/multiplayer")}
+          className="mb-4"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
-        
+
         <Card>
           <CardHeader>
             <CardTitle>Join a Game</CardTitle>
-            <CardDescription>Enter the game code to join a lobby</CardDescription>
+            <CardDescription>
+              Enter the game code to join a lobby
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleCodeSubmit} className="space-y-4">
@@ -213,19 +246,28 @@ function JoinGameContent() {
                   id="game-code"
                   placeholder="e.g., ABC123"
                   value={joinState.gameCode}
-                  onChange={(e) => setJoinState(prev => ({ ...prev, gameCode: e.target.value.toUpperCase() }))}
+                  onChange={(e) =>
+                    setJoinState((prev) => ({
+                      ...prev,
+                      gameCode: e.target.value.toUpperCase(),
+                    }))
+                  }
                   className="text-center text-2xl font-mono tracking-widest"
                   maxLength={6}
                 />
               </div>
-              
+
               {error && (
                 <Alert variant="destructive">
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              
-              <Button type="submit" className="w-full" disabled={joinState.gameCode.length < 6}>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={joinState.gameCode.length < 6}
+              >
                 Continue
               </Button>
             </form>
@@ -236,10 +278,14 @@ function JoinGameContent() {
   }
 
   // Step 2: Enter player name
-  if (joinState.step === 'name') {
+  if (joinState.step === "name") {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-md mx-auto">
-        <Button variant="ghost" onClick={() => setJoinState(prev => ({ ...prev, step: 'code' }))} className="mb-4">
+        <Button
+          variant="ghost"
+          onClick={() => setJoinState((prev) => ({ ...prev, step: "code" }))}
+          className="mb-4"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
@@ -254,7 +300,10 @@ function JoinGameContent() {
             <CardHeader>
               <CardTitle>Join "{joinState.game?.name}"</CardTitle>
               <CardDescription>
-                Game Format: {joinState.game ? formatDisplayNames[joinState.game.format] : 'Unknown'}
+                Game Format:{" "}
+                {joinState.game
+                  ? formatDisplayNames[joinState.game.format]
+                  : "Unknown"}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -273,7 +322,10 @@ function JoinGameContent() {
                 <div className="p-3 bg-muted rounded-lg space-y-1">
                   <div className="flex items-center gap-2 text-sm">
                     <Users className="w-4 h-4" />
-                    <span>{joinState.game?.currentPlayers || 0} / {joinState.game?.maxPlayers} players</span>
+                    <span>
+                      {joinState.game?.currentPlayers || 0} /{" "}
+                      {joinState.game?.maxPlayers} players
+                    </span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Crown className="w-4 h-4" />
@@ -287,7 +339,11 @@ function JoinGameContent() {
                   )}
                 </div>
 
-                <Button type="submit" className="w-full" disabled={!playerNameInput.trim()}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={!playerNameInput.trim()}
+                >
                   Join Game
                 </Button>
               </form>
@@ -305,19 +361,23 @@ function JoinGameContent() {
         <ArrowLeft className="w-4 h-4 mr-2" />
         Leave Game
       </Button>
-      
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="font-headline text-3xl font-bold flex items-center gap-2">
             {joinState.game?.name}
-            <Badge variant="secondary">{formatDisplayNames[joinState.game?.format as GameFormat]}</Badge>
+            <Badge variant="secondary">
+              {formatDisplayNames[joinState.game?.format as GameFormat]}
+            </Badge>
           </h1>
           <p className="text-muted-foreground mt-1">
             Waiting for game to start...
           </p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-mono font-bold">{joinState.gameCode}</div>
+          <div className="text-2xl font-mono font-bold">
+            {joinState.gameCode}
+          </div>
           <div className="text-xs text-muted-foreground">Game Code</div>
         </div>
       </div>
@@ -334,13 +394,13 @@ function JoinGameContent() {
           <CardContent className="space-y-4">
             <div className="text-center">
               <div className="text-lg font-semibold">{joinedPlayer?.name}</div>
-              <Badge variant={ready ? 'default' : 'secondary'}>
-                {ready ? 'Ready' : 'Not Ready'}
+              <Badge variant={ready ? "default" : "secondary"}>
+                {ready ? "Ready" : "Not Ready"}
               </Badge>
             </div>
-            
+
             <Separator />
-            
+
             {/* Deck Selection */}
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -352,7 +412,7 @@ function JoinGameContent() {
                 onDeckSelect={handleDeckSelect}
                 selectedDeckId={selectedDeck?.id}
               />
-              
+
               {deckValidation.errors.length > 0 && (
                 <Alert variant="destructive" className="mt-2">
                   <AlertDescription className="text-xs">
@@ -361,11 +421,11 @@ function JoinGameContent() {
                 </Alert>
               )}
             </div>
-            
+
             <Button
               onClick={handleReady}
               className="w-full"
-              variant={ready ? 'outline' : 'default'}
+              variant={ready ? "outline" : "default"}
             >
               {ready ? (
                 <>
@@ -373,7 +433,7 @@ function JoinGameContent() {
                   Ready
                 </>
               ) : (
-                'Ready Up'
+                "Ready Up"
               )}
             </Button>
           </CardContent>
@@ -388,11 +448,16 @@ function JoinGameContent() {
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground">Format</div>
-                <div className="font-semibold">{formatDisplayNames[joinState.game?.format as GameFormat]}</div>
+                <div className="font-semibold">
+                  {formatDisplayNames[joinState.game?.format as GameFormat]}
+                </div>
               </div>
               <div className="p-3 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground">Players</div>
-                <div className="font-semibold">{joinState.game?.currentPlayers} / {joinState.game?.maxPlayers}</div>
+                <div className="font-semibold">
+                  {joinState.game?.currentPlayers} /{" "}
+                  {joinState.game?.maxPlayers}
+                </div>
               </div>
               <div className="p-3 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
@@ -406,17 +471,21 @@ function JoinGameContent() {
                   <Eye className="w-3 h-3" />
                   Spectators
                 </div>
-                <div className="font-semibold">{joinState.game?.allowSpectators ? 'Allowed' : 'Not Allowed'}</div>
+                <div className="font-semibold">
+                  {joinState.game?.allowSpectators ? "Allowed" : "Not Allowed"}
+                </div>
               </div>
             </div>
-            
+
             {joinState.game?.settings?.timerEnabled && (
               <div className="mt-4 p-3 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   Turn Timer
                 </div>
-                <div className="font-semibold">{joinState.game.settings.timerMinutes} minutes</div>
+                <div className="font-semibold">
+                  {joinState.game.settings.timerMinutes} minutes
+                </div>
               </div>
             )}
           </CardContent>

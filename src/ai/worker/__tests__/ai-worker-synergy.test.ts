@@ -16,7 +16,7 @@ import { describe, test, expect } from "@jest/globals";
 import { aiWorker } from "../ai-worker";
 import { detectSynergies } from "../../synergy-detector";
 import type { SynergyResult } from "../../synergy-detector";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 function makeCard(
   name: string,

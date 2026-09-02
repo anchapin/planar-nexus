@@ -45,7 +45,7 @@ import {
 } from "../mutate";
 import { createCardInstance } from "../card-instance";
 import { createInitialGameState, startGame } from "../game-state";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { GameState } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -133,7 +133,10 @@ function setupMergedStack(
   ls: LayerSystem,
   mutateData: ScryfallCard,
   targetData: ScryfallCard,
-): { mutate: ReturnType<typeof createCardInstance>; target: ReturnType<typeof createCardInstance> } {
+): {
+  mutate: ReturnType<typeof createCardInstance>;
+  target: ReturnType<typeof createCardInstance>;
+} {
   const target = makeCreature(ls, targetData);
   const mutate = makeCreature(ls, mutateData);
 
@@ -198,7 +201,14 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       );
 
       layerSystem.registerEffect(
-        createPowerToughnessSetEffect("src-set", "player1", 1, 1, "Become 1/1", layerSystem),
+        createPowerToughnessSetEffect(
+          "src-set",
+          "player1",
+          1,
+          1,
+          "Become 1/1",
+          layerSystem,
+        ),
       );
 
       const chars = layerSystem.getEffectiveCharacteristics(mutate);
@@ -253,15 +263,20 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       // Represent the merged permanent carrying two +1/+1 counters.
       const withCounters = {
         ...mutate,
-        counters: [
-          { type: "+1/+1", count: 2 },
-        ],
+        counters: [{ type: "+1/+1", count: 2 }],
       };
       layerSystem.unregisterCardInstance(mutate.id);
       layerSystem.registerCardInstance(withCounters);
 
       layerSystem.registerEffect(
-        createPowerToughnessSetEffect("src-set", "player1", 1, 1, "Set 1/1", layerSystem),
+        createPowerToughnessSetEffect(
+          "src-set",
+          "player1",
+          1,
+          1,
+          "Set 1/1",
+          layerSystem,
+        ),
       );
       layerSystem.registerEffect(
         createPowerToughnessModifyEffect("src-buf", "player1", 3, 3, "+3/+3"),
@@ -282,7 +297,12 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       );
 
       layerSystem.registerEffect(
-        createPowerToughnessSwitchEffect("src-sw", "player1", "Switch P/T", layerSystem),
+        createPowerToughnessSwitchEffect(
+          "src-sw",
+          "player1",
+          "Switch P/T",
+          layerSystem,
+        ),
       );
       layerSystem.registerEffect(
         createPowerToughnessModifyEffect("src-buf", "player1", 1, 1, "+1/+1"),
@@ -312,7 +332,14 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       );
       // Layer 7b set overrides the CDA value.
       layerSystem.registerEffect(
-        createPowerToughnessSetEffect("src-set", "player1", 2, 2, "Set 2/2", layerSystem),
+        createPowerToughnessSetEffect(
+          "src-set",
+          "player1",
+          2,
+          2,
+          "Set 2/2",
+          layerSystem,
+        ),
       );
       layerSystem.registerEffect(
         createPowerToughnessModifyEffect("src-buf", "player1", 1, 1, "+1/+1"),
@@ -350,7 +377,13 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       );
 
       layerSystem.registerEffect(
-        createAbilityGrantEffect("src-fly", "player1", "flying", "Grant flying", layerSystem),
+        createAbilityGrantEffect(
+          "src-fly",
+          "player1",
+          "flying",
+          "Grant flying",
+          layerSystem,
+        ),
       );
 
       const chars = layerSystem.getEffectiveCharacteristics(mutate);
@@ -362,7 +395,14 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       const state = createBlankStateWithCards();
       const lowCmc = createMutateCreature("Low Cmc", 1, 1, [], "Low text.");
       (lowCmc as ScryfallCard & { cmc: number }).cmc = 2;
-      const highCmc = createTargetCreature("High Cmc", 5, 5, [], "High text.", 7);
+      const highCmc = createTargetCreature(
+        "High Cmc",
+        5,
+        5,
+        [],
+        "High text.",
+        7,
+      );
 
       const lowCard = createCardInstance(lowCmc, "player1", "player1");
       const highCard = createCardInstance(highCmc, "player1", "player1");
@@ -413,10 +453,23 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       );
 
       layerSystem.registerEffect(
-        createAbilityGrantEffect("src-fly", "player1", "flying", "Grant flying", layerSystem),
+        createAbilityGrantEffect(
+          "src-fly",
+          "player1",
+          "flying",
+          "Grant flying",
+          layerSystem,
+        ),
       );
       layerSystem.registerEffect(
-        createAbilityRemoveEffect("src-rm", "player1", "vigilance", "Lose vigilance", false, layerSystem),
+        createAbilityRemoveEffect(
+          "src-rm",
+          "player1",
+          "vigilance",
+          "Lose vigilance",
+          false,
+          layerSystem,
+        ),
       );
 
       const chars = layerSystem.getEffectiveCharacteristics(mutate);
@@ -443,10 +496,19 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
       } as ScryfallCard;
 
       const target = makeCreature(layerSystem, enchantData);
-      const mutate = makeCreature(layerSystem, createMutateCreature("Auspex", 3, 3));
+      const mutate = makeCreature(
+        layerSystem,
+        createMutateCreature("Auspex", 3, 3),
+      );
 
       layerSystem.registerEffect(
-        createMutateCopyEffect(mutate.id, "player1", target.id, "Mutate onto enchantment", layerSystem),
+        createMutateCopyEffect(
+          mutate.id,
+          "player1",
+          target.id,
+          "Mutate onto enchantment",
+          layerSystem,
+        ),
       );
       layerSystem.applyEffects(mutate);
 
@@ -574,7 +636,10 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
     it("arbitrary modify deltas accumulate identically regardless of registration order", () => {
       fc.assert(
         fc.property(
-          fc.array(fc.integer({ min: -4, max: 4 }), { minLength: 1, maxLength: 6 }),
+          fc.array(fc.integer({ min: -4, max: 4 }), {
+            minLength: 1,
+            maxLength: 6,
+          }),
           (deltas) => {
             const base = 6;
             const expected = base + deltas.reduce((a, b) => a + b, 0);
@@ -595,13 +660,25 @@ describe("Mutate × Layer System Integration (CR 702.140 × CR 613) — Issue #1
 
               deltas.forEach((d, i) => {
                 lsA.registerEffect(
-                  createPowerToughnessModifyEffect(`m-${i}`, "player1", d, d, "mod"),
+                  createPowerToughnessModifyEffect(
+                    `m-${i}`,
+                    "player1",
+                    d,
+                    d,
+                    "mod",
+                  ),
                 );
               });
               // Reverse registration order.
               [...deltas].reverse().forEach((d, i) => {
                 lsB.registerEffect(
-                  createPowerToughnessModifyEffect(`m-${i}`, "player1", d, d, "mod"),
+                  createPowerToughnessModifyEffect(
+                    `m-${i}`,
+                    "player1",
+                    d,
+                    d,
+                    "mod",
+                  ),
                 );
               });
 

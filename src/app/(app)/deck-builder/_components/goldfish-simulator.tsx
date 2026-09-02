@@ -26,7 +26,7 @@ import {
   Percent,
   Sigma,
 } from "lucide-react";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import type { Format } from "@/lib/game-rules";
 import { formatRules } from "@/lib/game-rules";
 import {

@@ -33,7 +33,7 @@ import type {
   CardInstanceId,
   StackObject,
 } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function makeGame(players = 2): { state: GameState; ids: PlayerId[] } {
   let state = createInitialGameState(
@@ -118,7 +118,10 @@ describe("trigger-system mutation edge cases (#1395)", () => {
       // "you have 50 or more life" — Alice has 20, so the clause is FALSE.
       placeOnBf(
         state,
-        mkCard("Test of Endurance", "At the beginning of your upkeep, if you have 50 or more life, you win the game."),
+        mkCard(
+          "Test of Endurance",
+          "At the beginning of your upkeep, if you have 50 or more life, you win the game.",
+        ),
         ids[0],
       );
 
@@ -131,7 +134,10 @@ describe("trigger-system mutation edge cases (#1395)", () => {
       const { state, ids } = makeGame(1);
       placeOnBf(
         state,
-        mkCard("Test of Endurance", "At the beginning of your upkeep, if you have 50 or more life, you win the game."),
+        mkCard(
+          "Test of Endurance",
+          "At the beginning of your upkeep, if you have 50 or more life, you win the game.",
+        ),
         ids[0],
       );
       state.players.get(ids[0])!.life = 50;
@@ -152,12 +158,18 @@ describe("trigger-system mutation edge cases (#1395)", () => {
       const [alice, bob] = ids;
       placeOnBf(
         state,
-        mkCard("Alarm", "At the beginning of your untap step, untap all creatures you control."),
+        mkCard(
+          "Alarm",
+          "At the beginning of your untap step, untap all creatures you control.",
+        ),
         alice,
       );
       placeOnBf(
         state,
-        mkCard("Bobs Alarm", "At the beginning of your untap step, untap all creatures you control."),
+        mkCard(
+          "Bobs Alarm",
+          "At the beginning of your untap step, untap all creatures you control.",
+        ),
         bob,
       );
 
@@ -278,7 +290,11 @@ describe("trigger-system mutation edge cases (#1395)", () => {
   // Monarchy-change trigger scoping (issue #1225)
   // -------------------------------------------------------------------------
   describe("monarchy-change trigger scoping (#1225)", () => {
-    function monarchCard(name: string, controller: PlayerId, state: GameState): CardInstanceId {
+    function monarchCard(
+      name: string,
+      controller: PlayerId,
+      state: GameState,
+    ): CardInstanceId {
       return placeOnBf(
         state,
         mkCard(name, "Whenever you become the monarch, draw a card."),
@@ -316,7 +332,10 @@ describe("trigger-system mutation edge cases (#1395)", () => {
       const [alice, bob] = ids;
       placeOnBf(
         state,
-        mkCard("Alices Upkeep", "At the beginning of your upkeep, draw a card."),
+        mkCard(
+          "Alices Upkeep",
+          "At the beginning of your upkeep, draw a card.",
+        ),
         alice,
       );
       placeOnBf(
@@ -343,14 +362,19 @@ describe("trigger-system mutation edge cases (#1395)", () => {
       state.players.get(ids[0])!.life = 50;
       const sourceId = placeOnBf(
         state,
-        mkCard("Test of Endurance", "At the beginning of your upkeep, if you have 50 or more life, you win the game."),
+        mkCard(
+          "Test of Endurance",
+          "At the beginning of your upkeep, if you have 50 or more life, you win the game.",
+        ),
         ids[0],
       );
       const triggers = detectTurnStartTriggers(state, ids[0]);
       expect(triggers).toHaveLength(1);
 
       const result = putTriggersOnStack(state, triggers);
-      const stackObj = result.state.stack.find((o) => o.sourceCardId === sourceId)!;
+      const stackObj = result.state.stack.find(
+        (o) => o.sourceCardId === sourceId,
+      )!;
 
       expect(stackObj).toBeDefined();
       expect(stackObj.interveningIf).toBe("you have 50 or more life");

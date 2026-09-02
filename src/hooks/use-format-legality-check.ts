@@ -8,7 +8,7 @@
  */
 
 import { useMemo } from "react";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import type { Format } from "@/lib/game-rules";
 
 /**
@@ -19,10 +19,7 @@ import type { Format } from "@/lib/game-rules";
  * - `not_legal`  — card is not part of the format's pool
  */
 export type CardLegalityStatus =
-  | "legal"
-  | "restricted"
-  | "banned"
-  | "not_legal";
+  "legal" | "restricted" | "banned" | "not_legal";
 
 export interface CardLegalityResult {
   /** The card id being described. */
@@ -58,9 +55,7 @@ export interface DeckLegalitySummary {
  * on the side of warning the user rather than silently allowing unknown
  * cards into a competitive deck.
  */
-export function normaliseLegality(
-  raw: string | undefined,
-): CardLegalityStatus {
+export function normaliseLegality(raw: string | undefined): CardLegalityStatus {
   switch (raw) {
     case "legal":
       return "legal";
