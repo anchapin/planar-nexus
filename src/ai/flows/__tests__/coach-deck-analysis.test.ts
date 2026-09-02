@@ -3,7 +3,7 @@ import {
   formatStructuredAnalysisForLLM,
   type StructuredDeckAnalysis,
 } from "../coach-deck-analysis";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /** Build an Elf-ramp deck that exercises archetype + synergy detection. */
 function buildElfRampDeck(): DeckCard[] {

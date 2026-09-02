@@ -23,7 +23,7 @@ import {
   resolveStackObjectEffects,
 } from "../effect-resolution";
 import { checkStateBasedActions } from "../state-based-actions";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { GameState, PlayerId, CardInstanceId } from "../types";
 
 function makeCard(
@@ -132,12 +132,9 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const effects = parseSpellEffects(
         "Lightning Bolt deals 3 damage to any target.",
       );
-      const result = resolveStackObjectEffects(
-        r.state,
-        effects,
-        undefined,
-        [{ type: "card", targetId: creatureId }],
-      );
+      const result = resolveStackObjectEffects(r.state, effects, undefined, [
+        { type: "card", targetId: creatureId },
+      ]);
 
       expect(result.cards.get(creatureId)?.damage).toBe(3);
     });
@@ -154,12 +151,9 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const effects = parseSpellEffects(
         "Lightning Bolt deals 3 damage to any target.",
       );
-      const after = resolveStackObjectEffects(
-        r.state,
-        effects,
-        undefined,
-        [{ type: "card", targetId: creatureId }],
-      );
+      const after = resolveStackObjectEffects(r.state, effects, undefined, [
+        { type: "card", targetId: creatureId },
+      ]);
 
       const sba = checkStateBasedActions(after);
       expect(sba.actionsPerformed).toBe(true);
@@ -179,12 +173,9 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const creatureId = r.cardId;
 
       const effects = parseSpellEffects("Shock deals 2 damage to any target.");
-      const after = resolveStackObjectEffects(
-        r.state,
-        effects,
-        undefined,
-        [{ type: "card", targetId: creatureId }],
-      );
+      const after = resolveStackObjectEffects(r.state, effects, undefined, [
+        { type: "card", targetId: creatureId },
+      ]);
 
       expect(after.cards.get(creatureId)?.damage).toBe(2);
       const sba = checkStateBasedActions(after);
@@ -207,21 +198,16 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       expect(loyaltyBefore).toBe(3);
 
       const effects = parseSpellEffects("Shock deals 2 damage to any target.");
-      const after = resolveStackObjectEffects(
-        r.state,
-        effects,
-        undefined,
-        [{ type: "card", targetId: pwId }],
-      );
+      const after = resolveStackObjectEffects(r.state, effects, undefined, [
+        { type: "card", targetId: pwId },
+      ]);
 
       const loyaltyAfter =
         after.cards.get(pwId)?.counters?.find((c) => c.type === "loyalty")
           ?.count ?? null;
       expect(loyaltyAfter).toBe(1);
       // Still on the battlefield at 1 loyalty
-      expect(
-        after.zones.get(`${bobId}-battlefield`)!.cardIds,
-      ).toContain(pwId);
+      expect(after.zones.get(`${bobId}-battlefield`)!.cardIds).toContain(pwId);
     });
 
     it("Shock on a 2-loyalty planeswalker: exiled via SBA at 0 loyalty", () => {
@@ -233,18 +219,15 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const pwId = r.cardId;
 
       const effects = parseSpellEffects("Shock deals 2 damage to any target.");
-      const after = resolveStackObjectEffects(
-        r.state,
-        effects,
-        undefined,
-        [{ type: "card", targetId: pwId }],
-      );
+      const after = resolveStackObjectEffects(r.state, effects, undefined, [
+        { type: "card", targetId: pwId },
+      ]);
 
       const sba = checkStateBasedActions(after);
       expect(sba.actionsPerformed).toBe(true);
-      expect(sba.state.zones.get(`${bobId}-battlefield`)!.cardIds).not.toContain(
-        pwId,
-      );
+      expect(
+        sba.state.zones.get(`${bobId}-battlefield`)!.cardIds,
+      ).not.toContain(pwId);
     });
 
     it("damage spell targeting a player reduces life (not misrouted to card damage)", () => {
@@ -256,12 +239,9 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const effects = parseSpellEffects(
         "Lightning Bolt deals 3 damage to any target.",
       );
-      const after = resolveStackObjectEffects(
-        state,
-        effects,
-        undefined,
-        [{ type: "player", targetId: bobId }],
-      );
+      const after = resolveStackObjectEffects(state, effects, undefined, [
+        { type: "player", targetId: bobId },
+      ]);
 
       expect(after.players.get(bobId)!.life).toBe(lifeBefore - 3);
     });
@@ -278,12 +258,9 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const effects = parseSpellEffects(
         "Lightning Bolt deals 3 damage to any target.",
       );
-      const after = resolveStackObjectEffects(
-        r.state,
-        effects,
-        undefined,
-        [{ type: "player", targetId: bobId }],
-      );
+      const after = resolveStackObjectEffects(r.state, effects, undefined, [
+        { type: "player", targetId: bobId },
+      ]);
 
       // Creature untouched even though it shares the battlefield
       expect(after.cards.get(creatureId)?.damage).toBe(0);
@@ -313,12 +290,9 @@ describe("Issue #975 - Creature damage resolution in spell casting", () => {
       const effects = parseSpellEffects(
         "Lightning Bolt deals 3 damage to any target.",
       );
-      const after = resolveStackObjectEffects(
-        r.state,
-        effects,
-        sourceCard.id,
-        [{ type: "card", targetId: creatureId }],
-      );
+      const after = resolveStackObjectEffects(r.state, effects, sourceCard.id, [
+        { type: "card", targetId: creatureId },
+      ]);
 
       // Protection from red prevents all damage from the red source (CR 702.16c)
       expect(after.cards.get(creatureId)?.damage).toBe(0);

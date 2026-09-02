@@ -18,7 +18,7 @@
  *      injection) is maintained.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 // Mock the heavy detectors so we can assert how often the builder actually
 // runs. The LRU is what we want to exercise — the worker bridge and Genkit
@@ -63,7 +63,9 @@ const detectMissingMock = detectMissingSynergies as jest.MockedFunction<
 >;
 
 /** Build a real-ish elf-ramp deck used across the test cases. */
-function buildDeck(opts: { cardCount?: number; landCount?: number } = {}): DeckCard[] {
+function buildDeck(
+  opts: { cardCount?: number; landCount?: number } = {},
+): DeckCard[] {
   const c = (
     name: string,
     typeLine: string,
@@ -82,7 +84,13 @@ function buildDeck(opts: { cardCount?: number; landCount?: number } = {}): DeckC
     oracle_text: oracle,
   });
   return [
-    c("Llanowar Elves", "Creature — Elf Druid", 1, opts.cardCount ?? 4, "Tap: Add G."),
+    c(
+      "Llanowar Elves",
+      "Creature — Elf Druid",
+      1,
+      opts.cardCount ?? 4,
+      "Tap: Add G.",
+    ),
     c("Elvish Mystic", "Creature — Elf Druid", 1, 4, "Tap: Add G."),
     c("Craterhoof Behemoth", "Creature — Beast", 8, 2),
     c("Forest", "Basic Land — Forest", 0, opts.landCount ?? 20),
@@ -253,9 +261,7 @@ describe("getOrBuildStructuredAnalysis", () => {
     // whereas an UNTURNED deck from the middle should not.
     const decks: DeckCard[][] = [];
     for (let i = 0; i < DECK_ANALYSIS_LRU_MAX_ENTRIES; i++) {
-      decks.push(
-        buildDeck({ cardCount: 1 + i, landCount: 18 }),
-      );
+      decks.push(buildDeck({ cardCount: 1 + i, landCount: 18 }));
     }
     for (const deck of decks) {
       jest.clearAllMocks();
@@ -269,11 +275,15 @@ describe("getOrBuildStructuredAnalysis", () => {
     // Overflow with a fresh deck. The previous LRU tail (decks[1]) should
     // be evicted; the touched decks[0] should survive.
     jest.clearAllMocks();
-    await getOrBuildStructuredAnalysis(buildDeck({ cardCount: 999, landCount: 17 }));
+    await getOrBuildStructuredAnalysis(
+      buildDeck({ cardCount: 999, landCount: 17 }),
+    );
 
     expect(_deckAnalysisCacheSize()).toBe(DECK_ANALYSIS_LRU_MAX_ENTRIES);
     expect(getCachedStructuredAnalysis(touchedSignature)).toBeDefined();
-    expect(getCachedStructuredAnalysis(computeDeckSignature(decks[1]))).toBeUndefined();
+    expect(
+      getCachedStructuredAnalysis(computeDeckSignature(decks[1])),
+    ).toBeUndefined();
   });
 
   it("evicts entries once the configured TTL elapses", async () => {

@@ -26,7 +26,7 @@ import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { Phase } from "../types";
 import { addMana } from "../mana";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { StackObject, Target } from "../types";
 
 // Helper function to create a mock instant card

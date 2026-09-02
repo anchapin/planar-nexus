@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMemo, memo } from "react";
-import { DeckCard } from "@/app/actions";
+import { DeckCard } from "@/lib/card-database";
 import {
   Card,
   CardContent,
@@ -106,8 +106,7 @@ export function SideboardList({
   const atCap = totalCards >= maxSize;
 
   const sorted = useMemo(
-    () =>
-      [...sideboard].sort((a, b) => a.name.localeCompare(b.name)),
+    () => [...sideboard].sort((a, b) => a.name.localeCompare(b.name)),
     [sideboard],
   );
 
@@ -126,7 +125,9 @@ export function SideboardList({
           <Badge
             variant={atCap ? "destructive" : "outline"}
             className="text-[10px] px-1.5 py-0"
-            data-testid={atCap ? "sideboard-at-cap-badge" : "sideboard-cap-badge"}
+            data-testid={
+              atCap ? "sideboard-at-cap-badge" : "sideboard-cap-badge"
+            }
           >
             {atCap ? "Full" : `${maxSize - totalCards} slots`}
           </Badge>
@@ -139,8 +140,8 @@ export function SideboardList({
             className="text-center text-muted-foreground py-10"
             data-testid="sideboard-empty"
           >
-            Your sideboard is empty. Use the card search to add up to{" "}
-            {maxSize} cards.
+            Your sideboard is empty. Use the card search to add up to {maxSize}{" "}
+            cards.
           </div>
         ) : (
           <div

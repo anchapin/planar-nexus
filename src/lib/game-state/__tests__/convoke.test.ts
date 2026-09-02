@@ -42,7 +42,7 @@ import type {
   CardInstanceId,
   CardInstance,
 } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // ---------------------------------------------------------------------------
 // Mock card helpers

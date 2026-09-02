@@ -62,7 +62,7 @@ import { detectArchetype } from "./archetype-detector";
 // computation when the worker is unavailable (SSR, jsdom tests, Worker init
 // failure).
 import { evaluateGameStateAsync } from "./worker/game-state-evaluator-worker-bridge";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import {
   classifyStanding,
   generateAttackTelegraph,

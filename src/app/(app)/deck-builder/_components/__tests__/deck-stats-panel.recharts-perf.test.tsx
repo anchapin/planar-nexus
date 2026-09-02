@@ -132,7 +132,7 @@ jest.mock("lucide-react", () => ({
 
 import * as React from "react";
 import { DeckStatsPanel } from "@/app/(app)/deck-builder/_components/deck-stats-panel";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import type { DeckLegalitySummary } from "@/hooks/use-format-legality-check";
 
 function makeCard(id: number): DeckCard {
@@ -198,8 +198,8 @@ function ParentWithFreshLegality() {
   const [name, setName] = React.useState("My Deck");
   const [renderTick, setRenderTick] = React.useState(0);
   const deck = React.useMemo(buildDeck, []);
-  const legalitySummary = React.useMemo< DeckLegalitySummary>(
-    () => ({ ...baseLegality, _tick: renderTick } as any),
+  const legalitySummary = React.useMemo<DeckLegalitySummary>(
+    () => ({ ...baseLegality, _tick: renderTick }) as any,
     [renderTick],
   );
   return (

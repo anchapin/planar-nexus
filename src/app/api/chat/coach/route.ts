@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { prefetchCoachContext } from "@/ai/flows/coach-context-prefetch";
 import {
   buildCoachSystemPrompt,

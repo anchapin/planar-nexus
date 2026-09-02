@@ -47,7 +47,7 @@ import { HostGameConfig, PlayerStatus } from "@/lib/multiplayer-types";
 import { FormatRulesDisplay } from "@/components/format-rules-display";
 import { DeckSelectorWithValidation } from "@/components/deck-selector-with-validation";
 import { TeamAssignment } from "@/components/team-assignment";
-import { SavedDeck } from "@/app/actions";
+import { SavedDeck } from "@/lib/card-database";
 import {
   createHostConnection,
   type ConnectionData,
@@ -804,9 +804,11 @@ export default function HostLobbyPage() {
                           : "Ready check"}
                       </strong>{" "}
                       in progress — waiting on{" "}
-                      {activeReadyCheck.targetPeerIds.filter(
-                        (id) => !activeReadyCheck.responses[id],
-                      ).length}{" "}
+                      {
+                        activeReadyCheck.targetPeerIds.filter(
+                          (id) => !activeReadyCheck.responses[id],
+                        ).length
+                      }{" "}
                       of {activeReadyCheck.targetPeerIds.length} peer
                       {activeReadyCheck.targetPeerIds.length === 1 ? "" : "s"}
                       {readyCheckRemainingMs !== null && (
@@ -890,7 +892,9 @@ export default function HostLobbyPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => handleKickPeer(player.id, player.name)}
+                            onClick={() =>
+                              handleKickPeer(player.id, player.name)
+                            }
                             aria-label={`Kick ${player.name}`}
                             title={`Remove ${player.name} from the lobby and ban them for 30 minutes`}
                           >
@@ -901,7 +905,9 @@ export default function HostLobbyPage() {
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => handleBanPeer(player.id, player.name)}
+                            onClick={() =>
+                              handleBanPeer(player.id, player.name)
+                            }
                             aria-label={`Ban ${player.name}`}
                             title={`Ban ${player.name} from re-joining this game code for 30 minutes`}
                           >
@@ -976,7 +982,8 @@ export default function HostLobbyPage() {
                           (lobby.players.length < 2 ||
                             !lobby.players.every(
                               (p) =>
-                                p.deckId && p.deckName &&
+                                p.deckId &&
+                                p.deckName &&
                                 (!p.deckValidationErrors ||
                                   p.deckValidationErrors.length === 0),
                             )))

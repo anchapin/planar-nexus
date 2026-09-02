@@ -101,7 +101,7 @@ jest.mock("lucide-react", () => ({
 
 import * as React from "react";
 import { DeckStatsPanel } from "@/app/(app)/deck-builder/_components/deck-stats-panel";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 function card(id: string, count = 1): DeckCard {
   return {

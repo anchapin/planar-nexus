@@ -2,7 +2,7 @@ import {
   resolveDeckBuilderShortcut,
   isEditableTarget,
 } from "../deck-builder-shortcuts";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 const card: ScryfallCard = {
   id: "card-1",

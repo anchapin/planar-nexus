@@ -6,7 +6,7 @@
  */
 
 import { createInitialGameState, startGame } from "../game-state";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type {
   CardInstance,
   GameState,
@@ -752,7 +752,9 @@ describe("Targeting Validation System", () => {
       const source = createCardInstance(sourceCard, "player1", "player1");
 
       // Opponent (player1) -> ward triggers.
-      expect(canTargetCard(target, source, "player1").wardRequired).toBeDefined();
+      expect(
+        canTargetCard(target, source, "player1").wardRequired,
+      ).toBeDefined();
 
       // Controller (player2) targeting their own warded permanent -> no ward.
       expect(
@@ -761,7 +763,10 @@ describe("Targeting Validation System", () => {
     });
 
     it("parses a life-ward cost into the requirement", () => {
-      const targetCard = createWardedCreature("Life Warded", "Ward—Pay 3 life.");
+      const targetCard = createWardedCreature(
+        "Life Warded",
+        "Ward—Pay 3 life.",
+      );
       const target = createCardInstance(targetCard, "player2", "player2");
 
       const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");
@@ -778,10 +783,7 @@ describe("Targeting Validation System", () => {
 
     it("still applies shroud/hexproof/protection BEFORE ward (hard blocks win)", () => {
       // A permanent with both shroud and ward cannot be targeted at all.
-      const targetCard = createWardedCreature(
-        "Lockdown",
-        "Shroud. Ward {2}.",
-      );
+      const targetCard = createWardedCreature("Lockdown", "Shroud. Ward {2}.");
       const target = createCardInstance(targetCard, "player2", "player2");
 
       const sourceCard = createMockSpell("Shock", ["R"], "Deal 2 damage");

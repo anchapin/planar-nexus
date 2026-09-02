@@ -28,7 +28,7 @@ import {
   initializePlaneswalkerLoyalty,
 } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // Helper function to create a mock creature card
 function createMockCreature(

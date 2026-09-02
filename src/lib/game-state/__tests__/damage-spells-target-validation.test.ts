@@ -29,7 +29,7 @@ import {
   resolveDamageEffect,
 } from "../effect-resolution";
 import { checkStateBasedActions } from "../state-based-actions";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { GameState, PlayerId } from "../types";
 
 function createMockCreature(
@@ -614,7 +614,12 @@ describe("Damage Spells Target Validation", () => {
       const lifelinkData = createMockCreature("Blinding Angel", 3, 3, [
         "Lifelink",
       ]);
-      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      const result1 = addCardToBattlefield(
+        state,
+        lifelinkData,
+        aliceId,
+        aliceId,
+      );
       state = result1.state;
       const lifelinkId = result1.cardId;
       const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
@@ -645,17 +650,17 @@ describe("Damage Spells Target Validation", () => {
       const bobId = playerIds[1];
       // Source without lifelink
       const vanillaData = createMockCreature("Runeclaw Bear", 2, 2);
-      const result1 = addCardToBattlefield(state, vanillaData, aliceId, aliceId);
+      const result1 = addCardToBattlefield(
+        state,
+        vanillaData,
+        aliceId,
+        aliceId,
+      );
       state = result1.state;
       const sourceId = result1.cardId;
       const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
 
-      const damageResult = resolvePlayerDamageEffect(
-        state,
-        sourceId,
-        bobId,
-        3,
-      );
+      const damageResult = resolvePlayerDamageEffect(state, sourceId, bobId, 3);
       expect(damageResult.success).toBe(true);
       state = damageResult.state;
 
@@ -678,7 +683,12 @@ describe("Damage Spells Target Validation", () => {
       const lifelinkData = createMockCreature("Aura-touched Monk", 2, 2, [
         "Lifelink",
       ]);
-      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      const result1 = addCardToBattlefield(
+        state,
+        lifelinkData,
+        aliceId,
+        aliceId,
+      );
       state = result1.state;
       const lifelinkId = result1.cardId;
       const targetData = createMockCreature("Hill Giant", 3, 3);
@@ -716,7 +726,12 @@ describe("Damage Spells Target Validation", () => {
       const lifelinkData = createMockCreature("Lifelink Mage", 3, 3, [
         "Lifelink",
       ]);
-      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      const result1 = addCardToBattlefield(
+        state,
+        lifelinkData,
+        aliceId,
+        aliceId,
+      );
       state = result1.state;
       const lifelinkId = result1.cardId;
       const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;
@@ -756,7 +771,12 @@ describe("Damage Spells Target Validation", () => {
       const lifelinkData = createMockCreature("Battle Messenger", 2, 2, [
         "Lifelink",
       ]);
-      const result1 = addCardToBattlefield(state, lifelinkData, aliceId, aliceId);
+      const result1 = addCardToBattlefield(
+        state,
+        lifelinkData,
+        aliceId,
+        aliceId,
+      );
       state = result1.state;
       const lifelinkId = result1.cardId;
       const aliceLifeBefore = state.players.get(aliceId)?.life ?? 20;

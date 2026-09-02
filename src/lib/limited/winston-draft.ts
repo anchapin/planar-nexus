@@ -16,7 +16,7 @@
  * late-game top card can be worth it if it telegraphs strong picks below.
  */
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type {
   AiDifficulty,
   AiNeighbor,
@@ -161,7 +161,7 @@ export async function createWinstonSession(
     mode: "winston",
     status: "in_progress",
     pool: [], // user's picks live in picksBySeat[0]; LimitedSession.pool
-                // remains a derived mirror populated by `applyPicksToPool`.
+    // remains a derived mirror populated by `applyPicksToPool`.
     deck: [],
     picksBySeat: Object.fromEntries(
       Array.from({ length: playerCount }, (_, i) => [i, [] as PoolCard[]]),
@@ -212,7 +212,9 @@ export function livePileCount(session: WinstonSession): number {
  * pile count over and over.
  */
 export function isWinstonComplete(session: WinstonSession): boolean {
-  return session.winstonState === "winston_complete" || livePileCount(session) === 0;
+  return (
+    session.winstonState === "winston_complete" || livePileCount(session) === 0
+  );
 }
 
 // ============================================================================
@@ -280,9 +282,7 @@ export function revealWinstonPile(
   }
 
   const newPiles = session.piles.map((p, i) =>
-    i === pileIndex
-      ? { ...p, revealedCard: top, awaitingSeat: seatIndex }
-      : p,
+    i === pileIndex ? { ...p, revealedCard: top, awaitingSeat: seatIndex } : p,
   );
 
   return {
@@ -356,7 +356,7 @@ export function pickWinstonPile(
     currentSeatIndex: allDone ? session.currentSeatIndex : getNextSeat(session),
     updatedAt: new Date().toISOString(),
     // Mirror seat-0's picks to LimitedSession.pool for the deck-builder surface.
-    pool: allDone ? newPicksBySeat[0] ?? [] : session.pool,
+    pool: allDone ? (newPicksBySeat[0] ?? []) : session.pool,
   };
 }
 
@@ -411,7 +411,7 @@ export function burnWinstonPile(
     winstonState: allDone ? "winston_complete" : "drawing",
     currentSeatIndex: allDone ? session.currentSeatIndex : getNextSeat(session),
     updatedAt: new Date().toISOString(),
-    pool: allDone ? session.picksBySeat[0] ?? [] : session.pool,
+    pool: allDone ? (session.picksBySeat[0] ?? []) : session.pool,
   };
 }
 

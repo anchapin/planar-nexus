@@ -15,7 +15,7 @@
  * the deck model read-only.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * Pseudorandom number generator producing floats in `[0, 1)`.

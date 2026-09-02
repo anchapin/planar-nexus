@@ -15,7 +15,7 @@
  * tuple, which keeps it testable and offline-capable.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { detectArchetype } from "@/ai/archetype-detector";
 import { getArchetypeByName } from "@/ai/archetype-signatures";
 import {
@@ -84,37 +84,85 @@ const DEFAULT_PROFILE: MatchupProfile = {
 const MATCHUP_PROFILES: Record<string, MatchupProfile> = {
   aggro: {
     category: "aggro",
-    roleValue: { threats: 0, ramp: -1, removal: 3, cardDraw: 1, disruption: 2, lands: 0, other: -2 },
+    roleValue: {
+      threats: 0,
+      ramp: -1,
+      removal: 3,
+      cardDraw: 1,
+      disruption: 2,
+      lands: 0,
+      other: -2,
+    },
     guidance:
       "{player} must stabilise early. Board in cheap removal and disruptive interaction; shave your slowest top-end threats and narrow cards that clog your hand.",
   },
   combo: {
     category: "combo",
-    roleValue: { threats: 1, ramp: 0, removal: 0, cardDraw: 2, disruption: 3, lands: 0, other: -2 },
+    roleValue: {
+      threats: 1,
+      ramp: 0,
+      removal: 0,
+      cardDraw: 2,
+      disruption: 3,
+      lands: 0,
+      other: -2,
+    },
     guidance:
       "{player} needs to stop them going off. Board in hand disruption and countermagic plus draw to find them; cut creature-only removal that cannot interact with the combo.",
   },
   control: {
     category: "control",
-    roleValue: { threats: 2, ramp: 0, removal: -1, cardDraw: 3, disruption: 2, lands: 0, other: -1 },
+    roleValue: {
+      threats: 2,
+      ramp: 0,
+      removal: -1,
+      cardDraw: 3,
+      disruption: 2,
+      lands: 0,
+      other: -1,
+    },
     guidance:
       "{player} plays the long game. Board in card draw, discard, and resilient must-answer threats; trim redundant removal and low-impact cards that trade poorly.",
   },
   midrange: {
     category: "midrange",
-    roleValue: { threats: 2, ramp: 0, removal: 2, cardDraw: 2, disruption: 1, lands: 0, other: -1 },
+    roleValue: {
+      threats: 2,
+      ramp: 0,
+      removal: 2,
+      cardDraw: 2,
+      disruption: 1,
+      lands: 0,
+      other: -1,
+    },
     guidance:
       "{player} trades resources one-for-one. Board in efficient removal and card draw to pull ahead; cut narrow, situational cards.",
   },
   tribal: {
     category: "tribal",
-    roleValue: { threats: 1, ramp: -1, removal: 3, cardDraw: 1, disruption: 2, lands: 0, other: -2 },
+    roleValue: {
+      threats: 1,
+      ramp: -1,
+      removal: 3,
+      cardDraw: 1,
+      disruption: 2,
+      lands: 0,
+      other: -2,
+    },
     guidance:
       "{player} faces a creature flood. Board in sweepers and point removal plus disruptive interaction; cut slow draw and non-interactive cards.",
   },
   special: {
     category: "special",
-    roleValue: { threats: 1, ramp: 0, removal: 2, cardDraw: 2, disruption: 2, lands: 0, other: -1 },
+    roleValue: {
+      threats: 1,
+      ramp: 0,
+      removal: 2,
+      cardDraw: 2,
+      disruption: 2,
+      lands: 0,
+      other: -1,
+    },
     guidance:
       "{player} faces a unique engine. Board in flexible interaction and card draw; trim narrow cards that do not affect their plan.",
   },

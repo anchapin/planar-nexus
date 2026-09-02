@@ -31,7 +31,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { type SavedDeck } from "@/app/actions";
+import { type SavedDeck } from "@/lib/card-database";
 import { getAvailableArchetypeNames } from "@/ai/archetype-signatures";
 import {
   compareDecksAsync,
@@ -99,7 +99,10 @@ export function MultiDeckComparison() {
       cards: d.cards,
     }));
     if (metaArchetype) {
-      entries.push({ name: `${metaArchetype} (meta)`, archetypeOverride: metaArchetype });
+      entries.push({
+        name: `${metaArchetype} (meta)`,
+        archetypeOverride: metaArchetype,
+      });
     }
 
     if (entries.length < MIN_DECKS) {
@@ -158,8 +161,7 @@ export function MultiDeckComparison() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {savedDecks.map((deck) => {
                 const checked = selectedIds.includes(deck.id);
-                const disabled =
-                  !checked && selectedIds.length >= MAX_DECKS;
+                const disabled = !checked && selectedIds.length >= MAX_DECKS;
                 return (
                   <label
                     key={deck.id}
@@ -258,9 +260,7 @@ function ComparisonReportView({
   deckNames: string[];
 }) {
   const cellFor = (row: string, col: string) =>
-    report.matchupMatrix.find(
-      (c) => c.rowDeck === row && c.colDeck === col,
-    );
+    report.matchupMatrix.find((c) => c.rowDeck === row && c.colDeck === col);
 
   return (
     <div className="space-y-4">
@@ -274,7 +274,9 @@ function ComparisonReportView({
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <p>
-            <span className="font-semibold">{report.recommendation.bestDeck}</span>{" "}
+            <span className="font-semibold">
+              {report.recommendation.bestDeck}
+            </span>{" "}
             — {report.recommendation.reasoning}
           </p>
           {report.recommendation.swapsTowardBest && (
@@ -377,7 +379,9 @@ function ComparisonReportView({
               <TableBody>
                 {deckNames.map((row) => (
                   <TableRow key={row}>
-                    <TableCell className="font-medium">{shortName(row, 18)}</TableCell>
+                    <TableCell className="font-medium">
+                      {shortName(row, 18)}
+                    </TableCell>
                     {deckNames.map((col) => {
                       const c = cellFor(row, col);
                       const p = c?.winProbability ?? 0;

@@ -22,7 +22,7 @@ import {
 
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { GameState, CardInstanceId, PlayerId } from "../types";
 
 // Helper to create a mock card

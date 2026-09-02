@@ -2163,7 +2163,7 @@ const ARCHETYPE_CATEGORY: Record<DeckArchetype, MatchupCategory> = {
  * Value of each functional role when facing a given opponent category. This is
  * the SAME weighting model used by the human sideboard coach (#1076); it is
  * reproduced here (rather than imported) so this heuristic module stays
- * self-contained and free of `@/app/actions` / LLM-graph dependencies. Higher
+ * self-contained and free of `@/lib/card-database` / LLM-graph dependencies. Higher
  * = more desirable to board IN against that category; negative = cuttable.
  */
 const MATCHUP_ROLE_VALUE: Record<MatchupCategory, Record<CardRole, number>> = {

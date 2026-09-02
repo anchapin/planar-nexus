@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import {
   resolveDeckBuilderShortcut,
   type DeckBuilderShortcutContext,

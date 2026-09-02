@@ -18,7 +18,7 @@ import {
   type DeckComparisonEntry,
   type DeckComparisonReport,
 } from "../compare-decks";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 function card(
   name: string,
@@ -47,10 +47,31 @@ function card(
  */
 function aggroDeck(): DeckCard[] {
   return [
-    card("Lightning Bolt", "Instant", 1, 4, "Lightning Bolt deals 3 damage to any target.", ["R"]),
+    card(
+      "Lightning Bolt",
+      "Instant",
+      1,
+      4,
+      "Lightning Bolt deals 3 damage to any target.",
+      ["R"],
+    ),
     card("Goblin Guide", "Creature — Goblin Scout", 1, 4, "Haste", ["R"]),
-    card("Monastery Swiftspear", "Creature — Human Monk", 1, 4, "Prowess, haste", ["R"]),
-    card("Eidolon of the Great Revel", "Creature — Spirit", 2, 3, "Whenever a player casts a spell, deal 2 damage.", ["R"]),
+    card(
+      "Monastery Swiftspear",
+      "Creature — Human Monk",
+      1,
+      4,
+      "Prowess, haste",
+      ["R"],
+    ),
+    card(
+      "Eidolon of the Great Revel",
+      "Creature — Spirit",
+      2,
+      3,
+      "Whenever a player casts a spell, deal 2 damage.",
+      ["R"],
+    ),
     card("Mountain", "Basic Land — Mountain", 0, 18, "", ["R"]),
   ];
 }
@@ -63,8 +84,22 @@ function controlDeck(): DeckCard[] {
   return [
     card("Counterspell", "Instant", 2, 4, "Counter target spell.", ["U"]),
     card("Wrath of God", "Sorcery", 4, 4, "Destroy all creatures.", ["W"]),
-    card("Fact or Fiction", "Instant", 4, 3, "Look at the top five cards of your library.", ["U"]),
-    card("Teferi, Hero of Dominaria", "Legendary Planeswalker — Teferi", 5, 2, "+1 draw", ["W", "U"]),
+    card(
+      "Fact or Fiction",
+      "Instant",
+      4,
+      3,
+      "Look at the top five cards of your library.",
+      ["U"],
+    ),
+    card(
+      "Teferi, Hero of Dominaria",
+      "Legendary Planeswalker — Teferi",
+      5,
+      2,
+      "+1 draw",
+      ["W", "U"],
+    ),
     card("Plains", "Basic Land — Plains", 0, 12, "", ["W"]),
     card("Island", "Basic Land — Island", 0, 12, "", ["U"]),
   ];
@@ -75,11 +110,7 @@ function aggroDeckVariant(): DeckCard[] {
   return aggroDeck().map((c) => ({ ...c }));
 }
 
-function cell(
-  report: DeckComparisonReport,
-  rowName: string,
-  colName: string,
-) {
+function cell(report: DeckComparisonReport, rowName: string, colName: string) {
   return report.matchupMatrix.find(
     (c) => c.rowDeck === rowName && c.colDeck === colName,
   );
@@ -87,9 +118,7 @@ function cell(
 
 describe("compareDecks", () => {
   it("returns an insufficient report for fewer than two decks", () => {
-    const one: DeckComparisonEntry[] = [
-      { name: "Solo", cards: aggroDeck() },
-    ];
+    const one: DeckComparisonEntry[] = [{ name: "Solo", cards: aggroDeck() }];
     const empty = compareDecks([]);
 
     expect(one.length === 1 && true).toBe(true);
@@ -149,7 +178,10 @@ describe("compareDecks", () => {
 
     // Diagonal mirrors are exactly 0.5.
     expect(cell(report, "Aggro", "Aggro")!.winProbability).toBeCloseTo(0.5, 5);
-    expect(cell(report, "Control", "Control")!.winProbability).toBeCloseTo(0.5, 5);
+    expect(cell(report, "Control", "Control")!.winProbability).toBeCloseTo(
+      0.5,
+      5,
+    );
   });
 
   it("ranks meta-positioning deterministically with rank 1 holding the max score", () => {
@@ -159,14 +191,20 @@ describe("compareDecks", () => {
       { name: "Aggro 2", cards: aggroDeckVariant() },
     ]);
 
-    const positions = [...report.metaPositioning].sort((a, b) => a.rank - b.rank);
+    const positions = [...report.metaPositioning].sort(
+      (a, b) => a.rank - b.rank,
+    );
     expect(positions[0].rank).toBe(1);
-    const maxScore = Math.max(...report.metaPositioning.map((p) => p.metaScore));
+    const maxScore = Math.max(
+      ...report.metaPositioning.map((p) => p.metaScore),
+    );
     expect(positions[0].metaScore).toBeCloseTo(maxScore, 5);
 
     // Scores are monotonically non-increasing by rank.
     for (let i = 1; i < positions.length; i++) {
-      expect(positions[i].metaScore).toBeLessThanOrEqual(positions[i - 1].metaScore);
+      expect(positions[i].metaScore).toBeLessThanOrEqual(
+        positions[i - 1].metaScore,
+      );
     }
 
     // The recommendation's best deck matches rank 1.
@@ -210,8 +248,12 @@ describe("compareDecks", () => {
     const allAdd = swap.cardsToAdd.map((c) => c.name.toLowerCase());
     const allRemove = swap.cardsToRemove.map((c) => c.name.toLowerCase());
     // Add cards are drawn from the control list; remove cards from the aggro list.
-    expect(allAdd).toEqual(expect.arrayContaining(["counterspell", "wrath of god"]));
-    expect(allRemove).toEqual(expect.arrayContaining(["lightning bolt", "goblin guide"]));
+    expect(allAdd).toEqual(
+      expect.arrayContaining(["counterspell", "wrath of god"]),
+    );
+    expect(allRemove).toEqual(
+      expect.arrayContaining(["lightning bolt", "goblin guide"]),
+    );
     // Capped at the three highest-impact swaps of each.
     expect(swap.cardsToAdd.length).toBeLessThanOrEqual(3);
     expect(swap.cardsToRemove.length).toBeLessThanOrEqual(3);

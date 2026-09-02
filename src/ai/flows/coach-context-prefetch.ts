@@ -26,7 +26,7 @@
  * `assembleStructuredAnalysis` (from `./coach-deck-analysis`).
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { detectArchetype } from "@/ai/archetype-detector";
 import { calculateDeckStats } from "@/ai/archetype-signatures";
 import { detectMissingSynergies } from "@/ai/synergy-detector";

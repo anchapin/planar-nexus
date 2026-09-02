@@ -16,7 +16,7 @@ import { describe, it, expect } from "@jest/globals";
 import { parseDecklist, detectDecklistFormat } from "@/lib/decklist-utils";
 import { validateDeckFormat, type Format } from "@/lib/game-rules";
 import { analyzeDeck } from "@/lib/deck-analyzer";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { makeCard, buildDeckFromLines, type CardSpec } from "./helpers/cards";
 
 // A legal 60-card mono-red constructed decklist (9 playsets + 24 Mountains).
@@ -45,19 +45,53 @@ function cardLookup(name: string): CardSpec {
         oracle_text: "Lightning Bolt deals 3 damage to any target.",
       };
     case "Lava Spike":
-      return { name, cmc: 1, colors: ["R"], type_line: "Sorcery", oracle_text: "Lava Spike deals 3 damage to target player or planeswalker." };
+      return {
+        name,
+        cmc: 1,
+        colors: ["R"],
+        type_line: "Sorcery",
+        oracle_text:
+          "Lava Spike deals 3 damage to target player or planeswalker.",
+      };
     case "Rift Bolt":
-      return { name, cmc: 2, colors: ["R"], type_line: "Sorcery", oracle_text: "Rift Bolt deals 3 damage to any target." };
+      return {
+        name,
+        cmc: 2,
+        colors: ["R"],
+        type_line: "Sorcery",
+        oracle_text: "Rift Bolt deals 3 damage to any target.",
+      };
     case "Skullcrack":
-      return { name, cmc: 2, colors: ["R"], type_line: "Instant", oracle_text: "Damage can't be prevented this turn." };
+      return {
+        name,
+        cmc: 2,
+        colors: ["R"],
+        type_line: "Instant",
+        oracle_text: "Damage can't be prevented this turn.",
+      };
     case "Monastery Swiftspear":
-      return { name, cmc: 1, colors: ["R"], type_line: "Creature — Human Monk" };
+      return {
+        name,
+        cmc: 1,
+        colors: ["R"],
+        type_line: "Creature — Human Monk",
+      };
     case "Goblin Guide":
-      return { name, cmc: 1, colors: ["R"], type_line: "Creature — Goblin Scout" };
+      return {
+        name,
+        cmc: 1,
+        colors: ["R"],
+        type_line: "Creature — Goblin Scout",
+      };
     case "Eidolon of the Great Revel":
       return { name, cmc: 2, colors: ["R"], type_line: "Creature — Spirit" };
     case "Boggart Ram-Gang":
-      return { name, cmc: 3, colors: ["R", "G"], type_line: "Creature — Goblin Warrior" };
+      return {
+        name,
+        cmc: 3,
+        colors: ["R", "G"],
+        type_line: "Creature — Goblin Warrior",
+      };
     case "Kird Ape":
       return { name, cmc: 1, colors: ["R"], type_line: "Creature — Ape" };
     case "Mountain":
@@ -101,7 +135,9 @@ describe("deck construction pipeline (parse -> validate -> analyze)", () => {
   });
 
   it("rejects an undersized deck with a descriptive minimum-card error", () => {
-    const undersized: DeckCard[] = [makeCard({ ...cardLookup("Mountain"), count: 24 })];
+    const undersized: DeckCard[] = [
+      makeCard({ ...cardLookup("Mountain"), count: 24 }),
+    ];
     const result = validateDeckFormat(
       undersized.map((c) => ({
         name: c.name,

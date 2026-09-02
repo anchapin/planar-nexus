@@ -30,7 +30,7 @@ import React from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 const FAKE_CARDS: ScryfallCard[] = [
   {
@@ -190,7 +190,9 @@ describe("CardArt lazy-load contract exercised through a render harness", () => 
 
     for (const card of FAKE_CARDS) {
       expect(
-        screen.getByTestId(`card-art-${card.name.toLowerCase().replace(/\s+/g, "-")}`),
+        screen.getByTestId(
+          `card-art-${card.name.toLowerCase().replace(/\s+/g, "-")}`,
+        ),
       ).toBeInTheDocument();
     }
 

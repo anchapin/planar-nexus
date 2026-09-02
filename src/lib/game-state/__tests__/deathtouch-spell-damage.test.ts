@@ -31,7 +31,7 @@ import {
   createCardInstance,
   initializePlaneswalkerLoyalty,
 } from "../card-instance";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type {
   GameState,
   PlayerId,

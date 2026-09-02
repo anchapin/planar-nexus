@@ -7,12 +7,12 @@
  * via the translation layer (see terminology-translation.ts).
  */
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { ReplacementEffectManager } from "./replacement-effects";
 import type { LayerSystem } from "./layer-system";
 
 // Re-export ScryfallCard for use in other game-state modules
-export type { ScryfallCard } from "@/app/actions";
+export type { ScryfallCard } from "@/lib/card-database";
 
 /**
  * Unique identifier for a card instance in the game

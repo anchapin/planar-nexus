@@ -1,4 +1,4 @@
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 export type DeckBuilderShortcutAction =
   | { type: "addCard"; card: ScryfallCard; max: boolean }

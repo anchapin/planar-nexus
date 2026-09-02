@@ -14,6 +14,7 @@ import {
   estimateCardWriteBytes,
   QuotaExceededError,
 } from "./storage-quota";
+import type { Format } from "@/lib/game-rules";
 
 // Minimal card data for offline use (subset of Scryfall data)
 
@@ -74,11 +75,14 @@ export interface MinimalCard {
 // ============================================================================
 //
 // MinimalCard / ScryfallCard / DeckCard are defined here and ONLY here.
-// Former duplicate declarations in src/app/actions.ts and
-// src/ai/flows/context-builder.ts now import from this module (actions.ts
-// re-exports them for its many consumers). `power` / `toughness` /
-// `keywords` are already optional members of MinimalCard, so ScryfallCard
-// only adds what MinimalCard lacks.
+// Former duplicate declarations in src/ai/flows/context-builder.ts import
+// from this module. `power` / `toughness` / `keywords` are already optional
+// members of MinimalCard, so ScryfallCard only adds what MinimalCard lacks.
+//
+// SavedDeck — the deck-persistence shape formerly colocated in the
+// misnamed src/app/actions.ts — was moved here (and actions.ts deleted)
+// by issue #1592, making this module the single canonical import site for
+// card and deck data shapes.
 
 export interface ScryfallCard extends MinimalCard {
   // Whether this is a double-faced card
@@ -87,6 +91,22 @@ export interface ScryfallCard extends MinimalCard {
 
 export interface DeckCard extends ScryfallCard {
   count: number;
+}
+
+export interface SavedDeck {
+  id: string;
+  name: string;
+  format: Format;
+  cards: DeckCard[];
+  /**
+   * Optional constructed-format sideboard pool (Modern/Standard/etc).
+   * Optional so SavedDecks persisted before sideboard editing shipped
+   * continue to round-trip cleanly. Reads default to [] for pre-#1402
+   * decks. See issue #1402.
+   */
+  sideboard?: DeckCard[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CardDatabaseOptions {

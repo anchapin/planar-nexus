@@ -12,7 +12,7 @@
  * - Reminder text exclusion
  */
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 /**
  * Types of abilities that can be parsed

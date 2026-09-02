@@ -32,7 +32,7 @@ import {
   BOARD_SWING_SCALE,
   type BoardSwing,
 } from "../game-state-evaluator";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import type {
   GameState as EngineGameState,
   CardInstance,

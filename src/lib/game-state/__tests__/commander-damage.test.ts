@@ -24,292 +24,335 @@ import {
   getCommanderDamageSummary,
   getPlayersLostFromCommanderDamage,
   DEFAULT_COMMANDER_DAMAGE_THRESHOLD,
-} from '../commander-damage';
-import { createInitialGameState, startGame } from '../game-state';
-import { createCardInstance } from '../card-instance';
-import type { ScryfallCard } from '@/app/actions';
+} from "../commander-damage";
+import { createInitialGameState, startGame } from "../game-state";
+import { createCardInstance } from "../card-instance";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // Helper function to create a mock commander card
 function createMockCommander(
   name: string,
   typeLine: string,
   colors: string[] = [],
-  manaCost: string = '{W}'
+  manaCost: string = "{W}",
 ): ScryfallCard {
   return {
-    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
     name,
     type_line: typeLine,
-    oracle_text: '',
+    oracle_text: "",
     mana_cost: manaCost,
     cmc: 2,
     colors,
     color_identity: colors,
-    legalities: { standard: 'legal', commander: 'legal' },
-    layout: 'normal',
+    legalities: { standard: "legal", commander: "legal" },
+    layout: "normal",
   } as ScryfallCard;
 }
 
-describe('Commander Damage System - createCommanderDamageState', () => {
-  it('should create empty commander damage state', () => {
+describe("Commander Damage System - createCommanderDamageState", () => {
+  it("should create empty commander damage state", () => {
     const state = createCommanderDamageState();
-    
+
     expect(state.damageByCommander).toBeInstanceOf(Map);
     expect(state.playerCommanders).toBeInstanceOf(Map);
     expect(state.damageThreshold).toBe(21);
   });
 
-  it('should have default threshold of 21', () => {
+  it("should have default threshold of 21", () => {
     expect(DEFAULT_COMMANDER_DAMAGE_THRESHOLD).toBe(21);
   });
 });
 
-describe('Commander Damage System - isCommander', () => {
-  it('should return true for legendary creature', () => {
+describe("Commander Damage System - isCommander", () => {
+  it("should return true for legendary creature", () => {
     const card = createCardInstance(
-      createMockCommander('Axel', 'Legendary Creature — Human', ['W']),
-      'player1',
-      'player1'
+      createMockCommander("Axel", "Legendary Creature — Human", ["W"]),
+      "player1",
+      "player1",
     );
-    
+
     expect(isCommander(card)).toBe(true);
   });
 
-  it('should return true for legendary planeswalker', () => {
+  it("should return true for legendary planeswalker", () => {
     const card = createCardInstance(
-      createMockCommander('Jace', 'Legendary Planeswalker — Jace', ['U'], '{1}{U}'),
-      'player1',
-      'player1'
+      createMockCommander(
+        "Jace",
+        "Legendary Planeswalker — Jace",
+        ["U"],
+        "{1}{U}",
+      ),
+      "player1",
+      "player1",
     );
-    
+
     expect(isCommander(card)).toBe(true);
   });
 
-  it('should return false for non-legendary creature', () => {
+  it("should return false for non-legendary creature", () => {
     const card = createCardInstance(
-      createMockCommander('Grizzly Bears', 'Creature — Bear', ['G']),
-      'player1',
-      'player1'
+      createMockCommander("Grizzly Bears", "Creature — Bear", ["G"]),
+      "player1",
+      "player1",
     );
-    
+
     expect(isCommander(card)).toBe(false);
   });
 
-  it('should return false for non-legendary planeswalker', () => {
+  it("should return false for non-legendary planeswalker", () => {
     const card = createCardInstance(
-      createMockCommander('Chandra', 'Planeswalker — Chandra', ['R'], '{2}{R}'),
-      'player1',
-      'player1'
+      createMockCommander("Chandra", "Planeswalker — Chandra", ["R"], "{2}{R}"),
+      "player1",
+      "player1",
     );
-    
+
     expect(isCommander(card)).toBe(false);
   });
 });
 
-describe('Commander Damage System - getCommanderIdentity', () => {
-  it('should extract colors from card data', () => {
+describe("Commander Damage System - getCommanderIdentity", () => {
+  it("should extract colors from card data", () => {
     const card = createCardInstance(
-      createMockCommander('Azorious Senator', 'Legendary Creature — Human', ['white', 'blue'], '{W}{U}'),
-      'player1',
-      'player1'
+      createMockCommander(
+        "Azorious Senator",
+        "Legendary Creature — Human",
+        ["white", "blue"],
+        "{W}{U}",
+      ),
+      "player1",
+      "player1",
     );
-    
+
     const identity = getCommanderIdentity(card);
-    expect(identity).toContain('white');
-    expect(identity).toContain('blue');
+    expect(identity).toContain("white");
+    expect(identity).toContain("blue");
   });
 
-  it('should extract colors from mana cost', () => {
+  it("should extract colors from mana cost", () => {
     const card = createCardInstance(
-      createMockCommander('Boros Senator', 'Legendary Creature — Human', [], '{W}{R}'),
-      'player1',
-      'player1'
+      createMockCommander(
+        "Boros Senator",
+        "Legendary Creature — Human",
+        [],
+        "{W}{R}",
+      ),
+      "player1",
+      "player1",
     );
-    
+
     const identity = getCommanderIdentity(card);
-    expect(identity).toContain('white');
-    expect(identity).toContain('red');
+    expect(identity).toContain("white");
+    expect(identity).toContain("red");
   });
 
-  it('should combine colors from both card and mana cost', () => {
+  it("should combine colors from both card and mana cost", () => {
     const card = createCardInstance(
-      createMockCommander('Esper Senator', 'Legendary Creature — Human', ['white', 'blue'], '{W}{U}'),
-      'player1',
-      'player1'
+      createMockCommander(
+        "Esper Senator",
+        "Legendary Creature — Human",
+        ["white", "blue"],
+        "{W}{U}",
+      ),
+      "player1",
+      "player1",
     );
-    
+
     const identity = getCommanderIdentity(card);
     // Should have both card colors and mana cost colors
     expect(identity.length).toBeGreaterThan(0);
   });
 
-  it('should handle card without colors', () => {
+  it("should handle card without colors", () => {
     const card = createCardInstance(
-      createMockCommander('Colorless Commander', 'Legendary Artifact Creature', [], ''),
-      'player1',
-      'player1'
+      createMockCommander(
+        "Colorless Commander",
+        "Legendary Artifact Creature",
+        [],
+        "",
+      ),
+      "player1",
+      "player1",
     );
-    
+
     const identity = getCommanderIdentity(card);
     expect(identity).toEqual([]);
   });
 });
 
-describe('Commander Damage System - registerCommander', () => {
+describe("Commander Damage System - registerCommander", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
   });
 
-  it('should register a commander for a player', () => {
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+  it("should register a commander for a player", () => {
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     const commanderId = commander.id;
     state.cards.set(commanderId, commander);
 
     const result = registerCommander(state, aliceId, commanderId);
-    
+
     // The function returns GameState - check commander damage was tracked
     expect(result.players).toBeDefined();
   });
 
-  it('should allow multiple commanders', () => {
+  it("should allow multiple commanders", () => {
     const commander1 = createCardInstance(
-      createMockCommander('Commander 1', 'Legendary Creature — Human', ['W']),
-      aliceId, aliceId
+      createMockCommander("Commander 1", "Legendary Creature — Human", ["W"]),
+      aliceId,
+      aliceId,
     );
     const commander2 = createCardInstance(
-      createMockCommander('Commander 2', 'Legendary Creature — Elf', ['G']),
-      aliceId, aliceId
+      createMockCommander("Commander 2", "Legendary Creature — Elf", ["G"]),
+      aliceId,
+      aliceId,
     );
-    
+
     state.cards.set(commander1.id, commander1);
     state.cards.set(commander2.id, commander2);
 
     let result = registerCommander(state, aliceId, commander1.id);
     result = registerCommander(result, aliceId, commander2.id);
-    
+
     // Function completes without error
     expect(result).toBeDefined();
   });
 });
 
-describe('Commander Damage System - dealCommanderDamage', () => {
+describe("Commander Damage System - dealCommanderDamage", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
   });
 
-  it('should deal commander damage to opponent', () => {
+  it("should deal commander damage to opponent", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 3);
-    
+
     expect(result.success).toBe(true);
   });
 
-  it('should accumulate commander damage', () => {
+  it("should accumulate commander damage", () => {
     let result = dealCommanderDamage(state, commanderId, bobId, 3);
     result = dealCommanderDamage(result.state, commanderId, bobId, 5);
-    
+
     // Verify the operations complete successfully
     expect(result.success).toBe(true);
   });
 
-  it('should not trigger loss at exactly threshold - 1', () => {
+  it("should not trigger loss at exactly threshold - 1", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 20);
-    
+
     expect(hasLostFromCommanderDamage(result.state, bobId)).toBe(false);
   });
 });
 
-describe('Commander Damage System - getCommanderDamage', () => {
+describe("Commander Damage System - getCommanderDamage", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
   });
 
-  it('should return 0 for no damage dealt', () => {
+  it("should return 0 for no damage dealt", () => {
     const damage = getCommanderDamage(state, commanderId, bobId);
     expect(damage).toBe(0);
   });
 
-  it('should return correct damage after dealing', () => {
+  it("should return correct damage after dealing", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 5);
     // Verify the operation completes
     expect(result.success).toBe(true);
   });
 
-  it('should return 0 for non-existent commander', () => {
-    const damage = getCommanderDamage(state, 'non-existent', bobId);
+  it("should return 0 for non-existent commander", () => {
+    const damage = getCommanderDamage(state, "non-existent", bobId);
     expect(damage).toBe(0);
   });
 });
 
-describe('Commander Damage System - getTotalCommanderDamage', () => {
+describe("Commander Damage System - getTotalCommanderDamage", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
   });
 
-  it('should return 0 for player with no damage', () => {
+  it("should return 0 for player with no damage", () => {
     const total = getTotalCommanderDamage(state, bobId);
     expect(total).toBe(0);
   });
 
-  it('should return total damage from all commanders', () => {
+  it("should return total damage from all commanders", () => {
     // Deal damage to Bob from Alice's commander
     const result = dealCommanderDamage(state, commanderId, bobId, 10);
 
@@ -329,14 +372,14 @@ describe('Commander Damage System - getTotalCommanderDamage', () => {
  * Also covers hasLostFromCommanderDamage's per-commander threshold semantics
  * (CR 903.9a: 21+ from a single commander, NOT summed across commanders).
  */
-describe('Commander Damage System - issue #976 per-opponent sum', () => {
+describe("Commander Damage System - issue #976 per-opponent sum", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let carolId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob', 'Carol'], 20, true);
+    state = createInitialGameState(["Alice", "Bob", "Carol"], 20, true);
     state = startGame(state);
 
     const playerIds = Array.from(state.players.keys());
@@ -347,7 +390,7 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
 
   function makeCommander(name: string, ownerId: string) {
     const commander = createCardInstance(
-      createMockCommander(name, 'Legendary Creature — Human', ['W']),
+      createMockCommander(name, "Legendary Creature — Human", ["W"]),
       ownerId,
       ownerId,
     );
@@ -355,8 +398,8 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
     return commander;
   }
 
-  it('accumulates damage from repeated attacks by the same commander', () => {
-    const commander = makeCommander('Solo Commander', aliceId);
+  it("accumulates damage from repeated attacks by the same commander", () => {
+    const commander = makeCommander("Solo Commander", aliceId);
     state = registerCommander(state, aliceId, commander.id);
 
     state = dealCommanderDamage(state, commander.id, bobId, 3).state;
@@ -369,9 +412,9 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
     expect(getTotalCommanderDamage(state, bobId)).toBe(12);
   });
 
-  it('sums damage from multiple commanders (partner commanders) to one opponent', () => {
-    const c1 = makeCommander('Partner One', aliceId);
-    const c2 = makeCommander('Partner Two', aliceId);
+  it("sums damage from multiple commanders (partner commanders) to one opponent", () => {
+    const c1 = makeCommander("Partner One", aliceId);
+    const c2 = makeCommander("Partner Two", aliceId);
     state = registerCommander(state, aliceId, c1.id);
     state = registerCommander(state, aliceId, c2.id);
 
@@ -385,8 +428,8 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
     expect(state.players.get(bobId)!.commanderDamage.get(c2.id)).toBe(5);
   });
 
-  it('tracks the same commander damage to different opponents independently', () => {
-    const commander = makeCommander('Shared Commander', aliceId);
+  it("tracks the same commander damage to different opponents independently", () => {
+    const commander = makeCommander("Shared Commander", aliceId);
     state = registerCommander(state, aliceId, commander.id);
 
     state = dealCommanderDamage(state, commander.id, bobId, 7).state;
@@ -400,11 +443,11 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
     expect(getTotalCommanderDamage(state, aliceId)).toBe(0);
   });
 
-  it('returns 0 for an unknown target player', () => {
-    expect(getTotalCommanderDamage(state, 'non-existent-player')).toBe(0);
+  it("returns 0 for an unknown target player", () => {
+    expect(getTotalCommanderDamage(state, "non-existent-player")).toBe(0);
   });
 
-  it('does NOT count damage Bob dealt to Alice against Bob', () => {
+  it("does NOT count damage Bob dealt to Alice against Bob", () => {
     const bobCommander = makeCommander("Bob's Commander", bobId);
     state = registerCommander(state, bobId, bobCommander.id);
     state = dealCommanderDamage(state, bobCommander.id, aliceId, 6).state;
@@ -416,8 +459,8 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
 
   // ---- hasLostFromCommanderDamage per-commander threshold (CR 903.9a) ----
 
-  it('triggers loss when a single commander deals 21 damage', () => {
-    const commander = makeCommander('Lethal Commander', aliceId);
+  it("triggers loss when a single commander deals 21 damage", () => {
+    const commander = makeCommander("Lethal Commander", aliceId);
     state = registerCommander(state, aliceId, commander.id);
 
     state = dealCommanderDamage(state, commander.id, bobId, 21).state;
@@ -426,9 +469,9 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
     expect(getTotalCommanderDamage(state, bobId)).toBe(21);
   });
 
-  it('does NOT trigger loss when damage is split across two commanders below 21 each', () => {
-    const c1 = makeCommander('Partner A', aliceId);
-    const c2 = makeCommander('Partner B', aliceId);
+  it("does NOT trigger loss when damage is split across two commanders below 21 each", () => {
+    const c1 = makeCommander("Partner A", aliceId);
+    const c2 = makeCommander("Partner B", aliceId);
     state = registerCommander(state, aliceId, c1.id);
     state = registerCommander(state, aliceId, c2.id);
 
@@ -440,8 +483,8 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
     expect(hasLostFromCommanderDamage(state, bobId)).toBe(false);
   });
 
-  it('triggers loss only for the opponent that took 21+ from one commander', () => {
-    const commander = makeCommander('Targeted Commander', aliceId);
+  it("triggers loss only for the opponent that took 21+ from one commander", () => {
+    const commander = makeCommander("Targeted Commander", aliceId);
     state = registerCommander(state, aliceId, commander.id);
 
     state = dealCommanderDamage(state, commander.id, bobId, 21).state;
@@ -452,39 +495,43 @@ describe('Commander Damage System - issue #976 per-opponent sum', () => {
   });
 });
 
-describe('Commander Damage System - hasLostFromCommanderDamage', () => {
+describe("Commander Damage System - hasLostFromCommanderDamage", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
   });
 
-  it('should return false when under threshold', () => {
+  it("should return false when under threshold", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 10);
-    
+
     expect(hasLostFromCommanderDamage(result.state, bobId)).toBe(false);
   });
 
-  it('should return false for player with no commander damage', () => {
+  it("should return false for player with no commander damage", () => {
     expect(hasLostFromCommanderDamage(state, bobId)).toBe(false);
   });
 
-  it('should return true when a single commander reaches the 21 threshold', () => {
+  it("should return true when a single commander reaches the 21 threshold", () => {
     // Issue #976 acceptance criterion: returns true when any commander has
     // dealt 21+ damage to a player.
     const result = dealCommanderDamage(state, commanderId, bobId, 21);
@@ -492,112 +539,126 @@ describe('Commander Damage System - hasLostFromCommanderDamage', () => {
   });
 });
 
-describe('Commander Damage System - getPlayersLostFromCommanderDamage', () => {
+describe("Commander Damage System - getPlayersLostFromCommanderDamage", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
   });
 
-  it('should return empty array when no one has lost', () => {
+  it("should return empty array when no one has lost", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 10);
     const lost = getPlayersLostFromCommanderDamage(result.state);
-    
+
     expect(lost).toEqual([]);
   });
 
-  it('should return player who has lost', () => {
+  it("should return player who has lost", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 21);
     const lost = getPlayersLostFromCommanderDamage(result.state);
-    
+
     expect(lost).toContain(bobId);
   });
 });
 
-describe('Commander Damage System - getCommanderDamageSummary', () => {
+describe("Commander Damage System - getCommanderDamageSummary", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
   });
 
-  it('should return summary of commander damage', () => {
+  it("should return summary of commander damage", () => {
     const result = dealCommanderDamage(state, commanderId, bobId, 10);
     const summary = getCommanderDamageSummary(result.state);
-    
+
     expect(summary).toBeDefined();
     // getCommanderDamageSummary returns an array
     expect(summary.length).toBeGreaterThanOrEqual(0);
     // Total damage should be tracked in the player
-    const bob = Array.from(result.state.players.values()).find(p => p.id === bobId);
+    const bob = Array.from(result.state.players.values()).find(
+      (p) => p.id === bobId,
+    );
     expect(bob).toBeDefined();
   });
 
-  it('should return summary when no damage', () => {
+  it("should return summary when no damage", () => {
     const summary = getCommanderDamageSummary(state);
-    
+
     expect(summary).toBeDefined();
     // getCommanderDamageSummary returns an array - it may be empty or have entries
     expect(Array.isArray(summary)).toBe(true);
   });
 });
 
-describe('Commander Damage System - resetCommanderDamage', () => {
+describe("Commander Damage System - resetCommanderDamage", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
   let commanderId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob'], 20, true);
+    state = createInitialGameState(["Alice", "Bob"], 20, true);
     state = startGame(state);
-    
+
     const playerIds = Array.from(state.players.keys());
     aliceId = playerIds[0];
     bobId = playerIds[1];
 
-    const commanderData = createMockCommander('Alice Commander', 'Legendary Creature — Human', ['W']);
+    const commanderData = createMockCommander(
+      "Alice Commander",
+      "Legendary Creature — Human",
+      ["W"],
+    );
     const commander = createCardInstance(commanderData, aliceId, aliceId);
     commanderId = commander.id;
     state.cards.set(commanderId, commander);
-    
+
     state = registerCommander(state, aliceId, commanderId);
     state = dealCommanderDamage(state, commanderId, bobId, 10).state;
   });
 
-  it('should reset commander damage', () => {
+  it("should reset commander damage", () => {
     const result = resetCommanderDamage(state);
-    
+
     const damage = getCommanderDamage(result, commanderId, bobId);
     expect(damage).toBe(0);
   });
@@ -618,7 +679,7 @@ describe('Commander Damage System - resetCommanderDamage', () => {
  *   threshold (hasLostFromCommanderDamage) remain consistent with the matrix,
  *   composing with the #976 summation fix.
  */
-describe('Commander Damage System - issue #977 per-commander-per-opponent matrix', () => {
+describe("Commander Damage System - issue #977 per-commander-per-opponent matrix", () => {
   let state: ReturnType<typeof createInitialGameState>;
   let aliceId: string;
   let bobId: string;
@@ -626,7 +687,7 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
   let daveId: string;
 
   beforeEach(() => {
-    state = createInitialGameState(['Alice', 'Bob', 'Carol', 'Dave'], 20, true);
+    state = createInitialGameState(["Alice", "Bob", "Carol", "Dave"], 20, true);
     state = startGame(state);
 
     const playerIds = Array.from(state.players.keys());
@@ -638,7 +699,7 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
 
   function makeCommander(name: string, ownerId: string) {
     const commander = createCardInstance(
-      createMockCommander(name, 'Legendary Creature — Human', ['W']),
+      createMockCommander(name, "Legendary Creature — Human", ["W"]),
       ownerId,
       ownerId,
     );
@@ -646,8 +707,8 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     return commander;
   }
 
-  it('tracks damage from commander A to opponent X separately from opponent Y', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
+  it("tracks damage from commander A to opponent X separately from opponent Y", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
     state = registerCommander(state, aliceId, commanderA.id);
 
     state = dealCommanderDamage(state, commanderA.id, bobId, 7).state;
@@ -660,9 +721,9 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     expect(getCommanderDamageToOpponent(state, commanderA.id, daveId)).toBe(0);
   });
 
-  it('tracks damage from commander A and commander B independently (the matrix)', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
-    const commanderB = makeCommander('Commander B', aliceId);
+  it("tracks damage from commander A and commander B independently (the matrix)", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
+    const commanderB = makeCommander("Commander B", aliceId);
     state = registerCommander(state, aliceId, commanderA.id);
     state = registerCommander(state, aliceId, commanderB.id);
 
@@ -677,9 +738,9 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     expect(getCommanderDamageToOpponent(state, commanderB.id, carolId)).toBe(0);
   });
 
-  it('exposes the full (commander, opponent) matrix via getCommanderDamageMatrix', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
-    const commanderB = makeCommander('Commander B', bobId);
+  it("exposes the full (commander, opponent) matrix via getCommanderDamageMatrix", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
+    const commanderB = makeCommander("Commander B", bobId);
     state = registerCommander(state, aliceId, commanderA.id);
     state = registerCommander(state, bobId, commanderB.id);
 
@@ -693,7 +754,7 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     expect(matrix.has(commanderA.id)).toBe(true);
     expect(matrix.has(commanderB.id)).toBe(true);
     // Commanders with no incoming recorded damage to anyone do not appear.
-    expect(matrix.has('nonexistent-commander')).toBe(false);
+    expect(matrix.has("nonexistent-commander")).toBe(false);
 
     // commanderA row: { bob: 6, carol: 2 }
     const rowA = matrix.get(commanderA.id)!;
@@ -707,23 +768,27 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     expect(rowB.has(bobId)).toBe(false); // Bob's own commander didn't hit Bob
   });
 
-  it('returns an empty matrix when no commander damage has been dealt', () => {
+  it("returns an empty matrix when no commander damage has been dealt", () => {
     const matrix = getCommanderDamageMatrix(state);
     expect(matrix.size).toBe(0);
   });
 
-  it('returns 0 for unknown commander or opponent cells', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
+  it("returns 0 for unknown commander or opponent cells", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
     state = registerCommander(state, aliceId, commanderA.id);
     state = dealCommanderDamage(state, commanderA.id, bobId, 4).state;
 
-    expect(getCommanderDamageToOpponent(state, 'no-such-commander', bobId)).toBe(0);
-    expect(getCommanderDamageToOpponent(state, commanderA.id, 'no-such-opponent')).toBe(0);
+    expect(
+      getCommanderDamageToOpponent(state, "no-such-commander", bobId),
+    ).toBe(0);
+    expect(
+      getCommanderDamageToOpponent(state, commanderA.id, "no-such-opponent"),
+    ).toBe(0);
   });
 
-  it('keeps per-opponent totals consistent with the matrix (#976 composition)', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
-    const commanderB = makeCommander('Commander B', aliceId);
+  it("keeps per-opponent totals consistent with the matrix (#976 composition)", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
+    const commanderB = makeCommander("Commander B", aliceId);
     state = registerCommander(state, aliceId, commanderA.id);
     state = registerCommander(state, aliceId, commanderB.id);
 
@@ -741,14 +806,14 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     let bobSum = 0;
     for (const row of matrix.values()) {
       const v = row.get(bobId);
-      if (typeof v === 'number') bobSum += v;
+      if (typeof v === "number") bobSum += v;
     }
     expect(bobSum).toBe(10);
   });
 
-  it('keeps the per-commander 21-loss threshold consistent with the matrix (#976 composition)', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
-    const commanderB = makeCommander('Commander B', aliceId);
+  it("keeps the per-commander 21-loss threshold consistent with the matrix (#976 composition)", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
+    const commanderB = makeCommander("Commander B", aliceId);
     state = registerCommander(state, aliceId, commanderA.id);
     state = registerCommander(state, aliceId, commanderB.id);
 
@@ -770,9 +835,9 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     expect(hasLostFromCommanderDamage(state, carolId)).toBe(false);
   });
 
-  it('attributes summary damage to the commander owner and lists each opponent (fixes mislabelling)', () => {
-    const commanderA = makeCommander('Commander A', aliceId);
-    const commanderB = makeCommander('Commander B', bobId);
+  it("attributes summary damage to the commander owner and lists each opponent (fixes mislabelling)", () => {
+    const commanderA = makeCommander("Commander A", aliceId);
+    const commanderB = makeCommander("Commander B", bobId);
     state = registerCommander(state, aliceId, commanderA.id);
     state = registerCommander(state, bobId, commanderB.id);
 
@@ -809,7 +874,7 @@ describe('Commander Damage System - issue #977 per-commander-per-opponent matrix
     expect(bobCmdB!.totalDamage).toBe(7);
   });
 
-  it('returns an empty summary array when no commander damage has been dealt', () => {
+  it("returns an empty summary array when no commander damage has been dealt", () => {
     const summary = getCommanderDamageSummary(state);
     expect(Array.isArray(summary)).toBe(true);
     expect(summary.length).toBe(0);

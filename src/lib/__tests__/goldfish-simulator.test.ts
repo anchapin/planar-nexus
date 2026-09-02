@@ -13,7 +13,7 @@ import {
   formatGoldfishSummary,
   type SimCard,
 } from "../goldfish-simulator";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 /** Build a deck of `lands` land slots + `spells` spell slots for deterministic tests. */
 function makeDeckCard(

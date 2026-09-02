@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import type { DeckCard } from '@/app/actions';
+import { useMemo } from "react";
+import type { DeckCard } from "@/lib/card-database";
 
 /**
  * Result of deck card analysis
@@ -24,31 +24,31 @@ export interface CardAnalysisResult {
 /**
  * Magic color codes for display
  */
-const MAGIC_COLORS = ['W', 'U', 'B', 'R', 'G'] as const;
+const MAGIC_COLORS = ["W", "U", "B", "R", "G"] as const;
 
 /**
  * Magic color hex codes for charts
  */
 export const MAGIC_COLOR_HEX: Record<string, string> = {
-  W: '#F9F99A',
-  U: '#0E68AB',
-  B: '#150B00',
-  R: '#E12D2D',
-  G: '#00733E',
-  Colorless: '#9CA3AF',
+  W: "#F9F99A",
+  U: "#0E68AB",
+  B: "#150B00",
+  R: "#E12D2D",
+  G: "#00733E",
+  Colorless: "#9CA3AF",
 };
 
 /**
  * Card type categories to track
  */
 const CARD_TYPES = [
-  'creature',
-  'instant',
-  'sorcery',
-  'enchantment',
-  'artifact',
-  'planeswalker',
-  'land',
+  "creature",
+  "instant",
+  "sorcery",
+  "enchantment",
+  "artifact",
+  "planeswalker",
+  "land",
 ] as const;
 
 /**
@@ -118,10 +118,10 @@ export function analyzeDeck(deck: DeckCard[]): CardAnalysisResult {
     }
 
     // Calculate type distribution
-    const typeLine = card.type_line || '';
+    const typeLine = card.type_line || "";
     for (const type of CARD_TYPES) {
       // Check if type_line contains this type (case-insensitive)
-      const regex = new RegExp(type, 'i');
+      const regex = new RegExp(type, "i");
       if (regex.test(typeLine)) {
         result.typeDistribution[type] += count;
       }
@@ -129,9 +129,10 @@ export function analyzeDeck(deck: DeckCard[]): CardAnalysisResult {
   }
 
   // Calculate average mana value
-  result.averageManaValue = result.totalCards > 0 
-    ? Math.round((totalCMC / result.totalCards) * 100) / 100 
-    : 0;
+  result.averageManaValue =
+    result.totalCards > 0
+      ? Math.round((totalCMC / result.totalCards) * 100) / 100
+      : 0;
 
   return result;
 }
@@ -154,21 +155,21 @@ export function analyzeDeck(deck: DeckCard[]): CardAnalysisResult {
  * @returns A string that changes only when the deck's contents change
  */
 export function getDeckSignature(deck: DeckCard[]): string {
-  let signature = '';
+  let signature = "";
   for (let i = 0; i < deck.length; i++) {
     const card = deck[i];
     const colors = card.colors;
     signature +=
       String(card.id) +
-      '\u0001' +
+      "\u0001" +
       (card.count ?? 1) +
-      '\u0001' +
+      "\u0001" +
       (card.cmc ?? 0) +
-      '\u0001' +
-      (colors && colors.length > 0 ? colors.join(',') : '') +
-      '\u0001' +
-      (card.type_line ?? '') +
-      '\u0002';
+      "\u0001" +
+      (colors && colors.length > 0 ? colors.join(",") : "") +
+      "\u0001" +
+      (card.type_line ?? "") +
+      "\u0002";
   }
   return signature;
 }
@@ -197,7 +198,7 @@ export function useDeckStatistics(deck: DeckCard[]) {
  */
 export function getManaCurveData(manaCurve: Record<number, number>) {
   return Object.entries(manaCurve).map(([cmc, count]) => ({
-    cmc: cmc === '7' ? '7+' : cmc,
+    cmc: cmc === "7" ? "7+" : cmc,
     count,
     cmcNum: parseInt(cmc),
   }));
@@ -208,9 +209,11 @@ export function getManaCurveData(manaCurve: Record<number, number>) {
  * @param colorDistribution - Color distribution record
  * @returns Array formatted for Recharts with percentages
  */
-export function getColorDistributionData(colorDistribution: Record<string, number>) {
+export function getColorDistributionData(
+  colorDistribution: Record<string, number>,
+) {
   const total = Object.values(colorDistribution).reduce((a, b) => a + b, 0);
-  
+
   return Object.entries(colorDistribution)
     .filter(([, count]) => count > 0)
     .map(([color, count]) => ({
@@ -226,18 +229,20 @@ export function getColorDistributionData(colorDistribution: Record<string, numbe
  * @param typeDistribution - Type distribution record
  * @returns Array formatted for Recharts with percentages
  */
-export function getTypeDistributionData(typeDistribution: Record<string, number>) {
+export function getTypeDistributionData(
+  typeDistribution: Record<string, number>,
+) {
   const total = Object.values(typeDistribution).reduce((a, b) => a + b, 0);
-  
+
   // Type colors for charts
   const typeColors: Record<string, string> = {
-    creature: '#8B5CF6',
-    instant: '#3B82F6',
-    sorcery: '#EF4444',
-    enchantment: '#F59E0B',
-    artifact: '#6B7280',
-    planeswalker: '#EC4899',
-    land: '#10B981',
+    creature: "#8B5CF6",
+    instant: "#3B82F6",
+    sorcery: "#EF4444",
+    enchantment: "#F59E0B",
+    artifact: "#6B7280",
+    planeswalker: "#EC4899",
+    land: "#10B981",
   };
 
   return Object.entries(typeDistribution)
@@ -246,6 +251,6 @@ export function getTypeDistributionData(typeDistribution: Record<string, number>
       type: type.charAt(0).toUpperCase() + type.slice(1),
       count,
       percentage: total > 0 ? Math.round((count / total) * 100) : 0,
-      fill: typeColors[type] || '#6B7280',
+      fill: typeColors[type] || "#6B7280",
     }));
 }

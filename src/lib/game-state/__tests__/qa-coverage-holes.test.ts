@@ -50,7 +50,7 @@ import {
 import { Phase } from "../types";
 import type { Turn, GameState, PlayerId, CardInstanceId } from "../types";
 import { resolveTopOfStack } from "../spell-casting";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // ---------------------------------------------------------------------------
 // Helpers

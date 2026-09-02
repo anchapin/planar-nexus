@@ -18,7 +18,7 @@
 import { describe, test, expect } from "@jest/globals";
 
 import { aiWorker } from "../ai-worker";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 function makeCard(
   name: string,
@@ -81,14 +81,7 @@ function buildElfRampDeck(): DeckCard[] {
       "When Shaman of the Pack enters, target opponent loses life equal to the number of Elves you control.",
       3,
     ),
-    makeCard(
-      "Forest",
-      "Basic Land — Forest",
-      20,
-      "",
-      0,
-      [],
-    ),
+    makeCard("Forest", "Basic Land — Forest", 20, "", 0, []),
   ];
 }
 
@@ -126,7 +119,7 @@ describe("aiWorker.prepareCoachContext — structured analysis in digest (#1236)
   test("preserves gameSummary alongside structuredAnalysisText", async () => {
     const gameState = {
       players: {
-        "p1": {
+        p1: {
           id: "p1",
           life: 20,
           hand: [],

@@ -1,64 +1,83 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useToast } from '@/hooks/use-toast';
-import { useCollection } from '@/hooks/use-collection';
-import { tradeManager, type TradeOffer, type TradeCardItem, type TradeHistoryEntry, calculateTradeFairness } from '@/lib/trading';
-import type { ScryfallCard } from '@/app/actions';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { 
-  ArrowLeftRight, 
-  Plus, 
-  Check, 
-  X, 
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { useCollection } from "@/hooks/use-collection";
+import {
+  tradeManager,
+  type TradeOffer,
+  type TradeCardItem,
+  type TradeHistoryEntry,
+  calculateTradeFairness,
+} from "@/lib/trading";
+import type { ScryfallCard } from "@/lib/card-database";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import {
+  ArrowLeftRight,
+  Plus,
+  Check,
+  X,
   History,
   Scale,
   Users,
   Clock,
   CheckCircle,
-  XCircle
-} from 'lucide-react';
+  XCircle,
+} from "lucide-react";
 
 export default function TradePage() {
   const { toast } = useToast();
   const { activeCollection } = useCollection();
-  
+
   // State
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState("active");
   const [trades, setTrades] = useState<TradeOffer[]>([]);
   const [history, setHistory] = useState<TradeHistoryEntry[]>([]);
   const [showNewTradeDialog, setShowNewTradeDialog] = useState(false);
-  
+
   // New trade form
-  const [recipientName, setRecipientName] = useState('');
+  const [recipientName, setRecipientName] = useState("");
   const [offeredCards, setOfferedCards] = useState<TradeCardItem[]>([]);
   const [wantedCards, setWantedCards] = useState<TradeCardItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  const playerId = 'local-player'; // In real app, would get from auth
-  const playerName = 'You';
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const playerId = "local-player"; // In real app, would get from auth
+  const playerName = "You";
 
   // Load trades
   useEffect(() => {
     loadTrades();
-    
+
     // Subscribe to trade updates
     const unsubscribe = tradeManager.subscribe((notification) => {
       toast({
-        title: 'Trade Update',
+        title: "Trade Update",
         description: notification.message,
       });
       loadTrades();
     });
-    
+
     return () => unsubscribe();
   }, [toast]);
 
@@ -69,26 +88,26 @@ export default function TradePage() {
   };
 
   // Filter cards from collection
-  const filteredCollectionCards = activeCollection.cards.filter(c =>
-    c.card.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCollectionCards = activeCollection.cards.filter((c) =>
+    c.card.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   // Create new trade
   const handleCreateTrade = () => {
     if (!recipientName.trim()) {
       toast({
-        variant: 'destructive',
-        title: 'Missing Information',
-        description: 'Please enter the recipient name.',
+        variant: "destructive",
+        title: "Missing Information",
+        description: "Please enter the recipient name.",
       });
       return;
     }
 
     if (offeredCards.length === 0) {
       toast({
-        variant: 'destructive',
-        title: 'Missing Cards',
-        description: 'Please add at least one card to offer.',
+        variant: "destructive",
+        title: "Missing Cards",
+        description: "Please add at least one card to offer.",
       });
       return;
     }
@@ -98,7 +117,7 @@ export default function TradePage() {
       playerId,
       playerName,
       `player-${Date.now()}`,
-      recipientName
+      recipientName,
     );
 
     // Add offered cards
@@ -115,28 +134,28 @@ export default function TradePage() {
     tradeManager.submitTradeOffer(trade.id, playerId);
 
     // Reset form
-    setRecipientName('');
+    setRecipientName("");
     setOfferedCards([]);
     setWantedCards([]);
     setShowNewTradeDialog(false);
-    
+
     toast({
-      title: 'Trade Created',
+      title: "Trade Created",
       description: `Trade offer sent to ${recipientName}`,
     });
-    
+
     loadTrades();
   };
 
   // Add card to offered
   const handleAddOfferedCard = (card: ScryfallCard, quantity: number = 1) => {
-    const existing = offeredCards.find(c => c.card.id === card.id);
+    const existing = offeredCards.find((c) => c.card.id === card.id);
     if (existing) {
-      setOfferedCards(offeredCards.map(c => 
-        c.card.id === card.id 
-          ? { ...c, quantity: c.quantity + quantity }
-          : c
-      ));
+      setOfferedCards(
+        offeredCards.map((c) =>
+          c.card.id === card.id ? { ...c, quantity: c.quantity + quantity } : c,
+        ),
+      );
     } else {
       setOfferedCards([...offeredCards, { card, quantity }]);
     }
@@ -144,13 +163,13 @@ export default function TradePage() {
 
   // Add card to wanted
   const handleAddWantedCard = (card: ScryfallCard, quantity: number = 1) => {
-    const existing = wantedCards.find(c => c.card.id === card.id);
+    const existing = wantedCards.find((c) => c.card.id === card.id);
     if (existing) {
-      setWantedCards(wantedCards.map(c => 
-        c.card.id === card.id 
-          ? { ...c, quantity: c.quantity + quantity }
-          : c
-      ));
+      setWantedCards(
+        wantedCards.map((c) =>
+          c.card.id === card.id ? { ...c, quantity: c.quantity + quantity } : c,
+        ),
+      );
     } else {
       setWantedCards([...wantedCards, { card, quantity }]);
     }
@@ -158,12 +177,12 @@ export default function TradePage() {
 
   // Remove card from offered
   const handleRemoveOfferedCard = (cardId: string) => {
-    setOfferedCards(offeredCards.filter(c => c.card.id !== cardId));
+    setOfferedCards(offeredCards.filter((c) => c.card.id !== cardId));
   };
 
   // Remove card from wanted
   const handleRemoveWantedCard = (cardId: string) => {
-    setWantedCards(wantedCards.filter(c => c.card.id !== cardId));
+    setWantedCards(wantedCards.filter((c) => c.card.id !== cardId));
   };
 
   // Accept trade
@@ -171,8 +190,8 @@ export default function TradePage() {
     tradeManager.acceptTrade(tradeId, playerId);
     loadTrades();
     toast({
-      title: 'Trade Accepted',
-      description: 'You have accepted the trade.',
+      title: "Trade Accepted",
+      description: "You have accepted the trade.",
     });
   };
 
@@ -181,8 +200,8 @@ export default function TradePage() {
     tradeManager.rejectTrade(tradeId, playerId);
     loadTrades();
     toast({
-      title: 'Trade Rejected',
-      description: 'You have rejected the trade.',
+      title: "Trade Rejected",
+      description: "You have rejected the trade.",
     });
   };
 
@@ -191,27 +210,27 @@ export default function TradePage() {
     tradeManager.cancelTrade(tradeId, playerId);
     loadTrades();
     toast({
-      title: 'Trade Cancelled',
-      description: 'The trade has been cancelled.',
+      title: "Trade Cancelled",
+      description: "The trade has been cancelled.",
     });
   };
 
   // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'draft':
+      case "draft":
         return <Badge variant="outline">Draft</Badge>;
-      case 'pending':
+      case "pending":
         return <Badge variant="secondary">Pending</Badge>;
-      case 'countered':
+      case "countered":
         return <Badge variant="outline">Countered</Badge>;
-      case 'accepted':
+      case "accepted":
         return <Badge className="bg-green-500">Accepted</Badge>;
-      case 'rejected':
+      case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
-      case 'cancelled':
+      case "cancelled":
         return <Badge variant="outline">Cancelled</Badge>;
-      case 'completed':
+      case "completed":
         return <Badge className="bg-blue-500">Completed</Badge>;
       default:
         return <Badge>{status}</Badge>;
@@ -223,22 +242,22 @@ export default function TradePage() {
 
   // Get my party in a trade
   const getMyParty = (trade: TradeOffer) => {
-    return trade.parties.find(p => p.id === playerId) || trade.parties[0];
+    return trade.parties.find((p) => p.id === playerId) || trade.parties[0];
   };
 
   // Get other party in a trade
   const getOtherParty = (trade: TradeOffer) => {
-    return trade.parties.find(p => p.id !== playerId) || trade.parties[1];
+    return trade.parties.find((p) => p.id !== playerId) || trade.parties[1];
   };
 
   // Pending trades
-  const pendingTrades = trades.filter(t => 
-    t.status === 'pending' || t.status === 'countered'
+  const pendingTrades = trades.filter(
+    (t) => t.status === "pending" || t.status === "countered",
   );
 
   // Active trades (all non-completed)
-  const activeTrades = trades.filter(t => 
-    t.status !== 'completed' && t.status !== 'cancelled'
+  const activeTrades = trades.filter(
+    (t) => t.status !== "completed" && t.status !== "cancelled",
   );
 
   return (
@@ -254,7 +273,10 @@ export default function TradePage() {
               Trade cards with other players.
             </p>
           </div>
-          <Dialog open={showNewTradeDialog} onOpenChange={setShowNewTradeDialog}>
+          <Dialog
+            open={showNewTradeDialog}
+            onOpenChange={setShowNewTradeDialog}
+          >
             <DialogTrigger asChild>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
@@ -265,7 +287,7 @@ export default function TradePage() {
               <DialogHeader>
                 <DialogTitle>Create New Trade</DialogTitle>
               </DialogHeader>
-              
+
               <div className="space-y-4 py-4">
                 {/* Recipient */}
                 <div className="space-y-2">
@@ -285,9 +307,15 @@ export default function TradePage() {
                   <Label>Cards You're Offering</Label>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {offeredCards.map((item) => (
-                      <Badge key={item.card.id} variant="secondary" className="flex items-center gap-1">
+                      <Badge
+                        key={item.card.id}
+                        variant="secondary"
+                        className="flex items-center gap-1"
+                      >
                         {item.quantity}x {item.card.name}
-                        <button onClick={() => handleRemoveOfferedCard(item.card.id)}>
+                        <button
+                          onClick={() => handleRemoveOfferedCard(item.card.id)}
+                        >
                           <X className="h-3 w-3" />
                         </button>
                       </Badge>
@@ -295,7 +323,9 @@ export default function TradePage() {
                   </div>
                   {offeredCards.length > 0 && (
                     <div className="text-sm text-muted-foreground">
-                      Total: {offeredCards.reduce((sum, c) => sum + c.quantity, 0)} cards
+                      Total:{" "}
+                      {offeredCards.reduce((sum, c) => sum + c.quantity, 0)}{" "}
+                      cards
                     </div>
                   )}
                 </div>
@@ -305,9 +335,15 @@ export default function TradePage() {
                   <Label>Cards You Want</Label>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {wantedCards.map((item) => (
-                      <Badge key={item.card.id} variant="outline" className="flex items-center gap-1">
+                      <Badge
+                        key={item.card.id}
+                        variant="outline"
+                        className="flex items-center gap-1"
+                      >
                         {item.quantity}x {item.card.name}
-                        <button onClick={() => handleRemoveWantedCard(item.card.id)}>
+                        <button
+                          onClick={() => handleRemoveWantedCard(item.card.id)}
+                        >
                           <X className="h-3 w-3" />
                         </button>
                       </Badge>
@@ -326,35 +362,43 @@ export default function TradePage() {
                   />
                   <ScrollArea className="h-[200px] border rounded-md p-2">
                     <div className="space-y-1">
-                      {filteredCollectionCards.slice(0, 20).map((collectionCard) => (
-                        <div
-                          key={collectionCard.card.id}
-                          className="flex items-center justify-between p-2 rounded hover:bg-accent"
-                        >
-                          <div>
-                            <div className="font-medium">{collectionCard.card.name}</div>
-                            <div className="text-xs text-muted-foreground">
-                              You have: {collectionCard.quantity}
+                      {filteredCollectionCards
+                        .slice(0, 20)
+                        .map((collectionCard) => (
+                          <div
+                            key={collectionCard.card.id}
+                            className="flex items-center justify-between p-2 rounded hover:bg-accent"
+                          >
+                            <div>
+                              <div className="font-medium">
+                                {collectionCard.card.name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                You have: {collectionCard.quantity}
+                              </div>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleAddOfferedCard(collectionCard.card, 1)
+                                }
+                              >
+                                Offer
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  handleAddWantedCard(collectionCard.card, 1)
+                                }
+                              >
+                                Want
+                              </Button>
                             </div>
                           </div>
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleAddOfferedCard(collectionCard.card, 1)}
-                            >
-                              Offer
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleAddWantedCard(collectionCard.card, 1)}
-                            >
-                              Want
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
                     </div>
                   </ScrollArea>
                 </div>
@@ -365,17 +409,25 @@ export default function TradePage() {
                     <Scale className="h-5 w-5" />
                     <div>
                       <div className="font-medium">Trade Assessment</div>
-                      <div className="text-sm text-muted-foreground">{fairness.assessment}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {fairness.assessment}
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowNewTradeDialog(false)}>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowNewTradeDialog(false)}
+                >
                   Cancel
                 </Button>
-                <Button onClick={handleCreateTrade} disabled={offeredCards.length === 0}>
+                <Button
+                  onClick={handleCreateTrade}
+                  disabled={offeredCards.length === 0}
+                >
                   Create Trade
                 </Button>
               </DialogFooter>
@@ -392,7 +444,9 @@ export default function TradePage() {
               <Clock className="h-8 w-8 text-blue-500" />
               <div>
                 <div className="text-2xl font-bold">{pendingTrades.length}</div>
-                <div className="text-sm text-muted-foreground">Pending Trades</div>
+                <div className="text-sm text-muted-foreground">
+                  Pending Trades
+                </div>
               </div>
             </div>
           </CardContent>
@@ -403,7 +457,9 @@ export default function TradePage() {
               <ArrowLeftRight className="h-8 w-8 text-green-500" />
               <div>
                 <div className="text-2xl font-bold">{activeTrades.length}</div>
-                <div className="text-sm text-muted-foreground">Active Trades</div>
+                <div className="text-sm text-muted-foreground">
+                  Active Trades
+                </div>
               </div>
             </div>
           </CardContent>
@@ -414,7 +470,9 @@ export default function TradePage() {
               <History className="h-8 w-8 text-purple-500" />
               <div>
                 <div className="text-2xl font-bold">{history.length}</div>
-                <div className="text-sm text-muted-foreground">Completed Trades</div>
+                <div className="text-sm text-muted-foreground">
+                  Completed Trades
+                </div>
               </div>
             </div>
           </CardContent>
@@ -433,7 +491,9 @@ export default function TradePage() {
             <Card>
               <CardContent className="py-12 text-center">
                 <ArrowLeftRight className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="text-lg font-semibold mb-2">No Pending Trades</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  No Pending Trades
+                </h3>
                 <p className="text-muted-foreground mb-4">
                   You don't have any active trade offers.
                 </p>
@@ -447,7 +507,7 @@ export default function TradePage() {
               {pendingTrades.map((trade) => {
                 const myParty = getMyParty(trade);
                 const otherParty = getOtherParty(trade);
-                
+
                 return (
                   <Card key={trade.id}>
                     <CardHeader className="pb-2">
@@ -475,11 +535,13 @@ export default function TradePage() {
                                 </Badge>
                               ))
                             ) : (
-                              <span className="text-sm text-muted-foreground">No cards offered</span>
+                              <span className="text-sm text-muted-foreground">
+                                No cards offered
+                              </span>
                             )}
                           </div>
                         </div>
-                        
+
                         {/* What I want */}
                         <div>
                           <h4 className="font-medium mb-2">You Want</h4>
@@ -491,20 +553,22 @@ export default function TradePage() {
                                 </Badge>
                               ))
                             ) : (
-                              <span className="text-sm text-muted-foreground">No cards specified</span>
+                              <span className="text-sm text-muted-foreground">
+                                No cards specified
+                              </span>
                             )}
                           </div>
                         </div>
                       </div>
 
                       {/* Their response status */}
-                      {otherParty.status === 'accepted' && (
+                      {otherParty.status === "accepted" && (
                         <div className="flex items-center gap-2 text-green-600 mb-4">
                           <CheckCircle className="h-4 w-4" />
                           <span className="text-sm">They have accepted</span>
                         </div>
                       )}
-                      {otherParty.status === 'rejected' && (
+                      {otherParty.status === "rejected" && (
                         <div className="flex items-center gap-2 text-red-600 mb-4">
                           <XCircle className="h-4 w-4" />
                           <span className="text-sm">They have rejected</span>
@@ -513,26 +577,35 @@ export default function TradePage() {
 
                       {/* Actions */}
                       <div className="flex gap-2">
-                        {trade.status === 'pending' && myParty.status !== 'accepted' && (
-                          <>
-                            <Button onClick={() => handleAcceptTrade(trade.id)}>
-                              <Check className="h-4 w-4 mr-2" />
-                              Accept
-                            </Button>
-                            <Button variant="outline" onClick={() => handleRejectTrade(trade.id)}>
-                              <X className="h-4 w-4 mr-2" />
-                              Reject
-                            </Button>
-                          </>
-                        )}
-                        {myParty.status === 'accepted' && (
+                        {trade.status === "pending" &&
+                          myParty.status !== "accepted" && (
+                            <>
+                              <Button
+                                onClick={() => handleAcceptTrade(trade.id)}
+                              >
+                                <Check className="h-4 w-4 mr-2" />
+                                Accept
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => handleRejectTrade(trade.id)}
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        {myParty.status === "accepted" && (
                           <Button variant="outline" disabled>
                             <Check className="h-4 w-4 mr-2" />
                             Accepted - Waiting for partner
                           </Button>
                         )}
-                        {trade.status === 'draft' && (
-                          <Button variant="destructive" onClick={() => handleCancelTrade(trade.id)}>
+                        {trade.status === "draft" && (
+                          <Button
+                            variant="destructive"
+                            onClick={() => handleCancelTrade(trade.id)}
+                          >
                             Cancel
                           </Button>
                         )}
@@ -563,7 +636,9 @@ export default function TradePage() {
                   <CardContent className="py-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium">Trade with {entry.otherPartyName}</div>
+                        <div className="font-medium">
+                          Trade with {entry.otherPartyName}
+                        </div>
                         <div className="text-sm text-muted-foreground">
                           {new Date(entry.completedAt).toLocaleDateString()}
                         </div>
@@ -572,13 +647,21 @@ export default function TradePage() {
                         <div className="text-center">
                           <div className="font-medium">Gave</div>
                           <div className="text-muted-foreground">
-                            {entry.cardsGiven.reduce((sum, c) => sum + c.quantity, 0)} cards
+                            {entry.cardsGiven.reduce(
+                              (sum, c) => sum + c.quantity,
+                              0,
+                            )}{" "}
+                            cards
                           </div>
                         </div>
                         <div className="text-center">
                           <div className="font-medium">Received</div>
                           <div className="text-muted-foreground">
-                            {entry.cardsReceived.reduce((sum, c) => sum + c.quantity, 0)} cards
+                            {entry.cardsReceived.reduce(
+                              (sum, c) => sum + c.quantity,
+                              0,
+                            )}{" "}
+                            cards
                           </div>
                         </div>
                       </div>
@@ -593,8 +676,8 @@ export default function TradePage() {
 
       {/* Info */}
       <div className="mt-6 text-xs text-muted-foreground text-center">
-        Note: This is a local prototype. In production, trading would require a backend server
-        for real-time peer-to-peer trading between players.
+        Note: This is a local prototype. In production, trading would require a
+        backend server for real-time peer-to-peer trading between players.
       </div>
     </div>
   );

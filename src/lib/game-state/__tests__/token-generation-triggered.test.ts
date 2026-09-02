@@ -15,7 +15,7 @@ import type {
   CardInstanceId,
   PlayerId,
 } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function createMockToken(
   name: string,
@@ -434,8 +434,8 @@ describe("Token Generation from Triggered Abilities", () => {
       expect(result.success).toBe(true);
       expect(result.affectedCards).toHaveLength(5);
 
-      const tokens = result.affectedCards!.map(
-        (id) => result.state.cards.get(id)!,
+      const tokens = result.affectedCards!.map((id) =>
+        result.state.cards.get(id)!,
       );
 
       for (let i = 0; i < tokens.length; i++) {

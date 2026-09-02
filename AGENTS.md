@@ -33,7 +33,7 @@ The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutatio
 ## Architecture (not obvious from filenames)
 
 - **App Router**: `src/app/(app)/` is a route group of protected routes sharing a layout (`dashboard`, `deck-builder`, `deck-coach`, `single-player`, `multiplayer`). `src/app/api/` holds route handlers: `ai-proxy`, `chat`, `deck-import`, `signaling`.
-- **`src/app/actions.ts` is misnamed**: it exports _client-side_ wrappers around AI flows (no `"use server"`), not Next.js server actions.
+- **AI client wrappers** live in `src/lib/ai-client.ts` (`getDeckReview`, `generateOpponent`) — plain client-side functions around the AI flows, **not** server actions. Canonical card/deck data types (`ScryfallCard`, `DeckCard`, `SavedDeck`) live in `src/lib/card-database.ts`. (The old misnamed `src/app/actions.ts` was removed in #1592.)
 - **Rules engine** lives in `src/lib/game-state/` — a large MTG rules implementation (layer-system, replacement-effects, trigger-system, state-based-actions, spell-casting, combat, mana, …). This is the correctness-critical core and the only place mutation testing runs.
 - **AI**: multi-provider via Vercel AI SDK (`@ai-sdk/openai|anthropic|google|react`) with a unified proxy route at `src/app/api/ai-proxy/`; Genkit flows in `src/ai/flows/` (deck-coach-review, opponent-generation). Provider keys in `.env` (`OPENAI_* / ANTHROPIC_* / GOOGLE_* / ZAI_*`). Deck coaching has a heuristic fallback that needs **no** API key.
 - **Persistence**: IndexedDB via Dexie (`dexie-react-hooks`); tests use `fake-indexeddb`.

@@ -6,11 +6,15 @@
  * Works entirely client-side for offline support.
  */
 
-import type { DeckCard } from '@/app/actions';
-import { detectArchetype, getArchetypeDetails } from '@/ai/archetype-detector';
-import { detectSynergies, detectMissingSynergies, type MissingSynergy } from '@/ai/synergy-detector';
-import type { ArchetypeResult } from '@/ai/archetype-signatures';
-import type { SynergyResult } from '@/ai/synergy-detector';
+import type { DeckCard } from "@/lib/card-database";
+import { detectArchetype, getArchetypeDetails } from "@/ai/archetype-detector";
+import {
+  detectSynergies,
+  detectMissingSynergies,
+  type MissingSynergy,
+} from "@/ai/synergy-detector";
+import type { ArchetypeResult } from "@/ai/archetype-signatures";
+import type { SynergyResult } from "@/ai/synergy-detector";
 
 // Extended interface for heuristic analysis with optional properties
 interface HeuristicCard {
@@ -51,7 +55,7 @@ export interface MissingSynergyInfo {
   missing: string;
   description: string;
   suggestion: string;
-  impact: 'high' | 'medium' | 'low';
+  impact: "high" | "medium" | "low";
 }
 
 // Output types matching the original AI coach with archetype and synergies
@@ -83,8 +87,17 @@ interface ArchetypeTemplate {
 const ARCHETYPE_TEMPLATES: ArchetypeTemplate[] = [
   {
     name: "Control",
-    keywords: ["counter", "draw", "wrath", "sweep", "control", "instant", "sorcery"],
-    strategy: "Control decks aim to delay the game until they can establish dominance through card advantage and powerful finishers.",
+    keywords: [
+      "counter",
+      "draw",
+      "wrath",
+      "sweep",
+      "control",
+      "instant",
+      "sorcery",
+    ],
+    strategy:
+      "Control decks aim to delay the game until they can establish dominance through card advantage and powerful finishers.",
     priorityCards: [
       { name: "Counterspell", quantity: 2 },
       { name: "Arcane Signet", quantity: 1 },
@@ -100,8 +113,17 @@ const ARCHETYPE_TEMPLATES: ArchetypeTemplate[] = [
   },
   {
     name: "Aggro",
-    keywords: ["attack", "haste", "battlefield", "damage", "fast", "aggressive", "creature"],
-    strategy: "Aggro decks aim to win quickly by playing cheap threats and applying pressure before the opponent can stabilize.",
+    keywords: [
+      "attack",
+      "haste",
+      "battlefield",
+      "damage",
+      "fast",
+      "aggressive",
+      "creature",
+    ],
+    strategy:
+      "Aggro decks aim to win quickly by playing cheap threats and applying pressure before the opponent can stabilize.",
     priorityCards: [
       { name: "Lightning Bolt", quantity: 2 },
       { name: "Goblin Guide", quantity: 2 },
@@ -118,7 +140,8 @@ const ARCHETYPE_TEMPLATES: ArchetypeTemplate[] = [
   {
     name: "Midrange",
     keywords: ["value", "efficient", "threat", "mid", "versatile", "removal"],
-    strategy: "Midrange decks aim to play efficient threats backed by removal and card advantage to out-value opponents.",
+    strategy:
+      "Midrange decks aim to play efficient threats backed by removal and card advantage to out-value opponents.",
     priorityCards: [
       { name: "Abrade", quantity: 2 },
       { name: "Thoughtseize", quantity: 2 },
@@ -134,8 +157,16 @@ const ARCHETYPE_TEMPLATES: ArchetypeTemplate[] = [
   },
   {
     name: "Combo",
-    keywords: ["combo", "infinite", "loop", "assemble", "win condition", "pieces"],
-    strategy: "Combo decks aim to assemble a specific card combination that creates an overwhelming advantage or instant win.",
+    keywords: [
+      "combo",
+      "infinite",
+      "loop",
+      "assemble",
+      "win condition",
+      "pieces",
+    ],
+    strategy:
+      "Combo decks aim to assemble a specific card combination that creates an overwhelming advantage or instant win.",
     priorityCards: [
       { name: "Pact of Negation", quantity: 1 },
       { name: "Dark Ritual", quantity: 2 },
@@ -151,8 +182,21 @@ const ARCHETYPE_TEMPLATES: ArchetypeTemplate[] = [
   },
   {
     name: "Ramp",
-    keywords: ["mana", "ramp", "land", "forest", "island", "swamp", "mountain", "plains", "creatures", "mana value", "x"],
-    strategy: "Ramp decks accelerate mana production to play expensive threats ahead of curve.",
+    keywords: [
+      "mana",
+      "ramp",
+      "land",
+      "forest",
+      "island",
+      "swamp",
+      "mountain",
+      "plains",
+      "creatures",
+      "mana value",
+      "x",
+    ],
+    strategy:
+      "Ramp decks accelerate mana production to play expensive threats ahead of curve.",
     priorityCards: [
       { name: "Sol Ring", quantity: 1 },
       { name: "Arcane Signet", quantity: 1 },
@@ -169,8 +213,18 @@ const ARCHETYPE_TEMPLATES: ArchetypeTemplate[] = [
   },
   {
     name: "Tribal",
-    keywords: ["tribe", "lord", "goblin", "elf", "vampire", "warrior", "human", "knight"],
-    strategy: "Tribal decks focus on a creature type that synergizes through tribal support.",
+    keywords: [
+      "tribe",
+      "lord",
+      "goblin",
+      "elf",
+      "vampire",
+      "warrior",
+      "human",
+      "knight",
+    ],
+    strategy:
+      "Tribal decks focus on a creature type that synergizes through tribal support.",
     priorityCards: [
       { name: "Cryptic Command", quantity: 1 },
       { name: "Arcane Signet", quantity: 1 },
@@ -233,7 +287,6 @@ const FORMAT_RECOMMENDATIONS: Record<string, string[]> = {
   ],
 };
 
-
 // Analyze deck components
 function analyzeDeckComposition(deck: HeuristicCard[]): {
   totalCards: number;
@@ -248,9 +301,9 @@ function analyzeDeckComposition(deck: HeuristicCard[]): {
   const colorDistribution: Record<string, number> = {};
   const cardTypes: Record<string, number> = {};
 
-  deck.forEach(card => {
+  deck.forEach((card) => {
     const count = card.count;
-    const manaValue = parseInt(card.mana_cost?.match(/\d+/)?.[0] || '0') || 0;
+    const manaValue = parseInt(card.mana_cost?.match(/\d+/)?.[0] || "0") || 0;
 
     if (manaValue > 0) {
       totalManaValue += manaValue * count;
@@ -259,31 +312,41 @@ function analyzeDeckComposition(deck: HeuristicCard[]): {
 
     // Count colors
     const colors = card.color_identity || [];
-    colors.forEach(color => {
+    colors.forEach((color) => {
       colorDistribution[color] = (colorDistribution[color] || 0) + count;
     });
 
     // Count card types
-    const typeLine = card.type_line || '';
-    if (typeLine.includes('Creature')) cardTypes.creature = (cardTypes.creature || 0) + count;
-    if (typeLine.includes('Instant')) cardTypes.instant = (cardTypes.instant || 0) + count;
-    if (typeLine.includes('Sorcery')) cardTypes.sorcery = (cardTypes.sorcery || 0) + count;
-    if (typeLine.includes('Artifact')) cardTypes.artifact = (cardTypes.artifact || 0) + count;
-    if (typeLine.includes('Enchantment')) cardTypes.enchantment = (cardTypes.enchantment || 0) + count;
-    if (typeLine.includes('Planeswalker')) cardTypes.planeswalker = (cardTypes.planeswalker || 0) + count;
+    const typeLine = card.type_line || "";
+    if (typeLine.includes("Creature"))
+      cardTypes.creature = (cardTypes.creature || 0) + count;
+    if (typeLine.includes("Instant"))
+      cardTypes.instant = (cardTypes.instant || 0) + count;
+    if (typeLine.includes("Sorcery"))
+      cardTypes.sorcery = (cardTypes.sorcery || 0) + count;
+    if (typeLine.includes("Artifact"))
+      cardTypes.artifact = (cardTypes.artifact || 0) + count;
+    if (typeLine.includes("Enchantment"))
+      cardTypes.enchantment = (cardTypes.enchantment || 0) + count;
+    if (typeLine.includes("Planeswalker"))
+      cardTypes.planeswalker = (cardTypes.planeswalker || 0) + count;
   });
 
-  const avgManaValue = totalManaValueCards > 0 ? totalManaValue / totalManaValueCards : 0;
+  const avgManaValue =
+    totalManaValueCards > 0 ? totalManaValue / totalManaValueCards : 0;
 
   // Detect archetype
-  const deckText = deck.map(card => card.name.toLowerCase()).join(' ');
+  const deckText = deck.map((card) => card.name.toLowerCase()).join(" ");
   const archetypeScores: Record<string, number> = {};
 
-  ARCHETYPE_TEMPLATES.forEach(template => {
-    archetypeScores[template.name] = template.keywords.reduce((score, keyword) => {
-      const matches = (deckText.match(new RegExp(keyword, 'g')) || []).length;
-      return score + matches;
-    }, 0);
+  ARCHETYPE_TEMPLATES.forEach((template) => {
+    archetypeScores[template.name] = template.keywords.reduce(
+      (score, keyword) => {
+        const matches = (deckText.match(new RegExp(keyword, "g")) || []).length;
+        return score + matches;
+      },
+      0,
+    );
   });
 
   // Bonus for creature-heavy vs instant-heavy
@@ -311,27 +374,33 @@ function analyzeDeckComposition(deck: HeuristicCard[]): {
 function generateReviewSummary(
   composition: ReturnType<typeof analyzeDeckComposition>,
   _format: string,
-  deck: HeuristicCard[]
+  deck: HeuristicCard[],
 ): string {
   const { totalCards, avgManaValue, archetypeScores } = composition;
 
   // Find dominant archetype
-  const sortedArchetypes = Object.entries(archetypeScores)
-    .sort(([, a], [, b]) => b - a);
+  const sortedArchetypes = Object.entries(archetypeScores).sort(
+    ([, a], [, b]) => b - a,
+  );
   const dominantArchetype = sortedArchetypes[0];
-  const archetypeName: string = dominantArchetype && dominantArchetype[1] > 0 ? dominantArchetype[0] : 'Unknown';
-  const archetypeTemplate = ARCHETYPE_TEMPLATES.find(t => t.name === archetypeName);
+  const archetypeName: string =
+    dominantArchetype && dominantArchetype[1] > 0
+      ? dominantArchetype[0]
+      : "Unknown";
+  const archetypeTemplate = ARCHETYPE_TEMPLATES.find(
+    (t) => t.name === archetypeName,
+  );
 
   let summary = "";
 
   // Archetype analysis
-  summary += `This appears to be a ${archetypeName || 'mixed'} deck`;
+  summary += `This appears to be a ${archetypeName || "mixed"} deck`;
   if (archetypeTemplate) {
     summary += `. ${archetypeTemplate.strategy}\n\n`;
   }
 
   // Deck size
-  if (_format === 'commander') {
+  if (_format === "commander") {
     if (totalCards < 99) {
       summary += `⚠️ Deck size (${totalCards}) is below the 100-card minimum for Commander. You'll need ${100 - totalCards} more cards.\n\n`;
     } else if (totalCards > 100) {
@@ -369,7 +438,7 @@ function generateReviewSummary(
   if (colors.length === 1) {
     summary += `✅ Monocolor ${colors[0]} deck - excellent consistency and mana base efficiency.\n\n`;
   } else if (colors.length === 2) {
-    summary += `✅ Two-color deck (${colors.join('/')}) - good balance of consistency and power.\n\n`;
+    summary += `✅ Two-color deck (${colors.join("/")}) - good balance of consistency and power.\n\n`;
   } else if (colors.length >= 3) {
     summary += `⚠️ ${colors.length}-color deck - consider the mana base carefully to ensure consistency.\n\n`;
   }
@@ -377,7 +446,7 @@ function generateReviewSummary(
   // Format-specific recommendations
   if (FORMAT_RECOMMENDATIONS[_format]) {
     summary += "Format-specific suggestions:\n";
-    FORMAT_RECOMMENDATIONS[_format].forEach(rec => {
+    FORMAT_RECOMMENDATIONS[_format].forEach((rec) => {
       summary += `• ${rec}\n`;
     });
     summary += "\n";
@@ -398,45 +467,54 @@ function generateReviewSummary(
 function generateDeckOptions(
   composition: ReturnType<typeof analyzeDeckComposition>,
   _deck: HeuristicCard[],
-  format: string
-): DeckReviewOutput['deckOptions'] {
-  const options: DeckReviewOutput['deckOptions'] = [];
+  format: string,
+): DeckReviewOutput["deckOptions"] {
+  const options: DeckReviewOutput["deckOptions"] = [];
   const { avgManaValue, cardTypes, archetypeScores } = composition;
 
   // Find dominant archetype
-  const sortedArchetypes = Object.entries(archetypeScores)
-    .sort(([, a], [, b]) => b - a);
+  const sortedArchetypes = Object.entries(archetypeScores).sort(
+    ([, a], [, b]) => b - a,
+  );
   const dominantArchetype = sortedArchetypes[0];
-  const archetypeName: string = dominantArchetype && dominantArchetype[1] > 0 ? dominantArchetype[0] : 'Unknown';
-  const archetypeTemplate = ARCHETYPE_TEMPLATES.find(t => t.name === archetypeName);
+  const archetypeName: string =
+    dominantArchetype && dominantArchetype[1] > 0
+      ? dominantArchetype[0]
+      : "Unknown";
+  const archetypeTemplate = ARCHETYPE_TEMPLATES.find(
+    (t) => t.name === archetypeName,
+  );
 
   // Generate archetype-specific option
   if (archetypeTemplate) {
     const cardsToAdd = archetypeTemplate.priorityCards
-      .filter(pc => !_deck.some(c => c.name.toLowerCase() === pc.name.toLowerCase()))
+      .filter(
+        (pc) =>
+          !_deck.some((c) => c.name.toLowerCase() === pc.name.toLowerCase()),
+      )
       .slice(0, 4);
 
     const cardsToRemove: Array<{ name: string; quantity: number }> = [];
 
     // Suggest removing high-cost cards for aggro, or low-cost for control
-    if (archetypeName === 'Aggro' && avgManaValue > 3.5) {
+    if (archetypeName === "Aggro" && avgManaValue > 3.5) {
       const expensiveCards = _deck
         .filter((c: HeuristicCard) => {
-          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || '0') || 0;
+          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || "0") || 0;
           return mv >= 4 && c.count > 0;
         })
         .slice(0, 3)
-        .map(c => ({ name: c.name, quantity: Math.min(c.count, 1) }));
+        .map((c) => ({ name: c.name, quantity: Math.min(c.count, 1) }));
 
       cardsToRemove.push(...expensiveCards);
-    } else if (archetypeName === 'Control' && avgManaValue < 2.5) {
+    } else if (archetypeName === "Control" && avgManaValue < 2.5) {
       const cheapCards = _deck
         .filter((c: HeuristicCard) => {
-          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || '0') || 0;
-          return mv <= 2 && c.count > 0 && c.type_line?.includes('Creature');
+          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || "0") || 0;
+          return mv <= 2 && c.count > 0 && c.type_line?.includes("Creature");
         })
         .slice(0, 3)
-        .map(c => ({ name: c.name, quantity: Math.min(c.count, 1) }));
+        .map((c) => ({ name: c.name, quantity: Math.min(c.count, 1) }));
 
       cardsToRemove.push(...cheapCards);
     }
@@ -461,17 +539,17 @@ function generateDeckOptions(
       cardsToAdd.push(
         { name: "Lightning Bolt", quantity: 2 },
         { name: "Thoughtseize", quantity: 2 },
-        { name: "Cantrips", quantity: 3 }
+        { name: "Cantrips", quantity: 3 },
       );
 
       // Remove high-cost cards
       const expensiveCards = _deck
         .filter((c: HeuristicCard) => {
-          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || '0') || 0;
+          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || "0") || 0;
           return mv >= 5 && c.count > 0;
         })
         .slice(0, 2)
-        .map(c => ({ name: c.name, quantity: Math.min(c.count, 1) }));
+        .map((c) => ({ name: c.name, quantity: Math.min(c.count, 1) }));
 
       cardsToRemove.push(...expensiveCards);
     } else {
@@ -479,17 +557,20 @@ function generateDeckOptions(
       cardsToAdd.push(
         { name: "Midrange Threat", quantity: 3 },
         { name: "Value Engine", quantity: 2 },
-        { name: "Finisher", quantity: 1 }
+        { name: "Finisher", quantity: 1 },
       );
 
       // Remove very low-cost cards
       const cheapCards = _deck
         .filter((c: HeuristicCard) => {
-          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || '0') || 0;
+          const mv = parseInt(c.mana_cost?.match(/\d+/)?.[0] || "0") || 0;
           return mv <= 1 && c.count > 0;
         })
         .slice(0, 2)
-        .map((c: HeuristicCard) => ({ name: c.name, quantity: Math.min(c.count, 1) }));
+        .map((c: HeuristicCard) => ({
+          name: c.name,
+          quantity: Math.min(c.count, 1),
+        }));
 
       cardsToRemove.push(...cheapCards);
     }
@@ -497,9 +578,10 @@ function generateDeckOptions(
     if (cardsToAdd.length > 0 || cardsToRemove.length > 0) {
       options.push({
         title: "Balance Mana Curve",
-        description: avgManaValue > 4
-          ? "Your curve is too high. Add more low-cost interaction to survive early game."
-          : "Your curve is too low. Add more mid-range threats for late game relevance.",
+        description:
+          avgManaValue > 4
+            ? "Your curve is too high. Add more low-cost interaction to survive early game."
+            : "Your curve is too low. Add more mid-range threats for late game relevance.",
         cardsToAdd: cardsToAdd.length > 0 ? cardsToAdd : undefined,
         cardsToRemove: cardsToRemove.length > 0 ? cardsToRemove : undefined,
       });
@@ -520,10 +602,17 @@ function generateDeckOptions(
       cardsToRemove: _deck
         .filter((c: HeuristicCard) => {
           const cardColors = c.color_identity || [];
-          return cardColors.length === 1 && c.count > 0 && c.type_line?.includes('Land');
+          return (
+            cardColors.length === 1 &&
+            c.count > 0 &&
+            c.type_line?.includes("Land")
+          );
         })
         .slice(0, 2)
-        .map((c: HeuristicCard) => ({ name: c.name, quantity: Math.min(c.count, 1) })),
+        .map((c: HeuristicCard) => ({
+          name: c.name,
+          quantity: Math.min(c.count, 1),
+        })),
     });
   }
 
@@ -531,16 +620,16 @@ function generateDeckOptions(
 }
 
 function colorFixingForColors(colors: string[]): string {
-  if (colors.includes('W') && colors.includes('U')) return "Azorius Signet";
-  if (colors.includes('U') && colors.includes('B')) return "Dimir Signet";
-  if (colors.includes('B') && colors.includes('R')) return "Rakdos Signet";
-  if (colors.includes('R') && colors.includes('G')) return "Gruul Signet";
-  if (colors.includes('G') && colors.includes('W')) return "Selesnya Signet";
-  if (colors.includes('W') && colors.includes('B')) return "Orzhov Signet";
-  if (colors.includes('U') && colors.includes('R')) return "Izzet Signet";
-  if (colors.includes('B') && colors.includes('G')) return "Golgari Signet";
-  if (colors.includes('R') && colors.includes('W')) return "Boros Signet";
-  if (colors.includes('G') && colors.includes('U')) return "Simic Signet";
+  if (colors.includes("W") && colors.includes("U")) return "Azorius Signet";
+  if (colors.includes("U") && colors.includes("B")) return "Dimir Signet";
+  if (colors.includes("B") && colors.includes("R")) return "Rakdos Signet";
+  if (colors.includes("R") && colors.includes("G")) return "Gruul Signet";
+  if (colors.includes("G") && colors.includes("W")) return "Selesnya Signet";
+  if (colors.includes("W") && colors.includes("B")) return "Orzhov Signet";
+  if (colors.includes("U") && colors.includes("R")) return "Izzet Signet";
+  if (colors.includes("B") && colors.includes("G")) return "Golgari Signet";
+  if (colors.includes("R") && colors.includes("W")) return "Boros Signet";
+  if (colors.includes("G") && colors.includes("U")) return "Simic Signet";
   return "Command Tower";
 }
 
@@ -555,10 +644,10 @@ function toDeckCard(card: HeuristicCard): DeckCard {
     cmc: card.cmc || 0,
     colors: card.colors || [],
     legalities: card.legalities || {},
-    type_line: card.type_line || '',
-    mana_cost: card.mana_cost || '{0}',
+    type_line: card.type_line || "",
+    mana_cost: card.mana_cost || "{0}",
     color_identity: card.color_identity || [],
-    oracle_text: card.oracle_text || '',
+    oracle_text: card.oracle_text || "",
   } as DeckCard;
 }
 
@@ -573,7 +662,7 @@ function toDeckCard(card: HeuristicCard): DeckCard {
 export function reviewDeckHeuristic(
   decklist: string,
   format: string,
-  cards: HeuristicCard[]
+  cards: HeuristicCard[],
 ): DeckReviewOutput {
   const composition = analyzeDeckComposition(cards);
   const reviewSummary = generateReviewSummary(composition, format, cards);
@@ -582,22 +671,25 @@ export function reviewDeckHeuristic(
   // Detect archetype using new detection system
   const deckCards = cards.map(toDeckCard);
   const archetypeResult = detectArchetype(deckCards);
-  
+
   // Get archetype details
   const archetypeDetails = getArchetypeDetails(archetypeResult.primary);
-  
-  const archetype: ArchetypeInfo | undefined = archetypeResult.primary !== 'Unknown' ? {
-    primary: archetypeResult.primary,
-    confidence: archetypeResult.confidence,
-    secondary: archetypeResult.secondary,
-    secondaryConfidence: archetypeResult.secondaryConfidence,
-    description: archetypeDetails?.description,
-    category: archetypeDetails?.category,
-  } : undefined;
+
+  const archetype: ArchetypeInfo | undefined =
+    archetypeResult.primary !== "Unknown"
+      ? {
+          primary: archetypeResult.primary,
+          confidence: archetypeResult.confidence,
+          secondary: archetypeResult.secondary,
+          secondaryConfidence: archetypeResult.secondaryConfidence,
+          description: archetypeDetails?.description,
+          category: archetypeDetails?.category,
+        }
+      : undefined;
 
   // Detect synergies
   const synergyResults = detectSynergies(deckCards, 40, 5);
-  const synergies: SynergyInfo[] = synergyResults.map(s => ({
+  const synergies: SynergyInfo[] = synergyResults.map((s) => ({
     name: s.name,
     score: s.score,
     cards: s.cards,
@@ -606,14 +698,19 @@ export function reviewDeckHeuristic(
   }));
 
   // Detect missing synergies
-  const missingSynergyResults = detectMissingSynergies(deckCards, archetypeResult.primary);
-  const missingSynergies: MissingSynergyInfo[] = missingSynergyResults.map(m => ({
-    synergy: m.synergy,
-    missing: m.missing,
-    description: m.description,
-    suggestion: m.suggestion,
-    impact: m.impact,
-  }));
+  const missingSynergyResults = detectMissingSynergies(
+    deckCards,
+    archetypeResult.primary,
+  );
+  const missingSynergies: MissingSynergyInfo[] = missingSynergyResults.map(
+    (m) => ({
+      synergy: m.synergy,
+      missing: m.missing,
+      description: m.description,
+      suggestion: m.suggestion,
+      impact: m.impact,
+    }),
+  );
 
   return {
     reviewSummary,

@@ -12,7 +12,7 @@ import {
 import dynamic from "next/dynamic";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import type { ScryfallCard, DeckCard, SavedDeck } from "@/app/actions";
+import type { ScryfallCard, DeckCard, SavedDeck } from "@/lib/card-database";
 import {
   importDecklistClient,
   type ImportDeckResult,

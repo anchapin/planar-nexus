@@ -7,7 +7,7 @@ import {
   type LinkedEffectRegistry,
 } from "@/lib/game-state/types";
 import { ValidationService } from "@/lib/validation-service";
-import { ScryfallCard } from "@/app/actions";
+import { ScryfallCard } from "@/lib/card-database";
 import { ReplacementEffectManager } from "@/lib/game-state/replacement-effects";
 import { LayerSystem } from "@/lib/game-state/layer-system";
 

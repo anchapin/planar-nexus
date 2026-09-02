@@ -9,7 +9,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import {
   initializeCardDatabase,
   getDatabaseStatus,
@@ -140,7 +140,16 @@ function toMinimalCard(card: ScryfallCard): MinimalCard {
 }
 
 export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
-  function CardSearch({ onAddCard, onSelectedCardChange, commanderColorIdentity, format, formatFilter = false }, ref) {
+  function CardSearch(
+    {
+      onAddCard,
+      onSelectedCardChange,
+      commanderColorIdentity,
+      format,
+      formatFilter = false,
+    },
+    ref,
+  ) {
     const inputRef = useRef<HTMLInputElement>(null);
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<ScryfallCard[]>([]);
@@ -742,23 +751,18 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                       inclusion (OR semantics)
                     </li>
                     <li>
-                      <code className="text-foreground">
-                        t:instant,sorcery
-                      </code>{" "}
+                      <code className="text-foreground">t:instant,sorcery</code>{" "}
                       — type inclusion
                     </li>
                     <li>
-                      <code className="text-foreground">
-                        cmc&lt;=3
-                      </code>{""},{" "}
-                      <code className="text-foreground">cmc&gt;=4</code>,{" "}
+                      <code className="text-foreground">cmc&lt;=3</code>
+                      {""}, <code className="text-foreground">cmc&gt;=4</code>,{" "}
                       <code className="text-foreground">cmc=2</code>,{" "}
-                      <code className="text-foreground">mv:5</code> —
-                      mana-value comparisons
+                      <code className="text-foreground">mv:5</code> — mana-value
+                      comparisons
                     </li>
                     <li>
-                      <code className="text-foreground">s:mh2</code> — set
-                      code
+                      <code className="text-foreground">s:mh2</code> — set code
                     </li>
                     <li>Free words: matched against name, type, oracle text</li>
                   </ul>
@@ -768,9 +772,7 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                       c:red t:instant cmc&lt;=3
                     </code>{" "}
                     ·{" "}
-                    <code className="text-foreground">
-                      c:wubrg t:creature
-                    </code>
+                    <code className="text-foreground">c:wubrg t:creature</code>
                   </p>
                 </PopoverContent>
               </Popover>
@@ -926,7 +928,9 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                 <Checkbox
                   id="match-commander-identity"
                   checked={matchCommanderIdentity}
-                  onCheckedChange={(checked) => setMatchCommanderIdentity(checked === true)}
+                  onCheckedChange={(checked) =>
+                    setMatchCommanderIdentity(checked === true)
+                  }
                   data-testid="match-commander-identity-checkbox"
                 />
                 <Label
@@ -934,7 +938,8 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                   className="text-xs cursor-pointer"
                   title={`Only show cards within commander's color identity (${commanderColorIdentity!.join("/")})`}
                 >
-                  Match Commander Color Identity ({commanderColorIdentity!.join("")})
+                  Match Commander Color Identity (
+                  {commanderColorIdentity!.join("")})
                 </Label>
               </div>
             )}

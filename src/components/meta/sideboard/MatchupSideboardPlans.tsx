@@ -4,7 +4,7 @@ import React, { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import {
   generatePerMatchupSideboardPlans,
   type MatchupSideboardPlan,
@@ -35,7 +35,8 @@ export function MatchupSideboardPlans({
 }: MatchupSideboardPlansProps) {
   const opponentsKey = JSON.stringify(opponentArchetypes ?? null);
   const result = useMemo(
-    () => generatePerMatchupSideboardPlans(mainDeck, sideboard, opponentArchetypes),
+    () =>
+      generatePerMatchupSideboardPlans(mainDeck, sideboard, opponentArchetypes),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mainDeck, sideboard, opponentsKey],
   );
@@ -51,10 +52,7 @@ export function MatchupSideboardPlans({
   }
 
   return (
-    <section
-      className={className}
-      aria-label="Coach matchup sideboard plans"
-    >
+    <section className={className} aria-label="Coach matchup sideboard plans">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h3 className="text-base font-semibold">Matchup Sideboard Plans</h3>
         <Badge variant="secondary">{result.playerArchetype}</Badge>
@@ -75,9 +73,7 @@ function MatchupPlanCard({ plan }: { plan: MatchupSideboardPlan }) {
   const totalOut = plan.boardOut.reduce((s, c) => s + c.count, 0);
 
   return (
-    <Card
-      aria-label={`Sideboard plan versus ${plan.opponentArchetypeName}`}
-    >
+    <Card aria-label={`Sideboard plan versus ${plan.opponentArchetypeName}`}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
@@ -85,12 +81,10 @@ function MatchupPlanCard({ plan }: { plan: MatchupSideboardPlan }) {
           </CardTitle>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 text-sm font-medium text-green-600">
-              <ArrowDownToLine className="h-4 w-4" aria-hidden />
-              +{totalIn}
+              <ArrowDownToLine className="h-4 w-4" aria-hidden />+{totalIn}
             </span>
             <span className="flex items-center gap-1 text-sm font-medium text-red-600">
-              <ArrowUpFromLine className="h-4 w-4" aria-hidden />
-              -{totalOut}
+              <ArrowUpFromLine className="h-4 w-4" aria-hidden />-{totalOut}
             </span>
           </div>
         </div>
@@ -138,7 +132,10 @@ function CardList({ title, tone, cards, emptyText }: CardListProps) {
         <ul className="mt-1 space-y-1">
           {cards.map((c, i) => (
             <li key={`${c.cardName}-${i}`} className="flex items-start gap-2">
-              <Badge variant="outline" className={`shrink-0 text-xs ${badgeClass}`}>
+              <Badge
+                variant="outline"
+                className={`shrink-0 text-xs ${badgeClass}`}
+              >
                 {c.cardName} ×{c.count}
               </Badge>
               <span className="text-xs text-muted-foreground">{c.reason}</span>

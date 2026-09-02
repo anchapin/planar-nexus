@@ -10,7 +10,7 @@
  * Reuses generatePack() from sealed-generator for authentic card distribution.
  */
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import { generatePack } from "./sealed-generator";
 import type {
   DraftSession,

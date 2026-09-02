@@ -21,7 +21,7 @@ import {
   validateDeckForReadyStatus,
   getFormatRulesSummary,
 } from "@/lib/format-validator";
-import type { SavedDeck, DeckCard } from "@/app/actions";
+import type { SavedDeck, DeckCard } from "@/lib/card-database";
 import { buildDeckFromLines, type CardSpec } from "./helpers/cards";
 
 const DECKLIST_60 = [
@@ -48,13 +48,28 @@ function cardLookup(name: string): CardSpec {
     case "Skullcrack":
       return { name, cmc: 2, colors: ["R"], type_line: "Instant" };
     case "Monastery Swiftspear":
-      return { name, cmc: 1, colors: ["R"], type_line: "Creature — Human Monk" };
+      return {
+        name,
+        cmc: 1,
+        colors: ["R"],
+        type_line: "Creature — Human Monk",
+      };
     case "Goblin Guide":
-      return { name, cmc: 1, colors: ["R"], type_line: "Creature — Goblin Scout" };
+      return {
+        name,
+        cmc: 1,
+        colors: ["R"],
+        type_line: "Creature — Goblin Scout",
+      };
     case "Eidolon of the Great Revel":
       return { name, cmc: 2, colors: ["R"], type_line: "Creature — Spirit" };
     case "Boggart Ram-Gang":
-      return { name, cmc: 3, colors: ["R", "G"], type_line: "Creature — Goblin Warrior" };
+      return {
+        name,
+        cmc: 3,
+        colors: ["R", "G"],
+        type_line: "Creature — Goblin Warrior",
+      };
     case "Kird Ape":
       return { name, cmc: 1, colors: ["R"], type_line: "Creature — Ape" };
     case "Mountain":
@@ -66,7 +81,12 @@ function cardLookup(name: string): CardSpec {
 
 function buildSavedDeck(format: SavedDeck["format"]): SavedDeck {
   const parsed = parseDecklist(DECKLIST_60);
-  const byName = new Map(buildDeckFromLines(DECKLIST_60.split("\n"), cardLookup).map((c) => [c.name, c]));
+  const byName = new Map(
+    buildDeckFromLines(DECKLIST_60.split("\n"), cardLookup).map((c) => [
+      c.name,
+      c,
+    ]),
+  );
   const cards: DeckCard[] = parsed.map((p) => {
     const base = byName.get(p.name)!;
     return { ...base, count: p.quantity };

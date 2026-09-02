@@ -7,8 +7,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { SavedDeck } from "@/app/actions";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SavedDeck } from "@/lib/card-database";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -18,7 +24,10 @@ import { getFormatDisplayName, type Format } from "@/lib/game-rules";
 import { Skeleton } from "./ui/skeleton";
 
 interface DeckSelectorWithValidationProps {
-  onDeckSelect: (deck: SavedDeck, validation: { isValid: boolean; errors: string[] }) => void;
+  onDeckSelect: (
+    deck: SavedDeck,
+    validation: { isValid: boolean; errors: string[] },
+  ) => void;
   lobbyFormat: Format;
   selectedDeckId?: string;
   className?: string;
@@ -37,9 +46,16 @@ export function DeckSelectorWithValidation({
   className,
   isLoading,
 }: DeckSelectorWithValidationProps) {
-  const [savedDecks, , { loading: decksLoading }] = useLocalStorage<SavedDeck[]>("saved-decks", []);
-  const [currentDeckId, setCurrentDeckId] = useState<string>(selectedDeckId || "");
-  const [validation, setValidation] = useState<{ isValid: boolean; errors: string[] }>({
+  const [savedDecks, , { loading: decksLoading }] = useLocalStorage<
+    SavedDeck[]
+  >("saved-decks", []);
+  const [currentDeckId, setCurrentDeckId] = useState<string>(
+    selectedDeckId || "",
+  );
+  const [validation, setValidation] = useState<{
+    isValid: boolean;
+    errors: string[];
+  }>({
     isValid: true,
     errors: [],
   });
@@ -65,21 +81,24 @@ export function DeckSelectorWithValidation({
     return !result.isValid;
   });
 
-  const handleSelect = useCallback((deckId: string) => {
-    const selectedDeck = savedDecks.find((d) => d.id === deckId);
-    if (selectedDeck) {
-      setCurrentDeckId(deckId);
-      const deckValidation = validateDeckForLobby(selectedDeck, lobbyFormat);
-      setValidation({
-        isValid: deckValidation.isValid && deckValidation.canPlay,
-        errors: [...deckValidation.errors, ...deckValidation.warnings],
-      });
-      onDeckSelect(selectedDeck, {
-        isValid: deckValidation.isValid && deckValidation.canPlay,
-        errors: [...deckValidation.errors, ...deckValidation.warnings],
-      });
-    }
-  }, [savedDecks, lobbyFormat, onDeckSelect]);
+  const handleSelect = useCallback(
+    (deckId: string) => {
+      const selectedDeck = savedDecks.find((d) => d.id === deckId);
+      if (selectedDeck) {
+        setCurrentDeckId(deckId);
+        const deckValidation = validateDeckForLobby(selectedDeck, lobbyFormat);
+        setValidation({
+          isValid: deckValidation.isValid && deckValidation.canPlay,
+          errors: [...deckValidation.errors, ...deckValidation.warnings],
+        });
+        onDeckSelect(selectedDeck, {
+          isValid: deckValidation.isValid && deckValidation.canPlay,
+          errors: [...deckValidation.errors, ...deckValidation.warnings],
+        });
+      }
+    },
+    [savedDecks, lobbyFormat, onDeckSelect],
+  );
 
   // Auto-select first valid deck if none selected
   useEffect(() => {
@@ -104,75 +123,75 @@ export function DeckSelectorWithValidation({
           onValueChange={handleSelect}
           disabled={savedDecks.length === 0}
         >
-        <SelectTrigger id="deck-selector">
-          <SelectValue placeholder="Select a deck..." />
-        </SelectTrigger>
-        <SelectContent>
-          {savedDecks.length === 0 ? (
-            <SelectItem value="no-decks" disabled>
-              No saved decks found
-            </SelectItem>
-          ) : (
-            <>
-              {/* Valid decks */}
-              {validDecks.length > 0 && (
-                <>
-                  {validDecks.map((deck) => (
-                    <SelectItem key={deck.id} value={deck.id}>
-                      <div className="flex justify-between w-full items-center">
-                        <span className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3 h-3 text-green-500" />
-                          {deck.name}
-                        </span>
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          {deck.format}
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </>
-              )}
+          <SelectTrigger id="deck-selector">
+            <SelectValue placeholder="Select a deck..." />
+          </SelectTrigger>
+          <SelectContent>
+            {savedDecks.length === 0 ? (
+              <SelectItem value="no-decks" disabled>
+                No saved decks found
+              </SelectItem>
+            ) : (
+              <>
+                {/* Valid decks */}
+                {validDecks.length > 0 && (
+                  <>
+                    {validDecks.map((deck) => (
+                      <SelectItem key={deck.id} value={deck.id}>
+                        <div className="flex justify-between w-full items-center">
+                          <span className="flex items-center gap-2">
+                            <CheckCircle2 className="w-3 h-3 text-green-500" />
+                            {deck.name}
+                          </span>
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {deck.format}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
 
-              {/* Invalid format decks */}
-              {invalidFormatDecks.length > 0 && (
-                <>
-                  {invalidFormatDecks.map((deck) => (
-                    <SelectItem key={deck.id} value={deck.id} disabled>
-                      <div className="flex justify-between w-full items-center opacity-60">
-                        <span className="flex items-center gap-2">
-                          <AlertTriangle className="w-3 h-3 text-yellow-500" />
-                          {deck.name}
-                        </span>
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          {deck.format}
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </>
-              )}
+                {/* Invalid format decks */}
+                {invalidFormatDecks.length > 0 && (
+                  <>
+                    {invalidFormatDecks.map((deck) => (
+                      <SelectItem key={deck.id} value={deck.id} disabled>
+                        <div className="flex justify-between w-full items-center opacity-60">
+                          <span className="flex items-center gap-2">
+                            <AlertTriangle className="w-3 h-3 text-yellow-500" />
+                            {deck.name}
+                          </span>
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {deck.format}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
 
-              {/* Errored decks */}
-              {erroredDecks.length > 0 && (
-                <>
-                  {erroredDecks.map((deck) => (
-                    <SelectItem key={deck.id} value={deck.id} disabled>
-                      <div className="flex justify-between w-full items-center opacity-40">
-                        <span className="flex items-center gap-2">
-                          <XCircle className="w-3 h-3 text-red-500" />
-                          {deck.name}
-                        </span>
-                        <Badge variant="outline" className="ml-2 text-xs">
-                          {deck.format}
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </>
-              )}
-            </>
-          )}
-        </SelectContent>
+                {/* Errored decks */}
+                {erroredDecks.length > 0 && (
+                  <>
+                    {erroredDecks.map((deck) => (
+                      <SelectItem key={deck.id} value={deck.id} disabled>
+                        <div className="flex justify-between w-full items-center opacity-40">
+                          <span className="flex items-center gap-2">
+                            <XCircle className="w-3 h-3 text-red-500" />
+                            {deck.name}
+                          </span>
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {deck.format}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+          </SelectContent>
         </Select>
       )}
 
@@ -208,11 +227,14 @@ export function DeckSelectorWithValidation({
 
       {/* Deck count summary */}
       <div className="mt-2 text-xs text-muted-foreground">
-        {validDecks.length} valid deck{validDecks.length !== 1 ? "s" : ""} for {formatName}
+        {validDecks.length} valid deck{validDecks.length !== 1 ? "s" : ""} for{" "}
+        {formatName}
         {invalidFormatDecks.length > 0 && (
           <span>, {invalidFormatDecks.length} wrong format</span>
         )}
-        {erroredDecks.length > 0 && <span>, {erroredDecks.length} invalid</span>}
+        {erroredDecks.length > 0 && (
+          <span>, {erroredDecks.length} invalid</span>
+        )}
       </div>
     </div>
   );

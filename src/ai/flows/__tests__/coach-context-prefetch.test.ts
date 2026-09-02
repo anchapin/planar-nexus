@@ -13,7 +13,7 @@
  *      the model is invoked.
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 jest.mock("@/ai/archetype-detector", () => ({
   detectArchetype: jest.fn(),

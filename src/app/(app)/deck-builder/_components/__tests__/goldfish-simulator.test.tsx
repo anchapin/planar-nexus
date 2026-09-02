@@ -13,7 +13,7 @@ import { describe, it, expect } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/jest-globals";
 import { GoldfishSimulator } from "../goldfish-simulator";
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 
 function landCard(count: number): DeckCard {
   return {

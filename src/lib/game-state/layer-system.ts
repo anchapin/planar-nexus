@@ -21,7 +21,7 @@
  * @module layer-system
  */
 
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import { CardInstance, CardInstanceId, PlayerId } from "./types";
 
 /**
@@ -690,10 +690,7 @@ export class LayerSystem {
    * @param targetId - The candidate dependency target
    * @returns true if there is a dependency path from effectId to targetId
    */
-  private dependsOnTransitive(
-    effectId: string,
-    targetId: string,
-  ): boolean {
+  private dependsOnTransitive(effectId: string, targetId: string): boolean {
     if (effectId === targetId) return false;
     const visited = new Set<string>();
     const stack: string[] = [effectId];

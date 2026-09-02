@@ -53,7 +53,7 @@ import type {
   ZoneType,
   GameState as UIGameState,
 } from "@/types/game";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 /**
  * Convert engine GameState to UI PlayerState

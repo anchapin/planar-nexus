@@ -9,7 +9,7 @@
  */
 
 import type { MinimalCard } from "@/lib/card-database";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 
 // ============================================================================
 // Scryfall Types (for Set Browser)

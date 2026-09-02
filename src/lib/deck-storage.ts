@@ -10,7 +10,7 @@
  * - Backward compatibility with localStorage
  */
 
-import type { DeckCard } from "@/app/actions";
+import type { DeckCard } from "@/lib/card-database";
 import { indexedDBStorage, StoredDeck } from "./indexeddb-storage";
 
 // ============================================================================

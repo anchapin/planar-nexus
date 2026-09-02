@@ -6,9 +6,13 @@
  * All operations use the local IndexedDB card database for offline functionality.
  */
 
-import type { ScryfallCard, DeckCard } from '@/app/actions';
-import { initializeCardDatabase, searchCardsOffline, getCardByName } from '@/lib/card-database';
-import { type Format } from '@/lib/game-rules';
+import type { ScryfallCard, DeckCard } from "@/lib/card-database";
+import {
+  initializeCardDatabase,
+  searchCardsOffline,
+  getCardByName,
+} from "@/lib/card-database";
+import { type Format } from "@/lib/game-rules";
 import {
   sanitizeCardInput,
   aggregateCardsById,
@@ -17,7 +21,7 @@ import {
   type DecklistFormat,
   type ImportError,
   type ParsedCardWithLine,
-} from './decklist-utils';
+} from "./decklist-utils";
 
 /**
  * Detailed result of importing a decklist.
@@ -50,7 +54,10 @@ export interface ImportDeckResult {
  * Search for cards using local IndexedDB database with fuzzy search
  * This provides instant results and works offline
  */
-export async function searchCardsClient(query: string, format?: Format): Promise<ScryfallCard[]> {
+export async function searchCardsClient(
+  query: string,
+  format?: Format,
+): Promise<ScryfallCard[]> {
   if (!query || query.length < 3) {
     return [];
   }
@@ -62,7 +69,7 @@ export async function searchCardsClient(query: string, format?: Format): Promise
     // Perform fuzzy search
     const results = await searchCardsOffline(query, {
       maxCards: 50,
-      format: format || 'commander',
+      format: format || "commander",
       includeImages: true,
     });
 
@@ -76,13 +83,15 @@ export async function searchCardsClient(query: string, format?: Format): Promise
 /**
  * Fetch a card by name from local database
  */
-export async function fetchCardByNameClient(name: string): Promise<ScryfallCard | null> {
+export async function fetchCardByNameClient(
+  name: string,
+): Promise<ScryfallCard | null> {
   try {
     // Ensure database is initialized
     await initializeCardDatabase();
 
     const card = await getCardByName(name);
-    return card as ScryfallCard || null;
+    return (card as ScryfallCard) || null;
   } catch (error) {
     console.error("Failed to fetch card from local database:", error);
     return null;
@@ -95,7 +104,7 @@ export async function fetchCardByNameClient(name: string): Promise<ScryfallCard 
  */
 export async function validateCardLegalityClient(
   cards: { name: string; quantity: number }[],
-  format: Format
+  format: Format,
 ): Promise<{ found: DeckCard[]; notFound: string[]; illegal: string[] }> {
   if (!cards || cards.length === 0) {
     return { found: [], notFound: [], illegal: [] };
@@ -112,27 +121,32 @@ export async function validateCardLegalityClient(
     }
 
     // Fetch from local database - use Promise.all for parallel processing
-    const cardLookupPromises = Array.from(cardMap.entries()).map(async ([lowerCaseName, requestDetails]) => {
-      try {
-        const dbCard = await getCardByName(requestDetails.originalName);
+    const cardLookupPromises = Array.from(cardMap.entries()).map(
+      async ([lowerCaseName, requestDetails]) => {
+        try {
+          const dbCard = await getCardByName(requestDetails.originalName);
 
-        if (dbCard) {
-          const isLegal = dbCard.legalities?.[format] === 'legal';
-          return {
-            card: dbCard,
-            quantity: requestDetails.quantity,
-            originalName: requestDetails.originalName,
-            isLegal,
-            lowerCaseName,
-          };
+          if (dbCard) {
+            const isLegal = dbCard.legalities?.[format] === "legal";
+            return {
+              card: dbCard,
+              quantity: requestDetails.quantity,
+              originalName: requestDetails.originalName,
+              isLegal,
+              lowerCaseName,
+            };
+          }
+
+          return null;
+        } catch (error) {
+          console.error(
+            `Failed to fetch card: ${requestDetails.originalName}`,
+            error,
+          );
+          return null;
         }
-
-        return null;
-      } catch (error) {
-        console.error(`Failed to fetch card: ${requestDetails.originalName}`, error);
-        return null;
-      }
-    });
+      },
+    );
 
     const lookupResults = await Promise.all(cardLookupPromises);
 
@@ -154,12 +168,17 @@ export async function validateCardLegalityClient(
       }
     }
 
-    const notFound = Array.from(notFoundNames).map(name => cardMap.get(name)!.originalName);
+    const notFound = Array.from(notFoundNames).map(
+      (name) => cardMap.get(name)!.originalName,
+    );
 
     return { found, notFound: [...notFound, ...malformedInputs], illegal };
   } catch (error) {
-    console.error('Failed to validate card legality from local database', error);
-    return { found: [], notFound: cards.map(c => c.name), illegal: [] };
+    console.error(
+      "Failed to validate card legality from local database",
+      error,
+    );
+    return { found: [], notFound: cards.map((c) => c.name), illegal: [] };
   }
 }
 
@@ -180,7 +199,7 @@ async function suggestCardName(name: string): Promise<string | undefined> {
       return matches[0].name;
     }
   } catch (error) {
-    console.error('Failed to build suggestion for card:', name, error);
+    console.error("Failed to build suggestion for card:", name, error);
   }
 
   return undefined;
@@ -197,7 +216,7 @@ async function suggestCardName(name: string): Promise<string | undefined> {
 export async function importDecklistClient(
   decklist: string,
   decklistFormat?: DecklistFormat,
-  format?: Format
+  format?: Format,
 ): Promise<ImportDeckResult> {
   const empty: ImportDeckResult = {
     found: [],
@@ -211,17 +230,15 @@ export async function importDecklistClient(
     success: false,
   };
 
-  const formatToUse = format || 'commander';
+  const formatToUse = format || "commander";
 
   if (!decklist || !decklist.trim()) {
     return empty;
   }
 
   // Parse with line tracking so errors can reference source line numbers.
-  const { cards: parsedCards, errors: structuralErrors } = parseDecklistWithErrors(
-    decklist,
-    decklistFormat,
-  );
+  const { cards: parsedCards, errors: structuralErrors } =
+    parseDecklistWithErrors(decklist, decklistFormat);
 
   if (parsedCards.length === 0 && structuralErrors.length === 0) {
     return empty;
@@ -258,7 +275,7 @@ export async function importDecklistClient(
     unknownCardErrors.push({
       line: source?.line ?? 0,
       content: source?.content ?? name,
-      error: 'UNKNOWN_CARD',
+      error: "UNKNOWN_CARD",
       cardName: name,
       suggestion: buildSuggestion(suggestion),
     });
@@ -270,7 +287,7 @@ export async function importDecklistClient(
     illegalCardErrors.push({
       line: source?.line ?? 0,
       content: source?.content ?? name,
-      error: 'ILLEGAL_CARD',
+      error: "ILLEGAL_CARD",
       cardName: name,
       suggestion: `Not legal in ${formatToUse}`,
     });
@@ -282,7 +299,10 @@ export async function importDecklistClient(
     ...illegalCardErrors,
   ].sort((a, b) => a.line - b.line);
 
-  const successCount = aggregatedFound.reduce((acc, card) => acc + card.count, 0);
+  const successCount = aggregatedFound.reduce(
+    (acc, card) => acc + card.count,
+    0,
+  );
 
   return {
     found: aggregatedFound,

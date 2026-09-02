@@ -23,8 +23,13 @@ import { createCardInstance } from "../card-instance";
 import { declareAttackers, resolveCombatDamage } from "../combat";
 import { checkStateBasedActions } from "../state-based-actions";
 import { Phase, ZoneType } from "../types";
-import type { GameState, CardInstanceId, PlayerId, CardInstance } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type {
+  GameState,
+  CardInstanceId,
+  PlayerId,
+  CardInstance,
+} from "../types";
+import type { ScryfallCard } from "@/lib/card-database";
 
 function createMockCommander(
   name: string,
@@ -174,7 +179,10 @@ describe("Commander Damage Integration — CR 903.9a (issue #1017)", () => {
       const result = dealCommanderDamage(state, commanderId, bobId, 15);
       expect(getCommanderDamage(result.state, bobId, commanderId)).toBe(15);
 
-      const reset = resetCommanderDamageFromCommander(result.state, commanderId);
+      const reset = resetCommanderDamageFromCommander(
+        result.state,
+        commanderId,
+      );
       expect(getCommanderDamage(reset, bobId, commanderId)).toBe(0);
       expect(getTotalCommanderDamage(reset, bobId)).toBe(0);
       expect(hasLostFromCommanderDamage(reset, bobId)).toBe(false);
@@ -303,7 +311,10 @@ describe("Commander Damage Integration — CR 903.9a (issue #1017)", () => {
         { cardId: commanderId, defenderId: bobId },
       ]);
       expect(declare.success).toBe(true);
-      s = { ...declare.state, combat: { ...declare.state.combat, inCombatPhase: true } };
+      s = {
+        ...declare.state,
+        combat: { ...declare.state.combat, inCombatPhase: true },
+      };
 
       const resolve = resolveCombatDamage(s);
       const after = resolve.state;

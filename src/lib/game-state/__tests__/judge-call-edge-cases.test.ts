@@ -32,7 +32,7 @@ import {
   setDamageAssignmentOrder,
 } from "../combat";
 import { Phase } from "../types";
-import type { ScryfallCard } from "@/app/actions";
+import type { ScryfallCard } from "@/lib/card-database";
 import type { CardInstanceId, PlayerId } from "../types";
 
 function createMockCreature(
@@ -464,7 +464,14 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     // 5/5 First Strike vs three 2/2s. Attacker reorders blockers so the
     // "third" declared blocker is struck first.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "FS Attacker", power: 5, toughness: 5, keywords: ["First Strike"] }],
+      [
+        {
+          name: "FS Attacker",
+          power: 5,
+          toughness: 5,
+          keywords: ["First Strike"],
+        },
+      ],
       [
         { name: "Blocker A", power: 1, toughness: 2 },
         { name: "Blocker B", power: 1, toughness: 2 },
@@ -489,11 +496,11 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     const blockRes = declareBlockers(attackRes.state, blockerMap);
 
     // Attacker announces a NEW damage assignment order: C first, then A, then B.
-    const orderRes = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerC, blockerA, blockerB],
-    );
+    const orderRes = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerC,
+      blockerA,
+      blockerB,
+    ]);
     expect(orderRes.success).toBe(true);
 
     // First-strike step
@@ -519,7 +526,14 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     // setDamageAssignmentOrder. The defending player's declaration order
     // (A, B, C) should govern: A and B die, C is wounded.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "FS Attacker", power: 5, toughness: 5, keywords: ["First Strike"] }],
+      [
+        {
+          name: "FS Attacker",
+          power: 5,
+          toughness: 5,
+          keywords: ["First Strike"],
+        },
+      ],
       [
         { name: "Blocker A", power: 1, toughness: 2 },
         { name: "Blocker B", power: 1, toughness: 2 },
@@ -527,9 +541,11 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
       ],
     );
 
-    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
-    const [blockerA, blockerB, blockerC] = state.zones
-      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = state.zones.get(
+      `${bobId}-battlefield`,
+    )!.cardIds as CardInstanceId[];
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
     const attackRes = declareAttackers(state, [
@@ -566,9 +582,11 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
       ],
     );
 
-    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
-    const [blockerA, blockerB, blockerC] = state.zones
-      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = state.zones.get(
+      `${bobId}-battlefield`,
+    )!.cardIds as CardInstanceId[];
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
     const attackRes = declareAttackers(state, [
@@ -581,16 +599,18 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     const blockRes = declareBlockers(attackRes.state, blockerMap);
 
     // Attacker announces order: B first, then C, then A.
-    const orderRes = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerB, blockerC, blockerA],
-    );
+    const orderRes = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerB,
+      blockerC,
+      blockerA,
+    ]);
     expect(orderRes.success).toBe(true);
 
     // No first strike in this combat → there is no first-strike step; resolve
     // directly in the regular combat damage step.
-    const res = resolveCombatDamage(inPhase(orderRes.state, Phase.COMBAT_DAMAGE));
+    const res = resolveCombatDamage(
+      inPhase(orderRes.state, Phase.COMBAT_DAMAGE),
+    );
     expect(res.success).toBe(true);
 
     // 5 power in order B → C → A: 2 to B (lethal), 2 to C (lethal), 1 to A.
@@ -608,16 +628,24 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     // Regular step: 2 more → all to A again (now 4 total = lethal), 0 to B.
     //   A dies, B survives.
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "DS Attacker", power: 2, toughness: 2, keywords: ["Double Strike"] }],
+      [
+        {
+          name: "DS Attacker",
+          power: 2,
+          toughness: 2,
+          keywords: ["Double Strike"],
+        },
+      ],
       [
         { name: "Blocker A", power: 1, toughness: 4 },
         { name: "Blocker B", power: 1, toughness: 4 },
       ],
     );
 
-    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
-    const [blockerA, blockerB] = state.zones
-      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB] = state.zones.get(`${bobId}-battlefield`)!
+      .cardIds as CardInstanceId[];
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
     const attackRes = declareAttackers(state, [
@@ -629,11 +657,10 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     blockerMap.set(attackerId, [blockerA, blockerB]);
     const blockRes = declareBlockers(attackRes.state, blockerMap);
 
-    const orderRes = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerA, blockerB],
-    );
+    const orderRes = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerA,
+      blockerB,
+    ]);
     expect(orderRes.success).toBe(true);
 
     // First-strike step: A gets 2 damage (not lethal at 4 toughness), B untouched.
@@ -659,7 +686,14 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     // Deathtouch makes any nonzero assignment lethal (CR 702.2b), so the
     // attacker assigns 1 to C (dies), 1 to A (dies), 0 to B (out of power).
     const { state, aliceId, bobId } = setupGameWithCreatures(
-      [{ name: "DT Attacker", power: 2, toughness: 2, keywords: ["Deathtouch"] }],
+      [
+        {
+          name: "DT Attacker",
+          power: 2,
+          toughness: 2,
+          keywords: ["Deathtouch"],
+        },
+      ],
       [
         { name: "Blocker A", power: 1, toughness: 2 },
         { name: "Blocker B", power: 1, toughness: 2 },
@@ -667,9 +701,11 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
       ],
     );
 
-    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
-    const [blockerA, blockerB, blockerC] = state.zones
-      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB, blockerC] = state.zones.get(
+      `${bobId}-battlefield`,
+    )!.cardIds as CardInstanceId[];
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
     const attackRes = declareAttackers(state, [
@@ -681,14 +717,16 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     blockerMap.set(attackerId, [blockerA, blockerB, blockerC]);
     const blockRes = declareBlockers(attackRes.state, blockerMap);
 
-    const orderRes = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerC, blockerA, blockerB],
-    );
+    const orderRes = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerC,
+      blockerA,
+      blockerB,
+    ]);
     expect(orderRes.success).toBe(true);
 
-    const res = resolveCombatDamage(inPhase(orderRes.state, Phase.COMBAT_DAMAGE));
+    const res = resolveCombatDamage(
+      inPhase(orderRes.state, Phase.COMBAT_DAMAGE),
+    );
     expect(res.success).toBe(true);
 
     // C and A each received a 1-point deathtouch assignment (lethal per
@@ -712,9 +750,10 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
       ],
     );
 
-    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
-    const [blockerA, blockerB] = state.zones
-      .get(`${bobId}-battlefield`)!.cardIds as CardInstanceId[];
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
+    const [blockerA, blockerB] = state.zones.get(`${bobId}-battlefield`)!
+      .cardIds as CardInstanceId[];
 
     state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
     const attackRes = declareAttackers(state, [
@@ -727,30 +766,28 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
     const blockRes = declareBlockers(attackRes.state, blockerMap);
 
     // Missing a blocker
-    const tooFew = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerA],
-    );
+    const tooFew = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerA,
+    ]);
     expect(tooFew.success).toBe(false);
     expect(tooFew.errors?.[0]).toMatch(/every blocker exactly once/);
 
     // Duplicates
-    const dup = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerA, blockerA],
-    );
+    const dup = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerA,
+      blockerA,
+    ]);
     expect(dup.success).toBe(false);
-    expect(dup.errors?.[0]).toMatch(/not blocking this attacker|appears more than once/);
+    expect(dup.errors?.[0]).toMatch(
+      /not blocking this attacker|appears more than once/,
+    );
 
     // A creature that isn't blocking this attacker
     const fake = "not-a-real-blocker" as CardInstanceId;
-    const extra = setDamageAssignmentOrder(
-      blockRes.state,
-      attackerId,
-      [blockerA, fake],
-    );
+    const extra = setDamageAssignmentOrder(blockRes.state, attackerId, [
+      blockerA,
+      fake,
+    ]);
     expect(extra.success).toBe(false);
     expect(extra.errors?.[0]).toMatch(/not blocking this attacker/);
   });
@@ -761,7 +798,8 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
       [{ name: "Blocker A", power: 1, toughness: 2 }],
     );
 
-    const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const attackerId = state.zones.get(`${aliceId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
 
     // No combat declared yet
     const noCombat = setDamageAssignmentOrder(state, attackerId, []);
@@ -773,16 +811,13 @@ describe("JC-979: First strike damage assignment order with multiple blockers (#
       { cardId: attackerId, defenderId: bobId },
     ]);
     attackRes.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
-    const unblocked = setDamageAssignmentOrder(
-      attackRes.state,
-      attackerId,
-      [],
-    );
+    const unblocked = setDamageAssignmentOrder(attackRes.state, attackerId, []);
     expect(unblocked.success).toBe(false);
     expect(unblocked.errors?.[0]).toMatch(/not blocked/);
 
     // A creature that is not an attacker
-    const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0] as CardInstanceId;
+    const blockerId = state.zones.get(`${bobId}-battlefield`)!
+      .cardIds[0] as CardInstanceId;
     const notAttacker = setDamageAssignmentOrder(
       attackRes.state,
       blockerId,
