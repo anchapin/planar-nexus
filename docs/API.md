@@ -419,6 +419,10 @@ Tear down a signaling session.
 
 ## 3. AI Providers
 
+> For a step-by-step **get key → validate → switch provider** walkthrough, see
+> the [AI Provider Setup Runbook](./AI_PROVIDER_SETUP.md). This section is the
+> per-provider reference.
+
 ### 3.1 Google (Gemini)
 
 **Configuration**:
