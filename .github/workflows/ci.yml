@@ -465,6 +465,20 @@ jobs:
           path: reports/mutation/
           retention-days: 30
 
+      - name: Per-module score breakdown
+        # Issue #1549: this job previously stopped at the artifact upload, so
+        # a layer-system regression below `thresholds.break` surfaced only as a
+        # bare Stryker exit code plus a 30-day artifact a maintainer had to
+        # download and unzip. Run the same summary step the nightly workflow
+        # has had since #1395 so the per-module table (score / killed /
+        # survived / no-coverage, plus the #1598 BELOW FLOOR marker) renders
+        # inline on the PR's Actions summary. `if: always()` keeps the table
+        # visible even when Stryker itself fails; when the report is missing
+        # the script exits 0 with a skip note, so this step can never turn a
+        # passing run into a failing one.
+        if: always()
+        run: node scripts/mutation-summary.js
+
   security:
     name: Security Audit (npm)
     runs-on: ubuntu-latest

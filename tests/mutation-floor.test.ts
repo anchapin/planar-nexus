@@ -11,9 +11,17 @@
  */
 
 import { spawnSync } from "child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  readFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import * as path from "path";
+import { parse } from "yaml";
 
 import {
   computeModuleScores,
@@ -467,5 +475,157 @@ describe("mutation-summary.js below-floor annotation", () => {
     // The existing emoji buckets are unchanged: 35% is 🔴, 80% is 🟢.
     expect(triggerRow).toContain("🔴");
     expect(replacementRow).toContain("🟢");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Issue #1549: the per-PR mutation-test job in .github/workflows/ci.yml now
+// surfaces the per-module table on the Actions summary. These tests lock in
+// (a) the full Markdown contract of the table renderer on synthetic fixtures,
+// (b) the $GITHUB_STEP_SUMMARY append that makes it render on the Summary tab,
+// (c) the missing-report no-op that lets the CI step run with `if: always()`
+// without failing the job, and (d) the workflow wiring itself.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("mutation-summary.js Markdown table (issue #1549)", () => {
+  let workDir: string;
+
+  beforeEach(() => {
+    workDir = mkdtempSync(path.join(tmpdir(), "mutation-summary-1549-"));
+  });
+
+  afterEach(() => {
+    rmSync(workDir, { recursive: true, force: true });
+  });
+
+  /** Spawn the summary CLI in the fixture cwd, with env overrides applied. */
+  function spawnSummary(
+    envOverrides: Record<string, string | undefined> = {},
+  ): { status: number | null; stdout: string; stderr: string } {
+    const env: Record<string, string | undefined> = { ...process.env };
+    delete env.GITHUB_STEP_SUMMARY;
+    delete env.MUTATION_FLOOR;
+    for (const [key, value] of Object.entries(envOverrides)) {
+      if (value === undefined) delete env[key];
+      else env[key] = value;
+    }
+    const res = spawnSync(
+      "node",
+      [path.join(__dirname, "..", "scripts", "mutation-summary.js")],
+      { cwd: workDir, env: env as NodeJS.ProcessEnv, encoding: "utf8" },
+    );
+    return {
+      status: res.status,
+      stdout: res.stdout ?? "",
+      stderr: res.stderr ?? "",
+    };
+  }
+
+  it("renders the header plus one row per module with score, killed/detected, survived, and no-coverage columns", () => {
+    // Synthetic single-module report shaped like the per-PR layer-system run:
+    // 80 detected (70 Killed + 10 Timeout) of 100 considered, 15 Survived,
+    // 5 NoCoverage → 80.0% — every column gets a distinct non-zero value.
+    const layerMutants: Array<{ status: MutantStatus }> = [
+      ...Array.from({ length: 70 }, () => ({ status: "Killed" as const })),
+      ...Array.from({ length: 10 }, () => ({ status: "Timeout" as const })),
+      ...Array.from({ length: 15 }, () => ({ status: "Survived" as const })),
+      ...Array.from({ length: 5 }, () => ({ status: "NoCoverage" as const })),
+    ];
+    mkdirSync(path.join(workDir, "reports", "mutation"), { recursive: true });
+    writeFileSync(
+      path.join(workDir, "reports", "mutation", "mutation.json"),
+      JSON.stringify(
+        reportObject({ "src/lib/game-state/layer-system.ts": layerMutants }),
+      ),
+    );
+
+    const lines = spawnSummary().stdout.split("\n");
+
+    expect(lines).toContain("### Mutation score breakdown");
+    expect(lines).toContain(
+      "| Module | Score | Killed/Detected | Survived | No coverage |",
+    );
+    expect(lines).toContain("| --- | ---: | ---: | ---: | ---: |");
+
+    const rows = lines.filter(
+      (l) =>
+        l.startsWith("|") && !l.includes("Module |") && !l.includes("---:"),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain("🟢"); // 80% ≥ 70 → green bucket
+    expect(rows[0]).toContain("`src/lib/game-state/layer-system.ts`");
+    expect(rows[0]).toMatch(/\| 80\.0% \| 80\/100 \| 15 \| 5 \|$/);
+  });
+
+  it("appends the same table to $GITHUB_STEP_SUMMARY so the PR Summary tab renders it", () => {
+    mkdirSync(path.join(workDir, "reports", "mutation"), { recursive: true });
+    writeFileSync(
+      path.join(workDir, "reports", "mutation", "mutation.json"),
+      JSON.stringify(
+        reportObject({
+          "src/lib/game-state/layer-system.ts": mutants(80, 100),
+        }),
+      ),
+    );
+    const summaryPath = path.join(workDir, "step-summary.md");
+
+    const res = spawnSummary({ GITHUB_STEP_SUMMARY: summaryPath });
+
+    expect(res.status).toBe(0);
+    expect(existsSync(summaryPath)).toBe(true);
+    const summary = readFileSync(summaryPath, "utf8");
+    expect(summary).toContain(
+      "| Module | Score | Killed/Detected | Survived | No coverage |",
+    );
+    expect(summary).toContain("src/lib/game-state/layer-system.ts");
+    // stdout and the summary file carry the same table — the CI log stays
+    // useful even when the runner never sets GITHUB_STEP_SUMMARY.
+    expect(summary).toBe(res.stdout);
+  });
+
+  it("exits 0 with a skip note and leaves GITHUB_STEP_SUMMARY untouched when the report is missing", () => {
+    // AC for #1549: the step runs `if: always()`, so a Stryker crash before
+    // the JSON report is written must not turn it into a second failure.
+    const summaryPath = path.join(workDir, "step-summary.md");
+    const res = spawnSummary({ GITHUB_STEP_SUMMARY: summaryPath });
+
+    expect(res.status).toBe(0);
+    expect(res.stderr).toContain("not found");
+    expect(existsSync(summaryPath)).toBe(false);
+  });
+});
+
+describe("per-PR mutation-test wiring (issue #1549)", () => {
+  type WorkflowStep = { name?: unknown; if?: unknown; run?: unknown };
+  type Workflow = { jobs: Record<string, { steps?: WorkflowStep[] }> };
+
+  function loadWorkflow(rel: string): Workflow {
+    return parse(
+      readFileSync(path.join(__dirname, "..", rel), "utf8"),
+    ) as Workflow;
+  }
+
+  function breakdownSteps(steps: WorkflowStep[] | undefined): WorkflowStep[] {
+    return (steps ?? []).filter((s) => s.name === "Per-module score breakdown");
+  }
+
+  it("ci.yml mutation-test job ends with the breakdown step gated by if: always()", () => {
+    const ci = loadWorkflow(".github/workflows/ci.yml");
+    const summaries = breakdownSteps(ci.jobs["mutation-test"]?.steps);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.run).toBe("node scripts/mutation-summary.js");
+    // `if: always()` YAML-parses to the string "always()" — the table must
+    // render even when the Stryker step itself failed the job.
+    expect(String(summaries[0]?.if)).toBe("always()");
+  });
+
+  it("the nightly mutation workflow keeps the same breakdown step (consistency)", () => {
+    const nightly = loadWorkflow(".github/workflows/mutation.yml");
+    const summaries = breakdownSteps(nightly.jobs["mutation"]?.steps);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]?.run).toBe("node scripts/mutation-summary.js");
+    expect(String(summaries[0]?.if)).toBe("always()");
   });
 });
