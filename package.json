@@ -6,6 +6,9 @@
   "bugs": {
     "url": "https://github.com/anchapin/planar-nexus/issues"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev -p 9002",
     "dev:tauri": "tauri dev",
