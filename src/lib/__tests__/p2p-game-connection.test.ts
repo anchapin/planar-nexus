@@ -16,6 +16,8 @@ import {
   type ChatMessage,
   type PeerActionValidator,
   type LobbyControlPayload,
+  type GameEndedPayload,
+  type GameEndedStanding,
 } from "../p2p-game-connection";
 import { signMessageEnvelope } from "../p2p-json-validation";
 import { ValidationService } from "../game-state/validation-service";
@@ -564,6 +566,62 @@ describe("P2PGameConnection message validation (untrusted peer input)", () => {
     expect(() => handleMessage(JSON.stringify(msg))).not.toThrow();
     expect(onMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: "game-action", senderId: "player-2" }),
+    );
+  });
+
+  // ---- Issue #1570: `game-ended` is a valid GameMessage type ----
+
+  it("accepts a game-ended message via the wire-format guard", () => {
+    // Acceptance criterion: `isGameMessage` accepts `{ type: 'game-ended', ... }`
+    // while still rejecting unknown types.
+    const ok = isGameMessage({
+      type: "game-ended",
+      senderId: "host",
+      timestamp: Date.now(),
+      seq: 0,
+      data: {
+        gameId: "GAME1",
+        winnerId: "host",
+        format: "commander",
+        startedAt: 1_000,
+        endedAt: 2_000,
+        endReason: "concede",
+        standings: [
+          { playerId: "host", playerName: "Alice", position: 1, life: 20 },
+          { playerId: "joiner", playerName: "Bob", position: 2, life: 0 },
+        ],
+      },
+    });
+    expect(ok).toBe(true);
+  });
+
+  it("emits a well-formed game-ended message to onMessage (audit trail)", () => {
+    // The data-channel pipeline (rate-limit, parse, shape, anti-replay)
+    // accepts the new type. `onMessage` is the generic envelope surface;
+    // the typed `onGameEnded` is exercised in the dedicated describe
+    // block further down.
+    const raw = JSON.stringify({
+      type: "game-ended",
+      senderId: "host",
+      timestamp: Date.now(),
+      seq: 0,
+      data: {
+        gameId: "GAME1",
+        winnerId: "host",
+        format: "commander",
+        startedAt: 1_000,
+        endedAt: 2_000,
+        endReason: "concede",
+        standings: [
+          { playerId: "host", playerName: "Alice", position: 1, life: 20 },
+          { playerId: "joiner", playerName: "Bob", position: 2, life: 0 },
+        ],
+      },
+    });
+    expect(() => handleMessage(raw)).not.toThrow();
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "game-ended", senderId: "host" }),
     );
   });
 });
@@ -1842,6 +1900,370 @@ describe("P2PGameConnection lobby-control message (issue #1257)", () => {
         const payload: LobbyControlPayload = { kind };
         expect(payload.kind).toBe(kind);
       });
+    });
+  });
+});
+
+/**
+ * Issue #1570: host-authoritative terminal-event channel.
+ *
+ * The host (or an authoritative peer) broadcasts a `game-ended` message
+ * carrying the final standings for a completed match. Receiving peers
+ * persist a `MatchRecord` row to Dexie and surface a UI state update.
+ *
+ * The wire-format guard tests live in `P2PGameConnection message
+ * validation` (above); this describe block focuses on the typed
+ * dispatch, the wire-shape validation in `handleGameEnded`, the
+ * anti-replay interaction (acceptance criterion: a duplicate delivery
+ * results in a single `onGameEnded` fire), and the `sendGameEnded`
+ * outbound helper.
+ */
+describe("P2PGameConnection game-ended message (issue #1570)", () => {
+  // Build a base connection with no events, then let each test opt into
+  // whichever subset it cares about. Mirrors the lobby-control pattern
+  // in the block above so the tests are self-contained.
+  const makeConn = (events: Partial<P2PGameConnectionEvents> = {}) =>
+    createP2PGameConnection({
+      playerId: "local",
+      playerName: "Local",
+      role: "joiner",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+        onLobbyControl: () => {},
+        ...events,
+      },
+    });
+
+  const handleMessage = (conn: P2PGameConnection, raw: string): void => {
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
+  };
+
+  const msg = (senderId: string, seq: number, data: unknown): GameMessage => ({
+    type: "game-ended",
+    senderId,
+    timestamp: Date.now(),
+    seq,
+    data,
+  });
+
+  const validPayload = (
+    overrides: Partial<GameEndedPayload> = {},
+  ): GameEndedPayload => ({
+    gameId: "GAME1",
+    winnerId: "host",
+    format: "commander",
+    startedAt: 1_700_000_000_000,
+    endedAt: 1_700_000_600_000,
+    endReason: "concede",
+    standings: [
+      { playerId: "host", playerName: "Alice", position: 1, life: 20 },
+      { playerId: "joiner", playerName: "Bob", position: 2, life: 0 },
+    ],
+    ...overrides,
+  });
+
+  describe("wire format", () => {
+    it("game-ended is a valid GameMessage type accepted by isGameMessage", () => {
+      expect(
+        isGameMessage({
+          type: "game-ended",
+          senderId: "host",
+          timestamp: Date.now(),
+          seq: 0,
+          data: validPayload(),
+        }),
+      ).toBe(true);
+    });
+
+    it("sendGameEnded() sends a typed game-ended message with a stamped seq", () => {
+      const conn = makeConn();
+      const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+      const ok = conn.sendGameEnded(validPayload());
+      expect(ok).toBe(true);
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const sent = sendSpy.mock.calls[0][0] as GameMessage;
+      expect(sent.type).toBe("game-ended");
+      expect(sent.senderId).toBe("local");
+      expect(sent.seq).toBe(0);
+      expect(sent.data).toEqual(validPayload());
+      sendSpy.mockRestore();
+    });
+
+    it("sendGameEnded returns false (and does not throw) when the data channel is not open", () => {
+      const conn = makeConn();
+      // No setupDataChannelEvents() — dataChannel stays null → send() warns and returns false.
+      const ok = conn.sendGameEnded(validPayload());
+      expect(ok).toBe(false);
+    });
+  });
+
+  describe("dispatch and payload validation", () => {
+    it("dispatches a well-formed payload to onGameEnded", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      const payload = validPayload();
+      handleMessage(conn, JSON.stringify(msg("host", 0, payload)));
+      expect(onGameEnded).toHaveBeenCalledTimes(1);
+      expect(onGameEnded).toHaveBeenCalledWith(payload);
+    });
+
+    it("forwards the message to onMessage as well (audit trail)", () => {
+      const onMessage = jest.fn();
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onMessage, onGameEnded });
+      handleMessage(conn, JSON.stringify(msg("host", 0, validPayload())));
+      expect(onGameEnded).toHaveBeenCalledTimes(1);
+      expect(onMessage).toHaveBeenCalledTimes(1);
+      const envelope = onMessage.mock.calls[0][0] as GameMessage;
+      expect(envelope.type).toBe("game-ended");
+      expect(envelope.senderId).toBe("host");
+    });
+
+    it("rejects a payload with an empty gameId (no onGameEnded call)", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, validPayload({ gameId: "" }))),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("rejects a payload with a non-string format", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, validPayload({ format: 42 as unknown as string })),
+        ),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("rejects a payload where endedAt < startedAt", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, validPayload({ startedAt: 2_000, endedAt: 1_000 })),
+        ),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("rejects a payload with a negative startedAt", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, validPayload({ startedAt: -1 }))),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("rejects a payload with a non-null winnerId that is not a string", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, validPayload({ winnerId: 42 as unknown as string })),
+        ),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("accepts winnerId === null (draw)", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      const draw = validPayload({
+        winnerId: null,
+        standings: [
+          { playerId: "host", playerName: "Alice", position: 1, life: null },
+          { playerId: "joiner", playerName: "Bob", position: 1, life: null },
+        ],
+      });
+      handleMessage(conn, JSON.stringify(msg("host", 0, draw)));
+      expect(onGameEnded).toHaveBeenCalledTimes(1);
+      expect(onGameEnded).toHaveBeenCalledWith(draw);
+    });
+
+    it("rejects a standings entry with an empty playerId", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, {
+            ...validPayload(),
+            standings: [
+              { playerId: "", playerName: "Alice", position: 1, life: 20 },
+            ],
+          }),
+        ),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("rejects a standings entry with position === 0", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, {
+            ...validPayload(),
+            standings: [
+              { playerId: "host", playerName: "Alice", position: 0, life: 20 },
+            ],
+          }),
+        ),
+      );
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("accepts life === null in a standings entry", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 0, {
+            ...validPayload(),
+            standings: [
+              {
+                playerId: "host",
+                playerName: "Alice",
+                position: 1,
+                life: null,
+              },
+            ],
+          }),
+        ),
+      );
+      expect(onGameEnded).toHaveBeenCalledTimes(1);
+    });
+
+    it("rejects a null payload", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(conn, JSON.stringify(msg("host", 0, null)));
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("rejects a string payload", () => {
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(conn, JSON.stringify(msg("host", 0, "game-over")));
+      expect(onGameEnded).not.toHaveBeenCalled();
+    });
+
+    it("does not throw on malformed JSON", () => {
+      const conn = makeConn();
+      expect(() => handleMessage(conn, "{ not json")).not.toThrow();
+    });
+
+    it("is not invoked when the receiver has no onGameEnded wired", () => {
+      // Constructor leaves the default no-op onGameEnded when the caller
+      // does not provide one — verify the no-op default does not throw.
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "joiner",
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          // No onGameEnded provided → default no-op.
+        },
+      });
+      expect(() =>
+        handleMessage(conn, JSON.stringify(msg("host", 0, validPayload()))),
+      ).not.toThrow();
+    });
+  });
+
+  describe("interaction with the message pipeline", () => {
+    it("the game-ended message participates in anti-replay (issue #1091)", () => {
+      // Acceptance criterion: a duplicate delivery (same seq) results in
+      // a single `onGameEnded` fire, because the transport's anti-replay
+      // high-water mark (#1091) drops the duplicate BEFORE the typed
+      // dispatch runs. This is the canonical dedup mechanism for P2P
+      // match history — the Dexie `put` would also be a no-op via the
+      // `(gameId, playerId)` primary key, but the seq gate runs first.
+      const onGameEnded = jest.fn();
+      const conn = makeConn({ onGameEnded });
+      handleMessage(conn, JSON.stringify(msg("host", 0, validPayload())));
+      expect(onGameEnded).toHaveBeenCalledTimes(1);
+      // Duplicate delivery — same seq.
+      handleMessage(conn, JSON.stringify(msg("host", 0, validPayload())));
+      expect(onGameEnded).toHaveBeenCalledTimes(1);
+      // New seq — accepted.
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 1, validPayload({ endReason: "life-zero" })),
+        ),
+      );
+      expect(onGameEnded).toHaveBeenCalledTimes(2);
+    });
+
+    it("rate-limiter applies to game-ended messages (issue #1111)", () => {
+      // A flooding peer cannot drive the parse/validate path via
+      // game-ended any more than via other message types.
+      const onGameEnded = jest.fn();
+      const conn = createP2PGameConnection({
+        playerId: "local",
+        playerName: "Local",
+        role: "joiner",
+        rateLimit: { maxMessages: 2, windowMs: 1000 },
+        events: {
+          onConnectionStateChange: () => {},
+          onSignalingStateChange: () => {},
+          onMessage: () => {},
+          onGameStateSync: () => {},
+          onChat: () => {},
+          onError: () => {},
+          onPlayerJoined: () => {},
+          onPlayerLeft: () => {},
+          onLobbyControl: () => {},
+          onGameEnded,
+        },
+      });
+      handleMessage(
+        conn,
+        JSON.stringify(msg("host", 0, validPayload({ endReason: "concede" }))),
+      );
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 1, validPayload({ endReason: "life-zero" })),
+        ),
+      );
+      handleMessage(
+        conn,
+        JSON.stringify(
+          msg("host", 2, validPayload({ endReason: "commander-damage" })),
+        ),
+      );
+      // 3rd message exceeds the configured budget of 2 events/sec.
+      expect(onGameEnded).toHaveBeenCalledTimes(2);
     });
   });
 });

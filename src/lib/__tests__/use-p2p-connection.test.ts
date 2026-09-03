@@ -144,6 +144,8 @@ describe("use-p2p-connection Hook Types", () => {
         localRole: "player",
         setLocalRole: () => {},
         spectatorDrops: 0,
+        // Issue #1570: game-ended event surface.
+        gameEnded: null,
       };
 
       expect(returnValue.connectionState).toBeDefined();

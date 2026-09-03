@@ -606,4 +606,204 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       await close();
     }
   });
+
+  // Issue #1570: a 2-peer mesh driven to a game-over condition delivers
+  // a `game-ended` message to the surviving peer, who applies anti-replay
+  // (#1091) so a duplicate delivery is dropped. The actual Dexie
+  // `match_records` persistence is verified in two places:
+  //   1. The Jest unit test `src/lib/db/__tests__/local-intelligence-db.test.ts`
+  //      round-trips `MatchRecord` rows against `fake-indexeddb` and
+  //      asserts the upsert-on-key dedup property.
+  //   2. The Jest unit test `src/lib/__tests__/p2p-game-connection.test.ts`
+  //      exercises the `game-ended` wire contract and the typed
+  //      `onGameEnded` handler.
+  //
+  // This E2E test only verifies the WIRE side of #1570 in the harness
+  // — broadcasting a `game-ended` payload, having the recipient record
+  // it on the anti-replay `appliedReceived` view, and dropping a
+  // duplicate delivery (same `seq`) BEFORE it reaches the application
+  // layer. Driving the production hook layer's Dexie write from this
+  // E2E would require the real `use-p2p-connection` React hook to be
+  // mounted in the test browser, which the existing 2-peer E2E flow
+  // specs do not do — they only verify the mesh harness's wire
+  // contract. Keeping the wire contract test isolated from the React
+  // mount path lets the test stay focused and robust.
+  test("wire-format: 2-peer game-end broadcast + anti-replay dedup (issue #1570)", async ({
+    browser,
+  }) => {
+    const { host, peerB, close } = await createFourPeers(browser);
+    try {
+      // Reduce to a host <-> peer-b mesh: link both directions, drop
+      // C and D from both sides so we are left with a focused 2-peer
+      // scenario.
+      await openMeshChannels(
+        [host, peerB, host, peerB],
+        [HOST_OPTS, PEER_B_OPTS, HOST_OPTS, PEER_B_OPTS],
+      );
+      for (const page of [host, peerB]) {
+        await page.evaluate(() =>
+          (
+            window as unknown as {
+              __peer: { removeNeighbor: (id: string) => boolean };
+            }
+          ).__peer.removeNeighbor("peer-c"),
+        );
+        await page.evaluate(() =>
+          (
+            window as unknown as {
+              __peer: { removeNeighbor: (id: string) => boolean };
+            }
+          ).__peer.removeNeighbor("peer-d"),
+        );
+      }
+
+      const gameEndedPayload = {
+        gameId: "GAME-MESH-1570",
+        winnerId: HOST_OPTS.playerId,
+        format: "commander",
+        startedAt: 1_700_000_000_000,
+        endedAt: 1_700_000_300_000,
+        endReason: "life-zero",
+        standings: [
+          {
+            playerId: HOST_OPTS.playerId,
+            playerName: HOST_OPTS.playerName,
+            position: 1,
+            life: 20,
+          },
+          {
+            playerId: PEER_B_OPTS.playerId,
+            playerName: PEER_B_OPTS.playerName,
+            position: 2,
+            life: 0,
+          },
+        ],
+      };
+
+      // Step 1: host broadcasts `game-ended`. Peer-b must receive it.
+      const sent = await host.evaluate(
+        (p) =>
+          (
+            window as unknown as {
+              __peer: { sendGameEnded: (payload: unknown) => number };
+            }
+          ).__peer.sendGameEnded(p),
+        gameEndedPayload,
+      );
+      expect(sent).toBe(1); // host → peer-b only (C and D removed)
+
+      await waitForReceiveCount(peerB, 1, "game-ended");
+      const onPeerB = await getMessagesFrom(
+        peerB,
+        HOST_OPTS.playerId,
+        "game-ended",
+      );
+      expect(onPeerB).toHaveLength(1);
+      expect(onPeerB[0].data).toMatchObject({
+        gameId: "GAME-MESH-1570",
+        winnerId: HOST_OPTS.playerId,
+        format: "commander",
+        endReason: "life-zero",
+      });
+
+      // Step 2: dedup check — the harness mirrors the production
+      // anti-replay policy (#1091). A re-broadcast with the SAME `seq`
+      // must NOT increment `appliedReceived`; it should land in
+      // `replayedReceived` so the wire-level view still shows the
+      // duplicate but the application-layer view only sees it once.
+      const capturedSeq = onPeerB[0].seq;
+      await host.evaluate((seq) => {
+        const w = window as unknown as {
+          __peer: {
+            broadcast: (msg: {
+              type: string;
+              senderId: string;
+              timestamp: number;
+              seq: number;
+              data: unknown;
+            }) => number;
+          };
+        };
+        w.__peer.broadcast({
+          type: "game-ended",
+          senderId: "host-player",
+          timestamp: Date.now(),
+          seq,
+          data: {
+            gameId: "GAME-MESH-1570",
+            winnerId: "host-player",
+            format: "commander",
+            startedAt: 1_700_000_000_000,
+            endedAt: 1_700_000_300_000,
+            endReason: "life-zero",
+            standings: [
+              {
+                playerId: "host-player",
+                playerName: "Alice (Host)",
+                position: 1,
+                life: 20,
+              },
+              {
+                playerId: "peer-b",
+                playerName: "Bob",
+                position: 2,
+                life: 0,
+              },
+            ],
+          },
+        });
+      }, capturedSeq);
+
+      // Give the duplicate time to traverse the mesh.
+      await peerB.waitForTimeout(150);
+
+      // Assert: appliedReceived has exactly one game-ended (the
+      // original), replayedReceived has the duplicate. This mirrors
+      // the property the production hook relies on — the
+      // `onGameEnded` handler fires AT MOST once per (gameId,
+      // seq) pair, which combined with the Dexie `put` upsert-on-key
+      // means each peer writes EXACTLY ONE MatchRecord row per game.
+      const applied = await peerB.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __peer?: {
+                appliedReceived?: {
+                  type: string;
+                  senderId: string;
+                  seq: number;
+                }[];
+              };
+            }
+          ).__peer?.appliedReceived ?? [],
+      );
+      const appliedGameEnded = applied.filter(
+        (m) => m.type === "game-ended" && m.senderId === "host-player",
+      );
+      expect(appliedGameEnded).toHaveLength(1);
+      expect(appliedGameEnded[0].seq).toBe(capturedSeq);
+
+      const replayed = await peerB.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __peer?: {
+                replayedReceived?: {
+                  type: string;
+                  senderId: string;
+                  seq: number;
+                }[];
+              };
+            }
+          ).__peer?.replayedReceived ?? [],
+      );
+      const replayedGameEnded = replayed.filter(
+        (m) => m.type === "game-ended" && m.senderId === "host-player",
+      );
+      expect(replayedGameEnded).toHaveLength(1);
+      expect(replayedGameEnded[0].seq).toBe(capturedSeq);
+    } finally {
+      await close();
+    }
+  });
 });

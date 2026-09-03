@@ -117,6 +117,20 @@ export interface P2PGameConnectionEvents {
    * Fires exactly once per transition.
    */
   onPeerQueueResumed?: (stats: PeerQueueStats) => void;
+  /**
+   * Emitted when the host (or an authoritative peer) broadcasts a `game-ended`
+   * message declaring the match over (issue #1570). The hook layer is the
+   * canonical consumer: it persists a `MatchRecord` row to Dexie for the
+   * local player's perspective and surfaces a React state update so the
+   * existing `use-social.ts` match-history derivation can pick it up.
+   *
+   * Anti-replay (#1091) deduplicates a re-delivered `game-ended` BEFORE this
+   * event fires — a duplicate delivery (same `seq`) does NOT re-emit.
+   *
+   * Optional so single-player / AI call sites (which never broadcast
+   * `game-ended`) do not have to wire a no-op handler.
+   */
+  onGameEnded?: (payload: GameEndedPayload) => void;
 }
 
 /**
@@ -154,6 +168,14 @@ export type { SignalingRole };
  * pause, and resume. Only the authoritative host emits these — receiving
  * peers apply them and (for kick) close their data channel back to the lobby
  * screen. See {@link LobbyControlPayload}.
+ *
+ * `game-ended` is the host-authoritative terminal-event channel (issue #1570).
+ * Once the host has determined the winner (last player standing, life-zero,
+ * concession, commander damage, etc.) it broadcasts ONE `game-ended` message
+ * carrying the final standings; receiving peers persist the result locally
+ * so the game shows up in match history. Anti-replay (issue #1091) deduplicates
+ * a re-delivered `game-ended` so only one match-history row is written even
+ * after a host reconnect rebroadcast.
  */
 export type GameMessageType =
   | "game-state-sync"
@@ -165,7 +187,8 @@ export type GameMessageType =
   | "pong"
   | "error"
   | "request-state-sync"
-  | "lobby-control";
+  | "lobby-control"
+  | "game-ended";
 
 /**
  * Base game message.
@@ -206,6 +229,7 @@ const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "error",
   "request-state-sync",
   "lobby-control",
+  "game-ended",
 ]);
 
 /**
@@ -312,6 +336,61 @@ export type PeerActionValidator = (
   peerAction: PeerGameActionPayload,
   senderId: string,
 ) => PeerActionValidationResult;
+
+/**
+ * Wire payload of a `game-ended` message — the host's authoritative terminal
+ * broadcast for a completed match (issue #1570). Sent by the host exactly
+ * once per match; peers persist a {@link GameEndedPayload.standings} row
+ * to the local `match_records` Dexie store keyed by `${gameId}@${playerId}`
+ * (see {@link import("./db/local-intelligence-db").getMatchRecordKey}).
+ *
+ * Fields:
+ *   - `gameId` — opaque match identifier (stable across host migration so a
+ *     peer's local row key does not change mid-tournament).
+ *   - `winnerId` — the surviving peerId, or `null` for a draw.
+ *   - `format` — game format string ("commander", "standard", …). Used for
+ *     per-format win-rate derivation in the existing `use-social.ts`
+ *     `formatWinRates` aggregation.
+ *   - `startedAt` — wall-clock ms when the host first opened the match.
+ *   - `endedAt` — wall-clock ms when the host broadcast this event. Peers
+ *     derive `durationMs = endedAt - startedAt` for their local row.
+ *   - `standings` — final per-player ranking. `position: 1` is the winner;
+ *     larger numbers are losing finishes in turn-order-elimination order.
+ *     `life` is the final life total (zero for the player who lost on
+ *     life, current life for concession, undefined if not applicable).
+ *   - `endReason` — short machine-readable cause ("concede", "life-zero",
+ *     "commander-damage", "library", "other"). Mirrors the engine's
+ *     `GameState.endReason` taxonomy; kept loose so the protocol stays
+ *     forward-compatible with new win conditions.
+ */
+export interface GameEndedPayload {
+  gameId: string;
+  winnerId: string | null;
+  format: string;
+  /** Wall-clock ms when the match opened. */
+  startedAt: number;
+  /** Wall-clock ms when the host declared the game over. */
+  endedAt: number;
+  /** Final per-player ranking, sorted best-to-worst by `position`. */
+  standings: ReadonlyArray<GameEndedStanding>;
+  /** Short machine-readable cause (e.g. `"concede"`, `"life-zero"`). */
+  endReason: string;
+}
+
+/**
+ * One player's final standing in a `game-ended` payload (issue #1570). The
+ * `position` field is the local player's row key into match history: every
+ * peer independently writes one `MatchRecord` with `position` set to their
+ * own final standing.
+ */
+export interface GameEndedStanding {
+  playerId: string;
+  playerName: string;
+  /** Final rank — `1` is the winner. */
+  position: number;
+  /** Final life total, or `null` if life is not the relevant axis. */
+  life: number | null;
+}
 
 /**
  * P2P Game Connection options
@@ -1220,6 +1299,34 @@ export class P2PGameConnection {
   }
 
   /**
+   * Broadcast a `game-ended` event (issue #1570). Host-authoritative terminal
+   * signal — call exactly once per match after the host has determined a
+   * winner (life-zero, concession, commander damage, etc.). The transport
+   * does not gate by role (the host is trusted as the source of truth and
+   * integrity is a peer concern, matching the lobby-control policy above),
+   * but in practice only the host should ever call this — non-host sends
+   * would be silently ignored by peers' integrity checks anyway.
+   *
+   * The outgoing `seq` is stamped from this connection's monotonic counter
+   * (issue #1091) so a reconnect re-broadcast is rejected by peers'
+   * anti-replay high-water mark and only ever persists ONE `MatchRecord`
+   * row locally.
+   *
+   * Returns false (and emits an `onError` event) when the channel is not
+   * open or the local role is read-only (issue #1253) — same gating policy
+   * as every other send on this connection.
+   */
+  sendGameEnded(payload: GameEndedPayload): boolean {
+    return this.send({
+      type: "game-ended",
+      senderId: this.playerId,
+      timestamp: Date.now(),
+      seq: this.nextOutgoingSeq(),
+      data: payload,
+    });
+  }
+
+  /**
    * Send ping
    */
   private sendPing(): void {
@@ -1479,6 +1586,20 @@ export class P2PGameConnection {
           // application layer — `lobby-manager.ts` — owns the policy and
           // ban list, the transport just delivers the envelope).
           this.handleLobbyControl(message);
+          break;
+        case "game-ended":
+          // Host-authoritative terminal-event channel (issue #1570). The
+          // transport validates the wire shape defensively and forwards a
+          // typed payload to the optional `onGameEnded` handler so the
+          // hook layer can persist a `MatchRecord` row to Dexie and
+          // surface a React state update. Malformed payloads are dropped
+          // silently — the application layer (`use-p2p-connection.ts`)
+          // owns the persistence policy, the transport just delivers the
+          // envelope. Anti-replay (#1091) deduplicates a re-delivered
+          // `game-ended` BEFORE this branch is reached so only one
+          // match-history row is written locally even after a host
+          // reconnect rebroadcast.
+          this.handleGameEnded(message);
           break;
       }
 
@@ -1742,6 +1863,111 @@ export class P2PGameConnection {
       validated.pausedDurationMs = raw.pausedDurationMs;
     }
     this.events.onLobbyControl?.(validated);
+  }
+
+  /**
+   * Handle a `game-ended` message from the host (issue #1570). Validates
+   * the wire shape defensively (a hostile peer could forge anything) and
+   * forwards a typed payload to the optional {@link onGameEnded} handler.
+   *
+   * Schema invariants enforced here:
+   *   - `gameId` is a non-empty string.
+   *   - `winnerId` is a string or `null` (draw).
+   *   - `format` is a string.
+   *   - `startedAt` and `endedAt` are non-negative finite numbers with
+   *     `endedAt >= startedAt`.
+   *   - `endReason` is a string.
+   *   - `standings` is an array; each entry's `playerId` is a non-empty
+   *     string, `playerName` is a string, `position` is a positive integer,
+   *     and `life` is either a non-negative number or `null`.
+   *
+   * Malformed payloads are dropped silently — the application layer
+   * (`use-p2p-connection.ts`) owns the persistence policy; the transport
+   * just delivers the envelope.
+   */
+  private handleGameEnded(message: GameMessage): void {
+    const payload = message.data;
+    if (typeof payload !== "object" || payload === null) {
+      p2pLogger.warn(
+        "[P2PGameConnection] Rejected malformed game-ended payload",
+      );
+      return;
+    }
+    const raw = payload as Record<string, unknown>;
+    if (
+      typeof raw.gameId !== "string" ||
+      raw.gameId.length === 0 ||
+      typeof raw.format !== "string" ||
+      typeof raw.endReason !== "string" ||
+      !isNonNegativeInteger(raw.startedAt) ||
+      !isNonNegativeInteger(raw.endedAt) ||
+      raw.endedAt < raw.startedAt ||
+      !Array.isArray(raw.standings)
+    ) {
+      p2pLogger.warn(
+        "[P2PGameConnection] Rejected game-ended with invalid shape",
+        redactSensitive({
+          senderId: message.senderId,
+          fields: Object.keys(raw),
+        }),
+      );
+      return;
+    }
+    if (raw.winnerId !== null && typeof raw.winnerId !== "string") {
+      p2pLogger.warn(
+        "[P2PGameConnection] Rejected game-ended with invalid winnerId",
+      );
+      return;
+    }
+    const standings: GameEndedStanding[] = [];
+    for (const entry of raw.standings) {
+      if (typeof entry !== "object" || entry === null) {
+        p2pLogger.warn(
+          "[P2PGameConnection] Rejected game-ended standings entry",
+        );
+        return;
+      }
+      const e = entry as Record<string, unknown>;
+      if (
+        typeof e.playerId !== "string" ||
+        e.playerId.length === 0 ||
+        typeof e.playerName !== "string" ||
+        !isNonNegativeInteger(e.position) ||
+        e.position < 1
+      ) {
+        p2pLogger.warn(
+          "[P2PGameConnection] Rejected game-ended standings entry shape",
+        );
+        return;
+      }
+      let life: number | null;
+      if (e.life === null) {
+        life = null;
+      } else if (typeof e.life === "number" && Number.isFinite(e.life)) {
+        life = e.life;
+      } else {
+        p2pLogger.warn(
+          "[P2PGameConnection] Rejected game-ended standings entry with invalid life",
+        );
+        return;
+      }
+      standings.push({
+        playerId: e.playerId,
+        playerName: e.playerName,
+        position: e.position,
+        life,
+      });
+    }
+    const validated: GameEndedPayload = {
+      gameId: raw.gameId,
+      winnerId: raw.winnerId === null ? null : (raw.winnerId as string),
+      format: raw.format,
+      startedAt: raw.startedAt,
+      endedAt: raw.endedAt,
+      standings,
+      endReason: raw.endReason,
+    };
+    this.events.onGameEnded?.(validated);
   }
 
   /**

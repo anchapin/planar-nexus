@@ -232,6 +232,14 @@ function buildMeshPeerHarness(opts: MeshPeerOptions): string {
     sendGameState: function (gameState, isFullSync) {
       return window.__peer.broadcast(stamp("game-state-sync", { gameState: gameState, isFullSync: !!isFullSync }));
     },
+    // Issue #1570: host-authoritative terminal-event channel. Mirrors
+    // the production P2PGameConnection.sendGameEnded. The harness just
+    // stamps a fresh seq and broadcasts; the real persistence path
+    // (Dexie match_records) is exercised by the connected production
+    // hook layer in the destination browser context, not by this mock.
+    sendGameEnded: function (payload) {
+      return window.__peer.broadcast(stamp("game-ended", payload));
+    },
     sendChat: function (text) {
       return window.__peer.broadcast(stamp("chat", { senderName: playerName, text: text }));
     },

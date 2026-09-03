@@ -76,6 +76,9 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
   test("validate game message contract matches p2p-game-connection.ts", () => {
     // Guard against drift between this harness and the production wire format.
     // Source of truth: src/lib/p2p-game-connection.ts (GAME_MESSAGE_TYPES).
+    // The harness supports a SUBSET of the production types — the ones this
+    // E2E suite exercises. `game-ended` (issue #1570) was added to the
+    // harness so the mesh E2E can drive a complete P2P match.
     expect([...GAME_MESSAGE_TYPES]).toEqual([
       "game-state-sync",
       "game-action",
@@ -84,6 +87,7 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
       "player-left",
       "ping",
       "pong",
+      "game-ended",
     ]);
 
     // isGameMessage must accept well-formed messages and reject garbage, exactly
@@ -95,10 +99,14 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
       data: { action: "pass" },
     };
     expect(isGameMessage(good)).toBe(true);
-    expect(isGameMessage({ type: "evil", senderId: "x", timestamp: 1 })).toBe(false);
+    expect(isGameMessage({ type: "evil", senderId: "x", timestamp: 1 })).toBe(
+      false,
+    );
     expect(isGameMessage(null)).toBe(false);
     expect(isGameMessage("nope")).toBe(false);
-    expect(isGameMessage({ type: "ping", senderId: 5, timestamp: 1 })).toBe(false);
+    expect(isGameMessage({ type: "ping", senderId: 5, timestamp: 1 })).toBe(
+      false,
+    );
   });
 
   test("two browser contexts establish a P2P connection via mock signaling", async ({
@@ -107,8 +115,16 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
     const { host, joiner } = await createTwoPeers(browser);
 
     // Both peers must believe the data channel is open (signaling complete).
-    await expect.poll(async () => host.evaluate(() => (window as any).__peer.isConnected())).toBe(true);
-    await expect.poll(async () => joiner.evaluate(() => (window as any).__peer.isConnected())).toBe(true);
+    await expect
+      .poll(async () =>
+        host.evaluate(() => (window as any).__peer.isConnected()),
+      )
+      .toBe(true);
+    await expect
+      .poll(async () =>
+        joiner.evaluate(() => (window as any).__peer.isConnected()),
+      )
+      .toBe(true);
 
     // A mock RTCPeerConnection must have been installed.
     const hostHasMock = await host.evaluate(
@@ -212,7 +228,11 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
 
     expect(received.data).toMatchObject({
       action: "play-card",
-      data: { cardId: "lightning-bolt", targetPlayerId: "joiner-player", zone: "stack" },
+      data: {
+        cardId: "lightning-bolt",
+        targetPlayerId: "joiner-player",
+        zone: "stack",
+      },
     });
 
     // Both peers must converge: joiner echoes an ability resolution back to host.
@@ -253,7 +273,9 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
     expect(attackersOnJoiner.data).toMatchObject({
       action: "declare-attackers",
       data: {
-        attackers: [{ attackerId: "goblin-guide", defendingPlayerId: "joiner-player" }],
+        attackers: [
+          { attackerId: "goblin-guide", defendingPlayerId: "joiner-player" },
+        ],
       },
     });
 
@@ -270,7 +292,9 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
     );
     expect(blockersOnHost.data).toMatchObject({
       action: "declare-blockers",
-      data: { blockers: [{ blockerId: "memnite", attackerId: "goblin-guide" }] },
+      data: {
+        blockers: [{ blockerId: "memnite", attackerId: "goblin-guide" }],
+      },
     });
 
     // Combat damage order is shared with both peers after the combat phase.
@@ -297,7 +321,9 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
     });
   });
 
-  test("game end via concede is detected by both peers", async ({ browser }) => {
+  test("game end via concede is detected by both peers", async ({
+    browser,
+  }) => {
     const { host, joiner } = await createTwoPeers(browser);
 
     // Joiner concedes — host must detect the game-ending event.
@@ -329,7 +355,11 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
       `(m) => m.type === "game-state-sync" && m.data && m.data.gameState && m.data.gameState.status === "finished"`,
     );
     expect(gameOverOnJoiner.data).toMatchObject({
-      gameState: { status: "finished", winners: ["host-player"], endReason: "concede" },
+      gameState: {
+        status: "finished",
+        winners: ["host-player"],
+        endReason: "concede",
+      },
       isFullSync: true,
     });
 

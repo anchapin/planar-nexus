@@ -50,6 +50,12 @@ import {
 } from "@/lib/p2p-reconnect-store";
 import { logger } from "@/lib/logger";
 import { type PeerRole, DEFAULT_PEER_ROLE } from "@/lib/peer-role";
+import {
+  db as localIntelligenceDb,
+  getMatchRecordKey,
+  type MatchRecord,
+} from "@/lib/db/local-intelligence-db";
+import type { GameEndedPayload } from "@/lib/p2p-game-connection";
 
 const p2pLogger = logger.child("P2PConnection");
 
@@ -71,10 +77,7 @@ export interface UseP2PConnectionOptions {
   enableHandshake?: boolean;
   enableConflictResolution?: boolean;
   conflictResolutionStrategy?:
-    | "host-wins"
-    | "timestamp-based"
-    | "priority-based"
-    | "round-robin";
+    "host-wins" | "timestamp-based" | "priority-based" | "round-robin";
   /** Enable host migration when the authoritative host disconnects (issue #916). */
   enableHostMigration?: boolean;
   /** Initial authoritative host id. Defaults to the host when role === 'host'. */
@@ -131,11 +134,7 @@ export interface LocalDegradeInfo {
  *                    that hands off to {@link P2PDegradeDialog}.
  */
 export type ReconnectionPhase =
-  | "stable"
-  | "lost"
-  | "reconnecting"
-  | "recovered"
-  | "failed";
+  "stable" | "lost" | "reconnecting" | "recovered" | "failed";
 
 /**
  * Result of {@link useP2PConnectionReturn.continueAsLocalHotSeat}.
@@ -277,6 +276,21 @@ export interface UseP2PConnectionReturn {
    * `closeConnection`.
    */
   spectatorDrops: number;
+  // --- Issue #1570: game-ended event surface ---
+  /**
+   * The most recent `game-ended` payload received from the host during
+   * this session (see {@link GameEndedPayload}), or `null` when no
+   * terminal event has arrived yet (or after `closeConnection`).
+   *
+   * The hook ALSO persists a `MatchRecord` row to Dexie on receipt so
+   * the durable source of truth for match history is
+   * `localIntelligenceDb.match_records`. The `gameEnded` field is for
+   * UI banner / state-update consumption (e.g. a "Game Over" toast
+   * before the user dismisses it), and is consumable by the existing
+   * `use-social.ts` `matchHistory` derivation via a future
+   * merge-into-existing-storage migration.
+   */
+  gameEnded: GameEndedPayload | null;
 }
 
 export function useP2PConnection(
@@ -362,6 +376,23 @@ export function useP2PConnection(
   );
   // Issue #1253 — diagnostic counter surfaced to the diagnostics panel.
   const [spectatorDrops, setSpectatorDrops] = useState(0);
+  // --- Issue #1570: game-ended persistence + state ---
+  // Latest `game-ended` payload received from the host. `null` until the
+  // first terminal event arrives for this session. Reset by
+  // `closeConnection` so a fresh session starts blank. The hook layer
+  // ALSO persists a `MatchRecord` row to Dexie on receipt so the value
+  // survives a refresh and feeds the existing `use-social.ts`
+  // `matchHistory` derivation indirectly (the existing derivation reads
+  // from `useLocalStorage`; the new Dexie store is the durable source of
+  // truth for P2P matches and a future migration can fold the two).
+  const [gameEnded, setGameEnded] = useState<GameEndedPayload | null>(null);
+  // Mirrors `playerId` / `playerName` into refs so the once-created
+  // `onGameEnded` connection handler reads the latest identity without
+  // re-binding the connection on every identity change.
+  const playerIdRef = useRef(playerId);
+  const playerNameRef = useRef(playerName);
+  playerIdRef.current = playerId;
+  playerNameRef.current = playerName;
   // Keep latest callbacks in refs so the connection event handlers (created
   // once per initialize) always see the current props without re-creating.
   const onHostMigratedRef = useRef(onHostMigrated);
@@ -687,6 +718,83 @@ export function useP2PConnection(
     [applyHostMigrationMessage],
   );
 
+  // --- Issue #1570: persist a game-ended payload to Dexie ---
+  //
+  // Wired into both `initializeAsHost` and `initializeAsJoiner` via the
+  // transport's `onGameEnded` event. The transport's anti-replay check
+  // (issue #1091) deduplicates a re-delivered `game-ended` BEFORE this
+  // runs, so the same `gameId` is written at most once per local peer.
+  //
+  // A peer that is NOT listed in the payload's `standings` (e.g. a
+  // spectator who watched but did not play) still receives the event for
+  // UI banners but does NOT persist a `MatchRecord` — match history is a
+  // player-facing concept. The latest payload is surfaced via state so
+  // downstream consumers (the eventual match-history merge into
+  // `use-social.ts`) can pick it up.
+  const handleGameEnded = useCallback(async (payload: GameEndedPayload) => {
+    // 1. Update React state regardless of whether the local player was
+    //    in the standings (spectators need the "Game Over" banner).
+    setGameEnded(payload);
+
+    // 2. Find the local player's standing. If they were not a participant
+    //    (spectator / observer), skip persistence.
+    const localPlayerId = playerIdRef.current;
+    const localStanding = payload.standings.find(
+      (s) => s.playerId === localPlayerId,
+    );
+    if (!localStanding) {
+      p2pLogger.debug(
+        "[use-p2p-Connection] game-ended received but local player is not in standings; skipping MatchRecord write",
+        { gameId: payload.gameId, localPlayerId },
+      );
+      return;
+    }
+
+    // 3. Build + persist the local-perspective MatchRecord. The Dexie
+    //    `put` is upsert-on-key so a re-delivery that somehow slipped
+    //    past anti-replay (e.g. across an ICE-restart that reset the
+    //    high-water mark before the original `game-ended` was applied)
+    //    STILL results in exactly one row per (gameId, playerId). The
+    //    primary path is still the seq check (#1091) — this is defense
+    //    in depth, not the primary dedup mechanism.
+    const record: MatchRecord = {
+      id: getMatchRecordKey(payload.gameId, localPlayerId),
+      gameId: payload.gameId,
+      playerId: localPlayerId,
+      playerName: localStanding.playerName || playerNameRef.current,
+      startedAt: payload.startedAt,
+      endedAt: payload.endedAt,
+      durationMs: payload.endedAt - payload.startedAt,
+      format: payload.format,
+      endReason: payload.endReason,
+      position: localStanding.position,
+      isWinner: payload.winnerId === localPlayerId,
+      finalLife: localStanding.life,
+      standings: payload.standings,
+    };
+    try {
+      await localIntelligenceDb.match_records.put(record);
+      p2pLogger.info(
+        "[use-p2p-Connection] Persisted MatchRecord from game-ended",
+        {
+          gameId: payload.gameId,
+          playerId: localPlayerId,
+          position: localStanding.position,
+          isWinner: record.isWinner,
+        },
+      );
+    } catch (err) {
+      // Persistence is best-effort: the live session keeps working even
+      // when IDB is unavailable / quota-exhausted. Match history will
+      // miss this entry, which is preferable to crashing the multiplayer
+      // UI.
+      p2pLogger.warn(
+        "[use-p2p-Connection] Failed to persist MatchRecord; live session unaffected",
+        String(err),
+      );
+    }
+  }, []);
+
   // --- Issue #1086: reconciliation after ICE-restart reconnect ---
 
   // Drive the reconcile decision when the transport recovers. The host pushes
@@ -816,6 +924,13 @@ export function useP2PConnection(
             },
             onReconnect: handleReconnect,
             onSignalingStateChange: setSignalingState,
+            // Issue #1570 — host-authoritative terminal-event channel. Wired
+            // so the hook layer persists a `MatchRecord` row to Dexie and
+            // surfaces a React state update. Anti-replay (#1091) ensures a
+            // re-delivered `game-ended` is dropped at the transport layer
+            // BEFORE this handler runs, so only one Dexie row is written
+            // even after a host-reconnect rebroadcast.
+            onGameEnded: handleGameEnded,
             onMessage: (message) => {
               p2pLogger.debug("Received message:", message.type);
 
@@ -828,8 +943,7 @@ export function useP2PConnection(
               // Route host-migration announcements (issue #916).
               if (message.type === "game-action") {
                 const payload = message.data as
-                  | { action?: string; data?: unknown }
-                  | undefined;
+                  { action?: string; data?: unknown } | undefined;
                 if (payload?.action) {
                   handleMigrationGameAction(payload.action, payload.data);
                 }
@@ -921,6 +1035,10 @@ export function useP2PConnection(
       handleMigrationGameAction,
       handleReconnect,
       adoptHostStateIfAwaiting,
+      // Issue #1570 — the game-ended persistence handler is created via
+      // `useCallback([])` (refs only) so the reference is stable across
+      // renders and we don't churn the connection event bindings.
+      handleGameEnded,
     ]);
 
   // Initialize connection as joiner
@@ -972,14 +1090,16 @@ export function useP2PConnection(
             },
             onReconnect: handleReconnect,
             onSignalingStateChange: setSignalingState,
+            // Issue #1570 — see the matching comment in initializeAsHost
+            // above. The joiner path uses the same handler.
+            onGameEnded: handleGameEnded,
             onMessage: (message) => {
               p2pLogger.debug("Received message:", message.type);
 
               // Route host-migration announcements (issue #916).
               if (message.type === "game-action") {
                 const payload = message.data as
-                  | { action?: string; data?: unknown }
-                  | undefined;
+                  { action?: string; data?: unknown } | undefined;
                 if (payload?.action) {
                   handleMigrationGameAction(payload.action, payload.data);
                 }
@@ -1045,6 +1165,10 @@ export function useP2PConnection(
       handleMigrationGameAction,
       handleReconnect,
       adoptHostStateIfAwaiting,
+      // Issue #1570 — the game-ended persistence handler is created via
+      // `useCallback([])` (refs only) so the reference is stable across
+      // renders and we don't churn the connection event bindings.
+      handleGameEnded,
     ],
   );
 
@@ -1132,10 +1256,10 @@ export function useP2PConnection(
           localRoleRef.current === "spectator"
             ? "Spectator peers may not originate game actions"
             : "Moderator peers may not originate game actions";
-        p2pLogger.warn(
-          "Refusing game-action: local role is read-only",
-          { localRole: localRoleRef.current, action },
-        );
+        p2pLogger.warn("Refusing game-action: local role is read-only", {
+          localRole: localRoleRef.current,
+          action,
+        });
         return { success: false, reason };
       }
 
@@ -1228,6 +1352,11 @@ export function useP2PConnection(
     hadConnectedRef.current = false;
     // Issue #1253: reset the role-aware diagnostic counter.
     setSpectatorDrops(0);
+    // Issue #1570: reset the latest game-ended payload so a fresh session
+    // does not surface the previous match's "Game Over" banner. The Dexie
+    // `match_records` rows are NOT cleared here — the user expects match
+    // history to survive a session boundary.
+    setGameEnded(null);
   }, [fallbackHostId]);
 
   // Issue #1253 — set the local peer's role. Mirrors the value onto the
@@ -1431,6 +1560,18 @@ export function useP2PConnection(
     localRole: localRoleState,
     setLocalRole,
     spectatorDrops,
+    // --- Issue #1570: game-ended event surface ---
+    /**
+     * The most recent `game-ended` payload received from the host during
+     * this session, or `null` when no terminal event has arrived yet
+     * (or after `closeConnection`). The hook ALSO persists a
+     * `MatchRecord` row to Dexie on receipt so the value here is for
+     * UI banner / state-update consumption, while the durable source of
+     * truth for match history is `localIntelligenceDb.match_records`.
+     *
+     * Reset by `closeConnection`. A subsequent session starts blank.
+     */
+    gameEnded,
   };
 }
 

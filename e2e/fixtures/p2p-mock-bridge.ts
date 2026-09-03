@@ -20,6 +20,11 @@ import type { Page } from "@playwright/test";
 /**
  * Valid GameMessage types — must match `GameMessageType` in
  * src/lib/p2p-game-connection.ts.
+ *
+ * Note: the harness supports a SUBSET of the production wire contract —
+ * just the types this E2E suite exercises. Adding a new production type
+ * (e.g. `game-ended` from issue #1570) requires extending this array AND
+ * the matching expected-list assertion in `multiplayer-p2p-flow.spec.ts`.
  */
 export const GAME_MESSAGE_TYPES = [
   "game-state-sync",
@@ -29,6 +34,7 @@ export const GAME_MESSAGE_TYPES = [
   "player-left",
   "ping",
   "pong",
+  "game-ended",
 ] as const;
 
 export type GameMessageType = (typeof GAME_MESSAGE_TYPES)[number];
@@ -260,12 +266,18 @@ export async function setupPeerPage(
 ): Promise<void> {
   // Forward every outgoing message to the peer page's deliver handler.
   // exposeBinding is once-per-name-per-page, so the bridge is established here.
-  await page.exposeBinding("__p2pOutgoing", async (_source, payload: string) => {
-    await peerPage.evaluate(
-      (p) => (window as unknown as { __p2pDeliver: (r: string) => boolean }).__p2pDeliver(p),
-      payload,
-    );
-  });
+  await page.exposeBinding(
+    "__p2pOutgoing",
+    async (_source, payload: string) => {
+      await peerPage.evaluate(
+        (p) =>
+          (
+            window as unknown as { __p2pDeliver: (r: string) => boolean }
+          ).__p2pDeliver(p),
+        payload,
+      );
+    },
+  );
 
   await page.addInitScript(MOCK_TRANSPORT_INIT);
   await page.goto(baseURL);
@@ -286,8 +298,10 @@ export async function setupPeerPage(
  */
 export async function openChannels(...pages: Page[]): Promise<void> {
   for (const page of pages) {
-    await page.evaluate(
-      () => (window as unknown as { __p2pOpenChannel: () => boolean }).__p2pOpenChannel(),
+    await page.evaluate(() =>
+      (
+        window as unknown as { __p2pOpenChannel: () => boolean }
+      ).__p2pOpenChannel(),
     );
   }
 }
