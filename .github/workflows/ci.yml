@@ -690,6 +690,15 @@ jobs:
         with:
           fetch-depth: 1
 
+      # Issue #1550: assert that every `uses: ./.github/actions/setup-node-npm-ci`
+      # caller either omits `with: node-version:` (relies on the composite
+      # default '22') or specifies `'22'` (or `${{ env.NAME }}` where env.NAME
+      # is `'22'` in the same file). Runs as a plain-Node script (~50ms) so
+      # no Node setup step is needed — the `setup-node-npm-ci` composite
+      # itself depends on this guard, so it must not be a setup step here.
+      - name: Assert setup-node-npm-ci node-version consistency (#1550)
+        run: node scripts/check-setup-node-npm-ci-version.mjs
+
       - name: Run actionlint
         uses: rhysd/actionlint@v1.7.12
         with:

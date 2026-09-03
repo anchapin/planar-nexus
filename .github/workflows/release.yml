@@ -65,9 +65,11 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup repository
+        # Relies on the composite default node-version '22' (see
+        # .github/actions/setup-node-npm-ci/action.yml). Enforced by the
+        # scripts/check-setup-node-npm-ci-version.mjs #1550 guard running
+        # in the workflow-lint job; override only with '22'.
         uses: ./.github/actions/setup-node-npm-ci
-        with:
-          node-version: '20'
 
       - name: Build Next.js frontend
         run: npm run build
@@ -159,9 +161,11 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup repository
+        # Relies on the composite default node-version '22' (see
+        # .github/actions/setup-node-npm-ci/action.yml). Enforced by the
+        # scripts/check-setup-node-npm-ci-version.mjs #1550 guard running
+        # in the workflow-lint job; override only with '22'.
         uses: ./.github/actions/setup-node-npm-ci
-        with:
-          node-version: '20'
 
       - name: Build Next.js frontend
         run: npm run build
@@ -360,9 +364,11 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup repository
+        # Relies on the composite default node-version '22' (see
+        # .github/actions/setup-node-npm-ci/action.yml). Enforced by the
+        # scripts/check-setup-node-npm-ci-version.mjs #1550 guard running
+        # in the workflow-lint job; override only with '22'.
         uses: ./.github/actions/setup-node-npm-ci
-        with:
-          node-version: '20'
 
       - name: Build Next.js frontend
         run: npm run build
