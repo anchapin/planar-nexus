@@ -11,6 +11,7 @@ import {
   getEstimatedURLLength,
 } from "@/lib/replay-sharing";
 import type { Replay } from "@/lib/game-state/replay";
+import { getStateAtPosition } from "@/lib/game-state/replay";
 import { sanitizeCardText } from "@/lib/security/sanitize-text";
 import { safeParseJson, ReplayArraySchema } from "@/lib/storage-schemas";
 
@@ -83,9 +84,9 @@ export function ReplayViewer({
             return { ...prev, isPlaying: false, position: totalActions - 1 };
           }
           onPositionChange?.(newPosition);
-          const action = replay.actions[newPosition];
-          if (action) {
-            onStateChange?.(action.resultingState);
+          const nextState = getStateAtPosition(replay, newPosition);
+          if (nextState) {
+            onStateChange?.(nextState);
           }
           return { ...prev, position: newPosition };
         });
@@ -114,9 +115,9 @@ export function ReplayViewer({
       // Restart from beginning if at end
       setPlayerState((prev) => ({ ...prev, position: 0, isPlaying: true }));
       onPositionChange?.(0);
-      const action = replay.actions[0];
-      if (action) {
-        onStateChange?.(action.resultingState);
+      const startState = getStateAtPosition(replay, 0);
+      if (startState) {
+        onStateChange?.(startState);
       }
     } else {
       setPlayerState((prev) => ({ ...prev, isPlaying: !prev.isPlaying }));
@@ -143,7 +144,8 @@ export function ReplayViewer({
     onPositionChange?.(newPosition);
     const action = replay.actions[newPosition];
     if (action) {
-      onStateChange?.(action.resultingState);
+      const resolvedState = getStateAtPosition(replay, newPosition);
+            if (resolvedState) onStateChange?.(resolvedState);
     }
   }, [
     replay,
@@ -166,7 +168,8 @@ export function ReplayViewer({
     onPositionChange?.(newPosition);
     const action = replay.actions[newPosition];
     if (action) {
-      onStateChange?.(action.resultingState);
+      const resolvedState = getStateAtPosition(replay, newPosition);
+            if (resolvedState) onStateChange?.(resolvedState);
     }
   }, [replay, playerState.position, onPositionChange, onStateChange]);
 
@@ -182,9 +185,9 @@ export function ReplayViewer({
         isPlaying: false,
       }));
       onPositionChange?.(validPosition);
-      const action = replay.actions[validPosition];
-      if (action) {
-        onStateChange?.(action.resultingState);
+      const resolvedState = getStateAtPosition(replay, validPosition);
+      if (resolvedState) {
+        onStateChange?.(resolvedState);
       }
     },
     [replay, totalActions, onPositionChange, onStateChange],

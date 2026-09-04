@@ -135,15 +135,32 @@ export const ReplayMetadataSchema = z.object({
  * structurally by the replay list UI — they are only fed back into the playback
  * engine. Validate them as `unknown` so a legitimate cross-version replay still
  * loads while the outer envelope (the part the list renders) stays strict.
+ *
+ * Issue #1574: `resultingState` is OPTIONAL on delta-encoded v2 actions
+ * (only periodic snapshot actions carry the full state). The hashes and the
+ * delta blob are also optional since legacy v1 replays didn't compute them.
+ * Every field on this schema is `.optional()` for the same cross-version
+ * lenient-loading reason as the existing `unknown()` payloads.
  */
 export const ReplayActionSchema = z.object({
   sequenceNumber: z.number(),
   action: z.unknown(),
-  resultingState: z.unknown(),
+  resultingState: z.unknown().optional(),
   description: z.string(),
   recordedAt: z.number(),
+  // Issue #1574 fields — optional to keep v1 / pre-#1574 replays loadable.
+  previousStateHash: z.string().optional(),
+  resultingStateHash: z.string().optional(),
+  turnNumber: z.number().optional(),
+  delta: z.unknown().optional(),
 });
 
+/**
+ * Schema-version-tolerant wrapper for the `Replay` envelope. v2 replays
+ * (post-#1574) add a `schemaVersion`, `snapshots`, and optional `initialState`
+ * to the envelope. All three are optional so v1 replays still pass without
+ * a migration step.
+ */
 export const ReplaySchema = z.object({
   id: z.string(),
   metadata: ReplayMetadataSchema,
@@ -152,6 +169,10 @@ export const ReplaySchema = z.object({
   totalActions: z.number(),
   createdAt: z.number(),
   lastModifiedAt: z.number(),
+  // Issue #1574 envelope fields (all optional for v1 back-compat):
+  schemaVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+  snapshots: z.array(z.unknown()).optional(),
+  initialState: z.unknown().optional(),
 });
 
 export const ReplayArraySchema = z.array(ReplaySchema);
