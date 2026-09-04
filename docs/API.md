@@ -649,6 +649,52 @@ NEXT_PUBLIC_GOOGLE_API_URL=https://generativelanguage.googleapis.com/v1
 # ZAI_API_KEY=
 ```
 
+### TURN credential leak guard (issue #1571)
+
+Private TURN credentials **must never** be committed via the
+`NEXT_PUBLIC_TURN_URL` / `NEXT_PUBLIC_TURN_USER` / `NEXT_PUBLIC_TURN_PASS`
+variables (or the legacy `NEXT_PUBLIC_TURN_USERNAME` /
+`NEXT_PUBLIC_TURN_CREDENTIAL` aliases). Because every `NEXT_PUBLIC_*`
+variable is inlined into the client bundle by Next.js, any operator who
+sets these to private infrastructure credentials ships them to every
+browser / Tauri shell that loads the app. The CI gate
+`scripts/check-turn-credentials.mjs` (job
+`.github/workflows/ci.yml → turn-credentials-guard`) fails any PR that
+commits:
+
+- an inline `turn:` / `turns:` URL whose query string carries a
+  `username=` or `credential=` parameter (the ICE-server URL inline
+  credential form); or
+- a non-empty value for any `NEXT_PUBLIC_TURN_*` key in a committed
+  `.env*` file (the literal `openrelayproject` public-fallback
+  credential is the only permitted non-empty value, mirroring the
+  intentional `PUBLIC_FALLBACK_TURN_SERVERS` constant in
+  `src/lib/ice-config.ts`); or
+- a hardcoded string-literal assignment to `NEXT_PUBLIC_TURN_URL` /
+  `NEXT_PUBLIC_TURN_USER` / `NEXT_PUBLIC_TURN_PASS` outside of a
+  `process.env.*` reference lookup (so `next.config.ts` and similar
+  build-time configuration files cannot inline private credentials
+  into the bundle).
+
+The companion Jest suite `src/lib/__tests__/ice-config.credential-leak.test.ts`
+pins the same contracts inside `npm test` so a regression also trips
+the standard unit-test job.
+
+**For production TURN credentials**, do not commit them to the repo at
+all. Use one of:
+
+- **Tauri-side secret storage** for desktop builds (the Tauri 2 secret
+  plugin keeps credentials out of the client bundle entirely).
+- **A server-side proxy** that signs short-lived TURN credentials per
+  session and serves them over an authenticated endpoint.
+- **Signed, time-limited TURN REST API tokens** issued by your TURN
+  provider and refreshed client-side at runtime.
+
+The committed `.env.example` documents `NEXT_PUBLIC_TURN_*` only as
+commented-out placeholders (`# NEXT_PUBLIC_TURN_URL=turn:…`, etc.); the
+guard's contract B treats any uncommented non-empty value other than
+`openrelayproject` as a committed leak.
+
 ---
 
 ## 5. Rate Limits
