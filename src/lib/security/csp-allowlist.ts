@@ -91,22 +91,27 @@ export const REMOTE_FONT_HOSTS: readonly RemoteImageHost[] = [
 ] as const;
 
 /**
- * Hosts reachable via `fetch()` / `XMLHttpRequest` / WebSocket from the
- * webview. CSP `connect-src` is built from this plus `'self'` and
- * `wss://*.peerjs.com`. Wildcards (`https:`, `wss:`) are deliberately
- * **not** used here — see "Why an explicit list" above.
+ * Hosts reachable via `fetch()` / `XMLHttpRequest` from the webview over
+ * HTTPS. Each entry must appear **literally** as `https://hostname` in
+ * the `connect-src` directive. Adding a host here without surfacing it
+ * in the runtime CSP would be caught by `tests/csp-audit.test.ts`
+ * (issue #1584).
  *
- * PeerJS itself runs a public broker at `0.peerjs.com`; the wildcard
- * `wss://*.peerjs.com` is required because the broker hostname rotates
- * geographically and the PeerJS client computes the broker URL at
- * runtime.
+ * The PeerJS broker fleet is intentionally NOT in this list — it is
+ * carried by the WSS wildcard {@link REMOTE_PEERJS_BROKER_PATTERN}
+ * below. PeerJS runs over `wss:` (not `https:`) and the broker hostname
+ * rotates geographically at runtime, so a single explicit host entry
+ * would either be too narrow (breaks failover) or require a `wss:`
+ * scheme-wide wildcard (the very relaxation issue #1584 closes for
+ * HTTPS).
+ *
+ * Mirror the hostnames here with the `baseURL` defaults in
+ * `src/lib/env.ts` (`API_ENDPOINTS.*`) and the AI provider list in
+ * `src/ai/providers/types.ts` (`AIProvider`). New AI providers added in
+ * `PROVIDER_ENV_MAPPING` must also add their default `baseURL` hostname
+ * here so the CSP keeps pace.
  */
 export const REMOTE_CONNECT_HOSTS: readonly RemoteImageHost[] = [
-  {
-    label: "PeerJS broker (WebSocket)",
-    hostname: "0.peerjs.com",
-    purpose: "Default PeerJS signaling broker; rotates per region.",
-  },
   {
     label: "Scryfall API",
     hostname: "api.scryfall.com",
@@ -115,9 +120,36 @@ export const REMOTE_CONNECT_HOSTS: readonly RemoteImageHost[] = [
   {
     label: "Google Generative AI",
     hostname: "generativelanguage.googleapis.com",
-    purpose: "AI coach / AI opponent inference endpoint.",
+    purpose: "AI coach / AI opponent inference endpoint (Google provider).",
+  },
+  {
+    label: "OpenAI API",
+    hostname: "api.openai.com",
+    purpose: "AI coach / AI opponent inference endpoint (OpenAI provider).",
+  },
+  {
+    label: "Anthropic API",
+    hostname: "api.anthropic.com",
+    purpose: "AI coach / AI opponent inference endpoint (Anthropic provider).",
+  },
+  {
+    label: "Z.ai API",
+    hostname: "api.z-ai.com",
+    purpose:
+      "AI coach / AI opponent inference endpoint (Z.ai provider, default baseURL).",
   },
 ] as const;
+
+/**
+ * WebSocket endpoint pattern reachable from the webview. PeerJS itself
+ * runs a public broker fleet at `0.peerjs.com` (the default), `1.peerjs.com`,
+ * etc.; the PeerJS client computes the broker URL at runtime from a
+ * geographic rotation, so we MUST use `wss://*.peerjs.com` to cover the
+ * full set. This is the ONE remaining scheme-wide pattern in
+ * `connect-src`; every HTTPS endpoint is enumerated in
+ * {@link REMOTE_CONNECT_HOSTS} (issue #1584).
+ */
+export const REMOTE_PEERJS_BROKER_PATTERN = "wss://*.peerjs.com" as const;
 
 /**
  * The full Content Security Policy applied by the Tauri webview
@@ -138,14 +170,30 @@ export const REMOTE_CONNECT_HOSTS: readonly RemoteImageHost[] = [
  *     `@huggingface/transformers` (the offline ML side of the AI coach).
  *     Plain `'unsafe-eval'` is **not** enabled.
  *
- *   - `connect-src 'self' wss://*.peerjs.com https:` is a deliberate
- *     exception: PeerJS rotates brokers and the AI coach calls HTTPS
- *     endpoints that are also pinned in `REMOTE_CONNECT_HOSTS`. The
- *     `https:` here is the **floor** of HTTPS connectivity — it does not
- *     relax `script-src` or `img-src`, so a script-injection cannot
- *     exfiltrate via these channels any more than the same-origin
- *     renderer already can.
+ *   - `connect-src` is now an explicit allow-list (issue #1584). The
+ *     HTTPS sources are derived from {@link REMOTE_CONNECT_HOSTS}; the
+ *     only remaining pattern is `wss://*.peerjs.com` (the PeerJS broker
+ *     fleet, which rotates geographically at runtime — see
+ *     {@link REMOTE_PEERJS_BROKER_PATTERN}). The previous `https:`
+ *     scheme-wide fallback has been removed because it would let a
+ *     script-injection exfiltrate data to any HTTPS endpoint, defeating
+ *     the purpose of a CSP.
  */
+
+/**
+ * Build the `connect-src` directive value from the allow-lists above.
+ * Derived at module load time so the runtime CSP and the regression
+ * test cannot drift out of sync (issue #1584).
+ */
+function buildConnectSrc(): string {
+  const sources = [
+    "'self'",
+    REMOTE_PEERJS_BROKER_PATTERN,
+    ...REMOTE_CONNECT_HOSTS.map((host) => `https://${host.hostname}`),
+  ];
+  return sources.join(" ");
+}
+
 export const TAURI_CSP = [
   "default-src 'self'",
   // No `'unsafe-inline'` for scripts: Next.js 15 streams chunks as
@@ -159,13 +207,10 @@ export const TAURI_CSP = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://placehold.co",
   "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
-  // WebRTC signaling uses the PeerJS broker; the AI coach calls the
-  // Google Generative AI API and the Scryfall API. All other HTTPS
-  // calls happen from the same Origin as well. The `https:` token is
-  // a deliberate broad fallback for unknown AI endpoints added in
-  // future minor releases — each new endpoint must still be added to
-  // REMOTE_CONNECT_HOSTS above for documentation.
-  "connect-src 'self' wss://*.peerjs.com https:",
+  // HTTPS endpoints are enumerated from REMOTE_CONNECT_HOSTS;
+  // wss://*.peerjs.com covers the runtime-rotating PeerJS broker fleet.
+  // See issue #1584 — no bare `https:` or `wss:` scheme wildcards.
+  `connect-src ${buildConnectSrc()}`,
   // MSW runs in the browser as a service-worker shim that compiles
   // handlers into blob: URLs at runtime.
   "worker-src 'self' blob:",
@@ -183,10 +228,14 @@ export const TAURI_CSP = [
  * Extract every hostname that appears in `TAURI_CSP`. Used by the
  * `csp-audit` regression test to assert that the runtime CSP matches the
  * static allow-list.
+ *
+ * Recognises both `http(s)` and `ws(s)` scheme tokens so the
+ * `wss://*.peerjs.com` broker pattern (issue #1584) surfaces in the
+ * returned set.
  */
 export function cspHostnames(): string[] {
   const out = new Set<string>();
-  const re = /https?:\/\/([a-z0-9.*-]+)/gi;
+  const re = /(?:https?|wss?):\/\/([a-z0-9.*-]+)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(TAURI_CSP)) !== null) {
     const host = m[1];
