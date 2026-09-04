@@ -9,14 +9,14 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Save, 
-  Play, 
-  Trash2, 
-  Search, 
-  Filter, 
-  Clock, 
-  Users, 
+import {
+  Save,
+  Play,
+  Trash2,
+  Search,
+  Filter,
+  Clock,
+  Users,
   RotateCcw,
   Download,
   Upload,
@@ -27,38 +27,38 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { 
-  savedGamesManager, 
-  SavedGame, 
-  formatSavedAt, 
-  getStatusDisplay 
+import {
+  savedGamesManager,
+  SavedGameMeta,
+  formatSavedAt,
+  getStatusDisplay
 } from "@/lib/saved-games";
-import { 
+import {
   copyShareableLink,
   exportReplayToFile,
-  canShareViaURL 
+  canShareViaURL
 } from "@/lib/replay-sharing";
 import { useToast } from "@/hooks/use-toast";
 
@@ -76,8 +76,12 @@ const formatDisplayNames: Record<string, string> = {
 export default function SavedGamesPage() {
   const router = useRouter();
   const { toast } = useToast();
-  
-  const [games, setGames] = useState<SavedGame[]>([]);
+
+  // Issue #1572 — list view now holds the cheap {@link SavedGameMeta}
+  // projection (no gameStateJson / replayJson). Share-Replay / Export
+  // / Delete hand the meta row off to the manager, which fetches the
+  // payload lazily as needed.
+  const [games, setGames] = useState<SavedGameMeta[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [formatFilter, setFormatFilter] = useState<string>("all");
@@ -102,12 +106,12 @@ export default function SavedGamesPage() {
   }
 
   // Get filtered games
-  const getFilteredGames = (gameList: SavedGame[]) => {
+  const getFilteredGames = (gameList: SavedGameMeta[]) => {
     let filtered = gameList;
 
     // Apply search
     if (searchQuery.trim()) {
-      filtered = filtered.filter(g => 
+      filtered = filtered.filter(g =>
         g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         g.playerNames.some(p => p.toLowerCase().includes(searchQuery.toLowerCase()))
       );
@@ -126,7 +130,7 @@ export default function SavedGamesPage() {
     return filtered;
   };
 
-  function handleLoadGame(game: SavedGame) {
+  function handleLoadGame(game: SavedGameMeta) {
     // Store the game ID to load in session storage
     sessionStorage.setItem('loadGameId', game.id);
     toast({
@@ -137,7 +141,7 @@ export default function SavedGamesPage() {
     router.push('/single-player');
   }
 
-  async function handleDeleteGame(game: SavedGame) {
+  async function handleDeleteGame(game: SavedGameMeta) {
     try {
       const success = await savedGamesManager.deleteGame(game.id);
       if (success) {
@@ -157,7 +161,7 @@ export default function SavedGamesPage() {
     }
   }
 
-  async function handleExportGame(game: SavedGame) {
+  async function handleExportGame(game: SavedGameMeta) {
     try {
       await savedGamesManager.exportGame(game.id);
       toast({
@@ -200,8 +204,22 @@ export default function SavedGamesPage() {
     }
   }
 
-  async function handleShareReplay(game: SavedGame) {
-    if (!game.replayJson) {
+  async function handleShareReplay(game: SavedGameMeta) {
+    // Issue #1572 — list rows don't carry the replay bytes any more.
+    // Pull just the payload row for this id and bail early if the
+    // meta row's `hasReplay` flag was wrong (defensive — empty
+    // replayJson should be a no-op).
+    if (!game.hasReplay) {
+      toast({
+        variant: "destructive",
+        title: "No Replay",
+        description: "This game doesn't have replay data.",
+      });
+      return;
+    }
+
+    const payload = await savedGamesManager.getSavedGamePayload(game.id);
+    if (!payload?.replayJson) {
       toast({
         variant: "destructive",
         title: "No Replay",
@@ -211,8 +229,8 @@ export default function SavedGamesPage() {
     }
 
     try {
-      const replay = JSON.parse(game.replayJson);
-      
+      const replay = JSON.parse(payload.replayJson);
+
       // Check if replay can be shared via URL
       if (canShareViaURL(replay)) {
         const success = await copyShareableLink(replay);
@@ -312,7 +330,7 @@ export default function SavedGamesPage() {
     </div>
   );
 
-  function renderGameList(gameList: SavedGame[]) {
+  function renderGameList(gameList: SavedGameMeta[]) {
     const filteredGames = getFilteredGames(gameList);
     
     return (
@@ -385,7 +403,7 @@ export default function SavedGamesPage() {
                 )}
                 {statusFilter !== "all" && (
                   <Badge variant="secondary" className="cursor-pointer" onClick={() => setStatusFilter("all")}>
-                    Status: {getStatusDisplay(statusFilter as SavedGame['status'])} ×
+                    Status: {getStatusDisplay(statusFilter as SavedGameMeta['status'])} ×
                   </Badge>
                 )}
                 {formatFilter !== "all" && (
@@ -529,7 +547,7 @@ export default function SavedGamesPage() {
                                   <Download className="w-4 h-4 mr-2" />
                                   Export
                                 </DropdownMenuItem>
-                                {game.replayJson && (
+                                {game.hasReplay && (
                                   <DropdownMenuItem onClick={() => handleShareReplay(game)}>
                                     <Share2 className="w-4 h-4 mr-2" />
                                     Share Replay
