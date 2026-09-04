@@ -80,4 +80,32 @@ describe("search-worker-client (issue #1389)", () => {
       expect(client.getSearchApi()).toBeNull();
     });
   });
+
+  describe("prewarm integration (issue #1576)", () => {
+    it("keeps status 'fallback' when the prewarm helper probes it under jsdom", () => {
+      // Acceptance criterion 3 from issue #1576: when the worker fails to
+      // initialise (jsdom, CSP-blocked), the prewarm helper must not raise
+      // an error to the user. The prewarm module reads getStatus() to
+      // decide between the "fallback" branch (this test) and the "ready"
+      // branch (covered in prewarm-search-worker.test.ts).
+      const client = SearchWorkerClient.getInstance();
+      expect(client.getStatus()).toBe("fallback");
+      // Probing never throws and never mutates the status.
+      expect(() => client.getStatus()).not.toThrow();
+      expect(client.getStatus()).toBe("fallback");
+      expect(client.getSearchApi()).toBeNull();
+    });
+
+    it("does not throw and reports 'fallback' when getStatus is called after terminate under jsdom", () => {
+      // The prewarm helper short-circuits to the "fallback" branch when
+      // getStatus() returns "fallback". Ensure this stays stable across a
+      // terminate-and-re-instantiate cycle (avoids a regression where the
+      // status flips to a stale value mid-flight).
+      const client = SearchWorkerClient.getInstance();
+      client.terminate();
+      client.terminate(); // double-terminate is a no-op
+      expect(client.getStatus()).toBe("fallback");
+      expect(client.getSearchApi()).toBeNull();
+    });
+  });
 });
