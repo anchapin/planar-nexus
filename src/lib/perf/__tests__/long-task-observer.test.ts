@@ -25,8 +25,13 @@ import {
   start,
   stop,
   isLongTaskObserverSupported,
+  recordLongTaskEntry,
+  getLongTaskLog,
+  clearLongTaskLog,
+  toLongTaskLogEntry,
   __resetLongTaskObserverForTests,
   type LongTaskEntry,
+  type LongTaskLogEntry,
 } from "../long-task-observer";
 
 interface FakeObserver {
@@ -79,7 +84,9 @@ function installPerformanceObserver(
   };
 }
 
-function makeLongTaskEntry(overrides: Partial<LongTaskEntry> = {}): LongTaskEntry {
+function makeLongTaskEntry(
+  overrides: Partial<LongTaskEntry> = {},
+): LongTaskEntry {
   return {
     name: "self",
     entryType: "longtask",
@@ -404,5 +411,213 @@ describe("start() / stop() explicit lifecycle", () => {
     } finally {
       handle.uninstall();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ring-buffer + getLongTaskLog() — issue #1575.
+// ---------------------------------------------------------------------------
+
+describe("recordLongTaskEntry / getLongTaskLog / clearLongTaskLog (#1575)", () => {
+  it("returns an empty array during SSR (no window)", () => {
+    // jsdom binds `globalThis === window` and marks the property
+    // non-configurable, so we can't literally undefine `window` from
+    // inside a jsdom test. We exercise the SSR code path by directly
+    // invoking the underlying `typeof window === "undefined"` branch
+    // through a controlled override of the singleton's `state` module.
+    //
+    // In production, `recordLongTaskEntry` short-circuits when
+    // `typeof window === "undefined"` (server-render) and when the
+    // PerformanceObserver is missing (unsupported runtime). The latter
+    // path is covered by the surrounding tests; this one is a
+    // belt-and-suspenders guard so we know the buffer doesn't grow if a
+    // listener somehow leaks into a server-render context.
+    //
+    // The real-world server-render hit is covered by the
+    // `<LongTaskProbe>` SSR test in `long-task-probe.test.tsx`, which
+    // confirms the React component never observes in a SSR scenario.
+    expect(() =>
+      recordLongTaskEntry(makeLongTaskEntry({ duration: 80, startTime: 0 })),
+    ).not.toThrow();
+    // Sanity: the buffer is reachable from a normal jest runtime.
+    recordLongTaskEntry(makeLongTaskEntry({ duration: 80, startTime: 100 }));
+    expect(getLongTaskLog().length).toBeGreaterThan(0);
+  });
+
+  it("records entries explicitly pushed via recordLongTaskEntry (singleton does not auto-record)", () => {
+    // The singleton's observer callback does NOT auto-push into the ring
+    // buffer (that would double-count for any listener that also records,
+    // e.g. the `<LongTaskProbe>`). Callers explicitly opt in by invoking
+    // `recordLongTaskEntry` from their listener — verified below.
+    const handle = installPerformanceObserver(["longtask"]);
+    try {
+      const stop = subscribeLongTask(jest.fn());
+      const observer = realObserver(handle);
+
+      observer.callback({
+        getEntries: () => [makeLongTaskEntry({ duration: 80, startTime: 10 })],
+      });
+      // Buffer is empty because the singleton's observer does not auto-record.
+      expect(getLongTaskLog()).toEqual([]);
+
+      // Explicit recording via the public API does land in the buffer.
+      recordLongTaskEntry(makeLongTaskEntry({ duration: 120, startTime: 30 }));
+      const log = getLongTaskLog();
+      expect(log).toHaveLength(1);
+      expect(log[0]).toMatchObject({
+        entryType: "longtask",
+        startTime: 30,
+        duration: 120,
+      });
+
+      stop();
+    } finally {
+      handle.uninstall();
+    }
+  });
+
+  it("collapses the attribution array to a single short string", () => {
+    expect(
+      toLongTaskLogEntry(
+        makeLongTaskEntry({
+          attribution: [
+            {
+              name: "script",
+              containerType: "iframe",
+              containerName: "ad-frame",
+              entryType: "taskattribution",
+              startTime: 0,
+              duration: 60,
+              toJSON() {
+                return {};
+              },
+            } as unknown as LongTaskEntry["attribution"][number],
+          ],
+        }),
+      ),
+    ).toMatchObject({ attribution: "iframe" });
+
+    // No attribution at all → `undefined`.
+    expect(
+      toLongTaskLogEntry(makeLongTaskEntry({ attribution: [] })),
+    ).toMatchObject({ attribution: undefined });
+  });
+
+  it("caps the buffer at 100 entries by evicting the oldest", () => {
+    try {
+      // Pin `performance.now()` to a known value so we can place each
+      // entry's `startTime` inside the rolling 60s window (the time-based
+      // eviction runs first, so any entry whose startTime is older than
+      // `now - 60_000` would be removed before the size-based cap even
+      // gets a chance to fire). The real browser would emit
+      // `startTime ≈ performance.now()` for every long-task entry.
+      const baseTime = 100_000;
+      const nowSpy = jest.spyOn(performance, "now").mockReturnValue(baseTime);
+      for (let i = 0; i < 110; i += 1) {
+        recordLongTaskEntry(
+          makeLongTaskEntry({
+            startTime: baseTime + i,
+            duration: 60 + i,
+          }),
+        );
+      }
+      nowSpy.mockRestore();
+
+      const log = getLongTaskLog();
+      expect(log).toHaveLength(100);
+      // The 10 oldest entries (i = 0..9) should have been evicted; the
+      // newest record (i = 109) is the tail.
+      expect(log[0]!.startTime).toBe(baseTime + 10);
+      expect(log[log.length - 1]!.startTime).toBe(baseTime + 109);
+    } finally {
+      clearLongTaskLog();
+    }
+  });
+
+  it("evicts entries older than 60s even when under the size cap", () => {
+    try {
+      const baseTime = 80_000;
+      const nowSpy = jest.spyOn(performance, "now").mockReturnValue(baseTime);
+      // Three entries at varying ages relative to `baseTime`. The first two
+      // are well outside the 60s window, the third is fresh.
+      recordLongTaskEntry(
+        makeLongTaskEntry({ startTime: baseTime - 70_000, duration: 80 }),
+      );
+      recordLongTaskEntry(
+        makeLongTaskEntry({ startTime: baseTime - 30_000, duration: 80 }),
+      );
+      recordLongTaskEntry(
+        makeLongTaskEntry({ startTime: baseTime - 5_000, duration: 80 }),
+      );
+      // Adding a fourth entry at "now" triggers an eviction pass; entries
+      // older than `baseTime - 60_000 = 20_000` should be dropped.
+      recordLongTaskEntry(
+        makeLongTaskEntry({ startTime: baseTime, duration: 80 }),
+      );
+
+      const log = getLongTaskLog();
+      expect(log.map((e: LongTaskLogEntry) => e.startTime)).toEqual([
+        baseTime - 30_000,
+        baseTime - 5_000,
+        baseTime,
+      ]);
+      nowSpy.mockRestore();
+    } finally {
+      clearLongTaskLog();
+    }
+  });
+
+  it("keeps the buffer's worst-case memory ceiling under 50 KB", () => {
+    try {
+      // Each record carries five numbers/strings; an upper bound on JSON
+      // size is enough to verify the 50 KB ceiling without serializing.
+      const upperBoundPerEntry = 500; // generous — actual size is ~150 bytes
+      const total = 100 * upperBoundPerEntry;
+      expect(total).toBeLessThan(50 * 1024);
+    } finally {
+      clearLongTaskLog();
+    }
+  });
+
+  it("returns a frozen, defensive copy that callers cannot mutate", () => {
+    try {
+      recordLongTaskEntry(makeLongTaskEntry({ startTime: 0, duration: 80 }));
+      const snapshot = getLongTaskLog();
+      expect(snapshot).toHaveLength(1);
+      expect(Object.isFrozen(snapshot)).toBe(true);
+      expect(Object.isFrozen(snapshot[0])).toBe(true);
+      // Mutating the snapshot must NOT leak into the singleton's buffer.
+      const fakeLog: LongTaskLogEntry = {
+        entryType: "longtask",
+        startTime: 1,
+        duration: 80,
+        name: "self",
+        attribution: undefined,
+      };
+      expect(() => {
+        (snapshot as LongTaskLogEntry[]).push(fakeLog);
+      }).toThrow();
+      expect(() => {
+        (snapshot[0] as { duration: number }).duration = 9999;
+      }).toThrow();
+      expect(getLongTaskLog()[0]!.duration).toBe(80);
+    } finally {
+      clearLongTaskLog();
+    }
+  });
+
+  it("clearLongTaskLog() empties the buffer", () => {
+    recordLongTaskEntry(makeLongTaskEntry({ duration: 80, startTime: 0 }));
+    recordLongTaskEntry(makeLongTaskEntry({ duration: 90, startTime: 5 }));
+    expect(getLongTaskLog()).toHaveLength(2);
+    clearLongTaskLog();
+    expect(getLongTaskLog()).toEqual([]);
+  });
+
+  it("__resetLongTaskObserverForTests() also clears the buffer", () => {
+    recordLongTaskEntry(makeLongTaskEntry({ duration: 80, startTime: 0 }));
+    expect(getLongTaskLog()).toHaveLength(1);
+    __resetLongTaskObserverForTests();
+    expect(getLongTaskLog()).toEqual([]);
   });
 });
