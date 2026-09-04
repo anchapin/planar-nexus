@@ -519,6 +519,19 @@ export interface DeckValidationResult {
     planeswalkers: number;
     lands: number;
   };
+  /**
+   * Pool-derived sideboard (issue #1561, CR 100.5 / CR 904.3).
+   *
+   * Only populated when `validateLimitedDeck(deck, pool)` is called with
+   * a `pool` argument. The list is the pool entries that the main deck
+   * has not claimed (each `PoolCard` is its own physical card, so two
+   * copies of the same printing in the pool appear twice here if neither
+   * is in the deck). Callers that pass no pool continue to receive the
+   * pre-#1561 shape — `sideboardCards` is `undefined` rather than `[]`
+   * so the absence of a sideboard pane is distinguishable from an
+   * explicitly empty one.
+   */
+  sideboardCards?: PoolCard[];
 }
 
 // ============================================================================
