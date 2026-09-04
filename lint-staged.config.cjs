@@ -2,6 +2,7 @@ module.exports = {
   '*.{ts,tsx}': [
     'eslint --fix --no-warn-ignored',
     () => 'tsc --noEmit --pretty',
+    'jest --findRelatedTests --passWithNoTests',
     'prettier --write --ignore-unknown'
   ],
   '*.{js,jsx}': [
