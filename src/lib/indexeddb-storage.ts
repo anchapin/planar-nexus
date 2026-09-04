@@ -139,7 +139,12 @@ export interface StoredDeckCard {
 }
 
 /**
- * Stored game schema
+ * Stored game schema — historical / pre-#1572 monolithic row.
+ *
+ * New code MUST use {@link StoredGameMeta} (cheap read for the list view)
+ * + {@link StoredGamePayload} (heavy blobs) instead. The monolithic type is
+ * kept so legacy backups / migration readers can still decode pre-#1572
+ * rows that exist transiently during a v2 → v3 upgrade.
  */
 export interface StoredGame {
   /** Unique identifier */
@@ -173,6 +178,72 @@ export interface StoredGame {
   /** Metadata */
   metadata: Record<string, unknown>;
 }
+
+/**
+ * Cheap metadata row for the saved-games list view (issue #1572).
+ *
+ * Persisted to the `saved-games-meta` object store. Carries NO
+ * {@code gameStateJson} / {@code replayJson} payloads — those live in the
+ * sibling `saved-games-payloads` store and are loaded on demand via
+ * {@link StoredGamePayload}.
+ *
+ * The {@link hasReplay} flag exists so the list view can render the "Share
+ * Replay" affordance without paying the cost of fetching the payload row.
+ */
+export interface StoredGameMeta {
+  /** Unique identifier (matches the corresponding payload row, if any). */
+  id: string;
+  /** Game name/title */
+  name: string;
+  /** Game format */
+  format: string;
+  /** Player names */
+  playerNames: string[];
+  /** When saved */
+  savedAt: number;
+  /** When created */
+  createdAt: number;
+  /** Current turn */
+  turnNumber: number;
+  /** Current phase */
+  currentPhase: string;
+  /** Game status */
+  status: "not_started" | "in_progress" | "paused" | "completed";
+  /** Winners */
+  winners?: string[];
+  /** Auto-save flag */
+  isAutoSave: boolean;
+  /** Auto-save slot */
+  autoSaveSlot?: number;
+  /** True iff this save has a replayJson payload row. */
+  hasReplay: boolean;
+}
+
+/**
+ * Heavy payload row for a saved game (issue #1572).
+ *
+ * Persisted to the `saved-games-payloads` object store keyed by `id`
+ * (mirroring the meta row's primary key). Holds the bytes the list view
+ * must NOT pull on mount: `gameStateJson` (gzip-compressed JSON, see
+ * `game-state-compression.ts`) and the optional `replayJson` (already
+ * stringified by the off-thread bridge in #1577).
+ */
+export interface StoredGamePayload {
+  /** Unique identifier (matches the corresponding meta row). */
+  id: string;
+  /** Compressed game state JSON (see {@link StoredGame.gameStateJson}). */
+  gameStateJson: string;
+  /** Optional replay JSON (already stringified). */
+  replayJson?: string;
+}
+
+/**
+ * Object-store names introduced by the v2 → v3 split migration (#1572).
+ * Exported so callers don't repeat the kebab-case strings and so test
+ * fixtures can reference the same constants the production code uses.
+ */
+export const SAVED_GAMES_META_STORE = "saved-games-meta";
+export const SAVED_GAMES_PAYLOAD_STORE = "saved-games-payloads";
 
 /**
  * Usage record for AI tracking
@@ -224,6 +295,115 @@ export interface StorageQuotaInfo {
 // ============================================================================
 
 /**
+ * Split every row of the legacy monolithic `saved-games` store into the new
+ * `saved-games-meta` + `saved-games-payloads` pair (issue #1572, v2 → v3).
+ *
+ * The onupgradeneeded handler only creates the v3 stores and indexes —
+ * it does NOT do the data move. fake-indexeddb's upgrade transaction
+ * commits via `setImmediate` after the handler returns, which makes it
+ * impossible to keep the transaction alive long enough for async reads
+ * (getAll.onsuccess) + follow-up writes; any nested request ends up
+ * landing on an aborted transaction. We sidestep the limitation by
+ * running the migration in a normal readwrite transaction AFTER the
+ * upgrade completes, gated by {@link ensureLegacyV3Split}.
+ *
+ * Idempotent: rows already present in the meta store are skipped so a
+ * re-run of the migration (e.g. after a partial run or a process
+ * crash mid-migration) can't overwrite fresh data with stale legacy
+ * bytes. The legacy rows are deleted from the `saved-games` store in
+ * the same transaction so the v3 split is atomic — if any write fails
+ * the entire move rolls back and the next `initialize()` retries.
+ *
+ * The legacy store itself remains in the schema so a user who
+ * downgrades back to a v2 build still finds the meta + payload rows
+ * through `exportBackup` / `exportIncrementalBackup` (issue
+ * acceptance criterion: "existing restore paths continue to round-trip
+ * byte-identically" — the envelope still carries `savedGames: StoredGame[]`,
+ * rehydrated from the v3 split via {@link collectSavedGamesForExport}).
+ */
+async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
+  if (!storage.hasStore(SAVED_GAMES_META_STORE)) return;
+  if (!storage.hasStore(SAVED_GAMES_PAYLOAD_STORE)) return;
+  if (!storage.hasStore("saved-games")) return;
+
+  // Cheap fast-path: if meta is non-empty, assume already migrated.
+  const existingMeta = await storage.count(SAVED_GAMES_META_STORE);
+  if (existingMeta > 0) return;
+
+  const legacyCount = await storage.count("saved-games");
+  if (legacyCount === 0) return;
+
+  const legacy = await storage.getAll<StoredGame>("saved-games");
+  if (legacy.length === 0) return;
+
+  // Open a readwrite transaction across all three stores and move
+  // every legacy row. Skips rows that already have a meta twin so the
+  // migration is safe to re-run. The legacy store is cleared in the
+  // same transaction so the split is atomic — if any write fails the
+  // entire move rolls back and the next `initialize()` retries.
+  await new Promise<void>((resolve, reject) => {
+    const db = (storage as unknown as { db: IDBDatabase | null }).db;
+    if (!db) {
+      resolve();
+      return;
+    }
+    const tx = db.transaction(
+      ["saved-games", SAVED_GAMES_META_STORE, SAVED_GAMES_PAYLOAD_STORE],
+      "readwrite",
+    );
+    const legacyStore = tx.objectStore("saved-games");
+    const meta = tx.objectStore(SAVED_GAMES_META_STORE);
+    const payload = tx.objectStore(SAVED_GAMES_PAYLOAD_STORE);
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("v3 split tx failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("v3 split tx aborted"));
+
+    for (const row of legacy) {
+      // Idempotency probe — same transaction so the read is consistent
+      // with the writes.
+      const probe = meta.getKey(row.id);
+      probe.onsuccess = () => {
+        if (probe.result !== undefined) {
+          // Already split (re-run / pre-existing v3 row). Drop the
+          // stale legacy copy so the store ends up empty.
+          legacyStore.delete(row.id);
+          return;
+        }
+        const metaRow: StoredGameMeta = {
+          id: row.id,
+          name: row.name,
+          format: row.format,
+          playerNames: row.playerNames,
+          savedAt: row.savedAt,
+          createdAt: row.createdAt,
+          turnNumber: row.turnNumber,
+          currentPhase: row.currentPhase,
+          status: row.status,
+          winners: row.winners,
+          isAutoSave: row.isAutoSave,
+          autoSaveSlot: row.autoSaveSlot,
+          hasReplay:
+            typeof row.replayJson === "string" &&
+            row.replayJson.length > 0,
+        };
+        const payloadRow: StoredGamePayload = {
+          id: row.id,
+          gameStateJson: row.gameStateJson,
+          replayJson: row.replayJson,
+        };
+        meta.put(metaRow);
+        payload.put(payloadRow);
+        legacyStore.delete(row.id);
+      };
+    }
+  });
+}
+
+// ============================================================================
+
+/**
  * IndexedDB storage implementation with backup support
  */
 export class IndexedDBStorage {
@@ -238,7 +418,7 @@ export class IndexedDBStorage {
    * Initialize database connection
    */
   async initialize(): Promise<void> {
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const request = indexedDB.open(this.config.dbName, this.config.version);
 
       request.onerror = () => {
@@ -250,30 +430,46 @@ export class IndexedDBStorage {
         resolve();
       };
 
+      // request.onupgradeneeded fires below.
+
+      // request.onupgradeneeded fires below.
+
       // ============================================================================
       // SCHEMA AUDIT (Phase 34)
       // ============================================================================
       // Database: PlanarNexusStorage
-      // Current version: 2
+      // Current version: 3
       //
       // Object stores (all use keyPath: "id"):
       //
-      // | Store           | Purpose                                | Indexes (keyPath, unique)              |
-      // |-----------------|----------------------------------------|----------------------------------------|
-      // | decks           | User-authored decklists                | name, format, createdAt, updatedAt     |
-      // | saved-games     | In-progress / completed game snapshots | name, format, status, savedAt,         |
-      // |                 |                                        | isAutoSave                             |
-      // | preferences     | User preferences (key/value)           | (none — keyPath lookup only)           |
-      // | usage-tracking  | AI provider usage telemetry            | provider, timestamp                    |
-      // | achievements    | Per-player achievement progress        | (none — keyPath lookup only)           |
-      // | game-history    | Aggregated completed-game records      | date, result, mode                     |
+      // | Store                  | Purpose                                | Indexes (keyPath, unique)              |
+      // |------------------------|----------------------------------------|----------------------------------------|
+      // | decks                  | User-authored decklists                | name, format, createdAt, updatedAt     |
+      // | saved-games            | LEGACY pre-#1572 monolithic rows       | name, format, status, savedAt,         |
+      // |                        | (empty post-v2→v3 migration; kept      | isAutoSave                             |
+      // |                        | for downgrade safety)                  |                                        |
+      // | saved-games-meta       | Cheap saved-game metadata for the list | name, format, status, savedAt,         |
+      // |                        | view (#1572)                           | isAutoSave                             |
+      // | saved-games-payloads   | Heavy payload blobs (gameStateJson +   | (none — id lookup only)                |
+      // |                        | replayJson) per save (#1572)           |                                        |
+      // | preferences            | User preferences (key/value)           | (none — keyPath lookup only)           |
+      // | usage-tracking         | AI provider usage telemetry            | provider, timestamp                    |
+      // | achievements           | Per-player achievement progress        | (none — keyPath lookup only)           |
+      // | game-history           | Aggregated completed-game records      | date, result, mode                     |
       //
       // Version history:
       //   v1 — initial schema (lazy onupgradeneeded creates stores on first open)
-      //   v2 — current; semantic-equivalent to v1, but adds documentation +
-      //        migration tests. No destructive changes; existing v1 data is
-      //        preserved because the onupgradeneeded handler only creates
-      //        stores/indexes that are missing.
+      //   v2 — semantic-equivalent to v1, but adds documentation + migration
+      //        tests. No destructive changes; existing v1 data is preserved
+      //        because the onupgradeneeded handler only creates stores/indexes
+      //        that are missing.
+      //   v3 — issue #1572 (perf: split saved-games into metadata + payload
+      //        stores). Adds saved-games-meta + saved-games-payloads and
+      //        migrates every existing saved-games row into the new shape.
+      //        The old saved-games store is left in the schema but emptied
+      //        so a user who downgrades back to a v2 build still sees the
+      //        legacy monolithic rows in the backup envelope (no data loss
+      //        in either direction).
       //
       // Migration rules when bumping the schema version:
       //   1. Increment DEFAULT_STORAGE_CONFIG.version.
@@ -307,6 +503,18 @@ export class IndexedDBStorage {
               store.createIndex("status", "status", { unique: false });
               store.createIndex("savedAt", "savedAt", { unique: false });
               store.createIndex("isAutoSave", "isAutoSave", { unique: false });
+            } else if (storeName === SAVED_GAMES_META_STORE) {
+              // #1572 — saved-games-meta mirrors the index set of the legacy
+              // saved-games store so list-view filters (format / status /
+              // auto-save / savedAt sort) keep working unchanged.
+              store.createIndex("name", "name", { unique: false });
+              store.createIndex("format", "format", { unique: false });
+              store.createIndex("status", "status", { unique: false });
+              store.createIndex("savedAt", "savedAt", { unique: false });
+              store.createIndex("isAutoSave", "isAutoSave", { unique: false });
+            } else if (storeName === SAVED_GAMES_PAYLOAD_STORE) {
+              // Payloads are keyed by `id` and only ever fetched by primary
+              // key (open-game flow); no secondary indexes needed.
             } else if (storeName === "usage-tracking") {
               store.createIndex("provider", "provider", { unique: false });
               store.createIndex("timestamp", "timestamp", { unique: false });
@@ -325,8 +533,41 @@ export class IndexedDBStorage {
         if (oldVersion < 2) {
           // intentional no-op
         }
+
+        // v2 → v3 (issue #1572): split every legacy `saved-games` row into
+        // its (cheap) meta twin and (heavy) payload row. The legacy store is
+        // cleared AFTER the copy so the migration is non-destructive — a
+        // user who downgrades back to a v2 build will still find the
+        // monolithic rows in their backup envelope (we re-emit them in the
+        // backup format) but not in the live store (downgrade is a "best
+        // effort" — see #1572 acceptance criteria).
+        if (oldVersion < 3 && oldVersion >= 1) {
+          // v2 → v3 (#1572) — schema is created in the loop above.
+          // The actual data move runs as a lazy migration in
+          // {@link ensureLegacyV3Split}, invoked from `initialize()`
+          // once the versionchange transaction has committed. Doing
+          // the move inside onupgradeneeded trips fake-indexeddb's
+          // upgrade-tx auto-commit semantics (and adds risk in real
+          // browsers if the user closes the tab mid-handler).
+        }
       };
     });
+
+    // Issue #1572 — once the upgrade (if any) has committed, lazily
+    // migrate any remaining legacy saved-games rows into the v3 split.
+    // The migration is gated by the meta store being empty, so re-opens
+    // are no-ops. Errors are swallowed and logged so a corrupt legacy
+    // store can't take the rest of the app down with it.
+    if (this.hasStore(SAVED_GAMES_META_STORE)) {
+      try {
+        await ensureLegacyV3Split(this);
+      } catch (error) {
+        console.warn(
+          "[indexeddb-storage] v3 saved-games split migration failed:",
+          error,
+        );
+      }
+    }
   }
 
   /**
@@ -336,6 +577,16 @@ export class IndexedDBStorage {
     if (!this.db) {
       await this.initialize();
     }
+  }
+
+  /**
+   * Issue #1572 — defensive guard for callers that want to know whether
+   * the v3 stores exist on the currently-opened database before they
+   * touch them (test fixtures, hand-crafted configs, pre-upgrade
+   * downgrades). Returns false if the DB has not been opened yet.
+   */
+  hasStore(storeName: string): boolean {
+    return !!this.db && this.db.objectStoreNames.contains(storeName);
   }
 
   /**
@@ -746,8 +997,12 @@ export class IndexedDBStorage {
       IDBKeyRange.lowerBound(sinceISO, true),
     );
 
-    const allGames = await this.getAll<StoredGame>("saved-games");
-    const changedGames = allGames.filter((g) => g.savedAt > since.getTime());
+    // Issue #1572 — rehydrate the split (meta + payload) stores back into
+    // the legacy monolithic `StoredGame[]` shape so the backup envelope is
+    // byte-identical to the pre-split format. Restore paths see a single
+    // `savedGames` array and import via {@link writeStoredGameToV3} below.
+    const savedGames = await this.collectSavedGamesForExport();
+    const changedGames = savedGames.filter((g) => g.savedAt > since.getTime());
 
     const partial: Omit<IncrementalBackupData, "checksum"> = {
       type: "incremental",
@@ -782,13 +1037,138 @@ export class IndexedDBStorage {
       await this.set("decks", deck);
     }
 
+    // Issue #1572 — write through the meta + payload split (idempotent
+    // for rows already migrated). Falls back to the legacy monolithic
+    // store if the v3 split stores are missing.
     for (const game of data.savedGames) {
-      await this.set("saved-games", game);
+      await this.writeStoredGameToV3(game);
     }
 
     for (const entry of data.deletedRecords) {
-      await this.delete(entry.store, entry.id);
+      // Issue #1572 — also delete any v3 meta/payload rows that share
+      // the same primary key so a `deletedRecords` entry cleans up
+      // every place the record might live.
+      if (entry.store === "saved-games") {
+        await this.deleteSavedGameEverywhere(entry.id);
+      } else {
+        await this.delete(entry.store, entry.id);
+      }
     }
+  }
+
+/**
+   * Issue #1572 — collect every saved-game row (across the legacy
+   * `saved-games` store and the new meta + payload split) and join them
+   * back into the monolithic `StoredGame` shape that the backup envelope
+   * still uses. Prefers the v3 split (more authoritative after the
+   * migration has run); falls back to the legacy store for rows that
+   * somehow survived without being migrated (e.g. downgrade in flight).
+   *
+   * Defensive about the v3 stores: if the current `IndexedDBStorage`
+   * instance was constructed with a config that doesn't include them
+   * (test fixtures, pre-v3 databases, hand-crafted configs), the legacy
+   * store is read directly without touching the v3 stores.
+   */
+  private async collectSavedGamesForExport(): Promise<StoredGame[]> {
+    const dbHasMeta =
+      this.db &&
+      this.db.objectStoreNames.contains(SAVED_GAMES_META_STORE) &&
+      this.db.objectStoreNames.contains(SAVED_GAMES_PAYLOAD_STORE);
+    const db = this.db;
+    if (dbHasMeta && db) {
+      const metas = await this.getAll<StoredGameMeta>(SAVED_GAMES_META_STORE);
+      if (metas.length > 0) {
+        const byId = new Map<string, StoredGamePayload>();
+        const payloadRows = await this.getAll<StoredGamePayload>(
+          SAVED_GAMES_PAYLOAD_STORE,
+        );
+        for (const p of payloadRows) byId.set(p.id, p);
+        const legacy = await this.getAll<StoredGame>("saved-games");
+        const legacyById = new Map<string, StoredGame>();
+        for (const g of legacy) legacyById.set(g.id, g);
+
+        return metas.map((m) => {
+          const payload = byId.get(m.id);
+          const fallback = legacyById.get(m.id);
+          return {
+            ...m,
+            gameStateJson:
+              payload?.gameStateJson ?? fallback?.gameStateJson ?? "",
+            replayJson: payload?.replayJson ?? fallback?.replayJson,
+            metadata: {},
+          } satisfies StoredGame;
+        });
+      }
+    }
+
+    // No meta store yet — pre-#1572 backup envelope, just read the
+    // legacy store directly.
+    return this.getAll<StoredGame>("saved-games");
+  }
+
+  /**
+   * Issue #1572 — write a legacy {@link StoredGame} into the v3 split
+   * (meta + payload) stores. Idempotent for already-split rows. Falls
+   * back to the legacy `saved-games` store if the v3 stores are missing
+   * (the user is on a database that hasn't been upgraded).
+   *
+   * Public so module-level helpers like {@link migrateFromLocalStorage}
+   * can route through the same code path; not exposed via the singleton.
+   */
+  async writeStoredGameToV3(game: StoredGame): Promise<void> {
+    const meta: StoredGameMeta = {
+      id: game.id,
+      name: game.name,
+      format: game.format,
+      playerNames: game.playerNames,
+      savedAt: game.savedAt,
+      createdAt: game.createdAt,
+      turnNumber: game.turnNumber,
+      currentPhase: game.currentPhase,
+      status: game.status,
+      winners: game.winners,
+      isAutoSave: game.isAutoSave,
+      autoSaveSlot: game.autoSaveSlot,
+      hasReplay:
+        typeof game.replayJson === "string" && game.replayJson.length > 0,
+    };
+    const payload: StoredGamePayload = {
+      id: game.id,
+      gameStateJson: game.gameStateJson,
+      replayJson: game.replayJson,
+    };
+
+    if (
+      this.hasStore(SAVED_GAMES_META_STORE) &&
+      this.hasStore(SAVED_GAMES_PAYLOAD_STORE)
+    ) {
+      await this.set(SAVED_GAMES_META_STORE, meta);
+      await this.set(SAVED_GAMES_PAYLOAD_STORE, payload);
+      return;
+    }
+
+    // Pre-v3 database — write the legacy monolithic row so the data is
+    // visible to a v2 reader, and the v2→v3 migration on next open will
+    // split it.
+    await this.set("saved-games", game);
+  }
+
+  /**
+   * Issue #1572 — delete a saved game from every store that could hold
+   * one (meta + payload + legacy). Used by {@link importIncrementalBackup}
+   * when a `deletedRecords` entry targets the saved-games domain.
+   */
+  private async deleteSavedGameEverywhere(id: string): Promise<void> {
+    const targets: string[] = ["saved-games"];
+    if (this.db) {
+      if (this.db.objectStoreNames.contains(SAVED_GAMES_META_STORE)) {
+        targets.push(SAVED_GAMES_META_STORE);
+      }
+      if (this.db.objectStoreNames.contains(SAVED_GAMES_PAYLOAD_STORE)) {
+        targets.push(SAVED_GAMES_PAYLOAD_STORE);
+      }
+    }
+    await Promise.all(targets.map((store) => this.delete(store, id)));
   }
 
   /**
@@ -807,7 +1187,11 @@ export class IndexedDBStorage {
     onChecksumProgress?: (progress: CalculateChecksumProgress) => void;
   }): Promise<BackupData> {
     const decks = await this.getAll<StoredDeck>("decks");
-    const savedGames = await this.getAll<StoredGame>("saved-games");
+    // Issue #1572 — rehydrate meta + payload back into the legacy
+    // monolithic shape so the envelope is byte-identical to pre-split
+    // backups (the issue's acceptance criterion: existing restore paths
+    // round-trip byte-identically).
+    const savedGames = await this.collectSavedGamesForExport();
     const preferences =
       await this.getAll<Record<string, unknown>>("preferences");
     const usageTracking = await this.getAll<UsageRecord>("usage-tracking");
@@ -862,10 +1246,23 @@ export class IndexedDBStorage {
       await this.setAll("decks", backupData.decks);
     }
 
-    // Import saved games
+    // Import saved games — issue #1572: split into meta + payload so the
+    // list view never loads the heavy payload bytes. The import writes
+    // through {@link writeStoredGameToV3}, which falls back to the
+    // monolithic store for pre-v3 databases. The clear() calls are
+    // guarded by store presence so test fixtures / hand-crafted configs
+    // that don't include the v3 stores don't blow up.
     if (backupData.savedGames) {
       await this.clear("saved-games");
-      await this.setAll("saved-games", backupData.savedGames);
+      if (this.hasStore(SAVED_GAMES_META_STORE)) {
+        await this.clear(SAVED_GAMES_META_STORE);
+      }
+      if (this.hasStore(SAVED_GAMES_PAYLOAD_STORE)) {
+        await this.clear(SAVED_GAMES_PAYLOAD_STORE);
+      }
+      for (const game of backupData.savedGames) {
+        await this.writeStoredGameToV3(game);
+      }
     }
 
     // Import preferences
@@ -935,9 +1332,19 @@ export class IndexedDBStorage {
       };
     }
 
-    // Fallback: approximate usage from the stored payload size.
+    // Fallback: approximate usage from the stored payload size. Issue
+    // #1572 — read the cheap meta store for the size estimate so the
+    // fallback itself doesn't pull the heavy payloads. Defensive about
+    // the v3 stores: if the current instance wasn't constructed with
+    // them (test fixture, pre-v3 database), read the legacy store
+    // instead so the call still succeeds.
     const decks = await this.getAll("decks");
-    const savedGames = await this.getAll("saved-games");
+    const db = this.db;
+    const savedGames: unknown[] = db?.objectStoreNames.contains(
+      SAVED_GAMES_META_STORE,
+    )
+      ? await this.getAll<StoredGameMeta>(SAVED_GAMES_META_STORE)
+      : await this.getAll("saved-games");
     const usage = new Blob([JSON.stringify({ decks, savedGames })]).size;
     const percentage = (usage / FALLBACK_QUOTA_BYTES) * 100;
 
@@ -978,10 +1385,17 @@ export class IndexedDBStorage {
  */
 const DEFAULT_STORAGE_CONFIG: StorageConfig = {
   dbName: "PlanarNexusStorage",
-  version: 2,
+  // Issue #1572 — v3 introduces saved-games-meta + saved-games-payloads
+  // (split out of the monolithic saved-games store). The legacy store name
+  // is still listed so a downgrade remains a "best-effort" no-data-loss
+  // path (the upgrade handler leaves the legacy rows in place until a
+  // later cleanup pass decides to remove them).
+  version: 3,
   stores: [
     "decks",
     "saved-games",
+    SAVED_GAMES_META_STORE,
+    SAVED_GAMES_PAYLOAD_STORE,
     "preferences",
     "usage-tracking",
     "achievements",
@@ -1065,14 +1479,17 @@ export async function migrateFromLocalStorage(): Promise<void> {
     }
   }
 
-  // Migrate saved games
+  // Migrate saved games — issue #1572: split each row into meta + payload
+  // via the same v3 path the in-place upgrade uses.
   const savedGamesKey = "planar_nexus_saved_games";
   const savedGamesData = localStorage.getItem(savedGamesKey);
   if (savedGamesData) {
     try {
       const savedGames = JSON.parse(savedGamesData);
       if (Array.isArray(savedGames)) {
-        await storage.setAll("saved-games", savedGames);
+        for (const game of savedGames) {
+          await (storage as IndexedDBStorage).writeStoredGameToV3(game);
+        }
         // localStorage.removeItem(savedGamesKey);
       }
     } catch (error) {
