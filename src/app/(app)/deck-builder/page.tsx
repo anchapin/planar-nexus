@@ -547,34 +547,6 @@ export default function DeckBuilderPage() {
     });
   };
 
-  const exportDeck = () => {
-    if (deck.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Empty Deck",
-        description: "There are no cards in your deck to export.",
-      });
-      return;
-    }
-    const decklist = deck
-      .map((card) => `${card.count} ${card.name}`)
-      .join("\n");
-
-    const blob = new Blob([decklist], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${deckName.replace(/\s/g, "_")}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast({
-      title: "Deck Exported",
-      description: "Your decklist has been downloaded.",
-    });
-  };
-
   const saveDeck = () => {
     if (deck.length === 0) {
       toast({ variant: "destructive", title: "Cannot Save Empty Deck" });
@@ -705,7 +677,6 @@ export default function DeckBuilderPage() {
           </div>
           <ImportExportControls
             onImport={importDeck}
-            onExport={exportDeck}
             onClear={clearDeck}
             onSave={saveDeck}
             isDeckSaved={isDeckSaved}

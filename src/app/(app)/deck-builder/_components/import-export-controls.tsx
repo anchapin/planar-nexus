@@ -48,6 +48,12 @@ import {
   IMPORT_ERROR_MESSAGES,
 } from "@/lib/decklist-utils";
 import type { Format } from "@/lib/game-rules";
+import {
+  formatDeckAsMTGO,
+  formatDeckAsArena,
+  getExportFilename,
+  triggerBrowserDownload,
+} from "@/lib/deck-export";
 import { AlertCircle, CheckCircle2, HelpCircle } from "lucide-react";
 
 type ImportDeckResult = ImportDeckResultType;
@@ -57,7 +63,6 @@ interface ImportExportControlsProps {
     decklist: string,
     format?: DecklistFormat,
   ) => Promise<ImportDeckResult | null> | null;
-  onExport: () => void;
   onClear: () => void;
   onSave: () => void;
   isDeckSaved: boolean;
@@ -82,7 +87,6 @@ interface ImportExportControlsProps {
 
 export function ImportExportControls({
   onImport,
-  onExport,
   onClear,
   onSave,
   isDeckSaved,
@@ -275,6 +279,73 @@ export function ImportExportControls({
     toast({
       title: "Exported JSON",
       description: "Deck exported as JSON file",
+    });
+  };
+
+  /**
+   * Export the deck as an MTGO `.dec` file. Uses the same plaintext format
+   * MTGO's importer recognises: mainboard lines, blank line, `Sideboard`
+   * header, sideboard lines. The sideboard section is omitted entirely
+   * when the active format has no sideboard (Commander family). Issue
+   * #1543.
+   */
+  const handleExportMTGO = () => {
+    if (!deckCards || deckCards.length === 0) {
+      toast({
+        title: "No cards to export",
+        description: "Add cards to your deck first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const content = formatDeckAsMTGO({
+      mainboard: deckCards,
+      sideboard: sideboardCards,
+    });
+    triggerBrowserDownload(
+      content,
+      getExportFilename(deckName, "mtgo"),
+      "text/plain;charset=utf-8",
+    );
+
+    toast({
+      title: "Exported MTGO .dec",
+      description: "Deck exported as MTGO .dec file",
+    });
+  };
+
+  /**
+   * Export the deck as an MTG Arena plaintext `.txt` file. Mirrors the
+   * format Arena's importer accepts: literal `Deck` header, mainboard
+   * lines, blank line, `Sideboard` header, sideboard lines. Omitting the
+   * `Deck` header causes Arena to misclassify the mainboard as sideboard,
+   * so it is always emitted. Sideboard section omitted for Commander.
+   * Issue #1543.
+   */
+  const handleExportArena = () => {
+    if (!deckCards || deckCards.length === 0) {
+      toast({
+        title: "No cards to export",
+        description: "Add cards to your deck first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const content = formatDeckAsArena({
+      mainboard: deckCards,
+      sideboard: sideboardCards,
+    });
+    triggerBrowserDownload(
+      content,
+      getExportFilename(deckName, "arena"),
+      "text/plain;charset=utf-8",
+    );
+
+    toast({
+      title: "Exported Arena .txt",
+      description: "Deck exported as MTG Arena plaintext file",
     });
   };
 
@@ -528,6 +599,7 @@ export function ImportExportControls({
               className="w-full justify-start"
               onClick={handleExportJSON}
               data-testid="export-json-button"
+              aria-label="Export deck as JSON file"
             >
               <FileText className="mr-2 h-4 w-4" />
               Export as JSON
@@ -535,11 +607,22 @@ export function ImportExportControls({
             <Button
               variant="outline"
               className="w-full justify-start"
-              onClick={onExport}
-              data-testid="export-text-button"
+              onClick={handleExportMTGO}
+              data-testid="export-mtgo-button"
+              aria-label="Export deck as MTGO .dec file"
             >
               <Download className="mr-2 h-4 w-4" />
-              Export as Text
+              Export as MTGO (.dec)
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={handleExportArena}
+              data-testid="export-arena-button"
+              aria-label="Export deck as MTG Arena plaintext file"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export as Arena (.txt)
             </Button>
             <Button
               variant="outline"
