@@ -14,15 +14,30 @@
  * This test pins the post-fix invariant: rendering <AppLayout> produces
  * exactly one element with role="main", and that element is the one the
  * SkipLink targets via #main-content + tabIndex={-1}.
+ *
+ * Issue #1576 also binds here: the (app) layout is the prewarm site for the
+ * Orama card-search worker. Mounting <AppLayout> must schedule the prewarm
+ * exactly once so the worker's first query in /deck-builder no longer pays
+ * the cold-start index cost. SSR rendering (renderToString) skips effects —
+ * that path is asserted separately below.
  */
 
 import React from "react";
 import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 
 // Mock next/navigation so the layout's `usePathname` is deterministic.
 let mockPathname = "/dashboard";
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
+}));
+
+// Issue #1576 — track every call the layout makes to the prewarm helper so
+// the test can assert the helper runs once and only once per mount, and
+// does NOT run under SSR (where prewarm would be a no-op anyway).
+const prewarmSearchWorkerMock = jest.fn();
+jest.mock("@/lib/search/prewarm-search-worker", () => ({
+  prewarmSearchWorker: () => prewarmSearchWorkerMock(),
 }));
 
 // Replace the heavy side-effect components with cheap stand-ins so the test
@@ -155,5 +170,46 @@ describe("AppLayout — single <main> landmark (#1266)", () => {
     renderAt("/dashboard");
     const main = screen.getByRole("main");
     expect(main).toContainElement(screen.getByTestId("child-marker"));
+  });
+});
+
+describe("AppLayout — Orama prewarm (issue #1576)", () => {
+  beforeEach(() => {
+    mockPathname = "/dashboard";
+    prewarmSearchWorkerMock.mockClear();
+  });
+
+  it("calls prewarmSearchWorker() exactly once when the shell mounts", () => {
+    renderAt("/dashboard");
+    expect(prewarmSearchWorkerMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls prewarmSearchWorker() on every protected route mount", () => {
+    // The (app) shell layout is shared by all routes under (app)/, so
+    // prewarm must fire on each mount (the useEffect dep array is empty,
+    // so subsequent in-tree navigations will not re-fire — but a fresh
+    // render of this layout from a different mount point should re-fire).
+    renderAt("/deck-builder");
+    expect(prewarmSearchWorkerMock).toHaveBeenCalledTimes(1);
+
+    renderAt("/multiplayer/host");
+    expect(prewarmSearchWorkerMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does NOT call prewarmSearchWorker() during an SSR render", () => {
+    // Issue #1576 acceptance criterion 1 — prewarm must run on shell mount
+    // AND must not run during SSR (no window, no Workers, no DOM). The
+    // helper itself guards with `typeof window === "undefined"`, and the
+    // layout's `useEffect` is skipped by react-dom/server entirely, so a
+    // server render of <AppLayout> observes zero prewarm calls. This
+    // pins both layers of protection.
+    mockPathname = "/dashboard";
+    const html = renderToString(
+      <AppLayout>
+        <p data-testid="child-marker">child content</p>
+      </AppLayout>,
+    );
+    expect(html).toContain("child-marker");
+    expect(prewarmSearchWorkerMock).not.toHaveBeenCalled();
   });
 });
