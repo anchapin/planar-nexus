@@ -253,6 +253,54 @@ export interface DraftDisplayCard {
 }
 
 /**
+ * One row in the per-pick draft log (issue #1558).
+ *
+ * Appended to {@link DraftSession.pickLog} by `pickCard()` on every user pick
+ * (idempotent — re-picking the same card is a no-op and produces no entry).
+ * Persisted to IndexedDB with the rest of the session so the log survives
+ * page reloads and can be exported on the Draft Complete page.
+ *
+ * The `availableCardIds` / `alternativesSkipped` fields capture what the
+ * user actually saw at the moment of the pick — they are the audit trail
+ * coaches and tournament organizers want, on top of the final pool.
+ */
+export interface PickRecord {
+  /**
+   * 1-based overall pick number across the entire draft (1..42 for a
+   * 3-pack × 14-card draft). 1-based because the Draft Complete page
+   * renders "Pick 1, Pick 2, …" to players and coaches.
+   */
+  pickNumber: number;
+  /** 0-based pack number (0 = first pack, 1 = second, 2 = third). */
+  packNumber: number;
+  /**
+   * 0-based pick index inside the current pack (0..13). Kept in addition
+   * to the 1-based `pickNumber` so consumers don't have to recompute it.
+   */
+  packPickIndex: number;
+  /** Scryfall card id of the picked card. */
+  cardId: string;
+  /** Cached display name of the picked card (avoids a card-DB lookup at export time). */
+  cardName: string;
+  /** Cached rarity of the picked card. Free-form string for legacy rows; export coalesces to `Rarity` set. */
+  rarity: string;
+  /** ISO-8601 timestamp of when the user picked this card. */
+  pickedAt: string;
+  /**
+   * Card ids remaining in the pack *before* this pick was made, in the
+   * order the pack view rendered them. Useful for replay tools to show
+   * "here is what the user saw on pick 7 of pack 2".
+   */
+  availableCardIds: string[];
+  /**
+   * Card ids remaining in the pack *after* this pick (i.e. the cards the
+   * user passed on, also known as the "alternatives"). Empty list when
+   * the user made the final pick of the pack.
+   */
+  alternativesSkipped: string[];
+}
+
+/**
  * Draft session - extends LimitedSession with draft state
  * DRFT-01: Session creation with UUID
  * DRFT-02: 3 packs of 14 cards
@@ -278,6 +326,13 @@ export interface DraftSession extends LimitedSession {
   aiNeighbor?: AiNeighbor;
   /** NEIB-05: Track who has the active pack */
   currentPackHolder: PackHolder;
+  /**
+   * Per-pick audit trail (issue #1558). One row per user pick, appended
+   * by `pickCard()`. Optional on the type because pre-#1558 persisted
+   * rows in IndexedDB do not contain it — readers must default to `[]`.
+   * See `normalizeDraftPickLog` in `src/lib/limited/draft-log.ts`.
+   */
+  pickLog?: PickRecord[];
 }
 
 // ============================================================================
