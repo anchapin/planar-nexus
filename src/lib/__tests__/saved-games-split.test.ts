@@ -37,6 +37,10 @@ import {
   SAVED_GAMES_PAYLOAD_STORE,
 } from "../indexeddb-storage";
 import { createInitialGameState } from "../game-state/game-state";
+import {
+  decompressReplayJson,
+  isCompressedReplayJson,
+} from "../game-state/replay-compression";
 import type { Replay } from "../game-state/replay";
 import type { SavedGame } from "../saved-games";
 
@@ -149,8 +153,12 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     // below catches any accidental `as unknown as SavedGameMeta`
     // smuggling.
     for (const row of list) {
-      expect((row as unknown as Record<string, unknown>).gameStateJson).toBeUndefined();
-      expect((row as unknown as Record<string, unknown>).replayJson).toBeUndefined();
+      expect(
+        (row as unknown as Record<string, unknown>).gameStateJson,
+      ).toBeUndefined();
+      expect(
+        (row as unknown as Record<string, unknown>).replayJson,
+      ).toBeUndefined();
     }
 
     // Sanity: the meta store was read at most once and the payload
@@ -190,21 +198,24 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     const meta = await indexedDBStorage.get(SAVED_GAMES_META_STORE, saved.id);
     expect(meta).toBeDefined();
     expect((meta as unknown as Record<string, unknown>).id).toBe(saved.id);
-    expect((meta as unknown as Record<string, unknown>).name).toBe("Split Test");
+    expect((meta as unknown as Record<string, unknown>).name).toBe(
+      "Split Test",
+    );
 
     // Payload row carries the heavy fields. The on-disk
-    // gameStateJson is gzip-compressed by #1020, so a byte-identical
-    // comparison to the in-memory string is the wrong check — instead
-    // confirm the row exists with the expected replayJson and the
-    // compressed marker on the gameStateJson prefix.
+    // gameStateJson is gzip-compressed by #1020 and the on-disk
+    // replayJson by #1573, so a byte-identical comparison to the
+    // in-memory string is the wrong check — instead confirm the row
+    // exists and inflates back to the in-memory replay JSON.
     const payload = await indexedDBStorage.get(
       SAVED_GAMES_PAYLOAD_STORE,
       saved.id,
     );
     expect(payload).toBeDefined();
-    expect((payload as unknown as Record<string, unknown>).replayJson).toBe(
-      saved.replayJson,
-    );
+    const onDiskReplay = (payload as unknown as Record<string, unknown>)
+      .replayJson as string;
+    expect(isCompressedReplayJson(onDiskReplay)).toBe(true);
+    expect(await decompressReplayJson(onDiskReplay)).toBe(saved.replayJson);
     const onDiskGameState = (payload as unknown as Record<string, unknown>)
       .gameStateJson as string;
     expect(typeof onDiskGameState).toBe("string");
@@ -249,7 +260,11 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     // in-memory plaintext shape.
     expect(typeof payload?.gameStateJson).toBe("string");
     expect((payload?.gameStateJson ?? "").length).toBeGreaterThan(0);
-    expect(payload?.replayJson).toBe(saved.replayJson);
+    // Same for replayJson (issue #1573) — stored as the `gzn:` envelope.
+    expect(isCompressedReplayJson(payload?.replayJson)).toBe(true);
+    expect(await decompressReplayJson(payload?.replayJson)).toBe(
+      saved.replayJson,
+    );
 
     // Defensive runtime check: the payload type doesn't expose name /
     // format / status (those live on the meta row only).
@@ -260,9 +275,8 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
   });
 
   it("getSavedGamePayload() returns null for an unknown id", async () => {
-    const payload = await savedGamesManager.getSavedGamePayload(
-      "does-not-exist",
-    );
+    const payload =
+      await savedGamesManager.getSavedGamePayload("does-not-exist");
     expect(payload).toBeNull();
   });
 
@@ -281,9 +295,7 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     expect(
       await indexedDBStorage.get(SAVED_GAMES_PAYLOAD_STORE, saved.id),
     ).toBeNull();
-    expect(
-      await savedGamesManager.getSavedGame(saved.id),
-    ).toBeNull();
+    expect(await savedGamesManager.getSavedGame(saved.id)).toBeNull();
   });
 
   it("searchGames / filterByStatus / filterByFormat / getManualSaves / getAutoSaves operate on meta only (issue #1572)", async () => {
@@ -302,9 +314,9 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     await savedGamesManager.saveGame(completed);
 
     const all = await savedGamesManager.getAllSavedGames();
-    expect(all.every((g) => !("gameStateJson" in (g as unknown as object)))).toBe(
-      true,
-    );
+    expect(
+      all.every((g) => !("gameStateJson" in (g as unknown as object))),
+    ).toBe(true);
     expect(all.every((g) => !("replayJson" in (g as unknown as object)))).toBe(
       true,
     );
@@ -312,7 +324,9 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     const commanderOnly = await savedGamesManager.filterByFormat("commander");
     expect(commanderOnly).toHaveLength(1);
     expect(commanderOnly[0].name).toBe("Manual 1");
-    expect((commanderOnly[0] as unknown as Record<string, unknown>).gameStateJson).toBeUndefined();
+    expect(
+      (commanderOnly[0] as unknown as Record<string, unknown>).gameStateJson,
+    ).toBeUndefined();
 
     const completedOnly = await savedGamesManager.filterByStatus("completed");
     expect(completedOnly).toHaveLength(1);
@@ -330,12 +344,7 @@ describe("saved-games metadata + payload split (issue #1572)", () => {
     const gameState = createInitialGameState(["Ada", "Bruno"]);
     const replay = makeReplay();
     const saved = await savedGamesManager.saveGame(
-      await createSavedGame(
-        "Lazy Load Test",
-        "commander",
-        gameState,
-        replay,
-      ),
+      await createSavedGame("Lazy Load Test", "commander", gameState, replay),
     );
 
     // Spy on the meta store to prove loadGameState / loadReplay
