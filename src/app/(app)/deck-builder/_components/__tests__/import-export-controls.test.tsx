@@ -110,7 +110,6 @@ const CARDS = [
 
 const baseProps = () => ({
   onImport: jest.fn(async () => null),
-  onExport: jest.fn(),
   onClear: jest.fn(),
   onSave: jest.fn(),
   isDeckSaved: false,
