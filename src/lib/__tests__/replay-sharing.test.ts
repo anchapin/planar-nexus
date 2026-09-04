@@ -229,7 +229,7 @@ describe("replay-sharing", () => {
 
     it("reconstructs a well-formed resultingState (lossy but valid)", () => {
       const decoded = decodeReplayFromURL(encodeReplayToURL(makeReplay()))!;
-      const state = decoded.actions[0].resultingState;
+      const state = decoded.actions[0].resultingState!;
 
       // Players and zones survive as Maps with the right cardinalities.
       expect(state.players).toBeInstanceOf(Map);
@@ -319,7 +319,7 @@ describe("replay-sharing", () => {
       };
 
       const decoded = decodeReplayFromURL(encodeValue(minified))!;
-      expect(decoded.actions[0].resultingState.turn.currentPhase).toBe(
+      expect(decoded.actions[0].resultingState!.turn.currentPhase).toBe(
         "NOT_A_REAL_PHASE",
       );
     });
@@ -349,7 +349,7 @@ describe("replay-sharing", () => {
       };
 
       const decoded = decodeReplayFromURL(encodeValue(minified))!;
-      expect(decoded.actions[0].resultingState.turn.currentPhase).toBe(
+      expect(decoded.actions[0].resultingState!.turn.currentPhase).toBe(
         Phase.UNTAP,
       );
     });
@@ -379,7 +379,7 @@ describe("replay-sharing", () => {
       };
 
       const decoded = decodeReplayFromURL(encodeValue(minified))!;
-      expect(decoded.actions[0].resultingState.status).toBe("frozen");
+      expect(decoded.actions[0].resultingState!.status).toBe("frozen");
     });
   });
 

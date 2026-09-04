@@ -11,6 +11,7 @@
  */
 
 import type { Replay } from "./game-state/replay";
+import { getStateAtPosition } from "./game-state/replay";
 import type {
   ActionType,
   GameState,
@@ -241,6 +242,13 @@ export async function importReplayFromURL(
 
 /**
  * Minify replay data to reduce size for URL encoding
+ *
+ * Issue #1574: v2 delta-encoded replays do not carry `resultingState` on
+ * every action. The URL-share format is intrinsically snapshot-per-action
+ * (the round-trip test in `replay-sharing.test.ts` decodes `rs` directly),
+ * so before minifying we materialise the full state at every position via
+ * `getStateAtPosition`. This is a one-shot cost on share — the saved
+ * replay itself stays delta-encoded.
  */
 function minifyReplay(replay: Replay): MinifiedReplay {
   return {
@@ -255,12 +263,12 @@ function minifyReplay(replay: Replay): MinifiedReplay {
       ed: replay.metadata.gameEndDate,
       er: replay.metadata.endReason ?? undefined,
     },
-    a: replay.actions.map((action) => ({
+    a: replay.actions.map((action, position) => ({
       s: action.sequenceNumber,
       t: action.action.type,
       pid: action.action.playerId,
       d: action.action.data,
-      rs: minifyGameState(action.resultingState),
+      rs: minifyGameState(action.resultingState ?? getStateAtPosition(replay, position)!),
       desc: action.description,
       ra: action.recordedAt,
     })),
