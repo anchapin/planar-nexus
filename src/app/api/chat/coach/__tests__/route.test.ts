@@ -32,6 +32,14 @@ import {
   prefetchCoachContext,
   clearCoachContextCache,
 } from "@/ai/flows/coach-context-prefetch";
+import {
+  extractCitedCards,
+  verifyCitations,
+  summarizeVerifications,
+  createLocalCardLookup,
+} from "@/ai/flows/verify-citations";
+import type { MinimalCard } from "@/lib/card-database";
+import type { CitationVerification } from "@/ai/flows/verify-citations";
 
 // Mock only the streaming orchestrator (so the real `ai` SDK is never loaded
 // and we can capture the system prompt + control events). Context pre-fetch is
@@ -40,6 +48,34 @@ jest.mock("@/ai/flows/coach-stream", () => ({
   streamCoachResponse: jest.fn(),
   eventToSse: (event: unknown) => `data:${JSON.stringify(event)}\n\n`,
 }));
+
+// Issue #1535: the local card-citation verifier is wired into the SSE
+// stream. We mock it so the test route can drive the verifier outputs
+// deterministically — the real `createLocalCardLookup` would touch the
+// host's IndexedDB stack, which is not available under jest's jsdom env.
+// The pure helpers (`extractCitedCards`, `verifyCitations`,
+// `summarizeVerifications`) keep their real implementations (they have no
+// I/O) and can be overridden per-test via `jest.mocked(...).mockReturnValueOnce`
+// / `.mockResolvedValueOnce` to simulate arbitrary verifier outcomes.
+jest.mock("@/ai/flows/verify-citations", () => {
+  const actual = jest.requireActual<
+    typeof import("@/ai/flows/verify-citations")
+  >("@/ai/flows/verify-citations");
+  // Default stub lookup: empty DB → every cited card becomes
+  // `unverifiable`. Each test that exercises a populated DB overrides this
+  // via `jest.mocked(createLocalCardLookup).mockReturnValueOnce(...)`.
+  const emptyDbLookup = (() => async () => ({
+    found: false,
+    dbHasCards: false,
+  })) as typeof actual.createLocalCardLookup;
+  return {
+    ...actual,
+    extractCitedCards: jest.fn(actual.extractCitedCards),
+    verifyCitations: jest.fn(actual.verifyCitations),
+    summarizeVerifications: jest.fn(actual.summarizeVerifications),
+    createLocalCardLookup: jest.fn(emptyDbLookup),
+  };
+});
 
 // Functional fetch-primitive stand-ins (assigned to global in beforeAll).
 class TestRequest {
@@ -975,5 +1011,367 @@ describe("POST /api/chat/coach — coach-memory summary (issue #1417)", () => {
     // The summary event still fires (with an empty summary).
     const text = await res.text();
     expect(text.split("\n\n")[0]).toContain('"type":"summary"');
+  });
+});
+
+describe("POST /api/chat/coach — local card-citation verifier (issue #1535)", () => {
+  /** Build a stub {@link MinimalCard} with the fields the verifier serializes. */
+  function stubCard(overrides: Partial<MinimalCard> = {}): MinimalCard {
+    return {
+      id: overrides.id ?? "stub-id",
+      name: overrides.name ?? "Lightning Bolt",
+      cmc: overrides.cmc ?? 1,
+      type_line: overrides.type_line ?? "Instant",
+      colors: overrides.colors ?? ["R"],
+      color_identity: overrides.color_identity ?? ["R"],
+      legalities: overrides.legalities ?? { modern: "legal" },
+      mana_cost: overrides.mana_cost ?? "{R}",
+      oracle_text: overrides.oracle_text ?? "Lightning Bolt deals 3 damage.",
+      ...overrides,
+    };
+  }
+
+  /** Build a stubbed CitationVerification for a given name + status. */
+  function verification(
+    name: string,
+    status: CitationVerification["status"],
+    extras: Partial<CitationVerification> = {},
+  ): CitationVerification {
+    return {
+      cited: { name },
+      status,
+      corrections: [],
+      note: `${name} ${status}`,
+      ...extras,
+    };
+  }
+
+  // Real (non-mocked) implementations of the verifier functions. Used to
+  // re-attach the default impl AFTER `mockReset()` wipes it, so tests that
+  // don't override per-call still exercise the real verify-citations path.
+  const realVerifyImpls = jest.requireActual<
+    typeof import("@/ai/flows/verify-citations")
+  >("@/ai/flows/verify-citations");
+
+  // Default stub for `createLocalCardLookup`: empty DB → every cited card
+  // becomes `unverifiable`. Tests that need a populated DB override per-test.
+  // Type-cast matches the factory invocation so beforeEach can re-attach
+  // the same default between tests.
+  const emptyDbStubLookup = (() => async () => ({
+    found: false,
+    dbHasCards: false,
+  })) as typeof realVerifyImpls.createLocalCardLookup;
+
+  beforeEach(() => {
+    // Hard-reset the two functions that tests override via
+    // `mockResolvedValueOnce` / `mockImplementationOnce` so leftover queues
+    // from prior tests do not leak, then re-attach the real impl so the
+    // default path keeps exercising production verify-citations code.
+    jest.mocked(verifyCitations).mockReset();
+    jest
+      .mocked(verifyCitations)
+      .mockImplementation(realVerifyImpls.verifyCitations);
+    jest.mocked(createLocalCardLookup).mockReset();
+    jest.mocked(createLocalCardLookup).mockImplementation(emptyDbStubLookup);
+    // Soft-clear the two functions we never override per-test — preserves
+    // the factory's default impl (`realImpls.extractCitedCards` /
+    // `realImpls.summarizeVerifications`) and clears call history only.
+    jest.mocked(extractCitedCards).mockClear();
+    jest.mocked(summarizeVerifications).mockClear();
+  });
+
+  it("emits a citations event when the verifier saw cited cards (#1535-AC1)", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      {
+        type: "text",
+        value: "Add [[Lightning Bolt]] and [[Totally Made Up Card]].",
+      },
+      { type: "done" },
+    ]);
+
+    // Drive the verifier with deterministic outputs: one verified, one
+    // not-found.
+    jest.mocked(verifyCitations).mockResolvedValueOnce([
+      verification("Lightning Bolt", "verified", {
+        resolved: stubCard({ name: "Lightning Bolt" }),
+      }),
+      verification("Totally Made Up Card", "not-found"),
+    ]);
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const text = await res.text();
+
+    // The citations event is on the wire.
+    expect(text).toContain('"type":"citations"');
+    // Per-message summary counts are present.
+    expect(text).toContain('"total":2');
+    expect(text).toContain('"verified":1');
+    expect(text).toContain('"notFound":1');
+    // Per-entry detail — both names appear and carry the verifier's verdict.
+    expect(text).toContain('"name":"Lightning Bolt"');
+    expect(text).toContain('"name":"Totally Made Up Card"');
+    // The fabricated card is flagged as `not-found`.
+    const notFoundIdx = text.indexOf('"cited":{"name":"Totally Made Up Card"}');
+    const notFoundStatusIdx = text.indexOf('"status":"not-found"', notFoundIdx);
+    expect(notFoundIdx).toBeGreaterThan(-1);
+    expect(notFoundStatusIdx).toBeGreaterThan(notFoundIdx);
+  });
+
+  it("emits a citations event with mismatch corrections (#1535-AC2)", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      { type: "text", value: "Play [[Counterspell]] {U}{U}." },
+      { type: "done" },
+    ]);
+
+    jest.mocked(verifyCitations).mockResolvedValueOnce([
+      verification("Counterspell", "mismatch", {
+        cited: { name: "Counterspell", manaCost: "{U}{U}" },
+        resolved: stubCard({
+          name: "Counterspell",
+          mana_cost: "{U}{U}{U}",
+          cmc: 3,
+          oracle_text: "Counter target spell.",
+        }),
+        corrections: [
+          {
+            field: "manaCost",
+            claimed: "{U}{U}",
+            actual: "{U}{U}{U}",
+          },
+        ],
+      }),
+    ]);
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    const text = await res.text();
+    expect(text).toContain('"type":"citations"');
+    expect(text).toContain('"status":"mismatch"');
+    // Per-field correction surfaces on the wire.
+    expect(text).toContain('"field":"manaCost"');
+    expect(text).toContain('"claimed":"{U}{U}"');
+    expect(text).toContain('"actual":"{U}{U}{U}"');
+    expect(text).toContain('"mismatched":1');
+  });
+
+  it("emits a citations event with every entry unverifiable when the DB is empty (#1535-AC3)", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      { type: "text", value: "Try [[Lightning Bolt]] and [[Counterspell]]." },
+      { type: "done" },
+    ]);
+
+    // The default stub lookup returns `dbHasCards: false`, so the real
+    // `verifyCitations` (not overridden here) marks every cited card as
+    // `unverifiable` — exercising the empty-DB code path end-to-end without
+    // touching IndexedDB.
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    const text = await res.text();
+    expect(text).toContain('"type":"citations"');
+    expect(text).toContain('"total":2');
+    expect(text).toContain('"verified":0');
+    expect(text).toContain('"notFound":0');
+    expect(text).toContain('"unverifiable":2');
+    expect(text).toContain('"status":"unverifiable"');
+  });
+
+  it("does NOT emit a citations event when the message never cites a card", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      { type: "text", value: "Your curve looks balanced overall." },
+      { type: "done" },
+    ]);
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    const text = await res.text();
+    expect(text).not.toContain('"type":"citations"');
+    // Verifier downstream never ran — extraction returned [].
+    expect(jest.mocked(verifyCitations)).not.toHaveBeenCalled();
+  });
+
+  it("runs the verifier AND the grounding guard in parallel (#1535-AC4)", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      // Both a citation AND a numeric contradiction.
+      {
+        type: "text",
+        value: "Play [[Lightning Bolt]] — you have 99 lands in this deck.",
+      },
+      { type: "done" },
+    ]);
+
+    // Slow the verifier deliberately: if the route misused `Promise.all`
+    // and awaited sequentially, the wall-clock cost would visibly equal
+    // the verifier delay plus the (sync) guard. With a real `Promise.all`
+    // the total time stays at ~max(guard, verifier), so the assertion
+    // below (which uses a generous bound) only passes under the correct
+    // shape.
+    jest.mocked(verifyCitations).mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return [
+        verification("Lightning Bolt", "verified", {
+          resolved: stubCard({ name: "Lightning Bolt" }),
+        }),
+      ];
+    });
+
+    const start = Date.now();
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+    const elapsed = Date.now() - start;
+
+    const text = await res.text();
+    // Both events fire on the wire.
+    expect(text).toContain('"type":"grounding"');
+    expect(text).toContain('"type":"citations"');
+    // Generous slack so synthetic CI delays do not flake this assertion.
+    expect(elapsed).toBeLessThan(800);
+  });
+
+  it("emits the citations event BEFORE the done event so the client can flag the message", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      { type: "text", value: "Add [[Lightning Bolt]]." },
+      { type: "done" },
+    ]);
+
+    jest.mocked(verifyCitations).mockResolvedValueOnce([
+      verification("Lightning Bolt", "verified", {
+        resolved: stubCard({ name: "Lightning Bolt" }),
+      }),
+    ]);
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    const text = await res.text();
+    const citationsIdx = text.indexOf('"type":"citations"');
+    const doneIdx = text.indexOf('"type":"done"');
+    expect(citationsIdx).toBeGreaterThan(-1);
+    expect(doneIdx).toBeGreaterThan(-1);
+    expect(citationsIdx).toBeLessThan(doneIdx);
+  });
+
+  it("does NOT break the stream when the verifier throws", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      { type: "text", value: "Add [[Lightning Bolt]]." },
+      { type: "done" },
+    ]);
+
+    jest
+      .mocked(verifyCitations)
+      .mockRejectedValueOnce(new Error("IndexedDB gone"));
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    // Stream completes successfully — verifier failure must NOT cascade.
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('"type":"done"');
+    // No citations event was emitted (verifier threw) and no error event
+    // was emitted at the route level — internal verifier failures are
+    // swallowed per the acceptance criteria; the message goes through
+    // unannotated.
+    expect(text).not.toContain('"type":"citations"');
+    expect(text).not.toContain('"type":"error"');
+  });
+
+  it("carries the per-message summary numbers in the citations event (mixed batch)", async () => {
+    yieldEvents([
+      { type: "provider", value: "openai" },
+      {
+        type: "text",
+        value:
+          "Try [[Lightning Bolt]], [[Counterspell]] {U}{U}, and [[Totally Made Up Card]].",
+      },
+      { type: "done" },
+    ]);
+
+    // Mixed batch: one verified, one mismatch, one not-found.
+    jest.mocked(verifyCitations).mockResolvedValueOnce([
+      verification("Lightning Bolt", "verified", {
+        resolved: stubCard({ name: "Lightning Bolt" }),
+      }),
+      verification("Counterspell", "mismatch", {
+        cited: { name: "Counterspell", manaCost: "{U}{U}" },
+        resolved: stubCard({
+          name: "Counterspell",
+          mana_cost: "{U}{U}{U}",
+          cmc: 3,
+          oracle_text: "Counter target spell.",
+        }),
+        corrections: [
+          {
+            field: "manaCost",
+            claimed: "{U}{U}",
+            actual: "{U}{U}{U}",
+          },
+        ],
+      }),
+      verification("Totally Made Up Card", "not-found"),
+    ]);
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "analyze my deck" }],
+        deckCards,
+        format: "commander",
+      }),
+    );
+
+    const text = await res.text();
+    expect(text).toContain('"type":"citations"');
+    expect(text).toContain('"total":3');
+    expect(text).toContain('"verified":1');
+    expect(text).toContain('"mismatched":1');
+    expect(text).toContain('"notFound":1');
+    expect(text).toContain('"unverifiable":0');
   });
 });
