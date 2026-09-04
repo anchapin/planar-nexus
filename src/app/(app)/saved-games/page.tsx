@@ -1,7 +1,7 @@
 /**
  * Saved Games Browser Page
  * Issue #33: Phase 2.3: Add saved games browser
- * 
+ *
  * Provides UI for browsing, loading, and managing saved games
  */
 
@@ -21,10 +21,16 @@ import {
   Download,
   Upload,
   MoreVertical,
-  Share2
+  Share2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -33,14 +39,14 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
+  SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -53,13 +59,14 @@ import {
   savedGamesManager,
   SavedGameMeta,
   formatSavedAt,
-  getStatusDisplay
+  getStatusDisplay,
 } from "@/lib/saved-games";
 import {
   copyShareableLink,
   exportReplayToFile,
-  canShareViaURL
+  canShareViaURL,
 } from "@/lib/replay-sharing";
+import { decompressReplayJson } from "@/lib/game-state/replay-compression";
 import { useToast } from "@/hooks/use-toast";
 
 const formatDisplayNames: Record<string, string> = {
@@ -86,7 +93,9 @@ export default function SavedGamesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [formatFilter, setFormatFilter] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
-  const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(null);
+  const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(
+    null,
+  );
 
   // Load games on mount
   useEffect(() => {
@@ -99,7 +108,7 @@ export default function SavedGamesPage() {
       const allGames = await savedGamesManager.getAllSavedGames();
       setGames(allGames);
     } catch (error) {
-      console.error('Failed to load saved games:', error);
+      console.error("Failed to load saved games:", error);
     } finally {
       setIsLoading(false);
     }
@@ -111,20 +120,23 @@ export default function SavedGamesPage() {
 
     // Apply search
     if (searchQuery.trim()) {
-      filtered = filtered.filter(g =>
-        g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        g.playerNames.some(p => p.toLowerCase().includes(searchQuery.toLowerCase()))
+      filtered = filtered.filter(
+        (g) =>
+          g.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          g.playerNames.some((p) =>
+            p.toLowerCase().includes(searchQuery.toLowerCase()),
+          ),
       );
     }
 
     // Apply status filter
     if (statusFilter !== "all") {
-      filtered = filtered.filter(g => g.status === statusFilter);
+      filtered = filtered.filter((g) => g.status === statusFilter);
     }
 
     // Apply format filter
     if (formatFilter !== "all") {
-      filtered = filtered.filter(g => g.format === formatFilter);
+      filtered = filtered.filter((g) => g.format === formatFilter);
     }
 
     return filtered;
@@ -132,13 +144,13 @@ export default function SavedGamesPage() {
 
   function handleLoadGame(game: SavedGameMeta) {
     // Store the game ID to load in session storage
-    sessionStorage.setItem('loadGameId', game.id);
+    sessionStorage.setItem("loadGameId", game.id);
     toast({
       title: "Loading Game",
       description: `Loading "${game.name}"...`,
     });
     // Navigate to single player to load the game
-    router.push('/single-player');
+    router.push("/single-player");
   }
 
   async function handleDeleteGame(game: SavedGameMeta) {
@@ -152,7 +164,7 @@ export default function SavedGamesPage() {
         loadGames();
       }
     } catch (error) {
-      console.error('Failed to delete game:', error);
+      console.error("Failed to delete game:", error);
       toast({
         title: "Error",
         description: "Failed to delete game.",
@@ -169,7 +181,7 @@ export default function SavedGamesPage() {
         description: `"${game.name}" has been exported.`,
       });
     } catch (error) {
-      console.error('Failed to export game:', error);
+      console.error("Failed to export game:", error);
       toast({
         title: "Error",
         description: "Failed to export game.",
@@ -200,7 +212,7 @@ export default function SavedGamesPage() {
 
     // Reset input
     if (fileInputRef) {
-      fileInputRef.value = '';
+      fileInputRef.value = "";
     }
   }
 
@@ -229,7 +241,11 @@ export default function SavedGamesPage() {
     }
 
     try {
-      const replay = JSON.parse(payload.replayJson);
+      // Issue #1573 — the payload row stores `replayJson` in the `gzn:`
+      // gzip envelope. Inflate first; legacy uncompressed rows pass
+      // through the marker check unchanged.
+      const replayJson = await decompressReplayJson(payload.replayJson);
+      const replay = JSON.parse(replayJson as string);
 
       // Check if replay can be shared via URL
       if (canShareViaURL(replay)) {
@@ -248,10 +264,14 @@ export default function SavedGamesPage() {
         }
       } else {
         // Fall back to file export
-        exportReplayToFile(replay, `${game.name.replace(/\s+/g, '-')}-replay.json`);
+        exportReplayToFile(
+          replay,
+          `${game.name.replace(/\s+/g, "-")}-replay.json`,
+        );
         toast({
           title: "Replay Exported",
-          description: "Replay file downloaded. It's too large for URL sharing.",
+          description:
+            "Replay file downloaded. It's too large for URL sharing.",
         });
       }
     } catch {
@@ -263,8 +283,8 @@ export default function SavedGamesPage() {
     }
   }
 
-  const manualSaves = games.filter(g => !g.isAutoSave);
-  const autoSaves = games.filter(g => g.isAutoSave);
+  const manualSaves = games.filter((g) => !g.isAutoSave);
+  const autoSaves = games.filter((g) => g.isAutoSave);
 
   return (
     <div className="flex-1 p-4 md:p-6 max-w-6xl mx-auto">
@@ -287,14 +307,14 @@ export default function SavedGamesPage() {
               className="hidden"
               ref={(el) => setFileInputRef(el)}
             />
-            <Button 
-              variant="outline" 
-              onClick={() => fileInputRef?.click()}
-            >
+            <Button variant="outline" onClick={() => fileInputRef?.click()}>
               <Upload className="w-4 h-4 mr-2" />
               Import
             </Button>
-            <Button variant="outline" onClick={() => router.push('/single-player')}>
+            <Button
+              variant="outline"
+              onClick={() => router.push("/single-player")}
+            >
               <Play className="w-4 h-4 mr-2" />
               New Game
             </Button>
@@ -304,9 +324,7 @@ export default function SavedGamesPage() {
 
       <Tabs defaultValue="all" className="space-y-6">
         <TabsList>
-          <TabsTrigger value="all">
-            All Games ({games.length})
-          </TabsTrigger>
+          <TabsTrigger value="all">All Games ({games.length})</TabsTrigger>
           <TabsTrigger value="manual">
             Manual Saves ({manualSaves.length})
           </TabsTrigger>
@@ -332,7 +350,7 @@ export default function SavedGamesPage() {
 
   function renderGameList(gameList: SavedGameMeta[]) {
     const filteredGames = getFilteredGames(gameList);
-    
+
     return (
       <>
         {/* Filters */}
@@ -394,28 +412,49 @@ export default function SavedGamesPage() {
             </div>
 
             {/* Active Filters */}
-            {(searchQuery || statusFilter !== "all" || formatFilter !== "all") && (
+            {(searchQuery ||
+              statusFilter !== "all" ||
+              formatFilter !== "all") && (
               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
                 {searchQuery && (
-                  <Badge variant="secondary" className="cursor-pointer" onClick={() => setSearchQuery("")}>
+                  <Badge
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() => setSearchQuery("")}
+                  >
                     Search: "{searchQuery}" ×
                   </Badge>
                 )}
                 {statusFilter !== "all" && (
-                  <Badge variant="secondary" className="cursor-pointer" onClick={() => setStatusFilter("all")}>
-                    Status: {getStatusDisplay(statusFilter as SavedGameMeta['status'])} ×
+                  <Badge
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() => setStatusFilter("all")}
+                  >
+                    Status:{" "}
+                    {getStatusDisplay(statusFilter as SavedGameMeta["status"])}{" "}
+                    ×
                   </Badge>
                 )}
                 {formatFilter !== "all" && (
-                  <Badge variant="secondary" className="cursor-pointer" onClick={() => setFormatFilter("all")}>
+                  <Badge
+                    variant="secondary"
+                    className="cursor-pointer"
+                    onClick={() => setFormatFilter("all")}
+                  >
                     Format: {formatDisplayNames[formatFilter]} ×
                   </Badge>
                 )}
-                <Button variant="link" size="sm" className="h-auto p-0" onClick={() => {
-                  setSearchQuery("");
-                  setStatusFilter("all");
-                  setFormatFilter("all");
-                }}>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setStatusFilter("all");
+                    setFormatFilter("all");
+                  }}
+                >
                   Clear all
                 </Button>
               </div>
@@ -432,8 +471,7 @@ export default function SavedGamesPage() {
             <CardDescription>
               {filteredGames.length === 0
                 ? "No saved games found."
-                : `${filteredGames.length} game${filteredGames.length !== 1 ? 's' : ''}`
-              }
+                : `${filteredGames.length} game${filteredGames.length !== 1 ? "s" : ""}`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -452,16 +490,22 @@ export default function SavedGamesPage() {
                     : "No games match your filters."}
                 </p>
                 {games.length > 0 && (
-                  <Button variant="outline" onClick={() => {
-                    setSearchQuery("");
-                    setStatusFilter("all");
-                    setFormatFilter("all");
-                  }}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilter("all");
+                      setFormatFilter("all");
+                    }}
+                  >
                     Clear Filters
                   </Button>
                 )}
                 {games.length === 0 && (
-                  <Button onClick={() => router.push('/single-player')} className="ml-2">
+                  <Button
+                    onClick={() => router.push("/single-player")}
+                    className="ml-2"
+                  >
                     Start a Game
                   </Button>
                 )}
@@ -487,7 +531,10 @@ export default function SavedGamesPage() {
                           <div className="font-medium">{game.name}</div>
                           {game.isAutoSave && (
                             <Badge variant="outline" className="mt-1">
-                              Auto-Save {game.autoSaveSlot !== undefined ? game.autoSaveSlot + 1 : ''}
+                              Auto-Save{" "}
+                              {game.autoSaveSlot !== undefined
+                                ? game.autoSaveSlot + 1
+                                : ""}
                             </Badge>
                           )}
                         </TableCell>
@@ -511,11 +558,15 @@ export default function SavedGamesPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={
-                            game.status === 'completed' ? 'default' :
-                            game.status === 'in_progress' ? 'secondary' :
-                            'outline'
-                          }>
+                          <Badge
+                            variant={
+                              game.status === "completed"
+                                ? "default"
+                                : game.status === "in_progress"
+                                  ? "secondary"
+                                  : "outline"
+                            }
+                          >
                             {getStatusDisplay(game.status)}
                           </Badge>
                         </TableCell>
@@ -531,7 +582,7 @@ export default function SavedGamesPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleLoadGame(game)}
-                              disabled={game.status === 'completed'}
+                              disabled={game.status === "completed"}
                             >
                               <Play className="w-4 h-4 mr-1" />
                               Load
@@ -543,17 +594,21 @@ export default function SavedGamesPage() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleExportGame(game)}>
+                                <DropdownMenuItem
+                                  onClick={() => handleExportGame(game)}
+                                >
                                   <Download className="w-4 h-4 mr-2" />
                                   Export
                                 </DropdownMenuItem>
                                 {game.hasReplay && (
-                                  <DropdownMenuItem onClick={() => handleShareReplay(game)}>
+                                  <DropdownMenuItem
+                                    onClick={() => handleShareReplay(game)}
+                                  >
                                     <Share2 className="w-4 h-4 mr-2" />
                                     Share Replay
                                   </DropdownMenuItem>
                                 )}
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   onClick={() => handleDeleteGame(game)}
                                   className="text-destructive"
                                 >

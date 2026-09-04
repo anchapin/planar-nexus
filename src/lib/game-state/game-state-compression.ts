@@ -55,11 +55,49 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 /**
+ * Determine whether an arbitrary stored JSON column holds a
+ * {@link COMPRESSED_MARKER}-enveloped gzip payload.
+ *
+ * Issue #1573: shared by `gameStateJson` and `replayJson` so both columns
+ * use the same self-describing wire format.
+ */
+export function isCompressedJsonEnvelope(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith(COMPRESSED_MARKER);
+}
+
+/**
+ * Compress an arbitrary JSON string into the `gzn:`-prefixed base64/gzip
+ * storage envelope.
+ *
+ * Issue #1423: gzip is performed by the native `CompressionStream("gzip")`
+ * API; the entry point is `async` because the stream is async.
+ */
+export async function compressJsonEnvelope(json: string): Promise<string> {
+  const compressed = await gzipCompress(json);
+  return COMPRESSED_MARKER + bytesToBase64(compressed);
+}
+
+/**
+ * Decompress a `gzn:`-enveloped value back into JSON text.
+ *
+ * Legacy (uncompressed) payloads always begin with `{`, never with the
+ * marker, so they are detected and returned unchanged.
+ */
+export async function decompressJsonEnvelope(value: string): Promise<string> {
+  if (!isCompressedJsonEnvelope(value)) {
+    return value;
+  }
+  const b64 = value.slice(COMPRESSED_MARKER.length);
+  const decompressed = await gzipDecompress(base64ToBytes(b64));
+  return new TextDecoder().decode(decompressed);
+}
+
+/**
  * Determine whether a stored {@code gameStateJson} value holds a
  * gzip-compressed payload.
  */
 export function isCompressedGameState(value: string): boolean {
-  return typeof value === "string" && value.startsWith(COMPRESSED_MARKER);
+  return isCompressedJsonEnvelope(value);
 }
 
 /**
@@ -70,8 +108,7 @@ export function isCompressedGameState(value: string): boolean {
  * API; the entry point is `async` because the stream is async.
  */
 export async function compressGameStateJson(json: string): Promise<string> {
-  const compressed = await gzipCompress(json);
-  return COMPRESSED_MARKER + bytesToBase64(compressed);
+  return compressJsonEnvelope(json);
 }
 
 /**
@@ -85,10 +122,5 @@ export async function compressGameStateJson(json: string): Promise<string> {
  * API; the entry point is `async` because the stream is async.
  */
 export async function decompressGameStateJson(value: string): Promise<string> {
-  if (!isCompressedGameState(value)) {
-    return value;
-  }
-  const b64 = value.slice(COMPRESSED_MARKER.length);
-  const decompressed = await gzipDecompress(base64ToBytes(b64));
-  return new TextDecoder().decode(decompressed);
+  return decompressJsonEnvelope(value);
 }

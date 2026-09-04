@@ -34,6 +34,10 @@ import {
   compressGameStateJson,
   decompressGameStateJson,
 } from "./game-state/game-state-compression";
+import {
+  compressReplayJson,
+  decompressReplayJson,
+} from "./game-state/replay-compression";
 import { serializeReplayJson } from "./saved-game-serialize-bridge";
 
 export interface SavedGame {
@@ -178,6 +182,9 @@ class SavedGamesManager {
    * Issue #1423: `async` because {@link compressGameStateJson} drives the
    * native `CompressionStream` API.
    *
+   * Issue #1573: {@code replayJson} gets the same `gzn:` gzip envelope —
+   * it is the largest column in the record by an order of magnitude.
+   *
    * Issue #1572 — kept for legacy callers / tests that need the
    * monolithic shape. New save paths route through {@link toMetaAndPayload}
    * instead so the list view never sees the heavy columns.
@@ -186,6 +193,7 @@ class SavedGamesManager {
     return {
       ...game,
       gameStateJson: await compressGameStateJson(game.gameStateJson),
+      replayJson: await compressReplayJson(game.replayJson),
       metadata: {},
     };
   }
@@ -199,12 +207,17 @@ class SavedGamesManager {
    *
    * Issue #1423: `async` because {@link decompressGameStateJson} drives the
    * native `DecompressionStream` API.
+   *
+   * Issue #1573: {@code replayJson} is decompressed here too. The marker
+   * check inside {@link decompressReplayJson} means legacy uncompressed
+   * rows (and backup files exported before #1573) are returned as-is.
    */
   private async fromStoredGame(stored: StoredGame): Promise<SavedGame> {
-    const { metadata: _, gameStateJson, ...rest } = stored;
+    const { metadata: _, gameStateJson, replayJson, ...rest } = stored;
     return {
       ...rest,
       gameStateJson: await decompressGameStateJson(gameStateJson),
+      replayJson: await decompressReplayJson(replayJson),
     };
   }
 
@@ -213,11 +226,11 @@ class SavedGamesManager {
    * v3-split IndexedDB stores (issue #1572).
    *
    * `gameStateJson` is gzip-compressed (issue #1020 / #1423) before
-   * landing in the payload row; `replayJson` is taken as-is (already a
-   * string by the time it reaches this seam, courtesy of the off-thread
-   * bridge in #1577). The meta row carries a {@code hasReplay} flag so
-   * the list view can render the share affordance without fetching the
-   * payload bytes.
+   * landing in the payload row; `replayJson` gets the identical `gzn:`
+   * envelope (issue #1573) — it arrives here as a string courtesy of the
+   * off-thread bridge in #1577 and is by far the heaviest column. The
+   * meta row carries a {@code hasReplay} flag so the list view can render
+   * the share affordance without fetching the payload bytes.
    */
   private async toMetaAndPayload(
     game: SavedGame,
@@ -235,12 +248,13 @@ class SavedGamesManager {
       winners: game.winners,
       isAutoSave: game.isAutoSave,
       autoSaveSlot: game.autoSaveSlot,
-      hasReplay: typeof game.replayJson === "string" && game.replayJson.length > 0,
+      hasReplay:
+        typeof game.replayJson === "string" && game.replayJson.length > 0,
     };
     const payload: StoredGamePayload = {
       id: game.id,
       gameStateJson: await compressGameStateJson(game.gameStateJson),
-      replayJson: game.replayJson,
+      replayJson: await compressReplayJson(game.replayJson),
     };
     return { meta, payload };
   }
@@ -410,10 +424,7 @@ class SavedGamesManager {
 
       // Fallback to the legacy store for pre-#1572 databases that
       // haven't migrated yet.
-      const legacy = await indexedDBStorage.get<StoredGame>(
-        "saved-games",
-        id,
-      );
+      const legacy = await indexedDBStorage.get<StoredGame>("saved-games", id);
       return legacy ? await this.fromStoredGame(legacy) : null;
     } catch (error) {
       console.error("Failed to get saved game from IndexedDB:", error);
@@ -434,9 +445,7 @@ class SavedGamesManager {
    * open-saved-game path when the caller already has the meta row and
    * doesn't want to pay the cost of re-projecting.
    */
-  async getSavedGamePayload(
-    id: string,
-  ): Promise<StoredGamePayload | null> {
+  async getSavedGamePayload(id: string): Promise<StoredGamePayload | null> {
     try {
       await this.initialize();
       return await indexedDBStorage.get<StoredGamePayload>(
@@ -444,10 +453,7 @@ class SavedGamesManager {
         id,
       );
     } catch (error) {
-      console.error(
-        "Failed to read saved-game payload from IndexedDB:",
-        error,
-      );
+      console.error("Failed to read saved-game payload from IndexedDB:", error);
       return null;
     }
   }
@@ -661,9 +667,7 @@ class SavedGamesManager {
   /**
    * Filter saved games by status — issue #1572: meta-only.
    */
-  async filterByStatus(
-    status: SavedGame["status"],
-  ): Promise<SavedGameMeta[]> {
+  async filterByStatus(status: SavedGame["status"]): Promise<SavedGameMeta[]> {
     const games = await this.getAllSavedGames();
     return games.filter((g) => g.status === status);
   }
@@ -709,6 +713,10 @@ class SavedGamesManager {
   /**
    * Load replay from saved game. Issue #1572 — fetches ONLY the payload
    * row.
+   *
+   * Issue #1573 — the payload row holds the `gzn:` gzip envelope, so the
+   * bytes are inflated before parsing. Legacy uncompressed rows skip the
+   * inflate (marker check) and parse directly.
    */
   async loadReplay(id: string): Promise<Replay | null> {
     const payload = await this.getSavedGamePayload(id);
@@ -717,6 +725,8 @@ class SavedGamesManager {
       const legacy = await this.getSavedGame(id);
       if (!legacy?.replayJson) return null;
       try {
+        // `getSavedGame` already routed through `fromStoredGame`, which
+        // decompresses — parse directly.
         return JSON.parse(legacy.replayJson, mapReviver);
       } catch (e) {
         console.error("Failed to parse replay:", e);
@@ -725,7 +735,8 @@ class SavedGamesManager {
     }
 
     try {
-      return JSON.parse(payload.replayJson, mapReviver);
+      const json = await decompressReplayJson(payload.replayJson);
+      return JSON.parse(json as string, mapReviver);
     } catch (e) {
       console.error("Failed to parse replay:", e);
       return null;
