@@ -9,6 +9,7 @@
 
 import { useCallback } from "react";
 import { DraftPackView } from "./draft-pack-view";
+import { appendPickRecord } from "@/lib/limited/draft-log";
 import type {
   DraftSession,
   DraftPack,
@@ -77,6 +78,14 @@ export function DraftPicker({
  *
  * DRFT-04: Add picked card to pool, advance pick index
  *
+ * Issue #1558: also appends a {@link PickRecord} to `session.pickLog` so
+ * the per-pick audit trail is captured in lockstep with the pool/pack
+ * mutation. The `appendPickRecord` helper is idempotent on duplicate
+ * `cardId`s, so the "Don't allow picking the same card twice" guard
+ * above means a re-pick call is a true no-op (no log entry, no state
+ * change). `pickNumber` / `packNumber` / `packPickIndex` reflect the
+ * cursors at the moment of the pick.
+ *
  * @param session - Current draft session
  * @param cardId - ID of card to pick
  * @returns Updated session with card added to pool
@@ -137,8 +146,20 @@ export function pickCard(
     i === session.currentPackIndex ? updatedPack : p
   );
 
+  // Build the post-pick session, then append the per-pick audit record
+  // (issue #1558). Order matters: the PickRecord captures the
+  // pre-advance pack state, so we must derive it from the *current*
+  // session (before the cursors roll forward) — which is what
+  // `appendPickRecord` does. We then merge the pool/pack/cursor changes
+  // on top so the result is the union of the two transforms.
+  const sessionWithLog = appendPickRecord(session, cardId, {
+    id: card.id,
+    name: card.name,
+    rarity: card.rarity,
+  });
+
   return {
-    ...session,
+    ...sessionWithLog,
     pool: [...session.pool, poolCard],
     packs: updatedPacks,
     currentPackIndex: nextPackIndex,

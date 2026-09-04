@@ -12,7 +12,7 @@
 
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,13 +21,36 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   getDraftSession,
   saveDraftSession,
   countPoolByColor,
   completeSession,
 } from "@/lib/limited/pool-storage";
 import { isDraftComplete } from "@/lib/limited/draft-generator";
-import type { DraftSession, PoolCard } from "@/lib/limited/types";
+import {
+  appendPickRecord,
+  buildDraftLogCsvFilename,
+  buildDraftLogJsonExport,
+  normalizeDraftPickLog,
+  serializeDraftLogCsv,
+  withNormalizedPickLog,
+  DRAFT_LOG_CSV_COLUMNS,
+} from "@/lib/limited/draft-log";
+import type {
+  DraftSession,
+  PickRecord,
+  PoolCard,
+} from "@/lib/limited/types";
+import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import {
   CheckCircle,
   Package,
@@ -36,6 +59,8 @@ import {
   Eye,
   Sparkles,
   ArrowRight,
+  Download,
+  ClipboardCopy,
   Swords,
 } from "lucide-react";
 import type { DraftPoolViewProps } from "@/components/draft-pool-view";
@@ -81,6 +106,8 @@ function DraftCompletePageContent() {
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
+  const { toast } = useToast();
+
   // Load session
   useEffect(() => {
     async function loadSession() {
@@ -115,14 +142,21 @@ function DraftCompletePageContent() {
           return;
         }
 
+        // Issue #1558: backfill `pickLog` for sessions persisted before
+        // the field existed. The IndexedDB schema is unchanged so legacy
+        // rows come back without the array; `withNormalizedPickLog` is a
+        // defensive guarantee the downstream export pipeline never sees
+        // `undefined`.
+        const normalized = withNormalizedPickLog(loadedSession);
+
         // Update session status to completed if not already
-        if (loadedSession.status !== "completed") {
-          loadedSession.status = "completed";
-          await saveDraftSession(loadedSession);
+        if (normalized.status !== "completed") {
+          normalized.status = "completed";
+          await saveDraftSession(normalized);
           await completeSession(sessionId);
         }
 
-        setSession(loadedSession);
+        setSession(normalized);
       } catch (err) {
         console.error("Failed to load session:", err);
         setError(err instanceof Error ? err.message : "Failed to load session");
@@ -146,10 +180,111 @@ function DraftCompletePageContent() {
     router.push("/set-browser");
   }, [router]);
 
+  // Export the per-pick log as a CSV file download (issue #1558).
+  // The download runs entirely client-side via an in-memory blob URL —
+  // no new IO surface, no extra permissions.
+  const handleExportCsv = useCallback(() => {
+    if (!session) return;
+    const csv = serializeDraftLogCsv(session);
+    const filename = buildDraftLogCsvFilename(session);
+    try {
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      // Append so Firefox actually triggers the download (it ignores
+      // detached anchors in some versions).
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // Free the object URL on the next tick — revoking synchronously
+      // can race the browser's download dispatch.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      toast({
+        title: "Draft log exported",
+        description: `${filename} (${normalizeDraftPickLog(session.pickLog).length} picks)`,
+      });
+    } catch (err) {
+      console.error("Failed to export draft log CSV:", err);
+      toast({
+        title: "Export failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  }, [session, toast]);
+
+  // Copy the draft log as JSON to the clipboard (issue #1558).
+  // Falls back to a hidden-textarea + execCommand path when the async
+  // Clipboard API isn't supported (e.g. insecure-context HTTP, older
+  // browsers). The legacy path keeps the button functional even when the
+  // modern API throws.
+  const handleCopyJson = useCallback(async () => {
+    if (!session) return;
+    const payload = buildDraftLogJsonExport(session);
+    const text = JSON.stringify(payload, null, 2);
+
+    const tryClipboardWrite = async (): Promise<boolean> => {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        try {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    };
+
+    const tryFallback = (): boolean => {
+      if (typeof document === "undefined") return false;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        ta.style.pointerEvents = "none";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+
+    const ok = (await tryClipboardWrite()) || tryFallback();
+    if (ok) {
+      toast({
+        title: "Draft log copied to clipboard",
+        description: `${payload.pickLog.length} picks, schema ${payload.$schema}`,
+      });
+    } else {
+      toast({
+        title: "Copy failed",
+        description: "Clipboard access denied",
+        variant: "destructive",
+      });
+    }
+  }, [session, toast]);
+
   // Calculate pool statistics
   const poolStats = session
     ? calculatePoolStats(session.pool)
     : null;
+
+  // Pick log grouped by pack for the per-pick table (issue #1558).
+  // Memoized so re-renders triggered by the toast don't recompute the
+  // grouping.
+  const pickLog = session ? normalizeDraftPickLog(session.pickLog) : [];
+  const picksByPack = useMemo(() => groupPicksByPack(pickLog), [pickLog]);
 
   // Loading state
   if (isLoading) {
@@ -330,6 +465,114 @@ function DraftCompletePageContent() {
             </CardContent>
           </Card>
 
+          {/* Per-pick log + export (issue #1558) */}
+          <Card data-testid="draft-log-card">
+            <CardHeader>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle>Draft Log</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Per-pick audit trail — what you picked, what you
+                    passed on, and when.{" "}
+                    {pickLog.length > 0
+                      ? `${pickLog.length} pick${pickLog.length === 1 ? "" : "s"} captured.`
+                      : "No per-pick history (legacy session)."}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportCsv}
+                    data-testid="draft-log-export-csv"
+                    disabled={pickLog.length === 0}
+                    aria-label="Export draft log as CSV"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyJson}
+                    data-testid="draft-log-copy-json"
+                    aria-label="Copy draft log as JSON to clipboard"
+                  >
+                    <ClipboardCopy className="h-4 w-4 mr-2" />
+                    Copy as JSON
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {pickLog.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  This session was started before per-pick logging shipped,
+                  so no audit trail is available. The final pool above is
+                  still complete.
+                </p>
+              ) : (
+                <ScrollArea className="max-h-[420px] pr-4">
+                  <div className="space-y-6">
+                    {picksByPack.map(({ packNumber, picks }) => (
+                      <section
+                        key={packNumber}
+                        aria-label={`Pack ${packNumber + 1} picks`}
+                        data-testid={`draft-log-pack-${packNumber}`}
+                      >
+                        <header className="mb-2 flex items-center justify-between">
+                          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                            Pack {packNumber + 1}
+                          </h3>
+                          <Badge variant="secondary">
+                            {picks.length} pick{picks.length === 1 ? "" : "s"}
+                          </Badge>
+                        </header>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-16">Pick</TableHead>
+                              <TableHead>Card</TableHead>
+                              <TableHead className="w-24">Rarity</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {picks.map((record) => (
+                              <TableRow
+                                key={`${record.packNumber}-${record.packPickIndex}-${record.cardId}`}
+                                data-testid={`draft-log-row-${record.pickNumber}`}
+                              >
+                                <TableCell className="font-mono text-sm">
+                                  #{record.pickNumber}
+                                </TableCell>
+                                <TableCell>
+                                  <span className="font-medium">
+                                    {record.cardName}
+                                  </span>
+                                  <span className="ml-2 text-xs text-muted-foreground font-mono">
+                                    {record.cardId}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <RarityBadge rarity={record.rarity} />
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </section>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+              <p className="mt-3 text-xs text-muted-foreground">
+                CSV columns: {DRAFT_LOG_CSV_COLUMNS.join(", ")}. JSON export
+                uses schema{" "}
+                <code className="font-mono">planar-nexus/draft-log/v1</code>.
+              </p>
+            </CardContent>
+          </Card>
+
           {/* Tips */}
           <Card className="bg-muted/50">
             <CardContent className="pt-6">
@@ -378,6 +621,58 @@ function Loader2({ className }: { className?: string }) {
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Group the per-pick log by pack number for the Draft Complete page table.
+ * Packs are returned in ascending `packNumber` order; picks inside each
+ * pack are returned in ascending `packPickIndex` order (which equals
+ * ascending `pickNumber` for an in-order draft).
+ */
+function groupPicksByPack(
+  pickLog: PickRecord[],
+): Array<{ packNumber: number; picks: PickRecord[] }> {
+  const buckets = new Map<number, PickRecord[]>();
+  for (const record of pickLog) {
+    const list = buckets.get(record.packNumber) ?? [];
+    list.push(record);
+    buckets.set(record.packNumber, list);
+  }
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([packNumber, picks]) => ({
+      packNumber,
+      picks: [...picks].sort((a, b) => a.pickNumber - b.pickNumber),
+    }));
+}
+
+/**
+ * Map a persisted `PickRecord.rarity` string to a colored chip. We
+ * deliberately render strings that aren't members of the canonical
+ * `Rarity` set verbatim — legacy rows and fixture data can carry
+ * `"L"`, `"basic"`, etc., and silently rewriting them would be a
+ * regression. The CSV export already preserves them.
+ */
+function RarityBadge({ rarity }: { rarity: string }) {
+  const tone =
+    rarity === "mythic"
+      ? "bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-500/30"
+      : rarity === "rare"
+        ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border-yellow-500/30"
+        : rarity === "uncommon"
+          ? "bg-slate-400/20 text-slate-700 dark:text-slate-300 border-slate-400/30"
+          : rarity === "common"
+            ? "bg-stone-500/10 text-stone-700 dark:text-stone-300 border-stone-500/30"
+            : "bg-muted text-muted-foreground border-border";
+  return (
+    <Badge
+      variant="outline"
+      className={cn("uppercase text-xs font-mono", tone)}
+      aria-label={`Rarity ${rarity || "unknown"}`}
+    >
+      {rarity || "—"}
+    </Badge>
+  );
+}
 
 interface PoolStats {
   colorDistribution: Record<string, number>;
