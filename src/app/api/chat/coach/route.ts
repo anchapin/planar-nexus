@@ -21,6 +21,12 @@ import {
   type EvidenceLedger,
 } from "@/ai/flows/coach-evidence-ledger";
 import { runGroundingGuard } from "@/ai/flows/coach-grounding-guard";
+import {
+  createLocalCardLookup,
+  extractCitedCards,
+  summarizeVerifications,
+  verifyCitations,
+} from "@/ai/flows/verify-citations";
 import { normalizeDifficultyLevel } from "@/ai/ai-difficulty";
 import { getProviderFailoverChain } from "@/ai/providers/factory";
 import { sanitizeUserInput } from "@/ai/prompt-security";
@@ -334,28 +340,70 @@ export async function POST(request: NextRequest) {
      * Progressive rendering is preserved end-to-end: the client still sees
      * every `text` event as soon as it arrives. The guard runs ONCE, on the
      * completed message, and its output is a single deterministic event.
+     *
+     * Issue #1535: local card-citation verifier (`verify-citations.ts`).
+     *
+     * Runs in PARALLEL with the grounding guard via `Promise.all` so the
+     * completed-message verification wall-clock time stays at one
+     * `max(guard, verifier)` rather than `guard + verifier`. The verifier
+     * resolves every cited card name against the user's local card database
+     * (no network) and produces one optional `citations` event carrying a
+     * per-message summary (`total` / `verified` / `mismatched` / `notFound`
+     * / `unverifiable`) AND the full per-citation entries so the client can
+     * render the same `"7/8 cited cards verified"` indicator the heuristic
+     * deck-review flow already exposes. Like `grounding`, the `citations`
+     * event only fires when there is at least one citation to report — a
+     * coach turn that never names a card carries no extra event on the wire.
      */
     async function* withGroundingGuard(
       upstream: AsyncIterable<CoachStreamEvent>,
     ): AsyncGenerator<CoachStreamEvent> {
       let buffered = "";
       let sawDone = false;
+      // Issue #1535: a single resolver instance per request so the cached
+      // database-population probe runs once even if the verifier is
+      // invoked again (e.g. because grounding triggered a re-run after a
+      // recovery). The lookup is defensive: any IndexedDB failure collapses
+      // to `{ found: false, dbHasCards: false }`, degrading all
+      // citations to `unverifiable` — the message still goes through.
+      const citationLookup = createLocalCardLookup();
       for await (const event of upstream) {
         if (event.type === "text") {
           buffered += event.value;
         }
         if (event.type === "done") {
           sawDone = true;
-          // Run the deterministic guard on the completed message. Cheap, no
-          // LLM call. Only emit a `grounding` event when the guard flags
-          // failures — fully-grounded messages get no extra event so the
-          // happy path stays unchanged.
+          // Run BOTH checks in parallel on the completed message. The
+          // grounding guard is synchronous so we wrap it in a resolved
+          // promise; the verifier is a Promise.all of an extraction pass
+          // and a per-card lookup. Both pass through the same error fence
+          // — a failure in either MUST NOT break the stream.
           try {
-            const verdict = runGroundingGuard({
-              message: buffered,
-              ledger: evidenceLedger,
-              difficulty: tier,
-            });
+            const [verdict, citations] = await Promise.all([
+              Promise.resolve(
+                runGroundingGuard({
+                  message: buffered,
+                  ledger: evidenceLedger,
+                  difficulty: tier,
+                }),
+              ),
+              (async () => {
+                const cited = extractCitedCards(buffered);
+                if (cited.length === 0) return null;
+                const verifications = await verifyCitations(
+                  cited,
+                  citationLookup,
+                );
+                return {
+                  summary: summarizeVerifications(verifications),
+                  entries: verifications,
+                };
+              })(),
+            ]);
+
+            // Grounding event: only emitted when the guard flagged failures,
+            // preserving the happy path (a fully-grounded message carries no
+            // extra event).
             if (verdict.lowConfidence) {
               yield {
                 type: "grounding",
@@ -367,11 +415,27 @@ export async function POST(request: NextRequest) {
                 ),
               };
             }
+
+            // Citations event (#1535): only emitted when the verifier saw at
+            // least one cited card in the buffered message. Carries both the
+            // headline summary (used by the client's "N/M verified"
+            // indicator) and the per-citation entries (used for per-card
+            // drill-downs). Even when the local DB is empty every entry is
+            // reported as `unverifiable` and the event still fires so the
+            // UI can distinguish "no citations" from "unverifiable".
+            if (citations) {
+              yield {
+                type: "citations",
+                summary: citations.summary,
+                entries: citations.entries,
+              };
+            }
           } catch (error) {
-            // The guard must never break a successful stream. Log and skip
-            // emitting the grounding event — the message goes through as
-            // unannotated assistant text, which is the safe fallback.
-            console.error("Grounding guard failed:", error);
+            // The verifier + grounding run must never break a successful
+            // stream. Log and emit neither extra event — the message goes
+            // through as unannotated assistant text, which is the safe
+            // fallback.
+            console.error("Post-generation verification failed:", error);
           }
         }
         yield event;

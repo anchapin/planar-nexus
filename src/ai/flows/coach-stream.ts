@@ -34,6 +34,10 @@ import {
   type ProviderFailureReason,
   type ProviderHealthTracker,
 } from "@/ai/providers/provider-health";
+import type {
+  CitationSummary,
+  CitationVerification,
+} from "@/ai/flows/verify-citations";
 
 /** A single message in the coach conversation. */
 export interface CoachStreamMessage {
@@ -74,6 +78,18 @@ export type CoachMemorySummaryPayload = Record<string, unknown>;
  * delta and before `done`, when the post-generation guard flags the
  * completed message. The client appends the caveat to the assistant message
  * and sets `lowConfidence` / `needsReview` on the persisted record.
+ *
+ * Issue #1535 adds the `citations` event: emitted at most ONCE, after the
+ * grounding event (and before `done`), when the local card-citation verifier
+ * ran on the completed message. Carries a per-message summary
+ * (`total` / `verified` / `mismatched` / `notFound` / `unverifiable`) AND the
+ * full per-citation entries so the client can render both the headline
+ * `"7/8 cited cards verified"` indicator and per-card detail for any
+ * flagged / corrected entries.
+ *
+ * Like `grounding`, `citations` is OPTIONAL — the route only emits it when
+ * the verifier saw at least one cited card in the buffered message (so a
+ * coach turn that never mentions a card carries no extra event on the wire).
  */
 export type CoachStreamEvent =
   | { type: "provider"; value: string }
@@ -92,6 +108,19 @@ export type CoachStreamEvent =
       needsReview: boolean;
       caveat: string;
       failures: string[];
+    }
+  | {
+      /**
+       * Issue #1535: local card-citation verifier summary. Carries the
+       * aggregate counts (`summary`) the client uses for the headline
+       * indicator AND the per-citation entries so a UI can drill into the
+       * specific card(s) that failed verification. Emitted at most once per
+       * coach turn, after `grounding` (when grounded fires) and before
+       * `done`.
+       */
+      type: "citations";
+      summary: CitationSummary;
+      entries: CitationVerification[];
     }
   | {
       type: "summary";
