@@ -205,6 +205,7 @@ git checkout -b fix/issue-123-short-description
 ```
 
 **Branch naming conventions**:
+
 - `feature/description` - New features
 - `fix/description` - Bug fixes
 - `docs/description` - Documentation changes
@@ -315,7 +316,8 @@ single most important hardening layer. A regression that injects script
 into card oracle text, AI coach responses, peer chat, or replay-viewer
 content becomes immediately exploitable if the CSP is permissive.
 
-The CSP is governed by **issue #1273** and follows three principles:
+The CSP is governed by **issue #1273** and **issue #1584**, and follows
+three principles:
 
 1. **Single source of truth.** The allow-list of external hosts lives in
    [`src/lib/security/csp-allowlist.ts`](../src/lib/security/csp-allowlist.ts).
@@ -323,12 +325,16 @@ The CSP is governed by **issue #1273** and follows three principles:
    Next.js Image Optimizer `remotePatterns`) consume that module. The
    regression test `tests/csp-audit.test.ts` parses the runtime CSP,
    asserts it equals the canonical `TAURI_CSP` string byte-for-byte, and
-   confirms every host from `REMOTE_IMAGE_HOSTS`,
-   `REMOTE_FONT_HOSTS`, and `REMOTE_CONNECT_HOSTS` is reflected in the
-   corresponding CSP directive.
-2. **No wildcards.** `img-src` and `font-src` list every hostname
-   individually; `connect-src` lists the PeerJS broker explicitly and
-   uses `https:` as a scheme-wide fallback for the AI endpoints. The
+   confirms every host from `REMOTE_IMAGE_HOSTS`, `REMOTE_FONT_HOSTS`,
+   and `REMOTE_CONNECT_HOSTS` is reflected in the corresponding CSP
+   directive, and that `connect-src` carries no bare scheme wildcard.
+2. **No wildcards.** `img-src`, `font-src`, and `connect-src` list every
+   hostname individually. The `connect-src` directive is the explicit
+   union of `'self'`, every entry in `REMOTE_CONNECT_HOSTS` rendered as
+   `https://hostname`, and the PeerJS broker pattern
+   `wss://*.peerjs.com` (carried by `REMOTE_PEERJS_BROKER_PATTERN`).
+   Per-host enumeration closes the data-exfiltration channel that a
+   bare `https:` fallback would leave open (issue #1584). The
    `script-src` directive forbids both `'unsafe-inline'` and the raw
    `'unsafe-eval'` (only `'wasm-unsafe-eval'` is enabled for the
    offline-ML WASM backend).
@@ -337,7 +343,10 @@ The CSP is governed by **issue #1273** and follows three principles:
    `<style>` tags at runtime. Removing it requires a nonce-based
    strategy that is not yet supported upstream
    ([vercel/next.js#47822](https://github.com/vercel/next.js/issues/47822)).
-   This is the only deliberate relaxation of the strict policy.
+   This is the only deliberate relaxation of the strict policy. The
+   `wss://*.peerjs.com` source in `connect-src` is documented in
+   `src/lib/security/csp-allowlist.ts` as the PeerJS broker fleet that
+   rotates geographically at runtime.
 
 #### Adding a new external host
 
@@ -393,6 +402,7 @@ npm test -- --testPathPattern="audit"
 - Export types from dedicated type files when possible
 
 **Good**:
+
 ```typescript
 interface Card {
   name: string;
@@ -406,6 +416,7 @@ function getCardByName(name: string): Card | undefined {
 ```
 
 **Bad**:
+
 ```typescript
 function getCardByName(name: any): any {
   // Implementation
@@ -426,9 +437,9 @@ interface CardSearchProps {
 
 export function CardSearch({ format, onCardSelect }: CardSearchProps) {
   const [query, setQuery] = useState('');
-  
+
   // Component logic
-  
+
   return (
     <div className="card-search">
       {/* JSX */}
@@ -468,9 +479,9 @@ The project uses ESLint with the following configuration:
 export default [
   {
     rules: {
-      'no-unused-vars': 'warn',
-      'no-console': 'warn',
-      '@typescript-eslint/no-explicit-any': 'error',
+      "no-unused-vars": "warn",
+      "no-console": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
 ];
@@ -514,19 +525,19 @@ React Testing Library:
 
 ```typescript
 // src/ai/__tests__/archetype-detector.test.ts
-import { detectArchetype } from '../archetype-detector';
+import { detectArchetype } from "../archetype-detector";
 
-describe('detectArchetype', () => {
-  it('should detect Burn archetype', () => {
+describe("detectArchetype", () => {
+  it("should detect Burn archetype", () => {
     const deck = [
-      { name: 'Lightning Bolt', count: 4 },
-      { name: 'Goblin Guide', count: 4 },
+      { name: "Lightning Bolt", count: 4 },
+      { name: "Goblin Guide", count: 4 },
       // ... more cards
     ];
 
     const result = detectArchetype(deck);
 
-    expect(result.primary).toBe('Burn');
+    expect(result.primary).toBe("Burn");
     expect(result.confidence).toBeGreaterThan(0.7);
   });
 });
@@ -557,17 +568,18 @@ E2E tests are written with Playwright and live in `e2e/`:
 
 ```typescript
 // e2e/deck-builder.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test('should create a new deck', async ({ page }) => {
-  await page.goto('/deck-builder');
+test("should create a new deck", async ({ page }) => {
+  await page.goto("/deck-builder");
 
   await page.click('[data-testid="new-deck"]');
-  await page.fill('[data-testid="deck-name"]', 'Test Deck');
+  await page.fill('[data-testid="deck-name"]', "Test Deck");
   await page.click('[data-testid="create-deck"]');
 
-  await expect(page.locator('[data-testid="deck-name"]'))
-    .toHaveText('Test Deck');
+  await expect(page.locator('[data-testid="deck-name"]')).toHaveText(
+    "Test Deck",
+  );
 });
 ```
 
@@ -590,12 +602,12 @@ branches). The CI-enforced floor lives in `jest.config.js` →
 coverage so the gate catches regressions without being flaky; it is raised
 toward 70% as coverage improves (tracked in issue #922).
 
-| Metric      | Target | CI floor |
-| ----------- | ------ | -------- |
-| Lines       | 70%    | 29%      |
-| Functions   | 70%    | 23%      |
-| Statements  | 70%    | 29%      |
-| Branches    | 60%    | 22%      |
+| Metric     | Target | CI floor |
+| ---------- | ------ | -------- |
+| Lines      | 70%    | 29%      |
+| Functions  | 70%    | 23%      |
+| Statements | 70%    | 29%      |
+| Branches   | 60%    | 22%      |
 
 > New code should not lower overall coverage. Run `npm run test:coverage`
 > locally before opening a PR. If your change drops a metric below the floor,
@@ -685,17 +697,17 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 ### Types
 
-| Type | Description |
-|------|-------------|
-| `feat` | A new feature |
-| `fix` | A bug fix |
-| `docs` | Documentation changes |
-| `style` | Code style changes (formatting, etc.) |
-| `refactor` | Code refactoring (no functional change) |
-| `test` | Adding or updating tests |
-| `chore` | Maintenance tasks (dependencies, config, etc.) |
-| `perf` | Performance improvements |
-| `ci` | CI/CD configuration changes |
+| Type       | Description                                    |
+| ---------- | ---------------------------------------------- |
+| `feat`     | A new feature                                  |
+| `fix`      | A bug fix                                      |
+| `docs`     | Documentation changes                          |
+| `style`    | Code style changes (formatting, etc.)          |
+| `refactor` | Code refactoring (no functional change)        |
+| `test`     | Adding or updating tests                       |
+| `chore`    | Maintenance tasks (dependencies, config, etc.) |
+| `perf`     | Performance improvements                       |
+| `ci`       | CI/CD configuration changes                    |
 
 ### Examples
 
@@ -744,7 +756,7 @@ The scope is optional and indicates the section of the codebase:
 ```typescript
 /**
  * Detects the primary archetype of a deck.
- * 
+ *
  * @param deck - Array of cards in the deck
  * @returns Archetype detection result with confidence score
  */
