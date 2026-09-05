@@ -41,6 +41,7 @@ import { DeckList } from "./_components/deck-list";
 import { SideboardList } from "./_components/sideboard-list";
 import { ImportExportControls } from "./_components/import-export-controls";
 import { useDeckBuilderShortcuts } from "./_lib/use-deck-builder-shortcuts";
+import { useDeckBuilderDragDrop } from "./_lib/use-deck-builder-drag-drop";
 import { BannedCardAlternatives } from "./_components/banned-card-alternatives";
 import {
   Select,
@@ -131,6 +132,12 @@ export default function DeckBuilderPage() {
   // messages so toasts/badges stay consistent with the format selector.
   const formatLabel = getFormatDisplayName(format);
   const legalitySummary = useFormatLegalityCheck(deck, format, formatLabel);
+  // Whether the active format supports a sideboard (Modern/Standard/etc).
+  // The flag drives the Sideboard tab visibility, the sideboard-array
+  // round-trip and the JSON export. Computed up-front so the drag-and-drop
+  // hook (mounted above) can read it before the sideboard handlers.
+  const supportsSideboard = formatUsesSideboard(format);
+  const sideboardMaxSize = getSideboardSize(format);
   // Standard rotation awareness: when editing a Standard ("constructed-core")
   // deck, flag cards whose set has rotated out of legality. Surfaces warnings
   // from validateStandardRotation so users can swap rotated cards. See
@@ -191,8 +198,32 @@ export default function DeckBuilderPage() {
   }, [deck, sideboard, deckName, format, activeDeckId, savedDecks]);
 
   // Keyboard shortcuts
+  //
+  // The drag-and-drop hook owns a slice of the keydown surface (Escape cancels
+  // a carry; Enter/Space drops; Arrow keys cycle targets; `M` picks up the
+  // focused card). We mount it FIRST in the handler chain so its decisions
+  // win over the page-level dialog / save handlers. The hook returns `true`
+  // from `handleKeyDown` when it consumed the event; in that case we skip
+  // the page-level branches to avoid double-handling (e.g. Escape cancelling
+  // a carry AND closing the import dialog in the same keystroke).
+  const dragDrop = useDeckBuilderDragDrop({
+    supportsSideboard,
+    onDrop: ({ card, copies, target }) => {
+      if (target === "sideboard") {
+        for (let i = 0; i < copies; i++) addCardToSideboard(card);
+      } else {
+        for (let i = 0; i < copies; i++) addCardToDeck(card);
+      }
+    },
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Drag-and-drop flow takes precedence. It returns `true` when it
+      // consumed the event so we skip the dialog / save branches below.
+      if (dragDrop.handleKeyDown(e)) {
+        return;
+      }
       // Ctrl+S or Cmd+S to save
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
@@ -203,7 +234,9 @@ export default function DeckBuilderPage() {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
-      // Escape to close dialogs (handled by Dialog component, but we track state)
+      // Escape to close dialogs (handled by Dialog component, but we track state).
+      // The drag-and-drop hook already consumed Escape for carry-cancellation
+      // when applicable, so this branch only fires when no carry is active.
       else if (e.key === "Escape") {
         setIsImportDialogOpen(false);
       }
@@ -211,7 +244,7 @@ export default function DeckBuilderPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []); // Empty deps - handlers are stable
+  }, [dragDrop]); // dragDrop.handleKeyDown is stable across renders; effect re-arms only if the hook instance changes
 
   const handleDeckChange = useCallback(
     (updater: (prevDeck: DeckCard[]) => DeckCard[]) => {
@@ -342,12 +375,6 @@ export default function DeckBuilderPage() {
     },
     [removeCardFromDeck, handleDeckChange],
   );
-
-  // Whether the active format supports a sideboard (Modern/Standard/etc).
-  // The flag drives the Sideboard tab visibility, the sideboard-array
-  // round-trip and the JSON export.
-  const supportsSideboard = formatUsesSideboard(format);
-  const sideboardMaxSize = getSideboardSize(format);
 
   /**
    * Increments one copy of a card in the sideboard, enforcing both the
@@ -631,6 +658,21 @@ export default function DeckBuilderPage() {
   return (
     <SynergyProvider deck={deck}>
       <div className="flex h-full min-h-svh w-full flex-col p-4 md:p-6">
+        {/* Live region for drag-and-drop announcements. WAI-ARIA Authoring
+            Practices "Drag-and-Drop" pattern uses a live region (instead of
+            the deprecated aria-grabbed / aria-dropeffect) to announce carry
+            state transitions to screen readers. Polite so it does not
+            interrupt other announcements (issue #1545). */}
+        <div
+          id="deck-builder-drag-announcement"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+          data-testid="deck-builder-drag-announcement"
+        >
+          {dragDrop.announcement}
+        </div>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
             <h1 className="font-headline text-3xl font-bold whitespace-nowrap">
@@ -707,6 +749,8 @@ export default function DeckBuilderPage() {
                   commanderColorIdentity={commanderColorIdentity}
                   format={format}
                   formatFilter={formatFilter}
+                  sourceDragHandlers={dragDrop.sourceDragHandlers}
+                  carriedCardId={dragDrop.carriedCard?.id ?? null}
                 />
               </Suspense>
             </ComponentErrorBoundary>
@@ -765,6 +809,11 @@ export default function DeckBuilderPage() {
                     onAddCard={addCardToDeck}
                     commanderColorIdentity={commanderColorIdentity}
                     cardLegality={legalitySummary.cards}
+                    dropHandlers={dragDrop.targetDropHandlers}
+                    isDropActive={
+                      dragDrop.isCarrying && dragDrop.target === "mainboard"
+                    }
+                    dropTarget="mainboard"
                   />
                 </ComponentErrorBoundary>
               </TabsContent>
@@ -803,6 +852,10 @@ export default function DeckBuilderPage() {
                       maxSize={sideboardMaxSize}
                       onRemoveCard={removeCardFromSideboard}
                       onAddCard={addCardToSideboard}
+                      dropHandlers={dragDrop.targetDropHandlers}
+                      isDropActive={
+                        dragDrop.isCarrying && dragDrop.target === "sideboard"
+                      }
                     />
                   </ComponentErrorBoundary>
                 </TabsContent>
