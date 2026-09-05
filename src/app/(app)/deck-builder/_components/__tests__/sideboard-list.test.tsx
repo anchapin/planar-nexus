@@ -16,8 +16,10 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/jest-globals";
 
 jest.mock("@/components/ui/card", () => ({
-  Card: ({ children, className }: any) => (
-    <div className={className}>{children}</div>
+  Card: ({ children, className, ...props }: any) => (
+    <div className={className} {...props}>
+      {children}
+    </div>
   ),
   CardHeader: ({ children }: any) => <div>{children}</div>,
   CardDescription: ({ children }: any) => <div>{children}</div>,
@@ -78,6 +80,8 @@ const renderList = (
     maxSize?: number;
     onRemoveCard?: (cardId: string) => void;
     onAddCard?: (card: DeckCard) => void;
+    dropHandlers?: any;
+    isDropActive?: boolean;
   } = {},
 ) =>
   render(
@@ -86,6 +90,8 @@ const renderList = (
       maxSize={overrides.maxSize ?? 15}
       onRemoveCard={overrides.onRemoveCard ?? jest.fn()}
       onAddCard={overrides.onAddCard ?? jest.fn()}
+      dropHandlers={overrides.dropHandlers}
+      isDropActive={overrides.isDropActive}
     />,
   );
 
@@ -216,5 +222,39 @@ describe("SideboardList — 15-card cap (#1402)", () => {
     renderList({ sideboard: fourteen });
     const btn = screen.getByTestId("sideboard-increase-quantity-card-0");
     expect(btn).not.toBeDisabled();
+  });
+});
+
+describe("SideboardList — drag-and-drop target (#1545)", () => {
+  const noopDropHandlers = {
+    onDragOver: jest.fn(),
+    onDragEnter: jest.fn(),
+    onDragLeave: jest.fn(),
+    onDrop: jest.fn(),
+  };
+
+  it("renders the sideboard as a drop zone with data-target=sideboard", () => {
+    renderList({ dropHandlers: noopDropHandlers });
+    const wrapper = screen.getByTestId("sideboard-list");
+    expect(wrapper.getAttribute("data-target")).toBe("sideboard");
+  });
+
+  it("marks the wrapper as drop-active when isDropActive is true", () => {
+    renderList({ dropHandlers: noopDropHandlers, isDropActive: true });
+    expect(
+      screen.getByTestId("sideboard-list").getAttribute("data-drop-active"),
+    ).toBe("true");
+  });
+
+  it("forwards drop events on the wrapper", () => {
+    renderList({ dropHandlers: noopDropHandlers });
+    const wrapper = screen.getByTestId("sideboard-list");
+    fireEvent.drop(wrapper);
+    expect(noopDropHandlers.onDrop).toHaveBeenCalled();
+  });
+
+  it("empty-state copy mentions drag-and-drop", () => {
+    renderList({ dropHandlers: noopDropHandlers });
+    expect(screen.getByTestId("sideboard-empty")).toHaveTextContent(/drag/i);
   });
 });

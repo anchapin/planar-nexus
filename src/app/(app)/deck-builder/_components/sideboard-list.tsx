@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Minus, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import type { DeckBuilderTargetDropHandlers } from "../_lib/use-deck-builder-drag-drop";
 
 interface SideboardListProps {
   /** Current sideboard card pool. Items are DeckCard entries (each with count). */
@@ -23,6 +25,18 @@ interface SideboardListProps {
   onRemoveCard: (cardId: string) => void;
   /** Increment one copy of a card. The host is responsible for enforcing caps. */
   onAddCard: (card: DeckCard) => void;
+  /**
+   * Drop-target handlers for the pointer drag-and-drop path. Spread onto the
+   * outer Card so the sideboard accepts drops from card-search tiles. Issue
+   * #1545. Optional for backward compatibility with existing unit tests.
+   */
+  dropHandlers?: DeckBuilderTargetDropHandlers;
+  /**
+   * Whether this sideboard is the active drop target in the keyboard carry
+   * flow. Drives the `data-drop-active` attribute so the visible drop ring
+   * follows the current keyboard target.
+   */
+  isDropActive?: boolean;
 }
 
 interface SideboardRowProps {
@@ -98,6 +112,8 @@ export function SideboardList({
   maxSize,
   onRemoveCard,
   onAddCard,
+  dropHandlers,
+  isDropActive = false,
 }: SideboardListProps) {
   const totalCards = useMemo(
     () => sideboard.reduce((sum, card) => sum + card.count, 0),
@@ -112,10 +128,16 @@ export function SideboardList({
 
   return (
     <Card
-      className="flex flex-col h-full"
+      className={cn(
+        "flex flex-col h-full transition-colors",
+        isDropActive && "ring-4 ring-amber-500 ring-offset-2",
+      )}
       data-testid="sideboard-list"
       data-sideboard-size={sideboard.length}
       data-sideboard-total={totalCards}
+      data-drop-active={isDropActive ? "true" : undefined}
+      data-target="sideboard"
+      {...(dropHandlers ?? {})}
     >
       <CardHeader>
         <CardDescription className="flex items-center justify-between">
@@ -139,9 +161,10 @@ export function SideboardList({
           <div
             className="text-center text-muted-foreground py-10"
             data-testid="sideboard-empty"
+            data-target="sideboard"
           >
-            Your sideboard is empty. Use the card search to add up to {maxSize}{" "}
-            cards.
+            Your sideboard is empty. Drag cards here, or use the card search to
+            add up to {maxSize} cards.
           </div>
         ) : (
           <div
@@ -149,6 +172,7 @@ export function SideboardList({
             role="list"
             aria-label="Sideboard cards"
             data-testid="sideboard-items"
+            data-target="sideboard"
           >
             {sorted.map((card) => (
               <div key={card.id} role="listitem">

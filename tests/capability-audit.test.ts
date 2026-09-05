@@ -54,7 +54,8 @@ function listTauriPluginImports(): Set<string> {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        if (entry.name === "node_modules" || entry.name.startsWith("."))
+          continue;
         walk(full);
       } else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) {
         const text = fs.readFileSync(full, "utf8");
@@ -126,6 +127,23 @@ describe("Tauri capability allow-list (issue #1274)", () => {
 
   test("no plugin permission is granted for a plugin the frontend does not import", () => {
     const importedPlugins = listTauriPluginImports();
+    // Backend-only plugins — these are wired into `src-tauri/src/lib.rs` and
+    // operate entirely on the Rust side (window/lifecycle event hooks, OS
+    // integrations) without exposing any IPC surface to the webview. They
+    // intentionally have no `@tauri-apps/plugin-<name>` import in the
+    // frontend tree; the capability grant is what allows the Rust-side
+    // plugin to use its declared command set when invoked from Rust (or via
+    // Tauri-internal events). Adding one here signals: "yes, the absence
+    // of a frontend import is on purpose — do not flag it as over-grant".
+    // See CONTRIBUTING.md § "Adding a Tauri permission" — the
+    // frontend-import check is a heuristic for *IPC plugins*, not all
+    // Tauri plugins.
+    const BACKEND_ONLY_PLUGINS = new Set<string>([
+      // `tauri-plugin-window-state` persists main-window geometry across
+      // launches (issue #1589). It hooks window events from Rust and never
+      // communicates with the frontend.
+      "window-state",
+    ]);
     // Plugin permissions look like `<plugin>:<scope>`. Extract the plugin
     // prefix (everything before the first `:`).
     for (const { cap } of caps) {
@@ -136,6 +154,7 @@ describe("Tauri capability allow-list (issue #1274)", () => {
         // non-`core:` permission as a plugin grant.
         const pluginName = perm.split(":")[0];
         if (pluginName === "core") continue;
+        if (BACKEND_ONLY_PLUGINS.has(pluginName)) continue;
         // Empty tree means no plugin imports — every non-core permission is
         // over-grant. A populated set narrows the check to "only what is
         // actually used".

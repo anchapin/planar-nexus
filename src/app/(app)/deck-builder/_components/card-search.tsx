@@ -113,6 +113,18 @@ interface CardSearchProps {
    * badge) so users can still discover banned / out-of-format cards.
    */
   formatFilter?: boolean;
+  /**
+   * HTML5 drag-and-drop handlers forwarded to every `CardResultTile` so
+   * tiles become drag sources (issue #1545). When omitted (legacy call
+   * sites / unit tests) the search grid renders without drag affordances.
+   */
+  sourceDragHandlers?: import("../_lib/use-deck-builder-drag-drop").DeckBuilderSourceDragHandlers;
+  /**
+   * The id of the card currently being carried in the keyboard / pointer
+   * drag-and-drop flow. Tiles matching this id render the "carried"
+   * indicator and announce `aria-grabbed="true"`.
+   */
+  carriedCardId?: string | null;
 }
 
 /**
@@ -147,6 +159,8 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       commanderColorIdentity,
       format,
       formatFilter = false,
+      sourceDragHandlers,
+      carriedCardId = null,
     },
     ref,
   ) {
@@ -619,6 +633,8 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
           hideLegality={formatFilter}
           onAddCard={handleAddCard}
           onSelect={handleSelect}
+          sourceDragHandlers={sourceDragHandlers}
+          isCarrying={carriedCardId === card.id}
         />
       ),
       [
@@ -629,6 +645,8 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
         formatFilter,
         handleAddCard,
         handleSelect,
+        sourceDragHandlers,
+        carriedCardId,
       ],
     );
 

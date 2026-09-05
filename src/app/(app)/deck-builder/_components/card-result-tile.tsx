@@ -9,9 +9,17 @@
  * changes. The component owns the per-card JSX — image, synergy badge,
  * legality badge, click-to-add, and keyboard-selection styling — but receives
  * all derived data as props so `React.memo` can short-circuit unchanged cells.
+ *
+ * Issue #1545: this tile is also the drag-and-drop SOURCE — it accepts
+ * pointer drags (HTML5 DnD) and provides keyboard parity via the
+ * `aria-grabbed`/`aria-pressed` attributes and the `M` "pick up" shortcut
+ * (handled centrally by `useDeckBuilderDragDrop`). The page passes the
+ * `sourceDragHandlers` and `isCarrying` props down; this component just
+ * spreads them onto the button so the source is both pointer- and
+ * keyboard-accessible.
  */
 
-import React, { memo, useCallback, useMemo } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { CardArt } from "@/components/card-art";
 import { Badge } from "@/components/ui/badge";
 import { LegalityBadge } from "./legality-badge";
@@ -22,6 +30,8 @@ import {
 import type { ScryfallCard } from "@/lib/card-database";
 import type { Format } from "@/lib/game-rules";
 import type { SynergyResult } from "./synergy-context";
+import type { DeckBuilderSourceDragHandlers } from "../_lib/use-deck-builder-drag-drop";
+import { attachCardToElement } from "../_lib/use-deck-builder-drag-drop";
 
 export interface CardResultTileProps {
   /** The card to render. */
@@ -45,6 +55,19 @@ export interface CardResultTileProps {
   onAddCard: (card: ScryfallCard, shift: boolean) => void;
   /** Mark this index as the keyboard-highlighted result. */
   onSelect: (index: number) => void;
+  /**
+   * HTML5 drag-and-drop handlers for the source side. Provided by the host
+   * page's `useDeckBuilderDragDrop` hook. Spread onto the root button. When
+   * omitted (legacy call sites / unit tests) the tile renders without drag
+   * affordances, preserving the existing behaviour.
+   */
+  sourceDragHandlers?: DeckBuilderSourceDragHandlers;
+  /**
+   * When `true`, this tile's card is the one currently being carried in the
+   * drag-and-drop flow. Used to expose `aria-grabbed="true"` and render the
+   * "carried" indicator. Defaults to `false`.
+   */
+  isCarrying?: boolean;
 }
 
 /**
@@ -67,6 +90,8 @@ function CardResultTileImpl({
   hideLegality,
   onAddCard,
   onSelect,
+  sourceDragHandlers,
+  isCarrying = false,
 }: CardResultTileProps) {
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -87,27 +112,68 @@ function CardResultTileImpl({
     return checkCardLegality(card, format, format);
   }, [card, format, hideLegality]);
 
+  // Attach the card onto the rendered <button> so the centralised
+  // keydown listener (in useDeckBuilderDragDrop) can recover it when the
+  // user presses `M` to pick the focused card up. The custom property is
+  // non-enumerable to keep it out of attribute snapshots and JSON
+  // serialisations.
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (buttonRef.current) {
+      attachCardToElement(buttonRef.current, card);
+    }
+  }, [card]);
+
+  // When this tile is the carried source, the `aria-grabbed` attribute
+  // advertises the state to screen readers. (`aria-grabbed` is deprecated in
+  // WAI-ARIA 1.1 but is still the most widely supported signal in browsers
+  // today; the live-region announcement in the page is the modern
+  // authoritative channel.)
+  const carriedAriaProps = isCarrying
+    ? ({ "aria-grabbed": true, "aria-pressed": true } as const)
+    : ({ "aria-grabbed": false } as const);
+
   return (
     <button
+      ref={buttonRef}
       data-card-index={index}
       onClick={handleClick}
       onMouseEnter={handleMouseEnter}
+      {...(sourceDragHandlers ?? {})}
       className={`relative w-full h-full transform transition-transform duration-200 hover:scale-105 focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-lg touch-manipulation group ${
         isSelected ? "ring-4 ring-primary ring-offset-2" : ""
-      } ${isFlashing ? "ring-4 ring-green-500 ring-offset-2" : ""}`}
+      } ${isFlashing ? "ring-4 ring-green-500 ring-offset-2" : ""} ${
+        isCarrying ? "ring-4 ring-amber-500 ring-offset-2 animate-pulse" : ""
+      }`}
       style={{
         aspectRatio: "5 / 7",
       }}
       title={`Add ${card.name} to deck${
         hasHighSynergy ? ` (Synergy: ${Math.round(synergy!.score)}%)` : ""
-      } - Shift+Click for 4-of`}
+      } - Shift+Click for 4-of. Press M to pick up for drag-and-drop.`}
       aria-label={`Add ${card.name} to deck${
         hasHighSynergy ? ` (Synergy: ${Math.round(synergy!.score)}%)` : ""
-      } - Shift+Click for 4-of${isSelected ? " (selected)" : ""}`}
+      } - Shift+Click for 4-of${isSelected ? " (selected)" : ""}${
+        isCarrying ? " (carried for drop)" : ""
+      }`}
+      aria-describedby={
+        isCarrying ? "deck-builder-drag-announcement" : undefined
+      }
       data-testid={`card-result-${card.name
         .toLowerCase()
         .replace(/\s+/g, "-")}`}
+      data-test-carrying={isCarrying ? "true" : undefined}
+      {...carriedAriaProps}
     >
+      {isCarrying && (
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 bg-amber-500 text-white px-2 py-1 rounded-md text-xs font-semibold shadow-lg pointer-events-none"
+          data-testid="card-carry-indicator"
+          aria-hidden="true"
+        >
+          ✋ Carried
+        </div>
+      )}
       {card.image_uris?.large || card.image_uris?.normal ? (
         <CardArt
           cardName={card.name}
@@ -171,6 +237,12 @@ function CardResultTileImpl({
  * for this short-circuit to fire. `synergy` is the `Map.get` return value —
  * the Map is referentially stable across renders so a non-changed entry keeps
  * the same object reference.
+ *
+ * `sourceDragHandlers` and `isCarrying` are spread onto the DOM; both are
+ * stable for the lifetime of the drag flow (handlers are memoised in the
+ * hook, `isCarrying` only flips for one tile at a time). Including them in
+ * the equality check keeps the memo working as intended when the parent
+ * re-renders for unrelated reasons.
  */
 function arePropsEqual(
   prev: CardResultTileProps,
@@ -185,7 +257,9 @@ function arePropsEqual(
     prev.format === next.format &&
     prev.hideLegality === next.hideLegality &&
     prev.onAddCard === next.onAddCard &&
-    prev.onSelect === next.onSelect
+    prev.onSelect === next.onSelect &&
+    prev.sourceDragHandlers === next.sourceDragHandlers &&
+    prev.isCarrying === next.isCarrying
   );
 }
 

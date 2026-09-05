@@ -32,6 +32,7 @@ import {
 import { cn } from "@/lib/utils";
 import { LegalityBadge } from "./legality-badge";
 import type { CardLegalityResult } from "@/hooks/use-format-legality-check";
+import type { DeckBuilderTargetDropHandlers } from "../_lib/use-deck-builder-drag-drop";
 
 interface DeckListProps {
   deck: DeckCard[];
@@ -52,6 +53,24 @@ interface DeckListProps {
    * the host page does not yet know the active format).
    */
   cardLegality?: Map<string, CardLegalityResult>;
+  /**
+   * Drop-target handlers for the pointer drag-and-drop path. Spread onto the
+   * outer Card so the deck list accepts drops from card-search tiles. Issue
+   * #1545. Optional for backward compatibility with existing unit tests.
+   */
+  dropHandlers?: DeckBuilderTargetDropHandlers;
+  /**
+   * Whether this deck list is the active drop target in the keyboard carry
+   * flow. Drives the `data-drop-active` attribute so the visible drop ring
+   * follows the current keyboard target.
+   */
+  isDropActive?: boolean;
+  /**
+   * Forwarded to the outer wrapper as `data-target="mainboard"` so the
+   * drop handler in `useDeckBuilderDragDrop` can identify the zone. Always
+   * `"mainboard"` here — the sideboard list sets it to `"sideboard"`.
+   */
+  dropTarget?: "mainboard" | "sideboard";
 }
 
 type CategorizedDeck = {
@@ -240,6 +259,9 @@ export function DeckList({
   onAddCard,
   commanderColorIdentity,
   cardLegality,
+  dropHandlers,
+  isDropActive = false,
+  dropTarget = "mainboard",
 }: DeckListProps) {
   const totalCards = useMemo(
     () => deck.reduce((sum, card) => sum + card.count, 0),
@@ -352,7 +374,16 @@ export function DeckList({
   const virtualItems = rowVirtualizer.getVirtualItems();
 
   return (
-    <Card className="flex flex-col h-full">
+    <Card
+      className={cn(
+        "flex flex-col h-full transition-colors",
+        isDropActive && "ring-4 ring-amber-500 ring-offset-2",
+      )}
+      data-drop-active={isDropActive ? "true" : undefined}
+      data-target={dropTarget}
+      data-testid="deck-list-drop-zone"
+      {...(dropHandlers ?? {})}
+    >
       <CardHeader>
         <Input
           className="text-lg font-headline font-bold border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto"
@@ -377,8 +408,13 @@ export function DeckList({
       <Separator />
       <CardContent className="p-0 flex-grow">
         {deck.length === 0 ? (
-          <div className="text-center text-muted-foreground py-10">
-            Your deck is empty.
+          <div
+            className="text-center text-muted-foreground py-10"
+            data-testid="deck-empty-state"
+            data-target={dropTarget}
+          >
+            Your deck is empty. Drag cards here, or use the card search to add
+            cards.
           </div>
         ) : (
           <div
@@ -388,6 +424,7 @@ export function DeckList({
             aria-label="Deck cards"
             tabIndex={0}
             data-testid="deck-list-scroll"
+            data-target={dropTarget}
           >
             <div className="p-4">
               <div
