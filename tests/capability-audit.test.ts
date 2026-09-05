@@ -54,7 +54,8 @@ function listTauriPluginImports(): Set<string> {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        if (entry.name === "node_modules" || entry.name.startsWith("."))
+          continue;
         walk(full);
       } else if (/\.(ts|tsx|js|jsx|mjs|cjs)$/.test(entry.name)) {
         const text = fs.readFileSync(full, "utf8");
@@ -126,6 +127,18 @@ describe("Tauri capability allow-list (issue #1274)", () => {
 
   test("no plugin permission is granted for a plugin the frontend does not import", () => {
     const importedPlugins = listTauriPluginImports();
+    // Some Tauri plugins are Rust-side only: they hook into window/app
+    // events and never expose a JS API. They still need a capability
+    // entry, but their presence is not detectable via frontend imports.
+    // List them here with a justification comment.
+    const rustOnlyPlugins = new Set<string>([
+      // Persists window geometry across launches (issue #1589); no
+      // frontend invoke() — Rust listens to window events directly.
+      "window-state",
+      // Enforces a single app instance on desktop (issue #1441); no
+      // frontend invoke() — Rust intercepts the second launch.
+      "single-instance",
+    ]);
     // Plugin permissions look like `<plugin>:<scope>`. Extract the plugin
     // prefix (everything before the first `:`).
     for (const { cap } of caps) {
@@ -136,6 +149,7 @@ describe("Tauri capability allow-list (issue #1274)", () => {
         // non-`core:` permission as a plugin grant.
         const pluginName = perm.split(":")[0];
         if (pluginName === "core") continue;
+        if (rustOnlyPlugins.has(pluginName)) continue;
         // Empty tree means no plugin imports — every non-core permission is
         // over-grant. A populated set narrows the check to "only what is
         // actually used".

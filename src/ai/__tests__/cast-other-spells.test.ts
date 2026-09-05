@@ -19,12 +19,18 @@ import {
   BASE_SKIP_CHANCE,
   SKIP_CAP_EASY_MEDIUM,
   REMOVAL_WITH_TARGET_BONUS,
+  REMOVAL_TARGET_VALUE_LOW,
+  REMOVAL_TARGET_VALUE_MID,
+  REMOVAL_TARGET_VALUE_HIGH,
+  REMOVAL_TARGET_VALUE_BOMB,
   INSTANT_PRECOMBAT_HOLD_PENALTY,
   FUTURE_TURN_LEVERAGE_WEIGHT,
   computeOtherSpellSkipChance,
   scoreNonCreatureSpell,
   selectOptimalExpertSpell,
   decideSpellGate,
+  isPremiumRemovalSpell,
+  computeRemovalTargetValueFactor,
   type NonCreatureSpellEntry,
   type SpellBoardContext,
 } from "../cast-other-spells-gate";
@@ -260,6 +266,325 @@ describe("scoreNonCreatureSpell", () => {
     expect(FUTURE_TURN_LEVERAGE_WEIGHT).toBe(0.2);
     expect(REMOVAL_WITH_TARGET_BONUS).toBe(0.3);
     expect(INSTANT_PRECOMBAT_HOLD_PENALTY).toBe(0.2);
+  });
+});
+
+/**
+ * @fileoverview Issue #1541 — scale removal-target scoring by target value so
+ * premium removal is held for bombs.
+ *
+ * Acceptance criteria from the issue body:
+ *
+ *   AC #1 — premium removal vs 1/1 dork → score ≤ 0.4 (held).
+ *   AC #2 — premium removal vs 6/6 flyer → score ≥ 0.85 (cast).
+ *   AC #3 — non-premium removal (CMC ≥ 4 or conditional) vs dork → unchanged
+ *           (we do not gate bread removal).
+ *   AC #4 — empty board → score stays at the existing 0.1 floor.
+ *   AC #5 — simulateDifficultySweep at expert tier: avgTurns-per-game does not
+ *           regress (no infinite-hold loops). Covered by the simulation suite
+ *           (`src/ai/simulation/game-simulator.ts`) — not asserted here, but
+ *           the contract is: premium removal vs a 6+ power target must
+ *           outscore every chump-only spell, and the floor 0.1 on an empty
+ *           board is preserved.
+ */
+describe("issue #1541 — premium-removal target-value scaling", () => {
+  // Premium: CMC ≤ 2 + unconditional destroy/exile target creature.
+  const doombade = spell("p1", "Doom Blade", 2, {
+    oracleText: "Destroy target creature.",
+  });
+  const swords = spell("p2", "Swords to Plowshares", 1, {
+    oracleText: "Exile target creature.",
+  });
+  // Bread: CMC ≥ 3 unconditional destroy → NOT premium (CMC > 2).
+  const murder = spell("b1", "Murder", 3, {
+    oracleText: "Destroy target creature.",
+  });
+  // Conditional: "destroy tapped creature" → NOT premium (conditional clause).
+  const pacifism = spell("b2", "Tapped-Pacifism", 2, {
+    oracleText: "Destroy tapped creature.",
+  });
+  // Power-conditional: "with power 4 or less" → NOT premium.
+  const powerCond = spell("b3", "Power-Conditional", 1, {
+    oracleText: "Destroy target creature with power 4 or less.",
+  });
+
+  /** Board with one opponent creature and enough mana to cast a 1-CMC spell. */
+  const baseBoard: SpellBoardContext = {
+    availableMana: 5,
+    opponentCreatureCount: 1,
+    ownCreatureCount: 2,
+    turnNumber: 6,
+    phase: "precombat_main",
+  };
+
+  it("AC #1 — premium removal vs 1/1 dork scores ≤ 0.4 (held)", () => {
+    const board: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 1,
+    };
+    const score = scoreNonCreatureSpell({ spell: doombade, board });
+    // 1.0 base * 0.4 dork factor + 0.2 leverage - 0.2 instant hold = 0.4
+    // (toBeCloseTo(0.4, 2) allows ±0.005 to absorb IEEE-754 drift on the
+    // +0.2/-0.2 round-trip; the spec calls this "the hold threshold ≤ 0.4"
+    // and the value lands on 0.4 in exact arithmetic.)
+    expect(score).toBeCloseTo(0.4, 2);
+    expect(score).toBeLessThanOrEqual(0.4 + 1e-6);
+  });
+
+  it("AC #1 — premium removal vs 0-power creature also scores ≤ 0.4 (conservative default)", () => {
+    // maxOpposingCreaturePower defaults to 0 when unknown → dork-equivalent.
+    const board: SpellBoardContext = { ...baseBoard };
+    const score = scoreNonCreatureSpell({ spell: doombade, board });
+    expect(score).toBeCloseTo(0.4, 2);
+    expect(score).toBeLessThanOrEqual(0.4 + 1e-6);
+  });
+
+  it("AC #1 — premium removal (exile variant) vs dork also scores ≤ 0.4", () => {
+    const board: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 1,
+    };
+    const score = scoreNonCreatureSpell({ spell: swords, board });
+    expect(score).toBeCloseTo(0.4, 2);
+    expect(score).toBeLessThanOrEqual(0.4 + 1e-6);
+  });
+
+  it("AC #2 — premium removal vs 6/6 flyer scores ≥ 0.85 (cast)", () => {
+    const board: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 6,
+    };
+    const score = scoreNonCreatureSpell({ spell: doombade, board });
+    // 1.0 base * 1.15 bomb factor + 0.2 leverage - 0.2 instant hold
+    // = 1.15 + 0.2 - 0.2 = 1.15 → clamped to 1.0
+    expect(score).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("AC #2 — premium removal vs an 8/8 flying titan also scores ≥ 0.85", () => {
+    const board: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 8,
+    };
+    const score = scoreNonCreatureSpell({ spell: doombade, board });
+    expect(score).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("AC #3 — bread removal (CMC ≥ 4 not relevant here, but CMC=3 unconditional) is unchanged vs dork", () => {
+    const withDork: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 1,
+    };
+    const withoutInfo: SpellBoardContext = { ...baseBoard };
+    const bread1 = scoreNonCreatureSpell({ spell: murder, board: withDork });
+    const bread2 = scoreNonCreatureSpell({
+      spell: murder,
+      board: withoutInfo,
+    });
+    // No scaling → identical score regardless of target value.
+    expect(bread1).toBeCloseTo(bread2, 5);
+    // The original behaviour: bread removal with a live target outranks chumps.
+    expect(bread1).toBeGreaterThan(0.85);
+  });
+
+  it("AC #3 — conditional removal (destroy tapped) is unchanged vs dork", () => {
+    const withDork: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 1,
+    };
+    const withoutInfo: SpellBoardContext = { ...baseBoard };
+    const cond1 = scoreNonCreatureSpell({
+      spell: pacifism,
+      board: withDork,
+    });
+    const cond2 = scoreNonCreatureSpell({
+      spell: pacifism,
+      board: withoutInfo,
+    });
+    expect(cond1).toBeCloseTo(cond2, 5);
+  });
+
+  it("AC #3 — power-conditional removal is not premium, unchanged vs dork", () => {
+    const withDork: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 1,
+    };
+    const withoutInfo: SpellBoardContext = { ...baseBoard };
+    const cond1 = scoreNonCreatureSpell({
+      spell: powerCond,
+      board: withDork,
+    });
+    const cond2 = scoreNonCreatureSpell({
+      spell: powerCond,
+      board: withoutInfo,
+    });
+    expect(cond1).toBeCloseTo(cond2, 5);
+  });
+
+  it("AC #4 — empty board stays at the 0.1 floor regardless of removal type", () => {
+    const emptyBoard: SpellBoardContext = {
+      ...baseBoard,
+      opponentCreatureCount: 0,
+      maxOpposingCreaturePower: 0,
+    };
+    const premium = scoreNonCreatureSpell({
+      spell: doombade,
+      board: emptyBoard,
+    });
+    const bread = scoreNonCreatureSpell({ spell: murder, board: emptyBoard });
+    // Original test asserted < 0.2; we match the existing floor contract.
+    expect(premium).toBeLessThan(0.2);
+    expect(bread).toBeLessThan(0.2);
+    // Empty-board behaviour is identical for premium vs bread — scaling only
+    // applies when a target exists.
+    expect(premium).toBeCloseTo(bread, 5);
+  });
+
+  it("scoring is monotonic in target value — bigger threats score higher for the same premium removal", () => {
+    const dork = scoreNonCreatureSpell({
+      spell: doombade,
+      board: { ...baseBoard, maxOpposingCreaturePower: 1 },
+    });
+    const mid = scoreNonCreatureSpell({
+      spell: doombade,
+      board: { ...baseBoard, maxOpposingCreaturePower: 3 },
+    });
+    const big = scoreNonCreatureSpell({
+      spell: doombade,
+      board: { ...baseBoard, maxOpposingCreaturePower: 5 },
+    });
+    const bomb = scoreNonCreatureSpell({
+      spell: doombade,
+      board: { ...baseBoard, maxOpposingCreaturePower: 6 },
+    });
+    expect(dork).toBeLessThan(mid);
+    expect(mid).toBeLessThan(big);
+    // Both 1.0 * 1.0 and 1.0 * 1.15 + 0.2 - 0.2 clamp to 1.0 at the
+    // scoreNonCreatureSpell boundary — the bomb factor overcaps deliberately
+    // (so the score "lives at" 1.0 rather than being a smaller value). The
+    // acceptance criterion is that bomb ≥ 0.85, not that bomb > big.
+    expect(big).toBeLessThanOrEqual(bomb);
+    expect(bomb).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("AC #5 — a hand of only premium-removal vs a flyer still picks the removal at Expert (no infinite hold)", () => {
+    const board: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 6,
+    };
+    const selection = selectOptimalExpertSpell([doombade], board);
+    // Score is 1.0 (clamped) → > 0 → optimal is the spell. No infinite hold.
+    expect(selection.optimal?.name).toBe("Doom Blade");
+  });
+
+  it("AC #5 — a hand of only premium-removal vs a dork still picks the removal at Expert (it is the only option, score is 0.4)", () => {
+    const board: SpellBoardContext = {
+      ...baseBoard,
+      maxOpposingCreaturePower: 1,
+    };
+    const selection = selectOptimalExpertSpell([doombade], board);
+    // Score is 0.4 → > 0 → still picked as optimal. The acceptance is that
+    // the *score* drops below 0.4 (it lands exactly on 0.4 here, see AC #1).
+    expect(selection.optimal?.name).toBe("Doom Blade");
+    const score = scoreNonCreatureSpell({ spell: doombade, board });
+    expect(score).toBeCloseTo(0.4, 2);
+    expect(score).toBeLessThanOrEqual(0.4 + 1e-6);
+  });
+});
+
+describe("isPremiumRemovalSpell — predicate contract", () => {
+  it("flags cheap unconditional destroy/exile as premium", () => {
+    expect(
+      isPremiumRemovalSpell("instant", "Destroy target creature.", 1),
+    ).toBe(true);
+    expect(
+      isPremiumRemovalSpell("sorcery", "Destroy target creature.", 2),
+    ).toBe(true);
+    expect(isPremiumRemovalSpell("instant", "Exile target creature.", 1)).toBe(
+      true,
+    );
+    expect(isPremiumRemovalSpell("sorcery", "Exile target creature.", 2)).toBe(
+      true,
+    );
+  });
+
+  it("rejects CMC > 2 (bread cost spells are not premium)", () => {
+    expect(
+      isPremiumRemovalSpell("instant", "Destroy target creature.", 3),
+    ).toBe(false);
+    expect(
+      isPremiumRemovalSpell("instant", "Destroy target creature.", 4),
+    ).toBe(false);
+  });
+
+  it("rejects non-instant/sorcery types (auras, creatures)", () => {
+    expect(
+      isPremiumRemovalSpell("enchantment", "Destroy target creature.", 1),
+    ).toBe(false);
+    expect(
+      isPremiumRemovalSpell("creature", "Destroy target creature.", 1),
+    ).toBe(false);
+  });
+
+  it("rejects conditional clauses (premium is unconditional by definition)", () => {
+    expect(
+      isPremiumRemovalSpell("instant", "Destroy tapped creature.", 1),
+    ).toBe(false);
+    expect(
+      isPremiumRemovalSpell(
+        "instant",
+        "Destroy target creature with power 4 or less.",
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      isPremiumRemovalSpell(
+        "instant",
+        "Destroy target creature with toughness 2 or less.",
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      isPremiumRemovalSpell(
+        "instant",
+        "Destroy target creature with converted mana cost 3 or less.",
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      isPremiumRemovalSpell(
+        "instant",
+        "Destroy target artifact or enchantment.",
+        1,
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects spells that aren't actually removal (Draw, Cancel)", () => {
+    expect(isPremiumRemovalSpell("instant", "Draw two cards.", 1)).toBe(false);
+    expect(isPremiumRemovalSpell("instant", "Counter target spell.", 2)).toBe(
+      false,
+    );
+  });
+});
+
+describe("computeRemovalTargetValueFactor — stepped table", () => {
+  it("maps each power bucket to its documented factor", () => {
+    expect(computeRemovalTargetValueFactor(0)).toBe(REMOVAL_TARGET_VALUE_LOW);
+    expect(computeRemovalTargetValueFactor(1)).toBe(REMOVAL_TARGET_VALUE_LOW);
+    expect(computeRemovalTargetValueFactor(2)).toBe(REMOVAL_TARGET_VALUE_MID);
+    expect(computeRemovalTargetValueFactor(3)).toBe(REMOVAL_TARGET_VALUE_MID);
+    expect(computeRemovalTargetValueFactor(4)).toBe(REMOVAL_TARGET_VALUE_HIGH);
+    expect(computeRemovalTargetValueFactor(5)).toBe(REMOVAL_TARGET_VALUE_HIGH);
+    expect(computeRemovalTargetValueFactor(6)).toBe(REMOVAL_TARGET_VALUE_BOMB);
+    expect(computeRemovalTargetValueFactor(8)).toBe(REMOVAL_TARGET_VALUE_BOMB);
+    expect(computeRemovalTargetValueFactor(99)).toBe(REMOVAL_TARGET_VALUE_BOMB);
+  });
+
+  it("exports the documented step-table constants", () => {
+    expect(REMOVAL_TARGET_VALUE_LOW).toBe(0.4);
+    expect(REMOVAL_TARGET_VALUE_MID).toBe(0.7);
+    expect(REMOVAL_TARGET_VALUE_HIGH).toBe(1.0);
+    expect(REMOVAL_TARGET_VALUE_BOMB).toBe(1.15);
   });
 });
 
