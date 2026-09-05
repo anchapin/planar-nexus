@@ -102,6 +102,11 @@ import {
   chooseOpeningTurnPlan,
   type OpeningTurnPlan,
 } from "./opening-turn-plan";
+// Issue #1539: mid- and late-game land selection. The opener above picks a
+// land for turns 1-3 (issue #1416); this module picks the best land for
+// turns ≥ 4 via a difficulty-scaled scorer (color fixing, fetch crack, late-
+// game utility-ETB) with an Easy misorder blunder.
+import { chooseMidLateLand } from "./mid-late-land-selection";
 // Issue #1415: difficulty-scaled creature cast ordering. Outside the opening
 // window the legacy path used a raw ascending-CMC sort, ignoring the fully
 // tested `getSequencingRecommendation` in `mana-sequencing.ts`. This sibling
@@ -1556,10 +1561,17 @@ async function runCleanupPhase(
 /**
  * Play a land if available and appropriate.
  *
- * Issue #1416: during the opening (turns 1-3) `openingPlan?.landToPlay`
- * names the specific land the planner chose (Easy = random, Medium/Hard/
- * Expert = best-scored for color sequencing). When the plan is present we
- * play THAT land instead of the first land we find; otherwise legacy.
+ * Branch selection lives in {@link chooseMidLateLand} (issue #1539). In
+ * priority order:
+ *
+ * 1. **Opening plan regression (issue #1416)** — when `openingPlan?.landToPlay`
+ *    names a land, we play THAT land exactly as before. Preserves the planner's
+ *    color-sequencing pick for turns 1-3 (Medium/Hard/Expert tier-separation).
+ * 2. **Early-game shortcut** — turns 1-3 with no usable opener pick use
+ *    first-found (cheap; curve matters less in the opener).
+ * 3. **Mid/late-game scorer (issue #1539)** — turns 4+ (and opener-empty hands
+ *    on turns 1-3) consult the difficulty-scaled scorer: color fixing, fetch
+ *    crack priority, utility-ETB late-game bonus, Easy misorder blunder.
  */
 async function playLandIfAvailable(
   gameState: EngineGameState,
@@ -1575,32 +1587,41 @@ async function playLandIfAvailable(
   const handZone = gameState.zones.get(`${aiPlayerId}-hand`);
   if (!handZone) return { success: false };
 
-  // Issue #1416: the opening plan may name a specific land to play this turn.
-  // When set, skip every other land in hand and attempt only that one (so the
-  // planner's color-sequencing pick actually reaches the board).
-  const preferredLandId = openingPlan?.landToPlay ?? undefined;
+  // Issue #1539: delegate the land pick to the difficulty-scaled scorer.
+  // `chooseMidLateLand` honours the opening-plan regression (#1416) via its
+  // `source: "opener"` branch, so the planner's color-sequencing pick still
+  // reaches the board on turns 1-3.
+  const turnNumber = gameState.turn?.turnNumber ?? 0;
+  const decision = chooseMidLateLand(
+    gameState,
+    aiPlayerId,
+    config.difficulty,
+    turnNumber,
+    openingPlan ?? null,
+    config.format,
+  );
 
-  for (const cardId of handZone.cardIds) {
-    const card = gameState.cards.get(cardId);
-    if (card && card.cardData.type_line.toLowerCase().includes("land")) {
-      if (preferredLandId !== undefined && cardId !== preferredLandId) {
-        continue;
-      }
-      const result = await executeAIAction(
-        gameState,
-        { type: "play_land", cardId, reasoning: "Play land for turn" },
-        aiPlayerId,
-      );
+  if (!decision.choice) return { success: false };
 
-      if (result.success) {
-        config.onCommentary?.(`Plays ${card.cardData.name}`);
-        return {
-          success: true,
-          action: { type: "play_land", cardId },
-          newState: result.newState,
-        };
-      }
-    }
+  const chosenCardId = decision.choice.cardId;
+  const card = gameState.cards.get(chosenCardId);
+  if (!card || !card.cardData.type_line.toLowerCase().includes("land")) {
+    return { success: false };
+  }
+
+  const result = await executeAIAction(
+    gameState,
+    { type: "play_land", cardId: chosenCardId, reasoning: decision.reasoning },
+    aiPlayerId,
+  );
+
+  if (result.success) {
+    config.onCommentary?.(`Plays ${card.cardData.name}`);
+    return {
+      success: true,
+      action: { type: "play_land", cardId: chosenCardId },
+      newState: result.newState,
+    };
   }
 
   return { success: false };
