@@ -22,6 +22,10 @@ import { type Format } from "@/lib/game-rules";
 import { useCardFilters } from "@/hooks/use-card-filters";
 import { useSearchPresets } from "@/hooks/use-search-presets";
 import {
+  useRecentSearches,
+  MAX_RECENT_SEARCHES,
+} from "@/hooks/use-recent-searches";
+import {
   QUICK_PRESETS,
   getPresetsByCategory,
   type QuickPreset,
@@ -217,6 +221,16 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     const [isSavePresetDialogOpen, setIsSavePresetDialogOpen] = useState(false);
     const [newPresetName, setNewPresetName] = useState("");
 
+    // Recent raw query LRU (issue #1544). Persisted to IndexedDB by the
+    // hook, surfaced as click-to-rerun chips below the search input. The
+    // hook enforces the 8-item visible cap; we only need the list plus the
+    // record/remove callbacks here.
+    const { recent, recordSearch, removeRecent } =
+      useRecentSearches(MAX_RECENT_SEARCHES);
+    // Refs for the chip buttons so the input's ArrowDown handler can hand
+    // focus to the first chip when the input is empty (AC #6).
+    const chipRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
     // Store all cards for filtering
     const [allCards, setAllCards] = useState<MinimalCard[]>([]);
 
@@ -397,6 +411,20 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     // Handle keyboard navigation in search results
     const handleSearchKeyDown = useCallback(
       (e: React.KeyboardEvent) => {
+        // ArrowDown on an empty input hands focus to the first recent-search
+        // chip (issue #1544 AC #6). Runs before the results-length guard
+        // because there are no results to navigate to when the query is
+        // empty anyway.
+        if (
+          e.key === "ArrowDown" &&
+          query.length === 0 &&
+          chipRefs.current[0]
+        ) {
+          e.preventDefault();
+          chipRefs.current[0].focus();
+          return;
+        }
+
         if (results.length === 0) return;
 
         switch (e.key) {
@@ -414,13 +442,33 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
             break;
           case "Enter":
             e.preventDefault();
+            // Record the raw query in the recent-searches LRU on every
+            // Enter (AC #1). The hook dedupes case-insensitively, trims
+            // whitespace, and bumps the entry to MRU on re-record.
+            if (query.trim().length >= 2) {
+              void recordSearch(query);
+            }
             if (selectedIndex >= 0 && results[selectedIndex]) {
               onAddCard(results[selectedIndex]);
             }
             break;
         }
       },
-      [results, selectedIndex, onAddCard],
+      [query, results, selectedIndex, onAddCard, recordSearch],
+    );
+
+    // Re-run a search from a recent-search chip (issue #1544 AC #2).
+    // Sets the input value (the existing debounced effect re-runs the
+    // search automatically), refocuses the input for keyboard parity
+    // with typing, and bumps the chip to MRU so the click reshuffles
+    // the row instead of leaving the chip in place.
+    const handleRerunRecent = useCallback(
+      (recentQuery: string) => {
+        setQuery(recentQuery);
+        inputRef.current?.focus();
+        void recordSearch(recentQuery);
+      },
+      [recordSearch],
     );
 
     // Reset selectedIndex when results change
@@ -700,6 +748,57 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
               data-testid="card-search-input"
             />
           </div>
+
+          {/* Recent-searches LRU chips (issue #1544). Each chip is a real
+              <button> so Enter natively activates it; the dismiss control
+              is a sibling button (button-in-button is invalid HTML) so
+              screen readers see them as two distinct controls. The list
+              is hidden entirely when empty so the deck-builder UI does
+              not grow an idle row before the user has typed anything. */}
+          {recent.length > 0 && (
+            <div
+              className="flex items-center gap-2 flex-wrap"
+              role="group"
+              aria-label="Recent searches"
+              data-testid="recent-searches-row"
+            >
+              <span
+                className="text-xs text-muted-foreground"
+                aria-hidden="true"
+              >
+                Recent:
+              </span>
+              {recent.map((recentQuery, index) => (
+                <span
+                  key={recentQuery}
+                  className="inline-flex items-center gap-1 rounded-full border bg-secondary text-secondary-foreground pl-2.5 pr-1 py-0.5 text-xs"
+                  data-recent-search-query={recentQuery}
+                >
+                  <button
+                    ref={(el) => {
+                      chipRefs.current[index] = el;
+                    }}
+                    type="button"
+                    onClick={() => handleRerunRecent(recentQuery)}
+                    aria-label={`Run search: ${recentQuery}`}
+                    className="rounded-sm focus:outline-hidden focus:ring-2 focus:ring-ring hover:underline"
+                    data-testid="recent-search-chip"
+                  >
+                    {recentQuery}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeRecent(recentQuery)}
+                    aria-label={`Remove ${recentQuery} from recent searches`}
+                    className="inline-flex items-center justify-center h-4 w-4 rounded-full hover:bg-destructive hover:text-destructive-foreground focus:outline-hidden focus:ring-2 focus:ring-ring"
+                    data-testid="recent-search-chip-remove"
+                  >
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Power mode toggle + syntax help. Issue #1440 surfaces the
               Scryfall-style query language behind a single opt-in
