@@ -10,6 +10,7 @@
     "core:event:default",
     "core:webview:default",
     "core:window:default",
-    "updater:default"
+    "updater:default",
+    "window-state:default"
   ]
 }

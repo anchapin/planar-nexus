@@ -23,6 +23,15 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }));
+
+        // Issue #1589: persist main-window geometry (size, position,
+        // maximized/fullscreen state) across launches. Registered AFTER
+        // single-instance (see the comment at the top of this file) — the
+        // plugin only needs to capture state on window events, so the
+        // ordering relative to single-instance is not load-bearing for
+        // correctness, but the single-instance-first contract from #1441
+        // still governs this builder.
+        builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
     }
 
     builder
