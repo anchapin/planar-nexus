@@ -13,6 +13,7 @@ import { OnboardingTour } from "@/components/onboarding-tour";
 import { RouteAnnouncer } from "@/components/route-announcer";
 import { usePathname } from "next/navigation";
 import { prewarmSearchWorker } from "@/lib/search/prewarm-search-worker";
+import { LongTaskProbe } from "@/lib/perf/long-task-probe";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -30,6 +31,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
+      {/* Issue #1575: app-wide Long-Task API observer. Renders nothing;
+          subscribes once per layout mount and unsubscribes on unmount so
+          every top-level (app) route inherits >50ms main-thread observability. */}
+      <LongTaskProbe />
       <RouteAnnouncer />
       <IndexedDBMigration />
       <OnboardingTour />
