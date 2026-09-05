@@ -45,11 +45,25 @@ export interface CoachStreamMessage {
   content: string;
 }
 
-/** Normalized token-usage payload surfaced per coach message. */
+/**
+ * Normalized token-usage payload surfaced per coach message.
+ *
+ * `maxOutputTokens` carries the server-applied output-token cap that was
+ * forwarded to the provider for this turn (issue #1536). A value of `0` means
+ * "no server-applied cap" (the provider/model default was used). When the cap
+ * was applied AND the model hit the bound mid-generation, `completionTokens`
+ * will be ≤ `maxOutputTokens` and the provider's `finishReason` will be
+ * `"length"` (per provider docs).
+ */
 export interface CoachTokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /**
+   * The output-token cap forwarded to the provider for this turn.
+   * `0` means the provider default was used (no server cap applied).
+   */
+  maxOutputTokens: number;
 }
 
 /**
@@ -146,9 +160,11 @@ export interface StreamCoachResponseOptions {
   modelId?: string;
   /**
    * Server-authoritative output-token cap forwarded to `streamText` (issue
-   * #1534). Omitted by default, which preserves the previous behaviour; the
-   * hardened `/api/chat` route sets it so no client can request unbounded
-   * generation.
+   * #1534 + #1536). When omitted, the orchestrator resolves a fallback from
+   * the `COACH_MAX_OUTPUT_TOKENS` env var (or the project default of 1024
+   * when the env var is unset / invalid), so a runaway provider cannot
+   * consume unbounded tokens against the user's API key. The resolved value
+   * is surfaced on the `usage` SSE event so the client can render the bound.
    */
   maxOutputTokens?: number;
   /** Abort signal; aborting cancels generation and stops failover. */
@@ -180,24 +196,102 @@ export const DEFAULT_FALLBACK_TEXT =
   "Please use the heuristic deck coach for deck analysis instead.";
 
 /**
+ * Default output-token cap for coach turns when no override is supplied and
+ * `COACH_MAX_OUTPUT_TOKENS` is unset / invalid (issue #1536). Chosen to bound
+ * runaway responses against the user's API key without truncating typical
+ * conversational coach replies; the value can be tightened or loosened via
+ * the env var, or per-call via {@link StreamCoachResponseOptions.maxOutputTokens}.
+ */
+export const DEFAULT_COACH_MAX_OUTPUT_TOKENS = 1024;
+
+/**
+ * Env var controlling the per-turn output-token cap forwarded to the coach
+ * provider (issue #1536). May be overridden per-call via the
+ * {@link StreamCoachResponseOptions.maxOutputTokens} option.
+ */
+export const COACH_MAX_OUTPUT_TOKENS_ENV = "COACH_MAX_OUTPUT_TOKENS";
+
+/**
+ * Parse a positive integer from an env-style string. Returns `undefined` for
+ * empty / non-numeric / non-positive input so the caller can fall back
+ * cleanly to its next priority level.
+ */
+function parsePositiveInt(raw: unknown): number | undefined {
+  if (typeof raw !== "string") return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (!/^\d+$/.test(trimmed)) return undefined;
+  const n = Number.parseInt(trimmed, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Resolve the effective output-token cap for a coach turn.
+ *
+ * Priority order (issue #1536 acceptance criteria):
+ *   1. Explicit positive-integer `override` (e.g. injected by a test or by
+ *      another caller's `StreamCoachResponseOptions.maxOutputTokens`).
+ *   2. `process.env.COACH_MAX_OUTPUT_TOKENS` (must be a positive integer).
+ *   3. {@link DEFAULT_COACH_MAX_OUTPUT_TOKENS} (1024).
+ *
+ * Non-positive, non-finite, or non-integer overrides fall through (a `0.5`
+ * override truncates to 0, which is below the `> 0` floor and is treated as
+ * "no override"). Read at call time so tests can mutate `process.env`
+ * between runs without needing to reload the module.
+ *
+ * Exported (named) so tests can assert resolution independently of the
+ * provider call.
+ */
+export function resolveCoachMaxOutputTokens(override?: number): number {
+  if (
+    typeof override === "number" &&
+    Number.isFinite(override) &&
+    override > 0 &&
+    Number.isInteger(override)
+  ) {
+    return override;
+  }
+  const fromEnv = parsePositiveInt(process.env[COACH_MAX_OUTPUT_TOKENS_ENV]);
+  if (fromEnv !== undefined) return fromEnv;
+  return DEFAULT_COACH_MAX_OUTPUT_TOKENS;
+}
+
+/**
  * Reduce a Vercel AI SDK usage object (whose field names changed across SDK
  * majors — `promptTokens`/`completionTokens` vs `inputTokens`/`outputTokens`)
  * into the normalized {@link CoachTokenUsage} shape. Best-effort: any
  * non-numeric value is treated as 0.
+ *
+ * `appliedMaxOutputTokens` is the cap forwarded to the provider for this
+ * turn (issue #1536). It is forwarded into the `usage` payload so the client
+ * can render the bound. A value of `0` means no server-applied cap.
  */
-function normalizeUsage(raw: unknown): CoachTokenUsage {
+function normalizeUsage(
+  raw: unknown,
+  appliedMaxOutputTokens: number,
+): CoachTokenUsage {
   const n = (v: unknown): number =>
     typeof v === "number" && Number.isFinite(v)
       ? Math.max(0, Math.floor(v))
       : 0;
   if (typeof raw !== "object" || raw === null) {
-    return { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+    return {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      maxOutputTokens: appliedMaxOutputTokens,
+    };
   }
   const r = raw as Record<string, unknown>;
   const promptTokens = n(r.inputTokens ?? r.promptTokens);
   const completionTokens = n(r.outputTokens ?? r.completionTokens);
   const totalTokens = n(r.totalTokens) || promptTokens + completionTokens;
-  return { promptTokens, completionTokens, totalTokens };
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    maxOutputTokens: appliedMaxOutputTokens,
+  };
 }
 
 /** Human-readable, non-leaky message for an upstream provider error. */
@@ -272,6 +366,12 @@ export async function* streamCoachResponse(
     options.providers && options.providers.length > 0
       ? [...options.providers]
       : getProviderFailoverChain();
+
+  // Issue #1536: resolve the effective output-token cap once per request. The
+  // resolved value is forwarded to `streamText` so the provider truncates
+  // mid-generation on bound (rather than emitting unbounded tokens), and is
+  // surfaced on the `usage` SSE event so the client can render the bound.
+  const effectiveMaxOutputTokens = resolveCoachMaxOutputTokens(maxOutputTokens);
 
   let lastReason = "not-attempted";
 
@@ -351,7 +451,7 @@ export async function* streamCoachResponse(
         role: "system" | "user" | "assistant";
         content: string;
       }>,
-      maxOutputTokens,
+      maxOutputTokens: effectiveMaxOutputTokens,
       abortSignal: signal,
     });
 
@@ -411,7 +511,18 @@ export async function* streamCoachResponse(
     healthTracker.recordSuccess(provider);
 
     try {
-      const usage = normalizeUsage(await Promise.resolve(result.totalUsage));
+      // Issue #1536: include the applied cap in the `usage` payload so the
+      // client can render the bound. A zero completion count still includes
+      // the cap, preserving the "the truncation is normal, not a failure"
+      // contract from the acceptance criteria.
+      const usage = normalizeUsage(
+        await Promise.resolve(result.totalUsage),
+        effectiveMaxOutputTokens,
+      );
+      // Emit when the provider tracked any tokens. The `usage: null` branch
+      // (no provider-side counters) still suppresses the event — preserves
+      // the pre-#1536 "silent usage" semantics for stub / pre-counter
+      // providers.
       if (usage.totalTokens > 0) {
         yield { type: "usage", provider, usage };
       }

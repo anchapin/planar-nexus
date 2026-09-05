@@ -757,3 +757,269 @@ describe("eventToSse", () => {
     expect(eventToSse({ type: "done" })).toBe(`data: {"type":"done"}\n\n`);
   });
 });
+
+describe("streamCoachResponse — output-token cap (#1536)", () => {
+  // Issue #1536 acceptance criteria: every coach turn must forward a known,
+  // bounded `maxOutputTokens` to `streamText`, defaulted via the env var so
+  // deployments can tighten it without code changes. Resolution happens at
+  // call time so we clean `process.env` per-test to keep the suite hermetic.
+
+  let savedEnv: string | undefined;
+  beforeEach(() => {
+    // Capture and clear so process.env mutations from one test cannot leak.
+    savedEnv = process.env.COACH_MAX_OUTPUT_TOKENS;
+    delete process.env.COACH_MAX_OUTPUT_TOKENS;
+  });
+  afterEach(() => {
+    if (savedEnv === undefined) {
+      delete process.env.COACH_MAX_OUTPUT_TOKENS;
+    } else {
+      process.env.COACH_MAX_OUTPUT_TOKENS = savedEnv;
+    }
+  });
+
+  it("defaults to 1024 when the env var is unset and forwards it to streamText", async () => {
+    // Acceptance criterion #1: env unset → default cap of 1024 is forwarded.
+    mockedStreamText.mockReturnValue(
+      fakeResult(["ok"], {
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }),
+    );
+
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+    const callArgs = mockedStreamText.mock.calls[0][0] as {
+      maxOutputTokens: number;
+    };
+    expect(callArgs.maxOutputTokens).toBe(1024);
+  });
+
+  it("uses COACH_MAX_OUTPUT_TOKENS=2048 when the env var is set", async () => {
+    // Acceptance criterion #2: env var = 2048 → streamText receives 2048.
+    process.env.COACH_MAX_OUTPUT_TOKENS = "2048";
+    mockedStreamText.mockReturnValue(
+      fakeResult(["ok"], {
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }),
+    );
+
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+    const callArgs = mockedStreamText.mock.calls[0][0] as {
+      maxOutputTokens: number;
+    };
+    expect(callArgs.maxOutputTokens).toBe(2048);
+  });
+
+  it("falls back to the default when COACH_MAX_OUTPUT_TOKENS is invalid", async () => {
+    // Invalid env (junk / empty / negative / zero) → default cap, never 0
+    // or NaN — a 0 cap would silence the provider, which is not what the
+    // caller expects.
+    process.env.COACH_MAX_OUTPUT_TOKENS = "abc";
+    mockedStreamText.mockReturnValue(
+      fakeResult(["ok"], {
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }),
+    );
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+    expect(
+      (mockedStreamText.mock.calls[0][0] as { maxOutputTokens: number })
+        .maxOutputTokens,
+    ).toBe(1024);
+
+    process.env.COACH_MAX_OUTPUT_TOKENS = "0";
+    mockedStreamText.mockClear();
+    mockedStreamText.mockReturnValue(
+      fakeResult(["ok"], {
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }),
+    );
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+    expect(
+      (mockedStreamText.mock.calls[0][0] as { maxOutputTokens: number })
+        .maxOutputTokens,
+    ).toBe(1024);
+
+    process.env.COACH_MAX_OUTPUT_TOKENS = "";
+    mockedStreamText.mockClear();
+    mockedStreamText.mockReturnValue(
+      fakeResult(["ok"], {
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }),
+    );
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+    expect(
+      (mockedStreamText.mock.calls[0][0] as { maxOutputTokens: number })
+        .maxOutputTokens,
+    ).toBe(1024);
+  });
+
+  it("lets the per-call option override the env var", async () => {
+    // The StreamCoachResponseOptions.maxOutputTokens field (introduced by
+    // #1534) still wins over the env var. Hardened callers like /api/chat
+    // route can pass their own cap and ignore COACH_MAX_OUTPUT_TOKENS
+    // entirely.
+    process.env.COACH_MAX_OUTPUT_TOKENS = "2048";
+    mockedStreamText.mockReturnValue(
+      fakeResult(["ok"], {
+        usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+      }),
+    );
+
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        maxOutputTokens: 4096,
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+
+    expect(
+      (mockedStreamText.mock.calls[0][0] as { maxOutputTokens: number })
+        .maxOutputTokens,
+    ).toBe(4096);
+  });
+
+  it("surfaces the resolved cap on the usage SSE event", async () => {
+    // Acceptance criterion #3/#4: the cap is reported on the wire so the
+    // client can render the bound. Truncation is a normal completion, not a
+    // failure — the usage event still fires when totals are non-zero.
+    process.env.COACH_MAX_OUTPUT_TOKENS = "256";
+    mockedStreamText.mockReturnValue(
+      fakeResult(["a", "b", "c"], {
+        usage: {
+          promptTokens: 4,
+          completionTokens: 3,
+          totalTokens: 7,
+        },
+      }),
+    );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+
+    const usage = events.find((e) => e.type === "usage") as {
+      type: "usage";
+      provider: string;
+      usage: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        maxOutputTokens: number;
+      };
+    };
+    expect(usage).toBeDefined();
+    expect(usage.usage.maxOutputTokens).toBe(256);
+    expect(usage.usage.completionTokens).toBe(3);
+    expect(usage.usage.totalTokens).toBe(7);
+    // Acceptance criterion #4: no error event fires when truncation occurs.
+    expect(events.some((e) => e.type === "error")).toBe(false);
+    expect(events[events.length - 1].type).toBe("done");
+  });
+
+  it("captures the cap when no usage is reported by the provider", async () => {
+    // Even on the `usage: null` (provider didn't track) branch, the cap is
+    // still authoritative for the client — but the existing "no usage event
+    // when totals are 0" suppression is preserved to avoid surprising
+    // clients with cap-only payloads. Instead, the cap is captured on the
+    // streamText call directly.
+    process.env.COACH_MAX_OUTPUT_TOKENS = "512";
+    mockedStreamText.mockReturnValue(fakeResult(["x"], { usage: null }));
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+
+    // No usage event when the provider tracked nothing.
+    expect(events.find((e) => e.type === "usage")).toBeUndefined();
+    // But the cap WAS forwarded to the provider — observable from the
+    // streamText mock's call args.
+    expect(
+      (mockedStreamText.mock.calls[0][0] as { maxOutputTokens: number })
+        .maxOutputTokens,
+    ).toBe(512);
+  });
+
+  it("resolveCoachMaxOutputTokens is a pure function over (override, env)", async () => {
+    // Direct test of the resolver so future refactors cannot silently break
+    // the priority ladder.
+
+    // (override positive, env unset) → override
+    delete process.env.COACH_MAX_OUTPUT_TOKENS;
+    // Re-importing is unnecessary; the function reads process.env lazily.
+    const { resolveCoachMaxOutputTokens } = await import("../coach-stream");
+    expect(resolveCoachMaxOutputTokens(4096)).toBe(4096);
+    // Non-integer / non-positive / non-finite fall through to next priority.
+    expect(resolveCoachMaxOutputTokens(0.5)).toBe(1024);
+    expect(resolveCoachMaxOutputTokens(-1)).toBe(1024);
+    expect(resolveCoachMaxOutputTokens(NaN)).toBe(1024);
+
+    // (override undefined, env valid) → env
+    process.env.COACH_MAX_OUTPUT_TOKENS = "777";
+    expect(resolveCoachMaxOutputTokens()).toBe(777);
+
+    // (override undefined, env invalid) → default
+    process.env.COACH_MAX_OUTPUT_TOKENS = "abc";
+    expect(resolveCoachMaxOutputTokens()).toBe(1024);
+    delete process.env.COACH_MAX_OUTPUT_TOKENS;
+    expect(resolveCoachMaxOutputTokens()).toBe(1024);
+  });
+});
