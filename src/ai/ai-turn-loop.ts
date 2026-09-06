@@ -1869,6 +1869,15 @@ async function castOtherSpells(
     : undefined;
   const opponentCreatureCount =
     opponentBattlefield?.filter((p) => p.type === "creature").length ?? 0;
+  // Issue #1541 — power of the most threatening opposing creature, drives the
+  // premium-removal target-value scaling in scoreNonCreatureSpell. Defaults to
+  // 0 when no opposing creatures exist or no power info is available (which
+  // the scorer treats as dork-equivalent — conservative: when in doubt, hold).
+  const maxOpposingCreaturePower =
+    opponentBattlefield?.reduce(
+      (max, p) => (p.type === "creature" ? Math.max(max, p.power ?? 0) : max),
+      0,
+    ) ?? 0;
   const turnNumber = aiState.turnInfo?.currentTurn ?? 0;
   const board: SpellBoardContext = {
     availableMana,
@@ -1876,6 +1885,7 @@ async function castOtherSpells(
     ownCreatureCount,
     turnNumber,
     phase,
+    maxOpposingCreaturePower,
   };
 
   // Collect the non-creature, non-land spells first so the Expert scoring

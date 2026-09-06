@@ -1,5 +1,6 @@
 /**
- * @fileoverview Difficulty-scaled non-creature spell cast gate (issue #1413).
+ * @fileoverview Difficulty-scaled non-creature spell cast gate (issues #1413,
+ * #1541).
  *
  * `castOtherSpells` in `ai-turn-loop.ts` iterates the AI's hand and casts every
  * non-creature, non-land spell it can pay for. Unlike `castCreatures` (which
@@ -14,6 +15,29 @@
  * #1416, `cast-sequencing.ts` from #1415, and `cleanup-discard.ts` from #1414)
  * so the only edit to `ai-turn-loop.ts` is the call site — present and future
  * sibling issues that also touch the turn loop rebase cleanly.
+ *
+ * ## Issue #1541 — target-value scaling for premium removal
+ *
+ * The original `scoreNonCreatureSpell` gave every removal spell with a live
+ * target the same flat `0.7 + REMOVAL_WITH_TARGET_BONUS` board-swing, regardless
+ * of whether the only legal target was a 1/1 mana dork or a 6/6 flying titan.
+ * The AI routinely spent a Swords-to-Plowshares on a chump-blocker and held a
+ * random 4-mana Pacifism for a threat that never came.
+ *
+ * The fix multiplies the board-swing term by a **target-value factor** derived
+ * from the most threatening opposing creature's power, *but only when the
+ * spell is itself premium* (CMC ≤ 2 unconditional exile/destroy — see
+ * {@link isPremiumRemovalSpell}). Bread removal (CMC ≥ 4, or with conditional
+ * clauses) keeps the old flat score, so a Wrath-of-God analogue still scores
+ * well against a wide board and an unconditional-but-conditional Pacifism
+ * analogue isn't held when it should be cast.
+ *
+ * The factor table is intentionally stepped (not continuous) so a single
+ * power tick (3 → 4) doesn't flip a decision boundary and so tests can pin
+ * exact expectations. The wiring in `ai-turn-loop.ts` passes
+ * `maxOpposingCreaturePower` from the live opponent battlefield; the gate
+ * stays a pure function (optional field, `?? 0` default for tests that omit
+ * it).
  *
  * ## Direction inversion vs `castCreatures`
  *
@@ -102,6 +126,34 @@ export const REMOVAL_WITH_TARGET_BONUS = 0.3;
  */
 export const INSTANT_PRECOMBAT_HOLD_PENALTY = 0.2;
 
+// ---------------------------------------------------------------------------
+// Issue #1541 — premium-removal target-value factors
+//
+// The AI multiplies the (0.7 + REMOVAL_WITH_TARGET_BONUS) board-swing term by
+// one of these when the spell is a premium removal (CMC ≤ 2 unconditional
+// exile/destroy — see {@link isPremiumRemovalSpell}). The values are tuned so:
+//
+//   - dork (power ≤ 1)         → 0.4  → score drops below the hold threshold
+//                                 and the spell is held for a real target
+//   - mid-range (power 2-3)    → 0.7  → borderline; often held for a bomb
+//   - big (power 4-5)          → 1.0  → cast as the original behaviour
+//   - bomb (power ≥ 6)         → 1.15 → overcapping pushes the score above
+//                                 0.85 so a single high-value threat always
+//                                 earns the premium removal
+//
+// The step-table is deliberately non-continuous (see
+// {@link computeRemovalTargetValueFactor} for the rationale).
+// ---------------------------------------------------------------------------
+
+/** Target-value factor when the best opposing creature is a dork / 0-power. */
+export const REMOVAL_TARGET_VALUE_LOW = 0.4;
+/** Target-value factor when the best opposing creature is power 2-3. */
+export const REMOVAL_TARGET_VALUE_MID = 0.7;
+/** Target-value factor when the best opposing creature is power 4-5. */
+export const REMOVAL_TARGET_VALUE_HIGH = 1.0;
+/** Target-value factor when the best opposing creature is power ≥ 6 (bomb). */
+export const REMOVAL_TARGET_VALUE_BOMB = 1.15;
+
 /**
  * Score weight for the future-turn leverage term (CMC just under available
  * mana → can recast next turn; far over → dead in hand).
@@ -181,6 +233,17 @@ export interface SpellBoardContext {
    * (holding there means wasting the turn).
    */
   phase?: "precombat_main" | "postcombat_main" | string;
+  /**
+   * Issue #1541 — power of the most threatening opposing creature currently
+   * on the battlefield. Drives the premium-removal target-value scaling in
+   * {@link scoreNonCreatureSpell}: 0 (no opposing creature OR unknown) →
+   * dork-equivalent (factor 0.4), 2-3 → 0.7, 4-5 → 1.0, ≥6 → 1.15.
+   *
+   * Optional so existing callers / tests compile unchanged. The wiring in
+   * `ai-turn-loop.ts` fills this in from the live opponent battlefield;
+   * tests pass it explicitly per acceptance criterion.
+   */
+  maxOpposingCreaturePower?: number;
 }
 
 /** A non-creature spell in hand positioned for the gating decision. */
@@ -247,7 +310,19 @@ export function scoreNonCreatureSpell(inputs: SpellScoreInputs): number {
     // Removal with a live target is a real board swing; removal on an empty
     // board is a near-zero blunder (the exact asymmetry the issue calls out).
     if (board.opponentCreatureCount > 0) {
-      boardSwing = 0.7 + REMOVAL_WITH_TARGET_BONUS; // 1.0 → clamped below
+      const baseRemovalScore = 0.7 + REMOVAL_WITH_TARGET_BONUS; // 1.0
+      // Issue #1541 — scale premium removal by target value so the AI holds
+      // Swords-to-Plowshares for the bomb and uses Pacifism on the chump.
+      // Bread removal (CMC ≥ 4 or with conditional clauses) keeps the old
+      // flat score — we do not gate bread removal, only premium.
+      if (isPremiumRemovalSpell(spell.typeLine, oracle, spell.cmc)) {
+        const factor = computeRemovalTargetValueFactor(
+          board.maxOpposingCreaturePower ?? 0,
+        );
+        boardSwing = baseRemovalScore * factor;
+      } else {
+        boardSwing = baseRemovalScore;
+      }
     } else {
       boardSwing = 0.1;
     }
@@ -292,6 +367,78 @@ export function scoreNonCreatureSpell(inputs: SpellScoreInputs): number {
   const noHoldBonus = isSorcery && board.phase === "postcombat_main" ? 0.05 : 0;
 
   return clamp01(boardSwing + leverage - holdPenalty + noHoldBonus);
+}
+
+/**
+ * Issue #1541 — detect a "premium" removal spell.
+ *
+ * Premium removal is the cheap, unconditional kind — the AI's MVP interaction
+ * spells that should be held for bombs:
+ *
+ *   - CMC ≤ 2 (cheap enough to be worth holding).
+ *   - Instant or sorcery (matches {@link isRemovalSpell}'s gate — we do not
+ *     premium-classify aura/creature-based removal, which have different
+ *     decision semantics).
+ *   - Oracle text matches `destroy target creature` or `exile target creature`
+ *     — the canonical "premium" patterns. Conditional variants like "destroy
+ *     tapped creature", "destroy target creature with power 4 or less",
+ *     "destroy target artifact or enchantment" are **not** premium.
+ *
+ * False negatives are fine — the worst case is bread removal gets the same
+ * flat score it does today. False positives (calling bread removal "premium")
+ * would be a real bug: we'd hold a Wrath against a chump, so the conditional
+ * blacklist below matters.
+ */
+export function isPremiumRemovalSpell(
+  typeLine: string,
+  oracleText: string,
+  cmc: number,
+): boolean {
+  if (cmc > 2) return false;
+  const t = (typeLine ?? "").toLowerCase();
+  if (!t.includes("instant") && !t.includes("sorcery")) return false;
+  const o = (oracleText ?? "").toLowerCase();
+  // Must unconditionally destroy or exile a single target creature.
+  if (!/\b(destroy target creature|exile target creature)\b/.test(o))
+    return false;
+  // Reject conditional clauses — premium is unconditional by definition.
+  if (
+    /\btapped\b/.test(o) ||
+    /\bwith (power|toughness|converted mana cost|cmc) \d/.test(o) ||
+    /\b\d or less\b/.test(o) ||
+    /\bartifact or enchantment\b/.test(o)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Issue #1541 — map the most threatening opposing creature's power to a
+ * target-value factor in the stepped table
+ * `{REMOVAL_TARGET_VALUE_LOW, _MID, _HIGH, _BOMB}`.
+ *
+ * The mapping is intentionally **stepped**, not linear. Reasons:
+ *
+ *   - Stability across tiny power ticks: a +1/+1 counter pushing a 2/2 to 3/3
+ *     should not flip the AI's whole decision about whether to spend premium
+ *     removal.
+ *   - Test pinning: `power=1 → 0.4` is easier to reason about and assert
+ *     against than `factor = clamp(0.4 + (power - 1) * 0.1, 0.4, 1.15)`.
+ *   - Matches the AI's mental model: dork / mid / big / bomb.
+ *
+ * `maxOpposingCreaturePower` is the largest printed power among opponent
+ * creatures — the "best target" the removal can take. The caller (the AI
+ * turn loop) computes this from the live battlefield; the helper itself
+ * stays pure so tests can drive any value.
+ */
+export function computeRemovalTargetValueFactor(
+  maxOpposingCreaturePower: number,
+): number {
+  if (maxOpposingCreaturePower <= 1) return REMOVAL_TARGET_VALUE_LOW;
+  if (maxOpposingCreaturePower <= 3) return REMOVAL_TARGET_VALUE_MID;
+  if (maxOpposingCreaturePower <= 5) return REMOVAL_TARGET_VALUE_HIGH;
+  return REMOVAL_TARGET_VALUE_BOMB;
 }
 
 /** Result of the Expert optimal-spell selection pass. */
