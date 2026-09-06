@@ -23,6 +23,7 @@ import { streamText } from "ai";
 import {
   streamCoachResponse,
   eventToSse,
+  classifyStreamFailure,
   DEFAULT_FALLBACK_TEXT,
   type CoachStreamEvent,
   type CoachStreamMessage,
@@ -755,6 +756,478 @@ describe("eventToSse", () => {
 
   it("serializes a done event", () => {
     expect(eventToSse({ type: "done" })).toBe(`data: {"type":"done"}\n\n`);
+  });
+});
+
+describe("classifyStreamFailure — content-policy / context-length (#1537)", () => {
+  // Issue #1537 acceptance criterion: classifyStreamFailure must return
+  // the two new bounded reasons for the documented upstream patterns
+  // instead of the previous `stream-before-first-token` catch-all.
+  it("classifies OpenAI `content_policy` violations as `content-policy`", () => {
+    expect(classifyStreamFailure(new Error("content_policy violation"))).toBe(
+      "content-policy",
+    );
+    expect(classifyStreamFailure("content policy rejected")).toBe(
+      "content-policy",
+    );
+    expect(
+      classifyStreamFailure(new Error("content-policyViolation flag")),
+    ).toBe("content-policy");
+  });
+
+  it("classifies Anthropic `output_flagged` as `content-policy`", () => {
+    expect(classifyStreamFailure(new Error("output_flagged"))).toBe(
+      "content-policy",
+    );
+    expect(classifyStreamFailure("output flagged for moderation")).toBe(
+      "content-policy",
+    );
+  });
+
+  it("classifies generic `safety` refusals as `content-policy`", () => {
+    expect(classifyStreamFailure(new Error("safety filters triggered"))).toBe(
+      "content-policy",
+    );
+    expect(classifyStreamFailure("blocked by safety guardrail")).toBe(
+      "content-policy",
+    );
+  });
+
+  it("classifies Anthropic `prompt is too long` as `context-length`", () => {
+    expect(classifyStreamFailure(new Error("prompt is too long"))).toBe(
+      "context-length",
+    );
+    expect(
+      classifyStreamFailure(new Error("prompt_too_long: exceeds 200k tokens")),
+    ).toBe("context-length");
+  });
+
+  it("classifies OpenAI `maximum context length` as `context-length`", () => {
+    expect(
+      classifyStreamFailure(
+        new Error("maximum context length is 128000 tokens"),
+      ),
+    ).toBe("context-length");
+    expect(
+      classifyStreamFailure(new Error("max context length exceeded")),
+    ).toBe("context-length");
+  });
+
+  it("classifies `too many tokens` / `max tokens` / hyphenated variants", () => {
+    expect(classifyStreamFailure(new Error("too many tokens"))).toBe(
+      "context-length",
+    );
+    expect(classifyStreamFailure(new Error("max_tokens limit reached"))).toBe(
+      "context-length",
+    );
+    expect(classifyStreamFailure(new Error("context-length overflow"))).toBe(
+      "context-length",
+    );
+  });
+
+  it("still classifies the original 3-bucket reasons", () => {
+    // Regression guard: the new patterns must not regress the existing
+    // 3-bucket classifier (#1418). All upstream patterns continue to map
+    // to their original reasons.
+    expect(classifyStreamFailure(new Error("429 Too Many Requests"))).toBe(
+      "rate-limit",
+    );
+    expect(classifyStreamFailure(new Error("request timed out"))).toBe(
+      "timeout",
+    );
+    expect(classifyStreamFailure(new Error("upstream stream exploded"))).toBe(
+      "stream-before-first-token",
+    );
+  });
+
+  it("treats context-length as more specific than content-policy", () => {
+    // Defensive: a hypothetical upstream message containing both
+    // substrings resolves to context-length (the more actionable
+    // retry-on-same-provider branch).
+    expect(
+      classifyStreamFailure(
+        new Error(
+          "content_policy_violation: prompt too long for safety filter",
+        ),
+      ),
+    ).toBe("context-length");
+  });
+});
+
+describe("streamCoachResponse — content-policy refusal (#1537)", () => {
+  // Issue #1537 acceptance criterion: a content-policy failure on
+  // provider A must NOT record a health failure, must NOT fail over to
+  // provider B, and instead emit a single `error` event with a
+  // user-facing message naming the cause.
+
+  it("emits an error event and does NOT fail over when the provider refuses for content-policy", async () => {
+    // First provider throws a content-policy error before any token.
+    mockedStreamText.mockReturnValueOnce(
+      fakeResult(["should-not-stream"], {
+        throwBefore: 0,
+        errorMessage: "content_policy_violation: input flagged",
+      }),
+    );
+    // The second provider would recover if attempted — the test asserts
+    // it is NOT attempted (no failover on content-policy).
+    mockedStreamText.mockReturnValueOnce(fakeResult(["from-anthropic"]));
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai", "anthropic"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+      }),
+    );
+
+    // No failover was emitted — openai refused, the orchestrator did not
+    // even try anthropic.
+    expect(events.some((e) => e.type === "failover")).toBe(false);
+    // Exactly one provider-event was emitted (for openai) and streamText
+    // was only called once (the anthropic mock was never reached).
+    const providerEvents = events.filter((e) => e.type === "provider");
+    expect(providerEvents).toHaveLength(1);
+    expect((providerEvents[0] as { value: string }).value).toBe("openai");
+    expect(mockedStreamText).toHaveBeenCalledTimes(1);
+
+    // The error event is emitted with a content-policy-specific message,
+    // NOT a generic upstream-error message.
+    const error = events.find((e) => e.type === "error") as
+      { value: string } | undefined;
+    expect(error).toBeDefined();
+    expect(error?.value.toLowerCase()).toContain("safety");
+    expect(error?.value.toLowerCase()).toContain("rephras");
+  });
+
+  it("does NOT record a content-policy failure on the health tracker (#1537)", async () => {
+    // Regression guard: the previous `stream-before-first-token`
+    // catch-all recorded the failure as `stream-before-first-token` with
+    // a 1s cooldown. The new content-policy branch must NOT record
+    // anything, because a refusal is a working provider's deliberate
+    // response, not a transient fault.
+    const health = new ProviderHealthTracker();
+    mockedStreamText.mockReturnValueOnce(
+      fakeResult(["should-not-stream"], {
+        throwBefore: 0,
+        errorMessage: "output_flagged for moderation",
+      }),
+    );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    expect(events.some((e) => e.type === "error")).toBe(true);
+    // The provider is NOT in cooldown — a content-policy refusal does
+    // not penalise a working provider.
+    expect(health.isHealthy("openai")).toBe(true);
+    expect(health.snapshot("openai")).toBeUndefined();
+    expect(health.size()).toBe(0);
+  });
+});
+
+describe("streamCoachResponse — context-length prune-and-retry (#1537)", () => {
+  // Issue #1537 acceptance criterion: a context-length failure on
+  // provider A records the `context-length` reason on the health
+  // tracker, emits a `failover` event with `reason: 'context-length'`,
+  // and retries the SAME provider once after re-running
+  // prepareConversationHistoryWithSummary with a tighter budget.
+
+  it("records context-length, emits a context-length failover, and retries the same provider once", async () => {
+    const health = new ProviderHealthTracker();
+
+    // Build a stub prepareConversationHistoryWithSummary so we can
+    // observe the tighter-budget call without depending on the real
+    // pruner.
+    let prunerCalls = 0;
+    let lastPrunerOpts: { maxTokens?: number } | undefined;
+    const stubPrepare = (
+      _msgs: unknown,
+      opts?: Parameters<
+        typeof import("@/ai/flows/context-builder").prepareConversationHistoryWithSummary
+      >[1],
+    ): import("@/ai/flows/context-builder").PreparedConversationHistory => {
+      prunerCalls++;
+      // Narrow the union (`number | PrepareConversationHistoryWithSummaryOptions | undefined`)
+      // down to the options-object branch so we can read `maxTokens` safely.
+      lastPrunerOpts =
+        opts && typeof opts === "object" && !Array.isArray(opts)
+          ? (opts as { maxTokens?: number })
+          : undefined;
+      // Simulate the pruner tightening: return a smaller slice.
+      return {
+        messages: [
+          { role: "user", content: "trimmed user turn" },
+          { role: "assistant", content: "trimmed reply" },
+        ],
+        summary: {
+          version: 1,
+          updatedAt: "1970-01-01T00:00:00.000Z",
+          goals: [],
+          constraints: [],
+          acceptedSwaps: [],
+          rejectedSwaps: [],
+          matchupTargets: [],
+          unresolvedQuestions: [],
+          tokenEstimate: 0,
+        },
+        pruned: true,
+      };
+    };
+
+    // First streamText call: openai throws a context-length error
+    // before any token.
+    // Second streamText call: openai is retried with the tightened
+    // history and succeeds.
+    mockedStreamText
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage:
+            "prompt is too long: 250000 tokens (max context length: 200000)",
+        }),
+      )
+      .mockReturnValueOnce(
+        fakeResult(["recovered"], {
+          usage: { totalTokens: 2, inputTokens: 1, outputTokens: 1 },
+        }),
+      );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+        prepareConversationHistoryWithSummary: stubPrepare,
+        contextLengthRetryMaxTokens: 500,
+      }),
+    );
+
+    // 1. The orchestrator emitted a `failover` event with the new bounded
+    // reason. `from === to === 'openai'` so observers know the retry
+    // is on the same provider, not a true cross-provider failover.
+    const contextLengthFailover = events.find((e) => e.type === "failover") as
+      | { type: "failover"; from: string; to: string; reason: string }
+      | undefined;
+    expect(contextLengthFailover).toBeDefined();
+    expect(contextLengthFailover?.from).toBe("openai");
+    expect(contextLengthFailover?.to).toBe("openai");
+    expect(contextLengthFailover?.reason).toBe("context-length");
+
+    // 2. The retry ran prepareConversationHistoryWithSummary ONCE with
+    // the tighter `contextLengthRetryMaxTokens` budget.
+    expect(prunerCalls).toBe(1);
+    expect(lastPrunerOpts?.maxTokens).toBe(500);
+
+    // 3. The retry succeeded — openai's second attempt streamed the
+    // recovered text, and the stream completed normally.
+    expect(mockedStreamText).toHaveBeenCalledTimes(2);
+    const text = events
+      .filter((e) => e.type === "text")
+      .map((e) => (e as { value: string }).value)
+      .join("");
+    expect(text).toBe("recovered");
+    expect(events[events.length - 1].type).toBe("done");
+
+    // 4. After successful completion the cooldown is cleared (#1418).
+    // The bounded `context-length` reason WAS recorded during the retry
+    // path (see `recordFailure(provider, "context-length")` above), but
+    // the success path's `recordSuccess` then dropped the entry — this
+    // is the documented behaviour. The failover event is the durable
+    // signal that context-length was the cause (#1537 contract).
+    expect(health.isHealthy("openai")).toBe(true);
+    expect(health.snapshot("openai")).toBeUndefined();
+
+    // 5. Sanity: a fresh failure (e.g. next coach turn) starts at the
+    // base cooldown again, proving the entry was cleared.
+    health.recordFailure("openai", "context-length");
+    expect(health.cooldownRemaining("openai")).toBe(500);
+  });
+
+  it("forwards the tightened history to streamText on retry (observable via call args)", async () => {
+    // The retry's tightened messages must reach streamText — otherwise
+    // the orchestrator's prune-and-retry would silently keep sending
+    // the original oversized prompt. Capture the second streamText
+    // call's `messages` argument.
+    const stubPrepare = (
+      _msgs: unknown,
+      _opts?: Parameters<
+        typeof import("@/ai/flows/context-builder").prepareConversationHistoryWithSummary
+      >[1],
+    ): import("@/ai/flows/context-builder").PreparedConversationHistory => {
+      return {
+        messages: [{ role: "user", content: "latest-turn-always-retained" }],
+        summary: {
+          version: 1,
+          updatedAt: "1970-01-01T00:00:00.000Z",
+          goals: [],
+          constraints: [],
+          acceptedSwaps: [],
+          rejectedSwaps: [],
+          matchupTargets: [],
+          unresolvedQuestions: [],
+          tokenEstimate: 0,
+        },
+        pruned: false,
+      };
+    };
+
+    mockedStreamText
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "max tokens exceeded for prompt",
+        }),
+      )
+      .mockReturnValueOnce(fakeResult(["recovered"]));
+
+    await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        prepareConversationHistoryWithSummary: stubPrepare,
+      }),
+    );
+
+    expect(mockedStreamText).toHaveBeenCalledTimes(2);
+    const retryCallArgs = mockedStreamText.mock.calls[1][0] as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(retryCallArgs.messages).toEqual([
+      { role: "user", content: "latest-turn-always-retained" },
+    ]);
+  });
+
+  it("does not retry the same provider twice on consecutive context-length failures", async () => {
+    // Per the issue's acceptance criteria: "retries the SAME provider
+    // once". A second context-length failure must NOT loop forever — the
+    // stream ends with an error after the second failure so the user is
+    // not stuck.
+    const stubPrepare = (
+      _msgs: unknown,
+      _opts?: Parameters<
+        typeof import("@/ai/flows/context-builder").prepareConversationHistoryWithSummary
+      >[1],
+    ): import("@/ai/flows/context-builder").PreparedConversationHistory => {
+      return {
+        messages: [{ role: "user", content: "still too long" }],
+        summary: {
+          version: 1,
+          updatedAt: "1970-01-01T00:00:00.000Z",
+          goals: [],
+          constraints: [],
+          acceptedSwaps: [],
+          rejectedSwaps: [],
+          matchupTargets: [],
+          unresolvedQuestions: [],
+          tokenEstimate: 0,
+        },
+        pruned: false,
+      };
+    };
+
+    // Two consecutive context-length failures on openai.
+    mockedStreamText
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "prompt too long: context length exceeded",
+        }),
+      )
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "still too long: context length exceeded",
+        }),
+      );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        prepareConversationHistoryWithSummary: stubPrepare,
+      }),
+    );
+
+    // Exactly two streamText calls — first attempt + one retry.
+    expect(mockedStreamText).toHaveBeenCalledTimes(2);
+    // After the second context-length failure, the stream ends with a
+    // user-facing error (the friendlyError message names the cause so
+    // the user is not stuck waiting on a doomed retry loop).
+    expect(events.some((e) => e.type === "error")).toBe(true);
+    expect(events.some((e) => e.type === "failover")).toBe(true);
+    const failovers = events.filter((e) => e.type === "failover");
+    // Exactly one failover — the context-length retry signal. After the
+    // retry also fails, the orchestrator emits `error` + `done` and
+    // does NOT fall through to a cross-provider failover (a different
+    // provider with the same oversized prompt will fail the same way).
+    expect(failovers).toHaveLength(1);
+    expect(failovers[0]).toMatchObject({
+      type: "failover",
+      from: "openai",
+      to: "openai",
+      reason: "context-length",
+    });
+    expect(events[events.length - 1].type).toBe("done");
+  });
+
+  it("does NOT retry on context-length when no pruner is available (defensive)", async () => {
+    // Defensive contract: the orchestrator must not throw if the pruner
+    // is somehow absent (the default seam always provides one, but
+    // future callers might forget). When no tightened history is
+    // available, the second context-length failure is treated like any
+    // other pre-token failure and the stream ends with an error.
+    const health = new ProviderHealthTracker();
+    mockedStreamText
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "prompt too long",
+        }),
+      )
+      // The retry attempt will also fail with the same message (the
+      // mock cannot tighten anything).
+      .mockReturnValueOnce(
+        fakeResult(["nope"], {
+          throwBefore: 0,
+          errorMessage: "prompt too long",
+        }),
+      );
+
+    const events = await collect(
+      streamCoachResponse({
+        systemPrompt: "sys",
+        messages: MESSAGES,
+        providers: ["openai"],
+        getModel: makeGetModel([]),
+        isConfigured: () => true,
+        healthTracker: health,
+      }),
+    );
+
+    // Health recorded context-length at least once.
+    expect(health.snapshot("openai")?.lastFailureReason).toBe("context-length");
+    // Stream ends after exactly two attempts (no infinite loop).
+    expect(mockedStreamText).toHaveBeenCalledTimes(2);
+    expect(events[events.length - 1].type).toBe("done");
   });
 });
 

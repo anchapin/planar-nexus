@@ -38,6 +38,11 @@ import type {
   CitationSummary,
   CitationVerification,
 } from "@/ai/flows/verify-citations";
+import {
+  prepareConversationHistoryWithSummary,
+  type PreparedConversationHistory,
+} from "@/ai/flows/context-builder";
+import type { ChatMessage } from "@/types/chat";
 
 /** A single message in the coach conversation. */
 export interface CoachStreamMessage {
@@ -188,6 +193,26 @@ export interface StreamCoachResponseOptions {
    * instance keeps cooldown state hermetic per test file.
    */
   healthTracker?: ProviderHealthTracker;
+  /**
+   * Test seam: token-aware conversation-history pruner with durable
+   * summary (issue #1417 + #1238). Defaults to the real implementation
+   * imported from `@/ai/flows/context-builder`. Inject a stub to verify
+   * the tighter-budget call without running the real pruner (issue
+   * #1537 acceptance criterion).
+   */
+  prepareConversationHistoryWithSummary?: (
+    messages: ChatMessage[],
+    options?: Parameters<typeof prepareConversationHistoryWithSummary>[1],
+  ) => PreparedConversationHistory;
+  /**
+   * Token budget applied when the orchestrator retries a provider after a
+   * `context-length` failure (issue #1537). The retry re-runs
+   * {@link prepareConversationHistoryWithSummary} with this `maxTokens`
+   * value so the prompt shrinks to a size the provider can accept.
+   * Defaults to `2_000` tokens — small enough to handle most "prompt too
+   * long" cases on the cheap tier without losing the latest turn.
+   */
+  contextLengthRetryMaxTokens?: number;
 }
 
 /** Default fallback streamed when no provider can answer. */
@@ -210,6 +235,35 @@ export const DEFAULT_COACH_MAX_OUTPUT_TOKENS = 1024;
  * {@link StreamCoachResponseOptions.maxOutputTokens} option.
  */
 export const COACH_MAX_OUTPUT_TOKENS_ENV = "COACH_MAX_OUTPUT_TOKENS";
+
+/**
+ * Default token budget applied when the orchestrator retries a provider
+ * after a `context-length` failure (issue #1537). Tight enough to handle
+ * most "prompt too long" rejections on the cheap tier without losing the
+ * latest turn (the pruner always retains the latest message per
+ * `prepareConversationHistory`). May be overridden per-call via the
+ * {@link StreamCoachResponseOptions.contextLengthRetryMaxTokens} option.
+ */
+export const DEFAULT_CONTEXT_LENGTH_RETRY_MAX_TOKENS = 2_000;
+
+/**
+ * Hard cap on how many times a single provider may be retried within one
+ * `streamCoachResponse` call after `context-length` failures (issue
+ * #1537). Per the issue's acceptance criteria ("retries the SAME provider
+ * once"), this is `1` — a second context-length failure ends the stream
+ * so the user is not trapped in a retry loop with the same prompt.
+ */
+export const MAX_CONTEXT_LENGTH_RETRIES_PER_PROVIDER = 1;
+
+/**
+ * Default implementation of the context-length retry pruner (issue
+ * #1537). Aliased here so the test seam
+ * {@link StreamCoachResponseOptions.prepareConversationHistoryWithSummary}
+ * can fall back to the real pruner (imported from
+ * `@/ai/flows/context-builder`) without leaking the dependency to callers.
+ */
+const realPrepareConversationHistoryWithSummary =
+  prepareConversationHistoryWithSummary;
 
 /**
  * Parse a positive integer from an env-style string. Returns `undefined` for
@@ -303,17 +357,56 @@ function friendlyError(error: unknown): string {
   if (/timeout|timed?\s*out|aborted/i.test(message)) {
     return "The coach provider took too long to respond. Please try again.";
   }
+  // Issue #1537: content-policy refusal. Distinct from generic upstream
+  // errors — the user is told the model declined for safety reasons, not
+  // that there was an unspecified provider problem. Naming the cause lets
+  // the user rephrase instead of retrying.
+  if (/content.?policy|output[ _]flagged|safety/i.test(message)) {
+    return "The coach declined to answer for safety reasons. Try rephrasing your question.";
+  }
+  // Issue #1537: context-length exceeded. Surfaced to the user as a
+  // "trim the deck / earlier turns" hint — the underlying issue is the
+  // conversation growing past the provider's window, not a transient
+  // provider fault.
+  if (
+    /context.{0,5}length|max.{0,5}tokens|too many tokens|prompt.{0,5}too.{0,5}long/i.test(
+      message,
+    )
+  ) {
+    return "The conversation is too long for the coach provider. Try trimming earlier turns or starting a new conversation.";
+  }
   return "The coach provider returned an error while generating a response.";
 }
 
 /**
  * Map an upstream error thrown before any token was streamed to a bounded
- * {@link ProviderFailureReason} for the health tracker (issue #1418). The
- * classification is intentionally coarse and regex-based — we only need it
- * to pick a cooldown schedule, not to surface the error to the user. Abort
- * errors never reach here: the caller checks `signal?.aborted` first.
+ * {@link ProviderFailureReason} for the health tracker (issue #1418,
+ * refined by #1537). The classification is intentionally coarse and
+ * regex-based — we only need it to pick a cooldown schedule, not to
+ * surface the error to the user. Abort errors never reach here: the caller
+ * checks `signal?.aborted` first.
+ *
+ * Issue #1537 splits two failure modes out of the previous
+ * `stream-before-first-token` catch-all:
+ *
+ *   - `content-policy` (`content.?policy|output_flagged|safety`): the model
+ *     declined the request. Failing over to a second provider just shifts
+ *     the same refusal. The coach stream therefore does NOT record this as
+ *     a health failure and does NOT fail over; it surfaces a user-facing
+ *     message via {@link friendlyError}.
+ *
+ *   - `context-length` (`context.{0,5}length|max.{0,5}tokens|too many
+ *     tokens|prompt.{0,5}too.{0,5}long`): the prompt exceeded the
+ *     provider's window. Failing over to a second provider with the SAME
+ *     oversized prompt is doomed; the coach stream records the reason,
+ *     emits a `failover(reason: 'context-length')` event, and retries the
+ *     SAME provider once after re-running
+ *     {@link prepareConversationHistoryWithSummary} with a tighter budget.
+ *
+ * Exported so tests can assert classification directly without going
+ * through the full streaming harness.
  */
-function classifyStreamFailure(error: unknown): ProviderFailureReason {
+export function classifyStreamFailure(error: unknown): ProviderFailureReason {
   const message = error instanceof Error ? error.message : String(error);
   if (/rate.?limit|429|too many requests/i.test(message)) {
     return "rate-limit";
@@ -321,19 +414,46 @@ function classifyStreamFailure(error: unknown): ProviderFailureReason {
   if (/timeout|timed?\s*out/i.test(message)) {
     return "timeout";
   }
+  // Issue #1537: context-length before content-policy so a hypothetical
+  // upstream message containing both substrings (e.g. an OpenAI 400 with
+  // `content_policy_violation` AND `prompt_too_long`) resolves to the
+  // more actionable retry-on-same-provider branch.
+  if (
+    /context.{0,5}length|max.{0,5}tokens|too many tokens|prompt.{0,5}too.{0,5}long/i.test(
+      message,
+    )
+  ) {
+    return "context-length";
+  }
+  if (/content.?policy|output[ _]flagged|safety/i.test(message)) {
+    return "content-policy";
+  }
   return "stream-before-first-token";
 }
 
 /**
  * Stream a coach response with transparent provider failover and cancellation.
  *
- * Failure policy (issue #1077 + #1418):
+ * Failure policy (issue #1077 + #1418 + #1537):
  *   - Provider is currently in cooldown (recent transient failure recorded by
  *     the health tracker) → skipped, a `failover` event with `reason:
  *     "cooldown"` is emitted, the next healthy provider is tried (#1418).
- *   - Provider fails BEFORE any token is delivered → record the bounded
- *     failure reason, fail over to the next provider (a `failover` event is
- *     emitted first).
+ *   - Provider fails BEFORE any token is delivered → classify the bounded
+ *     reason (see below). Rate-limit / timeout / model-setup / generic
+ *     stream errors record a health failure and try the next provider.
+ *     Two classes get a different response (#1537):
+ *       - `content-policy`: do NOT record a health failure (the model is
+ *         working correctly — it declined), do NOT fail over (a second
+ *         provider will likely refuse the same prompt), emit a single
+ *         `error` event with a user-facing message and end the stream.
+ *       - `context-length`: do NOT fail over either (same prompt on a
+ *         second provider is doomed) — instead record the bounded
+ *         reason on the health tracker, emit a `failover` event with
+ *         `reason: "context-length"`, and retry the SAME provider ONCE
+ *         after re-running `prepareConversationHistoryWithSummary` with a
+ *         tighter token budget. If the retry also fails (or the retry
+ *         yields another context-length error), the stream ends
+ *         gracefully so the user is not stuck in a retry loop.
  *   - Provider fails AFTER tokens were delivered → end the stream gracefully
  *     (`error` + `done`); we do not attempt to resume a partial response and
  *     we do NOT record a health failure (the provider started fine).
@@ -360,6 +480,9 @@ export async function* streamCoachResponse(
     getModel = getAIModel,
     isConfigured = isProviderConfigured,
     healthTracker = providerHealth,
+    prepareConversationHistoryWithSummary:
+      prepareHistory = realPrepareConversationHistoryWithSummary,
+    contextLengthRetryMaxTokens = DEFAULT_CONTEXT_LENGTH_RETRY_MAX_TOKENS,
   } = options;
 
   const chain =
@@ -399,10 +522,11 @@ export async function* streamCoachResponse(
 
     // Issue #1418: skip providers currently in cooldown. The health tracker
     // records transient failures (rate-limit / timeout / model-setup /
-    // stream-before-first-token) with short exponential backoffs so a
-    // provider that just failed is not retried on every new coach turn. The
-    // structured `cooldown` failover event exposes the bounded underlying
-    // reason via `cooldownReason` without leaking the raw upstream error.
+    // stream-before-first-token / content-policy / context-length per
+    // #1537) with short exponential backoffs so a provider that just
+    // failed is not retried on every new coach turn. The structured
+    // `cooldown` failover event exposes the bounded underlying reason via
+    // `cooldownReason` without leaking the raw upstream error.
     if (!healthTracker.isHealthy(provider)) {
       const snapshot = healthTracker.snapshot(provider);
       lastReason = "cooldown";
@@ -444,46 +568,150 @@ export async function* streamCoachResponse(
 
     if (signal?.aborted) return;
 
-    const result = streamText({
-      model,
-      system: systemPrompt,
-      messages: messages as Array<{
-        role: "system" | "user" | "assistant";
-        content: string;
-      }>,
-      maxOutputTokens: effectiveMaxOutputTokens,
-      abortSignal: signal,
-    });
+    // Issue #1537: a context-length failure on this provider must retry the
+    // SAME provider with a tighter conversation-history budget. Failing
+    // over to another provider with the same oversized prompt is doomed,
+    // so we keep `provider` fixed across the retry. The retry re-runs
+    // `prepareConversationHistoryWithSummary` with `maxTokens` set to
+    // `contextLengthRetryMaxTokens` and the latest user turn always
+    // preserved (the pruner guarantees this).
+    let activeMessages: ReadonlyArray<CoachStreamMessage> = messages;
+    let contextLengthRetriesUsed = 0;
+    let providerDone = false;
+    // Hoist `result` so the success path (after the inner loop exits via
+    // `providerDone = true`) can still read `result.totalUsage` for the
+    // `usage` SSE event (#1536). Re-assigned on every retry.
+    let result: Awaited<ReturnType<typeof streamText>> | undefined;
 
-    let streamedAny = false;
-    try {
-      for await (const delta of result.textStream) {
-        if (signal?.aborted) {
-          // User cancelled mid-generation — stop without failing over and
-          // without recording a health failure (cancellation is not the
-          // provider's fault).
-          return;
+    while (!providerDone) {
+      result = streamText({
+        model,
+        system: systemPrompt,
+        messages: activeMessages as Array<{
+          role: "system" | "user" | "assistant";
+          content: string;
+        }>,
+        maxOutputTokens: effectiveMaxOutputTokens,
+        abortSignal: signal,
+      });
+
+      let streamedAny = false;
+      let preTokenError: unknown;
+      let midStreamError: unknown;
+
+      try {
+        for await (const delta of result.textStream) {
+          if (signal?.aborted) {
+            // User cancelled mid-generation — stop without failing over and
+            // without recording a health failure (cancellation is not the
+            // provider's fault).
+            return;
+          }
+          if (delta) {
+            streamedAny = true;
+            yield { type: "text", value: delta };
+          }
         }
-        if (delta) {
-          streamedAny = true;
-          yield { type: "text", value: delta };
+      } catch (error) {
+        if (signal?.aborted) return;
+        if (streamedAny) {
+          midStreamError = error;
+        } else {
+          preTokenError = error;
         }
       }
-    } catch (error) {
-      if (signal?.aborted) return;
-      if (streamedAny) {
+
+      if (midStreamError !== undefined) {
         // Mid-stream failure: cannot seamlessly resume a half-delivered
         // response. End gracefully (documented policy). Do NOT record a
         // health failure — the provider did start streaming, so the next
         // coach turn should still try it (#1418 only tracks pre-token
         // transient failures).
-        yield { type: "error", value: friendlyError(error) };
+        yield { type: "error", value: friendlyError(midStreamError) };
         yield { type: "done" };
         return;
       }
-      // Failed before any token was delivered → classify the bounded reason
-      // and record it for cooldown backoff, then try the next provider.
-      const failureReason = classifyStreamFailure(error);
+
+      if (preTokenError === undefined) {
+        // Stream completed normally on this attempt — exit the retry loop
+        // and surface the success path below.
+        providerDone = true;
+        break;
+      }
+
+      const failureReason = classifyStreamFailure(preTokenError);
+
+      if (failureReason === "content-policy") {
+        // Issue #1537 content-policy branch. The model declined; the
+        // provider is healthy. Do NOT record a health failure (it would
+        // penalise a working provider for a deliberate refusal), do NOT
+        // fail over (a second provider will refuse the same prompt), and
+        // surface a single user-facing error message via friendlyError
+        // so the user knows to rephrase instead of retrying.
+        yield { type: "error", value: friendlyError(preTokenError) };
+        yield { type: "done" };
+        return;
+      }
+
+      if (
+        failureReason === "context-length" &&
+        contextLengthRetriesUsed < MAX_CONTEXT_LENGTH_RETRIES_PER_PROVIDER
+      ) {
+        // Issue #1537 context-length branch. Record the bounded reason
+        // (so the next coach turn skips this provider for a short
+        // cooldown), emit a `failover` signal so observers can see
+        // what happened, and retry the SAME provider once with a
+        // tighter token budget on the conversation history. We keep
+        // `from === to === provider` so observers know the retry is on
+        // the same provider and not a true failover to another model.
+        contextLengthRetriesUsed++;
+        healthTracker.recordFailure(provider, "context-length");
+        yield {
+          type: "failover",
+          from: provider,
+          to: provider,
+          reason: "context-length",
+        };
+        // Re-prepare the conversation slice with a tighter token budget.
+        // Synthesise `ChatMessage`s from the active slice — the pruner
+        // does not require real ids / timestamps, only stable
+        // role+content keys (see prepareConversationHistory's diff
+        // contract).
+        const chatMessages: ChatMessage[] = activeMessages.map((m) => ({
+          id: `${m.role}-${m.content.length}`,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(),
+        }));
+        const retried = prepareHistory(chatMessages, {
+          maxTokens: contextLengthRetryMaxTokens,
+          systemContent: systemPrompt,
+        });
+        activeMessages = retried.messages.map((m) => ({
+          role: m.role as "user" | "assistant" | "system",
+          content: m.content,
+        }));
+        continue; // retry the loop body with the tighter history
+      }
+
+      if (failureReason === "context-length") {
+        // Second (or later) context-length failure within this call —
+        // we already retried once with a tighter history and the prompt
+        // still does not fit. End the stream with a user-facing error
+        // so the coach does not loop forever on the same oversized
+        // prompt. Per the issue's "retries the SAME provider once"
+        // contract, we do not retry a third time and we do not fall
+        // through to a cross-provider failover (a different provider
+        // with the same prompt will fail the same way).
+        yield { type: "error", value: friendlyError(preTokenError) };
+        yield { type: "done" };
+        return;
+      }
+
+      // All other pre-token failures (rate-limit / timeout /
+      // stream-before-first-token): record the bounded reason and
+      // fall through to the next provider in the chain. This preserves
+      // the pre-#1537 failover semantics for these classes.
       healthTracker.recordFailure(provider, failureReason);
       lastReason =
         failureReason === "rate-limit"
@@ -500,6 +728,13 @@ export async function* streamCoachResponse(
           reason: lastReason,
         };
       }
+      break; // exit retry loop, outer `for` loop moves to next provider
+    }
+
+    if (!providerDone) {
+      // The provider failed and we emitted a failover (or context-length
+      // retry that fell through after the cap). Continue to the next
+      // provider in the chain.
       continue;
     }
 
@@ -514,9 +749,13 @@ export async function* streamCoachResponse(
       // Issue #1536: include the applied cap in the `usage` payload so the
       // client can render the bound. A zero completion count still includes
       // the cap, preserving the "the truncation is normal, not a failure"
-      // contract from the acceptance criteria.
+      // contract from the acceptance criteria. `result` is hoisted out of
+      // the inner loop above; if the success path is somehow reached
+      // without it being assigned (impossible at runtime — `providerDone`
+      // is only set inside the loop body), `usage` is zeroed out via the
+      // `normalizeUsage` null guard.
       const usage = normalizeUsage(
-        await Promise.resolve(result.totalUsage),
+        result ? await Promise.resolve(result.totalUsage) : null,
         effectiveMaxOutputTokens,
       );
       // Emit when the provider tracked any tokens. The `usage: null` branch

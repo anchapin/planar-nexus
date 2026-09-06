@@ -1,6 +1,6 @@
 /**
  * @fileOverview Server-only in-memory provider health tracker for the coach
- * streaming failover path (issue #1418).
+ * streaming failover path (issue #1418, refined by #1537).
  *
  * Records transient failures per provider and applies short exponential
  * cooldowns so a provider that just timed out, rate-limited, or failed model
@@ -34,12 +34,30 @@
  * | `timeout`                    | 1_000  | 30_000 | 2      | 1s / 2s / 4s / 8s    |
  * | `model-setup`                | 1_000  | 30_000 | 2      | 1s / 2s / 4s / 8s    |
  * | `stream-before-first-token`  | 1_000  | 30_000 | 2      | 1s / 2s / 4s / 8s    |
+ * | `content-policy`             | 100    |  1_000 | 2      | 0.1s / 0.2s / 0.4s / 0.5s (capped) |
+ * | `context-length`             | 500    |  5_000 | 2      | 0.5s / 1s / 2s / 4s   (capped at 5s) |
  *
  * Rate-limit uses a longer base (2s) and higher cap (60s) than the other
  * transient classes because retrying into a throttled provider both wastes
  * the user's first-token latency budget and actively worsens the rate limit
  * (the original bug). Setup / timeout / stream-start failures get a lighter
  * penalty — they are typically transient and we want a fast recovery.
+ *
+ * Issue #1537 adds two new failure classes that previously collapsed into the
+ * `stream-before-first-token` catch-all and got the wrong response:
+ *   - `content-policy` (OpenAI `content_policy`, Anthropic `output_flagged`,
+ *     generic `safety`): the model declined the request — failing over to
+ *     another provider just shifts the same refusal and wastes a turn. The
+ *     coach stream therefore does NOT record or retry on this class; the
+ *     schedule here is defensive only (very short cooldown, in case a future
+ *     caller records it).
+ *   - `context-length` (Anthropic `prompt is too long`, OpenAI `maximum
+ *     context length`, generic `too many tokens`): failing over to a second
+ *     provider with the SAME oversized prompt is doomed. The coach stream
+ *     instead records the reason, emits a `failover` signal, and retries the
+ *     SAME provider once after re-running `prepareConversationHistory` with
+ *     a tighter budget. The cooldown here is slightly longer than `timeout`
+ *     to dampen retry storms when the budget stays too generous.
  */
 
 /**
@@ -48,9 +66,27 @@
  * The SSE `failover` event carries these only when a provider is skipped
  * because of a recent failure (as `cooldownReason`); raw upstream errors are
  * never exposed to the client.
+ *
+ * Issue #1537 adds `content-policy` and `context-length`. These were
+ * previously collapsed into the `stream-before-first-token` catch-all by
+ * `classifyStreamFailure` and got the wrong response. They are distinct
+ * failure modes:
+ *   - `content-policy`: the model declined (safety filter / output flagged);
+ *     the coach stream does NOT record or retry this class. It is included in
+ *     the union so a future caller can, and so {@link cooldownFor} is
+ *     exhaustive over every variant.
+ *   - `context-length`: the prompt was too long. The coach stream records the
+ *     reason, emits a `failover(reason: 'context-length')` event, and
+ *     retries the SAME provider once after re-running
+ *     `prepareConversationHistory` with a tighter budget.
  */
 export type ProviderFailureReason =
-  "rate-limit" | "timeout" | "model-setup" | "stream-before-first-token";
+  | "rate-limit"
+  | "timeout"
+  | "model-setup"
+  | "stream-before-first-token"
+  | "content-policy"
+  | "context-length";
 
 /** Per-reason exponential-backoff parameters (see module docstring). */
 interface CooldownSchedule {
@@ -64,6 +100,15 @@ const COOLDOWN_SCHEDULE: Record<ProviderFailureReason, CooldownSchedule> = {
   timeout: { baseMs: 1_000, capMs: 30_000, factor: 2 },
   "model-setup": { baseMs: 1_000, capMs: 30_000, factor: 2 },
   "stream-before-first-token": { baseMs: 1_000, capMs: 30_000, factor: 2 },
+  // Issue #1537:
+  //   - content-policy: defensive short cooldown. The coach stream does not
+  //     currently record this class; if a future caller does, the cooldown
+  //     stays small so the user is not blocked on repeated retries.
+  //   - context-length: slightly longer than `timeout` to dampen retry
+  //     storms when the prompt budget stays too generous, but still short
+  //     enough that a recovered user can resume quickly after one retry.
+  "content-policy": { baseMs: 100, capMs: 1_000, factor: 2 },
+  "context-length": { baseMs: 500, capMs: 5_000, factor: 2 },
 };
 
 /**
