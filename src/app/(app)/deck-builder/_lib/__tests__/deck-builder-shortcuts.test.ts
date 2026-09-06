@@ -132,6 +132,88 @@ describe("resolveDeckBuilderShortcut", () => {
     });
   });
 
+  describe("Ctrl/Cmd+Z — undo (#1546)", () => {
+    it("resolves to an undo action", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("z", { ctrlKey: true }), {
+          selectedCard: card,
+        }),
+      ).toEqual({ type: "undo" });
+    });
+
+    it("triggers on Cmd+Z (mac) with uppercase key", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("Z", { metaKey: true }), {
+          selectedCard: card,
+        }),
+      ).toEqual({ type: "undo" });
+    });
+
+    it("fires even with no card selected", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("z", { ctrlKey: true }), {
+          selectedCard: null,
+        }),
+      ).toEqual({ type: "undo" });
+    });
+
+    it("ignores lone 'z' without a modifier", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("z"), { selectedCard: card }),
+      ).toEqual({ type: "none" });
+    });
+  });
+
+  describe("Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y — redo (#1546)", () => {
+    it("resolves Ctrl+Shift+Z to redo", () => {
+      expect(
+        resolveDeckBuilderShortcut(
+          keyEvent("z", { ctrlKey: true, shiftKey: true }),
+          { selectedCard: card },
+        ),
+      ).toEqual({ type: "redo" });
+    });
+
+    it("resolves Cmd+Shift+Z to redo (mac)", () => {
+      expect(
+        resolveDeckBuilderShortcut(
+          keyEvent("Z", { metaKey: true, shiftKey: true }),
+          { selectedCard: null },
+        ),
+      ).toEqual({ type: "redo" });
+    });
+
+    it("resolves Ctrl+Y to redo", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("y", { ctrlKey: true }), {
+          selectedCard: null,
+        }),
+      ).toEqual({ type: "redo" });
+    });
+
+    it("resolves Cmd+Y to redo (mac)", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("Y", { metaKey: true }), {
+          selectedCard: null,
+        }),
+      ).toEqual({ type: "redo" });
+    });
+
+    it("does NOT confuse Ctrl+Y with newDeck (Ctrl+N)", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("y", { ctrlKey: true }), {
+          selectedCard: card,
+        }),
+      ).toEqual({ type: "redo" });
+    });
+
+    it("ignores lone 'y' without a modifier", () => {
+      expect(
+        resolveDeckBuilderShortcut(keyEvent("y"), { selectedCard: card }),
+      ).toEqual({ type: "none" });
+    });
+  });
+
   describe("modifier passthrough", () => {
     it("leaves Ctrl+S to its own listener", () => {
       expect(
@@ -190,6 +272,41 @@ describe("resolveDeckBuilderShortcut", () => {
         resolveDeckBuilderShortcut(keyEvent("Enter", { target: div }), {
           selectedCard: card,
         }),
+      ).toEqual({ type: "none" });
+    });
+
+    // Issue #1546 acceptance #7: Ctrl+Z inside a text input must delegate
+    // to the browser's native input undo, not pop the deck history.
+    it("ignores Ctrl+Z from an input element (deck-name textbox)", () => {
+      const input = document.createElement("input");
+      expect(
+        resolveDeckBuilderShortcut(
+          keyEvent("z", { ctrlKey: true, target: input }),
+          { selectedCard: card },
+        ),
+      ).toEqual({ type: "none" });
+    });
+
+    it("ignores Ctrl+Shift+Z from a textarea", () => {
+      const textarea = document.createElement("textarea");
+      expect(
+        resolveDeckBuilderShortcut(
+          keyEvent("z", { ctrlKey: true, shiftKey: true, target: textarea }),
+          { selectedCard: card },
+        ),
+      ).toEqual({ type: "none" });
+    });
+
+    it("ignores Ctrl+Y from a contentEditable region", () => {
+      const div = document.createElement("div");
+      div.setAttribute("contenteditable", "true");
+      expect(
+        resolveDeckBuilderShortcut(
+          keyEvent("y", { ctrlKey: true, target: div }),
+          {
+            selectedCard: card,
+          },
+        ),
       ).toEqual({ type: "none" });
     });
   });
