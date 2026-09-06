@@ -61,9 +61,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Checkout code
-        uses: actions/checkout@v7
-
       - name: Setup repository
         # Relies on the composite default node-version '22' (see
         # .github/actions/setup-node-npm-ci/action.yml). Enforced by the
@@ -84,8 +81,13 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      # Issue #1547: pin the global CLI to the exact version declared in
+      # package.json devDependencies (also pinned there). `@latest` made
+      # releases non-reproducible — two tags cut from the same commit
+      # could pull different CLI builds and produce different bundle
+      # layouts. Bump package.json + this in lockstep.
       - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli@latest
+        run: npm install -g @tauri-apps/cli@2.11.4
         if: success()
 
       # Issue #1588: stamp the release tag into src-tauri/tauri.conf.json
@@ -157,9 +159,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Checkout code
-        uses: actions/checkout@v7
-
       - name: Setup repository
         # Relies on the composite default node-version '22' (see
         # .github/actions/setup-node-npm-ci/action.yml). Enforced by the
@@ -178,8 +177,11 @@ jobs:
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
 
+      # Issue #1547: pin to the exact version declared in package.json
+      # devDependencies (also pinned there). See the matching comment in
+      # build-windows for why `@latest` is forbidden.
       - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli@latest
+        run: npm install -g @tauri-apps/cli@2.11.4
         if: success()
 
       # Issue #1588: stamp the release tag into src-tauri/tauri.conf.json
@@ -360,9 +362,6 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Checkout code
-        uses: actions/checkout@v7
-
       - name: Setup repository
         # Relies on the composite default node-version '22' (see
         # .github/actions/setup-node-npm-ci/action.yml). Enforced by the
@@ -378,8 +377,11 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # Issue #1547: pin to the exact version declared in package.json
+      # devDependencies (also pinned there). See the matching comment in
+      # build-windows for why `@latest` is forbidden.
       - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli@latest
+        run: npm install -g @tauri-apps/cli@2.11.4
 
       - name: Install Linux system dependencies
         run: |
