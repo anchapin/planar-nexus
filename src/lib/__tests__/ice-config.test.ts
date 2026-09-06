@@ -17,7 +17,12 @@ import {
   ICECandidateFilter,
   resolveTurnServers,
   warnIfNoEnvTurnConfigured,
+  warnIfLegacyStaticTurnCredentials,
   __resetTurnWarningGuard,
+  __resetLegacyTurnWarningGuard,
+  hasLegacyStaticTurnCredentials,
+  fetchTurnHmacCredential,
+  DEFAULT_TURN_HMAC_ENDPOINT,
   createDefaultICEConfiguration,
   createICEConfigurationWithTurn,
   createRelayOnlyConfiguration,
@@ -25,6 +30,10 @@ import {
   setGlobalICEConfiguration,
   type ICEServerConfig,
 } from "../ice-config";
+import {
+  mintTurnCredential,
+  TURN_CREDENTIAL_MAX_TTL_SECONDS,
+} from "../turn-hmac";
 
 function isTurnScheme(url: unknown): boolean {
   if (typeof url !== "string") return false;
@@ -899,5 +908,329 @@ describe("Issue #1261 — process.env resolution & credential rotation", () => {
       );
     });
     expect(hasOurTurn).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #1583 — short-lived per-session HMAC TURN credentials.
+//
+// Acceptance criteria from the issue body:
+//
+//   (a) generated credentials differ across calls
+//   (b) username encodes an expiry not further than 24h in the future
+//   (c) HMAC verifies against the secret
+//   (d) the raw secret never appears in getICEServers() output
+//
+// Plus the `applyHmacCredentials` rotation path: the manager must
+// propagate the new username/credential to every configured TURN
+// server atomically and ignore non-matching servers when an allow-
+// list is supplied. The legacy `warnIfLegacyStaticTurnCredentials`
+// helper must also surface a deprecation warning when any
+// `NEXT_PUBLIC_TURN_*` credential variable is set.
+// ---------------------------------------------------------------------------
+
+describe("Issue #1583 — HMAC rotation via applyHmacCredentials", () => {
+  it("rotates every configured TURN server with the new username/credential", () => {
+    const manager = new ICEConfigurationManager({
+      customTurnServers: [
+        {
+          urls: "turn:a.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+        {
+          urls: "turn:b.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+      ],
+    });
+
+    const credential = mintTurnCredential({
+      secret: "test-secret",
+      clientId: "peer-1",
+      nowEpochSeconds: 1_700_000_000,
+      ttlSeconds: 3600,
+    });
+
+    const rotated = manager.applyHmacCredentials(credential);
+    expect(rotated).toBe(2);
+
+    for (const server of manager.getTurnServers()) {
+      expect(server.username).toBe(credential.username);
+      expect(server.credential).toBe(credential.credential);
+      expect(server.credentialType).toBe("password");
+    }
+    // The raw secret must never surface in getICEServers() output.
+    const config = manager.getRTCConfiguration();
+    const serialised = JSON.stringify(config.iceServers);
+    expect(serialised).not.toContain("test-secret");
+  });
+
+  it("two consecutive rotations yield different credentials (issue acceptance criterion a)", () => {
+    const manager = new ICEConfigurationManager({
+      customTurnServers: [
+        {
+          urls: "turn:a.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+      ],
+    });
+    const a = mintTurnCredential({
+      secret: "test-secret",
+      clientId: "peer-1",
+      nowEpochSeconds: 1_700_000_000,
+      ttlSeconds: 3600,
+    });
+    const b = mintTurnCredential({
+      secret: "test-secret",
+      clientId: "peer-1",
+      nowEpochSeconds: 1_700_000_001,
+      ttlSeconds: 3600,
+    });
+    manager.applyHmacCredentials(a);
+    const firstUsername = manager.getTurnServers()[0].username;
+    manager.applyHmacCredentials(b);
+    const secondUsername = manager.getTurnServers()[0].username;
+    expect(secondUsername).not.toBe(firstUsername);
+  });
+
+  it("expiry encoded in username is bounded above by 24h (issue acceptance criterion b)", () => {
+    const manager = new ICEConfigurationManager({
+      customTurnServers: [
+        {
+          urls: "turn:a.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+      ],
+    });
+    const now = 1_700_000_000;
+    const credential = mintTurnCredential({
+      secret: "test-secret",
+      clientId: "peer-1",
+      nowEpochSeconds: now,
+      ttlSeconds: 30 * 24 * 60 * 60, // 30 days — must clamp
+    });
+    manager.applyHmacCredentials(credential);
+
+    const username = manager.getTurnServers()[0].username!;
+    const expiryPart = username.split(":")[0];
+    const expiry = Number.parseInt(expiryPart, 10);
+    expect(expiry - now).toBe(TURN_CREDENTIAL_MAX_TTL_SECONDS);
+  });
+
+  it("only rotates servers matching the supplied url allow-list", () => {
+    const manager = new ICEConfigurationManager({
+      customTurnServers: [
+        {
+          urls: "turn:a.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+        {
+          urls: "turn:b.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+      ],
+    });
+    const credential = mintTurnCredential({
+      secret: "test-secret",
+      clientId: "peer-1",
+      nowEpochSeconds: 1_700_000_000,
+      ttlSeconds: 3600,
+    });
+    const rotated = manager.applyHmacCredentials(credential, {
+      urls: ["turn:a.example.com:3478"],
+    });
+    expect(rotated).toBe(1);
+
+    const servers = manager.getTurnServers();
+    const aServer = servers.find((s) => s.urls === "turn:a.example.com:3478");
+    const bServer = servers.find((s) => s.urls === "turn:b.example.com:3478");
+    expect(aServer?.username).toBe(credential.username);
+    expect(bServer?.username).toBe("stale");
+  });
+
+  it("rejects an invalid credential shape", () => {
+    const manager = new ICEConfigurationManager({
+      customTurnServers: [
+        {
+          urls: "turn:a.example.com:3478",
+          username: "stale",
+          credential: "stale",
+          credentialType: "password",
+        },
+      ],
+    });
+    expect(() =>
+      // @ts-expect-error — intentional bad input
+      manager.applyHmacCredentials({ username: "x" }),
+    ).toThrow(/requires a TurnCredential/);
+  });
+});
+
+describe("Issue #1583 — legacy deprecation warning", () => {
+  let warnSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    __resetLegacyTurnWarningGuard();
+    warnSpy = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
+    __resetLegacyTurnWarningGuard();
+  });
+
+  it("hasLegacyStaticTurnCredentials detects any NEXT_PUBLIC_TURN_* credential key", () => {
+    expect(hasLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_USER: "u" })).toBe(
+      true,
+    );
+    expect(hasLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_PASS: "p" })).toBe(
+      true,
+    );
+    expect(
+      hasLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_USERNAME: "u" }),
+    ).toBe(true);
+    expect(
+      hasLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_CREDENTIAL: "p" }),
+    ).toBe(true);
+    expect(hasLegacyStaticTurnCredentials({})).toBe(false);
+  });
+
+  it("warns when any legacy credential env var is present", () => {
+    warnIfLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_USER: "u" });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    const msg = warnSpy.mock.calls[0][0] as string;
+    expect(msg).toContain("DEPRECATED");
+    expect(msg).toContain("TURN_HMAC_SECRET");
+  });
+
+  it("does not warn when no legacy credential env var is set", () => {
+    warnIfLegacyStaticTurnCredentials({});
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("warns only once unless forced", () => {
+    warnIfLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_PASS: "p" });
+    warnIfLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_PASS: "p" });
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    warnIfLegacyStaticTurnCredentials({ NEXT_PUBLIC_TURN_PASS: "p" }, true);
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolveTurnServers reports `credentialScheme: 'legacy-static'` when legacy vars are set", () => {
+    const result = resolveTurnServers({
+      NEXT_PUBLIC_TURN_URL: "turn:a.example.com:3478",
+      NEXT_PUBLIC_TURN_USER: "u",
+      NEXT_PUBLIC_TURN_PASS: "p",
+    });
+    expect(result.credentialScheme).toBe("legacy-static");
+    expect(result.usedFallback).toBe(false);
+  });
+
+  it("resolveTurnServers reports `credentialScheme: 'public-fallback'` for the OpenRelay default", () => {
+    const result = resolveTurnServers({});
+    expect(result.credentialScheme).toBe("public-fallback");
+    expect(result.usedFallback).toBe(true);
+  });
+});
+
+describe("Issue #1583 — fetchTurnHmacCredential", () => {
+  const ORIGINAL_FETCH = globalThis.fetch;
+
+  afterEach(() => {
+    (globalThis as unknown as { fetch: unknown }).fetch = ORIGINAL_FETCH;
+  });
+
+  function mockFetchOnce(
+    status: number,
+    body: unknown,
+  ): jest.Mock<Promise<Response>> {
+    const fn = jest.fn<Promise<Response>, [RequestInfo | URL, RequestInit?]>(
+      async () =>
+        ({
+          ok: status >= 200 && status < 300,
+          status,
+          json: async () => body,
+        }) as unknown as Response,
+    );
+    (globalThis as unknown as { fetch: unknown }).fetch = fn;
+    return fn;
+  }
+
+  it("default endpoint is /api/signaling/turn-credentials", () => {
+    expect(DEFAULT_TURN_HMAC_ENDPOINT).toBe("/api/signaling/turn-credentials");
+  });
+
+  it("happy path: returns the parsed credential", async () => {
+    const body = {
+      username: "1700003600:peer-1",
+      credential: "fake-hmac-base64",
+      expiresAtEpochSeconds: 1_700_003_600,
+      clientId: "peer-1",
+    };
+    mockFetchOnce(200, body);
+    const result = await fetchTurnHmacCredential({ clientId: "peer-1" });
+    expect(result.username).toBe(body.username);
+    expect(result.credential).toBe(body.credential);
+    expect(result.expiresAtEpochSeconds).toBe(body.expiresAtEpochSeconds);
+    expect(result.clientId).toBe(body.clientId);
+  });
+
+  it("appends clientId to the query string", async () => {
+    const fetchMock = mockFetchOnce(200, {
+      username: "1700003600:peer-42",
+      credential: "x",
+      expiresAtEpochSeconds: 1_700_003_600,
+      clientId: "peer-42",
+    });
+    await fetchTurnHmacCredential({ clientId: "peer-42" });
+    const calledUrl = fetchMock.mock.calls[0][0];
+    expect(String(calledUrl)).toContain("clientId=peer-42");
+  });
+
+  it("503 response surfaces a clear error message", async () => {
+    mockFetchOnce(503, { error: "TURN_HMAC_SECRET_NOT_CONFIGURED" });
+    await expect(
+      fetchTurnHmacCredential({ clientId: "peer-1" }),
+    ).rejects.toThrow(/TURN_HMAC_SECRET/);
+  });
+
+  it("malformed JSON throws", async () => {
+    mockFetchOnce(200, { username: "x" });
+    await expect(
+      fetchTurnHmacCredential({ clientId: "peer-1" }),
+    ).rejects.toThrow(/malformed response/);
+  });
+
+  it("non-2xx response throws with status code", async () => {
+    mockFetchOnce(500, { error: "internal" });
+    await expect(
+      fetchTurnHmacCredential({ clientId: "peer-1" }),
+    ).rejects.toThrow(/HTTP 500/);
+  });
+
+  it("endpoint override is honoured", async () => {
+    const fetchMock = mockFetchOnce(200, {
+      username: "1700003600:peer-1",
+      credential: "x",
+      expiresAtEpochSeconds: 1_700_003_600,
+      clientId: "peer-1",
+    });
+    await fetchTurnHmacCredential({
+      clientId: "peer-1",
+      endpoint: "/custom/path",
+    });
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^\/custom\/path/);
   });
 });
