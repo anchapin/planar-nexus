@@ -3,7 +3,10 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { analyzeMetaHeuristic } from '../heuristic-meta-analysis';
+import {
+  analyzeMetaHeuristic,
+  detectDeckArchetype,
+} from '../heuristic-meta-analysis';
 
 describe('heuristic-meta-analysis', () => {
   const sampleDeck = [
@@ -343,6 +346,241 @@ describe('heuristic-meta-analysis', () => {
       result.recommendations.forEach(rec => {
         expect(rec.matchup.strategy).not.toBe(RAMP_STRATEGY);
       });
+    });
+  });
+
+  /**
+   * Issue #1564 — surface `confidence` (level + normalised score) and
+   * `runnerUp` from `detectDeckArchetype` so the UI can flag weak detections.
+   *
+   * Design notes:
+   *   - All test decks use cards whose `type_line` is `'Artifact'` so the
+   *     creature/instant ratio bonuses (`aggro +5 / tribal +3 / control +5`)
+   *     never fire. That way the keyword totals are exactly the count of
+   *     keyword substring matches in the deck name corpus and we can pin
+   *     the 2-point boundary deterministically.
+   *   - The heuristic engine lowercases every card NAME (not weighted by
+   *     `count`) and runs a global substring match against each keyword.
+   *     To get N hits for a keyword we therefore emit N unique card names
+   *     that each contain the keyword exactly once. The helpers
+   *     `aggroNames(n)` / `controlNames(n)` below build those names —
+   *     e.g. `'Burn-One'` and `'Counterpart-One'` each match one keyword.
+   *
+   * Boundary table (margin = topScore − runnerUpScore):
+   *   margin <  2            → 'low'
+   *   2 <= margin <= 4       → 'medium'
+   *   margin >= 5            → 'high'
+   *   totalHits == 0         → 'none' (primary falls back to 'midrange')
+   */
+  describe('issue #1564 — detectDeckArchetype confidence + runner-up', () => {
+    /** Helper: build a minimal card stub. `type_line: 'Artifact'` keeps the
+     *  creature/instant ratio bonuses dormant. */
+    const stub = (
+      name: string,
+      count: number,
+    ): {
+      name: string;
+      count: number;
+      id: string;
+      cmc: number;
+      colors: string[];
+      legalities: Record<string, string>;
+      type_line: string;
+      mana_cost: string;
+      color_identity: string[];
+    } => ({
+      name,
+      count,
+      id: name,
+      cmc: 0,
+      colors: [],
+      legalities: {},
+      type_line: 'Artifact',
+      mana_cost: '{0}',
+      color_identity: [],
+    });
+
+    /** `n` unique aggro-signal card names (each matches 'burn' exactly once). */
+    const aggroNames = (n: number): string[] =>
+      Array.from({ length: n }, (_, i) => `Burn-${i + 1}`);
+    /** `n` unique control-signal card names (each matches 'counter' exactly once). */
+    const controlNames = (n: number): string[] =>
+      Array.from({ length: n }, (_, i) => `Counterpart-${i + 1}`);
+
+    /** Build a deck with `aggro` aggro-signal cards and `control`
+     *  control-signal cards. Type is non-Creature / non-Instant so the
+     *  ratio bonuses never fire. */
+    const deck = (
+      aggro: number,
+      control: number,
+    ): ReturnType<typeof stub>[] => [
+      ...aggroNames(aggro).map((n) => stub(n, 1)),
+      ...controlNames(control).map((n) => stub(n, 1)),
+    ];
+
+    // ---------------------------------------------------------------------
+    // 2-point threshold — the deterministic boundary at issue #1564 AC.
+    // ---------------------------------------------------------------------
+    it('marks margin === 1 as low confidence (below the 2-point threshold)', () => {
+      // 4 aggro-signal cards + 3 control-signal cards → margin = 4 - 3 = 1.
+      const result = detectDeckArchetype(deck(4, 3));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBe('control');
+      expect(result.confidence.margin).toBe(1);
+      expect(result.confidence.level).toBe('low');
+      // Normalised score must lie in [0, 1].
+      expect(result.confidence.score).toBeGreaterThanOrEqual(0);
+      expect(result.confidence.score).toBeLessThanOrEqual(1);
+    });
+
+    it('marks margin === 2 as medium confidence (at-or-above the 2-point threshold)', () => {
+      // 4 aggro + 2 control → margin = 2.
+      // Issue #1564 AC: "differ by fewer than 2 points" → 'low'. Strict <
+      // means a gap of exactly 2 is NOT low — it is the first 'medium' band.
+      const result = detectDeckArchetype(deck(4, 2));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBe('control');
+      expect(result.confidence.margin).toBe(2);
+      expect(result.confidence.level).toBe('medium');
+    });
+
+    it('marks margin === 4 as medium confidence (still below the 5-point band)', () => {
+      const result = detectDeckArchetype(deck(5, 1));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBe('control');
+      expect(result.confidence.margin).toBe(4);
+      expect(result.confidence.level).toBe('medium');
+    });
+
+    it('marks margin === 5 as high confidence (at the 5-point threshold)', () => {
+      // Issue #1564 AC: "exceeds the runner-up by 5 or more" → 'high'.
+      const result = detectDeckArchetype(deck(6, 1));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBe('control');
+      expect(result.confidence.margin).toBe(5);
+      expect(result.confidence.level).toBe('high');
+    });
+
+    it('marks margin === 8 as high confidence (well above the 5-point band)', () => {
+      const result = detectDeckArchetype(deck(9, 1));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBe('control');
+      expect(result.confidence.margin).toBe(8);
+      expect(result.confidence.level).toBe('high');
+    });
+
+    // ---------------------------------------------------------------------
+    // Runner-up selection — correctness + edge cases.
+    // ---------------------------------------------------------------------
+    it('returns the second-highest archetype as runnerUp when scores are distinct', () => {
+      // control('counter') = 5, aggro('burn') = 3, combo('engine') = 1.
+      // Two distinct runners exist; runnerUp must be strictly the 2nd.
+      // We append a single combo-signal card so control/aggro are the top 2.
+      const result = detectDeckArchetype([
+        ...controlNames(5).map((n) => stub(n, 1)),
+        ...aggroNames(3).map((n) => stub(n, 1)),
+        stub('Engine-One', 1), // 'engine' → combo +1
+      ]);
+      expect(result.primary).toBe('control');
+      expect(result.runnerUp).toBe('aggro');
+      expect(result.confidence.margin).toBe(2);
+    });
+
+    it('returns runnerUp = null when scores are tied at the top', () => {
+      // aggro('burn') = 1, control('counter') = 1 → tied at the top.
+      // The strict `<` check in the runner-up logic means a tie yields null.
+      const result = detectDeckArchetype(deck(1, 1));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBeNull();
+      expect(result.confidence.margin).toBe(0);
+      expect(result.confidence.level).toBe('low');
+    });
+
+    it('returns runnerUp = null when only one archetype has any hits', () => {
+      // 4 aggro-signal cards, zero control-signal → there is no second place.
+      const result = detectDeckArchetype(deck(4, 0));
+      expect(result.primary).toBe('aggro');
+      expect(result.runnerUp).toBeNull();
+      // No runner-up means the heuristic is fully committed to the top
+      // pick — normalised score must equal 1.0.
+      expect(result.confidence.score).toBe(1);
+      expect(result.confidence.margin).toBe(4);
+    });
+
+    // ---------------------------------------------------------------------
+    // Fallback behaviour (issue #1564 AC: "primary falls back to 'midrange'").
+    // ---------------------------------------------------------------------
+    it("returns primary = 'midrange' and level = 'none' for an empty deck", () => {
+      const result = detectDeckArchetype([]);
+      expect(result.primary).toBe('midrange');
+      expect(result.runnerUp).toBeNull();
+      expect(result.confidence.level).toBe('none');
+      expect(result.confidence.score).toBe(0);
+      expect(result.confidence.margin).toBe(0);
+    });
+
+    it("returns primary = 'midrange' and level = 'none' when no keyword hits", () => {
+      // 'Sol Ring' contains none of the keyword tokens in the archetype
+      // detection sets (no 'counter', 'burn', 'engine', 'mana', 'lord', …).
+      const result = detectDeckArchetype([stub('Sol Ring', 1)]);
+      expect(result.primary).toBe('midrange');
+      expect(result.runnerUp).toBeNull();
+      expect(result.confidence.level).toBe('none');
+    });
+
+    // ---------------------------------------------------------------------
+    // Normalised score — stays in [0, 1] across all bands.
+    // ---------------------------------------------------------------------
+    it('always returns confidence.score in the closed interval [0, 1]', () => {
+      const cases: Array<ReturnType<typeof stub>[]> = [
+        deck(4, 3), // margin 1 → low
+        deck(4, 2), // margin 2 → medium
+        deck(9, 1), // margin 8 → high
+        deck(4, 0), // single-archetype → 1.0
+        deck(1, 1), // tied → 0
+        [], // empty → 0
+      ];
+      for (const d of cases) {
+        const { score } = detectDeckArchetype(d).confidence;
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(1);
+      }
+    });
+
+    // ---------------------------------------------------------------------
+    // `scores` payload — exposes every archetype so callers can render their
+    // own UI (e.g. a bar chart) without re-running the algorithm.
+    // ---------------------------------------------------------------------
+    it('exposes the full per-archetype score map in `scores`', () => {
+      const result = detectDeckArchetype(deck(4, 3));
+      expect(result.scores).toEqual({
+        aggro: 4,
+        control: 3,
+        midrange: 0,
+        combo: 0,
+        ramp: 0,
+        tribal: 0,
+      });
+    });
+
+    // ---------------------------------------------------------------------
+    // Plumbing — the structured result must reach the public analyzer.
+    // ---------------------------------------------------------------------
+    it('forwards the structured detection result on analyzeMetaHeuristic', () => {
+      const out = analyzeMetaHeuristic(
+        '4 Burn-1\n4 Burn-2\n4 Burn-3\n4 Burn-4\n3 Counterpart-1\n3 Counterpart-2\n3 Counterpart-3',
+        'modern',
+        deck(4, 3),
+      );
+      expect(out.deckArchetypeDetection).toBeDefined();
+      expect(out.deckArchetypeDetection?.primary).toBe('aggro');
+      expect(out.deckArchetypeDetection?.runnerUp).toBe('control');
+      expect(out.deckArchetypeDetection?.confidence.level).toBe('low');
+      // Existing fields are unchanged — backward compatibility for the
+      // legacy contract (string archetype lookup).
+      expect(out.currentMeta).toEqual(expect.any(String));
+      expect(out.archetypes.length).toBeGreaterThan(0);
+      expect(out.recommendations.length).toBeGreaterThan(0);
     });
   });
 });

@@ -67,6 +67,8 @@ export interface MatchupRecommendation {
   sideboardNotes?: string;
 }
 
+import type { ArchetypeDetectionResult } from "@/lib/heuristic-meta-analysis";
+
 /**
  * Meta analysis output
  */
@@ -81,6 +83,15 @@ export interface MetaAnalysisOutput {
   };
   sideboardSuggestions?: CardSuggestion[];
   strategicAdvice: string;
+  /**
+   * Optional structured result from the heuristic archetype-detection
+   * engine (issue #1564). Always populated when the output is produced by
+   * the local-first heuristic path; omitted by the LLM enrichment path
+   * because the LLM does not see this shape. Consumers (the meta-analysis
+   * display) render a weak-signal badge when `confidence.level` is `'low'`
+   * or `'none'`.
+   */
+  deckArchetypeDetection?: ArchetypeDetectionResult;
 }
 
 /**
@@ -184,6 +195,13 @@ function convertHeuristicOutput(
     cardSuggestions,
     sideboardSuggestions: cardSuggestions.cardsToAdd.slice(0, 5), // Limit sideboard suggestions
     strategicAdvice,
+    // Issue #1564: forward the structured detection result so the UI can
+    // show a weak-signal badge. The heuristic engine populates this; LLM
+    // enrichment replaces the whole object and does not see this field,
+    // so it is intentionally absent from LLM-produced outputs.
+    ...(heuristicResult.deckArchetypeDetection
+      ? { deckArchetypeDetection: heuristicResult.deckArchetypeDetection }
+      : {}),
   };
 }
 
