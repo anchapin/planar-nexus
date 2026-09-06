@@ -27,6 +27,8 @@ interface MockEvents {
   onPeerJoined: jest.Mock;
   onPeerLeft: jest.Mock;
   onError: jest.Mock;
+  // Issue #1569 — application-level ping/pong heartbeat.
+  onPeerUnreachable: jest.Mock;
 }
 
 /** A controllable stand-in for a peer's data-channel-backed transport link. */
@@ -91,6 +93,8 @@ const newMesh = (
     onPeerJoined: jest.fn(),
     onPeerLeft: jest.fn(),
     onError: jest.fn(),
+    // Issue #1569 — application-level ping/pong heartbeat.
+    onPeerUnreachable: jest.fn(),
   };
   // Apply caller event overrides onto the shared handle so the returned
   // `events` object is exactly what the mesh uses (same references).
@@ -1116,5 +1120,346 @@ describe("MeshGameConnection logs through p2pLogger (#1426)", () => {
       "[MeshGameConnection] Dropping duplicate/replay message",
       expect.anything(),
     );
+  });
+});
+
+/**
+ * Issue #1569 — application-level ping/pong heartbeat.
+ *
+ * The mesh runs a `setInterval` that broadcasts `ping` GameMessages and
+ * tracks per-peer `lastPongAt`. After `maxMissed + 1` consecutive missed
+ * pongs the mesh fires `onPeerUnreachable` exactly once per
+ * disconnection episode. These tests pin the round-trip, the
+ * detection timing, the reconnect-clears-state property, and the
+ * teardown contract.
+ */
+describe("MeshGameConnection — application-level ping/pong heartbeat (#1569)", () => {
+  /** Build a wire-string `pong` for inbound injection. */
+  const pongFrom = (senderId: string, seq: number): string =>
+    JSON.stringify({
+      type: "pong",
+      senderId,
+      timestamp: 0,
+      seq,
+      data: null,
+    });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(0));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  describe("configuration & lifecycle", () => {
+    it("installs a heartbeat interval with the documented defaults (5000ms / 3 missed)", () => {
+      const { mesh } = newMesh();
+      try {
+        expect(mesh.isHeartbeatRunning()).toBe(true);
+        expect(mesh.getHeartbeatIntervalMs()).toBe(5000);
+        expect(mesh.getHeartbeatMaxMissed()).toBe(3);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("honours a custom interval + maxMissed override", () => {
+      const { mesh } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 2 },
+      });
+      try {
+        expect(mesh.isHeartbeatRunning()).toBe(true);
+        expect(mesh.getHeartbeatIntervalMs()).toBe(100);
+        expect(mesh.getHeartbeatMaxMissed()).toBe(2);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("DISABLES the heartbeat when intervalMs <= 0 (no setInterval is registered)", () => {
+      const { mesh } = newMesh({
+        heartbeat: { intervalMs: 0, maxMissed: 3 },
+      });
+      try {
+        expect(mesh.isHeartbeatRunning()).toBe(false);
+        expect(mesh.getHeartbeatIntervalMs()).toBe(0);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("close() clears the heartbeat interval — no leaked timer", () => {
+      const { mesh } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      expect(mesh.isHeartbeatRunning()).toBe(true);
+      mesh.close();
+      expect(mesh.isHeartbeatRunning()).toBe(false);
+      // After close(), advancing fake time must not produce any
+      // further heartbeat ticks.
+      mesh.addPeerLink(new MockLink("p1"));
+      jest.advanceTimersByTime(10_000);
+      // No tick → no peer-unreachable event.
+      // (No event was wired, but the absence of a thrown error proves
+      // the interval did not fire after close.)
+      expect(mesh.isHeartbeatRunning()).toBe(false);
+    });
+  });
+
+  describe("outbound ping — broadcasts to every registered peer on each tick", () => {
+    it("sends a `ping` GameMessage to every open peer link on each tick", () => {
+      const { mesh } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 2 },
+      });
+      const p1 = new MockLink("p1");
+      const p2 = new MockLink("p2");
+      const p3 = new MockLink("p3");
+      mesh.addPeerLink(p1);
+      mesh.addPeerLink(p2);
+      mesh.addPeerLink(p3);
+      try {
+        // First tick at t=100.
+        jest.advanceTimersByTime(100);
+        const pingsAtT100 = (l: MockLink) =>
+          l.sent.filter((raw) => JSON.parse(raw).type === "ping").length;
+        expect(pingsAtT100(p1)).toBe(1);
+        expect(pingsAtT100(p2)).toBe(1);
+        expect(pingsAtT100(p3)).toBe(1);
+        // Second tick at t=200.
+        jest.advanceTimersByTime(100);
+        expect(pingsAtT100(p1)).toBe(2);
+        expect(pingsAtT100(p2)).toBe(2);
+        expect(pingsAtT100(p3)).toBe(2);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("the ping is a well-formed GameMessage with the local player as sender", () => {
+      const { mesh } = newMesh({
+        localPlayerId: "host",
+        localPlayerName: "Host",
+        hostId: "host",
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        jest.advanceTimersByTime(100);
+        const pingRaw = p1.sent.find((raw) => JSON.parse(raw).type === "ping")!;
+        const ping = JSON.parse(pingRaw);
+        expect(ping).toEqual(
+          expect.objectContaining({
+            type: "ping",
+            senderId: "host",
+            data: null,
+          }),
+        );
+        expect(typeof ping.seq).toBe("number");
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("does NOT send pings once `close()` has torn down the interval", () => {
+      const { mesh } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      jest.advanceTimersByTime(100);
+      const sentBeforeClose = p1.sent.length;
+      mesh.close();
+      // Re-registering after close still does not produce pings because
+      // the interval is gone.
+      jest.advanceTimersByTime(1000);
+      expect(p1.sent.length).toBe(sentBeforeClose);
+    });
+  });
+
+  describe("inbound pong — resets the missed counter + clears the unreachable flag", () => {
+    it("a pong from a non-responding peer resets its missed counter so it never fires", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 2 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        // p1 pongs every tick → never crosses the missed threshold.
+        for (let i = 0; i < 6; i++) {
+          jest.advanceTimersByTime(100);
+          mesh.handleIncoming(pongFrom("p1", i), "p1");
+        }
+        expect(events.onPeerUnreachable).not.toHaveBeenCalled();
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("emits NO spurious onPeerUnreachable for a peer that pongs within the window", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        // Pong arrives JUST BEFORE each tick. The fresh `lastPongAt`
+        // makes `now - last < intervalMs`, so the missed counter is
+        // reset to 0 on every sweep and never crosses the threshold.
+        for (let i = 0; i < 10; i++) {
+          jest.advanceTimersByTime(99);
+          mesh.handleIncoming(pongFrom("p1", i), "p1");
+          jest.advanceTimersByTime(1);
+        }
+        expect(events.onPeerUnreachable).not.toHaveBeenCalled();
+      } finally {
+        mesh.close();
+      }
+    });
+  });
+
+  describe("detection — `peer-unreachable` fires after maxMissed + 1 missed ticks", () => {
+    it("fires `onPeerUnreachable` for a non-responding peer within `interval * (maxMissed + 1)`", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 5000, maxMissed: 3 },
+      });
+      // 3 peers: p1 + p3 pong each tick, p2 never pongs.
+      const p1 = new MockLink("p1");
+      const p2 = new MockLink("p2");
+      const p3 = new MockLink("p3");
+      mesh.addPeerLink(p1);
+      mesh.addPeerLink(p2);
+      mesh.addPeerLink(p3);
+      try {
+        // Advance time one tick at a time. After the tick fires, p1
+        // and p3 pong (resetting their missed counters), p2 stays
+        // silent.
+        let pongSeq = 0;
+        for (let i = 0; i < 4; i++) {
+          jest.advanceTimersByTime(5000);
+          pongSeq += 1;
+          mesh.handleIncoming(pongFrom("p1", pongSeq), "p1");
+          mesh.handleIncoming(pongFrom("p3", pongSeq), "p3");
+        }
+        // At t = 20000ms = interval * (maxMissed + 1), p2 has missed
+        // 4 consecutive ticks (>= maxMissed + 1) → exactly one
+        // `onPeerUnreachable` event fires for p2 and zero for p1/p3.
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+        expect(events.onPeerUnreachable).toHaveBeenCalledWith("p2");
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("honours a custom override: `interval: 100, maxMissed: 2` fires at t=300ms (deterministic)", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 2 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        jest.advanceTimersByTime(300);
+        // t=100: missed=1. t=200: missed=2. t=300: missed=3 > 2 → fire.
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+        expect(events.onPeerUnreachable).toHaveBeenCalledWith("p1");
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("the event is idempotent — once fired, additional missed ticks do NOT re-emit", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        jest.advanceTimersByTime(1000); // 10 missed ticks
+        // Exactly ONE event despite 10 missed ticks (the first miss
+        // crosses the threshold and the flag suppresses subsequent
+        // fires for the same episode).
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+        expect(events.onPeerUnreachable).toHaveBeenCalledWith("p1");
+      } finally {
+        mesh.close();
+      }
+    });
+  });
+
+  describe("reconnect — a recovered peer clears its unreachable state", () => {
+    it("a subsequent `pong` from a peer that was unreachable clears the flag so a future drop re-fires", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        // First episode: p1 misses 3 ticks → fires once.
+        jest.advanceTimersByTime(300);
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+        // Recovery: p1 pongs → flag is cleared.
+        mesh.handleIncoming(pongFrom("p1", 100), "p1");
+        // Second episode: p1 misses 3 more ticks → fires AGAIN (now 2
+        // total calls).
+        jest.advanceTimersByTime(300);
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(2);
+        expect(events.onPeerUnreachable).toHaveBeenNthCalledWith(1, "p1");
+        expect(events.onPeerUnreachable).toHaveBeenNthCalledWith(2, "p1");
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("addPeerLink with the SAME peerId resets heartbeat state so a reconnect starts fresh", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const first = new MockLink("p1");
+      mesh.addPeerLink(first);
+      try {
+        // First link: misses → fires.
+        jest.advanceTimersByTime(300);
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+        // Replace the link (simulated ICE-restart / reconnect).
+        const second = new MockLink("p1");
+        const isNew = mesh.addPeerLink(second);
+        // Re-registering is a replace, not a new join.
+        expect(isNew).toBe(false);
+        // The fresh link should NOT be flagged unreachable on the
+        // next tick — its `lastPongAt` was reset to `Date.now()` at
+        // re-registration.
+        jest.advanceTimersByTime(100);
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("removePeerLink drops heartbeat bookkeeping so a re-added peer starts at zero missed", () => {
+      const { mesh, events } = newMesh({
+        heartbeat: { intervalMs: 100, maxMissed: 1 },
+      });
+      const p1 = new MockLink("p1");
+      mesh.addPeerLink(p1);
+      try {
+        // Drive p1 to unreachable.
+        jest.advanceTimersByTime(300);
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(1);
+        // Drop the link.
+        mesh.removePeerLink("p1");
+        // Re-add the same peerId. Its missed-counter starts at 0
+        // (per addPeerLink's reset), and `peerUnreachableEmitted`
+        // does NOT carry over.
+        const p1Replaced = new MockLink("p1");
+        mesh.addPeerLink(p1Replaced);
+        // Single missed tick crosses the threshold → second fire.
+        jest.advanceTimersByTime(200);
+        expect(events.onPeerUnreachable).toHaveBeenCalledTimes(2);
+      } finally {
+        mesh.close();
+      }
+    });
   });
 });

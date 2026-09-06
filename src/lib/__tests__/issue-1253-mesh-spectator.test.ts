@@ -68,6 +68,7 @@ function newMesh(
     onPeerJoined: jest.Mock;
     onPeerLeft: jest.Mock;
     onError: jest.Mock;
+    onPeerUnreachable: jest.Mock;
   } = {
     onMessage: jest.fn(),
     onGameAction: jest.fn(),
@@ -75,6 +76,9 @@ function newMesh(
     onPeerJoined: jest.fn(),
     onPeerLeft: jest.fn(),
     onError: jest.fn(),
+    // Issue #1569 — application-level heartbeat; tests opt out of
+    // asserting on it unless they wire a custom one up.
+    onPeerUnreachable: jest.fn(),
   };
   // Apply any caller-supplied event overrides (so the returned
   // `events` object is exactly what the mesh uses, with the same

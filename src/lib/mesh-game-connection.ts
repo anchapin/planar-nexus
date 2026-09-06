@@ -130,6 +130,17 @@ export interface MeshGameConnectionEvents {
   onPeerLeft: (peerId: string) => void;
   /** Recoverable trust-pipeline rejection (malformed/replay/illegal/rate). */
   onError: (error: Error, fromPeerId: string) => void;
+  /**
+   * A peer missed `heartbeat.maxMissed + 1` consecutive application-level
+   * heartbeats (issue #1569). The mesh emits this event at most ONCE per
+   * disconnection episode — a subsequent inbound `pong` from the peer
+   * clears the per-peer unreachable flag so a fresh episode after a
+   * reconnect re-fires. Use this to surface a peer-unreachable hint in
+   * the UI (or to initiate host-migration / reconnect logic) faster
+   * than the underlying RTCPeerConnection ICE layer — which on Chrome
+   * takes ~30s to transition `disconnected` → `failed`.
+   */
+  onPeerUnreachable: (peerId: string) => void;
 }
 
 /** A message payload the caller wants to put on the wire (seq/timestamp stamped by the mesh). */
@@ -137,6 +148,39 @@ export interface OutgoingGamePayload {
   type: GameMessageType;
   data: unknown;
 }
+
+/**
+ * Application-level ping/pong heartbeat configuration (issue #1569).
+ *
+ * The mesh runs a periodic `setInterval` that sends a `ping` GameMessage
+ * to every registered peer link and tracks the per-peer last-pong
+ * timestamp. After `maxMissed + 1` consecutive missed pongs the mesh
+ * fires {@link MeshGameConnectionEvents.onPeerUnreachable} for that
+ * peer. The defaults (`intervalMs: 5000`, `maxMissed: 3`) give a 15s
+ * detection window — well under the ~30s
+ * `RTCPeerConnection.iceConnectionState` `disconnected → failed` window
+ * — while remaining forgiving of transient network blips.
+ *
+ * Setting `intervalMs` to a non-positive value disables the heartbeat
+ * entirely (no `setInterval` is registered, no pings are sent).
+ */
+export interface MeshHeartbeatOptions {
+  /** Heartbeat tick interval (ms). Defaults to {@link DEFAULT_HEARTBEAT_INTERVAL_MS}. */
+  intervalMs?: number;
+  /**
+   * Maximum consecutive missed pongs tolerated before the mesh declares
+   * the peer unreachable. The mesh fires `onPeerUnreachable` on the
+   * `(maxMissed + 1)`'th missed tick, so with defaults the event fires
+   * at `intervalMs * (maxMissed + 1)` = 20s after the last pong.
+   * Defaults to {@link DEFAULT_HEARTBEAT_MAX_MISSED}.
+   */
+  maxMissed?: number;
+}
+
+/** Default heartbeat interval (ms). Issue #1569 — 5s * 3 = 15s detection. */
+export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
+/** Default maximum consecutive missed pongs. Issue #1569. */
+export const DEFAULT_HEARTBEAT_MAX_MISSED = 3;
 
 /** Options for constructing a {@link MeshGameConnection}. */
 export interface MeshGameConnectionOptions {
@@ -181,6 +225,15 @@ export interface MeshGameConnectionOptions {
    * {@link MAX_CHAT_MESSAGE_LENGTH} (500).
    */
   maxChatMessageLength?: number;
+  /**
+   * Application-level ping/pong heartbeat (issue #1569). When omitted,
+   * the mesh installs the default heartbeat (`intervalMs: 5000,
+   * maxMissed: 3`) so detection stays within ~15s — well under the
+   * ~30s ICE-fail window. Pass `intervalMs: 0` (or any non-positive
+   * value) to disable the heartbeat entirely (no pings are sent, no
+   * `onPeerUnreachable` fires).
+   */
+  heartbeat?: MeshHeartbeatOptions;
 }
 
 /** Default reason stamped on a host rejection when the validator omits one. */
@@ -256,6 +309,50 @@ export class MeshGameConnection {
    */
   private sessionKeyHex: string | null = null;
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Application-level ping/pong heartbeat (issue #1569)
+  // ──────────────────────────────────────────────────────────────────────
+  /**
+   * Heartbeat tick interval in ms (issue #1569). `0` (or any non-positive
+   * value) means the heartbeat is disabled and no `setInterval` is
+   * registered.
+   */
+  private readonly heartbeatIntervalMs: number;
+  /**
+   * Number of consecutive missed pongs tolerated before the mesh
+   * declares the peer unreachable. The mesh fires `onPeerUnreachable`
+   * on the `(maxMissed + 1)`'th missed tick.
+   */
+  private readonly heartbeatMaxMissed: number;
+  /**
+   * Handle for the heartbeat `setInterval`. `null` when the heartbeat
+   * is stopped (initial state, after `close()`, or when the heartbeat
+   * is disabled via `heartbeat.intervalMs <= 0`).
+   */
+  private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Per-peer "last `pong` received at" timestamp (issue #1569).
+   * Initialised to `Date.now()` on `addPeerLink` so the first tick
+   * cannot mis-fire as a miss. Reset on every inbound `pong` for that
+   * peer.
+   */
+  private readonly lastPongAt: Map<string, number> = new Map();
+  /**
+   * Per-peer counter of consecutive ticks without a pong (issue
+   * #1569). Incremented on each tick that does not see a pong since
+   * the previous tick; reset to `0` on every inbound `pong`. The mesh
+   * fires `onPeerUnreachable` when `consecutiveMissedPongs >
+   * heartbeatMaxMissed`.
+   */
+  private readonly consecutiveMissedPongs: Map<string, number> = new Map();
+  /**
+   * Per-peer set of peer-ids for which `onPeerUnreachable` has already
+   * been emitted during the current disconnection episode (issue
+   * #1569). Cleared on inbound `pong` so a fresh episode (after the
+   * peer recovers, then drops again) re-fires.
+   */
+  private readonly peerUnreachableEmitted: Set<string> = new Set();
+
   constructor(options: MeshGameConnectionOptions) {
     if (!options.localPlayerId) {
       throw new Error("MeshGameConnectionOptions.localPlayerId is required");
@@ -279,6 +376,26 @@ export class MeshGameConnection {
         ? Math.floor(options.maxChatMessageLength)
         : MAX_CHAT_MESSAGE_LENGTH;
 
+    // Heartbeat configuration (issue #1569). A numeric `intervalMs`
+    // (positive OR zero/negative) is taken verbatim: a positive value
+    // runs the heartbeat at that interval, while `0` (or any
+    // non-positive value) explicitly DISABLES it so
+    // {@link startHeartbeat} skips the `setInterval` registration.
+    // When `intervalMs` is omitted entirely we fall back to the
+    // documented default. This three-way branch is what the
+    // "DISABLES the heartbeat when intervalMs <= 0" test asserts on.
+    if (typeof options.heartbeat?.intervalMs === "number") {
+      this.heartbeatIntervalMs =
+        options.heartbeat.intervalMs > 0 ? options.heartbeat.intervalMs : 0;
+    } else {
+      this.heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS;
+    }
+    this.heartbeatMaxMissed =
+      typeof options.heartbeat?.maxMissed === "number" &&
+      options.heartbeat.maxMissed >= 0
+        ? Math.floor(options.heartbeat.maxMissed)
+        : DEFAULT_HEARTBEAT_MAX_MISSED;
+
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = (): void => {};
     const defaults: MeshGameConnectionEvents = {
@@ -288,10 +405,16 @@ export class MeshGameConnection {
       onPeerJoined: noop,
       onPeerLeft: noop,
       onError: noop,
+      onPeerUnreachable: noop,
     };
     this.events = options.events
       ? { ...defaults, ...options.events }
       : defaults;
+
+    // Kick off the heartbeat loop AFTER events are bound so the first
+    // tick cannot fire before the caller's `onPeerUnreachable` is wired
+    // up.
+    this.startHeartbeat();
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -380,6 +503,14 @@ export class MeshGameConnection {
     // Record the link's declared role. `setPeerRole` can override this
     // post-registration (e.g. once the spectator handshake completes).
     this.peerRoles.set(link.peerId, link.role ?? DEFAULT_PEER_ROLE);
+    // Heartbeat bookkeeping (issue #1569): a (re)connect starts a fresh
+    // "last seen at" timestamp and clears any prior unreachable flag so
+    // a peer that reconnects after a transient drop is NOT considered
+    // unreachable from the moment it registers. The first tick after
+    // registration still gives the peer a full interval to respond.
+    this.lastPongAt.set(link.peerId, Date.now());
+    this.consecutiveMissedPongs.set(link.peerId, 0);
+    this.peerUnreachableEmitted.delete(link.peerId);
     if (!isReplace) {
       this.events.onPeerJoined(link.peerId);
     }
@@ -400,6 +531,12 @@ export class MeshGameConnection {
     this.links.delete(peerId);
     this.rateLimiters.delete(peerId);
     this.peerRoles.delete(peerId);
+    // Heartbeat bookkeeping (issue #1569): drop per-peer counters so a
+    // re-registered peerId starts from a clean slate (and so a stale
+    // `peerUnreachableEmitted` flag can never fire on a future add).
+    this.lastPongAt.delete(peerId);
+    this.consecutiveMissedPongs.delete(peerId);
+    this.peerUnreachableEmitted.delete(peerId);
     this.events.onPeerLeft(peerId);
     return true;
   }
@@ -829,6 +966,15 @@ export class MeshGameConnection {
         }
         break;
       }
+      case "pong": {
+        // Inbound heartbeat response (issue #1569). The mesh treats
+        // `pong` as a liveness signal: reset the per-peer missed-pong
+        // count and clear any outstanding unreachable flag so a
+        // recovered peer does NOT carry a stale "unreachable" state
+        // into the next tick.
+        this.onPongReceived(fromPeerId);
+        break;
+      }
       default:
         break;
     }
@@ -960,6 +1106,147 @@ export class MeshGameConnection {
   }
 
   // ────────────────────────────────────────────────────────────────────────
+  // Application-level heartbeat (issue #1569)
+  // ────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start the application-level ping/pong heartbeat (issue #1569).
+   *
+   * Idempotent: a running interval is cleared first. If
+   * `heartbeatIntervalMs` is non-positive (caller explicitly opted
+   * out), this is a no-op and NO `setInterval` is registered — the
+   * teardown test asserts exactly this shape so an interval-leak
+   * cannot survive past `close()`.
+   */
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    if (this.heartbeatIntervalMs <= 0) return;
+    this.heartbeatIntervalId = setInterval(
+      () => this.tickHeartbeat(),
+      this.heartbeatIntervalMs,
+    );
+  }
+
+  /**
+   * Stop the heartbeat interval (cleared, not held). Idempotent —
+   * calling when no interval is registered is a no-op so the close
+   * path can call this defensively. Issue #1569.
+   */
+  private stopHeartbeat(): void {
+    if (this.heartbeatIntervalId !== null) {
+      clearInterval(this.heartbeatIntervalId);
+      this.heartbeatIntervalId = null;
+    }
+  }
+
+  /**
+   * Whether the heartbeat `setInterval` is currently running. Exposed
+   * for tests so the teardown assertion can confirm `close()` actually
+   * cleared the interval. Issue #1569.
+   */
+  isHeartbeatRunning(): boolean {
+    return this.heartbeatIntervalId !== null;
+  }
+
+  /**
+   * Currently configured heartbeat interval (ms). `0` indicates the
+   * heartbeat is disabled. Issue #1569.
+   */
+  getHeartbeatIntervalMs(): number {
+    return this.heartbeatIntervalMs;
+  }
+
+  /**
+   * Currently configured maximum consecutive missed pongs. Issue
+   * #1569.
+   */
+  getHeartbeatMaxMissed(): number {
+    return this.heartbeatMaxMissed;
+  }
+
+  /**
+   * One heartbeat tick (issue #1569). Two steps:
+   *
+   *   1. Send a `ping` GameMessage to every registered peer link (the
+   *      `ping` type is already in the `GAME_MESSAGE_TYPES` allowlist
+   *      at `src/lib/p2p-game-connection.ts:227` and in
+   *      {@link READ_ONLY_OUTBOUND_ALLOWED_TYPES}, so spectator /
+   *      moderator local roles can still emit pings).
+   *   2. Sweep the per-peer `lastPongAt` map; any peer whose last
+   *      pong is older than `heartbeatIntervalMs` increments its
+   *      missed count, and a peer whose count STRICTLY exceeds
+   *      `heartbeatMaxMissed` fires `onPeerUnreachable`
+   *      (idempotently — one event per episode; a subsequent inbound
+   *      `pong` clears the flag).
+   */
+  private tickHeartbeat(): void {
+    if (this.links.size === 0) return;
+    // 1. Send ping to every peer link. `broadcast` walks the link
+    //    map, applies the per-peer inbound role allowlist, and
+    //    silently drops closed / role-disallowed links. A closed link
+    //    is expected and does not affect the missed-count accounting
+    //    for live peers.
+    this.broadcast({ type: "ping", data: null });
+    // 2. Sweep per-peer freshness and emit unreachable for any peer
+    //    whose missed-count has crossed the threshold.
+    this.checkMissedPongs();
+  }
+
+  /**
+   * Per-peer freshness sweep (issue #1569). A peer is considered to
+   * have missed a tick when its last `pong` timestamp is older than
+   * the heartbeat interval at the moment of the sweep. The mesh
+   * fires `onPeerUnreachable` when the consecutive-missed count
+   * STRICTLY exceeds `heartbeatMaxMissed` — with the default
+   * `maxMissed = 3` this means the 4th missed tick fires the event
+   * (so a peer that pongs at every tick NEVER crosses the
+   * threshold).
+   */
+  private checkMissedPongs(): void {
+    const now = Date.now();
+    for (const peerId of this.links.keys()) {
+      const last = this.lastPongAt.get(peerId);
+      if (last === undefined) {
+        // Peer was registered mid-flight (after the heartbeat
+        // started); prime its baseline so the first sweep is not a
+        // false miss.
+        this.lastPongAt.set(peerId, now);
+        this.consecutiveMissedPongs.set(peerId, 0);
+        continue;
+      }
+      if (now - last >= this.heartbeatIntervalMs) {
+        const missed = (this.consecutiveMissedPongs.get(peerId) ?? 0) + 1;
+        this.consecutiveMissedPongs.set(peerId, missed);
+        if (
+          missed > this.heartbeatMaxMissed &&
+          !this.peerUnreachableEmitted.has(peerId)
+        ) {
+          this.peerUnreachableEmitted.add(peerId);
+          this.events.onPeerUnreachable(peerId);
+        }
+      } else {
+        // Pong arrived since the previous tick — reset the streak
+        // and clear any prior unreachable flag so a recovered peer
+        // can be re-flagged on a future episode.
+        this.consecutiveMissedPongs.set(peerId, 0);
+        this.peerUnreachableEmitted.delete(peerId);
+      }
+    }
+  }
+
+  /**
+   * Inbound `pong` handler (issue #1569). Refreshes the per-peer
+   * `lastPongAt` to the current wall-clock, resets the missed-count
+   * streak, and clears the per-peer `peerUnreachableEmitted` flag so
+   * a future disconnection episode can re-fire `onPeerUnreachable`.
+   */
+  private onPongReceived(fromPeerId: string): void {
+    this.lastPongAt.set(fromPeerId, Date.now());
+    this.consecutiveMissedPongs.set(fromPeerId, 0);
+    this.peerUnreachableEmitted.delete(fromPeerId);
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
   // Teardown
   // ────────────────────────────────────────────────────────────────────────
 
@@ -969,6 +1256,10 @@ export class MeshGameConnection {
    * high-water marks. Idempotent.
    */
   close(): void {
+    // Heartbeat must be cleared FIRST so a delayed tick cannot fire
+    // after we've torn down the per-peer state (issue #1569 teardown
+    // contract).
+    this.stopHeartbeat();
     for (const link of this.links.values()) {
       try {
         link.close();
@@ -984,6 +1275,12 @@ export class MeshGameConnection {
     this.peerRoles.clear();
     this.antiReplay.clear();
     this.spectatorDrops = 0;
+    // Heartbeat bookkeeping (issue #1569). Drop every per-peer counter
+    // so a fresh session is not poisoned by stale `lastPongAt` /
+    // missed-count entries from the previous pod.
+    this.lastPongAt.clear();
+    this.consecutiveMissedPongs.clear();
+    this.peerUnreachableEmitted.clear();
   }
 }
 
