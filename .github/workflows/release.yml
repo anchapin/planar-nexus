@@ -81,6 +81,27 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      # Issue #1548: cache ~/.cargo/registry + src-tauri/target so the
+      # cargo dependency graph and Rust build artifacts persist between
+      # runs. Keyed on src-tauri/Cargo.lock so a dependency bump
+      # invalidates the cache correctly; the per-platform `build-windows`
+      # prefix + runner.os keeps this job's cache isolated from
+      # build-macos/build-linux and from the rust-checks cache in ci.yml
+      # (which uses the `rust-checks-` prefix). Mirrors the cache pattern
+      # introduced by #1591 in ci.yml. Without this every tag cut
+      # recompiled the full Tauri dependency tree (tauri, wry, winit,
+      # tokio, serde, …) from scratch — 8–15 min per platform.
+      - name: Cache cargo registry and Rust build artifacts (#1548)
+        if: success()
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            src-tauri/target
+          key: build-windows-cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            build-windows-cargo-${{ runner.os }}-
+
       # Issue #1547: pin the global CLI to the exact version declared in
       # package.json devDependencies (also pinned there). `@latest` made
       # releases non-reproducible — two tags cut from the same commit
@@ -176,6 +197,26 @@ jobs:
         if: success()
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      # Issue #1548: cache ~/.cargo/registry + src-tauri/target so the
+      # cargo dependency graph and Rust build artifacts persist between
+      # runs. Keyed on src-tauri/Cargo.lock; the per-platform
+      # `build-macos` prefix + runner.os keeps this job's cache isolated
+      # from build-windows/build-linux and from the rust-checks cache in
+      # ci.yml. Mirrors the cache pattern introduced by #1591 in ci.yml.
+      # Without this the universal-apple-darwin target (which compiles
+      # both x86_64 and aarch64 backends) rebuilt tauri/wry/winit/tokio/
+      # serde from scratch on every tag cut.
+      - name: Cache cargo registry and Rust build artifacts (#1548)
+        if: success()
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            src-tauri/target
+          key: build-macos-cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            build-macos-cargo-${{ runner.os }}-
 
       # Issue #1547: pin to the exact version declared in package.json
       # devDependencies (also pinned there). See the matching comment in
@@ -376,6 +417,24 @@ jobs:
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      # Issue #1548: cache ~/.cargo/registry + src-tauri/target so the
+      # cargo dependency graph and Rust build artifacts persist between
+      # runs. Keyed on src-tauri/Cargo.lock; the per-platform
+      # `build-linux` prefix + runner.os keeps this job's cache isolated
+      # from build-windows/build-macos and from the rust-checks cache in
+      # ci.yml. Mirrors the cache pattern introduced by #1591 in ci.yml.
+      # Without this the .deb/.AppImage/.rpm bundle step recompiled
+      # tauri/wry/winit/tokio/serde from scratch on every tag cut.
+      - name: Cache cargo registry and Rust build artifacts (#1548)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            src-tauri/target
+          key: build-linux-cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            build-linux-cargo-${{ runner.os }}-
 
       # Issue #1547: pin to the exact version declared in package.json
       # devDependencies (also pinned there). See the matching comment in
