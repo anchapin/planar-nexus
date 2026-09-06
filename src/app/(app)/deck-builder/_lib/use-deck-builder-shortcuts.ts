@@ -19,6 +19,14 @@ export interface UseDeckBuilderShortcutsHandlers {
    * deck-builder page wires this up). Issue #1439.
    */
   drawSample?: () => void;
+  /**
+   * Revert the most recent deck / sideboard edit (issue #1546). The hook
+   * `useDeckHistory` owns the stack; this callback applies whatever entry
+   * the page's reducer pops.
+   */
+  undo?: () => void;
+  /** Re-apply the most recently undone edit (issue #1546). */
+  redo?: () => void;
 }
 
 export interface UseDeckBuilderShortcutsOptions
@@ -26,8 +34,10 @@ export interface UseDeckBuilderShortcutsOptions
 
 /**
  * Installs a scoped (window-level) keydown listener that maps the documented
- * deck-builder shortcuts (+, -, Shift++/Shift+-, Enter, Ctrl/Cmd+N, H) onto the
- * provided handlers. Shortcuts are suppressed while typing in form fields.
+ * deck-builder shortcuts (+, -, Shift++/Shift+-, Enter, Ctrl/Cmd+N,
+ * Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl/Cmd+Y, H) onto the provided handlers.
+ * Shortcuts are suppressed while typing in form fields (so the browser's
+ * native input undo keeps working in the deck-name textbox).
  *
  * Scoping: this hook is only mounted by the deck-builder page, so the listener
  * is automatically removed when navigating away from the page.
@@ -35,7 +45,8 @@ export interface UseDeckBuilderShortcutsOptions
 export function useDeckBuilderShortcuts(
   options: UseDeckBuilderShortcutsOptions,
 ): void {
-  const { selectedCard, addCard, removeCard, newDeck, drawSample } = options;
+  const { selectedCard, addCard, removeCard, newDeck, drawSample, undo, redo } =
+    options;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -58,6 +69,22 @@ export function useDeckBuilderShortcuts(
           event.preventDefault();
           drawSample?.();
           break;
+        case "undo":
+          // Only preventDefault when we actually have a handler. The
+          // `resolveDeckBuilderShortcut` guard ensures the event didn't
+          // originate from an editable target, so we never swallow a
+          // browser-native input undo.
+          if (undo) {
+            event.preventDefault();
+            undo();
+          }
+          break;
+        case "redo":
+          if (redo) {
+            event.preventDefault();
+            redo();
+          }
+          break;
         case "none":
           break;
       }
@@ -65,5 +92,5 @@ export function useDeckBuilderShortcuts(
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedCard, addCard, removeCard, newDeck, drawSample]);
+  }, [selectedCard, addCard, removeCard, newDeck, drawSample, undo, redo]);
 }

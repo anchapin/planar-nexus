@@ -42,6 +42,7 @@ import { SideboardList } from "./_components/sideboard-list";
 import { ImportExportControls } from "./_components/import-export-controls";
 import { useDeckBuilderShortcuts } from "./_lib/use-deck-builder-shortcuts";
 import { useDeckBuilderDragDrop } from "./_lib/use-deck-builder-drag-drop";
+import { useDeckHistory } from "./_lib/use-deck-history";
 import { BannedCardAlternatives } from "./_components/banned-card-alternatives";
 import {
   Select,
@@ -113,6 +114,10 @@ export default function DeckBuilderPage() {
     focus: () => void;
     search: (q: string) => void;
   }>(null);
+
+  // Issue #1546 — bounded undo/redo history for deck + sideboard edits.
+  // Lives in-memory only (no IndexedDB persistence per acceptance #6).
+  const history = useDeckHistory();
 
   const { toast } = useToast();
   const [isImporting, startImportTransition] = useTransition();
@@ -287,6 +292,14 @@ export default function DeckBuilderPage() {
         return;
       }
 
+      // Issue #1546 — snapshot the deck (and current sideboard) onto the
+      // undo stack before mutating. Doing this *before* the legality /
+      // max-copies check is fine: if the operation ends up being a no-op
+      // (e.g. card at max copies), the popped undo entry will simply
+      // restore the same state — no visible change. The bounded stack
+      // (MAX_HISTORY_SIZE = 50) protects against unbounded growth.
+      history.recordEdit(`Add ${card.name}`, deck, sideboard);
+
       handleDeckChange((prevDeck) => {
         const existingCard = prevDeck.find((c) => c.id === card.id);
         const isBasicResource = card.type_line?.includes("Basic Resource");
@@ -323,11 +336,19 @@ export default function DeckBuilderPage() {
         }
       });
     },
-    [format, handleDeckChange, toast],
+    [format, handleDeckChange, history, toast, deck, sideboard],
   );
 
   const removeCardFromDeck = useCallback(
     (cardId: string) => {
+      // Issue #1546: snapshot the deck before the remove so the user can
+      // undo. We use the deck's closure value (not `handleDeckChange`'s
+      // functional updater) because we need to commit the snapshot
+      // synchronously — `setDeck` is async.
+      const existing = deck.find((c) => c.id === cardId);
+      if (existing) {
+        history.recordEdit(`Remove ${existing.name}`, deck, sideboard);
+      }
       handleDeckChange((prevDeck) => {
         const existingCard = prevDeck.find((c) => c.id === cardId);
         if (existingCard && existingCard.count > 1) {
@@ -339,10 +360,13 @@ export default function DeckBuilderPage() {
         }
       });
     },
-    [handleDeckChange],
+    [handleDeckChange, history, deck, sideboard],
   );
 
   const clearDeck = useCallback(() => {
+    // Issue #1546 — record the pre-clear snapshot so Ctrl+Z can restore a
+    // tuned deck that was accidentally wiped (acceptance #3).
+    history.recordEdit("Clear deck", deck, sideboard);
     setDeck([]);
     setSideboard([]);
     setDeckName("New Deck");
@@ -351,7 +375,7 @@ export default function DeckBuilderPage() {
       title: "Deck Cleared",
       description: "Your deck has been emptied.",
     });
-  }, [toast]);
+  }, [history, toast, deck, sideboard]);
 
   // Maximum copies added by the "Shift++" (add max) shortcut. Matches the
   // Shift+Click quick-add behaviour in CardSearch.
@@ -368,12 +392,14 @@ export default function DeckBuilderPage() {
   const handleShortcutRemove = useCallback(
     (card: ScryfallCard, all: boolean) => {
       if (all) {
+        // Snapshot before the bulk remove so Ctrl+Z restores the copies.
+        history.recordEdit(`Remove all ${card.name}`, deck, sideboard);
         handleDeckChange((prev) => prev.filter((c) => c.id !== card.id));
       } else {
         removeCardFromDeck(card.id);
       }
     },
-    [removeCardFromDeck, handleDeckChange],
+    [removeCardFromDeck, handleDeckChange, history, deck, sideboard],
   );
 
   /**
@@ -401,6 +427,10 @@ export default function DeckBuilderPage() {
         });
         return;
       }
+
+      // Issue #1546 — snapshot the deck + sideboard before the add so the
+      // user can undo.
+      history.recordEdit(`Add ${card.name} to sideboard`, deck, sideboard);
 
       setSideboard((prevSideboard) => {
         const existingCard = prevSideboard.find((c) => c.id === card.id);
@@ -438,25 +468,46 @@ export default function DeckBuilderPage() {
       });
       setIsDeckSaved(false);
     },
-    [supportsSideboard, format, formatLabel, sideboardMaxSize, toast],
+    [
+      supportsSideboard,
+      format,
+      formatLabel,
+      sideboardMaxSize,
+      toast,
+      history,
+      deck,
+      sideboard,
+    ],
   );
 
   /**
    * Decrement one copy of a card from the sideboard, removing the row
    * entirely when the count reaches zero. Mirrors `removeCardFromDeck`.
    */
-  const removeCardFromSideboard = useCallback((cardId: string) => {
-    setSideboard((prevSideboard) => {
-      const existingCard = prevSideboard.find((c) => c.id === cardId);
-      if (existingCard && existingCard.count > 1) {
-        return prevSideboard.map((c) =>
-          c.id === cardId ? { ...c, count: c.count - 1 } : c,
+  const removeCardFromSideboard = useCallback(
+    (cardId: string) => {
+      // Issue #1546: snapshot before the remove so the user can undo.
+      const existing = sideboard.find((c) => c.id === cardId);
+      if (existing) {
+        history.recordEdit(
+          `Remove ${existing.name} from sideboard`,
+          deck,
+          sideboard,
         );
       }
-      return prevSideboard.filter((c) => c.id !== cardId);
-    });
-    setIsDeckSaved(false);
-  }, []);
+      setSideboard((prevSideboard) => {
+        const existingCard = prevSideboard.find((c) => c.id === cardId);
+        if (existingCard && existingCard.count > 1) {
+          return prevSideboard.map((c) =>
+            c.id === cardId ? { ...c, count: c.count - 1 } : c,
+          );
+        }
+        return prevSideboard.filter((c) => c.id !== cardId);
+      });
+      setIsDeckSaved(false);
+    },
+    [history, deck, sideboard],
+  );
 
   // Ctrl/Cmd+N — documented as "New Deck". Wraps clearDeck so a future confirm
   // prompt can be added in one place.
@@ -469,14 +520,38 @@ export default function DeckBuilderPage() {
     [],
   );
 
+  // Issue #1546 — Ctrl/Cmd+Z (undo) / Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y (redo).
+  // Pops the top of the history stack and applies the stored snapshot. Both
+  // handlers are no-ops when the corresponding stack is empty. The hook's
+  // `announcement` is rendered into an ARIA live region further down for
+  // screen-reader feedback (acceptance #8).
+  const handleUndo = useCallback(() => {
+    const entry = history.undo(deck, sideboard);
+    if (!entry) return;
+    setDeck(entry.deck);
+    setSideboard(entry.sideboard);
+    setIsDeckSaved(false);
+  }, [history, deck, sideboard]);
+
+  const handleRedo = useCallback(() => {
+    const entry = history.redo(deck, sideboard);
+    if (!entry) return;
+    setDeck(entry.deck);
+    setSideboard(entry.sideboard);
+    setIsDeckSaved(false);
+  }, [history, deck, sideboard]);
+
   // Documented deck-builder shortcuts: +, -, Shift++/Shift+-, Enter,
-  // Ctrl/Cmd+N, H (Hand Test).
+  // Ctrl/Cmd+N, Ctrl/Cmd+Z (undo), Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y (redo),
+  // H (Hand Test).
   useDeckBuilderShortcuts({
     selectedCard,
     addCard: handleShortcutAdd,
     removeCard: handleShortcutRemove,
     newDeck: handleNewDeck,
     drawSample: handleDrawSample,
+    undo: handleUndo,
+    redo: handleRedo,
   });
 
   // Detect banned cards in the current deck and surface curated legal
@@ -519,6 +594,9 @@ export default function DeckBuilderPage() {
       });
       return Promise.resolve(null);
     }
+    // Issue #1546 — record the pre-import snapshot so a wrong-format import
+    // over a tuned list can be reverted (acceptance #4).
+    history.recordEdit("Import decklist", deck, sideboard);
     setActiveDeckId(null);
     return new Promise<ImportDeckResult | null>((resolve) => {
       startImportTransition(async () => {
@@ -621,6 +699,10 @@ export default function DeckBuilderPage() {
   };
 
   const loadDeck = (deckToLoad: SavedDeck) => {
+    // Issue #1546 — record the pre-load snapshot so the user can undo a
+    // mistaken deck switch. We snapshot the *current* state (before the
+    // load) so undo restores whatever was being edited.
+    history.recordEdit(`Load deck "${deckToLoad.name}"`, deck, sideboard);
     setDeck(deckToLoad.cards);
     // Pre-#1402 SavedDecks have no sideboard field — fall back to an empty
     // pool so the round-trip is non-destructive for legacy payloads.
@@ -672,6 +754,19 @@ export default function DeckBuilderPage() {
           data-testid="deck-builder-drag-announcement"
         >
           {dragDrop.announcement}
+        </div>
+        {/* Live region for undo/redo announcements (issue #1546 acceptance
+            #8). Separate from the drag-and-drop live region so the two
+            streams don't overwrite each other on the same keystroke. */}
+        <div
+          id="deck-builder-history-announcement"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className="sr-only"
+          data-testid="deck-builder-history-announcement"
+        >
+          {history.announcement}
         </div>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">

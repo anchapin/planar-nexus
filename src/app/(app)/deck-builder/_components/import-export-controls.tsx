@@ -554,9 +554,7 @@ export function ImportExportControls({
             </TabsContent>
           </Tabs>
 
-          {importResult && (
-            <ImportResultsPanel result={importResult} />
-          )}
+          {importResult && <ImportResultsPanel result={importResult} />}
 
           <DialogFooter>
             <Button
@@ -651,8 +649,9 @@ export function ImportExportControls({
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action will permanently delete all cards from your current
-              deck. This cannot be undone.
+              This action will delete all cards from your current deck. You can
+              restore the previous deck with <kbd>Ctrl</kbd>+<kbd>Z</kbd> (
+              <kbd>⌘</kbd>+<kbd>Z</kbd> on macOS) immediately after.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -676,13 +675,8 @@ export function ImportExportControls({
  * that could not be imported.
  */
 function ImportResultsPanel({ result }: { result: ImportDeckResult }) {
-  const {
-    successCount,
-    found,
-    unknownCards,
-    illegalCardErrors,
-    errors,
-  } = result;
+  const { successCount, found, unknownCards, illegalCardErrors, errors } =
+    result;
 
   const structuralErrors = errors.filter(
     (e) => e.error === "MALFORMED_LINE" || e.error === "INVALID_QUANTITY",
@@ -709,9 +703,7 @@ function ImportResultsPanel({ result }: { result: ImportDeckResult }) {
           <p className="text-xs text-muted-foreground">
             {found.length} unique card{found.length === 1 ? "" : "s"} added to
             your deck
-            {unknownCards.length > 0
-              ? ` · ${unknownCards.length} unknown`
-              : ""}
+            {unknownCards.length > 0 ? ` · ${unknownCards.length} unknown` : ""}
             {illegalCardErrors.length > 0
               ? ` · ${illegalCardErrors.length} illegal`
               : ""}
@@ -740,7 +732,10 @@ function ImportResultsPanel({ result }: { result: ImportDeckResult }) {
                   {err.cardName || err.content}
                 </span>
                 {err.line > 0 && (
-                  <span className="text-muted-foreground"> (line {err.line})</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    (line {err.line})
+                  </span>
                 )}
                 {err.suggestion && (
                   <span className="block text-green-600 dark:text-green-400">
@@ -769,9 +764,14 @@ function ImportResultsPanel({ result }: { result: ImportDeckResult }) {
                 key={`${err.line}-${err.cardName}-${index}`}
                 className="text-xs"
               >
-                <span className="font-medium">{err.cardName || err.content}</span>
+                <span className="font-medium">
+                  {err.cardName || err.content}
+                </span>
                 {err.line > 0 && (
-                  <span className="text-muted-foreground"> (line {err.line})</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    (line {err.line})
+                  </span>
                 )}
                 {err.suggestion && (
                   <span className="block text-muted-foreground">
@@ -796,10 +796,7 @@ function ImportResultsPanel({ result }: { result: ImportDeckResult }) {
           </p>
           <ul className="space-y-1.5">
             {structuralErrors.map((err, index) => (
-              <li
-                key={`${err.line}-${index}`}
-                className="text-xs"
-              >
+              <li key={`${err.line}-${index}`} className="text-xs">
                 <span className="text-muted-foreground">Line {err.line}: </span>
                 <code className="text-destructive">{err.content}</code>
                 <span className="block text-muted-foreground">

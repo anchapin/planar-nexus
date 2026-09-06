@@ -369,12 +369,13 @@ Suggestions:
 3. **Configure AI Opponent**:
 
    **Difficulty Level**:
-   | Level | Win Rate | Description |
-   |-------|----------|-------------|
-   | Easy | 80% | Beginner-friendly, makes mistakes |
-   | Medium | 60% | Balanced challenge |
-   | Hard | 40% | Challenging for experienced players |
-   | Expert | 25% | Near-perfect play |
+
+   | Level  | Win Rate | Description                         |
+   | ------ | -------- | ----------------------------------- |
+   | Easy   | 80%      | Beginner-friendly, makes mistakes   |
+   | Medium | 60%      | Balanced challenge                  |
+   | Hard   | 40%      | Challenging for experienced players |
+   | Expert | 25%      | Near-perfect play                   |
 
    **AI Theme** (optional):
    - Aggro: Aggressive, fast attacks
@@ -704,14 +705,17 @@ Suggestions:
 
 ### Deck Builder Shortcuts
 
-| Shortcut     | Action                     |
-| ------------ | -------------------------- |
-| `+`          | Add Card to Deck           |
-| `-`          | Remove Card from Deck      |
-| `Shift++`    | Add Maximum Copies         |
-| `Shift+-`    | Remove All Copies          |
-| `Arrow Keys` | Navigate Cards             |
-| `Enter`      | Add Focused Card / Confirm |
+| Shortcut                     | Action                                        |
+| ---------------------------- | --------------------------------------------- |
+| `+`                          | Add Card to Deck                              |
+| `-`                          | Remove Card from Deck                         |
+| `Shift++`                    | Add Maximum Copies                            |
+| `Shift+-`                    | Remove All Copies                             |
+| `Arrow Keys`                 | Navigate Cards                                |
+| `Enter`                      | Add Focused Card / Confirm                    |
+| `Ctrl+Z` / `⌘+Z`             | Undo Last Deck / Sideboard Edit (issue #1546) |
+| `Ctrl+Shift+Z` / `⌘+Shift+Z` | Redo (issue #1546)                            |
+| `Ctrl+Y` / `⌘+Y`             | Redo (Windows convention; issue #1546)        |
 
 ### Game Shortcuts
 
@@ -740,7 +744,7 @@ A draft sends three packs around the table; you pick one card per pass and
 build a 40+ card deck from what you keep.
 
 1. Navigate to **Draft** in the dashboard (route
-   [`/draft`](../src/app/(app)/draft/page.tsx)).
+   [`/draft`](<../src/app/(app)/draft/page.tsx>)).
 2. **Choose a set** to draft from (served by `set-service.ts`, which reads the
    card data already imported via **Settings → Card Database**).
 3. The draft generates three packs of 15 face-down cards via
@@ -754,17 +758,17 @@ build a 40+ card deck from what you keep.
 Each pick has a countdown. The timer ring transitions through three colour
 states so you can feel the pressure without watching the clock:
 
-| Time remaining | Ring colour | Behaviour                                |
-| -------------- | ----------- | ---------------------------------------- |
-| > 50%          | Green       | Normal — take your time                  |
-| 20% – 50%      | Yellow      | Speed up; decide soon                    |
-| < 20%          | Red         | Final warning; auto-pick fires at zero   |
+| Time remaining | Ring colour | Behaviour                              |
+| -------------- | ----------- | -------------------------------------- |
+| > 50%          | Green       | Normal — take your time                |
+| 20% – 50%      | Yellow      | Speed up; decide soon                  |
+| < 20%          | Red         | Final warning; auto-pick fires at zero |
 
 When the timer hits zero the engine **auto-picks** the highest-rated card still
 in the pack so the draft never stalls.
 
 5. After all three packs are empty, the session completes (see
-   [`/draft/complete`](../src/app/(app)/draft/complete/page.tsx)) and your pool
+   [`/draft/complete`](<../src/app/(app)/draft/complete/page.tsx>)) and your pool
    is persisted to IndexedDB (`pool-storage.ts`) for deck building.
 
 ### 9.2 Sealed
@@ -772,14 +776,14 @@ in the pack so the draft never stalls.
 Sealed gives you one fixed pool to build from — no passing.
 
 1. Navigate to **Sealed** (route
-   [`/sealed`](../src/app/(app)/sealed/page.tsx)).
+   [`/sealed`](<../src/app/(app)/sealed/page.tsx>)).
 2. Pick a set; `sealed-generator.ts` produces a pool (typically 6 packs worth).
 3. The pool gets a unique session ID and **persists across page refresh**, so
    you can leave and come back to the same sealed pool.
 
 ### 9.3 Building the Limited Deck
 
-Open **Limited Deck Builder** ([`/limited-deck-builder`](../src/app/(app)/limited-deck-builder/page.tsx))
+Open **Limited Deck Builder** ([`/limited-deck-builder`](<../src/app/(app)/limited-deck-builder/page.tsx>))
 to assemble your pool into a legal deck:
 
 - Minimum 40 cards (enforced by `validateLimitedDeck` in
@@ -790,7 +794,7 @@ to assemble your pool into a legal deck:
 
 ### 9.4 Draft Assistant
 
-Stuck on a pick? **Draft Assistant** ([`/draft-assistant`](../src/app/(app)/draft-assistant/page.tsx))
+Stuck on a pick? **Draft Assistant** ([`/draft-assistant`](<../src/app/(app)/draft-assistant/page.tsx>))
 reads the current pack and suggests the strongest pick based on synergy with
 the cards you've already taken. It runs through the same AI provider stack as
 the coach (see [Section 3](#3-ai-coach)); no provider key is required for the
@@ -798,7 +802,7 @@ heuristic baseline.
 
 ### 9.5 Set Browser
 
-**Set Browser** ([`/set-browser`](../src/app/(app)/set-browser/page.tsx)) lists
+**Set Browser** ([`/set-browser`](<../src/app/(app)/set-browser/page.tsx>)) lists
 the sets available for drafting and sealed, showing card counts and the format
 each set feeds. Use it to decide which set to draft before starting a session.
 
@@ -806,7 +810,7 @@ each set feeds. Use it to decide which set to draft before starting a session.
 
 ## 10. Meta & Strategy AI (v1.5)
 
-> Shipped 2026-03-19 (Phases 18-20). Quantitative analysis of *constructed*
+> Shipped 2026-03-19 (Phases 18-20). Quantitative analysis of _constructed_
 > decks: what archetype a list is, how it matches up, and how to sideboard.
 
 These four routes share the same AI provider stack as the coach (see
@@ -832,7 +836,7 @@ classification recomputes from the current cards.
 
 ### 10.2 Matchup Guides
 
-**Matchup** ([`/matchup`](../src/app/(app)/matchup/page.tsx)) takes two decks
+**Matchup** ([`/matchup`](<../src/app/(app)/matchup/page.tsx>)) takes two decks
 and produces a head-to-head breakdown:
 
 - **Expected win rate** for the chosen decks and format.
@@ -845,7 +849,7 @@ field you expect to face.
 
 ### 10.3 Meta Overview
 
-**Meta** ([`/meta`](../src/app/(app)/meta/page.tsx)) shows the detected
+**Meta** ([`/meta`](<../src/app/(app)/meta/page.tsx>)) shows the detected
 archetypes across your decks plus a health score for each, so you can see at a
 glance which archetypes are over- or under-represented in your testing pool.
 
@@ -856,7 +860,7 @@ glance which archetypes are over- or under-represented in your testing pool.
 
 ### 10.4 Sideboard Plans
 
-**Sideboards** ([`/sideboards`](../src/app/(app)/sideboards/page.tsx))
+**Sideboards** ([`/sideboards`](<../src/app/(app)/sideboards/page.tsx>))
 generates a 15-card sideboard plan for a deck against a target field, using the
 anti-meta engine in
 [`src/lib/anti-meta.ts`](../src/lib/anti-meta.ts)
@@ -866,7 +870,7 @@ it answers, so you can cut cards you don't own and still keep the plan coherent.
 
 ### 10.5 Strategy Recommendations
 
-**Strategy** ([`/strategy`](../src/app/(app)/strategy/page.tsx)) ties the
+**Strategy** ([`/strategy`](<../src/app/(app)/strategy/page.tsx>)) ties the
 pieces together: mulligan guidance, pacing notes, and anti-meta tech cards to
 consider for your local field. Visual styling follows the tokens in
 [`docs/design-tokens.md`](./design-tokens.md).
@@ -894,7 +898,7 @@ A common session moves across the four views in order:
 1. Open a deck in **AI Coach** as usual (see [Section 3](#3-ai-coach)).
 2. The page now shows a **chat panel** beside the structured report
    ([`DeckCoachChatPanel`](../src/components/ai-coach/chat-panel.tsx), mounted
-   on [`/deck-coach`](../src/app/(app)/deck-coach/page.tsx)).
+   on [`/deck-coach`](<../src/app/(app)/deck-coach/page.tsx>)).
 3. Type a question and press **Enter** to send.
 
 ### 11.2 What You Can Ask
@@ -977,11 +981,11 @@ reads, so it always matches what the app enforces.
 When you add a card to a Standard deck, the status panel reports one of three
 outcomes:
 
-| Marker | Meaning                                                              |
-| ------ | -------------------------------------------------------------------- |
-| ✓ Legal | Card's most recent Standard-legal printing is from a current set     |
+| Marker    | Meaning                                                               |
+| --------- | --------------------------------------------------------------------- |
+| ✓ Legal   | Card's most recent Standard-legal printing is from a current set      |
 | ⚠ Rotated | Card's sets have all rotated out — replace it with a legal equivalent |
-| ✗ Banned | Card is on the format ban list regardless of set                    |
+| ✗ Banned  | Card is on the format ban list regardless of set                      |
 
 To find the exact set that aged a card out, open the card detail view; the
 **Format Legality** section lists each printing and whether that set is still
@@ -1004,7 +1008,7 @@ Suppose Standard rotates on the first Friday of September, removing set `DMU`:
 2. On rotation day, the same deck suddenly shows four **⚠ Rotated** markers
    without you touching it — `getStandardLegalSets(now)` now excludes `DMU`.
 3. Replace each rotated card (the detail view suggests Standard-legal
-   equivalents), and the markers clear. Any card that is *also* banned stays
+   equivalents), and the markers clear. Any card that is _also_ banned stays
    **✗ Banned** even after you swap the printing.
 
 ---

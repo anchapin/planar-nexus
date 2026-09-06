@@ -1,10 +1,21 @@
 import type { ScryfallCard } from "@/lib/card-database";
 
+/**
+ * Resolved deck-builder shortcut action.
+ *
+ * Issue #1546 extended the action union with `undo` and `redo`. The
+ * corresponding `Ctrl+Z` / `Cmd+Z` (undo) and `Ctrl+Shift+Z` / `Cmd+Shift+Z`
+ * / `Ctrl+Y` / `Cmd+Y` (redo) bindings live in this file so the existing
+ * `isEditableTarget` guard keeps text-input undo under the browser's control
+ * (acceptance criterion #7).
+ */
 export type DeckBuilderShortcutAction =
   | { type: "addCard"; card: ScryfallCard; max: boolean }
   | { type: "removeCard"; card: ScryfallCard; all: boolean }
   | { type: "newDeck" }
   | { type: "drawSample" }
+  | { type: "undo" }
+  | { type: "redo" }
   | { type: "none" };
 
 export interface DeckBuilderShortcutContext {
@@ -33,6 +44,9 @@ export function isEditableTarget(target: EventTarget | null): boolean {
  *   Shift+-          Remove All Copies
  *   Enter            Confirm / add the focused card
  *   Ctrl/Cmd+N       New Deck
+ *   Ctrl/Cmd+Z       Undo Last Edit        (issue #1546)
+ *   Ctrl/Cmd+Shift+Z Redo                   (issue #1546)
+ *   Ctrl/Cmd+Y       Redo                   (issue #1546)
  *   H                Draw another opening hand (Hand Test)
  *
  * On a US keyboard the unshifted "+/=" key reports "=". Shift+"=" reports "+",
@@ -45,7 +59,10 @@ export function resolveDeckBuilderShortcut(
   event: KeyboardEvent,
   ctx: DeckBuilderShortcutContext,
 ): DeckBuilderShortcutAction {
-  // Never fire shortcuts while the user is typing in a form field.
+  // Never fire shortcuts while the user is typing in a form field. This is
+  // what stops Ctrl+Z in the deck-name input from clobbering the deck —
+  // the browser's native input undo fires instead (issue #1546 acceptance
+  // criterion #7).
   if (isEditableTarget(event.target)) {
     return { type: "none" };
   }
@@ -56,6 +73,24 @@ export function resolveDeckBuilderShortcut(
   // Ctrl/Cmd+N — New Deck (documented global shortcut).
   if (modifier && (key === "n" || key === "N")) {
     return { type: "newDeck" };
+  }
+
+  // Ctrl/Cmd+Z — Undo last deck / sideboard edit. We deliberately do NOT
+  // handle Ctrl+Z when the event originated from an editable target — the
+  // guard above already returned `none` in that case.
+  if (modifier && !event.shiftKey && (key === "z" || key === "Z")) {
+    return { type: "undo" };
+  }
+
+  // Ctrl/Cmd+Shift+Z — Redo (the platform-standard binding).
+  if (modifier && event.shiftKey && (key === "z" || key === "Z")) {
+    return { type: "redo" };
+  }
+
+  // Ctrl/Cmd+Y — Redo (Windows convention; many desktop apps expose both
+  // Shift+Z and Y so muscle memory from either ecosystem works).
+  if (modifier && !event.shiftKey && (key === "y" || key === "Y")) {
+    return { type: "redo" };
   }
 
   // Let other modifier combos (Ctrl+S, Ctrl+F, ...) be handled by their own
