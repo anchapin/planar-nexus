@@ -53,6 +53,17 @@
  *  `use-p2p-connection.ts`) wires the migration result into
  *  `P2PGameConnection.setSessionKey` once it runs `applyMigration` /
  *  `initiateMigration`.
+ *
+ * Host-attested join sequence (issue #1567):
+ *  Successor selection previously read `joinedAt`, a peer-self-reported wall
+ *  clock that any malicious peer could lie about (e.g. `Date.now() - 1e12`
+ *  to always win succession). {@link PeerRosterEntry.joinSeq} replaces it:
+ *  the host assigns a monotonic per-session integer at handshake time and
+ *  broadcasts the assignment under the HMAC envelope above, so followers
+ *  reject any forged roster entry. The sort comparator in
+ *  {@link selectHostSuccessor} and {@link HostMigrationManager.peersList}
+ *  reads `joinSeq` exclusively; `joinedAt` is retained on the entry for
+ *  display/debugging only and MUST NOT influence ordering.
  */
 
 /**
@@ -61,8 +72,30 @@
 export interface PeerRosterEntry {
   playerId: string;
   playerName: string;
-  /** Join order / arrival time. Lower = earlier. Used for tie-breaking. */
+  /**
+   * Peer-self-reported wall-clock arrival time (ms since epoch).
+   *
+   * Note: this value is set locally by the peer that registered the entry
+   * and can be forged (issue #1567). It is retained on the entry for
+   * display, debugging, and back-compat with persisted rosters that pre-date
+   * the host-attested sequence, but successor-selection logic MUST use
+   * {@link joinSeq} instead.
+   */
   joinedAt: number;
+  /**
+   * Host-attested monotonic join sequence (issue #1567).
+   *
+   * Assigned by the authoritative host via
+   * {@link HostMigrationManager.assignNextJoinSeq} when a peer joins, and
+   * broadcast to followers under the per-session HMAC envelope (issue
+   * #1252) — so a malicious peer cannot forge a low sequence. Lower
+   * sequence = earlier arrival. The original host seeds itself with
+   * `joinSeq: 0`; subsequent peers get `1, 2, 3, …` in arrival order.
+   *
+   * AUTHORITATIVE for succession: {@link selectHostSuccessor} sorts by
+   * `(joinSeq asc, playerId asc)` and never reads `joinedAt`.
+   */
+  joinSeq: number;
 }
 
 /**
@@ -74,10 +107,7 @@ export type HostMigrationReason = "host-disconnected" | "host-left";
  * The lifecycle state of migration for the local client.
  */
 export type HostMigrationStatus =
-  | "stable"
-  | "migrating"
-  | "migrated"
-  | "terminated";
+  "stable" | "migrating" | "migrated" | "terminated";
 
 /**
  * Wire message broadcast by the newly-promoted host (and relayed by peers) to
@@ -146,10 +176,15 @@ const DEFAULT_MIN_PLAYERS = 2;
 /**
  * Deterministically pick the next host from a set of peers.
  *
- * Selection rule: the peer with the smallest `joinedAt`; ties broken by the
- * lexicographically smallest `playerId`. The leaving host is excluded. The
- * rule is total and order-independent, so every peer that runs it on the same
- * roster obtains the same answer.
+ * Selection rule (issue #1567): the peer with the smallest host-attested
+ * `joinSeq`; ties broken by the lexicographically smallest `playerId`. The
+ * leaving host is excluded. The rule is total and order-independent, so
+ * every peer that runs it on the same roster obtains the same answer.
+ *
+ * `joinedAt` is intentionally NOT consulted — it is peer-self-reported and
+ * can be forged (e.g. `Date.now() - 1e12`). `joinSeq` is host-attested and
+ * rides under the per-session HMAC envelope (#1252), so a malicious peer
+ * cannot claim a low sequence and steal succession.
  *
  * @returns the chosen successor's id, or `null` if there is no candidate.
  */
@@ -161,7 +196,9 @@ export function selectHostSuccessor(
     .filter((p) => p.playerId !== excludeId)
     .slice()
     .sort((a, b) => {
-      if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+      // Issue #1567: host-attested sequence dominates the untrusted
+      // self-reported `joinedAt`. Peer-set `joinedAt: 0` cannot win.
+      if (a.joinSeq !== b.joinSeq) return a.joinSeq - b.joinSeq;
       return a.playerId < b.playerId ? -1 : a.playerId > b.playerId ? 1 : 0;
     });
   return candidates.length > 0 ? candidates[0].playerId : null;
@@ -187,6 +224,14 @@ export function buildMigrationId(
  * A host layer (e.g. the `useP2PConnection` hook) feeds it the peer roster and
  * the latest authoritative game state, asks it to migrate on host loss, and
  * applies received migration messages.
+ *
+ * Host-attested join sequence (issue #1567):
+ *  The manager owns a monotonic `nextJoinSeq` counter. The host calls
+ *  {@link assignNextJoinSeq} when admitting a peer; followers call
+ *  {@link recordHostJoinSeq} when they receive the host's HMAC-signed
+ *  roster-assignment broadcast. The counter is initialised from
+ *  `initialPeers` (so pre-seeded entries are honoured) and advances
+ *  monotonically for the lifetime of the manager instance.
  */
 export class HostMigrationManager {
   private readonly localPlayerId: string;
@@ -199,6 +244,13 @@ export class HostMigrationManager {
   private appliedMigrationIds: Set<string> = new Set();
   /** Latest authoritative game state known to this client. */
   private lastKnownGameState: unknown = null;
+  /**
+   * Issue #1567 — next host-issued join sequence. Initialised from
+   * `initialPeers` so the counter is monotonic across handovers (a follower
+   * that just took over the host role picks up the existing roster's max
+   * sequence instead of resetting to 0).
+   */
+  private nextJoinSeq: number = 0;
 
   constructor(options: HostMigrationManagerOptions) {
     this.localPlayerId = options.localPlayerId;
@@ -216,6 +268,11 @@ export class HostMigrationManager {
     };
     for (const peer of options.initialPeers) {
       this.peers.set(peer.playerId, { ...peer });
+      // Advance the counter past any pre-seeded sequences so the next
+      // host-issued sequence is strictly greater than every existing one.
+      if (peer.joinSeq >= this.nextJoinSeq) {
+        this.nextJoinSeq = peer.joinSeq + 1;
+      }
     }
   }
 
@@ -250,6 +307,95 @@ export class HostMigrationManager {
   /** Add or refresh a peer in the roster. */
   upsertPeer(peer: PeerRosterEntry): void {
     this.peers.set(peer.playerId, { ...peer });
+    // Issue #1567 — keep the counter monotonic across roster refreshes so
+    // a re-registered peer that previously held a higher sequence than the
+    // current top does not cause the host to mint a duplicate.
+    if (peer.joinSeq >= this.nextJoinSeq) {
+      this.nextJoinSeq = peer.joinSeq + 1;
+    }
+  }
+
+  /**
+   * Issue #1567 — host-only. Mint the next monotonic join sequence for a
+   * peer that just joined the session, record the entry via
+   * {@link upsertPeer}, and return it so the caller can broadcast it under
+   * the HMAC envelope (#1252).
+   *
+   * The counter is internal and the host is the sole writer, so a peer
+   * cannot influence it directly — only the host can advance it, and the
+   * advance is strictly `+1` per admitted peer. A peer's locally-supplied
+   * `joinedAt` is preserved for display/debugging but the sort comparator
+   * in {@link selectHostSuccessor} never reads it.
+   *
+   * Non-host callers MUST NOT use this method to assign a sequence; the
+   * resulting entry would be ignored for succession (the real host's
+   * broadcast always wins under the HMAC envelope). Followers receive the
+   * authoritative sequence via {@link recordHostJoinSeq}.
+   */
+  assignNextJoinSeq(playerId: string, playerName: string): PeerRosterEntry {
+    const entry: PeerRosterEntry = {
+      playerId,
+      playerName,
+      joinedAt: Date.now(),
+      joinSeq: this.nextJoinSeq++,
+    };
+    // Route through upsertPeer so the host-issued joinSeq is recorded in
+    // the roster through the same code path used by every other entry
+    // mutation (and the monotonicity invariant is enforced once, in
+    // upsertPeer).
+    this.upsertPeer(entry);
+    return { ...entry };
+  }
+
+  /**
+   * Issue #1567 — record a host-attested join sequence for a peer.
+   * Followers call this when they receive the host's roster-assignment
+   * broadcast. The sequence is treated as authoritative because it
+   * arrived under the host's HMAC-signed envelope (#1252) — any forged
+   * or low-sequence assignment is rejected at the transport boundary
+   * before reaching this method.
+   *
+   * If no entry exists for `playerId`, a minimal placeholder is created
+   * so the host-attested sequence takes effect immediately; the entry
+   * will be enriched with `playerName` when the matching roster update
+   * arrives.
+   */
+  recordHostJoinSeq(playerId: string, joinSeq: number): void {
+    const existing = this.peers.get(playerId);
+    if (existing) {
+      this.peers.set(playerId, { ...existing, joinSeq });
+    } else {
+      this.peers.set(playerId, {
+        playerId,
+        playerName: playerId,
+        joinedAt: Date.now(),
+        joinSeq,
+      });
+    }
+    if (joinSeq >= this.nextJoinSeq) {
+      this.nextJoinSeq = joinSeq + 1;
+    }
+  }
+
+  /**
+   * Issue #1567 — seed the host's own roster entry with `joinSeq: 0` so
+   * the original host's succession tiebreaker is deterministic. Idempotent:
+   * a no-op if the host is already in the roster with a non-negative seq.
+   * Call once at the start of a session, on the host's hook init path.
+   */
+  seedHostJoinSeq(playerName: string): void {
+    if (this.peers.has(this.localPlayerId)) return;
+    this.peers.set(this.localPlayerId, {
+      playerId: this.localPlayerId,
+      playerName,
+      joinedAt: Date.now(),
+      joinSeq: this.nextJoinSeq++,
+    });
+  }
+
+  /** Issue #1567 — peek the next sequence the host would mint, for tests. */
+  peekNextJoinSeq(): number {
+    return this.nextJoinSeq;
   }
 
   /** Remove a peer from the roster (e.g. on disconnect). */
@@ -437,7 +583,10 @@ export class HostMigrationManager {
 
   private peersList(): PeerRosterEntry[] {
     return Array.from(this.peers.values()).sort((a, b) => {
-      if (a.joinedAt !== b.joinedAt) return a.joinedAt - b.joinedAt;
+      // Issue #1567 — host-attested `joinSeq` is the canonical order for
+      // every roster iteration (migration messages, `getRoster` snapshots,
+      // successor selection). `joinedAt` is never read here.
+      if (a.joinSeq !== b.joinSeq) return a.joinSeq - b.joinSeq;
       return a.playerId < b.playerId ? -1 : a.playerId > b.playerId ? 1 : 0;
     });
   }

@@ -469,6 +469,13 @@ export function useP2PConnection(
           },
         },
       });
+      // Issue #1567 — seed the original host's roster entry with the
+      // host-attested joinSeq (0). If the host was already in
+      // `migrationPeers` with a lower sequence, that entry is honoured
+      // (the counter is just advanced past it).
+      if (role === "host") {
+        hostMigrationRef.current.seedHostJoinSeq(playerName);
+      }
       setCurrentHostIdState(hostMigrationRef.current.getHostId());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -652,16 +659,77 @@ export function useP2PConnection(
   }, []);
 
   // Track a newly-joined peer for successor-selection purposes.
+  // Issue #1567 — when the local client is the host, mint the next
+  // monotonic joinSeq and broadcast it under the HMAC envelope (#1252)
+  // so followers cannot forge a low sequence. Followers record the
+  // host-attested seq via `recordHostJoinSeq` when the roster-assignment
+  // arrives (handled by `handleMigrationGameAction` below).
   const registerPeerForMigration = useCallback(
     (peerPlayerId: string, peerPlayerName: string) => {
-      hostMigrationRef.current?.upsertPeer({
+      const manager = hostMigrationRef.current;
+      if (!manager) return;
+      if (manager.isLocalHost()) {
+        const entry = manager.assignNextJoinSeq(peerPlayerId, peerPlayerName);
+        // Broadcast the host-attested joinSeq to every peer so each
+        // follower's roster carries the authoritative sequence. The
+        // game-action channel rides under the HMAC envelope (#1252), so
+        // a malicious peer cannot claim a lower sequence for itself.
+        connectionRef.current?.sendGameAction("roster-assignment", {
+          playerId: entry.playerId,
+          playerName: entry.playerName,
+          joinSeq: entry.joinSeq,
+        });
+        return;
+      }
+      // Follower path: the host will tell us the authoritative joinSeq
+      // shortly. Record a sentinel (joinSeq = MAX_SAFE_INTEGER so this
+      // peer is effectively ignored by the sort comparator until the
+      // host's assignment arrives) and let `handleMigrationGameAction`
+      // overwrite it. Using MAX_SAFE_INTEGER is safe — the host's real
+      // sequence will be a small non-negative integer, so the placeholder
+      // can never win succession.
+      manager.upsertPeer({
         playerId: peerPlayerId,
         playerName: peerPlayerName,
         joinedAt: Date.now(),
+        joinSeq: Number.MAX_SAFE_INTEGER,
       });
     },
     [],
   );
+
+  // Issue #1567 — handle a host-broadcast roster-assignment message.
+  // The message carries the host-attested `joinSeq` for one peer; we
+  // update the local roster so successor selection sees the same value
+  // every other peer does.
+  const handleRosterAssignment = useCallback((payload: unknown) => {
+    const manager = hostMigrationRef.current;
+    if (!manager) return;
+    if (
+      !payload ||
+      typeof payload !== "object" ||
+      typeof (payload as { playerId?: unknown }).playerId !== "string" ||
+      typeof (payload as { joinSeq?: unknown }).joinSeq !== "number"
+    ) {
+      return; // malformed — drop silently
+    }
+    const { playerId: assignedId, joinSeq } = payload as {
+      playerId: string;
+      joinSeq: number;
+    };
+    // Defensive: only accept non-negative finite integers. A peer
+    // replaying an older assignment or attempting a negative seq is
+    // rejected — the transport's HMAC envelope (#1252) is the
+    // primary defence; this is belt-and-suspenders.
+    if (
+      !Number.isFinite(joinSeq) ||
+      joinSeq < 0 ||
+      !Number.isInteger(joinSeq)
+    ) {
+      return;
+    }
+    manager.recordHostJoinSeq(assignedId, joinSeq);
+  }, []);
 
   // Apply a received host-migration message (idempotent).
   const applyHostMigrationMessage = useCallback(
@@ -707,15 +775,23 @@ export function useP2PConnection(
   );
 
   // Inspect a game-action message and route host-migration messages.
+  // Issue #1567 — also routes `roster-assignment` messages carrying the
+  // host-attested joinSeq for newly-admitted peers.
   const handleMigrationGameAction = useCallback(
     (action: string, data: unknown) => {
-      if (action !== "host-migration") return;
-      if (!data || typeof data !== "object") return;
-      const message = data as HostMigrationMessage;
-      if (message.type !== "host-migration") return;
-      applyHostMigrationMessage(message);
+      if (action === "host-migration") {
+        if (!data || typeof data !== "object") return;
+        const message = data as HostMigrationMessage;
+        if (message.type !== "host-migration") return;
+        applyHostMigrationMessage(message);
+        return;
+      }
+      if (action === "roster-assignment") {
+        handleRosterAssignment(data);
+        return;
+      }
     },
-    [applyHostMigrationMessage],
+    [applyHostMigrationMessage, handleRosterAssignment],
   );
 
   // --- Issue #1570: persist a game-ended payload to Dexie ---
