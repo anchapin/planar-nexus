@@ -28,6 +28,11 @@ const REASONS: ProviderFailureReason[] = [
   "timeout",
   "model-setup",
   "stream-before-first-token",
+  // Issue #1537: two new failure classes that previously collapsed into
+  // the `stream-before-first-token` catch-all. Both need their own
+  // cooldown schedule and a snapshot round-trip.
+  "content-policy",
+  "context-length",
 ];
 
 beforeEach(() => {
@@ -44,6 +49,12 @@ describe("cooldownFor — schedule", () => {
     expect(cooldownFor("timeout", 1)).toBe(1_000);
     expect(cooldownFor("model-setup", 1)).toBe(1_000);
     expect(cooldownFor("stream-before-first-token", 1)).toBe(1_000);
+    // Issue #1537: the two new reasons have explicitly chosen base values
+    // (100ms / 500ms). They must be present in the schedule so the Record
+    // type-checks exhaustively and `cooldownFor` never falls back to a
+    // default.
+    expect(cooldownFor("content-policy", 1)).toBe(100);
+    expect(cooldownFor("context-length", 1)).toBe(500);
   });
 
   it("grows exponentially with factor 2", () => {
@@ -53,6 +64,12 @@ describe("cooldownFor — schedule", () => {
     expect(cooldownFor("timeout", 2)).toBe(2_000);
     expect(cooldownFor("timeout", 3)).toBe(4_000);
     expect(cooldownFor("timeout", 4)).toBe(8_000);
+    // Issue #1537: same exponential schedule applies to the new reasons.
+    expect(cooldownFor("content-policy", 2)).toBe(200);
+    expect(cooldownFor("content-policy", 3)).toBe(400);
+    expect(cooldownFor("context-length", 2)).toBe(1_000);
+    expect(cooldownFor("context-length", 3)).toBe(2_000);
+    expect(cooldownFor("context-length", 4)).toBe(4_000);
   });
 
   it("is capped per reason (60s for rate-limit, 30s otherwise)", () => {
@@ -60,12 +77,21 @@ describe("cooldownFor — schedule", () => {
     expect(cooldownFor("timeout", 100)).toBe(30_000);
     expect(cooldownFor("model-setup", 100)).toBe(30_000);
     expect(cooldownFor("stream-before-first-token", 100)).toBe(30_000);
+    // Issue #1537: the new reasons have deliberately small caps so they
+    // don't block subsequent coach turns once the immediate cause (policy
+    // refusal / oversized prompt) is gone.
+    expect(cooldownFor("content-policy", 100)).toBe(1_000);
+    expect(cooldownFor("context-length", 100)).toBe(5_000);
   });
 
   it("treats non-positive or non-integer counts as the first failure", () => {
     expect(cooldownFor("rate-limit", 0)).toBe(2_000);
     expect(cooldownFor("rate-limit", -3)).toBe(2_000);
     expect(cooldownFor("rate-limit", 1.9)).toBe(2_000);
+    // Issue #1537: same floor for the new reasons.
+    expect(cooldownFor("content-policy", 0)).toBe(100);
+    expect(cooldownFor("context-length", -2)).toBe(500);
+    expect(cooldownFor("context-length", 0.5)).toBe(500);
   });
 });
 
@@ -231,6 +257,42 @@ describe("ProviderHealthTracker — bounded state", () => {
     for (const reason of REASONS) {
       expect(t.snapshot(`prov-${reason}`)?.lastFailureReason).toBe(reason);
     }
+  });
+
+  it("records content-policy with the defensive short cooldown (#1537)", () => {
+    // The coach stream does not currently record `content-policy` itself,
+    // but the union is exhaustive over `ProviderFailureReason` and a
+    // future caller (or a misconfigured integration) must be able to
+    // record it. The cooldown stays under 1s so a working provider is not
+    // blocked on a recorded refusal.
+    const t = new ProviderHealthTracker();
+    const snap = t.recordFailure("openai", "content-policy");
+
+    expect(snap.failureCount).toBe(1);
+    expect(snap.lastFailureReason).toBe("content-policy");
+    expect(snap.cooldownUntil).toBe(Date.now() + 100);
+    expect(t.cooldownRemaining("openai")).toBe(100);
+    // Two content-policy failures stack to 200ms (still capped at 1s).
+    t.recordFailure("openai", "content-policy");
+    expect(t.cooldownRemaining("openai")).toBe(200);
+  });
+
+  it("records context-length with the slightly-larger schedule (#1537)", () => {
+    // The coach stream records context-length when the same provider is
+    // retried with a tighter history; the slightly longer base (500ms)
+    // dampens retry storms if the budget stays too generous.
+    const t = new ProviderHealthTracker();
+    const snap = t.recordFailure("anthropic", "context-length");
+
+    expect(snap.failureCount).toBe(1);
+    expect(snap.lastFailureReason).toBe("context-length");
+    expect(snap.cooldownUntil).toBe(Date.now() + 500);
+    expect(t.cooldownRemaining("anthropic")).toBe(500);
+    // Three context-length failures: 500 / 1000 / 2000 (capped at 5s).
+    t.recordFailure("anthropic", "context-length");
+    expect(t.cooldownRemaining("anthropic")).toBe(1_000);
+    t.recordFailure("anthropic", "context-length");
+    expect(t.cooldownRemaining("anthropic")).toBe(2_000);
   });
 });
 
