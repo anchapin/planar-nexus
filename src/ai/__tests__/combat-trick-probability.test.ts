@@ -676,7 +676,23 @@ describe("CombatDecisionTree — difficulty plumbing into the trick module (#106
         },
       ];
       const ai = new CombatDecisionTree(state, "player1", level);
-      ai.setConfig({ useCombatTricks: true, opponentArchetype: "tempo" });
+      // Disable lookahead for both tiers so the assertion isolates the
+      // per-difficulty trick-discount signal (issue #1067) without the
+      // tier-specific lookahead aggression modifier (#1232) muddying the
+      // comparison. Without this, the lookahead bonus that hard/expert
+      // tiers add on top of the discounted EV dominates the trick
+      // discount and inverts the ordering. Lookahead scaling is
+      // separately covered by the lookahead.test.ts suite.
+      //
+      // Also note: with the race-math override (#1542) in place both
+      // tiers now correctly decide to attack on a winning-race board,
+      // so this assertion actually runs (previously easy went defensive
+      // by accident and the comparison was skipped).
+      ai.setConfig({
+        useCombatTricks: true,
+        opponentArchetype: "tempo",
+        useLookahead: false,
+      });
       // This test isolates trick-EV ordering, not combat blunders (#994). Pin
       // the combat RNG so the per-difficulty blunder roll never fires here.
       ai.setCombatRng(() => 1);
@@ -686,12 +702,14 @@ describe("CombatDecisionTree — difficulty plumbing into the trick module (#106
     const easyPlan = buildPlan("easy");
     const expertPlan = buildPlan("expert");
 
-    // When both decide to attack, expert (higher perceived trick threat)
-    // cannot assign a HIGHER expected value than easy on the same board.
-    if (easyPlan.attacks.length > 0 && expertPlan.attacks.length > 0) {
-      expect(expertPlan.attacks[0].expectedValue).toBeLessThanOrEqual(
-        easyPlan.attacks[0].expectedValue + 1e-9,
-      );
-    }
+    // Both tiers attack now (race-math override, issue #1542). Expert
+    // (higher perceived trick threat) cannot assign a HIGHER expected
+    // value than easy on the same board — the per-difficulty trick
+    // discount must dominate the small +0.1 strategy modifier.
+    expect(easyPlan.attacks.length).toBeGreaterThan(0);
+    expect(expertPlan.attacks.length).toBeGreaterThan(0);
+    expect(expertPlan.attacks[0].expectedValue).toBeLessThanOrEqual(
+      easyPlan.attacks[0].expectedValue + 1e-9,
+    );
   });
 });

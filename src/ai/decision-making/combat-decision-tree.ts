@@ -53,6 +53,7 @@ import {
   type LookaheadResult,
   type LookaheadConfig,
 } from "./lookahead";
+import { raceVerdict } from "./race-math";
 import type { DeckArchetype } from "../game-state-evaluator";
 
 // Re-export for backward compatibility
@@ -497,14 +498,10 @@ export class CombatDecisionTree {
     // without callers having to remember. Existing callers that pass an
     // explicit `lookaheadConfig.difficulty` keep their value (object
     // spread below).
-    this.lookaheadEngine = new LookaheadEngine(
-      this.heuristicTable,
-      {
-        ...this.config.lookaheadConfig,
-        difficulty:
-          this.config.lookaheadConfig?.difficulty ?? difficulty,
-      },
-    );
+    this.lookaheadEngine = new LookaheadEngine(this.heuristicTable, {
+      ...this.config.lookaheadConfig,
+      difficulty: this.config.lookaheadConfig?.difficulty ?? difficulty,
+    });
   }
 
   /**
@@ -671,8 +668,7 @@ export class CombatDecisionTree {
         // Issue #1232: keep the difficulty stamp so combo-detection
         // depth matches the AI's tier even when the lookaheadConfig is
         // overridden to a shallow `maxDepth`.
-        difficulty:
-          this.config.lookaheadConfig?.difficulty ?? this.difficulty,
+        difficulty: this.config.lookaheadConfig?.difficulty ?? this.difficulty,
         enabled: true,
       });
       const lookaheadResult = this.lookaheadEngine.evaluate(
@@ -802,6 +798,26 @@ export class CombatDecisionTree {
 
   /**
    * Determine overall combat strategy based on game state
+   *
+   * Strategy selection is a layered decision:
+   *
+   *  1. **Race-math override** (issue #1542). Cheap board-presence arithmetic
+   *     answers the actual question — "who is winning the race?" — and can
+   *     override the legacy coarse thresholds when one side has a decisive
+   *     power advantage.
+   *      - `ai_winning`  → `aggressive`, even at low AI life (the race is
+   *        mathematically over; acceptance criterion #1).
+   *      - `ai_losing`   → `defensive`. Easy tiers may still blunder this
+   *        verdict (AC4) via {@link shouldCombatBlunder}, mirroring how
+   *        issue #994 already injects blunders into the block decision.
+   *      - `even`        → fall through to the legacy branches below so
+   *        per-archetype aggression tuning and the life-threshold rule are
+   *        preserved on symmetric boards (AC3).
+   *
+   *  2. **Legacy heuristic**. Untouched on the `even` path: low-life forces
+   *     defensive, low-opponent-life forces aggressive, board-creature delta
+   *     ±1 maps to the configured aggression band, and the final fall-through
+   *     uses the per-archetype `aggression` knob.
    */
   private determineCombatStrategy(
     aiPlayer: PlayerState,
@@ -809,6 +825,32 @@ export class CombatDecisionTree {
   ): "aggressive" | "moderate" | "defensive" {
     const minOpponentLife = Math.min(...opponents.map((o) => o.life));
     const lifeTotal = aiPlayer.life;
+
+    // Issue #1542: race-math override. Computed BEFORE the legacy branches
+    // so a winning race can override a low-life defense (AC1) and a losing
+    // race can override a high-life attack (AC2). When the board is
+    // symmetric (raceVerdict returns "even") we deliberately fall through
+    // to the legacy branches below — that's the only path that preserves
+    // per-archetype aggression tuning on boards that aren't decisively
+    // lopsided (AC3).
+    const race = raceVerdict(aiPlayer, opponents);
+    if (race === "ai_winning") {
+      return "aggressive";
+    }
+    if (race === "ai_losing") {
+      // AC4: Easy tiers occasionally mis-read the race and play the OLD
+      // heuristic (aggressive) instead of the new defensive verdict. The
+      // gate is the same `shouldCombatBlunder` roll the block path uses
+      // at combat-decision-tree.ts:1598 (issue #994), so blunder
+      // frequency stays monotonic in skill and composes with the unified
+      // difficulty config.
+      if (this.shouldCombatBlunder()) {
+        return "aggressive";
+      }
+      return "defensive";
+    }
+
+    // ---- Legacy heuristic (preserved for `even` boards) -----------------
     const creatureCount = aiPlayer.battlefield.filter(
       (p: Permanent) => p.type === "creature",
     ).length;
@@ -2188,14 +2230,10 @@ export class CombatDecisionTree {
     // Issue #1232: keep the difficulty stamp when re-instantiating the
     // engine so per-tier detection depth survives the test-only table
     // swap.
-    this.lookaheadEngine = new LookaheadEngine(
-      this.heuristicTable,
-      {
-        ...this.config.lookaheadConfig,
-        difficulty:
-          this.config.lookaheadConfig?.difficulty ?? this.difficulty,
-      },
-    );
+    this.lookaheadEngine = new LookaheadEngine(this.heuristicTable, {
+      ...this.config.lookaheadConfig,
+      difficulty: this.config.lookaheadConfig?.difficulty ?? this.difficulty,
+    });
   }
 
   /**

@@ -298,12 +298,27 @@ describe("CombatDecisionTree", () => {
       expect(plan.strategy).toBe("aggressive");
     });
 
-    it("should determine defensive strategy when AI has low life", () => {
+    it("should determine defensive strategy when AI has low life AND is losing the race", () => {
+      // Issue #1542: the previous heuristic labelled *any* low-AI-life
+      // board "defensive", even when the AI was winning the race. The
+      // fixed heuristic only goes defensive on low life when the AI is
+      // actually losing the race — i.e. the opponent has the bigger
+      // board and can race us. AI is at 6 life with a 2/2 Bear; the
+      // opponent has two 6/6s and 20 life, so the AI is clearly losing.
       const player1Creatures = [
         createMockPermanent("c1", "Bear", "creature", 2, 2),
       ];
+      const player2Creatures = [
+        createMockPermanent("c2", "Dragon", "creature", 6, 6),
+        createMockPermanent("c3", "Dragon", "creature", 6, 6),
+      ];
 
-      const gameState = createTestGameState(6, 20, player1Creatures, []);
+      const gameState = createTestGameState(
+        6,
+        20,
+        player1Creatures,
+        player2Creatures,
+      );
       const combatAI = new CombatDecisionTree(gameState, "player1");
 
       const plan = combatAI.generateAttackPlan();
@@ -330,6 +345,217 @@ describe("CombatDecisionTree", () => {
       const plan = combatAI.generateAttackPlan();
 
       expect(plan.strategy).toBe("moderate");
+    });
+
+    /**
+     * Issue #1542 — drive combat-strategy aggression from lightweight race
+     * math (turns-to-lethal) instead of fixed life thresholds. The four
+     * acceptance criteria from the issue each get their own test below; the
+     * underlying pure-math helpers live in `race-math.test.ts` and the
+     * integration with `determineCombatStrategy` is pinned down here.
+     */
+    describe("race-math override (issue #1542)", () => {
+      it("AC1: AI winning the race is aggressive even at low life (Hard)", () => {
+        // AI power 10 into opponent at 5 life with no blockers. Race is
+        // mathematically over — the AI should commit, not stall behind a
+        // walls-up defence. Hard difficulty blunders are vanishingly rare
+        // (blunderChance = 0.05), so the strategy must be `aggressive`.
+        const aiCreatures = [
+          createMockPermanent("c1", "Bear", "creature", 4, 4),
+          createMockPermanent("c2", "Ogre", "creature", 6, 6),
+        ];
+        const gameState = createTestGameState(5, 5, aiCreatures, []);
+        const combatAI = new CombatDecisionTree(gameState, "player1", "hard");
+
+        const plan = combatAI.generateAttackPlan();
+
+        expect(plan.strategy).toBe("aggressive");
+      });
+
+      it("AC1: AI winning the race is aggressive even at low life (Expert)", () => {
+        // Same board, Expert tier. The race-math verdict must dominate the
+        // legacy low-life defensive branch even at the highest difficulty
+        // where blunderChance drops to 0.02.
+        const aiCreatures = [
+          createMockPermanent("c1", "Bear", "creature", 4, 4),
+          createMockPermanent("c2", "Ogre", "creature", 6, 6),
+        ];
+        const gameState = createTestGameState(5, 5, aiCreatures, []);
+        const combatAI = new CombatDecisionTree(gameState, "player1", "expert");
+
+        const plan = combatAI.generateAttackPlan();
+
+        expect(plan.strategy).toBe("aggressive");
+      });
+
+      it("AC2: AI losing the race by a wide margin is defensive", () => {
+        // Mirror of AC1 — opponent's on-board power sums to 12 into the AI's
+        // 6 life while the AI's sums to 2 into the opponent's 20. AI is
+        // losing the race and must hold blockers.
+        const aiCreatures = [
+          createMockPermanent("c1", "Bear", "creature", 2, 2),
+        ];
+        const oppCreatures = [
+          createMockPermanent("c2", "Dragon", "creature", 6, 6),
+          createMockPermanent("c3", "Dragon", "creature", 6, 6),
+        ];
+        const gameState = createTestGameState(6, 20, aiCreatures, oppCreatures);
+        const combatAI = new CombatDecisionTree(gameState, "player1", "hard");
+
+        const plan = combatAI.generateAttackPlan();
+
+        expect(plan.strategy).toBe("defensive");
+      });
+
+      it("AC3: symmetric boards fall through to the existing aggression-config branch", () => {
+        // Both sides at 20 life with a single 2/2 Bear. Power ratio is
+        // exactly 1.0 (no decisive advantage), so the race-math override
+        // is silent and `determineCombatStrategy` continues to defer to
+        // the per-archetype aggression config. medium difficulty with no
+        // archetype modifier → moderate strategy.
+        const aiCreatures = [
+          createMockPermanent("c1", "Bear", "creature", 2, 2),
+        ];
+        const oppCreatures = [
+          createMockPermanent("c2", "Bear", "creature", 2, 2),
+        ];
+        const gameState = createTestGameState(
+          20,
+          20,
+          aiCreatures,
+          oppCreatures,
+        );
+        const combatAI = new CombatDecisionTree(gameState, "player1", "medium");
+
+        const plan = combatAI.generateAttackPlan();
+
+        expect(plan.strategy).toBe("moderate");
+      });
+
+      it("AC3 (variant): a wider symmetric board still falls through", () => {
+        // Two 3/3s on each side at 20 life — power sums are equal so race
+        // math is silent. The strategy is whatever the archetype says.
+        const aiCreatures = [
+          createMockPermanent("c1", "Ogre", "creature", 3, 3),
+          createMockPermanent("c2", "Ogre", "creature", 3, 3),
+        ];
+        const oppCreatures = [
+          createMockPermanent("c3", "Ogre", "creature", 3, 3),
+          createMockPermanent("c4", "Ogre", "creature", 3, 3),
+        ];
+        const gameState = createTestGameState(
+          20,
+          20,
+          aiCreatures,
+          oppCreatures,
+        );
+        const combatAI = new CombatDecisionTree(gameState, "player1", "medium");
+
+        const plan = combatAI.generateAttackPlan();
+
+        // medium = aggression 0.5, which is neither > 0.6 nor < 0.4, so
+        // the legacy even-board branch returns `moderate`.
+        expect(plan.strategy).toBe("moderate");
+      });
+
+      it("AC4: Easy tier occasionally blunders the race-verdict and picks the wrong strategy", () => {
+        // The same losing-race scenario as AC2, but at Easy difficulty.
+        // Easy blunderChance is 0.25, so over many rolls we expect to see
+        // the AI occasionally pick `aggressive` (the OLD legacy heuristic)
+        // even though race math says `defensive`.
+        const aiCreatures = [
+          createMockPermanent("c1", "Bear", "creature", 2, 2),
+        ];
+        const oppCreatures = [
+          createMockPermanent("c2", "Dragon", "creature", 6, 6),
+          createMockPermanent("c3", "Dragon", "creature", 6, 6),
+        ];
+        const gameState = createTestGameState(6, 20, aiCreatures, oppCreatures);
+
+        // Seeded RNG so the test is deterministic. Roll 64 trials; with a
+        // 0.25 blunderChance we expect ~16 blunders and ~48 correct plays.
+        let seed = 0xc0ffee;
+        const rng = () => {
+          // Mulberry32 — deterministic, fast, 32-bit state.
+          seed = (seed + 0x6d2b79f5) | 0;
+          let t = seed;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+        const combatAI = new CombatDecisionTree(gameState, "player1", "easy");
+        combatAI.setCombatRng(rng);
+
+        let blunders = 0;
+        let correct = 0;
+        const TRIALS = 64;
+        for (let i = 0; i < TRIALS; i++) {
+          const plan = combatAI.generateAttackPlan();
+          if (plan.strategy === "aggressive") blunders++;
+          else if (plan.strategy === "defensive") correct++;
+        }
+
+        // Easy tier MUST still mostly get the right answer (it's not
+        // uniformly random), but it MUST blunder at least once over 64
+        // trials at the 0.25 rate. The 99% confidence lower bound for a
+        // Bernoulli(0.25) over 64 draws is 14, so we use a generous
+        // minimum of 6 to keep the test stable across RNG choices.
+        expect(blunders).toBeGreaterThanOrEqual(6);
+        expect(correct).toBeGreaterThan(blunders);
+      });
+
+      it("Easy blunder pattern matches the combat-block blunder (issue #994)", () => {
+        // Sanity: easy tier occasionally blunders, expert almost never does.
+        // Sample both tiers across 128 trials of the same losing-race
+        // scenario; expert must hit a much lower blunder rate.
+        const aiCreatures = [
+          createMockPermanent("c1", "Bear", "creature", 2, 2),
+        ];
+        const oppCreatures = [
+          createMockPermanent("c2", "Dragon", "creature", 6, 6),
+          createMockPermanent("c3", "Dragon", "creature", 6, 6),
+        ];
+        const gameState = createTestGameState(6, 20, aiCreatures, oppCreatures);
+
+        let easySeed = 0xeae;
+        const easyRng = () => {
+          easySeed = (easySeed + 0x6d2b79f5) | 0;
+          let t = easySeed;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+        let expertSeed = 0xeae;
+        const expertRng = () => {
+          expertSeed = (expertSeed + 0x6d2b79f5) | 0;
+          let t = expertSeed;
+          t = Math.imul(t ^ (t >>> 15), t | 1);
+          t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+          return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+
+        const easyAI = new CombatDecisionTree(gameState, "player1", "easy");
+        easyAI.setCombatRng(easyRng);
+        const expertAI = new CombatDecisionTree(gameState, "player1", "expert");
+        expertAI.setCombatRng(expertRng);
+
+        let easyBlunders = 0;
+        let expertBlunders = 0;
+        const TRIALS = 128;
+        for (let i = 0; i < TRIALS; i++) {
+          if (easyAI.generateAttackPlan().strategy === "aggressive") {
+            easyBlunders++;
+          }
+          if (expertAI.generateAttackPlan().strategy === "aggressive") {
+            expertBlunders++;
+          }
+        }
+
+        // Easy blunder rate (0.25) must dominate expert's (0.02).
+        expect(easyBlunders).toBeGreaterThan(expertBlunders);
+        // And expert must mostly get it right (≥ 95% of trials).
+        expect(expertBlunders).toBeLessThan(10);
+      });
     });
 
     it("should calculate total expected value", () => {
