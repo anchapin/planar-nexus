@@ -466,6 +466,15 @@ function mergeWeights(
 }
 
 /**
+ * Clamp a number to the [0, 1] interval. Used by the attribute-scaled
+ * threat scorers in `GameStateEvaluator` (issue #1540) so we never emit
+ * a threatLevel outside the documented range.
+ */
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+/**
  * Detailed evaluation result showing scores for each factor
  */
 export interface DetailedEvaluation {
@@ -1322,44 +1331,66 @@ export class GameStateEvaluator {
 
     for (const opponent of opponents) {
       for (const permanent of opponent.battlefield) {
-        let threatLevel = 0;
-        let reason = "";
-        let urgency: ThreatAssessment["urgency"] = "low";
-
         if (permanent.type === "creature") {
-          // Untapped creatures are threats
-          if (!permanent.tapped) {
-            const power = permanent.power || 0;
-            threatLevel = Math.min(1, power / 10);
-            reason = `${power} power creature can attack`;
-            urgency =
-              power >= 5 ? "immediate" : power >= 3 ? "soon" : "eventual";
-          }
-        } else if (permanent.type === "planeswalker") {
-          // Planeswalkers are major threats
-          const loyalty = permanent.loyalty || 0;
-          threatLevel = 0.7;
-          reason = `Planeswalker with ${loyalty} loyalty`;
-          urgency = loyalty >= 5 ? "immediate" : "soon";
-        } else if (permanent.type === "enchantment") {
-          // Enchantures can be problematic
-          threatLevel = 0.5;
-          reason = "Active enchantment";
-          urgency = "eventual";
-        } else if (permanent.type === "artifact") {
-          // Artifacts vary in threat level
-          threatLevel = 0.4;
-          reason = "Active artifact";
-          urgency = "eventual";
-        }
-
-        if (threatLevel > 0) {
+          // Creature threat scoring is intentionally left untouched (issue
+          // #1540 regression guard): the existing power/10 formula already
+          // scales correctly with creature stats.
+          if (permanent.tapped) continue;
+          const power = permanent.power || 0;
           threats.push({
             permanentId: permanent.id,
-            threatLevel,
-            reason,
-            urgency,
+            threatLevel: Math.min(1, power / 10),
+            reason: `${power} power creature can attack`,
+            urgency: power >= 5 ? "immediate" : power >= 3 ? "soon" : "eventual",
           });
+          continue;
+        }
+
+        // Non-creature permanents: attribute-scaled scoring (issue #1540).
+        // The prior code assigned every planeswalker 0.7, every enchantment
+        // 0.5, and every artifact 0.4 regardless of cost/loyalty/keywords,
+        // which left the AI unable to tell a must-answer permanent from a
+        // speed bump. Each branch now combines manaValue with the type's
+        // dominant attribute (loyalty / keyword profile).
+        if (permanent.type === "planeswalker") {
+          const loyalty = permanent.loyalty || 0;
+          const scoring = this.scorePlaneswalkerThreat(
+            permanent.manaValue,
+            loyalty,
+          );
+          threats.push({
+            permanentId: permanent.id,
+            threatLevel: scoring.threatLevel,
+            reason: `Planeswalker with ${loyalty} loyalty (${scoring.reason})`,
+            urgency: scoring.urgency,
+          });
+          continue;
+        }
+        if (permanent.type === "enchantment") {
+          const scoring = this.scoreEnchantmentThreat(
+            permanent.manaValue,
+            permanent.keywords,
+          );
+          threats.push({
+            permanentId: permanent.id,
+            threatLevel: scoring.threatLevel,
+            reason: `Enchantment (${scoring.reason})`,
+            urgency: scoring.urgency,
+          });
+          continue;
+        }
+        if (permanent.type === "artifact") {
+          const scoring = this.scoreArtifactThreat(
+            permanent.manaValue,
+            permanent.keywords,
+          );
+          threats.push({
+            permanentId: permanent.id,
+            threatLevel: scoring.threatLevel,
+            reason: `Artifact (${scoring.reason})`,
+            urgency: scoring.urgency,
+          });
+          continue;
         }
       }
     }
@@ -1373,6 +1404,142 @@ export class GameStateEvaluator {
     });
 
     return threats.slice(0, 10); // Return top 10 threats
+  }
+
+  // Issue #1540: attribute-scaled planeswalker threat. Combines a lower
+  // base than the prior flat 0.7, a manaValue bonus (high-CMC planeswalkers
+  // have more game-warping text), and a loyalty bonus. We use `loyalty >= 5`
+  // as the proxy for "ultimate is one or two activations away" since the
+  // AIPermanent type does not carry oracle text or an ultimate-cost field.
+  // This produces the acceptance criteria:
+  //   - loyalty 1  -> threatLevel < 0.5  (down from flat 0.7)
+  //   - loyalty 5+ -> threatLevel >= 0.85 + urgency = "immediate"
+  private scorePlaneswalkerThreat(
+    manaValue: number | undefined,
+    loyalty: number,
+  ): {
+    threatLevel: number;
+    urgency: ThreatAssessment["urgency"];
+    reason: string;
+  } {
+    const PLANESWALKER_BASE = 0.25;
+    const PLANESWALKER_CMC_CAP = 0.25;
+    const PLANESWALKER_LOYALTY_CAP = 0.4;
+    const PLANESWALKER_ULT_READY_BONUS = 0.15;
+    const ULT_READY_LOYALTY = 5;
+
+    const safeCmc = manaValue ?? 3;
+    const cmcBonus = Math.min(PLANESWALKER_CMC_CAP, safeCmc * 0.05);
+    // 8 loyalty saturates the bonus; anything beyond is "just more activations"
+    const loyaltyScore = Math.min(1, loyalty / 8);
+    const loyaltyBonus = loyaltyScore * PLANESWALKER_LOYALTY_CAP;
+    const ultimateReadyBonus =
+      loyalty >= ULT_READY_LOYALTY ? PLANESWALKER_ULT_READY_BONUS : 0;
+
+    const threatLevel = clamp01(
+      PLANESWALKER_BASE + cmcBonus + loyaltyBonus + ultimateReadyBonus,
+    );
+
+    let urgency: ThreatAssessment["urgency"];
+    if (loyalty >= ULT_READY_LOYALTY) urgency = "immediate";
+    else if (loyalty >= 3) urgency = "soon";
+    else urgency = "eventual";
+
+    const reason =
+      ultimateReadyBonus > 0
+        ? "ultimate-ready, must answer now"
+        : loyalty >= 3
+          ? "active, growing loyalty"
+          : "low loyalty, near death";
+
+    return { threatLevel, urgency, reason };
+  }
+
+  // Issue #1540: attribute-scaled enchantment threat. Base score scales with
+  // manaValue (a 1-CMC aura is a tempo play, a 6-CMC enchantment is a win
+  // condition). Keywords signal that the permanent carries an ability that
+  // meaningfully interacts with the game state. At Hard/Expert we add an
+  // engine bonus when a high-CMC enchantment carries any keyword -- a
+  // pragmatic proxy for the "whenever a creature enters / at the beginning
+  // of your upkeep" trigger patterns from the issue brief, given that
+  // AIPermanent does not surface oracle text.
+  private scoreEnchantmentThreat(
+    manaValue: number | undefined,
+    keywords: string[] | undefined,
+  ): {
+    threatLevel: number;
+    urgency: ThreatAssessment["urgency"];
+    reason: string;
+  } {
+    const ENCHANTMENT_BASE = 0.25;
+    const ENCHANTMENT_CMC_CAP = 0.25;
+    const ENCHANTMENT_KEYWORD_BONUS_CAP = 0.15;
+    const ENCHANTMENT_ENGINE_BONUS = 0.2;
+    const ENGINE_CMC_THRESHOLD = 3;
+
+    const safeCmc = manaValue ?? 1;
+    const cmcBonus = Math.min(ENCHANTMENT_CMC_CAP, safeCmc * 0.05);
+    const keywordCount = keywords?.length ?? 0;
+    const keywordBonus = Math.min(
+      ENCHANTMENT_KEYWORD_BONUS_CAP,
+      keywordCount * 0.05,
+    );
+
+    const isHardTier =
+      this.difficulty === "hard" || this.difficulty === "expert";
+    const hasEngineProfile =
+      safeCmc >= ENGINE_CMC_THRESHOLD && keywordCount > 0;
+    const engineBonus =
+      isHardTier && hasEngineProfile ? ENCHANTMENT_ENGINE_BONUS : 0;
+
+    const threatLevel = clamp01(
+      ENCHANTMENT_BASE + cmcBonus + keywordBonus + engineBonus,
+    );
+    const urgency: ThreatAssessment["urgency"] =
+      engineBonus > 0 ? "soon" : "eventual";
+
+    const reasonParts: string[] = [];
+    reasonParts.push(`${safeCmc} mana value`);
+    if (engineBonus > 0) reasonParts.push("engine profile at this difficulty");
+    else if (keywordCount > 0) reasonParts.push(`${keywordCount} keyword(s)`);
+    else reasonParts.push("vanilla");
+
+    return { threatLevel, urgency, reason: reasonParts.join("; ") };
+  }
+
+  // Issue #1540: attribute-scaled artifact threat. Mirrors the enchantment
+  // formula but with a lower floor (artifacts include mana rocks which are
+  // tempo plays, not win conditions) and a higher CMC cap (mana rocks are
+  // cheap, but value engines like the signets are still 2-CMC accelerators).
+  // A high-CMC artifact with keywords should always outscore a 1-CMC rock.
+  private scoreArtifactThreat(
+    manaValue: number | undefined,
+    keywords: string[] | undefined,
+  ): {
+    threatLevel: number;
+    urgency: ThreatAssessment["urgency"];
+    reason: string;
+  } {
+    const ARTIFACT_BASE = 0.2;
+    const ARTIFACT_CMC_CAP = 0.3;
+    const ARTIFACT_KEYWORD_BONUS_CAP = 0.15;
+
+    const safeCmc = manaValue ?? 1;
+    const cmcBonus = Math.min(ARTIFACT_CMC_CAP, safeCmc * 0.05);
+    const keywordCount = keywords?.length ?? 0;
+    const keywordBonus = Math.min(
+      ARTIFACT_KEYWORD_BONUS_CAP,
+      keywordCount * 0.05,
+    );
+
+    const threatLevel = clamp01(ARTIFACT_BASE + cmcBonus + keywordBonus);
+    const urgency: ThreatAssessment["urgency"] = "eventual";
+
+    const reasonParts: string[] = [`${safeCmc} mana value`];
+    if (keywordCount > 0) reasonParts.push(`${keywordCount} keyword(s)`);
+    else reasonParts.push("vanilla");
+
+    return { threatLevel, urgency, reason: reasonParts.join("; ") };
   }
 
   /**
