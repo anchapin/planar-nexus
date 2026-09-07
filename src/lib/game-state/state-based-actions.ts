@@ -529,15 +529,23 @@ export function checkStateBasedActions(
     }
   }
 
-  // Check for planeswalker uniqueness (SBA 704.5j variant)
-  // A player can only control one planeswalker of each type
-  // Only check planeswalkers on the battlefield
+  // Check for planeswalker uniqueness (CR 306.5i)
+  // A player can only control one planeswalker of each type. This restriction
+  // is scoped to each controller, so different players may control planeswalkers
+  // with the same type. Planeswalkers controlled by players who have lost are
+  // not part of the active game and are excluded from the grouping.
   const planeswalkers = cardsToCheck.filter((card) => {
     // Check if card is on battlefield using the helper
     const isOnBf = isOnBattlefield(updatedState, card.id);
-    return isOnBf && isPlaneswalker(card);
+    const controller = updatedState.players.get(card.controllerId);
+    return (
+      isOnBf &&
+      isPlaneswalker(card) &&
+      controller !== undefined &&
+      !controller.hasLost
+    );
   });
-  const pwTypeGroups = new Map<string, CardInstanceId[]>();
+  const pwTypeGroups = new Map<PlayerId, Map<string, CardInstanceId[]>>();
 
   for (const pw of planeswalkers) {
     // Extract planeswalker type from type line (e.g., "Jace" from "Legendary Planeswalker - Jace")
@@ -545,23 +553,27 @@ export function checkStateBasedActions(
     // Handle both em dash and regular hyphen
     const pwType = typeLine.replace(/Legendary Planeswalker [-—] /i, "").trim();
 
-    const existing = pwTypeGroups.get(pwType) || [];
+    const controllerGroups = pwTypeGroups.get(pw.controllerId) || new Map();
+    const existing = controllerGroups.get(pwType) || [];
     existing.push(pw.id);
-    pwTypeGroups.set(pwType, existing);
+    controllerGroups.set(pwType, existing);
+    pwTypeGroups.set(pw.controllerId, controllerGroups);
   }
 
-  for (const cardIds of pwTypeGroups.values()) {
-    if (cardIds.length > 1) {
-      // Keep the first one, destroy the rest
-      for (let i = 1; i < cardIds.length; i++) {
-        const destroyResult = destroyCard(updatedState, cardIds[i]);
-        if (destroyResult.success) {
-          updatedState = destroyResult.state;
-          const card = updatedState.cards.get(cardIds[i]);
-          descriptions.push(
-            `Destroyed ${card?.cardData.name} (planeswalker uniqueness)`,
-          );
-          actionsPerformed = true;
+  for (const typeGroups of pwTypeGroups.values()) {
+    for (const cardIds of typeGroups.values()) {
+      if (cardIds.length > 1) {
+        // Keep the first one, destroy the rest
+        for (let i = 1; i < cardIds.length; i++) {
+          const destroyResult = destroyCard(updatedState, cardIds[i]);
+          if (destroyResult.success) {
+            updatedState = destroyResult.state;
+            const card = updatedState.cards.get(cardIds[i]);
+            descriptions.push(
+              `Destroyed ${card?.cardData.name} (planeswalker uniqueness)`,
+            );
+            actionsPerformed = true;
+          }
         }
       }
     }

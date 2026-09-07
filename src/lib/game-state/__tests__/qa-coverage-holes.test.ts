@@ -556,9 +556,7 @@ describe("GS-RT-6: legendary rule SBA (CR 704.5u)", () => {
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-7: planeswalker uniqueness across controllers (CR 306.5i)", () => {
-  // TODO(#1394): fix — CR 306.5(i) planeswalker uniqueness is per-controller.
-  // Two different players each controlling a "Jace" type is legal.
-  it("regression: CR 306.5i — two players each controlling same planeswalker type", () => {
+  it("regression: CR 306.5i — two players each controlling same planeswalker type is legal", () => {
     let state = createInitialGameState(["Alice", "Bob"], 20, false);
     state = startGame(state);
     const [aliceId, bobId] = Array.from(state.players.keys());
@@ -591,9 +589,7 @@ describe("GS-RT-7: planeswalker uniqueness across controllers (CR 306.5i)", () =
 
     const result = checkStateBasedActions(state);
 
-    // Both planeswalkers should survive — different controllers.
-    // Pin current behaviour: if the engine incorrectly destroys one, the
-    // assertion documents it so the fix can flip it.
+    // Both planeswalkers should survive — uniqueness is scoped to each controller.
     const alicePwStillOnBf = result.state.zones
       .get(`${aliceId}-battlefield`)!
       .cardIds.includes(alicePw.id);
@@ -601,8 +597,9 @@ describe("GS-RT-7: planeswalker uniqueness across controllers (CR 306.5i)", () =
       .get(`${bobId}-battlefield`)!
       .cardIds.includes(bobPw.id);
 
-    // At minimum, Alice's PW should survive (it's the "first" found).
+    expect(result.actionsPerformed).toBe(false);
     expect(alicePwStillOnBf).toBe(true);
+    expect(bobPwStillOnBf).toBe(true);
   });
 
   it("regression: CR 306.5i — same player controlling two of same planeswalker type triggers SBA", () => {
@@ -611,12 +608,14 @@ describe("GS-RT-7: planeswalker uniqueness across controllers (CR 306.5i)", () =
     const [aliceId] = Array.from(state.players.keys());
 
     const pwCard = createMockPlaneswalker("Jace AW", 4, "Jace");
+    const planeswalkerIds: string[] = [];
 
     for (let i = 0; i < 2; i++) {
       const pw = initializePlaneswalkerLoyalty(
         createCardInstance(pwCard, aliceId, aliceId),
       );
       pw.hasSummoningSickness = false;
+      planeswalkerIds.push(pw.id);
       state.cards.set(pw.id, pw);
       const bf = state.zones.get(`${aliceId}-battlefield`)!;
       state.zones.set(`${aliceId}-battlefield`, {
@@ -627,8 +626,52 @@ describe("GS-RT-7: planeswalker uniqueness across controllers (CR 306.5i)", () =
 
     const result = checkStateBasedActions(state);
 
-    // Same player, two same-type planeswalkers → uniqueness violation.
+    // Same player, two same-type planeswalkers → exactly one is destroyed.
+    const battlefield = result.state.zones.get(`${aliceId}-battlefield`)!;
+    const graveyard = result.state.zones.get(`${aliceId}-graveyard`)!;
     expect(result.actionsPerformed).toBe(true);
+    expect(
+      battlefield.cardIds.filter((id) => planeswalkerIds.includes(id)),
+    ).toHaveLength(1);
+    expect(
+      graveyard.cardIds.filter((id) => planeswalkerIds.includes(id)),
+    ).toHaveLength(1);
+  });
+
+  it("regression: CR 306.5i — planeswalkers controlled by a player who has lost are excluded", () => {
+    let state = createInitialGameState(["Alice", "Bob", "Carol"], 20, false);
+    state = startGame(state);
+    const [aliceId, bobId] = Array.from(state.players.keys());
+
+    const pwCard = createMockPlaneswalker("Jace AW", 4, "Jace");
+    const addPlaneswalker = (controllerId: string) => {
+      const pw = initializePlaneswalkerLoyalty(
+        createCardInstance(pwCard, controllerId, controllerId),
+      );
+      pw.hasSummoningSickness = false;
+      state.cards.set(pw.id, pw);
+      const bf = state.zones.get(`${controllerId}-battlefield`)!;
+      state.zones.set(`${controllerId}-battlefield`, {
+        ...bf,
+        cardIds: [...bf.cardIds, pw.id],
+      });
+      return pw.id;
+    };
+
+    const alicePwId = addPlaneswalker(aliceId);
+    const bobPwId = addPlaneswalker(bobId);
+    const bob = state.players.get(bobId)!;
+    state.players.set(bobId, { ...bob, hasLost: true });
+
+    const result = checkStateBasedActions(state);
+
+    expect(result.actionsPerformed).toBe(false);
+    expect(result.state.zones.get(`${aliceId}-battlefield`)!.cardIds).toContain(
+      alicePwId,
+    );
+    expect(result.state.zones.get(`${bobId}-battlefield`)!.cardIds).toContain(
+      bobPwId,
+    );
   });
 });
 
