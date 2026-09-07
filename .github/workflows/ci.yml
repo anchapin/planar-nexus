@@ -431,7 +431,8 @@ jobs:
     # Mutation-score gate for the rules-engine invariants (#1265). Runs Stryker
     # against `src/lib/game-state/layer-system.ts` on every PR and surfaces a
     # per-pass threshold of 70% (see stryker.config.js `thresholds.break`). The
-    # full allowlist (layer-system, replacement-effects, spell-casting) runs
+    # full allowlist (layer-system, replacement-effects, spell-casting,
+    # trigger-system, state-based-actions, combat) runs
     # nightly in .github/workflows/mutation.yml — too slow for per-PR CI.
     #
     # `build` depends on this job so a regression below the threshold blocks
@@ -451,7 +452,7 @@ jobs:
 
       - name: Run Stryker (layer-system only)
         # Per-file scope keeps the PR gate to a single module (~15-20 min on a
-        # 2-core runner). The full allowlist (3 modules) runs on the nightly
+        # 2-core runner). The full allowlist (6 modules) runs on the nightly
         # schedule — see .github/workflows/mutation.yml.
         run: npm run mutate:layer-system
         env:
