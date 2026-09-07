@@ -731,69 +731,176 @@ const commanderArchetypes: DeckArchetype[] = [
   },
 ];
 
-// Mock Format Health Data
-const standardHealth: FormatHealth = {
-  score: 72,
-  diversityScore: 68,
-  colorDistribution: [
-    { color: "White", percentage: 15, count: 3 },
-    { color: "Blue", percentage: 22, count: 5 },
-    { color: "Black", percentage: 18, count: 4 },
-    { color: "Red", percentage: 25, count: 6 },
-    { color: "Green", percentage: 12, count: 3 },
-    { color: "Multicolor", percentage: 6, count: 2 },
-    { color: "Colorless", percentage: 2, count: 1 },
-  ],
-  archetypeBalance: {
-    aggro: 28,
-    control: 22,
-    midrange: 25,
-    combo: 15,
-    tempo: 10,
-  },
+// Format Health (issue #1563) ------------------------------------------------
+//
+// FormatHealth used to be three hardcoded literal objects (score 72/78/65),
+// which never moved when the DeckArchetype[].metaShare values changed. The
+// report is now derived deterministically from the same archetype arrays that
+// feed the rest of the dashboard — see `computeFormatHealth` for the formula.
+
+/** Canonical iteration order for the five archetype categories. */
+const ARCHETYPE_CATEGORIES: ArchetypeCategory[] = [
+  "aggro",
+  "control",
+  "midrange",
+  "combo",
+  "tempo",
+];
+
+/**
+ * Canonical bucket order for the aggregated color distribution. Buckets with
+ * a zero count are omitted from the output; surviving buckets keep this
+ * order, so the aggregation is deterministic.
+ */
+const COLOR_BUCKET_ORDER = [
+  "White",
+  "Blue",
+  "Black",
+  "Red",
+  "Green",
+  "Multicolor",
+  "Colorless",
+] as const;
+
+type ColorBucket = (typeof COLOR_BUCKET_ORDER)[number];
+
+const COLOR_INITIAL_TO_BUCKET: Record<string, ColorBucket> = {
+  W: "White",
+  U: "Blue",
+  B: "Black",
+  R: "Red",
+  G: "Green",
 };
 
-const modernHealth: FormatHealth = {
-  score: 78,
-  diversityScore: 75,
-  colorDistribution: [
-    { color: "White", percentage: 12, count: 2 },
-    { color: "Blue", percentage: 20, count: 4 },
-    { color: "Black", percentage: 22, count: 5 },
-    { color: "Red", percentage: 18, count: 4 },
-    { color: "Green", percentage: 15, count: 3 },
-    { color: "Multicolor", percentage: 10, count: 3 },
-    { color: "Colorless", percentage: 3, count: 1 },
-  ],
-  archetypeBalance: {
-    aggro: 25,
-    control: 18,
-    midrange: 28,
-    combo: 18,
-    tempo: 11,
-  },
-};
+function colorBucketFor(colorIdentity: string[]): ColorBucket {
+  if (colorIdentity.length === 0) return "Colorless";
+  if (colorIdentity.length === 1) {
+    return COLOR_INITIAL_TO_BUCKET[colorIdentity[0] ?? ""] ?? "Colorless";
+  }
+  return "Multicolor";
+}
 
-const commanderHealth: FormatHealth = {
-  score: 65,
-  diversityScore: 58,
-  colorDistribution: [
-    { color: "White", percentage: 14, count: 3 },
-    { color: "Blue", percentage: 20, count: 5 },
-    { color: "Black", percentage: 22, count: 6 },
-    { color: "Red", percentage: 16, count: 4 },
-    { color: "Green", percentage: 18, count: 5 },
-    { color: "Multicolor", percentage: 8, count: 3 },
-    { color: "Colorless", percentage: 2, count: 1 },
-  ],
-  archetypeBalance: {
-    aggro: 22,
-    control: 28,
-    midrange: 20,
-    combo: 20,
-    tempo: 10,
-  },
-};
+/**
+ * Normalized Herfindahl–Hirschman diversity of a vector of fractional shares.
+ *
+ * Each `share` is a fraction of the whole meta in [0, 1]. Whatever portion of
+ * the meta the tracked shares do not cover (`1 - sum(shares)`, when positive)
+ * participates as one implicit "other decks" bucket, so a dataset that only
+ * tracks ~55% of the meta is not credited with the diversity of the missing
+ * ~45%.
+ *
+ * `HHI = sum(share²) + remainder²` — 1 for a total monopoly, `1/N` for N
+ * perfectly uniform buckets. Returns `(1 - HHI) * 100` rounded to one decimal
+ * and clamped to [0, 100]: 0 means one bucket is the entire meta, higher
+ * values mean the meta is spread across more (or more evenly sized) buckets.
+ */
+function normalizedHHIDiversity(shares: number[]): number {
+  const tracked = shares.reduce((acc, share) => acc + share, 0);
+  const remainder = Math.max(0, 1 - tracked);
+  const hhi =
+    shares.reduce((acc, share) => acc + share * share, 0) +
+    remainder * remainder;
+  return round1(Math.min(100, Math.max(0, (1 - hhi) * 100)));
+}
+
+/**
+ * Deterministically derive a format's `FormatHealth` from its archetype list
+ * (issue #1563). Replaces the per-format hardcoded literals: the returned
+ * score moves when `DeckArchetype.metaShare` values change.
+ *
+ * ## Formula
+ *
+ * Every `metaShare` (a percentage) is clamped to [0, 100] and treated as a
+ * fraction of the *whole* meta (`share = metaShare / 100`). Tracked
+ * archetypes rarely sum to exactly 100%, so the uncovered remainder
+ * `max(0, 1 - Σ share)` participates as one implicit "other decks" bucket in
+ * both indices below.
+ *
+ * - **diversityScore** — normalized Herfindahl–Hirschman index:
+ *   `round1((1 - (Σ share² + remainder²)) * 100)`. A total monopoly (one
+ *   archetype at 100% `metaShare`) scores 0; N fully tracked, uniform
+ *   archetypes score `100 * (1 - 1/N)` (e.g. 80 for five archetypes at 20%
+ *   each); concentration in between lowers the score monotonically.
+ * - **archetypeBalance** — per-category (`aggro`…`tempo`) sums of `metaShare`,
+ *   renormalized to a percentage of the tracked meta so the record sums to
+ *   ~100, like the literals it replaces.
+ * - **score** — deterministic weighted blend: `round1(0.6 * diversityScore +
+ *   0.4 * evenness)`, where `evenness` is the same normalized-HHI formula
+ *   applied to the five category shares (remainder included). A monopoly
+ *   therefore scores 0 overall.
+ * - **colorDistribution** — archetypes bucketed by `colorIdentity`
+ *   (mono-color → that color, two or more colors → "Multicolor", none →
+ *   "Colorless"); `percentage` is each bucket's share of the archetype count.
+ *
+ * Like `getCardInclusionRates` (#1562), only archetypes whose `format` field
+ * matches the requested format contribute, so ids that recur across the
+ * independently authored datasets cannot contaminate another format's score.
+ * Empty (or fully format-mismatched) input degenerates gracefully: all scores
+ * are 0 and the aggregations are empty/zero rather than NaN.
+ *
+ * Pure function: same input array → deep-equal output. No clock, no PRNG.
+ */
+export function computeFormatHealth(
+  archetypes: DeckArchetype[],
+  format: MagicFormat,
+): FormatHealth {
+  const scoped = archetypes.filter((a) => a.format === format);
+  const shares = scoped.map(
+    (a) => Math.min(Math.max(a.metaShare, 0), 100) / 100,
+  );
+
+  // diversityScore — normalized HHI over the archetype metaShare distribution.
+  const diversityScore = normalizedHHIDiversity(shares);
+
+  // archetypeBalance — aggregate the (clamped) fractional shares per category.
+  const categoryShares: Record<ArchetypeCategory, number> = {
+    aggro: 0,
+    control: 0,
+    midrange: 0,
+    combo: 0,
+    tempo: 0,
+  };
+  scoped.forEach((archetype, i) => {
+    categoryShares[archetype.category] += shares[i];
+  });
+  const trackedTotal = ARCHETYPE_CATEGORIES.reduce(
+    (acc, category) => acc + categoryShares[category],
+    0,
+  );
+  const archetypeBalance = Object.fromEntries(
+    ARCHETYPE_CATEGORIES.map((category) => [
+      category,
+      trackedTotal > 0
+        ? round1((categoryShares[category] / trackedTotal) * 100)
+        : 0,
+    ]),
+  ) as Record<ArchetypeCategory, number>;
+
+  // score — 60% archetype-share diversity + 40% category-evenness blend.
+  const balanceEvenness = normalizedHHIDiversity(
+    ARCHETYPE_CATEGORIES.map((category) => categoryShares[category]),
+  );
+  const score = round1(0.6 * diversityScore + 0.4 * balanceEvenness);
+
+  // colorDistribution — bucket the archetypes by their color identity.
+  const bucketCounts = new Map<ColorBucket, number>();
+  scoped.forEach((a) => {
+    const bucket = colorBucketFor(a.colorIdentity);
+    bucketCounts.set(bucket, (bucketCounts.get(bucket) ?? 0) + 1);
+  });
+  const colorDistribution: ColorDistribution[] = COLOR_BUCKET_ORDER.filter(
+    (bucket) => (bucketCounts.get(bucket) ?? 0) > 0,
+  ).map((bucket) => {
+    const count = bucketCounts.get(bucket) ?? 0;
+    return {
+      color: bucket,
+      count,
+      percentage: round1((count / scoped.length) * 100),
+    };
+  });
+
+  return { score, diversityScore, colorDistribution, archetypeBalance };
+}
 
 // Mock Trend Data — range-dependent (issue #1446).
 const generateTrendData = (
@@ -924,20 +1031,16 @@ export function getMetaData(
   options: MetaDataOptions = {},
 ): MetaData {
   let archetypes: DeckArchetype[];
-  let formatHealth: FormatHealth;
 
   switch (format) {
     case "standard":
       archetypes = standardArchetypes;
-      formatHealth = standardHealth;
       break;
     case "modern":
       archetypes = modernArchetypes;
-      formatHealth = modernHealth;
       break;
     case "commander":
       archetypes = commanderArchetypes;
-      formatHealth = commanderHealth;
       break;
   }
 
@@ -949,7 +1052,8 @@ export function getMetaData(
     dateRange,
     lastUpdated: nowFn().toISOString(),
     archetypes,
-    formatHealth,
+    // Derived from `archetypes` (issue #1563) — no per-format literals.
+    formatHealth: computeFormatHealth(archetypes, format),
     risingArchetypes: rising,
     decliningArchetypes: declining,
     cardTrends: generateCardTrends(dateRange, options.random),
@@ -1021,9 +1125,13 @@ export function registerArchetypesForTesting(
   };
 }
 
+/**
+ * Format health for `format`, derived from that format's archetype dataset via
+ * `computeFormatHealth` (issue #1563) — the score tracks the underlying
+ * `metaShare` data instead of a hardcoded literal.
+ */
 export function getFormatHealth(format: MagicFormat): FormatHealth {
-  const data = getMetaData(format, "alltime");
-  return data.formatHealth;
+  return computeFormatHealth(archetypesByFormat[format], format);
 }
 
 export function getRisingArchetypes(format: MagicFormat): TrendData[] {
