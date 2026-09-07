@@ -5,7 +5,14 @@
  * lookahead engine evaluation, and integration with combat decision tree.
  */
 
-import { describe, it, expect, beforeEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import {
   CombatDecisionTree,
   type CombatPlan,
@@ -25,6 +32,7 @@ import type {
   AIPlayerState,
   AIPermanent,
 } from "@/lib/game-state/types";
+import { createRng } from "@/lib/limited/rng";
 
 function createMockPlayerState(
   id: string,
@@ -471,6 +479,25 @@ describe("LookaheadEngine", () => {
 });
 
 describe("Combat Decision Tree + Lookahead Integration", () => {
+  // Issue #1706: this integration path consumes unseeded randomness at
+  // several points — the per-tier combat blunder rolls in
+  // determineCombatStrategy / evaluateAttacker (issues #994/#1542) and the
+  // combat-trick probability defaults — so assertions could flip on a lucky
+  // Math.random draw in CI while passing locally. Back the global stream
+  // with the repo's seeded mulberry32 RNG (src/lib/limited/rng) so every
+  // test in this block replays identical dice, and restore the real
+  // Math.random afterwards so later describes stay unaffected. Individual
+  // strategy assertions additionally pin setCombatRng off where the roll
+  // must provably never fire.
+  let randomSpy: ReturnType<typeof jest.spyOn>;
+  beforeEach(() => {
+    const rng = createRng(1706);
+    randomSpy = jest.spyOn(Math, "random").mockImplementation(() => rng.next());
+  });
+  afterEach(() => {
+    randomSpy.mockRestore();
+  });
+
   it("should use lookahead for medium difficulty and above", () => {
     const gameState = createTestGameState(
       20,
@@ -512,11 +539,15 @@ describe("Combat Decision Tree + Lookahead Integration", () => {
     );
 
     const hardAI = new CombatDecisionTree(gameState, "player1", "hard");
-    // Pin the combat blunder RNG off: the race-verdict blunder gate from
-    // #1542 routes this board through shouldCombatBlunder, so an unseeded
-    // Math.random roll (< 5% at hard) would randomly flip the strategy to
-    // "aggressive" and flake this assertion. Same pattern the #994/#1542
-    // suites use to make strategy assertions deterministic.
+    // Pin the combat blunder RNG off (issue #1706): the race-verdict blunder
+    // gate from #1542 routes this board (2 power vs 8, AI at 4 life →
+    // "ai_losing") through shouldCombatBlunder, so an unseeded Math.random
+    // roll (< 5% at hard) would randomly flip the strategy to "aggressive"
+    // and flake this assertion — exactly the CI-only red seen in run
+    // 34075058198, which predated this pin. The constant 1 provably keeps
+    // the gate off regardless of how many rolls precede it; the seeded
+    // Math.random spy in this block's beforeEach determinizes every other
+    // random consumer on the path.
     hardAI.setCombatRng(() => 1);
     const plan = hardAI.generateAttackPlan();
 
@@ -624,11 +655,12 @@ describe("LookaheadEngine aggressionBias (issue #1068)", () => {
       aggressionBias: -0.4,
     }).evaluate(state, "player1");
 
-    expect(conservative.aggressionModifier).toBeLessThan(base.aggressionModifier);
-    expect(conservative.aggressionModifier - base.aggressionModifier).toBeCloseTo(
-      -0.4,
-      1,
+    expect(conservative.aggressionModifier).toBeLessThan(
+      base.aggressionModifier,
     );
+    expect(
+      conservative.aggressionModifier - base.aggressionModifier,
+    ).toBeCloseTo(-0.4, 1);
   });
 
   it("clamps the final aggression modifier to [-1, 1] even with a large bias", () => {
@@ -744,9 +776,7 @@ describe("LookaheadEngine combo-threat detection (issue #1232)", () => {
 
     expect(easy.comboThreat).toBe("none");
     expect(expert.comboThreat).toBe("imminent");
-    expect(expert.aggressionModifier).toBeGreaterThan(
-      easy.aggressionModifier,
-    );
+    expect(expert.aggressionModifier).toBeGreaterThan(easy.aggressionModifier);
   });
 
   it("switches the preferred line when the threat flips to imminent", () => {
@@ -754,7 +784,10 @@ describe("LookaheadEngine combo-threat detection (issue #1232)", () => {
     // The first evaluation has no opponent combo signal, the second
     // one does. The aggression modifier must rise on the second.
     const stateNoThreat = makeComboState(["Grizzly Bears"], 0);
-    const stateWithThreat = makeComboState(["Past in Flames", "Tendrils of Agony"], 6);
+    const stateWithThreat = makeComboState(
+      ["Past in Flames", "Tendrils of Agony"],
+      6,
+    );
 
     const engine = new LookaheadEngine(new HeuristicTable(), {
       difficulty: "expert",
@@ -874,7 +907,10 @@ describe("LookaheadEngine combo-threat detection (issue #1232)", () => {
 
     expect(typeof result.comboThreat).toBe("string");
     expect(["imminent", "building", "none"]).toContain(result.comboThreat);
-    expect(result.comboArchetype === null || typeof result.comboArchetype === "string").toBe(true);
+    expect(
+      result.comboArchetype === null ||
+        typeof result.comboArchetype === "string",
+    ).toBe(true);
     expect(typeof result.comboThreatUrgency).toBe("number");
   });
 });
