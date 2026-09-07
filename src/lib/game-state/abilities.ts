@@ -505,7 +505,7 @@ export function activateAbility(
  * Loyalty abilities for planeswalkers
  */
 export interface LoyaltyAbility {
-  cost: number; // Positive for adding, negative for removing
+  cost: number; // Positive for adding, negative for removing, zero for no change (CR 606.4)
   effect: string;
 }
 
@@ -521,8 +521,12 @@ export function getLoyaltyAbilities(card: {
   const lines = card.oracle_text.split("\n");
 
   for (const line of lines) {
-    // Match patterns like "+1: Draw a card" or "-3: Destroy target creature"
-    const match = line.match(/^([+-]\d+):\s*(.+)/);
+    // Match patterns like "+1: Draw a card", "-3: Destroy target creature",
+    // or "0: Create a token" — CR 606.4 allows a zero-cost loyalty ability.
+    // Only "0" is accepted unsigned: printed nonzero loyalty costs always
+    // carry a sign, so generic activation costs like "1: ..." on other
+    // permanents are not misread as loyalty abilities.
+    const match = line.match(/^(\+\d+|-\d+|0):\s*(.+)/);
     if (match) {
       abilities.push({
         cost: parseInt(match[1], 10),

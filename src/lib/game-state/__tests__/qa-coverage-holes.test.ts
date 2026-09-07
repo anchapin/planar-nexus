@@ -1036,14 +1036,12 @@ describe("GS-RT-11: negative mana values (CR 106.4a)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GS-RT-12 — 0-cost loyalty abilities ("0:") not parsed
+// GS-RT-12 — 0-cost loyalty abilities ("0:") parsing (issue #1582)
 //         CR 606.4 — loyalty abilities with zero cost
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-12: zero-cost loyalty ability parsing (CR 606.4)", () => {
-  // TODO(#1394): fix — getLoyaltyAbilities regex requires a [+-] sign so
-  // "0: ..." abilities are silently dropped.
-  it("regression: CR 606.4 — zero-cost loyalty ability is NOT parsed by getLoyaltyAbilities", () => {
+  it("regression: CR 606.4 — zero-cost loyalty ability IS parsed by getLoyaltyAbilities (issue #1582)", () => {
     const card = {
       oracle_text:
         "+1: Draw a card.\n0: Create a 1/1 token.\n-2: Destroy target creature.",
@@ -1051,12 +1049,26 @@ describe("GS-RT-12: zero-cost loyalty ability parsing (CR 606.4)", () => {
 
     const abilities = getLoyaltyAbilities(card);
 
-    // Current behaviour: the regex /^([+-]\d+):/ requires a sign, so "0:" is
-    // dropped.  Only +1 and -2 are parsed.
-    expect(abilities.length).toBe(2);
-    expect(abilities.find((a) => a.cost === 0)).toBeUndefined();
-    expect(abilities.find((a) => a.cost === 1)).toBeDefined();
-    expect(abilities.find((a) => a.cost === -2)).toBeDefined();
+    // CR 606.4: a loyalty ability may cost zero. The "0:" line parses with
+    // cost 0, in source order between +1 and -2.
+    expect(abilities.length).toBe(3);
+    expect(abilities.map((a) => a.cost)).toEqual([1, 0, -2]);
+    expect(abilities.find((a) => a.cost === 0)?.effect).toBe(
+      "Create a 1/1 token.",
+    );
+  });
+
+  it("regression: CR 606.4 — text without a cost separator is not a loyalty ability", () => {
+    const card = {
+      oracle_text: "Create 0 tokens.\nFlying.\n+1: Draw a card.",
+    };
+
+    const abilities = getLoyaltyAbilities(card);
+
+    // "Create 0 tokens." and "Flying." lack the "<cost>:" prefix so they are
+    // skipped; only the signed line parses.
+    expect(abilities.length).toBe(1);
+    expect(abilities[0].cost).toBe(1);
   });
 
   it("regression: CR 606.4 — positive and negative loyalty costs ARE parsed", () => {
