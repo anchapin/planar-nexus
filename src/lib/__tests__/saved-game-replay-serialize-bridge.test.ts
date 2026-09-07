@@ -112,7 +112,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
 
   describe("worker path (happy path)", () => {
     it("1. forwards the replay object to the client and returns its string", async () => {
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockResolvedValue("sentinel-from-worker");
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplay: serializeMock }),
@@ -131,7 +133,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
     it("1b. does not fall back when the worker succeeds (sentinel check)", async () => {
       // Sentinel: if the bridge silently fell back to the main thread the
       // result would be the JSON.stringify oracle, NOT this string.
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockResolvedValue("sentinel-from-worker");
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplay: serializeMock }),
@@ -145,7 +149,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
     });
 
     it("passes null/undefined replays through as undefined without touching the worker", async () => {
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplay: serializeMock }),
       );
@@ -181,7 +187,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
       const warnSpy = jest
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockRejectedValue(new Error("worker exploded"));
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplay: serializeMock }),
@@ -216,7 +224,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
       const warnSpy = jest
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockRejectedValue(new Error("worker boom"));
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplay: serializeMock }),
@@ -261,7 +271,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
 
   describe("transfer-list mechanics (bytes mode)", () => {
     it("6. transfers the ArrayBuffer zero-copy with transferables.length === 1", async () => {
-      const bytesMock = jest.fn() as unknown as jest.Mock<any>;
+      const bytesMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       // Stub mirrors what the real Comlink proxy does in the worker: the
       // core helper produces the canonical string from the transferred
       // bytes.
@@ -300,7 +312,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
       const warnSpy = jest
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
-      const bytesMock = jest.fn() as unknown as jest.Mock<any>;
+      const bytesMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       bytesMock.mockRejectedValue(new Error("worker bytes exploded"));
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplayBytes: bytesMock }),
@@ -332,7 +346,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
       // Worker path: stub resolves with what the real worker computes (the
       // shared pure helper from saved-game-serialize-core — the same code
       // the worker module calls).
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockImplementation(async () =>
         serializeReplayOnMainThread(replay),
       );
@@ -415,7 +431,9 @@ describe("saved-game-serialize-bridge (issue #1577)", () => {
       // real Comlink round-trip. The stringify itself must NOT run on the
       // main thread — that is the entire point of #1577 — so the stub
       // returns a sentinel instead of serializing.
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockImplementation(async () => "sentinel-from-worker-50mb");
       _setSavedGameSerializeClientResolver(async () =>
         stubClient({ serializeReplay: serializeMock }),

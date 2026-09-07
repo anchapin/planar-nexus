@@ -153,7 +153,9 @@ describe("saved-games replay serialization seam (issue #1577)", () => {
 
   describe("worker path (stubbed resolver)", () => {
     it("saveToAutoSave routes the replay through the bridge's worker API", async () => {
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockResolvedValue("sentinel-from-worker");
       _setSavedGameSerializeClientResolver(async () => ({
         getSerializeApi: () => ({
@@ -180,7 +182,9 @@ describe("saved-games replay serialization seam (issue #1577)", () => {
     });
 
     it("createSavedGame routes the replay through the bridge's worker API", async () => {
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       serializeMock.mockResolvedValue("sentinel-from-worker");
       _setSavedGameSerializeClientResolver(async () => ({
         getSerializeApi: () => ({
@@ -205,7 +209,9 @@ describe("saved-games replay serialization seam (issue #1577)", () => {
     });
 
     it("a null replay skips the worker entirely", async () => {
-      const serializeMock = jest.fn() as unknown as jest.Mock<any>;
+      const serializeMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       _setSavedGameSerializeClientResolver(async () => ({
         getSerializeApi: () => ({
           serializeReplay: serializeMock as never,
