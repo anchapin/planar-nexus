@@ -54,6 +54,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Issue #1704: the local composite below cannot be resolved until the
+      # repository exists in the workspace — check out first, mirroring the
+      # bootstrap order every job in ci.yml uses (the composite then re-runs
+      # its own internal checkout, which is harmless and idempotent).
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
