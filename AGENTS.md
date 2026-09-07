@@ -10,10 +10,10 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 - `npm run typecheck` — `tsc --noEmit`. Run before lint/test.
 - `npm run lint` — `eslint src --max-warnings 1000` (warnings do NOT fail; only errors gate).
 - `npm test` — Jest. One file: `npm test -- --testPathPattern=layer-system`. One test by name: `--testNamePattern="..."`.
-- `npm run test:coverage` then `npm run test:coverage:ratchet` — coverage floor auto-bumps; see Testing below.
+- `npm run test:coverage` then `npm run test:coverage:ratchet` — coverage floor auto-bumps (also automated on merge to main by `.github/workflows/coverage-ratchet.yml`, #1596); see Testing below.
 - `npm run test:e2e` — Playwright (boots dev server automatically). Cross-browser: chromium / firefox / webkit.
 - `npm run test:e2e:flake` — `tsx e2e/flake-detector.ts`; 5 runs, fails at threshold 4 flaky.
-- `npm run mutate:<module>` — Stryker on one rules module. Modules: `layer-system`, `replacement-effects`, `spell-casting`, `trigger-system`, `state-based-actions`. Avoid full `npm run test:mutation` (~40 min).
+- `npm run mutate:<module>` — Stryker on one rules module. Modules: `layer-system`, `replacement-effects`, `spell-casting`, `trigger-system`, `state-based-actions`, `combat`. Avoid full `npm run test:mutation` (~40 min).
 - `npm run a11y:contrast` — color-contrast gate enforced in CI (`:report` variant regenerates `docs/CONTRAST_AUDIT.md`).
 - `npm run simulate` — runs only the AI simulation suite (`src/ai/__tests__/simulation/`).
 - Desktop: `npm run build:tauri` (= `tauri build`, runs `npm run build` first).
@@ -25,9 +25,9 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 
 ## CI gate (`.github/workflows/ci.yml`)
 
-The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, a11y-contrast, e2e, workflow-lint, tauri-updater-config`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
+The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
 
-- `mutation-test` runs **only** `mutate:layer-system` per PR (the full 5-module allowlist runs nightly in `.github/workflows/mutation.yml`).
+- `mutation-test` runs **only** `mutate:layer-system` per PR (the full 6-module allowlist runs nightly in `.github/workflows/mutation.yml`).
 - `workflow-lint` enforces that every job bootstraps via the shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`, ≥11 uses repo-wide). It **rejects** direct `npm ci` and `actions/setup-node@v1-5`. When adding/editing a workflow, reuse that action — do not hand-roll setup.
 
 ## Architecture (not obvious from filenames)
