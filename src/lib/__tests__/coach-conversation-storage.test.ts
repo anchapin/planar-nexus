@@ -194,7 +194,9 @@ describe("coach-conversation-storage", () => {
     });
 
     it("auto-resumes the most recent conversation for a deck", async () => {
-      await saveConversation(makeConversation({ id: "old", deckId: "d1" }));
+      const old = makeConversation({ id: "old", deckId: "d1" });
+      old.updatedAt = "2026-08-01T00:00:00Z";
+      await saveConversation(old);
       const recent = makeConversation({ id: "recent", deckId: "d1" });
       recent.updatedAt = "2026-09-01T00:00:00Z";
       await saveConversation(recent);
