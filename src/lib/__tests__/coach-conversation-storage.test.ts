@@ -194,11 +194,23 @@ describe("coach-conversation-storage", () => {
     });
 
     it("auto-resumes the most recent conversation for a deck", async () => {
-      const old = makeConversation({ id: "old", deckId: "d1" });
-      old.updatedAt = "2026-08-01T00:00:00Z";
+      // Issue #1634: pin every record to fixed UTC instants via the
+      // injectable clock (`createConversationRecord`'s `now`) so the
+      // newest-first ordering can never depend on the wall clock or the
+      // runner's timezone. The pre-#1700 form stamped `old` with
+      // Date.now(), which overtook the hardcoded "recent" timestamp after
+      // 2026-09-01 and flipped the sort under CI's clock.
+      const old = makeConversation({
+        id: "old",
+        deckId: "d1",
+        now: new Date("2026-08-01T00:00:00Z"),
+      });
       await saveConversation(old);
-      const recent = makeConversation({ id: "recent", deckId: "d1" });
-      recent.updatedAt = "2026-09-01T00:00:00Z";
+      const recent = makeConversation({
+        id: "recent",
+        deckId: "d1",
+        now: new Date("2026-09-01T00:00:00Z"),
+      });
       await saveConversation(recent);
 
       const got = await loadMostRecentConversation("d1");
@@ -208,6 +220,19 @@ describe("coach-conversation-storage", () => {
 
     it("returns null when there is nothing to resume", async () => {
       expect(await loadMostRecentConversation("empty-deck")).toBeNull();
+    });
+  });
+
+  describe("injectable clock (issue #1634)", () => {
+    it("createConversationRecord pins createdAt/updatedAt to the injected instant", () => {
+      const pinned = new Date("2026-01-15T12:34:56.789Z");
+      const conv = createConversationRecord({
+        id: "clocked",
+        messages: [],
+        now: pinned,
+      });
+      expect(conv.createdAt).toBe(pinned.toISOString());
+      expect(conv.updatedAt).toBe(pinned.toISOString());
     });
   });
 
