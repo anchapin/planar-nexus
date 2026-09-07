@@ -743,7 +743,11 @@ export class CombatDecisionTree {
 
     // Evaluate each attacker
     for (const attacker of attackers) {
-      const blocks = this.evaluateBlocksForAttacker(attacker, blockers);
+      const blocks = this.evaluateBlocksForAttacker(
+        attacker,
+        blockers,
+        attackers,
+      );
       blockDecisions.push(...blocks);
     }
 
@@ -1470,6 +1474,7 @@ export class CombatDecisionTree {
   private evaluateBlocksForAttacker(
     attacker: Permanent,
     availableBlockers: Permanent[],
+    allAttackers: Permanent[] = [attacker],
   ): BlockDecision[] {
     const blocks: BlockDecision[] = [];
 
@@ -1483,6 +1488,7 @@ export class CombatDecisionTree {
       attacker.keywords?.includes("deathtouch") || false;
     const attackerIsIndestructible =
       attacker.keywords?.includes("indestructible") || false;
+    const attackerHasMenace = attacker.keywords?.includes("menace") || false;
 
     // Sort blockers by effectiveness
     const sortedBlockers = [...availableBlockers].sort((a, b) => {
@@ -1641,6 +1647,63 @@ export class CombatDecisionTree {
       shouldBlockOptimal = !shouldBlockOptimal;
     }
 
+    // Issue #1538: consult the (previously dormant) shouldMultiBlock heuristic
+    // so a high-threat non-menace attacker that no single blocker can kill is
+    // gang-blocked when two blockers combine for lethal damage. The gang
+    // replaces the single-blocker decision entirely (a blocker is assigned at
+    // most once) and is skipped for menace attackers, which already have their
+    // own two-blocker path below.
+    if (!attackerHasMenace && availableBlockers.length >= 2) {
+      const multiBlockVerdict = this.shouldMultiBlock(
+        attacker,
+        availableBlockers,
+        { attackers: allAttackers, blockers: availableBlockers },
+      );
+      const selected = multiBlockVerdict.selectedBlockers;
+      const combinedPower = selected.reduce(
+        (sum, blocker) => sum + (blocker.power || 0),
+        0,
+      );
+      // Only gang when the pair actually kills the attacker — otherwise this
+      // just throws two creatures away in front of something unkillable.
+      const gangIsLethal = combinedPower >= attackerToughness;
+      // Never over-block: if any single blocker already kills the attacker on
+      // its own, the gang adds a needless casualty and the ordinary
+      // single-blocker path below handles it (#1538 AC3).
+      const anySingleBlockerKills =
+        !attackerIsIndestructible &&
+        availableBlockers.some((blocker) =>
+          blocker.keywords?.includes("deathtouch")
+            ? (blocker.power || 0) > 0
+            : (blocker.power || 0) >= attackerToughness,
+        );
+
+      if (
+        multiBlockVerdict.shouldMultiBlock &&
+        gangIsLethal &&
+        !anySingleBlockerKills &&
+        // Same per-tier blunderChance gate as every other combat call — easy
+        // AI occasionally declines the gang and blocks sub-optimally instead
+        // (#994 / #1538 AC2).
+        !this.shouldCombatBlunder()
+      ) {
+        for (const [index, blocker] of selected.entries()) {
+          blocks.push({
+            blockerId: blocker.id,
+            attackerId: attacker.id,
+            damageOrder: index,
+            reasoning: `gang-block: ${multiBlockVerdict.reasoning}`,
+            expectedValue: 0.6, // lethal gang-block of a high-threat attacker
+          });
+        }
+
+        // The gang replaces the single-blocker decision;
+        // optimizeBlockerOrdering (in generateBlockingPlan) still assigns the
+        // final damage order for the multi-block (#1538 AC6).
+        return blocks;
+      }
+    }
+
     // Decide whether to block
     if (shouldBlockOptimal) {
       blocks.push({
@@ -1658,7 +1721,7 @@ export class CombatDecisionTree {
     }
 
     // Consider multi-block for menace
-    if (attacker.keywords?.includes("menace") && sortedBlockers.length >= 2) {
+    if (attackerHasMenace && sortedBlockers.length >= 2) {
       const secondBestBlocker = sortedBlockers[1];
       const secondBlockValue = blockValue * 0.6; // Reduced value for second blocker
 

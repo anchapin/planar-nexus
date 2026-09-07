@@ -1548,4 +1548,229 @@ describe("CombatDecisionTree", () => {
       expect(counts[3] / trials).toBeLessThanOrEqual(0.05);
     });
   });
+
+  describe("gang-block wiring for shouldMultiBlock (#1538)", () => {
+    // mulberry32 — same deterministic PRNG as the #994 suite so gang-rate
+    // assertions never flake on Math.random.
+    function seededRng(seed: number): () => number {
+      let s = seed >>> 0;
+      return () => {
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // AC1 board: vanilla 6/6 attacker vs a 3/3 and a 4/4. No single blocker
+    // kills, combined power 7 >= 6 toughness, and threat 0.70 clears every
+    // tier's multi-block threshold (0.6 base, 0.4 for cardAdvantageWeight 2).
+    const makeGangBoard = (): AIGameState =>
+      createTestGameState(
+        20,
+        20,
+        [
+          createMockPermanent("b1", "Knight", "creature", 3, 3, false, 3),
+          createMockPermanent("b2", "Giant", "creature", 4, 4, false, 4),
+        ],
+        [],
+      );
+    const vanillaSixBySix = (): AIPermanent =>
+      createMockPermanent("a1", "Demon", "creature", 6, 6, false, 6);
+
+    it("AC1: hard/expert gang-block the vanilla 6/6 with both blockers and say gang-block", () => {
+      for (const tier of ["hard", "expert"] as const) {
+        const ai = new CombatDecisionTree(makeGangBoard(), "player1", tier);
+        ai.setCombatRng(() => 1); // never blunder
+        const plan = ai.generateBlockingPlan([vanillaSixBySix()]);
+
+        expect(plan.blocks).toHaveLength(2);
+        expect(new Set(plan.blocks.map((b) => b.blockerId))).toEqual(
+          new Set(["b1", "b2"]),
+        );
+        for (const block of plan.blocks) {
+          expect(block.attackerId).toBe("a1");
+          expect(block.reasoning).toContain("gang-block");
+        }
+
+        // AC6: optimizeBlockerOrdering still ran on the multi-block — the
+        // cheaper 3/3 (mv 3) takes damage order 0, the 4/4 (mv 4) takes 1.
+        const byBlocker = new Map(plan.blocks.map((b) => [b.blockerId, b]));
+        expect(byBlocker.get("b1")?.damageOrder).toBe(0);
+        expect(byBlocker.get("b2")?.damageOrder).toBe(1);
+      }
+    });
+
+    it("AC2: easy's blunderChance gate inverts the multi-block when the roll fires", () => {
+      // Sanity: with a quiet RNG the easy tier still makes the optimal gang.
+      const optimal = new CombatDecisionTree(makeGangBoard(), "player1", "easy");
+      optimal.setCombatRng(() => 1);
+      expect(
+        optimal.generateBlockingPlan([vanillaSixBySix()]).blocks,
+      ).toHaveLength(2);
+
+      // Force the roll to fire (easy blunderChance 0.25): the gang is
+      // declined, so easy falls back to the sub-optimal single chump block
+      // instead of the two-creature gang.
+      const blundered = new CombatDecisionTree(
+        makeGangBoard(),
+        "player1",
+        "easy",
+      );
+      blundered.setCombatRng(() => 0);
+      const plan = blundered.generateBlockingPlan([vanillaSixBySix()]);
+      expect(plan.blocks).not.toHaveLength(2);
+      expect(
+        plan.blocks.every((b) => !b.reasoning.includes("gang-block")),
+      ).toBe(true);
+    });
+
+    it("AC2 (statistical): easy declines the gang far more often than expert", () => {
+      const trials = 200;
+      const gangRate = (tier: DifficultyLevel): number => {
+        let gangs = 0;
+        for (let i = 0; i < trials; i++) {
+          const ai = new CombatDecisionTree(makeGangBoard(), "player1", tier);
+          ai.setCombatRng(seededRng(0x538 + i));
+          const plan = ai.generateBlockingPlan([vanillaSixBySix()]);
+          if (
+            plan.blocks.length === 2 &&
+            plan.blocks.every((b) => b.reasoning.includes("gang-block"))
+          ) {
+            gangs++;
+          }
+        }
+        return gangs / trials;
+      };
+
+      const easyRate = gangRate("easy");
+      const expertRate = gangRate("expert");
+
+      // Gang rate = 1 - blunderChance (easy 0.75 vs expert 0.98).
+      expect(expertRate).toBeGreaterThan(easyRate);
+      expect(easyRate).toBeGreaterThanOrEqual(0.6);
+      expect(expertRate).toBeGreaterThanOrEqual(0.95);
+    });
+
+    it("AC3: a 2/2 attacker into a single 3/3 blocker is blocked exactly once", () => {
+      const state = createTestGameState(20, 20, [
+        createMockPermanent("b1", "Bear", "creature", 3, 3, false, 2),
+      ]);
+      const ai = new CombatDecisionTree(state, "player1", "hard");
+      ai.setCombatRng(() => 1);
+      const plan = ai.generateBlockingPlan([
+        createMockPermanent("a1", "Goblin", "creature", 2, 2),
+      ]);
+
+      expect(plan.blocks).toHaveLength(1);
+      expect(plan.blocks[0].blockerId).toBe("b1");
+      expect(plan.blocks[0].reasoning).not.toContain("gang-block");
+    });
+
+    it("AC3 (over-block guard): no gang when one blocker already kills the attacker alone", () => {
+      // 6/6 flying attacker (threat 0.85, clears the threshold) vs a 6/6 and
+      // a 1/1: the 6/6 kills alone, so the gang must not add the 1/1 as a
+      // needless casualty.
+      const state = createTestGameState(20, 20, [
+        createMockPermanent("b1", "Sprite", "creature", 1, 1, false, 1),
+        createMockPermanent("b2", "Golem", "creature", 6, 6, false, 6),
+      ]);
+      const ai = new CombatDecisionTree(state, "player1", "hard");
+      ai.setCombatRng(() => 1);
+      const plan = ai.generateBlockingPlan([
+        createMockPermanent("a1", "Angel", "creature", 6, 6, false, 6, [
+          "flying",
+        ]),
+      ]);
+
+      expect(plan.blocks).toHaveLength(1);
+      expect(plan.blocks[0].blockerId).toBe("b2");
+      expect(plan.blocks[0].reasoning).not.toContain("gang-block");
+    });
+
+    it("AC3 (over-block guard): no gang when the pair cannot combine for lethal", () => {
+      // 5/5 attacker vs three 2/2s: threat 0.55 is below the 0.6 threshold
+      // anyway, and 2+2=4 < 5 — both guards must keep this at a single block.
+      const state = createTestGameState(20, 20, [
+        createMockPermanent("c1", "Bear 1", "creature", 2, 2),
+        createMockPermanent("c2", "Bear 2", "creature", 2, 2),
+        createMockPermanent("c3", "Bear 3", "creature", 2, 2),
+      ]);
+      const ai = new CombatDecisionTree(state, "player1", "medium");
+      ai.setCombatRng(() => 1);
+      const plan = ai.generateBlockingPlan([
+        createMockPermanent("a1", "Big Beast", "creature", 5, 5),
+      ]);
+
+      expect(plan.blocks.every((b) => !b.reasoning.includes("gang-block"))).toBe(
+        true,
+      );
+    });
+
+    it("AC4: shouldMultiBlock still refuses deathtouch attackers", () => {
+      const state = makeGangBoard();
+      const ai = new CombatDecisionTree(state, "player1", "expert");
+      const blockers = state.players.player1.battlefield;
+      const attacker = createMockPermanent(
+        "a1",
+        "Viper",
+        "creature",
+        6,
+        6,
+        false,
+        6,
+        ["deathtouch"],
+      );
+
+      const verdict = ai.shouldMultiBlock(attacker, blockers, {
+        attackers: [attacker],
+        blockers,
+      });
+      expect(verdict.shouldMultiBlock).toBe(false);
+    });
+
+    it("AC5: shouldMultiBlock still refuses indestructible attackers", () => {
+      const state = makeGangBoard();
+      const ai = new CombatDecisionTree(state, "player1", "expert");
+      const blockers = state.players.player1.battlefield;
+      const attacker = createMockPermanent(
+        "a1",
+        "Aegis",
+        "creature",
+        6,
+        6,
+        false,
+        6,
+        ["indestructible"],
+      );
+
+      const verdict = ai.shouldMultiBlock(attacker, blockers, {
+        attackers: [attacker],
+        blockers,
+      });
+      expect(verdict.shouldMultiBlock).toBe(false);
+    });
+
+    it("menace attackers keep their dedicated two-blocker path (never gang-block reasoning)", () => {
+      // 3/3 menace vs two 4/4s: single block (kill + survive, 0.8) plus the
+      // menace second blocker — no gang-block string, no double assignment.
+      const state = createTestGameState(20, 20, [
+        createMockPermanent("b1", "Bear 1", "creature", 4, 4, false, 2),
+        createMockPermanent("b2", "Bear 2", "creature", 4, 4, false, 2),
+      ]);
+      const ai = new CombatDecisionTree(state, "player1", "hard");
+      ai.setCombatRng(() => 1);
+      const plan = ai.generateBlockingPlan([
+        createMockPermanent("a1", "Ogre", "creature", 3, 3, false, 3, [
+          "menace",
+        ]),
+      ]);
+
+      const ids = plan.blocks.map((b) => b.blockerId);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(plan.blocks.every((b) => !b.reasoning.includes("gang-block"))).toBe(
+        true,
+      );
+    });
+  });
 });
