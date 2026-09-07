@@ -11,9 +11,19 @@ import QRCode from "qrcode";
 /**
  * QR Code Display Component
  * Issue #185: Used for sharing game codes in P2P multiplayer
+ * Issue #1728: `payload` renders a QR encoding the raw connection code
+ * (the serialized signaling offer) so opponents can scan to join.
  */
 interface QRCodeDisplayProps {
   qrCode?: string;
+  /**
+   * Raw string to encode as a QR code (e.g. the serialized connection
+   * code / signaling offer). Takes priority over the game-code URL.
+   * Rendered with low error correction to maximize data capacity; if
+   * the payload exceeds QR capacity the component explains that the
+   * code must be shared manually instead.
+   */
+  payload?: string;
   gameCode: string;
   gameName?: string;
   onCopy?: () => void;
@@ -26,6 +36,7 @@ interface QRCodeDisplayProps {
 
 export function QRCodeDisplay({
   qrCode,
+  payload,
   gameCode,
   gameName = "Planar Nexus Game",
   onCopy,
@@ -35,10 +46,56 @@ export function QRCodeDisplay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [payloadDataUrl, setPayloadDataUrl] = useState<string | null>(null);
 
-  // Generate QR code when game code changes (if qrCode not provided)
+  // Generate a QR from the raw connection-code payload (issue #1728).
   useEffect(() => {
-    if (qrCode) return; // Use pre-generated QR code if provided
+    if (!payload) {
+      setPayloadDataUrl(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const generatePayloadQR = async () => {
+      try {
+        const dataUrl = await QRCode.toDataURL(payload, {
+          width: size,
+          margin: 2,
+          color: {
+            dark: "#000000",
+            light: "#ffffff",
+          },
+          // Low error correction maximizes capacity for long SDP payloads;
+          // the code is shown on screen (not printed), so damage is unlikely.
+          errorCorrectionLevel: "L",
+        });
+        if (!cancelled) {
+          setPayloadDataUrl(dataUrl);
+          setError(null);
+        }
+      } catch (err) {
+        console.error("Error generating connection QR code:", err);
+        if (!cancelled) {
+          setPayloadDataUrl(null);
+          setError(
+            "This connection code is too long to display as a QR code. Share it manually using copy and paste instead.",
+          );
+        }
+      }
+    };
+
+    void generatePayloadQR();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [payload, size]);
+
+  // Generate QR code when game code changes (if neither payload nor
+  // pre-generated qrCode is provided).
+  useEffect(() => {
+    if (payload || qrCode) return; // payload / pre-generated QR take priority
     if (!canvasRef.current || !gameCode) return;
 
     const generateQR = async () => {
@@ -64,7 +121,7 @@ export function QRCodeDisplay({
     };
 
     generateQR();
-  }, [gameCode, size, qrCode]);
+  }, [gameCode, size, qrCode, payload]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(gameCode);
@@ -86,8 +143,11 @@ export function QRCodeDisplay({
         {/* QR Code Canvas or Image */}
         <div className="flex justify-center">
           {error ? (
-            <div className="w-[200px] h-[200px] flex items-center justify-center bg-muted rounded-lg">
-              <QrCode className="w-12 h-12 text-muted-foreground" />
+            <div className="w-[200px] h-[200px] flex items-center justify-center bg-muted rounded-lg text-center p-4">
+              <div>
+                <QrCode className="w-12 h-12 mx-auto text-muted-foreground" />
+                <p className="text-xs text-muted-foreground mt-2">{error}</p>
+              </div>
             </div>
           ) : qrCode ? (
             <img
@@ -96,6 +156,23 @@ export function QRCodeDisplay({
               className="rounded-lg border-2 border-border"
               style={{ width: size, height: size }}
             />
+          ) : payload || payloadDataUrl ? (
+            payloadDataUrl ? (
+              <img
+                src={payloadDataUrl}
+                alt="Connection QR code"
+                className="rounded-lg border-2 border-border"
+                style={{ width: size, height: size }}
+              />
+            ) : (
+              <div
+                className="flex items-center justify-center bg-muted rounded-lg"
+                style={{ width: size, height: size }}
+                aria-label="Generating connection QR code"
+              >
+                <QrCode className="w-12 h-12 text-muted-foreground animate-pulse" />
+              </div>
+            )
           ) : (
             <canvas
               ref={canvasRef}
@@ -142,161 +219,6 @@ export function QRCodeDisplay({
         <div className="text-xs text-muted-foreground text-center">
           <p>Or enter this code in the Join Game screen</p>
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * QR Code Scanner Props
- */
-interface QRCodeScannerProps {
-  onScan: (data: string) => void;
-  onError?: (error: Error) => void;
-}
-
-/**
- * QR Code Scanner Component
- * Uses device camera to scan QR codes
- * Note: Requires camera permissions and HTTPS
- */
-export function QRCodeScanner({ onScan, onError }: QRCodeScannerProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [hasCamera, setHasCamera] = useState<boolean | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [manualCode, setManualCode] = useState("");
-  const [showManual, setShowManual] = useState(false);
-
-  // Check for camera availability
-  useEffect(() => {
-    async function checkCamera() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const cameras = devices.filter((d) => d.kind === "videoinput");
-        setHasCamera(cameras.length > 0);
-      } catch (err) {
-        console.error("Error checking camera:", err);
-        setHasCamera(false);
-      }
-    }
-
-    checkCamera();
-  }, []);
-
-  const startScanning = async () => {
-    if (!videoRef.current) return;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
-      setScanning(true);
-
-      // Note: Full QR scanning would require additional library like jsQR
-      // For now, this shows camera preview
-    } catch (err) {
-      console.error("Error starting camera:", err);
-      onError?.(err instanceof Error ? err : new Error("Camera error"));
-      setShowManual(true);
-    }
-  };
-
-  const stopScanning = () => {
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    setScanning(false);
-  };
-
-  const handleManualSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (manualCode.trim()) {
-      onScan(manualCode.trim().toUpperCase());
-    }
-  };
-
-  return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <QrCode className="w-5 h-5" />
-          Scan QR Code
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Camera Preview */}
-        <div className="relative aspect-square bg-black rounded-lg overflow-hidden">
-          <video
-            ref={videoRef}
-            className="w-full h-full object-cover"
-            playsInline
-            muted
-          />
-
-          {!scanning && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <Button onClick={startScanning} variant="secondary">
-                <QrCode className="w-4 h-4 mr-2" />
-                Start Scanning
-              </Button>
-            </div>
-          )}
-
-          {scanning && (
-            <div className="absolute bottom-4 left-4 right-4">
-              <Button
-                onClick={stopScanning}
-                variant="destructive"
-                className="w-full"
-              >
-                Stop Scanning
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Manual Entry Toggle */}
-        <div className="text-center">
-          <Button
-            variant="link"
-            onClick={() => setShowManual(!showManual)}
-            className="text-sm"
-          >
-            {showManual ? "Hide" : "Enter code manually"}
-          </Button>
-        </div>
-
-        {/* Manual Code Entry */}
-        {showManual && (
-          <form onSubmit={handleManualSubmit} className="space-y-2">
-            <Label htmlFor="manual-code">Game Code</Label>
-            <div className="flex gap-2">
-              <Input
-                id="manual-code"
-                value={manualCode}
-                onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                placeholder="ABCD12"
-                className="font-mono text-lg text-center tracking-widest"
-                maxLength={6}
-              />
-              <Button type="submit" disabled={!manualCode.trim()}>
-                Join
-              </Button>
-            </div>
-          </form>
-        )}
-
-        {/* Camera Not Available */}
-        {hasCamera === false && !showManual && (
-          <div className="text-center text-sm text-muted-foreground">
-            <p>No camera detected</p>
-            <p>Please enter the code manually</p>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
