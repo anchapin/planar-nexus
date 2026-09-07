@@ -12,7 +12,7 @@
  * instead of developing its own board.
  */
 
-import type { AIGameState, AIPermanent } from "@/lib/game-state/types";
+import type { AIGameState, AIPermanent } from "@/lib/game-state";
 import type {
   BoardStateSignature,
   HeuristicMatch,
@@ -45,9 +45,7 @@ const DEFAULT_CONFIG: LookaheadConfig = {
  * this to whatever replay sink the host game uses; tests use it to assert
  * the exact event payload without needing a real replay.
  */
-export type ComboThreatEventListener = (
-  event: ComboThreatEvent,
-) => void;
+export type ComboThreatEventListener = (event: ComboThreatEvent) => void;
 
 /**
  * The event payload emitted whenever the lookahead engine finishes an

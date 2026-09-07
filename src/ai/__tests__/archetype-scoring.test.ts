@@ -12,7 +12,7 @@ import type {
   AIPlayerState,
   AIPermanent,
   AIHandCard,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 
 function createMockPlayerState(
   id: string,

@@ -81,7 +81,7 @@
  * sequence and assert exact skip/cast outcomes per tier.
  */
 
-import type { CardInstanceId } from "@/lib/game-state/types";
+import type { CardInstanceId } from "@/lib/game-state";
 import type { DifficultyLevel } from "./ai-difficulty";
 import { isRemovalSpell } from "./ai-telegraph";
 

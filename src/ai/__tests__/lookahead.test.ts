@@ -27,11 +27,7 @@ import type {
   BoardStateSignature,
   AttackLineHeuristic,
 } from "../decision-making/lookahead/types";
-import type {
-  AIGameState,
-  AIPlayerState,
-  AIPermanent,
-} from "@/lib/game-state/types";
+import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
 import { createRng } from "@/lib/limited/rng";
 
 function createMockPlayerState(

@@ -27,11 +27,7 @@
  * Depends on: `opposingCommanderThreat` from `commander-math.ts` (#1234).
  */
 
-import type {
-  AIGameState,
-  AIPlayerState,
-  AIPermanent,
-} from "@/lib/game-state/types";
+import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
 import type { DifficultyLevel } from "../ai-difficulty";
 import {
   opposingCommanderThreat,
@@ -218,7 +214,11 @@ function findCardController(
   cardInstanceId: string,
 ): string | undefined {
   for (const [playerId, player] of Object.entries(state.players ?? {})) {
-    if ((player.battlefield ?? []).some((p) => p.cardInstanceId === cardInstanceId)) {
+    if (
+      (player.battlefield ?? []).some(
+        (p) => p.cardInstanceId === cardInstanceId,
+      )
+    ) {
       return playerId;
     }
   }
@@ -333,9 +333,7 @@ function scoreOpponent(
   // overcounting a single attacker.
   let intent = 0;
   const aiId =
-    state.turnInfo?.currentPlayer ??
-    Object.keys(state.players ?? {})[0] ??
-    "";
+    state.turnInfo?.currentPlayer ?? Object.keys(state.players ?? {})[0] ?? "";
   const attackers = state.combat?.attackers ?? [];
   for (const atk of attackers) {
     if (atk.defenderId !== aiId) continue;
@@ -438,7 +436,7 @@ export function assessThreats(
   const rng =
     DIFFICULTY_NOISE[difficulty] > 0
       ? Math.random
-      : () => 0.5; /* unused at expert; kept for type satisfaction */;
+      : () => 0.5; /* unused at expert; kept for type satisfaction */
 
   const scored: MultiplayerThreatAssessment[] = allOpponentIds.map((id) => {
     const opponent = state.players[id];
@@ -599,7 +597,9 @@ export function chooseResponseTarget(
   ) {
     // Hard/Expert path: prefer the leader's spell. Among multiple leader
     // spells, take the highest MV (most impactful).
-    const leaderSpells = opponentStack.filter((obj) => obj.controller === leaderId);
+    const leaderSpells = opponentStack.filter(
+      (obj) => obj.controller === leaderId,
+    );
     chosen = [...leaderSpells].sort(
       (a, b) => (b.manaValue ?? 0) - (a.manaValue ?? 0),
     )[0];

@@ -34,22 +34,36 @@ const ACCESSOR_MAP: Record<string, string> = {
   "winners.length": "state.winners.length",
   "combat.inCombatPhase": "state.combat.inCombatPhase",
   "combat.attackers.length": "state.combat.attackers.length",
-  "combat.attackers[0].damageToDeal": "state.combat.attackers[0]?.damageToDeal ?? 0",
+  "combat.attackers[0].damageToDeal":
+    "state.combat.attackers[0]?.damageToDeal ?? 0",
   "combat.remainingCombatPhases": "state.combat.remainingCombatPhases",
-  "status": "state.status",
-  "format": "state.format",
+  status: "state.status",
+  format: "state.format",
   "turn.turnNumber": "state.turn.turnNumber",
   "turn.currentPhase": "state.turn.currentPhase",
   "turn.isFirstTurn": "state.turn.isFirstTurn",
-  "priorityPlayerId": "state.priorityPlayerId",
-  "consecutivePasses": "state.consecutivePasses",
-  "serializationRoundtrip": "null",
+  priorityPlayerId: "state.priorityPlayerId",
+  consecutivePasses: "state.consecutivePasses",
+  serializationRoundtrip: "null",
 };
 
-const MANA_COLORS = ["white", "red", "blue", "black", "green", "colorless"] as const;
+const MANA_COLORS = [
+  "white",
+  "red",
+  "blue",
+  "black",
+  "green",
+  "colorless",
+] as const;
 const SIMPLE_PLAYER_FIELDS = [
-  "poisonCounters", "life", "landsPlayedThisTurn", "maxLandsPerTurn",
-  "hasLost", "hasPassedPriority", "experienceCounters", "commanderCastCount",
+  "poisonCounters",
+  "life",
+  "landsPlayedThisTurn",
+  "maxLandsPerTurn",
+  "hasLost",
+  "hasPassedPriority",
+  "experienceCounters",
+  "commanderCastCount",
 ] as const;
 
 function pascalCase(str: string): string {
@@ -94,7 +108,9 @@ function generateActionCode(action: string, actionIndex: number): string {
   if (manaMatch)
     return `const _mp${actionIndex} = state.players.get(playerIds[${manaMatch[1]}]); if (_mp${actionIndex}) { _mp${actionIndex}.manaPool.${manaMatch[2]} = ${manaMatch[3]}; }`;
 
-  const cmdDmgMatch = action.match(/^addCommanderDamage:player(\d)FromPlayer(\d):(\d+)$/);
+  const cmdDmgMatch = action.match(
+    /^addCommanderDamage:player(\d)FromPlayer(\d):(\d+)$/,
+  );
   if (cmdDmgMatch)
     return `const _cmd${actionIndex} = state.players.get(playerIds[${cmdDmgMatch[1]}]); if (_cmd${actionIndex}) { _cmd${actionIndex}.commanderDamage.set(playerIds[${cmdDmgMatch[2]}], ${cmdDmgMatch[3]}); }`;
 
@@ -120,7 +136,10 @@ function generateAccessorCode(accessor_path: string): string {
   if (playerMatch) {
     const idx = playerMatch[1];
     const field = playerMatch[2];
-    if (field.startsWith("manaPool.") && (MANA_COLORS as readonly string[]).includes(field.split(".")[1])) {
+    if (
+      field.startsWith("manaPool.") &&
+      (MANA_COLORS as readonly string[]).includes(field.split(".")[1])
+    ) {
       return `getManaPool(state, ${idx}).${field.split(".")[1]}`;
     }
     if ((SIMPLE_PLAYER_FIELDS as readonly string[]).includes(field)) {
@@ -137,8 +156,10 @@ function generateAccessorCode(accessor_path: string): string {
 
 function generateAssertionCode(assertion: Assertion): string {
   const accessor = generateAccessorCode(assertion.path);
-  if (assertion.operator === "toBeDefined") return `expect(${accessor}).toBeDefined();`;
-  if (assertion.operator === "toBeTrue") return `expect(${accessor}).toBe(true);`;
+  if (assertion.operator === "toBeDefined")
+    return `expect(${accessor}).toBeDefined();`;
+  if (assertion.operator === "toBeTrue")
+    return `expect(${accessor}).toBe(true);`;
   return `expect(${accessor}).${assertion.operator}(${JSON.stringify(assertion.value)});`;
 }
 
@@ -162,8 +183,8 @@ function generateTestFile(fixtures: Fixture[]): string {
     "  passPriority,",
     "  dealDamageToPlayer,",
     "  gainLife,",
-    "} from '@/lib/game-state/game-state';",
-    "import { Phase } from '@/lib/game-state/types';",
+    "} from '@/lib/game-state';",
+    "import { Phase } from '@/lib/game-state';",
     "",
     "function playerCount(state: ReturnType<typeof createInitialGameState>): number {",
     "  return state.players.size;",
@@ -192,12 +213,20 @@ function generateTestFile(fixtures: Fixture[]): string {
       const testName = escapeForTemplate(fixture.description);
       output += "  it('" + testName + "', () => {\n";
       const { playerNames, startingLife, isCommander } = fixture.setup;
-      output += "    let state = createInitialGameState(" + JSON.stringify(playerNames) + ", " + startingLife + ", " + isCommander + ");\n";
+      output +=
+        "    let state = createInitialGameState(" +
+        JSON.stringify(playerNames) +
+        ", " +
+        startingLife +
+        ", " +
+        isCommander +
+        ");\n";
       output += "    const playerIds = Array.from(state.players.keys());\n";
       if (fixture.setup.actions && fixture.setup.actions.length > 0) {
         output += "\n";
         for (let ai = 0; ai < fixture.setup.actions.length; ai++) {
-          output += "    " + generateActionCode(fixture.setup.actions[ai], ai) + "\n";
+          output +=
+            "    " + generateActionCode(fixture.setup.actions[ai], ai) + "\n";
         }
       }
       output += "\n";
@@ -237,7 +266,13 @@ function main(): void {
   const outputPath = path.join(OUTPUT_DIR, "generated-fixtures.test.ts");
   fs.writeFileSync(outputPath, testCode, "utf-8");
 
-  console.info("Generated " + fixtures.length + " test cases from " + fixtureFiles.length + " fixture files");
+  console.info(
+    "Generated " +
+      fixtures.length +
+      " test cases from " +
+      fixtureFiles.length +
+      " fixture files",
+  );
   console.info("Output: " + outputPath);
 }
 

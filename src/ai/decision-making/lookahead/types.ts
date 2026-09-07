@@ -5,7 +5,7 @@
  * and lookahead evaluation types for the Combat AI system.
  */
 
-import type { AIGameState, AIPermanent } from "@/lib/game-state/types";
+import type { AIGameState, AIPermanent } from "@/lib/game-state";
 
 /**
  * Normalized creature stats used in board state signatures.

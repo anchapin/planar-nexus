@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it, test } from "@jest/globals";
-import type { AIPermanent } from "@/lib/game-state/types";
+import type { AIPermanent } from "@/lib/game-state";
 import {
   _buildFixtureState,
   assessThreats,
@@ -103,12 +103,7 @@ describe("assessThreats — 3-player leader ≠ lowest-life fixture (AC #1)", ()
       ],
       {
         op_b: {
-          commander: commander(
-            "cmdr_b",
-            "Sram, Senior Edificer",
-            8,
-            8,
-          ),
+          commander: commander("cmdr_b", "Sram, Senior Edificer", 8, 8),
         },
       },
     );
@@ -132,9 +127,9 @@ describe("assessThreats — 3-player leader ≠ lowest-life fixture (AC #1)", ()
     // pod, not the highest. The naive "lowest life = leader" rule would
     // still pick op_b here, so this test alone does not disprove that rule;
     // the next test does.
-    expect(Math.min(...rankings.map((r) => state.players[r.playerId].life))).toBe(
-      3,
-    );
+    expect(
+      Math.min(...rankings.map((r) => state.players[r.playerId].life)),
+    ).toBe(3);
   });
 
   it("flags the high-life high-board player as leader when the pumped-commander 3-life player is absent", () => {
@@ -153,10 +148,7 @@ describe("assessThreats — 3-player leader ≠ lowest-life fixture (AC #1)", ()
         {
           id: "op_b",
           life: 15,
-          battlefield: [
-            creature("cr_b1", 7, 7),
-            creature("cr_b2", 7, 7),
-          ],
+          battlefield: [creature("cr_b1", 7, 7), creature("cr_b2", 7, 7)],
         },
       ],
       undefined,
@@ -259,9 +251,7 @@ describe("chooseAttackTarget — target flips when leader changes (AC #2)", () =
           id: "op_c",
           life: cLife,
           battlefield:
-            bPower >= 1
-              ? [creature("cr_c_big", bPower, bPower)]
-              : [],
+            bPower >= 1 ? [creature("cr_c_big", bPower, bPower)] : [],
         },
       ],
       {
@@ -440,13 +430,7 @@ describe("chooseAttackTarget — difficulty scaling", () => {
       undefined,
     );
     const rng = () => 0.999; // forces the last index of the slice
-    const target = chooseAttackTarget(
-      state,
-      "ai",
-      undefined,
-      "easy",
-      { rng },
-    );
+    const target = chooseAttackTarget(state, "ai", undefined, "easy", { rng });
     expect(target.targetId).toBeTruthy();
     expect(["op_a", "op_b", "op_c"]).toContain(target.targetId);
   });
@@ -940,9 +924,7 @@ describe("assessThreats — structural invariants", () => {
   it("sub-scores are all in [0,1]", () => {
     const state = _buildFixtureState(
       "ai",
-      [
-        { id: "op_a", life: 30, battlefield: [creature("cr_a", 4, 4)] },
-      ],
+      [{ id: "op_a", life: 30, battlefield: [creature("cr_a", 4, 4)] }],
       {
         op_a: {
           commander: commander("cmdr_a", "Sram, Senior Edificer", 7, 7),
@@ -950,7 +932,13 @@ describe("assessThreats — structural invariants", () => {
       },
     );
     const r = assessThreats(state, "ai", undefined, "expert")[0];
-    for (const k of ["lifeScore", "boardScore", "commanderScore", "intentScore", "threatScore"] as const) {
+    for (const k of [
+      "lifeScore",
+      "boardScore",
+      "commanderScore",
+      "intentScore",
+      "threatScore",
+    ] as const) {
       const v = r[k];
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThanOrEqual(1);

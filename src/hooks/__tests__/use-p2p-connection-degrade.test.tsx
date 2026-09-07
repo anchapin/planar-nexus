@@ -17,7 +17,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useP2PConnection } from "../use-p2p-connection";
 import { createP2PGameConnection } from "@/lib/p2p-game-connection";
 import { saveGameForLocalHotSeat } from "@/lib/local-game-storage";
-import type { GameState, PlayerId, Phase } from "@/lib/game-state/types";
+import type { GameState, PlayerId, Phase } from "@/lib/game-state";
 
 // ---------------------------------------------------------------------------
 // Mocks — jest.mock is hoisted above imports, so the factories use literal

@@ -1,4 +1,4 @@
-import type { AIGameState as GameState } from "@/lib/game-state/types";
+import type { AIGameState as GameState } from "@/lib/game-state";
 import type {
   DetailedEvaluation,
   DeckArchetype,

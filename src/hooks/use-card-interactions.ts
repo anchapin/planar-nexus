@@ -8,7 +8,7 @@ import {
   TargetingState,
   SelectedTarget,
 } from "@/types/card-interactions";
-import { CardInstanceId, PlayerId } from "@/lib/game-state/types";
+import { CardInstanceId, PlayerId } from "@/lib/game-state";
 
 interface UseCardInteractionsProps {
   onCardInspect?: (cardId: CardInstanceId) => void;
@@ -29,8 +29,11 @@ const DOUBLE_CLICK_TIMEOUT = 400;
  */
 export function useCardInteractions(props: UseCardInteractionsProps = {}) {
   // Interaction state
-  const [interactionContext, setInteractionContext] = useState<InteractionContext | null>(null);
-  const [selectedCardId, setSelectedCardId] = useState<CardInstanceId | null>(null);
+  const [interactionContext, setInteractionContext] =
+    useState<InteractionContext | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<CardInstanceId | null>(
+    null,
+  );
   const [targetingState, setTargetingState] = useState<TargetingState>({
     isActive: false,
     sourceCardId: null,
@@ -68,12 +71,12 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
 
       // Check if already selected
       const alreadySelected = targetingState.selectedTargets.some(
-        (t) => t.targetId === targetId
+        (t) => t.targetId === targetId,
       );
       if (alreadySelected) {
         // Deselect
         const newTargets = targetingState.selectedTargets.filter(
-          (t) => t.targetId !== targetId
+          (t) => t.targetId !== targetId,
         );
         setTargetingState({
           ...targetingState,
@@ -105,7 +108,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
         message: `Target selected (${newTargets.length}/${targetingState.maxTargets})`,
       };
     },
-    [targetingState, props]
+    [targetingState, props],
   );
 
   /**
@@ -130,7 +133,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
         message: "Card selected for inspection",
       };
     },
-    [targetingState.isActive, props, handleTargetSelection]
+    [targetingState.isActive, props, handleTargetSelection],
   );
 
   /**
@@ -150,7 +153,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
           : "Card tapped/untapped",
       };
     },
-    [props, targetingState.isActive]
+    [props, targetingState.isActive],
   );
 
   /**
@@ -174,7 +177,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
       lastClickCardId.current = null;
       return handleDoubleClick(cardId);
     },
-    [handleSingleClick, handleDoubleClick]
+    [handleSingleClick, handleDoubleClick],
   );
 
   /**
@@ -194,7 +197,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
         message: "Context menu opened",
       };
     },
-    []
+    [],
   );
 
   /**
@@ -209,7 +212,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
         minTargets?: number;
         validTargetTypes?: string[];
         canTargetPlayer?: boolean;
-      }
+      },
     ) => {
       setTargetingState({
         isActive: true,
@@ -229,7 +232,7 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
         isActive: true,
       });
     },
-    []
+    [],
   );
 
   /**
@@ -287,10 +290,10 @@ export function useCardInteractions(props: UseCardInteractionsProps = {}) {
       if (targetingState.validTargetTypes.length === 0) return true;
 
       return cardTypes.some((type) =>
-        targetingState.validTargetTypes.includes(type.toLowerCase())
+        targetingState.validTargetTypes.includes(type.toLowerCase()),
       );
     },
-    [targetingState]
+    [targetingState],
   );
 
   /**

@@ -17,21 +17,18 @@
  */
 
 // Import unified types from engine
-import type {
-  AIGameState as GameState,
-  AIStackObject,
-} from "@/lib/game-state/types";
+import type { AIGameState as GameState, AIStackObject } from "@/lib/game-state";
 import type {
   GameState as EngineGameState,
   StackObject as EngineStackObject,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import {
   canPayWardCost,
   detectWardTriggers,
   payWardCost,
   declineWardPayment,
   type WardTrigger,
-} from "@/lib/game-state/ward-system";
+} from "@/lib/game-state";
 import {
   evaluateGameState,
   ThreatAssessment,

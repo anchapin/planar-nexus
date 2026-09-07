@@ -14,8 +14,8 @@ import type {
   CardInstanceId,
   AIGameState,
   ManaPool,
-} from "@/lib/game-state/types";
-import { Phase } from "@/lib/game-state/types";
+} from "@/lib/game-state";
+import { Phase } from "@/lib/game-state";
 import {
   executeAIAction,
   executeOpponentMulligan,
@@ -34,11 +34,11 @@ import {
   type DifficultyLevel,
   type DifficultyFormat,
 } from "./ai-difficulty";
-import { advancePhase } from "@/lib/game-state/turn-phases";
-import { drawCard } from "@/lib/game-state/game-state";
-import { engineToAIState } from "@/lib/game-state/serialization";
+import { advancePhase } from "@/lib/game-state";
+import { drawCard } from "@/lib/game-state";
+import { engineToAIState } from "@/lib/game-state";
 import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
-import { discardCards } from "@/lib/game-state/keyword-actions";
+import { discardCards } from "@/lib/game-state";
 import {
   classifyArchetypeName,
   BoardSwingTracker,

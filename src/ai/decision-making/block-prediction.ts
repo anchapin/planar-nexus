@@ -1,15 +1,10 @@
 import type {
   AIPermanent as Permanent,
   AIPlayerState as PlayerState,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 
 export type OpponentArchetype =
-  | "aggro"
-  | "control"
-  | "midrange"
-  | "tempo"
-  | "combo"
-  | "unknown";
+  "aggro" | "control" | "midrange" | "tempo" | "combo" | "unknown";
 
 export interface BlockPrediction {
   attackerId: string;

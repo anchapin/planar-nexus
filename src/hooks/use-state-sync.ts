@@ -1,19 +1,19 @@
 /**
  * State Synchronization Hook
  * Issue #313: Integrate state hash verification for multiplayer sync detection
- * 
+ *
  * This hook provides state hash verification and desync detection for P2P multiplayer games.
  */
 
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { GameState } from '@/lib/game-state/types';
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { GameState } from "@/lib/game-state";
 import {
   computeStateHash,
   createStateHashVerifier,
   StateHashVerifier,
-} from '@/lib/game-state/state-hash';
+} from "@/lib/game-state";
 import {
   createDeterministicEngine,
   DeterministicGameStateEngine,
@@ -24,10 +24,10 @@ import {
   type DeterministicAction,
   type HandshakePayload,
   DEFAULT_SYNC_CONFIG,
-} from '@/lib/game-state/deterministic-sync';
-import { logger } from '@/lib/logger';
+} from "@/lib/game-state";
+import { logger } from "@/lib/logger";
 
-const syncLogger = logger.child('StateSync');
+const syncLogger = logger.child("StateSync");
 
 /**
  * Configuration for state sync
@@ -59,7 +59,7 @@ const DEFAULT_STATE_SYNC_CONFIG: StateSyncConfig = {
  */
 export interface StateSyncStatus {
   /** Connection status */
-  status?: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
+  status?: "connecting" | "connected" | "reconnecting" | "disconnected";
   /** Whether the game is in sync with all peers */
   isInSync: boolean;
   /** Current local state hash */
@@ -108,7 +108,7 @@ export interface UseStateSyncReturn {
   isResolving: boolean;
   /** Last conflict resolution result */
   lastResolution: ConflictResolution | null;
-  
+
   /** Initialize the sync engine */
   initialize: (localPeerId: PeerId) => void;
   /** Register a peer for sync tracking */
@@ -126,7 +126,10 @@ export interface UseStateSyncReturn {
   /** Send a sync message to all peers */
   sendSyncMessage: (message: GameSyncMessage) => void;
   /** Attempt to resolve a desync */
-  resolveDesync: (remoteState: GameState, remotePeerId: PeerId) => ConflictResolution | null;
+  resolveDesync: (
+    remoteState: GameState,
+    remotePeerId: PeerId,
+  ) => ConflictResolution | null;
   /** Get the deterministic engine */
   getEngine: () => DeterministicGameStateEngine | null;
   /** Reset the sync state */
@@ -136,20 +139,25 @@ export interface UseStateSyncReturn {
 /**
  * Hook for managing state synchronization in multiplayer games
  */
-export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyncReturn {
+export function useStateSync(
+  config: Partial<StateSyncConfig> = {},
+): UseStateSyncReturn {
   // Memoize config to prevent unnecessary re-renders
-  const fullConfig = useMemo(() => ({ ...DEFAULT_STATE_SYNC_CONFIG, ...config }), [config]);
-  
+  const fullConfig = useMemo(
+    () => ({ ...DEFAULT_STATE_SYNC_CONFIG, ...config }),
+    [config],
+  );
+
   // Refs for engine instances
   const engineRef = useRef<DeterministicGameStateEngine | null>(null);
   const verifierRef = useRef<StateHashVerifier | null>(null);
   const gameStateRef = useRef<GameState | null>(null);
   const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
+
   // State
   const [status, setStatus] = useState<StateSyncStatus>({
     isInSync: true,
-    localHash: '',
+    localHash: "",
     peerHashes: new Map(),
     consecutiveDesyncs: 0,
     lastSyncCheck: 0,
@@ -159,118 +167,124 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
       matchRate: 1,
     },
   });
-  
+
   const [desyncAlert, setDesyncAlert] = useState<DesyncAlert | null>(null);
   const [isResolving, setIsResolving] = useState(false);
-  const [lastResolution, setLastResolution] = useState<ConflictResolution | null>(null);
-  
+  const [lastResolution, setLastResolution] =
+    useState<ConflictResolution | null>(null);
+
   // Initialize the sync engine
-  const initialize = useCallback((localPeerId: PeerId) => {
-    engineRef.current = createDeterministicEngine(localPeerId);
-    verifierRef.current = createStateHashVerifier();
-    
-    // Set up desync handler
-    engineRef.current.setDesyncHandler((result: SyncVerificationResult) => {
-      const peerIds = Array.from(result.remoteHashes.keys());
-      const firstPeerId = peerIds[0] || null;
-      const firstPeerHash = firstPeerId ? result.remoteHashes.get(firstPeerId) || '' : '';
-      
-      setDesyncAlert({
-        hasDesync: !result.isInSync,
-        peerId: firstPeerId,
-        localHash: result.localHash,
-        remoteHash: firstPeerHash,
-        detectedAt: result.timestamp,
+  const initialize = useCallback(
+    (localPeerId: PeerId) => {
+      engineRef.current = createDeterministicEngine(localPeerId);
+      verifierRef.current = createStateHashVerifier();
+
+      // Set up desync handler
+      engineRef.current.setDesyncHandler((result: SyncVerificationResult) => {
+        const peerIds = Array.from(result.remoteHashes.keys());
+        const firstPeerId = peerIds[0] || null;
+        const firstPeerHash = firstPeerId
+          ? result.remoteHashes.get(firstPeerId) || ""
+          : "";
+
+        setDesyncAlert({
+          hasDesync: !result.isInSync,
+          peerId: firstPeerId,
+          localHash: result.localHash,
+          remoteHash: firstPeerHash,
+          detectedAt: result.timestamp,
+        });
+
+        if (fullConfig.onDesyncDetected) {
+          fullConfig.onDesyncDetected(result);
+        }
       });
-      
-      if (fullConfig.onDesyncDetected) {
-        fullConfig.onDesyncDetected(result);
-      }
-    });
-    
-    // Set up conflict handler
-    engineRef.current.setConflictHandler((resolution: ConflictResolution) => {
-      setLastResolution(resolution);
-      setIsResolving(false);
-      
-      if (fullConfig.onConflictResolved) {
-        fullConfig.onConflictResolved(resolution);
-      }
-    });
-    
-    syncLogger.debug('Initialized for peer:', localPeerId);
-  }, [fullConfig]);
-  
+
+      // Set up conflict handler
+      engineRef.current.setConflictHandler((resolution: ConflictResolution) => {
+        setLastResolution(resolution);
+        setIsResolving(false);
+
+        if (fullConfig.onConflictResolved) {
+          fullConfig.onConflictResolved(resolution);
+        }
+      });
+
+      syncLogger.debug("Initialized for peer:", localPeerId);
+    },
+    [fullConfig],
+  );
+
   // Register a peer
   const registerPeer = useCallback((peerId: PeerId) => {
     if (!engineRef.current) {
-      syncLogger.warn('Engine not initialized');
+      syncLogger.warn("Engine not initialized");
       return;
     }
-    
+
     engineRef.current.registerPeer(peerId);
-    syncLogger.debug('Registered peer:', peerId);
+    syncLogger.debug("Registered peer:", peerId);
 
     // If we have game state, we could initiate handshake here
     if (gameStateRef.current) {
-      syncLogger.debug('Initiating handshake with peer:', peerId);
+      syncLogger.debug("Initiating handshake with peer:", peerId);
       // In a real P2P scenario, we would send a handshake-init message
     }
   }, []);
-  
+
   // Unregister a peer
   const unregisterPeer = useCallback((peerId: PeerId) => {
     if (!engineRef.current) return;
-    
+
     engineRef.current.unregisterPeer(peerId);
-    
-    setStatus(prev => {
+
+    setStatus((prev) => {
       const newPeerHashes = new Map(prev.peerHashes);
       newPeerHashes.delete(peerId);
       return { ...prev, peerHashes: newPeerHashes };
     });
-    
-    syncLogger.debug('Unregistered peer:', peerId);
+
+    syncLogger.debug("Unregistered peer:", peerId);
   }, []);
-  
+
   // Update local game state
   const updateGameState = useCallback((state: GameState) => {
     gameStateRef.current = state;
-    
+
     const localHash = computeStateHash(state);
-    
-    setStatus(prev => ({
+
+    setStatus((prev) => ({
       ...prev,
       localHash,
     }));
   }, []);
-  
+
   // Record an action
   const recordAction = useCallback((action: DeterministicAction) => {
     if (!engineRef.current || !gameStateRef.current) return;
-    
+
     // The action should already have been created with createAction
     // This is for tracking purposes
-    syncLogger.debug('Recorded action:', action.sequenceNumber);
+    syncLogger.debug("Recorded action:", action.sequenceNumber);
   }, []);
-  
+
   // Handle incoming sync message
   const handleSyncMessage = useCallback((message: GameSyncMessage) => {
     if (!engineRef.current || !gameStateRef.current) return;
-    
+
     switch (message.type) {
-      case 'state-hash': {
+      case "state-hash": {
         // Update peer's known hash
         const peerId = message.senderId;
         const stateHash = message.stateHash;
-        
-        setStatus(prev => {
+
+        setStatus((prev) => {
           const newPeerHashes = new Map(prev.peerHashes);
           newPeerHashes.set(peerId, stateHash);
-          
+
           // Check if this matches our local hash
           const isInSync = stateHash === prev.localHash;
-          
+
           return {
             ...prev,
             peerHashes: newPeerHashes,
@@ -278,41 +292,44 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
             consecutiveDesyncs: isInSync ? 0 : prev.consecutiveDesyncs + 1,
           };
         });
-        
+
         // Update engine's peer state
         engineRef.current.updatePeerState(
           message.senderId,
           message.sequenceNumber,
-          message.stateHash
+          message.stateHash,
         );
         break;
       }
-      
-      case 'action': {
+
+      case "action": {
         // Handle incoming action
         const action = message.action;
-        const validation = engineRef.current.validateAction(action, gameStateRef.current);
-        
+        const validation = engineRef.current.validateAction(
+          action,
+          gameStateRef.current,
+        );
+
         if (!validation.valid) {
-          console.error('[StateSync] Invalid action:', validation.error);
+          console.error("[StateSync] Invalid action:", validation.error);
           return;
         }
-        
+
         engineRef.current.applyRemoteAction(action, gameStateRef.current);
         break;
       }
-      
-      case 'ack': {
+
+      case "ack": {
         // Handle acknowledgment
         engineRef.current.updatePeerState(
           message.senderId,
           message.acknowledgedSeq,
-          message.stateHash
+          message.stateHash,
         );
         break;
       }
-      
-      case 'desync-alert': {
+
+      case "desync-alert": {
         // Handle desync alert from peer
         setDesyncAlert({
           hasDesync: true,
@@ -324,18 +341,22 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
         });
         break;
       }
-      
-      case 'conflict-resolution': {
+
+      case "conflict-resolution": {
         // Handle conflict resolution from peer
         setLastResolution(message.resolution);
         setIsResolving(false);
         break;
       }
-      
-      case 'handshake-init': {
+
+      case "handshake-init": {
         // Handle incoming handshake request
         if (gameStateRef.current && engineRef.current) {
-          const payload = message.payload as { peerId: string; initialSequence: number; stateHash: string };
+          const payload = message.payload as {
+            peerId: string;
+            initialSequence: number;
+            stateHash: string;
+          };
           const handshakePayload: HandshakePayload = {
             peerId: payload.peerId,
             sequenceNumber: payload.initialSequence,
@@ -345,17 +366,26 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
           const success = engineRef.current.handleHandshakeResponse(
             message.senderId,
             handshakePayload,
-            gameStateRef.current
+            gameStateRef.current,
           );
-          syncLogger.debug('Handshake init from', message.senderId, success ? 'Success' : 'Failed');
+          syncLogger.debug(
+            "Handshake init from",
+            message.senderId,
+            success ? "Success" : "Failed",
+          );
         }
         break;
       }
 
-      case 'handshake-response': {
+      case "handshake-response": {
         // Handle incoming handshake response
         if (gameStateRef.current && engineRef.current) {
-          const payload = message.payload as { peerId: string; acknowledgedSequence: number; stateHash: string; status: string };
+          const payload = message.payload as {
+            peerId: string;
+            acknowledgedSequence: number;
+            stateHash: string;
+            status: string;
+          };
           const handshakePayload: HandshakePayload = {
             peerId: payload.peerId,
             sequenceNumber: payload.acknowledgedSequence,
@@ -365,47 +395,55 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
           const success = engineRef.current.handleHandshakeResponse(
             message.senderId,
             handshakePayload,
-            gameStateRef.current
+            gameStateRef.current,
           );
-          syncLogger.debug('Handshake response from', message.senderId, success ? 'Success' : 'Failed');
+          syncLogger.debug(
+            "Handshake response from",
+            message.senderId,
+            success ? "Success" : "Failed",
+          );
         }
         break;
       }
-      
-      case 'sync-request': {
+
+      case "sync-request": {
         // Peer is requesting sync - would send back action history
-        syncLogger.debug('Sync request from:', message.senderId);
+        syncLogger.debug("Sync request from:", message.senderId);
         break;
       }
-      
-      case 'sync-response': {
+
+      case "sync-response": {
         // Handle sync response with actions
         if (message.actions && message.actions.length > 0) {
-          syncLogger.debug('Received sync response with', message.actions.length, 'actions');
+          syncLogger.debug(
+            "Received sync response with",
+            message.actions.length,
+            "actions",
+          );
         }
         break;
       }
     }
   }, []);
-  
+
   // Check sync manually
   const checkSync = useCallback((): SyncVerificationResult | null => {
     if (!engineRef.current || !gameStateRef.current) return null;
-    
+
     const result = engineRef.current.verifySync(gameStateRef.current);
-    
+
     // Update statistics
     if (verifierRef.current) {
       verifierRef.current.recordComparison({
         isMatch: result.isInSync,
         localHash: result.localHash,
-        remoteHash: result.remoteHashes.values().next().value || '',
+        remoteHash: result.remoteHashes.values().next().value || "",
         timestamp: result.timestamp,
       });
-      
+
       const stats = verifierRef.current.getStatistics();
-      
-      setStatus(prev => ({
+
+      setStatus((prev) => ({
         ...prev,
         isInSync: result.isInSync,
         lastSyncCheck: result.timestamp,
@@ -413,41 +451,48 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
         consecutiveDesyncs: result.isInSync ? 0 : prev.consecutiveDesyncs + 1,
       }));
     }
-    
+
     return result;
   }, []);
-  
+
   // Resolve desync
-  const resolveDesync = useCallback((remoteState: GameState, remotePeerId: PeerId): ConflictResolution | null => {
-    if (!engineRef.current || !gameStateRef.current) return null;
-    
-    setIsResolving(true);
-    
-    // Find the conflict sequence number
-    const history = engineRef.current.getActionHistory();
-    const conflictSeq = history.length > 0 ? history[history.length - 1].sequenceNumber : 0;
-    
-    const resolution = engineRef.current.resolveConflict(
-      gameStateRef.current,
-      remoteState,
-      remotePeerId,
-      conflictSeq
-    );
-    
-    setLastResolution(resolution);
-    setIsResolving(false);
-    
-    // Clear desync alert if resolved
-    if (resolution.resolved) {
-      setDesyncAlert(null);
-    }
-    
-    return resolution;
-  }, []);
-  
+  const resolveDesync = useCallback(
+    (
+      remoteState: GameState,
+      remotePeerId: PeerId,
+    ): ConflictResolution | null => {
+      if (!engineRef.current || !gameStateRef.current) return null;
+
+      setIsResolving(true);
+
+      // Find the conflict sequence number
+      const history = engineRef.current.getActionHistory();
+      const conflictSeq =
+        history.length > 0 ? history[history.length - 1].sequenceNumber : 0;
+
+      const resolution = engineRef.current.resolveConflict(
+        gameStateRef.current,
+        remoteState,
+        remotePeerId,
+        conflictSeq,
+      );
+
+      setLastResolution(resolution);
+      setIsResolving(false);
+
+      // Clear desync alert if resolved
+      if (resolution.resolved) {
+        setDesyncAlert(null);
+      }
+
+      return resolution;
+    },
+    [],
+  );
+
   // Get the engine
   const getEngine = useCallback(() => engineRef.current, []);
-  
+
   // Reset
   const reset = useCallback(() => {
     if (engineRef.current) {
@@ -457,10 +502,10 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
       verifierRef.current.clearHistory();
     }
     gameStateRef.current = null;
-    
+
     setStatus({
       isInSync: true,
-      localHash: '',
+      localHash: "",
       peerHashes: new Map(),
       consecutiveDesyncs: 0,
       lastSyncCheck: 0,
@@ -470,12 +515,12 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
         matchRate: 1,
       },
     });
-    
+
     setDesyncAlert(null);
     setLastResolution(null);
     setIsResolving(false);
   }, []);
-  
+
   // Set up periodic sync check
   useEffect(() => {
     if (fullConfig.syncCheckInterval > 0) {
@@ -485,33 +530,41 @@ export function useStateSync(config: Partial<StateSyncConfig> = {}): UseStateSyn
         }
       }, fullConfig.syncCheckInterval);
     }
-    
+
     return () => {
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
       }
     };
   }, [fullConfig.syncCheckInterval, checkSync]);
-  
+
   // Check for desync threshold
   useEffect(() => {
-    if (status.consecutiveDesyncs >= fullConfig.desyncThreshold && desyncAlert) {
-      syncLogger.warn('Desync threshold reached:', status.consecutiveDesyncs);
-      
+    if (
+      status.consecutiveDesyncs >= fullConfig.desyncThreshold &&
+      desyncAlert
+    ) {
+      syncLogger.warn("Desync threshold reached:", status.consecutiveDesyncs);
+
       // Auto-resolve if configured
       if (fullConfig.autoResolveConflicts && gameStateRef.current) {
         // Would need remote state to resolve - this is a placeholder
-        syncLogger.debug('Auto-resolve enabled but remote state not available');
+        syncLogger.debug("Auto-resolve enabled but remote state not available");
       }
     }
-  }, [status.consecutiveDesyncs, fullConfig.desyncThreshold, fullConfig.autoResolveConflicts, desyncAlert]);
-  
+  }, [
+    status.consecutiveDesyncs,
+    fullConfig.desyncThreshold,
+    fullConfig.autoResolveConflicts,
+    desyncAlert,
+  ]);
+
   // Send sync message
   const sendSyncMessage = useCallback((message: GameSyncMessage) => {
     if (!engineRef.current) return;
-    
+
     // In a real P2P scenario, this would broadcast the message via WebRTC
-    syncLogger.debug('Sending message:', message.type);
+    syncLogger.debug("Sending message:", message.type);
   }, []);
 
   return {

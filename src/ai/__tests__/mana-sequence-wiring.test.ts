@@ -19,7 +19,7 @@ import {
   type CreatureCastEntry,
   type CreatureOrderInputs,
 } from "../cast-sequencing";
-import type { AIHandCard } from "@/lib/game-state/types";
+import type { AIHandCard } from "@/lib/game-state";
 import type { DifficultyLevel, DifficultyFormat } from "../ai-difficulty";
 
 // Mock the recommendation so tests can assert on call counts and inject

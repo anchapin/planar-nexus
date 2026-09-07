@@ -28,7 +28,7 @@ import type {
   CardInstanceId,
   PlayerId,
   Turn,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import type { DifficultyLevel } from "../ai-difficulty";
 import type { ManaColor } from "../opening-turn-plan";
 

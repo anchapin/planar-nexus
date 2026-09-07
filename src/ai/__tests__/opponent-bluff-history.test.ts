@@ -11,7 +11,7 @@
  */
 
 import { describe, test, expect } from "@jest/globals";
-import type { AIGameState, AIPlayerState } from "@/lib/game-state/types";
+import type { AIGameState, AIPlayerState } from "@/lib/game-state";
 import {
   createOpponentBluffHistory,
   observeOpponentTurn,

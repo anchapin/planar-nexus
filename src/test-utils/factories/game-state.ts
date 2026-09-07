@@ -10,8 +10,8 @@ import type {
   Zone,
   Counter,
   ScryfallCard,
-} from "@/lib/game-state/types";
-import { ZoneType, getZoneKey } from "@/lib/game-state/types";
+} from "@/lib/game-state";
+import { ZoneType, getZoneKey } from "@/lib/game-state";
 import { createCard } from "./card";
 
 /**

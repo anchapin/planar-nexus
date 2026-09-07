@@ -5,8 +5,8 @@
  * between peers during connection establishment and game state synchronization.
  */
 
-import type { GameState } from "@/lib/game-state/types";
-import { serializeGameState } from "@/lib/game-state/serialization";
+import type { GameState } from "@/lib/game-state";
+import { serializeGameState } from "@/lib/game-state";
 import { TIMEOUTS } from "./config/timeouts";
 import type { PeerRole } from "./peer-role";
 
@@ -723,8 +723,7 @@ function utf8ToBytes(text: string): Uint8Array {
     if (codePoint >= 0xd800 && codePoint <= 0xdbff && i + 1 < text.length) {
       const next = text.charCodeAt(i + 1);
       if (next >= 0xdc00 && next <= 0xdfff) {
-        codePoint =
-          0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
+        codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
         i += 1;
       }
     }
@@ -783,7 +782,7 @@ function sha256Bytes(input: Uint8Array): Uint8Array {
   const len = input.length;
   const bitLen = len * 8;
   // Padding: append 0x80, then zeros, then 8-byte big-endian length.
-  const padLen = (((len + 9) + 63) & ~63) - len;
+  const padLen = ((len + 9 + 63) & ~63) - len;
   const padded = new Uint8Array(len + padLen);
   padded.set(input, 0);
   padded[len] = 0x80;
@@ -955,8 +954,7 @@ export function verifySpectatorCapabilityToken(
  * produce a typed `spectator-handshake-failed` reason.
  */
 export type SpectatorTokenValidationResult =
-  | { accepted: true; spectatorId: string }
-  | { accepted: false; reason: string };
+  { accepted: true; spectatorId: string } | { accepted: false; reason: string };
 
 /**
  * Convenience: combine {@link verifySpectatorCapabilityToken} with a

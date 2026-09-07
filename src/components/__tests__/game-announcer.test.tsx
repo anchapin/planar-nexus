@@ -10,10 +10,10 @@
 import React from "react";
 import { act, render, screen } from "@testing-library/react";
 import { GameAnnouncer, useGameAnnouncer, __testing } from "../game-announcer";
-import { Phase } from "@/lib/game-state/types";
-import type { GameState, PlayerId } from "@/lib/game-state/types";
-import { createInitialGameState } from "@/lib/game-state/game-state";
-import { advancePhase, startNextTurn } from "@/lib/game-state/turn-phases";
+import { Phase } from "@/lib/game-state";
+import type { GameState, PlayerId } from "@/lib/game-state";
+import { createInitialGameState } from "@/lib/game-state";
+import { advancePhase, startNextTurn } from "@/lib/game-state";
 
 const { THROTTLE_MS } = __testing;
 

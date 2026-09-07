@@ -39,9 +39,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { Phase } from "@/lib/game-state/types";
-import type { GameState, Player, PlayerId, Turn } from "@/lib/game-state/types";
-import { getPhaseName } from "@/lib/game-state/turn-phases";
+import { Phase } from "@/lib/game-state";
+import type { GameState, Player, PlayerId, Turn } from "@/lib/game-state";
+import { getPhaseName } from "@/lib/game-state";
 
 // ---------------------------------------------------------------------------
 // Constants

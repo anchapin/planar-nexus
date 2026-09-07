@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from "@jest/globals";
-import type { AIPlayerState, AIPermanent } from "@/lib/game-state/types";
+import type { AIPlayerState, AIPermanent } from "@/lib/game-state";
 import {
   untappedPower,
   turnsToLethalSelf,

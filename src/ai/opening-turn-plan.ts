@@ -45,7 +45,7 @@ import type {
   GameState as EngineGameState,
   PlayerId,
   CardInstanceId,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import type { DifficultyLevel, DifficultyFormat } from "./ai-difficulty";
 
 /** MTG color codes. */

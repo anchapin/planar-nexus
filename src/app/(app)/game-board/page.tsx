@@ -52,11 +52,7 @@ import {
 import { useGameEngine } from "@/hooks/use-game-engine";
 import { useAIWorker } from "@/hooks/use-ai-worker";
 import { AIThinkingIndicator } from "@/components/ai/AIThinkingIndicator";
-import type {
-  CardInstanceId,
-  GameAction,
-  ActionType,
-} from "@/lib/game-state/types";
+import type { CardInstanceId, GameAction, ActionType } from "@/lib/game-state";
 import {
   saveGameRecord,
   createGameRecord,
@@ -70,7 +66,7 @@ import {
 import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
 import { summarizeGame } from "@/lib/game-summarizer";
-import { engineToAIState } from "@/lib/game-state/serialization";
+import { engineToAIState } from "@/lib/game-state";
 
 // Type definitions for AI analysis results
 interface SuggestedPlay {

@@ -13,28 +13,21 @@ import type {
   PlayerId,
   CardInstanceId,
   AIGameState,
-} from "@/lib/game-state/types";
-import { engineToAIState } from "@/lib/game-state/serialization";
+} from "@/lib/game-state";
+import { engineToAIState } from "@/lib/game-state";
 import type { AvailableResponse } from "@/ai/stack-interaction-ai";
 import {
   playLand as enginePlayLand,
   canPlayLand as engineCanPlayLand,
-} from "@/lib/game-state/mana";
+} from "@/lib/game-state";
 import {
   castSpell as engineCastSpell,
   canCastSpell as engineCanCastSpell,
-} from "@/lib/game-state/spell-casting";
-import { declareAttackers as engineDeclareAttackers } from "@/lib/game-state/combat";
-import {
-  tapCardAction,
-  untapCardAction,
-} from "@/lib/game-state/keyword-actions";
-import { passPriority } from "@/lib/game-state/game-state";
-import {
-  moveCardBetweenZones,
-  shuffleZone,
-  drawCards,
-} from "@/lib/game-state/zones";
+} from "@/lib/game-state";
+import { declareAttackers as engineDeclareAttackers } from "@/lib/game-state";
+import { tapCardAction, untapCardAction } from "@/lib/game-state";
+import { passPriority } from "@/lib/game-state";
+import { moveCardBetweenZones, shuffleZone, drawCards } from "@/lib/game-state";
 import { quickScore } from "./game-state-evaluator";
 import type { GameState } from "./game-state-evaluator";
 
@@ -518,8 +511,7 @@ function executeActivateAbility(
       ...action,
       type: "activate_ability",
       reasoning:
-        action.reasoning ??
-        `Activated ability on ${card.cardData.name}`,
+        action.reasoning ?? `Activated ability on ${card.cardData.name}`,
     },
   };
 }

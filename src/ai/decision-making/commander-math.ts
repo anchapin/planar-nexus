@@ -30,7 +30,7 @@
  */
 
 import type { DifficultyTier } from "../game-state-evaluator";
-import type { AIPermanent } from "@/lib/game-state/types";
+import type { AIPermanent } from "@/lib/game-state";
 
 /**
  * The AI's view of its own commander. The game-rules engine already tracks
@@ -236,8 +236,7 @@ export interface OpposingCommanderThreatInput {
  */
 export function opposingCommanderThreat(
   opponentCommander:
-    | Pick<AIPermanent, "name" | "id" | "power" | "toughness">
-    | undefined,
+    Pick<AIPermanent, "name" | "id" | "power" | "toughness"> | undefined,
   difficulty: DifficultyTier,
   input: OpposingCommanderThreatInput = {},
 ): number {

@@ -34,7 +34,7 @@
  * latter.
  */
 
-import type { AIGameState, AIHandCard, AIPermanent } from "@/lib/game-state/types";
+import type { AIGameState, AIHandCard, AIPermanent } from "@/lib/game-state";
 import { DIFFICULTY_LEVELS, type DifficultyLevel } from "@/ai/ai-difficulty";
 import type { DeckArchetype } from "@/ai/game-state-evaluator";
 
@@ -63,9 +63,7 @@ import type { DeckArchetype } from "@/ai/game-state-evaluator";
  * opponent a turn early), so we over-include borderline names and let
  * the tier-thresholds gate the resulting threat level.
  */
-export const COMBO_PATTERNS: Readonly<
-  Record<string, ReadonlyArray<string>>
-> = {
+export const COMBO_PATTERNS: Readonly<Record<string, ReadonlyArray<string>>> = {
   storm: [
     "storm",
     "tendrils",
@@ -443,11 +441,7 @@ export function detectComboFromNames(
 
   for (const family of Object.keys(COMBO_PATTERNS)) {
     const patterns = COMBO_PATTERNS[family] ?? [];
-    const { score, matched } = scoreComboFamily(
-      family,
-      patterns,
-      normalised,
-    );
+    const { score, matched } = scoreComboFamily(family, patterns, normalised);
     if (score > bestScore) {
       bestScore = score;
       bestFamily = family;
@@ -491,7 +485,7 @@ export function detectComboFromNames(
       ? // When imminent we claim no critical piece is missing — the
         // opponent can finish.
         []
-      : FAMILY_MISSING[bestFamily] ?? ["combo payoff"];
+      : (FAMILY_MISSING[bestFamily] ?? ["combo payoff"]);
 
   // Stabilise the matched list: trim + cap so the replay event stays
   // scannable. The report uses the all-families union so callers can
@@ -515,7 +509,9 @@ export function detectComboFromNames(
  * shift into the per-tier combat plan without coupling the tree to the
  * detector's full report.
  */
-export function isImminentComboThreat(assessment: ComboThreatAssessment): boolean {
+export function isImminentComboThreat(
+  assessment: ComboThreatAssessment,
+): boolean {
   return assessment.threat === "imminent";
 }
 
@@ -532,9 +528,7 @@ export function isImminentComboThreat(assessment: ComboThreatAssessment): boolea
  *
  * Hard-clamped so a future bug cannot blow the modifier past [-1, 1].
  */
-export function comboThreatUrgency(
-  assessment: ComboThreatAssessment,
-): number {
+export function comboThreatUrgency(assessment: ComboThreatAssessment): number {
   switch (assessment.threat) {
     case "imminent":
       return 0.4;

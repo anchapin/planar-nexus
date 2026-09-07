@@ -66,7 +66,7 @@ import {
   exportReplayToFile,
   canShareViaURL,
 } from "@/lib/replay-sharing";
-import { decompressReplayJson } from "@/lib/game-state/replay-compression";
+import { decompressReplayJson } from "@/lib/game-state";
 import { useToast } from "@/hooks/use-toast";
 
 const formatDisplayNames: Record<string, string> = {

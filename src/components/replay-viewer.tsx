@@ -10,8 +10,8 @@ import {
   importReplayFromFile,
   getEstimatedURLLength,
 } from "@/lib/replay-sharing";
-import type { Replay } from "@/lib/game-state/replay";
-import { getStateAtPosition } from "@/lib/game-state/replay";
+import type { Replay } from "@/lib/game-state";
+import { getStateAtPosition } from "@/lib/game-state";
 import { sanitizeCardText } from "@/lib/security/sanitize-text";
 import { safeParseJson, ReplayArraySchema } from "@/lib/storage-schemas";
 
@@ -31,7 +31,7 @@ import { safeParseJson, ReplayArraySchema } from "@/lib/storage-schemas";
 const PLAYBACK_SPEEDS = [0.5, 1, 1.5, 2, 4] as const;
 
 // Game state type for replay viewer - use the actual GameState type
-import type { GameState as ReplayGameState } from "@/lib/game-state/types";
+import type { GameState as ReplayGameState } from "@/lib/game-state";
 
 // Replay viewer props
 export interface ReplayViewerProps {
@@ -145,7 +145,7 @@ export function ReplayViewer({
     const action = replay.actions[newPosition];
     if (action) {
       const resolvedState = getStateAtPosition(replay, newPosition);
-            if (resolvedState) onStateChange?.(resolvedState);
+      if (resolvedState) onStateChange?.(resolvedState);
     }
   }, [
     replay,
@@ -169,7 +169,7 @@ export function ReplayViewer({
     const action = replay.actions[newPosition];
     if (action) {
       const resolvedState = getStateAtPosition(replay, newPosition);
-            if (resolvedState) onStateChange?.(resolvedState);
+      if (resolvedState) onStateChange?.(resolvedState);
     }
   }, [replay, playerState.position, onPositionChange, onStateChange]);
 

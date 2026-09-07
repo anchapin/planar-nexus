@@ -32,7 +32,7 @@
  * into the block decision.
  */
 
-import type { AIPlayerState } from "@/lib/game-state/types";
+import type { AIPlayerState } from "@/lib/game-state";
 
 /**
  * Sum the power of one player's untapped, non-sickened creatures.

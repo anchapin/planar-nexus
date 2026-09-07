@@ -5,11 +5,11 @@ import {
   Phase,
   ZoneType,
   type LinkedEffectRegistry,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import { ValidationService } from "@/lib/validation-service";
 import { ScryfallCard } from "@/lib/card-database";
-import { ReplacementEffectManager } from "@/lib/game-state/replacement-effects";
-import { LayerSystem } from "@/lib/game-state/layer-system";
+import { ReplacementEffectManager } from "@/lib/game-state";
+import { LayerSystem } from "@/lib/game-state";
 
 describe("ValidationService", () => {
   let gameState: GameState;

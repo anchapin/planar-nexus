@@ -19,11 +19,7 @@ import {
   type DifficultyLevel,
   type DifficultyFormat,
 } from "../ai-difficulty";
-import type {
-  AIGameState,
-  AIPlayerState,
-  AIPermanent,
-} from "@/lib/game-state/types";
+import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
 
 /**
  * Create a mock AI player state for testing
@@ -1603,7 +1599,11 @@ describe("CombatDecisionTree", () => {
 
     it("AC2: easy's blunderChance gate inverts the multi-block when the roll fires", () => {
       // Sanity: with a quiet RNG the easy tier still makes the optimal gang.
-      const optimal = new CombatDecisionTree(makeGangBoard(), "player1", "easy");
+      const optimal = new CombatDecisionTree(
+        makeGangBoard(),
+        "player1",
+        "easy",
+      );
       optimal.setCombatRng(() => 1);
       expect(
         optimal.generateBlockingPlan([vanillaSixBySix()]).blocks,
@@ -1702,9 +1702,9 @@ describe("CombatDecisionTree", () => {
         createMockPermanent("a1", "Big Beast", "creature", 5, 5),
       ]);
 
-      expect(plan.blocks.every((b) => !b.reasoning.includes("gang-block"))).toBe(
-        true,
-      );
+      expect(
+        plan.blocks.every((b) => !b.reasoning.includes("gang-block")),
+      ).toBe(true);
     });
 
     it("AC4: shouldMultiBlock still refuses deathtouch attackers", () => {
@@ -1768,9 +1768,9 @@ describe("CombatDecisionTree", () => {
 
       const ids = plan.blocks.map((b) => b.blockerId);
       expect(new Set(ids).size).toBe(ids.length);
-      expect(plan.blocks.every((b) => !b.reasoning.includes("gang-block"))).toBe(
-        true,
-      );
+      expect(
+        plan.blocks.every((b) => !b.reasoning.includes("gang-block")),
+      ).toBe(true);
     });
   });
 });

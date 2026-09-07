@@ -81,6 +81,29 @@ const eslintConfig = [
       "react/no-danger": "off",
     },
   },
+  // Issue #1710: the game-state barrel (src/lib/game-state/index.ts) is the
+  // engine's sole public API. Deep imports (`@/lib/game-state/<module>`)
+  // bypass the curated surface and fan internal churn out to consumers —
+  // error on them everywhere OUTSIDE the engine directory (relative
+  // intra-engine imports are exempt via the ignores pattern).
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/lib/game-state/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@/lib/game-state/*"],
+              message:
+                'Import from "@/lib/game-state" (the barrel), not from individual engine modules — the barrel is the engine\'s only public API (issue #1710).',
+            },
+          ],
+        },
+      ],
+    },
+  },
   {
     ignores: [
       "next-env.d.ts",

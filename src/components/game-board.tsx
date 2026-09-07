@@ -34,10 +34,7 @@ import {
   DamageEvent,
 } from "@/components/damage-indicator";
 import { GameAnnouncer } from "@/components/game-announcer";
-import type {
-  GameState as EngineGameState,
-  PlayerId,
-} from "@/lib/game-state/types";
+import type { GameState as EngineGameState, PlayerId } from "@/lib/game-state";
 import {
   Skull,
   Ban,

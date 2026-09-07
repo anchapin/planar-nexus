@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Droplet, BookOpen, Grid3X3, Hand } from "lucide-react";
-import type { Player, GameState, PlayerId } from "@/lib/game-state/types";
+import type { Player, GameState, PlayerId } from "@/lib/game-state";
 
 interface AIPlayerViewProps {
   player: Player | null | undefined;

@@ -101,7 +101,7 @@ import {
   parseXCost,
   parseKicker,
   parseAttraction,
-} from "@/lib/game-state/oracle-text-parser";
+} from "@/lib/game-state";
 // DEV/TEST ONLY — free-cast hook (issue #1431). The factory call below is
 // guarded by a NODE_ENV compile-time check and a runtime opt-in flag, so this
 // import is never reachable from a production build.

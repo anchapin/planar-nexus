@@ -46,17 +46,13 @@ jest.mock("../decision-making/combat-decision-tree", () => ({
   deckArchetypeToOpponentArchetype: jest.fn(() => "midrange"),
 }));
 
-import { canPlayLand, playLand } from "@/lib/game-state/mana";
-import { canCastSpell, castSpell } from "@/lib/game-state/spell-casting";
-import { declareAttackers } from "@/lib/game-state/combat";
-import {
-  tapCardAction,
-  untapCardAction,
-  discardCards,
-} from "@/lib/game-state/keyword-actions";
-import { passPriority, drawCard } from "@/lib/game-state/game-state";
-import { advancePhase } from "@/lib/game-state/turn-phases";
-import { engineToAIState } from "@/lib/game-state/serialization";
+import { canPlayLand, playLand } from "@/lib/game-state";
+import { canCastSpell, castSpell } from "@/lib/game-state";
+import { declareAttackers } from "@/lib/game-state";
+import { tapCardAction, untapCardAction, discardCards } from "@/lib/game-state";
+import { passPriority, drawCard } from "@/lib/game-state";
+import { advancePhase } from "@/lib/game-state";
+import { engineToAIState } from "@/lib/game-state";
 import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
 import * as gameStateEvaluator from "../game-state-evaluator";
 import {
@@ -76,7 +72,7 @@ import type {
   CardInstanceId,
   PlayerId,
   Turn,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 
 const canPlayLandMock = canPlayLand as unknown as jest.Mock;
 const playLandMock = playLand as unknown as jest.Mock;

@@ -1,4 +1,4 @@
-import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state/types";
+import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
 
 export function createMockPlayerState(
   id: string,
@@ -25,7 +25,12 @@ export function createMockPlayerState(
 export function createMockPermanent(
   id: string,
   name: string,
-  type: "creature" | "land" | "artifact" | "enchantment" | "planeswalker" = "creature",
+  type:
+    | "creature"
+    | "land"
+    | "artifact"
+    | "enchantment"
+    | "planeswalker" = "creature",
   power?: number,
   toughness?: number,
   tapped: boolean = false,
@@ -52,12 +57,25 @@ export function createTestGameState(
   player1Battlefield: AIPermanent[] = [],
   player2Battlefield: AIPermanent[] = [],
   currentPlayer: string = "player1",
-  phase: "beginning" | "precombat_main" | "combat" | "postcombat_main" | "end" = "precombat_main",
+  phase:
+    | "beginning"
+    | "precombat_main"
+    | "combat"
+    | "postcombat_main"
+    | "end" = "precombat_main",
 ): AIGameState {
   return {
     players: {
-      player1: createMockPlayerState("player1", player1Life, player1Battlefield),
-      player2: createMockPlayerState("player2", player2Life, player2Battlefield),
+      player1: createMockPlayerState(
+        "player1",
+        player1Life,
+        player1Battlefield,
+      ),
+      player2: createMockPlayerState(
+        "player2",
+        player2Life,
+        player2Battlefield,
+      ),
     },
     turnInfo: {
       currentTurn: 1,

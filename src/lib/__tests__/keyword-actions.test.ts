@@ -31,7 +31,7 @@ import type {
   CardInstanceId,
   PlayerId,
   ScryfallCard,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import { createToken } from "../game-state/card-instance";
 import {
   getHandFilterForCard,

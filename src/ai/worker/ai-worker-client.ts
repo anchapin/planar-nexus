@@ -15,7 +15,7 @@ import type {
 } from "../trigger-chain-evaluator";
 import type { SynergyResult } from "../synergy-detector";
 import type { DeckCard } from "@/lib/card-database";
-import type { AIGameState as GameState } from "@/lib/game-state/types";
+import type { AIGameState as GameState } from "@/lib/game-state";
 import type { DeckArchetype } from "../game-state-evaluator";
 import type { DeckReviewOutput } from "@/lib/heuristic-deck-coach";
 

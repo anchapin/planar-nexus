@@ -25,7 +25,7 @@ import type {
   AIPlayerState as PlayerState,
   AIPermanent as Permanent,
   AIHandCard as HandCard,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import { callAIProxy } from "@/lib/ai-proxy-client";
 import { AIProvider } from "@/ai/providers/types";
 import {

@@ -27,7 +27,7 @@ import type {
   AIHandCard,
   AIPlayerState,
   AIPermanent,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import {
   detectComboAssembly,
   detectComboFromNames,
@@ -329,15 +329,15 @@ describe("detectionDepthForTier — scales by difficulty", () => {
   });
 
   it("widens depth by 2 for combo-deck AIs (mirror paranoia)", () => {
-    expect(
-      comboDetectionDepthForArchetype("easy", "combo"),
-    ).toBeGreaterThan(detectionDepthForTier("easy"));
+    expect(comboDetectionDepthForArchetype("easy", "combo")).toBeGreaterThan(
+      detectionDepthForTier("easy"),
+    );
   });
 
   it("leaves non-combo archetypes at the tier base depth", () => {
-    expect(
-      comboDetectionDepthForArchetype("hard", "midrange"),
-    ).toBe(detectionDepthForTier("hard"));
+    expect(comboDetectionDepthForArchetype("hard", "midrange")).toBe(
+      detectionDepthForTier("hard"),
+    );
   });
 });
 
@@ -347,10 +347,9 @@ describe("detectionDepthForTier — scales by difficulty", () => {
 
 describe("detectComboAssembly — live AIGameState path", () => {
   it("declares imminent when opponent has 2/3 known pieces + mana", () => {
-    const state = makeState(
-      ["Past in Flames", "Tendrils of Agony"],
-      { mana: 6 },
-    );
+    const state = makeState(["Past in Flames", "Tendrils of Agony"], {
+      mana: 6,
+    });
     const r = detectComboAssembly(state, "ai", { difficulty: "expert" });
     expect(r.threat).toBe("imminent");
     expect(r.archetype).toBe("storm");
@@ -430,10 +429,9 @@ describe("detectComboAssembly — live AIGameState path", () => {
   });
 
   it("accepts an explicit `detectionDepth` override (useful in tests)", () => {
-    const state = makeState(
-      ["Past in Flames", "Tendrils of Agony"],
-      { mana: 7 },
-    );
+    const state = makeState(["Past in Flames", "Tendrils of Agony"], {
+      mana: 7,
+    });
     const r = detectComboAssembly(state, "ai", {
       difficulty: "easy",
       detectionDepth: 99,
@@ -524,8 +522,9 @@ describe("public combo tables", () => {
 
 describe("contract examples", () => {
   it("Past in Flames is recognised as a Storm enabler", () => {
-    expect(COMBO_PATTERNS.storm.some((p) => p.includes("past in flames")))
-      .toBe(true);
+    expect(COMBO_PATTERNS.storm.some((p) => p.includes("past in flames"))).toBe(
+      true,
+    );
   });
 
   it("Thassa's Oracle is recognised as an infinite / consultation piece", () => {
@@ -541,9 +540,9 @@ describe("contract examples", () => {
   });
 
   it("Reanimate is recognised as a Reanimator piece", () => {
-    expect(
-      COMBO_PATTERNS.reanimator.some((p) => p.includes("reanimate")),
-    ).toBe(true);
+    expect(COMBO_PATTERNS.reanimator.some((p) => p.includes("reanimate"))).toBe(
+      true,
+    );
   });
 });
 
