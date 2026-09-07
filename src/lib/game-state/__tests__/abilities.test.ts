@@ -370,6 +370,42 @@ describe("Abilities System - getLoyaltyAbilities", () => {
     expect(abilities[1].effect).toBe("Destroy target creature.");
   });
 
+  it("should parse zero-cost loyalty ability (CR 606.4, issue #1582)", () => {
+    const card = createMockCard({
+      oracle_text: "0: Create a 1/1 red Elemental creature token.",
+    });
+    const abilities = getLoyaltyAbilities(card);
+
+    expect(abilities.length).toBe(1);
+    expect(abilities[0].cost).toBe(0);
+    expect(abilities[0].effect).toBe(
+      "Create a 1/1 red Elemental creature token.",
+    );
+  });
+
+  it("should parse mixed loyalty costs in source order (CR 606.4)", () => {
+    const card = createMockCard({
+      oracle_text:
+        "+1: Draw a card.\n0: Create a token.\n-3: Destroy target creature.",
+    });
+    const abilities = getLoyaltyAbilities(card);
+
+    expect(abilities.length).toBe(3);
+    expect(abilities.map((a) => a.cost)).toEqual([1, 0, -3]);
+    expect(abilities[1].effect).toBe("Create a token.");
+  });
+
+  it("should not treat unsigned nonzero activation costs as loyalty abilities", () => {
+    const card = createMockCard({
+      oracle_text: "2: Regenerate this creature.",
+    });
+    const abilities = getLoyaltyAbilities(card);
+
+    // Generic mana activation costs ("2: ...") carry no sign, so they must
+    // not be misread as loyalty abilities; only unsigned "0:" is valid.
+    expect(abilities).toEqual([]);
+  });
+
   it("should return empty array for non-planeswalker", () => {
     const card = createMockCard({ oracle_text: "Flying." });
     expect(getLoyaltyAbilities(card)).toEqual([]);
