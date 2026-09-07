@@ -39,34 +39,30 @@ import {
   loadDeckForPlayer,
   startGame,
   drawCard,
-  checkStateBasedActions,
-} from "@/lib/game-state/game-state";
+  checkStateBasedActionsFromGameState as checkStateBasedActions,
+} from "@/lib/game-state";
 import {
   addMana,
   canAffordMana,
   emptyManaPool,
   canPlayLand,
   playLand,
-} from "@/lib/game-state/mana";
-import {
-  canCastSpell,
-  castSpell,
-  resolveTopOfStack,
-} from "@/lib/game-state/spell-casting";
+} from "@/lib/game-state";
+import { canCastSpell, castSpell, resolveTopOfStack } from "@/lib/game-state";
 import {
   declareAttackers,
   declareBlockers,
   resolveCombatDamage,
-} from "@/lib/game-state/combat";
-import { discardCards } from "@/lib/game-state/keyword-actions";
-import { startNextTurn } from "@/lib/game-state/turn-phases";
+} from "@/lib/game-state";
+import { discardCards } from "@/lib/game-state";
+import { startNextTurn } from "@/lib/game-state";
 import {
   Phase,
   type GameState,
   type PlayerId,
   type CardInstanceId,
   type CardInstance,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import {
   DIFFICULTY_CONFIGS,
   type DifficultyLevel,

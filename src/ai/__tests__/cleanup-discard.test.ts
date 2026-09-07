@@ -20,7 +20,7 @@ import type {
   CardInstanceId,
   PlayerId,
   Turn,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 
 const AI: PlayerId = "player1";
 const OPP: PlayerId = "player2";

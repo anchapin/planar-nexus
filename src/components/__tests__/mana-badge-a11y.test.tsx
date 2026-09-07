@@ -29,7 +29,7 @@ import type { CustomCardDefinition } from "@/lib/custom-card";
 import { AbilityMenu } from "../ability-menu";
 import type { CardAbility } from "@/types/card-interactions";
 import { AIPlayerView } from "@/app/(app)/spectator/_components/ai-player-view";
-import type { Player, PlayerId } from "@/lib/game-state/types";
+import type { Player, PlayerId } from "@/lib/game-state";
 
 // jsdom polyfills required by Radix primitives used by ScrollArea/Dialog.
 class RO {

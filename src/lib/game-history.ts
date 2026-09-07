@@ -1,22 +1,22 @@
 /**
  * @fileoverview Game History Tracking
- * 
+ *
  * Tracks game results for single-player sessions.
  * Stores win/loss records, game stats, and history.
  */
 
-import type { PlayerId, GameAction } from '@/lib/game-state/types';
-import { getStorage } from '@/lib/indexeddb-storage';
+import type { PlayerId, GameAction } from "@/lib/game-state";
+import { getStorage } from "@/lib/indexeddb-storage";
 
 /**
  * Game result types
  */
-export type GameResult = 'win' | 'loss' | 'draw';
+export type GameResult = "win" | "loss" | "draw";
 
 /**
  * Game mode types
  */
-export type GameMode = 'vs_ai' | 'self_play' | 'goldfish';
+export type GameMode = "vs_ai" | "self_play" | "goldfish";
 
 /**
  * Single game record
@@ -48,19 +48,19 @@ export interface PlayerStats {
   losses: number;
   draws: number;
   winRate: number;
-  
+
   // By mode
   vsAiStats: ModeStats;
   selfPlayStats: ModeStats;
-  
+
   // By difficulty (for vs_ai)
   difficultyStats: {
     [difficulty: string]: ModeStats;
   };
-  
+
   // Recent form (last 10 games)
   recentForm: GameResult[];
-  
+
   // Average stats
   avgTurnsPerGame: number;
   avgLifeAtEnd: number;
@@ -80,21 +80,21 @@ export interface ModeStats {
 /**
  * Storage key for game history
  */
-const STORAGE_KEY = 'planar-nexus-game-history';
+const STORAGE_KEY = "planar-nexus-game-history";
 
 /**
  * Get all game records (synchronous, uses localStorage)
  * For IndexedDB access, use getAllGameRecordsAsync()
  */
 export function getAllGameRecords(): GameRecord[] {
-  if (typeof window === 'undefined') return [];
-  
+  if (typeof window === "undefined") return [];
+
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
     return JSON.parse(stored) as GameRecord[];
   } catch (error) {
-    console.error('Failed to load game history:', error);
+    console.error("Failed to load game history:", error);
     return [];
   }
 }
@@ -104,25 +104,25 @@ export function getAllGameRecords(): GameRecord[] {
  * Falls back to localStorage if IndexedDB is empty
  */
 export async function getAllGameRecordsAsync(): Promise<GameRecord[]> {
-  if (typeof window === 'undefined') return [];
-  
+  if (typeof window === "undefined") return [];
+
   try {
     // Try IndexedDB first
     const storage = await getStorage();
-    const records = await storage.getAll<GameRecord>('game-history');
-    
+    const records = await storage.getAll<GameRecord>("game-history");
+
     if (records && records.length > 0) {
       // Sort by date descending (most recent first)
       return records.sort((a, b) => b.date - a.date);
     }
-    
+
     // Fall back to localStorage for backward compatibility
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
     return JSON.parse(stored) as GameRecord[];
   } catch (error) {
-    console.error('Failed to load game history from IndexedDB:', error);
-    
+    console.error("Failed to load game history from IndexedDB:", error);
+
     // Fall back to localStorage on error
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -143,23 +143,23 @@ export async function saveGameRecord(record: GameRecord): Promise<void> {
     // First save to localStorage (for backward compatibility)
     const records = getAllGameRecords();
     records.unshift(record); // Add to beginning
-    
+
     // Keep last 1000 games
     if (records.length > 1000) {
       records.splice(1000);
     }
-    
+
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    
+
     // Also save to IndexedDB
     try {
       const storage = await getStorage();
-      await storage.set('game-history', record);
+      await storage.set("game-history", record);
     } catch (idbError) {
-      console.warn('Failed to save to IndexedDB:', idbError);
+      console.warn("Failed to save to IndexedDB:", idbError);
     }
   } catch (error) {
-    console.error('Failed to save game record:', error);
+    console.error("Failed to save game record:", error);
   }
 }
 
@@ -168,7 +168,7 @@ export async function saveGameRecord(record: GameRecord): Promise<void> {
  */
 export function getPlayerStats(playerId?: PlayerId): PlayerStats {
   const records = getAllGameRecords();
-  
+
   const stats: PlayerStats = {
     totalGames: records.length,
     wins: 0,
@@ -182,56 +182,68 @@ export function getPlayerStats(playerId?: PlayerId): PlayerStats {
     avgTurnsPerGame: 0,
     avgLifeAtEnd: 0,
   };
-  
+
   let totalTurns = 0;
   let totalLife = 0;
-  
+
   for (const record of records) {
     // Overall stats
-    if (record.result === 'win') stats.wins++;
-    else if (record.result === 'loss') stats.losses++;
+    if (record.result === "win") stats.wins++;
+    else if (record.result === "loss") stats.losses++;
     else stats.draws++;
-    
+
     // Mode-specific stats
-    if (record.mode === 'vs_ai') {
+    if (record.mode === "vs_ai") {
       stats.vsAiStats.games++;
-      if (record.result === 'win') stats.vsAiStats.wins++;
-      else if (record.result === 'loss') stats.vsAiStats.losses++;
+      if (record.result === "win") stats.vsAiStats.wins++;
+      else if (record.result === "loss") stats.vsAiStats.losses++;
       else stats.vsAiStats.draws++;
-      
+
       // Difficulty stats
       if (record.difficulty) {
         if (!stats.difficultyStats[record.difficulty]) {
-          stats.difficultyStats[record.difficulty] = { games: 0, wins: 0, losses: 0, draws: 0, winRate: 0 };
+          stats.difficultyStats[record.difficulty] = {
+            games: 0,
+            wins: 0,
+            losses: 0,
+            draws: 0,
+            winRate: 0,
+          };
         }
         stats.difficultyStats[record.difficulty].games++;
-        if (record.result === 'win') stats.difficultyStats[record.difficulty].wins++;
-        else if (record.result === 'loss') stats.difficultyStats[record.difficulty].losses++;
+        if (record.result === "win")
+          stats.difficultyStats[record.difficulty].wins++;
+        else if (record.result === "loss")
+          stats.difficultyStats[record.difficulty].losses++;
         else stats.difficultyStats[record.difficulty].draws++;
       }
-    } else if (record.mode === 'self_play' || record.mode === 'goldfish') {
+    } else if (record.mode === "self_play" || record.mode === "goldfish") {
       stats.selfPlayStats.games++;
-      if (record.result === 'win') stats.selfPlayStats.wins++;
-      else if (record.result === 'loss') stats.selfPlayStats.losses++;
+      if (record.result === "win") stats.selfPlayStats.wins++;
+      else if (record.result === "loss") stats.selfPlayStats.losses++;
       else stats.selfPlayStats.draws++;
     }
-    
+
     // Averages
     totalTurns += record.turns;
     totalLife += record.playerLifeAtEnd;
   }
-  
+
   // Calculate win rates
   if (stats.totalGames > 0) {
     stats.winRate = Math.round((stats.wins / stats.totalGames) * 100);
   }
   if (stats.vsAiStats.games > 0) {
-    stats.vsAiStats.winRate = Math.round((stats.vsAiStats.wins / stats.vsAiStats.games) * 100);
+    stats.vsAiStats.winRate = Math.round(
+      (stats.vsAiStats.wins / stats.vsAiStats.games) * 100,
+    );
   }
   if (stats.selfPlayStats.games > 0) {
-    stats.selfPlayStats.winRate = Math.round((stats.selfPlayStats.wins / stats.selfPlayStats.games) * 100);
+    stats.selfPlayStats.winRate = Math.round(
+      (stats.selfPlayStats.wins / stats.selfPlayStats.games) * 100,
+    );
   }
-  
+
   // Calculate difficulty win rates
   for (const difficulty of Object.keys(stats.difficultyStats)) {
     const diffStats = stats.difficultyStats[difficulty];
@@ -239,16 +251,16 @@ export function getPlayerStats(playerId?: PlayerId): PlayerStats {
       diffStats.winRate = Math.round((diffStats.wins / diffStats.games) * 100);
     }
   }
-  
+
   // Recent form (last 10)
-  stats.recentForm = records.slice(0, 10).map(r => r.result);
-  
+  stats.recentForm = records.slice(0, 10).map((r) => r.result);
+
   // Averages
   if (records.length > 0) {
     stats.avgTurnsPerGame = Math.round(totalTurns / records.length);
     stats.avgLifeAtEnd = Math.round(totalLife / records.length);
   }
-  
+
   return stats;
 }
 
@@ -266,13 +278,13 @@ export function getRecentGames(limit: number = 10): GameRecord[] {
 export async function clearGameHistory(): Promise<void> {
   // Clear localStorage
   localStorage.removeItem(STORAGE_KEY);
-  
+
   // Clear IndexedDB
   try {
     const storage = await getStorage();
-    await storage.clear('game-history');
+    await storage.clear("game-history");
   } catch (error) {
-    console.warn('Failed to clear IndexedDB game-history store:', error);
+    console.warn("Failed to clear IndexedDB game-history store:", error);
   }
 }
 

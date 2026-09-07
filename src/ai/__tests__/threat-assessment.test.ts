@@ -16,15 +16,8 @@
  */
 
 import { describe, it, expect } from "@jest/globals";
-import {
-  GameStateEvaluator,
-  evaluateGameState,
-} from "../game-state-evaluator";
-import type {
-  AIGameState,
-  AIPlayerState,
-  AIPermanent,
-} from "@/lib/game-state/types";
+import { GameStateEvaluator, evaluateGameState } from "../game-state-evaluator";
+import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
 
 function createPlayer(
   id: string,
@@ -74,7 +67,9 @@ function makePermanent(
 
 function makeGameState(
   battlefield: AIPermanent[],
-  difficulty: AIPlayerState extends never ? never : "easy" | "medium" | "hard" | "expert" = "medium",
+  difficulty: AIPlayerState extends never
+    ? never
+    : "easy" | "medium" | "hard" | "expert" = "medium",
 ): AIGameState {
   return {
     players: {
@@ -430,9 +425,9 @@ describe("assessThreats (issue #1540) — attribute-scaled threat evaluation", (
           manaValue: 1,
         }),
       ]);
-      expect(
-        findThreat(weak, "a-engine").threatLevel,
-      ).toBeGreaterThan(findThreat(weak, "c-weak").threatLevel);
+      expect(findThreat(weak, "a-engine").threatLevel).toBeGreaterThan(
+        findThreat(weak, "c-weak").threatLevel,
+      );
     });
   });
 

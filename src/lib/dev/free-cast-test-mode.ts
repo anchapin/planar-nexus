@@ -40,7 +40,7 @@ import {
   moveCardToZone,
   tapCardAction,
   untapCardAction,
-} from "@/lib/game-state/keyword-actions";
+} from "@/lib/game-state";
 
 /**
  * The localStorage key that opts a page into free-cast test mode.

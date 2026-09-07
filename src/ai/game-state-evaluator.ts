@@ -23,7 +23,7 @@ import type {
   AIHandCard as HandCard,
   AITurnInfo as TurnInfo,
   AIStackObject as StackObject,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 import {
   getSequencingRecommendation,
   computeCurveConformance,
@@ -1341,7 +1341,8 @@ export class GameStateEvaluator {
             permanentId: permanent.id,
             threatLevel: Math.min(1, power / 10),
             reason: `${power} power creature can attack`,
-            urgency: power >= 5 ? "immediate" : power >= 3 ? "soon" : "eventual",
+            urgency:
+              power >= 5 ? "immediate" : power >= 3 ? "soon" : "eventual",
           });
           continue;
         }

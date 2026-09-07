@@ -5,7 +5,7 @@
  * from AIGameState objects, and how to measure similarity between signatures.
  */
 
-import type { AIGameState, AIPermanent } from "@/lib/game-state/types";
+import type { AIGameState, AIPermanent } from "@/lib/game-state";
 import type { BoardStateSignature, CreatureSignature } from "./types";
 
 function createCreatureSignature(creature: AIPermanent): CreatureSignature {

@@ -9,8 +9,8 @@ import {
   passPriority,
   dealDamageToPlayer,
   gainLife,
-} from "@/lib/game-state/game-state";
-import { Phase } from "@/lib/game-state/types";
+} from "@/lib/game-state";
+import { Phase } from "@/lib/game-state";
 
 function playerCount(state: ReturnType<typeof createInitialGameState>): number {
   return state.players.size;

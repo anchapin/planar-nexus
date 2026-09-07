@@ -1,9 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { getReplayFromCurrentURL } from '@/lib/replay-sharing';
-import { type Replay } from '@/lib/game-state/replay';
-import Link from 'next/link';
+import { useEffect, useState } from "react";
+import { getReplayFromCurrentURL } from "@/lib/replay-sharing";
+import { type Replay } from "@/lib/game-state";
+import Link from "next/link";
 
 // Type for player state in replay
 interface ReplayPlayerState {
@@ -15,9 +15,9 @@ interface ReplayPlayerState {
 
 /**
  * Replay Viewer Page
- * 
+ *
  * Issue #92: Phase 5.3: Implement replay system with shareable links
- * 
+ *
  * Displays a shared replay that was opened via URL parameter
  */
 export default function ReplayPage() {
@@ -30,7 +30,7 @@ export default function ReplayPage() {
   useEffect(() => {
     // Try to get replay from URL
     const urlReplay = getReplayFromCurrentURL();
-    
+
     if (urlReplay) {
       setReplay(urlReplay);
       setCurrentPosition(urlReplay.currentPosition);
@@ -39,16 +39,16 @@ export default function ReplayPage() {
     }
 
     // If no replay in URL, check if there's a replay ID in the path
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.split("/");
     const replayId = pathParts[pathParts.length - 1];
-    
-    if (replayId && replayId !== 'replay') {
+
+    if (replayId && replayId !== "replay") {
       // Would fetch from server in production
-      setError('Replay not found. The link may have expired.');
+      setError("Replay not found. The link may have expired.");
     } else {
-      setError('No replay data found. Please check your link.');
+      setError("No replay data found. Please check your link.");
     }
-    
+
     setLoading(false);
   }, []);
 
@@ -82,7 +82,7 @@ export default function ReplayPage() {
     if (!isPlaying || !replay) return;
 
     const interval = setInterval(() => {
-      setCurrentPosition(pos => {
+      setCurrentPosition((pos) => {
         if (pos >= replay.totalActions - 1) {
           setIsPlaying(false);
           return pos;
@@ -106,8 +106,8 @@ export default function ReplayPage() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-4">
         <div className="text-red-400 text-xl">{error}</div>
-        <Link 
-          href="/saved-games" 
+        <Link
+          href="/saved-games"
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
           Go to Saved Games
@@ -121,9 +121,10 @@ export default function ReplayPage() {
   }
 
   const currentAction = replay.actions[currentPosition];
-  const progress = replay.totalActions > 0 
-    ? ((currentPosition + 1) / replay.totalActions) * 100 
-    : 0;
+  const progress =
+    replay.totalActions > 0
+      ? ((currentPosition + 1) / replay.totalActions) * 100
+      : 0;
 
   return (
     <div className="min-h-screen bg-slate-900 text-white p-4">
@@ -133,11 +134,14 @@ export default function ReplayPage() {
           <h1 className="text-2xl font-bold mb-2">Game Replay</h1>
           <div className="text-slate-400">
             <p>Format: {replay.metadata.format}</p>
-            <p>Players: {replay.metadata.playerNames.join(' vs ')}</p>
-            <p>Started: {new Date(replay.metadata.gameStartDate).toLocaleString()}</p>
+            <p>Players: {replay.metadata.playerNames.join(" vs ")}</p>
+            <p>
+              Started:{" "}
+              {new Date(replay.metadata.gameStartDate).toLocaleString()}
+            </p>
             {replay.metadata.winners && (
               <p className="text-yellow-400">
-                Winner: {replay.metadata.winners.join(', ')}
+                Winner: {replay.metadata.winners.join(", ")}
               </p>
             )}
           </div>
@@ -156,7 +160,7 @@ export default function ReplayPage() {
 
           {/* Progress bar */}
           <div className="w-full bg-slate-700 rounded-full h-2 mb-6">
-            <div 
+            <div
               className="bg-blue-500 h-2 rounded-full transition-all"
               style={{ width: `${progress}%` }}
             />
@@ -174,12 +178,13 @@ export default function ReplayPage() {
           {/* Game state summary */}
           {currentAction?.resultingState && (
             <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-              {Array.from(currentAction.resultingState.players?.values() || []).map((player: ReplayPlayerState) => (
+              {Array.from(
+                currentAction.resultingState.players?.values() || [],
+              ).map((player: ReplayPlayerState) => (
                 <div key={player.id} className="bg-slate-700 p-3 rounded">
                   <div className="font-bold">{player.name}</div>
                   <div className="text-slate-400">
-                    Life: {player.life} | 
-                    Hand: {player.hand?.length || 0}
+                    Life: {player.life} | Hand: {player.hand?.length || 0}
                   </div>
                 </div>
               ))}
@@ -206,7 +211,7 @@ export default function ReplayPage() {
               onClick={togglePlayback}
               className="px-6 py-2 bg-blue-600 rounded hover:bg-blue-700"
             >
-              {isPlaying ? '⏸ Pause' : '▶ Play'}
+              {isPlaying ? "⏸ Pause" : "▶ Play"}
             </button>
             <button
               onClick={handleNext}
@@ -235,8 +240,8 @@ export default function ReplayPage() {
                 onClick={() => setCurrentPosition(index)}
                 className={`w-full text-left px-3 py-2 rounded text-sm ${
                   index === currentPosition
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-700 hover:bg-slate-600'
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-700 hover:bg-slate-600"
                 }`}
               >
                 <span className="text-slate-400 mr-2">{index + 1}.</span>
@@ -248,10 +253,7 @@ export default function ReplayPage() {
 
         {/* Footer */}
         <div className="mt-6 text-center">
-          <Link 
-            href="/saved-games" 
-            className="text-blue-400 hover:underline"
-          >
+          <Link href="/saved-games" className="text-blue-400 hover:underline">
             View Saved Games
           </Link>
         </div>

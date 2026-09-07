@@ -12,8 +12,8 @@ import type {
   GameState as EngineGameState,
   PlayerId,
   CardInstanceId,
-} from "@/lib/game-state/types";
-import { Phase } from "@/lib/game-state/types";
+} from "@/lib/game-state";
+import { Phase } from "@/lib/game-state";
 import {
   createInitialGameState as engineCreateInitialGameState,
   startGame as engineStartGame,
@@ -24,27 +24,24 @@ import {
   offerDraw as engineOfferDraw,
   acceptDraw as engineAcceptDraw,
   declineDraw as engineDeclineDraw,
-  checkStateBasedActions,
-} from "@/lib/game-state/game-state";
+  checkStateBasedActionsFromGameState as checkStateBasedActions,
+} from "@/lib/game-state";
 import {
   playLand as enginePlayLand,
   canPlayLand as engineCanPlayLand,
-} from "@/lib/game-state/mana";
+} from "@/lib/game-state";
 import {
   castSpell as engineCastSpell,
   canCastSpell as engineCanCastSpell,
   resolveWaitingChoice as engineResolveWaitingChoice,
-} from "@/lib/game-state/spell-casting";
+} from "@/lib/game-state";
 import {
   declareAttackers as engineDeclareAttackers,
   declareBlockers as engineDeclareBlockers,
-} from "@/lib/game-state/combat";
-import { advancePhase, startNextTurn } from "@/lib/game-state/turn-phases";
-import { dealDamageToPlayer, gainLife } from "@/lib/game-state/game-state";
-import {
-  tapCardAction,
-  untapCardAction,
-} from "@/lib/game-state/keyword-actions";
+} from "@/lib/game-state";
+import { advancePhase, startNextTurn } from "@/lib/game-state";
+import { dealDamageToPlayer, gainLife } from "@/lib/game-state";
+import { tapCardAction, untapCardAction } from "@/lib/game-state";
 
 // UI-facing types (compatible with existing UI)
 import type {

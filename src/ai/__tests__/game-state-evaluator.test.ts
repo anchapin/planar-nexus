@@ -26,7 +26,7 @@ import type {
   AIPlayerState,
   AIPermanent,
   AIHandCard,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 
 /**
  * Create a mock AI player state for testing

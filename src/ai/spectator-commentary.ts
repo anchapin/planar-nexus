@@ -1,11 +1,11 @@
 /**
  * Spectator Commentary System
- * 
+ *
  * Generates play-by-play commentary for AI vs AI spectator mode.
  * Provides entertaining and educational narration of game events.
  */
 
-import type { GameState, PlayerId, CardInstance } from '@/lib/game-state/types';
+import type { GameState, PlayerId, CardInstance } from "@/lib/game-state";
 
 /**
  * Commentary entry with timestamp and context
@@ -22,18 +22,18 @@ export interface CommentaryEntry {
 }
 
 export type CommentaryType =
-  | 'turn_start'
-  | 'land_play'
-  | 'spell_cast'
-  | 'creature_attack'
-  | 'creature_block'
-  | 'damage_dealt'
-  | 'life_change'
-  | 'creature_dies'
-  | 'player_wins'
-  | 'game_message'
-  | 'mana_ability'
-  | 'phase_change';
+  | "turn_start"
+  | "land_play"
+  | "spell_cast"
+  | "creature_attack"
+  | "creature_block"
+  | "damage_dealt"
+  | "life_change"
+  | "creature_dies"
+  | "player_wins"
+  | "game_message"
+  | "mana_ability"
+  | "phase_change";
 
 /**
  * SpectatorCommentary class for generating game commentary
@@ -58,7 +58,7 @@ export class SpectatorCommentary {
    */
   private getPhaseName(): string {
     const phase = this.gameState.turn.currentPhase;
-    return phase.replace(/_/g, ' ');
+    return phase.replace(/_/g, " ");
   }
 
   /**
@@ -66,7 +66,7 @@ export class SpectatorCommentary {
    */
   private getPlayerName(playerId: PlayerId): string {
     const player = this.gameState.players.get(playerId);
-    return player?.name || 'Unknown Player';
+    return player?.name || "Unknown Player";
   }
 
   /**
@@ -74,7 +74,7 @@ export class SpectatorCommentary {
    */
   private getCardName(cardId: string): string {
     const card = this.gameState.cards.get(cardId);
-    return card?.cardData.name || 'Unknown Card';
+    return card?.cardData.name || "Unknown Card";
   }
 
   /**
@@ -84,7 +84,7 @@ export class SpectatorCommentary {
     text: string,
     type: CommentaryType,
     playerId?: PlayerId,
-    cardId?: string
+    cardId?: string,
   ): CommentaryEntry {
     return {
       id: this.generateId(),
@@ -104,7 +104,7 @@ export class SpectatorCommentary {
   generateTurnStart(playerId: PlayerId): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
     const turnNumber = this.gameState.turn.turnNumber;
-    
+
     const flavorTexts = [
       `${playerName}'s turn begins (Turn ${turnNumber})`,
       `${playerName} takes their turn`,
@@ -114,8 +114,8 @@ export class SpectatorCommentary {
 
     return this.createEntry(
       flavorTexts[Math.floor(Math.random() * flavorTexts.length)],
-      'turn_start',
-      playerId
+      "turn_start",
+      playerId,
     );
   }
 
@@ -125,7 +125,7 @@ export class SpectatorCommentary {
   generateLandPlay(playerId: PlayerId, land: CardInstance): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
     const landName = land.cardData.name;
-    
+
     const flavorTexts = [
       `${playerName} plays ${landName}`,
       `${playerName} drops ${landName}`,
@@ -135,9 +135,9 @@ export class SpectatorCommentary {
 
     return this.createEntry(
       flavorTexts[Math.floor(Math.random() * flavorTexts.length)],
-      'land_play',
+      "land_play",
       playerId,
-      land.id
+      land.id,
     );
   }
 
@@ -147,14 +147,14 @@ export class SpectatorCommentary {
   generateSpellCast(
     playerId: PlayerId,
     spell: CardInstance,
-    targetId?: string
+    targetId?: string,
   ): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
     const spellName = spell.cardData.name;
     const targetName = targetId ? this.getCardName(targetId) : null;
 
     let text: string;
-    
+
     if (targetName) {
       const flavorTexts = [
         `${playerName} casts ${spellName} targeting ${targetName}`,
@@ -171,7 +171,7 @@ export class SpectatorCommentary {
       text = flavorTexts[Math.floor(Math.random() * flavorTexts.length)];
     }
 
-    return this.createEntry(text, 'spell_cast', playerId, spell.id);
+    return this.createEntry(text, "spell_cast", playerId, spell.id);
   }
 
   /**
@@ -180,13 +180,13 @@ export class SpectatorCommentary {
   generateAttack(
     playerId: PlayerId,
     attackerCount: number,
-    attackerIds?: string[]
+    attackerIds?: string[],
   ): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
-    const creatures = attackerCount === 1 ? 'creature' : 'creatures';
-    
+    const creatures = attackerCount === 1 ? "creature" : "creatures";
+
     let text: string;
-    
+
     if (attackerIds && attackerIds.length === 1) {
       const attackerName = this.getCardName(attackerIds[0]);
       const flavorTexts = [
@@ -204,7 +204,7 @@ export class SpectatorCommentary {
       text = flavorTexts[Math.floor(Math.random() * flavorTexts.length)];
     }
 
-    return this.createEntry(text, 'creature_attack', playerId);
+    return this.createEntry(text, "creature_attack", playerId);
   }
 
   /**
@@ -213,13 +213,13 @@ export class SpectatorCommentary {
   generateBlock(
     playerId: PlayerId,
     blockerCount: number,
-    blockerIds?: string[]
+    blockerIds?: string[],
   ): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
-    const creatures = blockerCount === 1 ? 'creature' : 'creatures';
-    
+    const creatures = blockerCount === 1 ? "creature" : "creatures";
+
     let text: string;
-    
+
     if (blockerIds && blockerIds.length === 1) {
       const blockerName = this.getCardName(blockerIds[0]);
       const flavorTexts = [
@@ -237,7 +237,7 @@ export class SpectatorCommentary {
       text = flavorTexts[Math.floor(Math.random() * flavorTexts.length)];
     }
 
-    return this.createEntry(text, 'creature_block', playerId);
+    return this.createEntry(text, "creature_block", playerId);
   }
 
   /**
@@ -246,7 +246,7 @@ export class SpectatorCommentary {
   generateDamage(
     source: string,
     target: string,
-    amount: number
+    amount: number,
   ): CommentaryEntry {
     const flavorTexts = [
       `${source} deals ${amount} damage to ${target}`,
@@ -256,7 +256,7 @@ export class SpectatorCommentary {
 
     return this.createEntry(
       flavorTexts[Math.floor(Math.random() * flavorTexts.length)],
-      'damage_dealt'
+      "damage_dealt",
     );
   }
 
@@ -266,14 +266,14 @@ export class SpectatorCommentary {
   generateLifeChange(
     playerId: PlayerId,
     oldLife: number,
-    newLife: number
+    newLife: number,
   ): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
     const diff = newLife - oldLife;
-    const sign = diff > 0 ? '+' : '';
-    
+    const sign = diff > 0 ? "+" : "";
+
     let text: string;
-    
+
     if (diff > 0) {
       const flavorTexts = [
         `${playerName} goes from ${oldLife} to ${newLife} life (${sign}${diff})`,
@@ -292,16 +292,19 @@ export class SpectatorCommentary {
       text = `${playerName}'s life total remains at ${newLife}`;
     }
 
-    return this.createEntry(text, 'life_change', playerId);
+    return this.createEntry(text, "life_change", playerId);
   }
 
   /**
    * Generate commentary for creature dying
    */
-  generateCreatureDies(playerId: PlayerId, creature: CardInstance): CommentaryEntry {
+  generateCreatureDies(
+    playerId: PlayerId,
+    creature: CardInstance,
+  ): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
     const creatureName = creature.cardData.name;
-    
+
     const flavorTexts = [
       `${creatureName} is destroyed`,
       `${playerName}'s ${creatureName} dies`,
@@ -311,9 +314,9 @@ export class SpectatorCommentary {
 
     return this.createEntry(
       flavorTexts[Math.floor(Math.random() * flavorTexts.length)],
-      'creature_dies',
+      "creature_dies",
       playerId,
-      creature.id
+      creature.id,
     );
   }
 
@@ -322,7 +325,7 @@ export class SpectatorCommentary {
    */
   generateWin(playerId: PlayerId, reason: string): CommentaryEntry {
     const playerName = this.getPlayerName(playerId);
-    
+
     const flavorTexts = [
       `🏆 ${playerName} wins! (${reason})`,
       `Victory for ${playerName}! (${reason})`,
@@ -332,8 +335,8 @@ export class SpectatorCommentary {
 
     return this.createEntry(
       flavorTexts[Math.floor(Math.random() * flavorTexts.length)],
-      'player_wins',
-      playerId
+      "player_wins",
+      playerId,
     );
   }
 
@@ -341,18 +344,15 @@ export class SpectatorCommentary {
    * Generate general game message
    */
   generateMessage(text: string): CommentaryEntry {
-    return this.createEntry(text, 'game_message');
+    return this.createEntry(text, "game_message");
   }
 
   /**
    * Generate commentary for phase change
    */
   generatePhaseChange(phase: string): CommentaryEntry {
-    const phaseName = phase.replace(/_/g, ' ');
-    return this.createEntry(
-      `Moving to ${phaseName} phase`,
-      'phase_change'
-    );
+    const phaseName = phase.replace(/_/g, " ");
+    return this.createEntry(`Moving to ${phaseName} phase`, "phase_change");
   }
 
   /**
@@ -362,8 +362,8 @@ export class SpectatorCommentary {
     const playerName = this.getPlayerName(playerId);
     return this.createEntry(
       `${playerName} adds ${manaAmount} mana`,
-      'mana_ability',
-      playerId
+      "mana_ability",
+      playerId,
     );
   }
 }
@@ -426,6 +426,6 @@ Total Entries: ${this.entries.length}
       .reverse()
       .map((entry) => `[Turn ${entry.turnNumber}] ${entry.text}`);
 
-    return header + lines.join('\n');
+    return header + lines.join("\n");
   }
 }

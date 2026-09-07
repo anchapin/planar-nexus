@@ -15,7 +15,7 @@ import {
   createMockPermanent,
   createTestGameState,
 } from "@/ai/__tests__/test-helpers";
-import type { AIGameState } from "@/lib/game-state/types";
+import type { AIGameState } from "@/lib/game-state";
 
 jest.mock("@/ai/game-state-evaluator", () => ({
   evaluateGameState: jest.fn(),
@@ -34,7 +34,13 @@ jest.mock("@/lib/rate-limiter", () => {
   };
 });
 
-import { analyzeCurrentGameState, analyzePlay, getManaAdvice, evaluateBoardState, getMulliganAdvice } from "../ai-gameplay-assistance";
+import {
+  analyzeCurrentGameState,
+  analyzePlay,
+  getManaAdvice,
+  evaluateBoardState,
+  getMulliganAdvice,
+} from "../ai-gameplay-assistance";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
 import { analyzeMulligan } from "@/ai/mulligan-advisor";
 import { enforceRateLimit, RateLimitError } from "@/lib/rate-limiter";
@@ -226,7 +232,9 @@ describe("analyzeCurrentGameState — suggested plays", () => {
       gameState: state,
       playerName: PLAYER,
     });
-    const removal = out.suggestedPlays.find((p) => p.cardName === "Lightning Bolt");
+    const removal = out.suggestedPlays.find(
+      (p) => p.cardName === "Lightning Bolt",
+    );
     expect(removal?.priority).toBe("high");
     expect(removal?.reasoning).toMatch(/Remove opponent's threat/i);
   });
@@ -245,20 +253,22 @@ describe("analyzeCurrentGameState — strategic advice", () => {
       gameState: state,
       playerName: PLAYER,
     });
-    expect(out.strategicAdvice.some((s) => /stabilizing|comeback/i.test(s))).toBe(true);
+    expect(
+      out.strategicAdvice.some((s) => /stabilizing|comeback/i.test(s)),
+    ).toBe(true);
   });
 
   it("emits an 'aggressive' message when the score is significantly positive", async () => {
     mockedQuickScore.mockReturnValue(10);
-    mockedEvaluate.mockReturnValue(
-      baseEvaluation({ totalScore: 10 }) as never,
-    );
+    mockedEvaluate.mockReturnValue(baseEvaluation({ totalScore: 10 }) as never);
     const state = createTestGameState();
     const out = await analyzeCurrentGameState({
       gameState: state,
       playerName: PLAYER,
     });
-    expect(out.strategicAdvice.some((s) => /aggressive|close out/i.test(s))).toBe(true);
+    expect(
+      out.strategicAdvice.some((s) => /aggressive|close out/i.test(s)),
+    ).toBe(true);
   });
 });
 
@@ -273,7 +283,14 @@ describe("analyzePlay", () => {
         manaValue: 2,
       },
     ];
-    state.players[PLAYER].manaPool = { white: 0, blue: 0, black: 0, red: 0, green: 3, colorless: 0 };
+    state.players[PLAYER].manaPool = {
+      white: 0,
+      blue: 0,
+      black: 0,
+      red: 0,
+      green: 3,
+      colorless: 0,
+    };
     const out = await analyzePlay({
       gameState: state,
       playerName: PLAYER,
@@ -336,9 +353,18 @@ describe("getManaAdvice", () => {
         manaValue: 2,
       },
     ];
-    state.players[PLAYER].manaPool = { red: 0, blue: 0, black: 0, white: 0, green: 3, colorless: 0 };
+    state.players[PLAYER].manaPool = {
+      red: 0,
+      blue: 0,
+      black: 0,
+      white: 0,
+      green: 3,
+      colorless: 0,
+    };
     const out = await getManaAdvice({ gameState: state, playerName: PLAYER });
-    expect(out.suggestions.some((s) => s.cardName === "Grizzly Bears")).toBe(true);
+    expect(out.suggestions.some((s) => s.cardName === "Grizzly Bears")).toBe(
+      true,
+    );
   });
 
   it("flags optimal:false when the player has instants in hand and 2+ unused mana", async () => {
@@ -503,6 +529,9 @@ describe("getMulliganAdvice (issue #677)", () => {
       reasoning: "Not enough lands",
     } as never);
     const out = getMulliganAdvice([]);
-    expect(out).toEqual({ shouldMulligan: true, reasoning: "Not enough lands" });
+    expect(out).toEqual({
+      shouldMulligan: true,
+      reasoning: "Not enough lands",
+    });
   });
 });

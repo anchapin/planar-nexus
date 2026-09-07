@@ -23,9 +23,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ReplayViewer } from "../replay-viewer";
-import type { Replay, ReplayAction } from "@/lib/game-state/replay";
-import { createInitialGameState } from "@/lib/game-state/game-state";
-import type { GameState, GameAction } from "@/lib/game-state/types";
+import type { Replay, ReplayAction } from "@/lib/game-state";
+import { createInitialGameState } from "@/lib/game-state";
+import type { GameState, GameAction } from "@/lib/game-state";
 
 // jsdom polyfills required by Radix primitives used elsewhere; cheap to keep.
 class RO {

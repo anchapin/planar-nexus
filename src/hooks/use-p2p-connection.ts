@@ -8,7 +8,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { GameState } from "@/lib/game-state/types";
+import type { GameState } from "@/lib/game-state";
 import {
   createP2PGameConnection,
   P2PGameConnection,

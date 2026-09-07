@@ -6,9 +6,9 @@
  */
 
 import { decideWardPayments } from "../stack-interaction-ai";
-import { createInitialGameState, startGame } from "@/lib/game-state/game-state";
-import { createCardInstance } from "@/lib/game-state/card-instance";
-import { addMana } from "@/lib/game-state/mana";
+import { createInitialGameState, startGame } from "@/lib/game-state";
+import { createCardInstance } from "@/lib/game-state";
+import { addMana } from "@/lib/game-state";
 import type {
   CardInstanceId,
   PlayerId,
@@ -16,7 +16,7 @@ import type {
   StackEffect,
   StackObject,
   Target,
-} from "@/lib/game-state/types";
+} from "@/lib/game-state";
 
 function wardedCreature(
   name: string,

@@ -33,7 +33,7 @@
  * the engine in `executeAIAction`.
  */
 
-import type { CardInstanceId, AIHandCard } from "@/lib/game-state/types";
+import type { CardInstanceId, AIHandCard } from "@/lib/game-state";
 import type { DifficultyLevel, DifficultyFormat } from "./ai-difficulty";
 import {
   getSequencingRecommendation,

@@ -1,8 +1,8 @@
 /**
  * @fileOverview Auto-save hook for game states
- * 
+ *
  * Issue #269: Auto-save functionality for game states
- * 
+ *
  * Provides:
  * - React hook for auto-save functionality
  * - Integration with game state changes
@@ -12,28 +12,28 @@
 
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import type { GameState } from '@/lib/game-state/types';
-import type { Replay } from '@/lib/game-state/replay';
-import { savedGamesManager } from '@/lib/saved-games';
+import { useState, useCallback, useEffect, useRef } from "react";
+import type { GameState } from "@/lib/game-state";
+import type { Replay } from "@/lib/game-state";
+import { savedGamesManager } from "@/lib/saved-games";
 import {
   getAutoSaveConfig,
   setAutoSaveConfig,
   isTriggerEnabled,
   type AutoSaveTrigger,
   type AutoSaveConfig,
-} from '@/lib/auto-save-config';
-import { useToast } from '@/hooks/use-toast';
-import { logger } from '@/lib/logger';
+} from "@/lib/auto-save-config";
+import { useToast } from "@/hooks/use-toast";
+import { logger } from "@/lib/logger";
 
 /**
  * Auto-save status
  */
 export type AutoSaveStatus =
-  | 'idle'           // No auto-save in progress
-  | 'saving'         // Currently saving
-  | 'success'        // Last auto-save succeeded
-  | 'error';         // Last auto-save failed
+  | "idle" // No auto-save in progress
+  | "saving" // Currently saving
+  | "success" // Last auto-save succeeded
+  | "error"; // Last auto-save failed
 
 /**
  * Auto-save result
@@ -72,7 +72,11 @@ export interface UseAutoSaveReturn {
   /** Last save result */
   lastResult: AutoSaveResult | null;
   /** Trigger auto-save manually */
-  triggerAutoSave: (trigger: AutoSaveTrigger, gameState: GameState, replay?: Replay | null) => Promise<boolean>;
+  triggerAutoSave: (
+    trigger: AutoSaveTrigger,
+    gameState: GameState,
+    replay?: Replay | null,
+  ) => Promise<boolean>;
   /** Update configuration */
   updateConfig: (config: Partial<AutoSaveConfig>) => void;
   /** Reset status to idle */
@@ -86,14 +90,18 @@ export interface UseAutoSaveReturn {
 /**
  * Auto-save hook for game states
  */
-export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn {
+export function useAutoSave(
+  options: UseAutoSaveOptions = {},
+): UseAutoSaveReturn {
   const { onSaveStart, onSaveComplete, onSaveError } = options;
   const { toast } = useToast();
-  
-  const [status, setStatus] = useState<AutoSaveStatus>('idle');
-  const [config, setConfig] = useState<AutoSaveConfig>(() => getAutoSaveConfig());
+
+  const [status, setStatus] = useState<AutoSaveStatus>("idle");
+  const [config, setConfig] = useState<AutoSaveConfig>(() =>
+    getAutoSaveConfig(),
+  );
   const [lastResult, setLastResult] = useState<AutoSaveResult | null>(null);
-  
+
   // Track pending saves to avoid duplicates
   const pendingSaveRef = useRef<Promise<boolean> | null>(null);
   const lastSaveTimeRef = useRef<number>(0);
@@ -102,13 +110,13 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
   // Update config when it changes in localStorage
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'planar_nexus_auto_save_config') {
+      if (e.key === "planar_nexus_auto_save_config") {
         setConfig(getAutoSaveConfig());
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
   /**
@@ -148,7 +156,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
         logger.debug(`Cleaned up ${savesToDelete.length} old auto-saves`);
       }
     } catch (error) {
-      logger.error('Failed to cleanup auto-saves:', error);
+      logger.error("Failed to cleanup auto-saves:", error);
     }
   }, [config.autoCleanup, config.maxAutoSaves]);
 
@@ -156,7 +164,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
    * Reset status to idle
    */
   const resetStatus = useCallback(() => {
-    setStatus('idle');
+    setStatus("idle");
     setLastResult(null);
   }, []);
 
@@ -167,7 +175,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
     async (
       trigger: AutoSaveTrigger,
       gameState: GameState,
-      replay: Replay | null = null
+      replay: Replay | null = null,
     ): Promise<boolean> => {
       // Check if auto-save is enabled for this trigger
       if (!shouldAutoSave(trigger)) {
@@ -191,7 +199,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
       }
 
       lastSaveTimeRef.current = now;
-      setStatus('saving');
+      setStatus("saving");
       onSaveStart?.();
 
       try {
@@ -208,27 +216,28 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
         };
 
         setLastResult(result);
-        setStatus('success');
+        setStatus("success");
         onSaveComplete?.(result);
 
         // Show success toast if enabled
         if (config.showIndicator) {
           toast({
-            title: 'Game Auto-Saved',
-            description: `Triggered by: ${trigger.replace(/_/g, ' ')}`,
+            title: "Game Auto-Saved",
+            description: `Triggered by: ${trigger.replace(/_/g, " ")}`,
             duration: 2000,
           });
         }
 
         // Reset to idle after delay
         setTimeout(() => {
-          setStatus('idle');
+          setStatus("idle");
         }, 2000);
 
         return true;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+
         const result: AutoSaveResult = {
           success: false,
           error: errorMessage,
@@ -236,20 +245,20 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
         };
 
         setLastResult(result);
-        setStatus('error');
+        setStatus("error");
         onSaveError?.(error instanceof Error ? error : new Error(errorMessage));
 
         // Show error toast
         toast({
-          variant: 'destructive',
-          title: 'Auto-Save Failed',
+          variant: "destructive",
+          title: "Auto-Save Failed",
           description: errorMessage,
           duration: 5000,
         });
 
         // Reset to idle after delay
         setTimeout(() => {
-          setStatus('idle');
+          setStatus("idle");
         }, 3000);
 
         return false;
@@ -257,7 +266,16 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
         pendingSaveRef.current = null;
       }
     },
-    [config.enabled, config.showIndicator, shouldAutoSave, cleanupAutoSaves, onSaveStart, onSaveComplete, onSaveError, toast]
+    [
+      config.enabled,
+      config.showIndicator,
+      shouldAutoSave,
+      cleanupAutoSaves,
+      onSaveStart,
+      onSaveComplete,
+      onSaveError,
+      toast,
+    ],
   );
 
   return {
@@ -278,7 +296,7 @@ export function useAutoSave(options: UseAutoSaveOptions = {}): UseAutoSaveReturn
  */
 export function createAutoSaveWrapper(
   autoSave: UseAutoSaveReturn,
-  trigger: AutoSaveTrigger
+  trigger: AutoSaveTrigger,
 ) {
   return async (gameState: GameState, replay?: Replay | null) => {
     return autoSave.triggerAutoSave(trigger, gameState, replay);

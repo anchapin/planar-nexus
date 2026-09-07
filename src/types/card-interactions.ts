@@ -3,12 +3,12 @@
  * Handles click interactions, ability activation, and targeting
  */
 
-import { CardInstanceId, PlayerId, StackObjectId } from "@/lib/game-state/types";
+import { CardInstanceId, PlayerId, StackObjectId } from "@/lib/game-state";
 
 /**
  * Types of card interactions
  */
-export type CardInteractionType = 
+export type CardInteractionType =
   | "inspect"
   | "tap"
   | "untap"
@@ -74,7 +74,17 @@ export interface TargetRequirement {
   /** Maximum number of targets allowed */
   maxTargets: number;
   /** Types of valid targets */
-  validTargetTypes: ("creature" | "artifact" | "enchantment" | "instant" | "sorcery" | "player" | "plane" | "planeswalker" | "battle")[];
+  validTargetTypes: (
+    | "creature"
+    | "artifact"
+    | "enchantment"
+    | "instant"
+    | "sorcery"
+    | "player"
+    | "plane"
+    | "planeswalker"
+    | "battle"
+  )[];
   /** Whether you can target yourself */
   canTargetSelf: boolean;
   /** Additional targeting rules */
@@ -142,7 +152,11 @@ export interface ContextMenuAction {
 export interface CardInteractionEvents {
   onCardClick?: (cardId: string, zone: string) => void;
   onCardDoubleClick?: (cardId: string, zone: string) => void;
-  onCardRightClick?: (cardId: string, zone: string, event: React.MouseEvent) => void;
+  onCardRightClick?: (
+    cardId: string,
+    zone: string,
+    event: React.MouseEvent,
+  ) => void;
   onAbilityActivate?: (cardId: string, abilityIndex: number) => void;
   onTargetSelect?: (targetId: string, targetType: "card" | "player") => void;
   onTargetConfirm?: () => void;
@@ -152,7 +166,7 @@ export interface CardInteractionEvents {
 /**
  * Visual state for selected/targeted cards
  */
-export type SelectionVisualState = 
+export type SelectionVisualState =
   | "none"
   | "selected"
   | "targeted"

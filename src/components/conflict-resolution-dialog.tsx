@@ -3,10 +3,10 @@
  * Issue #314: UI for handling multiplayer desync conflicts
  */
 
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -14,13 +14,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   AlertTriangle,
   RefreshCw,
@@ -30,13 +30,14 @@ import {
   CheckCircle2,
   Clock,
   Info,
-} from 'lucide-react';
-import type { ConflictResolution, HashDiscrepancy } from '@/lib/game-state/deterministic-sync';
+} from "lucide-react";
+import type { ConflictResolution, HashDiscrepancy } from "@/lib/game-state";
 
 /**
  * Resolution strategy options
  */
-export type ResolutionStrategy = 'rollback' | 'forward' | 'merge' | 'authoritative' | 'manual';
+export type ResolutionStrategy =
+  "rollback" | "forward" | "merge" | "authoritative" | "manual";
 
 /**
  * Props for ConflictResolutionDialog
@@ -79,7 +80,8 @@ export function ConflictResolutionDialog({
   onRequestState,
   isHost,
 }: ConflictResolutionDialogProps) {
-  const [selectedStrategy, setSelectedStrategy] = useState<ResolutionStrategy>('rollback');
+  const [selectedStrategy, setSelectedStrategy] =
+    useState<ResolutionStrategy>("rollback");
   const [showDetails, setShowDetails] = useState(false);
 
   // Set default strategy based on suggestion
@@ -92,38 +94,38 @@ export function ConflictResolutionDialog({
   // Get strategy description
   const getStrategyDescription = (strategy: ResolutionStrategy): string => {
     switch (strategy) {
-      case 'rollback':
-        return 'Revert to the last known synchronized state and replay actions. Safest option but may lose recent actions.';
-      case 'forward':
-        return 'Continue with the current state and accept the differences. Use when differences are minor.';
-      case 'merge':
-        return 'Attempt to merge the differences intelligently. Best for simple conflicts like life total discrepancies.';
-      case 'authoritative':
+      case "rollback":
+        return "Revert to the last known synchronized state and replay actions. Safest option but may lose recent actions.";
+      case "forward":
+        return "Continue with the current state and accept the differences. Use when differences are minor.";
+      case "merge":
+        return "Attempt to merge the differences intelligently. Best for simple conflicts like life total discrepancies.";
+      case "authoritative":
         return isHost
-          ? 'Use your state as the authoritative source. The other player will sync to your state.'
-          : 'Accept the host\'s state as authoritative. Your state will be overwritten.';
-      case 'manual':
-        return 'Manually review and decide which values to keep. Requires both players to agree.';
+          ? "Use your state as the authoritative source. The other player will sync to your state."
+          : "Accept the host's state as authoritative. Your state will be overwritten.";
+      case "manual":
+        return "Manually review and decide which values to keep. Requires both players to agree.";
       default:
-        return '';
+        return "";
     }
   };
 
   // Get severity color
   const getSeverityColor = (category: string): string => {
     switch (category) {
-      case 'player':
-        return 'text-yellow-500';
-      case 'zone':
-        return 'text-orange-500';
-      case 'stack':
-        return 'text-red-500';
-      case 'combat':
-        return 'text-purple-500';
-      case 'turn':
-        return 'text-blue-500';
+      case "player":
+        return "text-yellow-500";
+      case "zone":
+        return "text-orange-500";
+      case "stack":
+        return "text-red-500";
+      case "combat":
+        return "text-purple-500";
+      case "turn":
+        return "text-blue-500";
       default:
-        return 'text-gray-500';
+        return "text-gray-500";
     }
   };
 
@@ -141,7 +143,8 @@ export function ConflictResolutionDialog({
             Game State Conflict Detected
           </DialogTitle>
           <DialogDescription>
-            Your game state differs from {remotePlayerName}'s state. Please choose how to resolve this conflict.
+            Your game state differs from {remotePlayerName}'s state. Please
+            choose how to resolve this conflict.
           </DialogDescription>
         </DialogHeader>
 
@@ -151,8 +154,9 @@ export function ConflictResolutionDialog({
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Desynchronization Warning</AlertTitle>
             <AlertDescription>
-              This can happen due to network latency, packet loss, or timing differences.
-              Please review the discrepancies below and choose a resolution strategy.
+              This can happen due to network latency, packet loss, or timing
+              differences. Please review the discrepancies below and choose a
+              resolution strategy.
             </AlertDescription>
           </Alert>
 
@@ -168,7 +172,7 @@ export function ConflictResolutionDialog({
                 size="sm"
                 onClick={() => setShowDetails(!showDetails)}
               >
-                {showDetails ? 'Hide' : 'Show'} Details
+                {showDetails ? "Hide" : "Show"} Details
               </Button>
             </div>
 
@@ -178,7 +182,10 @@ export function ConflictResolutionDialog({
                   {discrepancies.map((d, i) => (
                     <div key={i} className="text-sm p-2 bg-muted rounded">
                       <div className="flex items-center gap-2 mb-1">
-                        <Badge variant="outline" className={getSeverityColor(d.category)}>
+                        <Badge
+                          variant="outline"
+                          className={getSeverityColor(d.category)}
+                        >
                           {d.category}
                         </Badge>
                         <span className="font-medium">{d.description}</span>
@@ -186,18 +193,25 @@ export function ConflictResolutionDialog({
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
                           <span className="text-muted-foreground">You: </span>
-                          <code className="bg-background px-1 rounded">{d.localValue}</code>
+                          <code className="bg-background px-1 rounded">
+                            {d.localValue}
+                          </code>
                         </div>
                         <div>
-                          <span className="text-muted-foreground">{remotePlayerName}: </span>
-                          <code className="bg-background px-1 rounded">{d.remoteValue}</code>
+                          <span className="text-muted-foreground">
+                            {remotePlayerName}:{" "}
+                          </span>
+                          <code className="bg-background px-1 rounded">
+                            {d.remoteValue}
+                          </code>
                         </div>
                       </div>
                     </div>
                   ))}
                   {discrepancies.length === 0 && (
                     <p className="text-sm text-muted-foreground text-center py-4">
-                      No specific discrepancies detected. States may differ in ways that require full comparison.
+                      No specific discrepancies detected. States may differ in
+                      ways that require full comparison.
                     </p>
                   )}
                 </div>
@@ -212,37 +226,53 @@ export function ConflictResolutionDialog({
             <h4 className="text-sm font-medium mb-3">Resolution Strategy</h4>
             <RadioGroup
               value={selectedStrategy}
-              onValueChange={(v) => setSelectedStrategy(v as ResolutionStrategy)}
+              onValueChange={(v) =>
+                setSelectedStrategy(v as ResolutionStrategy)
+              }
               className="space-y-3"
             >
               <div className="flex items-start space-x-3 p-3 rounded border hover:bg-muted/50 cursor-pointer">
-                <RadioGroupItem value="rollback" id="rollback" className="mt-1" />
+                <RadioGroupItem
+                  value="rollback"
+                  id="rollback"
+                  className="mt-1"
+                />
                 <div className="flex-1">
-                  <Label htmlFor="rollback" className="flex items-center gap-2 cursor-pointer">
+                  <Label
+                    htmlFor="rollback"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <History className="h-4 w-4" />
                     Rollback to Last Sync
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {getStrategyDescription('rollback')}
+                    {getStrategyDescription("rollback")}
                   </p>
                 </div>
-                {suggestedResolution?.strategy === 'rollback' && (
+                {suggestedResolution?.strategy === "rollback" && (
                   <Badge variant="secondary">Suggested</Badge>
                 )}
               </div>
 
               <div className="flex items-start space-x-3 p-3 rounded border hover:bg-muted/50 cursor-pointer">
-                <RadioGroupItem value="authoritative" id="authoritative" className="mt-1" />
+                <RadioGroupItem
+                  value="authoritative"
+                  id="authoritative"
+                  className="mt-1"
+                />
                 <div className="flex-1">
-                  <Label htmlFor="authoritative" className="flex items-center gap-2 cursor-pointer">
+                  <Label
+                    htmlFor="authoritative"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <Users className="h-4 w-4" />
-                    {isHost ? 'Use Your State (Host)' : 'Accept Host State'}
+                    {isHost ? "Use Your State (Host)" : "Accept Host State"}
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {getStrategyDescription('authoritative')}
+                    {getStrategyDescription("authoritative")}
                   </p>
                 </div>
-                {suggestedResolution?.strategy === 'authoritative' && (
+                {suggestedResolution?.strategy === "authoritative" && (
                   <Badge variant="secondary">Suggested</Badge>
                 )}
               </div>
@@ -250,15 +280,18 @@ export function ConflictResolutionDialog({
               <div className="flex items-start space-x-3 p-3 rounded border hover:bg-muted/50 cursor-pointer">
                 <RadioGroupItem value="forward" id="forward" className="mt-1" />
                 <div className="flex-1">
-                  <Label htmlFor="forward" className="flex items-center gap-2 cursor-pointer">
+                  <Label
+                    htmlFor="forward"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <ArrowRight className="h-4 w-4" />
                     Continue Forward
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {getStrategyDescription('forward')}
+                    {getStrategyDescription("forward")}
                   </p>
                 </div>
-                {suggestedResolution?.strategy === 'forward' && (
+                {suggestedResolution?.strategy === "forward" && (
                   <Badge variant="secondary">Suggested</Badge>
                 )}
               </div>
@@ -266,15 +299,18 @@ export function ConflictResolutionDialog({
               <div className="flex items-start space-x-3 p-3 rounded border hover:bg-muted/50 cursor-pointer">
                 <RadioGroupItem value="merge" id="merge" className="mt-1" />
                 <div className="flex-1">
-                  <Label htmlFor="merge" className="flex items-center gap-2 cursor-pointer">
+                  <Label
+                    htmlFor="merge"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <RefreshCw className="h-4 w-4" />
                     Merge States
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {getStrategyDescription('merge')}
+                    {getStrategyDescription("merge")}
                   </p>
                 </div>
-                {suggestedResolution?.strategy === 'merge' && (
+                {suggestedResolution?.strategy === "merge" && (
                   <Badge variant="secondary">Suggested</Badge>
                 )}
               </div>
@@ -282,12 +318,15 @@ export function ConflictResolutionDialog({
               <div className="flex items-start space-x-3 p-3 rounded border hover:bg-muted/50 cursor-pointer">
                 <RadioGroupItem value="manual" id="manual" className="mt-1" />
                 <div className="flex-1">
-                  <Label htmlFor="manual" className="flex items-center gap-2 cursor-pointer">
+                  <Label
+                    htmlFor="manual"
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <Clock className="h-4 w-4" />
                     Manual Resolution
                   </Label>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {getStrategyDescription('manual')}
+                    {getStrategyDescription("manual")}
                   </p>
                 </div>
               </div>
@@ -303,7 +342,8 @@ export function ConflictResolutionDialog({
                 {suggestedResolution.conflictDescription}
                 {suggestedResolution.rollbackSequence && (
                   <p className="text-xs mt-1">
-                    Would rollback to sequence #{suggestedResolution.rollbackSequence}
+                    Would rollback to sequence #
+                    {suggestedResolution.rollbackSequence}
                   </p>
                 )}
               </AlertDescription>
