@@ -206,19 +206,57 @@ export function SideboardPlanEditor({
 
     setIsSaving(true);
     try {
-      let savedPlan: SavedSideboardPlan;
-
+      // Issue #1565: the storage layer now returns structured results instead
+      // of throwing on quota exhaustion. The UI surfaces the quota message
+      // verbatim and keeps the dialog open so the user can export + prune
+      // before retrying.
       if (initialPlan) {
-        savedPlan =
-          updateSideboardPlan(initialPlan.id, planData) ||
-          (planData as SavedSideboardPlan);
+        const result = updateSideboardPlan(initialPlan.id, planData);
+        if (!result.success) {
+          if (result.error === "quota") {
+            setErrors([
+              result.message,
+              "Tip: export your plans to back them up, then delete unused ones to free space.",
+            ]);
+            return;
+          }
+          // result.error === "not-found" — the plan vanished (deleted in
+          // another tab). Treat as a soft failure and close the dialog so
+          // the caller can re-fetch.
+          onOpenChange(false);
+          return;
+        }
+        if (result.degraded) {
+          // Compact-mode write: notes were truncated. Surface a soft warning.
+          // The plan was still saved, so we close the dialog.
+          console.warn(
+            "Sideboard plan saved in compact form due to quota pressure (notes truncated).",
+          );
+        }
+        onSave?.(result.plan);
+        onOpenChange(false);
       } else {
-        savedPlan = saveSideboardPlan(planData);
+        const result = saveSideboardPlan(planData);
+        // For a brand-new save the only failure mode is quota (no not-found
+        // branch on this type), so a single guarded branch suffices.
+        if (!result.success) {
+          setErrors([
+            result.message,
+            "Tip: export your plans to back them up, then delete unused ones to free space.",
+          ]);
+          return;
+        }
+        if (result.degraded) {
+          console.warn(
+            "Sideboard plan saved in compact form due to quota pressure (notes truncated).",
+          );
+        }
+        onSave?.(result.plan);
+        onOpenChange(false);
       }
-
-      onSave?.(savedPlan);
-      onOpenChange(false);
     } catch (error) {
+      // Non-quota failures (genuine bugs / unexpected I/O errors) still throw
+      // — surface them with a generic message instead of crashing the UI.
       console.error("Failed to save sideboard plan:", error);
       setErrors(["Failed to save plan. Please try again."]);
     } finally {
@@ -379,10 +417,7 @@ export function SideboardPlanEditor({
                   className="flex flex-wrap gap-2"
                 >
                   {inCards.map((card, index) => (
-                    <li
-                      key={index}
-                      className="inline-flex"
-                    >
+                    <li key={index} className="inline-flex">
                       <Badge
                         variant="outline"
                         className="bg-green-50 pl-2 pr-1 py-1"
@@ -458,10 +493,7 @@ export function SideboardPlanEditor({
                   className="flex flex-wrap gap-2"
                 >
                   {outCards.map((card, index) => (
-                    <li
-                      key={index}
-                      className="inline-flex"
-                    >
+                    <li key={index} className="inline-flex">
                       <Badge
                         variant="outline"
                         className="bg-red-50 pl-2 pr-1 py-1"
