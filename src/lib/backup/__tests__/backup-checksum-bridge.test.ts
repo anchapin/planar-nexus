@@ -151,7 +151,9 @@ describe("backup-checksum-bridge (issue #1249)", () => {
   describe("worker path (happy path)", () => {
     it("forwards to the client and returns its digest", async () => {
       const expected = "worker-digest-001";
-      const checksumMock = jest.fn() as unknown as jest.Mock<any>;
+      const checksumMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       checksumMock.mockResolvedValue({
         checksum: expected,
         bytesProcessed: 1234,
@@ -191,7 +193,9 @@ describe("backup-checksum-bridge (issue #1249)", () => {
       // Sentinel: if the bridge silently fell back to the main thread the
       // checksum would be the hand-computed hash, NOT this string.
       const sentinel = "sentinel-from-worker";
-      const checksumMock = jest.fn() as unknown as jest.Mock<any>;
+      const checksumMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       checksumMock.mockResolvedValue({
         checksum: sentinel,
         bytesProcessed: 100,
@@ -214,7 +218,9 @@ describe("backup-checksum-bridge (issue #1249)", () => {
 
       // Build a fake client whose `on()` registers a listener we control.
       const listeners: Array<(event: unknown) => void> = [];
-      const checksumMock = jest.fn() as unknown as jest.Mock<any>;
+      const checksumMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       checksumMock.mockImplementation(async () => {
         // Simulate progress events fired by the worker mid-digest.
         listeners.forEach((l) =>
@@ -253,7 +259,9 @@ describe("backup-checksum-bridge (issue #1249)", () => {
       const data = makeBackup({ decks: [] });
       const mainThreadDigest = await expectedChecksum(data);
 
-      const checksumMock = jest.fn() as unknown as jest.Mock<any>;
+      const checksumMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       checksumMock.mockResolvedValue({
         checksum: mainThreadDigest,
         bytesProcessed: 100,
@@ -310,7 +318,9 @@ describe("backup-checksum-bridge (issue #1249)", () => {
       const warnSpy = jest
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
-      const checksumMock = jest.fn() as unknown as jest.Mock<any>;
+      const checksumMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       checksumMock.mockRejectedValue(new Error("worker exploded"));
       _setBackupChecksumClientResolver(async () => stubClient(checksumMock));
 
@@ -326,7 +336,9 @@ describe("backup-checksum-bridge (issue #1249)", () => {
       const warnSpy = jest
         .spyOn(console, "warn")
         .mockImplementation(() => undefined);
-      const checksumMock = jest.fn() as unknown as jest.Mock<any>;
+      const checksumMock = jest.fn() as unknown as jest.Mock<
+        (...args: any[]) => any
+      >;
       checksumMock.mockRejectedValue(new Error("worker boom"));
       _setBackupChecksumClientResolver(async () => stubClient(checksumMock));
 

@@ -22,14 +22,14 @@ import type { NextRequest } from "next/server";
 
 // ---- Mocks (must be declared before importing the route) ---------------------
 
-const streamText = jest.fn() as unknown as jest.Mock<any>;
-const generateText = jest.fn() as unknown as jest.Mock<any>;
+const streamText = jest.fn() as unknown as jest.Mock<(...args: any[]) => any>;
+const generateText = jest.fn() as unknown as jest.Mock<(...args: any[]) => any>;
 jest.mock("ai", () => ({
   streamText: (...args: unknown[]) => streamText(...args),
   generateText: (...args: unknown[]) => generateText(...args),
 }));
 
-const getAIModel = jest.fn() as unknown as jest.Mock<any>;
+const getAIModel = jest.fn() as unknown as jest.Mock<(...args: any[]) => any>;
 jest.mock("@/ai/providers/factory", () => ({
   getAIModel: (...args: unknown[]) => getAIModel(...args),
 }));
@@ -39,15 +39,21 @@ jest.mock("@/ai/tools/card-search", () => ({
   searchCardsTool,
 }));
 
-const getProviderConfig = jest.fn() as unknown as jest.Mock<any>;
-const getConfiguredProviders = jest.fn() as unknown as jest.Mock<any>;
+const getProviderConfig = jest.fn() as unknown as jest.Mock<
+  (...args: any[]) => any
+>;
+const getConfiguredProviders = jest.fn() as unknown as jest.Mock<
+  (...args: any[]) => any
+>;
 jest.mock("@/lib/server-api-key-storage", () => ({
   getProviderConfig: (...args: unknown[]) => getProviderConfig(...args),
   getConfiguredProviders: (...args: unknown[]) =>
     getConfiguredProviders(...args),
 }));
 
-const enforceRateLimit = jest.fn() as unknown as jest.Mock<any>;
+const enforceRateLimit = jest.fn() as unknown as jest.Mock<
+  (...args: any[]) => any
+>;
 class RateLimitError extends Error {
   public readonly retryAfter: number;
   public readonly remaining: number;
@@ -77,7 +83,7 @@ jest.mock("@/lib/server-rate-limiter", () => ({
   getRateLimitHeaders: (...args: unknown[]) => getRateLimitHeaders(...args),
 }));
 
-const saveMock = jest.fn() as unknown as jest.Mock<any>;
+const saveMock = jest.fn() as unknown as jest.Mock<(...args: any[]) => any>;
 class MockUsageLogger {
   entry: Record<string, unknown> = {};
   constructor(
