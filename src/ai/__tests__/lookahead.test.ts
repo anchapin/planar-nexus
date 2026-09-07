@@ -512,6 +512,12 @@ describe("Combat Decision Tree + Lookahead Integration", () => {
     );
 
     const hardAI = new CombatDecisionTree(gameState, "player1", "hard");
+    // Pin the combat blunder RNG off: the race-verdict blunder gate from
+    // #1542 routes this board through shouldCombatBlunder, so an unseeded
+    // Math.random roll (< 5% at hard) would randomly flip the strategy to
+    // "aggressive" and flake this assertion. Same pattern the #994/#1542
+    // suites use to make strategy assertions deterministic.
+    hardAI.setCombatRng(() => 1);
     const plan = hardAI.generateAttackPlan();
 
     expect(plan).toBeDefined();
