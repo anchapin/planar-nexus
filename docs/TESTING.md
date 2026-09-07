@@ -566,6 +566,8 @@ threshold:
 | `src/lib/game-state/layer-system.ts`        | 🟢 active — PR gate (CI) |
 | `src/lib/game-state/replacement-effects.ts` | 🟡 active — nightly      |
 | `src/lib/game-state/spell-casting.ts`       | 🟡 active — nightly      |
+| `src/lib/game-state/trigger-system.ts`      | 🟡 active — nightly      |
+| `src/lib/game-state/state-based-actions.ts` | 🟡 active — nightly      |
 
 Adding a new module:
 
@@ -595,6 +597,8 @@ npm run test:mutation
 npm run mutate:layer-system
 npm run mutate:replacement-effects
 npm run mutate:spell-casting
+npm run mutate:trigger-system
+npm run mutate:state-based-actions
 
 # Generic single-module escape hatch:
 npm run mutate -- --mutate src/lib/game-state/<file>.ts
@@ -616,7 +620,7 @@ catch drift:
 | Tier                   | Workflow                                     | Trigger                                       | Scope                              | Threshold enforced?                     |
 | ---------------------- | -------------------------------------------- | --------------------------------------------- | ---------------------------------- | --------------------------------------- |
 | **PR gate**            | `.github/workflows/ci.yml` (`mutation-test`) | every pull request + push to `main`/`develop` | `layer-system.ts` only             | ✅ yes — blocks merge via `build.needs` |
-| **Nightly full suite** | `.github/workflows/mutation.yml`             | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (3 files) | ✅ yes — fails workflow on regression   |
+| **Nightly full suite** | `.github/workflows/mutation.yml`             | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (5 files) | ✅ yes — fails workflow on regression   |
 
 The PR gate is intentionally scoped to one module (`layer-system.ts`) so a
 single PR completes the run in ~15-20 min on a 2-core runner. Other modules
