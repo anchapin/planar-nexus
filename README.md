@@ -357,16 +357,16 @@ See [Card Database Import Guide](CARD_DATABASE_IMPORT.md) for details.
 
 ## Technology Stack
 
-| Category       | Technology                           |
-| -------------- | ------------------------------------ |
-| **Frontend**   | Next.js 15, React 19, TypeScript 5   |
-| **UI**         | Shadcn/ui, Radix UI, Tailwind CSS    |
-| **Backend**    | Tauri 2, Rust                        |
-| **AI**         | Genkit, Gemini, Claude, OpenAI, Z.ai |
-| **Database**   | IndexedDB (client-side)              |
-| **Networking** | WebRTC (PeerJS)                      |
-| **Testing**    | Jest, Playwright                     |
-| **Build**      | Turbopack, Next.js Build             |
+| Category       | Technology                                |
+| -------------- | ----------------------------------------- |
+| **Frontend**   | Next.js 15, React 19, TypeScript 5        |
+| **UI**         | Shadcn/ui, Radix UI, Tailwind CSS         |
+| **Backend**    | Tauri 2, Rust                             |
+| **AI**         | Genkit, Gemini, Claude, OpenAI, Z.ai      |
+| **Database**   | IndexedDB (client-side)                   |
+| **Networking** | WebRTC (direct DataChannels + TURN relay) |
+| **Testing**    | Jest, Playwright                          |
+| **Build**      | Turbopack, Next.js Build                  |
 
 ---
 

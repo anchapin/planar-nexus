@@ -38,7 +38,7 @@ The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutatio
 - **AI**: multi-provider via Vercel AI SDK (`@ai-sdk/openai|anthropic|google|react`) with a unified proxy route at `src/app/api/ai-proxy/`; Genkit flows in `src/ai/flows/` (deck-coach-review, opponent-generation). Provider keys in `.env` (`OPENAI_* / ANTHROPIC_* / GOOGLE_* / ZAI_*`). Deck coaching has a heuristic fallback that needs **no** API key.
 - **Persistence**: IndexedDB via Dexie (`dexie-react-hooks`); tests use `fake-indexeddb`.
 - **Card search**: full-text via `@orama/orama`; card data sourced from Scryfall.
-- **Multiplayer**: PeerJS (WebRTC) + the signaling API route; TURN relay via `NEXT_PUBLIC_TURN_*` env.
+- **Multiplayer**: direct WebRTC (DataChannels) with serverless signaling; TURN relay via short-lived HMAC credentials minted at `/api/signaling/turn-credentials` (#1583).
 - **UI**: shadcn/ui (`components.json`; aliases `@/components`, `@/lib/utils`, `@/components/ui`) + Tailwind v4 + lucide-react icons. Merge classes with `cn()` from `@/lib/utils`.
 - Path alias `@/*` → `src/*` (mirrors `tsconfig.json` and `jest.config.js`).
 
