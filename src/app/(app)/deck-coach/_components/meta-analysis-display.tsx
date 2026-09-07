@@ -16,6 +16,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +36,7 @@ import {
   Swords,
   Target,
   Lightbulb,
+  AlertTriangle,
 } from "lucide-react";
 import { DeckCard } from "@/lib/card-database";
 
@@ -63,6 +65,23 @@ export function MetaAnalysisDisplay({
   >([]);
   const [newDeckName, setNewDeckName] = useState("");
   const [isSaving, startSavingTransition] = useTransition();
+
+  // Issue #1564 — surface the heuristic archetype-detection confidence so the
+  // user can tell when the engine is guessing. A "weak signal" is anything
+  // below the "medium" band; we show an AlertTriangle inline with the badge.
+  const detection = analysis.deckArchetypeDetection;
+  const detectionLabel = detection
+    ? detection.primary.charAt(0).toUpperCase() + detection.primary.slice(1)
+    : null;
+  const isWeakSignal =
+    detection?.confidence.level === "low" ||
+    detection?.confidence.level === "none";
+  const weakSignalAriaLabel =
+    detection?.confidence.level === "none"
+      ? "Weak signal: no archetype signals detected — falling back to Midrange"
+      : detection?.confidence.level === "low"
+        ? "Weak signal: low detection confidence — top two archetypes are closely matched"
+        : "";
 
   const handleOpenDialog = (
     cardsToAdd: { name: string; quantity: number }[],
@@ -102,6 +121,52 @@ export function MetaAnalysisDisplay({
         <CardContent>
           <ScrollArea className="h-[calc(100vh-20rem)]">
             <div className="pr-4 space-y-6">
+              {/* Detected Archetype (issue #1564) — shows the heuristic
+                  engine's top pick and, when the confidence is weak, an inline
+                  "weak signal" indicator next to the archetype name. The
+                  aria-label makes the warning discoverable to assistive tech
+                  without changing the visual layout of the surrounding text. */}
+              {detection && detectionLabel && (
+                <div data-testid="detected-archetype">
+                  <h3 className="font-headline text-lg font-bold mb-2 flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Detected Archetype
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="secondary"
+                      data-testid="detected-archetype-badge"
+                    >
+                      {detectionLabel}
+                    </Badge>
+                    {isWeakSignal && (
+                      <span
+                        role="img"
+                        aria-label={weakSignalAriaLabel}
+                        data-testid="weak-signal-indicator"
+                        className="inline-flex items-center text-yellow-600 dark:text-yellow-400"
+                      >
+                        <AlertTriangle
+                          className="h-4 w-4"
+                          aria-hidden="true"
+                        />
+                      </span>
+                    )}
+                    {detection.runnerUp && (
+                      <span
+                        className="text-xs text-muted-foreground"
+                        data-testid="runner-up"
+                      >
+                        (runner-up:{" "}
+                        {detection.runnerUp.charAt(0).toUpperCase() +
+                          detection.runnerUp.slice(1)}
+                        )
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Meta Overview */}
               <div>
                 <h3 className="font-headline text-lg font-bold mb-2 flex items-center gap-2">

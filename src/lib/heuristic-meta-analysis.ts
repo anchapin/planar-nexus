@@ -28,6 +28,14 @@ export interface MetaAnalysisOutput {
       strategy: string;
     };
   }>;
+  /**
+   * Optional structured result from the heuristic archetype-detection engine
+   * (issue #1564). Always populated by the heuristic engine; LLM-enriched
+   * outputs simply omit it because the LLM does not see this shape. The
+   * meta-analysis display uses `confidence.level` to render a weak-signal
+   * badge when the detection is uncertain.
+   */
+  deckArchetypeDetection?: ArchetypeDetectionResult;
 }
 
 // Format-specific metagame data
@@ -618,11 +626,82 @@ const MATCHUP_GUIDE: Record<
   },
 };
 
-// Analyze deck to detect archetype
-function detectDeckArchetype(deck: DeckCard[]): string {
+// Lowercase archetype keys emitted by `detectDeckArchetype`. Centralised so the
+// exported result type, the score map below, and any future runner-up lookup
+// stay in sync.
+export type DeckArchetypeKey =
+  | "control"
+  | "aggro"
+  | "midrange"
+  | "combo"
+  | "ramp"
+  | "tribal";
+
+/**
+ * Discrete confidence level for a detected archetype.
+ *
+ *   - 'none'   — no keyword/type signals at all; `primary` falls back to
+ *     'midrange' and `runnerUp` is null.
+ *   - 'low'    — the top two scores differ by fewer than 2 points (a near-
+ *     tie on a sparse sample).
+ *   - 'medium' — top score exceeds the runner-up by 2-4 points (default
+ *     band).
+ *   - 'high'   — top score exceeds the runner-up by 5 or more points (clean
+ *     signal).
+ *
+ * The bands are issue #1564's contract — see heuristic-meta-analysis.test.ts
+ * for the pinning tests at the 2-point boundary.
+ */
+export type ConfidenceLevel = "none" | "low" | "medium" | "high";
+
+/**
+ * Structured result returned by {@link detectDeckArchetype}.
+ *
+ * `confidence.score` is a normalised [0, 1] margin: `1 - runnerUpScore /
+ * topScore`, clamped. When there is no runner-up (single archetype or all
+ * tied) the score is 1.0 (full confidence in whichever archetype scored
+ * highest).
+ *
+ * `confidence.level` is the discrete band derived from the raw margin:
+ *
+ *   margin >= 5  -> 'high'
+ *   margin >= 2  -> 'medium'
+ *   margin <  2  -> 'low'
+ *   totalHits 0  -> 'none' (primary falls back to 'midrange')
+ */
+export interface ArchetypeDetectionResult {
+  primary: DeckArchetypeKey;
+  runnerUp: DeckArchetypeKey | null;
+  confidence: {
+    level: ConfidenceLevel;
+    /** Normalised margin in [0, 1]. See comment above. */
+    score: number;
+    /** Raw top score minus runner-up score. 0 when runnerUp is null. */
+    margin: number;
+  };
+  /** Raw per-archetype scores. */
+  scores: Record<DeckArchetypeKey, number>;
+}
+
+/**
+ * Analyze a deck and return a structured archetype-detection result.
+ *
+ * Exported so downstream tests (issue #1564 acceptance criteria, runner-up
+ * selection, 2-point boundary) can drive it directly without going through
+ * `analyzeMetaHeuristic`. The function does not throw — it always returns a
+ * fully-populated result; the caller decides how to surface the confidence.
+ *
+ * Backward compatibility: the original contract was "return the lowercase
+ * archetype string". The single internal caller (`analyzeMetaHeuristic`)
+ * reads `result.primary`; external code that consumed the bare string can be
+ * updated to read `.primary` on the returned object.
+ */
+export function detectDeckArchetype(
+  deck: DeckCard[],
+): ArchetypeDetectionResult {
   const deckText = deck.map((card) => card.name.toLowerCase()).join(" ");
 
-  const keywordScores: Record<string, number> = {
+  const keywordScores: Record<DeckArchetypeKey, number> = {
     control: 0,
     aggro: 0,
     midrange: 0,
@@ -751,12 +830,95 @@ function detectDeckArchetype(deck: DeckCard[]): string {
     keywordScores.control += 5;
   }
 
-  // Find highest scoring archetype
-  const sortedArchetypes = Object.entries(keywordScores).sort(
-    ([, a], [, b]) => b - a,
-  );
+  // Find highest + second-highest scoring archetypes. Sort descending by
+  // score and break ties alphabetically on the archetype key so the result
+  // is deterministic across runtimes (Object.entries is insertion-ordered
+  // and Array.prototype.sort is stable in modern engines, but explicit
+  // tiebreak removes any latent ambiguity).
+  const sortedArchetypes = (
+    Object.entries(keywordScores) as Array<[DeckArchetypeKey, number]>
+  ).sort(([aKey, a], [bKey, b]) => {
+    if (b !== a) return b - a;
+    return aKey < bKey ? -1 : aKey > bKey ? 1 : 0;
+  });
 
-  return sortedArchetypes[0]?.[0] || "midrange";
+  const topEntry = sortedArchetypes[0];
+  const runnerEntry = sortedArchetypes[1];
+
+  // Issue #1564: when the runner-up is tied with the top scorer (margin =
+  // 0) or the second archetype has zero hits, there is no meaningful
+  // "second place" — return null rather than an arbitrary tied archetype.
+  const totalHits = (Object.values(keywordScores) as number[]).reduce(
+    (sum, s) => sum + s,
+    0,
+  );
+  const hasRunnerUp =
+    !!topEntry &&
+    !!runnerEntry &&
+    runnerEntry[1] > 0 &&
+    runnerEntry[1] < topEntry[1];
+
+  const primary: DeckArchetypeKey =
+    topEntry && topEntry[1] > 0 ? topEntry[0] : "midrange";
+  const runnerUp: DeckArchetypeKey | null = hasRunnerUp
+    ? (runnerEntry as [DeckArchetypeKey, number])[0]
+    : null;
+
+  // Confidence — derived from the raw margin between top and runner-up.
+  // When the top is tied with the runnerEntry (margin = 0), we still want
+  // to report the actual gap (0) so the 'low' band fires per the issue AC.
+  // When there is no runnerEntry OR the runnerEntry has zero hits (only
+  // one archetype scored), the gap is effectively the full top score —
+  // we treat that as 'high' confidence in the single winner.
+  const topScore = topEntry ? topEntry[1] : 0;
+  const runnerEntryScore = runnerEntry ? runnerEntry[1] : 0;
+  let margin: number;
+  if (hasRunnerUp) {
+    margin = topScore - runnerEntryScore;
+  } else if (topEntry && runnerEntry && runnerEntry[1] === topEntry[1]) {
+    // Tied at the top — there IS a runnerEntry with the same score as top.
+    margin = 0;
+  } else {
+    // Single-archetype signal: gap is the full top score (runner is 0).
+    margin = topScore;
+  }
+
+  let level: ConfidenceLevel;
+  if (totalHits === 0 || topScore === 0) {
+    level = "none";
+  } else if (margin < 2) {
+    // Issue #1564 AC: "differ by fewer than 2 points" → 'low'. Strict <
+    // means margin = 2 is NOT low.
+    level = "low";
+  } else if (margin >= 5) {
+    // Issue #1564 AC: "exceeds the runner-up by 5 or more" → 'high'.
+    level = "high";
+  } else {
+    // 2 <= margin <= 4 — the gap is real but not overwhelming.
+    level = "medium";
+  }
+
+  // Normalised score in [0, 1]. When there's no runner-up the margin is
+  // the full top score, so we report 1.0. When there IS a runner-up we use
+  // the classic "1 - runnerUp / top" formulation so a tie yields 0 and a
+  // clean win yields a number close to 1.
+  const normalisedScore =
+    topScore === 0
+      ? 0
+      : hasRunnerUp
+        ? Math.max(0, Math.min(1, 1 - runnerEntryScore / topScore))
+        : 1;
+
+  return {
+    primary,
+    runnerUp,
+    confidence: {
+      level,
+      score: normalisedScore,
+      margin,
+    },
+    scores: keywordScores,
+  };
 }
 
 // Capitalize the first letter of a lowercase archetype key so it matches the
@@ -904,11 +1066,11 @@ export function analyzeMetaHeuristic(
   cards: DeckCard[],
   focusArchetype?: string,
 ): MetaAnalysisOutput {
-  const deckArchetype = detectDeckArchetype(cards);
+  const archetypeDetection = detectDeckArchetype(cards);
   const currentMeta = generateMetaSummary(format);
   const archetypes = FORMAT_META[format] || GENERIC_META;
   const recommendations = generateMetaRecommendations(
-    deckArchetype,
+    archetypeDetection.primary,
     cards,
     format,
     focusArchetype,
@@ -918,5 +1080,8 @@ export function analyzeMetaHeuristic(
     currentMeta,
     archetypes,
     recommendations,
+    // Issue #1564: surface the structured detection result so the UI can
+    // show a weak-signal badge when the heuristic is unsure.
+    deckArchetypeDetection: archetypeDetection,
   };
 }
