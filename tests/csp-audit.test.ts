@@ -14,8 +14,7 @@
  *      appears in the corresponding CSP directive.
  *   5. `connect-src` explicitly enumerates every host in
  *      `REMOTE_CONNECT_HOSTS` and contains NO bare `https:` or `wss:`
- *      scheme-wide wildcard (issue #1584). The PeerJS broker fleet is
- *      carried by `REMOTE_PEERJS_BROKER_PATTERN` instead.
+ *      scheme-wide wildcard (issue #1584).
  *   6. The Next.js image optimizer (`next.config.ts`) agrees with the
  *      CSP `img-src` directive.
  *
@@ -31,7 +30,6 @@ import {
   REMOTE_IMAGE_HOSTS,
   REMOTE_FONT_HOSTS,
   REMOTE_CONNECT_HOSTS,
-  REMOTE_PEERJS_BROKER_PATTERN,
 } from "../src/lib/security/csp-allowlist";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
@@ -128,9 +126,8 @@ describe("Tauri CSP audit (issue #1273)", () => {
     // Bare `https:` and `wss:` tokens defeat the purpose of the CSP — an
     // attacker with a script injection could otherwise exfiltrate data to
     // any HTTPS endpoint, or open a WebSocket to any WSS endpoint. The
-    // directives must enumerate hosts explicitly. The single remaining
-    // pattern is `wss://*.peerjs.com` for the PeerJS broker fleet (see
-    // REMOTE_PEERJS_BROKER_PATTERN below).
+    // directives must enumerate hosts explicitly; no WSS pattern remains
+    // (the PeerJS broker wildcard was removed with the orphaned dep).
     expect(connectValues).not.toContain("https:");
     expect(connectValues).not.toContain("wss:");
     // Defence in depth: a bare scheme token might appear mid-string with
@@ -154,16 +151,6 @@ describe("Tauri CSP audit (issue #1273)", () => {
     }
   });
 
-  test("connect-src covers the PeerJS broker fleet via the wildcard pattern (issue #1584)", () => {
-    const directives = splitDirectives(TAURI_CSP);
-    const connectValues = directives.get("connect-src") ?? [];
-    // PeerJS runs a public broker fleet (0.peerjs.com, 1.peerjs.com,
-    // ...) that rotates geographically at runtime. We cover the whole
-    // fleet with a single explicit source — this is the ONLY remaining
-    // pattern in connect-src, and it is documented and tested.
-    expect(connectValues).toContain(REMOTE_PEERJS_BROKER_PATTERN);
-  });
-
   test("connect-src has no stray scheme source beyond the documented set (issue #1584)", () => {
     // Defence in depth: enumerate the full allow-list as a JSON-style
     // assertion so a future contributor adding a new provider cannot
@@ -172,7 +159,6 @@ describe("Tauri CSP audit (issue #1273)", () => {
     const connectValues = directives.get("connect-src") ?? [];
     const expected = new Set<string>([
       "'self'",
-      REMOTE_PEERJS_BROKER_PATTERN,
       ...REMOTE_CONNECT_HOSTS.map((host) => `https://${host.hostname}`),
     ]);
     // Sort-compare so the assertion message lists every unexpected /

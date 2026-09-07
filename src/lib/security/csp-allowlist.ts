@@ -95,15 +95,10 @@ export const REMOTE_FONT_HOSTS: readonly RemoteImageHost[] = [
  * HTTPS. Each entry must appear **literally** as `https://hostname` in
  * the `connect-src` directive. Adding a host here without surfacing it
  * in the runtime CSP would be caught by `tests/csp-audit.test.ts`
- * (issue #1584).
- *
- * The PeerJS broker fleet is intentionally NOT in this list — it is
- * carried by the WSS wildcard {@link REMOTE_PEERJS_BROKER_PATTERN}
- * below. PeerJS runs over `wss:` (not `https:`) and the broker hostname
- * rotates geographically at runtime, so a single explicit host entry
- * would either be too narrow (breaks failover) or require a `wss:`
- * scheme-wide wildcard (the very relaxation issue #1584 closes for
- * HTTPS).
+ * (issue #1584). No WSS wildcard exists anymore: the PeerJS broker
+ * pattern was removed together with the orphaned `peerjs` dependency
+ * (2026-09 cleanup) — multiplayer uses direct WebRTC DataChannels with
+ * TURN relay, so no broker host is reachable.
  *
  * Mirror the hostnames here with the `baseURL` defaults in
  * `src/lib/env.ts` (`API_ENDPOINTS.*`) and the AI provider list in
@@ -141,17 +136,6 @@ export const REMOTE_CONNECT_HOSTS: readonly RemoteImageHost[] = [
 ] as const;
 
 /**
- * WebSocket endpoint pattern reachable from the webview. PeerJS itself
- * runs a public broker fleet at `0.peerjs.com` (the default), `1.peerjs.com`,
- * etc.; the PeerJS client computes the broker URL at runtime from a
- * geographic rotation, so we MUST use `wss://*.peerjs.com` to cover the
- * full set. This is the ONE remaining scheme-wide pattern in
- * `connect-src`; every HTTPS endpoint is enumerated in
- * {@link REMOTE_CONNECT_HOSTS} (issue #1584).
- */
-export const REMOTE_PEERJS_BROKER_PATTERN = "wss://*.peerjs.com" as const;
-
-/**
  * The full Content Security Policy applied by the Tauri webview
  * (`src-tauri/tauri.conf.json` → `app.security.csp`). Kept in code so
  * the `csp-audit` regression test can parse it and assert it contains
@@ -171,13 +155,13 @@ export const REMOTE_PEERJS_BROKER_PATTERN = "wss://*.peerjs.com" as const;
  *     Plain `'unsafe-eval'` is **not** enabled.
  *
  *   - `connect-src` is now an explicit allow-list (issue #1584). The
- *     HTTPS sources are derived from {@link REMOTE_CONNECT_HOSTS}; the
- *     only remaining pattern is `wss://*.peerjs.com` (the PeerJS broker
- *     fleet, which rotates geographically at runtime — see
- *     {@link REMOTE_PEERJS_BROKER_PATTERN}). The previous `https:`
- *     scheme-wide fallback has been removed because it would let a
- *     script-injection exfiltrate data to any HTTPS endpoint, defeating
- *     the purpose of a CSP.
+ *     HTTPS sources are derived from {@link REMOTE_CONNECT_HOSTS}. The
+ *     previous `https:` scheme-wide fallback has been removed because it
+ *     would let a script-injection exfiltrate data to any HTTPS
+ *     endpoint, defeating the purpose of a CSP. The `wss://*.peerjs.com`
+ *     broker pattern was removed with the orphaned `peerjs` dependency
+ *     (2026-09 cleanup): multiplayer uses direct WebRTC DataChannels +
+ *     TURN relay and never opens a broker WebSocket.
  */
 
 /**
@@ -188,7 +172,6 @@ export const REMOTE_PEERJS_BROKER_PATTERN = "wss://*.peerjs.com" as const;
 function buildConnectSrc(): string {
   const sources = [
     "'self'",
-    REMOTE_PEERJS_BROKER_PATTERN,
     ...REMOTE_CONNECT_HOSTS.map((host) => `https://${host.hostname}`),
   ];
   return sources.join(" ");
@@ -207,8 +190,9 @@ export const TAURI_CSP = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://placehold.co",
   "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
-  // HTTPS endpoints are enumerated from REMOTE_CONNECT_HOSTS;
-  // wss://*.peerjs.com covers the runtime-rotating PeerJS broker fleet.
+  // HTTPS endpoints are enumerated from REMOTE_CONNECT_HOSTS; no WSS
+  // wildcard (the PeerJS broker pattern was removed with the orphaned
+  // dependency — multiplayer is direct WebRTC DataChannels + TURN).
   // See issue #1584 — no bare `https:` or `wss:` scheme wildcards.
   `connect-src ${buildConnectSrc()}`,
   // MSW runs in the browser as a service-worker shim that compiles
