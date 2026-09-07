@@ -1000,7 +1000,7 @@ console.log(validation.valid); // true or false
 import {
   engineToAIState,
   aiToEngineState,
-} from "@/lib/game-state/serialization";
+} from "@/lib/game-state";
 
 // Convert engine state to AI-friendly format
 const aiState = engineToAIState(engineGameState);
