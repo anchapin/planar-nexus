@@ -1,3 +1,17 @@
+/**
+ * @fileOverview Tier-3 analytics database (`LocalIntelligenceDB`, Dexie v3).
+ *
+ * Owner module for AI/derived-data persistence: embeddings, search-index
+ * snapshots, game history, player decisions, and P2P match records
+ * (match_records is the durable source of truth written by
+ * `use-p2p-connection.ts`, issue #1570).
+ *
+ * OWNERSHIP (issue #1722): Dexie is sanctioned for this database and
+ * `PlanarNexusLimited` only; version declarations below are an append-only
+ * replay chain — never delete or reorder a historical `version(N)`.
+ * Persistence decision record: docs/PERSISTENCE_ARCHITECTURE.md.
+ */
+
 import Dexie, { type EntityTable } from "dexie";
 
 export interface Embedding {

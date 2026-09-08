@@ -18,6 +18,13 @@
  *    of failing opaquely mid-write
  *
  * Designed to be unit-testable with no React/DOM coupling.
+ *
+ * OWNERSHIP (issue #1722): this module is the SINGLE owner of storage-capacity
+ * awareness for every persistence layer in the app — all IndexedDB databases
+ * and localStorage writers alike. No other module may call
+ * navigator.storage.* or classify QuotaExceededError directly; new persistence
+ * code MUST route capacity checks / degrade behavior through these helpers.
+ * Decision record: docs/PERSISTENCE_ARCHITECTURE.md.
  */
 
 // ============================================================================

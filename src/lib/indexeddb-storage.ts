@@ -9,6 +9,13 @@
  * - Export/import functionality for backups
  * - Storage quota management
  * - Migration from localStorage
+ *
+ * OWNERSHIP (issue #1722): this module owns the Tier-1 user-data database
+ * (`PlanarNexusStorage`) AND the app-wide backup/export machinery (paired with
+ * `backup-compression.ts` and the `use-storage-backup.ts` UI hook). New
+ * user-data-of-record stores belong here (version bump per the in-file
+ * recipe), not in a new database. Persistence decision record:
+ * docs/PERSISTENCE_ARCHITECTURE.md.
  */
 
 import {

@@ -8,6 +8,13 @@
  * - Import data from backups
  * - Check storage quota
  * - Manage backup operations with progress tracking
+ *
+ * OWNERSHIP (issue #1722): this hook is the UI surface of the single
+ * app-wide backup pipeline — `indexeddb-storage.ts` (export/import machinery
+ * over `PlanarNexusStorage`) → `backup-compression.ts` (pn1 gzip + SHA-256
+ * codec) → this hook (orchestration). Backup scope today is
+ * `PlanarNexusStorage` only; per-database scope rationale lives in
+ * docs/PERSISTENCE_ARCHITECTURE.md.
  */
 
 "use client";
