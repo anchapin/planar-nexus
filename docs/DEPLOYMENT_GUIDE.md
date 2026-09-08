@@ -170,10 +170,10 @@ sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev 
 # Build Linux packages
 npm run build:tauri
 
-# Output:
-# - src-tauri/target/release/bundle/appimage/Planar-Nexus_0.1.0_amd64.AppImage
-# - src-tauri/target/release/bundle/deb/planar-nexus_0.1.0_amd64.deb
-# - src-tauri/target/release/bundle/rpm/planar-nexus-0.1.0.x86_64.rpm
+# Output (version comes from src-tauri/tauri.conf.json — currently 1.0.0):
+# - src-tauri/target/release/bundle/appimage/Planar-Nexus_<version>_amd64.AppImage
+# - src-tauri/target/release/bundle/deb/planar-nexus_<version>_amd64.deb
+# - src-tauri/target/release/bundle/rpm/planar-nexus-<version>.x86_64.rpm
 ```
 
 ### Code Signing
@@ -386,25 +386,49 @@ Planar Nexus uses GitHub Actions for automated builds and deployments.
 
 ### Workflow Files
 
-- `.github/workflows/ci.yml` - Continuous integration (lint, typecheck, build)
-- `.github/workflows/desktop-build.yml` - Desktop application builds
-- `.github/workflows/mobile-build.yml` - Mobile application builds
+The authoritative list is `ls .github/workflows/`:
+
+- `.github/workflows/ci.yml` - Continuous integration (the full gate, see below)
+- `.github/workflows/codeql.yml` - CodeQL security analysis
+- `.github/workflows/coverage-ratchet.yml` - Auto-bumps Jest coverage floors on merge to main
+- `.github/workflows/mobile-build.yml` - Mobile application builds (iOS/Android)
+- `.github/workflows/mutation.yml` - Nightly full mutation-testing suite (all modules)
+- `.github/workflows/release.yml` - Desktop application builds (Windows/macOS/Linux)
+- `.github/workflows/stubs-inventory.yml` - Stub inventory gate
+- `.github/workflows/video-derived-tests.yml` - Video-derived fixture tests (triggered by game-state changes)
 
 ### CI Workflow
 
-Runs on every push to main/develop branches and on pull requests:
+Runs on pull requests and pushes to main. Every job bootstraps via the
+shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`).
+The `build` job `needs:` ALL of the jobs below — a failure in any one
+blocks the merge:
 
 ```yaml
-Jobs:
-  - Lint (ESLint)
-  - Type Check (TypeScript)
-  - Build (Next.js production build)
-  - Upload build artifacts
+Jobs (PR path):
+  - test (Jest)
+  - e2e (Playwright, chromium)
+  - lint (ESLint)
+  - a11y-contrast (color-contrast gate)
+  - typecheck (tsc --noEmit)
+  - commitlint (conventional commits)
+  - mutation-test (Stryker on layer-system; full module set runs nightly in mutation.yml)
+  - security (npm audit)
+  - cargo-audit (Rust dependency audit)
+  - rust-checks (cargo fmt / clippy / test)
+  - workflow-lint (workflows must use the shared setup composite)
+  - tauri-updater-config (updater config guard)
+  - turn-credentials-guard (TURN credential route guard)
+  - build (Next.js production build — the aggregation gate)
+Nightly (schedule):
+  - flake-detector (5-run Playwright flake detection)
+  - cross-browser-e2e (firefox + webkit)
 ```
 
-### Desktop Build Workflow
+### Release Workflow (desktop builds — release.yml)
 
 Triggered on:
+- Push of a version tag (`v*`)
 - Release publication
 - Manual workflow dispatch
 
@@ -476,57 +500,64 @@ To trigger builds manually:
 
 ### Version Management
 
-Version is managed in `src-tauri/tauri.conf.json`:
+The single source of truth for the application version is
+`src-tauri/tauri.conf.json` (currently `1.0.0`). Source it programmatically
+rather than hard-coding:
 
-```json
-{
-  "version": "0.1.0"
-}
+```bash
+VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+echo "$VERSION"
 ```
 
-Also update `package.json` to match:
+Keep `package.json` in sync (both currently read `1.0.0`):
 
 ```json
 {
-  "version": "0.1.0"
+  "version": "<must match src-tauri/tauri.conf.json>"
 }
 ```
 
 ### Creating a Release
 
-1. **Update version numbers** in both `tauri.conf.json` and `package.json`
+1. **Source the current version** (do not hard-code it):
 
-2. **Commit the version bump**:
+```bash
+VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+```
+
+2. **Update version numbers** in both `tauri.conf.json` and `package.json`
+
+3. **Commit the version bump**:
 
 ```bash
 git add src-tauri/tauri.conf.json package.json
-git commit -m "Bump version to 0.1.0"
+git commit -m "chore: bump version to $VERSION"
 git push
 ```
 
-3. **Create a tag**:
+4. **Create a tag**:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag "v$VERSION"
+git push origin "v$VERSION"
 ```
 
-4. **Create a GitHub Release**:
+5. **Create a GitHub Release**:
 
 ```bash
-gh release create v0.1.0 \
-  --title "Planar Nexus v0.1.0" \
+gh release create "v$VERSION" \
+  --title "Planar Nexus v$VERSION" \
   --notes "Release notes here..."
 ```
 
-5. **Wait for CI/CD** to build all platforms
+6. **Wait for CI/CD** to build all platforms
 
-6. **Verify artifacts** are attached to the release
+7. **Verify artifacts** are attached to the release
 
 ### Release Notes Template
 
 ```markdown
-## Planar Nexus v0.1.0
+## Planar Nexus v<version>
 
 ### New Features
 - Feature 1
@@ -574,25 +605,25 @@ Planar Nexus follows semantic versioning (MAJOR.MINOR.PATCH):
 - **MINOR**: New functionality (backwards compatible)
 - **PATCH**: Bug fixes (backwards compatible)
 
-Examples:
-- `0.1.0` → `0.1.1` (patch release)
-- `0.1.0` → `0.2.0` (minor release)
-- `0.1.0` → `1.0.0` (major release)
+Examples (X.Y.Z stand-ins — always source the real value from `src-tauri/tauri.conf.json`):
+- `1.0.0` → `1.0.1` (patch release)
+- `1.0.0` → `1.1.0` (minor release)
+- `1.0.0` → `2.0.0` (major release)
 
 ### Pre-Release Versions
 
 For pre-release builds, use semantic versioning pre-release identifiers:
 
-- `0.1.0-alpha.1`
-- `0.1.0-beta.1`
-- `0.1.0-rc.1`
+- `1.0.0-alpha.1`
+- `1.0.0-beta.1`
+- `1.0.0-rc.1`
 
 ### Build Metadata
 
 Build metadata can be added for CI/CD builds:
 
-- `0.1.0+build.123`
-- `0.1.0-beta.1+build.456`
+- `1.0.0+build.123`
+- `1.0.0-beta.1+build.456`
 
 ## Troubleshooting
 
@@ -674,7 +705,7 @@ brew install openjdk@17
 ### CI/CD Issues
 
 **Issue**: Build fails in CI but works locally
-- Check Node.js version matches (Node 20)
+- Check Node.js version matches (Node 22)
 - Verify all dependencies are in package.json
 - Check for platform-specific dependencies
 
@@ -726,5 +757,5 @@ For deployment issues:
 
 ---
 
-**Last Updated**: 2026-03-07
-**Version**: 0.1.0
+**Last Updated**: 2026-09-08
+**Version**: sourced from `src-tauri/tauri.conf.json`
