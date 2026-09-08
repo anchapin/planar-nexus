@@ -61,7 +61,9 @@ export * from "./spell-casting";
 export * from "./effect-resolution";
 export * from "./abilities";
 export { getEffectivePower, getEffectiveToughness } from "./layer-system";
-export * from "./replacement-examples";
+// #1723: the example/demo modules (replacement-examples, translation-
+// integration-example) moved to src/examples/ — documentation-style code,
+// not engine surface. Import them from "@/examples/…" if needed.
 export * from "./terminology-translation";
 export * from "./phasing";
 export { shouldAutoPassPriority } from "./auto-pass-priority";

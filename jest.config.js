@@ -49,6 +49,9 @@ module.exports = {
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts",
     "!src/**/__tests__/**",
+    // #1723: documentation-style example modules live here (moved out of
+    // the engine); they are reference code, not production surface.
+    "!src/examples/**",
   ],
   // Coverage thresholds — ENFORCED by CI (ci.yml "Run unit tests with coverage").
   // Values are set just below MEASURED coverage so the gate catches real

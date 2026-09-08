@@ -15,7 +15,7 @@ import {
   translateCardState,
   getCardStateDescription,
   translateRuleText,
-} from './terminology-translation';
+} from "@/lib/game-state";
 
 /**
  * Example 1: Translating card oracle text for display
@@ -60,17 +60,17 @@ export function displayCardState(cardState: {
   });
 
   const descriptions: string[] = [];
-  if (state.activation === 'activated') {
-    descriptions.push('Activated');
+  if (state.activation === "activated") {
+    descriptions.push("Activated");
   }
-  if (state.deployment === 'restricted') {
-    descriptions.push('Has deployment restriction');
+  if (state.deployment === "restricted") {
+    descriptions.push("Has deployment restriction");
   }
-  if (state.visibility === 'phased out') {
-    descriptions.push('Phased out');
+  if (state.visibility === "phased out") {
+    descriptions.push("Phased out");
   }
 
-  return descriptions.length > 0 ? descriptions.join(', ') : 'Ready';
+  return descriptions.length > 0 ? descriptions.join(", ") : "Ready";
 }
 
 /**
@@ -95,7 +95,7 @@ export function createGameLogEntry(
   playerId: string,
   playerName: string,
   actionType: string,
-  details: string
+  details: string,
 ): GameLogEntry {
   return {
     timestamp: Date.now(),
@@ -113,7 +113,7 @@ export interface StackItemDisplay {
   id: string;
   name: string;
   controller: string;
-  type: 'spell' | 'ability';
+  type: "spell" | "ability";
   oracleText?: string;
   translatedText?: string;
 }
@@ -121,7 +121,9 @@ export interface StackItemDisplay {
 export function displayStackItem(item: StackItemDisplay): StackItemDisplay {
   return {
     ...item,
-    translatedText: item.oracleText ? translateToGeneric(item.oracleText) : undefined,
+    translatedText: item.oracleText
+      ? translateToGeneric(item.oracleText)
+      : undefined,
   };
 }
 
@@ -147,10 +149,12 @@ export function displayZoneContent(zoneContent: ZoneContent): {
 } {
   return {
     zoneName: translateZone(zoneContent.zoneType),
-    cards: zoneContent.cards.map(card => ({
+    cards: zoneContent.cards.map((card) => ({
       id: card.id,
       name: card.name,
-      translatedOracleText: card.oracleText ? translateToGeneric(card.oracleText) : undefined,
+      translatedOracleText: card.oracleText
+        ? translateToGeneric(card.oracleText)
+        : undefined,
     })),
   };
 }
@@ -177,8 +181,12 @@ export function createCardTooltip(info: CardTooltipInfo): {
   return {
     name: info.name,
     typeLine: info.typeLine,
-    translatedOracleText: info.oracleText ? translateToGeneric(info.oracleText) : undefined,
-    stateDescription: info.state ? getCardStateDescription(info.state) : undefined,
+    translatedOracleText: info.oracleText
+      ? translateToGeneric(info.oracleText)
+      : undefined,
+    stateDescription: info.state
+      ? getCardStateDescription(info.state)
+      : undefined,
   };
 }
 
@@ -214,13 +222,13 @@ export interface CombatMessage {
 
 export function displayCombatMessage(message: CombatMessage): string {
   const attackerText = message.attacker;
-  const blockerText = message.blockers.join(', ');
+  const blockerText = message.blockers.join(", ");
 
   if (message.damage) {
-    return `${attackerText} attacks ${blockerText || 'player'} for ${message.damage} damage`;
+    return `${attackerText} attacks ${blockerText || "player"} for ${message.damage} damage`;
   }
 
-  return `${attackerText} attacks ${blockerText || 'player'}`;
+  return `${attackerText} attacks ${blockerText || "player"}`;
 }
 
 /**
@@ -268,14 +276,16 @@ export function displayDeckStatistics(stats: DeckStatistics): {
 /**
  * Example 15: Translating win condition messages
  */
-export function displayWinCondition(condition: 'combat' | 'poison' | 'deck'): string {
+export function displayWinCondition(
+  condition: "combat" | "poison" | "deck",
+): string {
   switch (condition) {
-    case 'combat':
-      return 'Reduced life total to 0 or less';
-    case 'poison':
-      return 'Accumulated 10 poison counters';
-    case 'deck':
-      return 'Player attempted to draw from an empty draw pile';
+    case "combat":
+      return "Reduced life total to 0 or less";
+    case "poison":
+      return "Accumulated 10 poison counters";
+    case "deck":
+      return "Player attempted to draw from an empty draw pile";
   }
 }
 
@@ -290,7 +300,7 @@ export function displayGameError(error: string): string {
  * Example 17: Translating instruction text
  */
 export function displayInstructions(instructions: string[]): string[] {
-  return instructions.map(instruction => translateToGeneric(instruction));
+  return instructions.map((instruction) => translateToGeneric(instruction));
 }
 
 /**

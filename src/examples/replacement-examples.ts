@@ -13,8 +13,8 @@
  * - Regeneration effects
  */
 
-import type { ReplacementEffectManager } from './replacement-effects';
-import type { CardInstanceId, PlayerId, GameState } from './types';
+import type { ReplacementEffectManager } from "@/lib/game-state";
+import type { CardInstanceId, PlayerId, GameState } from "@/lib/game-state";
 import {
   ReplacementAbility,
   createPreventionShield,
@@ -23,7 +23,7 @@ import {
   createDrawReplacementEffect,
   createDestroyReplacementEffect,
   createAsThoughEffect,
-} from './replacement-effects';
+} from "@/lib/game-state";
 
 /**
  * Helper to get replacement effect manager from game state
@@ -40,15 +40,15 @@ function getRem(gameState: GameState): ReplacementEffectManager {
 export function registerFurnaceOfRath(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const effect = createDamageReplacementEffect(
     sourceCardId,
     controllerId,
-    'Furnace of Rath: Damage is doubled',
+    "Furnace of Rath: Damage is doubled",
     (amount) => amount * 2,
     5, // Layer 5 - general replacement
-    false
+    false,
   );
   getRem(gameState).registerEffect(effect);
 }
@@ -60,16 +60,16 @@ export function registerFurnaceOfRath(
 export function registerFog(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const { ability } = createPreventionShield(
     sourceCardId,
     controllerId,
-    '*', // All targets - would need special handling
+    "*", // All targets - would need special handling
     999, // Prevent a very large amount
-    'Fog: Prevent all combat damage',
-    'until_end_of_turn',
-    ['combat'] // Only combat damage
+    "Fog: Prevent all combat damage",
+    "until_end_of_turn",
+    ["combat"], // Only combat damage
   );
 
   getRem(gameState).registerEffect(ability);
@@ -83,15 +83,15 @@ export function registerFog(
 export function registerHolyDay(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const { ability } = createPreventionShield(
     sourceCardId,
     controllerId,
-    '*',
+    "*",
     999,
-    'Holy Day: Prevent all damage',
-    'until_end_of_turn'
+    "Holy Day: Prevent all damage",
+    "until_end_of_turn",
     // No damageTypes = all damage
   );
 
@@ -105,14 +105,14 @@ export function registerHolyDay(
 export function registerAlhammarretsArchive(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const effect = createLifeGainReplacementEffect(
     sourceCardId,
     controllerId,
     "Alhammarret's Archive: Double life gain",
     (amount) => amount * 2,
-    (targetId) => targetId === controllerId // Only applies to controller
+    (targetId) => targetId === controllerId, // Only applies to controller
   );
   getRem(gameState).registerEffect(effect);
 }
@@ -125,13 +125,13 @@ export function registerAlhammarretsArchive(
 export function registerNefarox(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const effect = createDrawReplacementEffect(
     sourceCardId,
     controllerId,
-    'Nefarox: Draw two cards instead of one',
-    (amount) => amount + 1 // Draw one additional card
+    "Nefarox: Draw two cards instead of one",
+    (amount) => amount + 1, // Draw one additional card
   );
   getRem(gameState).registerEffect(effect);
 }
@@ -143,15 +143,15 @@ export function registerNefarox(
 export function registerVeiledSentry(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const effect = createAsThoughEffect(
     sourceCardId,
     controllerId,
-    'cast_flash',
-    'Veiled Sentry: Cast spells as though they had flash',
+    "cast_flash",
+    "Veiled Sentry: Cast spells as though they had flash",
     undefined,
-    'permanent'
+    "permanent",
   );
   getRem(gameState).registerAsThoughEffect(effect);
 }
@@ -164,19 +164,19 @@ export function registerVeiledSentry(
 export function registerLeoninAbunas(
   gameState: GameState,
   sourceCardId: CardInstanceId,
-  controllerId: PlayerId
+  controllerId: PlayerId,
 ): void {
   const effect = createAsThoughEffect(
     sourceCardId,
     controllerId,
-    'target_anything',
-    'Leonin Abunas: Artifacts can\'t be targeted by opponents',
+    "target_anything",
+    "Leonin Abunas: Artifacts can't be targeted by opponents",
     (_state, _playerId) => {
       // This would check if the target is an artifact controlled by the effect's controller
       // and if the source is controlled by an opponent
       return true; // Simplified
     },
-    'permanent'
+    "permanent",
   );
   getRem(gameState).registerAsThoughEffect(effect);
 }
@@ -190,7 +190,7 @@ export function registerRegenerationShield(
   gameState: GameState,
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  targetCreatureId: CardInstanceId
+  targetCreatureId: CardInstanceId,
 ): void {
   const effect = createDestroyReplacementEffect(
     sourceCardId,
@@ -198,11 +198,11 @@ export function registerRegenerationShield(
     `Regeneration shield for creature`,
     (event) => ({
       ...event,
-      type: 'tap', // Instead of destroy, tap the creature
+      type: "tap", // Instead of destroy, tap the creature
       amount: 0,
       context: { ...event.context, regenerated: true },
     }),
-    (targetId) => targetId === targetCreatureId
+    (targetId) => targetId === targetCreatureId,
   );
   getRem(gameState).registerEffect(effect);
 }
@@ -215,25 +215,26 @@ export function registerPariah(
   gameState: GameState,
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  creatureId: CardInstanceId
+  creatureId: CardInstanceId,
 ): void {
   const effect: ReplacementAbility = {
     id: `pariah-${sourceCardId}-${Date.now()}`,
     sourceCardId,
     controllerId,
-    effectType: 'damage_replacement',
-    description: 'Pariah: Redirect damage to this creature',
+    effectType: "damage_replacement",
+    description: "Pariah: Redirect damage to this creature",
     layer: 4,
     timestamp: Date.now(),
     isInstead: true,
-    canApply: (event) => event.type === 'damage' && event.targetId === controllerId,
+    canApply: (event) =>
+      event.type === "damage" && event.targetId === controllerId,
     apply: (event) => ({
       modified: true,
       modifiedEvent: {
         ...event,
         targetId: creatureId, // Redirect to the creature
       },
-      description: 'Damage redirected to Pariah creature',
+      description: "Damage redirected to Pariah creature",
       instead: true,
     }),
   };
@@ -248,18 +249,18 @@ export function registerShinyImpetus(
   gameState: GameState,
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  _targetCreatureId: CardInstanceId
+  _targetCreatureId: CardInstanceId,
 ): void {
   const effect = createAsThoughEffect(
     sourceCardId,
     controllerId,
-    'attack_haste',
-    'Shiny Impetus: Creature can attack as though it had haste',
+    "attack_haste",
+    "Shiny Impetus: Creature can attack as though it had haste",
     (_state, _playerId) => {
       // Would check if the creature is the target
       return true;
     },
-    'until_end_of_turn'
+    "until_end_of_turn",
   );
   getRem(gameState).registerAsThoughEffect(effect);
 }
@@ -272,7 +273,7 @@ export function registerCircleOfProtectionBlack(
   gameState: GameState,
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
-  paidMana: boolean
+  paidMana: boolean,
 ): void {
   if (!paidMana) return;
 
@@ -281,8 +282,8 @@ export function registerCircleOfProtectionBlack(
     controllerId,
     controllerId,
     999,
-    'Circle of Protection: Black',
-    'until_end_of_turn'
+    "Circle of Protection: Black",
+    "until_end_of_turn",
     // Would need additional filtering for black sources
   );
 
@@ -294,7 +295,10 @@ export function registerCircleOfProtectionBlack(
 /**
  * Effect Removal - called when a permanent leaves the battlefield
  */
-export function unregisterEffects(gameState: GameState, sourceCardId: CardInstanceId): void {
+export function unregisterEffects(
+  gameState: GameState,
+  sourceCardId: CardInstanceId,
+): void {
   getRem(gameState).removeEffectsFromSource(sourceCardId);
 }
 
@@ -302,22 +306,43 @@ export function unregisterEffects(gameState: GameState, sourceCardId: CardInstan
  * Check if a player can cast spells as though they had flash
  * Helper function for the game engine
  */
-export function canCastAsThoughFlash(playerId: PlayerId, gameState: GameState): boolean {
-  return getRem(gameState).checkAsThoughEffect(playerId, 'cast_flash', gameState);
+export function canCastAsThoughFlash(
+  playerId: PlayerId,
+  gameState: GameState,
+): boolean {
+  return getRem(gameState).checkAsThoughEffect(
+    playerId,
+    "cast_flash",
+    gameState,
+  );
 }
 
 /**
  * Check if a creature can attack as though it had haste
  * Helper function for the game engine
  */
-export function canAttackAsThoughHaste(playerId: PlayerId, gameState: GameState): boolean {
-  return getRem(gameState).checkAsThoughEffect(playerId, 'attack_haste', gameState);
+export function canAttackAsThoughHaste(
+  playerId: PlayerId,
+  gameState: GameState,
+): boolean {
+  return getRem(gameState).checkAsThoughEffect(
+    playerId,
+    "attack_haste",
+    gameState,
+  );
 }
 
 /**
  * Check if a creature can block flying creatures
  * Helper function for the game engine
  */
-export function canBlockFlyingAsThoughReach(playerId: PlayerId, gameState: GameState): boolean {
-  return getRem(gameState).checkAsThoughEffect(playerId, 'block_flying', gameState);
+export function canBlockFlyingAsThoughReach(
+  playerId: PlayerId,
+  gameState: GameState,
+): boolean {
+  return getRem(gameState).checkAsThoughEffect(
+    playerId,
+    "block_flying",
+    gameState,
+  );
 }
