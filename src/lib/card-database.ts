@@ -14,6 +14,10 @@ import {
   estimateCardWriteBytes,
   QuotaExceededError,
 } from "./storage-quota";
+import {
+  IndexedDBBlockedError,
+  registerVersionChangeClose,
+} from "./indexeddb-open-events";
 import type { Format } from "@/lib/game-rules";
 
 // Minimal card data for offline use (subset of Scryfall data): the raw
@@ -88,13 +92,58 @@ let lastInitError: Error | null = null;
 
 /**
  * Open IndexedDB and create schema if needed
+ *
+ * Issue #1709: multi-tab version-safety. A plain `indexedDB.open` with a
+ * higher version PENDS FOREVER when another tab holds an older database
+ * version open (the request fires a `blocked` event that, unhandled,
+ * leaves `initializeCardDatabase()`'s cached promise unsettled — a
+ * bricked session for an offline-first app). This open now:
+ *
+ *   - rejects with {@link IndexedDBBlockedError} on `blocked` — the
+ *     actionable "another tab holds an older version" state. The #1726
+ *     init-retry path then recovers automatically on the next call once
+ *     the other tab closes.
+ *   - registers `onversionchange` on the opened connection (the reverse
+ *     direction): when another tab wants to upgrade, we close promptly
+ *     and broadcast `planar-nexus:db-versionchange` so UI layers can
+ *     offer a reload. No UI is rendered from this storage layer.
  */
 async function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+
+    // Issue #1709: the upgrade is blocked by an open connection in
+    // another tab. Reject with a stable, actionable error name so retry
+    // logic (and tests) can key off it instead of hanging forever.
+    request.onblocked = () => {
+      // If the other tab closes later, this request may STILL succeed
+      // after we already rejected. Close that late connection instead of
+      // leaking it for the rest of the session (the retry opens its own).
+      request.onsuccess = () => {
+        try {
+          request.result.close();
+        } catch {
+          // already closed — nothing to do
+        }
+      };
+      reject(new IndexedDBBlockedError(DB_NAME));
+    };
+
+    request.onsuccess = () => {
+      const database = request.result;
+      // Issue #1709 (reverse direction): another tab requesting a higher
+      // version must not stay blocked on us. Close on `versionchange` and
+      // reset the module-level connection state so the next call
+      // re-opens fresh at the new version.
+      registerVersionChangeClose(database, () => {
+        db = null;
+        searchReady = false;
+        initPromise = null;
+      });
+      resolve(database);
+    };
 
     request.onupgradeneeded = (event) => {
       const database = (event.target as IDBOpenDBRequest).result;

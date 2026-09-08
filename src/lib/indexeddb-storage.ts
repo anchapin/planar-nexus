@@ -22,6 +22,10 @@ import {
   type CalculateChecksumOptions,
   type CalculateChecksumProgress,
 } from "./backup/backup-checksum-bridge";
+import {
+  IndexedDBBlockedError,
+  registerVersionChangeClose,
+} from "./indexeddb-open-events";
 
 // ============================================================================
 // TYPES
@@ -416,6 +420,22 @@ export class IndexedDBStorage {
 
   /**
    * Initialize database connection
+   *
+   * Issue #1709: multi-tab version-safety. An open with a higher schema
+   * version PENDS FOREVER when another tab holds an older version open
+   * (the request fires `blocked` and, unhandled, never settles). This
+   * initialize now:
+   *
+   *   - rejects with `IndexedDBBlockedError` (stable `name`) on
+   *     `blocked` — the actionable "another tab holds an older version"
+   *     state; callers can surface it and retry once the other tab
+   *     closes, instead of hanging.
+   *   - registers `onversionchange` on the opened connection (the
+   *     reverse direction): when another tab wants to upgrade, we close
+   *     promptly, null the cached handle (so the next
+   *     `ensureInitialized()` re-opens at the new version), and
+   *     broadcast `planar-nexus:db-versionchange` so UI layers can offer
+   *     a reload. No UI is rendered from this storage layer.
    */
   async initialize(): Promise<void> {
     await new Promise<void>((resolve, reject) => {
@@ -425,8 +445,33 @@ export class IndexedDBStorage {
         reject(new Error(`Failed to open IndexedDB: ${request.error}`));
       };
 
+      // Issue #1709: the upgrade is blocked by an open connection in
+      // another tab. Reject with a stable, actionable error name instead
+      // of pending forever.
+      request.onblocked = () => {
+        // If the other tab closes later, this request may STILL succeed
+        // after we already rejected. Close that late connection instead
+        // of leaking it for the rest of the session (the retry opens its
+        // own).
+        request.onsuccess = () => {
+          try {
+            request.result.close();
+          } catch {
+            // already closed — nothing to do
+          }
+        };
+        reject(new IndexedDBBlockedError(this.config.dbName));
+      };
+
       request.onsuccess = () => {
         this.db = request.result;
+        // Issue #1709 (reverse direction): another tab requesting a
+        // higher version must not stay blocked on us. Close on
+        // `versionchange`, drop the cached handle so the next
+        // `ensureInitialized()` re-opens, and notify the UI.
+        registerVersionChangeClose(request.result, () => {
+          this.db = null;
+        });
         resolve();
       };
 
