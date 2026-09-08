@@ -32,7 +32,7 @@ import {
   Activity,
 } from "lucide-react";
 import type { StateSyncStatus, DesyncAlert } from "@/hooks/use-state-sync";
-import type { ConflictResolution } from "@/lib/game-state";
+import type { ConflictResolution } from "@/lib/sync";
 
 /**
  * Props for SyncStatusIndicator

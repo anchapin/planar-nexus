@@ -31,7 +31,7 @@ import {
   Clock,
   Info,
 } from "lucide-react";
-import type { ConflictResolution, HashDiscrepancy } from "@/lib/game-state";
+import type { ConflictResolution, HashDiscrepancy } from "@/lib/sync";
 
 /**
  * Resolution strategy options

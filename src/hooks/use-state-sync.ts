@@ -14,6 +14,8 @@ import {
   createStateHashVerifier,
   StateHashVerifier,
 } from "@/lib/game-state";
+// Deterministic-sync engine moved to src/lib/sync/ (issue #1716); the
+// versioned sync API lives behind the "@/lib/sync" barrel.
 import {
   createDeterministicEngine,
   DeterministicGameStateEngine,
@@ -24,7 +26,7 @@ import {
   type DeterministicAction,
   type HandshakePayload,
   DEFAULT_SYNC_CONFIG,
-} from "@/lib/game-state";
+} from "@/lib/sync";
 import { logger } from "@/lib/logger";
 
 const syncLogger = logger.child("StateSync");

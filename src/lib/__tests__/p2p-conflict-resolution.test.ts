@@ -11,6 +11,7 @@
 import {
   ConflictResolutionManager,
   createConflictResolutionManager,
+  decideOutboundAction,
   mergeActions,
   type ConflictResolutionConfig,
   type ActionPriority,
@@ -884,5 +885,73 @@ describe("Issue #1096 — factory", () => {
     });
     expect(m).toBeInstanceOf(ConflictResolutionManager);
     expect(m.getQueueSize()).toBe(0);
+  });
+});
+
+describe("decideOutboundAction — send-path policy (#1716)", () => {
+  const stamped: TimestampedAction = {
+    actionId: "p1-1",
+    playerId: "p1",
+    playerName: "Player One",
+    actionType: "tap-card",
+    actionData: { cardId: "c1" },
+    timestamp: 100,
+    priority: "normal",
+    sequenceNumber: 1,
+    receivedAt: 100,
+  };
+
+  it("returns send-direct when conflict resolution is unavailable (null result)", () => {
+    expect(decideOutboundAction(null)).toEqual({ kind: "send-direct" });
+  });
+
+  it("returns queue when the manager says shouldQueue, forwarding the stamped action", () => {
+    expect(
+      decideOutboundAction({
+        shouldProcess: false,
+        shouldQueue: true,
+        queueReason: "Conflicting action being processed",
+        action: stamped,
+      }),
+    ).toEqual({ kind: "queue", action: stamped });
+  });
+
+  it("returns queue with undefined action when the manager queued without a stamp", () => {
+    expect(
+      decideOutboundAction({ shouldProcess: false, shouldQueue: true }),
+    ).toEqual({ kind: "queue", action: undefined });
+  });
+
+  it("returns send (with the stamped action) when processable", () => {
+    expect(
+      decideOutboundAction({
+        shouldProcess: true,
+        shouldQueue: false,
+        action: stamped,
+      }),
+    ).toEqual({ kind: "send", action: stamped });
+  });
+
+  it("falls back to send-direct when processable but no action was stamped", () => {
+    expect(
+      decideOutboundAction({ shouldProcess: true, shouldQueue: false }),
+    ).toEqual({ kind: "send-direct" });
+  });
+
+  it("falls back to send-direct on a non-committal result", () => {
+    expect(
+      decideOutboundAction({ shouldProcess: false, shouldQueue: false }),
+    ).toEqual({ kind: "send-direct" });
+  });
+
+  it("integrates with processAction: a conflict-free action is a send", () => {
+    const manager = new ConflictResolutionManager({ hostId: "h" });
+    const result = manager.processAction("tap-card", {}, "p1", "Player One");
+    const decision = decideOutboundAction(result);
+    expect(decision.kind).toBe("send");
+    if (decision.kind === "send") {
+      expect(decision.action.actionType).toBe("tap-card");
+      expect(decision.action.playerId).toBe("p1");
+    }
   });
 });

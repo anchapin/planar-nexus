@@ -15,10 +15,7 @@ import {
   createDesyncLogger,
   type DesyncEvent,
 } from "../desync-logger";
-import type {
-  HashDiscrepancy,
-  ConflictResolution,
-} from "../game-state/deterministic-sync";
+import type { HashDiscrepancy, ConflictResolution } from "@/lib/sync";
 
 const SAMPLE_DISCREPANCIES: HashDiscrepancy[] = [
   {

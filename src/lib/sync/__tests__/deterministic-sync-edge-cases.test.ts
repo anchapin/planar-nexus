@@ -22,9 +22,14 @@ import {
   createDesyncAlertMessage,
   type DeterministicAction,
 } from "../deterministic-sync";
-import { computeStateHash } from "../state-hash";
-import { createInitialGameState } from "../game-state";
-import type { GameState, GameAction, ActionType, ActionData } from "../types";
+import { computeStateHash } from "@/lib/game-state";
+import { createInitialGameState } from "@/lib/game-state";
+import type {
+  GameState,
+  GameAction,
+  ActionType,
+  ActionData,
+} from "@/lib/game-state";
 import { DesyncLogger } from "../../desync-logger";
 
 /** Minimal game-action fixture (same shape used by deterministic-sync-extended). */

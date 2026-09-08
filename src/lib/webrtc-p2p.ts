@@ -20,9 +20,9 @@ import {
   applyDelta,
   shouldUseFullSync,
   estimateDeltaSize,
-  type PeerSyncState,
+  type DeltaPeerSyncState,
   type GameStateDelta,
-} from "./game-state/delta-sync";
+} from "@/lib/sync";
 import {
   ICEConfigurationManager,
   ICEConnectionMonitor,
@@ -63,11 +63,7 @@ export const DEFAULT_RTC_CONFIG: RTCConfiguration = {
  * Connection state
  */
 export type P2PConnectionState =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "failed";
+  "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
 
 /**
  * Message types for P2P communication
@@ -322,7 +318,7 @@ export class WebRTCConnection {
   private gameCode: string | undefined;
   private rtcConfig: RTCConfiguration;
   private peers: Map<string, PeerInfo> = new Map();
-  private peerSyncStates: Map<string, PeerSyncState> = new Map();
+  private peerSyncStates: Map<string, DeltaPeerSyncState> = new Map();
   private connectionState: P2PConnectionState = "disconnected";
   private events: P2PEvents;
   private reconnectAttempts = 0;
@@ -593,7 +589,10 @@ export class WebRTCConnection {
       this.updateConnectionState("reconnecting");
     } catch (error) {
       // #982: redact — relay fallback errors may reference TURN credentials.
-      p2pLogger.error("[WebRTC] Relay fallback failed:", redactSensitive(error));
+      p2pLogger.error(
+        "[WebRTC] Relay fallback failed:",
+        redactSensitive(error),
+      );
       this.handleConnectionFailure();
     }
   }
@@ -613,7 +612,10 @@ export class WebRTCConnection {
       return offer;
     } catch (error) {
       // #982: redact — offer creation errors may embed the SDP offer.
-      p2pLogger.error("[WebRTC] Failed to create offer:", redactSensitive(error));
+      p2pLogger.error(
+        "[WebRTC] Failed to create offer:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to create offer"),
         "",
@@ -642,7 +644,10 @@ export class WebRTCConnection {
       return answer;
     } catch (error) {
       // #982: redact — handleOffer errors may embed the remote SDP offer.
-      p2pLogger.error("[WebRTC] Failed to handle offer:", redactSensitive(error));
+      p2pLogger.error(
+        "[WebRTC] Failed to handle offer:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to handle offer"),
         "",
@@ -1470,7 +1475,7 @@ export class WebRTCConnection {
     const serializedState = serializeGameState(gameState);
     const aiState = engineToAIState(gameState);
 
-    const syncState: PeerSyncState = {
+    const syncState: DeltaPeerSyncState = {
       lastVersion:
         (gameState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0,
       lastChecksum: computeChecksum(aiState),
@@ -1513,7 +1518,7 @@ export class WebRTCConnection {
     }
 
     const aiState = engineToAIState(gameState);
-    const syncState: PeerSyncState = {
+    const syncState: DeltaPeerSyncState = {
       lastVersion: delta.version,
       lastChecksum: delta.checksum,
       lastState: aiState,
