@@ -74,6 +74,15 @@ export * from "./card-instance";
 export * from "./zones";
 export * from "./ward-system";
 export * from "./replay-compression";
+// #1724: format / game-mode configuration is engine-owned versioned input
+// data (FORMAT_RULES_VERSION). The root-level @/lib/game-rules module is a
+// facade that re-exports this surface for app consumers.
+export * from "./format-rules";
+// #1724: dungeon definitions and native gzip helpers moved into the engine
+// (from src/lib/cards/ and src/lib/compression/) — the engine consumes them
+// and must be self-contained. The compression path is a re-export facade.
+export * from "./dungeon-data";
+export * from "./native-gzip";
 
 // Local exports for common functions with consistent naming
 export { tapCard, untapCard, checkStateBasedActions };

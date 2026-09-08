@@ -37,7 +37,7 @@ import {
   parseSpellEffects,
 } from "../effect-resolution";
 import { addMana } from "../mana";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { GameState, StackObject } from "../types";
 
 /* ------------------------------------------------------------------ */

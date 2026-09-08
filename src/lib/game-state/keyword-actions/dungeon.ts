@@ -5,7 +5,7 @@
  * behavior pinned by the existing engine suites.
  */
 import type { GameState, PlayerId } from '../types';
-import { DEFAULT_DUNGEON_ID, getDungeon, getDungeonRoom, getDungeonRoomByIndex, getNextDungeonRoom, getStartingDungeonRoom, isFinalDungeonRoom, DungeonDefinition, DungeonRoom, DungeonRoomCompletion } from '../../cards/dungeons';
+import { DEFAULT_DUNGEON_ID, getDungeon, getDungeonRoom, getDungeonRoomByIndex, getNextDungeonRoom, getStartingDungeonRoom, isFinalDungeonRoom, DungeonDefinition, DungeonRoom, DungeonRoomCompletion } from '../dungeon-data';
 import { KeywordActionResult } from './shared';
 
 function getProgressRoom(

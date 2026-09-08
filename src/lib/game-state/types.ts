@@ -6,8 +6,11 @@
  * and implementation clarity. All user-facing text should use generic terminology
  * via the translation layer (see terminology-translation.ts).
  */
-// Re-export ScryfallCard for use in other game-state modules
-export type { ScryfallCard } from "@/lib/card-database";
+// Re-export the engine-owned card-data shape (MinimalCard / ScryfallCard)
+// for use in other game-state modules. Issue #1724: the shape moved from
+// @/lib/card-database into the engine boundary; card-database re-exports
+// it back out so app-level consumers keep working unchanged.
+export * from './types/card-data';
 //
 // Issue #1725: this module was decomposed into per-family files under
 // types/. This file remains the module entrypoint so every existing

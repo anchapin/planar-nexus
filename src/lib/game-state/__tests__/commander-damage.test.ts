@@ -27,7 +27,7 @@ import {
 } from "../commander-damage";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // Helper function to create a mock commander card
 function createMockCommander(

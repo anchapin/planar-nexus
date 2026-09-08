@@ -21,7 +21,7 @@
  * @module layer-system
  */
 
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "./types";
 import { CardInstance, CardInstanceId, PlayerId } from "./types";
 
 /**

@@ -43,7 +43,7 @@ import type {
   StackObject,
   Target,
 } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // ---------------------------------------------------------------------------
 // Mock card helpers

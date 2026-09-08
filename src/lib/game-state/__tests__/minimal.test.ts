@@ -3,7 +3,7 @@
  */
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 const mockCard: ScryfallCard = {
   id: "mock-creature",

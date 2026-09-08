@@ -24,7 +24,7 @@ import {
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { addMana as addManaToPool } from "../mana";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import { Phase } from "../types";
 
 // Helper function to create a mock card

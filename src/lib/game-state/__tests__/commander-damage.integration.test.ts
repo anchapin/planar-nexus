@@ -29,7 +29,7 @@ import type {
   PlayerId,
   CardInstance,
 } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 function createMockCommander(
   name: string,

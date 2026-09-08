@@ -16,78 +16,28 @@ import {
 } from "./storage-quota";
 import type { Format } from "@/lib/game-rules";
 
-// Minimal card data for offline use (subset of Scryfall data)
-
-export interface MinimalCard {
-  id: string;
-  oracle_id?: string;
-  name: string;
-  set?: string;
-  collector_number?: string;
-  cmc: number;
-  type_line: string;
-  oracle_text?: string;
-  colors: string[];
-  color_identity: string[];
-  rarity?: string;
-  legalities: Record<string, string>;
-  name_lower?: string; // For case-insensitive indexing
-  image_uris?: {
-    small: string;
-    normal: string;
-    large: string;
-    png: string;
-    art_crop: string;
-    border_crop: string;
-  };
-  mana_cost?: string;
-  power?: string;
-  toughness?: string;
-  keywords?: string[];
-  // Card faces for double-faced/transform cards
-  card_faces?: Array<{
-    name: string;
-    mana_cost?: string;
-    type_line?: string;
-    oracle_text?: string;
-    power?: string;
-    toughness?: string;
-    image_uris?: {
-      small: string;
-      normal: string;
-      large: string;
-      png: string;
-      art_crop: string;
-      border_crop: string;
-    };
-  }>;
-  // Layout type (normal, transform, modal_dfc, etc.)
-  layout?: string;
-  // Loyalty for planeswalkers
-  loyalty?: string;
-  // ISO-8601 release date of the card's set (e.g. "2024-02-09").
-  // Used by Standard rotation validation (see src/lib/game-rules.ts).
-  release_date?: string;
-}
+// Minimal card data for offline use (subset of Scryfall data): the raw
+// MinimalCard / ScryfallCard shapes are engine-owned (see the re-export
+// block below).
 
 // ============================================================================
-// CANONICAL CARD-SHAPE INTERFACES (issue #1593)
+// CANONICAL CARD-SHAPE INTERFACES (issue #1593, ownership moved #1724)
 // ============================================================================
 //
-// MinimalCard / ScryfallCard / DeckCard are defined here and ONLY here.
-// Former duplicate declarations in src/ai/flows/context-builder.ts import
-// from this module. `power` / `toughness` / `keywords` are already optional
-// members of MinimalCard, so ScryfallCard only adds what MinimalCard lacks.
+// MinimalCard / ScryfallCard are the raw card records the rules engine
+// validates against, so the ENGINE owns their definitions
+// (src/lib/game-state/types/card-data.ts, issue #1724). This module —
+// which owns card persistence/search — re-exports them so it remains the
+// canonical import site for app code: every pre-existing
+// `import ... from "@/lib/card-database"` keeps resolving unchanged.
 //
 // SavedDeck — the deck-persistence shape formerly colocated in the
 // misnamed src/app/actions.ts — was moved here (and actions.ts deleted)
 // by issue #1592, making this module the single canonical import site for
 // card and deck data shapes.
+import type { MinimalCard, ScryfallCard } from "@/lib/game-state";
 
-export interface ScryfallCard extends MinimalCard {
-  // Whether this is a double-faced card
-  faces?: number;
-}
+export type { MinimalCard, ScryfallCard };
 
 export interface DeckCard extends ScryfallCard {
   count: number;

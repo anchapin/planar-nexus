@@ -4,7 +4,7 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { ScryfallCard } from '@/lib/card-database';
+import type { ScryfallCard } from './card-data';
 import { PlayerId } from './players';
 
 /**

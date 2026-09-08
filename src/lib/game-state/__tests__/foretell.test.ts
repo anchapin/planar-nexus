@@ -35,7 +35,7 @@ import { foretellCard, castForetoldCard } from "../keyword-actions";
 import { isForetoldCard, getForetoldCardIds } from "../zones";
 import { Phase, ZoneType } from "../types";
 import type { GameState, PlayerId, CardInstanceId } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // ---------------------------------------------------------------------------
 // Mock card helpers

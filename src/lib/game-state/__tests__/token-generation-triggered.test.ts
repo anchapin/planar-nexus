@@ -15,7 +15,7 @@ import type {
   CardInstanceId,
   PlayerId,
 } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 function createMockToken(
   name: string,

@@ -39,7 +39,7 @@ import {
 } from "../layer-system";
 import { createCardInstance } from "../card-instance";
 import type { CardInstance, CardInstanceId, PlayerId } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { ContinuousEffect } from "../layer-system";
 
 // ---------------------------------------------------------------------------

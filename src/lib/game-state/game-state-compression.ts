@@ -17,7 +17,7 @@
  *   compatibility.
  */
 
-import { gzipCompress, gzipDecompress } from "../compression/native-gzip";
+import { gzipCompress, gzipDecompress } from "./native-gzip";
 
 /**
  * Prefix marking a compressed payload. base64 output never starts with these

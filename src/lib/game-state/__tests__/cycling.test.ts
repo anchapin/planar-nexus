@@ -39,7 +39,7 @@ import { createCardInstance } from "../card-instance";
 import { addMana } from "../mana";
 import { Phase } from "../types";
 import type { GameState, PlayerId, CardInstanceId } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // ---------------------------------------------------------------------------
 // Mock card helpers

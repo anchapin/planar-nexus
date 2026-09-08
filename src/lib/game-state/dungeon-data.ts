@@ -1,3 +1,13 @@
+/**
+ * Engine-owned dungeon definitions (issue #1724).
+ *
+ * Pure input data + accessors for the venture-into-the-dungeon mechanic
+ * (CR 309): the three dungeon cards' room graphs. Previously
+ * src/lib/cards/dungeons.ts; moved into the engine because its only
+ * consumers are engine modules (keyword-actions/dungeon.ts,
+ * keyword-actions/shared.ts, trigger-system.ts) and the engine boundary
+ * (issue #1724) forbids engine-outbound imports.
+ */
 export interface DungeonRoom {
   id: string;
   name: string;

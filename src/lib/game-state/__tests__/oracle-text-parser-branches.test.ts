@@ -37,7 +37,7 @@ import {
   hasFuse,
   AlternativeCostType,
 } from "../oracle-text-parser";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {
   return {

@@ -18,7 +18,7 @@ import type {
   GameState,
   PlayerId,
 } from "./types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "./types";
 import {
   parsePrototype,
   parseManaCost,

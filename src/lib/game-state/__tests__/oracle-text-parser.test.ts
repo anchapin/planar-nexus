@@ -24,7 +24,7 @@ import {
   getModesForModalSpell,
   modeRequiresTarget,
 } from "../oracle-text-parser";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // Helper to create mock card
 function createMockCard(overrides: Partial<ScryfallCard> = {}): ScryfallCard {

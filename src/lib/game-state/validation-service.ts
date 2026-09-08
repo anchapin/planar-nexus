@@ -5,7 +5,7 @@ import type {
   Player,
   CardInstanceId,
 } from "./types";
-import { getGameMode } from "@/lib/game-rules";
+import { getGameMode } from "./format-rules";
 import {
   canTarget as canTargetKeyword,
   canBlockProtectedAttacker,

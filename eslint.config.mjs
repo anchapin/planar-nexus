@@ -4,6 +4,68 @@ import tseslint from "typescript-eslint";
 import reactPlugin from "eslint-plugin-react";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
 
+// Issue #1724: the rules engine (src/lib/game-state/**) is self-contained.
+// Engine files may import vendored/third-party modules and other engine
+// files (relative or via the engine's own barrel) but NOTHING else under
+// `@/*` — format/deck-construction rules and the card-data shape are
+// engine-owned (format-rules.ts / types/card-data.ts) and root-level
+// facades (@/lib/game-rules, @/lib/card-database) must not be imported
+// from inside the engine. Relative imports that climb OUT of the engine
+// directory are banned depth-aware (one `../` per directory level below
+// the engine root would escape).
+const ENGINE_OUTBOUND_IMPORT_MESSAGE =
+  "The game-state engine is self-contained (issue #1724): imports must " +
+  "resolve inside src/lib/game-state or to vendored/third-party modules. " +
+  "Format/deck-construction rules are engine-owned " +
+  "(src/lib/game-state/format-rules.ts); @/lib/game-rules and " +
+  "@/lib/card-database are facades for OUTSIDE consumers only.";
+
+// Bans every `@/…` alias import EXCEPT the engine's own barrel
+// (`@/lib/game-state` and modules under it) — negative lookahead keeps
+// the barrel importable from inside the engine while banning every other
+// alias path (@/lib/game-rules, @/components, @/hooks, …).
+const ENGINE_ALIAS_BAN_REGEX = "^@(?!/lib/game-state(?:$|/))/";
+
+const engineOutboundBoundaryBlock = (filesGlob, escapeRegex) => ({
+  files: filesGlob,
+  rules: {
+    "no-restricted-imports": [
+      "error",
+      {
+        paths: [
+          {
+            name: "@/lib/game-rules",
+            message:
+              "Format rules are engine-owned versioned input data " +
+              "(src/lib/game-state/format-rules.ts, issue #1724); the " +
+              "root-level facade is for app code, not the engine.",
+          },
+          {
+            name: "@/lib/card-database",
+            message:
+              "The card-data shape is engine-owned " +
+              "(src/lib/game-state/types/card-data.ts, issue #1724); " +
+              "import ScryfallCard from the engine's own types instead.",
+          },
+        ],
+        patterns: [
+          {
+            regex: ENGINE_ALIAS_BAN_REGEX,
+            message: ENGINE_OUTBOUND_IMPORT_MESSAGE,
+          },
+          {
+            // Depth-aware relative-escape ban: at this directory depth,
+            // an import with this many leading `../` segments resolves
+            // outside src/lib/game-state.
+            regex: escapeRegex,
+            message: ENGINE_OUTBOUND_IMPORT_MESSAGE,
+          },
+        ],
+      },
+    ],
+  },
+});
+
 const eslintConfig = [
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -104,6 +166,20 @@ const eslintConfig = [
       ],
     },
   },
+  // Issue #1724: inbound side of the engine boundary — files INSIDE
+  // src/lib/game-state may not import application code outside it. The
+  // three blocks below partition the engine tree by directory depth so
+  // the relative-escape glob can stay exact at each level (a file N
+  // levels deep escapes the engine at its (N+1)-th leading `../`).
+  engineOutboundBoundaryBlock(["src/lib/game-state/*.{ts,tsx}"], "^\\.\\./"),
+  engineOutboundBoundaryBlock(
+    ["src/lib/game-state/*/*.{ts,tsx}"],
+    "^\\.\\./\\.\\./",
+  ),
+  engineOutboundBoundaryBlock(
+    ["src/lib/game-state/*/*/*.{ts,tsx}"],
+    "^\\.\\./\\.\\./\\.\\./",
+  ),
   {
     ignores: [
       "next-env.d.ts",

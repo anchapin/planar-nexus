@@ -20,7 +20,7 @@ import {
   serializeGameState,
   deserializeGameState,
 } from "../state-serialization";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // Mock cards
 const MOUNTAIN: ScryfallCard = {

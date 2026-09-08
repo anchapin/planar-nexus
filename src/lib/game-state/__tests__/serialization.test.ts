@@ -19,7 +19,7 @@ import {
   loadDeckForPlayer,
 } from "../game-state";
 import { Phase } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 /**
  * Create a mock ScryfallCard for testing

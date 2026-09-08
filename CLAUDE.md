@@ -49,7 +49,7 @@ The app uses Next.js 16 (with React 19) and the App Router pattern:
 `/src/lib/ai-client.ts` holds the client-side wrappers around the AI flows (no `"use server"` directive — they are not Next.js server actions). It handles:
 
 - AI deck reviews and opponent generation
-- Card/deck data types live elsewhere: `ScryfallCard`/`DeckCard`/`SavedDeck` are canonical in `/src/lib/card-database.ts`
+- Card/deck data types live elsewhere: `DeckCard`/`SavedDeck` are canonical in `/src/lib/card-database.ts`; `ScryfallCard`/`MinimalCard` are engine-owned in `/src/lib/game-state/types/card-data.ts` (#1724) and re-exported by `/src/lib/card-database.ts`
 - Deck persistence (IndexedDB via Dexie; tests use `fake-indexeddb`) lives in `/src/lib/deck-storage.ts`
 
 (Renamed from the misnamed `src/app/actions.ts` in issue #1592.) These wrappers are called directly from client components.
@@ -110,7 +110,7 @@ When adding card-related functionality, ensure types align with Scryfall's API r
 
 ## Game Rules
 
-Magic: The Gathering rules are defined in `/src/lib/game-rules.ts`. This includes format definitions, deck construction rules, and legality checks. When modifying game behavior, update this file accordingly.
+Magic: The Gathering format definitions and deck-construction rules are engine-owned versioned input data in `/src/lib/game-state/format-rules.ts` (#1724); `/src/lib/game-rules.ts` is the app-facing facade that re-exports them and hosts deck-legality tooling (ban lists, rotation, color identity). When modifying game behavior, edit the engine-owned data (bump `FORMAT_RULES_VERSION` when validation semantics change).
 
 Note: The MTG rules engine is a large, live module at `/src/lib/game-state/` (layer-system, trigger-system, state-based-actions, spell-casting, combat, mana, …). It is the correctness-critical core and the only place mutation testing runs. `game-rules.ts` imports its `GameState` type from there.
 

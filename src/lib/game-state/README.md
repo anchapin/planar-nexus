@@ -277,6 +277,6 @@ describe("GameState", () => {
 
 ## Related Files
 
-- `/src/lib/game-rules.ts` - Format rules and deck construction
-- `/src/lib/card-database.ts` - ScryfallCard, DeckCard, and SavedDeck types
+- `/src/lib/game-rules.ts` - App-facing facade for the engine-owned format rules (see `format-rules.ts` here, issue #1724) plus deck-legality tooling
+- `/src/lib/card-database.ts` - DeckCard / SavedDeck types; re-exports the engine-owned ScryfallCard / MinimalCard shape (`types/card-data.ts`)
 - `/src/ai/flows/` - AI deck generation
