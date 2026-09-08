@@ -332,7 +332,7 @@ describe("createLocalCardLookup — default local resolver", () => {
   });
 
   it("resolves a card through getCardByName and reports dbHasCards", async () => {
-    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 500 });
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 500, error: null });
     mockedGetCardByName.mockResolvedValue(makeCard());
     const lookup = createLocalCardLookup();
     const result = await lookup("Lightning Bolt");
@@ -342,7 +342,7 @@ describe("createLocalCardLookup — default local resolver", () => {
   });
 
   it("reports dbHasCards=false when the database is empty", async () => {
-    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 0 });
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 0, error: null });
     mockedGetCardByName.mockResolvedValue(undefined);
     const lookup = createLocalCardLookup();
     const result = await lookup("Lightning Bolt");
@@ -351,7 +351,7 @@ describe("createLocalCardLookup — default local resolver", () => {
   });
 
   it("caches the population probe across calls within one resolver", async () => {
-    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 10 });
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 10, error: null });
     mockedGetCardByName.mockResolvedValue(undefined);
     const lookup = createLocalCardLookup();
     await lookup("A");
