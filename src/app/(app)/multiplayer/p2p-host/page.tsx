@@ -5,29 +5,48 @@
  * Allows players to host a P2P game using QR code and manual signaling
  */
 
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, Crown, Clock, Eye, Users, Play } from 'lucide-react';
-import { useP2PSignaling } from '@/hooks/use-p2p-signaling';
-import { SignalingExchange } from '@/components/signaling-exchange';
-import { QRCodeDisplay } from '@/components/qr-code-display';
-import type { P2PMessage } from '@/lib/webrtc-p2p';
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ArrowLeft, Crown, Clock, Eye, Users, Play } from "lucide-react";
+import { useP2PSignaling } from "@/hooks/use-p2p-signaling";
+import { SignalingExchange } from "@/components/signaling-exchange";
+import { QRCodeDisplay } from "@/components/qr-code-display";
+import type { P2PMessage } from "@/lib/webrtc-p2p";
 
 interface HostState {
-  step: 'setup' | 'signaling' | 'connected';
+  step: "setup" | "signaling" | "connected";
   playerName: string;
   gameName: string;
-  gameFormat: 'commander' | 'modern' | 'standard' | 'pioneer' | 'legacy' | 'vintage' | 'pauper';
+  gameFormat:
+    | "commander"
+    | "modern"
+    | "standard"
+    | "pioneer"
+    | "legacy"
+    | "vintage"
+    | "pauper";
   allowSpectators: boolean;
   timerEnabled: boolean;
   timerMinutes: number;
@@ -35,10 +54,10 @@ interface HostState {
 
 export default function P2PHostPage() {
   const [hostState, setHostState] = useState<HostState>({
-    step: 'setup',
-    playerName: '',
-    gameName: '',
-    gameFormat: 'commander',
+    step: "setup",
+    playerName: "",
+    gameName: "",
+    gameFormat: "commander",
     allowSpectators: true,
     timerEnabled: false,
     timerMinutes: 30,
@@ -46,34 +65,34 @@ export default function P2PHostPage() {
 
   const signaling = useP2PSignaling({
     onConnected: () => {
-      setHostState(prev => ({ ...prev, step: 'connected' }));
+      setHostState((prev) => ({ ...prev, step: "connected" }));
     },
     onMessage: (message: P2PMessage) => {
       // Handle incoming messages
     },
     onError: (error) => {
-      console.error('Signaling error:', error);
+      console.error("Signaling error:", error);
     },
   });
 
   const formatDisplayNames: Record<string, string> = {
-    commander: 'Commander',
-    modern: 'Modern',
-    standard: 'Standard',
-    pioneer: 'Pioneer',
-    legacy: 'Legacy',
-    vintage: 'Vintage',
-    pauper: 'Pauper',
+    commander: "Commander",
+    modern: "Modern",
+    standard: "Standard",
+    pioneer: "Pioneer",
+    legacy: "Legacy",
+    vintage: "Vintage",
+    pauper: "Pauper",
   };
 
   const handleSetupComplete = async () => {
     try {
-      setHostState(prev => ({ ...prev, step: 'signaling' }));
+      setHostState((prev) => ({ ...prev, step: "signaling" }));
       await signaling.initializeAsHost(hostState.playerName);
       // Auto-generate offer after initialization
       await signaling.startHostConnection();
     } catch (error) {
-      console.error('Failed to initialize host:', error);
+      console.error("Failed to initialize host:", error);
     }
   };
 
@@ -81,20 +100,24 @@ export default function P2PHostPage() {
     try {
       await signaling.handleAnswer(answer);
     } catch (error) {
-      console.error('Failed to handle answer:', error);
+      console.error("Failed to handle answer:", error);
     }
   };
 
   const handleStartGame = () => {
     // Navigate to game board or start game logic
-    window.location.href = '/game-board';
+    window.location.href = "/game-board";
   };
 
   // Setup Step
-  if (hostState.step === 'setup') {
+  if (hostState.step === "setup") {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-4xl mx-auto">
-        <Button variant="ghost" onClick={() => window.location.href = '/multiplayer'} className="mb-4">
+        <Button
+          variant="ghost"
+          onClick={() => (window.location.href = "/multiplayer")}
+          className="mb-4"
+        >
           <ArrowLeft className="w-4 h-4 mr-2" />
           Back
         </Button>
@@ -102,7 +125,8 @@ export default function P2PHostPage() {
         <header className="mb-6">
           <h1 className="font-headline text-3xl font-bold">Host P2P Game</h1>
           <p className="text-muted-foreground mt-1">
-            Create a peer-to-peer game and share the connection code with your opponent
+            Create a peer-to-peer game and share the connection code with your
+            opponent
           </p>
         </header>
 
@@ -119,7 +143,12 @@ export default function P2PHostPage() {
                 id="player-name"
                 placeholder="Enter your name"
                 value={hostState.playerName}
-                onChange={(e) => setHostState(prev => ({ ...prev, playerName: e.target.value }))}
+                onChange={(e) =>
+                  setHostState((prev) => ({
+                    ...prev,
+                    playerName: e.target.value,
+                  }))
+                }
                 maxLength={20}
               />
             </div>
@@ -131,7 +160,12 @@ export default function P2PHostPage() {
                 id="game-name"
                 placeholder="e.g., Friday Night Commander"
                 value={hostState.gameName}
-                onChange={(e) => setHostState(prev => ({ ...prev, gameName: e.target.value }))}
+                onChange={(e) =>
+                  setHostState((prev) => ({
+                    ...prev,
+                    gameName: e.target.value,
+                  }))
+                }
               />
             </div>
 
@@ -141,7 +175,7 @@ export default function P2PHostPage() {
               <Select
                 value={hostState.gameFormat}
                 onValueChange={(value: typeof hostState.gameFormat) =>
-                  setHostState(prev => ({ ...prev, gameFormat: value }))
+                  setHostState((prev) => ({ ...prev, gameFormat: value }))
                 }
               >
                 <SelectTrigger id="format">
@@ -172,7 +206,12 @@ export default function P2PHostPage() {
                 </div>
                 <Switch
                   checked={hostState.allowSpectators}
-                  onCheckedChange={(checked) => setHostState(prev => ({ ...prev, allowSpectators: checked }))}
+                  onCheckedChange={(checked) =>
+                    setHostState((prev) => ({
+                      ...prev,
+                      allowSpectators: checked,
+                    }))
+                  }
                 />
               </div>
 
@@ -185,7 +224,9 @@ export default function P2PHostPage() {
                 </div>
                 <Switch
                   checked={hostState.timerEnabled}
-                  onCheckedChange={(checked) => setHostState(prev => ({ ...prev, timerEnabled: checked }))}
+                  onCheckedChange={(checked) =>
+                    setHostState((prev) => ({ ...prev, timerEnabled: checked }))
+                  }
                 />
               </div>
 
@@ -199,7 +240,10 @@ export default function P2PHostPage() {
                     max={60}
                     value={hostState.timerMinutes}
                     onChange={(e) =>
-                      setHostState(prev => ({ ...prev, timerMinutes: parseInt(e.target.value) || 30 }))
+                      setHostState((prev) => ({
+                        ...prev,
+                        timerMinutes: parseInt(e.target.value) || 30,
+                      }))
                     }
                   />
                 </div>
@@ -214,11 +258,17 @@ export default function P2PHostPage() {
 
             <Button
               onClick={handleSetupComplete}
-              disabled={!hostState.playerName.trim() || !hostState.gameName.trim() || signaling.connectionState === 'connecting'}
+              disabled={
+                !hostState.playerName.trim() ||
+                !hostState.gameName.trim() ||
+                signaling.connectionState === "connecting"
+              }
               className="w-full"
               size="lg"
             >
-              {signaling.connectionState === 'connecting' ? 'Creating...' : 'Create Lobby'}
+              {signaling.connectionState === "connecting"
+                ? "Creating..."
+                : "Create Lobby"}
             </Button>
           </CardContent>
         </Card>
@@ -227,14 +277,14 @@ export default function P2PHostPage() {
   }
 
   // Signaling Step
-  if (hostState.step === 'signaling') {
+  if (hostState.step === "signaling") {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-5xl mx-auto">
         <Button
           variant="ghost"
           onClick={() => {
             signaling.reset();
-            setHostState(prev => ({ ...prev, step: 'setup' }));
+            setHostState((prev) => ({ ...prev, step: "setup" }));
           }}
           className="mb-4"
         >
@@ -247,7 +297,9 @@ export default function P2PHostPage() {
             <div>
               <h1 className="font-headline text-3xl font-bold flex items-center gap-2">
                 {hostState.gameName}
-                <Badge variant="secondary">{formatDisplayNames[hostState.gameFormat]}</Badge>
+                <Badge variant="secondary">
+                  {formatDisplayNames[hostState.gameFormat]}
+                </Badge>
               </h1>
               <p className="text-muted-foreground mt-1">
                 Waiting for opponent to connect...
@@ -261,10 +313,11 @@ export default function P2PHostPage() {
         </header>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {/* QR Code */}
-          {signaling.qrCode && (
+          {/* QR Code — encodes the serialized connection code (the signaling
+              offer) so opponents can scan it on the join page (issue #1728). */}
+          {signaling.localOffer && (
             <QRCodeDisplay
-              qrCode={signaling.qrCode}
+              payload={signaling.localOffer}
               gameCode={signaling.gameCode}
               connectionInfo={{
                 hostName: hostState.playerName,
@@ -292,7 +345,9 @@ export default function P2PHostPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground">Format</div>
-                <div className="font-semibold">{formatDisplayNames[hostState.gameFormat]}</div>
+                <div className="font-semibold">
+                  {formatDisplayNames[hostState.gameFormat]}
+                </div>
               </div>
               <div className="p-3 bg-muted rounded-lg">
                 <div className="text-sm text-muted-foreground flex items-center gap-1">
@@ -307,7 +362,9 @@ export default function P2PHostPage() {
                     <Clock className="w-3 h-3" />
                     Timer
                   </div>
-                  <div className="font-semibold">{hostState.timerMinutes} min turns</div>
+                  <div className="font-semibold">
+                    {hostState.timerMinutes} min turns
+                  </div>
                 </div>
               )}
               {hostState.allowSpectators && (
@@ -324,14 +381,15 @@ export default function P2PHostPage() {
         </Card>
 
         <p className="text-xs text-muted-foreground mt-6 text-center">
-          Share the QR code or offer data with your opponent to establish a P2P connection.
+          Share the QR code or offer data with your opponent to establish a P2P
+          connection.
         </p>
       </div>
     );
   }
 
   // Connected Step
-  if (hostState.step === 'connected') {
+  if (hostState.step === "connected") {
     return (
       <div className="flex-1 p-4 md:p-6 max-w-4xl mx-auto">
         <header className="mb-6">
@@ -356,7 +414,9 @@ export default function P2PHostPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Format:</span>
-                <span className="font-medium">{formatDisplayNames[hostState.gameFormat]}</span>
+                <span className="font-medium">
+                  {formatDisplayNames[hostState.gameFormat]}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Connection:</span>
@@ -364,7 +424,11 @@ export default function P2PHostPage() {
               </div>
             </div>
 
-            <Button onClick={handleStartGame} size="lg" className="w-full max-w-md">
+            <Button
+              onClick={handleStartGame}
+              size="lg"
+              className="w-full max-w-md"
+            >
               <Play className="w-4 h-4 mr-2" />
               Start Game
             </Button>

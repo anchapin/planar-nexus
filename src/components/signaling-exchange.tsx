@@ -164,6 +164,16 @@ export function SignalingExchange({
   const canReceive = mode === "client" && step === "waiting-for-offer";
   const canReceiveAnswer = mode === "host" && step === "waiting-for-answer";
   const canGenerateAnswer = mode === "client" && step === "waiting-for-answer";
+  // Issue #1728: the local offer/answer must stay visible (and copyable)
+  // for the whole window in which the peer needs it — the host's offer is
+  // shared while waiting for the answer, and the client's answer while the
+  // candidates settle. Previously each side's string vanished exactly when
+  // it needed to be shared, breaking the manual copy-paste join path.
+  const canShareLocal =
+    (mode === "host" &&
+      (step === "waiting-for-offer" || step === "waiting-for-answer")) ||
+    (mode === "client" &&
+      (step === "waiting-for-answer" || step === "waiting-for-candidates"));
 
   return (
     <Card className={className}>
@@ -221,16 +231,21 @@ export function SignalingExchange({
         {step !== "completed" && step !== "failed" && (
           <>
             {/* Local Data Section */}
-            {localData && (canGenerate || canGenerateAnswer) && (
+            {localData && canShareLocal && (
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
+                <Label
+                  className="flex items-center gap-2"
+                  htmlFor="signaling-local-data"
+                >
                   <Download className="w-4 h-4" />
                   Your {mode === "host" ? "Offer" : "Answer"} to Share
                 </Label>
                 <div className="space-y-2">
                   <textarea
+                    id="signaling-local-data"
                     value={localData}
                     readOnly
+                    aria-readonly="true"
                     className="w-full min-h-32 p-3 border rounded-md font-mono text-xs bg-muted resize-none"
                   />
                   <Button
@@ -283,12 +298,16 @@ export function SignalingExchange({
             {/* Remote Data Section */}
             {(canReceive || canReceiveAnswer) && (
               <div className="space-y-2">
-                <Label className="flex items-center gap-2">
+                <Label
+                  className="flex items-center gap-2"
+                  htmlFor="signaling-remote-data"
+                >
                   <Upload className="w-4 h-4" />
                   Enter {mode === "host" ? "Answer" : "Offer"} from Opponent
                 </Label>
                 <div className="space-y-2">
                   <textarea
+                    id="signaling-remote-data"
                     value={remoteData}
                     onChange={(e) => setRemoteData(e.target.value)}
                     placeholder={`Paste the ${mode === "host" ? "answer" : "offer"} from your opponent here...`}

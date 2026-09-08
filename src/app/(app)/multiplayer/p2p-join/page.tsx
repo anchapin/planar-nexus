@@ -1,8 +1,11 @@
 /**
  * P2P Join Page
  * Issue #641: Legal P2P Multiplayer
+ * Issue #1728: Implement the QR-code join flow
  *
- * Allows players to join P2P games using QR code scanning or manual code entry
+ * Allows players to join P2P games using QR code scanning or manual code entry.
+ * Scanning uses the native BarcodeDetector API when available and falls back
+ * to an explained manual entry path when it isn't.
  */
 
 "use client";
@@ -21,12 +24,16 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, QrCode, Type, Users, Play } from "lucide-react";
 import { useP2PSignaling } from "@/hooks/use-p2p-signaling";
+import { QRJoinScanner, isQrScanSupported } from "@/components/qr-join-scanner";
+import { deserializeSignalingData } from "@/lib/p2p-signaling-client";
 import type { P2PMessage } from "@/lib/webrtc-p2p";
 
 export default function P2PJoinPage() {
   const [playerName, setPlayerName] = useState("");
   const [connectionCode, setConnectionCode] = useState("");
   const [showManualEntry, setShowManualEntry] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
 
   const signaling = useP2PSignaling({
     onConnected: () => {},
@@ -36,18 +43,22 @@ export default function P2PJoinPage() {
     },
   });
 
+  const joinWithCode = async (code: string) => {
+    try {
+      await signaling.initializeAsClient(playerName);
+      const answer = await signaling.startClientConnection(code);
+      void answer; // acknowledge generated answer
+    } catch (error) {
+      console.error("Failed to join:", error);
+    }
+  };
+
   const handleManualJoin = async () => {
     if (!playerName.trim() || !connectionCode.trim()) {
       return;
     }
 
-    try {
-      await signaling.initializeAsClient(playerName);
-      const answer = await signaling.startClientConnection(connectionCode);
-      void answer; // acknowledge generated answer
-    } catch (error) {
-      console.error("Failed to join:", error);
-    }
+    await joinWithCode(connectionCode);
   };
 
   const handleScanQR = async () => {
@@ -55,13 +66,44 @@ export default function P2PJoinPage() {
       return;
     }
 
-    try {
-      await signaling.initializeAsClient(playerName);
-      // QR scanning would be handled here - for now just show manual entry
+    setScanNotice(null);
+
+    // Graceful fallback: without BarcodeDetector + camera support there is
+    // nothing to scan with — explain and keep manual entry working instead
+    // of silently flipping to the form (issue #1728).
+    if (!isQrScanSupported()) {
+      setScanNotice(
+        "QR scanning isn't available in this browser — the camera-based Barcode Detection API is missing or camera access is unavailable. You can still join by pasting the host's connection code below.",
+      );
       setShowManualEntry(true);
+      return;
+    }
+
+    try {
+      // Initialize up front so the join fires the moment a code is scanned.
+      await signaling.initializeAsClient(playerName);
+      setShowScanner(true);
     } catch (error) {
       console.error("Failed to initialize:", error);
     }
+  };
+
+  const handleQrDetect = async (payload: string) => {
+    setShowScanner(false);
+
+    // Only a serialized signaling offer can complete the join; anything
+    // else (URLs, random QR codes) is rejected with an explanation.
+    const signalingData = deserializeSignalingData(payload);
+    if (!signalingData || signalingData.type !== "offer") {
+      setScanNotice(
+        "That QR code doesn't contain a Planar Nexus connection code. Ask your opponent to share their lobby QR code, or paste the connection code manually below.",
+      );
+      return;
+    }
+
+    setScanNotice(null);
+    setConnectionCode(payload);
+    await joinWithCode(payload);
   };
 
   const handleStartGame = () => {
@@ -129,6 +171,15 @@ export default function P2PJoinPage() {
           Enter your name and the host's connection code to join
         </p>
       </header>
+
+      {showScanner && (
+        <div className="mb-6">
+          <QRJoinScanner
+            onDetect={handleQrDetect}
+            onCancel={() => setShowScanner(false)}
+          />
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -257,6 +308,12 @@ export default function P2PJoinPage() {
           </div>
         </CardContent>
       </Card>
+
+      {scanNotice && (
+        <Alert className="mt-6" role="status">
+          <AlertDescription>{scanNotice}</AlertDescription>
+        </Alert>
+      )}
 
       {signaling.error && (
         <Alert variant="destructive" className="mt-6">
