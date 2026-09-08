@@ -134,7 +134,7 @@ beforeEach(() => {
   // gate reports every suggestion as "unverifiable" and leaves them intact —
   // this keeps the pre-existing heuristic-path assertions unchanged. Tests
   // that exercise the populated-DB gate override these mocks locally.
-  mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0 });
+  mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0, error: null });
   mockedGetCardByName.mockResolvedValue(undefined);
   setOnline(true);
 });
@@ -290,7 +290,7 @@ describe("reviewDeck — local citation verification gate (issue #1072)", () => 
 
   it("strips suggested cards that are not in a POPULATED local database", async () => {
     // DB has cards; "Lightning Bolt" resolves but "Fabricated Dragon" does not.
-    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 42 });
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 42, error: null });
     mockedGetCardByName.mockImplementation(async (name: string) =>
       name === "Lightning Bolt" ? realCard("Lightning Bolt") : undefined,
     );
@@ -318,7 +318,7 @@ describe("reviewDeck — local citation verification gate (issue #1072)", () => 
 
   it("leaves suggestions intact when the local database is empty (unverifiable)", async () => {
     // Empty DB → cannot refute anything → must not strip legitimate advice.
-    mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0 });
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: false, cardCount: 0, error: null });
     mockedGetCardByName.mockResolvedValue(undefined);
     mockedHeuristicAsync.mockResolvedValue(
       heuristicResult({
@@ -340,7 +340,7 @@ describe("reviewDeck — local citation verification gate (issue #1072)", () => 
   });
 
   it("runs the local gate before legality validation so survivors are still legality-checked", async () => {
-    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 10 });
+    mockedGetDatabaseStatus.mockResolvedValue({ loaded: true, cardCount: 10, error: null });
     // "Real Card" and "Keep Card" exist locally; "Ghost" does not (hallucination).
     mockedGetCardByName.mockImplementation(async (name: string) =>
       name === "Real Card" || name === "Keep Card"
