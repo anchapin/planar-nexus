@@ -27,7 +27,7 @@ import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
 import type { GameState, PlayerId, CardInstanceId } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 function mockCreature(
   name: string,

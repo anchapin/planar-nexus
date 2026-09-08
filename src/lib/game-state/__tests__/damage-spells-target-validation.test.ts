@@ -29,7 +29,7 @@ import {
   resolveDamageEffect,
 } from "../effect-resolution";
 import { checkStateBasedActions } from "../state-based-actions";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { GameState, PlayerId } from "../types";
 
 function createMockCreature(

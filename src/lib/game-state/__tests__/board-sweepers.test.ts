@@ -8,7 +8,7 @@ import { destroyCard, hasIndestructible } from "../keyword-actions";
 import { createInitialGameState, startGame } from "../game-state";
 import { castSpell, resolveTopOfStack } from "../spell-casting";
 import { createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { GameState, CardInstanceId, PlayerId, Phase } from "../types";
 
 function createMockCard(

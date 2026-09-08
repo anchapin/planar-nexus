@@ -7,7 +7,7 @@
  */
 
 import { hasShocklandChoice, createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { PlayerId } from "../types";
 
 // Helper to create a mock card (style follows keyword-actions.test.ts)

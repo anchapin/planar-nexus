@@ -31,7 +31,7 @@ import { Phase, CardInstanceId } from "../types";
 import { layerSystem, createPowerToughnessModifyEffect } from "../layer-system";
 import { checkStateBasedActions } from "../state-based-actions";
 import { shouldHaveFirstStrikeStep } from "../turn-phases";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // Helper function to create a mock creature card
 function createMockCreature(

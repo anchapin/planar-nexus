@@ -47,7 +47,7 @@ import {
 } from "../trigger-system";
 import { Phase, ZoneType } from "../types";
 import type { GameState, PlayerId, CardInstanceId } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // ---------------------------------------------------------------------------
 // Mock card helpers

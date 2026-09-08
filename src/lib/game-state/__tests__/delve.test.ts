@@ -38,7 +38,7 @@ import type {
   CardInstanceId,
   CardInstance,
 } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // ---------------------------------------------------------------------------
 // Mock card helpers

@@ -30,7 +30,7 @@ import {
   resolveCopyChain,
 } from "../layer-system";
 import { createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 // Helper function to create a mock creature card
 function createMockCreature(

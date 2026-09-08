@@ -27,7 +27,7 @@ import {
 } from "../abilities";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { GameState, PlayerId } from "../types";
 
 /** Number of repeated resolutions per generated scenario (acceptance: ">50"). */

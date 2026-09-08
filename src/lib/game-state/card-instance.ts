@@ -3,7 +3,7 @@
  */
 
 import type { CardInstanceId, CardInstance, PlayerId } from "./types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "./types";
 
 /**
  * Generate a unique card instance ID

@@ -14,7 +14,7 @@ import { createCardInstance } from "../card-instance";
 import { Phase } from "../types";
 import { addMana } from "../mana";
 import { parseKicker } from "../oracle-text-parser";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { StackObject } from "../types";
 
 /**

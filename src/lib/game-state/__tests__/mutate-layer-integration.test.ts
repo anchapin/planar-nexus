@@ -45,7 +45,7 @@ import {
 } from "../mutate";
 import { createCardInstance } from "../card-instance";
 import { createInitialGameState, startGame } from "../game-state";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { GameState } from "../types";
 
 // ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@
  * behavior pinned by the existing engine suites.
  */
 import type { GameState, CardInstanceId } from '../types';
-import { DungeonRoomCompletion } from '../../cards/dungeons';
+import { DungeonRoomCompletion } from '../dungeon-data';
 
 /**
  * Result of a keyword action

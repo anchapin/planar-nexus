@@ -6,7 +6,7 @@
  */
 
 import { createInitialGameState, startGame } from "../game-state";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type {
   CardInstance,
   GameState,

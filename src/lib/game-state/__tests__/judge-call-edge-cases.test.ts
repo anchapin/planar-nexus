@@ -32,7 +32,7 @@ import {
   setDamageAssignmentOrder,
 } from "../combat";
 import { Phase } from "../types";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 import type { CardInstanceId, PlayerId } from "../types";
 
 function createMockCreature(

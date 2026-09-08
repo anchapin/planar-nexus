@@ -33,7 +33,7 @@ import {
   parseTribute,
 } from "./oracle-text-parser";
 import { hasCorpseAbility, getCorpseAbility } from "./corpse-keyword";
-import type { DungeonRoomCompletion } from "../cards/dungeons";
+import type { DungeonRoomCompletion } from "./dungeon-data";
 
 /**
  * Trigger condition types for the new trigger system

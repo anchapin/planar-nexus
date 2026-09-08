@@ -176,7 +176,7 @@ export function hasActivatedAbilities(card: { oracle_text?: string }): boolean {
 }
 
 // Card data interface for parsing - extends ScryfallCard with optional fields
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "./types";
 
 // Use ScryfallCard directly for parsing since parseOracleText requires it
 type CardDataForParsing = ScryfallCard;
