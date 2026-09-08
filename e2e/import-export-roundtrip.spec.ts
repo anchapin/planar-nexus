@@ -98,12 +98,13 @@ test.describe("Import/Export Round Trip", () => {
     await waitForImportResolved(page);
     await expect(page.getByTestId("deck-count")).toContainText("28 cards");
 
-    // 2. Export (as text)
+    // 2. Export (as text) — since #1543 the standalone text export was
+    //    replaced by Copy to Clipboard plus the Arena plaintext format.
     await page.getByTestId("export-deck-button").click();
-    await expect(page.getByTestId("export-text-button")).toBeVisible({
+    await expect(page.getByTestId("export-copy-button")).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.getByTestId("export-copy-button")).toBeVisible();
+    await expect(page.getByTestId("export-arena-button")).toBeVisible();
 
     // 3. Verify the imported cards rendered in the deck list.
     await expect(page.getByTestId("deck-item-lightning-bolt")).toBeVisible({

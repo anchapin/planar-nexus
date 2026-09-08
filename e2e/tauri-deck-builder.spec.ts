@@ -194,11 +194,12 @@ test.describe("Tauri Desktop (via dev server) — Deck Builder", () => {
     // 3. Export controls (the desktop "save deck to disk" surface) are
     //    reachable and render the format options the webview exposes.
     await page.getByTestId("export-deck-button").click();
-    await expect(page.getByTestId("export-text-button")).toBeVisible({
+    await expect(page.getByTestId("export-copy-button")).toBeVisible({
       timeout: 10000,
     });
     await expect(page.getByTestId("export-json-button")).toBeVisible();
-    await expect(page.getByTestId("export-copy-button")).toBeVisible();
+    await expect(page.getByTestId("export-mtgo-button")).toBeVisible();
+    await expect(page.getByTestId("export-arena-button")).toBeVisible();
   });
 
   test("the desktop-update banner degrades gracefully under mocked IPC", async ({
