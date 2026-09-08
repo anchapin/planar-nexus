@@ -33,6 +33,7 @@ import {
   createStateSyncRequest,
   createStateSyncResponse,
   verifyChecksum,
+  verifySimpleStateChecksum,
   HandshakeSession,
   PROTOCOL_VERSION,
   CHECKSUM_ALGORITHMS,
@@ -640,5 +641,46 @@ describe("createHandshakeResponse — message shape (#1094)", () => {
     expect(msg.payload.challenge).toBe("chal");
     expect(msg.payload.checksum).toBe(calculateStateChecksum(state, "sha256"));
     expect(msg.payload.stateVersion).toBe(9);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verifySimpleStateChecksum — legacy djb2 verification re-homed from
+// use-p2p-connection.ts (issue #1716). The algorithm is frozen for wire
+// compatibility: peers exchange checksums produced by exactly this code, so
+// the expected value below is a precomputed constant, not a round-trip.
+// ---------------------------------------------------------------------------
+
+describe("verifySimpleStateChecksum — legacy algorithm (#1716)", () => {
+  const legacyState = {
+    gameId: "game-1",
+    players: new Map(),
+    cards: new Map(),
+    zones: new Map(),
+    stack: [],
+    turn: { activePlayerId: "p1", currentPhase: "main_1", turnNumber: 1 },
+    combat: null,
+  } as unknown as GameState;
+
+  it("accepts the precomputed legacy checksum for a fixed state", () => {
+    // djb2 over JSON.stringify(legacyState) — computed once, frozen here.
+    expect(verifySimpleStateChecksum(legacyState, "834f709c")).toBe(true);
+  });
+
+  it("rejects a mismatched checksum", () => {
+    expect(verifySimpleStateChecksum(legacyState, "deadbeef")).toBe(false);
+  });
+
+  it("is input-sensitive: a different state yields a different verdict", () => {
+    const other = { ...legacyState, gameId: "game-2" } as unknown as GameState;
+    // The checksum for `other` cannot equal the frozen one for legacyState.
+    expect(verifySimpleStateChecksum(other, "834f709c")).toBe(false);
+  });
+
+  it("differs from the structured checksum algorithms (documents the caveat)", () => {
+    // verifySimpleStateChecksum must NOT silently agree with the structured
+    // default — otherwise an "upgrade" could go unnoticed on the wire.
+    const structured = calculateStateChecksum(legacyState);
+    expect(structured).not.toBe("834f709c");
   });
 });

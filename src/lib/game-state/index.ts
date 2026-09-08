@@ -32,7 +32,11 @@ export {
 export * from "./turn-phases";
 export * from "./game-state";
 export * from "./state-hash";
-export * from "./deterministic-sync";
+// deterministic-sync / delta-sync moved to src/lib/sync/ (issue #1716):
+// P2P networking machinery no longer lives on the engine surface. Import
+// the versioned sync API from "@/lib/sync" instead. The engine barrel
+// still exports the hash types deterministic-sync used to re-export
+// (HashComparisonResult / HashDiscrepancy come from "./state-hash" above).
 export * from "./replay";
 export * from "./serialization";
 export * from "./replacement-effects";

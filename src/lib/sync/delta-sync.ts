@@ -5,6 +5,8 @@
  * Only changed objects are transmitted, reducing bandwidth from megabytes to <10KB.
  *
  * Issue #1024: [Performance] Implement game state delta synchronization for P2P
+ * Re-homed from src/lib/game-state/ to src/lib/sync/ (issue #1716) — the
+ * versioned public API is the barrel `src/lib/sync/index.ts`.
  */
 
 import type {
@@ -15,9 +17,9 @@ import type {
   StackObject,
   Turn,
   Combat,
-} from "./types";
-import type { AIGameState, AIPlayerState, AIPermanent } from "./types";
-import { engineToAIState, aiToEngineState } from "./serialization";
+} from "@/lib/game-state";
+import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
+import { engineToAIState, aiToEngineState } from "@/lib/game-state";
 
 /**
  * Represents a diff for a single object (card, player, zone, etc.)
@@ -93,7 +95,10 @@ function deepEqual(a: unknown, b: unknown): boolean {
 /**
  * Compute changed fields between two objects
  */
-function getChangedFields<T extends object>(oldObj: T, newObj: Partial<T>): string[] {
+function getChangedFields<T extends object>(
+  oldObj: T,
+  newObj: Partial<T>,
+): string[] {
   const changedFields: string[] = [];
   for (const [key, newValue] of Object.entries(newObj)) {
     if (!deepEqual((oldObj as Record<string, unknown>)[key], newValue)) {
@@ -108,10 +113,11 @@ function getChangedFields<T extends object>(oldObj: T, newObj: Partial<T>): stri
  */
 export function computeStateDelta(
   currentState: GameState,
-  lastSyncedState: AIGameState | null
+  lastSyncedState: AIGameState | null,
 ): GameStateDelta {
   const currentAI = engineToAIState(currentState);
-  const version = (currentState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0;
+  const version =
+    (currentState.turn as unknown as { turnNumber?: number }).turnNumber ?? 0;
 
   if (!lastSyncedState) {
     return {
@@ -136,7 +142,11 @@ export function computeStateDelta(
   for (const [playerId, currentPlayer] of Object.entries(currentAI.players)) {
     const lastPlayer = lastSyncedState.players[playerId];
     if (!lastPlayer) {
-      playerDeltas.push({ id: playerId, action: "add", data: currentPlayer as unknown as Partial<Player> });
+      playerDeltas.push({
+        id: playerId,
+        action: "add",
+        data: currentPlayer as unknown as Partial<Player>,
+      });
     } else if (!deepEqual(currentPlayer, lastPlayer)) {
       const changedFields = getChangedFields(lastPlayer, currentPlayer);
       playerDeltas.push({
@@ -148,7 +158,9 @@ export function computeStateDelta(
     }
   }
 
-  for (const [playerId, lastPlayer] of Object.entries(lastSyncedState.players)) {
+  for (const [playerId, lastPlayer] of Object.entries(
+    lastSyncedState.players,
+  )) {
     if (!currentAI.players[playerId]) {
       playerDeltas.push({ id: playerId, action: "remove" });
     }
@@ -157,14 +169,18 @@ export function computeStateDelta(
   const currentBattlefield = getBattlefieldCards(currentState);
   const lastBattlefield = getBattlefieldFromAI(lastSyncedState);
 
-  const currentCardIds = new Set(currentBattlefield.map((c) => c.cardInstanceId));
+  const currentCardIds = new Set(
+    currentBattlefield.map((c) => c.cardInstanceId),
+  );
   const lastCardIds = new Set(lastBattlefield.map((c) => c.cardInstanceId));
 
   for (const card of currentBattlefield) {
     if (!lastCardIds.has(card.cardInstanceId)) {
       cardDeltas.push({ id: card.cardInstanceId, action: "add" });
     } else {
-      const lastCard = lastBattlefield.find((c) => c.cardInstanceId === card.cardInstanceId);
+      const lastCard = lastBattlefield.find(
+        (c) => c.cardInstanceId === card.cardInstanceId,
+      );
       if (lastCard && !deepEqual(card, lastCard)) {
         const changedFields = getChangedFields(lastCard, card);
         cardDeltas.push({
@@ -184,12 +200,18 @@ export function computeStateDelta(
   }
 
   for (const [zoneKey, zone] of currentState.zones) {
-    const lastZone = lastSyncedState.players[zoneKey] as unknown as Zone | undefined;
+    const lastZone = lastSyncedState.players[zoneKey] as unknown as
+      Zone | undefined;
     if (!lastZone) {
       zoneDeltas.push({ id: zoneKey, action: "add", data: zone });
     } else if (!deepEqual(zone, lastZone)) {
       const changedFields = getChangedFields(lastZone, zone);
-      zoneDeltas.push({ id: zoneKey, action: "update", data: zone, changedFields });
+      zoneDeltas.push({
+        id: zoneKey,
+        action: "update",
+        data: zone,
+        changedFields,
+      });
     }
   }
 
@@ -237,12 +259,19 @@ function getBattlefieldCards(state: GameState): AIPermanent[] {
             type: getPermanentType(card.cardData.type_line),
             controller: card.controllerId,
             tapped: card.isTapped,
-            power: card.cardData.power ? parseInt(card.cardData.power) : undefined,
-            toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : undefined,
-            counters: card.counters?.reduce((acc, c) => {
-              acc[c.type] = c.count;
-              return acc;
-            }, {} as Record<string, number>),
+            power: card.cardData.power
+              ? parseInt(card.cardData.power)
+              : undefined,
+            toughness: card.cardData.toughness
+              ? parseInt(card.cardData.toughness)
+              : undefined,
+            counters: card.counters?.reduce(
+              (acc, c) => {
+                acc[c.type] = c.count;
+                return acc;
+              },
+              {} as Record<string, number>,
+            ),
             summoningSickness: card.hasSummoningSickness,
             damage: card.damage > 0 ? card.damage : undefined,
           });
@@ -279,7 +308,7 @@ function computeChecksum(state: AIGameState): string {
   let hash = 0;
   for (let i = 0; i < data.length; i++) {
     const char = data.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash = hash & hash;
   }
   return Math.abs(hash).toString(16).padStart(8, "0");
@@ -300,7 +329,7 @@ export function isDeltaSmallEnough(delta: GameStateDelta): boolean {
  */
 export function shouldUseFullSync(
   currentState: GameState,
-  lastSyncedState: AIGameState | null
+  lastSyncedState: AIGameState | null,
 ): boolean {
   if (!lastSyncedState) return true;
 
@@ -318,7 +347,7 @@ export function shouldUseFullSync(
  */
 export function applyDelta(
   baseState: AIGameState,
-  delta: GameStateDelta
+  delta: GameStateDelta,
 ): AIGameState {
   if (delta.isFullSync) {
     return delta.version === 0 ? baseState : baseState;
@@ -331,10 +360,14 @@ export function applyDelta(
       (newState.players as Record<string, AIPlayerState>)[playerDelta.id] =
         playerDelta.data as unknown as AIPlayerState;
     } else if (playerDelta.action === "remove") {
-      delete (newState.players as Record<string, AIPlayerState>)[playerDelta.id];
+      delete (newState.players as Record<string, AIPlayerState>)[
+        playerDelta.id
+      ];
     } else if (playerDelta.action === "update" && playerDelta.data) {
       (newState.players as Record<string, AIPlayerState>)[playerDelta.id] = {
-        ...((newState.players as Record<string, AIPlayerState>)[playerDelta.id] ?? {}),
+        ...((newState.players as Record<string, AIPlayerState>)[
+          playerDelta.id
+        ] ?? {}),
         ...(playerDelta.data as Partial<AIPlayerState>),
       };
     }

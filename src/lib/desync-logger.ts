@@ -3,12 +3,14 @@
  * Issue #314: Logging and debugging for multiplayer desync events
  */
 
-import type { 
-  HashDiscrepancy, 
-  ConflictResolution, 
+// Types re-homed to src/lib/sync/ (issue #1716) — the deterministic-sync
+// module is no longer part of the engine barrel.
+import type {
+  HashDiscrepancy,
+  ConflictResolution,
   PeerId,
   SequenceNumber,
-} from './game-state/deterministic-sync';
+} from "@/lib/sync";
 
 /**
  * Desync event record
@@ -19,7 +21,7 @@ export interface DesyncEvent {
   /** Timestamp when event occurred */
   timestamp: number;
   /** Type of desync event */
-  type: 'detected' | 'resolved' | 'ignored' | 'escalated';
+  type: "detected" | "resolved" | "ignored" | "escalated";
   /** Local peer ID */
   localPeerId: PeerId;
   /** Remote peer ID where desync was detected */
@@ -71,7 +73,7 @@ export interface DesyncLoggerConfig {
   /** Whether to log to console */
   logToConsole: boolean;
   /** Minimum severity to log */
-  minSeverity: 'debug' | 'info' | 'warn' | 'error';
+  minSeverity: "debug" | "info" | "warn" | "error";
 }
 
 /**
@@ -80,9 +82,9 @@ export interface DesyncLoggerConfig {
 const DEFAULT_CONFIG: DesyncLoggerConfig = {
   maxEvents: 100,
   persistToStorage: true,
-  storageKey: 'planar_nexus_desync_logs',
+  storageKey: "planar_nexus_desync_logs",
   logToConsole: true,
-  minSeverity: 'info',
+  minSeverity: "info",
 };
 
 /**
@@ -96,7 +98,7 @@ export class DesyncLogger {
 
   constructor(config: Partial<DesyncLoggerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
-    
+
     // Load persisted events
     if (this.config.persistToStorage) {
       this.loadFromStorage();
@@ -120,12 +122,12 @@ export class DesyncLogger {
     remoteHash: string,
     sequenceNumber: SequenceNumber,
     discrepancies: HashDiscrepancy[],
-    context?: Record<string, unknown>
+    context?: Record<string, unknown>,
   ): DesyncEvent {
     const event: DesyncEvent = {
       id: this.generateEventId(),
       timestamp: Date.now(),
-      type: 'detected',
+      type: "detected",
       localPeerId,
       remotePeerId,
       localHash,
@@ -138,7 +140,7 @@ export class DesyncLogger {
     this.addEvent(event);
 
     if (this.config.logToConsole) {
-      console.warn('[DesyncLogger] Desync detected:', {
+      console.warn("[DesyncLogger] Desync detected:", {
         peer: remotePeerId,
         localHash,
         remoteHash,
@@ -156,16 +158,16 @@ export class DesyncLogger {
   logResolution(
     eventId: string,
     resolution: ConflictResolution,
-    resolutionTime: number
+    resolutionTime: number,
   ): void {
-    const event = this.events.find(e => e.id === eventId);
+    const event = this.events.find((e) => e.id === eventId);
     if (event) {
       event.resolution = resolution;
       event.resolutionTime = resolutionTime;
-      event.type = 'resolved';
+      event.type = "resolved";
 
       if (this.config.logToConsole) {
-        console.info('[DesyncLogger] Desync resolved:', {
+        console.info("[DesyncLogger] Desync resolved:", {
           eventId,
           strategy: resolution.strategy,
           resolutionTime: `${resolutionTime}ms`,
@@ -184,12 +186,12 @@ export class DesyncLogger {
     remotePeerId: PeerId,
     localHash: string,
     remoteHash: string,
-    reason: string
+    reason: string,
   ): DesyncEvent {
     const event: DesyncEvent = {
       id: this.generateEventId(),
       timestamp: Date.now(),
-      type: 'ignored',
+      type: "ignored",
       localPeerId,
       remotePeerId,
       localHash,
@@ -202,7 +204,7 @@ export class DesyncLogger {
     this.addEvent(event);
 
     if (this.config.logToConsole) {
-      console.info('[DesyncLogger] Desync ignored:', reason);
+      console.info("[DesyncLogger] Desync ignored:", reason);
     }
 
     return event;
@@ -211,17 +213,14 @@ export class DesyncLogger {
   /**
    * Log an escalated desync event
    */
-  logEscalated(
-    eventId: string,
-    reason: string
-  ): void {
-    const event = this.events.find(e => e.id === eventId);
+  logEscalated(eventId: string, reason: string): void {
+    const event = this.events.find((e) => e.id === eventId);
     if (event) {
-      event.type = 'escalated';
+      event.type = "escalated";
       event.context = { ...event.context, escalationReason: reason };
 
       if (this.config.logToConsole) {
-        console.error('[DesyncLogger] Desync escalated:', reason);
+        console.error("[DesyncLogger] Desync escalated:", reason);
       }
 
       this.saveToStorage();
@@ -252,15 +251,15 @@ export class DesyncLogger {
   /**
    * Get events by type
    */
-  getEventsByType(type: DesyncEvent['type']): DesyncEvent[] {
-    return this.events.filter(e => e.type === type);
+  getEventsByType(type: DesyncEvent["type"]): DesyncEvent[] {
+    return this.events.filter((e) => e.type === type);
   }
 
   /**
    * Get events by peer
    */
   getEventsByPeer(peerId: PeerId): DesyncEvent[] {
-    return this.events.filter(e => e.remotePeerId === peerId);
+    return this.events.filter((e) => e.remotePeerId === peerId);
   }
 
   /**
@@ -277,7 +276,7 @@ export class DesyncLogger {
     const byType: Record<string, number> = {};
     const byPeer = new Map<PeerId, number>();
     const categoryCounts: Record<string, number> = {};
-    
+
     let totalResolutionTime = 0;
     let resolvedCount = 0;
 
@@ -307,17 +306,17 @@ export class DesyncLogger {
       .slice(0, 5);
 
     // Calculate success rate
-    const resolved = byType['resolved'] || 0;
-    const escalated = byType['escalated'] || 0;
-    const successRate = resolved + escalated > 0 
-      ? resolved / (resolved + escalated) 
-      : 1;
+    const resolved = byType["resolved"] || 0;
+    const escalated = byType["escalated"] || 0;
+    const successRate =
+      resolved + escalated > 0 ? resolved / (resolved + escalated) : 1;
 
     return {
       totalEvents: this.events.length,
       byType,
       byPeer,
-      avgResolutionTime: resolvedCount > 0 ? totalResolutionTime / resolvedCount : 0,
+      avgResolutionTime:
+        resolvedCount > 0 ? totalResolutionTime / resolvedCount : 0,
       commonDiscrepancies,
       successRate,
     };
@@ -327,11 +326,15 @@ export class DesyncLogger {
    * Export logs as JSON
    */
   exportLogs(): string {
-    return JSON.stringify({
-      exportedAt: new Date().toISOString(),
-      events: this.events,
-      statistics: this.getStatistics(),
-    }, null, 2);
+    return JSON.stringify(
+      {
+        exportedAt: new Date().toISOString(),
+        events: this.events,
+        statistics: this.getStatistics(),
+      },
+      null,
+      2,
+    );
   }
 
   /**
@@ -345,7 +348,7 @@ export class DesyncLogger {
         this.saveToStorage();
       }
     } catch (error) {
-      console.error('[DesyncLogger] Failed to import logs:', error);
+      console.error("[DesyncLogger] Failed to import logs:", error);
     }
   }
 
@@ -356,11 +359,14 @@ export class DesyncLogger {
     if (!this.config.persistToStorage) return;
 
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem(this.config.storageKey, JSON.stringify(this.events));
+      if (typeof window !== "undefined" && window.localStorage) {
+        localStorage.setItem(
+          this.config.storageKey,
+          JSON.stringify(this.events),
+        );
       }
     } catch (error) {
-      console.error('[DesyncLogger] Failed to save to storage:', error);
+      console.error("[DesyncLogger] Failed to save to storage:", error);
     }
   }
 
@@ -371,14 +377,14 @@ export class DesyncLogger {
     if (!this.config.persistToStorage) return;
 
     try {
-      if (typeof window !== 'undefined' && window.localStorage) {
+      if (typeof window !== "undefined" && window.localStorage) {
         const stored = localStorage.getItem(this.config.storageKey);
         if (stored) {
           this.events = JSON.parse(stored);
         }
       }
     } catch (error) {
-      console.error('[DesyncLogger] Failed to load from storage:', error);
+      console.error("[DesyncLogger] Failed to load from storage:", error);
     }
   }
 
@@ -387,8 +393,12 @@ export class DesyncLogger {
    */
   clearLogs(): void {
     this.events = [];
-    
-    if (this.config.persistToStorage && typeof window !== 'undefined' && window.localStorage) {
+
+    if (
+      this.config.persistToStorage &&
+      typeof window !== "undefined" &&
+      window.localStorage
+    ) {
       localStorage.removeItem(this.config.storageKey);
     }
   }
@@ -397,9 +407,9 @@ export class DesyncLogger {
    * Create a debug report for a specific event
    */
   createDebugReport(eventId: string): string {
-    const event = this.events.find(e => e.id === eventId);
+    const event = this.events.find((e) => e.id === eventId);
     if (!event) {
-      return 'Event not found';
+      return "Event not found";
     }
 
     const lines: string[] = [
@@ -442,7 +452,7 @@ export class DesyncLogger {
       lines.push(JSON.stringify(event.context, null, 2));
     }
 
-    return lines.join('\n');
+    return lines.join("\n");
   }
 }
 
@@ -454,7 +464,9 @@ let loggerInstance: DesyncLogger | null = null;
 /**
  * Get the singleton desync logger
  */
-export function getDesyncLogger(config?: Partial<DesyncLoggerConfig>): DesyncLogger {
+export function getDesyncLogger(
+  config?: Partial<DesyncLoggerConfig>,
+): DesyncLogger {
   if (!loggerInstance) {
     loggerInstance = new DesyncLogger(config);
   }
@@ -471,6 +483,8 @@ export function resetDesyncLogger(): void {
 /**
  * Create a new desync logger instance
  */
-export function createDesyncLogger(config?: Partial<DesyncLoggerConfig>): DesyncLogger {
+export function createDesyncLogger(
+  config?: Partial<DesyncLoggerConfig>,
+): DesyncLogger {
   return new DesyncLogger(config);
 }

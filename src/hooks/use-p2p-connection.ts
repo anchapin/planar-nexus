@@ -22,9 +22,14 @@ import type {
   RTCSessionDescriptionInit,
   RTCIceCandidateInit,
 } from "@/lib/webrtc-types";
-import { HandshakeSession, type HandshakeState } from "@/lib/p2p-handshake";
+import {
+  HandshakeSession,
+  verifySimpleStateChecksum,
+  type HandshakeState,
+} from "@/lib/p2p-handshake";
 import {
   ConflictResolutionManager,
+  decideOutboundAction,
   type TimestampedAction,
 } from "@/lib/p2p-conflict-resolution";
 import {
@@ -49,7 +54,11 @@ import {
   type ReconnectToken,
 } from "@/lib/p2p-reconnect-store";
 import { logger } from "@/lib/logger";
-import { type PeerRole, DEFAULT_PEER_ROLE } from "@/lib/peer-role";
+import {
+  type PeerRole,
+  DEFAULT_PEER_ROLE,
+  rejectionReasonForSend,
+} from "@/lib/peer-role";
 import {
   db as localIntelligenceDb,
   getMatchRecordKey,
@@ -1041,7 +1050,10 @@ export function useP2PConnection(
                 const remoteChecksum =
                   handshakeSessionRef.current.getRemoteChecksum();
                 if (remoteChecksum) {
-                  const isValid = verifyChecksum(gameState, remoteChecksum);
+                  const isValid = verifySimpleStateChecksum(
+                    gameState,
+                    remoteChecksum,
+                  );
                   if (!isValid) {
                     console.warn("[useP2PConnection] State checksum mismatch!");
                   }
@@ -1305,7 +1317,10 @@ export function useP2PConnection(
     [cacheLatestGameState],
   );
 
-  // Send game action with conflict resolution
+  // Send game action. Pure orchestration (issue #1716): the role-refusal
+  // policy is owned by @/lib/peer-role (rejectionReasonForSend) and the
+  // queue/process/send conflict policy by @/lib/p2p-conflict-resolution
+  // (decideOutboundAction) — this hook only maps verdicts to transport calls.
   const sendGameAction = useCallback(
     (
       action: string,
@@ -1327,16 +1342,16 @@ export function useP2PConnection(
       // the hook return a typed `reason` so the UI can surface a
       // "Spectators cannot play — watch only" hint without a
       // round-trip through the transport's `onError` event.
-      if (localRoleRef.current !== "player") {
-        const reason =
-          localRoleRef.current === "spectator"
-            ? "Spectator peers may not originate game actions"
-            : "Moderator peers may not originate game actions";
+      const roleRefusal = rejectionReasonForSend(
+        localRoleRef.current,
+        "game-action",
+      );
+      if (roleRefusal) {
         p2pLogger.warn("Refusing game-action: local role is read-only", {
           localRole: localRoleRef.current,
           action,
         });
-        return { success: false, reason };
+        return { success: false, reason: roleRefusal };
       }
 
       // Issue #1086: while the transport is down, record the action as
@@ -1347,36 +1362,32 @@ export function useP2PConnection(
         reconcileRef.current.recordPendingAction(action, data);
       }
 
-      // Apply conflict resolution if enabled
-      if (enableConflictResolution && conflictManagerRef.current) {
-        const result = conflictManagerRef.current.processAction(
-          action,
-          data,
-          playerId,
-          playerName,
-        );
+      // Conflict resolution owns the queue/process/send verdict.
+      const decision = decideOutboundAction(
+        enableConflictResolution && conflictManagerRef.current
+          ? conflictManagerRef.current.processAction(
+              action,
+              data,
+              playerId,
+              playerName,
+            )
+          : null,
+      );
 
-        if (result.shouldQueue) {
+      switch (decision.kind) {
+        case "queue":
+          return { success: false, action: decision.action, queued: true };
+        case "send":
           return {
-            success: false,
-            action: result.action,
-            queued: true,
-          };
-        }
-
-        if (result.shouldProcess && result.action) {
-          const success = connectionRef.current.sendGameAction(action, data);
-          return {
-            success,
-            action: result.action,
+            success: connectionRef.current.sendGameAction(action, data),
+            action: decision.action,
             queued: false,
           };
-        }
+        default:
+          return {
+            success: connectionRef.current.sendGameAction(action, data),
+          };
       }
-
-      // No conflict resolution, send directly
-      const success = connectionRef.current.sendGameAction(action, data);
-      return { success };
     },
     [playerId, playerName, enableConflictResolution, connectionState],
   );
@@ -1649,20 +1660,6 @@ export function useP2PConnection(
      */
     gameEnded,
   };
-}
-
-// Import handshake verification for use in the hook
-function verifyChecksum(gameState: GameState, checksum: string): boolean {
-  // Simple checksum verification - in production use the full implementation
-  const data = JSON.stringify(gameState);
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  const computedChecksum = (hash >>> 0).toString(16);
-  return computedChecksum === checksum;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { DeterministicGameStateEngine } from "../deterministic-sync";
-import { GameState, LinkedEffectRegistry } from "../types";
-import { ReplacementEffectManager } from "../replacement-effects";
-import { LayerSystem } from "../layer-system";
+import { GameState, LinkedEffectRegistry } from "@/lib/game-state";
+import { ReplacementEffectManager } from "@/lib/game-state";
+import { LayerSystem } from "@/lib/game-state";
 
 describe("DeterministicGameStateEngine", () => {
   const localPeerId = "local-peer";

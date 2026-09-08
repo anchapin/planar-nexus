@@ -517,6 +517,35 @@ export function verifyChecksum(
   return actualChecksum === expectedChecksum;
 }
 
+/**
+ * Legacy "simple" state-checksum verification (issue #1716).
+ *
+ * Historically this algorithm lived as a private helper at the bottom of
+ * `use-p2p-connection.ts`; it is re-homed here — next to the other
+ * checksum verification — UNCHANGED so the checksum values peers exchange
+ * stay byte-compatible (issue #1716 scope guard: no wire-format changes).
+ *
+ * It is a djb2-style hash over the raw `JSON.stringify(gameState)` — NOT
+ * the structured {@link calculateStateChecksum} algorithms above. Do not
+ * "upgrade" call sites to {@link verifyChecksum} without also migrating
+ * every peer that produces these checksums; the two algorithms yield
+ * different values for the same state.
+ */
+export function verifySimpleStateChecksum(
+  gameState: GameState,
+  checksum: string,
+): boolean {
+  const data = JSON.stringify(gameState);
+  let hash = 0;
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  const computedChecksum = (hash >>> 0).toString(16);
+  return computedChecksum === checksum;
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Spectator handshake — capability token + role-proving 4-step protocol.
 // Issue #1253.

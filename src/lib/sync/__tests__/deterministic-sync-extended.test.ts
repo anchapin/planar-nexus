@@ -14,10 +14,16 @@ import {
   DeterministicGameStateEngine,
   createDeterministicEngine,
 } from "../deterministic-sync";
-import { createInitialGameState, startGame } from "../game-state";
-import type { GameState, GameAction, ActionType, ActionData, LinkedEffectRegistry } from "../types";
-import { ReplacementEffectManager } from "../replacement-effects";
-import { LayerSystem } from "../layer-system";
+import { createInitialGameState, startGame } from "@/lib/game-state";
+import type {
+  GameState,
+  GameAction,
+  ActionType,
+  ActionData,
+  LinkedEffectRegistry,
+} from "@/lib/game-state";
+import { ReplacementEffectManager } from "@/lib/game-state";
+import { LayerSystem } from "@/lib/game-state";
 
 const mockGameState: GameState = {
   gameId: "game-1",

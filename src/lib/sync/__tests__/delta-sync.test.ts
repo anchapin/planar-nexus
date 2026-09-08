@@ -12,7 +12,7 @@ import {
   isDeltaSmallEnough,
   type GameStateDelta,
 } from "../delta-sync";
-import type { GameState, AIGameState } from "../types";
+import type { GameState, AIGameState } from "@/lib/game-state";
 
 function createMinimalGameState(turnNumber: number = 1): GameState {
   return {
@@ -446,7 +446,9 @@ describe("Delta Sync", () => {
       const delta: GameStateDelta = {
         version: 1,
         timestamp: Date.now(),
-        playerDeltas: [{ id: "large", action: "update", data: { extra: largeData } as any }],
+        playerDeltas: [
+          { id: "large", action: "update", data: { extra: largeData } as any },
+        ],
         cardDeltas: [],
         zoneDeltas: [],
         stackDeltas: [],

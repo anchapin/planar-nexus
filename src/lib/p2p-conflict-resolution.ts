@@ -67,6 +67,67 @@ export interface ConflictResolutionConfig {
 }
 
 /**
+ * Verdict of {@link ConflictResolutionManager.processAction} for a locally
+ * originated outbound action. Extracted from the (previously inline) return
+ * type so the send-path policy in {@link decideOutboundAction} can be typed
+ * and unit-tested against it (issue #1716).
+ */
+export interface ProcessActionResult {
+  /** True when the action may proceed on the wire now. */
+  shouldProcess: boolean;
+  /** The timestamped action the manager stamped for this send. */
+  action?: TimestampedAction;
+  /** Conflict the action was found to be part of, if any. */
+  conflict?: ActionConflict;
+  /** True when the action must be held back (queued) instead of sent. */
+  shouldQueue: boolean;
+  /** Why the action was queued. */
+  queueReason?: string;
+}
+
+/**
+ * What the connection layer should do with a locally originated action,
+ * decided by THIS module (the canonical conflict-resolution owner) rather
+ * than inline policy in the orchestration hook (issue #1716).
+ *
+ * - `queue`      — hold the action back (a conflicting action is being
+ *                  processed or won the conflict). `action` carries the
+ *                  stamped TimestampedAction (may be undefined when the
+ *                  manager did not produce one).
+ * - `send`       — send the action now; `action` is the stamped
+ *                  TimestampedAction to surface to callers.
+ * - `send-direct`— conflict resolution is disabled/unavailable, or the
+ *                  manager produced no actionable verdict: send the raw
+ *                  action without a stamped timestamp envelope.
+ */
+export type OutboundActionDecision =
+  | { kind: "queue"; action?: TimestampedAction }
+  | { kind: "send"; action: TimestampedAction }
+  | { kind: "send-direct" };
+
+/**
+ * Translate a {@link ConflictResolutionManager.processAction} result into
+ * the send-path decision for the connection layer. Pure: no wire I/O, no
+ * state. This is the SINGLE owner of the queue/process/send policy — the
+ * orchestration hook (use-p2p-connection.ts) maps the returned decision to
+ * transport calls but never decides (issue #1716).
+ */
+export function decideOutboundAction(
+  result: ProcessActionResult | null,
+): OutboundActionDecision {
+  if (!result) {
+    return { kind: "send-direct" };
+  }
+  if (result.shouldQueue) {
+    return { kind: "queue", action: result.action };
+  }
+  if (result.shouldProcess && result.action) {
+    return { kind: "send", action: result.action };
+  }
+  return { kind: "send-direct" };
+}
+
+/**
  * Default configuration
  */
 const DEFAULT_CONFIG: ConflictResolutionConfig = {
@@ -137,13 +198,7 @@ export class ConflictResolutionManager {
     actionData: unknown,
     playerId: string,
     playerName: string,
-  ): {
-    shouldProcess: boolean;
-    action?: TimestampedAction;
-    conflict?: ActionConflict;
-    shouldQueue: boolean;
-    queueReason?: string;
-  } {
+  ): ProcessActionResult {
     const now = Date.now();
 
     // Create timestamped action

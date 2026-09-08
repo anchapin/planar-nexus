@@ -1,10 +1,16 @@
 /**
  * Deterministic Game State Synchronization Module
  * Issue #287: Implement deterministic game state synchronization
- * 
+ *
+ * Re-homed from src/lib/game-state/ to src/lib/sync/ (issue #1716): this is
+ * P2P networking machinery, not rules-engine logic, so it lives outside the
+ * mutation-tested engine surface. The versioned public API is the barrel
+ * `src/lib/sync/index.ts` (SYNC_API_VERSION). Engine types and hashing come
+ * from the engine barrel `@/lib/game-state`.
+ *
  * This module provides a deterministic game state engine for multiplayer
  * synchronization with conflict resolution.
- * 
+ *
  * Key features:
  * - Deterministic game state engine
  * - State hash verification for sync detection
@@ -12,8 +18,13 @@
  * - Action broadcasting system improvements
  */
 
-import type { GameState, GameAction } from "./types";
-import { computeStateHash, analyzeHashDiscrepancy, type HashComparisonResult, type HashDiscrepancy } from "./state-hash";
+import type { GameState, GameAction } from "@/lib/game-state";
+import {
+  computeStateHash,
+  analyzeHashDiscrepancy,
+  type HashComparisonResult,
+  type HashDiscrepancy,
+} from "@/lib/game-state";
 
 // Re-export types needed by other modules
 export type { HashComparisonResult, HashDiscrepancy };
@@ -70,7 +81,7 @@ export interface PeerSyncState {
   /** Number of consecutive desyncs */
   consecutiveDesyncs: number;
   /** Handshake status */
-  handshakeStatus: 'pending' | 'completed' | 'failed';
+  handshakeStatus: "pending" | "completed" | "failed";
   /** Last known state checksum */
   stateChecksum: string;
 }
@@ -184,7 +195,7 @@ export class DeterministicGameStateEngine {
   createAction(
     action: GameAction,
     previousState: GameState,
-    resultingState: GameState
+    resultingState: GameState,
   ): DeterministicAction {
     const previousHash = computeStateHash(previousState);
     const resultingHash = computeStateHash(resultingState);
@@ -215,30 +226,33 @@ export class DeterministicGameStateEngine {
    */
   validateAction(
     deterministicAction: DeterministicAction,
-    currentState: GameState
+    currentState: GameState,
   ): { valid: boolean; error?: string } {
     // Check sequence number
     if (deterministicAction.sequenceNumber <= this.currentSequence) {
       // This could be a duplicate or out-of-order action
       const existingAction = this.actionHistory.find(
-        a => a.sequenceNumber === deterministicAction.sequenceNumber
+        (a) => a.sequenceNumber === deterministicAction.sequenceNumber,
       );
-      
+
       if (existingAction) {
         // Check if it's the same action
         if (this.actionsMatch(existingAction, deterministicAction)) {
           return { valid: true }; // Duplicate, but valid
         }
-        return { valid: false, error: "Conflicting action with same sequence number" };
+        return {
+          valid: false,
+          error: "Conflicting action with same sequence number",
+        };
       }
     }
 
     // Verify previous state hash matches
     const currentHash = computeStateHash(currentState);
     if (deterministicAction.previousStateHash !== currentHash) {
-      return { 
-        valid: false, 
-        error: `State hash mismatch: expected ${currentHash}, got ${deterministicAction.previousStateHash}` 
+      return {
+        valid: false,
+        error: `State hash mismatch: expected ${currentHash}, got ${deterministicAction.previousStateHash}`,
       };
     }
 
@@ -250,7 +264,7 @@ export class DeterministicGameStateEngine {
    */
   applyRemoteAction(
     deterministicAction: DeterministicAction,
-    _resultingState: GameState
+    _resultingState: GameState,
   ): void {
     // Update sequence number
     if (deterministicAction.sequenceNumber > this.currentSequence) {
@@ -273,35 +287,42 @@ export class DeterministicGameStateEngine {
       isInSync: true,
       lastSyncCheck: Date.now(),
       consecutiveDesyncs: 0,
-      handshakeStatus: 'pending',
-      stateChecksum: '',
+      handshakeStatus: "pending",
+      stateChecksum: "",
     });
   }
 
   /**
    * Initiate handshake with a peer
    */
-  initiateHandshake(peerId: PeerId, currentState: GameState): { type: string; payload: HandshakePayload } {
+  initiateHandshake(
+    peerId: PeerId,
+    currentState: GameState,
+  ): { type: string; payload: HandshakePayload } {
     const peerState = this.peerStates.get(peerId);
     if (peerState) {
-      peerState.handshakeStatus = 'pending';
+      peerState.handshakeStatus = "pending";
     }
 
     return {
-      type: 'handshake-init',
+      type: "handshake-init",
       payload: {
         peerId: this.localPeerId,
         sequenceNumber: this.currentSequence,
         stateHash: computeStateHash(currentState),
         timestamp: Date.now(),
-      }
+      },
     };
   }
 
   /**
    * Handle an incoming handshake response
    */
-  handleHandshakeResponse(peerId: PeerId, payload: HandshakePayload, currentState: GameState): boolean {
+  handleHandshakeResponse(
+    peerId: PeerId,
+    payload: HandshakePayload,
+    currentState: GameState,
+  ): boolean {
     const peerState = this.peerStates.get(peerId);
     if (!peerState) return false;
 
@@ -309,12 +330,12 @@ export class DeterministicGameStateEngine {
     const remoteHash = payload.stateHash;
 
     if (localHash === remoteHash) {
-      peerState.handshakeStatus = 'completed';
+      peerState.handshakeStatus = "completed";
       peerState.isInSync = true;
       peerState.stateChecksum = remoteHash;
       return true;
     } else {
-      peerState.handshakeStatus = 'failed';
+      peerState.handshakeStatus = "failed";
       peerState.isInSync = false;
       return false;
     }
@@ -333,7 +354,7 @@ export class DeterministicGameStateEngine {
   updatePeerState(
     peerId: PeerId,
     acknowledgedSeq: SequenceNumber,
-    stateHash: string
+    stateHash: string,
   ): void {
     const peerState = this.peerStates.get(peerId);
     if (!peerState) return;
@@ -343,12 +364,13 @@ export class DeterministicGameStateEngine {
     peerState.lastSyncCheck = Date.now();
 
     // Check if peer is in sync
-    const localHash = this.actionHistory.length > 0
-      ? this.actionHistory[this.actionHistory.length - 1].resultingStateHash
-      : "";
+    const localHash =
+      this.actionHistory.length > 0
+        ? this.actionHistory[this.actionHistory.length - 1].resultingStateHash
+        : "";
 
     peerState.isInSync = stateHash === localHash;
-    
+
     if (!peerState.isInSync) {
       peerState.consecutiveDesyncs++;
     } else {
@@ -367,15 +389,20 @@ export class DeterministicGameStateEngine {
     this.peerStates.forEach((peerState, peerId) => {
       remoteHashes.set(peerId, peerState.lastKnownStateHash);
 
-      if (peerState.lastKnownStateHash && peerState.lastKnownStateHash !== localHash) {
+      if (
+        peerState.lastKnownStateHash &&
+        peerState.lastKnownStateHash !== localHash
+      ) {
         // Desync detected - we'd need the remote state to analyze discrepancies
         // For now, mark as having discrepancies
-        discrepancies.set(peerId, [{
-          category: "unknown",
-          description: "State hash mismatch - full state comparison needed",
-          localValue: localHash,
-          remoteValue: peerState.lastKnownStateHash,
-        }]);
+        discrepancies.set(peerId, [
+          {
+            category: "unknown",
+            description: "State hash mismatch - full state comparison needed",
+            localValue: localHash,
+            remoteValue: peerState.lastKnownStateHash,
+          },
+        ]);
       }
     });
 
@@ -401,7 +428,7 @@ export class DeterministicGameStateEngine {
     localState: GameState,
     remoteState: GameState,
     remotePeerId: PeerId,
-    conflictSeq: SequenceNumber
+    conflictSeq: SequenceNumber,
   ): ConflictResolution {
     const discrepancies = analyzeHashDiscrepancy(localState, remoteState);
 
@@ -417,19 +444,28 @@ export class DeterministicGameStateEngine {
     }
 
     // Check if we can merge (simple conflicts)
-    const canMerge = discrepancies.every(d => 
-      d.category === "player" && d.description.includes("Life total")
+    const canMerge = discrepancies.every(
+      (d) => d.category === "player" && d.description.includes("Life total"),
     );
 
     if (canMerge) {
       // Use authoritative resolution based on action history
-      return this.authoritativeResolution(localState, remoteState, remotePeerId, conflictSeq);
+      return this.authoritativeResolution(
+        localState,
+        remoteState,
+        remotePeerId,
+        conflictSeq,
+      );
     }
 
     // NEW: Resolve simultaneous actions with tie-breaking
     const simultaneousActions = this.findSimultaneousActions(conflictSeq);
     if (simultaneousActions.length > 1) {
-      return this.resolveSimultaneousConflict(simultaneousActions, localState, remoteState);
+      return this.resolveSimultaneousConflict(
+        simultaneousActions,
+        localState,
+        remoteState,
+      );
     }
 
     // Check if rollback is possible
@@ -446,14 +482,19 @@ export class DeterministicGameStateEngine {
     }
 
     // Fall back to authoritative resolution
-    return this.authoritativeResolution(localState, remoteState, remotePeerId, conflictSeq);
+    return this.authoritativeResolution(
+      localState,
+      remoteState,
+      remotePeerId,
+      conflictSeq,
+    );
   }
 
   /**
    * Find actions with the same sequence number
    */
   private findSimultaneousActions(seq: SequenceNumber): DeterministicAction[] {
-    return this.actionHistory.filter(a => a.sequenceNumber === seq);
+    return this.actionHistory.filter((a) => a.sequenceNumber === seq);
   }
 
   /**
@@ -462,7 +503,7 @@ export class DeterministicGameStateEngine {
   private resolveSimultaneousConflict(
     actions: DeterministicAction[],
     _localState: GameState,
-    _remoteState: GameState
+    _remoteState: GameState,
   ): ConflictResolution {
     // Tie-breaking: lower timestamp wins, then lower peer ID string
     const sortedActions = [...actions].sort((a, b) => {
@@ -489,26 +530,27 @@ export class DeterministicGameStateEngine {
     localState: GameState,
     remoteState: GameState,
     remotePeerId: PeerId,
-    conflictSeq: SequenceNumber
+    conflictSeq: SequenceNumber,
   ): ConflictResolution {
     // Find all actions after the conflict point
     const actionsAfterConflict = this.actionHistory.filter(
-      a => a.sequenceNumber >= conflictSeq
+      (a) => a.sequenceNumber >= conflictSeq,
     );
 
     // Determine which peer has the most complete action history
     const localActions = actionsAfterConflict.filter(
-      a => a.initiatorId === this.localPeerId
+      (a) => a.initiatorId === this.localPeerId,
     );
     const remoteActions = actionsAfterConflict.filter(
-      a => a.initiatorId === remotePeerId
+      (a) => a.initiatorId === remotePeerId,
     );
 
     // Use the peer with more actions as authoritative
     // In a real implementation, this would use a more sophisticated consensus algorithm
-    const resolutionActions = localActions.length >= remoteActions.length
-      ? localActions
-      : remoteActions;
+    const resolutionActions =
+      localActions.length >= remoteActions.length
+        ? localActions
+        : remoteActions;
 
     return {
       resolved: true,
@@ -553,7 +595,7 @@ export class DeterministicGameStateEngine {
    * Get action history since a given sequence number
    */
   getActionsSince(seq: SequenceNumber): DeterministicAction[] {
-    return this.actionHistory.filter(a => a.sequenceNumber > seq);
+    return this.actionHistory.filter((a) => a.sequenceNumber > seq);
   }
 
   /**
@@ -573,7 +615,10 @@ export class DeterministicGameStateEngine {
   /**
    * Check if two actions match
    */
-  private actionsMatch(a1: DeterministicAction, a2: DeterministicAction): boolean {
+  private actionsMatch(
+    a1: DeterministicAction,
+    a2: DeterministicAction,
+  ): boolean {
     return (
       a1.sequenceNumber === a2.sequenceNumber &&
       a1.initiatorId === a2.initiatorId &&
@@ -607,7 +652,9 @@ export class DeterministicGameStateEngine {
 /**
  * Create a deterministic game state engine
  */
-export function createDeterministicEngine(localPeerId: PeerId): DeterministicGameStateEngine {
+export function createDeterministicEngine(
+  localPeerId: PeerId,
+): DeterministicGameStateEngine {
   return new DeterministicGameStateEngine(localPeerId);
 }
 
@@ -730,7 +777,7 @@ export interface HandshakeResponseMessage extends SyncMessage {
     peerId: PeerId;
     acknowledgedSequence: SequenceNumber;
     stateHash: string;
-    status: 'completed' | 'failed';
+    status: "completed" | "failed";
   };
 }
 
@@ -747,7 +794,7 @@ export function serializeSyncMessage(message: GameSyncMessage): string {
 export function deserializeSyncMessage(data: string): GameSyncMessage | null {
   try {
     const message = JSON.parse(data) as GameSyncMessage;
-    
+
     // Validate message structure
     if (!message.type || !message.senderId || !message.timestamp) {
       return null;
@@ -764,7 +811,7 @@ export function deserializeSyncMessage(data: string): GameSyncMessage | null {
  */
 export function createActionMessage(
   action: DeterministicAction,
-  senderId: PeerId
+  senderId: PeerId,
 ): ActionMessage {
   return {
     type: "action",
@@ -781,7 +828,7 @@ export function createActionMessage(
 export function createAckMessage(
   acknowledgedSeq: SequenceNumber,
   stateHash: string,
-  senderId: PeerId
+  senderId: PeerId,
 ): AckMessage {
   return {
     type: "ack",
@@ -798,7 +845,7 @@ export function createAckMessage(
  */
 export function createSyncRequestMessage(
   fromSequence: SequenceNumber,
-  senderId: PeerId
+  senderId: PeerId,
 ): SyncRequestMessage {
   return {
     type: "sync-request",
@@ -815,7 +862,7 @@ export function createSyncRequestMessage(
 export function createStateHashMessage(
   stateHash: string,
   sequenceNumber: SequenceNumber,
-  senderId: PeerId
+  senderId: PeerId,
 ): StateHashMessage {
   return {
     type: "state-hash",
@@ -833,7 +880,7 @@ export function createDesyncAlertMessage(
   localHash: string,
   remoteHash: string,
   conflictSeq: SequenceNumber,
-  senderId: PeerId
+  senderId: PeerId,
 ): DesyncAlertMessage {
   return {
     type: "desync-alert",
