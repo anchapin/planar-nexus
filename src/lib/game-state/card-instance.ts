@@ -298,6 +298,24 @@ export function isPermanent(card: CardInstance): boolean {
 }
 
 /**
+ * Check if a land has a shockland-style ETB choice
+ * (enters tapped unless you pay 2 life)
+ *
+ * Extracted from `src/app/(app)/game/[id]/page.tsx` (issue #1715): this
+ * predicate encodes a CR rule (shockland replacement-style ETB payment,
+ * e.g. CR 305.2-style "as this enters" choices) and therefore belongs in
+ * the engine, exported via the game-state barrel.
+ */
+export function hasShocklandChoice(card: CardInstance): boolean {
+  const text = card.cardData.oracle_text?.toLowerCase() || "";
+  return (
+    text.includes("pay 2 life") &&
+    text.includes("enters") &&
+    text.includes("tapped")
+  );
+}
+
+/**
  * Get the power of a creature
  */
 export function getPower(card: CardInstance): number {
