@@ -65,7 +65,14 @@ function loadFloorConfig(env) {
 
 /**
  * Resolve the floor for one module.
- * Precedence: explicit per-module entry > MUTATION_FLOOR/default.
+ * Precedence: exact per-module entry > first matching glob entry >
+ * MUTATION_FLOOR/default.
+ *
+ * Glob entries (keys containing `*`) exist so the floors config can mirror
+ * the Stryker allowlist literally — issue #1725 decomposed spell-casting.ts
+ * into per-family files and `stryker.config.js` mutates the family-dir
+ * glob `src/lib/game-state/spell-casting/*.ts`, so the floor key is the
+ * same glob and matches each family file the report contains.
  *
  * @param {string} normalizedPath - e.g. "src/lib/game-state/layer-system.ts"
  * @param {{ defaultFloor: number, floors: Record<string, number> }} config
@@ -73,7 +80,33 @@ function loadFloorConfig(env) {
  */
 function floorFor(normalizedPath, config) {
   const explicit = config.floors[normalizedPath];
-  return typeof explicit === "number" ? explicit : config.defaultFloor;
+  if (typeof explicit === "number") return explicit;
+  for (const key of Object.keys(config.floors)) {
+    if (!key.includes("*")) continue;
+    if (globToRegExp(key).test(normalizedPath)) {
+      const floor = config.floors[key];
+      if (typeof floor === "number") return floor;
+    }
+  }
+  return config.defaultFloor;
+}
+
+/**
+ * Convert a repo-path glob (the limited `*` and `**` subset Stryker mutate
+ * patterns use) into an anchored RegExp. A `**` path segment matches any
+ * number of segments; a bare `*` matches within one segment.
+ *
+ * @param {string} glob - e.g. "src/lib/game-state/spell-casting/*.ts"
+ * @returns {RegExp}
+ */
+function globToRegExp(glob) {
+  const escaped = glob
+    .replace(/[.*+?^${}()|\[\]\\]/g, "\\$&")
+    .replace(/\\\*/g, "*"); // stars are glob syntax, not literals
+  const source = escaped
+    .replace(/\*\*\//g, "(?:.*/)?")
+    .replace(/\*/g, "[^/]*");
+  return new RegExp(`^${source}$`);
 }
 
 /**
@@ -164,6 +197,7 @@ module.exports = {
   COUNTED_STATUSES,
   loadFloorConfig,
   floorFor,
+  globToRegExp,
   computeModuleScores,
   evaluateFloors,
 };

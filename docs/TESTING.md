@@ -565,9 +565,13 @@ threshold:
 | ------------------------------------------- | ------------------------ |
 | `src/lib/game-state/layer-system.ts`        | 🟢 active — PR gate (CI) |
 | `src/lib/game-state/replacement-effects.ts` | 🟡 active — nightly      |
-| `src/lib/game-state/spell-casting.ts`       | 🟡 active — nightly      |
+| `src/lib/game-state/spell-casting/*.ts`     | 🟡 active — nightly      |
 | `src/lib/game-state/trigger-system.ts`      | 🟡 active — nightly      |
 | `src/lib/game-state/state-based-actions.ts` | 🟡 active — nightly      |
+
+(The `spell-casting` entry is a family-dir glob since issue #1725 decomposed
+the module into `cast` / `resolve` / `targeting` / `choices` /
+`board-sweepers`; per-family floors live in `scripts/mutation-floor.config.js`.)
 
 Adding a new module:
 

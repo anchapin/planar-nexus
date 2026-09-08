@@ -71,10 +71,13 @@ module.exports = {
   // `combat.mutation.test.ts` suite pins those mutants down.
   // `break` stays at 50 until the nightly run records each new module's
   // baseline; it is raised to 70 in a follow-up only after BOTH clear 70%.
+  // Issue #1725: spell-casting.ts was decomposed into per-family files
+  // (cast / resolve / targeting / choices / board-sweepers); the mutate
+  // entry is the family-dir glob so the same code stays mutation-covered.
   mutate: [
     "src/lib/game-state/layer-system.ts",
     "src/lib/game-state/replacement-effects.ts",
-    "src/lib/game-state/spell-casting.ts",
+    "src/lib/game-state/spell-casting/*.ts",
     "src/lib/game-state/trigger-system.ts",
     "src/lib/game-state/state-based-actions.ts",
     "src/lib/game-state/combat.ts",

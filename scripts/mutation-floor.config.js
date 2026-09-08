@@ -51,7 +51,10 @@ module.exports = {
     "src/lib/game-state/replacement-effects.ts": 76,
     // Conservative pending-measurement floors — ratchet upward after the
     // first successful nightly run (issue #1598 follow-up). See header.
-    "src/lib/game-state/spell-casting.ts": 50,
+    // Issue #1725: spell-casting.ts was decomposed into per-family files;
+    // this glob key mirrors the Stryker allowlist entry and matches each
+    // family file in the report (see floorFor in mutation-floor-lib.js).
+    "src/lib/game-state/spell-casting/*.ts": 50,
     "src/lib/game-state/trigger-system.ts": 50,
     "src/lib/game-state/state-based-actions.ts": 50,
     // Issue #1597: 6th Stryker module. Conservative pending-measurement

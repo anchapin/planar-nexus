@@ -41,6 +41,9 @@ export function loadFloorConfig(
 
 export function floorFor(normalizedPath: string, config: FloorConfig): number;
 
+/** Issue #1725: glob floor keys mirror Stryker allowlist dir globs. */
+export function globToRegExp(glob: string): RegExp;
+
 export function computeModuleScores(data: unknown): ModuleScore[];
 
 export function evaluateFloors(
