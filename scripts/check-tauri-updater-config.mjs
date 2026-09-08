@@ -39,9 +39,21 @@
  *      emits per-installer `.sig` files that reference a manifest the
  *      runtime cannot validate — a quieter version of the same drift.
  *
+ *   D. macOS updater gate (issue #1729): Tauri's updater on macOS is only
+ *      supported for SIGNED builds. If the updater is active (or
+ *      `createUpdaterArtifacts` is true) and `bundle.macOS.signingIdentity`
+ *      is null/unset, then the platform overlay `tauri.macos.conf.json`
+ *      MUST set `plugins.updater.active === false` — unsigned DMGs must
+ *      never ship with an active auto-updater (updates fail at runtime or
+ *      train users to bypass Gatekeeper). Conversely, once a signing
+ *      identity IS configured, a disabling overlay is a stale gate and
+ *      fails the check so signed builds keep the updater.
+ *
  * Usage:
  *   node scripts/check-tauri-updater-config.mjs            # reads repo default
  *   node scripts/check-tauri-updater-config.mjs <path>     # reads alternate config
+ *                                                         # (overlay is looked up
+ *                                                         # next to <path>)
  *
  * Exits 0 on pass, 1 on violation.
  */
@@ -199,6 +211,71 @@ export function checkUpdaterConfig(config) {
 }
 
 /**
+ * Contract D (issue #1729): macOS updater gate.
+ *
+ * @param {unknown} config - Parsed tauri.conf.json contents.
+ * @param {unknown} macOverlay - Parsed tauri.macos.conf.json contents, or
+ *   null/undefined when the overlay file does not exist.
+ * @returns {{ ok: true } | { ok: false; errors: string[] }}
+ */
+export function checkMacOSUpdaterGate(config, macOverlay) {
+  /** @type {string[]} */
+  const errors = [];
+
+  if (config === null || typeof config !== "object") {
+    // Base-shape errors are reported by checkUpdaterConfig; nothing to gate.
+    return { ok: true };
+  }
+  const root = /** @type {Record<string, unknown>} */ (config);
+  const updaterActive =
+    root.plugins?.updater?.active === true ||
+    root.bundle?.createUpdaterArtifacts === true;
+  if (!updaterActive) {
+    // Updater fully disabled — no macOS gate needed.
+    return { ok: true };
+  }
+
+  const macBundle =
+    /** @type {Record<string, unknown> | undefined} */ (
+      root.bundle?.macOS ?? root.bundle?.macos
+    );
+  const signingIdentity =
+    typeof macBundle?.signingIdentity === "string"
+      ? macBundle.signingIdentity.trim()
+      : null;
+  const signed = signingIdentity !== null && signingIdentity.length > 0;
+
+  const overlayActive =
+    macOverlay !== null &&
+    typeof macOverlay === "object" &&
+    /** @type {Record<string, unknown>} */ (macOverlay).plugins?.updater
+      ?.active === false;
+
+  if (!signed && !overlayActive) {
+    errors.push(
+      "bundle.macOS.signingIdentity is unset while the updater is active. " +
+        "Tauri's macOS updater only supports signed builds: unsigned DMGs with an " +
+        "active auto-updater either fail at update time or train users to bypass " +
+        "Gatekeeper (issue #1729). Either sign macOS builds (set signingIdentity + " +
+        "APPLE_SIGNING_IDENTITY secret — see docs/DEPLOYMENT_GUIDE.md) or gate the " +
+        "updater off for macOS by adding src-tauri/tauri.macos.conf.json with " +
+        '{"plugins": {"updater": {"active": false}}}.',
+    );
+  }
+
+  if (signed && overlayActive) {
+    errors.push(
+      `bundle.macOS.signingIdentity is set ("${signingIdentity}") but ` +
+        "tauri.macos.conf.json still disables the updater — the gate is stale. " +
+        "Remove plugins.updater.active=false from the macOS overlay so signed " +
+        "builds keep auto-updates (issue #1729).",
+    );
+  }
+
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+/**
  * @param {string} confPath
  * @returns {number} exit code (0 pass, 1 fail)
  */
@@ -221,22 +298,43 @@ function run(confPath) {
     return 1;
   }
 
-  const result = checkUpdaterConfig(parsed);
-  if (result.ok) {
+  // Platform overlay lives next to the base config (issue #1729 contract D).
+  const overlayPath = path.join(
+    path.dirname(confPath),
+    "tauri.macos.conf.json",
+  );
+  /** @type {unknown} */
+  let macOverlay = null;
+  if (fs.existsSync(overlayPath)) {
+    try {
+      macOverlay = JSON.parse(fs.readFileSync(overlayPath, "utf8"));
+    } catch (err) {
+      console.error(
+        `[check-tauri-updater-config] FAIL: could not parse JSON at ${overlayPath}: ${err}`,
+      );
+      return 1;
+    }
+  }
+
+  const base = checkUpdaterConfig(parsed);
+  const gate = checkMacOSUpdaterGate(parsed, macOverlay);
+  if (base.ok && gate.ok) {
     console.log(
-      `[check-tauri-updater-config] PASS: ${confPath} satisfies the #1430 updater contract.`,
+      `[check-tauri-updater-config] PASS: ${confPath} satisfies the ` +
+        "#1430 updater contract and the #1729 macOS updater gate.",
     );
     return 0;
   }
 
   console.error(
-    `[check-tauri-updater-config] FAIL: ${confPath} violates the #1430 updater contract:`,
+    `[check-tauri-updater-config] FAIL: ${confPath} violates the updater contract:`,
   );
-  for (const e of result.errors) {
+  for (const e of [...(base.ok ? [] : base.errors), ...(gate.ok ? [] : gate.errors)]) {
     console.error(`  - ${e}`);
   }
   console.error(
-    "See https://github.com/anchapin/planar-nexus/issues/1430 and " +
+    "See https://github.com/anchapin/planar-nexus/issues/1430, " +
+      "https://github.com/anchapin/planar-nexus/issues/1729, and " +
       "docs/RELEASE_RUNBOOK.md for the signing-key + endpoint setup.",
   );
   return 1;

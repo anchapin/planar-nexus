@@ -215,6 +215,29 @@ npm run build:tauri
 
 4. Build - Tauri will sign the application automatically
 
+##### macOS auto-updater gating (issue #1729)
+
+Tauri's auto-updater on macOS only supports **signed** builds. While
+`bundle.macOS.signingIdentity` is unset (unsigned/ad-hoc DMGs), the
+platform overlay `src-tauri/tauri.macos.conf.json` keeps the updater
+disabled on macOS so users are never offered updates that would fail at
+runtime or encourage bypassing Gatekeeper. Windows and Linux updates are
+unaffected.
+
+The guard `scripts/check-tauri-updater-config.mjs` (CI job
+`tauri-updater-config`) enforces both directions:
+
+- Unsigned + no disabling overlay → CI fails
+- Signed + a disabling overlay (stale gate) → CI fails
+
+To enable macOS auto-updates later:
+
+1. Complete the macOS code signing steps above and set the
+   `APPLE_SIGNING_IDENTITY` secret in the repository
+2. Delete the `plugins.updater.active: false` block from
+   `src-tauri/tauri.macos.conf.json` (or remove the file)
+3. The guard now passes with the updater active on all platforms
+
 ### Distribution
 
 #### Direct Distribution
