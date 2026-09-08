@@ -69,7 +69,7 @@ module.exports = {
       branches: 52,
       functions: 52,
       lines: 60,
-      statements: 59,
+      statements: 60,
     },
   },
   // `json-summary` emits coverage/coverage-summary.json, consumed by
