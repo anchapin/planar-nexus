@@ -53,6 +53,12 @@ src-tauri/gen/
 # i18n message catalogs must be tracked
 !src/messages/*.json
 
+# Tauri config + platform overlays must be tracked (tauri.conf.json
+# predates the blanket *.json rule; overlays added by #1729 need the
+# explicit negation or they are silently ignored).
+!src-tauri/tauri.conf.json
+!src-tauri/tauri.*.conf.json
+
 # python
 __pycache__/
 *.py[cod]

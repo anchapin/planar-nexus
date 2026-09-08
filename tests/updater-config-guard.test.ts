@@ -47,10 +47,16 @@ interface GuardResult {
   stderr: string;
 }
 
-function runGuard(config: unknown): GuardResult {
+function runGuard(config: unknown, macOverlay?: unknown): GuardResult {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "tauri-conf-"));
   const confPath = path.join(tmp, "tauri.conf.json");
   fs.writeFileSync(confPath, JSON.stringify(config));
+  if (macOverlay !== undefined) {
+    fs.writeFileSync(
+      path.join(tmp, "tauri.macos.conf.json"),
+      JSON.stringify(macOverlay),
+    );
+  }
   try {
     const res = cp.spawnSync(process.execPath, [SCRIPT, confPath], {
       encoding: "utf8",
@@ -182,8 +188,14 @@ describe("Tauri updater config guard (issue #1430)", () => {
   });
 
   test("canonical active updater with real minisign pubkey + HTTPS .json endpoint passes", () => {
+    // Canonical state assumes a SIGNED macOS build (issue #1729 contract D);
+    // the unsigned variant is covered by the macOS-gate tests below.
     expectPass(
       runGuard({
+        bundle: {
+          createUpdaterArtifacts: true,
+          macOS: { signingIdentity: "Developer ID Application: Fixture (TEAM)" },
+        },
         plugins: {
           updater: {
             active: true,
@@ -266,5 +278,67 @@ describe("Tauri updater config guard (issue #1430)", () => {
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Tauri updater macOS gate (issue #1729)", () => {
+  const UNSIGNED_ACTIVE = {
+    bundle: { createUpdaterArtifacts: true, macOS: { signingIdentity: null } },
+    plugins: {
+      updater: { active: true, pubkey: VALID_PUBKEY, endpoints: [VALID_ENDPOINT] },
+    },
+  };
+
+  test("unsigned macOS + active updater + no overlay fails", () => {
+    expectFail(runGuard(UNSIGNED_ACTIVE), "signingIdentity is unset");
+  });
+
+  test("unsigned macOS + updater gated off via overlay passes", () => {
+    expectPass(
+      runGuard(UNSIGNED_ACTIVE, {
+        plugins: { updater: { active: false } },
+      }),
+    );
+  });
+
+  test("signed macOS + stale disabling overlay fails", () => {
+    expectFail(
+      runGuard(
+        {
+          ...UNSIGNED_ACTIVE,
+          bundle: {
+            ...UNSIGNED_ACTIVE.bundle,
+            macOS: {
+              signingIdentity: "Developer ID Application: Fixture (TEAM)",
+            },
+          },
+        },
+        { plugins: { updater: { active: false } } },
+      ),
+      "stale",
+    );
+  });
+
+  test("signed macOS + no overlay passes (updater stays on)", () => {
+    expectPass(
+      runGuard({
+        ...UNSIGNED_ACTIVE,
+        bundle: {
+          ...UNSIGNED_ACTIVE.bundle,
+          macOS: {
+            signingIdentity: "Developer ID Application: Fixture (TEAM)",
+          },
+        },
+      }),
+    );
+  });
+
+  test("unsigned macOS with fully-disabled updater needs no overlay", () => {
+    expectPass(
+      runGuard({
+        bundle: { createUpdaterArtifacts: false, macOS: { signingIdentity: null } },
+        plugins: { updater: { active: false } },
+      }),
+    );
   });
 });
