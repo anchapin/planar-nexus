@@ -5,8 +5,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen)](https://github.com/anchapin/planar-nexus/actions/workflows/ci.yml)
 [![Coverage](https://img.shields.io/badge/coverage-70%25-brightgreen)](https://github.com/anchapin/planar-nexus/actions/workflows/ci.yml)
-[![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6-blue?logo=typescript)](https://www.typescriptlang.org/)
 
 > **WotC Fan Content Policy Disclaimer**: Planar Nexus is unofficial Fan Content permitted under the Fan Content Policy. Not approved/endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.
 
@@ -28,7 +28,7 @@
 
 ## Overview
 
-Planar Nexus is a comprehensive digital tabletop card game experience built with Next.js 15, TypeScript, and Tauri. Build decks, get AI-powered coaching, play against AI opponents, and compete with friends online.
+Planar Nexus is a comprehensive digital tabletop card game experience built with Next.js 16, TypeScript, and Tauri. Build decks, get AI-powered coaching, play against AI opponents, and compete with friends online.
 
 **Key Highlights**:
 
@@ -204,7 +204,7 @@ chmod +x Planar-Nexus.AppImage
 
 ### Runtime Requirements
 
-- **Node.js**: 20 or higher (for development)
+- **Node.js**: 22 or higher (for development; matches the `engines` field in `package.json`)
 - **Browser**: Chrome 90+, Firefox 88+, Safari 14+, Edge 90+
 - **Storage**: 500MB for application + card database
 - **Memory**: 4GB RAM minimum, 8GB recommended
@@ -212,7 +212,7 @@ chmod +x Planar-Nexus.AppImage
 
 ### Development Requirements
 
-- **Node.js**: 20+
+- **Node.js**: 22+
 - **npm** or **yarn**
 - **Git**
 - **Rust toolchain** (for Tauri builds)
@@ -359,7 +359,7 @@ See [Card Database Import Guide](CARD_DATABASE_IMPORT.md) for details.
 
 | Category       | Technology                                |
 | -------------- | ----------------------------------------- |
-| **Frontend**   | Next.js 15, React 19, TypeScript 5        |
+| **Frontend**   | Next.js 16, React 19, TypeScript 6        |
 | **UI**         | Shadcn/ui, Radix UI, Tailwind CSS         |
 | **Backend**    | Tauri 2, Rust                             |
 | **AI**         | Genkit, Gemini, Claude, OpenAI, Z.ai      |
