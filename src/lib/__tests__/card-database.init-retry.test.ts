@@ -12,7 +12,7 @@
  *      `error`, `loaded: false`) so UIs never confuse it with empty.
  *   3. Init failure → retry → success works without a module reload.
  *
- * @jest-environment jsdom
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/jsdom
  */
 
 // Mock Orama to avoid ESM issues in Jest (mirrors card-database.test.ts).

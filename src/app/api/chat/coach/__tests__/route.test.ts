@@ -7,7 +7,7 @@
  * embeds the structured analysis into the guardrailed system prompt and streams
  * via `streamCoachResponse` instead of handing a separate field to `coachFlow`.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  *
  * The route uses a web `ReadableStream` (Node-only) and `Response.json`. The
  * shared `jest.setup.js` replaces the global fetch primitives with minimal

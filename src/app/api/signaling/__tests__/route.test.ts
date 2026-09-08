@@ -8,7 +8,7 @@
  * is preserved verbatim — the function is still exported as the canonical
  * sampling pattern.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 import { describe, it, expect } from "@jest/globals";

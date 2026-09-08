@@ -19,7 +19,7 @@
  * The route reads `process.env.TURN_HMAC_SECRET` directly, so each
  * test sets + restores the relevant env keys to keep state isolated.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 import {

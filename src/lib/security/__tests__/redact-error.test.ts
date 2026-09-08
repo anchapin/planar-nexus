@@ -8,7 +8,7 @@
  * truncation, and the stable AUTH/PROVIDER/NETWORK/INTERNAL classification
  * that backs the client-facing error codes.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 import { describe, it, expect, afterEach } from "@jest/globals";
