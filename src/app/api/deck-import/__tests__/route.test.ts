@@ -11,7 +11,7 @@
  * The real `fetch` is replaced with a controllable mock so no outbound HTTP
  * is performed; the entire pipeline runs in-memory.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";

@@ -14,7 +14,7 @@
  *   - Token usage is logged via the shared `UsageLogger` with non-zero
  *     tokens and emitted as an SSE `usage` event (criterion #5).
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  *
  * Mirrors the harness from `src/app/api/chat/coach/__tests__/route.test.ts`:
  * the shared `jest.setup.js` replaces the global fetch primitives with

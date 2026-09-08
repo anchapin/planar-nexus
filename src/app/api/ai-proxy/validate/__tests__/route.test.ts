@@ -14,7 +14,7 @@
  * with the static factory and instance body readers, mirroring the strategy
  * used in the sibling `route.test.ts`.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 // PROVIDER_ENDPOINTS is computed at module load. Pin the custom base URL

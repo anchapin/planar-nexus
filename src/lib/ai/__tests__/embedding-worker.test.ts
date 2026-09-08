@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 import { PipelineSingleton } from "../transformers-singleton";
 import { testCards } from "../../__fixtures__/test-cards";

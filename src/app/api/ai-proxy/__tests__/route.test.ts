@@ -13,7 +13,7 @@
  * All heavy external dependencies are mocked so no real provider key is
  * required and tests run without network access.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 import { describe, it, expect, jest, beforeEach } from "@jest/globals";
