@@ -127,6 +127,10 @@ const IMAGE_STORE_NAME = "card_images";
 let db: IDBDatabase | null = null;
 let searchReady = false;
 let initPromise: Promise<void> | null = null;
+// Issue #1726: the most recent init failure, surfaced through
+// getDatabaseStatus() so UIs can distinguish "failed to open" from a
+// genuinely empty database. Cleared on the next successful init.
+let lastInitError: Error | null = null;
 
 // NOTE: Database starts empty. Users must import their own card data
 // to avoid legal issues. Use scripts/fetch-cards-for-db.ts to generate
@@ -173,6 +177,13 @@ async function openDatabase(): Promise<IDBDatabase> {
 
 /**
  * Initialize the card database
+ *
+ * Issue #1726: a FAILED init clears the cached promise so the next call
+ * retries the open instead of returning the rejected promise for the rest
+ * of the session (browser restart mid-transaction, privacy mode, and
+ * transient corruption are all recoverable without a reload). While an
+ * attempt is in flight the single-flight cache still collapses concurrent
+ * callers onto one promise.
  */
 export async function initializeCardDatabase(): Promise<void> {
   if (searchReady) {
@@ -183,7 +194,7 @@ export async function initializeCardDatabase(): Promise<void> {
     return initPromise;
   }
 
-  initPromise = (async () => {
+  const attempt = (async () => {
     try {
       // Open IndexedDB
       db = await openDatabase();
@@ -206,13 +217,20 @@ export async function initializeCardDatabase(): Promise<void> {
       void indexCardsInWorker();
 
       searchReady = true;
+      lastInitError = null;
     } catch (error) {
       console.error("Failed to initialize card database:", error);
+      // Issue #1726: clear the single-flight cache so the NEXT call
+      // retries, and remember the failure for status reporting.
+      initPromise = null;
+      lastInitError =
+        error instanceof Error ? error : new Error(String(error));
       throw error;
     }
   })();
 
-  return initPromise;
+  initPromise = attempt;
+  return attempt;
 }
 
 /**
@@ -503,15 +521,26 @@ export async function validateDeckOffline(
 export async function getDatabaseStatus(): Promise<{
   loaded: boolean;
   cardCount: number;
+  /**
+   * Message of the most recent init failure, or null. Lets UIs render a
+   * distinct "failed to open" error state (with Retry) instead of the
+   * genuine empty-database prompt (issue #1726).
+   */
+  error: string | null;
 }> {
   if (!searchReady) {
-    return { loaded: false, cardCount: 0 };
+    return {
+      loaded: false,
+      cardCount: 0,
+      error: lastInitError ? lastInitError.message : null,
+    };
   }
 
   const cardCount = await getCardCount();
   return {
     loaded: true,
     cardCount,
+    error: null,
   };
 }
 

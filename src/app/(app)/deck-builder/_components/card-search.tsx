@@ -50,6 +50,7 @@ import {
   Save,
   Trash2,
   HelpCircle,
+  RefreshCw,
   AlertCircle,
 } from "lucide-react";
 import {
@@ -176,7 +177,12 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
     const [dbStatus, setDbStatus] = useState<{
       loaded: boolean;
       cardCount: number;
-    }>({ loaded: false, cardCount: 0 });
+      error: string | null;
+    }>({ loaded: false, cardCount: 0, error: null });
+    // Issue #1726: distinct "failed to open" state so a transient IndexedDB
+    // open failure renders an error + Retry instead of degrading into the
+    // "database empty — import cards" presentation.
+    const [dbError, setDbError] = useState<string | null>(null);
     const { toast } = useToast();
 
     // Off-main-thread search worker hook (issue #1389). The worker's
@@ -506,26 +512,37 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
       }
     }, [selectedIndex]);
 
-    // Initialize database on mount
-    useEffect(() => {
-      async function initDB() {
-        try {
-          await initializeCardDatabase();
-          const status = await getDatabaseStatus();
-          setDbStatus(status);
+    // Initialize database on mount. Extracted as a callback (issue #1726)
+    // so the failure banner's Retry button re-runs the exact same flow —
+    // initializeCardDatabase clears its cached rejected promise on failure,
+    // making a retry after a transient open error possible without reload.
+    const loadDatabase = useCallback(async () => {
+      setIsInitializing(true);
+      setDbError(null);
+      try {
+        await initializeCardDatabase();
+        const status = await getDatabaseStatus();
+        setDbStatus(status);
 
-          // Load all cards for filtering
-          const cards = await getAllCards();
-          setAllCards(cards);
-        } catch (error) {
-          console.error("Failed to initialize card database:", error);
-        } finally {
-          setIsInitializing(false);
-        }
+        // Load all cards for filtering
+        const cards = await getAllCards();
+        setAllCards(cards);
+      } catch (error) {
+        console.error("Failed to initialize card database:", error);
+        setDbError(
+          error instanceof Error
+            ? error.message
+            : "Card database failed to open",
+        );
+        setDbStatus(await getDatabaseStatus());
+      } finally {
+        setIsInitializing(false);
       }
-
-      initDB();
     }, []);
+
+    useEffect(() => {
+      loadDatabase();
+    }, [loadDatabase]);
 
     // Debounce the query for search
     const [debouncedQuery] = useDebounce(query, 300);
@@ -714,6 +731,11 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Initializing database...
                 </span>
+              ) : dbError ? (
+                <span className="flex items-center gap-2 text-destructive">
+                  <AlertCircle className="h-3 w-3" />
+                  Card database failed to open
+                </span>
               ) : (
                 <>
                   Local Database
@@ -726,7 +748,7 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
               )}
             </span>
           </div>
-          {dbStatus.loaded && (
+          {dbStatus.loaded && !dbError && (
             <span
               className="text-xs text-muted-foreground"
               data-search-worker-status={workerStatus}
@@ -734,7 +756,43 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
               {isWorkerReady ? "Background search" : "Offline ready"}
             </span>
           )}
+          {dbError && !isInitializing && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadDatabase}
+              data-testid="card-db-retry"
+            >
+              <RefreshCw className="mr-2 h-3 w-3" />
+              Retry
+            </Button>
+          )}
         </div>
+
+        {/* Card database open failure — distinct from the empty-database
+            state so users with an intact database are never told to
+            re-import (issue #1726). */}
+        {dbError && (
+          <div
+            role="alert"
+            data-testid="card-db-error"
+            className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <div>
+                <p className="font-medium text-destructive">
+                  Card database failed to open
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  {dbError} — this is usually transient (browser restart or
+                  privacy mode). Your cards are not lost; retry the
+                  connection. If it keeps failing, reload the app.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Search Input and Quick Filters */}
         <div className="space-y-3 mb-4">
