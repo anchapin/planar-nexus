@@ -602,12 +602,19 @@ branches). The CI-enforced floor lives in `jest.config.js` →
 coverage so the gate catches regressions without being flaky; it is raised
 toward 70% as coverage improves (tracked in issue #922).
 
+<!-- coverage-floor:start -->
+<!-- Rewritten automatically by scripts/ratchet-coverage.js (issue #1712);
+     `npm run lint:coverage-docs` fails CI if this table drifts from
+     jest.config.js coverageThreshold.global. -->
+
 | Metric     | Target | CI floor |
 | ---------- | ------ | -------- |
-| Lines      | 70%    | 29%      |
-| Functions  | 70%    | 23%      |
-| Statements | 70%    | 29%      |
-| Branches   | 60%    | 22%      |
+| Lines      | 70%    | 60%      |
+| Functions  | 70%    | 52%      |
+| Statements | 70%    | 59%      |
+| Branches   | 60%    | 52%      |
+
+<!-- coverage-floor:end -->
 
 > New code should not lower overall coverage. Run `npm run test:coverage`
 > locally before opening a PR. If your change drops a metric below the floor,

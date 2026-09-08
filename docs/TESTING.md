@@ -457,12 +457,19 @@ npm test -- --testPathPattern=video-derived --coverage
 
 ### Target vs. enforced floor
 
+<!-- coverage-floor:start -->
+<!-- Rewritten automatically by scripts/ratchet-coverage.js (issue #1712);
+     `npm run lint:coverage-docs` fails CI if this table drifts from
+     jest.config.js coverageThreshold.global. -->
+
 | Metric     | Project target | CI-enforced floor (`jest.config.js`) |
 | ---------- | -------------- | ------------------------------------ |
-| Lines      | **70%**        | 29%                                  |
-| Functions  | **70%**        | 23%                                  |
-| Statements | **70%**        | 29%                                  |
-| Branches   | **60%**        | 22%                                  |
+| Lines      | **70%**        | 60%                                  |
+| Functions  | **70%**        | 52%                                  |
+| Statements | **70%**        | 59%                                  |
+| Branches   | **60%**        | 52%                                  |
+
+<!-- coverage-floor:end -->
 
 - The **target** is 70% across all metrics (60% for branches). This is the
   documented project goal and is referenced from `README.md`,
@@ -531,6 +538,13 @@ How it works:
   the script exits non-zero (CI fails) and leaves `jest.config.js` untouched.
 - **Idempotent:** running it twice produces no further change — the second run
   reports "already at the ratcheted floor" and writes nothing.
+- **Doc sync (issue #1712):** after a bump, the ratchet also rewrites the
+  floor column of every coverage-floor table wrapped in
+  `<!-- coverage-floor:start -->` … `<!-- coverage-floor:end -->` anchors
+  (README.md, CONTRIBUTING.md, and this file), so the docs can never drift
+  behind `jest.config.js`. `npm run lint:coverage-docs`
+  (`scripts/check-coverage-docs-sync.mjs`, CI job `coverage-docs-guard`)
+  fails the build if a table is edited by hand with stale numbers.
 
 Jest's own `coverageThreshold` check fails the build on any regression (a drop
 below the floor). The ratchet is the mechanism that moves the gate _forward_

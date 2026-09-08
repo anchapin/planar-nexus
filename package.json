@@ -47,6 +47,7 @@
     "stubs:inventory": "node scripts/stubs-inventory.js",
     "tauri:check-updater": "node scripts/check-tauri-updater-config.mjs",
     "lint:engine-size": "node scripts/check-engine-size-budget.mjs",
+    "lint:coverage-docs": "node scripts/check-coverage-docs-sync.mjs",
     "prepare": "husky"
   },
   "dependencies": {

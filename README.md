@@ -286,12 +286,20 @@ The project **target** is 70% coverage across all metrics. The CI-enforced floor
 coverage so the gate catches regressions without being flaky; it will be raised
 toward the 70% target as coverage improves.
 
+<!-- coverage-floor:start -->
+<!-- Tables between these anchors are rewritten automatically by
+     scripts/ratchet-coverage.js (issue #1712); edit values only via
+     `npm run test:coverage:ratchet` or expect
+     `npm run lint:coverage-docs` to fail CI on drift. -->
+
 | Metric     | Target | CI-enforced floor |
 | ---------- | ------ | ----------------- |
-| Lines      | 70%    | 29%               |
-| Functions  | 70%    | 23%               |
-| Statements | 70%    | 29%               |
-| Branches   | 60%    | 22%               |
+| Lines      | 70%    | 60%               |
+| Functions  | 70%    | 52%               |
+| Statements | 70%    | 59%               |
+| Branches   | 60%    | 52%               |
+
+<!-- coverage-floor:end -->
 
 Coverage reports are generated in:
 

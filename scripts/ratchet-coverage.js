@@ -12,6 +12,8 @@
  *     exit non-zero (CI fails). jest.config.js is NOT modified.
  *   - measured > threshold         -> BUMP: raise the floor (monotonically;
  *     it is never lowered) and rewrite jest.config.js, preserving formatting.
+ *     The anchored coverage-floor tables in README.md, CONTRIBUTING.md, and
+ *     docs/TESTING.md are rewritten too (issue #1712).
  *   - measured == ratcheted floor  -> NO-OP (idempotent; second run is a nop).
  *
  * The floor for each metric is `max(current, floor(measured - margin))`, so the
@@ -264,6 +266,102 @@ function applyRatchet(configSource, measured, margin) {
   return { kind: "bump", current, floors, bumps, regressions, nextSource };
 }
 
+/**
+ * Doc-table sync (issue #1712).
+ *
+ * The coverage-floor tables in README.md, CONTRIBUTING.md, and
+ * docs/TESTING.md are wrapped in HTML anchor comments:
+ *
+ *   <!-- coverage-floor:start --> ... <!-- coverage-floor:end -->
+ *
+ * After a bump rewrites jest.config.js, these helpers rewrite the floor
+ * column (the last `N%` cell of each metric row) inside every anchored
+ * block so the docs can never drift behind the config again. A separate
+ * guard (scripts/check-coverage-docs-sync.mjs, `npm run
+ * lint:coverage-docs`) fails CI when a doc is edited by hand with stale
+ * numbers; the ratchet only rewrites docs that carry the anchors and
+ * reports the rest as skipped (it never fails because of a doc).
+ */
+const DOC_START_ANCHOR = "<!-- coverage-floor:start -->";
+const DOC_END_ANCHOR = "<!-- coverage-floor:end -->";
+const DOC_PATHS = ["README.md", "CONTRIBUTING.md", "docs/TESTING.md"];
+
+/**
+ * Matches one data row of an anchored coverage table, e.g.
+ *   | Lines      | 70%    | 29%               |
+ * group 1 = leading whitespace + opening pipe,
+ * group 2 = metric name (case-insensitive),
+ * group 3 = everything up to the final cell's number,
+ * group 4 = the floor number (final numeric % cell in the row),
+ * group 5 = whitespace + closing pipe.
+ * The floor column is the LAST column in every anchored table, so this is
+ * robust against extra leading columns (e.g. the Target column).
+ */
+const DOC_ROW_RE =
+  /^(\s*\|\s*)(Lines|Functions|Statements|Branches)(\s*\|[^\r\n]*\|\s*)(\d+(?:\.\d+)?)%(\s*\|)[ \t]*$/;
+
+/** Rewrite the floor cells inside one anchored block, preserving alignment. */
+function applyFloorsToDocBlock(block, floors) {
+  return block
+    .split("\n")
+    .map((line) => {
+      const m = line.match(DOC_ROW_RE);
+      if (!m) return line;
+      const metric = m[2].toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(floors, metric)) return line;
+      const next = String(floors[metric]);
+      // Keep the rendered row width stable when the digit count changes by
+      // moving padding spaces in front of the closing pipe.
+      const delta = m[4].length - next.length;
+      let tail = m[5];
+      if (delta !== 0) {
+        const innerSpaces = tail.length - 1; // minus the "|" itself
+        tail = " ".repeat(Math.max(0, innerSpaces + delta)) + "|";
+      }
+      return m[1] + m[2] + m[3] + next + "%" + tail;
+    })
+    .join("\n");
+}
+
+/**
+ * Sync every anchored coverage table in `docPaths` to `floors`.
+ * Returns [{ docPath, status }] where status is "updated", "in-sync",
+ * "missing", or "unanchored". Never throws for a doc problem.
+ */
+function syncCoverageDocTables(floors, docPaths) {
+  const results = [];
+  for (const docPath of docPaths) {
+    let source;
+    try {
+      source = fs.readFileSync(docPath, "utf-8");
+    } catch {
+      results.push({ docPath, status: "missing" });
+      continue;
+    }
+    const startIdx = source.indexOf(DOC_START_ANCHOR);
+    const endIdx =
+      startIdx === -1 ? -1 : source.indexOf(DOC_END_ANCHOR, startIdx);
+    if (startIdx === -1 || endIdx === -1) {
+      results.push({ docPath, status: "unanchored" });
+      continue;
+    }
+    const after = startIdx + DOC_START_ANCHOR.length;
+    const block = source.slice(after, endIdx);
+    const nextBlock = applyFloorsToDocBlock(block, floors);
+    if (nextBlock === block) {
+      results.push({ docPath, status: "in-sync" });
+      continue;
+    }
+    fs.writeFileSync(
+      docPath,
+      source.slice(0, after) + nextBlock + source.slice(endIdx),
+      "utf-8",
+    );
+    results.push({ docPath, status: "updated" });
+  }
+  return results;
+}
+
 function main() {
   let opts;
   try {
@@ -361,6 +459,10 @@ function main() {
 
   if (opts.dryRun) {
     console.info("\n[ratchet] --dry-run set: jest.config.js not modified.");
+    console.info(
+      "[ratchet] Doc tables (README/CONTRIBUTING/TESTING) would also be " +
+        "synced on a real run (issue #1712).",
+    );
     process.exit(0);
   }
 
@@ -373,6 +475,31 @@ function main() {
   console.info(
     `\n[ratchet] Updated ${path.relative(root, configPath) || "jest.config.js"}.`,
   );
+
+  // Issue #1712: keep the documented floor tables in lockstep with the bump.
+  let docResults;
+  try {
+    docResults = syncCoverageDocTables(
+      result.floors,
+      DOC_PATHS.map((p) => path.resolve(root, p)),
+    );
+  } catch (err) {
+    console.error(
+      `[ratchet] Failed to sync coverage doc tables: ${err.message}`,
+    );
+    process.exit(1);
+  }
+  for (const r of docResults) {
+    const rel = path.relative(root, r.docPath) || r.docPath;
+    if (r.status === "updated") {
+      console.info(`[ratchet] Synced coverage-floor table in ${rel}.`);
+    } else if (r.status !== "in-sync") {
+      console.info(
+        `[ratchet] Note: ${rel} not synced (${r.status} — no anchored ` +
+          `coverage-floor table). Run "npm run lint:coverage-docs" to check.`,
+      );
+    }
+  }
   process.exit(0);
 }
 
@@ -380,12 +507,18 @@ module.exports = {
   METRICS,
   DEFAULT_MARGIN,
   BLOCK_RE,
+  DOC_START_ANCHOR,
+  DOC_END_ANCHOR,
+  DOC_PATHS,
+  DOC_ROW_RE,
   parseArgs,
   readCoverageSummary,
   extractMeasured,
   readCurrentValues,
   computeFloors,
   applyRatchet,
+  applyFloorsToDocBlock,
+  syncCoverageDocTables,
   main,
 };
 
