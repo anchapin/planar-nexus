@@ -4,7 +4,7 @@
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstance, CardInstanceId, Target, Zone } from '../types';
+import type { GameState, CardInstance, CardInstanceId, Zone } from '../types';
 import { addCounters, removeCounters, hasCounter, initializePlaneswalkerLoyalty } from '../card-instance';
 import { KeywordActionResult } from './shared';
 
