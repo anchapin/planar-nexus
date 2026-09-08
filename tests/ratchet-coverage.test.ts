@@ -7,10 +7,15 @@
  * idempotency, and byte-stable formatting of jest.config.js.
  */
 
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import {
   computeFloors,
   applyRatchet,
   readCurrentValues,
+  applyFloorsToDocBlock,
+  syncCoverageDocTables,
 } from "../scripts/ratchet-coverage";
 
 type Metrics = {
@@ -181,5 +186,94 @@ describe("ratchet-coverage applyRatchet", () => {
     expect(() => applyRatchet(broken, MEASURED, 1)).toThrow(
       /coverageThreshold\.global/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Doc-table sync (issue #1712)
+// ---------------------------------------------------------------------------
+
+const DOC_BLOCK = [
+  "<!-- coverage-floor:start -->",
+  "| Metric     | Target | CI-enforced floor |",
+  "| ---------- | ------ | ----------------- |",
+  "| Lines      | 70%    | 29%               |",
+  "| Functions  | 70%    | 23%               |",
+  "| Statements | 70%    | 29%               |",
+  "| Branches   | 60%    | 22%               |",
+  "<!-- coverage-floor:end -->",
+].join("\n");
+
+const BUMPED_FLOORS = {
+  branches: 52,
+  functions: 52,
+  lines: 60,
+  statements: 59,
+};
+
+describe("ratchet-coverage applyFloorsToDocBlock", () => {
+  it("rewrites only the floor column of metric rows", () => {
+    const out = applyFloorsToDocBlock(DOC_BLOCK, BUMPED_FLOORS);
+    expect(out).toContain("| Lines      | 70%    | 60%               |");
+    expect(out).toContain("| Functions  | 70%    | 52%               |");
+    expect(out).toContain("| Statements | 70%    | 59%               |");
+    expect(out).toContain("| Branches   | 60%    | 52%               |");
+    // anchors, headers, and target column untouched
+    expect(out).toContain("<!-- coverage-floor:start -->");
+    expect(out).toContain("| Metric     | Target | CI-enforced floor |");
+  });
+
+  it("keeps the rendered row width stable when the digit count grows", () => {
+    const floors = { ...BUMPED_FLOORS, lines: 100 };
+    const out = applyFloorsToDocBlock(DOC_BLOCK, floors);
+    const row = out.split("\n").find((l: string) => l.includes("| Lines"));
+    expect(row).toBe("| Lines      | 70%    | 100%              |");
+    expect(row).toHaveLength(DOC_BLOCK.split("\n")[3].length);
+  });
+
+  it("is idempotent: applying the same floors twice changes nothing", () => {
+    const once = applyFloorsToDocBlock(DOC_BLOCK, BUMPED_FLOORS);
+    expect(applyFloorsToDocBlock(once, BUMPED_FLOORS)).toBe(once);
+  });
+});
+
+describe("ratchet-coverage syncCoverageDocTables", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ratchet-docs-"));
+
+  function writeDoc(name: string, content: string): string {
+    const p = path.join(tmp, name);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content, "utf-8");
+    return p;
+  }
+
+  it("updates anchored docs, skips in-sync/unanchored/missing ones", () => {
+    const stale = writeDoc("stale.md", DOC_BLOCK + "\n");
+    const fresh = applyFloorsToDocBlock(DOC_BLOCK, BUMPED_FLOORS);
+    const inSync = writeDoc("in-sync.md", fresh);
+    const noAnchors = writeDoc(
+      "no-anchors.md",
+      "| Metric | Floor |\n| ------ | ----- |\n| Lines  | 1%    |\n",
+    );
+    const missing = path.join(tmp, "does-not-exist.md");
+
+    const results = syncCoverageDocTables(BUMPED_FLOORS, [
+      stale,
+      inSync,
+      noAnchors,
+      missing,
+    ]);
+
+    expect(results).toEqual([
+      { docPath: stale, status: "updated" },
+      { docPath: inSync, status: "in-sync" },
+      { docPath: noAnchors, status: "unanchored" },
+      { docPath: missing, status: "missing" },
+    ]);
+    expect(fs.readFileSync(stale, "utf-8")).toBe(fresh + "\n");
+    expect(fs.readFileSync(inSync, "utf-8")).toBe(fresh);
+    // second run over the updated doc is a no-op
+    const second = syncCoverageDocTables(BUMPED_FLOORS, [stale]);
+    expect(second).toEqual([{ docPath: stale, status: "in-sync" }]);
   });
 });

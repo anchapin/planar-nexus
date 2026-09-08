@@ -48,6 +48,10 @@ export interface RatchetResult {
 export const METRICS: Metric[];
 export const DEFAULT_MARGIN: number;
 export const BLOCK_RE: RegExp;
+export const DOC_START_ANCHOR: string;
+export const DOC_END_ANCHOR: string;
+export const DOC_PATHS: string[];
+export const DOC_ROW_RE: RegExp;
 
 export function parseArgs(argv: string[]): {
   margin: number;
@@ -73,5 +77,19 @@ export function applyRatchet(
   measured: Metrics,
   margin: number,
 ): RatchetResult;
+
+export type DocSyncStatus = "updated" | "in-sync" | "missing" | "unanchored";
+
+export interface DocSyncResult {
+  docPath: string;
+  status: DocSyncStatus;
+}
+
+export function applyFloorsToDocBlock(block: string, floors: Metrics): string;
+
+export function syncCoverageDocTables(
+  floors: Metrics,
+  docPaths: string[],
+): DocSyncResult[];
 
 export function main(): void;

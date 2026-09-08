@@ -783,11 +783,37 @@ jobs:
       - name: Assert no committed TURN credentials (#1571)
         run: node scripts/check-turn-credentials.mjs
 
+  coverage-docs-guard:
+    # Issue #1712: the coverage-floor tables in README.md, CONTRIBUTING.md,
+    # and docs/TESTING.md document the CI-enforced floor from
+    # jest.config.js coverageThreshold.global. The floor ratchets upward
+    # automatically (scripts/ratchet-coverage.js, #1099) and had outrun the
+    # hand-edited doc tables (docs said 22-29% while the enforced floor was
+    # 52-60%). The ratchet now rewrites the anchored tables on every bump,
+    # and this plain-Node guard (~1ms, no toolchain) fails fast when a doc
+    # table is edited by hand with stale numbers, instead of waiting on the
+    # full unit-test job.
+    name: Coverage Docs Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert coverage-floor doc tables match jest.config.js (#1712)
+        run: node scripts/check-coverage-docs-sync.mjs
+
   build:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, turn-credentials-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, turn-credentials-guard, coverage-docs-guard]
 
     steps:
       - name: Checkout code
