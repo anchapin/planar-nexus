@@ -128,6 +128,8 @@ const eslintConfig = [
       "scripts/regen-video-fixtures.mjs",
       // Plain Node ESM tooling for the issue #1430 updater-config guard.
       "scripts/check-tauri-updater-config.mjs",
+      // Plain Node ESM tooling for the issue #1725 engine size-budget gate.
+      "scripts/check-engine-size-budget.mjs",
       ".claude/skills/pr-automation/**",
     ],
   },

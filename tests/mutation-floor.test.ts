@@ -204,6 +204,28 @@ describe("mutation-floor-lib floorFor", () => {
   it("falls back to the (possibly env-overridden) default for unlisted modules", () => {
     expect(floorFor("src/lib/game-state/some-new-module.ts", config)).toBe(55);
   });
+
+  it("matches glob floor entries for decomposed module families (issue #1725)", () => {
+    const globConfig: FloorConfig = {
+      defaultFloor: 55,
+      floors: { "src/lib/game-state/spell-casting/*.ts": 50 },
+    };
+    expect(floorFor("src/lib/game-state/spell-casting/cast.ts", globConfig)).toBe(50);
+    expect(floorFor("src/lib/game-state/spell-casting/resolve.ts", globConfig)).toBe(50);
+    // A glob does not leak across directories…
+    expect(floorFor("src/lib/game-state/spell-casting/sub/dir.ts", globConfig)).toBe(55);
+    expect(floorFor("src/lib/game-state/layer-system.ts", globConfig)).toBe(55);
+    // …and an exact entry still beats a glob.
+    const both: FloorConfig = {
+      defaultFloor: 55,
+      floors: {
+        "src/lib/game-state/spell-casting/*.ts": 50,
+        "src/lib/game-state/spell-casting/cast.ts": 70,
+      },
+    };
+    expect(floorFor("src/lib/game-state/spell-casting/cast.ts", both)).toBe(70);
+    expect(floorFor("src/lib/game-state/spell-casting/choices.ts", both)).toBe(50);
+  });
 });
 
 describe("floor config sanity", () => {
@@ -334,7 +356,10 @@ describe("mutation-floor.js CLI", () => {
     return {
       "src/lib/game-state/layer-system.ts": mutants(56, 100), // 56% >= 55
       "src/lib/game-state/replacement-effects.ts": mutants(80, 100), // 80% >= 76
-      "src/lib/game-state/spell-casting.ts": mutants(80, 100), // 80% >= 50
+      // Issue #1725: spell-casting monolith became per-family files; the
+      // floor key is the family-dir glob mirroring the Stryker allowlist.
+      "src/lib/game-state/spell-casting/cast.ts": mutants(80, 100), // 80% >= 50 (glob)
+      "src/lib/game-state/spell-casting/resolve.ts": mutants(80, 100), // 80% >= 50 (glob)
       "src/lib/game-state/trigger-system.ts": mutants(80, 100), // 80% >= 50
       "src/lib/game-state/state-based-actions.ts": mutants(80, 100), // 80% >= 50
     };
