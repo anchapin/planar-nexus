@@ -37,9 +37,12 @@ describe("card database init retry (issue #1726)", () => {
   });
 
   // Re-require after every reset so each test exercises fresh state.
+  // The require() is deliberate: it is the only way to pull a fresh
+  // module instance out of jest's registry inside isolateModules.
   const fresh = () => {
     let mod: typeof import("../card-database");
     jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- fresh instance per test
       mod = require("../card-database");
     });
     return mod!;
