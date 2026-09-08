@@ -316,6 +316,11 @@ describe("CombatDecisionTree", () => {
         player2Creatures,
       );
       const combatAI = new CombatDecisionTree(gameState, "player1");
+      // Issue #1748: seed the combat RNG so the #994 blunder roll
+      // (`combatRng() < blunderChance`, medium = 0.10) never fires — the
+      // test asserts the no-blunder defensive verdict and must be hermetic,
+      // not a 1-in-10 Math.random flake (same class as #1706/#1734).
+      combatAI.setCombatRng(() => 1);
 
       const plan = combatAI.generateAttackPlan();
 
@@ -397,6 +402,9 @@ describe("CombatDecisionTree", () => {
         ];
         const gameState = createTestGameState(6, 20, aiCreatures, oppCreatures);
         const combatAI = new CombatDecisionTree(gameState, "player1", "hard");
+        // Issue #1748: never-blunder seed — the #994 roll (hard = 0.05)
+        // must not turn this deterministic verdict into a 1-in-20 flake.
+        combatAI.setCombatRng(() => 1);
 
         const plan = combatAI.generateAttackPlan();
 
