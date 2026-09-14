@@ -611,7 +611,7 @@ toward 70% as coverage improves (tracked in issue #922).
 | ---------- | ------ | -------- |
 | Lines      | 70%    | 60%      |
 | Functions  | 70%    | 52%      |
-| Statements | 70%    | 59%      |
+| Statements | 70%    | 60%      |
 | Branches   | 60%    | 52%      |
 
 <!-- coverage-floor:end -->
