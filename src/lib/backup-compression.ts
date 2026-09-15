@@ -4,6 +4,11 @@
  * Compresses backup exports (gzip) and restores them with integrity
  * verification (SHA-256) and backward compatibility for legacy formats.
  *
+ * OWNERSHIP (issue #1722): this module is the codec half of the single
+ * app-wide backup pipeline — `indexeddb-storage.ts` (export/import machinery)
+ * → this file (pn1 gzip + SHA-256) → `use-storage-backup.ts` (UI). See
+ * docs/PERSISTENCE_ARCHITECTURE.md for the per-database backup scope table.
+ *
  * ## File formats (issue #1084)
  *
  * - **New format (v1, `pn1`)**: an RFC 1952 gzip stream (magic bytes

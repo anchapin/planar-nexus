@@ -10,6 +10,10 @@
  * degrade (e.g. offer export / hide heavy write actions) instead of bricking.
  *
  * No native alerts (per #1100/#1150) — uses the shadcn toast primitive.
+ *
+ * OWNERSHIP (issue #1722): this hook is the sole UI surface of the quota
+ * owner module `src/lib/storage-quota.ts`. Decision record:
+ * docs/PERSISTENCE_ARCHITECTURE.md.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

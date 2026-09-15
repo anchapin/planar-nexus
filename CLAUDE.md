@@ -50,7 +50,7 @@ The app uses Next.js 16 (with React 19) and the App Router pattern:
 
 - AI deck reviews and opponent generation
 - Card/deck data types live elsewhere: `DeckCard`/`SavedDeck` are canonical in `/src/lib/card-database.ts`; `ScryfallCard`/`MinimalCard` are engine-owned in `/src/lib/game-state/types/card-data.ts` (#1724) and re-exported by `/src/lib/card-database.ts`
-- Deck persistence (IndexedDB via Dexie; tests use `fake-indexeddb`) lives in `/src/lib/deck-storage.ts`
+- Deck persistence lives in `/src/lib/deck-storage.ts` as a facade over the shared raw-IDB wrapper `/src/lib/indexeddb-storage.ts` (database `PlanarNexusStorage` — not Dexie; see `docs/PERSISTENCE_ARCHITECTURE.md`, #1722). Tests use `fake-indexeddb`
 
 (Renamed from the misnamed `src/app/actions.ts` in issue #1592.) These wrappers are called directly from client components.
 
