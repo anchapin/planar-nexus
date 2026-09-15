@@ -24,7 +24,7 @@ Planar Nexus provides:
 
 ---
 
-## v1.5 Scope: Meta & Strategy AI (Planning) ✅ SHIPPED 2026-03-19
+## v1.5 Scope: Meta & Strategy AI ✅ SHIPPED 2026-03-19
 
 **Goal:** Add meta analysis and strategic AI features to help players understand the competitive landscape and improve their game strategy.
 
@@ -41,7 +41,20 @@ Planar Nexus provides:
 
 ---
 
-## Current Milestone: v1.7 Conversational AI Coach
+## Current Milestone: v1.8 Performance & Scale (In Progress)
+
+**Goal:** Keep the app responsive and reliable as card databases, decks, and match history grow.
+
+**Target features (per STATE.md phases 31-34):**
+
+- **Search Engine Revolution**: Orama-powered Web Worker for background search, automated indexing from IndexedDB ✅
+- **Off-Main-Thread Intelligence**: Heuristic engine in a Web Worker, non-blocking AI thinking indicators, Genkit latency optimization 🏗️
+- **High-Performance Rendering**: Virtualized, high-frame-rate battlefield rendering ⏳
+- **Scalable Storage & Backups**: Robust IndexedDB scale-out and backup/restore ⏳
+
+---
+
+## v1.7 Scope: Conversational AI Coach ✅ SHIPPED 2026-03-20
 
 **Goal:** Add natural language chat interface to AI Coach for interactive deck advice and Q&A.
 
@@ -54,7 +67,7 @@ Planar Nexus provides:
 
 ---
 
-## v1.4 Scope: Draft/Sealed Limited Modes (Planning)
+## v1.4 Scope: Draft/Sealed Limited Modes ✅ SHIPPED 2026-03-19
 
 **Goal:** Add Draft and Sealed game modes for variety gameplay.
 
@@ -88,6 +101,25 @@ Planar Nexus provides:
 ---
 
 ## Validated Milestones
+
+> **Invariant:** PROJECT.md is bumped in the same change that flips a milestone's status in STATE.md — milestone state, current-milestone/current-state headers, and the Validated Milestones list must never drift apart (see issue #1721 for the drift this caused).
+
+### ✅ v1.7 Conversational AI Coach — 2026-03-20
+
+- **Status:** Complete ✅ (STATE.md phases 27-30)
+- Chat interface in deck coach with message history and user/AI distinction
+- Natural-language Q&A with intent recognition (card analysis, win conditions)
+- Context management: deck context loading, conversation history for follow-ups
+- Genkit conversational flow with streaming responses
+
+### ✅ v1.6 QA/QC Infrastructure — 2026-03-19
+
+- **Status:** Complete ✅ (STATE.md phases 21-26)
+- Husky pre-commit hooks with lint-staged
+- Jest coverage thresholds with CI gate and coverage ratchet
+- `@/test-utils` library and MSW-based API mocking
+- CI quality gates including commit message linting
+- `docs/TESTING.md` testing conventions
 
 ### ✅ v1.5 Meta & Strategy AI — 2026-03-19
 
@@ -153,13 +185,12 @@ Planar Nexus provides:
 - **Search**: Orama (full-text), Fuse.js (fuzzy), Levenshtein (typo-tolerance)
 - **Performance**: @tanstack/react-virtual for virtual scrolling
 
-### Current State: v1.3 SHIPPED 🚀
+### Current State: v1.8 Performance & Scale 🏗️ In Progress
 
-- ✅ Advanced deck builder with fuzzy search and filters
-- ✅ Deck statistics (mana curve, type breakdown, color distribution)
-- ✅ Search presets with persistence
-- ✅ Keyboard navigation and virtual scrolling
-- ✅ Virtualized card display for smooth scrolling
+- ✅ Shipped through v1.7: deck builder UX, draft/sealed, meta & strategy AI, QA/QC infrastructure, conversational AI coach
+- ✅ Orama Web Worker search with automated IndexedDB indexing (Phase 31)
+- 🏗️ Off-main-thread heuristic engine and non-blocking AI indicators (Phase 32)
+- ⏳ High-performance rendering and scalable storage/backups (Phases 33-34)
 
 ## Key Decisions
 
@@ -186,6 +217,6 @@ Planar Nexus provides:
 
 ---
 
-**Current Milestone**: v1.7 (Conversational AI Coach)
-**Version**: 1.7.0
-**Last Updated**: 2026-03-19 after v1.7 milestone initiation
+**Current Milestone**: v1.8 (Performance & Scale)
+**Version**: 1.8.0
+**Last Updated**: 2026-09-15 — reconciled with STATE.md (v1.8 in progress; v1.6/v1.7 validated), issue #1721
