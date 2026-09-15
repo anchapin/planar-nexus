@@ -5,6 +5,8 @@ import {
   buildCoachSystemPrompt,
   prepareConversationHistoryWithSummary,
   validateCoachMemorySummary,
+  DEFAULT_CONVERSATION_MAX_MESSAGES,
+  DEFAULT_CONVERSATION_TOKEN_BUDGET,
 } from "@/ai/flows/context-builder";
 import {
   emptyCoachMemorySummary,
@@ -31,6 +33,12 @@ import { normalizeDifficultyLevel } from "@/ai/ai-difficulty";
 import { getProviderFailoverChain } from "@/ai/providers/factory";
 import { sanitizeUserInput } from "@/ai/prompt-security";
 import { classifyCoachIntent } from "@/ai/coach-intent";
+import {
+  enforceRateLimit,
+  RateLimitError,
+  type RateLimitConfig,
+} from "@/lib/server-rate-limiter";
+import { getClientIdentifier } from "@/lib/server-request-identity";
 
 /**
  * API Route for the Conversational AI Coach.
@@ -70,9 +78,61 @@ import { classifyCoachIntent } from "@/ai/coach-intent";
  * system-maintained context, and emitted back to the client as a `summary`
  * SSE event so it can be persisted with the conversation and resent on the
  * next turn. Older conversations (no summary) load and behave as before.
+ *
+ * Issue #1781: request-level hardening, in parity with /api/chat (#1534):
+ *   - Every request is rate-limited on the shared server-verified identity
+ *     (`getClientIdentifier` + `enforceRateLimit` with `COACH_RATE_LIMIT`);
+ *     a limited client receives 429 with `Retry-After` BEFORE any provider
+ *     call or context pre-fetch, so the operator's provider budget cannot
+ *     be burned by unlimited turns.
+ *   - The inbound `messages` array is capped at MAX_INBOUND_MESSAGES;
+ *     larger histories are rejected up-front with a 400.
+ *   - The client-tunable pruning knobs (`maxHistoryMessages` /
+ *     `maxHistoryTokens`) are clamped to server-side maxima, so a single
+ *     request cannot disable pruning and make its per-request token cost
+ *     attacker-controlled.
  */
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Per-client rate limit for the coach chat endpoint (issue #1781 — parity
+ * with `/api/chat`'s `CHAT_RATE_LIMIT` from issue #1534). Exported for test
+ * parity checks.
+ */
+export const COACH_RATE_LIMIT: RateLimitConfig = {
+  windowMs: 60_000,
+  maxRequests: 30,
+  message: "Coach chat rate limit exceeded. Please try again shortly.",
+};
+
+/**
+ * Hard cap on the inbound `messages` array (issue #1781). Each message's
+ * content is clamped to 20k chars, but the COUNT was previously unbounded —
+ * reject oversized histories before any sanitization or provider work.
+ */
+const MAX_INBOUND_MESSAGES = 200;
+
+/**
+ * Server-side maxima for the client-tunable history pruning knobs
+ * (issue #1781). Values above these are clamped down; the pipeline defaults
+ * (from the shared context builder) are the ceiling, not a suggestion.
+ */
+const MAX_HISTORY_MESSAGES = DEFAULT_CONVERSATION_MAX_MESSAGES;
+const MAX_HISTORY_TOKENS = DEFAULT_CONVERSATION_TOKEN_BUDGET;
+
+/**
+ * Clamp a client-supplied history knob to a positive integer bounded by the
+ * server-side maximum. Non-numeric, non-finite, or non-positive values fall
+ * back to `undefined` so the pipeline default applies (pre-existing
+ * behaviour for absent/invalid fields is preserved).
+ */
+function clampHistoryKnob(value: unknown, max: number): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.min(Math.floor(value), max);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -97,6 +157,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Issue #1781: reject oversized histories up-front. Each message's
+    // content is later clamped to 20k chars, but the COUNT must also be
+    // bounded — a single request can no longer carry an arbitrarily large
+    // array into sanitization and the pruning pipeline.
+    if (messages.length > MAX_INBOUND_MESSAGES) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Too many messages: ${messages.length} exceeds the maximum of ${MAX_INBOUND_MESSAGES}`,
+        },
+        { status: 400 },
+      );
+    }
+
     if (!deckCards && !digestedContext) {
       return NextResponse.json(
         {
@@ -112,6 +186,34 @@ export async function POST(request: NextRequest) {
         { success: false, error: "Format is required" },
         { status: 400 },
       );
+    }
+
+    // 2.5 Rate limit on the SERVER-VERIFIED client identity (issue #1781,
+    //     parity with /api/chat issue #1534). The bucket key is derived
+    //     solely from request metadata and never from the body, so a client
+    //     cannot rotate or influence its own bucket. The 429 is returned
+    //     BEFORE any provider call — and before the context pre-fetch — so
+    //     a limited client cannot burn compute or the operator's provider
+    //     budget.
+    const clientIdentifier = getClientIdentifier(request);
+    try {
+      enforceRateLimit(clientIdentifier, COACH_RATE_LIMIT);
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: error.message,
+            errorCode: "RATE_LIMIT_EXCEEDED",
+            retryAfter: error.retryAfter,
+          },
+          {
+            status: 429,
+            headers: { "Retry-After": String(error.retryAfter) },
+          },
+        );
+      }
+      throw error;
     }
 
     // 3. PRE-FETCH all coach context up-front and in parallel (issue #928).
@@ -259,6 +361,19 @@ export async function POST(request: NextRequest) {
       inboundSummary,
     );
 
+    // Issue #1781: the pruning knobs are server-clamped. A huge
+    // `maxHistoryTokens` can no longer disable pruning, and `maxHistoryMessages`
+    // cannot exceed the pipeline's own default ceiling; legit smaller values
+    // pass through unchanged and absent/invalid values keep the defaults.
+    const maxHistoryMessages = clampHistoryKnob(
+      body.maxHistoryMessages,
+      MAX_HISTORY_MESSAGES,
+    );
+    const maxHistoryTokens = clampHistoryKnob(
+      body.maxHistoryTokens,
+      MAX_HISTORY_TOKENS,
+    );
+
     const prepared = prepareConversationHistoryWithSummary(
       sanitizedMessages.map((m) => ({
         id: `${m.role}-${m.content.length}`,
@@ -267,8 +382,8 @@ export async function POST(request: NextRequest) {
         timestamp: new Date(),
       })),
       {
-        maxMessages: body.maxHistoryMessages,
-        maxTokens: body.maxHistoryTokens,
+        maxMessages: maxHistoryMessages,
+        maxTokens: maxHistoryTokens,
         systemContent: baseSystemPrompt,
         priorSummary: inboundSummary,
       },

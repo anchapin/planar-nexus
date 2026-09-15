@@ -26,8 +26,15 @@ import {
   afterEach,
   beforeAll,
 } from "@jest/globals";
-import { POST } from "../route";
+import { POST, COACH_RATE_LIMIT } from "../route";
+import { CHAT_RATE_LIMIT } from "@/app/api/chat/route";
 import { streamCoachResponse } from "@/ai/flows/coach-stream";
+import { clearAllRateLimits } from "@/lib/server-rate-limiter";
+import {
+  prepareConversationHistoryWithSummary,
+  DEFAULT_CONVERSATION_MAX_MESSAGES,
+  DEFAULT_CONVERSATION_TOKEN_BUDGET,
+} from "@/ai/flows/context-builder";
 import {
   prefetchCoachContext,
   clearCoachContextCache,
@@ -47,6 +54,29 @@ import type { CitationVerification } from "@/ai/flows/verify-citations";
 jest.mock("@/ai/flows/coach-stream", () => ({
   streamCoachResponse: jest.fn(),
   eventToSse: (event: unknown) => `data:${JSON.stringify(event)}\n\n`,
+}));
+
+// Issue #1781: wrap `prepareConversationHistoryWithSummary` in a spy that
+// delegates to the real implementation, so tests can capture the pruning
+// options the route forwards (the clamp assertions) without changing any
+// behaviour. Everything else in the module stays real.
+jest.mock("@/ai/flows/context-builder", () => {
+  const actual = jest.requireActual<
+    typeof import("@/ai/flows/context-builder")
+  >("@/ai/flows/context-builder");
+  return {
+    ...actual,
+    prepareConversationHistoryWithSummary: jest.fn(
+      actual.prepareConversationHistoryWithSummary,
+    ),
+  };
+});
+
+// The parity assertion imports CHAT_RATE_LIMIT from the sibling /api/chat
+// route; stub its telemetry dependency so the import stays hermetic (the
+// coach route itself never touches the usage logger).
+jest.mock("@/lib/server-usage-logger", () => ({
+  UsageLogger: jest.fn(),
 }));
 
 // Issue #1535: the local card-citation verifier is wired into the SSE
@@ -84,7 +114,9 @@ class TestRequest {
   readonly headers: Headers;
   readonly body: BodyInit | null;
   readonly signal: AbortSignal;
-  constructor(url: string, init: RequestInit = {}) {
+  /** Stands in for the Next.js/Vercel-verified peer IP (issue #1781). */
+  readonly ip?: string;
+  constructor(url: string, init: RequestInit & { ip?: string } = {}) {
     this.url = url;
     this.method = init.method || "GET";
     this.headers = init.headers
@@ -92,6 +124,7 @@ class TestRequest {
       : new Headers();
     this.body = init.body ?? null;
     this.signal = init.signal ?? new AbortController().signal;
+    this.ip = init.ip;
   }
   async json(): Promise<unknown> {
     return JSON.parse(typeof this.body === "string" ? this.body : "");
@@ -149,13 +182,35 @@ interface CapturedOpts {
   modelId?: string;
 }
 
-function makeRequest(body: unknown, signal?: AbortSignal): RouteRequest {
+function makeRequest(
+  body: unknown,
+  signal?: AbortSignal,
+  ip?: string,
+): RouteRequest {
   return new TestRequest("http://localhost/api/chat/coach", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
     signal,
+    ip,
   }) as unknown as RouteRequest;
+}
+
+/**
+ * Read a JSON body from either response shape this suite produces: the
+ * route's SSE paths return a `TestResponse` (has `.text()`), while
+ * `NextResponse.json` error paths instantiate the minimal `Response`
+ * polyfill from `jest.setup.js` (no `.text()`, raw JSON string in `.body`).
+ * Mirrors the helper in `src/app/api/chat/__tests__/route.test.ts`.
+ */
+async function readJsonBody(res: unknown): Promise<Record<string, unknown>> {
+  const r = res as { body?: unknown; text?: () => Promise<string> };
+  if (typeof r.text === "function") {
+    return JSON.parse(await r.text());
+  }
+  return typeof r.body === "string"
+    ? JSON.parse(r.body)
+    : (r.body as Record<string, unknown>);
 }
 
 function yieldEvents(events: ReadonlyArray<unknown>): CapturedOpts {
@@ -205,6 +260,11 @@ beforeAll(() => {
 beforeEach(() => {
   jest.mocked(streamCoachResponse).mockReset();
   clearCoachContextCache();
+  // Issue #1781: the rate limiter is a module-level singleton keyed by
+  // client identity — reset it between tests so each test starts with a
+  // fresh bucket (requests in this file otherwise share the no-IP
+  // `session:` fallback identity).
+  clearAllRateLimits();
 });
 
 afterEach(() => {
@@ -1373,5 +1433,133 @@ describe("POST /api/chat/coach — local card-citation verifier (issue #1535)", 
     expect(text).toContain('"mismatched":1');
     expect(text).toContain('"notFound":1');
     expect(text).toContain('"unverifiable":0');
+  });
+});
+
+describe("POST /api/chat/coach — rate limiting + payload clamps (issue #1781)", () => {
+  const baseBody = {
+    digestedContext: { deckSummary: { totalCards: 60 } },
+    format: "commander",
+  };
+
+  it("mirrors the /api/chat CHAT_RATE_LIMIT policy (shape parity)", () => {
+    // The #1393/#1534 policy requires every chat surface to share the same
+    // limit shape; pin parity so the two routes cannot drift.
+    expect(COACH_RATE_LIMIT.windowMs).toBe(CHAT_RATE_LIMIT.windowMs);
+    expect(COACH_RATE_LIMIT.maxRequests).toBe(CHAT_RATE_LIMIT.maxRequests);
+    expect(typeof COACH_RATE_LIMIT.message).toBe("string");
+    expect(COACH_RATE_LIMIT.message!.length).toBeGreaterThan(0);
+  });
+
+  it("refuses a request over the limit with 429 BEFORE the provider is invoked", async () => {
+    yieldEvents([{ type: "done" }]);
+    const ip = "203.0.113.77";
+
+    // Saturate the bucket from ONE verified identity, rotating every
+    // body-supplied identifier an attacker could vary — none of them may
+    // mint a new bucket (the key never reads the body).
+    for (let i = 0; i < COACH_RATE_LIMIT.maxRequests; i++) {
+      const res = await POST(
+        makeRequest(
+          {
+            ...baseBody,
+            messages: [{ role: "user", content: `msg ${i}` }],
+            userId: `attacker-user-${i}`,
+            provider: i % 2 === 0 ? "openai" : "anthropic",
+            modelId: `model-${i}`,
+          },
+          undefined,
+          ip,
+        ),
+      );
+      expect(res.status).toBe(200);
+    }
+
+    jest.mocked(streamCoachResponse).mockClear();
+    const limited = await POST(
+      makeRequest(
+        {
+          ...baseBody,
+          messages: [{ role: "user", content: "again" }],
+          userId: "brand-new-attacker-user",
+        },
+        undefined,
+        ip,
+      ),
+    );
+
+    expect(limited.status).toBe(429);
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    const body = await readJsonBody(limited);
+    expect(body.errorCode).toBe("RATE_LIMIT_EXCEEDED");
+    expect(body.success).toBe(false);
+    // The provider pipeline was never entered for the limited request.
+    expect(jest.mocked(streamCoachResponse)).not.toHaveBeenCalled();
+
+    // A different verified identity gets its own bucket.
+    const otherIp = await POST(
+      makeRequest(
+        { ...baseBody, messages: [{ role: "user", content: "hi" }] },
+        undefined,
+        "198.51.100.9",
+      ),
+    );
+    expect(otherIp.status).toBe(200);
+  });
+
+  it("clamps oversized maxHistoryMessages/maxHistoryTokens to server-side maxima", async () => {
+    const captured = yieldEvents([{ type: "done" }]);
+    jest.mocked(prepareConversationHistoryWithSummary).mockClear();
+
+    // 60 tiny turns with a budget that would otherwise disable pruning
+    // entirely (999_999 messages / 9_999_999 tokens).
+    const messages = Array.from({ length: 60 }, (_, i) => ({
+      id: `m-${i}`,
+      role: "user" as const,
+      content: `turn-${i}`,
+    }));
+
+    const res = await POST(
+      makeRequest({
+        ...baseBody,
+        messages,
+        maxHistoryMessages: 999_999,
+        maxHistoryTokens: 9_999_999,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    await res.text();
+
+    // The pruning knobs were clamped to the pipeline's own ceilings.
+    const opts = jest.mocked(prepareConversationHistoryWithSummary).mock
+      .calls[0][1] as { maxMessages?: number; maxTokens?: number } | undefined;
+    expect(opts?.maxMessages).toBe(DEFAULT_CONVERSATION_MAX_MESSAGES);
+    expect(opts?.maxTokens).toBe(DEFAULT_CONVERSATION_TOKEN_BUDGET);
+
+    // Behaviorally: the provider sees at most the clamped message count,
+    // not the raw 60-message history the client tried to disable pruning for.
+    expect(captured.messages.length).toBeLessThanOrEqual(
+      DEFAULT_CONVERSATION_MAX_MESSAGES,
+    );
+  });
+
+  it("rejects an oversized messages array with 400 before invoking the provider", async () => {
+    yieldEvents([{ type: "done" }]);
+
+    const messages = Array.from({ length: 201 }, (_, i) => ({
+      id: `m-${i}`,
+      role: "user" as const,
+      content: `turn-${i}`,
+    }));
+
+    const res = await POST(makeRequest({ ...baseBody, messages }));
+
+    expect(res.status).toBe(400);
+    const body = await readJsonBody(res);
+    expect(body.error).toMatch(/too many messages/i);
+    expect(body.error).toContain("200");
+    // Rejected before any pipeline work — no provider invocation.
+    expect(jest.mocked(streamCoachResponse)).not.toHaveBeenCalled();
   });
 });
