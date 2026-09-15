@@ -13,6 +13,7 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 - `npm run test:coverage` then `npm run test:coverage:ratchet` — coverage floor auto-bumps (also automated on merge to main by `.github/workflows/coverage-ratchet.yml`, #1596); see Testing below.
 - `npm run test:e2e` — Playwright (boots dev server automatically). Cross-browser: chromium / firefox / webkit.
 - `npm run test:e2e:flake` — `tsx e2e/flake-detector.ts`; 5 runs, fails at threshold 4 flaky.
+- `npm run test:flake` — `tsx scripts/jest-flake-detector.ts`; Jest-suite flake detector (5 runs, randomized `--seed` per run, no `--forceExit`); runs nightly in CI (#1719).
 - `npm run mutate:<module>` — Stryker on one rules module. Modules: `layer-system`, `replacement-effects`, `spell-casting`, `trigger-system`, `state-based-actions`, `combat`. Avoid full `npm run test:mutation` (~40 min).
 - `npm run a11y:contrast` — color-contrast gate enforced in CI (`:report` variant regenerates `docs/CONTRAST_AUDIT.md`).
 - `npm run simulate` — runs only the AI simulation suite (`src/ai/__tests__/simulation/`).
@@ -44,6 +45,7 @@ The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutatio
 
 ## Testing quirks (hard-won)
 
+- **No `--forceExit` anywhere (#1719).** The CI Test job and the nightly Jest flake detector run the suite without it; a hanging timer or unresolved handle must fail the run, not be masked. Clean up timers/handles in `afterAll` instead.
 - Jest env is `jsdom` with `ts-jest`. **`@orama/*` is mapped to its CommonJS dist in `jest.config.js` `moduleNameMapper`** — do not remove; the ESM build breaks the jsdom resolver.
 - **Coverage thresholds are enforced in CI and ratcheted.** `jest.config.js` `coverageThreshold.global` is rewritten upward by `scripts/ratchet-coverage.js` (`npm run test:coverage:ratchet`). Never hand-raise a threshold above _measured_ coverage or CI fails; re-measure first. Target is 70%.
 - **`scripts/qa-coverage-gate.js`** fails CI if any `it.todo` remains in `src/lib/game-state/__tests__/qa-coverage-holes.test.ts` (rows GS-RT-1..13 must have real tests).
