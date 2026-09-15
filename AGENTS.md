@@ -25,9 +25,9 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 
 ## CI gate (`.github/workflows/ci.yml`)
 
-The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
+The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
 
-- `mutation-test` runs **only** `mutate:layer-system` per PR (the full 6-module allowlist runs nightly in `.github/workflows/mutation.yml`).
+- `mutation-smoke` runs a fast config guard only (`node scripts/check-mutation-config.mjs`, ~50ms) — **no Stryker on PRs** (#1762). All mutation testing (incl. layer-system) is gated **nightly** in `.github/workflows/mutation.yml` (aggregate `thresholds.break` + per-module floors); a layer-system score regression surfaces on the nightly run, not the PR.
 - `workflow-lint` enforces that every job bootstraps via the shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`, ≥11 uses repo-wide). It **rejects** direct `npm ci` and `actions/setup-node@v1-5`. When adding/editing a workflow, reuse that action — do not hand-roll setup.
 
 ## Architecture (not obvious from filenames)

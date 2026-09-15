@@ -575,13 +575,14 @@ The `mutate` array in `stryker.config.js` is the allowlist. New modules are
 added one at a time once their tests harden the mutation score above the
 threshold:
 
-| Module                                      | Status                   |
-| ------------------------------------------- | ------------------------ |
-| `src/lib/game-state/layer-system.ts`        | 🟢 active — PR gate (CI) |
-| `src/lib/game-state/replacement-effects.ts` | 🟡 active — nightly      |
-| `src/lib/game-state/spell-casting/*.ts`     | 🟡 active — nightly      |
-| `src/lib/game-state/trigger-system.ts`      | 🟡 active — nightly      |
-| `src/lib/game-state/state-based-actions.ts` | 🟡 active — nightly      |
+| Module                                      | Status              |
+| ------------------------------------------- | ------------------- |
+| `src/lib/game-state/layer-system.ts`        | 🟡 active — nightly |
+| `src/lib/game-state/replacement-effects.ts` | 🟡 active — nightly |
+| `src/lib/game-state/spell-casting/*.ts`     | 🟡 active — nightly |
+| `src/lib/game-state/trigger-system.ts`      | 🟡 active — nightly |
+| `src/lib/game-state/state-based-actions.ts` | 🟡 active — nightly |
+| `src/lib/game-state/combat.ts`              | 🟡 active — nightly |
 
 (The `spell-casting` entry is a family-dir glob since issue #1725 decomposed
 the module into `cast` / `resolve` / `targeting` / `choices` /
@@ -632,24 +633,33 @@ defaults to 4; override with `STRYKER_CONCURRENCY=<n>` or `--concurrency <n>`.
 
 #### CI integration
 
-Mutation testing is **two-tier** so PR feedback stays fast while nightly trends
-catch drift:
+Mutation gating is **nightly-only** since issue #1762: the former per-PR
+`Mutation Test (layer-system)` Stryker job measured ~2.5-3h per PR with 3x
+runtime variance on identical code (59 vs 184 min) and `build` depended on it,
+so every PR merge waited on it. The gate moved to the nightly workflow, which
+already mutated layer-system and enforced both thresholds:
 
-| Tier                   | Workflow                                     | Trigger                                       | Scope                              | Threshold enforced?                     |
-| ---------------------- | -------------------------------------------- | --------------------------------------------- | ---------------------------------- | --------------------------------------- |
-| **PR gate**            | `.github/workflows/ci.yml` (`mutation-test`) | every pull request + push to `main`/`develop` | `layer-system.ts` only             | ✅ yes — blocks merge via `build.needs` |
-| **Nightly full suite** | `.github/workflows/mutation.yml`             | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (5 files) | ✅ yes — fails workflow on regression   |
+| Tier                    | Workflow                                      | Trigger                                       | Scope                                      | Threshold enforced?                             |
+| ----------------------- | --------------------------------------------- | --------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| **Per-PR config guard** | `.github/workflows/ci.yml` (`mutation-smoke`) | every pull request + push to `main`/`develop` | none — asserts gate wiring, no Stryker run | n/a (fails if nightly gate markers are removed) |
+| **Nightly full suite**  | `.github/workflows/mutation.yml`              | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (6 entries)       | ✅ yes — fails workflow on regression           |
 
-The PR gate is intentionally scoped to one module (`layer-system.ts`) so a
-single PR completes the run in ~15-20 min on a 2-core runner. Other modules
-are gated by the nightly run and surface as `mutation-report` artifacts.
+The per-PR guard (`node scripts/check-mutation-config.mjs`, ~50ms — local:
+`npm run lint:mutation-config`) keeps the tradeoff honest: it fails the PR if
+the allowlist shrinks, a per-module floor goes missing, Stryker concurrency
+is unpinned, the nightly schedule/gates are unwired, or a Stryker invocation
+creeps back into `ci.yml`. The accepted tradeoff (#1762): a layer-system
+mutation-score regression surfaces on the nightly run (≤24h detection
+latency on `main`) instead of blocking the PR that introduced it — in
+exchange, PR wall-clock drops its single ~3h job and stops tracking
+Stryker/runner variance entirely.
 
 #### Baseline measurements
 
 - `replacement-effects.ts`: **77.78%** — 293 killed, 85 survived, 50 timed out,
   13 no-coverage of 441 mutants.
-- `layer-system.ts`, `spell-casting.ts`: measured on each CI run; the latest
-  numbers are in the `mutation-report` workflow artifact.
+- `layer-system.ts`, `spell-casting.ts`: measured on each nightly run; the
+  latest numbers are in the `mutation-report` workflow artifact.
 
 Most survivors are equivalent or non-behavioural (description strings, generated
 ids, empty-array initializers); the actionable ones are tracked as follow-up
@@ -704,23 +714,27 @@ npx playwright test --headed --debug
 Tests run automatically on:
 
 - **Pull requests** and **pushes to `main`** — `.github/workflows/ci.yml`
-  (lint, typecheck, unit tests with coverage, mutation test of
-  `layer-system.ts`, enforcing `coverageThreshold` and the Stryker
-  `thresholds.break: 70` floor).
+  (lint, typecheck, unit tests with coverage, the mutation config guard
+  `mutation-smoke` — no Stryker on PRs since #1762 — enforcing
+  `coverageThreshold`).
 - **Video-derived tests** — `.github/workflows/video-derived-tests.yml`
   (generates + runs video-derived tests, posts coverage delta on PRs).
 - **Nightly mutation report** — `.github/workflows/mutation.yml` (runs the
-  full Stryker allowlist on a daily cron + `workflow_dispatch`; uploads
-  `reports/mutation/` as an artifact).
+  full Stryker allowlist on a daily cron + `workflow_dispatch`, enforces the
+  aggregate `thresholds.break` floor plus the per-module floors from
+  `scripts/mutation-floor.config.js`, and uploads `reports/mutation/` as an
+  artifact). Since #1762 this is the only mutation gate — per-PR CI runs a
+  config-marker guard instead.
 - **Pre-commit** — `husky` + `lint-staged` (see `.husky/`).
 
 A coverage regression that drops a metric below the `coverageThreshold` floor
-will fail CI and block the merge. A mutation-score regression on
-`src/lib/game-state/layer-system.ts` below the Stryker `thresholds.break: 70`
-floor will fail the `mutation-test` job, which is a `needs:` dependency of
-`build`, so it also blocks the merge. Nightly regressions surface as failed
-runs on the Actions tab and as `mutation-report` artifacts — they are
-investigated the next morning and either fixed or rolled back.
+will fail CI and block the merge. A mutation-score regression (any allowlisted
+module below its floor) fails the **nightly** `.github/workflows/mutation.yml`
+run — since #1762 mutation gating is deliberately NOT on the per-PR critical
+path — and surfaces as a failed run on the Actions tab plus a
+`mutation-report` artifact; it is investigated the next morning and either
+fixed or rolled back. The per-PR `mutation-smoke` job only guards the wiring
+(see [Mutation Testing](#mutation-testing)).
 
 To **raise** the coverage floor after improving coverage, run
 `npm run test:coverage:ratchet` (see

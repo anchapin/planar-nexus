@@ -17,10 +17,14 @@ name: Mutation Testing
 # `break` is currently 50; it is raised to 70 once the nightly run confirms
 # every allowlisted module clears 70% killed.
 #
-# Per-PR mutation runs are scoped to a single module in .github/workflows/ci.yml
-# (`mutation-test:layer-system`); the full allowlist (6 modules, ~30-60 min on
-# a 2-core runner) lives here on the nightly schedule so PR CI stays under
-# budget.
+# Issue #1762: this nightly run is the ONLY mutation gate. The former per-PR
+# `Mutation Test (layer-system)` job in .github/workflows/ci.yml was the CI
+# long pole (~2.5-3h per PR with 3x variance on identical code) and blocked
+# every merge via `build.needs`. ci.yml now runs only the ~50ms config guard
+# `scripts/check-mutation-config.mjs` (job `mutation-smoke`), which asserts
+# the markers that keep this nightly-only tradeoff safe: the 6-module
+# allowlist, a per-module floor for every allowlisted entry, pinned Stryker
+# concurrency, and this workflow's schedule + gates.
 #
 # Run locally instead with:  npm run test:mutation
 # Run a single module fast:  npm run mutate:layer-system

@@ -50,14 +50,17 @@ module.exports = {
   // called out in issue #1265: add one module at a time, raise its test
   // coverage/threshold to >=70%, then enable it here.
   //
-  //   PR gate (per PR, ~15-20 min):   npm run mutate:layer-system
-  //                                    (.github/workflows/ci.yml)
   //   Nightly gate (all modules):     npm run test:mutation
   //                                    (.github/workflows/mutation.yml)
+  //   Local, one module fast:         npm run mutate:layer-system
   //
-  // The CI-on-PR gate is intentionally scoped to ONE module so a single PR
-  // completes the run quickly. The nightly run covers the full allowlist and
-  // doubles as the ratchet for the other modules.
+  // Issue #1762: the per-PR gate is a plain-Node CONFIG guard, not a Stryker
+  // run — a single module took ~2.5-3h on 2-core CI runners with 3x variance
+  // on identical code, and `build.needs` made it block every merge. The
+  // mutation-score gate itself (aggregate break + per-module floors) lives in
+  // the nightly workflow only; per-PR, scripts/check-mutation-config.mjs
+  // (job `mutation-smoke` in .github/workflows/ci.yml) asserts that this
+  // allowlist, the floors, and the nightly wiring stay intact.
   //
   // Issue #1395: expanded the allowlist from 3 → 5 modules by adding the two
   // remaining correctness-critical rules-engine files — `trigger-system.ts`
@@ -120,10 +123,11 @@ module.exports = {
   //                              CR 510.1c ordering, lifelink/commander-damage
   //                              math, and declaration guards.
   //
-  // `break` is the gate enforced by CI (.github/workflows/ci.yml,
-  // `.github/workflows/mutation.yml`) and local `npm run test:mutation`. Any
-  // pull request that drops the aggregate score below `break` on the
-  // configured allowlist fails the gate, mirroring the coverage ratchet.
+  // `break` is the gate enforced by the nightly workflow
+  // (.github/workflows/mutation.yml) and local `npm run test:mutation`
+  // (per-PR Stryker was removed in issue #1762). Any nightly run that drops
+  // the aggregate score below `break` on the configured allowlist fails the
+  // gate, mirroring the coverage ratchet.
   //
   // `break: 50` is set ~6.5pts BELOW the measured layer-system baseline so
   // the PR gate passes today. The plan is to grow the test suite (issue
@@ -141,7 +145,9 @@ module.exports = {
     break: 50,
   },
 
-  // 4 workers is a reasonable default on a laptop / CI runner. Override with
+  // Explicitly pinned (issue #1762): an unset/defaulting worker count tracks
+  // the runner's CPU count, which made CI runtime swing 59↔184 min across
+  // GitHub runner generations. Keep this a fixed number; override with
   // `--concurrency` or the STRYKER_CONCURRENCY env var if needed.
   concurrency: process.env.STRYKER_CONCURRENCY
     ? Number(process.env.STRYKER_CONCURRENCY)

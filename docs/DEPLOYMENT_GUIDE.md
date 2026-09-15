@@ -25,14 +25,14 @@ Planar Nexus is built with Next.js (web) and Tauri (desktop/mobile). The applica
 
 ### Deployment Targets
 
-| Platform | Build System | Distribution |
-|----------|-------------|--------------|
-| Web | Next.js | Static hosting (Vercel, Netlify, etc.) |
-| Windows | Tauri | NSIS installer (.exe) |
-| macOS | Tauri | DMG (.dmg) and App bundle (.app) |
-| Linux | Tauri | AppImage (.AppImage), DEB (.deb), RPM (.rpm) |
-| iOS | Tauri Mobile | IPA file, App Store |
-| Android | Tauri Mobile | APK file, Google Play Store |
+| Platform | Build System | Distribution                                 |
+| -------- | ------------ | -------------------------------------------- |
+| Web      | Next.js      | Static hosting (Vercel, Netlify, etc.)       |
+| Windows  | Tauri        | NSIS installer (.exe)                        |
+| macOS    | Tauri        | DMG (.dmg) and App bundle (.app)             |
+| Linux    | Tauri        | AppImage (.AppImage), DEB (.deb), RPM (.rpm) |
+| iOS      | Tauri Mobile | IPA file, App Store                          |
+| Android  | Tauri Mobile | APK file, Google Play Store                  |
 
 ## Prerequisites
 
@@ -45,11 +45,13 @@ Planar Nexus is built with Next.js (web) and Tauri (desktop/mobile). The applica
 ### Platform-Specific Requirements
 
 #### Desktop Builds
+
 - **Windows**: Windows 10+, Visual Studio Build Tools, Rust toolchain
 - **macOS**: macOS 10.15+, Xcode, Rust toolchain
 - **Linux**: Ubuntu 22.04+ or equivalent, Rust toolchain, webkit2gtk
 
 #### Mobile Builds
+
 - **iOS**: macOS with Xcode 15+, Apple Developer account, CocoaPods
 - **Android**: Android SDK, Java JDK 17+, Android Studio
 
@@ -249,11 +251,13 @@ To enable macOS auto-updates later:
 #### App Stores (Optional)
 
 **macOS App Store**:
+
 - Requires additional configuration in `tauri.conf.json`
 - Must follow Apple's App Store guidelines
 - Requires paid Apple Developer Program membership
 
 **Microsoft Store**:
+
 - Requires MSIX packaging configuration
 - Microsoft Developer account required
 - Additional submission process
@@ -435,7 +439,7 @@ Jobs (PR path):
   - a11y-contrast (color-contrast gate)
   - typecheck (tsc --noEmit)
   - commitlint (conventional commits)
-  - mutation-test (Stryker on layer-system; full module set runs nightly in mutation.yml)
+  - mutation-smoke (mutation-config guard; all Stryker runs are nightly-only in mutation.yml, #1762)
   - security (npm audit)
   - cargo-audit (Rust dependency audit)
   - rust-checks (cargo fmt / clippy / test)
@@ -451,30 +455,36 @@ Nightly (schedule):
 ### Release Workflow (desktop builds — release.yml)
 
 Triggered on:
+
 - Push of a version tag (`v*`)
 - Release publication
 - Manual workflow dispatch
 
 Builds:
+
 - Windows (NSIS installer)
 - macOS (DMG and App bundle)
 - Linux (AppImage, DEB, RPM)
 
 Artifacts:
+
 - Uploaded as GitHub Actions artifacts
 - Attached to GitHub Releases on release publication
 
 ### Mobile Build Workflow
 
 Triggered on:
+
 - Release publication
 - Manual workflow dispatch
 
 Builds:
+
 - iOS (IPA)
 - Android (APK and AAB)
 
 Artifacts:
+
 - Uploaded as GitHub Actions artifacts
 - Attached to GitHub Releases on release publication
 
@@ -485,10 +495,12 @@ For code signing in CI/CD, configure these secrets in your GitHub repository:
 #### Desktop Builds
 
 **Windows**:
+
 - `WINDOWS_CERTIFICATE` - Base64-encoded code signing certificate
 - `WINDOWS_CERTIFICATE_PASSWORD` - Certificate password
 
 **macOS**:
+
 - `APPLE_CERTIFICATE` - Base64-encoded signing certificate
 - `APPLE_CERTIFICATE_PASSWORD` - Certificate password
 - `APPLE_SIGNING_IDENTITY` - Signing identity (e.g., "Developer ID Application: Your Name (TEAM_ID)")
@@ -497,12 +509,14 @@ For code signing in CI/CD, configure these secrets in your GitHub repository:
 #### Mobile Builds
 
 **iOS**:
+
 - `APPLE_CERTIFICATE` - Base64-encoded signing certificate
 - `APPLE_CERTIFICATE_PASSWORD` - Certificate password
 - `APPLE_SIGNING_IDENTITY` - Signing identity
 - `KEYCHAIN_PASSWORD` - Temporary keychain password
 
 **Android**:
+
 - `ANDROID_KEYSTORE` - Base64-encoded keystore file
 - `ANDROID_KEYSTORE_PASSWORD` - Keystore password
 - `ANDROID_KEY_ALIAS` - Key alias
@@ -583,38 +597,49 @@ gh release create "v$VERSION" \
 ## Planar Nexus v<version>
 
 ### New Features
+
 - Feature 1
 - Feature 2
 
 ### Improvements
+
 - Improvement 1
 - Improvement 2
 
 ### Bug Fixes
+
 - Bug fix 1
 - Bug fix 2
 
 ### Platform-Specific Notes
+
 #### Windows
+
 - Windows-specific notes
 
 #### macOS
+
 - macOS-specific notes
 
 #### Linux
+
 - Linux-specific notes
 
 #### iOS
+
 - iOS-specific notes
 
 #### Android
+
 - Android-specific notes
 
 ### Known Issues
+
 - Issue 1
 - Issue 2
 
 ### Installation
+
 See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for installation instructions.
 ```
 
@@ -629,6 +654,7 @@ Planar Nexus follows semantic versioning (MAJOR.MINOR.PATCH):
 - **PATCH**: Bug fixes (backwards compatible)
 
 Examples (X.Y.Z stand-ins — always source the real value from `src-tauri/tauri.conf.json`):
+
 - `1.0.0` → `1.0.1` (patch release)
 - `1.0.0` → `1.1.0` (minor release)
 - `1.0.0` → `2.0.0` (major release)
@@ -655,6 +681,7 @@ Build metadata can be added for CI/CD builds:
 #### Windows
 
 **Issue**: MSVC compiler not found
+
 ```bash
 # Install Visual Studio Build Tools
 # Download from: https://visualstudio.microsoft.com/downloads/
@@ -662,6 +689,7 @@ Build metadata can be added for CI/CD builds:
 ```
 
 **Issue**: Code signing fails
+
 ```bash
 # Verify certificate is installed
 certutil -store MY
@@ -672,11 +700,13 @@ certutil -store MY
 #### macOS
 
 **Issue**: Xcode command line tools not found
+
 ```bash
 xcode-select --install
 ```
 
 **Issue**: Code signing identity not found
+
 ```bash
 # List available signing identities
 security find-identity -v -p codesigning
@@ -685,6 +715,7 @@ security find-identity -v -p codesigning
 #### Linux
 
 **Issue**: webkit2gtk not found
+
 ```bash
 # Ubuntu/Debian
 sudo apt-get install libwebkit2gtk-4.1-dev
@@ -696,12 +727,14 @@ sudo dnf install webkit2gtk4.1-devel
 #### iOS
 
 **Issue**: CocoaPods dependencies not installed
+
 ```bash
 cd src-tauri/gen/apple
 pod install
 ```
 
 **Issue**: Signing identity not found
+
 ```bash
 # List available signing identities
 security find-identity -v -p codesigning
@@ -710,12 +743,14 @@ security find-identity -v -p codesigning
 #### Android
 
 **Issue**: Android SDK not found
+
 ```bash
 # Set ANDROID_HOME environment variable
 export ANDROID_HOME=$HOME/Android/Sdk
 ```
 
 **Issue**: Java version mismatch
+
 ```bash
 # Install Java 17
 # Ubuntu/Debian
@@ -728,16 +763,19 @@ brew install openjdk@17
 ### CI/CD Issues
 
 **Issue**: Build fails in CI but works locally
+
 - Check Node.js version matches (Node 22)
 - Verify all dependencies are in package.json
 - Check for platform-specific dependencies
 
 **Issue**: Code signing fails in CI
+
 - Verify GitHub secrets are configured correctly
 - Check that certificates are base64-encoded properly
 - Ensure signing identity matches exactly
 
 **Issue**: Artifacts not uploaded
+
 - Check artifact upload path patterns
 - Verify build completed successfully
 - Check for file permissions issues
@@ -745,16 +783,19 @@ brew install openjdk@17
 ### Deployment Issues
 
 **Issue**: Web deployment shows blank page
+
 - Verify build completed successfully
 - Check for runtime errors in browser console
 - Ensure all static assets are deployed
 
 **Issue**: Desktop app won't open
+
 - Verify the build completed successfully
 - Check system logs for crash reports
 - Test on clean machine
 
 **Issue**: Mobile app crashes on launch
+
 - Check device logs (adb logcat for Android, Xcode for iOS)
 - Verify provisioning profiles are valid
 - Test on multiple devices
@@ -770,6 +811,7 @@ brew install openjdk@17
 ## Support
 
 For deployment issues:
+
 1. Check this guide's troubleshooting section
 2. Search existing GitHub issues
 3. Create a new issue with:
