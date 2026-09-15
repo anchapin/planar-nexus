@@ -87,14 +87,23 @@ export interface HandshakeResponseMessage extends HandshakeMessage {
 /**
  * Acknowledgment message
  *
- * The `sessionKeyHex` field (issue #1252) carries the per-session HMAC key
- * the host generated for this connection. Both peers adopt it on receipt and
- * pass it to {@link P2PGameConnection.setSessionKey} so every subsequent
- * `GameMessage` is wrapped in a signed `MessageEnvelope` and verified on
- * receive. The host generates the key after the response is verified; the
- * joiner adopts it on `handleAck`. The key is rotated by the new host after
- * host migration (issue #946) via the same {@link createHandshakeAck}
- * factory, with a freshly generated key.
+ * The `sessionKeyHex` field (issue #1252) carries the PER-CONNECTION
+ * pairwise HMAC key the host minted for THIS connection (issue #1708).
+ * The host generates a FRESH key per joining peer — the key is a
+ * host↔peer pairwise secret delivered only on the respective DTLS
+ * connection (WebRTC data channels are DTLS-encrypted), NEVER shared
+ * across connections, so no peer holds the material to forge another
+ * peer's envelopes. Both sides adopt it on receipt and pass it to the
+ * transport's session-key API so every subsequent `GameMessage` is
+ * wrapped in a signed `MessageEnvelope` and verified on receive. The
+ * key is rotated by the new host after host migration (issue #946) via
+ * the same {@link createHandshakeAck} factory, with a freshly
+ * generated key.
+ *
+ * Receivers on upgraded connections MUST adopt the key via
+ * {@link requireSessionKeyFromAck} (fail-closed): a legacy ack that
+ * omits `sessionKeyHex` throws instead of silently downgrading the
+ * connection to unsigned mode (issue #1708).
  */
 export interface HandshakeAckMessage extends HandshakeMessage {
   type: "handshake-ack";
@@ -102,12 +111,14 @@ export interface HandshakeAckMessage extends HandshakeMessage {
     checksumMatch: boolean;
     stateVersion: number;
     /**
-     * Per-session HMAC key (hex-encoded 32 bytes — 64 hex chars). Both
-     * peers adopt this as the symmetric key for envelope signing and
-     * verification (issue #1252). Optional in the wire shape so legacy
-     * `handshake-ack` payloads (sent before #1252) still parse cleanly —
-     * the transport simply stays in non-enveloped mode when the field is
-     * absent.
+     * Per-connection pairwise HMAC key (hex-encoded 32 bytes — 64 hex
+     * chars, see {@link isValidSessionKeyHex}). Both peers adopt this
+     * as the symmetric key for envelope signing and verification
+     * (issue #1252, hardened by #1708). Optional in the wire shape so
+     * legacy `handshake-ack` payloads (sent before #1252) still parse
+     * cleanly — but an upgraded receiver treats the ABSENCE of the key
+     * as a handshake failure ({@link requireSessionKeyFromAck}), never
+     * as a downgrade to unsigned mode.
      */
     sessionKeyHex?: string;
   };
@@ -271,39 +282,48 @@ export function generateChallenge(): string {
 }
 
 /**
- * Generate a fresh per-session HMAC key for envelope signing (issue #1252).
+ * Structural check for a session key: hex-encoded 32 bytes (64 lowercase
+ * hex chars), exactly what {@link generateSessionKey} produces.
+ *
+ * Shared by the ack factory/validator and the mesh's per-peer key API so
+ * every adoption site enforces the same shape (issue #1708).
+ */
+export function isValidSessionKeyHex(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+}
+
+/**
+ * Generate a fresh pairwise HMAC key for envelope signing (issues #1252,
+ * #1708).
  *
  * Returns a hex-encoded 32-byte (256-bit) secret. The host calls this once
- * the base handshake completes and ships the result via the
- * `handshake-ack` payload's `sessionKeyHex` field; both peers adopt it as
- * the symmetric key for `MessageEnvelope` HMAC tags. The new host re-runs
- * this after host migration (issue #946) so followers reject pre-migration
- * envelopes.
+ * per joining connection and ships the result via the `handshake-ack`
+ * payload's `sessionKeyHex` field; BOTH peers adopt it as the pairwise key
+ * for `MessageEnvelope` HMAC tags on that one connection. The key is a
+ * host↔peer pairwise secret — it is delivered only on the respective DTLS
+ * connection and MUST NEVER be reused across connections or disclosed to
+ * third parties, so no peer can forge another peer's envelopes (issue
+ * #1708). The new host re-runs this after host migration (issue #946) so
+ * followers reject pre-migration envelopes.
  *
- * Cryptographically random (`crypto.getRandomValues`). When `crypto` is
- * unavailable (very old runtimes), falls back to `Math.random` — NOT
- * cryptographically secure, but preferable to a hard failure when the
- * reconnect-token store is unavailable. Production environments always
- * expose `crypto.getRandomValues`.
+ * Fails HARD when `crypto.getRandomValues` is unavailable (issue #1708):
+ * the previous `Math.random` fallback produced predictable keys and let a
+ * hostile peer forge envelopes, so a missing CSPRNG is a fatal
+ * misconfiguration, not a degrade-and-continue situation.
  */
 export function generateSessionKey(): string {
   if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.getRandomValues === "function"
+    typeof crypto === "undefined" ||
+    typeof crypto.getRandomValues !== "function"
   ) {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    throw new Error(
+      "generateSessionKey: crypto.getRandomValues is unavailable — " +
+        "refusing to mint a non-cryptographic session key (issue #1708)",
+    );
   }
-  // Last-resort fallback (only hit on platforms without crypto). NOT
-  // cryptographically secure — preferable to a hard failure when the
-  // session-key generator is unavailable; the transport will still verify
-  // envelopes against whatever key was adopted.
-  let fallback = "";
-  for (let i = 0; i < 64; i += 1) {
-    fallback += Math.floor(Math.random() * 16).toString(16);
-  }
-  return fallback;
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -374,11 +394,19 @@ export function createHandshakeResponse(
 /**
  * Create handshake acknowledgment message
  *
- * `sessionKeyHex` is the per-session HMAC key (issue #1252) — when provided
- * it is included in the ack payload so the joiner can adopt it. The host
- * typically calls `createHandshakeAck(senderId, true, version,
- * generateSessionKey())`. Passing `undefined` (or omitting) preserves the
- * legacy ack shape for back-compat with pre-#1252 peers.
+ * `sessionKeyHex` is the PER-CONNECTION pairwise HMAC key (issues #1252,
+ * #1708) — when provided it is included in the ack payload so the joiner
+ * can adopt it. The host typically calls `createHandshakeAck(senderId,
+ * true, version, generateSessionKey())` once per joining connection; the
+ * key MUST be freshly minted per connection and never reused across
+ * connections (issue #1708: a shared mesh key lets any peer forge any
+ * other peer's envelopes).
+ *
+ * Malformed keys (wrong length / non-hex) throw — a host that computes a
+ * broken key is a fatal bug, not something to silently ship unsigned.
+ * Passing `undefined` (or omitting) preserves the legacy ack shape;
+ * upgraded receivers reject that via {@link requireSessionKeyFromAck}
+ * rather than downgrading to unsigned mode.
  */
 export function createHandshakeAck(
   senderId: string,
@@ -390,7 +418,13 @@ export function createHandshakeAck(
     checksumMatch,
     stateVersion,
   };
-  if (typeof sessionKeyHex === "string" && sessionKeyHex.length > 0) {
+  if (sessionKeyHex !== undefined) {
+    if (!isValidSessionKeyHex(sessionKeyHex)) {
+      throw new Error(
+        "createHandshakeAck: sessionKeyHex must be 64 lowercase hex chars " +
+          "(issue #1708)",
+      );
+    }
     payload.sessionKeyHex = sessionKeyHex;
   }
   return {
@@ -399,6 +433,29 @@ export function createHandshakeAck(
     timestamp: Date.now(),
     payload,
   };
+}
+
+/**
+ * Fail-closed adoption of the pairwise session key from a
+ * `handshake-ack` (issue #1708).
+ *
+ * An upgraded connection (one that requires signed envelopes) calls this
+ * when handling a `handshake-ack`. A legacy ack that omits
+ * `sessionKeyHex` — or carries a malformed key — THROWS: the caller
+ * surfaces a handshake failure instead of silently downgrading the
+ * connection to unsigned mode, which was the downgrade path issue #1708
+ * closes. Returns the validated key so the caller can feed it straight
+ * into the transport's per-connection session-key API.
+ */
+export function requireSessionKeyFromAck(message: HandshakeAckMessage): string {
+  const key = message.payload?.sessionKeyHex;
+  if (!isValidSessionKeyHex(key)) {
+    throw new Error(
+      "requireSessionKeyFromAck: handshake-ack carried no valid pairwise " +
+        "sessionKeyHex — refusing to downgrade to unsigned mode (issue #1708)",
+    );
+  }
+  return key;
 }
 
 /**
@@ -1269,10 +1326,16 @@ export class HandshakeSession {
     this.onStateChange?.(this.state);
     this.clearTimeout();
 
+    // Issue #1708: the responder (host) mints a FRESH pairwise key for
+    // THIS connection on a successful verification. One handshake = one
+    // key: never reused across connections, disclosed only on this DTLS
+    // connection. Failure acks carry no key (the joiner fails the
+    // handshake, so there is nothing to adopt).
     return createHandshakeAck(
       this.localPlayerId,
       checksumMatch,
       this.stateVersion,
+      checksumMatch ? generateSessionKey() : undefined,
     );
   }
 
