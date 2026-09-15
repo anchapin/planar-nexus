@@ -33,11 +33,17 @@ The `cargo-audit` job emits a JSON report (`cargo-audit-report` artefact)
 and fails on advisories with `Severity: high` or above — matching the
 `npm audit --audit-level=high` contract from #1108. Warnings
 (`unmaintained`, `unsound`, `notice`) are surfaced but **do not block**
-the build while the gtk3-rs → gtk4-rs migration is in flight.
+the build while the gtk3-rs → gtk4-rs migration is in flight. The gate
+is driven by the parsed JSON severity only, not `cargo audit`'s exit
+code (which is 1 for any advisory found, #1763). Advisories with an
+empty `severity` field (common for day-one disclosures, e.g.
+RUSTSEC-2026-0285) are explicitly treated as `moderate` — logged loudly,
+not gated — and re-scored by the next triage sweep.
 
 | JSON signal                                | First action                            |
 | ------------------------------------------ | --------------------------------------- |
 | CVE `severity == high`/`critical`          | Patch, bump, or vendor + track          |
+| Empty `severity` (fresh disclosure)        | Treated as `moderate`: logged, not gated (#1763) |
 | `unmaintained` on the `gtk*-rs` family     | Open roadmap epic, link from this doc   |
 | `unsound` on `anyhow` / `rand`             | Pin to `>= patched` in `Cargo.toml`     |
 | Notice on a brand-new advisory             | Tracking issue, defer to next sweep     |
