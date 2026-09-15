@@ -66,4 +66,4 @@ Copy `.env.example` → `.env`. AI keys are optional (heuristic fallback works).
 ## Canonical docs (read these, don't guess)
 
 - `docs/TESTING.md` — canonical testing guide (root `TESTING.md` redirects there).
-- `CLAUDE.md` — broader architecture notes. Largely current (correctly states Next.js 16 and `src/lib/game-state/`), but still carries a few stale claims (e.g. the "Firebase App Hosting via `apphosting.yaml`" line conflicts with `docs/FIREBASE_REMOVAL_VERIFICATION.md`). Trust code over `CLAUDE.md` where they differ.
+- `CLAUDE.md` — broader architecture notes. Largely current (correctly states Next.js 16 and `src/lib/game-state/`). Trust code over `CLAUDE.md` where they differ.

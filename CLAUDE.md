@@ -124,7 +124,7 @@ AI flows live in `/src/ai/flows/` — see the flow-family inventory under [AI In
 
 ## Deployment
 
-The project is configured for Firebase App Hosting via `apphosting.yaml`. No additional build configuration is required beyond the standard Next.js build process.
+There is no cloud-hosting configuration. Desktop releases are cut from the standard Next.js build (`npm run build`, run automatically by `tauri build` via `beforeBuildCommand`) and wrapped into signed, notarized Tauri bundles by `.github/workflows/release.yml`. The operational runbook lives in `docs/RELEASE_RUNBOOK.md`; see `TAURI_BUILDS.md` for local build mechanics.
 
 ## Common Patterns
 
