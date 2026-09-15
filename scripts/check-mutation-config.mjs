@@ -85,6 +85,7 @@ const EXPECTED_MUTATE_ENTRIES = [
   "src/lib/game-state/trigger-system.ts",
   "src/lib/game-state/state-based-actions.ts",
   "src/lib/game-state/combat.ts",
+  "src/lib/game-state/mana.ts",
 ];
 
 const strykerConfig = require(join(REPO_ROOT, "stryker.config.js"));
@@ -148,6 +149,7 @@ const MUTATE_MODULE_NAMES = [
   "trigger-system",
   "state-based-actions",
   "combat",
+  "mana",
 ];
 for (const name of MUTATE_MODULE_NAMES) {
   const script = `mutate:${name}`;

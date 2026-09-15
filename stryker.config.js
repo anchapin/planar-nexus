@@ -18,6 +18,7 @@
 //                              npm run mutate:trigger-system
 //                              npm run mutate:state-based-actions
 //                              npm run mutate:combat
+//                              npm run mutate:mana
 //   Report:                     reports/mutation/index.html
 //
 // See issues #1097 (initial setup), #1265 (enforce threshold in CI), and the
@@ -83,6 +84,10 @@ module.exports = {
   // boundaries, timestamp dependence, sublayer pipeline; spell-casting:
   // cost-arithmetic edges — X values, multikicker scaling, replacement-cost
   // deltas, convoke pip order, delve floor).
+  // Issue #1717: expanded 6 → 7 modules by adding `mana.ts` (CR 106 mana
+  // pools / CR 305 lands) — the mana-batch arithmetic boundary. Its targeted
+  // `mana.mutation.test.ts` suite pins canAffordMana/spendMana generic
+  // cascades, land-play timing, and mana-ability parsing/conditions.
   mutate: [
     "src/lib/game-state/layer-system.ts",
     "src/lib/game-state/replacement-effects.ts",
@@ -90,6 +95,7 @@ module.exports = {
     "src/lib/game-state/trigger-system.ts",
     "src/lib/game-state/state-based-actions.ts",
     "src/lib/game-state/combat.ts",
+    "src/lib/game-state/mana.ts",
   ],
 
   reporters: ["html", "clear-text", "progress", "json"],
@@ -141,6 +147,15 @@ module.exports = {
   //                              vs regular step separation, multi-blocker
   //                              CR 510.1c ordering, lifelink/commander-damage
   //                              math, and declaration guards.
+  //   • mana.ts                : PENDING measurement (issue #1717). Targeted
+  //                              `mana.mutation.test.ts` added; covers the
+  //                              canAffordMana per-color `<` boundaries and
+  //                              availableForGeneric arithmetic, the
+  //                              spendMana generic-payment cascade
+  //                              (generic → colorless → W/U/B/R/G), land-play
+  //                              timing + enters-tapped arms, parseManaAbility
+  //                              symbol/condition/multi-ability parsing, and
+  //                              activation-condition filtering.
   //
   // `break` is the gate enforced by the nightly workflow
   // (.github/workflows/mutation.yml) and local `npm run test:mutation`

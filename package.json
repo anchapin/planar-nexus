@@ -44,6 +44,7 @@
     "mutate:trigger-system": "stryker run --mutate src/lib/game-state/trigger-system.ts",
     "mutate:state-based-actions": "stryker run --mutate src/lib/game-state/state-based-actions.ts",
     "mutate:combat": "stryker run --mutate src/lib/game-state/combat.ts",
+    "mutate:mana": "stryker run --mutate src/lib/game-state/mana.ts",
     "stubs:inventory": "node scripts/stubs-inventory.js",
     "tauri:check-updater": "node scripts/check-tauri-updater-config.mjs",
     "lint:engine-size": "node scripts/check-engine-size-budget.mjs",

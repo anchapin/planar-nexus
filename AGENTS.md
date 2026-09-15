@@ -13,7 +13,7 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 - `npm run test:coverage` then `npm run test:coverage:ratchet` — coverage floor auto-bumps (also automated on merge to main by `.github/workflows/coverage-ratchet.yml`, #1596); see Testing below.
 - `npm run test:e2e` — Playwright (boots dev server automatically). Cross-browser: chromium / firefox / webkit.
 - `npm run test:e2e:flake` — `tsx e2e/flake-detector.ts`; 5 runs, fails at threshold 4 flaky.
-- `npm run mutate:<module>` — Stryker on one rules module. Modules: `layer-system`, `replacement-effects`, `spell-casting`, `trigger-system`, `state-based-actions`, `combat`. Avoid full `npm run test:mutation` (~40 min).
+- `npm run mutate:<module>` — Stryker on one rules module. Modules: `layer-system`, `replacement-effects`, `spell-casting`, `trigger-system`, `state-based-actions`, `combat`, `mana`. Avoid full `npm run test:mutation` (~40 min).
 - `npm run a11y:contrast` — color-contrast gate enforced in CI (`:report` variant regenerates `docs/CONTRAST_AUDIT.md`).
 - `npm run simulate` — runs only the AI simulation suite (`src/ai/__tests__/simulation/`).
 - Desktop: `npm run build:tauri` (= `tauri build`, runs `npm run build` first).

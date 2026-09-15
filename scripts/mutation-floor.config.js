@@ -38,6 +38,13 @@
  *     (839 mutants, 45% static) → conservative 50 (the current aggregate
  *     break) — TO BE RATCHETED after the first successful nightly run
  *     records its score.
+ *   • src/lib/game-state/mana.ts : PENDING measurement (issue #1717, 7th
+ *     Stryker module). Issue #1717 added the targeted
+ *     `mana.mutation.test.ts` suite (canAffordMana boundaries, spendMana
+ *     generic-payment cascade, land-play timing, mana-ability parsing and
+ *     activation conditions) → conservative 50 (the current aggregate
+ *     break) — TO BE RATCHETED to floor(measured − 1) after the first
+ *     successful nightly run records its score.
  *
  * Precedence for any module in a Stryker report:
  *   1. explicit per-module entry in `floors` (this file)
@@ -66,5 +73,9 @@ module.exports = {
     // floor (local single-module run exceeded the time budget) — ratchet
     // upward after the first successful nightly run records its score.
     "src/lib/game-state/combat.ts": 50,
+    // Issue #1717: 7th Stryker module. Conservative pending-measurement
+    // floor — ratchet to floor(measured − 1) after the first successful
+    // nightly run records its score.
+    "src/lib/game-state/mana.ts": 50,
   },
 };
