@@ -107,6 +107,62 @@ describe("regression — no session-store verb returns 200", () => {
 
 const GAME_CODE_REGEX = /^[A-HJ-NP-Z2-9]{6}$/;
 
+/**
+ * Chi-square goodness-of-fit critical value for 31 degrees of freedom
+ * (32 alphabet bins − 1) at significance α = 0.001 — i.e. a perfectly
+ * uniform RNG produces chi² ≥ 61.098 in exactly 0.1% of rounds.
+ *
+ * Exact quantile of the χ²(31) survival function S(x) = Q(31/2, x/2)
+ * (regularized upper incomplete gamma), verified against published
+ * chi-square tables via the df=30 anchor (α = 0.01 → 50.892).
+ *
+ * Calibration history (issue #1764): the previous threshold of 48.232 was
+ * labelled "p = 0.01" but is actually the df=31 α = 0.025 critical value
+ * (S(48.232) = 0.025), so a CORRECT implementation flaked red ~2.5% of CI
+ * runs. The single-round gate below additionally requires a second
+ * independent excursion before failing; see the AC2 test for the
+ * false-failure budget math.
+ */
+const CHI2_DF31_ALPHA001 = 61.098;
+
+/** Alphabet tally result: the χ²(31) statistic plus the raw bin counts. */
+type UniformityTally = { chi2: number; counts: number[] };
+
+/**
+ * Draw `codes` game codes from `sampler` and tally the per-symbol
+ * distribution across the 32-symbol alphabet (6 draws per code).
+ *
+ * The per-character alphabet-membership assertion of the original AC2 loop
+ * is redundant with the per-code regex match (`[A-HJ-NP-Z2-9]` already
+ * pins every character) and dominated the test's runtime; dropping it
+ * (issue #1764) lets the suite afford three independent 100k-code rounds
+ * for the calibrated gate below without changing what is verified.
+ */
+function tallyUniformity(
+  sampler: () => string,
+  codes: number,
+): UniformityTally {
+  const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const counts = new Array<number>(ALPHABET.length).fill(0);
+  let allCodesWellFormed = true;
+  for (let i = 0; i < codes; i += 1) {
+    const code = sampler();
+    // Regex per code (cheap), but a single jest assertion after the loop:
+    // 300k expect() calls dominated the old runtime (issue #1764).
+    allCodesWellFormed = allCodesWellFormed && GAME_CODE_REGEX.test(code);
+    for (const ch of code) {
+      counts[ALPHABET.indexOf(ch)] += 1;
+    }
+  }
+  expect(allCodesWellFormed).toBe(true);
+  const expected = (codes * 6) / ALPHABET.length;
+  let chi2 = 0;
+  for (const observed of counts) {
+    chi2 += (observed - expected) ** 2 / expected;
+  }
+  return { chi2, counts };
+}
+
 describe("generateGameCode — cryptographic randomness (issue #1568)", () => {
   it("AC3: produces 6-char codes drawn only from the allowed alphabet", () => {
     for (let i = 0; i < 1000; i += 1) {
@@ -132,33 +188,74 @@ describe("generateGameCode — cryptographic randomness (issue #1568)", () => {
     }
   });
 
-  it("AC2: index draw is unbiased — chi-square p > 0.01 over 100k codes", () => {
+  it("AC2: index draw is unbiased — chi-square gate, 2-of-3 rounds at α=0.001 (issue #1764)", () => {
+    // FALSE-FAILURE BUDGET (issue #1764 acceptance criterion ≤ 0.1%):
+    // under a perfectly uniform RNG, one round of 100k codes (600k symbol
+    // draws, 32 bins, 31 df) yields chi² ≥ 61.098 with probability exactly
+    // α = 0.001. The test fails only when ≥ 2 of the 3 INDEPENDENT rounds
+    // exceed the critical value:
+    //
+    //   P(false red) = C(3,2)·0.001²·0.999 + 0.001³ ≈ 3.0×10⁻⁶  (≈ 0.0003%)
+    //
+    // A genuinely biased generator, by contrast, skews EVERY round the same
+    // way (the bias is a property of the sampler, not the round), so it
+    // still fails deterministically — the companion "detection power" test
+    // below pins that with a seeded skewed RNG stub.
+    const ROUNDS = 3;
     const N = 100_000;
-    const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    // Each code contributes 6 independent draws, so the tally is over
-    // 600k uniform samples on 32 bins.
-    const counts = new Array<number>(ALPHABET.length).fill(0);
-    for (let i = 0; i < N; i += 1) {
-      const code = generateGameCode();
-      expect(code).toMatch(GAME_CODE_REGEX);
-      for (const ch of code) {
-        const idx = ALPHABET.indexOf(ch);
-        expect(idx).toBeGreaterThanOrEqual(0);
-        counts[idx] += 1;
+    let exceeded = 0;
+    let counts: number[] = [];
+    for (let round = 0; round < ROUNDS; round += 1) {
+      const tally = tallyUniformity(generateGameCode, N);
+      if (tally.chi2 >= CHI2_DF31_ALPHA001) {
+        exceeded += 1;
       }
+      counts = tally.counts;
     }
-    const expected = (N * 6) / ALPHABET.length; // 18_750
-    let chi2 = 0;
-    for (const observed of counts) {
-      chi2 += (observed - expected) ** 2 / expected;
-    }
-    // 31 degrees of freedom (32 bins - 1). Critical value at p = 0.01 is
-    // 48.232. A truly uniform distribution has chi2 ≈ 31 ± √(2·31).
-    expect(chi2).toBeLessThan(48.232);
+    // Fail only on a repeat excursion (2-of-3), not a single unlucky round.
+    expect(exceeded).toBeLessThan(2);
     // Sanity: every bin should be hit (no degenerate empty bins from a
-    // broken RNG).
+    // broken RNG) — checked on the final round's tally.
     expect(counts.every((c) => c > 0)).toBe(true);
   }, 30_000);
+
+  it("AC2 (detection power): the chi-square gate still flags a demonstrably biased RNG (issue #1764)", () => {
+    // Issue #1764 acceptance criterion: lowering the false-failure budget
+    // must not blind the uniformity gate. Stub getRandomValues with a
+    // SEEDED (deterministic, never flaky) mulberry32 PRNG whose bytes are
+    // squared toward 0 — half the mass lands in the lowest quarter of the
+    // byte range (alphabet bins 0-7) instead of the uniform 25%. The same
+    // gate as the unbiased test above MUST reject it.
+    let state = 0x1764; // fixed seed → reproducible result every run
+    const prng = (): number => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const realGetRandomValues = globalThis.crypto.getRandomValues;
+    Object.defineProperty(globalThis.crypto, "getRandomValues", {
+      value: (buf: Uint8Array): Uint8Array => {
+        for (let i = 0; i < buf.length; i += 1) {
+          // u·u ∈ [0,1) is heavily concentrated near 0 → low bins overflow.
+          buf[i] = Math.min(255, Math.floor(prng() * prng() * 256));
+        }
+        return buf;
+      },
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const { chi2 } = tallyUniformity(generateGameCode, 20_000);
+      expect(chi2).toBeGreaterThanOrEqual(CHI2_DF31_ALPHA001);
+    } finally {
+      Object.defineProperty(globalThis.crypto, "getRandomValues", {
+        value: realGetRandomValues,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
 
   it("AC5: throws a descriptive error when globalThis.crypto is unavailable", () => {
     // In modern Node globalThis.crypto is a configurable accessor, so
