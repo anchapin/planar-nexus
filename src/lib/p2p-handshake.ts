@@ -747,30 +747,83 @@ export function canonicalTokenPayload(
 }
 
 /**
- * Synchronous SHA-256-based HMAC. The transport needs a portable
- * signature that works in both Node 20+ and the browser without pulling
- * in a crypto polyfill. The implementation is a self-contained
- * SHA-256-then-XOR-mix HMAC that:
+ * HMAC-SHA-256 block size B (bytes) per RFC 2104 §2 (SHA-256's
+ * compression-function input size, FIPS 180-4 §6.2).
+ */
+const HMAC_SHA256_BLOCK_SIZE = 64;
+
+/**
+ * RFC 2104 HMAC over raw bytes: `H(K XOR opad, H(K XOR ipad, text))`.
  *
- *   1. hashes the secret with SHA-256 to a 32-byte key,
- *   2. hashes `key || message` with SHA-256 to produce the MAC,
- *   3. returns the hex digest.
+ * Key normalization is exactly RFC 2104 §2: keys longer than the
+ * 64-byte block size are first hashed with SHA-256 (yielding 32
+ * bytes); the (possibly hashed) key is then zero-padded to 64 bytes
+ * before the ipad/opad XOR. ipad = 0x36 repeated, opad = 0x5c
+ * repeated.
  *
- * This is not RFC 2104-compliant HMAC (which requires ipad/opad XOR with
- * a 64-byte key) but it is collision-resistant enough for the
- * capability-token use-case: a forgery requires finding a SHA-256
- * preimage of the secret+message pair. The point of the token is to
- * detect casual forgery, not to defend against a state-level adversary
- * — the trust boundary is the out-of-band game code, not the
- * signature scheme.
+ * Exported so tests can drive the byte-level RFC 4231 test vectors
+ * (which use non-UTF-8 key material like `0xaa`*20) through the same
+ * code path the string API uses.
+ *
+ * SECURITY — issue #1707: this replaced a hand-rolled
+ * `SHA256(SHA256(secret) || message)` secret-prefix MAC. Secret-prefix
+ * MACs are generically vulnerable to length-extension: an attacker who
+ * sees one tag can compute a valid tag for `message || glue-padding ||
+ * suffix` without knowing the key, because SHA-256's Merkle–Damgård
+ * structure lets the observed digest be resumed as mid-state. The
+ * ipad/opad construction defeats this — the outer hash's input begins
+ * with `K XOR opad`, which the attacker cannot compute, so no observed
+ * tag can be extended. DO NOT reintroduce custom MAC constructions
+ * (secret-prefix, suffix, double-hash prefix) here or anywhere in this
+ * codebase; use this function, WebCrypto `subtle.sign("HMAC", ...)`,
+ * or the RFC 2104 implementation in `turn-hmac.ts`.
+ */
+export function hmacSha256Bytes(
+  key: Uint8Array,
+  message: Uint8Array,
+): Uint8Array {
+  // RFC 2104 §2 step 1: K0 = H(K) when |K| > B, else K zero-padded to B.
+  let normalizedKey: Uint8Array;
+  if (key.length > HMAC_SHA256_BLOCK_SIZE) {
+    normalizedKey = sha256Bytes(key);
+  } else {
+    normalizedKey = new Uint8Array(HMAC_SHA256_BLOCK_SIZE);
+    normalizedKey.set(key);
+  }
+
+  const ipad = new Uint8Array(HMAC_SHA256_BLOCK_SIZE);
+  const opad = new Uint8Array(HMAC_SHA256_BLOCK_SIZE);
+  for (let i = 0; i < HMAC_SHA256_BLOCK_SIZE; i++) {
+    ipad[i] = normalizedKey[i] ^ 0x36;
+    opad[i] = normalizedKey[i] ^ 0x5c;
+  }
+
+  // HMAC = H(K0 XOR opad, H(K0 XOR ipad, text)).
+  const inner = sha256Bytes(concatBytes(ipad, message));
+  return sha256Bytes(concatBytes(opad, inner));
+}
+
+/**
+ * HMAC-SHA256 of a UTF-8 `message` under the UTF-8 bytes of
+ * `secretHex`, returned as the lowercase hex digest. This is a strict
+ * RFC 2104 HMAC (see {@link hmacSha256Bytes}) — NOT a custom MAC.
  *
  * `secretHex` is the secret encoded as a hex string (so it survives
- * JSON serialisation intact). The signature is also hex.
+ * JSON serialisation intact); its UTF-8 bytes are the HMAC key
+ * material, mirroring the `hmacSha1Base64(secret, message)` key
+ * handling in `turn-hmac.ts`. Keys ≤ 64 bytes are zero-padded, longer
+ * keys are pre-hashed — both per RFC 2104 §2.
+ *
+ * SECURITY — issue #1707: do NOT replace this with a hand-rolled
+ * construction (e.g. `SHA256(SHA256(secret) || message)`, the scheme
+ * this replaced); secret-prefix MACs are length-extension vulnerable
+ * and bespoke constructions lack the published test-vector and
+ * cryptanalysis history of RFC 2104. See {@link hmacSha256Bytes}.
  */
 export function hmacSha256Hex(secretHex: string, message: string): string {
-  const key = hexToBytes(sha256Hex(secretHex));
-  const inner = sha256Bytes(concatBytes(key, utf8ToBytes(message)));
-  return bytesToHex(inner);
+  return bytesToHex(
+    hmacSha256Bytes(utf8ToBytes(secretHex), utf8ToBytes(message)),
+  );
 }
 
 /** Hex-encode a byte array. */
@@ -780,22 +833,6 @@ function bytesToHex(bytes: Uint8Array): string {
     s += bytes[i].toString(16).padStart(2, "0");
   }
   return s;
-}
-
-/** Decode a hex string to a byte array. Throws on non-hex / odd-length. */
-function hexToBytes(hex: string): Uint8Array {
-  if (hex.length % 2 !== 0) {
-    throw new Error("hex string must have an even length");
-  }
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    const byte = hex.slice(i * 2, i * 2 + 2);
-    if (!/^[0-9a-fA-F]{2}$/.test(byte)) {
-      throw new Error("invalid hex character in secret");
-    }
-    out[i] = parseInt(byte, 16);
-  }
-  return out;
 }
 
 function utf8ToBytes(text: string): Uint8Array {
@@ -843,8 +880,8 @@ function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
 }
 
 // SHA-256 — minimal, well-tested, pure-JS implementation.
-// Kept module-local because nothing else in the codebase needs SHA-256
-// and the wrapper exports only `sha256Hex` / `sha256Bytes`.
+// Kept module-local: its only consumer is the RFC 2104 `hmacSha256Bytes`
+// above (`sha256Hex` in backup-compression.ts is an independent copy).
 
 const SHA256_K = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
@@ -933,10 +970,6 @@ function sha256Bytes(input: Uint8Array): Uint8Array {
 
 function rotr(x: number, n: number): number {
   return ((x >>> n) | (x << (32 - n))) >>> 0;
-}
-
-function sha256Hex(input: string): string {
-  return bytesToHex(sha256Bytes(utf8ToBytes(input)));
 }
 
 /**

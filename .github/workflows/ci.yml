@@ -8,7 +8,8 @@ on:
   # Daily scheduled run so new npm advisories are caught between PRs (#1108)
   # and the Playwright flake-detector runs nightly (#1599). On the schedule
   # only the `security`/`cargo-audit` audits, the `flake-detector` (#1599),
-  # and the `cross-browser-e2e` (#1595) jobs run; every other job is gated
+  # the `cross-browser-e2e` (#1595), and the `jest-flake-detector` (#1719)
+  # jobs run; every other job is gated
   # with `if: github.event_name != 'schedule'` to skip this trigger.
   schedule:
     - cron: '27 4 * * *'
@@ -37,7 +38,13 @@ jobs:
         uses: ./.github/actions/setup-node-npm-ci
       
       - name: Run unit tests with coverage
-        run: npm test -- --coverage --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MB
+        # Issue #1719: --forceExit was removed — it masked hanging timers
+        # and unresolved handles (the CI-only #1634 coach-conversation
+        # failures) by force-killing the process instead of failing. The
+        # suite now must exit cleanly on its own; a hanging handle fails
+        # this job (and is surfaced by the nightly jest-flake-detector
+        # below as a wall-clock timeout) instead of being silently hidden.
+        run: npm test -- --coverage --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB
       
       - name: QA coverage gate (#1394)
         run: node scripts/qa-coverage-gate.js
@@ -191,6 +198,79 @@ jobs:
           for pr in $(gh pr list --state open --base "$BASE" --json number --jq '.[].number'); do
             gh pr comment "$pr" --body-file reports/flake-detector/report.md || true
           done
+
+  jest-flake-detector:
+    # Issue #1719: nightly Jest flake-detector — the unit-suite counterpart
+    # of the Playwright flake-detector job above (#1264). The merge-gating
+    # Test job runs the suite once, so a test that passes 4 of 5 times is
+    # invisible to it (and --forceExit used to mask the hanging handles
+    # that make CI-only failures like #1634 materialize). This job runs the
+    # suite 5x with a distinct --randomize seed per run (order-dependent
+    # state bleed surfaces) and fails if any test passes <4/5 — the same
+    # visibility contract as the Playwright detector: Actions summary,
+    # 90-day report artifact, and a PR comment when flakes are found.
+    name: Flake Detector (Jest)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The PR-comment step below posts the flake report on open PRs.
+      pull-requests: write
+    # Same policy as the Playwright detector (#1599): a half-finished
+    # flake run reports a false negative, so queue concurrent triggers
+    # instead of cancelling.
+    concurrency:
+      group: ${{ github.workflow }}-jest-flake-detector
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Run Jest flake detector (5 runs, threshold 4, no --forceExit)
+        id: jestflake
+        # Capture the exit code; an infra failure must still upload the
+        # partial report so the PR comment is useful.
+        run: |
+          set +e
+          npm run test:flake
+          FLAKE_EXIT=$?
+          echo "flake-exit=$FLAKE_EXIT" >> "$GITHUB_OUTPUT"
+          exit $FLAKE_EXIT
+        env:
+          CI: 'true'
+
+      - name: Upload Jest flake report (always)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jest-flake-detector-report
+          path: reports/jest-flake-detector/
+          retention-days: 90
+
+      - name: Post PR comment with Jest flake report
+        if: github.event_name == 'schedule' && steps.jestflake.outputs.flake-exit == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Flakes concern the codebase, not a single PR — surface them on
+        # every open PR that targets the default branch (same contract as
+        # the Playwright detector above).
+        run: |
+          set -e
+          if [ ! -f reports/jest-flake-detector/report.md ]; then
+            echo "No flake report present; skipping PR comment."
+            exit 0
+          fi
+          BASE="${GITHUB_BASE_REF:-main}"
+          for pr in $(gh pr list --state open --base "$BASE" --json number --jq '.[].number'); do
+            gh pr comment "$pr" --body-file reports/jest-flake-detector/report.md || true
+          done
+
   
   cross-browser-e2e:
     # Issue #1595: nightly cross-browser E2E gate. playwright.config.ts
@@ -203,12 +283,15 @@ jobs:
     # PRs, so per-PR CI keeps running ONLY --project=chromium (#1595
     # acceptance criterion 4: keeps PR CI under budget).
     #
-    # Tolerance note (#1625): the E2E dev-server boot is currently broken in
-    # CI, so this job is expected to fail until #1625 lands. Per #1595's
-    # acceptance criterion 3 the run must exit non-zero on any firefox/webkit
-    # spec failure, so there is deliberately NO continue-on-error here: the
-    # job is nightly/manual-only and is not in the `build` job's needs list,
-    # so the red run is a signal, not a merge blocker.
+    # Tolerance note: the E2E dev-server boot breakage tracked by #1625 is
+    # resolved, and the #1705 engine mix-up (firefox/webkit projects
+    # defaulting to chromium and demanding `chromium_headless_shell`, which
+    # this job does not install) is fixed via `browserName` in
+    # playwright.config.ts. Per #1595's acceptance criterion 3 the run must
+    # exit non-zero on any firefox/webkit spec failure, so there is
+    # deliberately NO continue-on-error here: the job is nightly/manual-only
+    # and is not in the `build` job's needs list, so a red run is a signal,
+    # not a merge blocker.
     name: Cross-Browser E2E (firefox + webkit)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -246,6 +329,14 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
+        # #1705: this run executes ONLY the firefox and webkit projects
+        # (playwright.config.ts pins their `browserName`), so firefox +
+        # webkit + ffmpeg (auto-included for any browser argument) is the
+        # complete binary set. chromium and chromium_headless_shell are
+        # deliberately NOT installed: if a future config/fixture regresses
+        # to the default chromium engine, the run must fail loudly here
+        # with `Executable doesn't exist ... chromium_headless_shell`
+        # instead of silently testing chromium a second time.
         run: npx playwright install --with-deps firefox webkit
 
       - name: Install Playwright OS dependencies
