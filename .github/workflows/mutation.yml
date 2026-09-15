@@ -13,7 +13,8 @@ name: Mutation Testing
 # tab + the mutation-report artifact.
 #
 # The allowlist grew from 3 → 5 modules in #1395 (added trigger-system.ts and
-# state-based-actions.ts) and from 5 → 6 in #1597 (added combat.ts, CR 506-510).
+# state-based-actions.ts), from 5 → 6 in #1597 (added combat.ts, CR 506-510),
+# and from 6 → 7 in #1717 (added mana.ts, CR 106 mana pools / CR 305 lands).
 # `break` is currently 50; it is raised to 70 once the nightly run confirms
 # every allowlisted module clears 70% killed.
 #
@@ -22,7 +23,7 @@ name: Mutation Testing
 # long pole (~2.5-3h per PR with 3x variance on identical code) and blocked
 # every merge via `build.needs`. ci.yml now runs only the ~50ms config guard
 # `scripts/check-mutation-config.mjs` (job `mutation-smoke`), which asserts
-# the markers that keep this nightly-only tradeoff safe: the 6-module
+# the markers that keep this nightly-only tradeoff safe: the 7-module
 # allowlist, a per-module floor for every allowlisted entry, pinned Stryker
 # concurrency, and this workflow's schedule + gates.
 #

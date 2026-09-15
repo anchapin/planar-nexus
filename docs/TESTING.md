@@ -503,8 +503,8 @@ npm test -- --testPathPattern=video-derived --coverage
 
 | Metric     | Project target | CI-enforced floor (`jest.config.js`) |
 | ---------- | -------------- | ------------------------------------ |
-| Lines      | **70%**        | 60%                                  |
-| Functions  | **70%**        | 52%                                  |
+| Lines      | **70%**        | 61%                                  |
+| Functions  | **70%**        | 53%                                  |
 | Statements | **70%**        | 60%                                  |
 | Branches   | **60%**        | 52%                                  |
 
@@ -622,6 +622,7 @@ threshold:
 | `src/lib/game-state/trigger-system.ts`      | 🟡 active — nightly |
 | `src/lib/game-state/state-based-actions.ts` | 🟡 active — nightly |
 | `src/lib/game-state/combat.ts`              | 🟡 active — nightly |
+| `src/lib/game-state/mana.ts`                | 🟡 active — nightly |
 
 (The `spell-casting` entry is a family-dir glob since issue #1725 decomposed
 the module into `cast` / `resolve` / `targeting` / `choices` /
@@ -669,6 +670,7 @@ npm run mutate:spell-casting
 npm run mutate:trigger-system
 npm run mutate:state-based-actions
 npm run mutate:combat
+npm run mutate:mana
 
 # Generic single-module escape hatch:
 npm run mutate -- --mutate src/lib/game-state/<file>.ts
@@ -693,7 +695,7 @@ already mutated layer-system and enforced both thresholds:
 | Tier                    | Workflow                                      | Trigger                                       | Scope                                      | Threshold enforced?                             |
 | ----------------------- | --------------------------------------------- | --------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
 | **Per-PR config guard** | `.github/workflows/ci.yml` (`mutation-smoke`) | every pull request + push to `main`/`develop` | none — asserts gate wiring, no Stryker run | n/a (fails if nightly gate markers are removed) |
-| **Nightly full suite**  | `.github/workflows/mutation.yml`              | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (6 entries)       | ✅ yes — fails workflow on regression           |
+| **Nightly full suite**  | `.github/workflows/mutation.yml`              | daily 03:17 UTC + `workflow_dispatch`         | all modules in allowlist (7 entries)       | ✅ yes — fails workflow on regression           |
 
 The per-PR guard (`node scripts/check-mutation-config.mjs`, ~50ms — local:
 `npm run lint:mutation-config`) keeps the tradeoff honest: it fails the PR if
@@ -718,6 +720,14 @@ Stryker/runner variance entirely.
   targeted `spell-casting.mutation.test.ts` (X-cost arithmetic, multikicker ×n
   scaling, blitz-style replacement-cost deltas, convoke pip order, delve
   generic floor); the first nightly run after it lands records the baseline.
+- `mana.ts`: no recorded measurement yet (issue #1717, 7th module). The
+  targeted `mana.mutation.test.ts` suite pins the canAffordMana per-color
+  boundaries and `availableForGeneric` arithmetic, the spendMana
+  generic-payment cascade (generic → colorless → colored in W/U/B/R/G
+  order), land-play timing and enters-tapped arms, parseManaAbility
+  symbol/condition/multi-ability parsing, and activation-condition filtering;
+  the first nightly run after it lands records the baseline, then the floor
+  is ratcheted to `floor(measured − 1)`.
 - Other modules: measured on each nightly run; the latest numbers are in the
   `mutation-report` workflow artifact.
 

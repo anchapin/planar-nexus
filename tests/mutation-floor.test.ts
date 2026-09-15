@@ -286,6 +286,7 @@ describe("floor config sanity", () => {
       "src/lib/game-state/state-based-actions.ts":
         "state-based-actions.mutation.test.ts",
       "src/lib/game-state/combat.ts": "combat.mutation.test.ts",
+      "src/lib/game-state/mana.ts": "mana.mutation.test.ts",
     };
     expect(Object.keys(suiteFor)).toEqual(strykerConfig.mutate);
     for (const file of Object.values(suiteFor)) {
@@ -403,6 +404,8 @@ describe("mutation-floor.js CLI", () => {
       "src/lib/game-state/spell-casting/resolve.ts": mutants(80, 100), // 80% >= 50 (glob)
       "src/lib/game-state/trigger-system.ts": mutants(80, 100), // 80% >= 50
       "src/lib/game-state/state-based-actions.ts": mutants(80, 100), // 80% >= 50
+      "src/lib/game-state/combat.ts": mutants(80, 100), // 80% >= 50
+      "src/lib/game-state/mana.ts": mutants(80, 100), // 80% >= 50 (issue #1717)
     };
   }
 
