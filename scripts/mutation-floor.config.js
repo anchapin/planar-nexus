@@ -16,12 +16,17 @@
  *
  * Measured baselines (see stryker.config.js "THRESHOLDS" for provenance):
  *   • src/lib/game-state/layer-system.ts        : 56.65% (PR #1297, CI run
- *     28489517797) → floor 55
+ *     28489517797) → floor 55. Issue #1711 added the targeted
+ *     `layer-system.mutation.test.ts` suite to lift the baseline toward 70%;
+ *     the floor is ratcheted to floor(new measured − 1) once the next
+ *     nightly run re-measures it.
  *   • src/lib/game-state/replacement-effects.ts : 77.78% (293 killed / 441
  *     mutants) → floor 76
  *   • src/lib/game-state/spell-casting.ts       : no recorded measurement →
- *     conservative 50 (the current aggregate break) — TO BE RATCHETED after
- *     the first successful nightly run records its score.
+ *     conservative 50 (the current aggregate break). Issue #1711 added the
+ *     targeted `spell-casting.mutation.test.ts` suite (cost-arithmetic
+ *     edges); TO BE RATCHETED after the first successful nightly run
+ *     records its score.
  *   • src/lib/game-state/trigger-system.ts      : PENDING measurement (issue
  *     #1395) → conservative 50 — TO BE RATCHETED after the first successful
  *     nightly run records its score.
