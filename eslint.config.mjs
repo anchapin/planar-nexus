@@ -34,6 +34,11 @@ const engineOutboundBoundaryBlock = (filesGlob, escapeRegex) => ({
       {
         paths: [
           {
+            name: "vitest",
+            message:
+              "This repo runs Jest; vitest imports silently break test discovery (issue #1784)",
+          },
+          {
             name: "@/lib/game-rules",
             message:
               "Format rules are engine-owned versioned input data " +
@@ -155,6 +160,13 @@ const eslintConfig = [
       "no-restricted-imports": [
         "error",
         {
+          paths: [
+            {
+              name: "vitest",
+              message:
+                "This repo runs Jest; vitest imports silently break test discovery (issue #1784)",
+            },
+          ],
           patterns: [
             {
               group: ["@/lib/game-state/*"],
