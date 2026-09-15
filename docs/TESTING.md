@@ -177,6 +177,45 @@ beforeEach(() => {
 });
 ```
 
+### Flakiness and the nightly Jest flake detector (#1719)
+
+The Jest suite runs **without `--forceExit`** everywhere — the per-PR CI
+Test job and the nightly detector alike. `--forceExit` used to mask
+hanging timers and unresolved handles (the recipe behind CI-only failures
+like #1634): it force-killed jest instead of letting the hang fail the
+run. If your test leaves a timer, subscription, or open handle behind,
+clean it up in `afterEach`/`afterAll` — the merge-gating Test job will
+otherwise hang and time out.
+
+Because a single merge-gating run cannot see a test that passes 4 of 5
+times, the nightly `jest-flake-detector` job in
+`.github/workflows/ci.yml` (issue #1719, the Jest counterpart of the
+Playwright detector from #1264) runs the suite **5×** with a distinct
+`--randomize --seed=<n>` per run — randomized test order surfaces
+order-dependent state bleed between tests — and fails if any test passes
+fewer than 4 of 5 runs. Findings get Playwright-detector-grade
+visibility: a markdown report on the Actions summary, a 90-day
+`jest-flake-detector-report` artifact, and a PR comment on every open PR
+when the nightly run finds flakes. The per-run seeds are printed in the
+report so a failure is reproducible:
+
+```bash
+npx jest --ci --maxWorkers=2 --randomize --seed=<seed from the report>
+```
+
+Run the detector locally (defaults: 5 runs, threshold 4, 45-minute
+per-run wall-clock budget):
+
+```bash
+npm run test:flake                         # full suite, 5 runs
+npm run test:flake -- --runs=3             # quick mode (threshold derives to 2)
+npm run test:flake -- --testPathPattern=layer-system   # subset
+```
+
+A run that exceeds the wall-clock budget is killed and reported as an
+infra failure — that is the deliberate signal for a hanging handle, the
+same class of bug `--forceExit` used to hide.
+
 ---
 
 ## 5. Component Tests (React Testing Library)
@@ -725,6 +764,10 @@ Tests run automatically on:
   `scripts/mutation-floor.config.js`, and uploads `reports/mutation/` as an
   artifact). Since #1762 this is the only mutation gate — per-PR CI runs a
   config-marker guard instead.
+- **Nightly Jest flake detector** — the `jest-flake-detector` job in
+  `.github/workflows/ci.yml` (#1719) runs the unit suite 5× with randomized
+  seeds and fails if any test passes <4/5; see
+  [Flakiness and the nightly Jest flake detector](#4-unit-tests-jest).
 - **Pre-commit** — `husky` + `lint-staged` (see `.husky/`).
 
 A coverage regression that drops a metric below the `coverageThreshold` floor
