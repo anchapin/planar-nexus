@@ -28,6 +28,11 @@
  *     high-water-mark policy as `P2PGameConnection`, now a shared primitive),
  *   - per-link rate limiting via {@link P2PRateLimiter} (one independent
  *     counter per peer, matching #1111's intent),
+ *   - per-peer-pair HMAC envelope signing/verification on keyed links
+ *     (issue #1708): each link's traffic is signed under a per-sender
+ *     subkey of that link's pairwise secret and the declared senderId is
+ *     bound to the delivering link — a peer cannot forge another peer's
+ *     envelopes, and keyed links fail closed on non-enveloped traffic,
  *   - authoritative-host action validation via {@link PeerActionValidator}
  *     (the #1089 gate), applied on the host regardless of which peer sent the
  *     action.
@@ -69,7 +74,14 @@ import {
   type PeerActionValidationResult,
   type PeerGameActionPayload,
 } from "./p2p-game-connection";
-import { safeParseJson } from "./p2p-json-validation";
+import {
+  safeParseJson,
+  isMessageEnvelope,
+  signMessageEnvelope,
+  verifyMessageEnvelope,
+  type MessageEnvelope,
+} from "./p2p-json-validation";
+import { hmacSha256Hex, isValidSessionKeyHex } from "./p2p-handshake";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import { redactSensitive } from "./p2p-log-redact";
 import { p2pLogger } from "./p2p-logger";
@@ -240,6 +252,29 @@ export interface MeshGameConnectionOptions {
 const DEFAULT_REJECTION_REASON = "Action rejected by host";
 
 /**
+ * HKDF-style per-sender subkey derivation for mesh envelope signing
+ * (issue #1708).
+ *
+ * The mesh holds one pairwise secret per peer link (see
+ * {@link MeshGameConnection.setPeerSessionKey}). Signing and verification
+ * are additionally bound to the DECLARED SENDER: the effective key for a
+ * (link, sender) pair is `HMAC-SHA256(pairKey, "p2p-envelope-sender:" +
+ * senderId)`. This domain-separates each sender's stream on a link so key
+ * material for one sender can never be replayed as another sender's tag
+ * even before the transport's link-binding check runs.
+ *
+ * Uses the same {@link hmacSha256Hex} construction as the envelope MAC
+ * itself (issue #1707 owns replacing that construction; derivation here
+ * only composes it).
+ */
+export function derivePerSenderKey(
+  pairKeyHex: string,
+  senderId: string,
+): string {
+  return hmacSha256Hex(pairKeyHex, `p2p-envelope-sender:${senderId}`);
+}
+
+/**
  * Multi-peer game-message mesh.
  *
  * See the module header for the full topology / composition rationale. This
@@ -299,15 +334,33 @@ export class MeshGameConnection {
   private readonly maxChatMessageLength: number;
 
   /**
-   * Per-session HMAC key (issue #1391). Mirrors
-   * {@link P2PGameConnection.setSessionKey} so a caller that promotes a mesh
-   * peer to host can rotate the signing material uniformly across both
-   * transports. `null` (the default) means the mesh is in the legacy
-   * non-enveloped wire format; a non-null value is staged for the mesh's
-   * envelope-signing path and surfaced via {@link getSessionKey} for
-   * diagnostics and the host-migration rotation flow.
+   * Per-peer-pair HMAC keys (issue #1708). One hex secret per REGISTERED
+   * peer link, minted by the host per connection (see
+   * `generateSessionKey` in `p2p-handshake.ts`) and adopted by both
+   * endpoints via the `handshake-ack` pairwise distribution. The mesh
+   * signs outbound traffic for a link under
+   * {@link derivePerSenderKey}(pairKey, localPlayerId) and verifies
+   * inbound traffic on that link under
+   * {@link derivePerSenderKey}(pairKey, declaredSenderId) with the
+   * declared sender REQUIRED to equal the delivering link's peer id.
+   *
+   * A keyed link fails CLOSED: non-enveloped inbound traffic is rejected
+   * (see {@link handleIncoming}). A link with no entry stays in the
+   * legacy non-enveloped wire format (single-player / AI / pre-#1252
+   * peers). This map REPLACES the single mesh-wide `sessionKeyHex` that
+   * let any peer forge envelopes as any other peer (issue #1708).
    */
-  private sessionKeyHex: string | null = null;
+  private readonly peerSessionKeys: Map<string, string> = new Map();
+
+  /**
+   * Counter of inbound messages rejected by the per-link envelope gate —
+   * includes non-enveloped traffic on keyed links, HMAC failures,
+   * senderId/link mismatches (forged sender), and malformed envelopes.
+   * Surfaced via {@link getEnvelopeRejections} for the diagnostics panel
+   * so a hostile peer can be flagged without silently dropping traffic.
+   * Issue #1708.
+   */
+  private envelopeRejections = 0;
 
   // ──────────────────────────────────────────────────────────────────────
   // Application-level ping/pong heartbeat (issue #1569)
@@ -443,35 +496,76 @@ export class MeshGameConnection {
   }
 
   /**
-   * Set or rotate the per-session HMAC key (issue #1391). Mirrors
-   * {@link P2PGameConnection.setSessionKey}: the new host calls this with a
-   * freshly-generated key after host migration so followers still holding the
-   * pre-migration key reject post-migration traffic. Passing `null` (or an
-   * empty string) clears the key and reverts the mesh to the legacy
-   * non-enveloped wire format. Invalid keys are silently ignored so a
-   * programming error cannot accidentally downgrade the transport.
+   * Set (or rotate) the PER-PEER-PAIR HMAC key for one link (issue
+   * #1708). The key is a pairwise secret for THIS link only — minted
+   * fresh per connection by the host (`generateSessionKey`) and adopted
+   * by both endpoints from the `handshake-ack` distribution. The new
+   * host re-sets a fresh key per link after host migration (#946 /
+   * #1391) so followers still holding the pre-migration key reject
+   * post-migration traffic.
+   *
+   * There is deliberately NO mesh-wide key API: a shared key handed to
+   * every peer is exactly the forgery primitive issue #1708 removes
+   * (any peer could sign an envelope bearing an arbitrary senderId).
+   *
+   * Passing `null` clears the link's key (used on teardown); the link
+   * then reverts to legacy non-enveloped mode until a fresh key is set.
+   * Only local code can change key state — inbound traffic NEVER mutates
+   * it, so a hostile or legacy peer cannot downgrade a keyed link.
+   *
+   * Returns true when the key was applied; false when `peerId` has no
+   * registered link or the key is malformed (the existing key survives
+   * so a programming error cannot downgrade the link to unsigned).
    */
-  setSessionKey(key: string | null): void {
-    if (key === null) {
-      this.sessionKeyHex = null;
-      return;
-    }
-    if (typeof key !== "string" || key.length === 0) {
+  setPeerSessionKey(peerId: string, key: string | null): boolean {
+    if (!this.links.has(peerId)) {
       p2pLogger.warn(
-        "[MeshGameConnection] Ignoring invalid sessionKey (must be a non-empty hex string)",
+        "[MeshGameConnection] Ignoring session key for unknown peer",
+        redactSensitive({ peerId }),
       );
-      return;
+      return false;
     }
-    this.sessionKeyHex = key;
+    if (key === null) {
+      this.peerSessionKeys.delete(peerId);
+      return true;
+    }
+    if (!isValidSessionKeyHex(key)) {
+      p2pLogger.warn(
+        "[MeshGameConnection] Ignoring invalid peer session key (must be 64 lowercase hex chars)",
+      );
+      return false;
+    }
+    this.peerSessionKeys.set(peerId, key);
+    return true;
   }
 
   /**
-   * Currently configured per-session HMAC key, or `null` when the mesh is in
-   * legacy non-enveloped mode. Exposed for diagnostics and for the
-   * host-migration rotation flow.
+   * The pairwise HMAC key configured for `peerId`'s link, or `null` when
+   * the link is unkeyed (legacy non-enveloped mode) or unknown. Exposed
+   * for diagnostics and the host-migration rotation flow. Issue #1708.
    */
-  getSessionKey(): string | null {
-    return this.sessionKeyHex;
+  getPeerSessionKey(peerId: string): string | null {
+    return this.peerSessionKeys.get(peerId) ?? null;
+  }
+
+  /**
+   * Whether `peerId`'s link is running in keyed (envelope) mode. A keyed
+   * link fails closed: inbound traffic MUST arrive as a verifiable,
+   * sender-bound envelope. Issue #1708.
+   */
+  isPeerLinkKeyed(peerId: string): boolean {
+    return this.peerSessionKeys.has(peerId);
+  }
+
+  /**
+   * Cumulative count of inbound messages rejected by the per-link
+   * envelope gate (issue #1708): forged signatures, swapped senderId,
+   * non-enveloped traffic on a keyed link, and malformed envelope
+   * shapes. Reset by {@link close}. Surfaced so the diagnostics panel
+   * can flag a hostile peer without silently dropping traffic.
+   */
+  getEnvelopeRejections(): number {
+    return this.envelopeRejections;
   }
 
   /**
@@ -494,6 +588,12 @@ export class MeshGameConnection {
     if (isReplace) {
       this.links.get(link.peerId)!.close();
     }
+    // Issue #1708: a replaced link is a NEW DTLS connection — drop the
+    // stale pairwise key so it cannot silently survive into the new
+    // connection. The new connection must run a fresh handshake and set
+    // a fresh key (`setPeerSessionKey`); until then the link runs in
+    // legacy non-enveloped mode.
+    this.peerSessionKeys.delete(link.peerId);
     this.links.set(link.peerId, link);
     // A fresh limiter on (re)connect so a prior flood window doesn't persist.
     this.rateLimiters.set(
@@ -531,6 +631,9 @@ export class MeshGameConnection {
     this.links.delete(peerId);
     this.rateLimiters.delete(peerId);
     this.peerRoles.delete(peerId);
+    // Issue #1708: the pairwise key is per-CONNECTION material — it dies
+    // with the link. A re-registered peer gets a fresh handshake + key.
+    this.peerSessionKeys.delete(peerId);
     // Heartbeat bookkeeping (issue #1569): drop per-peer counters so a
     // re-registered peerId starts from a clean slate (and so a stale
     // `peerUnreachableEmitted` flag can never fire on a future add).
@@ -643,8 +746,8 @@ export class MeshGameConnection {
     return this.outgoingSeq++;
   }
 
-  /** Build a fully-stamped, serialized `GameMessage` ready for the wire. */
-  private serializeOutgoing(payload: OutgoingGamePayload): string {
+  /** Build a fully-stamped `GameMessage` ready for the wire (seq/timestamp assigned here). */
+  private buildOutgoingMessage(payload: OutgoingGamePayload): GameMessage {
     const message: GameMessage = {
       type: payload.type,
       senderId: this.localPlayerId,
@@ -652,7 +755,29 @@ export class MeshGameConnection {
       seq: this.nextOutgoingSeq(),
       data: payload.data,
     };
-    return JSON.stringify(message);
+    return message;
+  }
+
+  /**
+   * Serialize `message` for `peerId`'s link, applying per-link envelope
+   * signing when the link is keyed (issue #1708).
+   *
+   * Keyed link: the message is wrapped in a `MessageEnvelope` signed
+   * under the per-SENDER subkey derived from the pairwise secret
+   * ({@link derivePerSenderKey}(pairKey, localPlayerId)) — the receiver
+   * can only verify it with the same pairwise secret AND the declared
+   * sender, so the tag is bound to both the link and the sender.
+   *
+   * Unkeyed link: legacy raw `GameMessage` JSON (back-compat with
+   * single-player / AI / pre-#1252 peers).
+   */
+  private wirePayloadFor(message: GameMessage, peerId: string): string {
+    const pairKey = this.peerSessionKeys.get(peerId);
+    if (!pairKey) {
+      return JSON.stringify(message);
+    }
+    const senderKey = derivePerSenderKey(pairKey, this.localPlayerId);
+    return JSON.stringify(signMessageEnvelope(message, senderKey));
   }
 
   /**
@@ -679,10 +804,20 @@ export class MeshGameConnection {
       );
       return 0;
     }
-    const raw = this.serializeOutgoing(payload);
+    // One message object (one seq) fanned out per link; each link serializes
+    // with its OWN envelope signature (issue #1708) — the same seq is signed
+    // under each pairwise key, so no link's tag is valid on another link.
+    const message = this.buildOutgoingMessage(payload);
     let sent = 0;
     for (const link of this.links.values()) {
-      if (this.sendRawOnLink(link, raw, payload.type)) sent++;
+      if (
+        this.sendRawOnLink(
+          link,
+          this.wirePayloadFor(message, link.peerId),
+          payload.type,
+        )
+      )
+        sent++;
     }
     return sent;
   }
@@ -705,7 +840,7 @@ export class MeshGameConnection {
     }
     return this.sendRawOnLink(
       link,
-      this.serializeOutgoing(payload),
+      this.wirePayloadFor(this.buildOutgoingMessage(payload), link.peerId),
       payload.type,
     );
   }
@@ -822,7 +957,11 @@ export class MeshGameConnection {
    *   2. Safe parse + structural limits (size/depth/key-count) via
    *      {@link safeParseJson}.
    *   3. Shape validation via the shared {@link isGameMessage} guard
-   *      (including the required `seq`, #1091).
+   *      (including the required `seq`, #1091) — on a KEYED link this
+   *      stage is the per-link envelope gate instead: the payload must
+   *      be a `MessageEnvelope` verifying under the link's pairwise
+   *      per-sender subkey with senderId bound to the delivering link
+   *      (issue #1708; fails closed, no downgrade to unsigned).
    *   4. Anti-replay: a message with `seq <=` the highest seq already applied
    *      from this `senderId` is dropped BEFORE it can touch game state (#1091).
    *   5. Per-peer role allowlist (issue #1253): if the LOCAL role is
@@ -851,13 +990,18 @@ export class MeshGameConnection {
         return;
       }
 
-      // 2 + 3. Safe parse + structural limits + shape validation.
-      const message = safeParseJson<GameMessage>(raw, isGameMessage);
+      // 2 + 3. Safe parse + structural limits + shape validation — with the
+      // per-link envelope gate (issue #1708). On a KEYED link the payload
+      // MUST be a `MessageEnvelope` that (a) verifies under the per-sender
+      // subkey derived from THIS link's pairwise secret and (b) declares the
+      // delivering link's peer as its sender. This binds every accepted
+      // message's senderId to the authenticated pairwise channel it arrived
+      // on: a peer holding only its own pair key (the old "mesh-shared key"
+      // position) cannot produce an accepted envelope bearing another
+      // senderId, and non-enveloped traffic on a keyed link is rejected —
+      // the connection FAILS CLOSED instead of downgrading to unsigned.
+      const message = this.parseInbound(raw, fromPeerId);
       if (!message) {
-        p2pLogger.error(
-          "[MeshGameConnection] Rejected malformed peer message",
-          redactSensitive({ fromPeerId }),
-        );
         return;
       }
 
@@ -922,6 +1066,77 @@ export class MeshGameConnection {
         fromPeerId,
       );
     }
+  }
+
+  /**
+   * Parse + authenticate one inbound wire payload from `fromPeerId`'s link
+   * (issue #1708). Returns the trusted `GameMessage`, or `null` when the
+   * payload must be dropped:
+   *
+   *   - KEYED link (`setPeerSessionKey` was called for `fromPeerId`):
+   *     the payload must be a well-shaped `MessageEnvelope` whose HMAC
+   *     verifies under {@link derivePerSenderKey}(pairKey, declared
+   *     senderId) AND whose declared senderId EQUALS `fromPeerId`. Any
+   *     failure (legacy non-enveloped JSON, bad signature, swapped
+   *     senderId, malformed shape) increments {@link envelopeRejections}
+   *     and returns `null` — fail closed, no downgrade.
+   *   - UNKEYED link: legacy non-enveloped `GameMessage` parse (back-compat
+   *     with single-player / AI / pre-#1252 peers).
+   */
+  private parseInbound(raw: string, fromPeerId: string): GameMessage | null {
+    const pairKey = this.peerSessionKeys.get(fromPeerId);
+    if (!pairKey) {
+      // Legacy (unkeyed) link: plain shape-validated GameMessage.
+      const legacy = safeParseJson<GameMessage>(raw, isGameMessage);
+      if (!legacy) {
+        p2pLogger.error(
+          "[MeshGameConnection] Rejected malformed peer message",
+          redactSensitive({ fromPeerId }),
+        );
+        return null;
+      }
+      return legacy;
+    }
+
+    // Keyed link — envelope mode, fail closed at every step.
+    const envelope = safeParseJson<MessageEnvelope>(raw, isMessageEnvelope);
+    if (!envelope) {
+      this.envelopeRejections += 1;
+      p2pLogger.warn(
+        "[MeshGameConnection] Rejected non-enveloped/malformed traffic on keyed link (fail closed)",
+        redactSensitive({ fromPeerId }),
+      );
+      return null;
+    }
+    // Sender binding + HMAC under the per-sender subkey of THIS link's
+    // pairwise secret. expectedSenderId = the delivering link's peer: an
+    // envelope signed under any other pair key (or bearing a swapped
+    // senderId) fails here even if the attacker holds their own link's key.
+    const senderKey = derivePerSenderKey(pairKey, envelope.payload.senderId);
+    if (!verifyMessageEnvelope(envelope, senderKey, fromPeerId)) {
+      this.envelopeRejections += 1;
+      p2pLogger.warn(
+        "[MeshGameConnection] Dropping forged/invalid envelope",
+        redactSensitive({
+          fromPeerId,
+          declaredSender: envelope.payload?.senderId,
+          seq: envelope.payload?.seq,
+        }),
+      );
+      return null;
+    }
+    // The envelope guard checks the HMAC-participating subset; the full
+    // GameMessage shape (type allowlist, required seq) still applies.
+    const message = envelope.payload as GameMessage;
+    if (!isGameMessage(message)) {
+      this.envelopeRejections += 1;
+      p2pLogger.warn(
+        "[MeshGameConnection] Envelope payload failed GameMessage shape validation",
+        redactSensitive({ fromPeerId }),
+      );
+      return null;
+    }
+    return message;
   }
 
   /**
@@ -1057,7 +1272,7 @@ export class MeshGameConnection {
       // Originating peer already gone (left mid-rejection) — nothing to send.
       return;
     }
-    this.sendRawOnLink(link, JSON.stringify(rejection));
+    this.sendRawOnLink(link, this.wirePayloadFor(rejection, link.peerId));
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -1275,6 +1490,10 @@ export class MeshGameConnection {
     this.peerRoles.clear();
     this.antiReplay.clear();
     this.spectatorDrops = 0;
+    // Issue #1708: pairwise key material dies with the mesh; the rejection
+    // counter resets so a fresh session's diagnostics start at zero.
+    this.peerSessionKeys.clear();
+    this.envelopeRejections = 0;
     // Heartbeat bookkeeping (issue #1569). Drop every per-peer counter
     // so a fresh session is not poisoned by stale `lastPongAt` /
     // missed-count entries from the previous pod.

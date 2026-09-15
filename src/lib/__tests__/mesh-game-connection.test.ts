@@ -894,43 +894,97 @@ describe("MeshGameConnection — teardown", () => {
   });
 });
 
-describe("MeshGameConnection — session-key rotation API (#1391)", () => {
-  it("defaults to no key (legacy mode)", () => {
+describe("MeshGameConnection — per-peer-pair session keys (#1391 / #1708)", () => {
+  it("defaults to no key per link (legacy mode)", () => {
     const { mesh } = newMesh();
-    expect(mesh.getSessionKey()).toBeNull();
+    mesh.addPeerLink(new MockLink("a"));
+    expect(mesh.getPeerSessionKey("a")).toBeNull();
+    expect(mesh.isPeerLinkKeyed("a")).toBe(false);
   });
 
-  it("setSessionKey adopts a fresh key at runtime (host-migration path)", () => {
+  it("setPeerSessionKey adopts a fresh pairwise key per link (host-migration path)", () => {
     const { mesh } = newMesh();
-    const freshKey = "d".repeat(64);
-    mesh.setSessionKey(freshKey);
-    expect(mesh.getSessionKey()).toBe(freshKey);
+    const a = new MockLink("a");
+    const b = new MockLink("b");
+    mesh.addPeerLink(a);
+    mesh.addPeerLink(b);
+
+    const keyA = "d".repeat(64);
+    const keyB = "e".repeat(64);
+    expect(mesh.setPeerSessionKey("a", keyA)).toBe(true);
+    expect(mesh.setPeerSessionKey("b", keyB)).toBe(true);
+
+    // PER-LINK keys — the mesh-wide shared key is gone (#1708).
+    expect(mesh.getPeerSessionKey("a")).toBe(keyA);
+    expect(mesh.getPeerSessionKey("b")).toBe(keyB);
+    expect(mesh.isPeerLinkKeyed("a")).toBe(true);
+    expect(mesh.isPeerLinkKeyed("b")).toBe(true);
   });
 
-  it("setSessionKey rotates an existing key so the previous key is replaced", () => {
+  it("setPeerSessionKey rotates an existing key so the previous key is replaced", () => {
     const { mesh } = newMesh();
+    mesh.addPeerLink(new MockLink("a"));
     const oldKey = "a".repeat(64);
     const newKey = "c".repeat(64);
-    mesh.setSessionKey(oldKey);
-    expect(mesh.getSessionKey()).toBe(oldKey);
-    mesh.setSessionKey(newKey);
-    expect(mesh.getSessionKey()).toBe(newKey);
-    expect(mesh.getSessionKey()).not.toBe(oldKey);
+    mesh.setPeerSessionKey("a", oldKey);
+    expect(mesh.getPeerSessionKey("a")).toBe(oldKey);
+    mesh.setPeerSessionKey("a", newKey);
+    expect(mesh.getPeerSessionKey("a")).toBe(newKey);
+    expect(mesh.getPeerSessionKey("a")).not.toBe(oldKey);
   });
 
-  it("setSessionKey(null) clears the key (reverts to legacy mode)", () => {
+  it("setPeerSessionKey(null) clears the link key (reverts that link to legacy mode)", () => {
     const { mesh } = newMesh();
-    mesh.setSessionKey("a".repeat(64));
-    mesh.setSessionKey(null);
-    expect(mesh.getSessionKey()).toBeNull();
+    mesh.addPeerLink(new MockLink("a"));
+    mesh.setPeerSessionKey("a", "a".repeat(64));
+    expect(mesh.setPeerSessionKey("a", null)).toBe(true);
+    expect(mesh.getPeerSessionKey("a")).toBeNull();
   });
 
-  it("setSessionKey ignores invalid keys (empty string) so the existing key survives", () => {
+  it("setPeerSessionKey ignores invalid keys so the existing key survives", () => {
     const { mesh } = newMesh();
+    mesh.addPeerLink(new MockLink("a"));
     const existing = "a".repeat(64);
-    mesh.setSessionKey(existing);
-    mesh.setSessionKey("");
-    expect(mesh.getSessionKey()).toBe(existing);
+    mesh.setPeerSessionKey("a", existing);
+    // Wrong length / non-hex / empty are all refused.
+    expect(mesh.setPeerSessionKey("a", "")).toBe(false);
+    expect(mesh.setPeerSessionKey("a", "zz".repeat(32))).toBe(false);
+    expect(mesh.setPeerSessionKey("a", "a".repeat(63))).toBe(false);
+    expect(mesh.getPeerSessionKey("a")).toBe(existing);
+  });
+
+  it("setPeerSessionKey refuses unknown peers (key state is per registered link)", () => {
+    const { mesh } = newMesh();
+    expect(mesh.setPeerSessionKey("ghost", "a".repeat(64))).toBe(false);
+    expect(mesh.getPeerSessionKey("ghost")).toBeNull();
+  });
+
+  it("removePeerLink and link replacement drop the stale pairwise key", () => {
+    const { mesh } = newMesh();
+    const a = new MockLink("a");
+    mesh.addPeerLink(a);
+    mesh.setPeerSessionKey("a", "a".repeat(64));
+
+    // Replacing the link (new DTLS connection) invalidates the old secret.
+    mesh.addPeerLink(new MockLink("a"));
+    expect(mesh.getPeerSessionKey("a")).toBeNull();
+
+    mesh.setPeerSessionKey("a", "b".repeat(64));
+    mesh.removePeerLink("a");
+    expect(mesh.getPeerSessionKey("a")).toBeNull();
+  });
+
+  it("close() clears every pairwise key and the envelope rejection counter", () => {
+    const { mesh } = newMesh();
+    mesh.addPeerLink(new MockLink("a"));
+    mesh.setPeerSessionKey("a", "a".repeat(64));
+    // Feed one non-enveloped payload so the counter is non-zero.
+    mesh.handleIncoming("not-an-envelope", "a");
+
+    mesh.close();
+
+    expect(mesh.getPeerSessionKey("a")).toBeNull();
+    expect(mesh.getEnvelopeRejections()).toBe(0);
   });
 });
 
