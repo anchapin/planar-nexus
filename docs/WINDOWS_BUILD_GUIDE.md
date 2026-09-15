@@ -24,10 +24,10 @@ This guide provides detailed instructions for building Planar Nexus on Windows, 
 
 ### Required Software
 
-1. **Node.js 20+**
+1. **Node.js 22+**
    - Download from [nodejs.org](https://nodejs.org/)
-   - Verify installation: `node --version` (should be v20.x.x or higher)
-   - Verify npm: `npm --version` (should be 9.x.x or higher)
+   - Verify installation: `node --version` (should be v22.x.x or higher)
+   - Verify npm: `npm --version` (should be 10.x.x or higher)
 
 2. **Rust Toolchain**
    - Install via rustup:

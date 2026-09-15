@@ -5,7 +5,7 @@ This document provides instructions for building Planar Nexus desktop applicatio
 ## Prerequisites
 
 ### All Platforms
-- Node.js 18+ and npm
+- Node.js 22+ and npm
 - Rust and Cargo (latest stable)
 - Tauri CLI: `npm install -g @tauri-apps/cli`
 

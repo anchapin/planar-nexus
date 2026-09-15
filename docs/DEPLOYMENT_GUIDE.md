@@ -18,7 +18,7 @@ This guide covers all aspects of deploying Planar Nexus to various platforms inc
 
 Planar Nexus is built with Next.js (web) and Tauri (desktop/mobile). The application uses:
 
-- **Next.js 15** for the web application
+- **Next.js 16** for the web application
 - **Tauri 2** for cross-platform desktop applications
 - **Tauri Mobile** for iOS and Android applications
 - **GitHub Actions** for automated CI/CD
@@ -38,8 +38,8 @@ Planar Nexus is built with Next.js (web) and Tauri (desktop/mobile). The applica
 
 ### Common Requirements
 
-- Node.js 20 or higher
-- npm or yarn package manager
+- Node.js 22 or higher
+- npm package manager (the only supported package manager)
 - Git
 
 ### Platform-Specific Requirements

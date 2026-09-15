@@ -58,8 +58,8 @@ Violations of the Code of Conduct will be reviewed and investigated by the proje
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js**: Version 20 or higher ([Download](https://nodejs.org/))
-- **npm** or **yarn**: Package manager
+- **Node.js**: Version 22 or higher ([Download](https://nodejs.org/))
+- **npm**: Package manager (the only supported package manager)
 - **Git**: Version control ([Download](https://git-scm.com/))
 - **Code Editor**: VS Code recommended ([Download](https://code.visualstudio.com/))
 
@@ -339,7 +339,7 @@ three principles:
    `'unsafe-eval'` (only `'wasm-unsafe-eval'` is enabled for the
    offline-ML WASM backend).
 3. **Documented trade-offs.** `'unsafe-inline'` is enabled in
-   `style-src` because Next.js 15 streaming SSR and Tailwind both inject
+   `style-src` because Next.js 16 streaming SSR and Tailwind both inject
    `<style>` tags at runtime. Removing it requires a nonce-based
    strategy that is not yet supported upstream
    ([vercel/next.js#47822](https://github.com/vercel/next.js/issues/47822)).

@@ -213,7 +213,7 @@ chmod +x Planar-Nexus.AppImage
 ### Development Requirements
 
 - **Node.js**: 22+
-- **npm** or **yarn**
+- **npm** (the only supported package manager)
 - **Git**
 - **Rust toolchain** (for Tauri builds)
 - **Platform-specific build tools** (see [Deployment Guide](docs/DEPLOYMENT_GUIDE.md))

@@ -14,7 +14,7 @@ once per quarter as a fire drill.** Companion to
 - [ ] `git checkout main && git pull`
 - [ ] `npm ci`
 - [ ] `npm run typecheck && npm run lint && npm test`
-- [ ] Confirm Node 20+, Rust stable, Tauri CLI 2.x
+- [ ] Confirm Node 22+, Rust stable, Tauri CLI 2.x
 - [ ] Confirm `src-tauri/tauri.conf.json` `version` matches the rc tag
 - [ ] Pull secrets from 1Password vault `Planar Nexus — Release
       Engineering` into a scratch dir (do **not** commit)

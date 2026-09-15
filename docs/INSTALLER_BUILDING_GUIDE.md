@@ -30,11 +30,11 @@ Planar Nexus uses Tauri for cross-platform desktop and mobile applications. This
 ### Common Requirements
 
 ```bash
-# Node.js 20+
-node --version  # Should be v20.x.x
+# Node.js 22+
+node --version  # Should be v22.x.x
 
 # npm
-npm --version   # Should be 9.x.x or higher
+npm --version   # Should be 10.x.x or higher
 
 # Rust
 rustc --version  # Should be 1.70+ for Tauri 2
@@ -75,7 +75,7 @@ npm install -g @tauri-apps/cli@latest
 - Windows 10 or later (64-bit)
 - Visual Studio Build Tools 2019 or later
 - Rust toolchain
-- Node.js 20+
+- Node.js 22+
 
 ### Installing Build Tools
 
@@ -92,7 +92,7 @@ npm install -g @tauri-apps/cli@latest
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 
-3. **Install Node.js 20+**:
+3. **Install Node.js 22+**:
    - Download from [nodejs.org](https://nodejs.org/)
    - Run the installer
 
@@ -237,7 +237,7 @@ Planar-Nexus-setup.exe /S /D=C:\Custom\Path\Planar Nexus
 - Xcode 14 or later
 - Command Line Tools for Xcode
 - Rust toolchain
-- Node.js 20+
+- Node.js 22+
 
 ### Installing Build Tools
 
@@ -253,7 +253,7 @@ Planar-Nexus-setup.exe /S /D=C:\Custom\Path\Planar Nexus
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 
-3. **Install Node.js 20+**:
+3. **Install Node.js 22+**:
    ```bash
    # Using Homebrew
    brew install node
@@ -424,7 +424,7 @@ mv PlanarNexus.icns src-tauri/icons/icon.icns
 
 - Ubuntu 22.04+ or equivalent Linux distribution
 - Rust toolchain
-- Node.js 20+
+- Node.js 22+
 - webkit2gtk development libraries
 
 ### Installing Build Tools
@@ -607,7 +607,7 @@ Edit `src-tauri/tauri.conf.json`:
 - Xcode Command Line Tools
 - CocoaPods
 - Rust toolchain
-- Node.js 20+
+- Node.js 22+
 - Apple Developer account (for release builds)
 
 ### Installing Build Tools
@@ -778,7 +778,7 @@ open -a "Transporter" src-tauri/target/aarch64-apple-ios/release/bundle/ios/Plan
 - Android SDK
 - Java JDK 17
 - Rust toolchain
-- Node.js 20+
+- Node.js 22+
 - Android Studio (optional, for debugging)
 
 ### Installing Build Tools
@@ -1106,8 +1106,8 @@ npm run build:tauri
 
 **Node.js version mismatch**:
 ```bash
-# Ensure Node.js 20+
-nvm use 20  # If using nvm
+# Ensure Node.js 22+
+nvm use 22  # If using nvm
 ```
 
 ### Code Signing Errors

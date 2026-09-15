@@ -24,7 +24,7 @@ The release workflow lives at `.github/workflows/release.yml`.
 
 - Maintainer role on `anchapin/planar-nexus` (push to `main`, tag push).
 - 1Password access to the `Planar Nexus — Release Engineering` vault.
-- Local: Node 20+, Rust stable, Tauri CLI 2.x, platform toolchain (see
+- Local: Node 22+, Rust stable, Tauri CLI 2.x, platform toolchain (see
   [`TAURI_BUILDS.md`](../../TAURI_BUILDS.md) §Prerequisites).
 - Read [`/docs/RELEASE_DRY_RUN.md`](./RELEASE_DRY_RUN.md) end-to-end once
   before your first release.
